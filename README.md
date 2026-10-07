@@ -31,6 +31,9 @@ It exists to test a design before building it anywhere permanent.
 ```sh
 cd some-repo                      # any worktree or clone
 bead init --import .beads/issues.jsonl   # keeps ids, comments, dependencies
+bead                              # the one-screen overview; bead help COMMAND for one command
+bead prime                        # the workflow an agent loads at the start of a session
+bead onboard                      # a snippet for CLAUDE.md / AGENTS.md
 bead ready --type task --json
 bead claim <id>                     # or: bead update <id> --status in_progress
 bead comments add <id> "started"
@@ -49,7 +52,8 @@ Commands mirror the `br` verbs and flags that are actually used: `create`,
 `show`, `update`, `list`, `ready`, `blocked`, `close`, `reopen`, `delete`,
 `dep add|remove|list|tree|cycles`, `comments [add]`, `search`, `lint`, plus
 `init`, `import`, `export`, `sync`, `claim`, `release`, `takeover`, `claims`,
-`log`, `info`, `machines`. `--json` works anywhere on the command line.
+`log`, `info`, `machines`, and for agents `help`, `prime`, `onboard`. `--json`
+works anywhere on the command line; `bead` alone prints the overview.
 
 ## Claims
 

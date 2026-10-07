@@ -1214,5 +1214,62 @@ class Review5PositiveControls(unittest.TestCase):
                 self.assertFalse(state.exists())
 
 
+# ---- maintainer: help, prime and onboard (roll-is0e, roll-dih8.1)
+class HelpAndPrime(unittest.TestCase):
+    def setUp(self):
+        self.box = support.Sandbox()
+        self.addCleanup(self.box.cleanup)
+        self.a = support.Machine(self.box, "help-a")
+
+    def test_no_arguments_and_help_print_the_overview_and_exit_zero(self):
+        for argv in ((), ("--help",), ("-h",), ("help",)):
+            with self.subTest(argv=argv):
+                result = self.a.run(*argv)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                for section in ("Find work", "Do work", "Coordinate", "Agents", "--json"):
+                    self.assertIn(section, result.stdout)
+                self.assertNotIn("Traceback", result.stderr)
+        self.assertIn("help", json.loads(self.a.run("--json").stdout))
+
+    def test_help_command_shows_one_commands_usage(self):
+        result = self.a.run("help", "claim")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("usage: bead claim", result.stdout)
+        self.assertIn("--offline", result.stdout)
+        self.assertNotIn("\\x0a", result.stdout)  # multi-line texts are lines, not one escaped line
+        self.assertIn("\n1. Find work", self.a.run("prime").stdout)
+        self.assertEqual(support.code(self.a.run("help", "nonsense", "--json")), "USAGE")
+
+    def test_every_command_has_help(self):
+        bead = support.load_module()
+        choices = next(a for a in bead.build_parser()._actions if isinstance(a, bead.argparse._SubParsersAction)).choices
+        self.assertGreater(len(choices), 20)
+        for name in choices:
+            with self.subTest(command=name):
+                result = self.a.run(name, "--help")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(f"usage: bead {name}", result.stdout)
+
+    def test_prime_and_onboard_work_with_and_without_a_tracker(self):
+        outside = subprocess.run([support.BEAD, "prime"], cwd=self.box.root, env=self.a.env(), capture_output=True, text=True)
+        self.assertEqual(outside.returncode, 0, outside.stderr)
+        self.assertIn("Not inside a git repository", outside.stdout)
+        before = self.a.run("prime")
+        self.assertEqual(before.returncode, 0, before.stderr)
+        self.assertIn("No tracker here yet", before.stdout)
+        self.a.bead("init", "--prefix", "ex")
+        key = self.a.bead("create", "primed")["id"]
+        self.a.bead("claim", key, "--offline")
+        primed = self.a.bead("prime")
+        self.assertIn("bead claim ID", primed["prime"])
+        self.assertIn("ALREADY_CLAIMED", primed["prime"])
+        self.assertIn("Tracker 'ex'", primed["prime"])
+        self.assertIn(primed["actor"], primed["prime"])
+        self.assertIn("help-a-thread-0001", primed["actor"])
+        onboard = self.a.run("onboard")
+        self.assertEqual(onboard.returncode, 0, onboard.stderr)
+        self.assertIn("bead prime", onboard.stdout)
+        self.assertIn("bead ready", onboard.stdout)
+
 if __name__ == "__main__":
     unittest.main()

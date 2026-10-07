@@ -2448,6 +2448,113 @@ def cmd_sync(args, ws, actor):
 
 # ---------------------------------------------------------------------- cli
 
+OVERVIEW = """\
+usage: bead [--json] [--actor NAME] COMMAND [ARGS...]
+
+bead: a Beads-compatible issue tracker for agent crews working across worktrees and machines.
+State lives outside the checkout, sync goes through a git ref, and a claim is exclusive once
+the remote accepts it. Every event records machine, agent, thread, branch and commit.
+
+Find work      ready [--epic ID]             open issues with nothing blocking them and no owner
+               list [-s STATUS] [-a]         issues (open ones by default); --parent, -l, -t, -p filters
+               show ID...                    full detail: body, acceptance criteria, deps, comments, claim
+               search TEXT   blocked   dep tree ID   dep cycles
+Do work        claim ID...                   take ownership (or: update ID --status in_progress)
+               comments add ID TEXT          record progress and decisions
+               update ID [--title T] [--notes N] [--add-label L] [--parent P] [--status S]
+               close ID -r REASON            finish: ends your claim and publishes at once
+               release ID   takeover ID -r REASON   reopen ID   delete ID -r REASON
+Shape work     create TITLE [-t TYPE] [-p 0-4] [--parent P] [--deps blocks:ID] [-l LABEL]
+               dep add A B [--type blocks|parent-child]   dep remove A B   lint
+Coordinate     sync                          exchange journals with the other machines
+               claims                        who holds what, on which branch, since when
+               log ID   info   machines
+Agents         prime                         the workflow to load at the start of a session
+               onboard                       a snippet for CLAUDE.md / AGENTS.md
+Data           init [--prefix P] [--tracked] [--import FILE]   import FILE   export [-o FILE]
+
+Flags          --json anywhere for machine output (errors: {"error":{"code","message"}} on stderr)
+               --actor NAME to name yourself; --offline for a provisional claim; -- ends options
+Help           bead help COMMAND, or bead COMMAND --help
+"""
+
+PRIME = """\
+beadroll workflow: read once per session, then act.
+{context}
+1. Find work     bead ready --json          unblocked issues nobody holds (--epic ID to scope)
+                 bead show ID --json        description, acceptance criteria, deps, comments, who holds it
+                 bead claims                what others hold, on which branch, since when
+2. Take it       bead claim ID              exclusive once the remote accepts it; ALREADY_CLAIMED: pick another
+                                            (bead update ID --status in_progress does the same)
+3. Work          bead comments add ID "..." progress and decisions, for the next session and other agents
+                 bead update ID --notes "..." | --add-label L | --parent P
+                 bead create "title" --parent ID -t task     split off follow-ups
+4. Finish        bead close ID -r "what was done"   ends your claim and publishes at once
+                 bead release ID                    hand it back unfinished
+                 bead sync                          before you stop, and after a long gap
+
+Rules  Ownership belongs to your agent thread; a new session is a new owner. Continue your own
+       earlier work with bead takeover ID -r "same task, new session". Never --force or take over
+       someone else's work without a reason you have verified.
+       A conflict (two writers, same field) is listed under "conflicts" in show; a write that has
+       seen both sides settles it. --offline claims are provisional, never exclusive.
+       Use --json for machine output. Error codes: ALREADY_CLAIMED, CLAIMED_BY_OTHER, NOT_OWNER,
+       STATUS_CONFLICT, CYCLE, VALIDATION, ISSUE_NOT_FOUND, REMOTE_UNREACHABLE (nothing is lost;
+       retry later), UNRESOLVED (an attempt of yours awaits the remote: run bead sync), SYNC_CONFLICT.
+"""
+
+ONBOARD = """\
+## Work tracking (beadroll)
+
+This repository tracks its work with `bead`. At the start of a session run `bead prime` and
+follow it: find work with `bead ready`, claim an issue before working on it, record progress with
+`bead comments add`, close with `bead close ID -r "reason"`, and `bead sync` before you stop.
+Add `--json` for machine-readable output.
+"""
+
+
+def cmd_help(args, ws, actor):
+    """The overview, or one command's usage."""
+    if not args.command_name:
+        return {"help": OVERVIEW}, OVERVIEW.rstrip("\n").split("\n")
+    parser = build_parser()
+    choices = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction)).choices
+    if args.command_name not in choices:
+        raise BpError("USAGE", f"unknown command {args.command_name!r}; try `bead help`")
+    text = choices[args.command_name].format_help()
+    return {"help": text}, text.rstrip("\n").split("\n")
+
+
+def cmd_prime(args, ws, actor):
+    """What an agent needs to know to work here, with where things stand right now."""
+    replica = replica_id(create=False)
+    me = actor_label(actor, replica or "?")
+    context = [f"You are {me} (machine, agent, thread)."]
+    if ws is not None:
+        try:
+            st = view(ws)
+            need_tracker(st)
+            held = [i for i in st.issues.values() if i["claim"] and i["claim"]["owner"] == me]
+            ready = [i for i in st.issues.values() if i["status"] == "open" and not i["claim"]
+                     and not is_blocked(st, i) and "status" not in conflicts(st, i)]
+            waiting = sum(len(i["unconfirmed"]) for i in st.issues.values())
+            context.append(f"Tracker {st.prefix!r}: {len(ready)} ready, {len(held)} held by you"
+                           + (f" ({', '.join(i['id'] for i in held)})" if held else "")
+                           + (f", {waiting} attempt(s) of this machine awaiting the remote" if waiting else "")
+                           + f". Last sync: {ws.meta().get('last_sync') or 'never'}.")
+        except BpError as error:
+            context.append(f"No tracker here yet ({error.code}): run `bead init` or `bead sync`.")
+    else:
+        context.append("Not inside a git repository: the commands below work in any checkout of a tracked repo.")
+    text = PRIME.format(context="\n".join(context) + "\n")
+    return {"prime": text, "actor": me}, text.rstrip("\n").split("\n")
+
+
+def cmd_onboard(args, ws, actor):
+    """A snippet for the repository's agent instructions file."""
+    return {"onboard": ONBOARD}, ONBOARD.rstrip("\n").split("\n")
+
+
 class Parser(argparse.ArgumentParser):
     def error(self, message):
         raise BpError("USAGE", message)
@@ -2556,11 +2663,11 @@ def build_parser() -> argparse.ArgumentParser:
     cmd.add_argument("query")
     cmd.add_argument("-a", "--all", action="store_true")
 
-    cmd = add("dep", cmd_dep, "dep add|remove|list|tree|cycles")
+    cmd = add("dep", cmd_dep, "dependencies: dep add A B [--type blocks|parent-child], dep remove A B, dep list ID, dep tree ID, dep cycles")
     cmd.add_argument("words", nargs="*")
     cmd.add_argument("--type")
     cmd.add_argument("--blocking-only", action="store_true")
-    cmd = add("comments", cmd_comments, "comments [add] ISSUE [TEXT]")
+    cmd = add("comments", cmd_comments, "read an issue's comments, or `comments add ID TEXT` to record one")
     cmd.add_argument("words", nargs="*")
     cmd.add_argument("-m", "--message")
     cmd.add_argument("-f", "--file")
@@ -2575,6 +2682,11 @@ def build_parser() -> argparse.ArgumentParser:
     add("info", cmd_info, "where the tracker lives and who you are")
     cmd = add("machines", cmd_machines, "machines seen in the journal")
     cmd.add_argument("--name", metavar="ID=ALIAS", help="give a machine a local display name")
+    cmd = add("help", cmd_help, "this overview, or `help COMMAND` for one command's usage")
+    cmd.add_argument("command_name", nargs="?", metavar="COMMAND")
+    cmd.set_defaults(workspace_free=True)
+    add("prime", cmd_prime, "the workflow an agent should load at the start of a session").set_defaults(workspace_free=True)
+    add("onboard", cmd_onboard, "a snippet for CLAUDE.md / AGENTS.md").set_defaults(workspace_free=True)
     return parser
 
 
@@ -2616,9 +2728,20 @@ def run(argv=None) -> int:
             name = arg.split("=", 1)[1]
             del head[index]
             break
+    if not head + tail or head + tail in (["-h"], ["--help"]):
+        print(json.dumps({"help": OVERVIEW}) if as_json else OVERVIEW.rstrip("\n"))
+        sys.stdout.flush()
+        return 0
     try:
         args = build_parser().parse_args(head + tail)
-        result, lines = args.func(args, find_workspace(), detect_actor(name))
+        if getattr(args, "workspace_free", False):
+            try:
+                ws = find_workspace()
+            except BpError:
+                ws = None  # help, prime and onboard work anywhere
+        else:
+            ws = find_workspace()
+        result, lines = args.func(args, ws, detect_actor(name))
     except BpError as error:
         if as_json:
             print(json.dumps({"error": {"code": error.code, "message": str(error)}}), file=sys.stderr)
