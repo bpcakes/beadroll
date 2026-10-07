@@ -128,8 +128,19 @@ An edit made after seeing another is never a conflict, whatever the clocks say.
   and names from journals or imports are shown with `\xNN` escapes. JSON output
   and stored data are untouched. Output is UTF-8 whatever the locale.
 - A password in a remote URL is dropped (with a note) and never stored, shown
-  or used; git's credential helpers are the place for it. Everything under the
-  store is created private (mode 0600/0700).
+  or used, whatever its shape (`https://TOKEN@host` included); git's credential
+  helpers are the place for it. The store is private by its own modes (0700
+  directories, 0600 files); files written into a checkout (`.beadroll.json`,
+  `export -o`) follow your umask like any other file there.
+- Text comes from files and stdin as UTF-8 whatever the locale; anything else
+  is `VALIDATION`. A read-only store, a full volume or a missing file is an
+  `IO` error, never a traceback, and never a half-written journal. A fetch
+  that gives no answer is killed with the helpers it started; a push that
+  gives no answer is abandoned on our side and left to land or fail on the
+  remote's, which is exactly what the pending-attempt protocol settles next.
+- An imported dependency on a key that is not an issue yet can be taken back
+  (`dep remove A KEY`, or re-importing the record without it) and stays taken
+  back when the key arrives.
 - A foreign journal file that differs from the published copy is replaced by
   the published copy, ours is kept beside it as `*.fork-*`, and `sync` reports
   it. Our own file in that state is `JOURNAL_FORK`.

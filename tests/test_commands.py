@@ -27,6 +27,7 @@ from unittest import mock
 from unittest.mock import patch
 
 import stat
+import textwrap
 import tests.support as support
 from tests.support import *  # noqa: F401,F403  (BEAD, Machine, Sandbox, load_module, git, code)
 
@@ -1270,6 +1271,634 @@ class HelpAndPrime(unittest.TestCase):
         self.assertEqual(onboard.returncode, 0, onboard.stderr)
         self.assertIn("bead prime", onboard.stdout)
         self.assertIn("bead ready", onboard.stdout)
+
+# ---- from test_review6.py: sixth independent review (2026-10-07-6-grok), folded in after the fixes
+def ops(machine, key):
+    return [event["op"] for event in machine.bead("log", key, "--limit", "0")]
+
+
+class Review6(unittest.TestCase):
+    def setUp(self):
+        self.box = support.Sandbox()
+        self.addCleanup(self.box.cleanup)
+
+    def machine(self, name):
+        machine = support.Machine(self.box, name)
+        machine.bead("init", "--prefix", "ex")
+        return machine
+
+    def test_f01_failed_command_does_not_forget_an_accepted_retry(self):
+        """F01: a failed command must not make a retry of an accepted command look new."""
+        owner = self.machine("f01")
+        key = owner.bead("create", "close once")["id"]
+        owner.bead("sync")
+        crashed = owner.run(
+            "update", key, "--claim", "--status", "closed", "--json",
+            BEAD_TEST_CRASH_AFTER_PUSH="1",
+        )
+        self.assertEqual(crashed.returncode, 99)
+        missed = owner.run("claim", "missing-id", "--json")
+        self.assertNotEqual(missed.returncode, 0)
+        self.assertEqual(len(list((owner.store() / "pending").glob("*.command"))), 1)
+        retry = owner.run("update", key, "--claim", "--status", "closed", "--json")
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+        self.assertEqual(ops(owner, key).count("close"), 1)
+
+        parent = self.machine("f01-parent")
+        first = parent.bead("create", "first")["id"]
+        second = parent.bead("create", "second")["id"]
+        child = parent.bead("create", "child", "--parent", first)["id"]
+        parent.bead("sync")
+        crashed = parent.run(
+            "update", child, "--claim", "--parent", second, "--json",
+            BEAD_TEST_CRASH_AFTER_PUSH="1",
+        )
+        self.assertEqual(crashed.returncode, 99)
+        parent.run("claim", "missing-id", "--json")
+        retry = parent.run("update", child, "--claim", "--parent", second, "--json")
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+        self.assertEqual(parent.show(child).get("parent"), second)
+        self.assertEqual(ops(parent, child).count("dep_remove"), 1)
+
+    def test_f02_locale_retry_keeps_the_accepted_description(self):
+        """F02: a retry decodes the same file as the same request, whatever the locale."""
+        body = self.box.root / "cafe.txt"
+        body.write_bytes("café body\n".encode())
+        latin = self.machine("f02-latin")
+        key = latin.bead("create", "locale")["id"]
+        latin.bead("sync")
+        crashed = latin.run(
+            "update", key, "--claim", "--description-file", str(body), "--json",
+            BEAD_TEST_CRASH_AFTER_PUSH="1",
+        )
+        self.assertEqual(crashed.returncode, 99)
+        retry = latin.run(
+            "update", key, "--claim", "--description-file", str(body), "--json",
+            LC_ALL="en_US.ISO8859-1", LANG="en_US.ISO8859-1",
+            PYTHONUTF8="0", PYTHONCOERCECLOCALE="0",
+        )
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+        self.assertEqual(latin.show(key).get("description"), "café body\n")
+        self.assertEqual(ops(latin, key).count("set"), 1)
+
+        sea = self.machine("f02-c")
+        key = sea.bead("create", "locale c")["id"]
+        sea.bead("sync")
+        crashed = sea.run(
+            "update", key, "--claim", "--description-file", str(body), "--json",
+            BEAD_TEST_CRASH_AFTER_PUSH="1",
+        )
+        self.assertEqual(crashed.returncode, 99)
+        retry = sea.run(
+            "update", key, "--claim", "--description-file", str(body), "--json",
+            LC_ALL="C", LANG="C", PYTHONUTF8="0", PYTHONCOERCECLOCALE="0",
+        )
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+        self.assertNotIn("Traceback", retry.stderr)
+        self.assertEqual(sea.show(key).get("description"), "café body\n")
+
+    def test_f03_credential_urls_are_not_stored(self):
+        """F03: uppercase schemes, slash passwords and token userinfo are not stored or shown."""
+        cases = {
+            "uppercase": "HTTPS://alice:supersecret@example.invalid/private.git",
+            "slash": "https://alice:sec/ret@example.invalid/private.git",
+            "token": "https://supersecret@example.invalid/private.git",
+        }
+        for name, url in cases.items():
+            with self.subTest(shape=name):
+                machine = support.Machine(self.box, name)
+                made = machine.run(
+                    "init", "--prefix", "ex", "--tracked", "--remote", url, "--json",
+                )
+                self.assertEqual(made.returncode, 0, made.stderr)
+                config = (machine.checkout / ".beadroll.json").read_text()
+                info = machine.run("info", "--json")
+                metas = "\n".join(path.read_text() for path in machine.home.glob("*/meta.json"))
+                blob = config + info.stdout + info.stderr + metas
+                self.assertNotIn("supersecret", blob)
+                self.assertNotIn("sec/ret", blob)
+                self.assertNotIn("s%65cret", blob)
+
+    def test_f04_checkout_files_stay_readable_in_a_shared_tree(self):
+        """F04: .beadroll.json and export -o are not forced owner-only."""
+        machine = support.Machine(self.box, "f04")
+        made = machine.run("init", "--prefix", "ex", "--tracked", "--json")
+        self.assertEqual(made.returncode, 0, made.stderr)
+        config = machine.checkout / ".beadroll.json"
+        target = self.box.root / "shared" / "issues.jsonl"
+        target.parent.mkdir()
+        exported = machine.run("export", "-o", str(target))
+        self.assertEqual(exported.returncode, 0, exported.stderr)
+        for path in (config, target):
+            mode = stat.S_IMODE(path.stat().st_mode)
+            self.assertTrue(mode & 0o040, f"{path.name} is {oct(mode)}")
+
+    def test_f05_human_output_escapes_tab_and_line_separators(self):
+        """F05: human output escapes TAB and Unicode line separators."""
+        machine = self.machine("f05")
+        created = machine.run("create", "col\tFORGED\u2028line\u202etitle")
+        self.assertEqual(created.returncode, 0, created.stderr)
+        self.assertNotIn("\t", created.stdout)
+        self.assertNotIn("\u2028", created.stdout)
+        self.assertNotIn("\u202e", created.stdout)
+
+    def test_f06_failed_command_with_closed_stderr_keeps_its_status(self):
+        """F06: a closed stderr on a failed command exits with the command status, not 120."""
+        machine = self.machine("f06")
+        read, write = os.pipe()
+        os.close(read)
+        proc = subprocess.Popen(
+            [BEAD, "create"], cwd=machine.checkout, env=machine.env(),
+            stdout=subprocess.PIPE, stderr=write,
+        )
+        os.close(write)
+        proc.communicate()
+        self.assertEqual(proc.returncode, 1)
+
+    def test_f07_non_utf8_input_is_a_structured_error(self):
+        """F07: non-UTF-8 titles and description files return a JSON error and store nothing."""
+        machine = self.machine("f07")
+        created = subprocess.run(
+            [BEAD, "create", "bad\udcfftitle", "--json"],
+            cwd=machine.checkout, env=machine.env(), capture_output=True, text=True,
+        )
+        self.assertNotEqual(created.returncode, 0)
+        self.assertNotIn("Traceback", created.stderr)
+        self.assertEqual(strict_json(created.stderr)["error"]["code"], "VALIDATION")
+        titles = [issue["title"] for issue in machine.bead("list", "--all", "--limit", "0")["issues"]]
+        self.assertFalse(any("\udcff" in title for title in titles))
+
+        raw = self.box.root / "raw.txt"
+        raw.write_bytes(b"caf\xff")
+        key = machine.bead("create", "file target")["id"]
+        updated = machine.run("update", key, "--description-file", str(raw), "--json")
+        self.assertNotEqual(updated.returncode, 0)
+        self.assertNotIn("Traceback", updated.stderr)
+        self.assertEqual(strict_json(updated.stderr)["error"]["code"], "VALIDATION")
+        self.assertNotIn("description", machine.show(key))
+
+    def test_f08_import_probes_dependencies_before_writing(self):
+        """F08: a bad dependency fails the import; it is not dropped and it is not a traceback."""
+        machine = self.machine("f08")
+        typed = self.box.root / "typed.jsonl"
+        typed.write_text(
+            json.dumps({"id": "ex-a", "title": "A", **COMMON, "dependencies": [
+                {"issue_id": "ex-a", "depends_on_id": "ex-b", "type": 1}]}) + "\n"
+            + json.dumps({"id": "ex-b", "title": "B", **COMMON}) + "\n"
+        )
+        imported = machine.run("import", str(typed), "--json")
+        self.assertNotEqual(imported.returncode, 0, imported.stdout)
+        self.assertNotIn("Traceback", imported.stderr)
+        self.assertEqual(strict_json(imported.stderr)["error"]["code"], "VALIDATION")
+        self.assertEqual(machine.bead("info")["integrity"], [])
+
+        bare = self.box.root / "bare.jsonl"
+        bare.write_text(json.dumps({"id": "ex-c", "title": "C", **COMMON, "dependencies": ["ex-b"]}) + "\n")
+        imported = machine.run("import", str(bare), "--json")
+        self.assertNotEqual(imported.returncode, 0)
+        self.assertNotIn("Traceback", imported.stderr)
+        self.assertEqual(machine.bead("list", "--all", "--id", "ex-c", "--limit", "0")["total"], 0)
+
+    def test_f09_dangling_dependency_can_be_retracted_before_its_target_exists(self):
+        """F09: a dependency removed before its target exists does not reappear, and does not cycle."""
+        root = self.box.root
+        common = dict(COMMON)
+        dangling = {"id": "ex-a", "title": "A", **common, "dependencies": [
+            {"issue_id": "ex-a", "depends_on_id": "ex-b", "type": "blocks"}]}
+        cleared = {"id": "ex-a", "title": "A", **common}
+        target = {"id": "ex-b", "title": "B", **common, "dependencies": [
+            {"issue_id": "ex-b", "depends_on_id": "ex-a", "type": "blocks"}]}
+        for name, records in (("a", [dangling]), ("cleared", [cleared]), ("b", [target])):
+            (root / f"{name}.jsonl").write_text("".join(json.dumps(rec) + "\n" for rec in records))
+
+        with self.subTest("dep remove"):
+            retracted = self.machine("f09")
+            retracted.bead("import", str(root / "a.jsonl"))
+            removed = retracted.run("dep", "remove", "ex-a", "ex-b", "--json")
+            self.assertEqual(removed.returncode, 0, removed.stderr)
+            retracted.bead("import", str(root / "b.jsonl"))
+            self.assertEqual(retracted.show("ex-a").get("dependencies"), [])
+            self.assertIn("ex-a", retracted.ready())
+            self.assertNotIn("ex-b", retracted.ready())
+
+        with self.subTest("reimport"):
+            reimported = self.machine("f09-reimport")
+            reimported.bead("import", str(root / "a.jsonl"))
+            reimported.bead("import", str(root / "cleared.jsonl"))
+            reimported.bead("import", str(root / "b.jsonl"))
+            self.assertEqual(
+                [(d["id"], d["dependency_type"]) for d in reimported.show("ex-a").get("dependencies", [])],
+                [],
+            )
+            self.assertIn("ex-a", reimported.ready())
+            self.assertEqual(reimported.bead("dep", "cycles")["count"], 0)
+
+        bead = support.load_module()
+        with self.subTest("replay"):
+            create_a, remove, create_b = (
+                "01900000-0000-7000-8000-000000000001",
+                "01900000-0000-7000-8000-000000000002",
+                "01900000-0000-7000-8000-000000000003",
+            )
+            journal = bead.Journal()
+            for event in (
+                {"v": 1, "id": create_a, "replica": "m", "deps": [], "op": "create", "issue": create_a,
+                 "data": {"key": "ex-a", "fields": {"title": "A", "status": "open", "priority": 2, "issue_type": "task"},
+                          "dangling": [{"depends_on_id": "ex-b", "type": "blocks"}]}},
+                {"v": 1, "id": remove, "replica": "m", "deps": [create_a], "op": "dep_remove", "issue": create_a,
+                 "data": {"to": create_b, "type": "blocks"}},
+                {"v": 1, "id": create_b, "replica": "m", "deps": [remove], "op": "create", "issue": create_b,
+                 "data": {"key": "ex-b", "fields": {"title": "B", "status": "open", "priority": 2, "issue_type": "task"}}},
+            ):
+                journal.add(event, "m")
+            state = bead.replay(journal)
+            self.assertEqual(sorted(state.issues[create_a]["deps"]), [])
+            self.assertFalse(bead.is_blocked(state, state.issues[create_a]))
+
+    def test_f10_non_event_json_makes_the_whole_attempt_inert(self):
+        """F10: a later JSON value that is not an event voids the whole attempt."""
+        writer = self.machine("f10")
+        key = writer.bead("create", "attempt")["id"]
+        writer.bead("sync")
+        reader = support.Machine(self.box, "f10-reader")
+        reader.bead("sync")
+        writer.bead("update", key, "--claim", "--title", "kept", "--add-label", "kept")
+        reader.bead("sync")
+        attempt = next(path for path in (reader.store() / "events").glob("*/claims/*.json")
+                       if len(path.read_bytes().splitlines()) >= 2)
+        attempt.write_bytes(attempt.read_bytes().splitlines()[0] + b"\nnull\n")
+        shown = reader.show(key)
+        self.assertNotIn("claim", shown)
+        self.assertEqual(shown["title"], "attempt")
+        self.assertTrue(reader.bead("info")["integrity"])
+
+    def test_f11_stale_pending_twin_does_not_fork_a_matching_attempt(self):
+        """F11: a leftover pending twin must not raise ATTEMPT_FORK when the confirmed file matches."""
+        writer = self.machine("f11")
+        key = writer.bead("create", "twin")["id"]
+        writer.bead("sync")
+        reader = support.Machine(self.box, "f11-reader")
+        reader.bead("sync")
+        writer.bead("claim", key)
+        reader.bead("sync")
+        attempt = next((reader.store() / "events").glob("*/claims/*.json"))
+        pending = reader.store() / "pending"
+        pending.mkdir(exist_ok=True)
+        (pending / f"{attempt.stem}.json").write_bytes(attempt.read_bytes() + b"\n")
+        synced = reader.run("sync", "--json")
+        self.assertEqual(synced.returncode, 0, synced.stderr)
+        self.assertNotIn("ATTEMPT_FORK", synced.stderr)
+        self.assertIn("claim", reader.show(key))
+
+    def test_f12_unreadable_pending_file_is_not_fenced_forever(self):
+        """F12: one corrupt pending file does not add a fence commit on every later sync."""
+        machine = self.machine("f12")
+        machine.bead("create", "quiet")
+        machine.bead("sync")
+        pending = machine.store() / "pending"
+        pending.mkdir(exist_ok=True)
+        junk = pending / "01900000-0000-7000-8000-0000000000aa.json"
+        junk.write_text("{")
+        before = int(support.git("--git-dir", str(self.box.origin), "rev-list", "--count", "refs/beads/journal"))
+        first = machine.run("sync", "--json")
+        second = machine.run("sync", "--json")
+        after = int(support.git("--git-dir", str(self.box.origin), "rev-list", "--count", "refs/beads/journal"))
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertFalse(junk.exists())
+        self.assertLessEqual(after, before + 1)
+
+    def test_f13_local_state_files_are_strict_json(self):
+        """F13: meta, replica and aliases reject non-strict or wrong-shaped JSON without a traceback."""
+        machine = self.machine("f13")
+        (machine.store() / "meta.json").write_text('{"last_sync": NaN, "name": "ex"}\n')
+        info = machine.run("info", "--json")
+        self.assertEqual(info.returncode, 0, info.stderr)
+        self.assertNotIn("Traceback", info.stderr)
+        try:
+            strict_json(info.stdout)
+        except ValueError as error:
+            self.fail(f"info --json was not strict JSON: {error}; {info.stdout[:240]}")
+
+        replica = machine.home / "replica.json"
+        saved = replica.read_text()
+        replica.write_text('{"id": NaN}\n')
+        info = machine.run("info", "--json")
+        self.assertNotIn("Traceback", info.stderr)
+        if info.returncode == 0:
+            try:
+                strict_json(info.stdout)
+            except ValueError as error:
+                self.fail(f"info --json was not strict JSON: {error}; {info.stdout[:240]}")
+        else:
+            self.assertEqual(strict_json(info.stderr)["error"]["code"], "IDENTITY")
+        created = machine.run("create", "after nan identity", "--json")
+        self.assertNotIn("Traceback", created.stderr)
+        replica.write_text(saved)
+
+        (machine.home / "aliases.json").write_text("[1, 2]\n")
+        listed = machine.run("machines", "--json")
+        self.assertNotIn("Traceback", listed.stderr)
+        self.assertEqual(listed.returncode, 0, listed.stderr)
+
+    def test_f14_future_clock_create_is_a_structured_error(self):
+        """F14: a clock past year 2100 does not turn create into a KeyError traceback."""
+        machine = self.machine("f14")
+        wrapper = self.box.root / "ahead.py"
+        wrapper.write_text(textwrap.dedent(f"""
+            import time
+            time.time_ns = lambda: 4_429_000_000_000_000_000
+            import runpy
+            runpy.run_path({str(BEAD)!r}, run_name="__main__")
+        """))
+        created = subprocess.run(
+            [sys.executable, str(wrapper), "create", "future", "--json"],
+            cwd=machine.checkout, env=machine.env(), capture_output=True, text=True,
+        )
+        self.assertNotIn("Traceback", created.stderr)
+        self.assertNotEqual(created.returncode, 0)
+        titles = [issue["title"] for issue in machine.bead("list", "--all", "--limit", "0")["issues"]]
+        self.assertNotIn("future", titles)
+
+    def test_f15_timeout_reaps_the_git_helper(self):
+        """F15: a fetch that times out does not leave git-upload-pack running."""
+        exec_path = Path(subprocess.check_output(["git", "--exec-path"], text=True).strip())
+        fake = self.box.root / "git-exec"
+        fake.mkdir()
+        for entry in exec_path.iterdir():
+            if entry.name not in ("git-upload-pack", "git-receive-pack"):
+                os.symlink(entry, fake / entry.name)
+        log = self.box.root / "helper-pids"
+        log.write_text("")
+        for name in ("git-upload-pack", "git-receive-pack"):
+            script = fake / name
+            script.write_text(textwrap.dedent(f"""\
+                #!/bin/sh
+                echo $$ >> {log}
+                sleep 30
+                exec {exec_path / name} "$@"
+            """))
+            script.chmod(0o755)
+        machine = self.machine("f15")
+        machine.bead("create", "one")
+        proc = subprocess.run(
+            [BEAD, "sync", "--json"], cwd=machine.checkout,
+            env=machine.env(BEAD_NET_TIMEOUT="2", GIT_EXEC_PATH=str(fake)),
+            capture_output=True, text=True,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertNotIn("Traceback", proc.stderr)
+        time.sleep(0.2)
+        alive = []
+        try:
+            for line in log.read_text().split():
+                pid = int(line)
+                try:
+                    os.kill(pid, 0)
+                except OSError:
+                    continue
+                alive.append(pid)
+            self.assertEqual(alive, [])
+        finally:
+            for pid in alive:
+                try:
+                    os.kill(pid, 9)
+                except OSError:
+                    pass
+
+    def test_f16_read_only_store_write_is_a_structured_error(self):
+        """F16: writing a read-only store fails without a traceback and keeps what was already there."""
+        machine = self.machine("f16")
+        key = machine.bead("create", "kept")["id"]
+        store = machine.store()
+        subprocess.run(["chmod", "-R", "a-w", str(store)], check=True)
+        try:
+            created = machine.run("create", "nope", "--json")
+            self.assertNotEqual(created.returncode, 0)
+            self.assertNotIn("Traceback", created.stderr)
+            shown = machine.run("show", key, "--json")
+            self.assertEqual(shown.returncode, 0, shown.stderr)
+            self.assertEqual(strict_json(shown.stdout)[0]["title"], "kept")
+        finally:
+            subprocess.run(["chmod", "-R", "u+w", str(store)], check=True)
+
+    def test_receipt_identity_holds_for_actor_sync_stdin_and_json(self):
+        """Verified (no finding): another thread, a sync, changed stdin and --json do not confuse a receipt."""
+        machine = self.machine("receipt-ok")
+        key = machine.bead("create", "receipt")["id"]
+        machine.bead("sync")
+        body = self.box.root / "body.txt"
+        body.write_text("first body")
+        crashed = machine.run(
+            "update", key, "--claim", "--description-file", str(body), "--json",
+            BEAD_TEST_CRASH_AFTER_PUSH="1",
+        )
+        self.assertEqual(crashed.returncode, 99)
+        other = machine.run("claim", "missing-id", "--json", thread="other-thread")
+        self.assertNotEqual(other.returncode, 0)
+        self.assertEqual(len(list((machine.store() / "pending").glob("*.command"))), 1)
+        synced = machine.run("sync", "--json")
+        self.assertEqual(synced.returncode, 0, synced.stderr)
+        self.assertEqual(len(list((machine.store() / "pending").glob("*.command"))), 1)
+        body.write_text("second body")
+        retry = machine.run("update", key, "--claim", "--description-file", str(body), "--json")
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+        self.assertEqual(machine.show(key)["description"], "second body")
+
+        piped = self.machine("receipt-stdin")
+        key = piped.bead("create", "stdin")["id"]
+        piped.bead("sync")
+        crashed = subprocess.run(
+            [BEAD, "update", key, "--claim", "--description-file", "-", "--json"],
+            cwd=piped.checkout, env=piped.env(BEAD_TEST_CRASH_AFTER_PUSH="1"),
+            input="stdin one", capture_output=True, text=True,
+        )
+        self.assertEqual(crashed.returncode, 99)
+        retry = subprocess.run(
+            [BEAD, "update", key, "--claim", "--description-file", "-", "--json"],
+            cwd=piped.checkout, env=piped.env(),
+            input="stdin two", capture_output=True, text=True,
+        )
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+        self.assertEqual(piped.show(key)["description"], "stdin two")
+
+        flagged = self.machine("receipt-json")
+        key = flagged.bead("create", "json flag")["id"]
+        flagged.bead("sync")
+        crashed = flagged.run(
+            "update", key, "--claim", "--title", "once", BEAD_TEST_CRASH_AFTER_PUSH="1",
+        )
+        retry = flagged.run("update", key, "--claim", "--title", "once", "--json")
+        self.assertEqual(crashed.returncode, 99)
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+        self.assertEqual(ops(flagged, key).count("set"), 1)
+
+    def test_remote_url_shapes_that_are_already_safe(self):
+        """Verified (no finding): encoded passwords, ssh:// and scp-like URLs, and a named remote."""
+        encoded = support.Machine(self.box, "encoded")
+        made = encoded.run(
+            "init", "--prefix", "ex", "--remote",
+            "https://alice:s%65cret@example.invalid/private.git", "--json",
+        )
+        self.assertEqual(made.returncode, 0, made.stderr)
+        meta = next(encoded.home.glob("*/meta.json")).read_text()
+        self.assertNotIn("s%65cret", meta)
+        self.assertIn("https://alice@example.invalid/private.git", meta)
+
+        ssh = support.Machine(self.box, "ssh")
+        ssh.run("init", "--prefix", "ex", "--remote", "ssh://alice:supersecret@example.invalid/private.git")
+        self.assertNotIn("supersecret", next(ssh.home.glob("*/meta.json")).read_text())
+        plain = support.Machine(self.box, "ssh-user")
+        plain.run("init", "--prefix", "ex", "--remote", "ssh://alice@example.invalid/private.git")
+        self.assertIn("ssh://alice@example.invalid/private.git", next(plain.home.glob("*/meta.json")).read_text())
+        scp = support.Machine(self.box, "scp")
+        scp.run("init", "--prefix", "ex", "--remote", "git@example.invalid:org/private.git")
+        self.assertIn("git@example.invalid:org/private.git", next(scp.home.glob("*/meta.json")).read_text())
+
+        named = support.Machine(self.box, "named")
+        named.bead("init", "--prefix", "ex")
+        support.git(
+            "remote", "set-url", "origin",
+            "https://alice:supersecret@example.invalid/private.git",
+            cwd=named.checkout,
+        )
+        (named.checkout / ".beadroll.json").write_text(
+            json.dumps({"workspace": "named-ws", "remote": "origin"}) + "\n"
+        )
+        info = named.run("info", "--json")
+        self.assertEqual(info.returncode, 0, info.stderr)
+        self.assertNotIn("supersecret", info.stdout)
+        self.assertEqual(
+            strict_json(info.stdout)["remote"],
+            "https://alice@example.invalid/private.git",
+        )
+
+    def test_prime_matches_ready_and_help_outside_a_repository_is_silent(self):
+        """Verified (no finding): prime's ready count matches bead ready, and help creates no state."""
+        machine = self.machine("prime")
+        open_id = machine.bead("create", "open")["id"]
+        machine.bead("create", "blocked", "--deps", f"blocks:{open_id}")
+        claimed = machine.bead("create", "claimed")["id"]
+        machine.bead("claim", claimed, "--offline")
+        deferred = machine.bead("create", "deferred")["id"]
+        machine.bead("update", deferred, "--status", "deferred")
+        closed = machine.bead("create", "closed")["id"]
+        machine.bead("close", closed, "--reason", "done")
+        epic = machine.bead("create", "epic", "--type", "epic")["id"]
+        machine.bead("create", "child", "--parent", epic)
+        primed = machine.bead("prime")["prime"]
+        ready = machine.bead("ready")
+        self.assertIn(f"{len(ready)} ready", primed)
+
+        outside = self.box.root / "outside"
+        outside.mkdir()
+        state = self.box.root / "outside-state"
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("BEAD_", "GIT_", "CLAUDE", "CODEX"))}
+        env["BEAD_HOME"] = str(state)
+        for args in (["help"], ["help", "claim"], ["prime"], ["onboard"], ["--help"]):
+            with self.subTest(args=args):
+                result = subprocess.run([BEAD, *args], cwd=outside, env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+                self.assertFalse(state.exists())
+
+    def test_incremental_mutual_import_matches_one_shot(self):
+        """Verified (no finding): a mutual dependency imported in two batches matches one import."""
+        root = self.box.root
+        first = {"id": "ex-a", "title": "A", **COMMON, "dependencies": [
+            {"issue_id": "ex-a", "depends_on_id": "ex-b", "type": "blocks"}]}
+        second = {"id": "ex-b", "title": "B", **COMMON, "dependencies": [
+            {"issue_id": "ex-b", "depends_on_id": "ex-a", "type": "blocks"}]}
+        (root / "a.jsonl").write_text(json.dumps(first) + "\n")
+        (root / "b.jsonl").write_text(json.dumps(second) + "\n")
+        (root / "both.jsonl").write_text(json.dumps(first) + "\n" + json.dumps(second) + "\n")
+        split = self.machine("mutual-split")
+        split.bead("import", str(root / "a.jsonl"))
+        split.bead("import", str(root / "b.jsonl"))
+        one = self.machine("mutual-one")
+        one.bead("import", str(root / "both.jsonl"))
+
+        def edges(machine, key):
+            return sorted((item["id"], item["dependency_type"]) for item in machine.show(key)["dependencies"])
+
+        self.assertEqual(edges(split, "ex-a"), edges(one, "ex-a"))
+        self.assertEqual(edges(split, "ex-b"), edges(one, "ex-b"))
+        self.assertEqual(split.ready(), one.ready())
+        self.assertEqual(split.ready(), set())
+
+    def test_clock_skew_does_not_override_causality(self):
+        """Verified (no finding): a write that has seen another still settles when its clock is behind."""
+        wrapper = self.box.root / "behind.py"
+        wrapper.write_text(textwrap.dedent(f"""
+            import time
+            _real = time.time_ns
+            time.time_ns = lambda: _real() - {48 * 3600 * 1_000_000_000}
+            import runpy
+            runpy.run_path({str(BEAD)!r}, run_name="__main__")
+        """))
+        past = self.machine("clock-past")
+        key = past.bead("create", "base")["id"]
+        past.bead("sync")
+        future = support.Machine(self.box, "clock-future")
+        future.bead("sync")
+        past.bead("update", key, "--title", "from-a")
+        past.bead("sync")
+        future.bead("sync")
+        updated = subprocess.run(
+            [sys.executable, str(wrapper), "update", key, "--title", "from-b-behind", "--json"],
+            cwd=future.checkout, env=future.env(), capture_output=True, text=True,
+        )
+        self.assertEqual(updated.returncode, 0, updated.stderr)
+        future.bead("sync")
+        past.bead("sync")
+        shown = past.show(key)
+        self.assertEqual(shown["title"], "from-b-behind")
+        self.assertNotIn("conflicts", shown)
+
+        key2 = past.bead("create", "race")["id"]
+        past.bead("sync")
+        future.bead("sync")
+        past.bead("update", key2, "--title", "alpha")
+        other = subprocess.run(
+            [sys.executable, str(wrapper), "update", key2, "--title", "beta", "--json"],
+            cwd=future.checkout, env=future.env(), capture_output=True, text=True,
+        )
+        self.assertEqual(other.returncode, 0, other.stderr)
+        past.bead("sync")
+        future.bead("sync")
+        past.bead("sync")
+        raced = past.show(key2)
+        self.assertIn("title", raced.get("conflicts", {}))
+        self.assertEqual(
+            {item["value"] for item in raced["conflicts"]["title"]},
+            {"alpha", "beta"},
+        )
+
+    def test_closed_stdout_on_success_exits_zero_and_store_stays_private(self):
+        """Verified (no finding): a closed stdout after a successful read exits 0; store files stay private."""
+        machine = self.machine("pipe-ok")
+        key = machine.bead("create", "pipe")["id"]
+        read, write = os.pipe()
+        os.close(read)
+        proc = subprocess.Popen(
+            [BEAD, "show", key], cwd=machine.checkout, env=machine.env(),
+            stdout=write, stderr=subprocess.PIPE,
+        )
+        os.close(write)
+        _, err = proc.communicate()
+        self.assertEqual(proc.returncode, 0)
+        self.assertNotIn(b"Traceback", err)
+        meta = next(machine.home.glob("*/meta.json"))
+        self.assertEqual(stat.S_IMODE(meta.stat().st_mode) & 0o077, 0)
+
+    def test_json_keeps_bidi_text(self):
+        """Verified (no finding): JSON keeps bidi characters in the stored title and escapes them as JSON."""
+        machine = self.machine("bidi")
+        title = "bidi-\u202eJSON"
+        created = machine.run("create", title, "--json")
+        self.assertEqual(created.returncode, 0, created.stderr)
+        self.assertEqual(strict_json(created.stdout)["title"], title)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -171,7 +171,8 @@ class SyncAudit(unittest.TestCase):
         driver.write_text("""import builtins, runpy, sys, time
 from pathlib import Path
 n = runpy.run_path(BEAD_PATH)
-real_open = builtins.open
+import os
+real_fdopen = os.fdopen  # segments are opened with os.open + os.fdopen (0600); this is the append boundary
 class PartialAppend:
     def __init__(self, handle): self.handle = handle
     def __enter__(self): return self
@@ -183,10 +184,10 @@ class PartialAppend:
         time.sleep(20)
         return self.handle.write(data[100:]) + 100
     def __getattr__(self, key): return getattr(self.handle, key)
-def instrumented_open(path, mode='r', *args, **kwargs):
-    result = real_open(path, mode, *args, **kwargs)
+def instrumented_fdopen(fd, mode='r', *args, **kwargs):
+    result = real_fdopen(fd, mode, *args, **kwargs)
     return PartialAppend(result) if mode == 'ab' else result
-builtins.open = instrumented_open
+os.fdopen = instrumented_fdopen
 sys.exit(n['main']())
 """.replace('BEAD_PATH', repr(support.BEAD)).replace('MARKER_PATH', repr(str(marker))))
         worker = subprocess.Popen([sys.executable, str(driver), 'create', 'killed writer', '--json'],

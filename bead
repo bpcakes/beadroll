@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import argparse
 import bisect
+import errno
+import signal
 import contextlib
 import fcntl
 import hashlib
@@ -72,11 +74,27 @@ def home() -> Path:
     return Path(os.environ.get("BEAD_HOME") or Path.home() / ".local" / "state" / "beadroll")
 
 
-def run_git(args, *, env=None, data=None, check=True, timeout=None):
+def run_git(args, *, env=None, data=None, check=True, timeout=None, reap=True):
+    """Run git. On a timeout, `reap` kills git together with the helpers it started (a fetch has
+    nothing in flight worth keeping). A push passes `reap=False`: only the client is killed, so
+    whatever the receiving side is doing finishes or fails on its own; which one is the uncertain
+    outcome the ownership protocol then settles."""
+    child = subprocess.Popen(["git", *args], env=env, stdin=subprocess.PIPE if data is not None else subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
     try:
-        proc = subprocess.run(["git", *args], env=env, input=data, capture_output=True, timeout=timeout)
+        out, err = child.communicate(input=data, timeout=timeout)
     except subprocess.TimeoutExpired:
+        with contextlib.suppress(ProcessLookupError):
+            if reap:
+                os.killpg(child.pid, signal.SIGKILL)
+            else:
+                child.kill()
+        child.wait()  # not communicate(): a receiving side still holding our pipes must not hold us
+        for stream in (child.stdin, child.stdout, child.stderr):
+            if stream:
+                stream.close()
         raise BpError("REMOTE_UNREACHABLE", f"git {args[0]} gave no answer within {timeout:.0f}s") from None
+    proc = subprocess.CompletedProcess(child.args, child.returncode, out, err)
     if check and proc.returncode:
         raise BpError("GIT_ERROR", f"git {' '.join(args[:2])}: {proc.stderr.decode(errors='replace').strip()}")
     return proc
@@ -89,10 +107,17 @@ def git_text(args, **kwargs) -> str:
 def without_password(url: str) -> tuple[str, bool]:
     """A remote URL with any password removed from its user-info part, and whether one was there.
     bead never stores or uses an embedded password: git's credential helpers are the place for it."""
-    match = re.match(r"^([a-z][a-z0-9+.-]*://)([^/@]*):([^/@]*)@(.*)$", url, re.S)
-    if match:
-        return f"{match.group(1)}{match.group(2)}@{match.group(4)}", True
-    return url, False
+    match = re.match(r"(?i)^([a-z][a-z0-9+.-]*://)(.*)$", url, re.S)
+    if not match or "@" not in match.group(2):
+        return url, False
+    scheme, rest = match.group(1), match.group(2)
+    authority, _, tail = rest.rpartition("@")
+    if ":" in authority:  # user:password, whatever the password contains
+        user = authority.split(":", 1)[0]
+        return (f"{scheme}{user}@{tail}" if user else f"{scheme}{tail}"), True
+    if scheme.lower() in ("http://", "https://"):  # https://TOKEN@host is how access tokens are written
+        return f"{scheme}{tail}", True
+    return url, False  # ssh://user@host: a user, not a secret
 
 
 def normalize_remote(url: str) -> str:
@@ -117,9 +142,10 @@ class Workspace:
 
     def meta(self) -> dict:
         try:
-            return json.loads((self.dir / "meta.json").read_text())
+            meta = loads_strict((self.dir / "meta.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return {}
+        return meta if isinstance(meta, dict) else {}
 
     def save_meta(self, **values):
         meta = {**self.meta(), **{k: v for k, v in values.items() if v}}
@@ -192,10 +218,19 @@ def find_workspace() -> Workspace:
     return Workspace(wid, name, origin or None, config)
 
 
-def write_atomic(path: Path, data: bytes):
+def private_dir(path: Path):
+    """A directory only its owner can enter: the store and everything beneath it."""
+    path.mkdir(parents=True, exist_ok=True)
+    os.chmod(path, 0o700)
+
+
+def write_atomic(path: Path, data: bytes, private: bool = True):
+    """Written whole, then renamed into place. Store files are 0600; a file written into the
+    caller's checkout (`private=False`) follows the caller's umask like any other file there."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    with open(tmp, "wb") as fh:
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600 if private else 0o666)
+    with os.fdopen(fd, "wb") as fh:
         fh.write(data)
         fh.flush()
         os.fsync(fh.fileno())
@@ -210,9 +245,9 @@ def replica_id(create: bool = True) -> str | None:
     if not path.exists():
         if not create:
             return None
-        home().mkdir(parents=True, exist_ok=True)
+        private_dir(home())
         tmp = path.with_name(f".replica.{os.getpid()}.tmp")
-        with open(tmp, "w") as fh:  # written whole, then linked into place: nobody ever sees it half done
+        with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as fh:  # whole, then linked: never seen half done
             json.dump({"id": uuid.uuid4().hex[:8], "alias": socket.gethostname().split(".")[0]}, fh)
             fh.flush()
             os.fsync(fh.fileno())
@@ -223,18 +258,24 @@ def replica_id(create: bool = True) -> str | None:
         finally:
             tmp.unlink(missing_ok=True)
     try:
-        return json.loads(path.read_text())["id"]
-    except (ValueError, KeyError):
+        ident = loads_strict(path.read_text(encoding="utf-8"))["id"]
+        if not isinstance(ident, str) or not re.fullmatch(r"[0-9a-f]{8}", ident):
+            raise ValueError("id")
+        return ident
+    except (OSError, ValueError, KeyError, TypeError):
         raise BpError("IDENTITY", f"{path} is unreadable; restore it, or move it aside to mint a new machine identity") from None
 
 
 def machine_aliases() -> dict:
     out = {}
+    with contextlib.suppress(OSError, ValueError, KeyError, TypeError):
+        own = loads_strict((home() / "replica.json").read_text(encoding="utf-8"))
+        if isinstance(own.get("id"), str):
+            out[own["id"]] = own.get("alias") if isinstance(own.get("alias"), str) else own["id"]
     with contextlib.suppress(OSError, ValueError):
-        own = json.loads((home() / "replica.json").read_text())
-        out[own["id"]] = own.get("alias") or own["id"]
-    with contextlib.suppress(OSError, ValueError):
-        out.update(json.loads((home() / "aliases.json").read_text()))
+        aliases = loads_strict((home() / "aliases.json").read_text(encoding="utf-8"))
+        if isinstance(aliases, dict):
+            out.update({k: v for k, v in aliases.items() if isinstance(k, str) and isinstance(v, str)})
     return out
 
 
@@ -403,12 +444,16 @@ def read_attempt(path: Path, problems: list | None = None) -> list[dict]:
         if not line.strip():
             continue
         try:
-            events.append(loads_strict(line))
+            event = loads_strict(line)
+            problem = None if isinstance(event, dict) else "attempt line is not an event"
         except ValueError:
+            event, problem = None, "line is not valid JSON"
+        problem = problem or event_problem(event) or payload_problem(event)
+        if problem:
             if problems is not None:
-                problems.append({"event": None, "origin": f"{path}:{number + 1}",
-                                 "problem": "line is not valid JSON; the whole attempt is ignored"})
+                problems.append({"event": None, "origin": f"{path}:{number + 1}", "problem": f"{problem}; the whole attempt is ignored"})
             return []  # an attempt counts whole or not at all
+        events.append(event)
     return events
 
 
@@ -429,7 +474,7 @@ def append_events(ws: Workspace, replica: str, events: list[dict]):
         repair_tail(segment)
     path = active_segment(ws, replica)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "ab") as segment:
+    with os.fdopen(os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600), "ab") as segment:
         segment.write(encode_events(events))
         segment.flush()
         os.fsync(segment.fileno())
@@ -525,7 +570,8 @@ def payload_problem(event: dict) -> str | None:
     elif op == "set":
         return fields_problem(data.get("fields"), allow_bookkeeping=False)
     elif op in ("dep_add", "dep_remove"):
-        if not isinstance(data.get("to"), str) or not isinstance(data.get("type", "blocks"), (str, type(None))):
+        target = data.get("to") if "to" in data or op == "dep_add" else data.get("key")
+        if not isinstance(target, str) or not target or not isinstance(data.get("type", "blocks"), (str, type(None))):
             return f"{op} event has no valid target"
     elif op in ("label_add", "label_remove", "label_set"):
         if not strings("labels"):
@@ -642,8 +688,17 @@ def load_journal(ws: Workspace) -> Journal:
 
 
 def load_pending(ws: Workspace) -> list[list[dict]]:
-    """Our unconfirmed attempts, each a list of events."""
-    return [events for path in pending_files(ws) if (events := read_attempt(path))]
+    """Our unconfirmed attempts, each a list of events. A pending file that is not an attempt is
+    nothing to settle: it is removed, along with its receipt."""
+    out = []
+    for path in pending_files(ws):
+        events = read_attempt(path)
+        if events:
+            out.append(events)
+        else:
+            path.unlink(missing_ok=True)
+            path.with_suffix(".command").unlink(missing_ok=True)
+    return out
 
 
 def effective_deps(journal: Journal, event: dict) -> list[str]:
@@ -815,6 +870,9 @@ def materialise_dangling(st: State, issue: dict):
             kept.append(dep)
             continue
         edge = (target, dep.get("type") or "blocks")
+        if any(st.saw(removal, issue["uid"]) for key in (edge, (target, None))
+               for removal in issue["retracted"].get(key, ())):
+            continue  # taken back before the target existed, by someone who had seen this import
         meta = {k: dep[k] for k in ("created_at", "created_by", "metadata", "thread_id") if k in dep}
         issue["dep_tags"].setdefault(edge, {}).setdefault(issue["uid"], meta)
     issue["dangling"] = kept
@@ -938,7 +996,7 @@ def apply_event(st: State, event: dict, eid: str, op: str, data: dict, uid: str,
                  "created_at": when, "created_by": who, "updated_at": when, "reg": {},
                  "label_tags": {label: {eid} for label in data.get("labels") or []}, "dep_tags": {},
                  "labels": set(), "deps": {}, "comments": [], "extra": data.get("extra") or {},
-                 "dangling": list(data.get("dangling") or []),
+                 "dangling": list(data.get("dangling") or []), "retracted": {},
                  "claim": None, "claim_generation": 0, "claim_history": [], "provisional_claims": [],
                  "lost_claims": [], "stale": [], "unconfirmed": [],
                  "origin": {"machine": event["replica"], **actor, **({"where": event["where"]} if event.get("where") else {})}}
@@ -1044,10 +1102,15 @@ def apply_event(st: State, event: dict, eid: str, op: str, data: dict, uid: str,
         edge = (data["to"], data.get("type") or "blocks")
         issue["dep_tags"].setdefault(edge, {})[eid] = {"created_at": when, "created_by": who, **(data.get("meta") or {})}
     elif op == "dep_remove":  # removes only the additions its writer had seen
-        for edge, tags in issue["dep_tags"].items():
-            if edge[0] == data["to"] and data.get("type") in (None, edge[1]):
-                for tag in [t for t in tags if st.saw(eid, t)]:
-                    del tags[tag]
+        if data.get("key"):  # a dependency on a key that is not an issue yet
+            issue["dangling"] = [d for d in issue["dangling"] if not (
+                d["depends_on_id"] == data["key"] and data.get("type") in (None, d.get("type") or "blocks"))]
+        else:
+            for edge, tags in issue["dep_tags"].items():
+                if edge[0] == data["to"] and data.get("type") in (None, edge[1]):
+                    for tag in [t for t in tags if st.saw(eid, t)]:
+                        del tags[tag]
+            issue["retracted"].setdefault((data["to"], data.get("type")), set()).add(eid)
     elif op == "label_add":
         for label in data.get("labels") or []:
             issue["label_tags"].setdefault(label, set()).add(eid)
@@ -1135,6 +1198,14 @@ class Tx:
                  "actor": self.actor, "op": op, "issue": issue or event_id, "data": data or {}}
         if self.where:
             event["where"] = self.where
+        problem = event_problem(event) or payload_problem(event)
+        if problem:  # the same rules replay applies, before the event is minted
+            raise BpError("VALIDATION", "the clock is beyond the year 2100; fix it before writing"
+                          if "timestamp" in problem else problem)
+        try:
+            encode_events([event])
+        except UnicodeEncodeError:
+            raise BpError("VALIDATION", "text is not valid UTF-8") from None
         if op in OWNERSHIP or self.conditional:
             self.ownership.append(event)
             self.journal.add(event, self.replica, sequenced=False)  # later emits build on it
@@ -1147,6 +1218,8 @@ class Tx:
 
 @contextlib.contextmanager
 def locked(ws: Workspace):
+    private_dir(home())
+    private_dir(ws.dir)
     ws.events_dir.mkdir(parents=True, exist_ok=True)
     with open(ws.dir / "lock", "a+") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -1195,10 +1268,19 @@ def parse_priority(value) -> int:
     return int(match.group(1))
 
 
+def read_utf8(path: str, what: str) -> str:
+    """A text argument from a file or stdin, decoded as UTF-8 whatever the locale says."""
+    try:
+        raw = sys.stdin.buffer.read() if path == "-" else Path(path).read_bytes()
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise BpError("VALIDATION", f"{what} is not valid UTF-8") from None
+
+
 def text_arg(args, name: str) -> str | None:
     path = getattr(args, f"{name}_file", None)
     if path:
-        return sys.stdin.read() if path == "-" else Path(path).read_text()
+        return read_utf8(path, name)
     return getattr(args, name, None)
 
 
@@ -1517,11 +1599,12 @@ class Link:
 
     def __init__(self, ws: Workspace, remote: str):
         self.ws, self.url, self.ref = ws, remote, ws.ref
+        private_dir(ws.dir)
         self.git_dir = ws.dir / "sync.git"
         env = {k: v for k, v in os.environ.items() if k not in ("GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR")}
         env.update(GIT_DIR=str(self.git_dir), GIT_TERMINAL_PROMPT="0", GIT_AUTHOR_NAME="bead",
                    GIT_AUTHOR_EMAIL="bead@localhost", GIT_COMMITTER_NAME="bead", GIT_COMMITTER_EMAIL="bead@localhost")
-        env.setdefault("GIT_SSH_COMMAND", "ssh -o ConnectTimeout=15")  # a dead remote must fail, not hang
+        env.setdefault("GIT_SSH_COMMAND", "ssh -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=2")  # a dead remote must fail, not hang
         self.env = env
         self.remote_counts: dict[str, int] = {}
         self.forks: list[str] = []
@@ -1599,6 +1682,9 @@ class Link:
                     theirs = run_git(["cat-file", "blob", sha], env=self.env).stdout
                     if attempt_id in pending:  # the remote has our attempt: it counts, whole
                         if pending[attempt_id].read_bytes() != theirs:
+                            if target.exists() and target.read_bytes() == theirs:  # a leftover twin of a confirmed attempt
+                                drop_pending(self.ws, [read_attempt(target)])
+                                continue
                             raise BpError("ATTEMPT_FORK", f"{path} on the remote is not the attempt this machine has "
                                           "pending under that id: the machine identity is in use somewhere else")
                         if local.get(path) != sha:
@@ -1684,7 +1770,7 @@ class Link:
         commit = self.git(["commit-tree", tree, *(["-p", tip] if tip else []), "-m", f"bead {note} {uuid.uuid4().hex[:12]}"])
         try:
             push = run_git(["push", "--quiet", self.url, f"{commit}:{self.ref}"], env=self.env, check=False,
-                           timeout=NET_TIMEOUT)
+                           timeout=NET_TIMEOUT, reap=False)
         except BpError:
             return "uncertain"
         if push.returncode == 0:
@@ -1716,14 +1802,15 @@ def command_signature(args, actor: dict, request=None) -> str:
     return json.dumps({"actor": actor, "args": asked, "request": request}, sort_keys=True, default=str)
 
 
-def settle_commands(ws: Workspace, replica: str, actor: dict, signature: str) -> bool:
+def settle_commands(ws: Workspace, replica: str, actor: dict, signature: str) -> tuple[bool, list[Path]]:
     """Receipts of this actor's earlier attempts. One whose attempt the remote accepted and that asked
     for exactly this command means the command is already done. Any other settled receipt of this
-    actor is stale (the actor has moved on) and goes; a receipt for an attempt still pending stays."""
-    done = False
+    actor is stale once this command has gone through (the actor has moved on); it is returned so
+    the caller drops it only then. A receipt for an attempt still pending stays."""
+    done, stale = False, []
     for receipt in sorted((ws.dir / "pending").glob("*.command")) if (ws.dir / "pending").is_dir() else []:
         try:
-            recorded = json.loads(receipt.read_text())
+            recorded = loads_strict(receipt.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             receipt.unlink(missing_ok=True)
             continue
@@ -1732,10 +1819,12 @@ def settle_commands(ws: Workspace, replica: str, actor: dict, signature: str) ->
         if receipt.with_suffix(".json").exists():
             continue  # still pending: nothing to conclude yet
         if (ws.events_dir / replica / "claims" / receipt.with_suffix(".json").name).exists() \
-                and receipt.read_text() == signature:
+                and receipt.read_text(encoding="utf-8") == signature:
             done = True
-        receipt.unlink(missing_ok=True)
-    return done
+            receipt.unlink(missing_ok=True)
+        else:
+            stale.append(receipt)
+    return done, stale
 
 
 def settle_pending(ws: Workspace, link: Link, tip: str | None) -> str:
@@ -1760,13 +1849,13 @@ def synchronise(ws: Workspace, remote: str, actor: dict) -> dict:
     for attempt in range(1, 13):
         tip = link.fetch()
         with locked(ws):
-            if pending_files(ws):
+            if load_pending(ws):  # also sweeps pending files that are not attempts
                 tip = link.fetch()  # settling our own attempts needs the current head, not a snapshot
             pulled += link.merge(tip)
             if not tip and not segment_files(ws):
                 raise BpError("NOT_INITIALIZED", "no tracker here and none published on the remote: run `bead init`")
             pushed = link.unpublished()
-            outcome = link.publish(tip, fence=bool(pending_files(ws)))
+            outcome = link.publish(tip, fence=bool(load_pending(ws)))
             if outcome == "ok":
                 drop_pending(ws, load_pending(ws))  # absent at a head we just advanced: they can never land
                 break
@@ -1806,7 +1895,8 @@ def coordinated(ws: Workspace, actor: dict, args, build, request=None):
                 drop_pending(ws, [receipt[0]])
                 ws.save_meta(remote=remote, last_sync=stamp())
                 return receipt[1]
-            if settle_commands(ws, replica, actor, signature):  # an earlier run of this command was accepted
+            done, stale = settle_commands(ws, replica, actor, signature)
+            if done:  # an earlier run of this command was accepted
                 ws.save_meta(remote=remote, last_sync=stamp())
                 return "online"
             settled = settle_pending(ws, link, tip)
@@ -1817,6 +1907,8 @@ def coordinated(ws: Workspace, actor: dict, args, build, request=None):
                 receipt = None  # whatever this command had in flight is settled one way or the other
                 tx = Tx(ws, actor)
                 result = build(tx, "online")
+                for receipt in stale:  # this command went through: the actor has moved on from those
+                    receipt.unlink(missing_ok=True)
                 if tx.pending:
                     append_events(ws, tx.replica, tx.pending)
                 if not tx.ownership:
@@ -1873,7 +1965,7 @@ def cmd_init(args, ws, actor):
         config = {"workspace": ws.config.get("workspace") or uuid7()}
         if args.remote:
             config["remote"] = args.remote
-        Path(top, ".beadroll.json").write_text(json.dumps(config, indent=1) + "\n")
+        write_atomic(Path(top, ".beadroll.json"), (json.dumps(config, indent=1) + "\n").encode(), private=False)
         ws = find_workspace()
     with writing(ws, actor) as tx:
         if tx.state.prefix is None:
@@ -1895,14 +1987,25 @@ PROBE_ID = "00000000-0000-7000-8000-000000000000"  # a would-be event, checked b
 def import_records(tx: Tx, path: str) -> int:
     """Load a Beads JSONL export, keeping ids, timestamps, relationships and unknown fields."""
     try:
-        records = [loads_strict(row) for row in Path(path).read_text().splitlines() if row.strip()]
+        records = [loads_strict(row) for row in read_utf8(path, path).splitlines() if row.strip()]
     except ValueError as error:
         raise BpError("VALIDATION", f"{path} is not valid JSONL: {error}") from None
     for number, rec in enumerate(records, 1):
         if not isinstance(rec, dict) or not isinstance(rec.get("id"), str) or not rec["id"]:
             raise BpError("VALIDATION", f"{path}:{number}: record has no string 'id'")
+        deps = rec.get("dependencies") or []
+        if not isinstance(deps, list) or any(not isinstance(d, dict) or not isinstance(d.get("depends_on_id"), str)
+                                             or not d["depends_on_id"] or not isinstance(d.get("type"), (str, type(None)))
+                                             for d in deps):
+            raise BpError("VALIDATION", f"{path}:{number}: record {rec['id']!r} has a malformed dependency")
     known = dict(tx.state.by_key)
     fresh = [rec for rec in records if rec["id"] not in known]
+    for rec in records:  # a known record that no longer lists a dependency we still hold by key takes it back
+        if rec["id"] in known:
+            listed = {(d["depends_on_id"], d.get("type") or "blocks") for d in rec.get("dependencies") or []}
+            for dep in tx.state.issues[known[rec["id"]]]["dangling"]:
+                if (dep["depends_on_id"], dep.get("type") or "blocks") not in listed:
+                    tx.emit("dep_remove", known[rec["id"]], {"key": dep["depends_on_id"], "type": dep.get("type") or "blocks"})
     all_ids = set(known) | {rec["id"] for rec in fresh}
     created = {}
     for rec in fresh:
@@ -1942,7 +2045,7 @@ def cmd_export(args, ws, actor):
     st = view(ws)
     text = "".join(json.dumps(rec, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n" for rec in export_records(st))
     if args.output:
-        write_atomic(Path(args.output), text.encode())
+        write_atomic(Path(args.output), text.encode(), private=False)
         return {"exported": len(st.issues), "path": args.output}, [f"Exported {len(st.issues)} issues to {args.output}"]
     sys.stdout.write(text)
     return None, None
@@ -2314,7 +2417,13 @@ def cmd_dep(args, ws, actor):
         with writing(ws, actor) as tx:
             st = tx.state
             need_tracker(st)
-            issue, target = st.resolve(words[0]), st.resolve(words[1])
+            issue = st.resolve(words[0])
+            try:
+                target = st.resolve(words[1])
+            except BpError:
+                if action == "add" or not any(d["depends_on_id"] in (words[1], f"{st.prefix}-{words[1]}") for d in issue["dangling"]):
+                    raise
+                target = None  # an imported dependency on a key that is not an issue yet: it can still be taken back
             if action == "add":
                 kind = args.type or "blocks"
                 loop = (reaches(st, target["uid"], issue["uid"]) if kind in BLOCKING
@@ -2322,11 +2431,15 @@ def cmd_dep(args, ws, actor):
                 if issue["uid"] == target["uid"] or loop:
                     raise BpError("CYCLE", f"{issue['id']} -> {target['id']} would create a dependency cycle")
                 tx.emit("dep_add", issue["uid"], {"to": target["uid"], "type": kind})
+            elif target is None:
+                key = next(d["depends_on_id"] for d in issue["dangling"] if d["depends_on_id"] in (words[1], f"{st.prefix}-{words[1]}"))
+                tx.emit("dep_remove", issue["uid"], {"key": key, "type": args.type})
             else:
                 tx.emit("dep_remove", issue["uid"], {"to": target["uid"], "type": args.type})
         done = "now depends on" if action == "add" else "no longer depends on"
-        return ({"issue_id": issue["id"], "depends_on_id": target["id"], "action": action},
-                [f"{issue['id']} {done} {target['id']}"])
+        shown = target["id"] if target else key
+        return ({"issue_id": issue["id"], "depends_on_id": shown, "action": action},
+                [f"{issue['id']} {done} {shown}"])
     st = view(ws)
     need_tracker(st)
     if action == "cycles":
@@ -2358,7 +2471,7 @@ def cmd_comments(args, ws, actor):
     if not words:
         raise BpError("VALIDATION", "usage: bead comments [add] ISSUE [TEXT]")
     if action == "add":
-        text = args.message or (Path(args.file).read_text() if args.file else " ".join(words[1:]))
+        text = args.message or (read_utf8(args.file, "the comment file") if args.file else " ".join(words[1:]))
         if not text.strip():
             raise BpError("VALIDATION", "comment text is required")
         with writing(ws, actor) as tx:
@@ -2422,7 +2535,9 @@ def cmd_machines(args, ws, actor):
         path = home() / "aliases.json"
         aliases = {}
         with contextlib.suppress(OSError, ValueError):
-            aliases = json.loads(path.read_text())
+            aliases = loads_strict(path.read_text(encoding="utf-8"))
+            if not isinstance(aliases, dict):
+                aliases = {}
         aliases[ident] = alias
         write_atomic(path, json.dumps(aliases, indent=1).encode())
     journal, aliases = load_journal(ws), machine_aliases()
@@ -2500,7 +2615,8 @@ Rules  Ownership belongs to your agent thread; a new session is a new owner. Con
        seen both sides settles it. --offline claims are provisional, never exclusive.
        Use --json for machine output. Error codes: ALREADY_CLAIMED, CLAIMED_BY_OTHER, NOT_OWNER,
        STATUS_CONFLICT, CYCLE, VALIDATION, ISSUE_NOT_FOUND, REMOTE_UNREACHABLE (nothing is lost;
-       retry later), UNRESOLVED (an attempt of yours awaits the remote: run bead sync), SYNC_CONFLICT.
+       retry later), UNRESOLVED (an attempt of yours awaits the remote: run bead sync), SYNC_CONFLICT,
+       IO (the store or a file could not be read or written; nothing half-done).
 """
 
 ONBOARD = """\
@@ -2690,7 +2806,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-CONTROLS = re.compile("[\x00-\x08\x0a-\x1f\x7f-\x9f\u200e\u200f\u202a-\u202e\u2066-\u2069]")
+CONTROLS = re.compile("[\x00-\x1f\x7f-\x9f\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069]")
 
 
 def visible(text: str) -> str:
@@ -2700,16 +2816,20 @@ def visible(text: str) -> str:
 
 
 def main(argv=None) -> int:
-    os.umask(0o077)  # everything bead writes is private to the user
     for stream in (sys.stdout, sys.stderr):  # the output contract is UTF-8, whatever the locale says
         with contextlib.suppress(Exception):
             stream.reconfigure(encoding="utf-8", errors="replace")
     try:
         return run(argv)
-    except BrokenPipeError:  # the reader went away: nothing to say, and no Python noise about it
-        devnull = os.open(os.devnull, os.O_WRONLY)
-        os.dup2(devnull, sys.stdout.fileno())
+    except BrokenPipeError:  # the reader went away mid-write: nothing to say, and no Python noise about it
+        silence(sys.stdout)
         return 0
+
+
+def silence(stream):
+    """Point a broken stream at /dev/null so that neither we nor the interpreter's shutdown try it again."""
+    with contextlib.suppress(OSError, ValueError):
+        os.dup2(os.open(os.devnull, os.O_WRONLY), stream.fileno())
 
 
 def run(argv=None) -> int:
@@ -2742,21 +2862,36 @@ def run(argv=None) -> int:
         else:
             ws = find_workspace()
         result, lines = args.func(args, ws, detect_actor(name))
+    except BrokenPipeError:
+        raise
     except BpError as error:
+        return report_error(error, as_json)
+    except OSError as error:  # a read-only store, a full volume, a missing file: an answer, not a traceback
+        return report_error(BpError("IO", f"{error.strerror or error}: {error.filename}" if error.filename else str(error)), as_json)
+    try:
+        if result is None and lines is None:
+            sys.stdout.flush()
+            return 0
+        if as_json:
+            print(json.dumps(result, ensure_ascii=False))
+        else:
+            print("\n".join(visible(line) for line in lines))
+        sys.stdout.flush()
+    except BrokenPipeError:
+        silence(sys.stdout)
+    return 0
+
+
+def report_error(error: BpError, as_json: bool) -> int:
+    try:
         if as_json:
             print(json.dumps({"error": {"code": error.code, "message": str(error)}}), file=sys.stderr)
         else:
             print(f"Error: {visible(str(error))}", file=sys.stderr)
-        return 2 if error.code == "USAGE" else 1
-    if result is None and lines is None:
-        sys.stdout.flush()
-        return 0
-    if as_json:
-        print(json.dumps(result, ensure_ascii=False))
-    else:
-        print("\n".join(visible(line) for line in lines))
-    sys.stdout.flush()
-    return 0
+        sys.stderr.flush()
+    except BrokenPipeError:
+        silence(sys.stderr)  # the status is the command's, not the pipe's
+    return 2 if error.code == "USAGE" else 1
 
 
 if __name__ == "__main__":

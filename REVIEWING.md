@@ -84,8 +84,13 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - Output is UTF-8 regardless of locale; human output escapes control characters; `--json` always
   wins the representation (`create --silent --json` gives `{"id": …}`); a closed stdout exits 0
   quietly.
-- Passwords in remote URLs are dropped, never stored or used; state is created with umask 077.
-- An import that contains one invalid record fails whole; nothing is written.
+- Passwords in remote URLs are dropped, never stored or used; the store is private by its own
+  file modes (0700/0600), files written into the checkout follow the caller's umask.
+- An import that contains one invalid record or dependency fails whole; nothing is written.
+- Text from files and stdin is UTF-8 regardless of locale; OS errors are structured (`IO`); a
+  timed-out `git` is killed with its process group.
+- A command receipt survives a *failed* later command by the same actor and is dropped only when
+  a later command by that actor goes through.
 
 ## 3. Baseline
 
