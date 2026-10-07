@@ -1,0 +1,2557 @@
+#!/usr/bin/env python3
+"""bead: proof-of-concept issue tracker for many agents, worktrees and machines.
+
+One tracker per repository, kept outside every working tree:
+
+    $BEAD_HOME/<workspace>/events/<machine>/<segment>.jsonl   append-only, one writer per machine
+    $BEAD_HOME/<workspace>/sync.git                           bare repo used only to move the journal
+
+Every event names the events its writer had already seen. Current state is the
+replay of all journals in causal order, so two machines merge by exchanging
+files and there is nothing to conflict. `bead sync` moves the journal through a
+dedicated git ref; claims are settled by a conditional update of that ref.
+"""
+from __future__ import annotations
+
+import argparse
+import bisect
+import contextlib
+import fcntl
+import hashlib
+import heapq
+import json
+import os
+import random
+import re
+import secrets
+import socket
+import subprocess
+import sys
+import time
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+FORMAT = 1
+DEFAULT_REF = "refs/beads/journal"
+REMOTE_REF = "refs/beads/remote"
+ROTATE_BYTES = int(os.environ.get("BEAD_ROTATE_BYTES") or 256 * 1024)
+NET_TIMEOUT = float(os.environ.get("BEAD_NET_TIMEOUT") or 45)  # seconds for one fetch or push
+BLOCKING = {"blocks"}
+DONE = {"closed", "tombstone"}
+STATUSES = ["open", "in_progress", "blocked", "deferred", "closed", "tombstone"]
+REGISTERS = ["title", "description", "design", "acceptance_criteria", "notes", "priority", "issue_type",
+             "assignee", "estimated_minutes", "external_ref"]
+B36 = "0123456789abcdefghijklmnopqrstuvwxyz"
+ICON = {"open": "○", "in_progress": "◐", "blocked": "●", "deferred": "❄", "closed": "✓", "tombstone": "✗"}
+# Export order follows the Beads JSONL records br writes.
+EXPORT_FIELDS = ["title", "description", "design", "acceptance_criteria", "notes", "status", "priority",
+                 "issue_type", "assignee", "estimated_minutes", "created_at", "created_by", "updated_at",
+                 "closed_at", "close_reason", "external_ref"]
+IMPORT_FIELDS = set(EXPORT_FIELDS)
+
+
+class BpError(Exception):
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
+# ---------------------------------------------------------------- locations
+
+def home() -> Path:
+    return Path(os.environ.get("BEAD_HOME") or Path.home() / ".local" / "state" / "beadroll")
+
+
+def run_git(args, *, env=None, data=None, check=True, timeout=None):
+    try:
+        proc = subprocess.run(["git", *args], env=env, input=data, capture_output=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise BpError("REMOTE_UNREACHABLE", f"git {args[0]} gave no answer within {timeout:.0f}s") from None
+    if check and proc.returncode:
+        raise BpError("GIT_ERROR", f"git {' '.join(args[:2])}: {proc.stderr.decode(errors='replace').strip()}")
+    return proc
+
+
+def git_text(args, **kwargs) -> str:
+    return run_git(args, **kwargs).stdout.decode().strip()
+
+
+def normalize_remote(url: str) -> str:
+    """Reduce the spellings of one remote (ssh, scp-like, https, .git) to one string."""
+    u = url.strip()
+    if os.path.exists(u):
+        return re.sub(r"\.git/?$", "", os.path.realpath(u)).lower()
+    u = re.sub(r"^[a-z][a-z0-9+.-]*://", "", u)
+    u = re.sub(r"^[^@/]+@", "", u)
+    if re.match(r"^[^/:]+:[^/0-9]", u):
+        u = u.replace(":", "/", 1)
+    return re.sub(r"\.git/?$", "", u).rstrip("/").lower()
+
+
+class Workspace:
+    def __init__(self, wid: str, name: str | None, origin: str | None, config: dict):
+        if not isinstance(wid, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", wid):
+            raise BpError("CONFIG", f"workspace id must be an opaque token, not a path: {wid!r}")
+        self.id, self.name, self.origin, self.config = wid, name, origin, config
+        self.dir = home() / wid
+        self.events_dir = self.dir / "events"
+
+    def meta(self) -> dict:
+        try:
+            return json.loads((self.dir / "meta.json").read_text())
+        except (OSError, ValueError):
+            return {}
+
+    def save_meta(self, **values):
+        meta = {**self.meta(), **{k: v for k, v in values.items() if v}}
+        write_atomic(self.dir / "meta.json", json.dumps(meta, indent=1).encode())
+
+    @property
+    def ref(self) -> str:
+        ref = self.config.get("ref") or DEFAULT_REF
+        bad = not ref.startswith("refs/") or ref.startswith(("refs/heads/", "refs/tags/", "refs/remotes/"))
+        if bad or run_git(["check-ref-format", ref], check=False).returncode:
+            raise BpError("CONFIG", f"coordination ref {ref!r} must be a valid ref outside branches and tags")
+        return ref
+
+    def remote(self, override: str | None = None) -> str | None:
+        """The one coordination endpoint: flag, environment, tracked config, last used, then origin."""
+        value = (override or os.environ.get("BEAD_REMOTE") or self.config.get("remote")
+                 or self.meta().get("remote") or self.origin)
+        if not value:
+            return None
+        if re.fullmatch(r"[A-Za-z0-9._-]+", value) and not os.path.exists(value):
+            named = run_git(["remote", "get-url", value], check=False)
+            if named.returncode == 0:
+                value = named.stdout.decode().strip()
+        return os.path.realpath(value) if os.path.exists(value) else value
+
+
+def find_workspace() -> Workspace:
+    """Identify the tracker from the repository, never from the checkout path.
+
+    A tracked `.beadroll.json` names the workspace explicitly. Without one, the id is
+    derived from the origin URL, so every worktree and clone still agrees.
+    """
+    top = run_git(["rev-parse", "--show-toplevel"], check=False)
+    root = Path(top.stdout.decode().strip()) if top.returncode == 0 else None
+    config = {}
+    if root and (root / ".beadroll.json").exists():
+        try:
+            config = json.loads((root / ".beadroll.json").read_text())
+        except ValueError:
+            raise BpError("CONFIG", f"{root / '.beadroll.json'} is not valid JSON") from None
+    proc = run_git(["config", "--get", "remote.origin.url"], check=False)
+    origin = proc.stdout.decode().strip() if proc.returncode == 0 else ""
+    if origin and root and not re.match(r"^([a-z][a-z0-9+.-]*://|[^/]+@|/)", origin) and not os.path.exists(origin):
+        origin = str(root / origin)
+    name = normalize_remote(origin).rsplit("/", 1)[-1] if origin else (root.name if root else None)
+    wid = os.environ.get("BEAD_WORKSPACE") or config.get("workspace")
+    if not wid and origin:
+        wid = hashlib.sha256(normalize_remote(origin).encode()).hexdigest()[:16]
+    if not wid:
+        common = run_git(["rev-parse", "--path-format=absolute", "--git-common-dir"], check=False)
+        if common.returncode:
+            raise BpError("NO_WORKSPACE", "not inside a git repository (or set BEAD_WORKSPACE)")
+        wid = "local-" + hashlib.sha256(os.path.realpath(common.stdout.decode().strip()).encode()).hexdigest()[:12]
+    return Workspace(wid, name, origin or None, config)
+
+
+def write_atomic(path: Path, data: bytes):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    with open(tmp, "wb") as fh:
+        fh.write(data)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, path)
+
+
+# ----------------------------------------------------------------- identity
+
+def replica_id(create: bool = True) -> str | None:
+    """Opaque id of this machine. The hostname stays in a local alias, never in events."""
+    path = home() / "replica.json"
+    if not path.exists():
+        if not create:
+            return None
+        home().mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f".replica.{os.getpid()}.tmp")
+        with open(tmp, "w") as fh:  # written whole, then linked into place: nobody ever sees it half done
+            json.dump({"id": uuid.uuid4().hex[:8], "alias": socket.gethostname().split(".")[0]}, fh)
+            fh.flush()
+            os.fsync(fh.fileno())
+        try:
+            os.link(tmp, path)
+        except FileExistsError:
+            pass  # another process won; its identity is the machine's
+        finally:
+            tmp.unlink(missing_ok=True)
+    try:
+        return json.loads(path.read_text())["id"]
+    except (ValueError, KeyError):
+        raise BpError("IDENTITY", f"{path} is unreadable; restore it, or move it aside to mint a new machine identity") from None
+
+
+def machine_aliases() -> dict:
+    out = {}
+    with contextlib.suppress(OSError, ValueError):
+        own = json.loads((home() / "replica.json").read_text())
+        out[own["id"]] = own.get("alias") or own["id"]
+    with contextlib.suppress(OSError, ValueError):
+        out.update(json.loads((home() / "aliases.json").read_text()))
+    return out
+
+
+def nearest_harness() -> str | None:
+    """Walk up the process tree to the closest coding agent. Settles nested harnesses, where
+    an agent launched from another agent's session inherits both sets of variables."""
+    pid = os.getppid()
+    for _ in range(12):
+        try:
+            proc = subprocess.run(["ps", "-o", "ppid=,args=", "-p", str(pid)], capture_output=True, text=True)
+        except OSError:
+            return None
+        if proc.returncode or not proc.stdout.strip():
+            return None
+        parent, _, args = proc.stdout.strip().partition(" ")
+        command = args.split()[0].rsplit("/", 1)[-1] if args.split() else ""
+        if command.startswith("codex") or "/codex" in args.split()[0]:
+            return "codex"
+        if command == "claude" or (command == "node" and "claude" in args):
+            return "claude"
+        if not parent.strip().isdigit() or int(parent) <= 1:
+            return None
+        pid = int(parent)
+    return None
+
+
+def detect_actor(name: str | None) -> dict:
+    """Agent type and thread id of the caller, taken from the harness environment."""
+    env = os.environ
+    claude_thread = env.get("CLAUDE_CODE_SESSION_ID")
+    codex_thread = env.get("CODEX_THREAD_ID") or env.get("CODEX_SESSION_ID")
+    if env.get("BEAD_AGENT"):
+        agent, thread = env["BEAD_AGENT"], env.get("BEAD_THREAD")
+    elif claude_thread and codex_thread:  # one agent was started from inside the other's session
+        agent = nearest_harness() or "codex"
+        thread = codex_thread if agent == "codex" else claude_thread
+    elif claude_thread or env.get("CLAUDECODE"):
+        agent, thread = "claude", claude_thread
+    elif codex_thread:
+        agent, thread = "codex", codex_thread
+    else:
+        agent, thread = "human", None
+    thread = env.get("BEAD_THREAD") or thread
+    actor = {"agent": agent}
+    if thread:
+        actor["thread"] = thread
+    if name or env.get("BEAD_ACTOR"):
+        actor["name"] = name or env["BEAD_ACTOR"]
+    return actor
+
+
+def actor_label(actor: dict, replica: str) -> str:
+    if actor.get("name"):
+        return actor["name"]
+    thread = actor.get("thread")
+    return f"{actor.get('agent', 'human')}:{thread}@{replica}" if thread else f"{actor.get('agent', 'human')}@{replica}"
+
+
+# ------------------------------------------------------------------ journal
+
+def uuid7() -> str:
+    """Time-ordered event id. The clock part orders displays only; causality comes from `deps`."""
+    millis = time.time_ns() // 1_000_000
+    value = (millis & (2**48 - 1)) << 80 | 0x7 << 76 | secrets.randbits(12) << 64 | 0b10 << 62 | secrets.randbits(62)
+    return str(uuid.UUID(int=value))
+
+
+MAX_MILLIS = 4_102_444_800_000  # year 2100: anything later is not a clock reading
+
+
+def event_millis(event_id: str) -> int:
+    return int(event_id.replace("-", "")[:12], 16)
+
+
+def event_time(event_id: str) -> str:
+    millis = min(event_millis(event_id), MAX_MILLIS)
+    stamp = datetime.fromtimestamp(millis / 1000, timezone.utc)
+    return stamp.strftime("%Y-%m-%dT%H:%M:%S.") + f"{stamp.microsecond // 1000:03d}Z"
+
+
+def canonical(event: dict) -> str:
+    return json.dumps(event, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+
+
+def read_segment(data: bytes, origin: str = "", problems: list | None = None) -> list:
+    """Parse one segment. A torn tail is skipped; any other unreadable line is reported and skipped."""
+    events, lines = [], data.split(b"\n")
+    for number, line in enumerate(lines):
+        if not line.strip():
+            continue
+        try:
+            events.append(json.loads(line))
+        except ValueError:
+            if number == len(lines) - 1:
+                break  # torn tail: another process is mid-append
+            if problems is not None:
+                problems.append({"event": None, "origin": f"{origin}:{number + 1}", "problem": "line is not valid JSON"})
+    return events
+
+
+def encode_events(events) -> bytes:
+    return b"".join(json.dumps(e, ensure_ascii=False, separators=(",", ":")).encode() + b"\n" for e in events)
+
+
+def complete_prefix(data: bytes) -> bytes:
+    """The bytes up to the last complete record. A final record that only lacks its newline is kept."""
+    if not data or data.endswith(b"\n"):
+        return data
+    cut = data.rfind(b"\n") + 1
+    try:
+        json.loads(data[cut:])
+        return data + b"\n"
+    except ValueError:
+        return data[:cut]
+
+
+def repair_tail(path: Path):
+    """Drop an interrupted final write (kept beside the segment for diagnosis) so later appends stay readable."""
+    data = path.read_bytes()
+    fixed = complete_prefix(data)
+    if fixed == data:
+        return
+    if not fixed.startswith(data):  # an incomplete fragment, not just a missing newline
+        path.with_name(f"{path.name}.torn-{int(time.time())}").write_bytes(data[len(fixed):])
+    write_atomic(path, fixed)
+
+
+UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+OWNERSHIP = {"claim", "release"}  # events settled with the remote; they live as one file each
+
+
+def segment_files(ws: Workspace) -> list[Path]:
+    if not ws.events_dir.is_dir():
+        return []
+    return sorted(p for d in sorted(ws.events_dir.iterdir()) if d.is_dir() for p in d.glob("*.jsonl"))
+
+
+def claim_files(ws: Workspace) -> list[Path]:
+    if not ws.events_dir.is_dir():
+        return []
+    return sorted(p for d in sorted(ws.events_dir.iterdir()) if d.is_dir() for p in d.glob("claims/*.json"))
+
+
+def pending_files(ws: Workspace) -> list[Path]:
+    """Our own ownership attempts the remote has not confirmed. Never read as events."""
+    folder = ws.dir / "pending"
+    return sorted(folder.glob("*.json")) if folder.is_dir() else []
+
+
+def attempt_path(ws: Workspace, events: list[dict]) -> Path:
+    """Where an attempt lives once it counts: one file, named after its first event, holding every
+    event that has to land with it. Written whole, so a reader sees all of it or none of it."""
+    return ws.events_dir / events[0]["replica"] / "claims" / f"{events[0]['id']}.json"
+
+
+def read_attempt(path: Path, problems: list | None = None) -> list[dict]:
+    """The events of one attempt file (one JSON record per line). An unreadable file is reported."""
+    try:
+        data = path.read_bytes()
+    except OSError:
+        if problems is not None:
+            problems.append({"event": None, "origin": str(path), "problem": "attempt file is unreadable"})
+        return []
+    events = []
+    for number, line in enumerate(data.split(b"\n")):
+        if not line.strip():
+            continue
+        try:
+            events.append(json.loads(line))
+        except ValueError:
+            if problems is not None:
+                problems.append({"event": None, "origin": f"{path}:{number + 1}",
+                                 "problem": "line is not valid JSON; the whole attempt is ignored"})
+            return []  # an attempt counts whole or not at all
+    return events
+
+
+def active_segment(ws: Workspace, replica: str) -> Path:
+    """Where this machine appends next. A full segment is never touched again."""
+    folder = ws.events_dir / replica
+    segments = sorted(folder.glob("*.jsonl")) if folder.is_dir() else []
+    if not segments:
+        return folder / "000001.jsonl"
+    last = segments[-1]
+    return last if last.stat().st_size < ROTATE_BYTES else folder / f"{int(last.stem) + 1:06d}.jsonl"
+
+
+def append_events(ws: Workspace, replica: str, events: list[dict]):
+    """Append sequential events to this machine's journal. Called with the store lock held."""
+    folder = ws.events_dir / replica
+    for segment in sorted(folder.glob("*.jsonl")) if folder.is_dir() else []:
+        repair_tail(segment)
+    path = active_segment(ws, replica)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "ab") as segment:
+        segment.write(encode_events(events))
+        segment.flush()
+        os.fsync(segment.fileno())
+
+
+def write_attempt_file(path: Path, events: list[dict]):
+    write_atomic(path, encode_events(events))
+
+
+# --------------------------------------------------------------- validation
+
+def event_problem(event) -> str | None:
+    """Why an event's envelope cannot be used, or None."""
+    if not isinstance(event, dict):
+        return "event is not an object"
+    if not isinstance(event.get("id"), str) or not UUID_RE.match(event["id"]):
+        return "id is not a UUID"
+    if event_millis(event["id"]) > MAX_MILLIS:
+        return "id carries an impossible timestamp"
+    if not isinstance(event.get("op"), str) or not isinstance(event.get("replica"), str):
+        return "op or replica missing"
+    deps = event.get("deps", [])
+    if not isinstance(deps, list) or not all(isinstance(d, str) and UUID_RE.match(d) for d in deps):
+        return "deps is not a list of event ids"
+    if event.get("data") is not None and not isinstance(event["data"], dict):
+        return "data is not an object"
+    if not isinstance(event.get("v", 1), int):
+        return "v is not an integer"
+    if event.get("issue") is not None and not isinstance(event["issue"], str):
+        return "issue is not an id"
+    actor = event.get("actor")
+    if actor is not None and (not isinstance(actor, dict)
+                              or any(not isinstance(actor.get(k), (str, type(None))) for k in ("agent", "thread", "name"))):
+        return "actor is malformed"
+    where = event.get("where")
+    if where is not None and (not isinstance(where, dict) or not isinstance(where.get("branch"), (str, type(None)))
+                              or not isinstance(where.get("commit"), (str, type(None)))):
+        return "where is malformed"
+    return None
+
+
+KNOWN_OPS = {"init", "create", "set", "claim", "release", "close", "reopen", "delete", "comment", "dep_add",
+             "dep_remove", "label_add", "label_remove", "label_set"}
+REQUIRED_FIELDS = ("title", "priority", "issue_type", "status")  # every issue shows these
+FIELD_TYPES = {"title": str, "description": str, "design": str, "acceptance_criteria": str, "notes": str,
+               "priority": int, "issue_type": str, "assignee": str, "estimated_minutes": int, "external_ref": str,
+               "status": str, "created_at": str, "updated_at": str, "closed_at": str, "close_reason": str,
+               "created_by": str}
+
+
+def fields_problem(fields, allow_bookkeeping: bool) -> str | None:
+    if not isinstance(fields, dict):
+        return "fields is not an object"
+    for name, value in fields.items():
+        if name not in FIELD_TYPES or (not allow_bookkeeping and name in ("created_at", "updated_at", "created_by")):
+            return f"field {name!r} is not writable"
+        if value is None and name in REQUIRED_FIELDS:
+            return f"field {name!r} cannot be cleared"
+        if value is not None and not isinstance(value, FIELD_TYPES[name]):
+            return f"field {name!r} has the wrong type"
+        if name == "priority" and value is not None and not 0 <= value <= 4:
+            return "priority is out of range"
+        if name == "status" and value not in STATUSES:
+            return f"unknown status {value!r}"
+    return None
+
+
+def payload_problem(event: dict) -> str | None:
+    """Why an event's content cannot be applied, or None. Checked whole, before anything is mutated."""
+    op, data = event["op"], event.get("data") or {}
+    if op not in KNOWN_OPS:
+        return f"unknown operation {op!r}"
+    strings = lambda key: isinstance(data.get(key, []), list) and all(isinstance(x, str) for x in data.get(key, []))
+    if op == "create":
+        if event.get("issue") != event["id"]:
+            return "create event does not name itself as the issue"
+        if not isinstance(data.get("key"), str) or not data["key"]:
+            return "create event has no valid 'key'"
+        problem = fields_problem(data.get("fields", {}), allow_bookkeeping=True)
+        if problem:
+            return problem
+        if not strings("labels") or not isinstance(data.get("extra", {}), dict) or not isinstance(data.get("comments", []), list):
+            return "create event has malformed labels, extra or comments"
+        if not isinstance(data.get("dangling", []), list) or any(
+                not isinstance(d, dict) or not isinstance(d.get("depends_on_id"), str) or not d["depends_on_id"]
+                or not isinstance(d.get("type", "blocks"), (str, type(None))) for d in data.get("dangling", [])):
+            return "create event has malformed dangling dependencies"
+        for c in data.get("comments", []):
+            if (not isinstance(c, dict) or not isinstance(c.get("text"), str)
+                    or any(k not in c or not isinstance(c[k], (str, type(None))) for k in ("author", "created_at"))
+                    or not isinstance(c.get("legacy_id"), (int, str, type(None))) or isinstance(c.get("legacy_id"), bool)):
+                return "create event has a malformed comment"
+    elif op == "set":
+        return fields_problem(data.get("fields"), allow_bookkeeping=False)
+    elif op in ("dep_add", "dep_remove"):
+        if not isinstance(data.get("to"), str) or not isinstance(data.get("type", "blocks"), (str, type(None))):
+            return f"{op} event has no valid target"
+    elif op in ("label_add", "label_remove", "label_set"):
+        if not strings("labels"):
+            return f"{op} event has malformed labels"
+    elif op == "comment":
+        if not isinstance(data.get("text", ""), str) or not isinstance(data.get("author"), (str, type(None))):
+            return "comment event is malformed"
+    elif op in ("claim", "release", "close", "reopen", "delete"):
+        for key in ("mode", "takeover", "reason", "claim"):
+            if not isinstance(data.get(key), (str, type(None))):
+                return f"{op} event has a malformed {key!r}"
+        if not isinstance(data.get("generation", 0), int):
+            return "claim event has a malformed generation"
+    return None
+
+
+# ------------------------------------------------------------------ journal
+
+class Journal:
+    """Every event this machine holds, with each machine's own append order.
+
+    Raw records are collected first and settled together, so a duplicated or
+    malformed record is judged the same way whatever order the files were read in.
+    """
+
+    def __init__(self):
+        self.events: dict[str, dict] = {}
+        self.order: dict[str, list[str]] = {}
+        self.quarantined: dict[str, list[dict]] = {}
+        self.invalid: list[dict] = []
+        self._raw: dict[str, list[tuple]] = {}
+        self._unidentified: list[dict] = []
+        self._counter = 0
+        self._settled = True
+        self._referenced: set[str] = set()
+
+    def add(self, event, replica: str, origin: str = "", sequenced: bool = True):
+        eid = event.get("id") if isinstance(event, dict) else None
+        if not (isinstance(eid, str) and UUID_RE.match(eid)):
+            entry = {"event": None, "origin": origin, "problem": event_problem(event) or "id is not a UUID"}
+            self._unidentified.append(entry)
+            self.invalid.append(entry)
+            return
+        self._counter += 1
+        self._raw.setdefault(eid, []).append((event, replica, origin, sequenced, self._counter))
+        if self._settled and eid not in self.events and len(self._raw[eid]) == 1 and event_problem(event) is None \
+                and event["replica"] == replica:
+            self._install(eid, event, replica, sequenced)  # the common case: a fresh, well-formed event
+        else:
+            self._settled = False
+
+    def _install(self, eid: str, event: dict, replica: str, sequenced: bool):
+        self.events[eid] = event
+        if sequenced:
+            self.order.setdefault(replica, []).append(eid)
+        self._referenced.update(event.get("deps") or ())
+
+    def settle(self):
+        """Rebuild from the raw records: one content per id is an event; several contents are a
+        quarantined id; a malformed record keeps its place as an inert placeholder; a copy found
+        only in another machine's journal is ignored."""
+        if self._settled:
+            return
+        self.events, self.order, self.quarantined, self._referenced = {}, {}, {}, set()
+        self.invalid = list(self._unidentified)
+        placed = []
+        for eid, records in self._raw.items():
+            own = [r for r in records if event_problem(r[0]) is None and r[0]["replica"] == r[1]]
+            placed.append((eid, records, own, own[0] if own else records[0]))
+        placed.sort(key=lambda row: row[3][4])  # each journal keeps its own order, whatever else was read first
+        for eid, records, own, placement in placed:
+            distinct = {}
+            for event, *_ in records:
+                distinct.setdefault(canonical(event), event)
+            event, replica, origin, sequenced, _ = placement
+            if len(distinct) > 1:
+                self.quarantined[eid] = list(distinct.values())
+                trusted = [d for d in (event.get("deps") or []) if isinstance(d, str) and UUID_RE.match(d)] \
+                    if own and isinstance(event.get("deps"), list) else []
+                self._install(eid, {"id": eid, "op": "quarantined", "replica": replica, "deps": trusted, "data": {},
+                                    "issue": event.get("issue") if isinstance(event, dict) else None}, replica, sequenced)
+                continue
+            problem = event_problem(event)
+            if problem is not None:
+                self.invalid.append({"event": eid, "origin": origin, "problem": problem})
+                deps = [d for d in event.get("deps") or [] if isinstance(d, str) and UUID_RE.match(d)] \
+                    if isinstance(event.get("deps"), list) else []
+                self._install(eid, {"id": eid, "op": "invalid", "replica": replica, "deps": deps, "data": {},
+                                    "problem": problem}, replica, sequenced)
+                continue
+            if not own:
+                self.invalid.append({"event": eid, "origin": origin, "problem":
+                                     f"written by machine {event['replica']} but found only in machine {replica}'s journal"})
+                continue
+            self._install(eid, event, replica, sequenced)
+        self._settled = True
+
+    def heads(self) -> list[str]:
+        """The frontier: events nothing else here has built on yet."""
+        self.settle()
+        return sorted(set(self.events) - self._referenced)
+
+
+def load_journal(ws: Workspace) -> Journal:
+    journal = Journal()
+    for path in segment_files(ws):
+        for event in read_segment(path.read_bytes(), str(path), journal.invalid):
+            journal.add(event, path.parent.name, str(path))
+    for path in claim_files(ws):
+        for event in read_attempt(path, journal.invalid):
+            journal.add(event, path.parent.parent.name, str(path), sequenced=False)
+    journal.settle()
+    return journal
+
+
+def load_pending(ws: Workspace) -> list[list[dict]]:
+    """Our unconfirmed attempts, each a list of events."""
+    return [events for path in pending_files(ws) if (events := read_attempt(path))]
+
+
+def effective_deps(journal: Journal, event: dict) -> list[str]:
+    """What an event waits for. A quarantined id is inert anyway, so it waits only for causes that
+    exist: those its own journal's copy names (that copy is as trustworthy as the journal's other
+    events), or, lacking one, those every variant agrees on, so one bad variant cannot hold
+    everything after it."""
+    if event["id"] in journal.quarantined:
+        if event.get("deps"):
+            return [d for d in event["deps"] if d in journal.events]
+        common = None
+        for variant in journal.quarantined[event["id"]]:
+            listed = variant.get("deps") if isinstance(variant, dict) and isinstance(variant.get("deps"), list) else []
+            deps = {d for d in listed if isinstance(d, str) and d in journal.events}
+            common = deps if common is None else common & deps
+        return sorted(common or ())
+    return event.get("deps") or []
+
+
+def causal_order(journal: Journal) -> tuple[list[dict], list[dict]]:
+    """Events with all their causes first; ties broken by id. The rest wait for missing causes.
+    A quarantined id whose remaining causes loop back onto it is released: it applies nothing."""
+    journal.settle()
+    waiting, dependents, ready = {}, {}, []
+    for event_id, event in journal.events.items():
+        deps = effective_deps(journal, event)
+        waiting[event_id] = len(deps)
+        for dep in deps:
+            dependents.setdefault(dep, []).append(event_id)
+        if not deps:
+            heapq.heappush(ready, event_id)
+    ordered, applied = [], set()
+    while True:
+        while ready:
+            event_id = heapq.heappop(ready)
+            ordered.append(journal.events[event_id])
+            applied.add(event_id)
+            for child in dependents.get(event_id, ()):
+                waiting[child] -= 1
+                if waiting[child] == 0:
+                    heapq.heappush(ready, child)
+        stuck = [i for i in journal.quarantined if i not in applied and waiting[i] > 0]
+        if not stuck:
+            break
+        for event_id in stuck:
+            waiting[event_id] = 0
+            heapq.heappush(ready, event_id)
+    return ordered, [e for i, e in journal.events.items() if i not in applied]
+
+
+class State:
+    def __init__(self, journal: Journal):
+        journal.settle()
+        self.journal = journal
+        self.prefix = self.name = None
+        self.issues: dict[str, dict] = {}
+        self.by_key: dict[str, str] = {}
+        self.renames: list[dict] = []
+        self.integrity: list[dict] = []
+        self.pending: list[dict] = []
+        self.orphans = 0
+        self.seq = {eid: (rep, n) for rep, ids in journal.order.items() for n, eid in enumerate(ids)}
+        self.seen: dict[str, dict] = {}
+        self.own_anc: dict[str, int] = {}   # per event: a bitset over the unsequenced events in its past
+        self._bit: dict[str, int] = {}      # unsequenced event id -> its bit
+        self._shared: dict[int, int] = {}   # equal bitsets stored once
+        self.chain_breaks: dict[str, list[int]] = {}
+        self.comment_count = 0
+        self.last_by_thread: dict[tuple, str] = {}
+        self._children: dict[str, list[str]] | None = None
+
+    def saw(self, event_id: str, other_id: str) -> bool:
+        """True when the writer of `event_id` had already seen `other_id`."""
+        if other_id in (self.journal.events[event_id].get("deps") or ()):
+            return True
+        if other_id in self.seq:
+            replica, number = self.seq[other_id]
+            return self.seen[event_id].get(replica, -1) >= number
+        bit = self._bit.get(other_id)  # an unsequenced event has no position: it is an ancestor or not
+        return bit is not None and (self.own_anc.get(event_id, 0) >> bit) & 1 == 1
+
+    def children(self, uid: str) -> list[str]:
+        if self._children is None:
+            self._children = {}
+            for child in self.issues.values():
+                for (to, kind) in child["deps"]:
+                    if kind == "parent-child":
+                        self._children.setdefault(to, []).append(child["uid"])
+        return self._children.get(uid, [])
+
+    def waits_for(self, uid: str) -> list[str]:
+        """Edges used for cycle checks: `blocks` targets, plus parent -> child as in br."""
+        issue = self.issues[uid]
+        return sorted({to for (to, kind) in issue["deps"] if kind in BLOCKING and to in self.issues}
+                      | set(self.children(uid)))
+
+    def free_key(self, key: str, uid: str) -> str:
+        match = re.fullmatch(r"(.+)\.(\d+)", key)
+        if match:
+            number = int(match.group(2))
+            while f"{match.group(1)}.{number}" in self.by_key:
+                number += 1
+            return f"{match.group(1)}.{number}"
+        digest = b36(hashlib.sha256(uid.encode()).digest())
+        for size in range(1, len(digest)):
+            if key + digest[:size] not in self.by_key:
+                return key + digest[:size]
+        raise BpError("KEY_SPACE", f"cannot derive a free key from {key}")
+
+    def resolve(self, key: str) -> dict:
+        uid = self.by_key.get(key) or self.by_key.get(f"{self.prefix}-{key}")
+        if not uid:
+            raise BpError("ISSUE_NOT_FOUND", f"Issue not found: {key}")
+        return self.issues[uid]
+
+    def key(self, uid: str) -> str:
+        return self.issues[uid]["id"] if uid in self.issues else uid
+
+    def who(self, event_id: str) -> str:
+        event = self.journal.events[event_id]
+        return actor_label(event.get("actor") or {}, event["replica"])
+
+
+def b36(raw: bytes) -> str:
+    number, out = int.from_bytes(raw, "big"), ""
+    while number:
+        number, digit = divmod(number, 36)
+        out += B36[digit]
+    return out
+
+
+def write_register(st: State, issue: dict, field: str, event_id: str, value, supersede=()):
+    """Keep every value its writer had not seen replaced; a write retires only what it observed
+    (plus anything it names explicitly, such as the claim a close ends)."""
+    register = issue["reg"].setdefault(field, {})
+    for old in [o for o in register if o in supersede or st.saw(event_id, o)]:
+        del register[old]
+    register[event_id] = value
+    shown = register[max(register)]  # deterministic display; alternatives stay visible as a conflict
+    if field == "status":
+        issue["status"] = shown["status"]
+        for extra in ("closed_at", "close_reason"):
+            if extra in shown:
+                issue[extra] = shown[extra]
+            else:
+                issue.pop(extra, None)
+    elif shown is None:
+        issue.pop(field, None)
+    else:
+        issue[field] = shown
+
+
+def write_status(st: State, issue: dict, event_id: str, status: str, when: str, reason=None, supersede=()):
+    value = {"status": status}
+    if status in DONE:
+        value["closed_at"] = when
+        value["close_reason"] = reason or ""
+    write_register(st, issue, "status", event_id, value, supersede)
+
+
+def materialise_dangling(st: State, issue: dict):
+    """An imported dependency on a key that did not exist yet becomes a real edge the moment the key
+    does, tagged with the create that carried it, so every machine derives the same edge and a
+    later removal that saw that create can take it away."""
+    kept = []
+    for dep in issue["dangling"]:
+        target = st.by_key.get(dep["depends_on_id"])
+        if target is None or target == issue["uid"]:
+            kept.append(dep)
+            continue
+        edge = (target, dep.get("type") or "blocks")
+        meta = {k: dep[k] for k in ("created_at", "created_by", "metadata", "thread_id") if k in dep}
+        issue["dep_tags"].setdefault(edge, {}).setdefault(issue["uid"], meta)
+    issue["dangling"] = kept
+
+
+def end_claim(issue: dict, how: str, who: str, when: str, reason=None):
+    claim = issue["claim"]
+    if claim:
+        issue["claim_history"].append({**claim, "ended": when, "ended_by": who, "how": how,
+                                       **({"reason": reason} if reason else {})})
+        issue["claim"] = None
+
+
+def replay(journal: Journal) -> State:
+    """Fold the events into current state. Any machine holding the same events gets the same result."""
+    st = State(journal)
+    ordered, st.pending = causal_order(journal)
+    for entry in journal.invalid:
+        st.integrity.append({"event": entry["event"], "issue": None, "problem": entry["problem"], "origin": entry["origin"]})
+    # Phase 1: what every event had seen, and which events cannot be applied at all.
+    inert: dict[str, str] = {}
+    applicable = {rep: [n for n, i in enumerate(ids) if journal.events[i]["op"] not in ("quarantined", "invalid")]
+                  for rep, ids in journal.order.items()}
+
+    def predecessor(replica: str, number: int) -> int:
+        """The last position before `number` in this journal that holds an applicable event, or -1."""
+        positions = applicable[replica]
+        at = bisect.bisect_left(positions, number)
+        return positions[at - 1] if at else -1
+
+    for event in ordered:
+        eid = event["id"]
+        seen, anc = {}, 0
+        for dep in effective_deps(journal, event):
+            if dep not in st.seen:
+                continue  # a released quarantined id may name a cause that never applied
+            for replica, number in st.seen[dep].items():
+                if number > seen.get(replica, -1):
+                    seen[replica] = number
+            anc |= st.own_anc.get(dep, 0)
+            if dep not in st.seq:
+                anc |= 1 << st._bit.setdefault(dep, len(st._bit))
+        st.own_anc[eid] = st._shared.setdefault(anc, anc)
+        if eid in st.seq:
+            replica, number = st.seq[eid]
+            if seen.get(replica, -1) < predecessor(replica, number):
+                # Not a single writer's log: the event does not build on its predecessor. Report it and
+                # do not pretend it saw what came before (a copied machine identity looks like this).
+                # A placeholder that fails this applies nothing anyway, but it must not lend its
+                # position to what comes after it.
+                st.chain_breaks.setdefault(replica, []).append(number)
+                if event["op"] not in ("quarantined", "invalid"):
+                    inert[eid] = f"journal chain broken at position {number} of machine {replica} (copied machine identity?)"
+                st.seen[eid] = seen
+                continue
+            seen[replica] = max(seen.get(replica, -1), number)
+        st.seen[eid] = seen
+        if eid in journal.quarantined:
+            inert[eid] = "one event id with different contents"
+        elif event["op"] == "invalid":
+            inert[eid] = ""  # already reported when it was loaded
+        elif event.get("v", 1) != FORMAT:
+            inert[eid] = f"event format v{event['v']} is not one this version of bead reads"
+        elif (problem := payload_problem(event)):
+            inert[eid] = problem
+    # Phase 2: ownership bookkeeping, over applicable events only. A takeover is settled online, so
+    # it outranks anything its predecessor published later, whichever of the two sorts first here.
+    superseded = set()
+    for event in ordered:
+        if event["id"] in inert or event["op"] != "claim" or not (event.get("data") or {}).get("takeover"):
+            continue
+        previous = journal.events.get(event["data"]["takeover"])
+        if previous is None or previous["op"] != "claim" or previous.get("issue") != event.get("issue"):
+            inert[event["id"]] = "takeover names a claim that is not a claim on this issue"
+        elif not st.saw(event["id"], previous["id"]):
+            inert[event["id"]] = "takeover of a claim its writer had not seen"
+        elif event["data"].get("mode") != "offline" and previous["id"] not in inert:
+            superseded.add(previous["id"])
+    # Phase 3: apply.
+    for event in ordered:
+        eid, op, data, uid = event["id"], event["op"], event.get("data") or {}, event.get("issue")
+        reason = inert.get(eid)
+        if reason is not None:
+            if reason:
+                st.integrity.append({"event": eid, "issue": st.key(uid), "problem": reason})
+            continue
+        actor = event.get("actor") or {}
+        who, when = actor_label(actor, event["replica"]), event_time(eid)
+        st.last_by_thread[(event["replica"], actor.get("thread"))] = eid
+        try:
+            applied = apply_event(st, event, eid, op, data, uid, actor, who, when, superseded)
+        except (KeyError, TypeError, AttributeError, ValueError) as error:  # last resort: never take the tracker down
+            st.integrity.append({"event": eid, "issue": st.key(uid), "problem": f"event could not be applied: {error!r}"})
+            continue
+        if applied:
+            issue = st.issues[uid]
+            if not data.get("imported"):
+                issue["updated_at"] = when
+            if event.get("where"):
+                issue["where"] = event["where"]
+    for issue in st.issues.values():
+        issue["labels"] = {label for label, tags in issue["label_tags"].items() if tags}
+        issue["deps"] = {edge: tags[min(tags)] for edge, tags in issue["dep_tags"].items() if tags}
+    return st
+
+
+def apply_event(st: State, event: dict, eid: str, op: str, data: dict, uid: str,
+                actor: dict, who: str, when: str, superseded: set) -> bool:
+    """Apply one event. Returns True when it touched an existing issue."""
+    if op == "init":
+        if st.prefix is None:
+            st.prefix, st.name = data.get("prefix"), data.get("name")
+        return False
+    if op == "create":
+        key = data["key"]
+        if key in st.by_key:  # two machines minted the same key before they synced
+            taken, key = key, st.free_key(key, uid)
+            st.renames.append({"from": taken, "to": key, "replica": event["replica"], "uid": uid})
+        fields = data.get("fields") or {}
+        issue = {"uid": uid, "id": key, "title": "", "status": "open", "priority": 2, "issue_type": "task",
+                 "created_at": when, "created_by": who, "updated_at": when, "reg": {},
+                 "label_tags": {label: {eid} for label in data.get("labels") or []}, "dep_tags": {},
+                 "labels": set(), "deps": {}, "comments": [], "extra": data.get("extra") or {},
+                 "dangling": list(data.get("dangling") or []),
+                 "claim": None, "claim_generation": 0, "claim_history": [], "provisional_claims": [],
+                 "lost_claims": [], "stale": [], "unconfirmed": [],
+                 "origin": {"machine": event["replica"], **actor, **({"where": event["where"]} if event.get("where") else {})}}
+        issue.update(fields)
+        for name in REGISTERS:
+            if name in fields:
+                issue["reg"][name] = {eid: fields[name]}
+        issue["reg"]["status"] = {eid: {"status": issue["status"],
+                                        **{k: fields[k] for k in ("closed_at", "close_reason") if k in fields}}}
+        for comment in data.get("comments") or []:
+            issue["comments"].append({"uid": None, **comment})
+        st.issues[uid], st.by_key[key] = issue, uid
+        if event.get("where"):
+            issue["where"] = event["where"]
+        materialise_dangling(st, issue)
+        for other in st.issues.values():  # an import may have named this key before it existed
+            if other is not issue and other["dangling"]:
+                materialise_dangling(st, other)
+        return False
+    issue = st.issues.get(uid)
+    if issue is None:
+        st.orphans += 1
+        return False
+    claim = issue["claim"]
+    if op == "set":
+        for name, value in (data.get("fields") or {}).items():
+            if name == "status":
+                write_status(st, issue, eid, value, when)
+            else:
+                write_register(st, issue, name, eid, value)
+    elif op == "claim":
+        if data.get("mode") == "offline":  # provisional: never displaces a confirmed owner
+            if not (claim and claim["owner"] == who):
+                issue["provisional_claims"] = [p for p in issue["provisional_claims"] if p["owner"] != who]
+                issue["provisional_claims"].append({"id": eid, "owner": who, "since": when,
+                                                    **({"where": event["where"]} if event.get("where") else {})})
+                if not claim:
+                    write_status(st, issue, eid, "in_progress", when)
+        elif claim is None or (data.get("takeover") and claim["id"] == data["takeover"]):
+            end_claim(issue, "takeover", who, when, data.get("reason"))
+            issue["claim_generation"] = max(issue["claim_generation"] + 1, data.get("generation") or 0)
+            issue["claim"] = {"id": eid, "owner": who, "machine": event["replica"],
+                              "agent": actor.get("agent"), "thread": actor.get("thread"),
+                              "generation": issue["claim_generation"], "since": when,
+                              "mode": data.get("mode") or "online",
+                              **({"where": event["where"]} if event.get("where") else {})}
+            issue["provisional_claims"] = [p for p in issue["provisional_claims"] if p["owner"] != who]
+            write_status(st, issue, eid, "in_progress", when)
+            write_register(st, issue, "assignee", eid, who)
+        elif claim["owner"] != who:
+            issue["lost_claims"].append({"by": who, "at": when, "held_by": claim["owner"], "event": eid})
+            return False
+    elif op == "release":
+        if data.get("claim") in superseded:
+            issue["stale"].append({"op": op, "by": who, "at": when, "claim": data.get("claim")})
+            return False
+        if claim and claim["id"] == data.get("claim"):
+            end_claim(issue, "release", who, when, data.get("reason"))
+            write_status(st, issue, eid, "open", when, supersede={claim["id"]})
+            write_register(st, issue, "assignee", eid, None, supersede={claim["id"]})
+        elif any(p["owner"] == who for p in issue["provisional_claims"]):
+            issue["provisional_claims"] = [p for p in issue["provisional_claims"] if p["owner"] != who]
+            if not claim and not issue["provisional_claims"]:
+                write_status(st, issue, eid, "open", when)
+        else:  # a delayed release from an owner that has since been replaced
+            issue["stale"].append({"op": op, "by": who, "at": when, "claim": data.get("claim")})
+            return False
+    elif op == "close":
+        named = data.get("claim")
+        if named and (named in superseded or not (claim and claim["id"] == named)):
+            issue["stale"].append({"op": op, "by": who, "at": when, "claim": named})
+            return False
+        # A close that names its claim knows about it, even when the claim's bytes arrived later.
+        write_status(st, issue, eid, "closed", when, data.get("reason"), supersede={named} if named else ())
+        if claim and (named or st.saw(eid, claim["id"])):
+            if named:
+                write_register(st, issue, "assignee", eid, issue.get("assignee"), supersede={named})
+            end_claim(issue, "close", who, when)
+        issue["provisional_claims"] = [p for p in issue["provisional_claims"] if not st.saw(eid, p["id"])]
+        if event.get("where"):
+            issue["closed_on"] = event["where"]
+    elif op == "reopen":
+        write_status(st, issue, eid, "open", when)
+        issue.pop("closed_on", None)
+        if claim and st.saw(eid, claim["id"]):
+            end_claim(issue, "reopen", who, when)
+    elif op == "delete":
+        write_status(st, issue, eid, "tombstone", when, data.get("reason"))
+        issue["extra"] = {**issue["extra"], "deleted_at": when, "deleted_by": who,
+                          "delete_reason": data.get("reason") or ""}
+        if claim and st.saw(eid, claim["id"]):
+            end_claim(issue, "delete", who, when)
+    elif op == "comment":
+        st.comment_count += 1
+        issue["comments"].append({"uid": eid, "seq": st.comment_count, "author": data.get("author") or who,
+                                  "text": data.get("text", ""), "created_at": when,
+                                  **({"where": event["where"]} if event.get("where") else {})})
+    elif op == "dep_add":
+        edge = (data["to"], data.get("type") or "blocks")
+        issue["dep_tags"].setdefault(edge, {})[eid] = {"created_at": when, "created_by": who, **(data.get("meta") or {})}
+    elif op == "dep_remove":  # removes only the additions its writer had seen
+        for edge, tags in issue["dep_tags"].items():
+            if edge[0] == data["to"] and data.get("type") in (None, edge[1]):
+                for tag in [t for t in tags if st.saw(eid, t)]:
+                    del tags[tag]
+    elif op == "label_add":
+        for label in data.get("labels") or []:
+            issue["label_tags"].setdefault(label, set()).add(eid)
+    elif op in ("label_remove", "label_set"):
+        targets = list(issue["label_tags"]) if op == "label_set" else (data.get("labels") or [])
+        for label in targets:
+            tags = issue["label_tags"].get(label, set())
+            tags -= {t for t in tags if st.saw(eid, t)}
+        if op == "label_set":
+            for label in data.get("labels") or []:
+                issue["label_tags"].setdefault(label, set()).add(eid)
+    return True
+
+
+def conflicts(st: State, issue: dict) -> dict:
+    """Fields that two writers changed without seeing each other, with every alternative."""
+    out = {}
+    for field, register in issue["reg"].items():
+        if len(register) < 2:
+            continue
+        values = {json.dumps(v["status"] if field == "status" else v, sort_keys=True) for v in register.values()}
+        if len(values) > 1:
+            out[field] = [{"value": (v["status"] if field == "status" else v), "by": st.who(e), "at": event_time(e),
+                           "event": e} for e, v in sorted(register.items())]
+    return out
+
+
+def is_done(st: State, issue: dict) -> bool:
+    """Finished for the purposes of unblocking others. A disputed status does not count."""
+    return issue["status"] in DONE and "status" not in conflicts(st, issue)
+
+
+# ------------------------------------------------------------------- writes
+
+def view(ws: Workspace) -> State:
+    """Current state as this machine should see it: confirmed events, with our own unconfirmed
+    ownership attempts listed on their issues but counting for nothing."""
+    st = replay(load_journal(ws))
+    for event in (e for attempt in load_pending(ws) for e in attempt):
+        issue = st.issues.get(event.get("issue"))
+        if issue is not None:
+            issue["unconfirmed"].append({"event": event["id"], "op": event["op"],
+                                         "by": actor_label(event.get("actor") or {}, event["replica"]),
+                                         "at": event_time(event["id"]), **({"where": event["where"]} if event.get("where") else {})})
+    return st
+
+
+def capture_where(ws: Workspace) -> dict | None:
+    """The branch and commit the caller is working on, when the command runs inside a checkout."""
+    if ws.config.get("where") is False:
+        return None
+    head = run_git(["rev-parse", "HEAD"], check=False)
+    if head.returncode:
+        return None
+    branch = run_git(["rev-parse", "--abbrev-ref", "HEAD"], check=False).stdout.decode().strip()
+    return {"branch": None if branch in ("", "HEAD") else branch, "commit": head.stdout.decode().strip()}
+
+
+class Tx:
+    """One locked read-modify-append on this machine's own journal.
+
+    Sequential events go to the journal. Ownership events (`claim`, `release`) form an attempt
+    that is settled with the remote as one unit, and so does anything emitted after them with
+    `conditional` set: an edit made together with a claim lands with the claim or not at all.
+    """
+
+    def __init__(self, ws: Workspace, actor: dict):
+        self.ws, self.actor, self.replica = ws, actor, replica_id()
+        self.journal = load_journal(ws)
+        self.where = capture_where(ws)
+        self.pending: list[dict] = []
+        self.ownership: list[dict] = []
+        self.conditional = False
+        self._state: State | None = None
+
+    @property
+    def state(self) -> State:
+        if self._state is None:
+            self._state = replay(self.journal)
+        return self._state
+
+    def emit(self, op: str, issue: str | None = None, data: dict | None = None, event_id: str | None = None) -> dict:
+        event_id = event_id or uuid7()
+        event = {"v": FORMAT, "id": event_id, "replica": self.replica, "deps": self.journal.heads(),
+                 "actor": self.actor, "op": op, "issue": issue or event_id, "data": data or {}}
+        if self.where:
+            event["where"] = self.where
+        if op in OWNERSHIP or self.conditional:
+            self.ownership.append(event)
+            self.journal.add(event, self.replica, sequenced=False)  # later emits build on it
+        else:
+            self.journal.add(event, self.replica)
+            self.pending.append(event)
+        self._state = None
+        return event
+
+
+@contextlib.contextmanager
+def locked(ws: Workspace):
+    ws.events_dir.mkdir(parents=True, exist_ok=True)
+    with open(ws.dir / "lock", "a+") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
+def confirm_ownership(ws: Workspace, events: list[dict]):
+    """This attempt counts: write it, as one file, where every machine will read it."""
+    if events:
+        write_attempt_file(attempt_path(ws, events), events)
+
+
+@contextlib.contextmanager
+def writing(ws: Workspace, actor: dict):
+    """A local write. Ownership events made here (offline or with no remote) need no confirmation."""
+    with locked(ws):
+        tx = Tx(ws, actor)
+        yield tx
+        if tx.pending:
+            append_events(ws, tx.replica, tx.pending)
+        if tx.ownership:
+            confirm_ownership(ws, tx.ownership)
+
+
+def need_tracker(st: State):
+    if st.prefix is None:
+        raise BpError("NOT_INITIALIZED", "no tracker for this repository yet: run `bead init` or `bead sync`")
+
+
+def mint_key(st: State, seed: str, parent: dict | None) -> str:
+    if parent:
+        pattern = re.compile(re.escape(parent["id"]) + r"\.(\d+)")
+        used = [int(m.group(1)) for k in st.by_key if (m := pattern.fullmatch(k))]
+        return f"{parent['id']}.{max(used, default=0) + 1}"
+    digest = b36(hashlib.sha256(seed.encode()).digest())
+    for size in range(4, len(digest)):
+        if f"{st.prefix}-{digest[:size]}" not in st.by_key:
+            return f"{st.prefix}-{digest[:size]}"
+    raise BpError("KEY_SPACE", "cannot mint a key")
+
+
+def parse_priority(value) -> int:
+    match = re.fullmatch(r"[Pp]?([0-4])", str(value))
+    if not match:
+        raise BpError("VALIDATION", f"priority must be 0-4, got {value!r}")
+    return int(match.group(1))
+
+
+def text_arg(args, name: str) -> str | None:
+    path = getattr(args, f"{name}_file", None)
+    if path:
+        return sys.stdin.read() if path == "-" else Path(path).read_text()
+    return getattr(args, name, None)
+
+
+def split_list(values) -> list[str]:
+    return [item.strip() for value in values or [] for item in value.split(",") if item.strip()]
+
+
+def field_args(args) -> dict:
+    fields = {}
+    for name in ("title", "description", "acceptance_criteria", "notes", "design", "assignee", "external_ref"):
+        value = text_arg(args, name)
+        if value is not None:
+            fields[name] = value
+    if getattr(args, "priority", None) is not None:
+        fields["priority"] = parse_priority(args.priority)
+    if getattr(args, "type", None):
+        fields["issue_type"] = args.type
+    if getattr(args, "estimate", None) is not None:
+        fields["estimated_minutes"] = args.estimate
+    if getattr(args, "status", None):
+        if args.status not in STATUSES:
+            raise BpError("VALIDATION", f"unknown status {args.status!r}")
+        fields["status"] = args.status
+    return fields
+
+
+def reaches(st: State, start: str, goal: str) -> bool:
+    """True when `start` already waits, directly or not, for `goal`."""
+    stack, seen = [start], set()
+    while stack:
+        uid = stack.pop()
+        if uid == goal:
+            return True
+        if uid in seen or uid not in st.issues:
+            continue
+        seen.add(uid)
+        stack.extend(st.waits_for(uid))
+    return False
+
+
+# ------------------------------------------------------------------ queries
+
+def parents_of(st: State, issue: dict) -> list[dict]:
+    return [st.issues[to] for (to, kind) in sorted(issue["deps"]) if kind == "parent-child" and to in st.issues]
+
+
+def parent_of(st: State, issue: dict) -> dict | None:
+    parents = parents_of(st, issue)
+    return parents[0] if parents else None
+
+
+def direct_blockers(st: State, issue: dict) -> list[dict]:
+    return [st.issues[to] for (to, kind) in sorted(issue["deps"])
+            if kind in BLOCKING and to in st.issues and not is_done(st, st.issues[to])]
+
+
+def open_blockers(st: State, issue: dict) -> list[dict]:
+    """br's readiness rule, checked against br on real trackers.
+
+    Prerequisites block directly; an epic (only an epic) waits for its open
+    children; and an ancestor held by a prerequisite holds its descendants.
+    """
+    found = {b["uid"]: b for b in direct_blockers(st, issue)}
+    if issue["issue_type"] == "epic":
+        found.update({uid: st.issues[uid] for uid in st.children(issue["uid"])
+                      if not is_done(st, st.issues[uid])})
+    seen, queue = {issue["uid"]}, list(parents_of(st, issue))
+    while queue:
+        parent = queue.pop()
+        if parent["uid"] in seen or is_done(st, parent):
+            continue
+        seen.add(parent["uid"])
+        found.update({b["uid"]: b for b in direct_blockers(st, parent)})
+        queue.extend(parents_of(st, parent))
+    return sorted(found.values(), key=lambda i: i["id"])
+
+
+def is_blocked(st: State, issue: dict) -> bool:
+    return bool(open_blockers(st, issue))
+
+
+MAX_CYCLES = 200
+
+
+def strongly_connected(nodes: list[str], edges) -> list[list[str]]:
+    """Tarjan's components, without recursion. Only components that can hold a cycle are returned."""
+    index, low, on_stack, stack, out = {}, {}, set(), [], []
+    for root in nodes:
+        if root in index:
+            continue
+        work = [(root, iter(edges(root)))]
+        index[root] = low[root] = len(index)
+        stack.append(root)
+        on_stack.add(root)
+        while work:
+            node, children = work[-1]
+            child = next(children, None)
+            if child is not None:
+                if child not in index:
+                    index[child] = low[child] = len(index)
+                    stack.append(child)
+                    on_stack.add(child)
+                    work.append((child, iter(edges(child))))
+                elif child in on_stack:
+                    low[node] = min(low[node], index[child])
+                continue
+            work.pop()
+            if work:
+                low[work[-1][0]] = min(low[work[-1][0]], low[node])
+            if low[node] == index[node]:
+                component = []
+                while True:
+                    member = stack.pop()
+                    on_stack.discard(member)
+                    component.append(member)
+                    if member == node:
+                        break
+                if len(component) > 1 or node in edges(node):
+                    out.append(sorted(component))
+    return out
+
+
+def find_cycles(st: State, blocking_only: bool = False) -> list[list[str]]:
+    """Every elementary cycle of the waits-for graph (Johnson's algorithm, without recursion), each
+    written from its smallest member, at most MAX_CYCLES of them."""
+    def edges(uid):
+        if blocking_only:
+            return [to for (to, kind) in sorted(st.issues[uid]["deps"]) if kind in BLOCKING and to in st.issues]
+        return st.waits_for(uid)
+
+    cycles = []
+    components = strongly_connected(sorted(st.issues), edges)
+    while components and len(cycles) < MAX_CYCLES:
+        component = set(components.pop())
+        start = min(component)
+        inside = lambda uid: [to for to in edges(uid) if to in component]
+        path, blocked, closed, unblock_later = [start], {start}, set(), {}
+        work = [(start, iter(inside(start)))]
+        while work and len(cycles) < MAX_CYCLES:
+            node, children = work[-1]
+            child = next(children, None)
+            if child is not None:
+                if child == start:
+                    cycles.append(list(path))
+                    closed.update(path)
+                elif child not in blocked:
+                    path.append(child)
+                    blocked.add(child)
+                    closed.discard(child)
+                    work.append((child, iter(inside(child))))
+                continue
+            work.pop()
+            path.pop()
+            if node in closed:  # a cycle went through here: everything waiting on it may try again
+                queue = [node]
+                while queue:
+                    unblocked = queue.pop()
+                    if unblocked in blocked:
+                        blocked.discard(unblocked)
+                        queue.extend(unblock_later.pop(unblocked, ()))
+            else:
+                for to in inside(node):
+                    unblock_later.setdefault(to, set()).add(node)
+        component.discard(start)  # cycles through `start` are all found; the rest live in what remains
+        components.extend(strongly_connected(sorted(component), lambda uid: [to for to in edges(uid) if to in component]))
+    return [[st.key(uid) for uid in cycle] for cycle in cycles]
+
+
+def merged_into_default(commit: str) -> bool | None:
+    """Whether `commit` is reachable from the default branch as this checkout knows it (the local
+    branch first, then its remote-tracking ref); None when the commit or the branch is unknown here."""
+    if not commit:
+        return None
+    names = []
+    head = run_git(["symbolic-ref", "-q", "refs/remotes/origin/HEAD"], check=False)
+    if head.returncode == 0:
+        names.append(head.stdout.decode().strip().rsplit("/", 1)[-1])
+    names += ["main", "master"]
+    for name in dict.fromkeys(names):
+        for ref in (name, f"origin/{name}"):
+            if run_git(["rev-parse", "--verify", "-q", ref], check=False).returncode:
+                continue
+            probe = run_git(["merge-base", "--is-ancestor", commit, ref], check=False)
+            if probe.returncode in (0, 1):
+                return probe.returncode == 0
+            return None  # the commit is not known here
+    return None
+
+
+def brief(st: State, issue: dict) -> dict:
+    out = {"id": issue["id"], "title": issue["title"], "status": issue["status"],
+           "priority": issue["priority"], "issue_type": issue["issue_type"]}
+    if issue.get("assignee"):
+        out["assignee"] = issue["assignee"]
+    if issue["labels"]:
+        out["labels"] = sorted(issue["labels"])
+    if issue.get("where", {}).get("branch"):
+        out["branch"] = issue["where"]["branch"]
+    disputed = sorted(conflicts(st, issue))
+    if disputed:
+        out["conflicted"] = disputed
+    out["created_at"], out["updated_at"] = issue["created_at"], issue["updated_at"]
+    return out
+
+
+def detail(st: State, issue: dict, check_merge: bool = False) -> dict:
+    out = {"id": issue["id"]}
+    for name in EXPORT_FIELDS:
+        if issue.get(name) not in (None, ""):
+            out[name] = issue[name]
+    if issue["labels"]:
+        out["labels"] = sorted(issue["labels"])
+    parent = parent_of(st, issue)
+    if parent:
+        out["parent"] = parent["id"]
+    out["dependencies"] = [{"id": st.key(to), "title": st.issues[to]["title"] if to in st.issues else "",
+                            "status": st.issues[to]["status"] if to in st.issues else "unknown",
+                            "dependency_type": kind} for (to, kind) in sorted(issue["deps"])]
+    out["dependents"] = [{"id": other["id"], "title": other["title"], "status": other["status"],
+                          "dependency_type": kind}
+                         for other in st.issues.values() for (to, kind) in sorted(other["deps"])
+                         if to == issue["uid"]]
+    out["comments"] = [{"id": c["legacy_id"] if c.get("legacy_id") is not None else c["uid"], "author": c.get("author"),
+                        "text": c["text"], "created_at": c.get("created_at"), **({"branch": c["where"]["branch"]} if c.get("where", {}).get("branch") else {})}
+                       for c in issue["comments"]]
+    out["blocked"] = is_blocked(st, issue)
+    out["origin"] = issue["origin"]
+    if issue.get("where"):
+        out["where"] = issue["where"]
+    if issue.get("closed_on"):
+        out["closed_on"] = issue["closed_on"]
+        if check_merge and issue["status"] == "closed":
+            merged = merged_into_default(issue["closed_on"].get("commit"))
+            out["merged"] = "unknown" if merged is None else merged
+    if issue["claim"]:
+        out["claim"] = issue["claim"]
+    for name in ("provisional_claims", "lost_claims", "stale", "unconfirmed"):
+        if issue[name]:
+            out[name] = issue[name]
+    disputed = conflicts(st, issue)
+    if disputed:
+        out["conflicts"] = disputed
+    return out
+
+
+def line(st: State, issue: dict) -> str:
+    who = f" @{issue['assignee']}" if issue.get("assignee") else ""
+    disputed = sorted(conflicts(st, issue))
+    flag = " ⚠ conflict: " + ", ".join(disputed) if disputed else ""
+    branch = f" ({issue['where']['branch']})" if issue.get("where", {}).get("branch") else ""
+    return (f"{ICON.get(issue['status'], '?')} {issue['id']} [P{issue['priority']}] [{issue['issue_type']}] - "
+            f"{issue['title']}{who}{branch}{flag}")
+
+
+COMMENT_ID_BASE = 2 ** 47
+
+
+def exported_legacy_id(comment: dict, taken: set):
+    """An imported comment keeps its id, unless it collides with a derived one of ours."""
+    number = comment.get("legacy_id")
+    if isinstance(number, int) and not isinstance(number, bool) and number in taken:
+        while number in taken:
+            number += 1
+    return number
+
+
+def export_records(st: State) -> list[dict]:
+    """Beads-compatible JSONL records, so `bv` and other Beads readers keep working."""
+    # A comment made here exports an integer derived from its event id, so every machine and every
+    # later export agree on it. The range (2^47 upwards, 48 bits) keeps clear of the small ids Beads
+    # hands out and makes two comments sharing a number a one-in-10^14 event; should it happen, the
+    # tie is broken by the ids alone, never by arrival order. An imported id is kept as it came
+    # unless it collides with one of these, which only an export of ours re-imported can do.
+    new_ids, taken = {}, set()
+    for comment in sorted((c for i in st.issues.values() for c in i["comments"] if c["uid"]), key=lambda c: c["uid"]):
+        number = COMMENT_ID_BASE + int.from_bytes(hashlib.sha256(comment["uid"].encode()).digest()[:6], "big") % COMMENT_ID_BASE
+        while number in taken:
+            number += 1
+        taken.add(number)
+        new_ids[comment["uid"]] = number
+    records = []
+    for issue in sorted(st.issues.values(), key=lambda i: i["id"]):
+        rec = {"id": issue["id"]}
+        for name in EXPORT_FIELDS:
+            if issue.get(name) is not None:
+                rec[name] = issue[name]
+        rec.update(issue["extra"])
+        dangling = issue["dangling"]  # still unknown targets travel on as they were imported
+        if issue["labels"]:
+            rec["labels"] = sorted(issue["labels"])
+        deps = [{"issue_id": issue["id"], "depends_on_id": st.key(to), "type": kind,
+                 "created_at": meta.get("created_at"), "created_by": meta.get("created_by"),
+                 "metadata": meta.get("metadata", "{}"), "thread_id": meta.get("thread_id", "")}
+                for (to, kind), meta in issue["deps"].items()]
+        if deps or dangling:
+            rec["dependencies"] = sorted(deps + dangling, key=lambda d: (d["depends_on_id"], d["type"]))
+        if issue["comments"]:
+            rec["comments"] = [{"id": new_ids[c["uid"]] if c["uid"] else exported_legacy_id(c, taken), "issue_id": issue["id"],
+                                "author": c.get("author"), "text": c["text"], "created_at": c.get("created_at")}
+                               for c in issue["comments"]]
+        records.append(rec)
+    return records
+
+
+# --------------------------------------------------------------------- sync
+
+class Link:
+    """The coordination ref on one remote, reached through a private bare repository.
+
+    The pushed history contains the manifest and the journals and nothing else:
+    no code commits are its ancestors and no code objects are reachable from it.
+    """
+
+    def __init__(self, ws: Workspace, remote: str):
+        self.ws, self.url, self.ref = ws, remote, ws.ref
+        self.git_dir = ws.dir / "sync.git"
+        env = {k: v for k, v in os.environ.items() if k not in ("GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR")}
+        env.update(GIT_DIR=str(self.git_dir), GIT_TERMINAL_PROMPT="0", GIT_AUTHOR_NAME="bead",
+                   GIT_AUTHOR_EMAIL="bead@localhost", GIT_COMMITTER_NAME="bead", GIT_COMMITTER_EMAIL="bead@localhost")
+        env.setdefault("GIT_SSH_COMMAND", "ssh -o ConnectTimeout=15")  # a dead remote must fail, not hang
+        self.env = env
+        self.remote_counts: dict[str, int] = {}
+        self.forks: list[str] = []
+        self.confirmed: list[str] = []
+        self.chain_breaks: dict[str, list[int]] = {}
+
+    def git(self, args, **kwargs) -> str:
+        return git_text(args, env=self.env, **kwargs)
+
+    def fetch(self) -> str | None:
+        """Fetch exactly the coordination ref. Returns its head, or None if nobody has published."""
+        if not self.git_dir.exists():
+            # two processes may race here; whichever loses finds the directory in place
+            created = run_git(["init", "--quiet", "--bare", str(self.git_dir)], check=False)
+            if created.returncode and not (self.git_dir / "HEAD").exists():
+                raise BpError("GIT_ERROR", created.stderr.decode(errors="replace").strip())
+        proc = run_git(["fetch", "--quiet", "--no-tags", self.url, f"+{self.ref}:{REMOTE_REF}"],
+                       env=self.env, check=False, timeout=NET_TIMEOUT)
+        if proc.returncode:
+            if b"find remote ref" in proc.stderr:
+                return None
+            raise BpError("REMOTE_UNREACHABLE", f"cannot reach the coordination remote {self.url}: "
+                          + proc.stderr.decode(errors="replace").strip())
+        tip = self.git(["rev-parse", REMOTE_REF])
+        manifest = run_git(["cat-file", "blob", f"{tip}:manifest.json"], env=self.env, check=False)
+        if manifest.returncode:
+            raise BpError("MANIFEST_MISSING", f"{self.ref} on {self.url} has no manifest; refusing to adopt it")
+        try:
+            parsed = json.loads(manifest.stdout)
+            found = parsed.get("workspace")
+        except (ValueError, AttributeError):
+            raise BpError("MANIFEST_MISSING", f"{self.ref} on {self.url} has an unreadable manifest") from None
+        if found != self.ws.id:
+            raise BpError("WORKSPACE_MISMATCH", f"{self.ref} on {self.url} belongs to workspace {found}, not {self.ws.id}")
+        if parsed.get("format") != FORMAT:
+            raise BpError("FORMAT_UNSUPPORTED", f"{self.ref} on {self.url} is in format {parsed.get('format')!r}; "
+                          f"this version of bead reads format {FORMAT} only and will not rewrite it")
+        return tip
+
+    def local_blobs(self) -> dict[str, str]:
+        files = segment_files(self.ws) + claim_files(self.ws)
+        if not files:
+            return {}
+        shas = self.git(["hash-object", "-w", "--no-filters", "--stdin-paths"],
+                        data="".join(f"{p}\n" for p in files).encode()).split()
+        return {str(p.relative_to(self.ws.dir)): sha for p, sha in zip(files, shas)}
+
+    def merge(self, tip: str | None) -> int:
+        """Bring remote journals in. Each segment has one writer, so one side is always a prefix.
+
+        A foreign segment that is not a prefix either way was damaged here (we never write other
+        machines' journals): the published copy replaces it and ours is kept beside it. Our own
+        segment in that state, or our own journal no longer forming one chain, means this machine's
+        identity is in use somewhere else. Ownership files are immutable: a remote file we lack is
+        copied, and one of our own pending attempts found on the remote is thereby confirmed.
+        Called with the store lock held.
+        """
+        self.remote_counts, self.forks, self.confirmed, pulled = {}, [], [], 0
+        for path in segment_files(self.ws):
+            repair_tail(path)
+        own = replica_id(create=False)
+        pending = {p.stem: p for p in pending_files(self.ws)}
+        self.confirmed_events: list[dict] = []
+        if tip:
+            local = self.local_blobs()
+            for row in self.git(["ls-tree", "-r", tip]).splitlines():
+                meta, path = row.split("\t", 1)
+                sha = meta.split()[2]
+                if re.fullmatch(r"events/[^/]+/claims/[0-9a-f-]+\.json", path):
+                    self.remote_counts[path] = 1
+                    attempt_id = Path(path).stem
+                    target = self.ws.dir / path
+                    if local.get(path) == sha and attempt_id not in pending:
+                        continue
+                    theirs = run_git(["cat-file", "blob", sha], env=self.env).stdout
+                    if attempt_id in pending:  # the remote has our attempt: it counts, whole
+                        if pending[attempt_id].read_bytes() != theirs:
+                            raise BpError("ATTEMPT_FORK", f"{path} on the remote is not the attempt this machine has "
+                                          "pending under that id: the machine identity is in use somewhere else")
+                        if local.get(path) != sha:
+                            write_atomic(target, theirs)
+                        pending[attempt_id].unlink(missing_ok=True)
+                        self.confirmed.append(attempt_id)
+                        self.confirmed_events.extend(read_attempt(target))
+                        continue
+                    if target.exists():  # an immutable file that differs from the accepted copy was damaged here
+                        target.with_name(f"{target.name}.fork-{int(time.time())}").write_bytes(target.read_bytes())
+                        self.forks.append(path)
+                    else:
+                        pulled += 1
+                    write_atomic(target, theirs)
+                    continue
+                if not re.fullmatch(r"events/[^/]+/\d+\.jsonl", path):
+                    continue
+                replica, target = Path(path).parent.name, self.ws.dir / path
+                ours = target.read_bytes() if target.exists() else b""
+                if local.get(path) == sha:
+                    theirs = ours
+                else:
+                    theirs = complete_prefix(run_git(["cat-file", "blob", sha], env=self.env).stdout)
+                self.remote_counts[path] = theirs.count(b"\n")
+                if theirs == ours or ours.startswith(theirs):
+                    continue
+                if theirs.startswith(ours):
+                    pulled += theirs.count(b"\n") - ours.count(b"\n")
+                    write_atomic(target, theirs)
+                elif replica == own:
+                    raise BpError("JOURNAL_FORK", "this machine's journal differs from the published one: the same "
+                                  "machine identity is being used from two places. Give one of them a new identity.")
+                else:
+                    target.with_name(f"{target.name}.fork-{int(time.time())}").write_bytes(ours)
+                    write_atomic(target, theirs)
+                    self.forks.append(path)
+        self.chain_breaks = replay(load_journal(self.ws)).chain_breaks
+        if own and own in self.chain_breaks:
+            raise BpError("JOURNAL_FORK", "this machine's journal no longer forms one chain: the same machine "
+                          "identity has written from two places. Give one of them a new identity.")
+        return pulled
+
+    def unpublished(self) -> int:
+        count = sum(p.read_bytes().count(b"\n") - self.remote_counts.get(str(p.relative_to(self.ws.dir)), 0)
+                    for p in segment_files(self.ws))
+        return count + sum(1 for p in claim_files(self.ws) if str(p.relative_to(self.ws.dir)) not in self.remote_counts)
+
+    def tree(self, pending: list[dict] = ()) -> str:
+        for path in segment_files(self.ws):
+            repair_tail(path)  # an interrupted write is never published
+        blobs = self.local_blobs()
+        if pending:  # the attempt rides along at the place it will live if accepted
+            blobs[str(attempt_path(self.ws, pending).relative_to(self.ws.dir))] = self.git(
+                ["hash-object", "-w", "--stdin"], data=encode_events(pending))
+        folders: dict[str, dict[str, list[str]]] = {}
+        for path, sha in sorted(blobs.items()):
+            parts = path.split("/")
+            folders.setdefault(parts[1], {}).setdefault(parts[2] if len(parts) == 4 else "", []).append(
+                f"100644 blob {sha}\t{parts[-1]}\n")
+        rows = []
+        for replica, groups in sorted(folders.items()):
+            entries = list(groups.get("", []))
+            if "claims" in groups:
+                entries.append(f"040000 tree {self.git(['mktree'], data=''.join(groups['claims']).encode())}\tclaims\n")
+            rows.append(f"040000 tree {self.git(['mktree'], data=''.join(entries).encode())}\t{replica}\n")
+        events = self.git(["mktree"], data="".join(rows).encode())
+        manifest = json.dumps({"format": FORMAT, "workspace": self.ws.id}, sort_keys=True).encode() + b"\n"
+        manifest_sha = self.git(["hash-object", "-w", "--stdin"], data=manifest)
+        return self.git(["mktree"], data=f"040000 tree {events}\tevents\n100644 blob {manifest_sha}\tmanifest.json\n".encode())
+
+    def publish(self, tip: str | None, note: str = "sync", pending: list[dict] = (), fence: bool = False) -> str:
+        """Conditional update: the new commit's parent is the head we fetched, and the push is a
+        plain fast-forward, so the remote refuses it if anyone else got there first.
+
+        Returns "ok", "rejected" (the remote definitely did not apply it) or "uncertain" (the
+        outcome is unknown: the update may still be applied). With `fence`, a commit is pushed
+        even when nothing changed, so that any earlier in-flight update on the same head dies.
+        """
+        tree = self.tree(pending)
+        if tip and not fence and self.git(["rev-parse", f"{tip}^{{tree}}"]) == tree:
+            self.last_commit = tip
+            return "ok"
+        commit = self.git(["commit-tree", tree, *(["-p", tip] if tip else []), "-m", f"bead {note} {uuid.uuid4().hex[:12]}"])
+        try:
+            push = run_git(["push", "--quiet", self.url, f"{commit}:{self.ref}"], env=self.env, check=False,
+                           timeout=NET_TIMEOUT)
+        except BpError:
+            return "uncertain"
+        if push.returncode == 0:
+            self.git(["update-ref", REMOTE_REF, commit])
+            self.last_commit = commit
+            return "ok"
+        if re.search(rb"\[rejected\]|\[remote rejected\]|non-fast-forward|fetch first|stale info|cannot lock ref|"
+                     rb"failed to update ref", push.stderr):
+            return "rejected"  # the remote definitely did not apply this update
+        return "uncertain"
+
+
+def stamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def drop_pending(ws: Workspace, attempts: list[list[dict]]):
+    for events in attempts:
+        if events:
+            (ws.dir / "pending" / f"{events[0]['id']}.json").unlink(missing_ok=True)
+            (ws.dir / "pending" / f"{events[0]['id']}.command").unlink(missing_ok=True)
+
+
+def command_signature(args, actor: dict) -> str:
+    """What a command asked for, independent of how it was typed: the same command run again by
+    the same actor after a crash is the same request, not a second one."""
+    asked = {k: v for k, v in vars(args).items() if k not in ("func", "json") and not callable(v)}
+    return json.dumps({"actor": actor, "args": asked}, sort_keys=True, default=str)
+
+
+def settle_commands(ws: Workspace, replica: str, actor: dict, signature: str) -> bool:
+    """Receipts of this actor's earlier attempts. One whose attempt the remote accepted and that asked
+    for exactly this command means the command is already done. Any other settled receipt of this
+    actor is stale (the actor has moved on) and goes; a receipt for an attempt still pending stays."""
+    done = False
+    for receipt in sorted((ws.dir / "pending").glob("*.command")) if (ws.dir / "pending").is_dir() else []:
+        try:
+            recorded = json.loads(receipt.read_text())
+        except (OSError, ValueError):
+            receipt.unlink(missing_ok=True)
+            continue
+        if recorded.get("actor") != actor:
+            continue
+        if receipt.with_suffix(".json").exists():
+            continue  # still pending: nothing to conclude yet
+        if (ws.events_dir / replica / "claims" / receipt.with_suffix(".json").name).exists() \
+                and receipt.read_text() == signature:
+            done = True
+        receipt.unlink(missing_ok=True)
+    return done
+
+
+def settle_pending(ws: Workspace, link: Link, tip: str | None) -> str:
+    """Our ownership attempts whose outcome is unknown, after a merge against `tip` has confirmed
+    any that the remote holds. Whatever is still pending was absent at `tip`; a fence commit on
+    that head makes sure an attempt still in flight can no longer land, and only then are they
+    dropped. Returns "clear", "moved" (the head changed; fetch again) or "unresolved". Lock held."""
+    pending = load_pending(ws)
+    if not pending:
+        return "clear"
+    outcome = link.publish(tip, note="fence", fence=True)
+    if outcome == "ok":
+        drop_pending(ws, pending)
+        return "clear"
+    return "moved" if outcome == "rejected" else "unresolved"
+
+
+def synchronise(ws: Workspace, remote: str, actor: dict) -> dict:
+    link = Link(ws, remote)
+    known_renames = len(view(ws).renames)
+    pulled = pushed = 0
+    for attempt in range(1, 13):
+        tip = link.fetch()
+        with locked(ws):
+            if pending_files(ws):
+                tip = link.fetch()  # settling our own attempts needs the current head, not a snapshot
+            pulled += link.merge(tip)
+            if not tip and not segment_files(ws):
+                raise BpError("NOT_INITIALIZED", "no tracker here and none published on the remote: run `bead init`")
+            pushed = link.unpublished()
+            outcome = link.publish(tip, fence=bool(pending_files(ws)))
+            if outcome == "ok":
+                drop_pending(ws, load_pending(ws))  # absent at a head we just advanced: they can never land
+                break
+            if outcome == "uncertain":
+                raise BpError("REMOTE_UNREACHABLE", "the push got no answer; nothing was lost, run sync again")
+        time.sleep(random.uniform(0.1, 0.4) * attempt)  # another machine pushed first: merge again
+    else:
+        raise BpError("SYNC_CONFLICT", "the remote journal kept moving; run sync again")
+    st = view(ws)
+    ws.save_meta(name=ws.name, remote=remote, last_sync=stamp())
+    return {"pulled": pulled, "pushed": pushed, "attempts": attempt, "tip": link.last_commit, "remote": remote,
+            "issues": len(st.issues), "renamed": st.renames[known_renames:], "forked_journals": link.forks,
+            "confirmed": link.confirmed, "waiting_events": len(st.pending), "integrity": len(st.integrity)}
+
+
+def coordinated(ws: Workspace, actor: dict, args, build):
+    """Run an ownership change against the head as it is now and publish it as one conditional update.
+
+    The attempt (ownership events and any edits made with them) is written as pending files first,
+    pushed along with our journal, and counts for nothing until the remote has it. A push the remote definitely refused is dropped. A push whose
+    outcome is unknown stays pending; the next round (or the next `sync`) either finds it on the
+    remote, which confirms it, or fences it off with a commit on the same head and drops it.
+    Nothing sleeps while the store lock is held.
+    """
+    remote = ws.remote(getattr(args, "remote", None))
+    if getattr(args, "offline", False) or not remote:
+        with writing(ws, actor) as tx:
+            return build(tx, "offline" if remote else "local")
+    link = Link(ws, remote)
+    replica, signature = replica_id(), command_signature(args, actor)
+    receipt = None  # (events, result) of a push of ours that got no answer; it may still have landed
+    for attempt in range(1, 13):
+        with locked(ws):
+            tip = link.fetch()  # under the lock: ownership is decided against the head as it is now
+            link.merge(tip)
+            if receipt and attempt_path(ws, receipt[0]).exists():  # it had: the work is done, not to be redone
+                drop_pending(ws, [receipt[0]])
+                ws.save_meta(remote=remote, last_sync=stamp())
+                return receipt[1]
+            if settle_commands(ws, replica, actor, signature):  # an earlier run of this command was accepted
+                ws.save_meta(remote=remote, last_sync=stamp())
+                return "online"
+            settled = settle_pending(ws, link, tip)
+            if settled == "unresolved":
+                raise BpError("UNRESOLVED", "an ownership attempt is unsettled and the remote is not answering; "
+                              "it counts for nothing until `bead sync` can settle it")
+            if settled == "clear":
+                receipt = None  # whatever this command had in flight is settled one way or the other
+                tx = Tx(ws, actor)
+                result = build(tx, "online")
+                if tx.pending:
+                    append_events(ws, tx.replica, tx.pending)
+                if not tx.ownership:
+                    return result
+                folder = ws.dir / "pending"
+                folder.mkdir(exist_ok=True)
+                write_atomic(folder / f"{tx.ownership[0]['id']}.command", signature.encode())  # the receipt first
+                write_attempt_file(folder / f"{tx.ownership[0]['id']}.json", tx.ownership)
+                if os.environ.get("BEAD_TEST_CRASH_BEFORE_PUSH"):
+                    os._exit(98)
+                try:
+                    outcome = link.publish(tip, note="claim", pending=tx.ownership)
+                except BpError as error:
+                    if error.code != "REMOTE_UNREACHABLE":
+                        raise
+                    outcome = "uncertain"
+                if outcome == "ok":
+                    if os.environ.get("BEAD_TEST_CRASH_AFTER_PUSH"):
+                        os._exit(99)  # test hook: the remote accepted, the acknowledgement was lost
+                    confirm_ownership(ws, tx.ownership)
+                    drop_pending(ws, [tx.ownership])
+                    ws.save_meta(remote=remote, last_sync=stamp())
+                    return result
+                if outcome == "rejected":
+                    drop_pending(ws, [tx.ownership])  # someone else got there first; decide again against the new head
+                else:  # uncertain: the attempt stays pending; keep its result in case the push did land
+                    receipt = (tx.ownership, result)
+        time.sleep(random.uniform(0.1, 0.4) * attempt)
+    raise BpError("SYNC_CONFLICT", "the remote journal kept moving; try again")
+
+
+def publish_soon(ws: Workspace, args, actor: dict) -> str | None:
+    """Ownership ended locally: tell the other machines now rather than at the next routine sync."""
+    remote = ws.remote(getattr(args, "remote", None))
+    if not remote or getattr(args, "offline", False):
+        return None
+    try:
+        synchronise(ws, remote, actor)
+        return None
+    except BpError as error:
+        return f"recorded locally, not yet published ({error.code})"
+
+
+# ----------------------------------------------------------------- commands
+
+def cmd_init(args, ws, actor):
+    if args.tracked:
+        top = git_text(["rev-parse", "--show-toplevel"])
+        config = {"workspace": ws.config.get("workspace") or uuid7()}
+        if args.remote:
+            config["remote"] = args.remote
+        Path(top, ".beadroll.json").write_text(json.dumps(config, indent=1) + "\n")
+        ws = find_workspace()
+    with writing(ws, actor) as tx:
+        if tx.state.prefix is None:
+            prefix = args.prefix or re.sub(r"[^a-z0-9]+", "-", (ws.name or "bead").lower()).strip("-") or "bead"
+            tx.emit("init", data={"prefix": prefix, "name": ws.name or prefix})
+        imported = import_records(tx, args.import_path) if args.import_path else 0
+        st = tx.state
+    ws.save_meta(name=ws.name, remote=None if args.tracked else args.remote)
+    return ({"workspace": ws.id, "prefix": st.prefix, "path": str(ws.dir), "imported": imported,
+             "tracked_config": bool(ws.config)},
+            [f"Tracker {st.prefix!r} at {ws.dir}" + (f" ({imported} issues imported)" if imported else "")]
+            + (["Wrote .beadroll.json: commit it so every checkout and machine uses this workspace"] if args.tracked else []))
+
+
+def import_records(tx: Tx, path: str) -> int:
+    """Load a Beads JSONL export, keeping ids, timestamps, relationships and unknown fields."""
+    records = [json.loads(row) for row in Path(path).read_text().splitlines() if row.strip()]
+    known = dict(tx.state.by_key)
+    fresh = [rec for rec in records if rec["id"] not in known]
+    all_ids = set(known) | {rec["id"] for rec in fresh}
+    created = {}
+    for rec in fresh:
+        extra = {k: v for k, v in rec.items()
+                 if k not in IMPORT_FIELDS and k not in ("id", "labels", "dependencies", "comments", "source_repo_path")}
+        dangling = [d for d in rec.get("dependencies") or []
+                    if isinstance(d, dict) and isinstance(d.get("depends_on_id"), str) and d["depends_on_id"] not in all_ids]
+        comments = [{"legacy_id": c.get("id"), "author": c.get("author"), "text": c.get("text", ""),
+                     "created_at": c.get("created_at")} for c in rec.get("comments") or []]
+        data = {"key": rec["id"], "fields": {k: rec[k] for k in EXPORT_FIELDS if k in rec},
+                "labels": rec.get("labels") or [], "comments": comments, "extra": extra, "imported": True,
+                **({"dangling": dangling} if dangling else {})}
+        created[rec["id"]] = tx.emit("create", data=data)["id"]
+    uid_of = {**known, **created}
+    for rec in fresh:
+        for dep in rec.get("dependencies") or []:
+            if dep["depends_on_id"] in uid_of:
+                meta = {k: dep[k] for k in ("created_at", "created_by", "metadata", "thread_id") if k in dep}
+                tx.emit("dep_add", created[rec["id"]],
+                        {"to": uid_of[dep["depends_on_id"]], "type": dep.get("type") or "blocks",
+                         "meta": meta, "imported": True})
+    return len(fresh)
+
+
+def cmd_import(args, ws, actor):
+    with writing(ws, actor) as tx:
+        need_tracker(tx.state)
+        count = import_records(tx, args.path)
+    return {"imported": count}, [f"Imported {count} issues"]
+
+
+def cmd_export(args, ws, actor):
+    st = view(ws)
+    text = "".join(json.dumps(rec, ensure_ascii=False, separators=(",", ":")) + "\n" for rec in export_records(st))
+    if args.output:
+        write_atomic(Path(args.output), text.encode())
+        return {"exported": len(st.issues), "path": args.output}, [f"Exported {len(st.issues)} issues to {args.output}"]
+    sys.stdout.write(text)
+    return None, None
+
+
+def cmd_create(args, ws, actor):
+    title = args.title or args.title_pos
+    if not title:
+        raise BpError("VALIDATION", "a title is required")
+    fields = {**field_args(args), "title": title}
+    if fields.get("status") == "in_progress":
+        raise BpError("VALIDATION", "create the issue, then claim it: in_progress is reached only through a claim")
+    with writing(ws, actor) as tx:
+        st = tx.state
+        need_tracker(st)
+        parent = st.resolve(args.parent) if args.parent else None
+        deps = []
+        for spec in split_list(args.deps):
+            kind, _, target = spec.rpartition(":")
+            deps.append((st.resolve(target)["uid"], kind or "blocks"))
+        for target, kind in deps:
+            if parent and kind in BLOCKING and (target == parent["uid"] or reaches(st, target, parent["uid"])):
+                raise BpError("CYCLE", f"depending on {st.key(target)} would make {parent['id']} wait for itself")
+        uid = uuid7()
+        data = {"key": mint_key(st, uid, parent), "fields": fields, "labels": split_list(args.labels)}
+        tx.emit("create", data=data, event_id=uid)
+        if parent:
+            tx.emit("dep_add", uid, {"to": parent["uid"], "type": "parent-child"})
+        for target, kind in deps:
+            tx.emit("dep_add", uid, {"to": target, "type": kind})
+        issue = tx.state.issues[uid]
+        result = detail(tx.state, issue)
+    if args.silent:
+        print(issue["id"])
+        return None, None
+    return result, [f"✓ Created {issue['id']}: {issue['title']}"]
+
+
+def claim_builder(args, actor, keys, takeover=False):
+    """The claim step of a coordinated transaction: online by default, settled by who updates
+    the coordination ref first."""
+    if takeover and getattr(args, "offline", False):
+        raise BpError("VALIDATION", "a takeover has to be coordinated online")
+    if takeover and not args.reason:
+        raise BpError("VALIDATION", "a takeover needs --reason")
+
+    def build(tx, mode):
+        st = tx.state
+        need_tracker(st)
+        me = actor_label(actor, tx.replica)
+        for key in keys:
+            issue = st.resolve(key)
+            held = issue["claim"]
+            if is_done(st, issue):
+                raise BpError("VALIDATION", f"{issue['id']} is {issue['status']}")
+            if "status" in conflicts(st, issue):
+                raise BpError("STATUS_CONFLICT", f"{issue['id']} has a disputed status; settle it before claiming")
+            if held and held["owner"] == me:
+                continue
+            if held and not takeover:
+                raise BpError("ALREADY_CLAIMED", f"{issue['id']} is claimed by {held['owner']} "
+                              f"(generation {held['generation']}, since {held['since']})")
+            data = {"mode": mode, "generation": issue["claim_generation"] + 1}
+            if takeover and held:
+                data.update(takeover=held["id"], reason=args.reason)
+            tx.emit("claim", issue["uid"], data)
+        return mode
+
+    return build
+
+
+def claim_issues(args, ws, actor, keys, takeover=False) -> str:
+    return coordinated(ws, actor, args, claim_builder(args, actor, keys, takeover))
+
+
+CLAIM_NOTE = {"online": "confirmed", "local": "local tracker, no remote",
+              "offline": "PROVISIONAL: not exclusive until claimed online"}
+
+
+def cmd_claim(args, ws, actor):
+    mode = claim_issues(args, ws, actor, args.ids)
+    st = view(ws)
+    result = [detail(st, st.resolve(key)) for key in args.ids]
+    return result, [f"Claimed {r['id']}: {r['title']} ({CLAIM_NOTE[mode]})" for r in result]
+
+
+def cmd_takeover(args, ws, actor):
+    claim_issues(args, ws, actor, args.ids, takeover=True)
+    st = view(ws)
+    result = [detail(st, st.resolve(key)) for key in args.ids]
+    return result, [f"Took over {r['id']} (generation {r['claim']['generation']}): {args.reason}" for r in result]
+
+
+def cmd_release(args, ws, actor):
+    def build(tx, mode):
+        st = tx.state
+        need_tracker(st)
+        me = actor_label(actor, tx.replica)
+        for key in args.ids:
+            issue = st.resolve(key)
+            held = issue["claim"]
+            if held and held["owner"] == me:
+                tx.emit("release", issue["uid"], {"claim": held["id"], **({"reason": args.reason} if args.reason else {})})
+            elif any(p["owner"] == me for p in issue["provisional_claims"]):
+                tx.emit("release", issue["uid"], {})
+            else:
+                raise BpError("NOT_OWNER", f"{issue['id']} is not claimed by {me}"
+                              + (f"; it is held by {held['owner']}" if held else ""))
+        return mode
+
+    coordinated(ws, actor, args, build)
+    st = view(ws)
+    result = [brief(st, st.resolve(key)) for key in args.ids]
+    return result, [f"Released {r['id']}: {r['title']}" for r in result]
+
+
+def cmd_claims(args, ws, actor):
+    st = view(ws)
+    need_tracker(st)
+    aliases, now, rows = machine_aliases(), time.time(), []
+    for issue in sorted(st.issues.values(), key=lambda i: i["id"]):
+        held = issue["claim"]
+        if held:
+            last = st.last_by_thread.get((held["machine"], held["thread"])) or held["id"]
+            rows.append({"id": issue["id"], "title": issue["title"], "owner": held["owner"],
+                         "machine": aliases.get(held["machine"], held["machine"]), "agent": held["agent"],
+                         "thread": held["thread"], "generation": held["generation"], "since": held["since"],
+                         "branch": (held.get("where") or {}).get("branch"),
+                         "state": "confirmed", "last_activity": event_time(last),
+                         "idle_minutes": int((now - event_millis(last) / 1000) / 60)})
+        for attempt in issue["provisional_claims"]:
+            rows.append({"id": issue["id"], "title": issue["title"], "owner": attempt["owner"],
+                         "since": attempt["since"], "state": "provisional"})
+        for pending in issue["unconfirmed"]:
+            rows.append({"id": issue["id"], "title": issue["title"], "owner": pending["by"],
+                         "since": pending["at"], "state": f"unconfirmed {pending['op']}"})
+    synced = ws.meta().get("last_sync")
+    lines = [f"{r['id']}  {r['state']:<11} {r['owner']}  since {r['since'][:16]}"
+             + (f"  gen {r['generation']}  last activity {r['last_activity'][:16]}" if "generation" in r else "")
+             + (f"  on {r['branch']}" if r.get("branch") else "")
+             for r in rows] or ["Nothing is claimed"]
+    lines.append(f"(as of this machine's last sync: {synced or 'never'})")
+    return {"claims": rows, "last_sync": synced}, lines
+
+
+def cmd_update(args, ws, actor):
+    fields = field_args(args)
+    status = fields.pop("status", None)
+    if status == "tombstone":
+        raise BpError("VALIDATION", "use `bead delete` to tombstone an issue; it ends the claim as well")
+    wants_claim = args.claim or status == "in_progress"  # in_progress is reached only through a claim
+    if status == "in_progress":
+        status = None
+
+    def edits(tx):
+        """Validate every target first, then emit; nothing is written if any part is wrong."""
+        st = tx.state
+        need_tracker(st)
+        me = actor_label(actor, tx.replica)
+        targets = [st.resolve(key) for key in args.ids]
+        new_parent = st.resolve(args.parent)["uid"] if args.parent else None
+        for issue in targets:
+            held = issue["claim"]
+            if new_parent and (new_parent == issue["uid"] or reaches(st, issue["uid"], new_parent)):
+                raise BpError("CYCLE", f"{issue['id']} cannot become a child of {st.key(new_parent)}: it would wait for itself")
+            if status == "closed" and held:
+                ended.append(issue["id"])
+            if status and held and held["owner"] != me and not args.force:
+                raise BpError("CLAIMED_BY_OTHER", f"{issue['id']} is claimed by {held['owner']}: "
+                              "use `bead takeover` first, or --force")
+            if status == "open" and held and held["owner"] == me:
+                raise BpError("VALIDATION", f"{issue['id']}: use `bead release` to give up your claim")
+        for issue in targets:
+            uid, held = issue["uid"], issue["claim"]
+            if fields:
+                tx.emit("set", uid, {"fields": fields})
+            if status == "closed":  # the same transition `bead close` makes, ending exactly our claim
+                tx.emit("close", uid, {"claim": held["id"]} if held and held["owner"] == me else {})
+            elif status == "open" and issue["status"] in DONE:
+                tx.emit("reopen", uid, {})
+            elif status:
+                tx.emit("set", uid, {"fields": {"status": status}})
+            if args.add_label:
+                tx.emit("label_add", uid, {"labels": split_list(args.add_label)})
+            if args.remove_label:
+                tx.emit("label_remove", uid, {"labels": split_list(args.remove_label)})
+            if args.set_labels is not None:
+                tx.emit("label_set", uid, {"labels": split_list([args.set_labels])})
+            if new_parent:
+                for (to, kind) in list(issue["deps"]):
+                    if kind == "parent-child":
+                        tx.emit("dep_remove", uid, {"to": to, "type": kind})
+                tx.emit("dep_add", uid, {"to": new_parent, "type": "parent-child"})
+
+    notes, ended = [], []
+    if wants_claim:
+        claim = claim_builder(args, actor, args.ids)
+
+        def build(tx, mode):  # the claim and its edits are one attempt: both land, or neither
+            mode = claim(tx, mode)
+            tx.conditional = True
+            edits(tx)
+            return mode
+
+        if coordinated(ws, actor, args, build) == "offline":
+            notes.append("claim is PROVISIONAL: not exclusive until claimed online")
+    else:
+        with writing(ws, actor) as tx:
+            edits(tx)
+    if ended:  # the same promptness `bead close` gives
+        warning = publish_soon(ws, args, actor)
+        if warning:
+            notes.append(warning)
+    st = view(ws)
+    result = [detail(st, st.resolve(key)) for key in args.ids]
+    return result, [f"Updated {r['id']}: {r['title']}" for r in result] + notes
+
+
+def transition(op: str, verb: str):
+    def command(args, ws, actor):
+        ended = False
+        with writing(ws, actor) as tx:
+            need_tracker(tx.state)
+            me = actor_label(actor, tx.replica)
+            for key in args.ids:
+                issue = tx.state.resolve(key)
+                held = issue["claim"]
+                if held and held["owner"] != me and not args.force:
+                    raise BpError("CLAIMED_BY_OTHER", f"{issue['id']} is claimed by {held['owner']}: "
+                                  "use `bead takeover` first, or --force")
+                data = {"reason": args.reason} if args.reason else {}
+                if op == "close" and held and held["owner"] == me:
+                    data["claim"] = held["id"]  # ends exactly this claim, never a successor's
+                ended = ended or bool(held)
+                tx.emit(op, issue["uid"], data)
+            st = tx.state
+            result = [brief(st, st.resolve(key)) for key in args.ids]
+        warning = publish_soon(ws, args, actor) if ended else None
+        return result, [f"✓ {verb} {r['id']}: {r['title']}" for r in result] + ([warning] if warning else [])
+    return command
+
+
+def cmd_show(args, ws, actor):
+    st = view(ws)
+    need_tracker(st)
+    result = [detail(st, st.resolve(key), check_merge=True) for key in args.ids]
+    lines = []
+    for item in result:
+        lines.append(f"{ICON.get(item['status'], '?')} {item['id']} · {item['title']}   [P{item['priority']} · {item['status'].upper()}]")
+        if item.get("where", {}).get("branch"):
+            lines.append(f"  last worked on branch {item['where']['branch']} ({item['where']['commit'][:12]})")
+        if item.get("closed_on"):
+            merged = item.get("merged")
+            lines.append(f"  closed on {item['closed_on'].get('branch') or 'detached HEAD'} at {(item['closed_on'].get('commit') or '')[:12]}"
+                         + (" · merged into the default branch" if merged is True else
+                            " · NOT yet on the default branch" if merged is False else ""))
+        lines.append(f"  type {item['issue_type']} · created {item['created_at'][:10]} by {item['created_by']}"
+                     + (f" · assignee {item['assignee']}" if item.get("assignee") else ""))
+        if item.get("claim"):
+            held = item["claim"]
+            lines.append(f"  claimed by {held['owner']} · generation {held['generation']} · since {held['since'][:16]}"
+                         + (f" · on branch {held['where']['branch']}" if held.get("where", {}).get("branch") else ""))
+        for pending in item.get("unconfirmed", []):
+            lines.append(f"  {pending['op']} by {pending['by']} awaiting the remote's acknowledgement")
+        for attempt in item.get("provisional_claims", []):
+            lines.append(f"  provisional claim by {attempt['owner']} since {attempt['since'][:16]} (not exclusive)")
+        for name in ("description", "acceptance_criteria", "notes", "design", "close_reason"):
+            if item.get(name):
+                lines.append(f"  {name}: {item[name]}")
+        if item.get("labels"):
+            lines.append("  labels: " + ", ".join(item["labels"]))
+        for dep in item["dependencies"]:
+            lines.append(f"  depends on ({dep['dependency_type']}): {dep['id']} [{dep['status']}] {dep['title']}")
+        for dep in item["dependents"]:
+            lines.append(f"  needed by ({dep['dependency_type']}): {dep['id']} [{dep['status']}] {dep['title']}")
+        for comment in item["comments"]:
+            lines.append(f"  [{comment['created_at'][:16]}] {comment['author']}: {comment['text']}")
+        for field, options in item.get("conflicts", {}).items():
+            lines.append(f"  ⚠ {field} was changed on two machines at once: "
+                         + " | ".join(f"{o['value']!r} by {o['by']}" for o in options))
+        for lost in item.get("lost_claims", []):
+            lines.append(f"  ! claim by {lost['by']} lost to {lost['held_by']}")
+        for old in item.get("stale", []):
+            lines.append(f"  ! ignored {old['op']} by {old['by']}: it named a claim that is no longer current")
+    return result, lines
+
+
+def select(st: State, args) -> list[dict]:
+    statuses = set(split_list(getattr(args, "status", None)))
+    want_all = getattr(args, "all", False) or "all" in statuses
+    items = []
+    for issue in st.issues.values():
+        if statuses and not want_all:
+            if issue["status"] not in statuses:
+                continue
+        elif not want_all:
+            if issue["status"] in DONE or (issue["status"] == "deferred" and not getattr(args, "deferred", False)):
+                continue
+        if getattr(args, "type", None) and issue["issue_type"] not in split_list(args.type):
+            continue
+        if getattr(args, "label", None) and not set(split_list(args.label)) <= issue["labels"]:
+            continue
+        if getattr(args, "priority", None) is not None and issue["priority"] != parse_priority(args.priority):
+            continue
+        if getattr(args, "assignee", None) and issue.get("assignee") != args.assignee:
+            continue
+        if getattr(args, "title_contains", None) and args.title_contains.lower() not in issue["title"].lower():
+            continue
+        if getattr(args, "id", None) and issue["id"] not in split_list(args.id):
+            continue
+        if getattr(args, "parent", None):
+            parent = parent_of(st, issue)
+            if not parent or parent["id"] != st.resolve(args.parent)["id"]:
+                continue
+        items.append(issue)
+    return sorted(items, key=lambda i: (i["priority"], i["created_at"], i["id"]))
+
+
+def cmd_list(args, ws, actor):
+    st = view(ws)
+    need_tracker(st)
+    items = select(st, args)
+    shown = items if args.limit == 0 else items[:args.limit]
+    return ({"issues": [brief(st, i) for i in shown], "total": len(items), "limit": args.limit, "offset": 0,
+             "has_more": len(shown) < len(items)}, [line(st, i) for i in shown] or ["No issues"])
+
+
+def cmd_ready(args, ws, actor):
+    st = view(ws)
+    need_tracker(st)
+    args.parent = args.parent or args.epic
+    args.status = ["open"]
+    items = [i for i in select(st, args) if not i["claim"] and not is_blocked(st, i) and "status" not in conflicts(st, i)]
+    if args.limit:
+        items = items[:args.limit]
+    return [brief(st, i) for i in items], [line(st, i) for i in items] or ["Nothing is ready"]
+
+
+def cmd_blocked(args, ws, actor):
+    st = view(ws)
+    need_tracker(st)
+    items = [i for i in st.issues.values() if i["status"] not in DONE and is_blocked(st, i)]
+    result = [{**brief(st, i), "blocked_by": [b["id"] for b in open_blockers(st, i)]}
+              for i in sorted(items, key=lambda i: i["id"])]
+    return result, [f"{line(st, st.resolve(r['id']))}  ⟵ {', '.join(r['blocked_by'])}" for r in result] or ["Nothing is blocked"]
+
+
+def cmd_search(args, ws, actor):
+    st = view(ws)
+    need_tracker(st)
+    needle = args.query.lower()
+    hits = []
+    for issue in st.issues.values():
+        if issue["status"] in DONE and not args.all:
+            continue
+        haystack = [issue["id"], issue["title"]] + [str(issue.get(k) or "") for k in
+                    ("description", "acceptance_criteria", "notes", "design", "external_ref")]
+        haystack += [c["text"] for c in issue["comments"]]
+        if any(needle in text.lower() for text in haystack):
+            hits.append(issue)
+    hits.sort(key=lambda i: (i["priority"], i["id"]))
+    return [brief(st, i) for i in hits], [line(st, i) for i in hits] or ["No matches"]
+
+
+def cmd_dep(args, ws, actor):
+    words = list(args.words)
+    action = words.pop(0) if words and words[0] in ("add", "remove", "rm", "list", "tree", "cycles") else "list"
+    if action in ("add", "remove", "rm"):
+        if len(words) != 2:
+            raise BpError("VALIDATION", f"usage: bead dep {action} ISSUE DEPENDS_ON")
+        with writing(ws, actor) as tx:
+            st = tx.state
+            need_tracker(st)
+            issue, target = st.resolve(words[0]), st.resolve(words[1])
+            if action == "add":
+                kind = args.type or "blocks"
+                loop = (reaches(st, target["uid"], issue["uid"]) if kind in BLOCKING
+                        else reaches(st, issue["uid"], target["uid"]) if kind == "parent-child" else False)
+                if issue["uid"] == target["uid"] or loop:
+                    raise BpError("CYCLE", f"{issue['id']} -> {target['id']} would create a dependency cycle")
+                tx.emit("dep_add", issue["uid"], {"to": target["uid"], "type": kind})
+            else:
+                tx.emit("dep_remove", issue["uid"], {"to": target["uid"], "type": args.type})
+        done = "now depends on" if action == "add" else "no longer depends on"
+        return ({"issue_id": issue["id"], "depends_on_id": target["id"], "action": action},
+                [f"{issue['id']} {done} {target['id']}"])
+    st = view(ws)
+    need_tracker(st)
+    if action == "cycles":
+        cycles = find_cycles(st, args.blocking_only)
+        return {"cycles": cycles, "count": len(cycles)}, [" -> ".join(c + c[:1]) for c in cycles] or ["No cycles"]
+    if not words:
+        raise BpError("VALIDATION", f"usage: bead dep {action} ISSUE")
+    issue = st.resolve(words[0])
+    if action == "tree":
+        lines, seen, work = [], set(), [(issue, 0)]
+        while work:
+            node, depth = work.pop()
+            lines.append("  " * depth + line(st, node))
+            if node["uid"] in seen:
+                continue
+            seen.add(node["uid"])
+            children = [st.issues[to] for (to, _kind) in sorted(node["deps"]) if to in st.issues]
+            work.extend((child, depth + 1) for child in reversed(children))
+        return {"tree": lines}, lines
+    info = detail(st, issue)
+    result = {"dependencies": info["dependencies"], "dependents": info["dependents"]}
+    return result, ([f"depends on {d['id']} ({d['dependency_type']})" for d in info["dependencies"]]
+                    + [f"needed by {d['id']} ({d['dependency_type']})" for d in info["dependents"]]) or ["No dependencies"]
+
+
+def cmd_comments(args, ws, actor):
+    words = list(args.words)
+    action = words.pop(0) if words and words[0] in ("add", "list") else "list"
+    if not words:
+        raise BpError("VALIDATION", "usage: bead comments [add] ISSUE [TEXT]")
+    if action == "add":
+        text = args.message or (Path(args.file).read_text() if args.file else " ".join(words[1:]))
+        if not text.strip():
+            raise BpError("VALIDATION", "comment text is required")
+        with writing(ws, actor) as tx:
+            need_tracker(tx.state)
+            issue = tx.state.resolve(words[0])
+            event = tx.emit("comment", issue["uid"], {"text": text, **({"author": args.author} if args.author else {})})
+        return {"id": event["id"], "issue_id": issue["id"], "text": text}, [f"Comment added to {issue['id']}"]
+    st = view(ws)
+    need_tracker(st)
+    comments = detail(st, st.resolve(words[0]))["comments"]
+    return comments, [f"[{c['created_at'][:16]}] {c['author']}: {c['text']}" for c in comments] or ["No comments"]
+
+
+def cmd_lint(args, ws, actor):
+    st = view(ws)
+    need_tracker(st)
+    missing = [i for i in st.issues.values() if i["status"] not in DONE
+               and i["issue_type"] in ("task", "bug", "feature") and not i.get("acceptance_criteria")]
+    result = [{"id": i["id"], "title": i["title"], "problem": "missing acceptance criteria"}
+              for i in sorted(missing, key=lambda i: i["id"])]
+    return {"findings": result, "count": len(result)}, [f"{r['id']}: {r['problem']}" for r in result] or ["Clean"]
+
+
+def cmd_log(args, ws, actor):
+    journal = load_journal(ws)
+    st = replay(journal)
+    events, _ = causal_order(journal)
+    aliases = machine_aliases()
+    wanted = st.resolve(args.key)["uid"] if args.key else None
+    rows = [e for e in events if e["op"] != "init" and (wanted is None or e.get("issue") == wanted)]
+    rows = rows[-args.limit:] if args.limit else rows
+    result = [{"at": event_time(e["id"]), "machine": aliases.get(e["replica"], e["replica"]),
+               "agent": (e.get("actor") or {}).get("agent"), "thread": (e.get("actor") or {}).get("thread"),
+               "op": e["op"], "issue": st.key(e.get("issue")), "event": e["id"],
+               "branch": (e.get("where") or {}).get("branch")} for e in rows]
+    return result, [f"{r['at'][:19]}  {r['machine']:<10} {r['agent'] or '?':<6} {(r['thread'] or '-')[:8]:<8}  "
+                    f"{r['op']:<12} {r['issue']}" + (f"  ({r['branch']})" if r.get("branch") else "") for r in result] or ["No events"]
+
+
+def cmd_info(args, ws, actor):
+    journal = load_journal(ws)
+    st = view(ws)
+    replica = replica_id(create=False)
+    source = ("BEAD_WORKSPACE" if os.environ.get("BEAD_WORKSPACE") else "tracked .beadroll.json" if ws.config.get("workspace")
+              else "origin url" if ws.origin else "local path")
+    result = {"workspace": ws.id, "workspace_source": source, "name": st.name or ws.name, "prefix": st.prefix,
+              "path": str(ws.dir), "remote": ws.remote(), "ref": ws.ref, "machine": replica,
+              "actor": actor, "actor_label": actor_label(actor, replica or "?"),
+              "issues": len(st.issues), "events": len(journal.events),
+              "events_by_machine": {rep: len(ids) for rep, ids in sorted(journal.order.items())},
+              "segments": len(segment_files(ws)), "frontier": journal.heads(),
+              "pending_ownership": [e["id"] for attempt in load_pending(ws) for e in attempt],
+              "waiting_events": len(st.pending), "integrity": st.integrity,
+              "renamed_keys": st.renames, "last_sync": ws.meta().get("last_sync")}
+    return result, [f"{k}: {v}" for k, v in result.items()]
+
+
+def cmd_machines(args, ws, actor):
+    if args.name:
+        ident, _, alias = args.name.partition("=")
+        path = home() / "aliases.json"
+        aliases = {}
+        with contextlib.suppress(OSError, ValueError):
+            aliases = json.loads(path.read_text())
+        aliases[ident] = alias
+        write_atomic(path, json.dumps(aliases, indent=1).encode())
+    journal, aliases = load_journal(ws), machine_aliases()
+    rows = [{"machine": replica, "alias": aliases.get(replica), "events": len(ids), "last_event": event_time(max(ids))}
+            for replica, ids in sorted(journal.order.items())]
+    return rows, [f"{r['machine']}  {r.get('alias') or '(unnamed)':<14} {r['events']:>6} events  last {r['last_event'][:19]}"
+                  for r in rows] or ["No machines yet"]
+
+
+def cmd_sync(args, ws, actor):
+    remote = ws.remote(args.remote)
+    if not remote:
+        raise BpError("NO_REMOTE", "no coordination remote known for this tracker: pass --remote")
+    result = synchronise(ws, remote, actor)
+    lines = [f"Synced with {remote}: pulled {result['pulled']}, pushed {result['pushed']} event(s)"]
+    lines += [f"  renamed {r['from']} -> {r['to']} (created on machine {r['replica']})" for r in result["renamed"]]
+    lines += [f"  ! {path} differed from the published copy; ours was kept beside it and the published copy used"
+              for path in result["forked_journals"]]
+    if result["integrity"]:
+        lines.append(f"  ! {result['integrity']} integrity problem(s); see `bead info`")
+    return result, lines
+
+
+# ---------------------------------------------------------------------- cli
+
+class Parser(argparse.ArgumentParser):
+    def error(self, message):
+        raise BpError("USAGE", message)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = Parser(prog="bead", description=__doc__.split("\n\n")[0])
+    sub = parser.add_subparsers(dest="command", required=True, parser_class=Parser)
+
+    def add(name, func, help_text):
+        cmd = sub.add_parser(name, help=help_text)
+        cmd.set_defaults(func=func)
+        return cmd
+
+    def coordination(cmd):
+        cmd.add_argument("--offline", action="store_true",
+                         help="do not contact the remote; a claim made this way is provisional")
+        cmd.add_argument("--remote", help="coordination remote (name or URL) for this call")
+
+    def content_flags(cmd):
+        cmd.add_argument("-d", "--description")
+        cmd.add_argument("--description-file", dest="description_file")
+        cmd.add_argument("--acceptance-criteria", "--acceptance", dest="acceptance_criteria")
+        cmd.add_argument("--notes")
+        cmd.add_argument("--design")
+        cmd.add_argument("-p", "--priority")
+        cmd.add_argument("-t", "--type")
+        cmd.add_argument("--status", "-s")
+        cmd.add_argument("--assignee")
+        cmd.add_argument("--estimate", type=int)
+        cmd.add_argument("--external-ref", dest="external_ref")
+        cmd.add_argument("--parent")
+
+    cmd = add("init", cmd_init, "create the tracker for this repository")
+    cmd.add_argument("--prefix")
+    cmd.add_argument("--import", dest="import_path", metavar="BEADS_JSONL")
+    cmd.add_argument("--tracked", action="store_true", help="write .beadroll.json with an explicit workspace id")
+    cmd.add_argument("--remote", help="coordination remote (name or URL) if it is not origin")
+    cmd = add("import", cmd_import, "import a Beads JSONL export")
+    cmd.add_argument("path")
+    cmd = add("export", cmd_export, "write Beads-compatible JSONL")
+    cmd.add_argument("-o", "--output")
+
+    cmd = add("create", cmd_create, "create an issue")
+    cmd.add_argument("title_pos", nargs="?", metavar="TITLE")
+    cmd.add_argument("--title")
+    content_flags(cmd)
+    cmd.add_argument("-l", "--labels", "--label", action="append")
+    cmd.add_argument("--deps", action="append", help="comma list of [type:]ISSUE")
+    cmd.add_argument("--silent", action="store_true", help="print only the new id")
+
+    cmd = add("update", cmd_update, "change fields, labels or parent; --claim or --status in_progress claims")
+    cmd.add_argument("ids", nargs="+")
+    cmd.add_argument("--title")
+    content_flags(cmd)
+    cmd.add_argument("--claim", action="store_true")
+    cmd.add_argument("--force", action="store_true", help="change the status of an issue someone else has claimed")
+    cmd.add_argument("--add-label", action="append")
+    cmd.add_argument("--remove-label", action="append")
+    cmd.add_argument("--set-labels")
+    coordination(cmd)
+
+    cmd = add("claim", cmd_claim, "take ownership; it lasts until release, close or takeover")
+    cmd.add_argument("ids", nargs="+")
+    coordination(cmd)
+    cmd = add("release", cmd_release, "give up your claim")
+    cmd.add_argument("ids", nargs="+")
+    cmd.add_argument("-r", "--reason")
+    coordination(cmd)
+    cmd = add("takeover", cmd_takeover, "replace the current owner after investigating; needs --reason")
+    cmd.add_argument("ids", nargs="+")
+    cmd.add_argument("-r", "--reason")
+    coordination(cmd)
+    add("claims", cmd_claims, "who holds what, and when each owner was last active")
+
+    for name, op, verb in (("close", "close", "Closed"), ("reopen", "reopen", "Reopened"), ("delete", "delete", "Deleted")):
+        cmd = add(name, transition(op, verb), f"{name} issues")
+        cmd.add_argument("ids", nargs="+")
+        cmd.add_argument("-r", "--reason")
+        cmd.add_argument("--force", action="store_true", help="act on an issue someone else has claimed")
+        coordination(cmd)
+
+    cmd = add("show", cmd_show, "full detail for one or more issues")
+    cmd.add_argument("ids", nargs="+")
+
+    def filters(cmd, limit):
+        cmd.add_argument("-t", "--type", action="append")
+        cmd.add_argument("-l", "--label", action="append")
+        cmd.add_argument("-p", "--priority")
+        cmd.add_argument("--assignee")
+        cmd.add_argument("--parent")
+        cmd.add_argument("--limit", type=int, default=limit)
+
+    cmd = add("list", cmd_list, "list issues (open ones by default)")
+    cmd.add_argument("-s", "--status", action="append")
+    cmd.add_argument("-a", "--all", action="store_true")
+    cmd.add_argument("--deferred", action="store_true")
+    cmd.add_argument("--title-contains")
+    cmd.add_argument("--id", action="append")
+    filters(cmd, 50)
+    cmd = add("ready", cmd_ready, "open issues with nothing blocking them")
+    cmd.add_argument("--epic")
+    filters(cmd, 0)
+    add("blocked", cmd_blocked, "issues waiting on something")
+    cmd = add("search", cmd_search, "text search over ids, titles, bodies and comments")
+    cmd.add_argument("query")
+    cmd.add_argument("-a", "--all", action="store_true")
+
+    cmd = add("dep", cmd_dep, "dep add|remove|list|tree|cycles")
+    cmd.add_argument("words", nargs="*")
+    cmd.add_argument("--type")
+    cmd.add_argument("--blocking-only", action="store_true")
+    cmd = add("comments", cmd_comments, "comments [add] ISSUE [TEXT]")
+    cmd.add_argument("words", nargs="*")
+    cmd.add_argument("-m", "--message")
+    cmd.add_argument("-f", "--file")
+    cmd.add_argument("--author")
+    add("lint", cmd_lint, "open work items without acceptance criteria")
+
+    cmd = add("sync", cmd_sync, "exchange the journal with other machines through the coordination ref")
+    cmd.add_argument("--remote")
+    cmd = add("log", cmd_log, "who did what: machine, agent, thread")
+    cmd.add_argument("key", nargs="?")
+    cmd.add_argument("--limit", type=int, default=30)
+    add("info", cmd_info, "where the tracker lives and who you are")
+    cmd = add("machines", cmd_machines, "machines seen in the journal")
+    cmd.add_argument("--name", metavar="ID=ALIAS", help="give a machine a local display name")
+    return parser
+
+
+def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    cut = argv.index("--") if "--" in argv else len(argv)
+    head, tail = argv[:cut], argv[cut:]  # everything after `--` is data, never an option
+    as_json = "--json" in head
+    head = [a for a in head if a != "--json"]
+    name = None
+    for index, arg in enumerate(head):
+        if arg == "--actor" and index + 1 < len(head):
+            name = head[index + 1]
+            del head[index:index + 2]
+            break
+        if arg.startswith("--actor="):
+            name = arg.split("=", 1)[1]
+            del head[index]
+            break
+    try:
+        args = build_parser().parse_args(head + tail)
+        result, lines = args.func(args, find_workspace(), detect_actor(name))
+    except BpError as error:
+        if as_json:
+            print(json.dumps({"error": {"code": error.code, "message": str(error)}}), file=sys.stderr)
+        else:
+            print(f"Error: {error}", file=sys.stderr)
+        return 2 if error.code == "USAGE" else 1
+    if result is None and lines is None:
+        return 0
+    if as_json:
+        print(json.dumps(result, ensure_ascii=False))
+    else:
+        print("\n".join(lines))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
