@@ -8,6 +8,27 @@ the behaviour is kept on purpose (with the reason); **open** otherwise.
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Review 5 (`reviews/2026-10-07-5-codex.md`, ids E)
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| E01 | High | Human output printed raw terminal controls and embedded newlines from untrusted fields (titles, comments, names) | fixed | One output path: every human line and error message passes through `visible()`, which shows C0/C1 controls, ESC, CR and bidi controls as `\xNN`/`\uNNNN` escapes. Stored data and JSON are untouched | `test_commands`: `test_e01_human_output_escapes_terminal_controls`, `test_v01_machine_json_preserves_and_escapes_control_data` |
+| E02 | High | Passwords in remote URLs were echoed by `info`/`sync`/errors and stored in `meta.json`; state files were world-readable | fixed | bead never stores or uses an embedded password: `without_password()` strips it from `--remote` (with a note) and from every resolved remote; `main` sets umask 077 so all state is 0600/0700 | `test_commands`: `test_e02_remote_credentials_are_not_disclosed_or_world_readable` |
+| E03 | High | An owner's offline `delete` concurrent with a takeover left a live claim beside a tombstone conflict, which a later `release` settled to `open` | fixed | An owner's `delete` names its claim like `close`; a delete naming a superseded claim is stale and applies nothing | `test_commands`: `test_e03_takeover_fences_an_owners_concurrent_offline_delete` |
+| E04 | High | `import` exited 0 and counted records whose create event replay later rejected | fixed | Every record is checked whole (envelope and payload) before anything is appended; one bad record fails the import with `VALIDATION` | `test_commands`: `test_e04_invalid_import_fails_instead_of_counting_an_inert_event` |
+| E05 | Medium | `create --silent --json` printed a bare id | fixed | `--silent` returns `{"id": …}` through the normal renderer; text mode still prints just the id | `test_commands`: `test_e05_silent_create_still_honors_json_mode` |
+| E06 | Medium | `NaN`/`Infinity` were accepted and re-emitted as invalid JSONL | fixed | `loads_strict` at every JSON boundary (imports, segments, attempts, config); export serialises with `allow_nan=False` | `test_commands`: `test_e06_export_never_emits_nonfinite_json_numbers` |
+| E07 | Medium | A closed stdout exited 120 with a `BrokenPipeError` flush diagnostic | fixed | `main` flushes inside its own exit path and, on a broken pipe, redirects stdout to `/dev/null` and exits 0 | `test_commands`: `test_e07_closed_downstream_pipe_has_defined_quiet_exit` |
+| E08 | Medium | Imported comments with null `created_at`/`author`, and dangling dependencies with a null `type`, crashed `show`, `comments` and `export` | fixed | Null dependency types normalise to `blocks` at import; human renderers show `?` for missing comment fields; export sorts with a null-safe key | `test_commands`: `test_e08_nullable_import_values_do_not_crash_render_or_export` |
+| E09 | Medium | Wrong JSON types in `.beadroll.json` surfaced as tracebacks | fixed | `checked_config`: the file must hold an object; `workspace`/`ref`/`remote` strings, `where` boolean; otherwise `CONFIG` | `test_commands`: `test_e09_invalid_config_types_return_structured_config_errors` |
+| E10 | Medium | A create event's `extra` could overwrite `id`, `status`, `comments` in the export | fixed | Extras are written first and never over a reserved key; the record's own fields come last | `test_replay`: `test_e10_extra_cannot_override_canonical_export_fields` |
+| E11 | Medium | `--parent` matched only the first of several direct parents | fixed | Membership over every parent; `show` adds `parents` when there is more than one | `test_commands`: `test_e11_parent_filter_matches_every_direct_parent` |
+| E12 | High | Under an ASCII locale, printing the ✓ after a committed `create` raised and exited 1 | fixed | The output contract is UTF-8: `main` reconfigures stdout/stderr regardless of locale | `test_commands`: `test_e12_ascii_locale_cannot_turn_a_committed_create_into_failure` |
+| E13 | High | A lost-ack receipt keyed on argv ignored changed `--description-file`/stdin contents, so a follow-up edit was silently dropped | fixed | The receipt includes what the command resolved (`request`: the fields and status), so changed contents are a new request | `test_commands`: `test_e13_receipt_identity_includes_resolved_file_content` |
+| — | — | `--help` works outside a repository and creates no state | verified | | `test_commands`: `test_v02_help_needs_no_repository_and_creates_no_state` |
+
+Scale, measured by the review (synthetic single-machine histories, replay in a fresh process): 10k events 0.69 s / 45 MiB, 50k 3.4 s / 125 MiB, 200k 13.8 s / 412 MiB. The README's earlier "2 s at 200k" was from an older, smaller event shape; corrected there.
+
 ## Review 4 (`reviews/2026-10-07-4-codex.md`, ids Q)
 
 The report's findings section and its proposed ledger rows disagree on Q11 (offline close vs. `v: 0`);

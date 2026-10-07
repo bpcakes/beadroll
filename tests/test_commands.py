@@ -26,6 +26,7 @@ from pathlib import Path
 from unittest import mock
 from unittest.mock import patch
 
+import stat
 import tests.support as support
 from tests.support import *  # noqa: F401,F403  (BEAD, Machine, Sandbox, load_module, git, code)
 
@@ -960,6 +961,257 @@ class DeepTreeReview4(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(len(json.loads(result.stdout)["tree"]), 1100)
+
+
+# ---- from test_review5.py: fifth independent review (2026-10-07-5-codex), folded in after the fixes
+COMMON = {
+    "status": "open",
+    "priority": 2,
+    "issue_type": "task",
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "created_by": "seed",
+}
+
+
+# ---- from test_review5.py: fifth independent review (2026-10-07-5-codex), folded in after the fixes
+def strict_json(text: str):
+    def reject_nonfinite(value: str):
+        raise ValueError(f"non-finite JSON number: {value}")
+
+    return json.loads(text, parse_constant=reject_nonfinite)
+
+
+# ---- from test_review5.py: fifth independent review (2026-10-07-5-codex), folded in after the fixes
+class Review5CLI(unittest.TestCase):
+    def setUp(self):
+        self.box = support.Sandbox()
+        self.addCleanup(self.box.cleanup)
+
+    def machine(self, name: str) -> support.Machine:
+        machine = support.Machine(self.box, name)
+        machine.bead("init", "--prefix", "ex")
+        return machine
+
+    def test_e01_human_output_escapes_terminal_controls(self):
+        """E01: untrusted fields must not execute terminal protocols or forge lines."""
+        machine = self.machine("e01-terminal")
+        title = "safe\x1b]52;c;SGVsbG8=\x07\nFORGED: success"
+        created = machine.run("create", title)
+        self.assertEqual(created.returncode, 0, created.stderr)
+        listing = machine.run("list")
+        self.assertEqual(listing.returncode, 0, listing.stderr)
+        for output in (created.stdout, listing.stdout):
+            self.assertNotIn("\x1b", output)
+            self.assertNotIn("\x07", output)
+            self.assertNotIn("\nFORGED: success", output)
+
+    def test_e02_remote_credentials_are_not_disclosed_or_world_readable(self):
+        """E02: remote URL credentials must be redacted and protected at rest."""
+        secret = "supersecret"
+        remote = f"https://alice:{secret}@example.invalid/private.git"
+        machine = support.Machine(self.box, "e02-secret")
+        initialized = machine.run("init", "--prefix", "ex", "--remote", remote, "--json")
+        self.assertEqual(initialized.returncode, 0, initialized.stderr)
+        info = machine.run("info", "--json")
+        self.assertEqual(info.returncode, 0, info.stderr)
+        self.assertNotIn(secret, info.stdout)
+        meta = machine.store() / "meta.json"
+        self.assertNotIn(secret, meta.read_text())
+        self.assertEqual(stat.S_IMODE(meta.stat().st_mode) & 0o077, 0)
+
+    def test_e03_takeover_fences_an_owners_concurrent_offline_delete(self):
+        """E03: a takeover must fence the prior owner's stale terminal transition."""
+        owner = self.machine("e03-owner")
+        key = owner.bead("create", "terminal race")["id"]
+        owner.bead("sync")
+        successor = support.Machine(self.box, "e03-successor")
+        successor.bead("sync")
+        owner.bead("claim", key)
+
+        owner.bead("delete", key, "--offline")
+        successor.bead("takeover", key, "--reason", "continue work")
+        owner.bead("sync")
+        successor.bead("sync")
+
+        shown = successor.show(key)
+        self.assertEqual(shown["status"], "in_progress")
+        self.assertNotIn("status", shown.get("conflicts", {}))
+        self.assertIn("e03-successor-thread", shown["claim"]["owner"])
+
+    def test_e04_invalid_import_fails_instead_of_counting_an_inert_event(self):
+        """E04: an import count and exit zero must mean the issue was imported."""
+        machine = self.machine("e04-import")
+        source = self.box.root / "invalid.jsonl"
+        source.write_text(json.dumps({"id": "ex-invalid", "title": "discarded", **COMMON,
+                                      "status": "not-a-status"}) + "\n")
+        imported = machine.run("import", str(source), "--json")
+        self.assertNotEqual(imported.returncode, 0, imported.stdout)
+        error = strict_json(imported.stderr)["error"]
+        self.assertEqual(error["code"], "VALIDATION")
+        self.assertEqual(machine.bead("info")["integrity"], [])
+
+    def test_e05_silent_create_still_honors_json_mode(self):
+        """E05: every successful --json command must emit valid JSON."""
+        machine = self.machine("e05-silent")
+        created = machine.run("create", "machine result", "--silent", "--json")
+        self.assertEqual(created.returncode, 0, created.stderr)
+        try:
+            result = strict_json(created.stdout)
+        except ValueError as error:
+            self.fail(f"successful --json output was not JSON: {error}; bytes={created.stdout!r}")
+        self.assertIsInstance(result, dict)
+        self.assertIn("id", result)
+
+    def test_e06_export_never_emits_nonfinite_json_numbers(self):
+        """E06: accepted data must not make Beads JSONL violate RFC 8259."""
+        machine = self.machine("e06-json")
+        source = self.box.root / "nonfinite.jsonl"
+        source.write_text(
+            '{"id":"ex-nan","title":"bad number","status":"open","priority":2,'
+            '"issue_type":"task","created_at":"2026-01-01T00:00:00Z",'
+            '"updated_at":"2026-01-01T00:00:00Z","created_by":"seed","score":NaN}\n'
+        )
+        imported = machine.run("import", str(source), "--json")
+        if imported.returncode:
+            strict_json(imported.stderr)
+            return
+        exported = machine.run("export")
+        self.assertEqual(exported.returncode, 0, exported.stderr)
+        for line in exported.stdout.splitlines():
+            try:
+                strict_json(line)
+            except ValueError as error:
+                self.fail(f"export emitted non-RFC-8259 JSON: {error}; line={line!r}")
+
+    def test_e07_closed_downstream_pipe_has_defined_quiet_exit(self):
+        """E07: an early pipeline consumer exit must not produce Python flush noise."""
+        machine = self.machine("e07-pipe")
+        key = machine.bead("create", "pipe target")["id"]
+        proc = subprocess.Popen(
+            [support.BEAD, "show", key],
+            cwd=machine.checkout,
+            env=machine.env(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        assert proc.stdout is not None and proc.stderr is not None
+        proc.stdout.close()
+        stderr = proc.stderr.read().decode(errors="replace")
+        proc.stderr.close()
+        returncode = proc.wait()
+        self.assertIn(returncode, (0, 141))
+        self.assertNotIn("BrokenPipeError", stderr)
+        self.assertNotIn("Traceback", stderr)
+
+    def test_e08_nullable_import_values_do_not_crash_render_or_export(self):
+        """E08: values accepted by import validation must be safe in every query path."""
+        machine = self.machine("e08-nullable")
+        comments = self.box.root / "nullable-comment.jsonl"
+        comments.write_text(json.dumps({
+            "id": "ex-null", "title": "nullable comment", **COMMON,
+            "comments": [{"id": 1, "author": None, "text": "hello", "created_at": None}],
+        }) + "\n")
+        self.assertEqual(machine.run("import", str(comments), "--json").returncode, 0)
+        for args in (("show", "ex-null"), ("comments", "ex-null")):
+            with self.subTest(args=args):
+                result = machine.run(*args)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+        dependencies = self.box.root / "nullable-dependencies.jsonl"
+        record = {"id": "ex-deps", "title": "nullable dependency", **COMMON,
+                  "dependencies": [
+                      {"issue_id": "ex-deps", "depends_on_id": "missing", "type": None},
+                      {"issue_id": "ex-deps", "depends_on_id": "missing", "type": "blocks"},
+                  ]}
+        dependencies.write_text(json.dumps(record) + "\n")
+        self.assertEqual(machine.run("import", str(dependencies), "--json").returncode, 0)
+        exported = machine.run("export")
+        self.assertEqual(exported.returncode, 0, exported.stderr)
+
+    def test_e09_invalid_config_types_return_structured_config_errors(self):
+        """E09: malformed tracked config must not escape as Python tracebacks."""
+        machine = support.Machine(self.box, "e09-config")
+        config = machine.checkout / ".beadroll.json"
+        cases = (
+            "[]\n",
+            '{"workspace":"safe","ref":42}\n',
+            '{"workspace":"safe","remote":{"url":"x"}}\n',
+        )
+        for body in cases:
+            with self.subTest(config=body):
+                config.write_text(body)
+                result = machine.run("info", "--json")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn("Traceback", result.stderr)
+                self.assertEqual(strict_json(result.stderr)["error"]["code"], "CONFIG")
+
+    def test_e11_parent_filter_matches_every_direct_parent(self):
+        """E11: --parent must match any parent represented in the issue's dependency set."""
+        machine = self.machine("e11-parents")
+        first = machine.bead("create", "parent one")["id"]
+        second = machine.bead("create", "parent two")["id"]
+        child = machine.bead("create", "child")["id"]
+        machine.bead("dep", "add", child, first, "--type", "parent-child")
+        machine.bead("dep", "add", child, second, "--type", "parent-child")
+        for parent in (first, second):
+            with self.subTest(parent=parent):
+                result = machine.bead("list", "--all", "--parent", parent, "--limit", "0")
+                self.assertIn(child, {issue["id"] for issue in result["issues"]})
+
+    def test_e12_ascii_locale_cannot_turn_a_committed_create_into_failure(self):
+        """E12: rendering in a reduced locale must not report failure after committing."""
+        machine = self.machine("e12-ascii")
+        result = machine.run(
+            "create", "committed but failed",
+            LC_ALL="C", LANG="C", PYTHONUTF8="0", PYTHONCOERCECLOCALE="0",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        listed = machine.bead("list", "--all", "--limit", "0")
+        self.assertEqual([issue["title"] for issue in listed["issues"]], ["committed but failed"])
+
+    def test_e13_receipt_identity_includes_resolved_file_content(self):
+        """E13: changed file input is a new semantic request after lost-ack recovery."""
+        machine = self.machine("e13-receipt-file")
+        key = machine.bead("create", "receipt target")["id"]
+        machine.bead("sync")
+        body = self.box.root / "description.txt"
+        body.write_text("first body")
+        first = machine.run(
+            "update", key, "--claim", "--description-file", str(body), "--json",
+            BEAD_TEST_CRASH_AFTER_PUSH="1",
+        )
+        self.assertEqual(first.returncode, 99)
+        body.write_text("second body")
+        retry = machine.run("update", key, "--claim", "--description-file", str(body), "--json")
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+        self.assertEqual(machine.show(key)["description"], "second body")
+
+    def test_v01_machine_json_preserves_and_escapes_control_data(self):
+        """V01: the standard JSON serializer keeps control data inert and recoverable."""
+        machine = self.machine("v01-json-control")
+        title = "safe\x1b]52;c;SGVsbG8=\x07\nline"
+        result = machine.run("create", title, "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("\x1b", result.stdout)
+        self.assertEqual(strict_json(result.stdout)["title"], title)
+
+
+# ---- from test_review5.py: fifth independent review (2026-10-07-5-codex), folded in after the fixes
+class Review5PositiveControls(unittest.TestCase):
+    def test_v02_help_needs_no_repository_and_creates_no_state(self):
+        """V02: top-level and subcommand help are local, side-effect free operations."""
+        with tempfile.TemporaryDirectory(prefix="bead-review5-help-") as tmp:
+            root = Path(tmp)
+            state = root / "state"
+            env = {**os.environ, "BEAD_HOME": str(state)}
+            for args in (("--help",), ("create", "--help")):
+                result = subprocess.run([support.BEAD, *args], cwd=root, env=env,
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("usage:", result.stdout)
+                self.assertFalse(state.exists())
 
 
 if __name__ == "__main__":

@@ -1304,5 +1304,43 @@ class ReplayReview4(unittest.TestCase):
                 self.assertEqual(actual, expected, (size, mask, edges))
 
 
+# ---- from test_review5.py: fifth independent review (2026-10-07-5-codex), folded in after the fixes
+class Review5Replay(unittest.TestCase):
+    def test_e10_extra_cannot_override_canonical_export_fields(self):
+        """E10: a valid event's compatibility extras cannot forge its exported identity/state."""
+        bp = support.load_module()
+        init_id = "019a4444-4444-7000-8000-000000000001"
+        create_id = "019a4444-4444-7000-8000-000000000002"
+        init = {
+            "v": 1, "id": init_id, "replica": "peer", "deps": [],
+            "actor": {"agent": "test", "thread": "peer"}, "op": "init",
+            "issue": init_id, "data": {"prefix": "ex", "name": "test"},
+        }
+        create = {
+            "v": 1, "id": create_id, "replica": "peer", "deps": [init_id],
+            "actor": {"agent": "test", "thread": "peer"}, "op": "create",
+            "issue": create_id,
+            "data": {
+                "key": "ex-real",
+                "fields": {"title": "real", "status": "tombstone", "priority": 2,
+                           "issue_type": "task"},
+                "labels": [], "comments": [],
+                "extra": {"id": "ex-spoof", "status": "open", "comments": "forged"},
+            },
+        }
+        journal = bp.Journal()
+        journal.add(init, "peer")
+        journal.add(create, "peer")
+        problem = bp.payload_problem(create)
+        if problem is not None:
+            return
+        state = bp.replay(journal)
+        self.assertEqual(state.integrity, [])
+        exported = bp.export_records(state)[0]
+        self.assertEqual(exported["id"], "ex-real")
+        self.assertEqual(exported["status"], "tombstone")
+        self.assertIsInstance(exported.get("comments", []), list)
+
+
 if __name__ == "__main__":
     unittest.main()

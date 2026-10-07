@@ -4,7 +4,7 @@ A brief for an independent reviewer: an agent or a person who did not write this
 to find out whether the design holds, to break it if they can, and to report with
 reproductions. Reviewers do not extend the tool.
 
-Four reviews have run from earlier versions of this brief. Their reports are kept verbatim in
+Five reviews have run from earlier versions of this brief. Their reports are kept verbatim in
 `reviews/`; every finding and what became of it is in `FINDINGS.md`. Start from what they did
 not cover.
 
@@ -81,6 +81,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
   one-in-10^14 event and is then resolved by the ids alone.
 - `dep cycles` stops after 200 cycles.
 - A repository with neither a remote nor `.beadroll.json` gets a local tracker that cannot sync.
+- Output is UTF-8 regardless of locale; human output escapes control characters; `--json` always
+  wins the representation (`create --silent --json` gives `{"id": …}`); a closed stdout exits 0
+  quietly.
+- Passwords in remote URLs are dropped, never stored or used; state is created with umask 077.
+- An import that contains one invalid record fails whole; nothing is written.
 
 ## 3. Baseline
 

@@ -59,6 +59,15 @@ class BpError(Exception):
 
 # ---------------------------------------------------------------- locations
 
+def _reject_constant(value: str):
+    raise ValueError(f"{value} is not a JSON number")
+
+
+def loads_strict(text):
+    """JSON as the standard defines it: NaN and Infinity are refused, not smuggled into exports."""
+    return json.loads(text, parse_constant=_reject_constant)
+
+
 def home() -> Path:
     return Path(os.environ.get("BEAD_HOME") or Path.home() / ".local" / "state" / "beadroll")
 
@@ -75,6 +84,15 @@ def run_git(args, *, env=None, data=None, check=True, timeout=None):
 
 def git_text(args, **kwargs) -> str:
     return run_git(args, **kwargs).stdout.decode().strip()
+
+
+def without_password(url: str) -> tuple[str, bool]:
+    """A remote URL with any password removed from its user-info part, and whether one was there.
+    bead never stores or uses an embedded password: git's credential helpers are the place for it."""
+    match = re.match(r"^([a-z][a-z0-9+.-]*://)([^/@]*):([^/@]*)@(.*)$", url, re.S)
+    if match:
+        return f"{match.group(1)}{match.group(2)}@{match.group(4)}", True
+    return url, False
 
 
 def normalize_remote(url: str) -> str:
@@ -125,7 +143,22 @@ class Workspace:
             named = run_git(["remote", "get-url", value], check=False)
             if named.returncode == 0:
                 value = named.stdout.decode().strip()
+        value = without_password(value)[0]
         return os.path.realpath(value) if os.path.exists(value) else value
+
+
+CONFIG_KEYS = {"workspace": str, "ref": str, "remote": str, "where": bool}
+
+
+def checked_config(config, path) -> dict:
+    """The tracked config, or a CONFIG error naming what is wrong. Unknown keys are left for newer
+    versions to understand."""
+    if not isinstance(config, dict):
+        raise BpError("CONFIG", f"{path} must hold a JSON object")
+    for key, kind in CONFIG_KEYS.items():
+        if key in config and (not isinstance(config[key], kind) or isinstance(config[key], bool) and kind is not bool):
+            raise BpError("CONFIG", f"{path}: {key!r} must be a {kind.__name__}")
+    return config
 
 
 def find_workspace() -> Workspace:
@@ -139,9 +172,10 @@ def find_workspace() -> Workspace:
     config = {}
     if root and (root / ".beadroll.json").exists():
         try:
-            config = json.loads((root / ".beadroll.json").read_text())
-        except ValueError:
+            config = loads_strict((root / ".beadroll.json").read_text())
+        except (OSError, ValueError):
             raise BpError("CONFIG", f"{root / '.beadroll.json'} is not valid JSON") from None
+        config = checked_config(config, root / ".beadroll.json")
     proc = run_git(["config", "--get", "remote.origin.url"], check=False)
     origin = proc.stdout.decode().strip() if proc.returncode == 0 else ""
     if origin and root and not re.match(r"^([a-z][a-z0-9+.-]*://|[^/]+@|/)", origin) and not os.path.exists(origin):
@@ -292,7 +326,7 @@ def read_segment(data: bytes, origin: str = "", problems: list | None = None) ->
         if not line.strip():
             continue
         try:
-            events.append(json.loads(line))
+            events.append(loads_strict(line))
         except ValueError:
             if number == len(lines) - 1:
                 break  # torn tail: another process is mid-append
@@ -369,7 +403,7 @@ def read_attempt(path: Path, problems: list | None = None) -> list[dict]:
         if not line.strip():
             continue
         try:
-            events.append(json.loads(line))
+            events.append(loads_strict(line))
         except ValueError:
             if problems is not None:
                 problems.append({"event": None, "origin": f"{path}:{number + 1}",
@@ -992,10 +1026,14 @@ def apply_event(st: State, event: dict, eid: str, op: str, data: dict, uid: str,
         if claim and st.saw(eid, claim["id"]):
             end_claim(issue, "reopen", who, when)
     elif op == "delete":
-        write_status(st, issue, eid, "tombstone", when, data.get("reason"))
+        named = data.get("claim")
+        if named and (named in superseded or not (claim and claim["id"] == named)):
+            issue["stale"].append({"op": op, "by": who, "at": when, "claim": named})  # an owner replaced by a takeover
+            return False
+        write_status(st, issue, eid, "tombstone", when, data.get("reason"), supersede={named} if named else ())
         issue["extra"] = {**issue["extra"], "deleted_at": when, "deleted_by": who,
                           "delete_reason": data.get("reason") or ""}
-        if claim and st.saw(eid, claim["id"]):
+        if claim and (named or st.saw(eid, claim["id"])):
             end_claim(issue, "delete", who, when)
     elif op == "comment":
         st.comment_count += 1
@@ -1373,9 +1411,11 @@ def detail(st: State, issue: dict, check_merge: bool = False) -> dict:
             out[name] = issue[name]
     if issue["labels"]:
         out["labels"] = sorted(issue["labels"])
-    parent = parent_of(st, issue)
-    if parent:
-        out["parent"] = parent["id"]
+    parents = parents_of(st, issue)
+    if parents:
+        out["parent"] = parents[0]["id"]
+        if len(parents) > 1:
+            out["parents"] = [p["id"] for p in parents]
     out["dependencies"] = [{"id": st.key(to), "title": st.issues[to]["title"] if to in st.issues else "",
                             "status": st.issues[to]["status"] if to in st.issues else "unknown",
                             "dependency_type": kind} for (to, kind) in sorted(issue["deps"])]
@@ -1416,6 +1456,7 @@ def line(st: State, issue: dict) -> str:
 
 
 COMMENT_ID_BASE = 2 ** 47
+RESERVED_EXPORT = set(EXPORT_FIELDS) | {"id", "labels", "dependencies", "comments", "source_repo_path"}
 
 
 def exported_legacy_id(comment: dict, taken: set):
@@ -1443,11 +1484,11 @@ def export_records(st: State) -> list[dict]:
         new_ids[comment["uid"]] = number
     records = []
     for issue in sorted(st.issues.values(), key=lambda i: i["id"]):
-        rec = {"id": issue["id"]}
+        rec = {k: v for k, v in issue["extra"].items() if k not in RESERVED_EXPORT}  # extras first, never over the record
+        rec["id"] = issue["id"]
         for name in EXPORT_FIELDS:
             if issue.get(name) is not None:
                 rec[name] = issue[name]
-        rec.update(issue["extra"])
         dangling = issue["dangling"]  # still unknown targets travel on as they were imported
         if issue["labels"]:
             rec["labels"] = sorted(issue["labels"])
@@ -1456,7 +1497,7 @@ def export_records(st: State) -> list[dict]:
                  "metadata": meta.get("metadata", "{}"), "thread_id": meta.get("thread_id", "")}
                 for (to, kind), meta in issue["deps"].items()]
         if deps or dangling:
-            rec["dependencies"] = sorted(deps + dangling, key=lambda d: (d["depends_on_id"], d["type"]))
+            rec["dependencies"] = sorted(deps + dangling, key=lambda d: (d["depends_on_id"], d.get("type") or ""))
         if issue["comments"]:
             rec["comments"] = [{"id": new_ids[c["uid"]] if c["uid"] else exported_legacy_id(c, taken), "issue_id": issue["id"],
                                 "author": c.get("author"), "text": c["text"], "created_at": c.get("created_at")}
@@ -1667,11 +1708,12 @@ def drop_pending(ws: Workspace, attempts: list[list[dict]]):
             (ws.dir / "pending" / f"{events[0]['id']}.command").unlink(missing_ok=True)
 
 
-def command_signature(args, actor: dict) -> str:
+def command_signature(args, actor: dict, request=None) -> str:
     """What a command asked for, independent of how it was typed: the same command run again by
-    the same actor after a crash is the same request, not a second one."""
+    the same actor after a crash is the same request, not a second one. `request` carries what
+    the command resolved from files or stdin, so changed contents are a new request."""
     asked = {k: v for k, v in vars(args).items() if k not in ("func", "json") and not callable(v)}
-    return json.dumps({"actor": actor, "args": asked}, sort_keys=True, default=str)
+    return json.dumps({"actor": actor, "args": asked, "request": request}, sort_keys=True, default=str)
 
 
 def settle_commands(ws: Workspace, replica: str, actor: dict, signature: str) -> bool:
@@ -1740,7 +1782,7 @@ def synchronise(ws: Workspace, remote: str, actor: dict) -> dict:
             "confirmed": link.confirmed, "waiting_events": len(st.pending), "integrity": len(st.integrity)}
 
 
-def coordinated(ws: Workspace, actor: dict, args, build):
+def coordinated(ws: Workspace, actor: dict, args, build, request=None):
     """Run an ownership change against the head as it is now and publish it as one conditional update.
 
     The attempt (ownership events and any edits made with them) is written as pending files first,
@@ -1754,7 +1796,7 @@ def coordinated(ws: Workspace, actor: dict, args, build):
         with writing(ws, actor) as tx:
             return build(tx, "offline" if remote else "local")
     link = Link(ws, remote)
-    replica, signature = replica_id(), command_signature(args, actor)
+    replica, signature = replica_id(), command_signature(args, actor, request)
     receipt = None  # (events, result) of a push of ours that got no answer; it may still have landed
     for attempt in range(1, 13):
         with locked(ws):
@@ -1821,6 +1863,11 @@ def publish_soon(ws: Workspace, args, actor: dict) -> str | None:
 # ----------------------------------------------------------------- commands
 
 def cmd_init(args, ws, actor):
+    notes = []
+    if args.remote:
+        args.remote, had_password = without_password(args.remote)
+        if had_password:
+            notes.append("the password was dropped from the remote URL: bead never stores one; use a git credential helper")
     if args.tracked:
         top = git_text(["rev-parse", "--show-toplevel"])
         config = {"workspace": ws.config.get("workspace") or uuid7()}
@@ -1838,12 +1885,22 @@ def cmd_init(args, ws, actor):
     return ({"workspace": ws.id, "prefix": st.prefix, "path": str(ws.dir), "imported": imported,
              "tracked_config": bool(ws.config)},
             [f"Tracker {st.prefix!r} at {ws.dir}" + (f" ({imported} issues imported)" if imported else "")]
-            + (["Wrote .beadroll.json: commit it so every checkout and machine uses this workspace"] if args.tracked else []))
+            + (["Wrote .beadroll.json: commit it so every checkout and machine uses this workspace"] if args.tracked else [])
+            + notes)
+
+
+PROBE_ID = "00000000-0000-7000-8000-000000000000"  # a would-be event, checked before it is minted
 
 
 def import_records(tx: Tx, path: str) -> int:
     """Load a Beads JSONL export, keeping ids, timestamps, relationships and unknown fields."""
-    records = [json.loads(row) for row in Path(path).read_text().splitlines() if row.strip()]
+    try:
+        records = [loads_strict(row) for row in Path(path).read_text().splitlines() if row.strip()]
+    except ValueError as error:
+        raise BpError("VALIDATION", f"{path} is not valid JSONL: {error}") from None
+    for number, rec in enumerate(records, 1):
+        if not isinstance(rec, dict) or not isinstance(rec.get("id"), str) or not rec["id"]:
+            raise BpError("VALIDATION", f"{path}:{number}: record has no string 'id'")
     known = dict(tx.state.by_key)
     fresh = [rec for rec in records if rec["id"] not in known]
     all_ids = set(known) | {rec["id"] for rec in fresh}
@@ -1851,13 +1908,17 @@ def import_records(tx: Tx, path: str) -> int:
     for rec in fresh:
         extra = {k: v for k, v in rec.items()
                  if k not in IMPORT_FIELDS and k not in ("id", "labels", "dependencies", "comments", "source_repo_path")}
-        dangling = [d for d in rec.get("dependencies") or []
+        dangling = [{**d, "type": d.get("type") or "blocks"} for d in rec.get("dependencies") or []
                     if isinstance(d, dict) and isinstance(d.get("depends_on_id"), str) and d["depends_on_id"] not in all_ids]
         comments = [{"legacy_id": c.get("id"), "author": c.get("author"), "text": c.get("text", ""),
                      "created_at": c.get("created_at")} for c in rec.get("comments") or []]
         data = {"key": rec["id"], "fields": {k: rec[k] for k in EXPORT_FIELDS if k in rec},
                 "labels": rec.get("labels") or [], "comments": comments, "extra": extra, "imported": True,
                 **({"dangling": dangling} if dangling else {})}
+        probe = {"v": FORMAT, "id": PROBE_ID, "replica": tx.replica, "deps": [], "op": "create", "issue": PROBE_ID, "data": data}
+        problem = event_problem(probe) or payload_problem(probe)
+        if problem:  # nothing has been appended yet: the import fails whole
+            raise BpError("VALIDATION", f"record {rec['id']!r} cannot be imported: {problem}")
         created[rec["id"]] = tx.emit("create", data=data)["id"]
     uid_of = {**known, **created}
     for rec in fresh:
@@ -1879,7 +1940,7 @@ def cmd_import(args, ws, actor):
 
 def cmd_export(args, ws, actor):
     st = view(ws)
-    text = "".join(json.dumps(rec, ensure_ascii=False, separators=(",", ":")) + "\n" for rec in export_records(st))
+    text = "".join(json.dumps(rec, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n" for rec in export_records(st))
     if args.output:
         write_atomic(Path(args.output), text.encode())
         return {"exported": len(st.issues), "path": args.output}, [f"Exported {len(st.issues)} issues to {args.output}"]
@@ -1915,8 +1976,7 @@ def cmd_create(args, ws, actor):
         issue = tx.state.issues[uid]
         result = detail(tx.state, issue)
     if args.silent:
-        print(issue["id"])
-        return None, None
+        return {"id": issue["id"]}, [issue["id"]]
     return result, [f"✓ Created {issue['id']}: {issue['title']}"]
 
 
@@ -2086,7 +2146,7 @@ def cmd_update(args, ws, actor):
             edits(tx)
             return mode
 
-        if coordinated(ws, actor, args, build) == "offline":
+        if coordinated(ws, actor, args, build, request={"fields": fields, "status": status}) == "offline":
             notes.append("claim is PROVISIONAL: not exclusive until claimed online")
     else:
         with writing(ws, actor) as tx:
@@ -2113,7 +2173,7 @@ def transition(op: str, verb: str):
                     raise BpError("CLAIMED_BY_OTHER", f"{issue['id']} is claimed by {held['owner']}: "
                                   "use `bead takeover` first, or --force")
                 data = {"reason": args.reason} if args.reason else {}
-                if op == "close" and held and held["owner"] == me:
+                if op in ("close", "delete") and held and held["owner"] == me:
                     data["claim"] = held["id"]  # ends exactly this claim, never a successor's
                 ended = ended or bool(held)
                 tx.emit(op, issue["uid"], data)
@@ -2158,7 +2218,7 @@ def cmd_show(args, ws, actor):
         for dep in item["dependents"]:
             lines.append(f"  needed by ({dep['dependency_type']}): {dep['id']} [{dep['status']}] {dep['title']}")
         for comment in item["comments"]:
-            lines.append(f"  [{comment['created_at'][:16]}] {comment['author']}: {comment['text']}")
+            lines.append(f"  [{(comment.get('created_at') or '?')[:16]}] {comment.get('author') or '?'}: {comment['text']}")
         for field, options in item.get("conflicts", {}).items():
             lines.append(f"  ⚠ {field} was changed on two machines at once: "
                          + " | ".join(f"{o['value']!r} by {o['by']}" for o in options))
@@ -2193,8 +2253,7 @@ def select(st: State, args) -> list[dict]:
         if getattr(args, "id", None) and issue["id"] not in split_list(args.id):
             continue
         if getattr(args, "parent", None):
-            parent = parent_of(st, issue)
-            if not parent or parent["id"] != st.resolve(args.parent)["id"]:
+            if st.resolve(args.parent)["id"] not in {p["id"] for p in parents_of(st, issue)}:
                 continue
         items.append(issue)
     return sorted(items, key=lambda i: (i["priority"], i["created_at"], i["id"]))
@@ -2310,7 +2369,7 @@ def cmd_comments(args, ws, actor):
     st = view(ws)
     need_tracker(st)
     comments = detail(st, st.resolve(words[0]))["comments"]
-    return comments, [f"[{c['created_at'][:16]}] {c['author']}: {c['text']}" for c in comments] or ["No comments"]
+    return comments, [f"[{(c.get('created_at') or '?')[:16]}] {c.get('author') or '?'}: {c['text']}" for c in comments] or ["No comments"]
 
 
 def cmd_lint(args, ws, actor):
@@ -2519,7 +2578,29 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+CONTROLS = re.compile("[\x00-\x08\x0a-\x1f\x7f-\x9f\u200e\u200f\u202a-\u202e\u2066-\u2069]")
+
+
+def visible(text: str) -> str:
+    """Human output shows control characters as escapes. Titles, comments and names come from
+    journals and imports, and the terminal must never be asked to interpret them."""
+    return CONTROLS.sub(lambda m: f"\\x{ord(m.group()):02x}" if ord(m.group()) < 0x100 else f"\\u{ord(m.group()):04x}", text)
+
+
 def main(argv=None) -> int:
+    os.umask(0o077)  # everything bead writes is private to the user
+    for stream in (sys.stdout, sys.stderr):  # the output contract is UTF-8, whatever the locale says
+        with contextlib.suppress(Exception):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+    try:
+        return run(argv)
+    except BrokenPipeError:  # the reader went away: nothing to say, and no Python noise about it
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+        return 0
+
+
+def run(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     cut = argv.index("--") if "--" in argv else len(argv)
     head, tail = argv[:cut], argv[cut:]  # everything after `--` is data, never an option
@@ -2542,14 +2623,16 @@ def main(argv=None) -> int:
         if as_json:
             print(json.dumps({"error": {"code": error.code, "message": str(error)}}), file=sys.stderr)
         else:
-            print(f"Error: {error}", file=sys.stderr)
+            print(f"Error: {visible(str(error))}", file=sys.stderr)
         return 2 if error.code == "USAGE" else 1
     if result is None and lines is None:
+        sys.stdout.flush()
         return 0
     if as_json:
         print(json.dumps(result, ensure_ascii=False))
     else:
-        print("\n".join(lines))
+        print("\n".join(visible(line) for line in lines))
+    sys.stdout.flush()
     return 0
 
 

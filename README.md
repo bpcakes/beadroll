@@ -68,7 +68,7 @@ A reader therefore sees all of an attempt or none of it.
 | `bead claim X --offline` | Records a provisional claim. It is listed, never exclusive, and never displaces a confirmed owner. |
 | `bead release X` | Ends your claim; the issue is open again. |
 | `bead takeover X --reason "..."` | Replaces the current owner and starts a new generation. Online only. |
-| `bead close X` (as owner) | Closes and ends exactly your claim, then publishes at once. `show` tells whether the closing commit is merged into the default branch. |
+| `bead close X` / `bead delete X` (as owner) | Closes (or tombstones) and ends exactly your claim, then publishes at once. `show` tells whether the closing commit is merged into the default branch. |
 | old owner acts after a takeover | Its close or release names a claim that is no longer current, so every machine ignores it and reports it under `stale`. |
 
 `in_progress` is reached only through a claim, so `update --status in_progress`
@@ -112,13 +112,20 @@ An edit made after seeing another is never a conflict, whatever the clocks say.
   machine's journal never changes where the event sits in its own.
 - A takeover that names a claim its writer had not seen, or that is not a claim
   on the same issue, applies nothing and is reported.
-- A ref whose manifest is not this bp's format is refused untouched
+- A ref whose manifest is not this version's format is refused untouched
   (`FORMAT_UNSUPPORTED`): an older client never rewrites a newer tracker.
 - `title`, `priority`, `issue_type` and `status` cannot be cleared; a `set`
   that tries is reported and applies nothing.
 - An imported dependency on an issue that is not in the tracker yet is kept by
   key and becomes a real edge on every machine the moment that key exists, so
-  importing in several batches gives the same result as one.
+  importing in several batches gives the same result as one. An import is
+  checked whole before anything is written: one bad record fails it.
+- Human output never hands the terminal a control character: titles, comments
+  and names from journals or imports are shown with `\xNN` escapes. JSON output
+  and stored data are untouched. Output is UTF-8 whatever the locale.
+- A password in a remote URL is dropped (with a note) and never stored, shown
+  or used; git's credential helpers are the place for it. Everything under the
+  store is created private (mode 0600/0700).
 - A foreign journal file that differs from the published copy is replaced by
   the published copy, ours is kept beside it as `*.fork-*`, and `sync` reports
   it. Our own file in that state is `JOURNAL_FORK`.
@@ -157,7 +164,7 @@ fast), `test_protocol` (claims, attempts, fences, lost acknowledgements, sync ra
 own repository, bare remotes and machine homes in a temporary directory, and the
 package sets a scratch `BEAD_HOME` so the default store is never touched.
 
-Four independent reviews have been run against this POC. Their reports are kept
+Five independent reviews have been run against this POC. Their reports are kept
 verbatim under `reviews/`; `FINDINGS.md` is the ledger of every finding, its status,
 how it was resolved and which tests cover it. `REVIEWING.md` is the brief for the
 next one: rules, what not to report, the checklist, and the deliverables (a report
@@ -202,8 +209,11 @@ scenarios over ssh), `soak.py` (random agent-like traffic), `roundtrip.py`
   A permanent implementation would use a reachability index.
 - The branch recorded on an event is whatever `HEAD` was in the directory the
   command ran in. It is a trace, not a lock: a claim does not pin a branch.
-- With no persisted projection, every command replays the journal: about 0.5 s
-  at 50k events and 2 s at 200k, far beyond the trackers measured so far.
+- With no persisted projection, every command replays the journal: measured
+  by the fifth review at 0.7 s / 45 MB for 10k events, 3.4 s / 125 MB at 50k and
+  14 s / 412 MB at 200k, far beyond the trackers measured so far (the largest
+  real one is 280 issues). A persisted projection is the obvious next step if
+  that ever matters.
   A fetch or push that gets no answer fails after `BEAD_NET_TIMEOUT` seconds
   (default 45) instead of hanging.
 - Publishing is serialised on one ref. Under heavy contention (four machines
