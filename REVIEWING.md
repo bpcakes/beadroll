@@ -10,7 +10,8 @@ not cover.
 
 ## 1. What this is
 
-`bead` (`./bead`, one Python 3.12+ file, standard library only) is a proof-of-concept issue tracker
+`beadroll.py` (one Python 3.12+ module, standard library only; `./bead` links to it, and
+`uv tool install .` installs it as the `bead` command) is a proof-of-concept issue tracker
 for coding agents that work from many git worktrees and several machines at once. It replaces
 the workflow around `br` (beads_rust), whose tracker state lives in a file tracked on code
 branches: dirty checkouts, tracker-only commits, merge conflicts, state split between worktrees

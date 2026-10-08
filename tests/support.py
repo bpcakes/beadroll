@@ -15,7 +15,7 @@ import unittest
 import uuid
 from pathlib import Path
 
-BEAD = os.environ.get("BEAD_UNDER_TEST") or str(Path(__file__).resolve().parent.parent / "bead")
+BEAD = os.environ.get("BEAD_UNDER_TEST") or str(Path(__file__).resolve().parent.parent / "beadroll.py")
 
 
 def load_module():

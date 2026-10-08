@@ -7,7 +7,7 @@ import argparse, collections, json, os, pathlib, shutil, subprocess, sys, tempfi
 P=pathlib.Path
 parser=argparse.ArgumentParser();parser.add_argument('--out', default=tempfile.mkdtemp(prefix='bead-compat-real-'));parser.add_argument('--documents',default=os.path.expanduser('~/Documents'));args=parser.parse_args()
 root=P(args.out);root.mkdir(parents=True,exist_ok=True)
-bp=str(P(__file__).resolve().parent.parent/'bead')
+bp=str(P(__file__).resolve().parent.parent/'beadroll.py')
 br=shutil.which('br') or os.path.expanduser('~/.local/bin/br');bv=shutil.which('bv') or os.path.expanduser('~/.local/bin/bv')
 env={k:v for k,v in os.environ.items() if not k.startswith(('BEAD_','CODEX','CLAUDE','BEADS','BV_','BD_','GIT_'))}
 env.update(BEAD_HOME=str(root/'bead-home'), BEAD_AGENT='audit', BEAD_THREAD='audit-compat',XDG_CACHE_HOME=str(root/'cache'),BV_NO_CACHE='1',BV_OUTPUT_FORMAT='json')
