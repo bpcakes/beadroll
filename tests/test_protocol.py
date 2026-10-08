@@ -653,6 +653,7 @@ class ProtocolReaudit(unittest.TestCase):
             if args[0] == 'push' and not pushed and result.returncode == 0:
                 pushed.append(True)
                 result.returncode = 1
+                result.stdout = b''  # git's per-ref status line is lost with the acknowledgement
                 result.stderr = b'connection closed after remote accepted'
             return result
         def interleaved_writer(_delay):
@@ -889,7 +890,7 @@ class Protocol3(unittest.TestCase):
         def lose_ack(args,**kwargs):
             result=original(args,**kwargs)
             if args[0]=='push' and result.returncode==0 and not applied:
-                applied.append(True); result.returncode=1; result.stderr=b'connection closed after remote accepted'
+                applied.append(True); result.returncode=1; result.stdout=b''; result.stderr=b'connection closed after remote accepted'
             return result
         def between_retries(_delay):
             if not written:
@@ -911,7 +912,7 @@ class Protocol3(unittest.TestCase):
         def lose_ack(args,**kwargs):
             result=original(args,**kwargs)
             if args[0]=='push' and result.returncode==0 and not applied:
-                applied.append(True); result.returncode=1; result.stderr=b'connection closed after remote accepted'
+                applied.append(True); result.returncode=1; result.stdout=b''; result.stderr=b'connection closed after remote accepted'
             return result
         args=self.bp.build_parser().parse_args(['release',self.key]); failure=None
         with mock.patch.object(self.bp,'run_git',lose_ack), mock.patch.object(self.bp.time,'sleep'):
@@ -957,7 +958,7 @@ class Protocol3(unittest.TestCase):
         hook=self.sandbox.origin/'hooks'/'pre-receive'; hook.write_text('#!/bin/sh\nexit 1\n'); hook.chmod(0o755)
         with mock.patch.object(self.bp.time,'sleep'):
             with self.assertRaises(self.bp.BpError) as caught: self.bp.synchronise(self.ws,str(self.sandbox.origin),self.actor)
-        self.assertEqual(caught.exception.code,'SYNC_CONFLICT'); self.assertEqual(self.pending_ids(),before)
+        self.assertEqual(caught.exception.code,'REMOTE_REFUSED'); self.assertEqual(self.pending_ids(),before)
         self.assertNotIn('claim',self.a.show(self.key)); self.assertEqual(self.a.show(self.key)['title'],'before')
         hook.unlink(); self.a.bead('sync'); self.assertEqual(self.pending_ids(),[])
         self.assertNotIn('claim',self.a.show(self.key))

@@ -139,6 +139,7 @@ class Workspace:
             raise BpError("CONFIG", f"workspace id must be an opaque token, not a path: {wid!r}")
         self.id, self.name, self.origin, self.config = wid, name, origin, config
         self.derived = None  # the URL-derived id, when that is where this id came from (adopt_published)
+        self.holding = False  # this process holds the store lock (see `locked`)
         self.dir = home() / wid
         self.events_dir = self.dir / "events"
 
@@ -171,6 +172,12 @@ class Workspace:
         if self.is_origin(meta.get("remote")):
             del meta["remote"]  # origin is looked up each time: remembering its URL would freeze it
         write_atomic(self.dir / "meta.json", json.dumps(meta, indent=1).encode())
+
+    def note_sync(self, remote: str, **values):
+        """Bookkeeping once the remote has accepted. It never turns a command that took effect into
+        a failure: a full volume or a damaged meta.json only leaves `last_sync` behind."""
+        with contextlib.suppress(OSError):
+            self.save_meta(**values, remote=remote, last_sync=stamp())
 
     def is_origin(self, url) -> bool:
         return isinstance(url, str) and bool(url and self.origin) and normalize_remote(url) == normalize_remote(self.origin)
@@ -539,10 +546,11 @@ def attempt_path(ws: Workspace, events: list[dict]) -> Path:
     return ws.events_dir / events[0]["replica"] / "claims" / f"{events[0]['id']}.json"
 
 
-def read_attempt(path: Path, problems: list | None = None) -> list[dict]:
-    """The events of one attempt file (one JSON record per line). An unreadable file is reported."""
+def read_attempt(path: Path, problems: list | None = None, data: bytes | None = None) -> list[dict]:
+    """The events of one attempt file (one JSON record per line), or of `data` when the caller has
+    read it already. An unreadable file is reported."""
     try:
-        data = path.read_bytes()
+        data = path.read_bytes() if data is None else data
     except OSError:
         if problems is not None:
             problems.append({"event": None, "origin": str(path), "problem": "attempt file is unreadable"})
@@ -796,14 +804,25 @@ def load_journal(ws: Workspace) -> Journal:
 
 
 def load_pending(ws: Workspace) -> list[list[dict]]:
-    """Our unconfirmed attempts, each a list of events. A pending file that is not an attempt is
-    nothing to settle: it is removed, along with its receipt."""
+    """Our unconfirmed attempts, each a list of events. Only the holder of the store lock sweeps: a
+    pending file it has read and found not to be an attempt is nothing to settle, and is removed
+    along with its receipt. A file that cannot be read is not junk (it may be an accepted attempt
+    whose receipt a retry needs): under the lock that is an IO error, and a reader skips it, as it
+    skips a file that vanished (settled meanwhile by the lock holder, which keeps the receipt)."""
     out = []
     for path in pending_files(ws):
-        events = read_attempt(path)
+        try:
+            data = path.read_bytes()
+        except FileNotFoundError:
+            continue
+        except OSError:
+            if ws.holding:
+                raise
+            continue
+        events = read_attempt(path, data=data)
         if events:
             out.append(events)
-        else:
+        elif ws.holding:
             path.unlink(missing_ok=True)
             path.with_suffix(".command").unlink(missing_ok=True)
     return out
@@ -1331,7 +1350,11 @@ def locked(ws: Workspace):
     ws.events_dir.mkdir(parents=True, exist_ok=True)
     with open(ws.dir / "lock", "a+") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        yield
+        ws.holding = True
+        try:
+            yield
+        finally:
+            ws.holding = False
 
 
 def confirm_ownership(ws: Workspace, events: list[dict]):
@@ -1350,6 +1373,8 @@ def writing(ws: Workspace, actor: dict):
             append_events(ws, tx.replica, tx.pending)
         if tx.ownership:
             confirm_ownership(ws, tx.ownership)
+        if tx.pending or tx.ownership:  # this command went through: a repeat of an earlier one is a new command
+            forget_receipts(ws, actor)
 
 
 def need_tracker(st: State):
@@ -1753,6 +1778,7 @@ class Link:
             env["GIT_SSH_COMMAND"] = "ssh -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=2"  # a dead remote must fail, not hang
         self.env = env
         self.object_format: str | None = None  # the project's, once fetch has looked
+        self.last_error = ""  # what git said about the last push that did not go through
         self.remote_counts: dict[str, int] = {}
         self.forks: list[str] = []
         self.confirmed: list[str] = []
@@ -1782,14 +1808,19 @@ class Link:
                                str(self.git_dir)], env=self.env, check=False)
             if created.returncode and not (self.git_dir / "HEAD").exists():
                 raise BpError("GIT_ERROR", created.stderr.decode(errors="replace").strip())
-        proc = run_git(["fetch", "--quiet", "--no-tags", "--", self.url, f"+{self.ref}:{REMOTE_REF}"],
+        # Into a ref of this process's own: git fetch updates its destination only if it still holds the
+        # value it read first, and every bead process of this store fetches at its own time.
+        mine = f"refs/beads/fetch/{os.getpid()}-{secrets.token_hex(4)}"
+        proc = run_git(["fetch", "--quiet", "--no-tags", "--", self.url, f"+{self.ref}:{mine}"],
                        env=self.env, check=False, timeout=NET_TIMEOUT)
         if proc.returncode:
             if b"find remote ref" in proc.stderr:
                 return None
             raise BpError("REMOTE_UNREACHABLE", f"cannot reach the coordination remote {self.url}: "
                           + proc.stderr.decode(errors="replace").strip())
-        tip = self.git(["rev-parse", REMOTE_REF])
+        tip = self.git(["rev-parse", mine])
+        run_git(["update-ref", REMOTE_REF, tip], env=self.env, check=False)  # keeps what was fetched reachable
+        run_git(["update-ref", "-d", mine], env=self.env, check=False)
         manifest = run_git(["cat-file", "blob", f"{tip}:manifest.json"], env=self.env, check=False)
         if manifest.returncode:
             raise BpError("MANIFEST_MISSING", f"{self.ref} on {self.url} has no manifest; refusing to adopt it")
@@ -1924,9 +1955,11 @@ class Link:
         """Conditional update: the new commit's parent is the head we fetched, and the push is a
         plain fast-forward, so the remote refuses it if anyone else got there first.
 
-        Returns "ok", "rejected" (the remote definitely did not apply it) or "uncertain" (the
-        outcome is unknown: the update may still be applied). With `fence`, a commit is pushed
-        even when nothing changed, so that any earlier in-flight update on the same head dies.
+        Returns "ok", "rejected" (the remote definitely did not apply it: someone else got there
+        first), "refused" (the remote definitely did not apply it and will not on a retry: a hook, a
+        rule, missing objects) or "uncertain" (the outcome is unknown: the update may still be
+        applied). `last_error` keeps what git said. With `fence`, a commit is pushed even when
+        nothing changed, so that any earlier in-flight update on the same head dies.
         """
         tree = self.tree(pending)
         if tip and not fence and self.git(["rev-parse", f"{tip}^{{tree}}"]) == tree:
@@ -1936,17 +1969,29 @@ class Link:
         try:
             # --no-verify: the user's client pre-push hooks are written for their code pushes; the remote's own
             # hooks still apply. `--`: a repository-controlled remote string is never a git option.
-            push = run_git(["push", "--quiet", "--no-verify", "--", self.url, f"{commit}:{self.ref}"], env=self.env,
+            push = run_git(["push", "--porcelain", "--no-verify", "--", self.url, f"{commit}:{self.ref}"], env=self.env,
                            check=False, timeout=NET_TIMEOUT, reap=False)
-        except BpError:
+        except BpError as error:
+            self.last_error = str(error)
             return "uncertain"
-        if push.returncode == 0:
-            self.git(["update-ref", REMOTE_REF, commit])
+        # The outcome is git's own status line for this ref ("<flag>\t<from>:<to>\t<summary>"), never text on
+        # stderr: a server hook can print anything there, also after the ref was updated.
+        status = next((line.split("\t") for line in push.stdout.decode(errors="replace").splitlines()
+                       if line.split("\t")[1:2] == [f"{commit}:{self.ref}"]), None)
+        if push.returncode == 0 or (status and status[0] in (" ", "+", "*", "=")):
+            self.git(["update-ref", REMOTE_REF, commit])  # the remote holds it, whatever went wrong afterwards
             self.last_commit = commit
             return "ok"
-        if re.search(rb"\[rejected\]|\[remote rejected\]|non-fast-forward|fetch first|stale info|cannot lock ref|"
-                     rb"failed to update ref", push.stderr):
-            return "rejected"  # the remote definitely did not apply this update
+        said = push.stderr.decode(errors="replace")
+        summary = status[2] if status and len(status) > 2 else ""
+        self.last_error = " ".join([summary] + [line.strip() for line in said.splitlines() if line.strip()
+                                                and not line.startswith(("To ", "hint:"))]).strip() or f"git push exited {push.returncode}"
+        if status and status[0] == "!":
+            if summary.startswith("[rejected]") or re.search(r"cannot lock ref|failed to update ref|failed to lock|"
+                                                          r"incorrect old value|non-fast-forward|fetch first|stale info", summary):
+                return "rejected"  # someone else got there first: decide again against the new head
+            if summary.startswith("[remote rejected]"):
+                return "refused"  # the remote's own verdict on this ref, not a race: a retry gets the same answer
         return "uncertain"
 
 
@@ -1961,6 +2006,24 @@ def drop_pending(ws: Workspace, attempts: list[list[dict]]):
             (ws.dir / "pending" / f"{events[0]['id']}.command").unlink(missing_ok=True)
 
 
+def forget_receipts(ws: Workspace, actor: dict):
+    """A later command of this actor went through. Attempts still pending stay for sync to settle;
+    only the receipts that would answer a repeat of an earlier command go."""
+    folder = ws.dir / "pending"
+    for receipt in sorted(folder.glob("*.command")) if folder.is_dir() else []:
+        try:
+            recorded = loads_strict(receipt.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(recorded, dict) and recorded.get("actor") == actor:
+            receipt.unlink(missing_ok=True)
+
+
+def forget(receipts: list[Path]):
+    for receipt in receipts:
+        receipt.unlink(missing_ok=True)
+
+
 def command_signature(args, actor: dict, request=None) -> str:
     """What a command asked for, independent of how it was typed: the same command run again by
     the same actor after a crash is the same request, not a second one. `request` carries what
@@ -1973,8 +2036,9 @@ def settle_commands(ws: Workspace, replica: str, actor: dict, signature: str) ->
     """Receipts of this actor's earlier attempts. One whose attempt the remote accepted and that asked
     for exactly this command means the command is already done. Any other settled receipt of this
     actor is stale once this command has gone through (the actor has moved on); it is returned so
-    the caller drops it only then. A receipt for an attempt still pending stays."""
-    done, stale = False, []
+    the caller drops it only then. A receipt for an attempt still pending stays. A receipt older than
+    an accepted attempt of this actor is dropped now: that later command went through."""
+    done, stale, settled = False, [], []
     for receipt in sorted((ws.dir / "pending").glob("*.command")) if (ws.dir / "pending").is_dir() else []:
         try:
             recorded = loads_strict(receipt.read_text(encoding="utf-8"))
@@ -1985,8 +2049,12 @@ def settle_commands(ws: Workspace, replica: str, actor: dict, signature: str) ->
             continue
         if receipt.with_suffix(".json").exists():
             continue  # still pending: nothing to conclude yet
-        if (ws.events_dir / replica / "claims" / receipt.with_suffix(".json").name).exists() \
-                and receipt.read_text(encoding="utf-8") == signature:
+        settled.append(receipt)
+    accepted = [r for r in settled if (ws.events_dir / replica / "claims" / r.with_suffix(".json").name).exists()]
+    for receipt in settled:  # named by attempt id (UUIDv7), so in time order
+        if accepted and receipt.name < accepted[-1].name:
+            receipt.unlink(missing_ok=True)  # a later command of this actor was accepted: it has moved on
+        elif receipt in accepted and receipt.read_text(encoding="utf-8") == signature:
             done = True
             receipt.unlink(missing_ok=True)
         else:
@@ -2006,7 +2074,14 @@ def settle_pending(ws: Workspace, link: Link, tip: str | None) -> str:
     if outcome == "ok":
         drop_pending(ws, pending)
         return "clear"
+    if outcome == "refused":  # the attempts stay pending: the fence that would settle them did not land
+        raise refused(link)
     return "moved" if outcome == "rejected" else "unresolved"
+
+
+def refused(link: Link) -> BpError:
+    return BpError("REMOTE_REFUSED", f"the remote refuses bead's update of {link.ref}; nothing was lost, and "
+                   f"retrying will not help until the remote allows it: {link.last_error}")
 
 
 def adopt_published(ws: Workspace, remote: str, error: BpError) -> Workspace | None:
@@ -2053,13 +2128,16 @@ def synchronise(ws: Workspace, remote: str, actor: dict) -> dict:
             if outcome == "ok":
                 drop_pending(ws, load_pending(ws))  # absent at a head we just advanced: they can never land
                 break
+            if outcome == "refused":
+                raise refused(link)
             if outcome == "uncertain":
-                raise BpError("REMOTE_UNREACHABLE", "the push got no answer; nothing was lost, run sync again")
+                raise BpError("REMOTE_UNREACHABLE", "the push did not complete; nothing was lost, run sync again "
+                              f"once the cause is fixed: {link.last_error}")
         time.sleep(random.uniform(0.1, 0.4) * attempt)  # another machine pushed first: merge again
     else:
         raise BpError("SYNC_CONFLICT", "the remote journal kept moving; run sync again")
     st = view(ws)
-    ws.save_meta(name=ws.name, remote=remote, last_sync=stamp())
+    ws.note_sync(remote, name=ws.name)
     return {"pulled": pulled, "pushed": pushed, "attempts": attempt, "tip": link.last_commit, "remote": remote,
             "issues": len(st.issues), "renamed": st.renames[known_renames:], "forked_journals": link.forks,
             "confirmed": link.confirmed, "waiting_events": len(st.pending), "integrity": len(st.integrity)}
@@ -2081,31 +2159,32 @@ def coordinated(ws: Workspace, actor: dict, args, build, request=None):
     link = Link(ws, remote)
     replica, signature = replica_id(), command_signature(args, actor, request)
     receipt = None  # (events, result) of a push of ours that got no answer; it may still have landed
+    stale: list[Path] = []  # this actor's settled receipts: dropped only once this command has gone through
     for attempt in range(1, 13):
         with locked(ws):
             tip = link.fetch()  # under the lock: ownership is decided against the head as it is now
             link.merge(tip)
             if receipt and attempt_path(ws, receipt[0]).exists():  # it had: the work is done, not to be redone
                 drop_pending(ws, [receipt[0]])
-                ws.save_meta(remote=remote, last_sync=stamp())
+                forget(stale)
+                ws.note_sync(remote)
                 return receipt[1]
             done, stale = settle_commands(ws, replica, actor, signature)
             if done:  # an earlier run of this command was accepted
-                ws.save_meta(remote=remote, last_sync=stamp())
+                ws.note_sync(remote)
                 return "online"
             settled = settle_pending(ws, link, tip)
             if settled == "unresolved":
-                raise BpError("UNRESOLVED", "an ownership attempt is unsettled and the remote is not answering; "
-                              "it counts for nothing until `bead sync` can settle it")
+                raise BpError("UNRESOLVED", "an ownership attempt is unsettled and the push that would settle it did "
+                              f"not complete ({link.last_error}); it counts for nothing until `bead sync` can settle it")
             if settled == "clear":
                 receipt = None  # whatever this command had in flight is settled one way or the other
                 tx = Tx(ws, actor)
                 result = build(tx, "online")
-                for receipt in stale:  # this command went through: the actor has moved on from those
-                    receipt.unlink(missing_ok=True)
                 if tx.pending:
                     append_events(ws, tx.replica, tx.pending)
                 if not tx.ownership:
+                    forget(stale)  # nothing to settle: this command went through
                     return result
                 folder = ws.dir / "pending"
                 folder.mkdir(exist_ok=True)
@@ -2124,8 +2203,12 @@ def coordinated(ws: Workspace, actor: dict, args, build, request=None):
                         os._exit(99)  # test hook: the remote accepted, the acknowledgement was lost
                     confirm_ownership(ws, tx.ownership)
                     drop_pending(ws, [tx.ownership])
-                    ws.save_meta(remote=remote, last_sync=stamp())
+                    forget(stale)  # this command went through: the actor has moved on from those
+                    ws.note_sync(remote)
                     return result
+                if outcome == "refused":  # it definitely did not land, and will not on a retry
+                    drop_pending(ws, [tx.ownership])
+                    raise refused(link)
                 if outcome == "rejected":
                     drop_pending(ws, [tx.ownership])  # someone else got there first; decide again against the new head
                 else:  # uncertain: the attempt stays pending; keep its result in case the push did land
@@ -2146,6 +2229,8 @@ def publish_soon(ws: Workspace, args, actor: dict) -> str | None:
         return None
     except BpError as error:
         return f"recorded locally, not yet published ({error.code})"
+    except OSError as error:  # a full volume while pulling, say: the local write stands all the same
+        return f"recorded locally, not yet published (IO: {error.strerror or error})"
 
 
 # ----------------------------------------------------------------- commands
@@ -2330,9 +2415,23 @@ CLAIM_NOTE = {"online": "confirmed", "local": "local tracker, no remote",
               "offline": "PROVISIONAL: not exclusive until claimed online"}
 
 
+def still_held(st: State, keys, actor: dict):
+    """A retry recognised from its receipt answers for a claim accepted earlier, which may have moved
+    on since: say so rather than report a claim this actor no longer holds."""
+    me = actor_label(actor, replica_id())
+    for key in keys:
+        issue = st.resolve(key)
+        held = issue["claim"]
+        if not held or held["owner"] != me:
+            raise BpError("ALREADY_CLAIMED" if held else "NOT_OWNER", f"{issue['id']}: your claim was accepted but "
+                          + (f"is now held by {held['owner']}" if held else f"has since ended ({issue['status']})"))
+
+
 def cmd_claim(args, ws, actor):
     mode = claim_issues(args, ws, actor, args.ids)
     st = view(ws)
+    if mode != "offline":
+        still_held(st, args.ids, actor)
     result = [detail(st, st.resolve(key)) for key in args.ids]
     return result, [f"Claimed {r['id']}: {r['title']} ({CLAIM_NOTE[mode]})" for r in result]
 
@@ -2340,6 +2439,7 @@ def cmd_claim(args, ws, actor):
 def cmd_takeover(args, ws, actor):
     claim_issues(args, ws, actor, args.ids, takeover=True)
     st = view(ws)
+    still_held(st, args.ids, actor)
     result = [detail(st, st.resolve(key)) for key in args.ids]
     return result, [f"Took over {r['id']} (generation {r['claim']['generation']}): {args.reason}" for r in result]
 
@@ -2396,6 +2496,13 @@ def cmd_claims(args, ws, actor):
     return {"claims": rows, "last_sync": synced}, lines
 
 
+def ended_by(issue: dict, me: str) -> bool:
+    """`me` ended the issue's last claim by closing or deleting it. The run that did so may have died
+    before it published that, so a retry of the command publishes as promptly as the first run."""
+    last = issue["claim_history"][-1] if issue["claim_history"] else None
+    return bool(last) and last["ended_by"] == me and last["how"] in ("close", "delete")
+
+
 def cmd_update(args, ws, actor):
     fields = field_args(args)
     status = fields.pop("status", None)
@@ -2416,7 +2523,7 @@ def cmd_update(args, ws, actor):
             held = issue["claim"]
             if new_parent and (new_parent == issue["uid"] or reaches(st, issue["uid"], new_parent)):
                 raise BpError("CYCLE", f"{issue['id']} cannot become a child of {st.key(new_parent)}: it would wait for itself")
-            if status == "closed" and held:
+            if status == "closed" and (held or ended_by(issue, me)):
                 ended.append(issue["id"])
             if status and held and held["owner"] != me and not args.force:
                 raise BpError("CLAIMED_BY_OTHER", f"{issue['id']} is claimed by {held['owner']}: "
@@ -2455,17 +2562,21 @@ def cmd_update(args, ws, actor):
             edits(tx)
             return mode
 
-        if coordinated(ws, actor, args, build, request={"fields": fields, "status": status}) == "offline":
+        mode = coordinated(ws, actor, args, build, request={"fields": fields, "status": status})
+        if mode == "offline":
             notes.append("claim is PROVISIONAL: not exclusive until claimed online")
+        elif status != "closed":  # a claiming close ends the claim on purpose
+            still_held(view(ws), args.ids, actor)
     else:
         with writing(ws, actor) as tx:
             edits(tx)
-    if ended:  # the same promptness `bead close` gives
-        warning = publish_soon(ws, args, actor)
-        if warning:
-            notes.append(warning)
+    warning = publish_soon(ws, args, actor) if ended else None  # the same promptness `bead close` gives
     st = view(ws)
     result = [detail(st, st.resolve(key)) for key in args.ids]
+    if warning:
+        notes.append(warning)
+        for r in result:
+            r["unpublished"] = warning  # --json is told too: the other machines do not know yet
     return result, [f"Updated {r['id']}: {r['title']}" for r in result] + notes
 
 
@@ -2484,11 +2595,14 @@ def transition(op: str, verb: str):
                 data = {"reason": args.reason} if args.reason else {}
                 if op in ("close", "delete") and held and held["owner"] == me:
                     data["claim"] = held["id"]  # ends exactly this claim, never a successor's
-                ended = ended or bool(held)
+                ended = ended or bool(held) or (op in ("close", "delete") and ended_by(issue, me))
                 tx.emit(op, issue["uid"], data)
             st = tx.state
             result = [brief(st, st.resolve(key)) for key in args.ids]
         warning = publish_soon(ws, args, actor) if ended else None
+        if warning:
+            for r in result:
+                r["unpublished"] = warning  # --json is told too: the other machines do not know yet
         return result, [f"✓ {verb} {r['id']}: {r['title']}" for r in result] + ([warning] if warning else [])
     return command
 
@@ -2825,7 +2939,8 @@ Rules  Ownership belongs to your agent thread; a new session is a new owner. Con
        seen both sides settles it. --offline claims are provisional, never exclusive.
        Use --json for machine output. Error codes: ALREADY_CLAIMED, CLAIMED_BY_OTHER, NOT_OWNER,
        STATUS_CONFLICT, CYCLE, VALIDATION, ISSUE_NOT_FOUND, REMOTE_UNREACHABLE (nothing is lost;
-       retry later), UNRESOLVED (an attempt of yours awaits the remote: run bead sync), SYNC_CONFLICT,
+       retry later), REMOTE_REFUSED (the remote refuses bead's ref: tell a human; retrying will not help),
+       UNRESOLVED (an attempt of yours awaits the remote: run bead sync), SYNC_CONFLICT,
        IO (the store or a file could not be read or written; nothing half-done).
 """
 

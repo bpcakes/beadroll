@@ -90,7 +90,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - Text from files and stdin is UTF-8 regardless of locale; OS errors are structured (`IO`); a
   timed-out `git` is killed with its process group.
 - A command receipt survives a *failed* later command by the same actor and is dropped only when
-  a later command by that actor goes through.
+  a later command by that actor goes through: the remote accepted it, or it was a local write that
+  was appended. A recognised retry still reports the claim as it is now.
+- A push's outcome is git's own status line (`--porcelain`); a `[remote rejected]` that is not a
+  lost race is `REMOTE_REFUSED` and is not retried.
 - origin is never remembered as the coordination remote; only a remote named otherwise is. A
   tracked config seeds a new store's remote but never silently moves an existing store's.
 - bead's pushes skip the user's client hooks (`--no-verify`); the remote's hooks still apply.
