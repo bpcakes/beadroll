@@ -104,6 +104,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
   sets it aside as `sync.git.damaged-<time>` and makes it again, once per command, under the store
   lock; the second time in one command is `SYNC_REPO_DAMAGED`. A line the remote relayed is never
   taken as local damage.
+- git's automatic maintenance is off in `sync.git` (`gc.auto=0`, no detached gc, `fetch.unpackLimit=1`
+  so fetched objects stay packed); bead repacks it under the store lock when loose objects or packs
+  pile up, and prunes only unreachable loose objects older than an hour (an in-flight fetch's are
+  younger). The remote's own maintenance is the remote's business.
 - Format 1 is frozen; changes are additive. An event an older bead cannot apply (a new operation,
   a new field, a newer `v`) is set aside, reported under `integrity`, carried through sync
   untouched and applied after an upgrade; a mixed fleet is safe. A breaking change, should one

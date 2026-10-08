@@ -19,7 +19,7 @@ from .base import (
     BpError, FORMAT, MAX_NESTING, NET_TIMEOUT, REMOTE_REF, git_text,
     loads_strict, pause, run_git, too_deep, uuid7, without_password,
 )
-from .machine import (
+from .machine import (dir_entries, 
     OWNERSHIP, Workspace, append_events, attempt_path, capture_where, claim_files,
     complete_prefix, encode_events, home, moved_workspaces, object_format, pending_files,
     private_dir, private_dirs, repair_tail, replica_id, segment_files, transport_config,
@@ -141,7 +141,13 @@ REPO_LOCATION_ENV = ("GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_OBJECT_DIRECTORY",
 
 LOCAL_DAMAGE = re.compile(r"object file .* is empty|corrupt or missing|cannot read existing object info|"
                           r"invalid index-pack output|unable to mmap|object .* is corrupt|bad object header|"
-                          r"unable to read [0-9a-f]{40,64}|missing object [0-9a-f]{40,64} for refs/")
+                          r"unable to read [0-9a-f]{40,64}|missing object [0-9a-f]{40,64} for refs/|"
+                          r"packfile .* (?:cannot be accessed|is corrupt)|bad packed object|corrupted pack|"
+                          r"index file .* is corrupt")
+SYNC_REPO_CONFIG = [("gc.auto", "0"), ("gc.autoDetach", "false"), ("maintenance.auto", "false"),
+                    ("fetch.unpackLimit", "1")]
+REPACK_LOOSE = int(os.environ.get("BEAD_REPACK_LOOSE") or 1000)  # loose objects in sync.git before bead repacks it
+REPACK_PACKS = int(os.environ.get("BEAD_REPACK_PACKS") or 40)  # packs (one per fetch that brought something) before it does
 
 
 def local_damage(said: str) -> bool:
@@ -173,6 +179,13 @@ class Link:
             env["GIT_CONFIG_COUNT"] = str(count + len(carried))
         if "GIT_SSH_COMMAND" not in env and "GIT_SSH" not in env and all(key != "core.sshcommand" for key, _ in carried):
             env["GIT_SSH_COMMAND"] = "ssh -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=2"  # a dead remote must fail, not hang
+        # sync.git is bead's own: no detached git maintenance racing the next command (bead repacks it itself,
+        # under the store lock), and what a fetch brings stays in the pack index-pack verified and wrote whole,
+        # never exploded into loose files. Last, so that these win over anything the checkout carries.
+        count = int(env.get("GIT_CONFIG_COUNT") or 0)
+        for index, (key, value) in enumerate(SYNC_REPO_CONFIG, count):
+            env[f"GIT_CONFIG_KEY_{index}"], env[f"GIT_CONFIG_VALUE_{index}"] = key, value
+        env["GIT_CONFIG_COUNT"] = str(count + len(SYNC_REPO_CONFIG))
         self.env = env
         self.object_format: str | None = None  # the project's, once fetch has looked
         self.last_error = ""  # what git said about the last push that did not go through
@@ -206,6 +219,19 @@ class Link:
         with contextlib.suppress(FileNotFoundError):  # another process may have set it aside already
             os.rename(self.git_dir, aside)
         self.rebuilt, self.object_format, self.remote_counts = str(aside), None, {}
+
+    def maintain(self) -> bool:
+        """Repack sync.git when loose objects or packs have piled up: one pack, loose copies of packed objects
+        gone, unreachable loose objects older than an hour gone (an in-flight fetch's are younger). Lock held,
+        so no bead process of this store is writing; git's own maintenance is off (SYNC_REPO_CONFIG)."""
+        objects = self.git_dir / "objects"
+        loose = sum(len(dir_entries(objects / f"{n:02x}")) for n in range(256))
+        packs = sum(1 for p in dir_entries(objects / "pack") if p.suffix == ".pack")
+        if loose < REPACK_LOOSE and packs < REPACK_PACKS:
+            return False
+        run_git(["repack", "-a", "-d", "-q"], env=self.env, check=False)
+        run_git(["prune", "--expire=1.hour.ago"], env=self.env, check=False)
+        return True
 
     def fetch(self) -> str | None:
         """Fetch exactly the coordination ref. Returns its head, or None if nobody has published."""
@@ -550,6 +576,7 @@ def synchronise(ws: Workspace, remote: str, actor: dict) -> dict:
     link = Link(ws, remote)
     known_renames = len(view(ws).renames)
     pulled = pushed = 0
+    repacked = False
     for attempt in range(1, 13):
         try:
             tip = link.fetch()
@@ -563,6 +590,7 @@ def synchronise(ws: Workspace, remote: str, actor: dict) -> dict:
                 outcome = link.publish(tip, fence=bool(load_pending(ws)))
                 if outcome == "ok":
                     drop_pending(ws, load_pending(ws))  # absent at a head we just advanced: they can never land
+                    repacked = link.maintain()
                     break
                 if outcome == "refused":
                     raise refused(link)
@@ -584,7 +612,7 @@ def synchronise(ws: Workspace, remote: str, actor: dict) -> dict:
     st = view(ws)
     ws.note_sync(remote, name=ws.name)
     return {"pulled": pulled, "pushed": pushed, "attempts": attempt, "tip": link.last_commit, "remote": remote,
-            **({"sync_repo_rebuilt": link.rebuilt} if link.rebuilt else {}),
+            **({"sync_repo_rebuilt": link.rebuilt} if link.rebuilt else {}), **({"repacked": True} if repacked else {}),
             "issues": len(st.issues), "renamed": st.renames[known_renames:], "forked_journals": link.forks,
             "confirmed": link.confirmed, "waiting_events": len(st.pending), "integrity": len(st.integrity)}
 

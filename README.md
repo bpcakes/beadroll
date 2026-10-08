@@ -140,6 +140,11 @@ An edit made after seeing another is never a conflict, whatever the clocks say.
   `sync.git.damaged-<time>` and made again from the remote and `events/`,
   once per command; `info` lists the copies kept, which hold nothing that is
   not also elsewhere. Damage again after that is `SYNC_REPO_DAMAGED`.
+- git's own maintenance is off in `sync.git` (no detached `gc` racing the next
+  command) and what a fetch brings stays in the pack it arrived in. bead repacks
+  the repository itself, under the store lock, once loose objects or packs pile
+  up (`BEAD_REPACK_LOOSE`, `BEAD_REPACK_PACKS`); `sync --json` then says
+  `repacked`.
 - `title`, `priority`, `issue_type` and `status` cannot be cleared; a `set`
   that tries is reported and applies nothing.
 

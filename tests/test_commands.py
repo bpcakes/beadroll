@@ -1998,3 +1998,60 @@ class SyncRepoDamage(unittest.TestCase):
         self.assertTrue(bead.local_damage("fatal: missing object 7d04c9b4c3031216fa66cefa4cf7e3b79212bb32 for refs/beads/remote"))
         self.assertFalse(bead.local_damage("remote: error: object file objects/7d/04c9 is empty\nremote: fatal: bad object"))
         self.assertFalse(bead.local_damage("ssh: Could not resolve hostname github.com"))
+
+
+# ---- roll-zc49 (2026-10-08): git's detached auto-gc raced bead's commands in sync.git
+class SyncRepoMaintenance(unittest.TestCase):
+    """One transient GIT_ERROR in 2,400 stress operations: git's background gc repacking sync.git under a
+    running command. sync.git is bead's own, so git's automatic maintenance is off there, what a fetch brings
+    stays in the pack index-pack verified and wrote whole, and bead repacks under the store lock when loose
+    objects or packs pile up."""
+    def setUp(self):
+        self.box = support.Sandbox()
+        self.addCleanup(self.box.cleanup)
+        self.a = support.Machine(self.box, "a")
+        self.a.bead("init", "--prefix", "ex")
+        self.key = self.a.bead("create", "x")["id"]
+        self.a.bead("sync")
+        self.b = support.Machine(self.box, "b")
+        self.b.bead("sync")
+
+    def counts(self, machine):
+        objects = machine.store() / "sync.git" / "objects"
+        loose = sum(1 for d in objects.iterdir() if len(d.name) == 2 for _ in d.iterdir())
+        packs = sum(1 for p in (objects / "pack").iterdir() if p.suffix == ".pack") if (objects / "pack").exists() else 0
+        return loose, packs
+
+    def test_no_git_maintenance_in_sync_git_and_fetches_stay_packed(self):
+        import contextlib
+        from unittest import mock
+        bead = support.load_module()
+        with mock.patch.dict(os.environ, self.a.env(), clear=True), contextlib.chdir(self.a.checkout):
+            link = bead.Link(bead.find_workspace(), str(self.box.origin))
+        for key, value in bead.SYNC_REPO_CONFIG:
+            seen = bead.run_git(["config", "--get", key], env=link.env).stdout.decode().strip()
+            self.assertEqual(seen, value, key)
+        _, packs_before = self.counts(self.a)
+        self.b.bead("create", "from b")
+        self.b.bead("sync")
+        self.a.bead("sync")
+        _, packs_after = self.counts(self.a)
+        self.assertEqual(packs_after, packs_before + 1, "what the fetch brought is one pack, not loose files")
+
+    def test_repacks_under_the_lock_when_loose_objects_pile_up(self):
+        for n in range(3):
+            self.a.bead("create", f"t{n}")
+            self.a.bead("sync")
+        loose_before, _ = self.counts(self.a)
+        self.assertGreater(loose_before, 3)
+        result = strict_json(self.a.run("sync", "--json", BEAD_REPACK_LOOSE="3").stdout)
+        self.assertTrue(result.get("repacked"), result)
+        loose, packs = self.counts(self.a)
+        self.assertLessEqual(loose, 3, "packed copies are gone")
+        self.assertEqual(packs, 1, "one pack")
+        fsck = support.git("--git-dir", str(self.a.store() / "sync.git"), "fsck", "--full", "--no-dangling")
+        self.assertEqual(fsck.strip(), "")
+        self.assertNotIn("repacked", strict_json(self.a.run("sync", "--json").stdout))  # nothing piled up since
+        self.a.bead("claim", self.key)
+        self.b.bead("sync")
+        self.assertIn("codex:", self.b.show(self.key)["claim"]["owner"])
