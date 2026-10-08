@@ -34,8 +34,9 @@ and how it was closed; `reviews/` holds the reports verbatim.
   modules set a scratch `BEAD_HOME`; set one yourself for any manual experiment
   (`export BEAD_HOME=$(mktemp -d)`), and never run `bead`, `br` or `bv` inside other repositories
   on this machine: the origin URL would route you to a real workspace.
-- The only real remote test data may go to is `$BEAD_TEST_REMOTE`,
-  and never its `main`. Do not change SSH, git or shell configuration on any machine.
+- The only real remote test data may go to is the throwaway repository the maintainer provides in
+  `$BEAD_TEST_REMOTE` (the `infra/` scripts read it), and never its `main`. Do not change SSH, git
+  or shell configuration on any machine.
 
 ## Making a change
 

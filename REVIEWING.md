@@ -150,16 +150,15 @@ under `infra/`; their last results are summarised in `README.md`.
   Never run it inside the real repositories under `~/Documents` (the origin URL would route you
   to a real workspace id). Reading their `.beads/issues.jsonl` files is fine; do not copy their
   contents into any remote.
-- Local bare repositories are the default remote. The only real remote you may push to is
-  `$BEAD_TEST_REMOTE` (throwaway, private, synthetic data; `gh` is
-  authenticated). Do not create other repositories or refs anywhere, and do not push to `main`
-  there.
+- Local bare repositories are the default remote. The only real remote you may push to is the
+  throwaway repository the maintainer provides in `$BEAD_TEST_REMOTE` (private, synthetic data).
+  Do not create other repositories or refs anywhere, and do not push to `main` there.
 - Do not modify `bead`, `README.md`, `FINDINGS.md`, existing tests or earlier reports. Proposed
   fixes go in your report as unified diffs.
 - Do not change SSH, firewall, git or shell configuration on any machine. Do not run `br` or
   `bv` inside real repositories (`br where` writes lock files).
-- Running Codex (`codex exec`) or Claude Code sessions costs the owner money; do it only for an
-  identity-detection check, at most twice, and say so in the report.
+- Starting Codex or Claude Code sessions from a test is for identity detection only: at most a
+  couple, and say so in the report.
 - In-process tests replace a beadroll name with `tests.support.patched(name, value)` (the package
   imports names, so patching one module does not reach the others); to skip bead's wait between
   attempts patch `pause`, never the global `time.sleep` (`subprocess` polls through it; a callback
