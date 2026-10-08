@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,8 +7,27 @@ name = "beadroll"
 description = "Beads-compatible issue tracker for coding agents working across git worktrees and machines"
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT OR Apache-2.0"
+license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
+keywords = ["issue-tracker", "beads", "git", "coding-agents", "cli"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Bug Tracking",
+    "Topic :: Software Development :: Version Control :: Git",
+]
 dependencies = []
 dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/bpcakes/beadroll"
+Repository = "https://github.com/bpcakes/beadroll"
+Issues = "https://github.com/bpcakes/beadroll/issues"
 
 [project.scripts]
 bead = "beadroll:main"

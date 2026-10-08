@@ -1,17 +1,43 @@
 # beadroll
 
-A Beads-compatible issue tracker whose state does not live on code branches.
-A small Python package (`beadroll/`: `base`, `machine`, `model`, `queries`,
-`sync`, `commands`, `cli`), standard library only (Python 3.12+, git 2.40+),
-installed as the `bead` command.
+**An issue tracker for coding agents that works across git worktrees, clones
+and machines, and keeps its state off your code branches.**
 
-It exists to test a design before building it anywhere permanent.
+Several agents (and people) work on one repository at once, each in its own
+worktree, often on more than one machine. They need one tracker: the same
+issues everywhere, a claim that means *mine and nobody else's* the moment it is
+accepted, and nothing to merge. beadroll gives each machine an append-only
+journal of events, replays all journals into the current state, and moves them
+through one dedicated git ref (`refs/beads/journal`) on the repository's own
+remote. Ownership is settled online by a conditional update of that ref. No
+server, no daemon, no database, no commits on your branches.
+
+It reads and writes [Beads](https://github.com/steveyegge/beads) JSONL
+(`.beads/issues.jsonl`), so a tracker kept with `br` or `bd` imports in one
+command and exports back for `bv` or any Beads reader. The command is `bead`;
+its verbs mirror the `br` verbs agents actually use.
+
+A small Python package (`beadroll/`: `base`, `machine`, `model`, `queries`,
+`sync`, `commands`, `cli`), standard library only, Python 3.12+ and git 2.40+.
+
+## Status
+
+Alpha, in daily use by its author: this repository tracks its own work with
+it, real Beads trackers (the largest 227 issues, 1.9 MB of JSONL) have been
+imported and published through their repositories, and the cross-machine
+protocol is exercised by a scripted drive over four machines against GitHub.
+Import, export, `ready` and `blocked` have been checked against `br` 0.5.7 on
+48 real trackers and bead's export is read by `bv`; upstream `bd` has not been
+tested. The on-disk and
+published format is frozen at version 1 (changes are additive; see *Format
+and upgrades*). Seven independent reviews have been run against the code;
+every finding and its resolution is in `FINDINGS.md`.
 
 ## Install
 
 ```sh
-uv tool install git+ssh://git@github.com/bpcakes/beadroll   # or: pipx install git+ssh://...
-uv tool install --force .                                   # from a checkout
+uv tool install git+https://github.com/bpcakes/beadroll   # or: pipx install git+https://...
+uv tool install --force .                                  # from a checkout
 bead --version
 ```
 
@@ -20,7 +46,54 @@ Without `uv` or `pipx`, use a virtual environment:
 and link `~/.local/share/beadroll/bin/bead` into `~/.local/bin`. In the
 checkout, `./bead` runs the working copy. Start-up is about 25 ms.
 
-## Design under test
+## Quick start
+
+```sh
+cd some-repo                      # any worktree or clone
+bead init --import .beads/issues.jsonl   # keeps ids, comments, dependencies; publishes at once
+bead                              # the one-screen overview; bead help COMMAND for one command
+bead prime                        # the workflow an agent loads at the start of a session
+bead onboard                      # the instruction block for a project's AGENTS.md / CLAUDE.md
+bead ready --type task --json
+bead claim <id>                     # or: bead update <id> --status in_progress
+bead comments add <id> "started"
+bead close <id> --reason "done"
+bead claims                         # who holds what, on which branch, and when each was last active
+bead log <id>                       # who did what: machine, agent, thread, branch
+bead export -o /tmp/x/.beads/issues.jsonl   # for bv or any Beads reader
+bead info                           # where the store is, who you are, what the remote still lacks
+```
+
+On another machine or in another clone of the same repository: install `bead`
+and run `bead sync` there; the tracker is found from the origin URL. Every
+command that writes publishes before it returns (`--offline` keeps a write
+local); `sync` is the catch-up after `--offline` or a remote that did not
+answer, and `ready`, `show`, `list` and the other reads never touch the network.
+
+Commands: `create`, `show`, `update`, `list`, `ready`, `blocked`, `close`,
+`reopen`, `delete`, `dep add|remove|list|tree|cycles`, `comments [add]`,
+`search`, `lint`, plus `init`, `import`, `export`, `sync`, `claim`, `release`,
+`takeover`, `claims`, `log`, `info`, `machines`, and for agents `help`, `prime`,
+`onboard`. `--json` works anywhere on the command line; `bead` alone prints the
+overview.
+
+## What gets published
+
+Everything bead publishes goes to `refs/beads/journal` on the coordination
+remote (origin by default), and only there: never to a branch, never into a
+commit of yours. Anyone who can read that repository can read the tracker. A
+journal holds, for every event: the issue data you wrote (titles, descriptions,
+comments), who wrote it — an opaque machine id, the agent type and its session
+or thread id (`claude:<session>`, `codex:<thread>`), or the `--actor` name you
+chose — the branch and commit the command ran on, and a timestamp. It never
+holds hostnames, user names, paths, or the password of a remote URL (those are
+dropped before anything is stored or shown; git's credential helpers are the
+place for secrets). `"where": false` in `.beadroll.json` stops events from
+recording the branch and commit; `bead machines --name` keeps hostnames as
+local aliases only. On a public repository, the ref is public: treat issue text
+as you would a public issue tracker.
+
+## How it works
 
 - **One journal per machine**, in append-only segment files. A machine only
   appends to its own journal; a full segment is never rewritten.
@@ -46,35 +119,6 @@ checkout, `./bead` runs the working copy. Start-up is about 25 ms.
 - **Place on every event:** the branch and commit the command ran on, so a
   claim says where the work is happening and a close whether it is merged.
 - **Beads JSONL is an import and export format**, not the store.
-
-## Try it
-
-```sh
-cd some-repo                      # any worktree or clone
-bead init --import .beads/issues.jsonl   # keeps ids, comments, dependencies
-bead                              # the one-screen overview; bead help COMMAND for one command
-bead prime                        # the workflow an agent loads at the start of a session
-bead onboard                      # the instruction block for a project's AGENTS.md / CLAUDE.md (this repository's AGENTS.md carries it)
-bead ready --type task --json
-bead claim <id>                     # or: bead update <id> --status in_progress
-bead comments add <id> "started"
-bead close <id> --reason "done"
-bead claims                         # who holds what, on which branch, and when each was last active
-bead log <id>                       # who did what: machine, agent, thread, branch
-bead export -o /tmp/x/.beads/issues.jsonl   # for bv or any Beads reader
-bead info                           # where the store is and who you are
-```
-
-On a second machine: copy `bead`, then `bead sync` inside a clone of the same
-remote. `sync`, `claim`, `release` and `takeover` contact the remote, as does
-closing an issue you hold; every other command is local.
-
-Commands mirror the `br` verbs and flags that are actually used: `create`,
-`show`, `update`, `list`, `ready`, `blocked`, `close`, `reopen`, `delete`,
-`dep add|remove|list|tree|cycles`, `comments [add]`, `search`, `lint`, plus
-`init`, `import`, `export`, `sync`, `claim`, `release`, `takeover`, `claims`,
-`log`, `info`, `machines`, and for agents `help`, `prime`, `onboard`. `--json`
-works anywhere on the command line; `bead` alone prints the overview.
 
 ## Claims
 
@@ -167,6 +211,9 @@ reader *misread* events; none is planned. Should one ever be needed it follows
 *writers lag readers*: the new bead reads both formats but writes the old one
 until every machine on the tracker has announced, in the manifest it publishes,
 that it reads the new one; then it flips. Nothing ever rewrites existing events.
+
+## What else holds
+
 - An imported dependency on an issue that is not in the tracker yet is kept by
   key and becomes a real edge on every machine the moment that key exists, so
   importing in several batches gives the same result as one. An import is
@@ -253,7 +300,7 @@ hostname is a local alias (`bead machines --name ID=ALIAS`), never in events.
 ## Tests and reviews
 
 ```sh
-./check.sh            # every test module with a scratch store (about 25 minutes)
+./check.sh            # every test module with a scratch store (about 20 minutes)
 ./check.sh --stress   # also the randomised multi-machine models and the protocol sweep
 ./check.sh --real     # also import/export of the real tracker exports on this machine
 ```
@@ -272,18 +319,18 @@ a ten-schedule slice by default, `BEAD_SWEEP=full` for all 660). `tests/support.
 own repository, bare remotes and machine homes in a temporary directory, and the
 package sets a scratch `BEAD_HOME` so the default store is never touched.
 
-Seven independent reviews have been run against this POC. Their reports are kept
+Seven independent reviews have been run against the code. Their reports are kept
 verbatim under `reviews/`; `FINDINGS.md` is the ledger of every finding, its status,
 how it was resolved and which tests cover it. `REVIEWING.md` is the brief for the
-next one: rules, what not to report, the checklist, and the deliverables (a report
-under `reviews/`, a `tests/test_review<n>.py`, proposed ledger rows). `infra/` holds
-the scripts used against real machines and GitHub: `drive.py` (twelve cross-machine
+next one: the map of the design, the decisions that are not findings, the rules,
+the checklist and the deliverables. `infra/` holds the maintainer's harness against
+real machines and a throwaway GitHub repository: `drive.py` (cross-machine
 scenarios over ssh), `soak.py` (random agent-like traffic), `roundtrip.py`
 (import/export over real Beads exports) and the synthetic `seed.jsonl`.
 
-## Where this differs from the design document
+## Design decisions that changed while building
 
-| Document | Here | Why |
+| First design | Now | Why |
 |---|---|---|
 | Concurrent values need an explicit resolution operation | Flagged with every alternative; any later write that saw them settles it | Same information, no extra protocol for agents to learn |
 | Fallback display is the smallest event id | The newest event id | Matches what people expect to see |
@@ -334,3 +381,27 @@ scenarios over ssh), `soak.py` (random agent-like traffic), `roundtrip.py`
   tracker that cannot sync.
 - Not implemented: `stats`, `count`, `epic status`, `graph`, saved queries,
   templates, external-project dependencies, `bv`-style ranking.
+
+## Relation to Beads
+
+beadroll is not a fork of Beads and does not use its database. It shares the
+JSONL record format (`import`, `export`), the issue model (ids, parent-child
+keys, dependencies, comments, labels, statuses) and the verbs agents use, so a
+project can move from `br`/`bd` to `bead` and back with its history intact
+(`bead export` writes what `br sync --import-only` and `bv` read). What it
+adds is the multi-machine, multi-worktree model: journals instead of a database,
+one ref instead of commits on branches, claims settled online. What it leaves
+out is listed under *Known limits*. A leftover `.beads/` directory is history:
+nothing in bead reads or writes it after the import.
+
+## Contributing
+
+`AGENTS.md` says how the code is laid out and how a change is made, tested and
+recorded; `REVIEWING.md` is the brief for an independent review; `./check.sh`
+is the baseline (a scratch store, never your own). Run it before a pull
+request. Unless you say otherwise, a contribution is licensed as the project is.
+
+## Licence
+
+Licensed under either of the [Apache License, Version 2.0](LICENSE-APACHE) or
+the [MIT license](LICENSE-MIT), at your option.
