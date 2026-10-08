@@ -68,7 +68,8 @@ A reader therefore sees all of an attempt or none of it.
 | `bead claim X` | Under the store lock: fetches the ref, checks nobody holds X, writes the claim as a *pending attempt*, and pushes it as a fast-forward of the head just fetched. Accepted: the file is moved into place and the claim is confirmed. Refused (another machine moved the ref first): the attempt is dropped and the decision is made again against the new head. No answer: the attempt stays pending, counting for nothing, until the next contact with the remote finds it there (confirmed) or pushes a *fence* commit on the same head, after which the lost push can no longer land, and drops it. Nothing in the journal is ever written or taken back for a claim. |
 | `bead update X --claim --title ...` | The claim and the edits made with it form one attempt: all of it lands with the push, or none of it. The edits live in the attempt file, not in the journal. |
 | the push lands but the answer is lost | The command keeps trying; when the next fetch finds its attempt on the remote, it reports the result of that attempt instead of doing the work again. Every pending attempt also carries a receipt of the command that made it, so after a crash a retry of that same command by the same actor finds its attempt accepted and reports done, rather than rebuilding the command against the state it already changed. A receipt lives until a later command of that actor *goes through* (the remote accepts it, or a local write is appended); a failed command in between leaves it alone. A recognised retry still answers for the claim as it is now (`ALREADY_CLAIMED` if someone took it over since). |
-| the remote refuses the push | A refusal by the remote itself (a declining hook, a read-only key, a policy) is `REMOTE_REFUSED` at once, quoting git: nothing was lost and retrying will not help. The outcome of a push is read from git's own per-ref status (`--porcelain`), never from text a server hook prints. A push that got no answer is `REMOTE_UNREACHABLE` with git's words, and the attempt stays pending. |
+| the remote has lost objects | A ref on the remote that names objects it no longer has is `REMOTE_DAMAGED`, naming the ref and the repair (delete the ref there, then `bead sync` everywhere: every machine still has its own journal). |
+| the remote refuses the push | A refusal by the remote itself (a declining hook, a read-only key, a policy) is `REMOTE_REFUSED` at once, quoting git: nothing was lost and retrying will not help. A remote that could not take the pack (maintenance running there, our own sync repository pruned under us) is retried after a fresh fetch, like a race. The outcome of a push is read from git's own per-ref status (`--porcelain`), never from text a server hook prints. A push that got no answer is `REMOTE_UNREACHABLE` with git's words, and the attempt stays pending. |
 | an attempt file differs from the accepted copy | Attempt files are immutable: on sync the remote copy wins, the local one is kept beside it as `*.fork-*` and reported. A pending attempt that differs from the remote file of the same id is `ATTEMPT_FORK` (the machine identity is in use elsewhere). A file with an unreadable line is ignored whole. |
 | `bead claim X --offline` | Records a provisional claim. It is listed, never exclusive, and never displaces a confirmed owner. |
 | `bead release X` | Ends your claim; the issue is open again. |
@@ -134,10 +135,28 @@ An edit made after seeing another is never a conflict, whatever the clocks say.
   and names from journals or imports are shown with `\xNN` escapes. JSON output
   and stored data are untouched. Output is UTF-8 whatever the locale.
 - A password in a remote URL is dropped (with a note) and never stored, shown
-  or used, whatever its shape (`https://TOKEN@host` included); git's credential
-  helpers are the place for it. The store is private by its own modes (0700
-  directories, 0600 files); files written into a checkout (`.beadroll.json`,
-  `export -o`) follow your umask like any other file there.
+  or used, whatever its shape (`https://TOKEN@host`, `https://TOKEN:x@host`,
+  `transport::https://…` included), and only user-info in the authority counts:
+  an `@` in a path or query is left alone; git's credential helpers are the
+  place for secrets. The store is private by its own modes whatever your umask
+  (0700 directories, 0600 files, `sync.git` created `--shared=0600`); files
+  written into a checkout (`.beadroll.json`, `export -o`) follow your umask like
+  any other file there. `BEAD_HOME` must be absolute (`~` is expanded): the
+  store never lives in a checkout.
+- An event nests at most 100 levels deep, so every supported Python can read
+  what any machine wrote; an import deeper than that fails whole, as do a
+  repeated id, a self-dependency and malformed comments. Records end at `\n`
+  only, so bead's own export (with U+2028 and friends in text) imports again.
+- An imported dependency on a key that is not an issue yet is listed by `show`
+  and `dep list` as `unresolved_dependencies` ("not an issue yet"), exported
+  under the record's own id, and stamped like any other dependency when it
+  binds. A new or renamed issue never takes a key such a dependency is waiting
+  for.
+- A closed stdout or stderr, a terminal that hung up (EIO) or a descriptor
+  closed at exec never produce a traceback: a committed command exits 0, a
+  failed one keeps its status. Help is plain text on every Python.
+- An owner's close that a takeover superseded says so: `"superseded"` on the
+  record and a `!` line, exit 0 (the decision in `REVIEWING.md` §2 stands).
 - Text comes from files and stdin as UTF-8 whatever the locale; anything else
   is `VALIDATION`. A read-only store, a full volume or a missing file is an
   `IO` error, never a traceback, and never a half-written journal. A fetch
@@ -184,8 +203,8 @@ hostname is a local alias (`bead machines --name ID=ALIAS`), never in events.
 ## Tests and reviews
 
 ```sh
-./check.sh            # every test module with a scratch store (about 15 minutes)
-./check.sh --stress   # also the randomised multi-machine models
+./check.sh            # every test module with a scratch store (about 25 minutes)
+./check.sh --stress   # also the randomised multi-machine models and the protocol sweep
 ./check.sh --real     # also import/export of the real tracker exports on this machine
 ```
 
@@ -194,12 +213,16 @@ hostname is a local alias (`bead machines --name ID=ALIAS`), never in events.
 fast), `test_protocol` (claims, attempts, fences, lost acknowledgements, sync races),
 `test_storage` (segments, torn tails, identity, readers against writers),
 `test_commands` (every verb end to end, identity detection, branch tracking),
-`test_compat` (Beads import/export, real exports, `br`/`bv`), `test_stress`
-(randomised models). `tests/support.py` holds the sandbox: every test builds its
+`test_compat` (Beads import/export, real exports, `br`/`bv`), `test_hardening`
+(the base under the protocol: git environment and remotes, URLs and credentials,
+store files and modes, output streams, imports), `test_stress` (randomised
+models) and `test_sweep` (the ownership protocol enumerated: three machines,
+nine operations at seven fault boundaries, every ordered pair of follow-ups;
+a ten-schedule slice by default, `BEAD_SWEEP=full` for all 660). `tests/support.py` holds the sandbox: every test builds its
 own repository, bare remotes and machine homes in a temporary directory, and the
 package sets a scratch `BEAD_HOME` so the default store is never touched.
 
-Five independent reviews have been run against this POC. Their reports are kept
+Seven independent reviews have been run against this POC. Their reports are kept
 verbatim under `reviews/`; `FINDINGS.md` is the ledger of every finding, its status,
 how it was resolved and which tests cover it. `REVIEWING.md` is the brief for the
 next one: rules, what not to report, the checklist, and the deliverables (a report

@@ -4,7 +4,7 @@ A brief for an independent reviewer: an agent or a person who did not write this
 to find out whether the design holds, to break it if they can, and to report with
 reproductions. Reviewers do not extend the tool.
 
-Five reviews have run from earlier versions of this brief. Their reports are kept verbatim in
+Seven reviews have run from earlier versions of this brief. Their reports are kept verbatim in
 `reviews/`; every finding and what became of it is in `FINDINGS.md`. Start from what they did
 not cover.
 
@@ -93,7 +93,13 @@ These were decided deliberately. Report problems *with* them, not their existenc
   a later command by that actor goes through: the remote accepted it, or it was a local write that
   was appended. A recognised retry still reports the claim as it is now.
 - A push's outcome is git's own status line (`--porcelain`); a `[remote rejected]` that is not a
-  lost race is `REMOTE_REFUSED` and is not retried.
+  lost race is `REMOTE_REFUSED` and is not retried; a remote that has lost objects is
+  `REMOTE_DAMAGED`.
+- Events nest at most 100 levels (`MAX_NESTING`); replay keeps looser type rules than writes
+  (`write_problem`) so histories written before a rule mean the same on every machine.
+- `BEAD_HOME` must be absolute; the store's modes are 0700/0600 whatever the umask.
+- Only directories bead creates get private modes; a user-supplied `BEAD_HOME` is chmodded 0700
+  on first write (reviewer observation, kept).
 - origin is never remembered as the coordination remote; only a remote named otherwise is. A
   tracked config seeds a new store's remote but never silently moves an existing store's.
 - bead's pushes skip the user's client hooks (`--no-verify`); the remote's hooks still apply.
