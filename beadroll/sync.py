@@ -139,6 +139,18 @@ REPO_LOCATION_ENV = ("GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_OBJECT_DIRECTORY",
                      "GIT_QUARANTINE_PATH")
 
 
+LOCAL_DAMAGE = re.compile(r"object file .* is empty|corrupt or missing|cannot read existing object info|"
+                          r"invalid index-pack output|unable to mmap|object .* is corrupt|bad object header|"
+                          r"unable to read [0-9a-f]{40,64}|missing object [0-9a-f]{40,64} for refs/")
+
+
+def local_damage(said: str) -> bool:
+    """Whether git's complaint is about sync.git's own objects: its own read errors, never a line the remote
+    relayed (those are the remote's objects, REMOTE_DAMAGED)."""
+    local = "\n".join(line for line in said.splitlines() if not line.startswith("remote:") and "upload-pack:" not in line)
+    return bool(LOCAL_DAMAGE.search(local))
+
+
 class Link:
     """The coordination ref on one remote, reached through a private bare repository.
 
@@ -168,9 +180,32 @@ class Link:
         self.forks: list[str] = []
         self.confirmed: list[str] = []
         self.chain_breaks: dict[str, list[int]] = {}
+        self.rebuilt: str | None = None  # where a damaged sync.git was set aside, once per command
 
     def git(self, args, **kwargs) -> str:
-        return git_text(args, env=self.env, **kwargs)
+        try:
+            return git_text(args, env=self.env, **kwargs)
+        except BpError as error:
+            if error.code == "GIT_ERROR" and self.damaged(str(error)):
+                raise self.damage(str(error)) from None
+            raise
+
+    def damaged(self, said: str) -> bool:
+        return local_damage(said)
+
+    def damage(self, said: str) -> BpError:
+        return BpError("SYNC_REPO_DAMAGED", f"this machine's sync repository {self.git_dir} is damaged; it holds nothing "
+                       f"that is not also in events/ or on the remote, so bead makes it again (the damaged one is kept "
+                       f"beside it as sync.git.damaged-<time>); if this persists, delete it and run the command again. "
+                       f"git said: {said}")
+
+    def rebuild(self):
+        """sync.git is a cache of what the remote holds and of events/: a damaged one is set aside, kept for a look,
+        and made again by the next fetch. Lock held."""
+        aside = self.git_dir.with_name(f"sync.git.damaged-{time.time_ns()}")
+        with contextlib.suppress(FileNotFoundError):  # another process may have set it aside already
+            os.rename(self.git_dir, aside)
+        self.rebuilt, self.object_format, self.remote_counts = str(aside), None, {}
 
     def fetch(self) -> str | None:
         """Fetch exactly the coordination ref. Returns its head, or None if nobody has published."""
@@ -209,6 +244,8 @@ class Link:
                               "retrying will not help. Every machine keeps its own journal: delete the ref there "
                               f"(`git update-ref -d {self.ref}` in that repository), then run `bead sync` on every "
                               f"machine to publish again. git said: {said}")
+            if self.damaged(said):
+                raise self.damage(said)
             raise BpError("REMOTE_UNREACHABLE", f"cannot reach the coordination remote {self.url}: " + said)
         tip = self.git(["rev-parse", mine])
         run_git(["update-ref", REMOTE_REF, tip], env=self.env, check=False)  # keeps what was fetched reachable
@@ -516,33 +553,38 @@ def synchronise(ws: Workspace, remote: str, actor: dict) -> dict:
     for attempt in range(1, 13):
         try:
             tip = link.fetch()
+            with locked(ws):
+                if load_pending(ws):  # also sweeps pending files that are not attempts
+                    tip = link.fetch()  # settling our own attempts needs the current head, not a snapshot
+                pulled += link.merge(tip)
+                if not tip and not segment_files(ws):
+                    raise BpError("NOT_INITIALIZED", "no tracker here and none published on the remote: run `bead init`")
+                pushed = link.unpublished()
+                outcome = link.publish(tip, fence=bool(load_pending(ws)))
+                if outcome == "ok":
+                    drop_pending(ws, load_pending(ws))  # absent at a head we just advanced: they can never land
+                    break
+                if outcome == "refused":
+                    raise refused(link)
+                if outcome == "uncertain":
+                    raise BpError("REMOTE_UNREACHABLE", "the push did not complete; nothing was lost, run sync again "
+                                  f"once the cause is fixed: {link.last_error}")
         except BpError as error:
+            if error.code == "SYNC_REPO_DAMAGED" and not link.rebuilt:
+                with locked(ws):
+                    link.rebuild()
+                continue
             adopted = adopt_published(ws, remote, error) if attempt == 1 else None
             if adopted is None:
                 raise
             return synchronise(adopted, remote, actor)
-        with locked(ws):
-            if load_pending(ws):  # also sweeps pending files that are not attempts
-                tip = link.fetch()  # settling our own attempts needs the current head, not a snapshot
-            pulled += link.merge(tip)
-            if not tip and not segment_files(ws):
-                raise BpError("NOT_INITIALIZED", "no tracker here and none published on the remote: run `bead init`")
-            pushed = link.unpublished()
-            outcome = link.publish(tip, fence=bool(load_pending(ws)))
-            if outcome == "ok":
-                drop_pending(ws, load_pending(ws))  # absent at a head we just advanced: they can never land
-                break
-            if outcome == "refused":
-                raise refused(link)
-            if outcome == "uncertain":
-                raise BpError("REMOTE_UNREACHABLE", "the push did not complete; nothing was lost, run sync again "
-                              f"once the cause is fixed: {link.last_error}")
         pause(random.uniform(0.1, 0.4) * attempt)  # another machine pushed first: merge again
     else:
         raise BpError("SYNC_CONFLICT", "the remote journal kept moving; run sync again" + conflict_detail(link))
     st = view(ws)
     ws.note_sync(remote, name=ws.name)
     return {"pulled": pulled, "pushed": pushed, "attempts": attempt, "tip": link.last_commit, "remote": remote,
+            **({"sync_repo_rebuilt": link.rebuilt} if link.rebuilt else {}),
             "issues": len(st.issues), "renamed": st.renames[known_renames:], "forked_journals": link.forks,
             "confirmed": link.confirmed, "waiting_events": len(st.pending), "integrity": len(st.integrity)}
 
@@ -565,58 +607,65 @@ def coordinated(ws: Workspace, actor: dict, args, build, request=None):
     receipt = None  # (events, result) of a push of ours that got no answer; it may still have landed
     stale: list[Path] = []  # this actor's settled receipts: dropped only once this command has gone through
     for attempt in range(1, 13):
-        with locked(ws):
-            tip = link.fetch()  # under the lock: ownership is decided against the head as it is now
-            link.merge(tip)
-            if receipt and attempt_path(ws, receipt[0]).exists():  # it had: the work is done, not to be redone
-                drop_pending(ws, [receipt[0]])
-                forget(stale)
-                ws.note_sync(remote)
-                return receipt[1]
-            done, stale = settle_commands(ws, replica, actor, signature)
-            if done:  # an earlier run of this command was accepted
-                ws.note_sync(remote)
-                return "online"
-            settled = settle_pending(ws, link, tip)
-            if settled == "unresolved":
-                raise BpError("UNRESOLVED", "an ownership attempt is unsettled and the push that would settle it did "
-                              f"not complete ({link.last_error}); it counts for nothing until `bead sync` can settle it")
-            if settled == "clear":
-                receipt = None  # whatever this command had in flight is settled one way or the other
-                tx = Tx(ws, actor)
-                result = build(tx, "online")
-                if tx.pending:
-                    append_events(ws, tx.replica, tx.pending)
-                if not tx.ownership:
-                    forget(stale)  # nothing to settle: this command went through
-                    return result
-                folder = ws.dir / "pending"
-                private_dirs(folder)
-                write_atomic(folder / f"{tx.ownership[0]['id']}.command", signature.encode())  # the receipt first
-                write_attempt_file(folder / f"{tx.ownership[0]['id']}.json", tx.ownership)
-                if os.environ.get("BEAD_TEST_CRASH_BEFORE_PUSH"):
-                    os._exit(98)
-                try:
-                    outcome = link.publish(tip, note="claim", pending=tx.ownership)
-                except BpError as error:
-                    if error.code != "REMOTE_UNREACHABLE":
-                        raise
-                    outcome = "uncertain"
-                if outcome == "ok":
-                    if os.environ.get("BEAD_TEST_CRASH_AFTER_PUSH"):
-                        os._exit(99)  # test hook: the remote accepted, the acknowledgement was lost
-                    confirm_ownership(ws, tx.ownership)
-                    drop_pending(ws, [tx.ownership])
-                    forget(stale)  # this command went through: the actor has moved on from those
+        try:
+            with locked(ws):
+                tip = link.fetch()  # under the lock: ownership is decided against the head as it is now
+                link.merge(tip)
+                if receipt and attempt_path(ws, receipt[0]).exists():  # it had: the work is done, not to be redone
+                    drop_pending(ws, [receipt[0]])
+                    forget(stale)
                     ws.note_sync(remote)
-                    return result
-                if outcome == "refused":  # it definitely did not land, and will not on a retry
-                    drop_pending(ws, [tx.ownership])
-                    raise refused(link)
-                if outcome == "rejected":
-                    drop_pending(ws, [tx.ownership])  # someone else got there first; decide again against the new head
-                else:  # uncertain: the attempt stays pending; keep its result in case the push did land
-                    receipt = (tx.ownership, result)
+                    return receipt[1]
+                done, stale = settle_commands(ws, replica, actor, signature)
+                if done:  # an earlier run of this command was accepted
+                    ws.note_sync(remote)
+                    return "online"
+                settled = settle_pending(ws, link, tip)
+                if settled == "unresolved":
+                    raise BpError("UNRESOLVED", "an ownership attempt is unsettled and the push that would settle it did "
+                                  f"not complete ({link.last_error}); it counts for nothing until `bead sync` can settle it")
+                if settled == "clear":
+                    receipt = None  # whatever this command had in flight is settled one way or the other
+                    tx = Tx(ws, actor)
+                    result = build(tx, "online")
+                    if tx.pending:
+                        append_events(ws, tx.replica, tx.pending)
+                    if not tx.ownership:
+                        forget(stale)  # nothing to settle: this command went through
+                        return result
+                    folder = ws.dir / "pending"
+                    private_dirs(folder)
+                    write_atomic(folder / f"{tx.ownership[0]['id']}.command", signature.encode())  # the receipt first
+                    write_attempt_file(folder / f"{tx.ownership[0]['id']}.json", tx.ownership)
+                    if os.environ.get("BEAD_TEST_CRASH_BEFORE_PUSH"):
+                        os._exit(98)
+                    try:
+                        outcome = link.publish(tip, note="claim", pending=tx.ownership)
+                    except BpError as error:
+                        if error.code != "REMOTE_UNREACHABLE":
+                            raise
+                        outcome = "uncertain"
+                    if outcome == "ok":
+                        if os.environ.get("BEAD_TEST_CRASH_AFTER_PUSH"):
+                            os._exit(99)  # test hook: the remote accepted, the acknowledgement was lost
+                        confirm_ownership(ws, tx.ownership)
+                        drop_pending(ws, [tx.ownership])
+                        forget(stale)  # this command went through: the actor has moved on from those
+                        ws.note_sync(remote)
+                        return result
+                    if outcome == "refused":  # it definitely did not land, and will not on a retry
+                        drop_pending(ws, [tx.ownership])
+                        raise refused(link)
+                    if outcome == "rejected":
+                        drop_pending(ws, [tx.ownership])  # someone else got there first; decide again against the new head
+                    else:  # uncertain: the attempt stays pending; keep its result in case the push did land
+                        receipt = (tx.ownership, result)
+        except BpError as error:
+            if error.code == "SYNC_REPO_DAMAGED" and not link.rebuilt:  # once: set it aside and decide again
+                with locked(ws):
+                    link.rebuild()
+                continue
+            raise
         pause(random.uniform(0.1, 0.4) * attempt)
     raise BpError("SYNC_CONFLICT", "the remote journal kept moving; try again" + conflict_detail(link))
 

@@ -100,6 +100,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
   remote's verdict (a hook, a rule) is `REMOTE_REFUSED` and is not retried; one the remote could not
   take (`unpacker error`, `missing necessary objects`) is retried after a fresh fetch; a
   remote that has lost objects is `REMOTE_DAMAGED`.
+- `sync.git` is a cache: when git reports a local read error in it (an empty or corrupt object), bead
+  sets it aside as `sync.git.damaged-<time>` and makes it again, once per command, under the store
+  lock; the second time in one command is `SYNC_REPO_DAMAGED`. A line the remote relayed is never
+  taken as local damage.
 - Format 1 is frozen; changes are additive. An event an older bead cannot apply (a new operation,
   a new field, a newer `v`) is set aside, reported under `integrity`, carried through sync
   untouched and applied after an upgrade; a mixed fleet is safe. A breaking change, should one

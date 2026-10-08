@@ -15,7 +15,7 @@ from .base import (
     git_text, hung_up, loads_strict, read_utf8, run_git, too_deep,
     uuid7, without_password,
 )
-from .machine import (
+from .machine import (dir_entries, 
     actor_label, find_workspace, home, machine_aliases, replica_id, segment_files,
     write_atomic,
 )
@@ -717,6 +717,9 @@ def cmd_info(args, ws, actor):
               "pending_ownership": [e["id"] for attempt in load_pending(ws) for e in attempt],
               "waiting_events": len(st.pending), "integrity": st.integrity,
               "renamed_keys": st.renames, "last_sync": ws.meta().get("last_sync")}
+    damaged = sorted(p.name for p in dir_entries(ws.dir) if p.name.startswith("sync.git.damaged-"))
+    if damaged:  # set aside by a rebuild; nothing in them is the only copy of anything, delete at leisure
+        result["damaged_sync_repos"] = damaged
     return result, [f"{k}: {v}" for k, v in result.items()]
 
 

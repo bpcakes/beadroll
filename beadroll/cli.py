@@ -74,6 +74,8 @@ Rules  Ownership belongs to your agent thread; a new session is a new owner. Con
        STATUS_CONFLICT, CYCLE, VALIDATION, ISSUE_NOT_FOUND, REMOTE_UNREACHABLE (nothing is lost;
        retry later), REMOTE_REFUSED (the remote refuses bead's ref: tell a human; retrying will not help),
        REMOTE_DAMAGED (the remote lost objects: tell a human; retrying will not help),
+       SYNC_REPO_DAMAGED (this machine's sync repository is damaged again after a rebuild: delete
+       it, nothing in it is the only copy of anything, and run the command again),
        UNRESOLVED (an attempt of yours awaits the remote: run bead sync), SYNC_CONFLICT,
        IO (the store or a file could not be read or written; nothing half-done).
 """

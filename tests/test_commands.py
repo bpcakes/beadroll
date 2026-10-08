@@ -1940,3 +1940,61 @@ class FormatPolicy(unittest.TestCase):
         copy = b.store() / "events" / last["replica"] / segment.name
         self.assertIn(foreign, copy.read_text())  # carried untouched, to be applied by a bead that knows them
         self.assertEqual(a.export(), b.export())
+
+
+# ---- roll-2psp (2026-10-08): a damaged private sync.git is rebuilt, not reported as the remote's fault
+class SyncRepoDamage(unittest.TestCase):
+    """linux-1's sync.git held empty loose objects after a drive; every sync then failed as REMOTE_UNREACHABLE
+    though the remote was fine. sync.git is a cache of the remote and of events/, so bead sets a damaged one
+    aside and makes it again, once per command, on the sync path and on the claim path alike."""
+    def setUp(self):
+        self.box = support.Sandbox()
+        self.addCleanup(self.box.cleanup)
+        self.a = support.Machine(self.box, "a")
+        self.a.bead("init", "--prefix", "ex")
+        self.key = self.a.bead("create", "x")["id"]
+        self.a.bead("sync")
+        self.b = support.Machine(self.box, "b")
+        self.b.bead("sync")
+
+    def damage(self):
+        """Empty the loose object of the commit sync.git remembers as the remote's head: fetch cannot even
+        negotiate ('cannot read existing object info')."""
+        sync_git = self.a.store() / "sync.git"
+        head = support.git("--git-dir", str(sync_git), "rev-parse", "refs/beads/remote").strip()
+        loose = sync_git / "objects" / head[:2] / head[2:]
+        self.assertTrue(loose.exists(), "the head commit is a loose object in a fresh sync.git")
+        loose.chmod(0o644)
+        loose.write_bytes(b"")
+        return sync_git
+
+    def test_sync_rebuilds_a_damaged_sync_repo_once_and_info_lists_the_copy(self):
+        self.b.bead("create", "from b")
+        self.b.bead("sync")
+        sync_git = self.damage()
+        synced = self.a.run("sync", "--json")
+        self.assertEqual(synced.returncode, 0, synced.stderr)
+        result = strict_json(synced.stdout)
+        self.assertTrue(result.get("sync_repo_rebuilt", "").startswith(str(sync_git) + ".damaged-"), result)
+        self.assertEqual(result["pulled"], 1)
+        self.assertEqual(sorted(i["title"] for i in self.a.bead("list")["issues"]), ["from b", "x"])
+        self.assertEqual(self.a.bead("info")["integrity"], [])
+        copies = self.a.bead("info")["damaged_sync_repos"]
+        self.assertEqual(len(copies), 1)
+        self.assertTrue((self.a.store() / copies[0] / "HEAD").exists(), "the damaged repository is kept for a look")
+        self.assertEqual(self.a.run("sync", "--json").returncode, 0)  # the rebuilt one is a normal sync.git
+        self.assertNotIn("sync_repo_rebuilt", strict_json(self.a.run("sync", "--json").stdout))
+
+    def test_a_claim_rebuilds_too_and_damage_twice_in_one_command_is_reported(self):
+        self.damage()
+        claimed = self.a.run("claim", self.key, "--json")
+        self.assertEqual(claimed.returncode, 0, claimed.stderr)
+        self.b.bead("sync")
+        self.assertIn("codex:", self.b.show(self.key)["claim"]["owner"])  # the claim went through the rebuilt sync.git
+        self.assertEqual(len(self.a.bead("info")["damaged_sync_repos"]), 1)
+        # what counts as local damage: git's own read errors, never a line the remote relayed
+        bead = support.load_module()
+        self.assertTrue(bead.local_damage("error: object file objects/7d/04c9 is empty\nfatal: fetch-pack: invalid index-pack output"))
+        self.assertTrue(bead.local_damage("fatal: missing object 7d04c9b4c3031216fa66cefa4cf7e3b79212bb32 for refs/beads/remote"))
+        self.assertFalse(bead.local_damage("remote: error: object file objects/7d/04c9 is empty\nremote: fatal: bad object"))
+        self.assertFalse(bead.local_damage("ssh: Could not resolve hostname github.com"))

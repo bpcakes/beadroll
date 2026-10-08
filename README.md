@@ -135,6 +135,11 @@ An edit made after seeing another is never a conflict, whatever the clocks say.
   on the same issue, applies nothing and is reported.
 - A ref whose manifest is not this version's format is refused untouched
   (`FORMAT_UNSUPPORTED`): an older client never rewrites a newer tracker.
+- A damaged private sync repository (`sync.git` with empty or corrupt objects,
+  which git reports as a local read error) is set aside as
+  `sync.git.damaged-<time>` and made again from the remote and `events/`,
+  once per command; `info` lists the copies kept, which hold nothing that is
+  not also elsewhere. Damage again after that is `SYNC_REPO_DAMAGED`.
 - `title`, `priority`, `issue_type` and `status` cannot be cleared; a `set`
   that tries is reported and applies nothing.
 
