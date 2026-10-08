@@ -108,12 +108,12 @@ def main():
     for h in HOSTS:
         for n in range(3):
             assert "ok" in run(h, "create", f"{h} item {n}", "-l", h)
-        assert "ok" in run(h, "comments", "add", target, f"note from {h}")
+        assert "ok" in run(h, "comments", "add", target, f"note from {h} (run {os.getpid()})")
     syncs = parallel(lambda h: (h, run(h, "sync")), list(HOSTS))
     print("sync results:", {h: (r.get("ok", {}).get("attempts") if "ok" in r else r.get("error")) for h, r in syncs},
           "| ms:", {h: r["ms"] for h, r in syncs})
     same, hashes = settle()
-    comments = [c["text"] for c in show("arch", target)["comments"]]
+    comments = [c["text"] for c in show("arch", target)["comments"] if f"(run {os.getpid()})" in c["text"]]  # this run's
     print("converged:", same, hashes["mac"], "| comments on target:", len(comments))
     results["S2"] = same and all("ok" in r for _, r in syncs) and len(comments) == 4
 
