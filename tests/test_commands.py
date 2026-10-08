@@ -1271,6 +1271,8 @@ class HelpAndPrime(unittest.TestCase):
         self.assertEqual(onboard.returncode, 0, onboard.stderr)
         self.assertIn("bead prime", onboard.stdout)
         self.assertIn("bead ready", onboard.stdout)
+        agents = (Path(support.BEAD).resolve().parent / "AGENTS.md").read_text()  # this repository dogfoods it
+        self.assertIn(onboard.stdout.strip(), agents, "AGENTS.md's work-tracking block must be bead onboard's output")
 
 # ---- from test_review6.py: sixth independent review (2026-10-07-6-grok), folded in after the fixes
 def ops(machine, key):

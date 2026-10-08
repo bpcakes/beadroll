@@ -47,7 +47,7 @@ cd some-repo                      # any worktree or clone
 bead init --import .beads/issues.jsonl   # keeps ids, comments, dependencies
 bead                              # the one-screen overview; bead help COMMAND for one command
 bead prime                        # the workflow an agent loads at the start of a session
-bead onboard                      # a snippet for CLAUDE.md / AGENTS.md
+bead onboard                      # the instruction block for a project's AGENTS.md / CLAUDE.md (this repository's AGENTS.md carries it)
 bead ready --type task --json
 bead claim <id>                     # or: bead update <id> --status in_progress
 bead comments add <id> "started"
