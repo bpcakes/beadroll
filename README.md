@@ -1,8 +1,9 @@
 # beadroll
 
 A Beads-compatible issue tracker whose state does not live on code branches.
-One Python module (`beadroll.py`), standard library only (Python 3.12+,
-git 2.40+), installed as the `bead` command.
+A small Python package (`beadroll/`: `base`, `machine`, `model`, `queries`,
+`sync`, `commands`, `cli`), standard library only (Python 3.12+, git 2.40+),
+installed as the `bead` command.
 
 It exists to test a design before building it anywhere permanent.
 
@@ -14,10 +15,10 @@ uv tool install --force .                                   # from a checkout
 bead --version
 ```
 
-Without `uv` or `pipx`, `beadroll.py` runs on its own: copy it to
-`~/.local/bin/bead` and make it executable (start-up is then ~60 ms instead
-of ~25 ms, since a script's bytecode is never cached). In the checkout,
-`./bead` links to `beadroll.py` and runs the working copy.
+Without `uv` or `pipx`, use a virtual environment:
+`python3 -m venv ~/.local/share/beadroll && ~/.local/share/beadroll/bin/pip install <checkout>`
+and link `~/.local/share/beadroll/bin/bead` into `~/.local/bin`. In the
+checkout, `./bead` runs the working copy. Start-up is about 25 ms.
 
 ## Design under test
 

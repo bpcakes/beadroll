@@ -783,14 +783,16 @@ def _g12_push_before_script():
     fault): the command's writes are recorded locally and nothing has been published."""
     return r'''
 import os, sys, runpy
-g = runpy.run_path(sys.argv[1])["main"].__globals__
-real_run_git = g["run_git"]
+ns = runpy.run_path(sys.argv[1])  # the launcher imports the package; every module holding run_git is patched
+mods = [m for n, m in list(sys.modules.items()) if n.startswith("beadroll") and hasattr(m, "run_git")]
+real_run_git = mods[0].run_git
 def run_git(args, **kw):
     if args and args[0] == "push":
         os._exit(98)
     return real_run_git(args, **kw)
-g["run_git"] = run_git
-raise SystemExit(g["main"](sys.argv[2:]))
+for m in mods:
+    m.run_git = run_git
+raise SystemExit(ns["main"](sys.argv[2:]))
 '''
 
 def _g12_wrapped(machine, wrapper, *argv):
@@ -2065,7 +2067,7 @@ class G28_OnlyTheLockHolderSweepsPending(unittest.TestCase):
                 return found
 
             with tempfile.TemporaryFile("w+") as out:
-                with mock.patch.object(bp, "pending_files", pending_files), contextlib.redirect_stdout(out):
+                with support.patched("pending_files", pending_files), contextlib.redirect_stdout(out):
                     shown = bp.run(["show", argv[1], "--json"])
                 out.seek(0)
                 printed = out.read()
@@ -2120,18 +2122,21 @@ def _g29_full_volume_script():
     return r'''
 import errno, os, sys, runpy
 from pathlib import Path
-g = runpy.run_path(sys.argv[1])["main"].__globals__
+ns = runpy.run_path(sys.argv[1])  # the launcher imports the package; every module holding write_atomic is patched
+mods = [m for n, m in list(sys.modules.items()) if n.startswith("beadroll") and hasattr(m, "write_atomic")]
 which = os.environ.pop("G29_FULL")
-real_write = g["write_atomic"]
+real_write = mods[0].write_atomic
+replica_id = sys.modules["beadroll.machine"].replica_id
 def write_atomic(path, data, private=True):
     path = Path(path)
-    own = g["replica_id"](create=False)
+    own = replica_id(create=False)
     if (which == "meta" and path.name == "meta.json") or \
             (which == "foreign" and path.suffix == ".jsonl" and path.parent.name != own):
         raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC), str(path))
     return real_write(path, data, private)
-g["write_atomic"] = write_atomic
-raise SystemExit(g["main"](sys.argv[2:]))
+for m in mods:
+    m.write_atomic = write_atomic
+raise SystemExit(ns["main"](sys.argv[2:]))
 '''
 
 def _g29_seen(machine, key):
@@ -3720,7 +3725,7 @@ class G54_StaleTwinRuleDropsTheReceipt(unittest.TestCase):
             bp = support.load_module()
             ws, actor = bp.find_workspace(), bp.detect_actor(None)
             args = bp.build_parser().parse_args(["release", x])
-            with mock.patch.object(bp, "drop_pending", side_effect=RuntimeError("crash after local confirm")):
+            with support.patched("drop_pending", mock.MagicMock(side_effect=RuntimeError("crash after local confirm"))):
                 with self.assertRaises(RuntimeError):
                     bp.cmd_release(args, ws, actor)
         pending = a.store() / "pending"
@@ -4996,9 +5001,10 @@ class V8_Python312(unittest.TestCase):
         if not (tests_dir / "test_storage.py").exists():
             self.skipTest("tests/test_storage.py is not beside tests/support.py")
         with tempfile.TemporaryDirectory(prefix="bead-r7-312-") as tmp:
-            copy = Path(tmp) / "bead"
-            body = Path(support.BEAD).read_text(encoding="utf-8").split("\n", 1)[1]
-            copy.write_text(f"#!{python}\n{body}", encoding="utf-8")
+            copy = Path(tmp) / "bead"  # the launcher's shape with a 3.12 shebang and the checkout's package on the path
+            copy.write_text(f"#!{python}\nimport sys\nsys.path.insert(0, {str(support.ROOT)!r})\n"
+                            "from beadroll import *  # noqa\nfrom beadroll.cli import main\n"
+                            "if __name__ == '__main__':\n    sys.exit(main())\n", encoding="utf-8")
             copy.chmod(0o755)
             env = {**os.environ, "BEAD_UNDER_TEST": str(copy), "BEAD_HOME": str(Path(tmp) / "home"),
                    "PYTHONDONTWRITEBYTECODE": "1"}
@@ -5729,7 +5735,7 @@ class V2_ConfirmedTwinKeepsTheRetryRecognised(unittest.TestCase):
             bp = support.load_module()
             ws, actor = bp.find_workspace(), bp.detect_actor(None)
             args = bp.build_parser().parse_args(["release", x])
-            with mock.patch.object(bp, "drop_pending", side_effect=RuntimeError("crash after local confirm")):
+            with support.patched("drop_pending", mock.MagicMock(side_effect=RuntimeError("crash after local confirm"))):
                 with self.assertRaisesRegex(RuntimeError, "crash after local confirm"):
                     bp.cmd_release(args, ws, actor)
         pending = _v2_pending(a)

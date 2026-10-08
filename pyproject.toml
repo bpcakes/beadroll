@@ -14,7 +14,7 @@ dynamic = ["version"]
 bead = "beadroll:main"
 
 [tool.setuptools]
-py-modules = ["beadroll"]
+packages = ["beadroll"]
 
 [tool.setuptools.dynamic]
 version = {attr = "beadroll.__version__"}

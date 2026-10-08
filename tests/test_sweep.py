@@ -75,7 +75,16 @@ WRAPPER = r'''
 import os, signal, sys, runpy
 from pathlib import Path
 bead = sys.argv[1]
-g = runpy.run_path(bead)["main"].__globals__
+ns = runpy.run_path(bead)  # the launcher imports the package
+mods = [m for n, m in list(sys.modules.items()) if n.startswith("beadroll")]
+class Everywhere(dict):  # the globals of every beadroll module: read from the first holder, written to all
+    def __getitem__(self, key):
+        return next(getattr(m, key) for m in mods if hasattr(m, key))
+    def __setitem__(self, key, value):
+        for m in mods:
+            if hasattr(m, key):
+                setattr(m, key, value)
+g = Everywhere()
 fault = os.environ.pop("BEAD_SWEEP_FAULT", "")
 fired = []
 if fault in ("push-before", "push-after"):

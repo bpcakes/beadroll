@@ -25,9 +25,9 @@ HOSTS = {
     "arch": "linux-2",
     "bpc": "dev@linux-3",
 }
-BEAD_REMOTE = "~/beads-poc-test/bead"
+BEAD_REMOTE = "~/.local/bin/bead"
 REPO_REMOTE = "~/beads-poc-test/repo"
-BEAD_MAC = os.path.expanduser("~/Documents/beadroll/beadroll.py")
+BEAD_MAC = os.path.expanduser("~/Documents/beadroll/bead")
 REPO_MAC = os.environ.get("BEAD_TEST_MAC_REPO") or os.path.expanduser("~/beads-poc-test/repo")  # a clone of the throwaway repo
 STATE = "$HOME/.local/state/beads-poc-test"
 # linux-1 gets throttled on github.com:22 under bursts; GitHub's SSH-over-443 endpoint is the same repo.

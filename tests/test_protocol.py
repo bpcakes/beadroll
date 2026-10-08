@@ -395,7 +395,7 @@ sys.exit(n['main']())
         wrapper.chmod(0o755)
         driver = self.sandbox.root / 'fast-retry.py'
         driver.write_text('import runpy, sys\nn = runpy.run_path(' + repr(support.BEAD) + ')\n' +
-                          'n["time"].sleep = lambda _: None\nsys.exit(n["main"]())\n')
+                          'import time\ntime.sleep = lambda _: None\nsys.exit(n["main"]())\n')
         before = self.a.export()
         for index, args in enumerate((('claim', self.key), ('sync',)), 1):
             with self.subTest(command=args[0]):
@@ -589,7 +589,7 @@ class ProtocolReaudit(unittest.TestCase):
             if not accepted:
                 accepted.append(self.b.bead('claim', self.key)[0]['claim'])
             return original(link, tip, note, **kwargs)
-        with mock.patch.object(self.mod.Link, 'publish', race), mock.patch.object(self.mod, 'pause'):
+        with mock.patch.object(self.mod.Link, 'publish', race), support.patched('pause'):
             report = self.sync()
         self.assertGreaterEqual(report['attempts'], 2)
         final = self.settle()
@@ -662,7 +662,7 @@ class ProtocolReaudit(unittest.TestCase):
                 self.a.bead('comments', 'add', self.key, 'writer acquires lock between retries')
         args = self.mod.build_parser().parse_args(['claim', self.key])
         error = None
-        with mock.patch.object(self.mod, 'run_git', lose_ack), mock.patch.object(self.mod, 'pause', interleaved_writer):
+        with support.patched('run_git', lose_ack), support.patched('pause', interleaved_writer):
             try:
                 self.mod.cmd_claim(args, self.ws, self.actor)
             except self.mod.BpError as exc:
@@ -817,7 +817,7 @@ class Protocol3(unittest.TestCase):
             tip=link.fetch(); link.merge(tip); tx=self.bp.Tx(self.ws,self.actor)
             self.bp.claim_builder(self.bp.build_parser().parse_args(['claim',self.key]),self.actor,[self.key])(tx,'online')
             self.bp.write_attempt_file(self.ws.dir/'pending'/f"{tx.ownership[0]['id']}.json",tx.ownership)
-            with mock.patch.object(self.bp,'NET_TIMEOUT',.25): outcome=link.publish(tip,note='claim',pending=tx.ownership)
+            with support.patched('NET_TIMEOUT', .25): outcome=link.publish(tip,note='claim',pending=tx.ownership)
         self.assertEqual(outcome,'uncertain'); self.assertTrue(first.exists()); self.assertFalse(finished.exists())
         self.assertEqual(len(self.pending_ids()),1); self.assertNotIn('claim',self.a.show(self.key))
         self.a.bead('comments','add',self.key,'independent local work')
@@ -845,7 +845,7 @@ class Protocol3(unittest.TestCase):
                 observed.append(self.a.show(self.key))
             else:
                 original(path,data)
-        with mock.patch.object(self.bp,'write_atomic',around_write):
+        with support.patched('write_atomic', around_write):
             self.bp.cmd_update(args,self.ws,self.actor)
         self.assertEqual(len(observed),2,'the attempt must be confirmed by exactly one write')
         for current in observed:
@@ -899,7 +899,7 @@ class Protocol3(unittest.TestCase):
                 self.assertEqual(self.a.show(self.key)['title'],'accepted first')
                 self.a.bead('update',self.key,'--title','later observed edit')
         args=self.bp.build_parser().parse_args(['update',self.key,'--claim','--title','accepted first'])
-        with mock.patch.object(self.bp,'run_git',lose_ack), mock.patch.object(self.bp, 'pause',between_retries):
+        with support.patched('run_git', lose_ack), support.patched('pause', between_retries):
             self.bp.cmd_update(args,self.ws,self.actor)
         self.assertEqual(applied,[True]); self.assertEqual(written,[True])
         self.b.bead('sync'); self.a.bead('sync')
@@ -915,7 +915,7 @@ class Protocol3(unittest.TestCase):
                 applied.append(True); result.returncode=1; result.stdout=b''; result.stderr=b'connection closed after remote accepted'
             return result
         args=self.bp.build_parser().parse_args(['release',self.key]); failure=None
-        with mock.patch.object(self.bp,'run_git',lose_ack), mock.patch.object(self.bp, 'pause'):
+        with support.patched('run_git', lose_ack), support.patched('pause'):
             try: self.bp.cmd_release(args,self.ws,self.actor)
             except self.bp.BpError as e: failure=e.code
         self.assertEqual(applied,[True]); self.b.bead('sync')
@@ -956,7 +956,7 @@ class Protocol3(unittest.TestCase):
         crash=self.a.run('claim',self.key,BEAD_TEST_CRASH_BEFORE_PUSH='1')
         self.assertEqual(crash.returncode,98); before=self.pending_ids(); self.assertEqual(len(before),1)
         hook=self.sandbox.origin/'hooks'/'pre-receive'; hook.write_text('#!/bin/sh\nexit 1\n'); hook.chmod(0o755)
-        with mock.patch.object(self.bp, 'pause'):
+        with support.patched('pause'):
             with self.assertRaises(self.bp.BpError) as caught: self.bp.synchronise(self.ws,str(self.sandbox.origin),self.actor)
         self.assertEqual(caught.exception.code,'REMOTE_REFUSED'); self.assertEqual(self.pending_ids(),before)
         self.assertNotIn('claim',self.a.show(self.key)); self.assertEqual(self.a.show(self.key)['title'],'before')
@@ -1145,7 +1145,7 @@ class ProtocolReview4(unittest.TestCase):
             ws = bp.find_workspace()
             actor = bp.detect_actor(None)
             args = bp.build_parser().parse_args(["release", key])
-            with mock.patch.object(bp, "drop_pending", side_effect=RuntimeError("after confirm")):
+            with support.patched("drop_pending", mock.MagicMock(side_effect=RuntimeError("after confirm"))):
                 with self.assertRaisesRegex(RuntimeError, "after confirm"):
                     bp.cmd_release(args, ws, actor)
             self.assertEqual(len(bp.pending_files(ws)), 1)

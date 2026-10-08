@@ -3,6 +3,8 @@ repository) and Machines (each with its own home, clone and identity). Nothing o
 sandbox is read or written."""
 import concurrent.futures
 import importlib.machinery
+import sys
+import contextlib
 import importlib.util
 import itertools
 import json
@@ -14,15 +16,41 @@ import time
 import unittest
 import uuid
 from pathlib import Path
+from unittest import mock
 
-BEAD = os.environ.get("BEAD_UNDER_TEST") or str(Path(__file__).resolve().parent.parent / "beadroll.py")
+ROOT = Path(__file__).resolve().parent.parent
+BEAD = os.environ.get("BEAD_UNDER_TEST") or str(ROOT / "bead")  # the launcher: runs the checkout's package
 
 
 def load_module():
-    loader = importlib.machinery.SourceFileLoader("bp_module", BEAD)
-    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("bp_module", loader))
-    loader.exec_module(module)
-    return module
+    """The beadroll package: one namespace over its modules (`beadroll/__init__.py`). Nothing in it mutates
+    module state, so the cached import serves every test; to replace a name, use `patched` below."""
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    return importlib.import_module("beadroll")
+
+
+_MISSING = object()
+
+
+@contextlib.contextmanager
+def patched(name, value=_MISSING):
+    """Replace a beadroll name in every module that holds it, for the duration of the block. The package
+    imports names (`from .base import run_git`), so patching the defining module alone would not reach its
+    users. Without a value, a `mock.MagicMock`."""
+    load_module()
+    value = mock.MagicMock() if value is _MISSING else value
+    targets = [m for n, m in list(sys.modules.items()) if n == "beadroll" or n.startswith("beadroll.")]
+    saved = [(m, getattr(m, name)) for m in targets if hasattr(m, name)]
+    if not saved:
+        raise AttributeError(f"no beadroll module holds {name!r}")
+    for module, _ in saved:
+        setattr(module, name, value)
+    try:
+        yield value
+    finally:
+        for module, old in saved:
+            setattr(module, name, old)
 
 
 def git(*args, cwd=None):

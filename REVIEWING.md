@@ -10,8 +10,9 @@ not cover.
 
 ## 1. What this is
 
-`beadroll.py` (one Python 3.12+ module, standard library only; `./bead` links to it, and
-`uv tool install .` installs it as the `bead` command) is a proof-of-concept issue tracker
+`beadroll/` (a Python 3.12+ package of seven modules, standard library only — `base`, `machine`,
+`model`, `queries`, `sync`, `commands`, `cli`, each importing only the ones before it; `./bead` runs the
+working copy, `uv tool install .` installs the `bead` command) is a proof-of-concept issue tracker
 for coding agents that work from many git worktrees and several machines at once. It replaces
 the workflow around `br` (beads_rust), whose tracker state lives in a file tracked on code
 branches: dirty checkouts, tracker-only commits, merge conflicts, state split between worktrees
@@ -148,9 +149,10 @@ under `infra/`; their last results are summarised in `README.md`.
   `bv` inside real repositories (`br where` writes lock files).
 - Running Codex (`codex exec`) or Claude Code sessions costs the owner money; do it only for an
   identity-detection check, at most twice, and say so in the report.
-- In-process tests that skip bead's wait between attempts replace `bead.pause`, never the
-  global `time.sleep` (`subprocess` polls through it; a callback there deadlocks on the store
-  lock under load).
+- In-process tests replace a beadroll name with `tests.support.patched(name, value)` (the package
+  imports names, so patching one module does not reach the others); to skip bead's wait between
+  attempts patch `pause`, never the global `time.sleep` (`subprocess` polls through it; a callback
+  there deadlocks on the store lock under load).
 - Report outcomes faithfully: a test you could not run is "not run", not "passed".
 
 ## 5. Checklist
