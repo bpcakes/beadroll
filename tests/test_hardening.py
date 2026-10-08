@@ -6442,7 +6442,9 @@ class V7_PasswordShapesFollowGit(unittest.TestCase):
             url = template.format(hp=f"127.0.0.1:{port}")
             with self.subTest(url=template):
                 seen.clear()
-                self._ls_remote(url)
+                probe = self._ls_remote(url)
+                if not seen:  # this git never contacted the server (git 2.43 rejects an upper-case scheme outright)
+                    self.skipTest(f"this git sends nothing for {template}: {probe.stderr.strip()[:120]}")
                 sent = [_v7_basic(h) for h in seen]
                 self.assertTrue(any(secret in auth for auth in sent), f"git did not send {secret!r} from {url}: {sent}")
                 rewritten, was_dropped = self.bead.without_password(url)

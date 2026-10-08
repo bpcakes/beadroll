@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SHAPES = {
     "a home directory": re.compile(r"/(?:Users|home)/[A-Za-z][A-Za-z0-9._-]*/"),
     "a .local hostname": re.compile(r"\b[a-z0-9][a-z0-9-]*\.local\b"),
-    "an ssh target": re.compile(r"\b[a-z][a-z0-9_-]*@[a-z0-9][a-z0-9-]*(?:-[0-9]+)\b"),  # user@host-01, not bead@localhost
+    "an ssh target": re.compile(r"\b[a-z][a-z0-9_-]*@[a-z0-9][a-z0-9-]*(?:-[0-9]+)\b"),  # a login at a numbered host
 }
 ALLOWED = {"/Users/<name>/", "/home/<name>/", "/home/hostname/", "<hostname>.local"}  # placeholders in the reports
 
