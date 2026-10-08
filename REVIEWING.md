@@ -86,15 +86,18 @@ These were decided deliberately. Report problems *with* them, not their existenc
   quietly.
 - Passwords in remote URLs are dropped, never stored or used; the store is private by its own
   file modes (0700/0600), files written into the checkout follow the caller's umask.
-- An import that contains one invalid record or dependency fails whole; nothing is written.
+- An import that contains one invalid record or dependency fails whole; nothing is written. A
+  status bead does not set itself (`pinned`, a custom one) is kept verbatim, as Beads tools keep
+  it; such an issue is neither ready nor done.
 - Text from files and stdin is UTF-8 regardless of locale; OS errors are structured (`IO`); a
   timed-out `git` is killed with its process group.
 - A command receipt survives a *failed* later command by the same actor and is dropped only when
   a later command by that actor goes through: the remote accepted it, or it was a local write that
   was appended. A recognised retry still reports the claim as it is now.
-- A push's outcome is git's own status line (`--porcelain`); a `[remote rejected]` that is not a
-  lost race is `REMOTE_REFUSED` and is not retried; a remote that has lost objects is
-  `REMOTE_DAMAGED`.
+- A push's outcome is git's own status line (`--porcelain`); a `[remote rejected]` that is the
+  remote's verdict (a hook, a rule) is `REMOTE_REFUSED` and is not retried; one the remote could not
+  take (`unpacker error`, `missing necessary objects`) is retried after a fresh fetch; a
+  remote that has lost objects is `REMOTE_DAMAGED`.
 - Events nest at most 100 levels (`MAX_NESTING`); replay keeps looser type rules than writes
   (`write_problem`) so histories written before a rule mean the same on every machine.
 - `BEAD_HOME` must be absolute; the store's modes are 0700/0600 whatever the umask.
@@ -140,6 +143,9 @@ under `infra/`; their last results are summarised in `README.md`.
   `bv` inside real repositories (`br where` writes lock files).
 - Running Codex (`codex exec`) or Claude Code sessions costs the owner money; do it only for an
   identity-detection check, at most twice, and say so in the report.
+- In-process tests that skip bead's wait between attempts replace `bead.pause`, never the
+  global `time.sleep` (`subprocess` polls through it; a callback there deadlocks on the store
+  lock under load).
 - Report outcomes faithfully: a test you could not run is "not run", not "passed".
 
 ## 5. Checklist

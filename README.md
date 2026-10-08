@@ -147,6 +147,11 @@ An edit made after seeing another is never a conflict, whatever the clocks say.
   what any machine wrote; an import deeper than that fails whole, as do a
   repeated id, a self-dependency and malformed comments. Records end at `\n`
   only, so bead's own export (with U+2028 and friends in text) imports again.
+- A status bead does not set itself (`pinned`, `hooked`, a custom one; Beads
+  tools keep these as they are) is imported and exported verbatim; such an
+  issue is neither ready nor done. `bead update --status` takes only bead's own
+  vocabulary. An imported record without `created_by` stays unattributed; the
+  importer is not its author.
 - An imported dependency on a key that is not an issue yet is listed by `show`
   and `dep list` as `unresolved_dependencies` ("not an issue yet"), exported
   under the record's own id, and stamped like any other dependency when it

@@ -45,7 +45,8 @@ ROTATE_BYTES = int(os.environ.get("BEAD_ROTATE_BYTES") or 256 * 1024)
 NET_TIMEOUT = float(os.environ.get("BEAD_NET_TIMEOUT") or 45)  # seconds for one fetch or push
 BLOCKING = {"blocks"}
 DONE = {"closed", "tombstone"}
-STATUSES = ["open", "in_progress", "blocked", "deferred", "closed", "tombstone"]
+STATUSES = ["open", "in_progress", "blocked", "deferred", "closed", "tombstone"]  # what bead's commands set
+STATUS_SHAPE = re.compile(r"[a-z][a-z0-9_-]{0,39}")  # any other status Beads tools write is kept as it is
 REGISTERS = ["title", "description", "design", "acceptance_criteria", "notes", "priority", "issue_type",
              "assignee", "estimated_minutes", "external_ref"]
 B36 = "0123456789abcdefghijklmnopqrstuvwxyz"
@@ -774,7 +775,7 @@ def fields_problem(fields, allow_bookkeeping: bool) -> str | None:
             return f"field {name!r} has the wrong type"
         if name == "priority" and value is not None and not 0 <= value <= 4:
             return "priority is out of range"
-        if name == "status" and value not in STATUSES:
+        if name == "status" and value not in STATUSES and not STATUS_SHAPE.fullmatch(value):
             return f"unknown status {value!r}"
     return None
 
@@ -1270,6 +1271,8 @@ def apply_event(st: State, event: dict, eid: str, op: str, data: dict, uid: str,
                  "lost_claims": [], "stale": [], "unconfirmed": [],
                  "origin": {"machine": event["replica"], **actor, **({"where": event["where"]} if event.get("where") else {})}}
         issue.update(fields)
+        if data.get("imported") and "created_by" not in fields:
+            issue["created_by"] = None  # the record's author is unknown, not the importer
         for name in REGISTERS:
             if name in fields:
                 issue["reg"][name] = {eid: fields[name]}
@@ -2186,6 +2189,11 @@ class Link:
         return "uncertain"
 
 
+def pause(seconds: float):
+    """The wait between attempts against a moving remote (tests replace this, not time.sleep)."""
+    time.sleep(seconds)
+
+
 def stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -2332,7 +2340,7 @@ def synchronise(ws: Workspace, remote: str, actor: dict) -> dict:
             if outcome == "uncertain":
                 raise BpError("REMOTE_UNREACHABLE", "the push did not complete; nothing was lost, run sync again "
                               f"once the cause is fixed: {link.last_error}")
-        time.sleep(random.uniform(0.1, 0.4) * attempt)  # another machine pushed first: merge again
+        pause(random.uniform(0.1, 0.4) * attempt)  # another machine pushed first: merge again
     else:
         raise BpError("SYNC_CONFLICT", "the remote journal kept moving; run sync again" + conflict_detail(link))
     st = view(ws)
@@ -2412,7 +2420,7 @@ def coordinated(ws: Workspace, actor: dict, args, build, request=None):
                     drop_pending(ws, [tx.ownership])  # someone else got there first; decide again against the new head
                 else:  # uncertain: the attempt stays pending; keep its result in case the push did land
                     receipt = (tx.ownership, result)
-        time.sleep(random.uniform(0.1, 0.4) * attempt)
+        pause(random.uniform(0.1, 0.4) * attempt)
     raise BpError("SYNC_CONFLICT", "the remote journal kept moving; try again" + conflict_detail(link))
 
 
@@ -2846,7 +2854,7 @@ def cmd_show(args, ws, actor):
             lines.append(f"  closed on {item['closed_on'].get('branch') or 'detached HEAD'} at {(item['closed_on'].get('commit') or '')[:12]}"
                          + (" · merged into the default branch" if merged is True else
                             " · NOT yet on the default branch" if merged is False else ""))
-        lines.append(f"  type {item['issue_type']} · created {item['created_at'][:10]} by {item['created_by']}"
+        lines.append(f"  type {item['issue_type']} · created {item['created_at'][:10]} by {item.get('created_by') or 'unknown'}"
                      + (f" · assignee {item['assignee']}" if item.get("assignee") else ""))
         if item.get("claim"):
             held = item["claim"]

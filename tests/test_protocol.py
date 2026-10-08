@@ -589,7 +589,7 @@ class ProtocolReaudit(unittest.TestCase):
             if not accepted:
                 accepted.append(self.b.bead('claim', self.key)[0]['claim'])
             return original(link, tip, note, **kwargs)
-        with mock.patch.object(self.mod.Link, 'publish', race), mock.patch.object(self.mod.time, 'sleep'):
+        with mock.patch.object(self.mod.Link, 'publish', race), mock.patch.object(self.mod, 'pause'):
             report = self.sync()
         self.assertGreaterEqual(report['attempts'], 2)
         final = self.settle()
@@ -662,7 +662,7 @@ class ProtocolReaudit(unittest.TestCase):
                 self.a.bead('comments', 'add', self.key, 'writer acquires lock between retries')
         args = self.mod.build_parser().parse_args(['claim', self.key])
         error = None
-        with mock.patch.object(self.mod, 'run_git', lose_ack), mock.patch.object(self.mod.time, 'sleep', interleaved_writer):
+        with mock.patch.object(self.mod, 'run_git', lose_ack), mock.patch.object(self.mod, 'pause', interleaved_writer):
             try:
                 self.mod.cmd_claim(args, self.ws, self.actor)
             except self.mod.BpError as exc:
@@ -899,7 +899,7 @@ class Protocol3(unittest.TestCase):
                 self.assertEqual(self.a.show(self.key)['title'],'accepted first')
                 self.a.bead('update',self.key,'--title','later observed edit')
         args=self.bp.build_parser().parse_args(['update',self.key,'--claim','--title','accepted first'])
-        with mock.patch.object(self.bp,'run_git',lose_ack), mock.patch.object(self.bp.time,'sleep',between_retries):
+        with mock.patch.object(self.bp,'run_git',lose_ack), mock.patch.object(self.bp, 'pause',between_retries):
             self.bp.cmd_update(args,self.ws,self.actor)
         self.assertEqual(applied,[True]); self.assertEqual(written,[True])
         self.b.bead('sync'); self.a.bead('sync')
@@ -915,7 +915,7 @@ class Protocol3(unittest.TestCase):
                 applied.append(True); result.returncode=1; result.stdout=b''; result.stderr=b'connection closed after remote accepted'
             return result
         args=self.bp.build_parser().parse_args(['release',self.key]); failure=None
-        with mock.patch.object(self.bp,'run_git',lose_ack), mock.patch.object(self.bp.time,'sleep'):
+        with mock.patch.object(self.bp,'run_git',lose_ack), mock.patch.object(self.bp, 'pause'):
             try: self.bp.cmd_release(args,self.ws,self.actor)
             except self.bp.BpError as e: failure=e.code
         self.assertEqual(applied,[True]); self.b.bead('sync')
@@ -956,7 +956,7 @@ class Protocol3(unittest.TestCase):
         crash=self.a.run('claim',self.key,BEAD_TEST_CRASH_BEFORE_PUSH='1')
         self.assertEqual(crash.returncode,98); before=self.pending_ids(); self.assertEqual(len(before),1)
         hook=self.sandbox.origin/'hooks'/'pre-receive'; hook.write_text('#!/bin/sh\nexit 1\n'); hook.chmod(0o755)
-        with mock.patch.object(self.bp.time,'sleep'):
+        with mock.patch.object(self.bp, 'pause'):
             with self.assertRaises(self.bp.BpError) as caught: self.bp.synchronise(self.ws,str(self.sandbox.origin),self.actor)
         self.assertEqual(caught.exception.code,'REMOTE_REFUSED'); self.assertEqual(self.pending_ids(),before)
         self.assertNotIn('claim',self.a.show(self.key)); self.assertEqual(self.a.show(self.key)['title'],'before')

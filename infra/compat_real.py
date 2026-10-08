@@ -48,7 +48,7 @@ for src in sorted(P(args.documents).glob('*/.beads/issues.jsonl')):
   imp=run([br,'sync','--import-only','--json'],case);row['br_source_import_rc']=imp.returncode
   if imp.returncode:row['br_source_error']=imp.stderr
   else:
-   ready=run([br,'ready','--limit','0','--json'],case);blocked=run([br,'blocked','--json'],case)
+   ready=run([br,'ready','--limit','0','--json'],case);blocked=run([br,'blocked','--limit','0','--json'],case)  # both default to 50
    row['ready_equal']=keys(ready)==keys(bp_ready);row['blocked_equal']=keys(blocked)==keys(bp_blocked)
    row['ready_counts']=[len(keys(ready)),len(keys(bp_ready))];row['blocked_counts']=[len(keys(blocked)),len(keys(bp_blocked))]
    if not row['ready_equal']:row['ready_differences']={'br_only':sorted(set(keys(ready))-set(keys(bp_ready))),'bp_only':sorted(set(keys(bp_ready))-set(keys(ready)))}

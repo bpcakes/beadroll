@@ -1045,7 +1045,7 @@ class Review5CLI(unittest.TestCase):
         machine = self.machine("e04-import")
         source = self.box.root / "invalid.jsonl"
         source.write_text(json.dumps({"id": "ex-invalid", "title": "discarded", **COMMON,
-                                      "status": "not-a-status"}) + "\n")
+                                      "status": "NOT A STATUS"}) + "\n")  # a lower-case custom status imports
         imported = machine.run("import", str(source), "--json")
         self.assertNotEqual(imported.returncode, 0, imported.stdout)
         error = strict_json(imported.stderr)["error"]

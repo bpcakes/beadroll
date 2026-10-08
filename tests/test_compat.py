@@ -88,3 +88,42 @@ class CompatAuditRefValidation(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---- after review 7: the beads_rust tracker on linux-1 could not be imported (one record's status is "invalid")
+class CompatCustomStatuses(unittest.TestCase):
+    """Beads tools keep a status they do not know (beads_rust: Status::Custom); so does bead's import, and such
+    an issue is neither ready nor done. bead's own commands still set only bead's vocabulary."""
+    def setUp(self):
+        self.box=support.Sandbox(); self.addCleanup(self.box.cleanup)
+
+    def test_imported_custom_statuses_are_kept_and_never_ready(self):
+        base={"priority":2,"issue_type":"task","created_at":"2026-03-23T02:55:33Z","created_by":"someone",
+              "updated_at":"2026-03-23T02:55:42Z","source_repo":".","compaction_level":0,"original_size":0}
+        records=[{"id":"ex-open","title":"Open","status":"open",**base},
+                 {"id":"ex-pin","title":"Pinned","status":"pinned",**base},
+                 {"id":"ex-odd","title":"Test issue","status":"invalid",**{k:v for k,v in base.items() if k!="created_by"}},
+                 {"id":"ex-bad","title":"Bad","status":"Not A Status","issue_type":"task","priority":2}]
+        source=self.box.root/"issues.jsonl"
+        source.write_text("".join(json.dumps(r)+"\n" for r in records[:3]))
+        a=support.Machine(self.box,"a")
+        self.assertEqual(a.bead("init","--prefix","ex","--import",str(source))["imported"],3)
+        self.assertEqual({json.loads(l)["id"]:json.loads(l)["status"] for l in a.export().splitlines()},
+                         {"ex-open":"open","ex-pin":"pinned","ex-odd":"invalid"})
+        self.assertEqual(a.ready(),{"ex-open"})
+        self.assertEqual(a.bead("blocked"),[])
+        self.assertEqual({i["id"] for i in a.bead("list","--limit","0")["issues"]},{"ex-open","ex-pin","ex-odd"})
+        self.assertEqual(a.show("ex-odd")["status"],"invalid")
+        # a record without created_by (28 of beads_rust's 1,031) is not attributed to the importer
+        self.assertNotIn("created_by",next(json.loads(l) for l in a.export().splitlines() if '"ex-odd"' in l))
+        self.assertIn("by unknown",a.run("show","ex-odd").stdout)
+        a.bead("update","ex-odd","--title","still custom")
+        self.assertEqual(a.show("ex-odd")["status"],"invalid")
+        refused=a.run("update","ex-open","--status","invalid","--json")
+        self.assertEqual((refused.returncode,json.loads(refused.stderr)["error"]["code"]),(1,"VALIDATION"))
+        a.bead("close","ex-odd")
+        self.assertEqual(a.show("ex-odd")["status"],"closed")
+        source.write_text(json.dumps(records[3])+"\n")
+        malformed=a.run("import",str(source),"--json")
+        self.assertEqual((malformed.returncode,json.loads(malformed.stderr)["error"]["code"]),(1,"VALIDATION"))
+        self.assertIn("unknown status",malformed.stderr)
