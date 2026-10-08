@@ -98,6 +98,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
   remote's verdict (a hook, a rule) is `REMOTE_REFUSED` and is not retried; one the remote could not
   take (`unpacker error`, `missing necessary objects`) is retried after a fresh fetch; a
   remote that has lost objects is `REMOTE_DAMAGED`.
+- Format 1 is frozen; changes are additive. An event an older bead cannot apply (a new operation,
+  a new field, a newer `v`) is set aside, reported under `integrity`, carried through sync
+  untouched and applied after an upgrade; a mixed fleet is safe. A breaking change, should one
+  ever be needed, follows writers-lag-readers through the manifest; none is planned.
 - Events nest at most 100 levels (`MAX_NESTING`); replay keeps looser type rules than writes
   (`write_problem`) so histories written before a rule mean the same on every machine.
 - `BEAD_HOME` must be absolute; the store's modes are 0700/0600 whatever the umask.

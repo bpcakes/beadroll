@@ -122,6 +122,20 @@ An edit made after seeing another is never a conflict, whatever the clocks say.
   (`FORMAT_UNSUPPORTED`): an older client never rewrites a newer tracker.
 - `title`, `priority`, `issue_type` and `status` cannot be cleared; a `set`
   that tries is reported and applies nothing.
+
+## Format and upgrades
+
+Events carry `"v": 1` and the published manifest `"format": 1`. **Format 1 is
+frozen; changes are additive.** A newer bead may add an operation or a field,
+still as format 1; an older bead sets aside the events it cannot apply
+(reported under `integrity`, applied by nobody), carries them through sync
+untouched, and applies them once upgraded. Machines can therefore be upgraded
+in any order; a mixed fleet is safe, and shows integrity notes until it is
+uniform. The format number changes only for a change that would make an old
+reader *misread* events; none is planned. Should one ever be needed it follows
+*writers lag readers*: the new bead reads both formats but writes the old one
+until every machine on the tracker has announced, in the manifest it publishes,
+that it reads the new one; then it flips. Nothing ever rewrites existing events.
 - An imported dependency on an issue that is not in the tracker yet is kept by
   key and becomes a real edge on every machine the moment that key exists, so
   importing in several batches gives the same result as one. An import is

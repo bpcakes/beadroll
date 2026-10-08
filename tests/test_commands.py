@@ -1902,3 +1902,39 @@ class Review6(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---- format policy (2026-10-08): format 1 is frozen, changes are additive
+class FormatPolicy(unittest.TestCase):
+    def test_unapplicable_events_travel_untouched_and_hold_nothing_up(self):
+        """An event this bead cannot apply (an unknown operation, a newer format: what a newer bead would write)
+        is set aside and reported on every machine, carried through sync byte for byte, and holds up nothing
+        else; so machines upgrade in any order and a mixed fleet is safe."""
+        box = support.Sandbox()
+        self.addCleanup(box.cleanup)
+        a, b = support.Machine(box, "a"), support.Machine(box, "b")
+        a.bead("init", "--prefix", "ex")
+        x = a.bead("create", "x")["id"]
+        a.bead("sync")
+        b.bead("sync")
+        bead = support.load_module()
+        segment = next(p for p in (a.store() / "events").glob("*/*.jsonl"))
+        last = json.loads(segment.read_text().splitlines()[-1])  # x's create: its id is the issue's uid
+        future = [{"v": 1, "id": bead.uuid7(), "replica": last["replica"], "deps": [last["id"]], "op": "archive",
+                   "issue": last["id"], "data": {"until": "2030-01-01"}}]
+        future.append({"v": 2, "id": bead.uuid7(), "replica": last["replica"], "deps": [future[0]["id"]], "op": "set",
+                       "issue": last["id"], "data": {"fields": {"title": "from the future"}}})
+        foreign = "".join(json.dumps(e) + "\n" for e in future)
+        with segment.open("a") as f:
+            f.write(foreign)
+        a.bead("update", x, "--title", "after")  # a normal write on top of events this bead does not understand
+        a.bead("sync")
+        b.bead("sync")
+        for m in (a, b):
+            problems = sorted(e["problem"][:17] for e in m.bead("info")["integrity"])
+            self.assertEqual(problems, ["event format v2 i", "unknown operation"], m.name)
+            self.assertEqual(m.show(x)["title"], "after", m.name)
+            self.assertEqual(m.ready(), {x}, m.name)
+        copy = b.store() / "events" / last["replica"] / segment.name
+        self.assertIn(foreign, copy.read_text())  # carried untouched, to be applied by a bead that knows them
+        self.assertEqual(a.export(), b.export())
