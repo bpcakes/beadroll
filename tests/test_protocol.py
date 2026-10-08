@@ -140,8 +140,8 @@ class SyncAudit(unittest.TestCase):
         # Original starts a new segment, while restored copy still appends the old one.
         self.a.extra['BEAD_ROTATE_BYTES'] = '1'
         twin.extra['BEAD_ROTATE_BYTES'] = '1000000'
-        twin.bead('update', self.key, '--title', 'copied identity writer')
-        self.a.bead('update', self.key, '--title', 'original writer')
+        twin.bead('update', self.key, '--title', 'copied identity writer', '--offline')
+        self.a.bead('update', self.key, '--title', 'original writer', '--offline')
         self.a.bead('sync')
         result = twin.run('sync', '--json')
         self.assertNotEqual(result.returncode, 0,
@@ -154,8 +154,8 @@ class SyncAudit(unittest.TestCase):
         shutil.copytree(self.a.home, twin.home)
         self.a.extra['BEAD_ROTATE_BYTES'] = '1'
         twin.extra['BEAD_ROTATE_BYTES'] = '1000000'
-        twin.bead('update', self.key, '--title', 'copied identity writer')
-        self.a.bead('update', self.key, '--title', 'original writer')
+        twin.bead('update', self.key, '--title', 'copied identity writer', '--offline')
+        self.a.bead('update', self.key, '--title', 'original writer', '--offline')
         self.a.bead('sync')
         result = twin.run('sync', '--json')
         if result.returncode:
@@ -211,14 +211,14 @@ sys.exit(n['main']())
     def test_slow_push_holds_lock_then_local_writer_completes_without_loss(self):
         self.two()
         marker = self.sandbox.root / 'slow-push'
-        self.a.bead('create', 'before slow push')
+        self.a.bead('create', 'before slow push', '--offline')
         sync = subprocess.Popen([support.BEAD, 'sync', '--json'], cwd=self.a.checkout,
                                 env=self.a.env(PATH=self.git_wrapper('push', marker)), stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, text=True, start_new_session=True)
         writer = None
         try:
             self.wait_marker(marker, sync)
-            writer = subprocess.Popen([support.BEAD, 'create', 'during push', '--json'], cwd=self.a.checkout,
+            writer = subprocess.Popen([support.BEAD, 'create', 'during push', '--offline', '--json'], cwd=self.a.checkout,
                                       env=self.a.env(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             time.sleep(.3)
             self.assertIsNone(writer.poll(), 'writer should wait for the store lock')
@@ -370,7 +370,7 @@ sys.exit(n['main']())
 
     def test_retry_exhaustion_retains_local_edits_and_no_partial_claim(self):
         self.two()
-        self.a.bead('create', 'unpublished edit')
+        self.a.bead('create', 'unpublished edit', '--offline')
         # Move the actual local remote forward immediately before each attempted push.
         # The transport and fast-forward rejection remain real; only backoff is suppressed.
         counter = self.sandbox.root / 'rejections'
@@ -582,7 +582,7 @@ class ProtocolReaudit(unittest.TestCase):
 
     def test_refused_void_publish_must_not_activate_unaccepted_claim(self):
         self.interrupted_claim()
-        self.a.bead('comments', 'add', self.key, 'local work after failed claim')
+        self.a.bead('comments', 'add', self.key, 'local work after failed claim', '--offline')
         original = self.mod.Link.publish
         accepted = []
         def race(link, tip, note='sync', **kwargs):
@@ -597,7 +597,7 @@ class ProtocolReaudit(unittest.TestCase):
 
     def test_failed_void_publish_retry_must_not_activate_unaccepted_claim(self):
         self.interrupted_claim()
-        self.a.bead('comments', 'add', self.key, 'local work after failed claim')
+        self.a.bead('comments', 'add', self.key, 'local work after failed claim', '--offline')
         with mock.patch.object(self.mod.Link, 'publish', side_effect=self.mod.BpError('REMOTE_UNREACHABLE', 'fault: void push unanswered')):
             with self.assertRaises(self.mod.BpError):
                 self.sync()
@@ -607,7 +607,7 @@ class ProtocolReaudit(unittest.TestCase):
 
     def test_failed_void_push_must_leave_original_claim_unconfirmed(self):
         self.interrupted_claim()
-        self.a.bead('comments', 'add', self.key, 'local work after failed claim')
+        self.a.bead('comments', 'add', self.key, 'local work after failed claim', '--offline')
         with mock.patch.object(self.mod.Link, 'publish', side_effect=self.mod.BpError('REMOTE_UNREACHABLE', 'fault: void push unanswered')):
             with self.assertRaises(self.mod.BpError):
                 self.sync()

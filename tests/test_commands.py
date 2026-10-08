@@ -203,8 +203,8 @@ class BpTest(unittest.TestCase):
 
     def test_same_child_number_on_two_machines_is_renumbered_identically(self):
         a, b, x, _ = self.two_machines()
-        self.assertEqual(a.bead("create", "child made on a", "--parent", x)["id"], f"{x}.1")
-        self.assertEqual(b.bead("create", "child made on b", "--parent", x)["id"], f"{x}.1")
+        self.assertEqual(a.bead("create", "child made on a", "--parent", x, "--offline")["id"], f"{x}.1")
+        self.assertEqual(b.bead("create", "child made on b", "--parent", x, "--offline")["id"], f"{x}.1")
         a.bead("sync")
         report = b.bead("sync")
         self.assertEqual([(r["from"], r["to"]) for r in report["renamed"]], [(f"{x}.1", f"{x}.2")])
@@ -2055,3 +2055,76 @@ class SyncRepoMaintenance(unittest.TestCase):
         self.a.bead("claim", self.key)
         self.b.bead("sync")
         self.assertIn("codex:", self.b.show(self.key)["claim"]["owner"])
+
+
+# ---- 2026-10-08: every local write is published at once; what the remote lacks is always visible
+class PublishOnWrite(unittest.TestCase):
+    """A tracker imported on one machine sat unpublished until a manual sync, and nothing said so. Now a local
+    write (create, update, comment, dep, import, init) publishes at once, as a close already did; --offline keeps
+    it local; and every command reports what the remote still lacks."""
+    def setUp(self):
+        self.box = support.Sandbox()
+        self.addCleanup(self.box.cleanup)
+        self.a = support.Machine(self.box, "a")
+        self.a.bead("init", "--prefix", "ex")
+        self.b = support.Machine(self.box, "b")
+        self.b.bead("sync")
+
+    def test_writes_reach_the_other_machine_without_a_sync(self):
+        x = self.a.bead("create", "x")["id"]
+        self.a.bead("comments", "add", x, "note")
+        y = self.a.bead("create", "y")["id"]
+        self.a.bead("dep", "add", y, x)
+        self.a.bead("update", x, "--title", "x renamed")
+        self.b.bead("sync")
+        self.assertEqual(self.b.show(x)["title"], "x renamed")
+        self.assertEqual([c["text"] for c in self.b.show(x)["comments"]], ["note"])
+        self.assertEqual(self.b.bead("blocked")[0]["id"], y)
+        self.assertNotIn("unpublished", self.a.bead("info"))
+
+    def test_offline_keeps_it_local_and_says_so_until_the_next_publish(self):
+        made = self.a.run("create", "local", "--offline", "--json")
+        self.assertEqual(made.returncode, 0, made.stderr)
+        self.assertEqual(strict_json(made.stdout)["unpublished"], 1)
+        human = self.a.run("create", "also local", "--offline")
+        self.assertEqual(human.stdout.strip().splitlines()[-1], "2 events not yet published: bead sync")
+        self.assertEqual(self.a.bead("info")["unpublished"], 2)
+        self.assertEqual(self.a.bead("ready")[-1:], self.a.bead("ready")[-1:])  # reads carry it in JSON dicts only
+        self.b.bead("sync")
+        self.assertEqual(self.b.bead("list")["issues"], [])
+        self.a.bead("create", "published, and the two before it with it")  # an online write carries the backlog
+        self.assertNotIn("unpublished", self.a.bead("info"))
+        self.b.bead("sync")
+        self.assertEqual(len(self.b.bead("list")["issues"]), 3)
+
+    def test_an_unreachable_remote_never_fails_a_write(self):
+        aside = self.box.origin.with_name("origin.away")
+        self.box.origin.rename(aside)
+        try:
+            made = self.a.run("create", "while away", "--json")
+            self.assertEqual(made.returncode, 0, made.stderr)
+            self.assertEqual(strict_json(made.stdout)["unpublished"], 1)
+            text = self.a.run("create", "still away").stdout
+            self.assertIn("not yet published", text)
+        finally:
+            aside.rename(self.box.origin)
+        synced = self.a.bead("sync")
+        self.assertEqual(synced["pushed"], 2)
+        self.b.bead("sync")
+        self.assertEqual(sorted(i["title"] for i in self.b.bead("list")["issues"]), ["still away", "while away"])
+
+    def test_init_with_an_import_publishes_the_tracker_at_once(self):
+        fresh = support.Sandbox()
+        self.addCleanup(fresh.cleanup)
+        source = fresh.root / "issues.jsonl"
+        source.write_text(json.dumps({"id": "im-1", "title": "imported", "status": "open", "priority": 2, "issue_type": "task",
+                                      "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"}) + "\n")
+        one = support.Machine(fresh, "one")
+        made = one.bead("init", "--prefix", "im", "--import", str(source))
+        self.assertEqual(made["imported"], 1)
+        self.assertNotIn("unpublished", one.bead("info"))
+        two = support.Machine(fresh, "two")
+        two.bead("sync")
+        self.assertEqual([i["id"] for i in two.bead("list")["issues"]], ["im-1"])
+        offline = support.Machine(fresh, "three")
+        self.assertEqual(offline.run("init", "--prefix", "im", "--offline", "--json").returncode, 0)

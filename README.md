@@ -36,6 +36,12 @@ checkout, `./bead` runs the working copy. Start-up is about 25 ms.
   update of the coordination ref; it lasts until release, close or takeover.
   Ownership events live beside the journal as one immutable file each and
   count only once the remote holds them.
+- **Every write is published at once.** A create, edit, comment, dependency,
+  import or init reaches the remote before the command returns (about 1.7 s
+  against GitHub, like a claim); `--offline` keeps it local. A remote that
+  does not answer never fails a write: it is recorded, and every command says
+  what the remote still lacks (`unpublished`) until a sync or an online
+  command carries it. `bead sync` is the catch-up, not the only way out.
 - **Identity on every event:** machine, agent type, thread id.
 - **Place on every event:** the branch and commit the command ran on, so a
   claim says where the work is happening and a close whether it is merged.

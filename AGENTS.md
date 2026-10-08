@@ -65,8 +65,9 @@ clone and machine of this repository, stored outside the working tree, never on 
 - Start every session with `bead prime` and follow it. It prints the current workflow, who you
   are and what you hold; it is the source of truth, not this file.
 - Find work with `bead ready`, claim an issue before working on it, record progress and decisions
-  with `bead comments add`, split follow-ups with `bead create "title" --parent ID`, close with
-  `bead close ID -r "what was done"`, and `bead sync` before you stop.
+  with `bead comments add`, split follow-ups with `bead create "title" --parent ID`, and close with
+  `bead close ID -r "what was done"`. Every write is published at once; when a command says
+  "not yet published" (`--offline`, or the remote did not answer), run `bead sync` before you stop.
 - A claim belongs to your agent thread and lasts until release, close or takeover. A new session
   continues its own earlier work with `bead takeover ID -r "same task, new session"`; never take
   over someone else's work without a reason you have verified.

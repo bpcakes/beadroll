@@ -326,8 +326,8 @@ sys.exit(bp['main']())
         shutil.copytree(self.a.home, twin.home)
         self.a.extra['BEAD_ROTATE_BYTES'] = '1'
         twin.extra['BEAD_ROTATE_BYTES'] = '9999999'
-        twin.bead('update', self.key, '--title', 'twin branch')
-        self.a.bead('update', self.key, '--title', 'original branch')
+        twin.bead('update', self.key, '--title', 'twin branch', '--offline')
+        self.a.bead('update', self.key, '--title', 'original branch', '--offline')
         self.a.bead('sync')
         tip = support.git('--git-dir', str(self.sandbox.origin), 'rev-parse', 'refs/beads/journal')
         attempted = twin.run('sync', '--json')

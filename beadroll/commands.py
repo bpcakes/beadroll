@@ -102,6 +102,10 @@ def cmd_init(args, ws, actor):
     # `init --tracked --remote` is the deliberate switch: record it, so the tracked remote is the one in use
     tracked_remote = ws.resolve_remote(args.remote) if args.tracked and args.remote else None
     ws.save_meta(name=ws.name, remote=tracked_remote if args.tracked else args.remote)
+    if ws.wrote and not getattr(args, "offline", False):  # the tracker exists for the other machines now, not at a later sync
+        warning = publish_soon(ws, args, actor)
+        if warning:
+            notes.append(warning)
     return ({"workspace": ws.id, "prefix": st.prefix, "path": str(ws.dir), "imported": imported,
              "tracked_config": bool(ws.config)},
             [f"Tracker {st.prefix!r} at {ws.dir}" + (f" ({imported} issues imported)" if imported else "")]

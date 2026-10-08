@@ -36,6 +36,7 @@ class Workspace:
         self.id, self.name, self.origin, self.config = wid, name, origin, config
         self.derived = None  # the URL-derived id, when that is where this id came from (adopt_published)
         self.holding = False  # this process holds the store lock (see `locked`)
+        self.wrote = False  # this process appended events the remote does not have yet (see `writing`)
         self.dir = home() / wid
         self.events_dir = self.dir / "events"
 

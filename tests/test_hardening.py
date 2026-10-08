@@ -1144,8 +1144,8 @@ class G17_TranslatedGit(unittest.TestCase):
             self.skipTest("this git has no German or French messages")
         a = support.Machine(box, "a")
         a.extra.update(LANG=locale, LC_ALL=locale, LANGUAGE="")
-        a.bead("init", "--prefix", "lo")
-        key = a.bead("create", "x")["id"]
+        a.bead("init", "--prefix", "lo", "--offline")  # kept local, so the sync below is the push under this locale
+        key = a.bead("create", "x", "--offline")["id"]
         first = a.run("sync", "--json")
         self.assertEqual(first.returncode, 0, f"first sync under {locale}: {first.stderr}")
         self.assertGreater(json.loads(first.stdout)["pushed"], 0, first.stdout)
@@ -1181,7 +1181,7 @@ class G18_DefiniteRefusalIsNeitherARaceNorNoAnswer(unittest.TestCase):
         a = support.Machine(self.box, "g18p")
         a.extra.update(GIT_CONFIG_GLOBAL=str(self.config), GIT_CONFIG_NOSYSTEM="1")
         a.bead("init", "--prefix", "po")
-        key = a.bead("create", "x")["id"]
+        key = a.bead("create", "x", "--offline")["id"]  # local: the sync below is the push the hook refuses
         hook = self.box.origin / "hooks" / "pre-receive"
         hook.write_text("#!/bin/sh\necho 'refs/beads/* may not be pushed here' >&2\nexit 1\n")
         hook.chmod(0o755)
@@ -2386,10 +2386,10 @@ class G31_ExportWithUnicodeLineSeparatorsImportsAgain(unittest.TestCase):
         self.assertEqual(raw.count(b"\n"), 3)  # three records, three physical lines
         self.assertIn("\u2028".encode(), raw)  # written raw, which is valid JSON
         dst = support.Machine(self.box, "g31dst")
-        dst.bead("init", "--prefix", "zz")
-        proc = dst.run("import", str(out), "--json")
+        dst.bead("init", "--prefix", "zz", "--offline")  # its own tracker: not a second machine of the source's
+        proc = dst.run("import", str(out), "--offline", "--json")
         self.assertEqual(proc.returncode, 0, f"bead could not import its own export: {_g31_tail(proc.stderr)}")
-        self.assertEqual(json.loads(proc.stdout), {"imported": 3})
+        self.assertEqual(json.loads(proc.stdout)["imported"], 3)  # (--offline: the result also counts the unpublished)
         for title, key in keys.items():
             issue = dst.show(key)
             self.assertEqual(issue["title"], title)
@@ -3514,8 +3514,8 @@ class G51_UnusableTrackedConfigIsAnError(unittest.TestCase):
         self.a = support.Machine(self.box, "g51")
         self.config = self.a.checkout / ".beadroll.json"
         self.config.write_text(json.dumps({"workspace": "w-tracked"}))
-        self.a.bead("init", "--prefix", "ex")
-        self.a.bead("create", "tracked issue")
+        self.a.bead("init", "--prefix", "ex", "--offline")  # local: origin must hold no tracker at all for these tests
+        self.a.bead("create", "tracked issue", "--offline")
 
     def _break(self, kind):
         self.config.unlink()
@@ -3921,7 +3921,7 @@ class G58_FinishedPushIsNotAnUnansweredOne(unittest.TestCase):
         a.bead("init", "--prefix", "ex")
         key = a.bead("create", "one")["id"]
         a.bead("sync")
-        a.bead("comments", "add", key, "publish me")
+        a.bead("comments", "add", key, "publish me", "--offline")  # the sync below, under the slow helper, publishes it
         a.extra["G58_BG_SECONDS"] = "15"
         before = _g58_remote_head(self.box)
         started = time.monotonic()
@@ -5306,8 +5306,8 @@ class V9_TransportAndUrlSettings(unittest.TestCase):
         a = support.Machine(self.box, "a")
         a.extra.update(_v9_scratch_git_config(self.box, f'[url "{self.box.origin}"]\n\tpushInsteadOf = {ro}\n'))
         support.git("remote", "set-url", "origin", str(ro), cwd=a.checkout)
-        a.bead("init")
-        a.bead("create", "x")
+        a.bead("init", "--offline")  # one publish: the mirror fetched from never learns of it, a second could not fast-forward
+        a.bead("create", "x", "--offline")
         started = time.monotonic()
         sync = a.run("sync", "--json")
         elapsed = time.monotonic() - started
@@ -5584,7 +5584,7 @@ class V5_SigningConfigIsInert(unittest.TestCase):
 
 def _v2_machine(box, name, init=True):
     machine = support.Machine(box, name)
-    machine.bead(*(["init", "--prefix", "ex"] if init else ["sync"]))
+    machine.bead(*(["init", "--prefix", "ex", "--offline"] if init else ["sync"]))  # local until the first claim or sync
     return machine
 
 def _v2_pending(machine):
@@ -5644,8 +5644,8 @@ class V2_InFlightAttemptAcrossActors(unittest.TestCase):
     def _in_flight(self, lands_first):
         real_sleep = time.sleep
         m = _v2_machine(self.box, f"v2-flight-{int(lands_first)}")
-        x = m.bead("create", "X")["id"]
-        y = m.bead("create", "Y")["id"]
+        x = m.bead("create", "X", "--offline")["id"]  # the claim below is the first push the hook sees
+        y = m.bead("create", "Y", "--offline")["id"]
         m.bead("claim", x, thread="actor-a")
         m.bead("sync")
         gate, started, done = self.box.root / "gate", self.box.root / "started", self.box.root / "done"
@@ -5893,7 +5893,7 @@ class V1_PushSideTranslation(unittest.TestCase):
                     f"  N=$(GIT_DIR={box.origin} git commit-tree $W^{{tree}} -p $W -m winner)\n"
                     f"  GIT_DIR={box.origin} git update-ref refs/beads/journal $N $W\nfi\nexit 0\n")
                 hook.chmod(0o755)
-                m.bead("comments", "add", key, "racing")
+                m.bead("comments", "add", key, "racing", "--offline")  # the sync below is the racing push
                 synced = m.run("sync", "--json")
                 self.assertEqual(synced.returncode, 0, synced.stderr)
                 self.assertTrue(gate.exists())
@@ -5923,7 +5923,7 @@ class V1_StalledReceiveTimeouts(unittest.TestCase):
         hook.write_text("#!/bin/sh\ncat >/dev/null\nhead -c 204800 /dev/zero | tr '\\0' x >&2\n"
                         f"sleep 4\ntouch {done}\nexit 0\n")
         hook.chmod(0o755)
-        self.a.bead("comments", "add", self.key, "stalled")
+        self.a.bead("comments", "add", self.key, "stalled", "--offline")  # the sync below meets the stall
         started = time.monotonic()
         stalled = self.a.run("sync", "--json", BEAD_NET_TIMEOUT="1.5")
         self.assertLess(time.monotonic() - started, 1.5 + 2.0)
@@ -6367,7 +6367,7 @@ class V7_OriginsWithAUserOrSchemeAreOneWorkspace(unittest.TestCase):
         self.assertEqual(reached.returncode, 0, f"git itself cannot reach {url}: {reached.stderr}")
         worktree = self.box.root / "a-wt"
         support.git("worktree", "add", "-q", str(worktree), cwd=a.checkout)
-        made = a.run("init", "--prefix", "ex", "--json")
+        made = a.run("init", "--prefix", "ex", "--offline", "--json")  # kept local: the sync below is the publish
         self.assertEqual(made.returncode, 0, made.stderr)
         synced = a.run("sync", "--json")
         self.assertEqual(synced.returncode, 0, synced.stderr)

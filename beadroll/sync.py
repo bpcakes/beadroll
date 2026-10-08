@@ -115,6 +115,7 @@ def writing(ws: Workspace, actor: dict):
             confirm_ownership(ws, tx.ownership)
         if tx.pending or tx.ownership:  # this command went through: a repeat of an earlier one is a new command
             forget_receipts(ws, actor)
+            ws.wrote = True  # the remote does not have this yet (cleared by a publish that went through)
 
 
 def mint_key(st: State, seed: str, parent: dict | None) -> str:
@@ -610,7 +611,8 @@ def synchronise(ws: Workspace, remote: str, actor: dict) -> dict:
     else:
         raise BpError("SYNC_CONFLICT", "the remote journal kept moving; run sync again" + conflict_detail(link))
     st = view(ws)
-    ws.note_sync(remote, name=ws.name)
+    ws.note_sync(remote, name=ws.name, published=published_counts(ws))
+    ws.wrote = False
     return {"pulled": pulled, "pushed": pushed, "attempts": attempt, "tip": link.last_commit, "remote": remote,
             **({"sync_repo_rebuilt": link.rebuilt} if link.rebuilt else {}), **({"repacked": True} if repacked else {}),
             "issues": len(st.issues), "renamed": st.renames[known_renames:], "forked_journals": link.forks,
@@ -642,11 +644,11 @@ def coordinated(ws: Workspace, actor: dict, args, build, request=None):
                 if receipt and attempt_path(ws, receipt[0]).exists():  # it had: the work is done, not to be redone
                     drop_pending(ws, [receipt[0]])
                     forget(stale)
-                    ws.note_sync(remote)
+                    ws.note_sync(remote, published=published_counts(ws)); ws.wrote = False
                     return receipt[1]
                 done, stale = settle_commands(ws, replica, actor, signature)
                 if done:  # an earlier run of this command was accepted
-                    ws.note_sync(remote)
+                    ws.note_sync(remote, published=published_counts(ws)); ws.wrote = False
                     return "online"
                 settled = settle_pending(ws, link, tip)
                 if settled == "unresolved":
@@ -679,7 +681,7 @@ def coordinated(ws: Workspace, actor: dict, args, build, request=None):
                         confirm_ownership(ws, tx.ownership)
                         drop_pending(ws, [tx.ownership])
                         forget(stale)  # this command went through: the actor has moved on from those
-                        ws.note_sync(remote)
+                        ws.note_sync(remote, published=published_counts(ws)); ws.wrote = False
                         return result
                     if outcome == "refused":  # it definitely did not land, and will not on a retry
                         drop_pending(ws, [tx.ownership])
@@ -696,6 +698,33 @@ def coordinated(ws: Workspace, actor: dict, args, build, request=None):
             raise
         pause(random.uniform(0.1, 0.4) * attempt)
     raise BpError("SYNC_CONFLICT", "the remote journal kept moving; try again" + conflict_detail(link))
+
+
+def published_counts(ws: Workspace) -> dict[str, int]:
+    """What the remote holds of this store the moment a publish went through: lines per journal segment and
+    one per claim file, by path. Kept in meta.json so that `unpublished_count` needs no network."""
+    counts = {str(p.relative_to(ws.dir)): p.read_bytes().count(b"\n") for p in segment_files(ws)}
+    counts.update({str(p.relative_to(ws.dir)): 1 for p in claim_files(ws)})
+    return counts
+
+
+def unpublished_count(ws: Workspace) -> int | None:
+    """Events of this store the remote does not have, as of the last publish that went through; None when
+    there is no remote to publish to. Everything is unpublished before the first publish."""
+    try:
+        if not ws.remote(None):
+            return None
+    except BpError:
+        return None
+    meta = ws.meta()
+    published = meta.get("published")
+    if not isinstance(published, dict):
+        if meta.get("last_sync"):  # published by a build that kept no counts: unknown until the next publish
+            return None
+        published = {}  # never published: everything is behind
+    count = sum(max(0, p.read_bytes().count(b"\n") - int(published.get(str(p.relative_to(ws.dir)), 0) or 0))
+                for p in segment_files(ws))
+    return count + sum(1 for p in claim_files(ws) if str(p.relative_to(ws.dir)) not in published)
 
 
 def publish_soon(ws: Workspace, args, actor: dict) -> str | None:

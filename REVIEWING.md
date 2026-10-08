@@ -68,8 +68,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
   a retry of the *same* command by the same actor is recognised; a different command after the
   crash is a new command and sees the accepted state.
 - The display value for a conflicted field is the newest event id; no resolution command.
-- `close` by the owner is a local write published immediately, not a conditional update; a
-  close or release that names a claim superseded by a takeover is ignored and listed under
+- Every local write (`create`, `update`, `comments add`, `dep`, `import`, `init`, and `close` by the
+  owner) is published immediately, not as a conditional update; `--offline` keeps it local, and a
+  remote that does not answer leaves it recorded and reported as unpublished (`unpublished` in every
+  dict result and in `info`; a trailing line for humans) until a sync or an online command carries
+  it. A close or release that names a claim superseded by a takeover is ignored and listed under
   `stale`, whichever was written first.
 - A renumbered child key (`x.1` → `x.2` after two machines created children offline) changes
   under the machine that created it; events refer to issues by immutable id.

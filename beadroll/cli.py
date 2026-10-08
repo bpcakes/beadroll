@@ -10,6 +10,7 @@ import sys
 from .base import (BpError, FORMAT, __version__, emit, silence, visible)
 from .machine import (actor_label, detect_actor, find_workspace, replica_id)
 from .model import (conflicts, view)
+from .sync import (publish_soon, unpublished_count)
 from .queries import (is_blocked)
 from .commands import (
     cmd_blocked, cmd_claim, cmd_claims, cmd_comments, cmd_create, cmd_dep,
@@ -63,7 +64,7 @@ beadroll workflow: read once per session, then act.
                  bead create "title" --parent ID -t task     split off follow-ups
 4. Finish        bead close ID -r "what was done"   ends your claim and publishes at once
                  bead release ID                    hand it back unfinished
-                 bead sync                          before you stop, and after a long gap
+                 bead sync                          catch up: after --offline, after "not yet published", after a long gap
 
 Rules  Ownership belongs to your agent thread; a new session is a new owner. Continue your own
        earlier work with bead takeover ID -r "same task, new session". Never --force or take over
@@ -90,8 +91,9 @@ clone and machine of this repository, stored outside the working tree, never on 
 - Start every session with `bead prime` and follow it. It prints the current workflow, who you
   are and what you hold; it is the source of truth, not this file.
 - Find work with `bead ready`, claim an issue before working on it, record progress and decisions
-  with `bead comments add`, split follow-ups with `bead create "title" --parent ID`, close with
-  `bead close ID -r "what was done"`, and `bead sync` before you stop.
+  with `bead comments add`, split follow-ups with `bead create "title" --parent ID`, and close with
+  `bead close ID -r "what was done"`. Every write is published at once; when a command says
+  "not yet published" (`--offline`, or the remote did not answer), run `bead sync` before you stop.
 - A claim belongs to your agent thread and lasts until release, close or takeover. A new session
   continues its own earlier work with `bead takeover ID -r "same task, new session"`; never take
   over someone else's work without a reason you have verified.
@@ -268,6 +270,9 @@ def build_parser() -> argparse.ArgumentParser:
     cmd.add_argument("-m", "--message")
     cmd.add_argument("-f", "--file")
     cmd.add_argument("--author")
+    for name in ("init", "import", "create", "dep", "comments"):  # local writes publish at once unless told not to
+        sub.choices[name].add_argument("--offline", action="store_true",
+                                       help="record locally only; the next sync or online command publishes it")
     add("lint", cmd_lint, "open work items without acceptance criteria")
 
     cmd = add("sync", cmd_sync, "exchange the journal with other machines through the coordination ref")
@@ -335,7 +340,18 @@ def run(argv=None) -> int:
                 ws = None  # help, prime and onboard work anywhere
         else:
             ws = find_workspace()
-        result, lines = args.func(args, ws, detect_actor(name))
+        actor = detect_actor(name)
+        result, lines = args.func(args, ws, actor)
+        if ws is not None and ws.wrote and not getattr(args, "offline", False):
+            warning = publish_soon(ws, args, actor)  # a local write is published at once, as a close is
+            if warning and lines is not None:
+                lines = [*lines, warning]
+        behind = unpublished_count(ws) if ws is not None and not getattr(args, "workspace_free", False) else None
+        if behind:  # after --offline, a remote that did not answer, or on a store that has never published
+            if isinstance(result, dict):
+                result["unpublished"] = behind
+            if lines is not None:
+                lines = [*lines, f"{behind} event{'s' if behind != 1 else ''} not yet published: bead sync"]
     except BrokenPipeError:
         raise
     except BpError as error:
