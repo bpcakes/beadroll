@@ -1,0 +1,67 @@
+# The baseline, as the repository runs it: ./check.sh with a scratch store on every push and pull
+# request (Linux on every supported Python, macOS on the newest), and the randomised models and the
+# protocol sweep nightly or on request. Nothing here touches a real store or a real remote: every
+# test builds its own repositories and bare remotes in a temporary directory.
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 3 * * *"  # nightly: the stress models and the sweep
+  workflow_dispatch:
+    inputs:
+      stress:
+        description: "also run test_stress and test_sweep"
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast:
+    name: ${{ matrix.os }} / python ${{ matrix.python }}
+    if: github.event_name != 'schedule'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ["3.12", "3.13", "3.14"]
+        include:
+          - os: macos-latest
+            python: "3.14"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: a git identity for the repositories the tests create
+        run: |
+          git config --global user.name check
+          git config --global user.email check@example.invalid
+          git --version
+          python3 --version
+      - name: fast baseline
+        run: ./check.sh
+
+  stress:
+    name: stress models and protocol sweep
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.stress)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: a git identity for the repositories the tests create
+        run: |
+          git config --global user.name check
+          git config --global user.email check@example.invalid
+      - name: baseline with the stress models and the sweep
+        run: ./check.sh --stress

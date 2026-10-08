@@ -1,5 +1,7 @@
 # beadroll
 
+[![check](https://github.com/bpcakes/beadroll/actions/workflows/check.yml/badge.svg)](https://github.com/bpcakes/beadroll/actions/workflows/check.yml)
+
 **An issue tracker for coding agents that works across git worktrees, clones
 and machines, and keeps its state off your code branches.**
 

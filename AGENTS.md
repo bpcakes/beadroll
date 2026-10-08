@@ -25,9 +25,11 @@ and how it was closed; `reviews/` holds the reports verbatim.
 
 ## Before you change anything
 
-- Run the baseline: `./check.sh` (about 15 minutes; `--stress` adds the randomised models and the
+- Run the baseline: `./check.sh` (about 20 minutes; `--stress` adds the randomised models and the
   protocol sweep, `--real` the real-export round trip). One module:
-  `python3 -m unittest tests.test_commands`; one class or test by its dotted name.
+  `python3 -m unittest tests.test_commands`; one class or test by its dotted name. CI
+  (`.github/workflows/check.yml`) runs the fast baseline on every push and pull request, Linux on
+  every supported Python and macOS on the newest, and the stress suite nightly or on request.
 - The default store `~/.local/state/beadroll` holds this repository's own real tracker. The test
   modules set a scratch `BEAD_HOME`; set one yourself for any manual experiment
   (`export BEAD_HOME=$(mktemp -d)`), and never run `bead`, `br` or `bv` inside other repositories
