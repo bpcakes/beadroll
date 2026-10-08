@@ -24,7 +24,8 @@ for module in $modules; do
     printf '%-14s %s(%ss)\n' "$module" "$line" "$(( $(date +%s) - start ))"
     if [ "$rc" -ne 0 ]; then
         status=1
-        printf '%s\n' "$out" | grep -E '^(FAIL|ERROR):' | sed 's/^/    /'
+        # each failure's heading and the line that says why (the assertion, or the exception)
+        printf '%s\n' "$out" | grep -E '^(FAIL|ERROR):|^[A-Za-z_.]*(Error|Exception)(:|$)' | sed 's/^/    /'
     fi
 done
 if [ "$real" -eq 1 ]; then
