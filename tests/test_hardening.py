@@ -4983,7 +4983,9 @@ class V8_PruneOnThePrivateSyncRepo(unittest.TestCase):
         finally:
             stop.set()
             worker.join(timeout=60)
-        self.assertTrue(set(codes) <= {"GIT_ERROR", "REMOTE_UNREACHABLE"}, codes)
+        # a prune under a running command is local damage: bead rebuilds sync.git once per command, and a
+        # second hit in the same command is SYNC_REPO_DAMAGED; the next command rebuilds and converges
+        self.assertTrue(set(codes) <= {"GIT_ERROR", "REMOTE_UNREACHABLE", "SYNC_REPO_DAMAGED"}, codes)
         _v8_converge_and_compare(self, [a, b], box.origin)
         self.assertEqual(len(b.bead("list", "--all", "--limit", "0")["issues"]), 30)
 
