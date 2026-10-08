@@ -1743,7 +1743,7 @@ class Review6(unittest.TestCase):
         self.assertEqual(made.returncode, 0, made.stderr)
         meta = next(encoded.home.glob("*/meta.json")).read_text()
         self.assertNotIn("s%65cret", meta)
-        self.assertIn("https://alice@example.invalid/private.git", meta)
+        self.assertIn('"https://example.invalid/private.git"', meta)  # G06: over https the user part may be the token
 
         ssh = support.Machine(self.box, "ssh")
         ssh.run("init", "--prefix", "ex", "--remote", "ssh://alice:supersecret@example.invalid/private.git")
@@ -1770,7 +1770,7 @@ class Review6(unittest.TestCase):
         self.assertNotIn("supersecret", info.stdout)
         self.assertEqual(
             strict_json(info.stdout)["remote"],
-            "https://alice@example.invalid/private.git",
+            "https://example.invalid/private.git",  # G06: over https the user part may be the token
         )
 
     def test_prime_matches_ready_and_help_outside_a_repository_is_silent(self):

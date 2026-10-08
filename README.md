@@ -147,10 +147,24 @@ An edit made after seeing another is never a conflict, whatever the clocks say.
 
 ## Configuration
 
-Without configuration the workspace is derived from the origin URL and the
-coordination remote is origin. `bead init --tracked [--remote NAME_OR_URL]`
-writes a `.beadroll.json` to commit: an explicit workspace id, and optionally a
-different coordination remote. `--remote` and `$BEAD_REMOTE` override it per call.
+Without configuration the workspace is derived from the origin URL (where
+`git push origin` goes: the first `pushurl`, else the first `url`, read as git
+reads it, so `host:path`, ssh aliases and `gh:` shortcuts are remotes, not
+paths) and the coordination remote is origin, looked up each time. `bead init
+--tracked [--remote NAME_OR_URL]` writes a `.beadroll.json` to commit: an
+explicit workspace id, and optionally a different coordination remote. Running
+it again keeps the keys it does not manage. A checkout whose tree predates the
+file reads the committed copy (`HEAD`, then `origin/HEAD`). `--remote` and
+`$BEAD_REMOTE` override it per call; a tracked remote that differs from the one
+a store already uses is refused until named deliberately, and a tracked id that
+is another repository's derived id is refused outright: a cloned repository
+cannot attach you to someone else's store. If a repository was renamed, the
+first `sync` adopts its published tracker and remembers the mapping.
+
+bead's own git runs in a private bare repository with the checkout's transport
+settings carried over (`http.*.extraheader`, credential helpers,
+`core.sshCommand`, `includeIf` includes), the project's object format, no
+client hooks, and the remote string always passed after `--`.
 `"where": false` in `.beadroll.json` stops events from recording the branch and
 commit; outside a checkout nothing is recorded anyway.
 

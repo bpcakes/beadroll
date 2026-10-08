@@ -8,6 +8,31 @@ the behaviour is kept on purpose (with the reason); **open** otherwise.
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Review 7 (`reviews/2026-10-07-7-claude.md`, ids G)
+
+65 findings and a 3,300-schedule enumeration of the ownership protocol (which held, except G12).
+Closed in three commits: security and git faithfulness, receipts and push outcomes, imports and robustness.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| G01 | High | A tracked `remote` starting with `-` reached git as an option (`--upload-pack=<cmd>` ran a command) | fixed | `--` before the remote on fetch and push | `G01_TrackedRemoteIsNeverAGitOption` |
+| G02 | High | A committed `.beadroll.json` could bind a checkout to another repository's URL-derived store and redirect an existing store's remote | fixed | A tracked id shaped like a derived id (16 hex / `local-…`) that is not this origin's is `CONFIG`; a tracked remote that differs from the one already in use is `CONFIG` unless named explicitly (`init --tracked --remote` records the switch) | `G02_TrackedConfigCannotAdoptAnotherRepositorysStore` |
+| G03 | High | An unreadable `meta.json` silently moved coordination to origin (two confirmed owners; tracker pushed into the code origin) | fixed | `meta(strict=True)` for the remote decision: a damaged file is `IO`, never a fallback; a typed or tracked remote still works and repairs it; `save_meta` never overwrites a damaged file without a remote to put in it; `info` reports the damage | `G03_DamagedMetaMovesCoordinationToOrigin` |
+| G04 | High | Re-running `init --tracked` rewrote `.beadroll.json` from scratch, dropping `ref`, `where` and unknown keys (two refs → two owners) | fixed | The rewrite starts from the existing config; a kept remote is written back without its password | `G04_TrackedInitKeepsHandSetConfig` |
+| G05 | High | `host:path`, ssh aliases, `gh:` shortcuts, `[::1]:path`, upper-case schemes and `transport::` origins were joined onto the checkout as paths: one tracker per clone | fixed | `is_local_path` follows git's own rule; relative paths are resolved from the top; schemes normalise case-insensitively | `G05_OriginsGitReadsAsRemotes` |
+| G06 | High | `https://TOKEN:x-oauth-basic@host` kept the token in `.beadroll.json`/`meta.json` while claiming the password was dropped | fixed | Over http(s) the whole user-info is treated as a secret | `G06_HttpsTokenInTheUserPosition` |
+| G13 | Medium | `.beadroll.json` was decoded in the locale encoding | fixed | UTF-8 | `G13_TrackedConfigIsUtf8WhateverTheLocale` |
+| G17 | Medium | A translated git's "couldn't find remote ref" was not recognised: first sync failed | fixed | `LC_ALL=C` for sync.git's git | `G17_TranslatedGit` |
+| G19 | Medium | The user's client pre-push hooks and `init.templateDir` hooks ran inside sync.git | fixed | `git init --template=` and `git push --no-verify`; the remote's hooks still apply | `G19_ClientHooksOnPrivatePushes` |
+| G20 | Medium | The checkout's transport config (`http.*.extraheader`, credential helpers, `core.sshCommand`, `includeIf`) did not reach sync.git; `GIT_SSH` was overridden | fixed | `transport_config()` replays the checkout's transport keys through `GIT_CONFIG_*`, resettable lists cleared first; the ssh timeout default applies only when nothing else is set | `G20_TransportSettings` |
+| G21 | Medium | Remotes resolved against the cwd: a stored relative path failed from subdirectories, a same-named directory shadowed a configured remote (two owners) | fixed | A configured remote wins; stored relative paths resolve from the top; `init` stores typed paths relative to the top (tracked) or absolute (meta) | `G21_RemoteResolvedAgainstTheCwd` |
+| G22 | Medium | origin was the *last* `remote.origin.url`, ignoring `pushurl` | fixed | First `pushurl`, else first `url`: where `git push origin` goes | `G22_OriginIsNotWhereGitPushes` |
+| G23 | Medium | A tracked config was read from the working tree only: older branches, bisects and bare clones became other workspaces | fixed | `committed_config()` reads `HEAD:.beadroll.json`, then `origin/HEAD`'s, when the tree has none | `G23_TrackedConfigReadFromWorkingTreeOnly` |
+| G24 | Medium | A renamed repository's URL-derived id changed: `WORKSPACE_MISMATCH` with no remedy | fixed | The error names the remedy; the first `sync` adopts the published workspace when the id was derived, the store is empty and the remote is this origin, remembered in `moved.json` | `G24_RenamedRepositoryLosesItsTracker` |
+| G25 | Medium | The first remote used (origin included) was frozen as "last used" and outranked origin forever | fixed | origin is never remembered; a remembered value equal to origin is ignored | `G25_FirstSyncRemoteIsFrozen` |
+| G26 | Medium | sync.git took this machine's default object format, not the project's; a wrong one stayed wrong | fixed | `--object-format=<project's>`; a sync.git in another format is remade | `G26_ObjectFormat` |
+| G27 | Medium | An unfinished sync.git (empty dir, no `objects/`) was never completed; `GIT_WORK_TREE`/`GIT_OBJECT_DIRECTORY` leaked into it | fixed | `git init` whenever `HEAD`/`objects`/`refs` is missing, with every repository-location variable stripped | `G27_UnfinishedSyncGit` |
+
 ## Review 6 (`reviews/2026-10-07-6-grok.md`, ids F)
 
 | Id | Severity | Finding | Status | Resolution | Tests |

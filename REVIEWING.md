@@ -91,6 +91,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
   timed-out `git` is killed with its process group.
 - A command receipt survives a *failed* later command by the same actor and is dropped only when
   a later command by that actor goes through.
+- origin is never remembered as the coordination remote; only a remote named otherwise is. A
+  tracked config seeds a new store's remote but never silently moves an existing store's.
+- bead's pushes skip the user's client hooks (`--no-verify`); the remote's hooks still apply.
+- The remote string reaches git after `--`; a tracked workspace id shaped like a URL-derived id
+  that is not this origin's is refused.
 
 ## 3. Baseline
 

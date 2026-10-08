@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import bisect
 import errno
+import shutil
 import signal
 import contextlib
 import fcntl
@@ -112,11 +113,11 @@ def without_password(url: str) -> tuple[str, bool]:
         return url, False
     scheme, rest = match.group(1), match.group(2)
     authority, _, tail = rest.rpartition("@")
+    if scheme.lower() in ("http://", "https://"):  # over http(s) the user part may be the token: TOKEN@, TOKEN:x-oauth-basic@
+        return f"{scheme}{tail}", True
     if ":" in authority:  # user:password, whatever the password contains
         user = authority.split(":", 1)[0]
         return (f"{scheme}{user}@{tail}" if user else f"{scheme}{tail}"), True
-    if scheme.lower() in ("http://", "https://"):  # https://TOKEN@host is how access tokens are written
-        return f"{scheme}{tail}", True
     return url, False  # ssh://user@host: a user, not a secret
 
 
@@ -125,7 +126,7 @@ def normalize_remote(url: str) -> str:
     u = url.strip()
     if os.path.exists(u):
         return re.sub(r"\.git/?$", "", os.path.realpath(u)).lower()
-    u = re.sub(r"^[a-z][a-z0-9+.-]*://", "", u)
+    u = re.sub(r"(?i)^[a-z][a-z0-9+.-]*://", "", u)
     u = re.sub(r"^[^@/]+@", "", u)
     if re.match(r"^[^/:]+:[^/0-9]", u):
         u = u.replace(":", "/", 1)
@@ -137,19 +138,48 @@ class Workspace:
         if not isinstance(wid, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", wid):
             raise BpError("CONFIG", f"workspace id must be an opaque token, not a path: {wid!r}")
         self.id, self.name, self.origin, self.config = wid, name, origin, config
+        self.derived = None  # the URL-derived id, when that is where this id came from (adopt_published)
         self.dir = home() / wid
         self.events_dir = self.dir / "events"
 
-    def meta(self) -> dict:
+    def meta(self, strict: bool = False) -> dict:
+        """What this machine last used. A missing file is empty. For remote() (`strict`) the file may be
+        the only record of the coordination remote: one that cannot be read or parsed, or whose remote
+        is not a string, is an error there, never a silent switch to origin."""
+        path = self.dir / "meta.json"
         try:
-            meta = loads_strict((self.dir / "meta.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+            meta = loads_strict(path.read_text(encoding="utf-8"))
+            if not isinstance(meta, dict) or not isinstance(meta.get("remote", ""), str):
+                raise ValueError("not an object with a string remote")
+        except FileNotFoundError:
             return {}
-        return meta if isinstance(meta, dict) else {}
+        except (OSError, ValueError) as error:
+            if strict:
+                raise BpError("IO", f"{path} cannot be used ({error}): it records the coordination remote last "
+                              "used here; repair it, or name the remote with --remote, which rewrites it") from None
+            return {}
+        return meta
 
     def save_meta(self, **values):
-        meta = {**self.meta(), **{k: v for k, v in values.items() if v}}
+        try:
+            meta = self.meta(strict=True)
+        except BpError:
+            if not values.get("remote"):
+                return  # keep a damaged file for remote() to report: it may be the only record of the remote
+            meta = {}  # the remote in use came from elsewhere: rewriting the file with it repairs it
+        meta = {**meta, **{k: v for k, v in values.items() if v}}
+        if self.is_origin(meta.get("remote")):
+            del meta["remote"]  # origin is looked up each time: remembering its URL would freeze it
         write_atomic(self.dir / "meta.json", json.dumps(meta, indent=1).encode())
+
+    def is_origin(self, url) -> bool:
+        return isinstance(url, str) and bool(url and self.origin) and normalize_remote(url) == normalize_remote(self.origin)
+
+    def remembered_remote(self):
+        """The remote last named here. Origin itself is never remembered (older versions saved it too):
+        it is looked up each time, so `git remote set-url origin` is followed."""
+        remembered = self.meta(strict=True).get("remote")
+        return None if self.is_origin(remembered) else remembered
 
     @property
     def ref(self) -> str:
@@ -159,18 +189,43 @@ class Workspace:
             raise BpError("CONFIG", f"coordination ref {ref!r} must be a valid ref outside branches and tags")
         return ref
 
-    def remote(self, override: str | None = None) -> str | None:
-        """The one coordination endpoint: flag, environment, tracked config, last used, then origin."""
-        value = (override or os.environ.get("BEAD_REMOTE") or self.config.get("remote")
-                 or self.meta().get("remote") or self.origin)
-        if not value:
-            return None
-        if re.fullmatch(r"[A-Za-z0-9._-]+", value) and not os.path.exists(value):
+    @staticmethod
+    def resolve_remote(value: str, typed: bool = False) -> str:
+        """One remote spelling (a configured remote's name, a URL, a path) reduced to the one bead uses,
+        as git would read it: a configured remote wins over a same-named path, a stored relative path is
+        read from the top of the checkout whatever the cwd, a path typed just now from the cwd."""
+        if re.fullmatch(r"[A-Za-z0-9._-]+", value):
             named = run_git(["remote", "get-url", value], check=False)
             if named.returncode == 0:
-                value = named.stdout.decode().strip()
+                value, typed = named.stdout.decode().strip(), False
         value = without_password(value)[0]
+        if not typed and is_local_path(value) and not os.path.isabs(value):
+            top = run_git(["rev-parse", "--show-toplevel"], check=False)
+            if top.returncode == 0:
+                value = os.path.join(top.stdout.decode().strip(), value)
         return os.path.realpath(value) if os.path.exists(value) else value
+
+    def remote(self, override: str | None = None) -> str | None:
+        """The one coordination endpoint: flag, environment, tracked config, last named, then origin.
+        A tracked config seeds a new store's remote, but never silently moves an existing store's."""
+        typed = override or os.environ.get("BEAD_REMOTE")
+        if typed:
+            return self.resolve_remote(typed, typed=True)
+        tracked = self.config.get("remote")
+        try:
+            used = self.remembered_remote()
+        except BpError:  # a damaged meta.json: only fatal when it is the sole record of the remote
+            if not tracked:
+                raise
+            used = None
+        if tracked and used and self.resolve_remote(tracked) != used:
+            raise BpError("CONFIG", f".beadroll.json names coordination remote {without_password(tracked)[0]}, but "
+                          f"this tracker already coordinates through {used}; change it deliberately with "
+                          "`bead sync --remote` or `bead init --tracked --remote`")
+        value = typed or tracked or used or self.origin
+        if not value:
+            return None
+        return self.resolve_remote(value, typed=bool(typed))
 
 
 CONFIG_KEYS = {"workspace": str, "ref": str, "remote": str, "where": bool}
@@ -187,6 +242,45 @@ def checked_config(config, path) -> dict:
     return config
 
 
+def is_local_path(url: str) -> bool:
+    """A repository path rather than a URL, told apart as git does: no `scheme://` or `transport::`
+    prefix, and no ':' before the first '/' (`host:path` is scp-like ssh, with or without `user@`)."""
+    if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*(://|::)", url):
+        return False
+    colon, slash = url.find(":"), url.find("/")
+    return colon < 0 or 0 <= slash < colon
+
+
+def committed_config() -> dict:
+    """The committed .beadroll.json, for a checkout whose tree has none: a worktree on a branch cut before
+    it was committed, a bisect, a bare clone. HEAD's copy first, then the default branch's. One git call."""
+    refs = ("HEAD", "refs/remotes/origin/HEAD")
+    proc = run_git(["cat-file", "--batch"], data="".join(f"{ref}:.beadroll.json\n" for ref in refs).encode(), check=False)
+    out = proc.stdout if proc.returncode == 0 else b""
+    for ref in refs:
+        header, _, out = out.partition(b"\n")
+        fields = header.split()
+        if len(fields) != 3 or not fields[2].isdigit():
+            continue  # "<name> missing": not in that commit, or no such ref
+        body, out = out[:int(fields[2])], out[int(fields[2]) + 1:]
+        if fields[1] == b"blob":
+            try:
+                config = loads_strict(body.decode("utf-8"))
+            except ValueError:
+                raise BpError("CONFIG", f"{ref}:.beadroll.json is not valid JSON") from None
+            return checked_config(config, f"{ref}:.beadroll.json")
+    return {}
+
+
+def moved_workspaces() -> dict:
+    """URL-derived ids whose repository's tracker was found under another id (adopt_published)."""
+    try:
+        moved = loads_strict((home() / "moved.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in moved.items() if isinstance(v, str)} if isinstance(moved, dict) else {}
+
+
 def find_workspace() -> Workspace:
     """Identify the tracker from the repository, never from the checkout path.
 
@@ -198,24 +292,38 @@ def find_workspace() -> Workspace:
     config = {}
     if root and (root / ".beadroll.json").exists():
         try:
-            config = loads_strict((root / ".beadroll.json").read_text())
+            config = loads_strict((root / ".beadroll.json").read_text(encoding="utf-8"))  # UTF-8 whatever the locale
         except (OSError, ValueError):
             raise BpError("CONFIG", f"{root / '.beadroll.json'} is not valid JSON") from None
         config = checked_config(config, root / ".beadroll.json")
-    proc = run_git(["config", "--get", "remote.origin.url"], check=False)
-    origin = proc.stdout.decode().strip() if proc.returncode == 0 else ""
-    if origin and root and not re.match(r"^([a-z][a-z0-9+.-]*://|[^/]+@|/)", origin) and not os.path.exists(origin):
-        origin = str(root / origin)
+    else:
+        config = committed_config()
+    # origin means where `git push origin` goes: its first pushurl, else its first url (which is also the one
+    # git fetches from; `config --get` would give the last). As configured: insteadOf stays git's, not the id's.
+    proc = run_git(["config", "--get-regexp", r"^remote\.origin\.(push)?url$"], check=False)
+    found = [line.partition(" ")[::2] for line in proc.stdout.decode(errors="replace").splitlines()] if proc.returncode == 0 else []
+    origin = next((url.strip() for key in ("remote.origin.pushurl", "remote.origin.url")
+                   for k, url in found if k == key and url.strip()), "")
+    if origin and root and is_local_path(origin) and not os.path.isabs(origin):
+        origin = str(root / origin)  # git reads a relative path from the top of the worktree
     name = normalize_remote(origin).rsplit("/", 1)[-1] if origin else (root.name if root else None)
-    wid = os.environ.get("BEAD_WORKSPACE") or config.get("workspace")
-    if not wid and origin:
-        wid = hashlib.sha256(normalize_remote(origin).encode()).hexdigest()[:16]
+    derived = hashlib.sha256(normalize_remote(origin).encode()).hexdigest()[:16] if origin else None
+    tracked_wid = config.get("workspace")
+    if not os.environ.get("BEAD_WORKSPACE") and tracked_wid and tracked_wid != derived \
+            and re.fullmatch(r"[0-9a-f]{16}|local-[0-9a-f]{12}", tracked_wid):
+        raise BpError("CONFIG", f".beadroll.json names workspace {tracked_wid}, an id another repository derives from "
+                      "its own origin; a tracked workspace id is one `bead init --tracked` mints")
+    wid = os.environ.get("BEAD_WORKSPACE") or tracked_wid
+    if not wid and derived:
+        wid = moved_workspaces().get(derived, derived)  # this repository's tracker may have been found under another id
     if not wid:
         common = run_git(["rev-parse", "--path-format=absolute", "--git-common-dir"], check=False)
         if common.returncode:
             raise BpError("NO_WORKSPACE", "not inside a git repository (or set BEAD_WORKSPACE)")
         wid = "local-" + hashlib.sha256(os.path.realpath(common.stdout.decode().strip()).encode()).hexdigest()[:12]
-    return Workspace(wid, name, origin or None, config)
+    ws = Workspace(wid, name, origin or None, config)
+    ws.derived = derived if not os.environ.get("BEAD_WORKSPACE") and not tracked_wid else None
+    return ws
 
 
 def private_dir(path: Path):
@@ -1590,6 +1698,37 @@ def export_records(st: State) -> list[dict]:
 
 # --------------------------------------------------------------------- sync
 
+# Where the caller's repository is (`git rev-parse --local-env-vars`, less the `-c` settings, which stay the
+# caller's): none of it may reach sync.git
+REPO_LOCATION_ENV = ("GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_OBJECT_DIRECTORY", "GIT_DIR", "GIT_WORK_TREE",
+                     "GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE", "GIT_INDEX_FILE", "GIT_NO_REPLACE_OBJECTS",
+                     "GIT_REPLACE_REF_BASE", "GIT_PREFIX", "GIT_SHALLOW_FILE", "GIT_COMMON_DIR", "GIT_NAMESPACE",
+                     "GIT_QUARANTINE_PATH")
+TRANSPORT_KEYS = r"^(core\.sshcommand|ssh\.variant|http\..+|credential\..+|url\..+\.(insteadof|pushinsteadof))$"
+RESETTABLE = re.compile(r"^(credential\.(.+\.)?helper|http\.(.+\.)?extraheader)$")  # an empty value clears the list
+
+
+def transport_config() -> list[tuple[str, str]]:
+    """How git reaches remotes from here: the caller's repository config, its includeIf includes and the
+    global ones, which sync.git (elsewhere, with no remotes) does not all see. Given at command-line
+    precedence in this order, these settings make sync.git's git reach the remote as the caller's does:
+    lists that can be reset are emptied first, so nothing is sent twice."""
+    proc = run_git(["config", "--null", "--get-regexp", TRANSPORT_KEYS], check=False)
+    rows = []
+    for item in proc.stdout.decode(errors="replace").split("\0") if proc.returncode == 0 else []:
+        if item:
+            key, newline, value = item.partition("\n")
+            rows.append((key, value if newline else "true"))  # a key without a value means true
+    return [(key, "") for key in dict.fromkeys(key for key, _ in rows) if RESETTABLE.match(key)] + rows
+
+
+def object_format() -> str | None:
+    """The object format (sha1 or sha256) of the repository bead runs in; None outside one."""
+    probe = run_git(["rev-parse", "--show-object-format"], check=False)
+    found = probe.stdout.decode().strip() if probe.returncode == 0 else ""
+    return found if found in ("sha1", "sha256") else None
+
+
 class Link:
     """The coordination ref on one remote, reached through a private bare repository.
 
@@ -1601,11 +1740,19 @@ class Link:
         self.ws, self.url, self.ref = ws, remote, ws.ref
         private_dir(ws.dir)
         self.git_dir = ws.dir / "sync.git"
-        env = {k: v for k, v in os.environ.items() if k not in ("GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR")}
-        env.update(GIT_DIR=str(self.git_dir), GIT_TERMINAL_PROMPT="0", GIT_AUTHOR_NAME="bead",
+        env = {k: v for k, v in os.environ.items() if k not in REPO_LOCATION_ENV}
+        env.update(GIT_DIR=str(self.git_dir), GIT_TERMINAL_PROMPT="0", LC_ALL="C", GIT_AUTHOR_NAME="bead",
                    GIT_AUTHOR_EMAIL="bead@localhost", GIT_COMMITTER_NAME="bead", GIT_COMMITTER_EMAIL="bead@localhost")
-        env.setdefault("GIT_SSH_COMMAND", "ssh -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=2")  # a dead remote must fail, not hang
+        carried = transport_config()  # the checkout's transport settings, so sync.git reaches the remote as git does
+        count = int(env["GIT_CONFIG_COUNT"]) if env.get("GIT_CONFIG_COUNT", "").isdigit() else 0
+        for index, (key, value) in enumerate(carried, count):
+            env[f"GIT_CONFIG_KEY_{index}"], env[f"GIT_CONFIG_VALUE_{index}"] = key, value
+        if carried:
+            env["GIT_CONFIG_COUNT"] = str(count + len(carried))
+        if "GIT_SSH_COMMAND" not in env and "GIT_SSH" not in env and all(key != "core.sshcommand" for key, _ in carried):
+            env["GIT_SSH_COMMAND"] = "ssh -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=2"  # a dead remote must fail, not hang
         self.env = env
+        self.object_format: str | None = None  # the project's, once fetch has looked
         self.remote_counts: dict[str, int] = {}
         self.forks: list[str] = []
         self.confirmed: list[str] = []
@@ -1616,12 +1763,26 @@ class Link:
 
     def fetch(self) -> str | None:
         """Fetch exactly the coordination ref. Returns its head, or None if nobody has published."""
-        if not self.git_dir.exists():
-            # two processes may race here; whichever loses finds the directory in place
-            created = run_git(["init", "--quiet", "--bare", str(self.git_dir)], check=False)
+        if self.object_format is None:  # sync.git hashes like the project, not like this machine's default
+            self.object_format = object_format() or ""
+            have = run_git(["rev-parse", "--show-object-format"], env=self.env, check=False)
+            if self.object_format and have.returncode == 0 and have.stdout.decode().strip() != self.object_format:
+                # made in another format it can never exchange objects with the remote; it holds nothing that
+                # is not also in events/ or on the remote, so it is made again
+                stale = self.git_dir.with_name(f".sync.{uuid.uuid4().hex}.stale")
+                with contextlib.suppress(FileNotFoundError):
+                    os.rename(self.git_dir, stale)
+                shutil.rmtree(stale, ignore_errors=True)
+        if not all((self.git_dir / part).exists() for part in ("HEAD", "objects", "refs")):
+            # missing, or left unfinished by a failed or interrupted init: `git init` completes it in place. No
+            # template: the user's hooks are for their repositories. Two processes may race here; whichever
+            # loses finds the directory in place.
+            created = run_git(["init", "--quiet", "--bare", "--template=",
+                               *([f"--object-format={self.object_format}"] if self.object_format else []),
+                               str(self.git_dir)], env=self.env, check=False)
             if created.returncode and not (self.git_dir / "HEAD").exists():
                 raise BpError("GIT_ERROR", created.stderr.decode(errors="replace").strip())
-        proc = run_git(["fetch", "--quiet", "--no-tags", self.url, f"+{self.ref}:{REMOTE_REF}"],
+        proc = run_git(["fetch", "--quiet", "--no-tags", "--", self.url, f"+{self.ref}:{REMOTE_REF}"],
                        env=self.env, check=False, timeout=NET_TIMEOUT)
         if proc.returncode:
             if b"find remote ref" in proc.stderr:
@@ -1638,7 +1799,11 @@ class Link:
         except (ValueError, AttributeError):
             raise BpError("MANIFEST_MISSING", f"{self.ref} on {self.url} has an unreadable manifest") from None
         if found != self.ws.id:
-            raise BpError("WORKSPACE_MISMATCH", f"{self.ref} on {self.url} belongs to workspace {found}, not {self.ws.id}")
+            error = BpError("WORKSPACE_MISMATCH", f"{self.ref} on {self.url} belongs to workspace {found}, not {self.ws.id}; "
+                            f"if that is this repository's tracker (renamed, or its URL spelled differently here), set "
+                            f"BEAD_WORKSPACE={found} or commit a .beadroll.json holding {{\"workspace\": \"{found}\"}}")
+            error.found = found  # for adopt_published
+            raise error
         if parsed.get("format") != FORMAT:
             raise BpError("FORMAT_UNSUPPORTED", f"{self.ref} on {self.url} is in format {parsed.get('format')!r}; "
                           f"this version of bead reads format {FORMAT} only and will not rewrite it")
@@ -1769,8 +1934,10 @@ class Link:
             return "ok"
         commit = self.git(["commit-tree", tree, *(["-p", tip] if tip else []), "-m", f"bead {note} {uuid.uuid4().hex[:12]}"])
         try:
-            push = run_git(["push", "--quiet", self.url, f"{commit}:{self.ref}"], env=self.env, check=False,
-                           timeout=NET_TIMEOUT, reap=False)
+            # --no-verify: the user's client pre-push hooks are written for their code pushes; the remote's own
+            # hooks still apply. `--`: a repository-controlled remote string is never a git option.
+            push = run_git(["push", "--quiet", "--no-verify", "--", self.url, f"{commit}:{self.ref}"], env=self.env,
+                           check=False, timeout=NET_TIMEOUT, reap=False)
         except BpError:
             return "uncertain"
         if push.returncode == 0:
@@ -1842,12 +2009,39 @@ def settle_pending(ws: Workspace, link: Link, tip: str | None) -> str:
     return "moved" if outcome == "rejected" else "unresolved"
 
 
+def adopt_published(ws: Workspace, remote: str, error: BpError) -> Workspace | None:
+    """A URL-derived id that finds this checkout's own origin already holding a tracker under another id
+    (the repository was renamed, or its URL is spelled differently here) adopts that tracker, once, while
+    nothing has been written under the derived id. A remote named any other way is never adopted."""
+    found = getattr(error, "found", None)
+    if error.code != "WORKSPACE_MISMATCH" or not ws.derived or ws.id != ws.derived or not isinstance(found, str):
+        return None
+    origin = without_password(ws.origin or "")[0]
+    if not origin or remote != (os.path.realpath(origin) if os.path.exists(origin) else origin):
+        return None
+    if segment_files(ws) or claim_files(ws) or pending_files(ws):
+        return None
+    try:
+        adopted = Workspace(found, ws.name, ws.origin, ws.config)  # validates the id
+    except BpError:
+        return None
+    adopted.derived = ws.derived
+    write_atomic(home() / "moved.json", json.dumps({**moved_workspaces(), ws.derived: found}, indent=1).encode())
+    return adopted
+
+
 def synchronise(ws: Workspace, remote: str, actor: dict) -> dict:
     link = Link(ws, remote)
     known_renames = len(view(ws).renames)
     pulled = pushed = 0
     for attempt in range(1, 13):
-        tip = link.fetch()
+        try:
+            tip = link.fetch()
+        except BpError as error:
+            adopted = adopt_published(ws, remote, error) if attempt == 1 else None
+            if adopted is None:
+                raise
+            return synchronise(adopted, remote, actor)
         with locked(ws):
             if load_pending(ws):  # also sweeps pending files that are not attempts
                 tip = link.fetch()  # settling our own attempts needs the current head, not a snapshot
@@ -1942,10 +2136,12 @@ def coordinated(ws: Workspace, actor: dict, args, build, request=None):
 
 def publish_soon(ws: Workspace, args, actor: dict) -> str | None:
     """Ownership ended locally: tell the other machines now rather than at the next routine sync."""
-    remote = ws.remote(getattr(args, "remote", None))
-    if not remote or getattr(args, "offline", False):
+    if getattr(args, "offline", False):
         return None
     try:
+        remote = ws.remote(getattr(args, "remote", None))
+        if not remote:
+            return None
         synchronise(ws, remote, actor)
         return None
     except BpError as error:
@@ -1958,13 +2154,21 @@ def cmd_init(args, ws, actor):
     notes = []
     if args.remote:
         args.remote, had_password = without_password(args.remote)
+        if (not os.path.isabs(args.remote) and os.path.exists(args.remote)
+                and run_git(["remote", "get-url", args.remote], check=False).returncode):
+            # a path typed relative to the cwd; a stored one is read from the top of the checkout
+            real, top = os.path.realpath(args.remote), run_git(["rev-parse", "--show-toplevel"], check=False)
+            top_dir = os.path.realpath(top.stdout.decode().strip()) if top.returncode == 0 else None
+            args.remote = os.path.relpath(real, top_dir) if args.tracked and top_dir else real
         if had_password:
             notes.append("the password was dropped from the remote URL: bead never stores one; use a git credential helper")
     if args.tracked:
         top = git_text(["rev-parse", "--show-toplevel"])
-        config = {"workspace": ws.config.get("workspace") or uuid7()}
+        config = {**ws.config, "workspace": ws.config.get("workspace") or uuid7()}  # keep `where`, `ref` and keys we do not know
         if args.remote:
             config["remote"] = args.remote
+        elif config.get("remote"):
+            config["remote"] = without_password(config["remote"])[0]  # never write a password back, even a hand-set one
         write_atomic(Path(top, ".beadroll.json"), (json.dumps(config, indent=1) + "\n").encode(), private=False)
         ws = find_workspace()
     with writing(ws, actor) as tx:
@@ -1973,7 +2177,9 @@ def cmd_init(args, ws, actor):
             tx.emit("init", data={"prefix": prefix, "name": ws.name or prefix})
         imported = import_records(tx, args.import_path) if args.import_path else 0
         st = tx.state
-    ws.save_meta(name=ws.name, remote=None if args.tracked else args.remote)
+    # `init --tracked --remote` is the deliberate switch: record it, so the tracked remote is the one in use
+    tracked_remote = ws.resolve_remote(args.remote) if args.tracked and args.remote else None
+    ws.save_meta(name=ws.name, remote=tracked_remote if args.tracked else args.remote)
     return ({"workspace": ws.id, "prefix": st.prefix, "path": str(ws.dir), "imported": imported,
              "tracked_config": bool(ws.config)},
             [f"Tracker {st.prefix!r} at {ws.dir}" + (f" ({imported} issues imported)" if imported else "")]
@@ -2515,10 +2721,14 @@ def cmd_info(args, ws, actor):
     journal = load_journal(ws)
     st = view(ws)
     replica = replica_id(create=False)
+    try:
+        remote = ws.remote()
+    except BpError as error:  # info is where a damaged meta.json is diagnosed, not where it stops
+        remote = f"unknown ({error.code}: {error})"
     source = ("BEAD_WORKSPACE" if os.environ.get("BEAD_WORKSPACE") else "tracked .beadroll.json" if ws.config.get("workspace")
               else "origin url" if ws.origin else "local path")
     result = {"workspace": ws.id, "workspace_source": source, "name": st.name or ws.name, "prefix": st.prefix,
-              "path": str(ws.dir), "remote": ws.remote(), "ref": ws.ref, "machine": replica,
+              "path": str(ws.dir), "remote": remote, "ref": ws.ref, "machine": replica,
               "actor": actor, "actor_label": actor_label(actor, replica or "?"),
               "issues": len(st.issues), "events": len(journal.events),
               "events_by_machine": {rep: len(ids) for rep, ids in sorted(journal.order.items())},
