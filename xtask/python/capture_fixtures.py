@@ -9,13 +9,15 @@
     python3 xtask/python/capture_fixtures.py OUT.jsonl [--per-test N] [--max-bytes B] [MODULE...]
 
 Fixtures stream to OUT as the tests build them. --per-test keeps the first N of each test and
---max-bytes leaves out any larger than B: the sample checked in for CI. Run with
+--max-bytes leaves out any larger than B: `--per-test 2 --max-bytes 64000` gives the sample checked
+in for CI as xtask/fixtures/replay/tests.jsonl. Scratch paths read /tmp/. Run with
 PYTHONINTMAXSTRDIGITS=4300, as the replay driver is. A journal the drivers cannot carry (a value JSON
 cannot hold, a lone surrogate in memory) is counted and left out.
 """
 import collections
 import hashlib
 import json
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -28,6 +30,9 @@ from tests import support  # noqa: E402
 
 LIMIT = 4300
 FAST = ["test_replay", "test_storage", "test_compat", "test_commands", "test_protocol", "test_hardening"]
+
+# Where the tests' scratch directories live on macOS, which names the account: fixtures say /tmp/.
+TEMPORARY = re.compile(r"(?:/private)?/var/folders/[^/\"]+/[^/\"]+/T/")
 
 current = ["?"]
 seen, skipped, per_test = set(), collections.Counter(), collections.Counter()
@@ -53,7 +58,7 @@ def keep(kind, ops):
         skipped["beyond --per-test"] += 1
         return
     case = json.dumps({"name": f"{kind} {current[0]}", "ops": ops}, ensure_ascii=False, separators=(",", ":"))
-    settings["out"].write(case + "\n")
+    settings["out"].write(TEMPORARY.sub("/tmp/", case) + "\n")
     settings["kept"] += 1
 
 

@@ -132,6 +132,29 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - Rust parity targets Python 3.11+'s default 4,300-digit decimal conversion limit on JSON input
   and output, not unlimited integer tokens. The oracle pins that default; machines with a
   non-default Python setting must resolve store compatibility before cutover (`RUST-PORT.md` §8).
+- What a journal line, attempt file or manifest means does not depend on the Python reading it
+  (`RUST-PORT.md` §5 rows 3, 6, 7, 22 and 23): JSON is read from bytes as UTF-8 with surrogates
+  passed (no byte-order mark, UTF-16 or UTF-32 is guessed), at most 512 levels deep (counted before
+  `json.loads`, below every interpreter's own limit), with NaN, Infinity and numbers beyond a float
+  refused; ids and dependencies match the UUID shape whole; `complete_prefix` and the manifest read
+  as strictly as everything else, and the manifest's format must be the integer 1.
+- Key numbers, segment names and URL schemes are ASCII (§5 row 24): `\d` and `(?i)[a-z]` are never
+  Unicode-aware there, so a renamed copy of `x.٣` keeps its own name and `httpſ://` is not
+  `https://`. This departs from the plan's recommendation (keep), on the maintainer's decision.
+- Shapes bead never writes, which made Python's replay or a query fail, or answer by interpreter
+  version, are refused by validation (§5 rows 25 and 27 to 30): a `dep_add` meta that is not an
+  object, a `dep_remove` key that is not a string, a create key whose number has 4,300 digits or
+  more, an imported comment with a `uid` or a `where`, a create clearing `created_at`; a
+  quarantined id's stand-in names its issue only by a string; an import refuses an escaped lone
+  surrogate anywhere in a record. Replay has no last resort to reach.
+- A renamed copy that finds every free key taken fails replay with `KEY_SPACE` in both
+  implementations: Python's replay raises it, and beadroll-core's `replay` returns it.
+- Where Python fails with a traceback, Rust answers with a structured error instead, each recorded
+  as it lands (§5 row 26). In beadroll-core: `mint_key` under a parent whose children's numbers have
+  more than 4,300 digits, or would count on to 4,301, is `VALIDATION` (`MintError::NumberTooLong`).
+- beadroll-core is proven equal to Python by `cargo xtask diff`: replay reports and JSON, over the
+  journals the Python tests build and generated histories, valid and hostile. A difference is fixed
+  in Rust or decided as a §5 row; the harness keeps no list of expected differences.
 - While `cargo xtask oracle` runs the Python suite against another binary it sets
   `BEADROLL_ORACLE_REFUSALS`; Python bead (`cli.main`, so a copy of the launcher too) then refuses
   to start, with exit status 3, and records the attempt in the file it names. A test that bypasses

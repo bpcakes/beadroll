@@ -28,6 +28,15 @@ D      test_check.SweepFailureReporting.test_every_failed_schedule_fails_the_swe
 D      test_check.SweepFailureReporting.test_successful_schedules_pass  # an xtask test of the verification tooling (§4.3)
 
 # test_replay
+B      test_replay.PortAlignment.test_u01_numbers_beyond_a_float_are_not_json_numbers
+B      test_replay.PortAlignment.test_u02_ids_and_deps_with_a_trailing_newline_are_not_uuids
+B      test_replay.PortAlignment.test_u03_nesting_deeper_than_512_levels_is_unreadable_on_every_python
+B      test_replay.PortAlignment.test_u04_journal_lines_are_utf8_whatever_their_first_bytes
+B      test_replay.PortAlignment.test_u06_key_numbers_are_ascii_digits
+B      test_replay.PortAlignment.test_u07_payloads_that_reached_the_last_resort_are_refused_by_name
+B      test_replay.PortAlignment.test_u08_imported_comments_carry_neither_a_uid_nor_a_where
+B      test_replay.PortAlignment.test_u09_a_create_cannot_clear_created_at
+B      test_replay.PortAlignment.test_u10_a_quarantined_id_names_its_issue_only_by_a_string
 B      test_replay.ReplayAuditBugs.test_bad_event_schema_has_scoped_damage
 B      test_replay.ReplayAuditBugs.test_identical_id_in_different_machine_journals_is_order_independent
 B      test_replay.ReplayAuditBugs.test_non_chain_claim_cannot_bypass_pending_predecessor
@@ -190,6 +199,8 @@ A      test_commands.Review5CLI.test_e11_parent_filter_matches_every_direct_pare
 A      test_commands.Review5CLI.test_e12_ascii_locale_cannot_turn_a_committed_create_into_failure
 C-env  test_commands.Review5CLI.test_e13_receipt_identity_includes_resolved_file_content
 A      test_commands.Review5CLI.test_v01_machine_json_preserves_and_escapes_control_data
+A      test_commands.Review5CLI.test_u09_a_record_without_a_creation_time_is_not_imported
+A      test_commands.Review5CLI.test_u11_an_escaped_lone_surrogate_fails_the_import_wherever_it_is
 A      test_commands.Review5PositiveControls.test_v02_help_needs_no_repository_and_creates_no_state
 C-env  test_commands.Review6.test_clock_skew_does_not_override_causality
 A      test_commands.Review6.test_closed_stdout_on_success_exits_zero_and_store_stays_private
@@ -222,6 +233,9 @@ A      test_commands.SyncRepoMaintenance.test_repacks_under_the_lock_when_loose_
 # test_protocol
 C-env  test_protocol.ActualTransportReview.test_crash_after_accepted_release_can_be_retried_idempotently
 A      test_protocol.ActualTransportReview.test_timed_out_accepted_release_returns_success
+A      test_protocol.PortAlignment.test_u05_a_manifest_that_only_equals_format_1_is_refused
+A      test_protocol.PortAlignment.test_u05_a_torn_tail_holding_nan_is_cut_and_kept_aside
+A      test_protocol.PortAlignment.test_u06_only_segments_numbered_in_ascii_digits_are_merged
 C-api  test_protocol.Protocol3.test_fence_wins_against_a_real_push_still_running_after_timeout
 C-env  test_protocol.Protocol3.test_kill_during_local_confirmation_does_not_leave_partial_atomic_update
 B      test_protocol.Protocol3.test_mixed_ownership_file_and_journal_ancestry_across_six_machines
@@ -430,6 +444,7 @@ A      test_hardening.G62_DubiousOwnership.test_reason_survives_a_translated_git
 A      test_hardening.G63_SettleKeepsLineLevelIntegrityReports.test_unreadable_line_stays_reported_when_a_duplicate_forces_a_rebuild
 A      test_hardening.G64_WritesOnABrokenOwnChain.test_create_on_a_broken_own_chain_is_a_structured_error_and_writes_nothing
 A      test_hardening.G65_SupersededOwnerCloseSaysSo.test_close_superseded_by_a_takeover_does_not_answer_closed
+B      test_hardening.U06_UrlSchemesAreAscii.test_a_scheme_is_ascii_whatever_case_folding_would_allow  # beadroll-git's URL rules: lands with Phase 2a, not core
 A      test_hardening.V1_PushSideTranslation.test_git_keeps_the_rejection_tokens_bead_reads_untranslated
 A      test_hardening.V1_PushSideTranslation.test_lost_races_are_recognised_and_retried_under_translated_git
 B      test_hardening.V1_RunGitTimeoutHygiene.test_timeouts_leak_nothing_and_reap_as_documented

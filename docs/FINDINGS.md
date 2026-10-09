@@ -8,6 +8,30 @@ the behaviour is kept on purpose (with the reason); **open** otherwise.
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Phase 1 of the Rust port (`roll-k2wy.2`, ids U)
+
+Places where what a journal line, manifest or import meant depended on the Python reading it, or
+where data bead accepts made a query fail. Rows 3 and 6 of `RUST-PORT.md` §5 were decided
+beforehand; the maintainer decided row 7's ceiling and rows 22 to 26 on 2026-10-09, and rows 27
+to 30, which the differential testing of Phase 1 found, were decided the same way (§10). Python is
+aligned with the Rust core, so that a mixed fleet agrees and `cargo xtask diff` needs no list of
+expected differences. Each fix has a Python test that fails without it; the Rust core's port of it
+is in `crates/beadroll-core/tests/core/`.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| U01 | Low | A number too large for a float (`1e400`) read as infinity, which an export then refused | fixed | `loads_strict` refuses it as it refuses NaN (§5 row 3) | `test_replay`: `test_u01_numbers_beyond_a_float_are_not_json_numbers` |
+| U02 | Low | `UUID_RE` ended in `$`, so an event id or a dependency could end in a newline | fixed | Ids and dependencies match the UUID shape whole (§5 row 6) | `test_replay`: `test_u02_ids_and_deps_with_a_trailing_newline_are_not_uuids` |
+| U03 | Medium | How deep a line could nest depended on the interpreter's stack (about 950 levels on 3.11, 10,000 on 3.12 and 3.13, over 100,000 on 3.14), so two machines could disagree on which lines were events | fixed | One ceiling of 512 levels, counted before `json.loads` (§5 row 7) | `test_replay`: `test_u03_nesting_deeper_than_512_levels_is_unreadable_on_every_python` |
+| U04 | Low | `json.loads` on bytes guessed UTF-16 or UTF-32 from a line's first bytes and skipped a UTF-8 byte-order mark, so such a line was an event | fixed | A line is decoded as UTF-8, surrogates passed, before it is parsed (§5 row 22) | `test_replay`: `test_u04_journal_lines_are_utf8_whatever_their_first_bytes` |
+| U05 | Low | `complete_prefix` and the published manifest used plain `json.loads` (NaN read), and the manifest's format was compared with `==`, so `true` and `1.0` passed as format 1 | fixed | Both read strictly; the format must be the integer 1 (§5 row 23) | `test_protocol`: `test_u05_a_manifest_that_only_equals_format_1_is_refused`, `test_u05_a_torn_tail_holding_nan_is_cut_and_kept_aside` |
+| U06 | Low | `\d` and `(?i)[a-z]` were Unicode-aware: a renamed copy of `x.٣` became `x.3`, the merge copied segments numbered in non-ASCII digits, and `httpſ://` named the same workspace as `https://` | fixed | ASCII only in key numbers, `mint_key`, the segment-name filter, `without_password` and `normalize_remote` (§5 row 24) | `test_replay`: `test_u06_key_numbers_are_ascii_digits`; `test_protocol`: `test_u06_only_segments_numbered_in_ascii_digits_are_merged`; `test_hardening`: `test_a_scheme_is_ascii_whatever_case_folding_would_allow` |
+| U07 | Medium | Three payloads raised inside replay, whose last resort stored Python's exception text, which differs between versions: a `dep_add` meta that is not an object, a `dep_remove` key that is not a string, and a create key whose number a renamed copy could not count on from | fixed | `payload_problem` refuses each by name; a key's number may have at most 4,299 digits, since counting on from 4,300 nines needs one more than Python prints (§5 row 25) | `test_replay`: `test_u07_payloads_that_reached_the_last_resort_are_refused_by_name` |
+| U08 | Low | An imported comment naming a `uid` or a `where`, which only a comment made here has, broke `show` or `export`, or exported as a comment made here | fixed | A create's comments carry neither (§5 row 27) | `test_replay`: `test_u08_imported_comments_carry_neither_a_uid_nor_a_where` |
+| U09 | Medium | A create with `created_at: null`, which an import of such a record wrote, made `list` and `ready` fail comparing creation times | fixed | A create cannot clear `created_at`, so such an import fails whole (§5 row 28) | `test_replay`: `test_u09_a_create_cannot_clear_created_at`; `test_commands`: `test_u09_a_record_without_a_creation_time_is_not_imported` |
+| U10 | Medium | The stand-in for an id with several contents named the issue of the copy placed first; when no copy was valid that could be a list or an object, and replay, so every command, failed hashing it | fixed | The stand-in names its issue only by a string (§5 row 29) | `test_replay`: `test_u10_a_quarantined_id_names_its_issue_only_by_a_string` |
+| U11 | Low | An escaped lone surrogate failed an import only where it reached an event, and passed where the import drops it | fixed | An import refuses one anywhere in a record, as it refused a raw one (§5 row 30) | `test_commands`: `test_u11_an_escaped_lone_surrogate_fails_the_import_wherever_it_is` |
+
 ## Review 9: Rust port readiness (`reviews/2026-10-09-9-claude-rust-port.md`, ids T)
 
 A readiness audit of the port plan after review 8, against the code, the tests, Rust 1.99.0, the
@@ -18,7 +42,7 @@ runtime fix or new regression test is claimed here.
 
 | Id | Severity | Finding | Status | Resolution | Tests |
 |---|---|---|---|---|---|
-| T01 | Medium | §5 missed CPython semantics on replay and identity paths: JSON decoded from bytes (BOM, UTF-16/32), two lenient readers, Unicode `\d` and `(?i)`, last-resort exception texts, uncaught exceptions, and a readable depth of 994 levels on 3.11 but 116,199 on 3.14 | plan corrected | `RUST-PORT.md` §5 row 7 and rows 22–26, decided in Phase 1 with differential generators for each; `roll-k2wy.2` | Required: a differential class per row; Python tests for every row decided "reject" |
+| T01 | Medium | §5 missed CPython semantics on replay and identity paths: JSON decoded from bytes (BOM, UTF-16/32), two lenient readers, Unicode `\d` and `(?i)`, last-resort exception texts, uncaught exceptions, and a readable depth of 994 levels on 3.11 but 116,199 on 3.14 | fixed (Phase 1) | `RUST-PORT.md` §5 row 7 and rows 22–26 decided (§10); the rows decided "reject" applied to Python (U03–U07); row 26 departs in Rust only | U03–U07's tests; `cargo xtask diff` generates every row's class |
 | T02 | Medium | An owner's close and delete were described as coordinated commands with receipts; they are local writes | plan corrected | §2.3j and slice 2c name the coordinated commands and the signature's shape; `roll-k2wy.5` | Required: signature fixtures per coordinated command, showing close and delete write none |
 | T03 | Medium | The oracle could count a Python run as a Rust pass (`test_compat`'s helper, `test_prime_and_onboard`, `compat_real.py`), and Phase 0 forbade the harness fix | fixed (Phase 0) | `roll-k2wy.1`: the test modules, `compat_real.py` and `roundtrip.py` select the binary under test; `cli.main` refuses to start under `BEADROLL_ORACLE_REFUSALS` and records the start; `xtask/oracle-skip.txt` holds §4.2's four groups (20, 75, 19, 11), leaving 333 runnable tests. `drive.py` stays with `.16` | `xtask` `oracle::tests::a_test_that_reaches_python_bead_instead_of_the_binary_under_test_fails`, `…against_python_itself_the_launcher_runs_as_usual`; `cargo xtask oracle --bead ./bead` passes completely |
 | T04 | Medium | Test-port assignments that the phases could not meet: 16 B tests outside core, 5 C-env tests without Python hooks, 12 C-api tests claimed twice, unowned tests, wrong figures | plan corrected | §4.1, §4.2's naming rule, §4.3, §4.6, Phase 1's exit and the catalogues; `roll-k2wy.2`, `.5`, `.7`–`.12` | `xtask inventory` (Phase 0) |

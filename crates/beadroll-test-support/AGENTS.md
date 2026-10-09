@@ -6,7 +6,7 @@
 `Sandbox` (a temporary root with a bare `origin.git` whose `main` has one commit) and `Machine`s
 (each with its own home, clone and identity) that run a `bead` binary, for the black-box tests of
 every crate. Later phases add the fixtures the ported tests need: hooks, fake `ssh`, `ps` and
-`git`, PTYs, failpoint handshakes, event builders.
+`git`, PTYs and failpoint handshakes. For beadroll-core's integration tests it builds events.
 
 ## Key entrypoints
 
@@ -14,7 +14,10 @@ every crate. Later phases add the fixtures the ported tests need: hooks, fake `s
   the caller's default.
 - `src/machine.rs`: `Machine` (`run`, `bead`, `show`, `ready`, `export`, `store`, `with_bead`),
   `Invocation` (a run's directory, thread, agent, environment and input), `Run`, `code`.
-- `src/json.rs`: `Json`, a reader for `bead --json`, until `beadroll-core`'s JSON replaces it.
+- `src/lib.rs`: `Json` (beadroll-core's `Value`) and `parse_json`, which read `bead --json`.
+- `src/events.rs`: the `json!` macro, `Event` (an event built as `Tx.emit` writes it), `id`,
+  `id_at`, `journal` and `state`, for beadroll-core's integration tests only: core's own unit tests
+  would build a second `beadroll_core` (E0308).
 
 ## Edit here for X
 

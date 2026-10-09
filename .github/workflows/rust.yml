@@ -1,9 +1,10 @@
 # The Rust port's checks (docs/RUST-PORT.md §4.9), shaped and pinned like jig-sh's rust-tests.yml:
-# formatting, lints, the tests on Linux and macOS with their doctests, cargo-deny, and the oracle.
-# The oracle runs the Python suite against Python's ./bead, where it must pass completely, and
-# against the Rust binary, where it only reports each module's pass count until Phase 2d closes.
-# Later phases add the differential, mixed-fleet and nightly jobs. Nothing here touches a real store
-# or a real remote: every test builds its own repositories and bare remotes in a temporary directory.
+# formatting, lints, the tests on Linux and macOS with their doctests, cargo-deny, the oracle and the
+# differential checks. The oracle runs the Python suite against Python's ./bead, where it must pass
+# completely, and against the Rust binary, where it only reports each module's pass count until
+# Phase 2d closes. The diff job checks beadroll-core against CPython case by case. Later phases add
+# the mixed-fleet and nightly jobs. Nothing here touches a real store or a real remote: every test
+# builds its own repositories and bare remotes in a temporary directory.
 name: rust
 
 on:
@@ -171,3 +172,43 @@ jobs:
       - name: Every Python test and the Rust tests that port it
         if: ${{ !cancelled() }}
         run: cargo --locked xtask inventory
+
+  diff:
+    name: diff (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Install Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.14"
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
+        with:
+          cache: false
+          rustflags: ""
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          shared-key: rust-${{ runner.os }}-${{ github.job }}
+      # A bounded run until the cutover (docs/RUST-PORT.md §4.2): the Python tests' fixtures in
+      # xtask/fixtures/replay/ and 20,000 generated histories, from a seed that changes every run, so
+      # that runs explore; a failing case is kept in target/diff/ and its seed printed.
+      - name: Replay against CPython
+        run: cargo --locked run --release --package xtask -- diff replay --cases 20000 --seed ${{ github.run_number }}
+      - name: JSON against CPython
+        if: ${{ !cancelled() }}
+        run: cargo --locked run --release --package xtask -- diff json --cases 20000 --seed ${{ github.run_number }}
+      - name: Keep the cases that differ
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: diff-cases-${{ matrix.os }}
+          path: target/diff/*-*.jsonl
+          if-no-files-found: ignore

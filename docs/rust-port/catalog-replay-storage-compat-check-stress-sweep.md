@@ -11,7 +11,7 @@ logic, Rust unit test; C = needs a Rust injection seam (named); D = Python/harne
 
 Totals: 86 methods. A 9, B 60, C 7, D 10.
 
-## tests/test_replay.py (60): cli 2, inproc 57, inproc+env-fake 1. A 2, B 58
+## tests/test_replay.py (69): cli 2, inproc 66, inproc+env-fake 1. A 2, B 67 (the nine PortAlignment tests added in Phase 1)
 
 Fixtures: `UnitTest.events` (uuid7() plus a real 2 ms sleep per event); `ReplayAuditFixture` (deterministic UUIDv7 ids
 `((1_790_000_000_000+n)<<80)|(7<<76)|(2<<62)|n`, `snapshot()` = export_records + detail + ready + integrity + pending as
@@ -81,6 +81,15 @@ raises unless `BEAD_HOME` is set.
 | ReplayReview4.test_q09_required_register_clears_remain_queryable | Clearing title/priority/issue_type rejected; queries still work | inproc | brief, line (human text), export_records | B |
 | ReplayReview4.test_d01_cycle_enumerator_matches_every_graph_through_four_nodes | find_cycles equals brute force on all 66,066 graphs up to 4 nodes | inproc | duck-typed fake State (issues/waits_for/key): find_cycles must be generic over a graph trait | B |
 | Review5Replay.test_e10_extra_cannot_override_canonical_export_fields | create.extra cannot override exported id/status/comments | inproc | payload_problem, export_records | B |
+| PortAlignment.test_u01_numbers_beyond_a_float_are_not_json_numbers | 1e400 is not a JSON number, like NaN; such a line is unreadable | inproc | loads_strict, read_segment | B |
+| PortAlignment.test_u02_ids_and_deps_with_a_trailing_newline_are_not_uuids | Ids and deps match the UUID shape whole | inproc | event_problem, Journal.add, replay | B |
+| PortAlignment.test_u03_nesting_deeper_than_512_levels_is_unreadable_on_every_python | 512 levels read on every Python, no deeper; brackets in strings count for nothing | inproc | MAX_DEPTH, nesting, loads_strict, read_segment | B |
+| PortAlignment.test_u04_journal_lines_are_utf8_whatever_their_first_bytes | BOM, UTF-16, UTF-32 and Latin-1 lines are unreadable; a lone surrogate reads as U+FFFD, reported | inproc | read_segment | B |
+| PortAlignment.test_u06_key_numbers_are_ascii_digits | A renamed copy of `x.٣` keeps its name; mint_key counts ASCII children only | inproc | Journal.add, replay, renames, mint_key | B |
+| PortAlignment.test_u07_payloads_that_reached_the_last_resort_are_refused_by_name | dep_add meta, dep_remove key and a 4,300-digit key number are refused by name | inproc | payload_problem, replay, integrity | B |
+| PortAlignment.test_u08_imported_comments_carry_neither_a_uid_nor_a_where | An imported comment with a uid or a where is refused; good ones show and export | inproc | payload_problem, replay, detail, export_records | B |
+| PortAlignment.test_u09_a_create_cannot_clear_created_at | A create clearing created_at is refused; other bookkeeping may be null | inproc | payload_problem | B |
+| PortAlignment.test_u10_a_quarantined_id_names_its_issue_only_by_a_string | A quarantined stand-in names its issue only by a string | inproc | Journal.add, replay, integrity | B |
 
 ## tests/test_storage.py (9): cli 4, cli+env-fake 1, cli+driver(+env-fake) 2, driver+env-fake 2. A 5, C 4
 

@@ -6,11 +6,11 @@
 #
 #   driver      runs the launcher itself: through runpy, under another Python, as its own copy,
 #               or with sitecustomize patching inside it (20)
-#   in-process  exercises the Python package in-process; no bead it starts decides the verdict (75)
+#   in-process  exercises the Python package in-process; no bead it starts decides the verdict (85)
 #   patched     runs bead, but the verdict comes from patching in-process Python (19)
 #   no-bead     runs no bead at all (11)
 #
-# Every other test (333) runs unchanged against whatever BEAD_UNDER_TEST names. A test that reaches
+# Every other test (338) runs unchanged against whatever BEAD_UNDER_TEST names. A test that reaches
 # bead some other way is fixed, not listed here. The runner refuses a list that names a test the
 # suite does not have.
 
@@ -37,7 +37,16 @@ driver      test_hardening.V5_KillAtRename.test_kill_at_rename_keeps_targets_who
 driver      test_hardening.V8_Python312.test_storage_module_passes_with_bead_itself_running_on_312  # a copy of the launcher with a 3.12 shebang
 driver      test_sweep.Sweep.test_sweep
 
-# In-process tests: against another binary they would only re-test Python. (75)
+# In-process tests: against another binary they would only re-test Python. (85)
+in-process  test_replay.PortAlignment.test_u01_numbers_beyond_a_float_are_not_json_numbers
+in-process  test_replay.PortAlignment.test_u02_ids_and_deps_with_a_trailing_newline_are_not_uuids
+in-process  test_replay.PortAlignment.test_u03_nesting_deeper_than_512_levels_is_unreadable_on_every_python
+in-process  test_replay.PortAlignment.test_u04_journal_lines_are_utf8_whatever_their_first_bytes
+in-process  test_replay.PortAlignment.test_u06_key_numbers_are_ascii_digits
+in-process  test_replay.PortAlignment.test_u07_payloads_that_reached_the_last_resort_are_refused_by_name
+in-process  test_replay.PortAlignment.test_u08_imported_comments_carry_neither_a_uid_nor_a_where
+in-process  test_replay.PortAlignment.test_u09_a_create_cannot_clear_created_at
+in-process  test_replay.PortAlignment.test_u10_a_quarantined_id_names_its_issue_only_by_a_string
 in-process  test_replay.ReplayAuditBugs.test_bad_event_schema_has_scoped_damage
 in-process  test_replay.ReplayAuditBugs.test_identical_id_in_different_machine_journals_is_order_independent
 in-process  test_replay.ReplayAuditBugs.test_non_chain_claim_cannot_bypass_pending_predecessor
@@ -106,6 +115,7 @@ in-process  test_hardening.G14_KeyRetractionLostToConcurrentTarget.test_replay_d
 in-process  test_hardening.G25_FirstSyncRemoteIsFrozen.test_origin_remembered_by_an_older_version_is_not_preferred
 in-process  test_hardening.G47_StoreIsPrivateByItsOwnModes.test_g47_two_torn_fragments_in_one_second_are_both_kept
 in-process  test_hardening.G57_LoneSurrogateInAJournalIsScoped.test_attempt_file_with_a_lone_surrogate_reads_as_text_that_encodes
+in-process  test_hardening.U06_UrlSchemesAreAscii.test_a_scheme_is_ascii_whatever_case_folding_would_allow
 in-process  test_hardening.V1_RunGitTimeoutHygiene.test_timeouts_leak_nothing_and_reap_as_documented
 in-process  test_hardening.V4_DanglingReplayDeterminism.test_twin_key_histories_replay_identically_under_any_delivery_order
 in-process  test_hardening.V4_DanglingReplayDeterminism.test_unique_key_histories_replay_identically_under_any_delivery_order

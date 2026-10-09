@@ -22,7 +22,7 @@ are in `docs/rust-port/`; the measurements behind the numbers are in Appendix A.
   `beadroll-test-support` is the Rust `tests/support.py`. Crate boundaries make the compiler
   enforce the rule that modules import only downwards (`AGENTS.md`).
 - **Proof of no regressions comes from four directions:**
-  1. The existing Python suite drives the Rust binary through `BEAD_UNDER_TEST`. 332 of the 458
+  1. The existing Python suite drives the Rust binary through `BEAD_UNDER_TEST`. 338 of the 473
      tests run unchanged.
   2. Every test is ported to Rust. A ported black-box test counts only once it also passes against
      the Python binary.
@@ -622,7 +622,8 @@ which refuses a compiler that differs from the pin.
 
 ### 4.1 What there is
 
-The suite has 458 tests in ten modules: 12,938 lines with `support.py`. They are almost all
+The suite has 473 tests in ten modules: 13,242 lines with `support.py` (458 and 12,938 when this
+plan was written; Phase 1 added fifteen). They are almost all
 black-box: about 1,890 call sites run `bead` as a subprocess, and in-process patching is rare
 (`support.patched` is called 14 times in 11 tests, `mock.patch.object` 10 times); 20 tests run
 through `runpy` or loader drivers.
@@ -675,7 +676,7 @@ each count means.
    `BEAD_UNDER_TEST=target/debug/bead`. It skips, from a checked-in list derived from the
    catalogues (`xtask/oracle-skip.txt`):
    - the driver tests, which `runpy` the launcher and cannot target a binary (20);
-   - the in-process-only tests, which would only re-test Python (75);
+   - the in-process-only tests, which would only re-test Python (85);
    - the CLI tests whose verdict comes from patching in-process Python (19);
    - the tests that run no `bead` at all (11: `test_check`, `test_hygiene`, V1 t1).
 
@@ -690,9 +691,10 @@ each count means.
    test fails even if it expected bead to fail). The check lives in `cli.main`, not only in
    `./bead`, because `V8_Python312` runs a copy of the launcher.
 
-   332 tests run unchanged: 317 drive only the CLI, and 15 also inspect the store with Python's
-   replay. 330 of them are in the fast modules, and 27 need Rust's crash-hook aliases. The
-   real-export test joins them once Phase 0 fixes its helper.
+   338 tests run unchanged: 323 drive only the CLI, and 15 also inspect the store with Python's
+   replay. 336 of them are in the fast modules, and 27 need Rust's crash-hook aliases. The
+   real-export test joined them when Phase 0 fixed its helper, and Phase 1 added five black-box
+   tests.
    - **Exit criterion for the engine phase:** 100% of them pass on Linux and macOS.
    - **Format checks for free:** the mixed tests that write with the binary and then inspect with
      Python's `replay` check that Rust-written stores are well formed.
@@ -706,7 +708,7 @@ each count means.
    - `cargo xtask inventory` maps every Python test id to a Rust test by one mechanical rule:
      `<module without test_>::<snake_case(Class)>::<method without test_>`, e.g.
      `test_hardening.G12_RetriedEndOfClaimIsPublished.test_g12_retried_close_…` becomes
-     `hardening::g12_retried_end_of_claim_is_published::g12_retried_close_…`. Over all 458 tests
+     `hardening::g12_retried_end_of_claim_is_published::g12_retried_close_…`. Over all 473 tests
      the paths are unique and valid identifiers. A Rust test matches when its path holds the
      class and method segments in that order, so files may group a finding's classes or split a
      long class under the file budget (`hardening::g12::g12_retried_end_of_claim_is_published::…`).
@@ -755,12 +757,12 @@ each count means.
 
 | Python | Tests | Rust | How |
 |---|---|---|---|
-| `test_replay` | 60 | `crates/beadroll-core/tests/core/main.rs` (+ `tests/core/replay.rs`, `tests/core/replay/*.rs`) | In-process against the core API (`Journal::add` takes any `Value` and records problems); `find_cycles` generic over an edge function for the four-node oracle; 2 CLI tests move to `beadroll`; 3 B tests need git or the store (`normalize_remote`, `Workspace.ref`, two workspaces on disk) and land with Phase 2a |
+| `test_replay` | 69 | `crates/beadroll-core/tests/core/main.rs` (+ `tests/core/replay.rs`, `tests/core/replay/*.rs`) | Ported in Phase 1: 64 in-process against the core API, the nine `PortAlignment` tests among them (`Journal::add` takes any `Value` and records problems); `find_cycles` generic over an edge function for the four-node oracle; 2 CLI tests move to `beadroll`; 3 B tests need git or the store (`normalize_remote`, `Workspace.ref`, two workspaces on disk) and land with Phase 2a |
 | `test_storage` | 9 | `crates/beadroll/tests/cli/storage.rs` | 5 black-box; 4 via failpoint handshakes (`pause-until`) |
 | `test_compat` | 4 | a core test (comment-id export) and a store test (ref validation, which runs `git check-ref-format`) + `cli/compat.rs` (2) | The real-export/`br`/`bv` test is `#[ignore = "needs br, bv and real Beads exports"]`, also run by `xtask check --real` |
-| `test_commands` | 111 | `crates/beadroll/tests/cli/commands/*.rs` | 95 black-box; 8 on the crash hooks; 2 on the `clock` failpoint; 4 unit tests of the store, sync and replay (2 `detect_actor`, `Link`'s environment, a replay of a CLI-written store), none core-only; 1 black-box with a fake `ps` (`nearest_harness`); 1 rewritten |
-| `test_protocol` | 54 | `cli/protocol/*.rs` + `crates/beadroll-sync/tests/` | 32 black-box; 6 on the crash hooks, which Python has; 4 on new failpoints (`append.mid`, `clock`, `atomic-write:claims/`, `backoff`); 11 in-crate API tests (fence wins, `Link` outcomes, per-`Link` timeout); 1 core |
-| `test_hardening` | 207 | `cli/hardening/{g01…g65,v1…v9}.rs` + unit tests in git/store/core | 172 black-box (14 on the crash hooks); 15 failpoint/API; 11 unit tests, most of them in the git and store crates (the `without_password` pairs, `normalize_remote`, runner timeouts, `Workspace.remote`; the catalogue lists them); 9 rewritten (§4.6) |
+| `test_commands` | 113 | `crates/beadroll/tests/cli/commands/*.rs` | 97 black-box; 8 on the crash hooks; 2 on the `clock` failpoint; 4 unit tests of the store, sync and replay (2 `detect_actor`, `Link`'s environment, a replay of a CLI-written store), none core-only; 1 black-box with a fake `ps` (`nearest_harness`); 1 rewritten |
+| `test_protocol` | 57 | `cli/protocol/*.rs` + `crates/beadroll-sync/tests/` | 35 black-box; 6 on the crash hooks, which Python has; 4 on new failpoints (`append.mid`, `clock`, `atomic-write:claims/`, `backoff`); 11 in-crate API tests (fence wins, `Link` outcomes, per-`Link` timeout); 1 core |
+| `test_hardening` | 208 | `cli/hardening/{g01…g65,v1…v9}.rs` + unit tests in git/store/core | 172 black-box (14 on the crash hooks); 15 failpoint/API; 12 unit tests, most of them in the git and store crates (the `without_password` pairs, `normalize_remote`, URL schemes, runner timeouts, `Workspace.remote`; the catalogue lists them); 9 rewritten (§4.6) |
 | `test_stress` | 2 | `cli/stress.rs`, `#[ignore = "stress: randomised models"]` | Same seeds and oracles; schedules run in parallel |
 | `test_sweep` | 1 | `cli/sweep.rs` | Failpoints replace the `runpy` wrapper; the 12-schedule slice runs by default, `BEAD_SWEEP=full` runs all 660; schedules in parallel |
 | `test_check` | 9 | `xtask` tests | The verification tooling must fail when a selected check fails |
@@ -968,9 +970,11 @@ gates only from the close of Phase 2d.
 These are the places where "the same as Python" means CPython's semantics, not Rust's defaults.
 Each is implemented in `beadroll-core::text` or `json` and covered by the differential tests. Rows
 3 and 6 were decided on 2026-10-09: reject. Row 7's ceiling and rows 22 to 26 came from review 9
-and are decided in Phase 1; each names the recommended choice, and the differential generators
-cover each row either way. Every row that departs from Python goes into `REVIEWING.md` §2 when
-the Rust implementation lands. The reference interpreter is CPython 3.14, the one CI runs; a
+and were decided in Phase 1, on 2026-10-09 (§10); rows 27 to 30, which Phase 1's differential
+testing found, were decided with them. Every row decided "reject" is applied to Python too, with a
+test and a `FINDINGS.md` row (U01–U11), so `cargo xtask diff` needs no list of expected
+differences; the generators cover every row. Every row that departs from Python goes into
+`REVIEWING.md` §2 when the Rust implementation lands. The reference interpreter is CPython 3.14, the one CI runs; a
 difference that comes only from another Python version's texts or Unicode tables is recorded, not
 chased.
 
@@ -982,7 +986,7 @@ chased.
 | 4 | Lone surrogates, escaped or raw `ED A0 80`, read as one U+FFFD each, with an integrity row | Journal and attempt lines | In the parser | keep |
 | 5 | A duplicate key keeps its last value at the first key's position | All JSON | Same | keep |
 | 6 | `UUID_RE.match` with `$` accepts a trailing newline in ids and deps | Hostile events only | Reject: ids and deps must match the UUID shape exactly | reject (decided) |
-| 7 | Readable nesting depends on the interpreter and its C stack: 994 levels on 3.11, about 10,000 on 3.12 and 3.13, 116,199 on 3.14 on this Mac; replay has no depth check, so a readable deep event applies. Writes and imports are capped at 100 and 98 | Parsing | Iterative parser with a fixed ceiling (10,000 proposed); deeper is an unreadable line; caps kept. Recommended: Python counts a line deeper than the same ceiling as unreadable too, checked before `json.loads` | decide in Phase 1 (departs from 3.14 as written) |
+| 7 | Readable nesting depends on the interpreter and its C stack: 994 levels on 3.11, about 10,000 on 3.12 and 3.13, 116,199 on 3.14 on this Mac; replay has no depth check, so a readable deep event applies. Writes and imports are capped at 100 and 98 | Parsing | Iterative parser with a ceiling of 512 levels; deeper is an unreadable line; caps kept. Python counts a line deeper than 512 as unreadable too, checked before `json.loads` (U03) | decided: 512 in both (§10) |
 | 8 | `str.strip()`/`isspace()` use Python's Unicode set (U+001C–001F count as space); `bytes.strip()` uses ASCII | `split_list`, comment emptiness, blank JSONL lines | `text::py_strip` and friends | keep |
 | 9 | `str.lower()` is full Unicode case mapping | `search`, `--title-contains`; `normalize_remote`, hence derived workspace ids; `init`'s default prefix | `to_lowercase`, confirmed by `diff` | keep |
 | 10 | `os.path.realpath` is lenient and pure Python, with no case folding | Remote resolution and comparison | Port the algorithm; never libc `realpath` | keep |
@@ -997,11 +1001,15 @@ chased.
 | 19 | 12 rounds; `U(0.1, 0.4) × attempt` | sync and ownership | Same | keep |
 | 20 | Names: `refs/beads/fetch/<pid>-<hex8>`, `.NAME.PID.tmp`, `*.torn-<ns>`, `*.fork-<ns>`, `sync.git.damaged-<ns>` | Store, `sync.git` | Same | keep |
 | 21 | `command_signature` serialises actor, normalised argparse args and resolved request; accepted receipts survive sync | `pending/*.command` | Preserve Python signature bytes and lifecycle, including same-store upgrade and rollback (§2.3j); do not delete receipts to migrate | keep |
-| 22 | JSON read from bytes: `json.loads` detects a UTF-8 BOM, UTF-16 and UTF-32 from the leading bytes, then decodes with `surrogatepass`; read from text, a BOM is an error. A journal line in UTF-16 is a valid event today | Journal and attempt lines, the torn-tail check, the manifest | Recommended: reject; Python decodes the bytes as UTF-8 (`surrogatepass`) before parsing, as Rust does | decide in Phase 1 |
-| 23 | Two readers use plain `json.loads`, not `loads_strict`: `NaN` and `Infinity` parse there, and the manifest's `format` is compared with `==`, so `true` and `1.0` pass as format 1 | `complete_prefix` (torn tails, also of fetched segments), `Link.fetch`'s manifest | Recommended: reject; both readers become strict in Python, and `format` must be the integer 1 | decide in Phase 1 |
-| 24 | `re` on `str` is Unicode-aware: `\d` matches every decimal digit (Nd), and `int()` reads it; `(?i)[a-z]` also matches U+0130, U+0131, U+017F and U+212A | `free_key` (a replay rename: `x.٣` gives way as `x.3`), `mint_key`, the merge's segment-name filter; `without_password` and `normalize_remote`, so `httpſ://h/x` derives the same workspace id as `https://h/x` | Recommended: keep, with CPython's Nd table (which `py_int` needs anyway) and these four letters; no `regex-lite` classes on these paths | decide in Phase 1 |
-| 25 | Replay's last-resort `except` stores the exception's `repr` as the integrity text, and that text differs between Python versions. Reachable: `dep_add` with a truthy `meta` that is not an object (`1`, `"x"`, `[1]`), `dep_remove` with a list or object `key` beside `to`, `free_key` on a numeric suffix over 4,300 digits | `integrity` in `info` and the differential report | Recommended: reject; `payload_problem` gains the explicit checks in Python, so both report the same validation text and Rust has no last resort | decide in Phase 1 |
-| 26 | An uncaught exception prints a traceback with exit 1: an unparsable `BEAD_NET_TIMEOUT`, `BEAD_ROTATE_BYTES` or `BEAD_REPACK_*` (at start-up, even for `--version`), a `*.jsonl` name that is not a number in this machine's own journal, `published` counts in `meta.json` that are not numbers, `mint_key` over the digit limit | Hostile settings and store files | A structured error with exit 1, never a panic: `CONFIG` for settings, `IO` for store files, `VALIDATION` for keys | depart; recorded as each lands |
+| 22 | JSON read from bytes: `json.loads` detects a UTF-8 BOM, UTF-16 and UTF-32 from the leading bytes, then decodes with `surrogatepass`; read from text, a BOM is an error. A journal line in UTF-16 is a valid event today | Journal and attempt lines, the torn-tail check, the manifest | Python decodes the bytes as UTF-8 (`surrogatepass`) before parsing, as Rust does (U04) | reject (decided) |
+| 23 | Two readers use plain `json.loads`, not `loads_strict`: `NaN` and `Infinity` parse there, and the manifest's `format` is compared with `==`, so `true` and `1.0` pass as format 1 | `complete_prefix` (torn tails, also of fetched segments), `Link.fetch`'s manifest | Both readers are strict in Python, and `format` must be the integer 1 (U05) | reject (decided) |
+| 24 | `re` on `str` is Unicode-aware: `\d` matches every decimal digit (Nd), and `int()` reads it; `(?i)[a-z]` also matches U+0130, U+0131, U+017F and U+212A | `free_key` (a replay rename: `x.٣` gives way as `x.3`), `mint_key`, the merge's segment-name filter; `without_password` and `normalize_remote`, so `httpſ://h/x` derives the same workspace id as `https://h/x` | ASCII digits and ASCII letters only, in both: `[0-9]` and `(?ai)` in Python (U06) | reject (decided, against the recommendation to keep) |
+| 25 | Replay's last-resort `except` stores the exception's `repr` as the integrity text, and that text differs between Python versions. Reachable: `dep_add` with a truthy `meta` that is not an object (`1`, `"x"`, `[1]`), `dep_remove` with a list or object `key` beside `to`, `free_key` on a numeric suffix over 4,300 digits, or of 4,300 nines (counting on needs one more digit than Python prints) | `integrity` in `info` and the differential report | `payload_problem` refuses each in Python, a key's number at 4,300 digits or more included, so both report the same validation text and Rust has no last resort (U07) | reject (decided) |
+| 26 | An uncaught exception prints a traceback with exit 1: an unparsable `BEAD_NET_TIMEOUT`, `BEAD_ROTATE_BYTES` or `BEAD_REPACK_*` (at start-up, even for `--version`), a `*.jsonl` name that is not a number in this machine's own journal, `published` counts in `meta.json` that are not numbers, `mint_key` over the digit limit | Hostile settings and store files | A structured error with exit 1, never a panic: `CONFIG` for settings, `IO` for store files, `VALIDATION` for keys; core's `mint_key` answers `MintError::NumberTooLong` | depart (decided: Rust only); recorded as each lands |
+| 27 | A create's comments are imported ones, kept as `{"uid": None, **comment}`: one naming a `uid` or a `where` made `detail` raise (a `where` that is not an object) or `export_records` raise (a `uid` that is not a string), or exported as a comment made here | `show`, `export` | Refused: a create's comment carries neither (U08) | reject (decided) |
+| 28 | A create's fields may clear `created_at` (an import of a record whose `created_at` is null): `select` then compares `None` with strings, and `list` and `ready` raise | `list`, `ready` | A create cannot clear `created_at`, as it cannot clear a title, so such an import fails whole (U09) | reject (decided) |
+| 29 | The stand-in for an id with several contents names the issue of the copy placed first; with no valid copy that can be a list or an object, and replay raises hashing it, so every command does | Every command on such a tracker | The stand-in names its issue only by a string (U10) | reject (decided) |
+| 30 | An import reads its file as text, so an escaped lone surrogate survives into the record: the import fails ("text is not valid UTF-8") only where it reaches an event, and passes where the import drops it | `import` | An import refuses a lone surrogate anywhere in a record, as it refused a raw one (U11) | reject (decided) |
 
 ## 6. Phases
 
@@ -1049,7 +1057,8 @@ implementation and 15–18k for the tests.
     "reject" is applied to the Python implementation the same way, with a test and a
     `FINDINGS.md` row.
 - **Exit:**
-  - the 60 B-class tests that exercise only `beadroll-core` are ported and green. The other 16
+  - the 60 B-class tests that exercise only `beadroll-core` are ported and green (with the nine
+    `PortAlignment` tests Phase 1 added and the replay half of f09, 70; done). The other 16
     need git, the store or sync and land with Phase 2a: `test_replay`'s
     `test_one_remote_has_one_identity…`, `test_the_coordination_ref_cannot_be_a_branch` and
     `test_reused_event_ids_are_isolated_across_workspaces`; `test_compat`'s ref validation;
@@ -1346,6 +1355,27 @@ Still open, with a recommended default:
    build needs credentials and decision 4 stands. The alternative is a BuildKit secret mount plus
    CI and local credentials, which changes studio's rule. Needed before Phase 6, not before.
 
+Decided in Phase 1 (`roll-k2wy.2`), on 2026-10-09 (§5; the Python changes are U01–U11 in
+`FINDINGS.md`):
+
+8. **§5 row 7: one nesting ceiling of 512 levels**, in both implementations; Python counts the
+   depth before `json.loads`. The maintainer chose it over the proposed 10,000 because, called
+   from about 40 frames deep as bead's readers are, Python 3.11.15 stops at 951 levels, 3.12.10 at
+   9,994, 3.13.14 at 9,995 and 3.14.7 at 116,188 on this Mac: 512 is below all of them, and bead
+   writes at most 100.
+9. **Rows 22, 23 and 25: reject**, as recommended. The maintainer delegated these, noting that only
+   this repository and batter use bead. A key's number may have at most 4,299 digits, since a
+   renamed copy of 4,300 nines would need 4,301.
+10. **Row 24: reject**, against the recommendation to keep: ASCII digits and letters only, in both.
+    Neither existing tracker moves: this repository names its workspace in `.beadroll.json`, and
+    batter's origin is plain ASCII.
+11. **Row 26: Rust only**, as planned: structured `CONFIG`, `IO` or `VALIDATION` errors in Rust,
+    while Python keeps its tracebacks until the cutover, each departure recorded in `REVIEWING.md`
+    §2 as it lands.
+12. **Rows 27 to 30: reject**, decided under the delegation of rows 22, 23 and 25, which they
+    resemble: shapes bead never writes, on which Python failed or answered by version. Neither
+    existing tracker holds one (checked read-only on 2026-10-09).
+
 **Revision of 2026-10-09, after review 8.** The maintainer accepted the audit corrections. The
 port now preserves Python receipt bytes and their retry lifecycle, uses the default 4,300-digit
 decimal boundary, and detaches git with `setsid`. Studio's scope includes persisted source and
@@ -1396,7 +1426,10 @@ decision 7 open. The five decisions stand.
 - **Rust estimates from those numbers.** These are targets for Phase 4 to confirm.
   - Reads: about 15 ms.
   - Publishing writes: about 180 ms with the same calls, about 90 ms consolidated.
-  - Replay of 10k events: ≤ 20 ms in a release build. Python takes 0.7 s.
+  - Replay of 10k events: ≤ 20 ms in a release build. Python takes 0.7 s. Measured in Phase 1
+    (`cargo run --release --package xtask -- timing --replay 10000`, a valid history on six
+    machines, parsed and settled outside the clock, best of seven): 20 ms; Python's replay of the
+    same journal took 73 ms.
   - 200k events: ≤ 0.5 s and ≤ 150 MB. Python takes 14 s and 412 MB.
 - **fsync on APFS:** `File::sync_all` 5.26 ms, `sync_data` 5.64 ms (both `F_FULLFSYNC`), Python
   `os.fsync` 0.03 ms.

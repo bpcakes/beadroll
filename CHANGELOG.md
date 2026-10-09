@@ -6,6 +6,18 @@ versioned separately (format 1, frozen; see *Format and upgrades* in the README)
 
 ## [Unreleased]
 
+- Every bead reads a journal line the same way, whatever Python it runs on: as UTF-8 (a
+  byte-order mark, UTF-16 or UTF-32 is no longer guessed from its first bytes), at most 512 levels
+  deep, with NaN, Infinity and numbers too large for a float refused; ids and dependencies match
+  the UUID shape whole, and the published manifest's format must be the integer 1. Key numbers,
+  segment names and URL schemes are ASCII: a renamed copy of `x.٣` keeps its own name. Events
+  that made replay or a query fail (or answer in a Python version's own words) are refused by
+  name and reported under `integrity`, and an import fails whole on a record whose `created_at` is
+  null or whose text holds a lone surrogate (`docs/FINDINGS.md`, U01–U11).
+- The Rust port's core (`docs/RUST-PORT.md`, Phase 1): `beadroll-core`, the replay, queries,
+  views, export and import planning of this implementation, proven equal to it by
+  `cargo xtask diff` over the journals the test suite builds and generated histories, with the
+  suite's tests of the core ported to Rust. Nothing changes for users.
 - `bead ready ID` offers only the ready issues in ID's subtree, at any depth and through every
   parent link; `--epic ID` now means the same, as in br (it used to match ID's direct children
   only, which `--parent ID` still does). A scope that names no issue is `ISSUE_NOT_FOUND`, in

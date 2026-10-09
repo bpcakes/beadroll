@@ -6,7 +6,7 @@
 Source: `tests/test_hardening.py` (6,517 lines, 102 classes, 207 test methods; subTests not counted).
 Gxx classes are review findings (docs/FINDINGS.md); Vx classes are verified properties. "t1, t2…" = test methods in file order.
 
-**Review 9 corrections.** The 14 `A†` tests pass against Python today, because Python has the crash hooks. Eight of the eleven `B` tests here are unit tests of the git and store crates, not of core: G25 t3, G32, G57 t2, `V1_RunGitTimeoutHygiene` and the four V7 tests land with Phase 2a (`docs/RUST-PORT.md` §6). Rows that cover several tests ("t1", "t2") are split per method when the inventory is seeded.
+**Review 9 corrections.** The 14 `A†` tests pass against Python today, because Python has the crash hooks. Nine of the twelve `B` tests here are unit tests of the git and store crates, not of core: G25 t3, G32, G57 t2, `V1_RunGitTimeoutHygiene`, the four V7 tests and U06 (added in Phase 1) land with Phase 2a (`docs/RUST-PORT.md` §6). Rows that cover several tests ("t1", "t2") are split per method when the inventory is seeded.
 
 **Mechanism labels.** `cli` = runs bead as a subprocess (support.Machine) and inspects exit/stdout/stderr/files/refs (plain git setup, hand-edited store files and deleted remote objects count as cli). `env-fake` = fake ssh/gpg on PATH or via GIT_SSH_COMMAND, scratch GIT_CONFIG_GLOBAL with special settings, GIT_* env tricks, locales, server hooks in the bare remote, local HTTP server, chmod/read-only, umask, ulimit, closed fds, PTYs/signals, timing bounds. `inproc` = calls package functions. `patched` = support.patched / mock in-process. `driver` = Python wrapper that imports the launcher via runpy (or runs it under another interpreter) and monkeypatches inside. "crash hook" = the CLI's own `BEAD_TEST_CRASH_BEFORE_PUSH` (exit 98) / `BEAD_TEST_CRASH_AFTER_PUSH` (exit 99), implemented only in `sync.coordinated()`.
 
@@ -107,6 +107,7 @@ Gxx classes are review findings (docs/FINDINGS.md); Vx classes are verified prop
 | V2_ConfirmedTwinKeepsTheRetryRecognised | 1 | Identical pending twin confirms; retry recognised, released once | inproc+patched (`drop_pending` raises) then cli | crash hook after local confirm, before pending cleanup | C |
 | V1_PushSideTranslation | 2 | Push rejection tokens stay English; races retried under translated git | t1 env-fake only (pure git under 6 locales + hooks, no bead); t2 cli+env-fake (racing pre-receive; `attempts == 2`) | none; the Rust push classifier must keep the same tokens | A |
 | V1_StalledReceiveTimeouts | 2 | Stalled or flooding receive returns in time; slow ack recovered | cli+env-fake (pre-receive 200 KiB stderr + `sleep 4`; slow post-receive; BEAD_NET_TIMEOUT=1.5) | BEAD_NET_TIMEOUT | A |
+| U06_UrlSchemesAreAscii | 1 | A URL scheme is ASCII: `httpſ://` is not `https://` (Phase 1, U06) | inproc | without_password, normalize_remote API | B |
 | V1_RunGitTimeoutHygiene | 1 | run_git timeouts leak no fds or zombies; reap semantics hold | inproc+env-fake (`run_git(timeout=0.2, reap=…)` on a sleeping git alias; /dev/fd count; `ps` zombie scan) | run_git(timeout, reap, check) API | B |
 | V6_UserSuppliedPaths | 2 | OSErrors on user-supplied paths are IO; export creates parents | cli+env-fake (missing, dir, chmod 0, loop, too long, ENOTDIR, /dev/stdout) | none | A |
 | V6_StoreDamage | 1 | Local store damage gets structured codes, never a crash | cli+env-fake (chmod; lock/segment as dir; pending as file) | none | A |
@@ -119,9 +120,9 @@ Gxx classes are review findings (docs/FINDINGS.md); Vx classes are verified prop
 
 ## Totals (tests, not classes)
 
-Port class: **A 172** (of which A† 14: G07 3, G08 3, G10 3, G28 2, V5_DataFileModes, V2_ReceiptsArePerActor, V6_DescriptorExhaustion), **B 10**, **B+A split 1** (G32), **C 15**, **D 9**. Sum 207.
+Port class: **A 172** (of which A† 14: G07 3, G08 3, G10 3, G28 2, V5_DataFileModes, V2_ReceiptsArePerActor, V6_DescriptorExhaustion), **B 11**, **B+A split 1** (G32), **C 15**, **D 9**. Sum 208.
 
-Mechanism (primary label per test): cli 98; cli+env-fake 79; env-fake only, no bead 1 (V1_PushSideTranslation t1); cli+inproc 2 (G02 t1, G32); inproc 7; inproc+env-fake 3; inproc+patched 5; inproc+patched+env-fake 3; driver 9. Sum 207. 17 tests use the CLI crash hooks (G07 3, G08 3, G09, G10 3, G28 3, G29 t2, V5_DataFileModes, V2_ReceiptsArePerActor, V6_DescriptorExhaustion).
+Mechanism (primary label per test): cli 98; cli+env-fake 79; env-fake only, no bead 1 (V1_PushSideTranslation t1); cli+inproc 2 (G02 t1, G32); inproc 8; inproc+env-fake 3; inproc+patched 5; inproc+patched+env-fake 3; driver 9. Sum 208. 17 tests use the CLI crash hooks (G07 3, G08 3, G09, G10 3, G28 3, G29 t2, V5_DataFileModes, V2_ReceiptsArePerActor, V6_DescriptorExhaustion).
 
 ## Rust-side seams (deduplicated)
 

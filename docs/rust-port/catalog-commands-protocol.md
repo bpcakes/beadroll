@@ -26,7 +26,7 @@ Source: `tests/test_commands.py` (111 tests, 15 classes) and `tests/test_protoco
 
 **Py-only assertions in A tests:** some A tests assert that stderr contains no `Traceback` or `BrokenPipeError`, or set `PYTHONUTF8=0`/`PYTHONCOERCECLOCALE=0`. In Rust, assert no `panicked at` and an exit status other than 101. The PYTHON* variables are harmless no-ops.
 
-## tests/test_commands.py (111)
+## tests/test_commands.py (113)
 
 | class.method | subject (≤12 words) | mechanism | seams/fakes needed | port |
 |---|---|---|---|---|
@@ -95,6 +95,8 @@ Source: `tests/test_commands.py` (111 tests, 15 classes) and `tests/test_protoco
 | Review5CLI.test_e07_closed_downstream_pipe_has_defined_quiet_exit | Reader closes stdout early: quiet exit 0 | cli+env-fake (stdout pipe closed) | handle EPIPE; Py-only strings | A |
 | Review5CLI.test_e08_nullable_import_values_do_not_crash_render_or_export | Null comment/dependency fields render and export | cli | none | A |
 | Review5CLI.test_e09_invalid_config_types_return_structured_config_errors | Wrong-typed .beadroll.json → CONFIG error | cli | Py-only Traceback check | A |
+| Review5CLI.test_u09_a_record_without_a_creation_time_is_not_imported | A record whose created_at is null fails the import whole; list still works | cli | none | A |
+| Review5CLI.test_u11_an_escaped_lone_surrogate_fails_the_import_wherever_it_is | An escaped lone surrogate fails the import, in a field or in a member the import drops | cli | none | A |
 | Review5CLI.test_e11_parent_filter_matches_every_direct_parent | list --parent matches each of several parents | cli | none | A |
 | Review5CLI.test_e12_ascii_locale_cannot_turn_a_committed_create_into_failure | C locale cannot fail a committed create | cli (LC_ALL=C) | PYTHON* vars moot | A |
 | Review5CLI.test_e13_receipt_identity_includes_resolved_file_content | Retry with changed file content is a new request | cli+env-fake | crash-after-push; receipt signature includes resolved file content | C-env |
@@ -142,7 +144,7 @@ Source: `tests/test_commands.py` (111 tests, 15 classes) and `tests/test_protoco
 | ReadySubtree.test_j02_a_scope_that_names_no_issue_is_an_error_whatever_else_filters | Unknown scope id → ISSUE_NOT_FOUND whatever the filters | cli (14 runs) | none | A |
 | ReadySubtree.test_j03_one_scope_at_a_time | Two scopes → USAGE, exit 2; help explains scopes | cli | exact help phrases | A |
 
-## tests/test_protocol.py (54)
+## tests/test_protocol.py (57)
 
 | class.method | subject (≤12 words) | mechanism | seams/fakes needed | port |
 |---|---|---|---|---|
@@ -172,6 +174,9 @@ Source: `tests/test_commands.py` (111 tests, 15 classes) and `tests/test_protoco
 | RootAudit.test_nonowner_cannot_bypass_close_guard_with_status_update | Non-owner cannot close through update --status closed | cli | per-call BEAD_THREAD | A |
 | RootAudit.test_claimed_issue_is_not_ready_after_nonowner_status_update | Claimed issue stays unready after a non-owner status edit | cli | none | A |
 | RootAudit.test_clock_moves_back_but_later_observed_edit_settles_register | Clock a day back: later observed edit still wins | driver (SourceFileLoader; `bead.time.time_ns` offset) + cli | clock injection (offset) | C-env, new failpoint `clock=offset(-1d)` → `roll-k2wy.11` |
+| PortAlignment.test_u05_a_manifest_that_only_equals_format_1_is_refused | A published manifest whose format is true, 1.0 or NaN is refused; the remote is untouched | cli (git plumbing publishes the manifest) | none | A |
+| PortAlignment.test_u05_a_torn_tail_holding_nan_is_cut_and_kept_aside | A torn tail holding NaN is cut and kept aside, not completed | cli (writes the segment's tail) | none | A |
+| PortAlignment.test_u06_only_segments_numbered_in_ascii_digits_are_merged | A published segment numbered in Arabic-Indic digits is not merged | cli (git plumbing plants it) | none | A |
 | ProtocolReaudit.test_refused_void_publish_must_not_activate_unaccepted_claim | Losing fence race never activates an unaccepted claim | inproc+patched (`Link.publish` raises, then a race wrapper runs b's claim; `pause`) + cli | publish fault; pre-publish interleave hook; pause hook | C-api (black-box alternative: CRASH_BEFORE_PUSH plus a PATH `git` that runs b's claim before the first push) |
 | ProtocolReaudit.test_failed_void_publish_retry_must_not_activate_unaccepted_claim | Failed fence publish; a later claim elsewhere wins | inproc+patched (`Link.publish` raises REMOTE_UNREACHABLE) + cli | publish fault injection | C-api (alternative: PATH `git` failing push with no status line) |
 | ProtocolReaudit.test_failed_void_push_must_leave_original_claim_unconfirmed | Failed fence leaves the claim unconfirmed | inproc+patched + cli | publish fault injection | C-api |
@@ -203,19 +208,19 @@ Source: `tests/test_commands.py` (111 tests, 15 classes) and `tests/test_protoco
 
 ## Totals
 
-| | test_commands (111) | test_protocol (54) |
+| | test_commands (113) | test_protocol (57) |
 |---|---|---|
-| A | 95 | 32 |
+| A | 97 | 35 |
 | B | 4 | 1 |
 | C-env | 10 | 10 |
 | C-api | 1 | 11 |
 | D | 1 | 0 |
-| uses cli | 108 | 53 |
+| uses cli | 110 | 56 |
 | uses inproc | 10 | 13 |
 | uses patched | 5 (4 only patch os.environ) | 12 |
 | uses driver | 2 | 4 |
 | uses env-fake | 16 (8 are BEAD_TEST_CRASH_*) | 18 (6 are BEAD_TEST_CRASH_*) |
-| cli only | 83 | 24 |
+| cli only | 85 | 27 |
 
 Secondary classes: f09 and SyncRepoDamage-claim are A+B; SyncRepoMaintenance-1 is B+A; DeepTree is A once its fixture is written directly.
 

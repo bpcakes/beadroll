@@ -251,8 +251,14 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   store never lives in a checkout.
 - An event nests at most 100 levels deep, so every supported Python can read
   what any machine wrote; an import deeper than that fails whole, as do a
-  repeated id, a self-dependency and malformed comments. Records end at `\n`
+  repeated id, a self-dependency, malformed comments, a record whose
+  `created_at` is null and text holding a lone surrogate. Records end at `\n`
   only, so bead's own export (with U+2028 and friends in text) imports again.
+- Every bead reads a journal line the same way, whichever Python (or binary) it
+  runs on: as UTF-8, never in an encoding guessed from its first bytes; at most
+  512 levels deep; with NaN, Infinity and numbers beyond a float refused. A line
+  that fails is reported under `integrity` and skipped, never guessed at, and so
+  is an event that would have made replay or a query fail.
 - A status bead does not set itself (`pinned`, `hooked`, a custom one; Beads
   tools keep these as they are) is imported and exported verbatim; such an
   issue is neither ready nor done. `bead update --status` takes only bead's own
