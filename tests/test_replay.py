@@ -212,10 +212,11 @@ class ReplayAuditProperties(unittest.TestCase):
         for field in bead.REGISTERS:
             if field in bead.REQUIRED_FIELDS:  # Q09: clearing a required field is a validation error, not a write
                 f = ReplayAuditFixture()
+                before = f.state().issues[f.issue['id']][field]
                 bad = f.event('set', f.issue['id'], 'a', [f.issue['id']], {'fields': {field: None}})
                 st = f.state()
                 self.assertIn(bad['id'], [row['event'] for row in st.integrity])
-                self.assertEqual(st.issues[f.issue['id']][field], f.issue[field] if field in f.issue else st.issues[f.issue['id']][field])
+                self.assertEqual(st.issues[f.issue['id']][field], before)  # the field keeps what it had
                 continue
             with self.subTest(field=field):
                 f = ReplayAuditFixture()
@@ -1493,6 +1494,16 @@ class PortAlignment(unittest.TestCase):
         self.assertEqual([c["id"] for c in bead.detail(state, state.issues[kept["id"]])["comments"]], [None, 7])
         self.assertEqual([c["id"] for c in bead.export_records(state)[0]["comments"]], [None, 7])
 
+    def test_u09_a_create_cannot_clear_created_at(self):
+        """U09: an issue created with `created_at: null` (an import of such a record) made `list` and `ready`
+        fail comparing its time with the others'; a create cannot clear it, as it cannot clear a title."""
+        bead = support.load_module()
+        create = self.event(1, "create", data={"key": "ex-1", "fields": {"created_at": None}})
+        self.assertEqual(bead.payload_problem(create), "field 'created_at' cannot be cleared")
+        for name in ("updated_at", "created_by", "closed_at"):
+            with self.subTest(field=name):
+                self.assertIsNone(bead.payload_problem(self.event(1, "create", data={"key": "ex-1", "fields": {name: None}})))
+
     def test_u10_a_quarantined_id_names_its_issue_only_by_a_string(self):
         """U10: the stand-in for an id with several contents named the issue of the copy placed first; when
         no copy was valid that could be a list or an object, and replay failed hashing it."""
@@ -1506,17 +1517,6 @@ class PortAlignment(unittest.TestCase):
                 state = bead.replay(journal)
                 self.assertEqual(state.integrity, [{"event": first["id"], "issue": shown,
                                                     "problem": "one event id with different contents"}])
-
-    def test_u09_a_create_cannot_clear_created_at(self):
-        """U09: an issue created with `created_at: null` (an import of such a record) made `list` and `ready`
-        fail comparing its time with the others'; a create cannot clear it, as it cannot clear a title."""
-        bead = support.load_module()
-        create = self.event(1, "create", data={"key": "ex-1", "fields": {"created_at": None}})
-        self.assertEqual(bead.payload_problem(create), "field 'created_at' cannot be cleared")
-        for name in ("updated_at", "created_by", "closed_at"):
-            with self.subTest(field=name):
-                self.assertIsNone(bead.payload_problem(self.event(1, "create", data={"key": "ex-1", "fields": {name: None}})))
-
 
 if __name__ == "__main__":
     unittest.main()
