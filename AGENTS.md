@@ -60,6 +60,16 @@ and how it was closed; `reviews/` holds the reports verbatim.
   venv `pip install` where there is no uv); the `infra/` scripts run the installed `~/.local/bin/bead`
   on each machine and `./bead` here.
 
+## Releasing
+
+1. `CHANGELOG.md`: move *Unreleased* into a dated version section; bump `__version__` in
+   `beadroll/base.py` to match.
+2. `./check.sh --stress` green, and CI green on `main`.
+3. `uv build` (wheel and sdist into `dist/`), `uv publish` with a PyPI token (`UV_PUBLISH_TOKEN`),
+   then `git tag -a vX.Y.Z -m "beadroll X.Y.Z"` and `git push origin main vX.Y.Z`; a GitHub release
+   with the changelog section as its notes.
+4. Each machine upgrades with `uv tool install --force beadroll` (or its channel from the README).
+
 ## Work tracking (bead)
 
 This repository tracks its work with `bead` (beadroll): one tracker shared by every worktree,
