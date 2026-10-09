@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use beadroll_test_support::{Json, Machine, Sandbox, code};
+use beadroll_test_support::{Machine, Sandbox, code, parse_json};
 
 /// `setUp`: a sandbox and one machine, `help-a`.
 fn set_up() -> (Sandbox, Machine) {
@@ -27,7 +27,7 @@ fn no_arguments_and_help_print_the_overview_and_exit_zero() {
         }
         assert!(!result.crashed(), "{argv:?}: {}", result.stderr);
     }
-    let overview = Json::parse(&a.run(["--json"]).stdout).unwrap();
+    let overview = parse_json(&a.run(["--json"]).stdout).unwrap();
     assert!(overview.get("help").is_some(), "{overview:?}");
 }
 

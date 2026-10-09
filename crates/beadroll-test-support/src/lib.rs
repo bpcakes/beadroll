@@ -9,17 +9,22 @@
 //! for the integration tests of the package that builds `bead`. Phase 0 runs the black-box tests
 //! against Python's `./bead` by naming it in `BEAD_UNDER_TEST`.
 //!
-//! [`Json`] reads what `bead --json` prints until `beadroll-core` has its Python-compatible JSON
-//! (Phase 1), which replaces it.
+//! [`Json`] is beadroll-core's Python-compatible JSON, which reads what `bead --json` prints; the
+//! [`json!`] macro and [`events`] build the events core's integration tests replay.
 #![allow(clippy::unwrap_used, reason = "a failed fixture is a failed test")]
 #![allow(clippy::expect_used, reason = "a failed fixture is a failed test")]
 #![allow(clippy::panic, reason = "a failed fixture is a failed test")]
 #![allow(clippy::print_stderr, reason = "a failed fixture is a failed test")]
 
-mod json;
+pub mod events;
 mod machine;
 mod sandbox;
 
-pub use json::Json;
+pub use beadroll_core::json::Value as Json;
 pub use machine::{Invocation, Machine, Run, code};
 pub use sandbox::{Sandbox, UNDER_TEST, git, select_bead};
+
+/// `text` read as a JSON document, as `json.loads` reads bead's output.
+pub fn parse_json(text: &str) -> Result<Json, String> {
+    beadroll_core::json::from_text(text).map_err(|error| error.to_string())
+}

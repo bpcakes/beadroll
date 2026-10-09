@@ -267,7 +267,7 @@ impl Invocation<'_> {
         if run.stdout.trim().is_empty() {
             return None;
         }
-        let document = Json::parse(&run.stdout).unwrap_or_else(|error| {
+        let document = crate::parse_json(&run.stdout).unwrap_or_else(|error| {
             panic!("bead {shown} printed no JSON ({error}): {}", run.stdout)
         });
         Some(document)
@@ -314,7 +314,7 @@ impl Run {
 /// The error code a failed `bead ... --json` reported on standard error, as `support.code`
 /// reads it.
 pub fn code(run: &Run) -> String {
-    let document = Json::parse(&run.stderr)
+    let document = crate::parse_json(&run.stderr)
         .unwrap_or_else(|error| panic!("bead's error is not JSON ({error}): {}", run.stderr));
     let code = document["error"]["code"].as_str();
     code.unwrap_or_else(|| panic!("no error code in {}", run.stderr))
