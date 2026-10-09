@@ -459,6 +459,33 @@ fn copied_identity() -> Case {
     case("copied identity", vec![segment("a", &[init(), a2, a3, a4])])
 }
 
+/// An import refused at its second record, after Python has emitted the first record's create,
+/// then one that succeeds: a refused import appends nothing and draws no event ids, so the second
+/// import's events are the same on both sides.
+fn import_after_a_refusal() -> Case {
+    let record = |key: &str, priority: i64| {
+        let fields = obj(&[
+            ("id", text(key)),
+            ("title", text(key)),
+            ("priority", Value::from(priority)),
+        ]);
+        write(&fields, Format::COMPACT).unwrap_or_default() + "\n"
+    };
+    let import = |text: String| Op::Import {
+        replica: "a".into(),
+        path: "beads.jsonl".into(),
+        text,
+    };
+    case(
+        "an import after a refused one",
+        vec![
+            segment("a", &[init()]),
+            import(record("ex-a", 2) + &record("ex-b", 9)),
+            import(record("ex-c", 2)),
+        ],
+    )
+}
+
 pub(super) fn all() -> Vec<Case> {
     vec![
         key_space(),
@@ -471,5 +498,6 @@ pub(super) fn all() -> Vec<Case> {
         cycles(),
         comment_ids(),
         copied_identity(),
+        import_after_a_refusal(),
     ]
 }

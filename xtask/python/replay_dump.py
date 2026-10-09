@@ -9,7 +9,8 @@ A case is `{"name": ..., "ops": [...]}`, its operations those that build a journ
   ["problem", {"event", "origin", "problem"}]   a reader's problem, appended to journal.invalid
   ["settle"]
   ["import", REPLICA, PATH, TEXT]   import_records of TEXT (the file PATH) by REPLICA, through a Tx
-                                   that emits as Tx.emit does, with ids from a counter; all or nothing
+                                   that emits as Tx.emit does, with ids from a counter; all or
+                                   nothing, so a refused import draws no ids either
 
 BYTES is a string whose code points are the bytes (latin-1). Run it with PYTHONINTMAXSTRDIGITS=4300:
 it refuses to run under any other integer limit.
@@ -27,6 +28,18 @@ import beadroll as bead  # noqa: E402
 LIMIT = 4300
 
 
+class Ids:
+    """The event ids a case's imports draw, counted. Rust plans a whole import before it draws one, so
+    an import that fails gives back those it drew."""
+
+    def __init__(self):
+        self.drawn = 0
+
+    def next(self):
+        self.drawn += 1
+        return f"019b0000-0000-7000-8000-{self.drawn:012x}"
+
+
 class ImportTx:
     """What import_records needs of a Tx: its state, and emit, which checks every event as Tx.emit
     does and appends it to this journal (a copy, kept only if the import succeeds)."""
@@ -41,7 +54,7 @@ class ImportTx:
         return self._state
 
     def emit(self, op, issue=None, data=None):
-        event_id = f"019b0000-0000-7000-8000-{next(self.ids):012x}"
+        event_id = self.ids.next()
         event = {"v": bead.FORMAT, "id": event_id, "replica": self.replica, "deps": self.journal.heads(),
                  "actor": {"agent": "import", "thread": "t"}, "op": op, "issue": issue or event_id, "data": data or {}}
         problem = bead.event_problem(event) or bead.payload_problem(event) or bead.write_problem(event)
@@ -59,13 +72,15 @@ class ImportTx:
 
 
 def import_into(journal, replica, path, text, ids, imports):
-    """The journal after importing TEXT, or as it was if the import fails; the outcome is recorded."""
-    trial = copy.deepcopy(journal)
+    """The journal after importing TEXT, or as it was if the import fails, its ids given back; the
+    outcome is recorded."""
+    trial, drawn = copy.deepcopy(journal), ids.drawn
     original = bead.commands.read_utf8
     bead.commands.read_utf8 = lambda name, what: text
     try:
         count = bead.import_records(ImportTx(trial, replica, ids), path)
     except bead.BeadError as error:
+        ids.drawn = drawn
         imports.append({"error": {"code": error.code, "message": str(error)}})
         return journal
     finally:
@@ -76,7 +91,7 @@ def import_into(journal, replica, path, text, ids, imports):
 
 def journal_of(ops, imports):
     journal = bead.Journal()
-    ids = iter(range(1, 1 << 40))
+    ids = Ids()
     for op in ops:
         kind = op[0]
         if kind == "segment":

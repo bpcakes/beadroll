@@ -68,7 +68,7 @@ fn outcome(result: Result<usize, (&str, String)>) -> Value {
 }
 
 /// `text` imported into `journal` by `replica`, each event checked as `Tx.emit` checks it; the
-/// journal is left as it was when the import fails.
+/// journal and `ids` are left as they were when the import fails.
 fn import_into(
     journal: &mut Journal,
     replica: &str,
@@ -86,8 +86,9 @@ fn import_into(
     let state = replay(trial.clone()).map_err(|error| ("KEY_SPACE", error.to_string()))?;
     let plan = plan_import(&state, &records).map_err(|error| validation(error.to_string()))?;
     let mut created: Vec<String> = Vec::new();
+    let mut drawn = Ids(ids.0);
     for step in &plan.steps {
-        let id = ids.next();
+        let id = drawn.next();
         let (issue, data) = match step {
             Step::DepRemove { issue, data } => (issue.to_string(), data.clone()),
             Step::Create(data) => (id.clone(), data.clone()),
@@ -133,6 +134,7 @@ fn import_into(
         trial.add(event, replica, "", true);
     }
     *journal = trial;
+    *ids = drawn;
     Ok(plan.imported)
 }
 

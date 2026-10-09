@@ -224,8 +224,8 @@ pub(crate) fn in_parallel<T: Sync, R: Send>(
     })
 }
 
-/// Counts the cases whose answers differ, shows the first few (`shown` so far), and keeps each in
-/// `target/diff/` so that `--fixtures FILE` replays it alone. `offset` numbers the cases.
+/// Counts the cases whose answers differ, shows the first few (`shown` so far), and keeps each case
+/// it shows in `target/diff/` so that `--fixtures FILE` replays it alone. `offset` numbers the cases.
 fn compare(
     cases: &[Case],
     python: &[String],

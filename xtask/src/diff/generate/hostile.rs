@@ -467,7 +467,8 @@ fn split(world: &mut World<'_>, name: &str, lines: &[Vec<u8>]) -> Vec<Op> {
     segments
 }
 
-/// An import among the operations, sometimes twice: the second finds every record known.
+/// An import among the operations, sometimes followed by a second: the same file, which finds every
+/// record known, or another, which may follow a refused one.
 fn import(world: &mut World<'_>, ops: &mut Vec<Op>) {
     let known = world.known_keys();
     let text = world.import_text(&known);
@@ -476,13 +477,16 @@ fn import(world: &mut World<'_>, ops: &mut Vec<Op>) {
     } else {
         world.tape.below(ops.len() + 1)
     };
-    let import = Op::Import {
+    let import = |text: String| Op::Import {
         replica: "0000aa".into(),
         path: "beads.jsonl".into(),
         text,
     };
     if world.tape.chance(30) {
-        ops.insert(at, import.clone());
+        ops.insert(at, import(text.clone()));
+    } else if world.tape.chance(20) {
+        let other = world.import_text(&known);
+        ops.insert(at, import(other));
     }
-    ops.insert(at, import);
+    ops.insert(at, import(text));
 }
