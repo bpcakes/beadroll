@@ -4,6 +4,7 @@
 
 mod args;
 mod output;
+mod tempdir;
 mod texts;
 
 use std::collections::BTreeMap;
@@ -112,7 +113,7 @@ fn run(argv: Vec<OsString>) -> u8 {
 
 /// Runs the request: the text for standard output, `None` when nothing (more) is to be printed.
 fn execute(request: &Request) -> Result<Option<String>, Failure> {
-    let settings = Arc::new(settings()?);
+    let mut settings = settings()?;
     let args = &request.args;
     if args.len() == 1 && (args[0] == "--version" || args[0] == "-V") {
         return Ok(Some(if request.as_json {
@@ -144,6 +145,11 @@ fn execute(request: &Request) -> Result<Option<String>, Failure> {
         }
         Parsed::Usage(message) => return Err(Failure::new(Code::Usage, message)),
     };
+    // git is about to run for the first time: its output files need a directory (Python's
+    // gettempdir, found on the first TemporaryFile).
+    let tmp = tempdir::temporary_directory(settings.git.vars(), Some(settings.cwd.as_path()))?;
+    settings.git = settings.git.with_tmp(tmp);
+    let settings = Arc::new(settings);
     let ws = find_workspace(&settings)?;
     let name = request
         .name

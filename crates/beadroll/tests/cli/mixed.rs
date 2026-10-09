@@ -427,3 +427,26 @@ fn an_unremovable_invalid_pending_file_is_an_io_error() {
     assert_eq!(error["error"]["code"], Json::from("IO"));
     assert!(junk.exists(), "the file stays until it can be removed");
 }
+
+/// git's output goes to a temporary directory found as Python's `tempfile` finds one: a `TMPDIR`
+/// that does not exist falls back to `/tmp`, for either binary.
+#[test]
+fn a_tmpdir_that_does_not_exist_falls_back_as_python_does() {
+    let sandbox = crate::sandbox();
+    for (bead, name) in [(python(), "py"), (rust(), "rs")] {
+        let machine = Machine::new(&sandbox, name);
+        let out = Command::new(&bead)
+            .args(["init", "--prefix", "ex", "--json"])
+            .current_dir(machine.checkout())
+            .env_clear()
+            .envs(machine.env(None, "codex"))
+            .env("TMPDIR", sandbox.root().join("no-such-tmp"))
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{name}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}

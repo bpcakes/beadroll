@@ -78,6 +78,15 @@ impl Env {
         }
     }
 
+    /// The same environment and directory with output files made in `tmp`.
+    pub fn with_tmp(&self, tmp: PathBuf) -> Env {
+        Env {
+            vars: self.vars.clone(),
+            dir: self.dir.clone(),
+            tmp,
+        }
+    }
+
     /// `git ARGS` in this environment, to adjust and run.
     pub fn git<I, S>(&self, args: I) -> Git<'_>
     where
