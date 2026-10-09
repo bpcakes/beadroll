@@ -10,6 +10,7 @@ use indexmap::IndexMap;
 use crate::event::{event_problem, payload_problem};
 use crate::id::EventId;
 use crate::json::{self, Format, Object, ParseError, Value};
+use crate::op::Op;
 use crate::text::strip_bytes;
 
 /// Something a reader could not use: an unreadable line or file, an event that fails validation, a
@@ -129,12 +130,14 @@ pub fn read_attempt(
 }
 
 /// An event as replay sees it: a valid event, or the stand-in for an id that cannot be used
-/// (`op` `quarantined` or `invalid`). Its object is kept whole, shared with the record it came from.
+/// (`op` `quarantined` or `invalid`). Its object is kept whole, shared with the record it came from,
+/// for comparison and `log`; its operation is read from it once, typed.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Event {
     id: EventId,
     value: Arc<Value>,
     deps: Vec<EventId>,
+    op: Arc<Op>,
 }
 
 impl Event {
@@ -146,7 +149,19 @@ impl Event {
             .iter()
             .filter_map(|dep| dep.as_str().and_then(EventId::parse))
             .collect();
-        Event { id, value, deps }
+        let name = value.get("op").and_then(Value::as_str).unwrap_or_default();
+        let empty = Object::new();
+        let data = value
+            .get("data")
+            .and_then(Value::as_object)
+            .unwrap_or(&empty);
+        let op = Arc::new(Op::read(name, data));
+        Event {
+            id,
+            value,
+            deps,
+            op,
+        }
     }
 
     /// Its id.
@@ -164,8 +179,13 @@ impl Event {
         &self.deps
     }
 
-    /// Its operation.
-    pub fn op(&self) -> &str {
+    /// Its operation, with its payload read as replay reads it.
+    pub fn op(&self) -> &Op {
+        &self.op
+    }
+
+    /// The name of its operation, as written (`quarantined` and `invalid` for a stand-in).
+    pub fn op_name(&self) -> &str {
         self.value
             .get("op")
             .and_then(Value::as_str)

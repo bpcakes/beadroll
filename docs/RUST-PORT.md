@@ -301,15 +301,17 @@ So core has a small strict parser and writer:
 - **Events.**
   - A journal line parses to `Value`.
   - Settling validates it into `Event`: an `EventId(u128)` whose ordering equals Python's string
-    ordering, `deps`, `actor`, `where`, `v`, and an `Op` enum with typed payloads (`Create`, `Set`,
-    `Claim`, …, `Unknown(String)`).
+    ordering, `deps`, and an `Op` enum with typed payloads (`Create`, `Set`, `Claim`, …,
+    `Unknown(String)`), read once. The payload is read leniently, because an event
+    `payload_problem` refuses is never applied. `actor` and `where`, which Python keeps whole on
+    issues, claims and comments, and `v`, read once for its check, come from the kept `Value`.
   - The validation messages are the Python ones (`event_problem`, `payload_problem`,
     `write_problem`).
   - The raw `Value` is kept for canonical comparison and `log`.
-- **Integers.** Fields that Python types as `int` use `PyInt` (`Bool | Small(i64) | Big(digits)`),
-  because replay accepts `true` where an int is due. The looser replay rule exists for histories
-  written before `write_problem`, and those histories must mean the same on every machine. `PyInt`
-  compares, sorts and displays like Python (`[PTrue]`).
+- **Integers.** Fields that Python types as `int` use `PyInt` (`Bool | Int`, an `Int` being
+  `Small(i64) | Big(digits)`), because replay accepts `true` where an int is due. The looser replay
+  rule exists for histories written before `write_problem`, and those histories must mean the same
+  on every machine. `PyInt` compares, sorts and displays like Python (`[PTrue]`).
 - **Open-ended data stays `Value`:** `extra`, dangling dependencies and dependency metadata.
 
 **c. The replay data layout favours speed, but the algorithm does not change.**

@@ -4,9 +4,9 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
 
-use crate::event::{DONE, Field, int_value};
+use crate::event::{DONE, Field};
 use crate::id::EventId;
-use crate::json::{self, Format, Int, Object, Value};
+use crate::json::{self, Format, Object, Value};
 use crate::state::{Issue, State};
 use crate::time::event_time;
 
@@ -269,7 +269,7 @@ impl State {
 
 /// Sorts as `bead list` and `bead ready` list: by priority (`true` is 1), creation time, then key.
 pub fn sort_for_listing(items: &mut [&Issue]) {
-    let priority = |issue: &Issue| int_value(issue.priority()).unwrap_or_else(|| Int::from(0));
+    let priority = |issue: &Issue| issue.priority();
     let created = |issue: &Issue| {
         issue
             .get(Field::CreatedAt)

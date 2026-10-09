@@ -8,6 +8,7 @@ use indexmap::IndexMap;
 use crate::event::Field;
 use crate::id::EventId;
 use crate::json::{Int, Object, Value};
+use crate::op::PyInt;
 
 /// An issue.
 #[derive(Clone, Debug, PartialEq)]
@@ -85,9 +86,13 @@ impl Issue {
         self.text(Field::IssueType)
     }
 
-    /// Its priority: an integer, or a boolean an old history wrote (`[PTrue]`).
-    pub fn priority(&self) -> &Value {
-        self.field(Field::Priority).unwrap_or(&Value::Null)
+    /// Its priority: an integer, or a boolean an old history wrote (`[PTrue]`). Every issue replay
+    /// makes has one (a create defaults it to 2, and validation refuses `null`); 2 stands in
+    /// otherwise.
+    pub fn priority(&self) -> PyInt {
+        self.field(Field::Priority)
+            .and_then(PyInt::read)
+            .unwrap_or_else(|| PyInt::from(2))
     }
 
     /// Every value of each register two writers may have set without seeing each other.

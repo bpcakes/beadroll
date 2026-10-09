@@ -9,7 +9,8 @@ use std::collections::{HashMap, HashSet};
 use crate::event::{FORMAT, payload_problem};
 use crate::id::EventId;
 use crate::journal::Journal;
-use crate::json::{Int, Value};
+use crate::json::Value;
+use crate::op::{Op, PyInt};
 use crate::order::{causal_order, effective_deps};
 use crate::state::{Bits, Integrity, KeySpace, Knowledge, Seen, State, actor_label};
 use crate::text::str_of;
@@ -76,7 +77,11 @@ fn observe(k: &mut Knowledge, ordered: &[EventId]) -> HashMap<EventId, String> {
         .map(|ids| {
             ids.iter()
                 .enumerate()
-                .filter(|(_, id)| journal.event(**id).is_some_and(|e| !placeholder(e.op())))
+                .filter(|(_, id)| {
+                    journal
+                        .event(**id)
+                        .is_some_and(|e| !placeholder(e.op_name()))
+                })
                 .map(|(number, _)| number)
                 .collect()
         })
@@ -119,7 +124,7 @@ fn observe(k: &mut Knowledge, ordered: &[EventId]) -> HashMap<EventId, String> {
                 // and do not pretend it saw what came before (a copied machine identity looks like
                 // this). A placeholder that fails this must not lend its position to what follows.
                 let name = replicas.get(replica).cloned().unwrap_or_default();
-                if !placeholder(event.op()) {
+                if !placeholder(event.op_name()) {
                     let problem = format!(
                         "journal chain broken at position {number} of machine {name} (copied machine identity?)"
                     );
@@ -135,7 +140,7 @@ fn observe(k: &mut Knowledge, ordered: &[EventId]) -> HashMap<EventId, String> {
         let version = event.get("v").cloned().unwrap_or(Value::from(FORMAT));
         let reason = if journal.quarantined().contains_key(&id) {
             Some("one event id with different contents".to_owned())
-        } else if event.op() == "invalid" {
+        } else if event.op_name() == "invalid" {
             Some(String::new())
         } else if !same_int(&version, FORMAT) {
             Some(format!(
@@ -154,7 +159,7 @@ fn observe(k: &mut Knowledge, ordered: &[EventId]) -> HashMap<EventId, String> {
 
 /// Python's `value != n` for an integer field: `true` equals 1.
 fn same_int(value: &Value, n: i64) -> bool {
-    crate::event::int_value(value).is_some_and(|value| value == Int::from(n))
+    PyInt::read(value).is_some_and(|value| value == PyInt::from(n))
 }
 
 /// Phase 2: ownership bookkeeping, over applicable events only. A takeover is settled online, so it
@@ -170,20 +175,23 @@ fn settle_takeovers(
         let Some(event) = k.journal.event(id) else {
             continue;
         };
-        let takeover = event.data().get("takeover").filter(|t| t.truthy());
-        let Some(takeover) = takeover.filter(|_| !inert.contains_key(&id) && event.op() == "claim")
-        else {
+        if inert.contains_key(&id) || event.op_name() != "claim" {
+            continue;
+        }
+        let Op::Claim(claiming) = event.op() else {
             continue;
         };
-        let previous = takeover
-            .as_str()
-            .and_then(EventId::parse)
-            .and_then(|p| k.journal.event(p));
+        let Some(takeover) = claiming.takeover.as_deref().filter(|t| !t.is_empty()) else {
+            continue;
+        };
+        let previous = EventId::parse(takeover).and_then(|p| k.journal.event(p));
         match previous {
-            Some(previous) if previous.op() == "claim" && previous.issue() == event.issue() => {
+            Some(previous)
+                if previous.op_name() == "claim" && previous.issue() == event.issue() =>
+            {
                 if !k.saw(id, previous.id()) {
                     inert.insert(id, "takeover of a claim its writer had not seen".into());
-                } else if event.data().get("mode").and_then(Value::as_str) != Some("offline")
+                } else if claiming.mode.as_deref() != Some("offline")
                     && !inert.contains_key(&previous.id())
                 {
                     superseded.insert(previous.id());

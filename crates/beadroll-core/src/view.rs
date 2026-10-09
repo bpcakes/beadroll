@@ -231,7 +231,7 @@ impl State {
             "{} {} [P{}] [{}] - {}{who}{branch}{flag}",
             icon(issue.status()),
             issue.key(),
-            str_of(issue.priority()),
+            issue.priority(),
             str_of(&field(issue, Field::IssueType)),
             str_of(&field(issue, Field::Title)),
         )

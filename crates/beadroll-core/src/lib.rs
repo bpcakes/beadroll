@@ -4,7 +4,8 @@
 //!
 //! - [`json`] and [`text`]: Python's `json` and string semantics where bead depends on them.
 //! - [`id`], [`time`] and [`key`]: event ids, event times, and the keys bead mints and renames.
-//! - [`event`]: what an event must look like, with Python's validation messages.
+//! - [`event`]: what an event must look like, with Python's validation messages; [`op`]: what it
+//!   asks, its operation with a typed payload, and [`op::PyInt`], an integer as Python holds one.
 //! - [`journal`] and [`order`]: journal lines read and settled, and the causal order of events.
 //! - [`replay`] and [`state`]: the events folded into issues, with every register, tag and claim.
 //! - [`query`] and [`view`]: conflicts, readiness, blockers, cycles, and how an issue is shown.
@@ -20,6 +21,7 @@ pub mod import;
 pub mod journal;
 pub mod json;
 pub mod key;
+pub mod op;
 pub mod order;
 pub mod published;
 pub mod query;

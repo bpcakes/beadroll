@@ -1,14 +1,15 @@
 //! One event applied to the state (Python's `apply_event`, `write_register`, `write_status`,
-//! `materialise_dangling` and `end_claim`), branch for branch.
+//! `materialise_dangling` and `end_claim`), branch for branch, on the event's typed operation.
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use indexmap::IndexMap;
 
-use crate::event::{DONE, Field, REGISTERS, int_value};
+use crate::event::{DONE, Field, REGISTERS};
 use crate::id::EventId;
 use crate::journal::Event;
 use crate::json::{Int, Object, Value};
+use crate::op::{Claiming, Create, Ending, Op, PyInt};
 use crate::state::{
     Claim, Comment, EndedClaim, Issue, KeySpace, Knowledge, LostClaim, Provisional, Rename, Stale,
     State,
@@ -25,18 +26,20 @@ pub(super) fn apply_event(
     when: &str,
     superseded: &HashSet<EventId>,
 ) -> Result<bool, KeySpace> {
-    let (op, data) = (event.op(), event.data());
-    if op == "init" {
-        if st.prefix.is_none() {
-            st.prefix = data.get("prefix").filter(|v| **v != Value::Null).cloned();
-            st.name = data.get("name").filter(|v| **v != Value::Null).cloned();
+    let op = match event.op() {
+        Op::Init { prefix, name } => {
+            if st.prefix.is_none() {
+                st.prefix.clone_from(prefix);
+                st.name.clone_from(name);
+            }
+            return Ok(false);
         }
-        return Ok(false);
-    }
-    if op == "create" {
-        create(st, k, event, who, when)?;
-        return Ok(false);
-    }
+        Op::Create(create) => {
+            self::create(st, k, event, create, who, when)?;
+            return Ok(false);
+        }
+        other => other,
+    };
     let Some(uid) = event
         .issue()
         .and_then(EventId::parse)
@@ -53,8 +56,6 @@ pub(super) fn apply_event(
         event,
         eid: event.id(),
         uid,
-        op,
-        data,
         who,
         when,
         place: event.get("where").filter(|place| place.truthy()).cloned(),
@@ -62,21 +63,31 @@ pub(super) fn apply_event(
         superseded,
     };
     let applied = match op {
-        "set" => set(&c, issue),
-        "claim" => claim(&c, issue),
-        "release" => release(&c, issue),
-        "close" | "delete" => close(&c, issue),
-        "reopen" => reopen(&c, issue),
-        "comment" => {
+        Op::Set(fields) => set(&c, issue, fields),
+        Op::Claim(claiming) => claim(&c, issue, claiming),
+        Op::Release(ending) => release(&c, issue, ending),
+        Op::Close(ending) => close(&c, issue, ending, true),
+        Op::Delete(ending) => close(&c, issue, ending, false),
+        Op::Reopen => reopen(&c, issue),
+        Op::Comment { text, author } => {
             st.comment_count += 1;
-            comment(&c, issue, st.comment_count)
+            comment(&c, issue, st.comment_count, text, author.as_deref())
         }
-        "dep_add" => dep_add(&c, issue),
-        "dep_remove" => dep_remove(&c, issue, &st.by_key),
-        "label_add" | "label_remove" | "label_set" => label(&c, issue),
+        Op::DepAdd { to, kind, meta } => dep_add(&c, issue, to, kind.as_deref(), meta),
+        Op::DepRemove { to, key, kind } => dep_remove(
+            &c,
+            issue,
+            &st.by_key,
+            to.as_deref(),
+            key.as_deref(),
+            kind.as_deref(),
+        ),
+        Op::LabelAdd(labels) => label(&c, issue, labels, Labels::Add),
+        Op::LabelRemove(labels) => label(&c, issue, labels, Labels::Remove),
+        Op::LabelSet(labels) => label(&c, issue, labels, Labels::Set),
         // Anything else that reaches here applies nothing, but touches the issue: a placeholder
         // whose position broke its journal's chain is not inert (Python's replay).
-        _ => true,
+        Op::Init { .. } | Op::Create(_) | Op::Quarantined | Op::Invalid | Op::Unknown(_) => true,
     };
     Ok(applied)
 }
@@ -87,8 +98,6 @@ struct Ctx<'a> {
     event: &'a Event,
     eid: EventId,
     uid: EventId,
-    op: &'a str,
-    data: &'a Object,
     who: &'a str,
     when: &'a str,
     /// The event's `where`, when it names a place.
@@ -98,15 +107,10 @@ struct Ctx<'a> {
 }
 
 impl Ctx<'_> {
-    /// A text member of the payload.
-    fn text(&self, key: &str) -> Option<&str> {
-        self.data.get(key).and_then(Value::as_str)
-    }
-
     /// Records an end of a claim that was no longer current; it applies nothing.
     fn stale(&self, issue: &mut Issue, named: Option<&str>) -> bool {
         issue.stale.push(Stale {
-            op: self.op.to_owned(),
+            op: self.event.op_name().to_owned(),
             by: self.who.to_owned(),
             at: self.when.to_owned(),
             claim: named.map(str::to_owned),
@@ -131,28 +135,20 @@ impl Ctx<'_> {
     }
 }
 
-fn set(c: &Ctx<'_>, issue: &mut Issue) -> bool {
-    for (name, value) in c
-        .data
-        .get("fields")
-        .and_then(Value::as_object)
-        .into_iter()
-        .flatten()
-    {
-        match Field::from_name(name) {
-            Some(Field::Status) => {
-                c.write_status(issue, value.as_str().unwrap_or_default(), None, &[])
-            }
-            Some(field) => c.write(issue, field, value.clone(), &[]),
-            None => {}
+fn set(c: &Ctx<'_>, issue: &mut Issue, fields: &[(Field, Value)]) -> bool {
+    for (field, value) in fields {
+        if *field == Field::Status {
+            c.write_status(issue, value.as_str().unwrap_or_default(), None, &[]);
+        } else {
+            c.write(issue, *field, value.clone(), &[]);
         }
     }
     true
 }
 
-fn claim(c: &Ctx<'_>, issue: &mut Issue) -> bool {
+fn claim(c: &Ctx<'_>, issue: &mut Issue, claiming: &Claiming) -> bool {
     let who = c.who;
-    if c.text("mode") == Some("offline") {
+    if claiming.mode.as_deref() == Some("offline") {
         // Provisional: never displaces a confirmed owner.
         if !c.claim.as_ref().is_some_and(|held| held.owner == who) {
             issue.provisional_claims.retain(|p| p.owner != who);
@@ -166,14 +162,15 @@ fn claim(c: &Ctx<'_>, issue: &mut Issue) -> bool {
                 c.write_status(issue, "in_progress", None, &[]);
             }
         }
-    } else if c.claim.is_none() || takes_over(&c.claim, c.data) {
-        end_claim(issue, "takeover", who, c.when, c.text("reason"));
+    } else if c.claim.is_none() || takes_over(c.claim.as_ref(), claiming) {
+        end_claim(issue, "takeover", who, c.when, claiming.reason.as_deref());
+        // `max(generation + 1, data.get("generation") or 0)`: of two equal, the first.
         let next = issue.claim_generation.plus_one();
-        let given = c
-            .data
-            .get("generation")
-            .filter(|g| g.truthy())
-            .and_then(int_value);
+        let given = claiming
+            .generation
+            .as_ref()
+            .filter(|g| !g.is_zero())
+            .map(PyInt::number);
         issue.claim_generation = given.filter(|given| *given > next).unwrap_or(next);
         issue.claim = Some(Claim {
             id: c.eid,
@@ -183,8 +180,9 @@ fn claim(c: &Ctx<'_>, issue: &mut Issue) -> bool {
             thread: actor_text(c.event, "thread"),
             generation: issue.claim_generation.clone(),
             since: c.when.to_owned(),
-            mode: c
-                .text("mode")
+            mode: claiming
+                .mode
+                .as_deref()
                 .filter(|m| !m.is_empty())
                 .unwrap_or("online")
                 .to_owned(),
@@ -205,14 +203,14 @@ fn claim(c: &Ctx<'_>, issue: &mut Issue) -> bool {
     true
 }
 
-fn release(c: &Ctx<'_>, issue: &mut Issue) -> bool {
-    let named = c.text("claim");
+fn release(c: &Ctx<'_>, issue: &mut Issue, ending: &Ending) -> bool {
+    let named = ending.claim.as_deref();
     let named_id = named.and_then(EventId::parse);
     if named_id.is_some_and(|named| c.superseded.contains(&named)) {
         return c.stale(issue, named);
     }
     if let Some(held) = c.claim.as_ref().filter(|held| Some(held.id) == named_id) {
-        end_claim(issue, "release", c.who, c.when, c.text("reason"));
+        end_claim(issue, "release", c.who, c.when, ending.reason.as_deref());
         c.write_status(issue, "open", None, &[held.id]);
         c.write(issue, Field::Assignee, Value::Null, &[held.id]);
     } else if issue.provisional_claims.iter().any(|p| p.owner == c.who) {
@@ -226,9 +224,9 @@ fn release(c: &Ctx<'_>, issue: &mut Issue) -> bool {
     true
 }
 
-/// `close` and `delete`: both may name the claim they end.
-fn close(c: &Ctx<'_>, issue: &mut Issue) -> bool {
-    let named = c.text("claim").filter(|named| !named.is_empty());
+/// `close` (`closing`) and `delete`: both may name the claim they end.
+fn close(c: &Ctx<'_>, issue: &mut Issue, ending: &Ending, closing: bool) -> bool {
+    let named = ending.claim.as_deref().filter(|named| !named.is_empty());
     let named_id = named.and_then(EventId::parse);
     let current = c
         .claim
@@ -239,9 +237,8 @@ fn close(c: &Ctx<'_>, issue: &mut Issue) -> bool {
         return c.stale(issue, named); // an owner replaced by a takeover
     }
     let supersede: Vec<EventId> = named_id.into_iter().collect();
-    let reason = c.text("reason");
+    let reason = ending.reason.as_deref();
     // A close that names its claim knows about it, even when the claim's bytes arrived later.
-    let closing = c.op == "close";
     c.write_status(
         issue,
         if closing { "closed" } else { "tombstone" },
@@ -290,56 +287,53 @@ fn reopen(c: &Ctx<'_>, issue: &mut Issue) -> bool {
     true
 }
 
-fn comment(c: &Ctx<'_>, issue: &mut Issue, seq: u64) -> bool {
-    let author = c
-        .data
-        .get("author")
-        .filter(|a| a.truthy())
-        .map_or_else(|| c.who.to_owned(), str_of);
+/// A comment, by `author` when it names one (`data.get("author") or who`).
+fn comment(c: &Ctx<'_>, issue: &mut Issue, seq: u64, text: &str, author: Option<&str>) -> bool {
+    let author = author.filter(|a| !a.is_empty()).unwrap_or(c.who).to_owned();
     issue.comments.push(Comment::Native {
         uid: c.eid,
         seq,
         author,
-        text: c.text("text").unwrap_or_default().to_owned(),
+        text: text.to_owned(),
         created_at: c.when.to_owned(),
         where_: c.place.clone(),
     });
     true
 }
 
-fn dep_add(c: &Ctx<'_>, issue: &mut Issue) -> bool {
-    let to = c.text("to").unwrap_or_default().to_owned();
-    let kind = c
-        .text("type")
+/// A dependency on `to` of type `kind` (`blocks` when none), stamped like Python's, `meta` over it.
+fn dep_add(c: &Ctx<'_>, issue: &mut Issue, to: &str, kind: Option<&str>, meta: &Object) -> bool {
+    let kind = kind
         .filter(|kind| !kind.is_empty())
         .unwrap_or("blocks")
         .to_owned();
-    let mut meta = Object::new();
-    meta.insert("created_at".into(), Value::from(c.when));
-    meta.insert("created_by".into(), Value::from(c.who));
-    for (name, value) in c
-        .data
-        .get("meta")
-        .and_then(Value::as_object)
-        .into_iter()
-        .flatten()
-    {
-        meta.insert(name.clone(), value.clone());
-    }
+    let mut stamp = Object::new();
+    stamp.insert("created_at".into(), Value::from(c.when));
+    stamp.insert("created_by".into(), Value::from(c.who));
+    stamp.extend(
+        meta.iter()
+            .map(|(name, value)| (name.clone(), value.clone())),
+    );
     issue
         .dep_tags
-        .entry((to, kind))
+        .entry((to.to_owned(), kind))
         .or_default()
-        .insert(c.eid, Value::Object(meta));
+        .insert(c.eid, Value::Object(stamp));
     true
 }
 
-/// Removes only the additions its writer had seen.
-fn dep_remove(c: &Ctx<'_>, issue: &mut Issue, by_key: &IndexMap<String, EventId>) -> bool {
-    let wanted = c.text("type");
+/// Removes only the additions its writer had seen: by `key`, an imported dependency on a key that
+/// was not an issue for its writer; otherwise the edges to `to`, of type `wanted` or of any type.
+fn dep_remove(
+    c: &Ctx<'_>,
+    issue: &mut Issue,
+    by_key: &IndexMap<String, EventId>,
+    to: Option<&str>,
+    key: Option<&str>,
+    wanted: Option<&str>,
+) -> bool {
     let matches = |kind: &str| wanted.is_none_or(|wanted| wanted == kind);
-    if let Some(key) = c.text("key").filter(|key| !key.is_empty()) {
-        // An imported dependency on a key that was not an issue for its writer.
+    if let Some(key) = key.filter(|key| !key.is_empty()) {
         issue.dangling.retain(|dep| {
             let depends_on = dep.get("depends_on_id").and_then(Value::as_str);
             !(depends_on == Some(key) && matches(&dangling_type(dep)))
@@ -354,7 +348,7 @@ fn dep_remove(c: &Ctx<'_>, issue: &mut Issue, by_key: &IndexMap<String, EventId>
             }
         }
     } else {
-        let to = c.text("to").unwrap_or_default();
+        let to = to.unwrap_or_default();
         for ((edge_to, kind), tags) in &mut issue.dep_tags {
             if edge_to == to && matches(kind) {
                 tags.retain(|tag, _| !c.k.saw(c.eid, *tag));
@@ -366,12 +360,22 @@ fn dep_remove(c: &Ctx<'_>, issue: &mut Issue, by_key: &IndexMap<String, EventId>
     true
 }
 
-fn label(c: &Ctx<'_>, issue: &mut Issue) -> bool {
-    if c.op != "label_add" {
-        let targets: Vec<String> = if c.op == "label_set" {
+/// Which label operation.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Labels {
+    Add,
+    Remove,
+    Set,
+}
+
+/// Labels added, removed (what the writer saw of them), or set: every label the writer saw removed,
+/// then these added.
+fn label(c: &Ctx<'_>, issue: &mut Issue, labels: &[String], how: Labels) -> bool {
+    if how != Labels::Add {
+        let targets: Vec<String> = if how == Labels::Set {
             issue.label_tags.keys().cloned().collect()
         } else {
-            labels(c.data)
+            labels.to_vec()
         };
         for label in targets {
             if let Some(tags) = issue.label_tags.get_mut(&label) {
@@ -379,22 +383,26 @@ fn label(c: &Ctx<'_>, issue: &mut Issue) -> bool {
             }
         }
     }
-    if c.op != "label_remove" {
-        for label in labels(c.data) {
-            issue.label_tags.entry(label).or_default().insert(c.eid);
+    if how != Labels::Remove {
+        for label in labels {
+            issue
+                .label_tags
+                .entry(label.clone())
+                .or_default()
+                .insert(c.eid);
         }
     }
     true
 }
 
 /// Whether a claim takes over the current one by naming it.
-fn takes_over(claim: &Option<Claim>, data: &Object) -> bool {
-    let named = data
-        .get("takeover")
-        .filter(|t| t.truthy())
-        .and_then(Value::as_str)
+fn takes_over(claim: Option<&Claim>, claiming: &Claiming) -> bool {
+    let named = claiming
+        .takeover
+        .as_deref()
+        .filter(|t| !t.is_empty())
         .and_then(EventId::parse);
-    claim.as_ref().is_some_and(|held| named == Some(held.id))
+    claim.is_some_and(|held| named == Some(held.id))
 }
 
 /// A member of the event's actor, as the claim records it.
@@ -404,19 +412,6 @@ fn actor_text(event: &Event, key: &str) -> Option<String> {
         .and_then(|actor| actor.get(key))
         .and_then(Value::as_str)
         .map(str::to_owned)
-}
-
-/// The labels an event names.
-fn labels(data: &Object) -> Vec<String> {
-    let items = data
-        .get("labels")
-        .and_then(Value::as_array)
-        .unwrap_or_default();
-    items
-        .iter()
-        .filter_map(Value::as_str)
-        .map(str::to_owned)
-        .collect()
 }
 
 /// A dangling dependency's type: `d.get("type") or "blocks"`.
@@ -431,15 +426,12 @@ fn create(
     st: &mut State,
     k: &Knowledge,
     event: &Event,
+    create: &Create,
     who: &str,
     when: &str,
 ) -> Result<(), KeySpace> {
-    let (eid, data) = (event.id(), event.data());
-    let mut key = data
-        .get("key")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_owned();
+    let eid = event.id();
+    let mut key = create.key.clone();
     if st.by_key.contains_key(&key) {
         // Two machines minted the same key before they synced.
         let free = st.free_key(&key, eid)?;
@@ -450,7 +442,7 @@ fn create(
             uid: eid,
         });
     }
-    let mut issue = new_issue(event, key.clone(), who, when);
+    let mut issue = new_issue(event, create, key.clone(), who, when);
     st.by_key.insert(key, eid);
     materialise_dangling(k, &st.by_key, &mut issue);
     st.issues.insert(eid, issue);
@@ -466,13 +458,8 @@ fn create(
 
 /// The issue a create makes, under `key`: its defaults, then the fields it carries, with a register
 /// for each, and what an import brings (labels, extras, comments, dependencies on keys).
-fn new_issue(event: &Event, key: String, who: &str, when: &str) -> Issue {
-    let (eid, data) = (event.id(), event.data());
-    let empty = Object::new();
-    let fields = data
-        .get("fields")
-        .and_then(Value::as_object)
-        .unwrap_or(&empty);
+fn new_issue(event: &Event, create: &Create, key: String, who: &str, when: &str) -> Issue {
+    let eid = event.id();
     let place = event.get("where").filter(|place| place.truthy()).cloned();
     let mut origin = Object::new();
     origin.insert("machine".into(), Value::from(event.replica()));
@@ -492,24 +479,17 @@ fn new_issue(event: &Event, key: String, who: &str, when: &str) -> Issue {
         key,
         fields: Default::default(),
         reg: IndexMap::new(),
-        label_tags: labels(data)
-            .into_iter()
-            .map(|label| (label, BTreeSet::from([eid])))
+        label_tags: create
+            .labels
+            .iter()
+            .map(|label| (label.clone(), BTreeSet::from([eid])))
             .collect(),
         dep_tags: IndexMap::new(),
         labels: BTreeSet::new(),
         deps: IndexMap::new(),
-        comments: imported_comments(data),
-        extra: data
-            .get("extra")
-            .and_then(Value::as_object)
-            .cloned()
-            .unwrap_or_default(),
-        dangling: data
-            .get("dangling")
-            .and_then(Value::as_array)
-            .unwrap_or_default()
-            .to_vec(),
+        comments: create.comments.iter().map(imported_comment).collect(),
+        extra: create.extra.clone(),
+        dangling: create.dangling.clone(),
         retracted: BTreeMap::new(),
         claim: None,
         claim_generation: Int::from(0),
@@ -534,16 +514,21 @@ fn new_issue(event: &Event, key: String, who: &str, when: &str) -> Issue {
     for (field, value) in defaults {
         issue.set(field, Some(value));
     }
-    for (name, value) in fields {
-        if let Some(field) = Field::from_name(name) {
-            issue.set(field, Some(value.clone()));
-        }
+    for (field, value) in &create.fields {
+        issue.set(*field, Some(value.clone()));
     }
-    if data.get("imported").is_some_and(Value::truthy) && !fields.contains_key("created_by") {
+    let given = |field: Field| {
+        create
+            .fields
+            .iter()
+            .find(|(f, _)| *f == field)
+            .map(|(_, value)| value)
+    };
+    if create.imported && given(Field::CreatedBy).is_none() {
         issue.set(Field::CreatedBy, Some(Value::Null)); // the record's author is unknown, not the importer
     }
     for field in REGISTERS {
-        if let Some(value) = fields.get(field.name()) {
+        if let Some(value) = given(field) {
             issue
                 .reg
                 .insert(field, BTreeMap::from([(eid, value.clone())]));
@@ -555,7 +540,7 @@ fn new_issue(event: &Event, key: String, who: &str, when: &str) -> Issue {
         issue.field(Field::Status).cloned().unwrap_or(Value::Null),
     );
     for field in [Field::ClosedAt, Field::CloseReason] {
-        if let Some(value) = fields.get(field.name()) {
+        if let Some(value) = given(field) {
             status.insert(field.name().into(), value.clone());
         }
     }
@@ -566,23 +551,16 @@ fn new_issue(event: &Event, key: String, who: &str, when: &str) -> Issue {
     issue
 }
 
-/// The comments an imported record carried, as Python keeps them: `{"uid": None, **comment}`.
-fn imported_comments(data: &Object) -> Vec<Comment> {
-    let comments = data
-        .get("comments")
-        .and_then(Value::as_array)
-        .unwrap_or_default();
-    comments
-        .iter()
-        .map(|comment| {
-            let mut members = Object::new();
-            members.insert("uid".into(), Value::Null);
-            for (name, value) in comment.as_object().into_iter().flatten() {
-                members.insert(name.clone(), value.clone());
-            }
-            Comment::Imported(members)
-        })
-        .collect()
+/// A comment an imported record carried, as Python keeps it: `{"uid": None, **comment}`.
+fn imported_comment(comment: &Object) -> Comment {
+    let mut members = Object::new();
+    members.insert("uid".into(), Value::Null);
+    members.extend(
+        comment
+            .iter()
+            .map(|(name, value)| (name.clone(), value.clone())),
+    );
+    Comment::Imported(members)
 }
 
 /// Keeps every value its writer had not seen replaced; a write retires only what it observed (plus

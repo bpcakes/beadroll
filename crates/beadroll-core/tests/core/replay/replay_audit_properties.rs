@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 
 use beadroll_core::event::{Field, REGISTERS, REQUIRED_FIELDS};
 use beadroll_core::journal::Journal;
+use beadroll_core::op::PyInt;
 use beadroll_core::query::Edges;
 use beadroll_core::state::State;
 use beadroll_test_support::{Json, json};
@@ -364,6 +365,6 @@ fn causal_write_wins_despite_backwards_clock() {
         drop(event.insert("id".into(), json!("01000000-0000-7000-8000-000000000001")))
     });
     let st = f.state();
-    assert_eq!(issue(&st, &uid).priority(), &json!(4));
+    assert_eq!(issue(&st, &uid).priority(), PyInt::from(4));
     assert!(conflict(&st, issue(&st, &uid), Field::Priority).is_none());
 }

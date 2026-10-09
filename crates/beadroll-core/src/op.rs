@@ -1,0 +1,298 @@
+//! What an event asks replay to do (`docs/RUST-PORT.md` §2.3b): its operation, each with a typed
+//! payload, read the way Python's `apply_event` reads `data` once `payload_problem` has passed it
+//! (`data.get(key) or default`). An event that fails validation is never applied, so its payload is
+//! read leniently: a member of the wrong type reads as absent.
+
+use std::cmp::Ordering;
+use std::fmt;
+
+use crate::event::Field;
+use crate::json::{Int, Object, Value};
+
+/// An integer field as Python holds it: `True` and `False` are integers too, so replay accepts
+/// them where an integer is due (`docs/RUST-PORT.md` §5 row 1). It compares and sorts by its number
+/// (`True` equals 1) and prints as Python's `str()` does (`[PTrue]`).
+#[derive(Clone, Debug)]
+pub enum PyInt {
+    /// `true` or `false`.
+    Bool(bool),
+    /// An integer.
+    Int(Int),
+}
+
+impl PyInt {
+    /// The integer `value` holds, if it holds one (a boolean is one).
+    pub fn read(value: &Value) -> Option<PyInt> {
+        match value {
+            Value::Bool(flag) => Some(PyInt::Bool(*flag)),
+            Value::Int(int) => Some(PyInt::Int(int.clone())),
+            _ => None,
+        }
+    }
+
+    /// Its number: `True` is 1.
+    pub fn number(&self) -> Int {
+        match self {
+            PyInt::Bool(flag) => Int::from(i64::from(*flag)),
+            PyInt::Int(int) => int.clone(),
+        }
+    }
+
+    /// As JSON.
+    pub fn to_value(&self) -> Value {
+        match self {
+            PyInt::Bool(flag) => Value::Bool(*flag),
+            PyInt::Int(int) => Value::Int(int.clone()),
+        }
+    }
+
+    /// Whether it is zero (or `False`): Python's falsiness.
+    pub fn is_zero(&self) -> bool {
+        self.number() == Int::from(0)
+    }
+}
+
+impl From<i64> for PyInt {
+    fn from(value: i64) -> PyInt {
+        PyInt::Int(Int::from(value))
+    }
+}
+
+impl PartialEq for PyInt {
+    fn eq(&self, other: &PyInt) -> bool {
+        self.number() == other.number()
+    }
+}
+
+impl Eq for PyInt {}
+
+impl PartialOrd for PyInt {
+    fn partial_cmp(&self, other: &PyInt) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for PyInt {
+    fn cmp(&self, other: &PyInt) -> Ordering {
+        self.number().cmp(&other.number())
+    }
+}
+
+impl fmt::Display for PyInt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PyInt::Bool(true) => f.write_str("True"),
+            PyInt::Bool(false) => f.write_str("False"),
+            PyInt::Int(int) => write!(f, "{int}"),
+        }
+    }
+}
+
+/// What a create carries.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Create {
+    /// The key it asks for.
+    pub key: String,
+    /// The fields it sets, in the order it lists them.
+    pub fields: Vec<(Field, Value)>,
+    /// Its labels.
+    pub labels: Vec<String>,
+    /// An imported record's fields bead does not know.
+    pub extra: Object,
+    /// An imported record's comments, each as it came.
+    pub comments: Vec<Object>,
+    /// An imported record's dependencies on keys that are not issues yet.
+    pub dangling: Vec<Value>,
+    /// Whether it came from an import.
+    pub imported: bool,
+}
+
+/// What a claim carries.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Claiming {
+    /// `offline` for a provisional claim; `online` when absent or empty.
+    pub mode: Option<String>,
+    /// The claim it takes over.
+    pub takeover: Option<String>,
+    /// Why, for a takeover.
+    pub reason: Option<String>,
+    /// The generation its writer saw.
+    pub generation: Option<PyInt>,
+}
+
+/// What a release, close or delete carries.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Ending {
+    /// The claim it ends, by its event id.
+    pub claim: Option<String>,
+    /// Why.
+    pub reason: Option<String>,
+}
+
+/// An event's operation and its payload.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Op {
+    /// The tracker's prefix and name; the first `init` in causal order sets them.
+    Init {
+        /// The prefix: any JSON value, read with `str()` where a key is made of it.
+        prefix: Option<Value>,
+        /// The name.
+        name: Option<Value>,
+    },
+    /// A new issue.
+    Create(Box<Create>),
+    /// Fields set.
+    Set(Vec<(Field, Value)>),
+    /// A claim.
+    Claim(Claiming),
+    /// The end of a claim by its owner.
+    Release(Ending),
+    /// The issue closed.
+    Close(Ending),
+    /// The issue reopened.
+    Reopen,
+    /// The issue deleted.
+    Delete(Ending),
+    /// A comment.
+    Comment {
+        /// What it says.
+        text: String,
+        /// Who wrote it, when not the event's actor.
+        author: Option<String>,
+    },
+    /// A dependency added.
+    DepAdd {
+        /// The target: an issue's uid, or text that names no issue.
+        to: String,
+        /// Its type; `blocks` when absent or empty.
+        kind: Option<String>,
+        /// Metadata an import carried.
+        meta: Object,
+    },
+    /// Dependencies taken back: those to `to`, or an imported one on `key`.
+    DepRemove {
+        /// The target, as `dep_add` named it.
+        to: Option<String>,
+        /// The key an imported dependency waits for.
+        key: Option<String>,
+        /// The type it takes back; every type when absent.
+        kind: Option<String>,
+    },
+    /// Labels added.
+    LabelAdd(Vec<String>),
+    /// Labels removed.
+    LabelRemove(Vec<String>),
+    /// The labels, set.
+    LabelSet(Vec<String>),
+    /// The stand-in for an id with several contents (or an event that names the operation so).
+    Quarantined,
+    /// The stand-in for a record that is not a valid event (or an event that names the operation
+    /// so).
+    Invalid,
+    /// An operation this bead does not know.
+    Unknown(String),
+}
+
+fn text(data: &Object, key: &str) -> Option<String> {
+    data.get(key).and_then(Value::as_str).map(str::to_owned)
+}
+
+/// `data.get(key) or []`, as strings.
+fn strings(data: &Object, key: &str) -> Vec<String> {
+    let items = data.get(key).and_then(Value::as_array).unwrap_or_default();
+    items
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect()
+}
+
+/// `(data.get("fields") or {}).items()`, as fields.
+fn fields(data: &Object) -> Vec<(Field, Value)> {
+    let members = data
+        .get("fields")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flatten();
+    members
+        .filter_map(|(name, value)| Some((Field::from_name(name)?, value.clone())))
+        .collect()
+}
+
+fn ending(data: &Object) -> Ending {
+    Ending {
+        claim: text(data, "claim"),
+        reason: text(data, "reason"),
+    }
+}
+
+impl Op {
+    /// The operation `name` asks for, its payload read from `data`.
+    pub fn read(name: &str, data: &Object) -> Op {
+        let present = |key: &str| data.get(key).filter(|v| **v != Value::Null).cloned();
+        match name {
+            "init" => Op::Init {
+                prefix: present("prefix"),
+                name: present("name"),
+            },
+            "create" => Op::Create(Box::new(Create {
+                key: text(data, "key").unwrap_or_default(),
+                fields: fields(data),
+                labels: strings(data, "labels"),
+                extra: data
+                    .get("extra")
+                    .and_then(Value::as_object)
+                    .cloned()
+                    .unwrap_or_default(),
+                comments: data
+                    .get("comments")
+                    .and_then(Value::as_array)
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|c| c.as_object().cloned())
+                    .collect(),
+                dangling: data
+                    .get("dangling")
+                    .and_then(Value::as_array)
+                    .unwrap_or_default()
+                    .to_vec(),
+                imported: data.get("imported").is_some_and(Value::truthy),
+            })),
+            "set" => Op::Set(fields(data)),
+            "claim" => Op::Claim(Claiming {
+                mode: text(data, "mode"),
+                takeover: text(data, "takeover"),
+                reason: text(data, "reason"),
+                generation: data.get("generation").and_then(PyInt::read),
+            }),
+            "release" => Op::Release(ending(data)),
+            "close" => Op::Close(ending(data)),
+            "reopen" => Op::Reopen,
+            "delete" => Op::Delete(ending(data)),
+            "comment" => Op::Comment {
+                text: text(data, "text").unwrap_or_default(),
+                author: text(data, "author"),
+            },
+            "dep_add" => Op::DepAdd {
+                to: text(data, "to").unwrap_or_default(),
+                kind: text(data, "type"),
+                meta: data
+                    .get("meta")
+                    .and_then(Value::as_object)
+                    .cloned()
+                    .unwrap_or_default(),
+            },
+            "dep_remove" => Op::DepRemove {
+                to: text(data, "to"),
+                key: text(data, "key"),
+                kind: text(data, "type"),
+            },
+            "label_add" => Op::LabelAdd(strings(data, "labels")),
+            "label_remove" => Op::LabelRemove(strings(data, "labels")),
+            "label_set" => Op::LabelSet(strings(data, "labels")),
+            "quarantined" => Op::Quarantined,
+            "invalid" => Op::Invalid,
+            other => Op::Unknown(other.to_owned()),
+        }
+    }
+}

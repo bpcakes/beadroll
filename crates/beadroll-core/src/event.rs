@@ -5,6 +5,7 @@
 use crate::id::EventId;
 use crate::json::{Int, Object, Value};
 use crate::key::number_too_long;
+use crate::op::PyInt;
 use crate::text::repr_str;
 use crate::time::MAX_MILLIS;
 
@@ -205,13 +206,9 @@ pub fn is_int(value: &Value) -> bool {
     matches!(value, Value::Int(_) | Value::Bool(_))
 }
 
-/// An integer field's value as Python compares it: `True` is 1.
-pub fn int_value(value: &Value) -> Option<Int> {
-    match value {
-        Value::Int(int) => Some(int.clone()),
-        Value::Bool(flag) => Some(Int::from(i64::from(*flag))),
-        _ => None,
-    }
+/// An integer field's number as Python compares it (`True` is 1), if it holds an integer.
+fn number(value: &Value) -> Option<Int> {
+    PyInt::read(value).map(|value| value.number())
 }
 
 /// Python's `isinstance(value, (str, type(None)))`, where `None` also stands for an absent key.
@@ -313,7 +310,7 @@ pub fn fields_problem(fields: &Value, bookkeeping: bool) -> Option<String> {
             return Some(format!("field {} has the wrong type", repr_str(name)));
         }
         if field == Field::Priority
-            && !int_value(value).is_some_and(|p| Int::from(0) <= p && p <= Int::from(4))
+            && !number(value).is_some_and(|p| Int::from(0) <= p && p <= Int::from(4))
         {
             return Some("priority is out of range".into());
         }
@@ -483,7 +480,7 @@ pub fn write_problem(event: &Value) -> Option<String> {
         }
         if name == "estimated_minutes"
             && let Some(value) = value.filter(|v| **v != Value::Null)
-            && !int_value(value).is_some_and(|m| Int::from(0) <= m && m <= Int::from(2_147_483_647))
+            && !number(value).is_some_and(|m| Int::from(0) <= m && m <= Int::from(2_147_483_647))
         {
             return Some("estimated_minutes must be between 0 and 2147483647".into());
         }
