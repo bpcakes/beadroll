@@ -2,7 +2,8 @@
 
 beadroll is a Beads-compatible issue tracker for coding agents working across git worktrees and
 machines. The implementation is the package `beadroll/` (Python 3.11+, standard library only);
-`./bead` runs the working copy, and `uv tool install .` installs it as the `bead` command. `README.md` says
+`./bead` runs the working copy, and `uv tool install .` installs it as the `bead` command. Its Rust
+port (`docs/RUST-PORT.md`) grows beside it in a Cargo workspace until the cutover. `README.md` says
 what it does and why. `docs/REVIEWING.md` is the map of the design, the decisions that are not
 findings, and the rules reviewers work under. `docs/FINDINGS.md` is the ledger of every review finding
 and how it was closed; `docs/reviews/` holds the reports verbatim.
@@ -15,7 +16,7 @@ and how it was closed; `docs/reviews/` holds the reports verbatim.
   state), `queries` (the dependency graph, readiness, presentation, Beads export), `sync` (local
   transactions, the link to the coordination remote, the ownership protocol), `commands`, `cli`.
   `__init__.py` re-exports every name as one namespace for tests and scripts. `pyproject.toml`
-  packages it; nothing else is code.
+  packages it.
 - `tests/` — `unittest` modules by subject: `test_hygiene`, `test_check`, `test_replay`,
   `test_storage`, `test_compat`, `test_commands`, `test_protocol`, `test_hardening`, and the slow
   `test_stress`, `test_sweep`.
@@ -23,6 +24,12 @@ and how it was closed; `docs/reviews/` holds the reports verbatim.
   own homes); `tests/__init__.py` sets a scratch `BEAD_HOME`.
 - `infra/` — drives against real machines and a throwaway GitHub repository; each script's
   docstring says what it needs. `check.sh` is the baseline.
+- `crates/` — the Rust port: `beadroll-core`, `beadroll-git`, `beadroll-store`, `beadroll-sync`,
+  `beadroll` (the `bead` binary) and `beadroll-test-support` (the Rust `tests/support.py`), each
+  with its own `AGENTS.md`; `Cargo.toml`, `Cargo.lock` and `rust-toolchain.toml` are at the root.
+- `xtask/` — `cargo xtask`: `oracle` runs this Python suite against any `bead` binary, without
+  the tests `oracle-skip.txt` lists; `inventory` maps every Python test (`inventory.txt`) to the
+  Rust tests that port it; `timing` records how long a command took.
 
 ## Before you change anything
 
@@ -31,6 +38,11 @@ and how it was closed; `docs/reviews/` holds the reports verbatim.
   `python3 -m unittest tests.test_commands`; one class or test by its dotted name. CI
   (`.github/workflows/check.yml`) runs the fast baseline on every push and pull request, Linux on
   every supported Python and macOS on the newest, and the stress suite nightly or on request.
+- The Rust workspace: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets
+  --all-features --locked -- -D warnings -D clippy::mod_module_files`, `BEAD_UNDER_TEST=$PWD/bead
+  cargo nextest run` (the ported black-box tests pass against Python's launcher until Phase 2d),
+  and `cargo xtask oracle --bead ./bead` (this suite through `BEAD_UNDER_TEST`; it must pass
+  completely). `.github/workflows/rust.yml` runs them on every push and pull request.
 - The default store `~/.local/state/beadroll` holds this repository's own real tracker. The test
   modules set a scratch `BEAD_HOME`; set one yourself for any manual experiment
   (`export BEAD_HOME=$(mktemp -d)`), and never run `bead`, `br` or `bv` inside other repositories
@@ -53,6 +65,11 @@ and how it was closed; `docs/reviews/` holds the reports verbatim.
   to skip the wait between attempts patch `pause`, never the global `time.sleep`. A subprocess
   driver gets every name from `runpy.run_path(bead)` (the launcher re-exports the package) and
   replaces one by setting it on every `beadroll*` module in `sys.modules` (see `tests/test_sweep.py`).
+- Rust code follows `docs/RUST-PORT.md` §2.2 and its crate's `AGENTS.md`. A Python test reaches bead
+  only through `support.BEAD`, which `BEAD_UNDER_TEST` selects. Adding, renaming or removing a
+  Python test updates `xtask/inventory.txt`, and `xtask/oracle-skip.txt` when the test cannot run
+  against another binary: the inventory refuses a list that disagrees with the suite, and the
+  oracle a skip list that names a test the suite does not have.
 - Record deliberate decisions in `docs/REVIEWING.md` §2 and user-facing behaviour in `README.md`; a
   review finding you close gets its row in `docs/FINDINGS.md`. Format 1 is frozen: additions only.
 - Run the fast baseline before committing, the stress suite when the sync protocol changed. The

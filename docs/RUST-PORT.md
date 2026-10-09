@@ -673,7 +673,7 @@ each count means.
 
 1. **The Python suite is the oracle.** `cargo xtask oracle` runs the Python modules with
    `BEAD_UNDER_TEST=target/debug/bead`. It skips, from a checked-in list derived from the
-   catalogues:
+   catalogues (`xtask/oracle-skip.txt`):
    - the driver tests, which `runpy` the launcher and cannot target a binary (20);
    - the in-process-only tests, which would only re-test Python (75);
    - the CLI tests whose verdict comes from patching in-process Python (19);
@@ -685,8 +685,10 @@ each count means.
    reads `AGENTS.md` beside the binary. Phase 0 makes the harness select the binary under test
    everywhere, in the test modules and in the `infra/` drivers they run, and changes no Python
    behaviour. The oracle also makes a bypass fail rather than pass against Python: while it
-   targets another binary, it sets a variable under which Python bead refuses to start. The check
-   lives in `cli.main`, not only in `./bead`, because `V8_Python312` runs a copy of the launcher.
+   targets another binary, it sets a variable under which Python bead refuses to start
+   (`BEADROLL_ORACLE_REFUSALS`, naming the file where each refused start is recorded, so that the
+   test fails even if it expected bead to fail). The check lives in `cli.main`, not only in
+   `./bead`, because `V8_Python312` runs a copy of the launcher.
 
    332 tests run unchanged: 317 drive only the CLI, and 15 also inspect the store with Python's
    replay. 330 of them are in the fast modules, and 27 need Rust's crash-hook aliases. The
@@ -711,9 +713,10 @@ each count means.
      Finding ids sit in every hardening class name and in some method names elsewhere; keeping
      the class segment keeps `FINDINGS.md`'s references valid. `sweep::sweep` needs an `allow` of
      `clippy::module_inception` with its reason.
-   - The inventory fails on any unmapped test. D-class replacements are listed explicitly, so
-     `FINDINGS.md` keeps pointing at real tests. Hardening's catalogue gives some classes one row
-     for several tests ("t1", "t2" in prose); seeding the inventory splits them per method.
+   - The inventory (`xtask/inventory.txt`) fails on any unmapped test. D-class replacements are
+     listed explicitly, so `FINDINGS.md` keeps pointing at real tests. Hardening's catalogue gives
+     some classes one row for several tests ("t1", "t2" in prose); seeding the inventory splits
+     them per method.
 3. **Differential testing against CPython.**
    - `cargo xtask diff replay` builds journals:
      - every fixture the Python tests construct;
@@ -1447,6 +1450,7 @@ decision 7 open. The five decisions stand.
 | `BEAD_TEST_CRASH_BEFORE_PUSH`, `BEAD_TEST_CRASH_AFTER_PUSH` | Crash hooks, exits 98 and 99; aliases of failpoints |
 | `BEAD_FAILPOINTS` | New: §4.5 |
 | `BEAD_UNDER_TEST` | Read by test harnesses and retained local infrastructure drivers: explicit binary under test |
+| `BEADROLL_ORACLE_REFUSALS` | Set by `cargo xtask oracle` while it targets a binary other than `./bead`: Python bead refuses to start (exit 3) and records the attempt in the file it names (§4.2) |
 | `PYTHONINTMAXSTRDIGITS` | CPython setting: oracle pins 4300; upgrade preflight checks the old runtime's effective limit (§8); not a Rust product setting |
 | `BEAD_SWEEP`, `BEAD_SWEEP_GC`, `BEAD_SWEEP_CONCURRENT` | Read by the sweep only: `full` runs all 660 schedules; `BEAD_SWEEP_GC=1` runs `git gc --prune=now` on the remote after every push, and `BEAD_SWEEP_CONCURRENT=1` runs the two follow-ups at once |
 | `BEAD_TEST_REMOTE`, `BEAD_DRIVE_HOSTS`, `BEAD_TEST_LOCAL_REPO` | Read by `infra/` only |

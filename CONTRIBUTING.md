@@ -1,7 +1,9 @@
 # Contributing
 
 Thanks for looking. beadroll is small and deliberately boring: one package, the
-standard library, git. The rules below are the ones that keep it that way.
+standard library, git. The rules below are the ones that keep it that way. Its
+Rust port (`docs/RUST-PORT.md`) grows beside the package in a Cargo workspace until
+the cutover.
 
 ## Setup
 
@@ -14,6 +16,14 @@ git clone https://github.com/bpcakes/beadroll && cd beadroll
 Python 3.11+ and git 2.40+. No dependencies, so no virtual environment is
 needed for development; `uv tool install --force .` installs the working copy
 as the `bead` command if you want it on your PATH.
+
+The Rust workspace needs rustup, which installs the pinned toolchain
+(`rust-toolchain.toml`, 1.99.0) on first use, and cargo-nextest:
+
+```sh
+BEAD_UNDER_TEST=$PWD/bead cargo nextest run   # the Rust tests; ported ones run against Python's launcher
+cargo xtask oracle --bead ./bead              # this Python suite through BEAD_UNDER_TEST
+```
 
 ## The one rule about stores
 
@@ -34,6 +44,8 @@ a throwaway remote of your own.
   `test_compat`, `test_commands`, `test_protocol`, `test_hardening`; the slow
   `test_stress` and `test_sweep`; `test_hygiene` and `test_check`). `tests/support.py` has the
   sandbox and the `Machine` helper.
+- `crates/` and `xtask/` — the Rust port's workspace; each crate's `AGENTS.md`
+  says what it owns.
 - `README.md` is what the tool does; `docs/REVIEWING.md` is the map of the design
   and the list of deliberate decisions; `docs/FINDINGS.md` is the ledger of every
   review finding and how it was closed.
@@ -55,7 +67,9 @@ a throwaway remote of your own.
    `README.md`. Keep the two agent texts (`bead prime`, `bead onboard`) true:
    `AGENTS.md` carries the onboard block verbatim and a test checks that.
 5. Run `./check.sh` before opening a pull request; CI runs it on Linux and
-   macOS. Run `./check.sh --stress` when you touched the sync protocol.
+   macOS. Run `./check.sh --stress` when you touched the sync protocol. A change
+   to the Rust workspace or the test harness also passes the checks of
+   `.github/workflows/rust.yml` (`AGENTS.md` lists them).
 6. Commit messages say what changed in behaviour, in prose; the subject line
    is the change, not the file.
 

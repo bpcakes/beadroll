@@ -340,6 +340,15 @@ holds the sandbox: every test builds its own repository, bare remotes and machin
 homes in a temporary directory, and the package sets a scratch `BEAD_HOME` so the
 default store is never touched.
 
+Every test that runs bead runs the one `BEAD_UNDER_TEST` names, by default the
+checkout's `./bead`. That is how the Rust port (`docs/RUST-PORT.md`, a Cargo
+workspace beside the package) is held to this suite: `cargo xtask oracle` runs it
+against any `bead` binary, leaving out only the tests that cannot target one
+(`xtask/oracle-skip.txt`). While it targets another binary it sets
+`BEADROLL_ORACLE_REFUSALS`, under which Python bead refuses to start, so a test
+that slipped past `BEAD_UNDER_TEST` fails instead of passing on Python.
+`cargo xtask inventory` lists every test here with the Rust test that ports it.
+
 Seven independent reviews have been run against the code. Their reports are kept
 verbatim under `docs/reviews/`; `docs/FINDINGS.md` is the ledger of every finding, its status,
 how it was resolved and which tests cover it. `docs/REVIEWING.md` is the brief for the

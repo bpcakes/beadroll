@@ -13,6 +13,11 @@ versioned separately (format 1, frozen; see *Format and upgrades* in the README)
   or `--epic` included) are a `USAGE` error.
 - Verification fails on every selected protocol-sweep failure, including the previously
   exempt G12 scenarios; the default slice covers interrupted owner close/delete retries.
+- The Rust port's foundations (`docs/RUST-PORT.md`, Phase 0): a Cargo workspace beside the
+  package, its CI, and `cargo xtask oracle`, which runs this test suite against any `bead`
+  binary. The tests and the `infra/` drivers they run (`compat_real.py`, `roundtrip.py`) now
+  run the bead `BEAD_UNDER_TEST` names, and Python bead refuses to start while
+  `BEADROLL_ORACLE_REFUSALS` is set. Nothing else changes for users.
 - `check.sh --real` reports failure when the round-trip driver fails, a bead command fails,
   or exported records differ, and preserves the full failing report. Imports stay offline
   in the scratch store.
