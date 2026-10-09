@@ -48,8 +48,12 @@ usage: cargo xtask <command>
       differing case is kept in target/diff/ to rerun alone with --fixtures.
 
   timing [--label NAME] [--out FILE] -- COMMAND [ARG...]
+  timing --replay N [--label NAME] [--out FILE]
       Run COMMAND and append what it took, one JSON line, to FILE (default
-      target/timing.jsonl). Timings are evidence, never a gate (docs/RUST-PORT.md §4.7).
+      target/timing.jsonl); or replay a parsed journal of N valid events in-process, the best of
+      seven runs, with Python's replay of the same journal beside it (run it from a release
+      build: cargo run --release --package xtask -- timing --replay 10000). Timings are
+      evidence, never a gate (docs/RUST-PORT.md §4.7).
 ";
 
 fn main() -> ExitCode {

@@ -1,6 +1,9 @@
 //! `cargo xtask timing`: runs a command and records what it took as one JSON line, evidence for
-//! the budgets of `docs/RUST-PORT.md` §4.7 and Appendix A. A timing never decides whether
-//! anything passes.
+//! the budgets of `docs/RUST-PORT.md` §4.7 and Appendix A. With `--replay N` it times
+//! beadroll-core's replay of N events in-process instead ([`replay`]). A timing never decides
+//! whether anything passes.
+
+mod replay;
 
 use std::ffi::OsString;
 use std::fs::OpenOptions;
@@ -16,6 +19,8 @@ struct Options {
     label: Option<String>,
     out: Option<PathBuf>,
     command: Vec<OsString>,
+    /// Time replay of this many events instead of a command.
+    replay: Option<usize>,
 }
 
 fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
@@ -23,6 +28,7 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
         label: None,
         out: None,
         command: Vec::new(),
+        replay: None,
     };
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
@@ -34,6 +40,13 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
         match text.as_str() {
             "--label" => options.label = Some(value("--label")?.to_string_lossy().into_owned()),
             "--out" => options.out = Some(PathBuf::from(value("--out")?)),
+            "--replay" => {
+                let count = value("--replay")?.to_string_lossy().into_owned();
+                let count = count.parse().map_err(|_| {
+                    Failure::Usage(format!("--replay takes a number of events, not {count}"))
+                })?;
+                options.replay = Some(count);
+            }
             "--" => {
                 options.command = args.collect();
                 break;
@@ -45,8 +58,10 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
             }
         }
     }
-    if options.command.is_empty() {
-        return Err(Failure::Usage("timing needs a command after --".into()));
+    if options.command.is_empty() && options.replay.is_none() {
+        return Err(Failure::Usage(
+            "timing needs --replay N, or a command after --".into(),
+        ));
     }
     Ok(options)
 }
@@ -57,6 +72,14 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
         Some(out) => out,
         None => workspace::target_dir()?.join("timing.jsonl"),
     };
+    if let Some(count) = options.replay {
+        let started = SystemTime::now();
+        let measured = replay::measure(count, options.label.as_deref())?;
+        let line = format!("{measured}{}", context(started));
+        append(&out, &line)?;
+        println!("timing: {line}\nrecorded in {}", out.display());
+        return Ok(ExitCode::SUCCESS);
+    }
     let (program, args) = options
         .command
         .split_first()
@@ -147,6 +170,23 @@ impl Record<'_> {
             json_string(std::env::consts::ARCH),
         )
     }
+}
+
+/// The rest of a record: when, at which commit, and on what machine, closing the object.
+fn context(started: SystemTime) -> String {
+    let commit = git(&["rev-parse", "HEAD"]).map(|out| out.trim().to_owned());
+    let dirty = git(&["status", "--porcelain"]).map(|out| !out.trim().is_empty());
+    let cpus = std::thread::available_parallelism().map_or(0, usize::from);
+    format!(
+        "\"started\": {}, \"commit\": {}, \"dirty\": {}, \"os\": {}, \"arch\": {}, \"cpus\": {cpus}}}",
+        json_string(&utc(started)),
+        commit
+            .as_deref()
+            .map_or_else(|| "null".to_owned(), json_string),
+        dirty.map_or("null", |dirty| if dirty { "true" } else { "false" }),
+        json_string(std::env::consts::OS),
+        json_string(std::env::consts::ARCH),
+    )
 }
 
 /// `2026-10-09T15:04:05Z`, in UTC, to the second.
