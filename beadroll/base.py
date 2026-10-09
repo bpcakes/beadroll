@@ -4,6 +4,7 @@ from __future__ import annotations
 import contextlib
 import errno
 import json
+import math
 import os
 import re
 import secrets
@@ -53,11 +54,41 @@ def _reject_constant(value: str):
     raise ValueError(f"{value} is not a JSON number")
 
 
+def _finite_float(text: str) -> float:
+    """A number too large for a float (1e400) would read as infinity: it is not a JSON number either."""
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError(f"{text} is not a JSON number")
+    return value
+
+
+MAX_DEPTH = 512  # arrays and objects in one JSON text: every Python bead supports reads this far (3.11 stops near 950)
+NESTING = re.compile(r'"(?:[^"\\]|\\.)*"?|[\[\]{}]', re.S)  # a string is one token: brackets inside it do not count
+
+
+def nesting(text: str) -> int:
+    """How deeply a JSON text nests arrays and objects, found without parsing it."""
+    depth = deepest = 0
+    for token in NESTING.findall(text):
+        if token in ("[", "{"):
+            depth += 1
+            deepest = max(deepest, depth)
+        elif token in ("]", "}"):
+            depth -= 1
+    return deepest
+
+
 def loads_strict(text):
-    """JSON as the standard defines it: NaN and Infinity are refused, not smuggled into exports.
-    Nesting deeper than this Python can parse is unreadable JSON like any other, not a crash."""
+    """JSON as the standard defines it, read alike by every bead whatever its Python. Bytes are UTF-8,
+    never an encoding guessed from their first bytes (a lone surrogate is kept for the caller to report).
+    NaN, Infinity and numbers too large for a float are refused, not smuggled into exports. A text that
+    nests deeper than MAX_DEPTH is unreadable JSON like any other, before json tries it."""
+    if isinstance(text, (bytes, bytearray)):
+        text = bytes(text).decode("utf-8", "surrogatepass")
+    if text.count("[") + text.count("{") > MAX_DEPTH and nesting(text) > MAX_DEPTH:
+        raise ValueError(f"nested deeper than {MAX_DEPTH} levels")
     try:
-        return json.loads(text, parse_constant=_reject_constant)
+        return json.loads(text, parse_constant=_reject_constant, parse_float=_finite_float)
     except RecursionError:
         raise ValueError("nested deeper than this Python can parse") from None
 
@@ -132,8 +163,9 @@ def shown(text: str) -> str:
 def without_password(url: str) -> tuple[str, bool]:
     """A remote URL with any password removed from its user-info part, and whether one was there.
     bead never stores or uses an embedded password: git's credential helpers are the place for it."""
-    # git's `<transport>::<address>` form hands the address, password included, to the remote helper
-    match = re.match(r"(?i)^((?:[a-z][a-z0-9+.-]*::)?([a-z][a-z0-9+.-]*)://)(.*)$", url, re.S)
+    # git's `<transport>::<address>` form hands the address, password included, to the remote helper. A
+    # scheme is ASCII: case-insensitive matching must not let "ſ" (U+017F) or "K" (U+212A) stand for a letter.
+    match = re.match(r"(?ai)^((?:[a-z][a-z0-9+.-]*::)?([a-z][a-z0-9+.-]*)://)(.*)$", url, re.S)
     if not match:
         return url, False
     scheme, inner, rest = match.group(1), match.group(2).lower(), match.group(3)
@@ -158,7 +190,7 @@ def normalize_remote(url: str) -> str:
     u = url.strip()
     if os.path.exists(u):
         return re.sub(r"\.git/?$", "", os.path.realpath(u)).lower()
-    u = re.sub(r"(?i)^[a-z][a-z0-9+.-]*://", "", u)
+    u = re.sub(r"(?ai)^[a-z][a-z0-9+.-]*://", "", u)  # an ASCII scheme, as in without_password
     u = re.sub(r"^[^@/]+@", "", u)
     if re.match(r"^[^/:]+:[^/0-9]", u):
         u = u.replace(":", "/", 1)

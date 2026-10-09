@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .base import (
     BLOCKING, BeadError, DONE, EXPORT_FIELDS, FORMAT, ICON,
-    IMPORT_FIELDS, MAX_NESTING, STATUSES, __version__, event_millis, event_time,
+    IMPORT_FIELDS, LONE_SURROGATE, MAX_NESTING, STATUSES, __version__, event_millis, event_time,
     git_text, hung_up, loads_strict, read_utf8, run_git, too_deep,
     uuid7, without_password,
 )
@@ -124,6 +124,8 @@ def import_records(tx: Tx, path: str) -> int:
     except ValueError as error:
         raise BeadError("VALIDATION", f"{path} is not valid JSONL: {error}") from None
     for number, rec in enumerate(records, 1):
+        if LONE_SURROGATE.search(json.dumps(rec, ensure_ascii=False)):  # an escaped lone surrogate is not text
+            raise BeadError("VALIDATION", f"{path}:{number}: text is not valid UTF-8")
         if not isinstance(rec, dict) or not isinstance(rec.get("id"), str) or not rec["id"]:
             raise BeadError("VALIDATION", f"{path}:{number}: record has no string 'id'")
         comments = rec.get("comments") or []

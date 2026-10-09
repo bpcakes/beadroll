@@ -395,9 +395,9 @@ def complete_prefix(data: bytes) -> bytes:
         return data
     cut = data.rfind(b"\n") + 1
     try:
-        json.loads(data[cut:])
+        loads_strict(data[cut:])  # read as strictly as every other record: NaN is not a complete one
         return data + b"\n"
-    except (ValueError, RecursionError):
+    except ValueError:
         return data[:cut]
 
 
@@ -412,7 +412,7 @@ def repair_tail(path: Path):
     write_atomic(path, fixed)
 
 
-UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+UUID_RE = re.compile(r"\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")  # whole: no trailing newline
 OWNERSHIP = {"claim", "release"}  # events settled with the remote; they live as one file each
 
 

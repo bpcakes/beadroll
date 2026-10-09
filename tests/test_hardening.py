@@ -6513,5 +6513,20 @@ class V7_NormalizeRemote(unittest.TestCase):
         self.assertEqual(len({self.bead.normalize_remote(u) for u in ports}), 3)
 
 
+# ---- the Rust port's Phase 1 (roll-k2wy.2): input CPython read by accident is refused by every bead
+class U06_UrlSchemesAreAscii(unittest.TestCase):
+    def test_a_scheme_is_ascii_whatever_case_folding_would_allow(self):
+        """U06 (docs/RUST-PORT.md §5 row 24): case-insensitive [a-z] also matched ſ (U+017F) and K (U+212A),
+        so `httpſ://host/x` derived the workspace id of `https://host/x` and was read as an https URL. A
+        scheme is ASCII, as git reads one; with any other letter the string has no scheme at all."""
+        bead = support.load_module()
+        self.assertEqual(bead.normalize_remote("HTTPS://Host/X.git"), "host/x")  # ASCII case still folds
+        self.assertEqual(bead.without_password("HTTPS://user:secret@host/x"), ("HTTPS://host/x", True))
+        self.assertEqual(bead.normalize_remote("http\u017f://host/x"), "http\u017f://host/x")
+        for url in ("http\u017f://user@host/x", "\u212aeep://user@host/x"):
+            with self.subTest(url=url):
+                self.assertEqual(bead.without_password(url), (url, False))
+
+
 if __name__ == "__main__":
     unittest.main()

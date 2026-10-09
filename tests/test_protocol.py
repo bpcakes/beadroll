@@ -1204,5 +1204,76 @@ class ProtocolReview4(unittest.TestCase):
         self.assertIn("future-state.bin", names)
 
 
+# ---- the Rust port's Phase 1 (roll-k2wy.2): input CPython read by accident is refused by every bead
+class PortAlignment(unittest.TestCase):
+    """U05 (docs/FINDINGS.md; docs/RUST-PORT.md §5 row 23): the torn-tail repair and the published manifest
+    were read with plain json.loads, where NaN parses and a format of true or 1.0 equals 1."""
+
+    def setUp(self):
+        self.box = support.Sandbox()
+        self.addCleanup(self.box.cleanup)
+        self.a = support.Machine(self.box, "u05-a")
+        self.a.bead("init", "--prefix", "ex")
+        self.a.bead("create", "published")
+        self.a.bead("sync")
+
+    def remote(self, *args, data=None) -> str:
+        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        env.update(GIT_DIR=str(self.box.origin), GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.invalid",
+                   GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.invalid")
+        return subprocess.run(["git", *args], input=data, env=env, capture_output=True, check=True).stdout.decode().strip()
+
+    def publish_manifest(self, manifest: bytes) -> str:
+        """Point the remote's journal ref at a commit holding the same journals and `manifest`; the commit."""
+        tip = self.remote("rev-parse", "refs/beads/journal")
+        events = self.remote("rev-parse", f"{tip}:events")
+        blob = self.remote("hash-object", "-w", "--stdin", data=manifest)
+        tree = self.remote("mktree", data=f"040000 tree {events}\tevents\n100644 blob {blob}\tmanifest.json\n".encode())
+        commit = self.remote("commit-tree", tree, "-p", tip, "-m", "a manifest no bead wrote")
+        self.remote("update-ref", "refs/beads/journal", commit, tip)
+        return commit
+
+    def test_u05_a_manifest_that_only_equals_format_1_is_refused(self):
+        workspace = self.a.store().name
+        for spelling, code in (("true", "FORMAT_UNSUPPORTED"), ("1.0", "FORMAT_UNSUPPORTED"),
+                               ('1, "note": NaN', "MANIFEST_MISSING")):
+            with self.subTest(format=spelling):
+                tip = self.publish_manifest(f'{{"format": {spelling}, "workspace": "{workspace}"}}\n'.encode())
+                self.assertEqual(support.code(self.a.run("sync", "--json")), code)
+                self.assertEqual(self.remote("rev-parse", "refs/beads/journal"), tip)  # nothing rewritten
+
+    def test_u06_only_segments_numbered_in_ascii_digits_are_merged(self):
+        """U06 (docs/RUST-PORT.md §5 row 24): the merge took any Unicode digits for a segment's number, so a
+        published `events/<machine>/٠٠٠٠٠١.jsonl` was copied in and read as a journal."""
+        tip = self.remote("rev-parse", "refs/beads/journal")
+        planted = {"v": 1, "id": "019a5555-5555-7000-8000-000000000001", "replica": "ffffffff", "deps": [],
+                   "actor": {"agent": "test"}, "op": "create", "issue": "019a5555-5555-7000-8000-000000000001",
+                   "data": {"key": "ex-planted", "fields": {"title": "planted"}}}
+        blob = self.remote("hash-object", "-w", "--stdin", data=json.dumps(planted).encode() + b"\n")
+        name = "٠" * 5 + "١.jsonl"
+        folder = self.remote("mktree", data=f"100644 blob {blob}\t{name}\n".encode())
+        listing = self.remote("ls-tree", f"{tip}:events")
+        events = self.remote("mktree", data=f"{listing}\n040000 tree {folder}\tffffffff\n".encode())
+        manifest = self.remote("rev-parse", f"{tip}:manifest.json")
+        tree = self.remote("mktree", data=f"040000 tree {events}\tevents\n100644 blob {manifest}\tmanifest.json\n".encode())
+        commit = self.remote("commit-tree", tree, "-p", tip, "-m", "a segment no bead wrote")
+        self.remote("update-ref", "refs/beads/journal", commit, tip)
+        b = support.Machine(self.box, "u06-b")
+        b.bead("sync")
+        self.assertEqual({i["title"] for i in b.bead("list", "--all", "--limit", "0")["issues"]}, {"published"})
+        self.assertFalse((b.store() / "events" / "ffffffff" / name).exists())
+
+    def test_u05_a_torn_tail_holding_nan_is_cut_and_kept_aside(self):
+        own = self.a.bead("info")["machine"]
+        segment = sorted((self.a.store() / "events" / own).glob("*.jsonl"))[-1]
+        before, fragment = segment.read_bytes(), b'{"v":1,"note":NaN}'
+        segment.write_bytes(before + fragment)
+        self.a.bead("create", "after the fragment")
+        self.assertTrue(segment.read_bytes().startswith(before))
+        self.assertNotIn(b"NaN", segment.read_bytes())
+        self.assertEqual([p.read_bytes() for p in segment.parent.glob(f"{segment.name}.torn-*")], [fragment])
+        self.assertEqual(self.a.bead("info")["integrity"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

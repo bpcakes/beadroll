@@ -1342,5 +1342,181 @@ class Review5Replay(unittest.TestCase):
         self.assertIsInstance(exported.get("comments", []), list)
 
 
+# ---- the Rust port's Phase 1 (roll-k2wy.2): input CPython read by accident is refused by every bead
+class PortAlignment(unittest.TestCase):
+    """U01-U04 and U06-U10 (docs/FINDINGS.md; docs/RUST-PORT.md §5 rows 3, 6, 7, 22, 24, 25 and 27-29):
+    what a journal line means no longer depends on the Python reading it, and nothing a create carries
+    breaks a query, so Python and Rust beads agree."""
+
+    @staticmethod
+    def event(number, op, replica="a", deps=(), issue=None, data=None):
+        event_id = f"019a5555-5555-7000-8000-{number:012x}"
+        return {"v": 1, "id": event_id, "replica": replica, "deps": list(deps),
+                "actor": {"agent": "test", "thread": replica}, "op": op, "issue": issue or event_id, "data": data or {}}
+
+    def read(self, bead, *lines: bytes):
+        """A segment of these lines, each terminated: what it yields and what it reports."""
+        problems = []
+        events = bead.read_segment(b"".join(line + b"\n" for line in lines), "a/000001.jsonl", problems)
+        return events, [problem["problem"] for problem in problems]
+
+    def line(self, number, **data) -> bytes:
+        return json.dumps(self.event(number, "init", data=data), separators=(",", ":")).encode()
+
+    def test_u01_numbers_beyond_a_float_are_not_json_numbers(self):
+        """U01: 1e400 read as infinity, which no export can write; like NaN, it is refused."""
+        bead = support.load_module()
+        for text in ("1e400", "-1e400", "1E400", "[2.5e308]", '{"x": NaN}', "Infinity"):
+            with self.subTest(text=text):
+                with self.assertRaisesRegex(ValueError, "is not a JSON number"):
+                    bead.loads_strict(text)
+        self.assertEqual(bead.loads_strict("[1e308, -0.0, 5e-324]"), [1e308, -0.0, 5e-324])
+        events, problems = self.read(bead, self.line(1).replace(b'"data":{}', b'"data":{"x":1e400}'), self.line(2))
+        self.assertEqual([event["id"] for event in events], [self.event(2, "init")["id"]])
+        self.assertEqual(problems, ["line is not valid JSON"])
+
+    def test_u02_ids_and_deps_with_a_trailing_newline_are_not_uuids(self):
+        """U02: `$` let an id or a dependency end in a newline; ids match the UUID shape whole."""
+        bead = support.load_module()
+        create = self.event(1, "init", data={"prefix": "ex"})
+        self.assertIsNone(bead.event_problem(create))
+        self.assertEqual(bead.event_problem({**create, "id": create["id"] + "\n"}), "id is not a UUID")
+        self.assertEqual(bead.event_problem({**create, "deps": [create["id"] + "\n"]}), "deps is not a list of event ids")
+        journal = bead.Journal()
+        journal.add({**create, "id": create["id"] + "\n"}, "a")
+        state = bead.replay(journal)
+        self.assertIsNone(state.prefix)
+        self.assertEqual([row["problem"] for row in state.integrity], ["id is not a UUID"])
+
+    def test_u03_nesting_deeper_than_512_levels_is_unreadable_on_every_python(self):
+        """U03: Python 3.11 read about 950 levels, 3.12 and 3.13 about 10,000, 3.14 over 100,000; every
+        bead now reads 512 and no deeper, counting brackets in strings for nothing."""
+        bead = support.load_module()
+        self.assertEqual(bead.MAX_DEPTH, 512)
+        self.assertEqual(bead.nesting(json.dumps(bead.loads_strict("[" * 512 + "]" * 512))), 512)
+        with self.assertRaisesRegex(ValueError, "nested deeper than 512 levels"):
+            bead.loads_strict("[" * 513 + "]" * 513)
+        self.assertEqual(bead.loads_strict('["' + "[{" * 600 + '"]'), ["[{" * 600])
+        deep, fine = ("[" * depth + "]" * depth for depth in (511, 510))  # the event's data adds one level
+        events, problems = self.read(bead, self.line(1).replace(b'"data":{}', b'"data":{"x":' + deep.encode() + b"}"),
+                                     self.line(2).replace(b'"data":{}', b'"data":{"x":' + fine.encode() + b"}"))
+        self.assertEqual([event["id"] for event in events], [self.event(2, "init")["id"]])
+        self.assertEqual(problems, ["line is not valid JSON"])
+
+    def test_u04_journal_lines_are_utf8_whatever_their_first_bytes(self):
+        """U04: json.loads on bytes guessed UTF-16 or UTF-32 from the first bytes and skipped a UTF-8 BOM,
+        so such a line was an event; a journal line is UTF-8, and anything else is unreadable."""
+        bead = support.load_module()
+        text = self.line(1).decode()
+        for name, line in (("bom", b"\xef\xbb\xbf" + text.encode()), ("utf-16-le", text.encode("utf-16-le")),
+                           ("utf-16-be", text.encode("utf-16-be")), ("utf-32", text.encode("utf-32")),
+                           ("latin-1", text.replace('"test"', '"tést"').encode("latin-1"))):
+            with self.subTest(encoding=name):
+                events, problems = self.read(bead, line, self.line(2))
+                self.assertEqual([event["id"] for event in events], [self.event(2, "init")["id"]])
+                self.assertEqual(problems, ["line is not valid JSON"])
+        # still UTF-8, surrogates and all: a raw lone surrogate reads as U+FFFD, reported
+        events, problems = self.read(bead, text.replace('"test"', '"t\\ud800"').encode())
+        self.assertEqual(events[0]["actor"]["agent"], "t�")
+        self.assertEqual(problems, ["text is not valid UTF-8; it reads as U+FFFD"])
+
+    def test_u06_key_numbers_are_ascii_digits(self):
+        """U06: \\d matched any Unicode digit, so a renamed copy of `x.٣` became `x.3` and a child of a
+        parent with child `p.١` counted on from 1; a key's number is ASCII digits only."""
+        bead = support.load_module()
+        init = self.event(1, "init", "seed", data={"prefix": "ex"})
+        parent = self.event(2, "create", "seed", [init["id"]], data={"key": "ex-p", "fields": {"title": "p"}})
+        child = self.event(3, "create", "seed", [parent["id"]], data={"key": "ex-p.١", "fields": {"title": "c"}})
+        first = self.event(4, "create", "a", [init["id"]], data={"key": "x.٣", "fields": {"title": "one"}})
+        second = self.event(5, "create", "b", [init["id"]], data={"key": "x.٣", "fields": {"title": "two"}})
+        journal = bead.Journal()
+        for event in (init, parent, child, first, second):
+            journal.add(event, event["replica"])
+        state = bead.replay(journal)
+        renamed = state.issues[second["id"]]["id"]
+        self.assertTrue(renamed.startswith("x.٣") and len(renamed) > len("x.٣"), renamed)
+        self.assertEqual(state.renames, [{"from": "x.٣", "to": renamed, "replica": "b", "uid": second["id"]}])
+        self.assertEqual(bead.mint_key(state, "seed", state.issues[parent["id"]]), "ex-p.1")
+
+    def test_u07_payloads_that_reached_the_last_resort_are_refused_by_name(self):
+        """U07: three payloads raised inside replay, which then stored Python's exception text (different
+        on every Python version); they are refused when validated, with the same text everywhere."""
+        bead = support.load_module()
+        init = self.event(1, "init", "seed", data={"prefix": "ex"})
+        target = self.event(2, "create", "seed", [init["id"]], data={"key": "ex-t", "fields": {"title": "t"}})
+        taken = self.event(3, "create", "seed", [target["id"]], data={"key": "x." + "1" * 4301, "fields": {"title": "x"}})
+        rows = {"dep_add event has a malformed 'meta'": {"to": target["id"], "meta": [1]},
+                "dep_remove event has a malformed 'key'": {"to": target["id"], "key": ["ex-t"]}}
+        journal, previous = bead.Journal(), taken
+        for event in (init, target, taken):
+            journal.add(event, event["replica"])
+        for number, (problem, data) in enumerate(rows.items(), 4):
+            op = problem.split()[0]
+            event = self.event(number, op, "seed", [previous["id"]], target["id"], data)  # one chain: each builds on the last
+            self.assertEqual(bead.payload_problem(event), problem)
+            journal.add(event, "seed")
+            previous = event
+        state = bead.replay(journal)
+        found = sorted(row["problem"] for row in state.integrity)
+        self.assertEqual(found, sorted([*rows, "create event has no valid 'key'"]))
+        self.assertFalse(any("could not be applied" in problem for problem in found))
+        # a renamed copy counts up from its number, and 10**4300 has one digit too many to print
+        self.assertEqual(bead.payload_problem(self.event(9, "create", data={"key": "x." + "9" * 4300})),
+                         "create event has no valid 'key'")
+        nines = "x." + "9" * 4299
+        journal = bead.Journal()
+        for number, replica in ((10, "a"), (11, "b")):
+            journal.add(self.event(number, "create", replica, data={"key": nines}), replica)
+        state = bead.replay(journal)
+        self.assertEqual([issue["id"] for issue in state.issues.values()], [nines, "x.1" + "0" * 4299])
+        self.assertEqual(state.integrity, [])
+
+    def test_u08_imported_comments_carry_neither_a_uid_nor_a_where(self):
+        """U08: a create's comments are imported ones. One naming a uid or a where, which only a comment made
+        here has, broke `show` or `export` (a where that is not an object, a uid that is not a string) or
+        exported as a comment made here; it is refused."""
+        bead = support.load_module()
+        comment = {"text": "hi", "author": None, "created_at": None}
+        for extra in ({"uid": 5}, {"uid": "x"}, {"uid": None}, {"where": None}, {"where": {"branch": "b"}}):
+            with self.subTest(extra=extra):
+                create = self.event(2, "create", data={"key": "ex-1", "comments": [{**comment, **extra}]})
+                self.assertEqual(bead.payload_problem(create), "create event has a malformed comment")
+        init = self.event(1, "init", data={"prefix": "ex"})
+        kept = self.event(2, "create", deps=[init["id"]], data={"key": "ex-1", "comments": [comment, {**comment, "legacy_id": 7}]})
+        refused = self.event(3, "create", deps=[kept["id"]], data={"key": "ex-2", "comments": [{**comment, "where": None}]})
+        journal = bead.Journal()
+        for event in (init, kept, refused):
+            journal.add(event, "a")
+        state = bead.replay(journal)
+        self.assertEqual(list(state.issues), [kept["id"]])
+        self.assertEqual([row["problem"] for row in state.integrity], ["create event has a malformed comment"])
+        self.assertEqual([c["id"] for c in bead.detail(state, state.issues[kept["id"]])["comments"]], [None, 7])
+        self.assertEqual([c["id"] for c in bead.export_records(state)[0]["comments"]], [None, 7])
+
+    def test_u10_a_quarantined_id_names_its_issue_only_by_a_string(self):
+        """U10: the stand-in for an id with several contents named the issue of the copy placed first; when
+        no copy was valid that could be a list or an object, and replay failed hashing it."""
+        bead = support.load_module()
+        for issue, shown in (([1], None), ({"a": 1}, None), (5, None), ("ex-1", "ex-1")):
+            with self.subTest(issue=issue):
+                first = {**self.event(1, "create"), "issue": issue}
+                journal = bead.Journal()
+                for data in ({}, {"x": 1}):
+                    journal.add({**first, "data": data}, "a")
+                state = bead.replay(journal)
+                self.assertEqual(state.integrity, [{"event": first["id"], "issue": shown,
+                                                    "problem": "one event id with different contents"}])
+
+    def test_u09_a_create_cannot_clear_created_at(self):
+        """U09: an issue created with `created_at: null` (an import of such a record) made `list` and `ready`
+        fail comparing its time with the others'; a create cannot clear it, as it cannot clear a title."""
+        bead = support.load_module()
+        create = self.event(1, "create", data={"key": "ex-1", "fields": {"created_at": None}})
+        self.assertEqual(bead.payload_problem(create), "field 'created_at' cannot be cleared")
+        for name in ("updated_at", "created_by", "closed_at"):
+            with self.subTest(field=name):
+                self.assertIsNone(bead.payload_problem(self.event(1, "create", data={"key": "ex-1", "fields": {name: None}})))
+
+
 if __name__ == "__main__":
     unittest.main()

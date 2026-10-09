@@ -1130,6 +1130,36 @@ class Review5CLI(unittest.TestCase):
         exported = machine.run("export")
         self.assertEqual(exported.returncode, 0, exported.stderr)
 
+    def test_u09_a_record_without_a_creation_time_is_not_imported(self):
+        """U09 (docs/FINDINGS.md): a record whose created_at is null imported, and then `list` failed comparing
+        times; the import fails whole instead, and the tracker keeps listing."""
+        machine = self.machine("u09-created")
+        machine.bead("create", "listed first")
+        source = self.box.root / "no-creation-time.jsonl"
+        source.write_text(json.dumps({"id": "ex-untimed", "title": "no time", **COMMON, "created_at": None}) + "\n")
+        imported = machine.run("import", str(source), "--json")
+        self.assertEqual(imported.returncode, 1, imported.stdout)
+        self.assertEqual(strict_json(imported.stderr)["error"],
+                         {"code": "VALIDATION", "message": "record 'ex-untimed' cannot be imported: field 'created_at' cannot be cleared"})
+        self.assertEqual([i["title"] for i in machine.bead("list")["issues"]], ["listed first"])
+
+    def test_u11_an_escaped_lone_surrogate_fails_the_import_wherever_it_is(self):
+        """U11 (docs/FINDINGS.md): an escaped lone surrogate failed an import only where it reached an event
+        ("text is not valid UTF-8" when the create was written), and passed where the import drops it (a
+        known record, source_repo_path); every record is now refused for it, as a raw one already was."""
+        machine = self.machine("u11-surrogate")
+        good = {"id": "ex-fine", "title": "fine", **COMMON}
+        for name, record in (("title", {"id": "ex-1", **COMMON, "title": "a\ud800"}),
+                             ("dropped", {"id": "ex-2", "title": "b", **COMMON, "source_repo_path": "\udc00"})):
+            with self.subTest(where=name):
+                source = self.box.root / f"{name}.jsonl"
+                source.write_text(json.dumps(good) + "\n" + json.dumps(record) + "\n")  # escaped: ASCII text
+                imported = machine.run("import", str(source), "--json")
+                self.assertEqual(imported.returncode, 1, imported.stdout)
+                self.assertEqual(strict_json(imported.stderr)["error"],
+                                 {"code": "VALIDATION", "message": f"{source}:2: text is not valid UTF-8"})
+        self.assertEqual(machine.bead("list")["issues"], [])
+
     def test_e09_invalid_config_types_return_structured_config_errors(self):
         """E09: malformed tracked config must not escape as Python tracebacks."""
         machine = support.Machine(self.box, "e09-config")

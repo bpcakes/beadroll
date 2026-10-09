@@ -122,7 +122,7 @@ def mint_key(st: State, seed: str, parent: dict | None) -> str:
     """A key no issue has and no imported dependency is waiting for."""
     taken = st.claimed_keys()
     if parent:
-        pattern = re.compile(re.escape(parent["id"]) + r"\.(\d+)")
+        pattern = re.compile(re.escape(parent["id"]) + r"\.([0-9]+)")  # ASCII digits, as free_key reads them
         used = [int(m.group(1)) for k in taken if (m := pattern.fullmatch(k))]
         return f"{parent['id']}.{max(used, default=0) + 1}"
     digest = b36(hashlib.sha256(seed.encode()).digest())
@@ -281,9 +281,9 @@ class Link:
         if manifest.returncode:
             raise BeadError("MANIFEST_MISSING", f"{self.ref} on {self.url} has no manifest; refusing to adopt it")
         try:
-            parsed = json.loads(manifest.stdout)
+            parsed = loads_strict(manifest.stdout)
             found = parsed.get("workspace")
-        except (ValueError, AttributeError, RecursionError):
+        except (ValueError, AttributeError):
             raise BeadError("MANIFEST_MISSING", f"{self.ref} on {self.url} has an unreadable manifest") from None
         if found != self.ws.id:
             error = BeadError("WORKSPACE_MISMATCH", f"{self.ref} on {self.url} belongs to workspace {found}, not {self.ws.id}; "
@@ -291,8 +291,9 @@ class Link:
                             f"BEAD_WORKSPACE={found} or commit a .beadroll.json holding {{\"workspace\": \"{found}\"}}")
             error.found = found  # for adopt_published
             raise error
-        if parsed.get("format") != FORMAT:
-            raise BeadError("FORMAT_UNSUPPORTED", f"{self.ref} on {self.url} is in format {parsed.get('format')!r}; "
+        version = parsed.get("format")
+        if type(version) is not int or version != FORMAT:  # true and 1.0 equal 1 in Python, but are not format 1
+            raise BeadError("FORMAT_UNSUPPORTED", f"{self.ref} on {self.url} is in format {version!r}; "
                           f"this version of bead reads format {FORMAT} only and will not rewrite it")
         return tip
 
@@ -355,7 +356,7 @@ class Link:
                         pulled += 1
                     write_atomic(target, theirs)
                     continue
-                if not re.fullmatch(r"events/[^/]+/\d+\.jsonl", path):
+                if not re.fullmatch(r"events/[^/]+/[0-9]+\.jsonl", path):
                     continue
                 replica, target = Path(path).parent.name, self.ws.dir / path
                 ours = target.read_bytes() if target.exists() else b""

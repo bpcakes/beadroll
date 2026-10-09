@@ -74,6 +74,8 @@ def event_problem(event) -> str | None:
 
 KNOWN_OPS = {"init", "create", "set", "claim", "release", "close", "reopen", "delete", "comment", "dep_add",
              "dep_remove", "label_add", "label_remove", "label_set"}
+KEY_NUMBER = re.compile(r"(.+)\.([0-9]+)")  # a key ending in a number: a renamed copy counts up from it
+INT_DIGITS = 4300  # the longest number Python reads by default (sys.int_info.default_max_str_digits)
 REQUIRED_FIELDS = ("title", "priority", "issue_type", "status")  # every issue shows these
 FIELD_TYPES = {"title": str, "description": str, "design": str, "acceptance_criteria": str, "notes": str,
                "priority": int, "issue_type": str, "assignee": str, "estimated_minutes": int, "external_ref": str,
@@ -87,7 +89,7 @@ def fields_problem(fields, allow_bookkeeping: bool) -> str | None:
     for name, value in fields.items():
         if name not in FIELD_TYPES or (not allow_bookkeeping and name in ("created_at", "updated_at", "created_by")):
             return f"field {name!r} is not writable"
-        if value is None and name in REQUIRED_FIELDS:
+        if value is None and (name in REQUIRED_FIELDS or name == "created_at"):  # lists sort by creation time
             return f"field {name!r} cannot be cleared"
         if value is not None and not isinstance(value, FIELD_TYPES[name]):
             return f"field {name!r} has the wrong type"
@@ -123,6 +125,9 @@ def payload_problem(event: dict) -> str | None:
             return "create event does not name itself as the issue"
         if not isinstance(data.get("key"), str) or not data["key"]:
             return "create event has no valid 'key'"
+        number = KEY_NUMBER.fullmatch(data["key"])
+        if number and len(number.group(2)) >= INT_DIGITS:  # a renamed copy counts up from it: 10**4300 is unprintable
+            return "create event has no valid 'key'"
         problem = fields_problem(data.get("fields", {}), allow_bookkeeping=True)
         if problem:
             return problem
@@ -135,7 +140,8 @@ def payload_problem(event: dict) -> str | None:
         for c in data.get("comments", []):
             if (not isinstance(c, dict) or not isinstance(c.get("text"), str)
                     or any(k not in c or not isinstance(c[k], (str, type(None))) for k in ("author", "created_at"))
-                    or not isinstance(c.get("legacy_id"), (int, str, type(None))) or isinstance(c.get("legacy_id"), bool)):
+                    or not isinstance(c.get("legacy_id"), (int, str, type(None))) or isinstance(c.get("legacy_id"), bool)
+                    or "uid" in c or "where" in c):  # a comment made here has these; an imported one has neither
                 return "create event has a malformed comment"
     elif op == "set":
         return fields_problem(data.get("fields"), allow_bookkeeping=False)
@@ -143,6 +149,9 @@ def payload_problem(event: dict) -> str | None:
         target = data.get("to") if "to" in data or op == "dep_add" else data.get("key")
         if not isinstance(target, str) or not target or not isinstance(data.get("type", "blocks"), (str, type(None))):
             return f"{op} event has no valid target"
+        name, kind = ("meta", dict) if op == "dep_add" else ("key", str)  # what apply_event reads beside the target
+        if not isinstance(data.get(name), (kind, type(None))):
+            return f"{op} event has a malformed {name!r}"
     elif op in ("label_add", "label_remove", "label_set"):
         if not strings("labels"):
             return f"{op} event has malformed labels"
@@ -219,8 +228,9 @@ class Journal:
                 self.quarantined[eid] = list(distinct.values())
                 trusted = [d for d in (event.get("deps") or []) if isinstance(d, str) and UUID_RE.match(d)] \
                     if own and isinstance(event.get("deps"), list) else []
+                issue = event.get("issue")  # a copy that is not valid may name anything: only a string is an issue
                 self._install(eid, {"id": eid, "op": "quarantined", "replica": replica, "deps": trusted, "data": {},
-                                    "issue": event.get("issue") if isinstance(event, dict) else None}, replica, sequenced)
+                                    "issue": issue if isinstance(issue, str) else None}, replica, sequenced)
                 continue
             problem = event_problem(event)
             if problem is not None:
@@ -381,7 +391,7 @@ class State:
 
     def free_key(self, key: str, uid: str) -> str:
         taken = self.claimed_keys()
-        match = re.fullmatch(r"(.+)\.(\d+)", key)
+        match = KEY_NUMBER.fullmatch(key)
         if match:
             number = int(match.group(2))
             while f"{match.group(1)}.{number}" in taken:
