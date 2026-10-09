@@ -103,7 +103,7 @@ All in `StorageReaudit`; setUp: Sandbox, Machine `storage-a`, `init --prefix ex`
 | class.method | subject | mechanism | seams/fakes needed | port |
 |---|---|---|---|---|
 | CompatAuditCommentIds.test_existing_comment_export_id_survives_clock_skewed_new_comment | Exported comment id stable after clock-skewed later comment | inproc | hand-built UUIDv7 with ms 1000/3000/2000; Journal, replay, export_records; actor without thread | B |
-| CompatAuditRealCompatibility.test_all_available_real_exports_and_br_bv_consumers | Real Beads exports round-trip; br readiness parity; bv parses export | env-fake | subprocess `infra/compat_real.py --out tmp` (180 s); needs `br` and `bv` (PATH or ~/.local/bin) and `~/Documents/*/.beads/issues.jsonl`, else skip. Helper path = dirname(BEAD)/infra and helper runs the checkout's `./bead`, ignoring BEAD_UNDER_TEST | A (make both paths BEAD_UNDER_TEST-aware; optional) |
+| CompatAuditRealCompatibility.test_all_available_real_exports_and_br_bv_consumers | Real Beads exports round-trip; br readiness parity; bv parses export | env-fake | subprocess `infra/compat_real.py --out tmp` (180 s); needs `br` and `bv` (PATH or ~/.local/bin) and `~/Documents/*/.beads/issues.jsonl`, else skip. Helper path = dirname(BEAD)/infra and helper runs the checkout's `./bead`, ignoring BEAD_UNDER_TEST | A (resolve helper from source tree independently of selected binary; pass BEAD_UNDER_TEST through; optional external tools/data) |
 | CompatAuditRefValidation.test_ref_names_reject_code_refs_and_traversal_accept_unicode | Six bad refs fail with CONFIG; unicode and custom refs accepted | inproc+env-fake | patch.dict BEAD_HOME/BEAD_WORKSPACE; Workspace().ref; `git check-ref-format` | B |
 | CompatCustomStatuses.test_imported_custom_statuses_are_kept_and_never_ready | Imported custom statuses kept, never ready; bead refuses setting them | cli | `init --import`; export, ready, blocked, list --limit 0, show; human show has "by unknown"; VALIDATION rc 1; stderr has "unknown status" | A |
 
@@ -138,7 +138,7 @@ All in `StorageReaudit`; setUp: Sandbox, Machine `storage-a`, `init --prefix ex`
 
 | class.method | subject | mechanism | seams/fakes needed | port |
 |---|---|---|---|---|
-| Sweep.test_sweep | Ownership protocol: 9 ops x 7 fault boundaries x 12 follow-up pairs | cli+driver+env-fake | product hooks BEAD_TEST_CRASH_BEFORE_PUSH / AFTER_PUSH (exit 98/99); runpy WRAPPER replacing run_git (first push), confirm_ownership, write_atomic (torn write + SIGKILL); pre-receive stall hooks + BEAD_NET_TIMEOUT=1.0; optional post-receive `git gc`; pgrep/ps checks | C: failpoints keyed by boundary name, set by env, compiled into a test build |
+| Sweep.test_sweep | Ownership protocol: 9 ops x 7 fault boundaries x 12 follow-up pairs | cli+driver+env-fake | product hooks BEAD_TEST_CRASH_BEFORE_PUSH / AFTER_PUSH (exit 98/99); runpy WRAPPER replacing run_git (first push), confirm_ownership, write_atomic (torn write + SIGKILL); pre-receive stall hooks + BEAD_NET_TIMEOUT=1.0; optional post-receive `git gc`; pgrep/ps checks | C: failpoints keyed by boundary name, set by env, present in every build and inert without configuration |
 
 ## Appendix: sweep fault boundaries
 
@@ -159,9 +159,42 @@ Judge excuses rc 98, 99, -9 and codes UNRESOLVED / REMOTE_UNREACHABLE / SYNC_CON
 (-9), not abort/panic. After the op the harness waits up to 20 s for hook-finished and for no `receive-pack.*<origin>`
 process (pgrep), then deletes the hook.
 
-Proposed Rust failpoint names: `push.before`, `push.after-ok` (git transport layer, first hit only), `ownership.before-publish`
+Proposed Rust failpoint names: `push.before`, `push.after-ok` (git transport layer, first hit by default), `ownership.before-publish`
 and `ownership.after-publish-ok` (aliases of the two BEAD_TEST_CRASH_* env hooks, which test_commands, test_hardening and
 infra/drive.py S6 also use against normal builds), `ownership.after-confirm`, `atomic-write.pending`, `atomic-write.claims`
 (torn write then SIGKILL), plus storage's `publish.before`, `journal.after-enumerate`, `view.before-load-pending`,
 `identity.before-link` (pause: touch ready-file, poll go-file). Actions: exit(N), sigkill, torn-sigkill, pause-until(file),
-sleep(ms). Config e.g. `BEAD_FAILPOINTS=push.before=exit(98)`, compiled only with a `failpoints` cargo feature.
+sleep(ms). Config e.g. `BEAD_FAILPOINTS=push.before=exit(98)`. The grammar is `point=action` for the
+first hit, `point@nth(k)=action` for hit k, and `point@always=action` for every hit; retry-heavy tests
+use `backoff@always=skip`. Failpoints are present in every build and inert without explicit
+configuration, as decided in `docs/RUST-PORT.md` §10.
+
+## Required new port coverage (outside the existing test inventory)
+
+**S02: JSON integer compatibility.** Pin the Python oracle to its supported default decimal
+conversion limit with `PYTHONINTMAXSTRDIGITS=4300` and assert
+`sys.get_int_max_str_digits() == 4300`. Rust's parser and writer must accept integers through
+4,300 decimal digits and reject longer tokens; a minus sign does not count as a digit. Integers
+beyond fixed-width ranges remain exact digit strings, not floats. A future wider domain requires aligning every
+supported reader first.
+
+Add positive and negative 4,300/4,301-digit differential fixtures for parsing, writing, import
+and journal replay, including an integer nested in `create.data.extra`. A 4,300-digit value must
+survive Rust import/write and Python replay/export unchanged; a 4,301-digit import or write must
+fail before any event is published or partially written. Replaying a planted over-limit event
+must report the same scoped invalid-JSON problem as Python and leave valid neighbouring events
+readable. Exercise direct writer inputs as well as parsed inputs so that constructing a value in
+memory cannot bypass the limit. These are new tests, not part of the 86 methods above or the
+458-method catalogue total.
+
+**S06: retained infrastructure driver cutover.** Adapt `infra/drive.py`, `infra/roundtrip.py` and
+`infra/compat_real.py` to select an executable explicitly (honouring `BEAD_UNDER_TEST` for the
+local process and the drive's per-machine selections), independent of the checkout's Python
+launcher. Before running scenarios, record each selected path and version and assert the expected
+implementation/version; the cutover gate requires the intended Rust release on every participant.
+Keep helper-script discovery anchored to the source tree. Acceptance
+must prove local Rust selection while `./bead` still exists and successful driver launches after
+the launcher is removed; the four-machine drive must preflight every machine. Adapt the retained
+roundtrip/check-runner tests to include preflight failures without weakening their existing exit
+status and diagnostic assertions. These harness additions are required by the cutover gate;
+they are not claimed as existing tests or as real-machine runs already performed.

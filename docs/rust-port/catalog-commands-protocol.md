@@ -16,7 +16,7 @@ Source: `tests/test_commands.py` (111 tests, 15 classes) and `tests/test_protoco
 
 **Port class**
 - `A`: black-box. Runs unchanged against a Rust binary via `BEAD_UNDER_TEST`, given the CLI contract, the documented knobs (`BEAD_HOME`, `BEAD_WORKSPACE`, `BEAD_AGENT`, `BEAD_THREAD`, `BEAD_ROTATE_BYTES`, `BEAD_NET_TIMEOUT`, `BEAD_REPACK_LOOSE`) and the stated constraints:
-  - `git-via-PATH`: bead runs the git CLI found on PATH, passes its environment through, and gives each git call its own process group.
+  - `git-via-PATH`: bead runs the git CLI found on PATH, passes its environment through, and gives each git call its own session through `setsid`.
   - `layout`: the on-disk store format 1.
   - `sync.git`: the internals of the private bare repo.
 - `B`: pure in-process logic. Becomes a Rust unit or library test.
@@ -162,7 +162,7 @@ Source: `tests/test_commands.py` (111 tests, 15 classes) and `tests/test_protoco
 | SyncAudit.test_claim_timeout_after_real_applied_push_is_recovered | Push applied but timed out: claim still recovered | cli+env-fake (push wrapper sleeps 20; BEAD_NET_TIMEOUT=0.4) | git-via-PATH; push timeout kills only the client → uncertain | A |
 | SyncAudit.test_killed_slow_fetch_does_not_block_local_writer | Stalled fetch holds no lock; writer proceeds | cli+env-fake (fetch wrapper; killpg) | git-via-PATH; first fetch outside the store lock | A |
 | SyncAudit.test_manifest_missing_and_foreign_workspace_are_refused | Ref without manifest, or another workspace's, refused | cli + `git update-ref` | BEAD_WORKSPACE | A |
-| SyncAudit.test_retry_exhaustion_retains_local_edits_and_no_partial_claim | 12 rejected pushes → SYNC_CONFLICT; nothing partial | env-fake (hostile `git` advances the ref before every push) + driver (`time.sleep` no-op) + cli | git-via-PATH; backoff-disable seam; exactly 12 attempts per command | C-env (e.g. a `BEAD_TEST_NO_PAUSE` hook) |
+| SyncAudit.test_retry_exhaustion_retains_local_edits_and_no_partial_claim | 12 rejected pushes → SYNC_CONFLICT; nothing partial | env-fake (hostile `git` advances the ref before every push) + driver (`time.sleep` no-op) + cli | git-via-PATH; backoff-disable seam; exactly 12 attempts per command | C-env (`BEAD_FAILPOINTS=backoff@always=skip`) |
 | RootAudit.test_six_simultaneous_claims_have_one_winner | Six simultaneous claims: one winner; all converge | cli (6 concurrent) | none | A |
 | RootAudit.test_claim_racing_release_matches_accepted_outcome | Claim racing release ends consistent with the accepted outcome | cli (2 concurrent) | none | A |
 | RootAudit.test_two_takeovers_are_serial_and_generation_increases | Concurrent takeovers serialize; generations 2 and 3 | cli (2 concurrent) | none | A |
@@ -231,6 +231,23 @@ Secondary classes: f09 and SyncRepoDamage-claim are A+B; SyncRepoMaintenance-1 i
 - **Signals in Rust.**
   - Rust ignores SIGPIPE, but `println!` and `eprintln!` panic on EPIPE. Use explicit writes: a closed stdout must exit exactly 0, and a failed command with a closed stderr must keep exit 1.
   - CPython ignores SIGXFSZ. Rust should too, so that EFBIG becomes a structured IO error.
-- **Timeouts and process groups.** Every git child runs in its own session. On a fetch timeout, kill the whole process group. On a push timeout, kill only the client, so receive-pack runs on and the outcome is "uncertain".
-- **Retry budget.** Retries are exactly `range(1, 13)` with `pause(U(0.1,0.4)*attempt)` after every failed round (sync, and each ownership command).
+- **Timeouts and process groups.** Every git child runs in its own session through a real `setsid` call in the audited pre-exec runner path. `process_group(0)` alone retains the controlling terminal, and must not precede `setsid` because a process-group leader cannot create a session. On a fetch timeout, kill the whole process group. On a push timeout, kill only the client, so receive-pack runs on and the outcome is "uncertain". Keep the controlling-terminal and group-kill timeout tests as runner acceptance checks.
+- **Retry budget.** Retries are exactly `range(1, 13)` with `pause(U(0.1,0.4)*attempt)` after every failed round (sync, and each ownership command). Retry-heavy tests use `BEAD_FAILPOINTS=backoff@always=skip`; `point=action` fires on the first hit, `point@nth(k)=action` on hit k, and `point@always=action` on every hit. These hooks are present in every build and inert without explicit configuration.
 - **Readers ignore in-flight files.** Readers and sync must ignore `.<name>.<pid>.tmp` temp files and non-`.json`/`.jsonl` files (e.g. `*.torn-*`, `*.fork-*`).
+
+## Required new port coverage (outside the existing test inventory)
+
+**S01: receipts across upgrades and rollback.** Keep Python's `command_signature` bytes exactly:
+the same argument fields and defaults, actor and resolved file/stdin request, sorted keys, default
+spaced separators and ASCII escaping; omit `func`, callables and `json` as Python does. An accepted
+`.command` receipt can remain after `sync` reports no pending attempts, so sync is not a receipt
+migration and accepted receipts must not be discarded during installation.
+
+Add same-store Python → Rust → Python tests that exercise each transition with a newly accepted
+but unacknowledged command. After the crash, another machine edits the issue; sync the first
+machine, switch implementation while retaining its store and identity, and retry the identical
+command as the same actor. The retry must preserve the intervening edit and append no second
+attempt or command events. Exercise both a Python-written receipt consumed by Rust and a
+Rust-written receipt consumed by Python, including resolved file/stdin inputs and `--json`
+normalisation. These are new compatibility tests; the 165 existing methods above do not already
+prove either transition.

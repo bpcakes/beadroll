@@ -8,6 +8,23 @@ the behaviour is kept on purpose (with the reason); **open** otherwise.
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Review 8: Rust port plan (`reviews/2026-10-09-8-codex-rust-port.md`, ids S)
+
+These are defects in the port plan, not in an existing Rust implementation. **Plan corrected**
+means the document, catalogues and issue acceptance criteria now address the finding. The cited
+epic children remain open until their implementation and verification pass; no runtime fix or
+new regression test is claimed here. The audit findings are preserved; the report's local username
+is replaced with `<name>` for repository hygiene.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| S01 | High | Sync-before-upgrade leaves accepted receipts the proposed Rust signature would not recognise | plan corrected | `RUST-PORT.md` §§2.3j, 4.2 and 8 preserve Python signature bytes/lifecycle and require same-store upgrade and rollback; `roll-k2wy.5`, `.12`, `.16` | Required: both implementation directions after lost acknowledgement and intervening edit, with retained receipt and no repeated mutation |
+| S02 | Medium | Unlimited integer tokens exceed Python's default JSON digit limit | plan corrected | §§2.3a, 4.2 and 5 preserve the 4,300-digit decimal boundary; oracle pins its limit; §8 checks non-default Python settings; `roll-k2wy.2`, `.16` | Required: positive/negative 4,300/4,301-digit parser, writer, import and replay fixtures |
+| S03 | Medium | Proposed process-group isolation retains the controlling terminal | plan corrected | §2.3f uses actual `setsid` in the audited pre-exec path; `roll-k2wy.3`, `.6` | Existing V8 controlling-terminal and fetch/push timeout tests must pass against Rust on Linux and macOS |
+| S04 | Medium | Studio bridge omits persisted source and ancestry transition | plan corrected | §7 includes a new constraint migration, arbitrary-ref fetching and source revision/baseline lifecycle; `roll-k2wy.15` | Required: migrate existing publication, refresh twice, deepen ancestry, reject obsolete refresh work after binding changes |
+| S05 | Medium | Studio discovery omits separate coordination remotes | plan corrected | §7 binds approved endpoint, ref, expected workspace and credentials while retaining the code branch for discovery; `roll-k2wy.15` | Required: distinct code/coordinator repositories, workspace mismatch and unapproved/unsupported redirection |
+| S06 | Medium | Retained infrastructure drivers hardcode the removed Python launcher | plan corrected | §8 assigns explicit executable selection and path/version preflight before and after removal; `roll-k2wy.16` | Required: native selection on every participating machine and retained-driver checks without `./bead` |
+
 ## Audit of `roll-dih8.3` (2026-10-09, ids J)
 
 The audit's reproductions and proposed acceptance criteria are recorded on `roll-dih8.3`; the

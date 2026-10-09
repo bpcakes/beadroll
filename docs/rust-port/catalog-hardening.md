@@ -83,7 +83,7 @@ Gxx classes are review findings (docs/FINDINGS.md); Vx classes are verified prop
 | V3_ImportShapeErrors | 1 | Wrong container or member types in imports are VALIDATION | cli | none | A |
 | V3_ForeignFolderDefaultQuotePath | 1 | Non-UTF-8 or U+2028 remote folder skipped under default quotePath | cli+env-fake (git plumbing on remote; empty global config) | none | A |
 | V8_PtyOutputMatchesPipeOutput | 1 | PTY output equals pipe output; hostile text always escaped | cli+env-fake (stdout and stderr on two PTYs vs pipes) | none | A |
-| V8_SyncUnderAControllingTerminalCannotPrompt | 1 | Sync under a controlling terminal cannot prompt; fails fast | cli+env-fake (controlling PTY via `os.login_tty`; fake ssh opening /dev/tty, first on PATH; BEAD_NET_TIMEOUT=30, must end < 15 s) | none (impl: git in its own session) | A |
+| V8_SyncUnderAControllingTerminalCannotPrompt | 1 | Sync under a controlling terminal cannot prompt; fails fast | cli+env-fake (controlling PTY via `os.login_tty`; fake ssh opening /dev/tty, first on PATH; BEAD_NET_TIMEOUT=30, must end < 15 s) | none (impl: git in its own session through `setsid`, not merely `process_group(0)`) | A |
 | V8_HangupOfTheControllingTerminal | 1 | Closing the controlling terminal ends bead by SIGHUP quietly | cli+env-fake (controlling PTY, SIGHUP reset to default; master closed after 1 KiB) | none | A |
 | V8_RemoteMaintenance | 2 | Remote gc/repack after or during operations keeps convergence | cli+env-fake (`gc --prune=now --aggressive` after each op; concurrent repack/prune-packed/`gc --auto` thread; 60 ops on 3 machines) | none | A |
 | V8_PruneOnThePrivateSyncRepo | 1 | `gc --prune=now` looping on sync.git causes only transient errors | cli+env-fake (gc loop thread on sync.git; 30 create+sync rounds) | none | A |
@@ -205,7 +205,7 @@ All waits below are estimates read from the code; none was measured.
     - Files the tests name: `replica.json` (`{"id"}`), `aliases.json`, `<ws>/meta.json`, `lock`, `sync.git`, `events/<replica>/000001.jsonl`, `events/<r>/claims/<eid>.json`, `pending/<id>.json` and `.command`, `.NAME.PID.tmp`, `*.torn-*`, `*.fork-*`.
     - Modes: everything under BEAD_HOME is 0600 or 0700, sync.git included (`git init --bare --template= --shared=0600 --object-format=<project>`). Checkout files follow the umask. A write retightens the directories to 0700; a read does not.
 11. **Pinned git behaviour.**
-    - Run git with LC_ALL=C, in a new session, with output captured to files: wait for git to exit, not for its pipes to close.
+    - Run git with LC_ALL=C, in a new session through an audited pre-exec `setsid` call, with output captured to files: wait for git to exit, not for its pipes to close. `process_group(0)` retains the controlling terminal and must not precede `setsid`. Retain V8's controlling-terminal test together with V1's timeout/group-kill checks.
     - On timeout, kill the whole process group for a fetch but only the child for a push.
     - Fetch into a per-process ref, then push with `--porcelain --no-verify`. Classify the result from git's own lines only, never from `remote:` lines.
     - Strip the repository-location variables (GIT_DIR, GIT_WORK_TREE, GIT_OBJECT_DIRECTORY and the rest of REPO_LOCATION_ENV).
@@ -215,3 +215,11 @@ All waits below are estimates read from the code; none was measured.
     - `ulimit -n` 8/10/11 is tuned to Python's descriptor use; Rust may need lower limits to reach the same paths.
     - G13, G59 and G52 t5 skip based on Python probes, and those probes would skip or wrongly pass under Rust.
     - V1_PushSideTranslation t1 tests git only. Keep its token list in sync with the Rust classifier.
+
+## Required new port coverage (outside the existing test inventory)
+
+S01's same-store upgrade/rollback receipt tests and S02's integer digit-limit fixtures are new
+requirements, described in the commands/protocol and replay/storage catalogues respectively.
+G07/G08 preserve the receipt invariant within one implementation; G32 covers typed field ranges.
+They do not already cover cross-implementation receipts or the JSON decimal digit limit. The
+207-test inventory and its classifications above remain unchanged.

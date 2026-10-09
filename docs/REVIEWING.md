@@ -4,7 +4,7 @@ A brief for an independent reviewer: an agent or a person who did not write this
 to find out whether the design holds, to break it if they can, and to report with
 reproductions. Reviewers do not extend the tool.
 
-Seven reviews have run from earlier versions of this brief. Their reports are kept verbatim in
+Eight reviews have run; the latest audits the Rust port plan. Their reports are kept verbatim in
 `reviews/`; every finding and what became of it is in `FINDINGS.md`. Start from what they did
 not cover.
 
@@ -67,6 +67,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - Recovery after a lost acknowledgement is per command (the receipt beside a pending attempt):
   a retry of the *same* command by the same actor is recognised; a different command after the
   crash is a new command and sees the accepted state.
+- The Rust port preserves Python's receipt signature bytes and retirement rules while either
+  implementation may use the store, including rollback. Sync settles attempts but can retain
+  accepted `.command` receipts; an empty `pending_ownership` is not permission to discard them
+  (`RUST-PORT.md` §2.3j).
 - The display value for a conflicted field is the newest event id; no resolution command.
 - Every local write (`create`, `update`, `comments add`, `dep`, `import`, `init`, and `close` by the
   owner) is published immediately, not as a conditional update; `--offline` keeps it local, and a
@@ -101,7 +105,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   status bead does not set itself (`pinned`, a custom one) is kept verbatim, as Beads tools keep
   it; such an issue is neither ready nor done.
 - Text from files and stdin is UTF-8 regardless of locale; OS errors are structured (`IO`); a
-  timed-out `git` is killed with its process group.
+  git child runs in a separate session without the controlling terminal. A timed-out fetch is
+  killed with its process group; a timed-out push kills only the client so its uncertain result
+  can be settled by the protocol.
 - A command receipt survives a *failed* later command by the same actor and is dropped only when
   a later command by that actor goes through: the remote accepted it, or it was a local write that
   was appended. A recognised retry still reports the claim as it is now.
@@ -123,6 +129,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   ever be needed, follows writers-lag-readers through the manifest; none is planned.
 - Events nest at most 100 levels (`MAX_NESTING`); replay keeps looser type rules than writes
   (`write_problem`) so histories written before a rule mean the same on every machine.
+- Rust parity targets Python 3.11+'s default 4,300-digit decimal conversion limit on JSON input
+  and output, not unlimited integer tokens. The oracle pins that default; machines with a
+  non-default Python setting must resolve store compatibility before cutover (`RUST-PORT.md` §8).
 - `BEAD_HOME` must be absolute; the store's modes are 0700/0600 whatever the umask.
 - Only directories bead creates get private modes; a user-supplied `BEAD_HOME` is chmodded 0700
   on first write (reviewer observation, kept).
