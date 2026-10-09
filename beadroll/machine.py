@@ -14,7 +14,7 @@ import uuid
 from pathlib import Path
 
 from .base import (
-    BpError, DEFAULT_REF, ROTATE_BYTES, is_local_path, loads_line, loads_strict,
+    BeadError, DEFAULT_REF, ROTATE_BYTES, is_local_path, loads_line, loads_strict,
     normalize_remote, run_git, shown, stamp, suspect, without_password,
 )
 
@@ -25,14 +25,14 @@ def home() -> Path:
         return Path.home() / ".local" / "state" / "beadroll"
     path = Path(os.path.expanduser(value))  # settings files and service definitions pass `~` unexpanded
     if not path.is_absolute():
-        raise BpError("CONFIG", f"BEAD_HOME must be an absolute path, not {value!r}: the store never lives in a checkout")
+        raise BeadError("CONFIG", f"BEAD_HOME must be an absolute path, not {value!r}: the store never lives in a checkout")
     return path
 
 
 class Workspace:
     def __init__(self, wid: str, name: str | None, origin: str | None, config: dict):
         if not isinstance(wid, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", wid):
-            raise BpError("CONFIG", f"workspace id must be an opaque token, not a path: {wid!r}")
+            raise BeadError("CONFIG", f"workspace id must be an opaque token, not a path: {wid!r}")
         self.id, self.name, self.origin, self.config = wid, name, origin, config
         self.derived = None  # the URL-derived id, when that is where this id came from (adopt_published)
         self.holding = False  # this process holds the store lock (see `locked`)
@@ -53,7 +53,7 @@ class Workspace:
             return {}
         except (OSError, ValueError) as error:
             if strict:
-                raise BpError("IO", f"{path} cannot be used ({error}): it records the coordination remote last "
+                raise BeadError("IO", f"{path} cannot be used ({error}): it records the coordination remote last "
                               "used here; repair it, or name the remote with --remote, which rewrites it") from None
             return {}
         return meta
@@ -61,7 +61,7 @@ class Workspace:
     def save_meta(self, **values):
         try:
             meta = self.meta(strict=True)
-        except BpError:
+        except BeadError:
             if not values.get("remote"):
                 return  # keep a damaged file for remote() to report: it may be the only record of the remote
             meta = {}  # the remote in use came from elsewhere: rewriting the file with it repairs it
@@ -90,7 +90,7 @@ class Workspace:
         ref = self.config.get("ref") or DEFAULT_REF
         bad = not ref.startswith("refs/") or ref.startswith(("refs/heads/", "refs/tags/", "refs/remotes/"))
         if bad or run_git(["check-ref-format", ref], check=False).returncode:
-            raise BpError("CONFIG", f"coordination ref {ref!r} must be a valid ref outside branches and tags")
+            raise BeadError("CONFIG", f"coordination ref {ref!r} must be a valid ref outside branches and tags")
         return ref
 
     @staticmethod
@@ -118,12 +118,12 @@ class Workspace:
         tracked = self.config.get("remote")
         try:
             used = self.remembered_remote()
-        except BpError:  # a damaged meta.json: only fatal when it is the sole record of the remote
+        except BeadError:  # a damaged meta.json: only fatal when it is the sole record of the remote
             if not tracked:
                 raise
             used = None
         if tracked and used and self.resolve_remote(tracked) != used:
-            raise BpError("CONFIG", f".beadroll.json names coordination remote {without_password(tracked)[0]}, but "
+            raise BeadError("CONFIG", f".beadroll.json names coordination remote {without_password(tracked)[0]}, but "
                           f"this tracker already coordinates through {used}; change it deliberately with "
                           "`bead sync --remote` or `bead init --tracked --remote`")
         value = typed or tracked or used or self.origin
@@ -139,12 +139,12 @@ def checked_config(config, path) -> dict:
     """The tracked config, or a CONFIG error naming what is wrong. Unknown keys are left for newer
     versions to understand."""
     if not isinstance(config, dict):
-        raise BpError("CONFIG", f"{path} must hold a JSON object")
+        raise BeadError("CONFIG", f"{path} must hold a JSON object")
     for key, kind in CONFIG_KEYS.items():
         if key in config and (not isinstance(config[key], kind) or isinstance(config[key], bool) and kind is not bool):
-            raise BpError("CONFIG", f"{path}: {key!r} must be a {kind.__name__}")
+            raise BeadError("CONFIG", f"{path}: {key!r} must be a {kind.__name__}")
         if kind is str and config.get(key) == "":  # an empty value would silently mean "not set"
-            raise BpError("CONFIG", f"{path}: {key!r} must not be empty")
+            raise BeadError("CONFIG", f"{path}: {key!r} must not be empty")
     return config
 
 
@@ -164,7 +164,7 @@ def committed_config() -> dict:
             try:
                 config = loads_strict(body.decode("utf-8"))
             except ValueError:
-                raise BpError("CONFIG", f"{ref}:.beadroll.json is not valid JSON") from None
+                raise BeadError("CONFIG", f"{ref}:.beadroll.json is not valid JSON") from None
             return checked_config(config, f"{ref}:.beadroll.json")
     return {}
 
@@ -187,13 +187,13 @@ def find_workspace() -> Workspace:
     top = run_git(["rev-parse", "--show-toplevel"], check=False)
     root = Path(os.fsdecode(top.stdout.strip())) if top.returncode == 0 else None
     if root and (root / ".beadroll.json").is_symlink() and not (root / ".beadroll.json").exists():
-        raise BpError("CONFIG", f"{root / '.beadroll.json'} is a symbolic link that does not resolve to a file")  # broken, not absent
+        raise BeadError("CONFIG", f"{root / '.beadroll.json'} is a symbolic link that does not resolve to a file")  # broken, not absent
     config = {}
     if root and (root / ".beadroll.json").exists():
         try:
             config = loads_strict((root / ".beadroll.json").read_text(encoding="utf-8"))  # UTF-8 whatever the locale
         except (OSError, ValueError):
-            raise BpError("CONFIG", f"{root / '.beadroll.json'} is not valid JSON") from None
+            raise BeadError("CONFIG", f"{root / '.beadroll.json'} is not valid JSON") from None
         config = checked_config(config, root / ".beadroll.json")
     else:
         config = committed_config()
@@ -210,7 +210,7 @@ def find_workspace() -> Workspace:
     tracked_wid = config.get("workspace")
     if not os.environ.get("BEAD_WORKSPACE") and tracked_wid and tracked_wid != derived \
             and re.fullmatch(r"[0-9a-f]{16}|local-[0-9a-f]{12}", tracked_wid):
-        raise BpError("CONFIG", f".beadroll.json names workspace {tracked_wid}, an id another repository derives from "
+        raise BeadError("CONFIG", f".beadroll.json names workspace {tracked_wid}, an id another repository derives from "
                       "its own origin; a tracked workspace id is one `bead init --tracked` mints")
     wid = os.environ.get("BEAD_WORKSPACE") or tracked_wid
     if not wid and derived:
@@ -221,7 +221,7 @@ def find_workspace() -> Workspace:
             # git's own reason, in the user's language: no repository here, or one git refuses to use
             # (dubious ownership, with the safe.directory command that fixes it). One line, so nothing is escaped.
             said = " ".join(common.stderr.decode(errors="replace").split())
-            raise BpError("NO_WORKSPACE", f"no usable git repository here: {said} (outside a repository, set BEAD_WORKSPACE)"
+            raise BeadError("NO_WORKSPACE", f"no usable git repository here: {said} (outside a repository, set BEAD_WORKSPACE)"
                           if said else "not inside a git repository (or set BEAD_WORKSPACE)")
         wid = "local-" + hashlib.sha256(os.fsencode(os.path.realpath(os.fsdecode(common.stdout.strip())))).hexdigest()[:12]
     ws = Workspace(wid, name, origin or None, config)
@@ -288,7 +288,7 @@ def replica_id(create: bool = True) -> str | None:
     try:
         raw = path.read_bytes()
     except OSError as error:  # the identity may be fine, its file cannot be reached: never advise replacing it
-        raise BpError("IO", f"{error.strerror or error}: {path} (fix its access; do not replace it: the claims this "
+        raise BeadError("IO", f"{error.strerror or error}: {path} (fix its access; do not replace it: the claims this "
                       "machine holds belong to that identity)") from None
     try:
         ident = loads_strict(raw.decode("utf-8"))["id"]
@@ -296,7 +296,7 @@ def replica_id(create: bool = True) -> str | None:
             raise ValueError("id")
         return ident
     except (ValueError, KeyError, TypeError):
-        raise BpError("IDENTITY", f"{path} is not a valid machine identity; restore it, or move it aside to mint a "
+        raise BeadError("IDENTITY", f"{path} is not a valid machine identity; restore it, or move it aside to mint a "
                       "new one (claims held under the old identity then need `bead takeover`)") from None
 
 

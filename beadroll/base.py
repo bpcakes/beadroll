@@ -43,7 +43,7 @@ EXPORT_FIELDS = ["title", "description", "design", "acceptance_criteria", "notes
 IMPORT_FIELDS = set(EXPORT_FIELDS)
 
 
-class BpError(Exception):
+class BeadError(Exception):
     def __init__(self, code: str, message: str):
         super().__init__(message)
         self.code = code
@@ -104,7 +104,7 @@ def run_git(args, *, env=None, data=None, check=True, timeout=None, reap=True):
                 else:
                     child.kill()
             waiter.join()
-            raise BpError("REMOTE_UNREACHABLE", f"git {args[0]} gave no answer within {timeout:.0f}s") from None
+            raise BeadError("REMOTE_UNREACHABLE", f"git {args[0]} gave no answer within {timeout:.0f}s") from None
         # Read without moving the file offset, which git's children share: one still running writes on after it.
         captured = [os.pread(f.fileno(), os.fstat(f.fileno()).st_size, 0) for f in (out, err)]
         proc = subprocess.CompletedProcess(child.args, child.returncode, *captured)
@@ -116,7 +116,7 @@ def run_git(args, *, env=None, data=None, check=True, timeout=None, reap=True):
             except ValueError:
                 name = f"signal {-proc.returncode}"
             said = f"killed by {name}" + (f": {said}" if said else "")
-        raise BpError("GIT_ERROR", f"git {' '.join(args[:2])}: {said}")
+        raise BeadError("GIT_ERROR", f"git {' '.join(args[:2])}: {said}")
     return proc
 
 
@@ -225,12 +225,12 @@ def loads_line(line: bytes, origin: str, number: int, problems: list | None):
 def read_utf8(path: str, what: str) -> str:
     """A text argument from a file or stdin, decoded as UTF-8 whatever the locale says."""
     if path == "-" and sys.stdin is None:  # fd 0 was closed when bead started
-        raise BpError("IO", "standard input is closed, so - cannot be read")
+        raise BeadError("IO", "standard input is closed, so - cannot be read")
     try:
         raw = sys.stdin.buffer.read() if path == "-" else Path(path).read_bytes()
         return raw.decode("utf-8")
     except UnicodeDecodeError:
-        raise BpError("VALIDATION", f"{what} is not valid UTF-8") from None
+        raise BeadError("VALIDATION", f"{what} is not valid UTF-8") from None
 
 
 def pause(seconds: float):

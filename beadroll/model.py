@@ -8,7 +8,7 @@ import json
 import re
 
 from .base import (
-    B36, BLOCKING, BpError, DONE, FORMAT, MAX_MILLIS,
+    B36, BLOCKING, BeadError, DONE, FORMAT, MAX_MILLIS,
     REGISTERS, STATUSES, STATUS_SHAPE, canonical, event_millis, event_time,
     loads_line,
 )
@@ -391,12 +391,12 @@ class State:
         for size in range(1, len(digest)):
             if key + digest[:size] not in taken:
                 return key + digest[:size]
-        raise BpError("KEY_SPACE", f"cannot derive a free key from {key}")
+        raise BeadError("KEY_SPACE", f"cannot derive a free key from {key}")
 
     def resolve(self, key: str) -> dict:
         uid = self.by_key.get(key) or self.by_key.get(f"{self.prefix}-{key}")
         if not uid:
-            raise BpError("ISSUE_NOT_FOUND", f"Issue not found: {key}")
+            raise BeadError("ISSUE_NOT_FOUND", f"Issue not found: {key}")
         return self.issues[uid]
 
     def key(self, uid: str) -> str:

@@ -1,4 +1,4 @@
-"""Test package for bp. Every test builds its own repositories, remotes and machine homes in a
+"""Test package for beadroll. Every test builds its own repositories, remotes and machine homes in a
 temporary directory. The default store (~/.local/state/beadroll) is never touched: a scratch
 BEAD_HOME is set here if the environment has none.
 
@@ -8,4 +8,4 @@ BEAD_HOME is set here if the environment has none.
 import os
 import tempfile
 
-os.environ.setdefault("BEAD_HOME", tempfile.mkdtemp(prefix="bp-tests-home-"))
+os.environ.setdefault("BEAD_HOME", tempfile.mkdtemp(prefix="bead-tests-home-"))

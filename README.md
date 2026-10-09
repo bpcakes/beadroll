@@ -20,7 +20,7 @@ command and exports back for `bv` or any Beads reader. The command is `bead`;
 its verbs mirror the `br` verbs agents actually use.
 
 A small Python package (`beadroll/`: `base`, `machine`, `model`, `queries`,
-`sync`, `commands`, `cli`), standard library only, Python 3.12+ and git 2.40+.
+`sync`, `commands`, `cli`), standard library only, Python 3.11+ and git 2.40+.
 
 ## Status
 
@@ -390,7 +390,8 @@ beadroll is not a fork of Beads and does not use its database. It shares the
 JSONL record format (`import`, `export`), the issue model (ids, parent-child
 keys, dependencies, comments, labels, statuses) and the verbs agents use, so a
 project can move from `br`/`bd` to `bead` and back with its history intact
-(`bead export` writes what `br sync --import-only` and `bv` read). What it
+(`bead export` writes what `br sync --import-only` and `bv` read);
+[MIGRATING.md](MIGRATING.md) is the procedure, both ways. What it
 adds is the multi-machine, multi-worktree model: journals instead of a database,
 one ref instead of commits on branches, claims settled online. What it leaves
 out is listed under *Known limits*. A leftover `.beads/` directory is history:
@@ -398,10 +399,11 @@ nothing in bead reads or writes it after the import.
 
 ## Contributing
 
-`AGENTS.md` says how the code is laid out and how a change is made, tested and
-recorded; `REVIEWING.md` is the brief for an independent review; `./check.sh`
-is the baseline (a scratch store, never your own). Run it before a pull
-request. Unless you say otherwise, a contribution is licensed as the project is.
+See [CONTRIBUTING.md](CONTRIBUTING.md): the setup, the one rule about stores,
+the layout and how a change is made and tested. `AGENTS.md` is the same for an
+agent working in this repository; `REVIEWING.md` is the brief for an
+independent review. Unless you say otherwise, a contribution is licensed as the
+project is.
 
 ## Licence
 

@@ -5,7 +5,7 @@
 #   ./check.sh --real     also infra/roundtrip.py over the real tracker exports on this machine
 set -u
 cd "$(dirname "$0")"
-export BEAD_HOME="${BEAD_HOME:-$(mktemp -d "${TMPDIR:-/tmp}/bp-check-home.XXXXXX")}"
+export BEAD_HOME="${BEAD_HOME:-$(mktemp -d "${TMPDIR:-/tmp}/bead-check-home.XXXXXX")}"
 modules="test_hygiene test_replay test_storage test_compat test_commands test_protocol test_hardening"
 real=0
 for arg in "$@"; do

@@ -16,7 +16,7 @@ import uuid
 from pathlib import Path
 
 from .base import (
-    BpError, FORMAT, MAX_NESTING, NET_TIMEOUT, REMOTE_REF, git_text,
+    BeadError, FORMAT, MAX_NESTING, NET_TIMEOUT, REMOTE_REF, git_text,
     loads_strict, pause, run_git, too_deep, uuid7, without_password,
 )
 from .machine import (dir_entries, 
@@ -62,14 +62,14 @@ class Tx:
             event["where"] = self.where
         problem = event_problem(event) or payload_problem(event) or write_problem(event)
         if problem:  # the same rules replay applies, before the event is minted
-            raise BpError("VALIDATION", "the clock is beyond the year 2100; fix it before writing"
+            raise BeadError("VALIDATION", "the clock is beyond the year 2100; fix it before writing"
                           if "timestamp" in problem else problem)
         if too_deep(event):  # every supported Python must be able to read back what any machine writes
-            raise BpError("VALIDATION", f"data nests more than {MAX_NESTING} levels deep")
+            raise BeadError("VALIDATION", f"data nests more than {MAX_NESTING} levels deep")
         try:
             encode_events([event])
         except UnicodeEncodeError:
-            raise BpError("VALIDATION", "text is not valid UTF-8") from None
+            raise BeadError("VALIDATION", "text is not valid UTF-8") from None
         if op in OWNERSHIP or self.conditional:
             self.ownership.append(event)
             self.journal.add(event, self.replica, sequenced=False)  # later emits build on it
@@ -106,7 +106,7 @@ def writing(ws: Workspace, actor: dict):
     with locked(ws):
         tx = Tx(ws, actor)
         if tx.replica in tx.state.chain_breaks:  # everything written now would be inert
-            raise BpError("JOURNAL_FORK", "this machine's journal no longer forms one chain: the same machine "
+            raise BeadError("JOURNAL_FORK", "this machine's journal no longer forms one chain: the same machine "
                           "identity has written from two places. Give one of them a new identity.")
         yield tx
         if tx.pending:
@@ -129,7 +129,7 @@ def mint_key(st: State, seed: str, parent: dict | None) -> str:
     for size in range(4, len(digest)):
         if f"{st.prefix}-{digest[:size]}" not in taken:
             return f"{st.prefix}-{digest[:size]}"
-    raise BpError("KEY_SPACE", "cannot mint a key")
+    raise BeadError("KEY_SPACE", "cannot mint a key")
 
 
 # Where the caller's repository is (`git rev-parse --local-env-vars`, less the `-c` settings, which stay the
@@ -199,7 +199,7 @@ class Link:
     def git(self, args, **kwargs) -> str:
         try:
             return git_text(args, env=self.env, **kwargs)
-        except BpError as error:
+        except BeadError as error:
             if error.code == "GIT_ERROR" and self.damaged(str(error)):
                 raise self.damage(str(error)) from None
             raise
@@ -207,8 +207,8 @@ class Link:
     def damaged(self, said: str) -> bool:
         return local_damage(said)
 
-    def damage(self, said: str) -> BpError:
-        return BpError("SYNC_REPO_DAMAGED", f"this machine's sync repository {self.git_dir} is damaged; it holds nothing "
+    def damage(self, said: str) -> BeadError:
+        return BeadError("SYNC_REPO_DAMAGED", f"this machine's sync repository {self.git_dir} is damaged; it holds nothing "
                        f"that is not also in events/ or on the remote, so bead makes it again (the damaged one is kept "
                        f"beside it as sync.git.damaged-<time>); if this persists, delete it and run the command again. "
                        f"git said: {said}")
@@ -254,7 +254,7 @@ class Link:
                                *([f"--object-format={self.object_format}"] if self.object_format else []),
                                str(self.git_dir)], env=self.env, check=False)
             if created.returncode and not (self.git_dir / "HEAD").exists():
-                raise BpError("GIT_ERROR", created.stderr.decode(errors="replace").strip())
+                raise BeadError("GIT_ERROR", created.stderr.decode(errors="replace").strip())
         # Into a ref of this process's own: git fetch updates its destination only if it still holds the
         # value it read first, and every bead process of this store fetches at its own time.
         mine = f"refs/beads/fetch/{os.getpid()}-{secrets.token_hex(4)}"
@@ -267,32 +267,32 @@ class Link:
             relayed = "\n".join(line for line in said.splitlines() if line.startswith("remote:") or "upload-pack:" in line)
             if re.search(r"not our ref|bad (?:tree |blob |commit )?object|unable to read [0-9a-f]{40}|"
                          r"does not point to a valid object", relayed):  # the remote answered: it lacks objects
-                raise BpError("REMOTE_DAMAGED", f"{self.ref} on {self.url} names objects that remote no longer has; "
+                raise BeadError("REMOTE_DAMAGED", f"{self.ref} on {self.url} names objects that remote no longer has; "
                               "retrying will not help. Every machine keeps its own journal: delete the ref there "
                               f"(`git update-ref -d {self.ref}` in that repository), then run `bead sync` on every "
                               f"machine to publish again. git said: {said}")
             if self.damaged(said):
                 raise self.damage(said)
-            raise BpError("REMOTE_UNREACHABLE", f"cannot reach the coordination remote {self.url}: " + said)
+            raise BeadError("REMOTE_UNREACHABLE", f"cannot reach the coordination remote {self.url}: " + said)
         tip = self.git(["rev-parse", mine])
         run_git(["update-ref", REMOTE_REF, tip], env=self.env, check=False)  # keeps what was fetched reachable
         run_git(["update-ref", "-d", mine], env=self.env, check=False)
         manifest = run_git(["cat-file", "blob", f"{tip}:manifest.json"], env=self.env, check=False)
         if manifest.returncode:
-            raise BpError("MANIFEST_MISSING", f"{self.ref} on {self.url} has no manifest; refusing to adopt it")
+            raise BeadError("MANIFEST_MISSING", f"{self.ref} on {self.url} has no manifest; refusing to adopt it")
         try:
             parsed = json.loads(manifest.stdout)
             found = parsed.get("workspace")
         except (ValueError, AttributeError, RecursionError):
-            raise BpError("MANIFEST_MISSING", f"{self.ref} on {self.url} has an unreadable manifest") from None
+            raise BeadError("MANIFEST_MISSING", f"{self.ref} on {self.url} has an unreadable manifest") from None
         if found != self.ws.id:
-            error = BpError("WORKSPACE_MISMATCH", f"{self.ref} on {self.url} belongs to workspace {found}, not {self.ws.id}; "
+            error = BeadError("WORKSPACE_MISMATCH", f"{self.ref} on {self.url} belongs to workspace {found}, not {self.ws.id}; "
                             f"if that is this repository's tracker (renamed, or its URL spelled differently here), set "
                             f"BEAD_WORKSPACE={found} or commit a .beadroll.json holding {{\"workspace\": \"{found}\"}}")
             error.found = found  # for adopt_published
             raise error
         if parsed.get("format") != FORMAT:
-            raise BpError("FORMAT_UNSUPPORTED", f"{self.ref} on {self.url} is in format {parsed.get('format')!r}; "
+            raise BeadError("FORMAT_UNSUPPORTED", f"{self.ref} on {self.url} is in format {parsed.get('format')!r}; "
                           f"this version of bead reads format {FORMAT} only and will not rewrite it")
         return tip
 
@@ -340,7 +340,7 @@ class Link:
                             if target.exists() and target.read_bytes() == theirs:  # a leftover twin of a confirmed attempt
                                 pending[attempt_id].unlink(missing_ok=True)  # its receipt stays: the attempt was accepted
                                 continue
-                            raise BpError("ATTEMPT_FORK", f"{path} on the remote is not the attempt this machine has "
+                            raise BeadError("ATTEMPT_FORK", f"{path} on the remote is not the attempt this machine has "
                                           "pending under that id: the machine identity is in use somewhere else")
                         if local.get(path) != sha:
                             write_atomic(target, theirs)
@@ -370,7 +370,7 @@ class Link:
                     pulled += theirs.count(b"\n") - ours.count(b"\n")
                     write_atomic(target, theirs)
                 elif replica == own:
-                    raise BpError("JOURNAL_FORK", "this machine's journal differs from the published one: the same "
+                    raise BeadError("JOURNAL_FORK", "this machine's journal differs from the published one: the same "
                                   "machine identity is being used from two places. Give one of them a new identity.")
                 else:
                     write_atomic(target.with_name(f"{target.name}.fork-{time.time_ns()}"), ours)
@@ -378,7 +378,7 @@ class Link:
                     self.forks.append(path)
         self.chain_breaks = replay(load_journal(self.ws)).chain_breaks
         if own and own in self.chain_breaks:
-            raise BpError("JOURNAL_FORK", "this machine's journal no longer forms one chain: the same machine "
+            raise BeadError("JOURNAL_FORK", "this machine's journal no longer forms one chain: the same machine "
                           "identity has written from two places. Give one of them a new identity.")
         return pulled
 
@@ -430,7 +430,7 @@ class Link:
             # hooks still apply. `--`: a repository-controlled remote string is never a git option.
             push = run_git(["push", "--porcelain", "--no-verify", "--", self.url, f"{commit}:{self.ref}"], env=self.env,
                            check=False, timeout=NET_TIMEOUT, reap=False)
-        except BpError as error:
+        except BeadError as error:
             self.last_error = str(error)
             return "uncertain"
         # The outcome is git's own status line for this ref ("<flag>\t<from>:<to>\t<summary>"), never text on
@@ -547,12 +547,12 @@ def conflict_detail(link: Link) -> str:
     return f" (the remote last answered: {said})" if "[remote rejected]" in said else ""
 
 
-def refused(link: Link) -> BpError:
-    return BpError("REMOTE_REFUSED", f"the remote refuses bead's update of {link.ref}; nothing was lost, and "
+def refused(link: Link) -> BeadError:
+    return BeadError("REMOTE_REFUSED", f"the remote refuses bead's update of {link.ref}; nothing was lost, and "
                    f"retrying will not help until the remote allows it: {link.last_error}")
 
 
-def adopt_published(ws: Workspace, remote: str, error: BpError) -> Workspace | None:
+def adopt_published(ws: Workspace, remote: str, error: BeadError) -> Workspace | None:
     """A URL-derived id that finds this checkout's own origin already holding a tracker under another id
     (the repository was renamed, or its URL is spelled differently here) adopts that tracker, once, while
     nothing has been written under the derived id. A remote named any other way is never adopted."""
@@ -566,7 +566,7 @@ def adopt_published(ws: Workspace, remote: str, error: BpError) -> Workspace | N
         return None
     try:
         adopted = Workspace(found, ws.name, ws.origin, ws.config)  # validates the id
-    except BpError:
+    except BeadError:
         return None
     adopted.derived = ws.derived
     write_atomic(home() / "moved.json", json.dumps({**moved_workspaces(), ws.derived: found}, indent=1).encode())
@@ -586,7 +586,7 @@ def synchronise(ws: Workspace, remote: str, actor: dict) -> dict:
                     tip = link.fetch()  # settling our own attempts needs the current head, not a snapshot
                 pulled += link.merge(tip)
                 if not tip and not segment_files(ws):
-                    raise BpError("NOT_INITIALIZED", "no tracker here and none published on the remote: run `bead init`")
+                    raise BeadError("NOT_INITIALIZED", "no tracker here and none published on the remote: run `bead init`")
                 pushed = link.unpublished()
                 outcome = link.publish(tip, fence=bool(load_pending(ws)))
                 if outcome == "ok":
@@ -596,9 +596,9 @@ def synchronise(ws: Workspace, remote: str, actor: dict) -> dict:
                 if outcome == "refused":
                     raise refused(link)
                 if outcome == "uncertain":
-                    raise BpError("REMOTE_UNREACHABLE", "the push did not complete; nothing was lost, run sync again "
+                    raise BeadError("REMOTE_UNREACHABLE", "the push did not complete; nothing was lost, run sync again "
                                   f"once the cause is fixed: {link.last_error}")
-        except BpError as error:
+        except BeadError as error:
             if error.code == "SYNC_REPO_DAMAGED" and not link.rebuilt:
                 with locked(ws):
                     link.rebuild()
@@ -609,7 +609,7 @@ def synchronise(ws: Workspace, remote: str, actor: dict) -> dict:
             return synchronise(adopted, remote, actor)
         pause(random.uniform(0.1, 0.4) * attempt)  # another machine pushed first: merge again
     else:
-        raise BpError("SYNC_CONFLICT", "the remote journal kept moving; run sync again" + conflict_detail(link))
+        raise BeadError("SYNC_CONFLICT", "the remote journal kept moving; run sync again" + conflict_detail(link))
     st = view(ws)
     ws.note_sync(remote, name=ws.name, published=published_counts(ws))
     ws.wrote = False
@@ -652,7 +652,7 @@ def coordinated(ws: Workspace, actor: dict, args, build, request=None):
                     return "online"
                 settled = settle_pending(ws, link, tip)
                 if settled == "unresolved":
-                    raise BpError("UNRESOLVED", "an ownership attempt is unsettled and the push that would settle it did "
+                    raise BeadError("UNRESOLVED", "an ownership attempt is unsettled and the push that would settle it did "
                                   f"not complete ({link.last_error}); it counts for nothing until `bead sync` can settle it")
                 if settled == "clear":
                     receipt = None  # whatever this command had in flight is settled one way or the other
@@ -671,7 +671,7 @@ def coordinated(ws: Workspace, actor: dict, args, build, request=None):
                         os._exit(98)
                     try:
                         outcome = link.publish(tip, note="claim", pending=tx.ownership)
-                    except BpError as error:
+                    except BeadError as error:
                         if error.code != "REMOTE_UNREACHABLE":
                             raise
                         outcome = "uncertain"
@@ -690,14 +690,14 @@ def coordinated(ws: Workspace, actor: dict, args, build, request=None):
                         drop_pending(ws, [tx.ownership])  # someone else got there first; decide again against the new head
                     else:  # uncertain: the attempt stays pending; keep its result in case the push did land
                         receipt = (tx.ownership, result)
-        except BpError as error:
+        except BeadError as error:
             if error.code == "SYNC_REPO_DAMAGED" and not link.rebuilt:  # once: set it aside and decide again
                 with locked(ws):
                     link.rebuild()
                 continue
             raise
         pause(random.uniform(0.1, 0.4) * attempt)
-    raise BpError("SYNC_CONFLICT", "the remote journal kept moving; try again" + conflict_detail(link))
+    raise BeadError("SYNC_CONFLICT", "the remote journal kept moving; try again" + conflict_detail(link))
 
 
 def published_counts(ws: Workspace) -> dict[str, int]:
@@ -714,7 +714,7 @@ def unpublished_count(ws: Workspace) -> int | None:
     try:
         if not ws.remote(None):
             return None
-    except BpError:
+    except BeadError:
         return None
     meta = ws.meta()
     published = meta.get("published")
@@ -737,7 +737,7 @@ def publish_soon(ws: Workspace, args, actor: dict) -> str | None:
             return None
         synchronise(ws, remote, actor)
         return None
-    except BpError as error:
+    except BeadError as error:
         return f"recorded locally, not yet published ({error.code})"
     except OSError as error:  # a full volume while pulling, say: the local write stands all the same
         return f"recorded locally, not yet published (IO: {error.strerror or error})"

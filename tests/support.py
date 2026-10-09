@@ -106,7 +106,7 @@ class Machine:
 
 class Sandbox:
     def __init__(self):
-        self.root = Path(tempfile.mkdtemp(prefix="bp-test-")).resolve()
+        self.root = Path(tempfile.mkdtemp(prefix="bead-test-")).resolve()
         self.origin = self.bare("origin.git")
         seed = self.clone("seed")
         (seed / "README.md").write_text("example project\n")

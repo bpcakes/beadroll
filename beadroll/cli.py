@@ -7,7 +7,7 @@ import json
 import os
 import sys
 
-from .base import (BpError, FORMAT, __version__, emit, silence, visible)
+from .base import (BeadError, FORMAT, __version__, emit, silence, visible)
 from .machine import (actor_label, detect_actor, find_workspace, replica_id)
 from .model import (conflicts, view)
 from .sync import (publish_soon, unpublished_count)
@@ -114,7 +114,7 @@ def cmd_help(args, ws, actor):
     parser = build_parser()
     choices = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction)).choices
     if args.command_name not in choices:
-        raise BpError("USAGE", f"unknown command {args.command_name!r}; try `bead help`")
+        raise BeadError("USAGE", f"unknown command {args.command_name!r}; try `bead help`")
     text = choices[args.command_name].format_help()
     return {"help": text}, text.rstrip("\n").split("\n")
 
@@ -136,7 +136,7 @@ def cmd_prime(args, ws, actor):
                            + (f" ({', '.join(i['id'] for i in held)})" if held else "")
                            + (f", {waiting} attempt(s) of this machine awaiting the remote" if waiting else "")
                            + f". Last sync: {ws.meta().get('last_sync') or 'never'}.")
-        except BpError as error:
+        except BeadError as error:
             context.append(f"No tracker here yet ({error.code}): run `bead init` or `bead sync`.")
     else:
         context.append("Not inside a git repository: the commands below work in any checkout of a tracked repo.")
@@ -155,7 +155,7 @@ class Parser(argparse.ArgumentParser):
         self.color = False  # Python 3.14 colours help on a terminal or under FORCE_COLOR; bead's help is plain text
 
     def error(self, message):
-        raise BpError("USAGE", message)
+        raise BeadError("USAGE", message)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -336,7 +336,7 @@ def run(argv=None) -> int:
         if getattr(args, "workspace_free", False):
             try:
                 ws = find_workspace()
-            except BpError:
+            except BeadError:
                 ws = None  # help, prime and onboard work anywhere
         else:
             ws = find_workspace()
@@ -354,11 +354,11 @@ def run(argv=None) -> int:
                 lines = [*lines, f"{behind} event{'s' if behind != 1 else ''} not yet published: bead sync"]
     except BrokenPipeError:
         raise
-    except BpError as error:
+    except BeadError as error:
         return report_error(error, as_json)
     except OSError as error:  # a read-only store, a full volume, a missing file: an answer, not a traceback
         where = error.filename2 or error.filename  # a failed rename names its target, not our temporary file
-        return report_error(BpError("IO", f"{error.strerror or error}: {where}" if where else str(error)), as_json)
+        return report_error(BeadError("IO", f"{error.strerror or error}: {where}" if where else str(error)), as_json)
     try:
         if result is None and lines is None:
             emit(None)
@@ -369,7 +369,7 @@ def run(argv=None) -> int:
     return 0
 
 
-def report_error(error: BpError, as_json: bool) -> int:
+def report_error(error: BeadError, as_json: bool) -> int:
     try:
         emit(json.dumps({"error": {"code": error.code, "message": str(error)}}) if as_json
              else f"Error: {visible(str(error))}", sys.stderr)

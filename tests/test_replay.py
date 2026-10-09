@@ -33,11 +33,11 @@ from tests.support import *  # noqa: F401,F403  (BEAD, Machine, Sandbox, load_mo
 
 # ---- from test_poc.py: the author's suite
 class UnitTest(unittest.TestCase):
-    def events(self, bp, *specs):
+    def events(self, bead, *specs):
         """Build a journal from (op, machine, deps, data) tuples; returns the journal and the ids."""
-        journal, ids = bp.Journal(), []
+        journal, ids = bead.Journal(), []
         for op, machine, deps, data, issue in specs:
-            event = {"v": 1, "id": bp.uuid7(), "replica": machine, "deps": [ids[d] for d in deps],
+            event = {"v": 1, "id": bead.uuid7(), "replica": machine, "deps": [ids[d] for d in deps],
                      "actor": {"agent": "codex", "thread": f"{machine}-t"}, "op": op, "data": data}
             event["issue"] = ids[issue] if issue is not None else event["id"]
             journal.add(event, machine)
@@ -46,32 +46,32 @@ class UnitTest(unittest.TestCase):
         return journal, ids
 
     def test_malformed_payloads_are_scoped_and_reported(self):
-        bp = load_module()
-        journal, ids = self.events(bp,
+        bead = load_module()
+        journal, ids = self.events(bead,
             ("init", "a", [], {"prefix": "ex"}, None),
             ("create", "a", [0], {"key": "ex-ok", "fields": {"title": "fine"}}, None),
             ("create", "a", [1], {"fields": {"title": "no key"}}, None),          # missing key
             ("dep_add", "a", [2], {"type": "blocks"}, 1),                          # missing target
             ("comment", "a", [3], {"text": "x"}, 1))
-        journal.add({"v": 1, "id": bp.uuid7(), "replica": "a", "deps": [ids[-1]], "actor": ["list"], "op": "set",
+        journal.add({"v": 1, "id": bead.uuid7(), "replica": "a", "deps": [ids[-1]], "actor": ["list"], "op": "set",
                      "data": {"fields": {"title": "bad actor"}}, "issue": ids[1]}, "a")
-        st = bp.replay(journal)
+        st = bead.replay(journal)
         self.assertEqual(st.issues[ids[1]]["title"], "fine")
         self.assertEqual(len(st.issues[ids[1]]["comments"]), 1)
         self.assertEqual(sorted(e["problem"][:6] for e in st.integrity), ["actor ", "create", "dep_ad"])
 
     def test_an_ignored_newer_format_event_cannot_change_ownership(self):
-        bp = load_module()
-        journal, ids = self.events(bp,
+        bead = load_module()
+        journal, ids = self.events(bead,
             ("init", "a", [], {"prefix": "ex"}, None),
             ("create", "a", [0], {"key": "ex-1", "fields": {"title": "t"}}, None),
             ("claim", "a", [1], {"mode": "online", "generation": 1}, 1),
             ("claim", "b", [2], {"mode": "online", "generation": 2, "takeover": None, "reason": "future"}, 1),
             ("close", "a", [2], {"claim": None, "reason": "done"}, 1))
-        journal.events[ids[3]]["v"] = 2                       # a takeover in a format this bp does not know
+        journal.events[ids[3]]["v"] = 2                       # a takeover in a format this bead does not know
         journal.events[ids[3]]["data"]["takeover"] = ids[2]
         journal.events[ids[4]]["data"]["claim"] = ids[2]
-        st = bp.replay(journal)
+        st = bead.replay(journal)
         issue = st.issues[ids[1]]
         self.assertEqual(issue["status"], "closed")             # the owner's own close stands
         self.assertIsNone(issue["claim"])
@@ -79,23 +79,23 @@ class UnitTest(unittest.TestCase):
         self.assertEqual([e["problem"][:12] for e in st.integrity], ["event format"])
 
     def test_one_remote_has_one_identity_however_it_is_spelled(self):
-        bp = load_module()
+        bead = load_module()
         spellings = ["git@github.com:Example/Project.git", "https://github.com/example/project",
                      "ssh://git@github.com/example/project.git", "https://github.com/example/project.git/"]
-        self.assertEqual({bp.normalize_remote(s) for s in spellings}, {"github.com/example/project"})
+        self.assertEqual({bead.normalize_remote(s) for s in spellings}, {"github.com/example/project"})
 
     def test_the_coordination_ref_cannot_be_a_branch(self):
-        bp = load_module()
+        bead = load_module()
         for ref in ("refs/heads/main", "refs/tags/v1", "main", "refs/beads/bad..name"):
-            with self.assertRaises(bp.BpError):
-                bp.Workspace("w", None, None, {"ref": ref}).ref
-        self.assertEqual(bp.Workspace("w", None, None, {"ref": "refs/tracker/journal"}).ref, "refs/tracker/journal")
+            with self.assertRaises(bead.BeadError):
+                bead.Workspace("w", None, None, {"ref": ref}).ref
+        self.assertEqual(bead.Workspace("w", None, None, {"ref": "refs/tracker/journal"}).ref, "refs/tracker/journal")
 
 
 # ---- from test_audit.py: first independent audit (AUDIT), 2026-10-06
 class ReplayAuditFixture:
     def __init__(self):
-        self.bp = support.load_module()
+        self.bead = support.load_module()
         self.events = []
         self.counter = 0
         self.init = self.event('init', replica='seed', data={'prefix': 'au', 'name': 'audit'})
@@ -116,22 +116,22 @@ class ReplayAuditFixture:
                           data={'key': key, 'fields': {'title': key, **fields}})
 
     def journal(self, events=None):
-        journal = self.bp.Journal()
+        journal = self.bead.Journal()
         for e in (self.events if events is None else events):
             journal.add(e, e.get('replica', 'a') if isinstance(e, dict) else 'a')
         return journal
 
     def state(self, events=None):
-        return self.bp.replay(self.journal(events))
+        return self.bead.replay(self.journal(events))
 
     def snapshot(self, journal):
-        st = self.bp.replay(journal)
+        st = self.bead.replay(journal)
         issues = sorted(st.issues.values(), key=lambda i: i['id'])
-        return json.dumps({'export': self.bp.export_records(st),
-                           'details': [self.bp.detail(st, i) for i in issues],
+        return json.dumps({'export': self.bead.export_records(st),
+                           'details': [self.bead.detail(st, i) for i in issues],
                            'ready': [i['id'] for i in issues if i['status'] == 'open'
-                                     and not self.bp.is_blocked(st, i)
-                                     and 'status' not in self.bp.conflicts(st, i)],
+                                     and not self.bead.is_blocked(st, i)
+                                     and 'status' not in self.bead.conflicts(st, i)],
                            'integrity': st.integrity, 'pending': sorted(e['id'] for e in st.pending)},
                           sort_keys=True)
 
@@ -175,14 +175,14 @@ class ReplayAuditProperties(unittest.TestCase):
         grouped = {r: [e for e in f.events if e['replica'] == r] for r in heads}
         expected = f.snapshot(f.journal())
         for order in itertools.permutations(heads):
-            j = f.bp.Journal()
+            j = f.bead.Journal()
             # Repeat delivery, including seed events, while preserving each journal's append order.
             for replica in (*order, *reversed(order)):
                 for e in grouped[replica]:
                     j.add(e, replica)
             self.assertEqual(f.snapshot(j), expected)
         for _ in range(16):
-            j = f.bp.Journal()
+            j = f.bead.Journal()
             remaining = {r: iter(events) for r, events in grouped.items()}
             while remaining:
                 replica = rng.choice(list(remaining))
@@ -208,9 +208,9 @@ class ReplayAuditProperties(unittest.TestCase):
         self.assertNotIn(create['id'], st.issues)
 
     def test_all_registers_keep_concurrent_clear_and_value_then_settle(self):
-        bp = support.load_module()
-        for field in bp.REGISTERS:
-            if field in bp.REQUIRED_FIELDS:  # Q09: clearing a required field is a validation error, not a write
+        bead = support.load_module()
+        for field in bead.REGISTERS:
+            if field in bead.REQUIRED_FIELDS:  # Q09: clearing a required field is a validation error, not a write
                 f = ReplayAuditFixture()
                 bad = f.event('set', f.issue['id'], 'a', [f.issue['id']], {'fields': {field: None}})
                 st = f.state()
@@ -222,11 +222,11 @@ class ReplayAuditProperties(unittest.TestCase):
                 a = f.event('set', f.issue['id'], 'a', [f.issue['id']], {'fields': {field: None}})
                 b = f.event('set', f.issue['id'], 'b', [f.issue['id']], {'fields': {field: 4 if field in ('priority', 'estimated_minutes') else 'value'}})
                 st = f.state()
-                self.assertEqual(len(f.bp.conflicts(st, st.issues[f.issue['id']])[field]), 2)
+                self.assertEqual(len(f.bead.conflicts(st, st.issues[f.issue['id']])[field]), 2)
                 self.assertIn(None, st.issues[f.issue['id']]['reg'][field].values())
                 f.event('set', f.issue['id'], 'a', [a['id'], b['id']], {'fields': {field: None}})
                 st = f.state()
-                self.assertNotIn(field, f.bp.conflicts(st, st.issues[f.issue['id']]))
+                self.assertNotIn(field, f.bead.conflicts(st, st.issues[f.issue['id']]))
                 self.assertNotIn(field, st.issues[f.issue['id']])
 
     def test_three_machine_add_wins_labels_and_dependencies(self):
@@ -251,13 +251,13 @@ class ReplayAuditProperties(unittest.TestCase):
         a = f.event('dep_add', f.issue['id'], 'a', [other['id']], {'to': other['id'], 'type': 'blocks'})
         b = f.event('dep_add', other['id'], 'b', [other['id']], {'to': f.issue['id'], 'type': 'blocks'})
         st = f.state()
-        self.assertEqual(len(f.bp.find_cycles(st)), 1)
-        self.assertTrue(all(f.bp.is_blocked(st, i) for i in st.issues.values()))
+        self.assertEqual(len(f.bead.find_cycles(st)), 1)
+        self.assertTrue(all(f.bead.is_blocked(st, i) for i in st.issues.values()))
         f.event('dep_remove', other['id'], 'b', [a['id'], b['id']], {'to': f.issue['id'], 'type': 'blocks'})
         st = f.state()
-        self.assertEqual(f.bp.find_cycles(st), [])
-        self.assertFalse(f.bp.is_blocked(st, st.issues[other['id']]))
-        self.assertTrue(f.bp.is_blocked(st, st.issues[f.issue['id']]))
+        self.assertEqual(f.bead.find_cycles(st), [])
+        self.assertFalse(f.bead.is_blocked(st, st.issues[other['id']]))
+        self.assertTrue(f.bead.is_blocked(st, st.issues[f.issue['id']]))
 
     def test_tombstoned_blocker_unblocks_unless_status_disputed(self):
         f = ReplayAuditFixture()
@@ -265,11 +265,11 @@ class ReplayAuditProperties(unittest.TestCase):
         edge = f.event('dep_add', child['id'], 'seed', [child['id']], {'to': f.issue['id'], 'type': 'blocks'})
         deleted = f.event('delete', f.issue['id'], 'a', [edge['id']])
         st = f.state()
-        self.assertFalse(f.bp.is_blocked(st, st.issues[child['id']]))
+        self.assertFalse(f.bead.is_blocked(st, st.issues[child['id']]))
         f.event('reopen', f.issue['id'], 'b', [edge['id']])
         st = f.state()
-        self.assertIn('status', f.bp.conflicts(st, st.issues[f.issue['id']]))
-        self.assertTrue(f.bp.is_blocked(st, st.issues[child['id']]))
+        self.assertIn('status', f.bead.conflicts(st, st.issues[f.issue['id']]))
+        self.assertTrue(f.bead.is_blocked(st, st.issues[child['id']]))
 
     def test_handwritten_offline_takeover_does_not_fence_confirmed_owner(self):
         f = ReplayAuditFixture()
@@ -288,19 +288,19 @@ class ReplayAuditProperties(unittest.TestCase):
         b['id'] = '01000000-0000-7000-8000-000000000001'
         st = f.state()
         self.assertEqual(st.issues[f.issue['id']]['priority'], 4)
-        self.assertNotIn('priority', f.bp.conflicts(st, st.issues[f.issue['id']]))
+        self.assertNotIn('priority', f.bead.conflicts(st, st.issues[f.issue['id']]))
 
     def test_reused_event_ids_are_isolated_across_workspaces(self):
         f = ReplayAuditFixture()
         other = copy.deepcopy(f.events)
         other[-1]['data']['fields']['title'] = 'separate workspace'
-        with tempfile.TemporaryDirectory(prefix='bp-audit-workspaces-') as home:
+        with tempfile.TemporaryDirectory(prefix='bead-audit-workspaces-') as home:
             with mock.patch.dict(os.environ, {'BEAD_HOME': home, 'BEAD_WORKSPACE': 'audit-explicit'}):
-                one = f.bp.Workspace('one', None, None, {})
-                two = f.bp.Workspace('two', None, None, {})
-                f.bp.append_events(one, 'seed', f.events)
-                f.bp.append_events(two, 'seed', other)
-                states = [f.bp.replay(f.bp.load_journal(ws)) for ws in [one, two]]
+                one = f.bead.Workspace('one', None, None, {})
+                two = f.bead.Workspace('two', None, None, {})
+                f.bead.append_events(one, 'seed', f.events)
+                f.bead.append_events(two, 'seed', other)
+                states = [f.bead.replay(f.bead.load_journal(ws)) for ws in [one, two]]
                 self.assertEqual([st.issues[f.issue['id']]['title'] for st in states], ['au-one', 'separate workspace'])
                 self.assertEqual([st.integrity for st in states], [[], []])
 
@@ -314,7 +314,7 @@ class ReplayAuditBugs(unittest.TestCase):
         b = f.event('set', f.issue['id'], 'b', [independent['id']], {'fields': {'priority': 4}})
         st = f.state()
         self.assertFalse(st.saw(b['id'], a['id']), 'same-journal position invents a causal dependency and erases a concurrent value')
-        self.assertIn('priority', f.bp.conflicts(st, st.issues[f.issue['id']]))
+        self.assertIn('priority', f.bead.conflicts(st, st.issues[f.issue['id']]))
 
     def test_non_chain_claim_cannot_bypass_pending_predecessor(self):
         f = ReplayAuditFixture()
@@ -352,7 +352,7 @@ class ReplayAuditBugs(unittest.TestCase):
         self.assertEqual(f.snapshot(journals[0]), f.snapshot(journals[1]),
                          'same two quarantined payloads produce different ownership when enumeration reverses')
         for j in journals:
-            st = f.bp.replay(j)
+            st = f.bead.replay(j)
             self.assertEqual(len(st.integrity), 1)
             self.assertIsNone(st.issues[f.issue['id']]['claim'], 'quarantined claim still participates in superseded pre-pass')
             self.assertEqual(st.issues[f.issue['id']]['status'], 'closed')
@@ -363,7 +363,7 @@ class ReplayAuditBugs(unittest.TestCase):
         child = f.event('set', f.issue['id'], 'a', [bad['id']], {'fields': {'notes': 'valid descendant'}})
         j = f.journal()
         j.add({**bad, 'deps': [f.issue['id']], 'data': {'text': 'second payload'}}, 'b')
-        st = f.bp.replay(j)
+        st = f.bead.replay(j)
         self.assertEqual(st.pending, [], 'quarantined event and descendant wait on first payload missing cause')
         self.assertEqual(st.issues[f.issue['id']]['notes'], 'valid descendant')
 
@@ -417,7 +417,7 @@ class ReplayAuditBugs(unittest.TestCase):
         f.event('dep_add', f.issue['id'], 'seed', [f.events[-1]['id']], {'to': second['id'], 'type': 'parent-child'})
         f.event('dep_add', second['id'], 'seed', [f.events[-1]['id']], {'to': gate['id'], 'type': 'blocks'})
         st = f.state()
-        self.assertEqual([i['id'] for i in f.bp.open_blockers(st, st.issues[f.issue['id']])], ['au-gate'])
+        self.assertEqual([i['id'] for i in f.bead.open_blockers(st, st.issues[f.issue['id']])], ['au-gate'])
 
 
 # ---- from test_audit.py: first independent audit (AUDIT), 2026-10-06
@@ -437,12 +437,12 @@ class ReplayAuditThreadOwnership(unittest.TestCase):
 # ---- from test_reaudit.py: second independent audit (REAUDIT), 2026-10-06
 class ReplayReaudit(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix="bp-replay-reaudit-")
+        self.tmp = tempfile.TemporaryDirectory(prefix="bead-replay-reaudit-")
         self.addCleanup(self.tmp.cleanup)
         env = patch.dict(os.environ, {"BEAD_HOME": str(Path(self.tmp.name) / "home"), "BEAD_WORKSPACE": "replay-reaudit"})
         env.start()
         self.addCleanup(env.stop)
-        self.bp = support.load_module()
+        self.bead = support.load_module()
         self.serial = 0
 
     def event(self, op, machine="a", deps=(), issue=None, data=None):
@@ -459,14 +459,14 @@ class ReplayReaudit(unittest.TestCase):
         return init, create
 
     def journal(self, events):
-        j = self.bp.Journal()
+        j = self.bead.Journal()
         for event in events:
             j.add(event, event["replica"])
         return j
 
     def projection(self, journal):
-        st = self.bp.replay(journal)
-        return json.dumps({"records": self.bp.export_records(st), "details": [self.bp.detail(st, i) for i in st.issues.values()],
+        st = self.bead.replay(journal)
+        return json.dumps({"records": self.bead.export_records(st), "details": [self.bead.detail(st, i) for i in st.issues.values()],
                            "integrity": sorted(st.integrity, key=lambda x: json.dumps(x, sort_keys=True)),
                            "pending": sorted(e["id"] for e in st.pending)}, sort_keys=True)
 
@@ -475,7 +475,7 @@ class ReplayReaudit(unittest.TestCase):
         malformed = copy.deepcopy(create)
         malformed["op"] = ["create"]
         def build(variant_first):
-            j = self.bp.Journal()
+            j = self.bead.Journal()
             j.add(init, "a")
             # Corruption in another machine's copy; valid envelope cannot be checked for placement.
             rows = [(malformed, "b"), (create, "a")]
@@ -484,8 +484,8 @@ class ReplayReaudit(unittest.TestCase):
             for event, machine in rows:
                 j.add(event, machine)
             return j
-        left, right = self.bp.replay(build(True)), self.bp.replay(build(False))
-        self.assertEqual(self.bp.export_records(left), self.bp.export_records(right))
+        left, right = self.bead.replay(build(True)), self.bead.replay(build(False))
+        self.assertEqual(self.bead.export_records(left), self.bead.export_records(right))
         self.assertNotIn(create["id"], left.issues, "ambiguous event must be ignored in either order")
 
     def test_quarantined_variant_cannot_hold_descendants_in_cycle(self):
@@ -494,7 +494,7 @@ class ReplayReaudit(unittest.TestCase):
         variant = copy.deepcopy(create)
         variant["deps"] = [child["id"]]
         j = self.journal([init, create, child, variant])
-        st = self.bp.replay(j)
+        st = self.bead.replay(j)
         self.assertEqual(st.pending, [], "quarantined event must not hold later frontier events")
         self.assertIn(child["id"], st.issues)
         self.assertEqual(len(st.integrity), 1)
@@ -504,7 +504,7 @@ class ReplayReaudit(unittest.TestCase):
         invalid = self.event("future_op", "b", deps=[create["id"]])
         invalid["id"] = "ffffffff-ffff-7000-8000-000000000000"
         j = self.journal([init, create, invalid])
-        st = self.bp.replay(j)
+        st = self.bead.replay(j)
         self.assertEqual(st.issues[create["id"]]["title"], "survivor")
         self.assertTrue(st.integrity)
 
@@ -512,7 +512,7 @@ class ReplayReaudit(unittest.TestCase):
         init, create = self.fixture()
         invalid = self.event("comment", "b", deps=[create["id"]], issue=create["id"], data={"text": "bad"})
         invalid["actor"]["thread"] = ["not", "scalar"]
-        st = self.bp.replay(self.journal([init, create, invalid]))
+        st = self.bead.replay(self.journal([init, create, invalid]))
         self.assertEqual(st.issues[create["id"]]["comments"], [])
         self.assertTrue(st.integrity)
 
@@ -520,7 +520,7 @@ class ReplayReaudit(unittest.TestCase):
         init, create = self.fixture()
         invalid = self.event("set", "b", deps=[create["id"]], issue=create["id"],
                              data={"fields": {"title": "partial poison", "reg": None}})
-        st = self.bp.replay(self.journal([init, create, invalid]))
+        st = self.bead.replay(self.journal([init, create, invalid]))
         self.assertEqual(st.issues[create["id"]]["title"], "survivor")
         self.assertIsInstance(st.issues[create["id"]]["reg"], dict)
         self.assertTrue(st.integrity)
@@ -529,7 +529,7 @@ class ReplayReaudit(unittest.TestCase):
         init, create = self.fixture()
         overwrite = self.event("create", "b", deps=[create["id"]], issue=create["id"],
                                data={"key": "ex-other", "fields": {"title": "replacement"}})
-        st = self.bp.replay(self.journal([init, create, overwrite]))
+        st = self.bead.replay(self.journal([init, create, overwrite]))
         self.assertEqual(st.resolve("ex-ok")["title"], "survivor")
         self.assertTrue(st.integrity)
 
@@ -555,7 +555,7 @@ class ReplayReaudit(unittest.TestCase):
         fake = self.event("claim", "b", [claim["id"]], create["id"], {"mode": "offline", "generation": 999,
                                                                                 "takeover": claim["id"], "reason": "offline"})
         close = self.event("close", "a", [claim["id"]], create["id"], {"claim": claim["id"]})
-        st = self.bp.replay(self.journal([init, create, claim, fake, close]))
+        st = self.bead.replay(self.journal([init, create, claim, fake, close]))
         issue = st.issues[create["id"]]
         self.assertEqual(issue["status"], "closed")
         self.assertIsNone(issue["claim"])
@@ -568,7 +568,7 @@ class ReplayReaudit(unittest.TestCase):
         orphan = self.event("claim", "b", [claim["id"]], "019a1111-1111-7000-8000-111111111111",
                             {"mode": "online", "generation": 2, "takeover": claim["id"], "reason": "wrong target"})
         close = self.event("close", "a", [claim["id"]], create["id"], {"claim": claim["id"]})
-        st = self.bp.replay(self.journal([init, create, claim, orphan, close]))
+        st = self.bead.replay(self.journal([init, create, claim, orphan, close]))
         issue = st.issues[create["id"]]
         self.assertEqual(issue["status"], "closed")
         self.assertIsNone(issue["claim"])
@@ -577,7 +577,7 @@ class ReplayReaudit(unittest.TestCase):
     def test_partially_invalid_label_add_applies_nothing(self):
         init, create = self.fixture()
         bad = self.event("label_add", "b", [create["id"]], create["id"], {"labels": ["must-not-stick", {}]})
-        st = self.bp.replay(self.journal([init, create, bad]))
+        st = self.bead.replay(self.journal([init, create, bad]))
         self.assertTrue(st.integrity)
         self.assertEqual(st.issues[create["id"]]["labels"], set(), "event reported as invalid must not mutate valid state")
 
@@ -609,14 +609,14 @@ class ReplayReaudit(unittest.TestCase):
             rows.append((event, machine))
             heads[machine] = event["id"]
         def build(order):
-            j = self.bp.Journal()
+            j = self.bead.Journal()
             for machine in order:
                 for event, owner in rows:
                     if owner == machine:
                         j.add(event, machine)
             return j
         base = build("abcdef")
-        st = self.bp.replay(base)
+        st = self.bead.replay(base)
         self.assertEqual(st.pending, [])
         self.assertEqual(st.chain_breaks, {})
         self.assertEqual(len(st.integrity), 3000)
@@ -638,9 +638,9 @@ class ReplayReaudit(unittest.TestCase):
             event = self.event("dep_add", "a", [last], source, {"to": target, "type": "blocks"})
             events.append(event)
             last = event["id"]
-        st = self.bp.replay(self.journal(events))
+        st = self.bead.replay(self.journal(events))
         self.assertEqual(st.integrity, [])
-        self.assertEqual(self.bp.find_cycles(st), [])
+        self.assertEqual(self.bead.find_cycles(st), [])
 
     def test_valid_six_machine_6000_events_converge_and_ancestry_is_exact(self):
         rng = random.Random(901833)
@@ -655,7 +655,7 @@ class ReplayReaudit(unittest.TestCase):
             deps += [head for m, head in heads.items() if m != machine and rng.random() < .08]
             op = rng.choice(["set", "label_add", "label_remove", "comment"])
             if op == "set":
-                field = rng.choice(self.bp.REGISTERS)
+                field = rng.choice(self.bead.REGISTERS)
                 value = (n % 5 if field == "priority" else n % 180 if field == "estimated_minutes" else
                          "task" if field == "issue_type" else f"value{n % 31}" if field == "title" else
                          rng.choice([None, f"value{n % 31}"]))
@@ -674,7 +674,7 @@ class ReplayReaudit(unittest.TestCase):
             heads[machine] = event["id"]
         base = self.journal(events)
         expected = self.projection(base)
-        st = self.bp.replay(base)
+        st = self.bead.replay(base)
         self.assertEqual(st.integrity, [])
         self.assertEqual(st.pending, [])
         for _ in range(10000):
@@ -684,7 +684,7 @@ class ReplayReaudit(unittest.TestCase):
         # Arbitrary interleaving of complete machine journals, preserving each journal's bytes.
         orders = rng.sample(list(itertools.permutations("abcdef")), 36)
         for order in orders:
-            j = self.bp.Journal()
+            j = self.bead.Journal()
             for machine in order:
                 for eid in base.order[machine]:
                     j.add(base.events[eid], machine)
@@ -693,28 +693,28 @@ class ReplayReaudit(unittest.TestCase):
 
     def test_all_registers_preserve_none_against_concurrent_value(self):
         init, create = self.fixture()
-        clearable = [k for k in self.bp.REGISTERS if k not in self.bp.REQUIRED_FIELDS]  # Q09: the rest cannot be cleared
+        clearable = [k for k in self.bead.REGISTERS if k not in self.bead.REQUIRED_FIELDS]  # Q09: the rest cannot be cleared
         left = self.event("set", "b", [create["id"]], create["id"], {"fields": {k: None for k in clearable}})
         right = self.event("set", "c", [create["id"]], create["id"],
-                           {"fields": {k: (1 if self.bp.FIELD_TYPES.get(k) is int else "a value") for k in clearable}})
+                           {"fields": {k: (1 if self.bead.FIELD_TYPES.get(k) is int else "a value") for k in clearable}})
         j = self.journal([init, create, left, right])
-        st = self.bp.replay(j)
-        self.assertEqual(set(self.bp.conflicts(st, st.issues[create["id"]])), set(clearable))
+        st = self.bead.replay(j)
+        self.assertEqual(set(self.bead.conflicts(st, st.issues[create["id"]])), set(clearable))
         settled = self.event("set", "d", [left["id"], right["id"]], create["id"], {"fields": {k: None for k in clearable}})
         j.add(settled, "d")
-        st = self.bp.replay(j)
-        self.assertEqual(self.bp.conflicts(st, st.issues[create["id"]]), {})
+        st = self.bead.replay(j)
+        self.assertEqual(self.bead.conflicts(st, st.issues[create["id"]]), {})
 
     def test_missing_predecessor_holds_claim_and_close_then_recovers(self):
         init, create = self.fixture()
         claim = self.event("claim", "b", [create["id"]], create["id"], {"mode": "online", "generation": 1})
         close = self.event("close", "b", [claim["id"]], create["id"], {"claim": claim["id"]})
         j = self.journal([init, claim, close])
-        st = self.bp.replay(j)
+        st = self.bead.replay(j)
         self.assertEqual({e["id"] for e in st.pending}, {claim["id"], close["id"]})
         self.assertEqual(st.issues, {})
         j.add(create, "a")
-        st = self.bp.replay(j)
+        st = self.bead.replay(j)
         self.assertEqual(st.pending, [])
         self.assertEqual(st.issues[create["id"]]["status"], "closed")
         self.assertIsNone(st.issues[create["id"]]["claim"])
@@ -723,7 +723,7 @@ class ReplayReaudit(unittest.TestCase):
         init, create = self.fixture()
         unknown = self.event("future_op", "a", [create["id"]])
         child = self.event("comment", "a", [unknown["id"]], create["id"], {"text": "survivor"})
-        st = self.bp.replay(self.journal([init, create, unknown, child]))
+        st = self.bead.replay(self.journal([init, create, unknown, child]))
         self.assertEqual(st.pending, [])
         self.assertEqual(len(st.integrity), 1)
         self.assertEqual([c["text"] for c in st.issues[create["id"]]["comments"]], ["survivor"])
@@ -737,7 +737,7 @@ class ReplayThirdReview(unittest.TestCase):
         self.env = patch.dict(os.environ, {'BEAD_HOME': str(Path(self.temp.name)/'home'), 'BEAD_WORKSPACE':'replay3'})
         self.env.start()
         self.addCleanup(self.env.stop)
-        self.bp = support.load_module()
+        self.bead = support.load_module()
         self.serial = 0
 
     def event(self, op, replica='a', deps=(), issue=None, data=None):
@@ -752,7 +752,7 @@ class ReplayThirdReview(unittest.TestCase):
         return init, create
 
     def journal(self, events, detached=()):
-        j = self.bp.Journal()
+        j = self.bead.Journal()
         for event in events:
             j.add(event, event['replica'], sequenced=event['id'] not in detached)
         j.settle()
@@ -767,7 +767,7 @@ class ReplayThirdReview(unittest.TestCase):
         variant['data']['text'] = 'variant two'
         j = self.journal([init,create,bad,child,variant])
         try:
-            st = self.bp.replay(j)
+            st = self.bead.replay(j)
         except Exception as error:
             self.fail(f'quarantined cycle crashed replay: {error!r}')
         self.assertEqual(st.pending, [])
@@ -781,7 +781,7 @@ class ReplayThirdReview(unittest.TestCase):
         variant['deps'] = 17
         j = self.journal([init,create,comment,variant])
         try:
-            st = self.bp.replay(j)
+            st = self.bead.replay(j)
         except Exception as error:
             self.fail(f'malformed duplicate crashed replay: {error!r}')
         self.assertEqual(st.issues[create['id']]['comments'], [])
@@ -791,11 +791,11 @@ class ReplayThirdReview(unittest.TestCase):
         init, create = self.base()
         create['data']['comments'] = [{'text':'missing author and timestamp'}]
         j = self.journal([init,create])
-        st = self.bp.replay(j)
+        st = self.bead.replay(j)
         try:
-            self.bp.export_records(st)
+            self.bead.export_records(st)
             for issue in st.issues.values():
-                self.bp.detail(st, issue)
+                self.bead.detail(st, issue)
         except Exception as error:
             self.fail(f'accepted malformed embedded comment crashes query/export: {error!r}; integrity={st.integrity!r}')
         self.assertTrue(st.integrity, 'malformed embedded comment must make its event inert')
@@ -804,7 +804,7 @@ class ReplayThirdReview(unittest.TestCase):
     def test_create_without_issue_id_is_inert(self):
         init, create = self.base()
         del create['issue']
-        st = self.bp.replay(self.journal([init,create]))
+        st = self.bead.replay(self.journal([init,create]))
         self.assertTrue(st.integrity, 'missing create issue ID must not install inaccessible None-keyed issue')
         self.assertNotIn(None, st.issues)
 
@@ -812,12 +812,12 @@ class ReplayThirdReview(unittest.TestCase):
         init, create = self.base()
         comment = self.event('comment', 'a', [create['id']], create['id'], {'text':'existing'})
         events = [init,create,comment]
-        before = self.bp.export_records(self.bp.replay(self.journal(events)))[0]['comments'][0]['id']
+        before = self.bead.export_records(self.bead.replay(self.journal(events)))[0]['comments'][0]['id']
         other = self.event('create','a',[comment['id']],data={'key':'ex-two','fields':{'title':'imported'},
                'comments':[{'legacy_id':before,'author':'legacy','text':'legacy','created_at':'2020-01-01T00:00:00Z'}], 'imported':True})
-        after = self.bp.export_records(self.bp.replay(self.journal(events+[other])))
+        after = self.bead.export_records(self.bead.replay(self.journal(events+[other])))
         existing = next(r for r in after if r['id']=='ex-one')['comments'][0]['id']
-        self.assertEqual(existing,before,'later imported legacy ID renumbers an already-exported bp comment')
+        self.assertEqual(existing,before,'later imported legacy ID renumbers an already-exported bead comment')
 
     def test_identical_misplaced_duplicate_does_not_reorder_own_journal(self):
         init, create = self.base()
@@ -825,7 +825,7 @@ class ReplayThirdReview(unittest.TestCase):
         second = self.event('comment', 'z', [first['id']], create['id'], {'text':'second'})
         results = []
         for misplaced_first in (False, True):
-            j = self.bp.Journal()
+            j = self.bead.Journal()
             j.add(init, 'a')
             j.add(create, 'a')
             if misplaced_first:
@@ -835,7 +835,7 @@ class ReplayThirdReview(unittest.TestCase):
             if not misplaced_first:
                 j.add(second, 'b')
             j.settle()
-            st = self.bp.replay(j)
+            st = self.bead.replay(j)
             results.append(([c['text'] for c in st.issues[create['id']]['comments']],st.chain_breaks))
         self.assertEqual(results[0],results[1], 'misplaced identical duplicate reordered the actual owner journal')
         self.assertEqual(results[0],(['first','second'],{}))
@@ -856,21 +856,21 @@ class ReplayThirdReview(unittest.TestCase):
         earlier = self.event('comment','b',[create['id']],create['id'],{'text':'arrives later'})
         later = self.event('comment','c',[create['id']],create['id'],{'text':'already exported'})
         earlier['id'],later['id'] = pair
-        st = self.bp.replay(self.journal([init,create,later]))
-        before = self.bp.export_records(st)[0]['comments'][0]['id']
-        st = self.bp.replay(self.journal([init,create,later,earlier]))
+        st = self.bead.replay(self.journal([init,create,later]))
+        before = self.bead.export_records(st)[0]['comments'][0]['id']
+        st = self.bead.replay(self.journal([init,create,later,earlier]))
         self.assertEqual(st.integrity,[])
-        comments = self.bp.export_records(st)[0]['comments']
+        comments = self.bead.export_records(st)[0]['comments']
         after = next(c['id'] for c in comments if c['text']=='already exported')
         self.assertEqual(after,before,f'valid comments {pair} collide and remote arrival renumbers existing export')
 
     def test_optional_register_clears_remain_queryable(self):
         init, create = self.base()
         clear = self.event('set','a',[create['id']],create['id'],{'fields':{'description':None,'design':None,'notes':None,'assignee':None}})
-        st = self.bp.replay(self.journal([init,create,clear]))
+        st = self.bead.replay(self.journal([init,create,clear]))
         self.assertEqual(st.integrity,[])
-        self.bp.export_records(st)
-        self.bp.detail(st,st.issues[create['id']])
+        self.bead.export_records(st)
+        self.bead.detail(st,st.issues[create['id']])
         self.assertEqual(st.issues[create['id']]['title'],'survivor')
 
     def test_merged_dependency_cycle_reports_remaining_cycle_after_partial_removal(self):
@@ -883,12 +883,12 @@ class ReplayThirdReview(unittest.TestCase):
         for source,target in [(first,second),(second,first),(second,third),(third,first)]:
             event=self.event('dep_add','a',[previous],source['id'],{'to':target['id'],'type':'blocks'})
             events.append(event);previous=event['id']
-        before=self.bp.replay(self.journal(events))
-        self.assertEqual(len(self.bp.find_cycles(before)),2)
+        before=self.bead.replay(self.journal(events))
+        self.assertEqual(len(self.bead.find_cycles(before)),2)
         removed=self.event('dep_remove','a',[previous],second['id'],{'to':first['id'],'type':'blocks'})
-        after=self.bp.replay(self.journal(events+[removed]))
-        self.assertEqual(self.bp.find_cycles(after),[['ex-one','ex-two','ex-three']])
-        self.assertTrue(all(self.bp.is_blocked(after,issue) for issue in after.issues.values()))
+        after=self.bead.replay(self.journal(events+[removed]))
+        self.assertEqual(self.bead.find_cycles(after),[['ex-one','ex-two','ex-three']])
+        self.assertTrue(all(self.bead.is_blocked(after,issue) for issue in after.issues.values()))
 
     def test_mixed_detached_ownership_ancestry_matches_exact_graph(self):
         rng = random.Random(71029)
@@ -907,18 +907,18 @@ class ReplayThirdReview(unittest.TestCase):
             ancestors[event['id']] = set(deps).union(*(ancestors[d] for d in deps))
             events.append(event)
             heads[machine] = event['id']
-        st = self.bp.replay(self.journal(events,detached))
+        st = self.bead.replay(self.journal(events,detached))
         self.assertEqual(st.integrity,[])
         self.assertEqual(st.pending,[])
         for _ in range(10000):
             a,b = rng.sample(events,2)
             self.assertEqual(st.saw(a['id'],b['id']),b['id'] in ancestors[a['id']])
-        expected = self.bp.export_records(st)
+        expected = self.bead.export_records(st)
         for _ in range(12):
             order = list('abcdef')
             rng.shuffle(order)
             variant = [e for m in order for e in events if e['replica']==m]
-            self.assertEqual(self.bp.export_records(self.bp.replay(self.journal(variant,detached))),expected)
+            self.assertEqual(self.bead.export_records(self.bead.replay(self.journal(variant,detached))),expected)
 
 
 # ---- from test_review3.py: third independent review (REVIEW3), 2026-10-06
@@ -927,7 +927,7 @@ class ReplayResiduals(unittest.TestCase):
     def setUpClass(cls):
         if not os.environ.get("BEAD_HOME"):
             raise RuntimeError("set BEAD_HOME to a scratch path before running these probes")
-        cls.bp = load_bead()
+        cls.bead = load_bead()
 
     def setUp(self):
         self.serial = 0
@@ -949,7 +949,7 @@ class ReplayResiduals(unittest.TestCase):
         return event
 
     def add_all(self, rows):
-        journal = self.bp.Journal()
+        journal = self.bead.Journal()
         for event, physical_replica in rows:
             journal.add(event, physical_replica)
         return journal
@@ -978,7 +978,7 @@ class ReplayResiduals(unittest.TestCase):
             issue="omitted",
             data={"key": "ex-second", "fields": {"title": "second"}},
         )
-        state = self.bp.replay(
+        state = self.bead.replay(
             self.add_all([(init, "a"), (first, "a"), (second, "b")])
         )
 
@@ -1015,11 +1015,11 @@ class ReplayResiduals(unittest.TestCase):
             rows.extend([(first, "a"), (second, "a")])
             if not misplaced_first:
                 rows.append((second, "b"))
-            state = self.bp.replay(self.add_all(rows))
+            state = self.bead.replay(self.add_all(rows))
             issue = state.issues[create["id"]]
             return {
                 "title": issue["title"],
-                "conflicts": self.bp.conflicts(state, issue),
+                "conflicts": self.bead.conflicts(state, issue),
                 "integrity": state.integrity,
                 "chain_breaks": state.chain_breaks,
             }
@@ -1054,7 +1054,7 @@ class ReplayResiduals(unittest.TestCase):
             issue=create["id"],
             data={"claim": claim["id"], "reason": "done"},
         )
-        state = self.bp.replay(
+        state = self.bead.replay(
             self.add_all(
                 [(init, "a"), (create, "a"), (claim, "a"), (takeover, "b"), (close, "a")]
             )
@@ -1085,7 +1085,7 @@ class ReplayResiduals(unittest.TestCase):
             **quarantined,
             "data": {"text": "variant two"},
         }
-        state = self.bp.replay(
+        state = self.bead.replay(
             self.add_all(
                 [(init, "a"), (create, "a"), (quarantined, "b"), (child, "c"), (variant, "b")]
             )
@@ -1109,16 +1109,16 @@ class ReplayResiduals(unittest.TestCase):
                 "comments": [{"text": "missing author and created_at"}],
             },
         )
-        state = self.bp.replay(
+        state = self.bead.replay(
             self.add_all([(init, "a"), (create, "a"), (malformed, "b")])
         )
 
         # A rejected malformed issue is acceptable; so is a fully normalized one.
         # In either case, one bad embedded comment cannot disable global export/detail.
-        records = self.bp.export_records(state)
+        records = self.bead.export_records(state)
         self.assertTrue(any(record["id"] == "ex-one" for record in records))
         if malformed["id"] in state.issues:
-            self.bp.detail(state, state.issues[malformed["id"]])
+            self.bead.detail(state, state.issues[malformed["id"]])
         else:
             self.assertTrue(state.integrity)
 
@@ -1145,7 +1145,7 @@ class ReplayResiduals(unittest.TestCase):
             )
             rows.append((edge, "a"))
             last = edge["id"]
-        cycles = {tuple(cycle) for cycle in self.bp.find_cycles(self.bp.replay(self.add_all(rows)))}
+        cycles = {tuple(cycle) for cycle in self.bead.find_cycles(self.bead.replay(self.add_all(rows)))}
         self.assertEqual(cycles, {("ex-a", "ex-b", "ex-c"), ("ex-a", "ex-c")})
 
 
@@ -1155,7 +1155,7 @@ class ReplayScale(unittest.TestCase):
         """P01: ancestry over ownership events is a shared bitset per event, not a cumulative set.
         3,000 alternating claim/release events replay in well under a second and keep at most one
         distinct bitset per event."""
-        bp = load_module()
+        bead = load_module()
         events, prev, uid, active = [], None, None, None
         for i in range(3000):
             eid = str(uuid.UUID(int=((1_770_000_000_000 + i) << 80) | (7 << 76) | (2 << 62)))
@@ -1172,11 +1172,11 @@ class ReplayScale(unittest.TestCase):
             events.append({"v": 1, "id": eid, "replica": "m", "actor": {"agent": "x", "thread": "t"},
                            "deps": [prev] if prev else [], "op": op, "issue": issue, "data": data})
             prev = eid
-        journal = bp.Journal()
+        journal = bead.Journal()
         for event in events:
             journal.add(event, "m", sequenced=event["op"] in ("init", "create"))
         started = time.time()
-        st = bp.replay(journal)
+        st = bead.replay(journal)
         self.assertLess(time.time() - started, 1.0)
         self.assertEqual(st.integrity, [])
         self.assertLessEqual(len(st._shared), len(events))
@@ -1203,7 +1203,7 @@ class ReplayReview4(unittest.TestCase):
 
     def test_q07_invalid_placeholder_cannot_bridge_a_broken_machine_chain(self):
         """Q07: an inert placeholder must not invent predecessor ancestry for its tail."""
-        bp = support.load_module()
+        bead = support.load_module()
         init = self.event(1, "init", "seed", data={"prefix": "ex"})
         create = self.event(
             2, "create", "seed", [init["id"]],
@@ -1218,17 +1218,17 @@ class ReplayReview4(unittest.TestCase):
         later = self.event(
             5, "set", "a", [malformed["id"]], create["id"], {"fields": {"priority": 4}}
         )
-        journal = bp.Journal()
+        journal = bead.Journal()
         for event in (init, create, first, malformed, later):
             journal.add(event, event["replica"])
-        state = bp.replay(journal)
+        state = bead.replay(journal)
         self.assertFalse(state.saw(later["id"], first["id"]))
         self.assertEqual(state.issues[create["id"]]["priority"], 1)
         self.assertIn("a", state.chain_breaks)
 
     def test_q09_required_register_clears_remain_queryable(self):
         """Q09: required-field clears must be rejected or leave every query usable."""
-        bp = support.load_module()
+        bead = support.load_module()
         for offset, field in enumerate(("title", "priority", "issue_type"), 10):
             with self.subTest(field=field):
                 init = self.event(offset, "init", "seed", data={"prefix": "ex"})
@@ -1242,24 +1242,24 @@ class ReplayReview4(unittest.TestCase):
                     offset + 2, "set", "seed", [create["id"]], create["id"],
                     {"fields": {field: None}},
                 )
-                journal = bp.Journal()
+                journal = bead.Journal()
                 for event in (init, create, clear):
                     journal.add(event, event["replica"])
-                state = bp.replay(journal)
+                state = bead.replay(journal)
                 issue = state.issues[create["id"]]
                 if state.integrity:
                     self.assertTrue(any(row.get("event") == clear["id"] for row in state.integrity))
                     self.assertEqual(issue[field], create["data"]["fields"][field])
                 try:
-                    bp.brief(state, issue)
-                    bp.line(state, issue)
-                    bp.export_records(state)
+                    bead.brief(state, issue)
+                    bead.line(state, issue)
+                    bead.export_records(state)
                 except Exception as error:  # the accepted clear must stay query-safe
                     self.fail(f"clearing {field} broke a query: {error!r}")
 
     def test_d01_cycle_enumerator_matches_every_graph_through_four_nodes(self):
         """D01 verification: every <=4-node directed graph matches a brute-force oracle."""
-        bp = support.load_module()
+        bead = support.load_module()
 
         class State:
             def __init__(self, size, edges):
@@ -1300,7 +1300,7 @@ class ReplayReview4(unittest.TestCase):
                     if mask >> bit & 1:
                         edges[source].add(target)
                 expected = brute_force(size, edges)
-                actual = {tuple(cycle) for cycle in bp.find_cycles(State(size, edges))}
+                actual = {tuple(cycle) for cycle in bead.find_cycles(State(size, edges))}
                 self.assertEqual(actual, expected, (size, mask, edges))
 
 
@@ -1308,7 +1308,7 @@ class ReplayReview4(unittest.TestCase):
 class Review5Replay(unittest.TestCase):
     def test_e10_extra_cannot_override_canonical_export_fields(self):
         """E10: a valid event's compatibility extras cannot forge its exported identity/state."""
-        bp = support.load_module()
+        bead = support.load_module()
         init_id = "019a4444-4444-7000-8000-000000000001"
         create_id = "019a4444-4444-7000-8000-000000000002"
         init = {
@@ -1328,15 +1328,15 @@ class Review5Replay(unittest.TestCase):
                 "extra": {"id": "ex-spoof", "status": "open", "comments": "forged"},
             },
         }
-        journal = bp.Journal()
+        journal = bead.Journal()
         journal.add(init, "peer")
         journal.add(create, "peer")
-        problem = bp.payload_problem(create)
+        problem = bead.payload_problem(create)
         if problem is not None:
             return
-        state = bp.replay(journal)
+        state = bead.replay(journal)
         self.assertEqual(state.integrity, [])
-        exported = bp.export_records(state)[0]
+        exported = bead.export_records(state)[0]
         self.assertEqual(exported["id"], "ex-real")
         self.assertEqual(exported["status"], "tombstone")
         self.assertIsInstance(exported.get("comments", []), list)

@@ -8,7 +8,7 @@ import subprocess
 import sys
 import time
 
-bp, repo, seconds, seed, logfile = sys.argv[1], sys.argv[2], float(sys.argv[3]), int(sys.argv[4]), sys.argv[5]
+bead, repo, seconds, seed, logfile = sys.argv[1], sys.argv[2], float(sys.argv[3]), int(sys.argv[4]), sys.argv[5]
 random.seed(seed)
 words = "ledger invoice export worker retry queue schema audit login token cache index proxy budget gate loop".split()
 log = open(logfile, "a")
@@ -19,7 +19,7 @@ EXPECTED = {"ALREADY_CLAIMED", "CLAIMED_BY_OTHER", "NOT_OWNER", "CYCLE", "STATUS
 
 def run(*args):
     t = time.time()
-    proc = subprocess.run([bp, *args, "--json"], cwd=repo, capture_output=True, text=True, timeout=180)
+    proc = subprocess.run([bead, *args, "--json"], cwd=repo, capture_output=True, text=True, timeout=180)
     ms = int((time.time() - t) * 1000)
     row = {"t": round(time.time(), 3), "op": args[0], "args": args[1:4], "rc": proc.returncode, "ms": ms}
     out = None

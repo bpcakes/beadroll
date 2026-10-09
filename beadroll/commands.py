@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 from .base import (
-    BLOCKING, BpError, DONE, EXPORT_FIELDS, FORMAT, ICON,
+    BLOCKING, BeadError, DONE, EXPORT_FIELDS, FORMAT, ICON,
     IMPORT_FIELDS, MAX_NESTING, STATUSES, __version__, event_millis, event_time,
     git_text, hung_up, loads_strict, read_utf8, run_git, too_deep,
     uuid7, without_password,
@@ -32,13 +32,13 @@ from .sync import (coordinated, mint_key, publish_soon, synchronise, writing)
 
 def need_tracker(st: State):
     if st.prefix is None:
-        raise BpError("NOT_INITIALIZED", "no tracker for this repository yet: run `bead init` or `bead sync`")
+        raise BeadError("NOT_INITIALIZED", "no tracker for this repository yet: run `bead init` or `bead sync`")
 
 
 def parse_priority(value) -> int:
     match = re.fullmatch(r"[Pp]?([0-4])", str(value))
     if not match:
-        raise BpError("VALIDATION", f"priority must be 0-4, got {value!r}")
+        raise BeadError("VALIDATION", f"priority must be 0-4, got {value!r}")
     return int(match.group(1))
 
 
@@ -67,7 +67,7 @@ def field_args(args) -> dict:
         fields["estimated_minutes"] = args.estimate
     if getattr(args, "status", None):
         if args.status not in STATUSES:
-            raise BpError("VALIDATION", f"unknown status {args.status!r}")
+            raise BeadError("VALIDATION", f"unknown status {args.status!r}")
         fields["status"] = args.status
     return fields
 
@@ -122,26 +122,26 @@ def import_records(tx: Tx, path: str) -> int:
         # records end at "\n" only: U+2028, U+2029 and U+0085 are ordinary text inside a JSON string
         records = [loads_strict(row) for row in read_utf8(path, path).split("\n") if row.strip()]
     except ValueError as error:
-        raise BpError("VALIDATION", f"{path} is not valid JSONL: {error}") from None
+        raise BeadError("VALIDATION", f"{path} is not valid JSONL: {error}") from None
     for number, rec in enumerate(records, 1):
         if not isinstance(rec, dict) or not isinstance(rec.get("id"), str) or not rec["id"]:
-            raise BpError("VALIDATION", f"{path}:{number}: record has no string 'id'")
+            raise BeadError("VALIDATION", f"{path}:{number}: record has no string 'id'")
         comments = rec.get("comments") or []
         if not isinstance(comments, list) or any(not isinstance(c, dict) for c in comments):
-            raise BpError("VALIDATION", f"{path}:{number}: record {rec['id']!r} has malformed comments")
+            raise BeadError("VALIDATION", f"{path}:{number}: record {rec['id']!r} has malformed comments")
         deps = rec.get("dependencies") or []
         if not isinstance(deps, list) or any(not isinstance(d, dict) or not isinstance(d.get("depends_on_id"), str)
                                              or not d["depends_on_id"] or not isinstance(d.get("type"), (str, type(None)))
                                              for d in deps):
-            raise BpError("VALIDATION", f"{path}:{number}: record {rec['id']!r} has a malformed dependency")
+            raise BeadError("VALIDATION", f"{path}:{number}: record {rec['id']!r} has a malformed dependency")
         if any(d["depends_on_id"] == rec["id"] for d in deps):  # as `dep add` and br refuse it
-            raise BpError("VALIDATION", f"{path}:{number}: record {rec['id']!r} depends on itself")
+            raise BeadError("VALIDATION", f"{path}:{number}: record {rec['id']!r} depends on itself")
         if too_deep(rec, MAX_NESTING - 2):  # its create event holds it two levels down (data, then extra)
-            raise BpError("VALIDATION", f"{path}:{number}: record {rec['id']!r} nests more than {MAX_NESTING - 2} levels deep")
+            raise BeadError("VALIDATION", f"{path}:{number}: record {rec['id']!r} nests more than {MAX_NESTING - 2} levels deep")
     first = {}
     for number, rec in enumerate(records, 1):  # one id is one issue; br refuses a file that repeats one too
         if first.setdefault(rec["id"], number) != number:
-            raise BpError("VALIDATION", f"{path}:{number}: record id {rec['id']!r} repeats record {first[rec['id']]}")
+            raise BeadError("VALIDATION", f"{path}:{number}: record id {rec['id']!r} repeats record {first[rec['id']]}")
     known = dict(tx.state.by_key)
     fresh = [rec for rec in records if rec["id"] not in known]
     for rec in records:  # a known record that no longer lists a dependency we still hold by key takes it back
@@ -165,7 +165,7 @@ def import_records(tx: Tx, path: str) -> int:
         probe = {"v": FORMAT, "id": PROBE_ID, "replica": tx.replica, "deps": [], "op": "create", "issue": PROBE_ID, "data": data}
         problem = event_problem(probe) or payload_problem(probe) or write_problem(probe)
         if problem:  # nothing has been appended yet: the import fails whole
-            raise BpError("VALIDATION", f"record {rec['id']!r} cannot be imported: {problem}")
+            raise BeadError("VALIDATION", f"record {rec['id']!r} cannot be imported: {problem}")
         created[rec["id"]] = tx.emit("create", data=data)["id"]
     uid_of = {**known, **created}
     for rec in fresh:
@@ -201,10 +201,10 @@ def cmd_export(args, ws, actor):
 def cmd_create(args, ws, actor):
     title = args.title or args.title_pos
     if not title:
-        raise BpError("VALIDATION", "a title is required")
+        raise BeadError("VALIDATION", "a title is required")
     fields = {**field_args(args), "title": title}
     if fields.get("status") == "in_progress":
-        raise BpError("VALIDATION", "create the issue, then claim it: in_progress is reached only through a claim")
+        raise BeadError("VALIDATION", "create the issue, then claim it: in_progress is reached only through a claim")
     with writing(ws, actor) as tx:
         st = tx.state
         need_tracker(st)
@@ -215,7 +215,7 @@ def cmd_create(args, ws, actor):
             deps.append((st.resolve(target)["uid"], kind or "blocks"))
         for target, kind in deps:
             if parent and kind in BLOCKING and (target == parent["uid"] or reaches(st, target, parent["uid"])):
-                raise BpError("CYCLE", f"depending on {st.key(target)} would make {parent['id']} wait for itself")
+                raise BeadError("CYCLE", f"depending on {st.key(target)} would make {parent['id']} wait for itself")
         uid = uuid7()
         data = {"key": mint_key(st, uid, parent), "fields": fields, "labels": split_list(args.labels)}
         tx.emit("create", data=data, event_id=uid)
@@ -234,9 +234,9 @@ def claim_builder(args, actor, keys, takeover=False):
     """The claim step of a coordinated transaction: online by default, settled by who updates
     the coordination ref first."""
     if takeover and getattr(args, "offline", False):
-        raise BpError("VALIDATION", "a takeover has to be coordinated online")
+        raise BeadError("VALIDATION", "a takeover has to be coordinated online")
     if takeover and not args.reason:
-        raise BpError("VALIDATION", "a takeover needs --reason")
+        raise BeadError("VALIDATION", "a takeover needs --reason")
 
     def build(tx, mode):
         st = tx.state
@@ -246,13 +246,13 @@ def claim_builder(args, actor, keys, takeover=False):
             issue = st.resolve(key)
             held = issue["claim"]
             if is_done(st, issue):
-                raise BpError("VALIDATION", f"{issue['id']} is {issue['status']}")
+                raise BeadError("VALIDATION", f"{issue['id']} is {issue['status']}")
             if "status" in conflicts(st, issue):
-                raise BpError("STATUS_CONFLICT", f"{issue['id']} has a disputed status; settle it before claiming")
+                raise BeadError("STATUS_CONFLICT", f"{issue['id']} has a disputed status; settle it before claiming")
             if held and held["owner"] == me:
                 continue
             if held and not takeover:
-                raise BpError("ALREADY_CLAIMED", f"{issue['id']} is claimed by {held['owner']} "
+                raise BeadError("ALREADY_CLAIMED", f"{issue['id']} is claimed by {held['owner']} "
                               f"(generation {held['generation']}, since {held['since']})")
             data = {"mode": mode, "generation": issue["claim_generation"] + 1}
             if takeover and held:
@@ -279,7 +279,7 @@ def still_held(st: State, keys, actor: dict):
         issue = st.resolve(key)
         held = issue["claim"]
         if not held or held["owner"] != me:
-            raise BpError("ALREADY_CLAIMED" if held else "NOT_OWNER", f"{issue['id']}: your claim was accepted but "
+            raise BeadError("ALREADY_CLAIMED" if held else "NOT_OWNER", f"{issue['id']}: your claim was accepted but "
                           + (f"is now held by {held['owner']}" if held else f"has since ended ({issue['status']})"))
 
 
@@ -313,7 +313,7 @@ def cmd_release(args, ws, actor):
             elif any(p["owner"] == me for p in issue["provisional_claims"]):
                 tx.emit("release", issue["uid"], {})
             else:
-                raise BpError("NOT_OWNER", f"{issue['id']} is not claimed by {me}"
+                raise BeadError("NOT_OWNER", f"{issue['id']} is not claimed by {me}"
                               + (f"; it is held by {held['owner']}" if held else ""))
         return mode
 
@@ -363,7 +363,7 @@ def cmd_update(args, ws, actor):
     fields = field_args(args)
     status = fields.pop("status", None)
     if status == "tombstone":
-        raise BpError("VALIDATION", "use `bead delete` to tombstone an issue; it ends the claim as well")
+        raise BeadError("VALIDATION", "use `bead delete` to tombstone an issue; it ends the claim as well")
     wants_claim = args.claim or status == "in_progress"  # in_progress is reached only through a claim
     if status == "in_progress":
         status = None
@@ -378,14 +378,14 @@ def cmd_update(args, ws, actor):
         for issue in targets:
             held = issue["claim"]
             if new_parent and (new_parent == issue["uid"] or reaches(st, issue["uid"], new_parent)):
-                raise BpError("CYCLE", f"{issue['id']} cannot become a child of {st.key(new_parent)}: it would wait for itself")
+                raise BeadError("CYCLE", f"{issue['id']} cannot become a child of {st.key(new_parent)}: it would wait for itself")
             if status == "closed" and (held or ended_by(issue, me)):
                 ended.append(issue["id"])
             if status and held and held["owner"] != me and not args.force:
-                raise BpError("CLAIMED_BY_OTHER", f"{issue['id']} is claimed by {held['owner']}: "
+                raise BeadError("CLAIMED_BY_OTHER", f"{issue['id']} is claimed by {held['owner']}: "
                               "use `bead takeover` first, or --force")
             if status == "open" and held and held["owner"] == me:
-                raise BpError("VALIDATION", f"{issue['id']}: use `bead release` to give up your claim")
+                raise BeadError("VALIDATION", f"{issue['id']}: use `bead release` to give up your claim")
         for issue in targets:
             uid, held = issue["uid"], issue["claim"]
             if fields:
@@ -446,7 +446,7 @@ def transition(op: str, verb: str):
                 issue = tx.state.resolve(key)
                 held = issue["claim"]
                 if held and held["owner"] != me and not args.force:
-                    raise BpError("CLAIMED_BY_OTHER", f"{issue['id']} is claimed by {held['owner']}: "
+                    raise BeadError("CLAIMED_BY_OTHER", f"{issue['id']} is claimed by {held['owner']}: "
                                   "use `bead takeover` first, or --force")
                 data = {"reason": args.reason} if args.reason else {}
                 if op in ("close", "delete") and held and held["owner"] == me:
@@ -602,14 +602,14 @@ def cmd_dep(args, ws, actor):
     action = words.pop(0) if words and words[0] in ("add", "remove", "rm", "list", "tree", "cycles") else "list"
     if action in ("add", "remove", "rm"):
         if len(words) != 2:
-            raise BpError("VALIDATION", f"usage: bead dep {action} ISSUE DEPENDS_ON")
+            raise BeadError("VALIDATION", f"usage: bead dep {action} ISSUE DEPENDS_ON")
         with writing(ws, actor) as tx:
             st = tx.state
             need_tracker(st)
             issue = st.resolve(words[0])
             try:
                 target = st.resolve(words[1])
-            except BpError:
+            except BeadError:
                 if action == "add" or not any(d["depends_on_id"] in (words[1], f"{st.prefix}-{words[1]}") for d in issue["dangling"]):
                     raise
                 target = None  # an imported dependency on a key that is not an issue yet: it can still be taken back
@@ -618,7 +618,7 @@ def cmd_dep(args, ws, actor):
                 loop = (reaches(st, target["uid"], issue["uid"]) if kind in BLOCKING
                         else reaches(st, issue["uid"], target["uid"]) if kind == "parent-child" else False)
                 if issue["uid"] == target["uid"] or loop:
-                    raise BpError("CYCLE", f"{issue['id']} -> {target['id']} would create a dependency cycle")
+                    raise BeadError("CYCLE", f"{issue['id']} -> {target['id']} would create a dependency cycle")
                 tx.emit("dep_add", issue["uid"], {"to": target["uid"], "type": kind})
             elif target is None:
                 key = next(d["depends_on_id"] for d in issue["dangling"] if d["depends_on_id"] in (words[1], f"{st.prefix}-{words[1]}"))
@@ -635,7 +635,7 @@ def cmd_dep(args, ws, actor):
         cycles = find_cycles(st, args.blocking_only)
         return {"cycles": cycles, "count": len(cycles)}, [" -> ".join(c + c[:1]) for c in cycles] or ["No cycles"]
     if not words:
-        raise BpError("VALIDATION", f"usage: bead dep {action} ISSUE")
+        raise BeadError("VALIDATION", f"usage: bead dep {action} ISSUE")
     issue = st.resolve(words[0])
     if action == "tree":
         lines, seen, work = [], set(), [(issue, 0)]
@@ -660,11 +660,11 @@ def cmd_comments(args, ws, actor):
     words = list(args.words)
     action = words.pop(0) if words and words[0] in ("add", "list") else "list"
     if not words:
-        raise BpError("VALIDATION", "usage: bead comments [add] ISSUE [TEXT]")
+        raise BeadError("VALIDATION", "usage: bead comments [add] ISSUE [TEXT]")
     if action == "add":
         text = args.message or (read_utf8(args.file, "the comment file") if args.file else " ".join(words[1:]))
         if not text.strip():
-            raise BpError("VALIDATION", "comment text is required")
+            raise BeadError("VALIDATION", "comment text is required")
         with writing(ws, actor) as tx:
             need_tracker(tx.state)
             issue = tx.state.resolve(words[0])
@@ -708,7 +708,7 @@ def cmd_info(args, ws, actor):
     replica = replica_id(create=False)
     try:
         remote = ws.remote()
-    except BpError as error:  # info is where a damaged meta.json is diagnosed, not where it stops
+    except BeadError as error:  # info is where a damaged meta.json is diagnosed, not where it stops
         remote = f"unknown ({error.code}: {error})"
     source = ("BEAD_WORKSPACE" if os.environ.get("BEAD_WORKSPACE") else "tracked .beadroll.json" if ws.config.get("workspace")
               else "origin url" if ws.origin else "local path")
@@ -736,9 +736,9 @@ def cmd_machines(args, ws, actor):
         except FileNotFoundError:
             aliases = {}
         except (OSError, ValueError) as error:  # never replace names we could not read
-            raise BpError("IO", f"{path} cannot be read ({error}); repair it before adding a name") from None
+            raise BeadError("IO", f"{path} cannot be read ({error}); repair it before adding a name") from None
         if not isinstance(aliases, dict):
-            raise BpError("IO", f"{path} does not hold a JSON object; repair it before adding a name")
+            raise BeadError("IO", f"{path} does not hold a JSON object; repair it before adding a name")
         aliases[ident] = alias
         write_atomic(path, json.dumps(aliases, indent=1).encode())
     journal, aliases = load_journal(ws), machine_aliases()
@@ -751,7 +751,7 @@ def cmd_machines(args, ws, actor):
 def cmd_sync(args, ws, actor):
     remote = ws.remote(args.remote)
     if not remote:
-        raise BpError("NO_REMOTE", "no coordination remote known for this tracker: pass --remote")
+        raise BeadError("NO_REMOTE", "no coordination remote known for this tracker: pass --remote")
     result = synchronise(ws, remote, actor)
     lines = [f"Synced with {remote}: pulled {result['pulled']}, pushed {result['pushed']} event(s)"]
     lines += [f"  renamed {r['from']} -> {r['to']} (created on machine {r['replica']})" for r in result["renamed"]]

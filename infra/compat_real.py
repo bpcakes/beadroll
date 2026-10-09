@@ -7,7 +7,7 @@ import argparse, collections, json, os, pathlib, shutil, subprocess, sys, tempfi
 P=pathlib.Path
 parser=argparse.ArgumentParser();parser.add_argument('--out', default=tempfile.mkdtemp(prefix='bead-compat-real-'));parser.add_argument('--documents',default=os.path.expanduser('~/Documents'));args=parser.parse_args()
 root=P(args.out);root.mkdir(parents=True,exist_ok=True)
-bp=str(P(__file__).resolve().parent.parent/'bead')
+bead=str(P(__file__).resolve().parent.parent/'bead')
 br=shutil.which('br') or os.path.expanduser('~/.local/bin/br');bv=shutil.which('bv') or os.path.expanduser('~/.local/bin/bv')
 env={k:v for k,v in os.environ.items() if not k.startswith(('BEAD_','CODEX','CLAUDE','BEADS','BV_','BD_','GIT_'))}
 env.update(BEAD_HOME=str(root/'bead-home'), BEAD_AGENT='audit', BEAD_THREAD='audit-compat',XDG_CACHE_HOME=str(root/'cache'),BV_NO_CACHE='1',BV_OUTPUT_FORMAT='json')
@@ -33,16 +33,16 @@ for src in sorted(P(args.documents).glob('*/.beads/issues.jsonl')):
  prefix=records[0]['id'].split('-')[0] if records else 'ex'
  r=run(['git','init','-q',str(case)],root);assert r.returncode==0,r.stderr
  extra={'BEAD_WORKSPACE':'compat-'+name}
- r=run([bp,'init','--prefix',prefix,'--import',str(src),'--json'],case,extra)
+ r=run([bead,'init','--prefix',prefix,'--import',str(src),'--json'],case,extra)
  row={'name':name,'records':len(records),'bp_import_rc':r.returncode}
  if r.returncode:row['bp_error']=r.stderr
  else:
-  output=run([bp,'export'],case,extra);exported=[json.loads(l) for l in output.stdout.splitlines() if l.strip()]
+  output=run([bead,'export'],case,extra);exported=[json.loads(l) for l in output.stdout.splitlines() if l.strip()]
   row['roundtrip_equal']=canon(records)==canon(exported)
   if not row['roundtrip_equal']:
    row['differences']=[{'id':a['id'],'fields':[k for k in a.keys()|b.keys() if a.get(k)!=b.get(k)]}for a,b in zip(canon(records),canon(exported)) if a!=b]
-  (case/'bp-export.jsonl').write_text(output.stdout)
-  bp_ready=run([bp,'ready','--json'],case,extra);bp_blocked=run([bp,'blocked','--json'],case,extra)
+  (case/'bead-export.jsonl').write_text(output.stdout)
+  bp_ready=run([bead,'ready','--json'],case,extra);bp_blocked=run([bead,'blocked','--json'],case,extra)
   init=run([br,'init','--prefix',prefix,'--json'],case);row['br_init_rc']=init.returncode
   (case/'.beads/issues.jsonl').write_bytes(src.read_bytes())
   imp=run([br,'sync','--import-only','--json'],case);row['br_source_import_rc']=imp.returncode

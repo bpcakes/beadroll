@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "beadroll"
 description = "Beads-compatible issue tracker for coding agents working across git worktrees and machines"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 license = "MIT OR Apache-2.0"
 license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
 keywords = ["issue-tracker", "beads", "git", "coding-agents", "cli"]
@@ -18,6 +18,10 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Bug Tracking",
     "Topic :: Software Development :: Version Control :: Git",
 ]

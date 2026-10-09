@@ -100,8 +100,8 @@ class StorageReaudit(unittest.TestCase):
         read_ready, read_go = self.sandbox.root / 'read-ready', self.sandbox.root / 'read-go'
         driver = self.script('pause-publish.py', f'''import runpy, sys, time
 from pathlib import Path
-bp = runpy.run_path({support.BEAD!r})
-Link = bp['Link']
+bead = runpy.run_path({support.BEAD!r})
+Link = bead['Link']
 real = Link.publish
 first = True
 def publish(self, *args, **kwargs):
@@ -112,7 +112,7 @@ def publish(self, *args, **kwargs):
         while not Path({str(publish_go)!r}).exists(): time.sleep(.005)
     return real(self, *args, **kwargs)
 Link.publish = publish
-sys.exit(bp['main']())
+sys.exit(bead['main']())
 ''')
         journal_before = {p: p.read_bytes() for p in (self.a.store() / 'events' / self.own()).glob('*.jsonl')}
         claimer = self.start(self.a, driver, 'update', self.key, '--claim', '--title', 'refused title',
@@ -125,8 +125,8 @@ sys.exit(bp['main']())
         self.assertEqual({p: p.read_bytes() for p in (self.a.store() / 'events' / self.own()).glob('*.jsonl')}, journal_before)
         reader_driver = self.script('pause-reader.py', f'''import runpy, sys, time
 from pathlib import Path
-bp = runpy.run_path({support.BEAD!r})
-g = bp['load_journal'].__globals__
+bead = runpy.run_path({support.BEAD!r})
+g = bead['load_journal'].__globals__
 real = g['segment_files']
 def segment_files(ws):
     paths = real(ws)
@@ -134,7 +134,7 @@ def segment_files(ws):
     while not Path({str(read_go)!r}).exists(): time.sleep(.005)
     return paths
 g['segment_files'] = segment_files
-sys.exit(bp['main']())
+sys.exit(bead['main']())
 ''')
         reader = self.start(self.a, reader_driver, 'show', self.key, '--json')
         self.wait(read_ready, reader)
@@ -163,8 +163,8 @@ sys.exit(bp['main']())
         read_ready, read_go = self.sandbox.root / 'view-ready', self.sandbox.root / 'view-go'
         driver = self.script('pause-claim.py', f'''import runpy, sys, time
 from pathlib import Path
-bp = runpy.run_path({support.BEAD!r})
-Link = bp['Link']
+bead = runpy.run_path({support.BEAD!r})
+Link = bead['Link']
 real = Link.publish
 first = True
 def publish(self, *args, **kwargs):
@@ -175,22 +175,22 @@ def publish(self, *args, **kwargs):
         while not Path({str(publish_go)!r}).exists(): time.sleep(.005)
     return real(self, *args, **kwargs)
 Link.publish = publish
-sys.exit(bp['main']())
+sys.exit(bead['main']())
 ''')
         claimer = self.start(self.a, driver, 'claim', self.key, '--json')
         self.wait(publish_ready, claimer)
         failed_id = json.loads(next((self.a.store() / 'pending').glob('*.json')).read_text().splitlines()[0])['id']
         reader_driver = self.script('pause-view.py', f'''import runpy, sys, time
 from pathlib import Path
-bp = runpy.run_path({support.BEAD!r})
-g = bp['view'].__globals__
+bead = runpy.run_path({support.BEAD!r})
+g = bead['view'].__globals__
 real = g['load_pending']
 def load_pending(ws):
     Path({str(read_ready)!r}).touch()
     while not Path({str(read_go)!r}).exists(): time.sleep(.005)
     return real(ws)
 g['load_pending'] = load_pending
-sys.exit(bp['main']())
+sys.exit(bead['main']())
 ''')
         reader = self.start(self.a, reader_driver, 'show', self.key, '--json')
         self.wait(read_ready, reader)
@@ -215,8 +215,8 @@ sys.exit(bp['main']())
         ready, go = self.sandbox.root / 'identity-ready', self.sandbox.root / 'identity-go'
         driver = self.script('pause-identity.py', f'''import runpy, sys, time
 from pathlib import Path
-bp = runpy.run_path({support.BEAD!r})
-os = bp['os']
+bead = runpy.run_path({support.BEAD!r})
+os = bead['os']
 real = os.link
 def linked(src, dst, *args, **kwargs):
     if Path(dst).name == 'replica.json':
@@ -224,7 +224,7 @@ def linked(src, dst, *args, **kwargs):
         while not Path({str(go)!r}).exists(): time.sleep(.005)
     return real(src, dst, *args, **kwargs)
 os.link = linked
-sys.exit(bp['main']())
+sys.exit(bead['main']())
 ''')
         first = self.start(fresh, driver, 'init', '--json', BEAD_WORKSPACE='identity-one')
         self.wait(ready, first)
@@ -253,8 +253,8 @@ sys.exit(bp['main']())
         marker = self.sandbox.root / 'identity-killed-ready'
         driver = self.script('kill-identity.py', f'''import runpy, sys, time
 from pathlib import Path
-bp = runpy.run_path({support.BEAD!r})
-os = bp['os']
+bead = runpy.run_path({support.BEAD!r})
+os = bead['os']
 real = os.link
 def linked(src, dst, *args, **kwargs):
     if Path(dst).name == 'replica.json':
@@ -262,7 +262,7 @@ def linked(src, dst, *args, **kwargs):
         time.sleep(30)
     return real(src, dst, *args, **kwargs)
 os.link = linked
-sys.exit(bp['main']())
+sys.exit(bead['main']())
 ''')
         process = self.start(fresh, driver, 'init', '--json', BEAD_WORKSPACE='identity-crash')
         self.wait(marker, process)

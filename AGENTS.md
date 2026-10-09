@@ -1,7 +1,7 @@
 # Working on beadroll
 
 beadroll is a Beads-compatible issue tracker for coding agents working across git worktrees and
-machines. The implementation is the package `beadroll/` (Python 3.12+, standard library only);
+machines. The implementation is the package `beadroll/` (Python 3.11+, standard library only);
 `./bead` runs the working copy, and `uv tool install .` installs it as the `bead` command. `README.md` says
 what it does and why. `REVIEWING.md` is the map of the design, the decisions that are not
 findings, and the rules reviewers work under. `FINDINGS.md` is the ledger of every review finding
@@ -44,7 +44,7 @@ and how it was closed; `reviews/` holds the reports verbatim.
   `model` → `queries` → `sync` → `commands` → `cli`); a helper two modules need moves down, never
   up. Match the
   surrounding style: comments in prose that
-  say why, names that say what a function returns, `BpError(code, message)` with codes a user can
+  say why, names that say what a function returns, `BeadError(code, message)` with codes a user can
   act on (`bead prime` lists them). Unknown input is reported, never guessed at; nothing is ever
   half-written.
 - Every behaviour change comes with a test in the module of its subject. In-process tests replace a

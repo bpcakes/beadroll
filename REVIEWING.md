@@ -10,7 +10,7 @@ not cover.
 
 ## 1. What this is
 
-`beadroll/` (a Python 3.12+ package of seven modules, standard library only — `base`, `machine`,
+`beadroll/` (a Python 3.11+ package of seven modules, standard library only — `base`, `machine`,
 `model`, `queries`, `sync`, `commands`, `cli`, each importing only the ones before it; `./bead` runs the
 working copy, `uv tool install .` installs the `bead` command) is a proof-of-concept issue tracker
 for coding agents that work from many git worktrees and several machines at once. It replaces

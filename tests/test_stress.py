@@ -190,7 +190,7 @@ def run_concurrent_stress(repo, output, waves=10, per_wave=50, seed=20261007):
     counts=collections.Counter();errors=collections.Counter();checks=[];transcript=[]
     start=time.monotonic()
     allowed={'ALREADY_CLAIMED','NOT_OWNER','CLAIMED_BY_OTHER','VALIDATION','STATUS_CONFLICT','CYCLE','ISSUE_NOT_FOUND','SYNC_CONFLICT','REMOTE_UNREACHABLE'}
-    bp=support.load_module()
+    bead=support.load_module()
 
     def worker(mi,wave):
         m=machines[mi];rnd=random.Random(seed+wave*101+mi*907)
@@ -280,7 +280,7 @@ def run_concurrent_stress(repo, output, waves=10, per_wave=50, seed=20261007):
                 assert not json.loads((m.store()/'unconfirmed.json').read_text()) if (m.store()/'unconfirmed.json').exists() else True
             accepted={r['id'] for r in histories if r['op']!='release'}
             with __import__('unittest.mock',fromlist=['patch']).patch.dict(os.environ,{'BEAD_HOME':str(machines[0].home)}):
-                st=bp.view(bp.Workspace(machines[0].store().name,None,None,{}))
+                st=bead.view(bead.Workspace(machines[0].store().name,None,None,{}))
                 realized={c['id']for i in st.issues.values()for c in i['claim_history']}|{i['claim']['id'] for i in st.issues.values() if i['claim']}
                 assert accepted<=realized,('accepted claim disappeared',accepted-realized)
             c={'wave':wave,'operations':len(transcript),'issues':len(keys),'events':info['events'],'accepted_claim_ids':len(accepted),'max_generation':max(generations.values(),default=0)}
@@ -301,7 +301,7 @@ def run_concurrent_stress(repo, output, waves=10, per_wave=50, seed=20261007):
 # ---- from test_reaudit.py: second independent audit (REAUDIT), 2026-10-06
 class ConcurrentReaudit(unittest.TestCase):
     def test_six_machine_3000_concurrent_commands_with_partitions(self):
-        with tempfile.TemporaryDirectory(prefix="bp-concurrent-reaudit-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="bead-concurrent-reaudit-") as tmp:
             result = run_concurrent_stress(Path(support.BEAD).parent, Path(tmp) / "result.json")
         self.assertEqual(result["status"], "passed")
         self.assertEqual(result["operations"], 3000)

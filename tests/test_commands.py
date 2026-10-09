@@ -572,21 +572,21 @@ class BpTest(unittest.TestCase):
         a.bead("update", x, "--notes", "after seeing everything")
         a.bead("sync")
 
-        bp = load_module()
+        bead = load_module()
         os.environ["BEAD_HOME"] = str(a.home)
         self.addCleanup(os.environ.pop, "BEAD_HOME", None)
-        ws = bp.Workspace(a.store().name, None, None, {})
-        journal = bp.load_journal(ws)
+        ws = bead.Workspace(a.store().name, None, None, {})
+        journal = bead.load_journal(ws)
 
         def view(source):
-            st = bp.replay(source)
+            st = bead.replay(source)
             issues = sorted(st.issues.values(), key=lambda i: i["id"])
-            return json.dumps([bp.export_records(st), [bp.detail(st, i) for i in issues]], sort_keys=True, default=sorted)
+            return json.dumps([bead.export_records(st), [bead.detail(st, i) for i in issues]], sort_keys=True, default=sorted)
 
         expected = view(journal)
         ownership = [e for i, e in journal.events.items() if i not in {x for ids in journal.order.values() for x in ids}]
         for order in itertools.permutations(journal.order):
-            shuffled = bp.Journal()
+            shuffled = bead.Journal()
             for replica in (*order, *order):  # every event delivered twice
                 for event_id in journal.order[replica]:
                     shuffled.add(journal.events[event_id], replica)
@@ -595,11 +595,11 @@ class BpTest(unittest.TestCase):
                         shuffled.add(event, replica, sequenced=False)
             self.assertEqual(view(shuffled), expected)
         # An event whose cause has not arrived waits; it is never treated as concurrent.
-        own = bp.replica_id()
-        partial = bp.Journal()
+        own = bead.replica_id()
+        partial = bead.Journal()
         for event_id in journal.order[own]:
             partial.add(journal.events[event_id], own)
-        waiting = bp.replay(partial).pending
+        waiting = bead.replay(partial).pending
         self.assertTrue(waiting)
         self.assertIn("after seeing everything", json.dumps(waiting))
 
@@ -739,20 +739,20 @@ class CompatAuditCLI(unittest.TestCase):
 # ---- from test_audit.py: first independent audit (AUDIT), 2026-10-06
 class CompatAuditIdentity(unittest.TestCase):
     def test_detect_actor_environment_and_explicit_overrides(self):
-        bp=support.load_module()
+        bead=support.load_module()
         fixtures=[({},None,{'agent':'human'}),({'CLAUDE_CODE_SESSION_ID':'claude-id'},None,{'agent':'claude','thread':'claude-id'}),({'CODEX_THREAD_ID':'thread','CODEX_SESSION_ID':'session'},None,{'agent':'codex','thread':'thread'}),({'CODEX_SESSION_ID':'session'},None,{'agent':'codex','thread':'session'}),({'BEAD_AGENT':'other','BEAD_THREAD':'stable','CODEX_THREAD_ID':'thread'},'name',{'agent':'other','thread':'stable','name':'name'})]
         for env,name,want in fixtures:
-            with self.subTest(env=env),mock.patch.dict(os.environ,env,clear=True):self.assertEqual(bp.detect_actor(name),want)
+            with self.subTest(env=env),mock.patch.dict(os.environ,env,clear=True):self.assertEqual(bead.detect_actor(name),want)
 
     def test_nearest_harness_mocked_process_tree(self):
-        bp=support.load_module()
+        bead=support.load_module()
         for proc,want in [('/opt/bin/claude --worker','claude'),('/opt/bin/codex --worker','codex'),('node /opt/claude/cli.js','claude')]:
-            with self.subTest(proc=proc),mock.patch.dict(os.environ,{'CLAUDE_CODE_SESSION_ID':'claude','CODEX_THREAD_ID':'codex'},clear=True),mock.patch.object(bp.subprocess,'run',return_value=subprocess.CompletedProcess([],0,'1 '+proc+'\n','')):
-                self.assertEqual(bp.detect_actor(None),{'agent':want,'thread':want})
+            with self.subTest(proc=proc),mock.patch.dict(os.environ,{'CLAUDE_CODE_SESSION_ID':'claude','CODEX_THREAD_ID':'codex'},clear=True),mock.patch.object(bead.subprocess,'run',return_value=subprocess.CompletedProcess([],0,'1 '+proc+'\n','')):
+                self.assertEqual(bead.detect_actor(None),{'agent':want,'thread':want})
 
     def test_missing_ps_does_not_crash_nested_actor_detection(self):
         import tempfile, shutil
-        with tempfile.TemporaryDirectory(prefix='bp-identity-nops-') as tmp:
+        with tempfile.TemporaryDirectory(prefix='bead-identity-nops-') as tmp:
             root=Path(tmp);bin_dir=root/'bin';bin_dir.mkdir()
             (bin_dir/'python3').symlink_to(os.sys.executable)
             (bin_dir/'git').symlink_to(shutil.which('git'))
@@ -763,9 +763,9 @@ class CompatAuditIdentity(unittest.TestCase):
             self.assertEqual(json.loads(p.stdout)['actor'],{'agent':'codex','thread':'codex'})
 
     def test_bp_thread_overrides_detected_thread_without_bp_agent(self):
-        bp=support.load_module()
+        bead=support.load_module()
         with mock.patch.dict(os.environ,{'BEAD_THREAD':'override','CODEX_THREAD_ID':'detected'},clear=True):
-            self.assertEqual(bp.detect_actor(None),{'agent':'codex','thread':'override'})
+            self.assertEqual(bead.detect_actor(None),{'agent':'codex','thread':'override'})
 
 
 # ---- from test_review3.py: third independent review (REVIEW3), 2026-10-06
@@ -912,7 +912,7 @@ class CommandsAndCompatibilityReview4(unittest.TestCase):
 class DeepTreeReview4(unittest.TestCase):
     def test_q08_deep_valid_dependency_tree_does_not_overflow(self):
         """Q08: dep tree over a valid 1,100-node chain must not recurse into a crash."""
-        with tempfile.TemporaryDirectory(prefix="bp-review4-tree-") as root:
+        with tempfile.TemporaryDirectory(prefix="bead-review4-tree-") as root:
             env = {
                 **os.environ,
                 "BEAD_HOME": str(Path(root) / "home"),
@@ -921,8 +921,8 @@ class DeepTreeReview4(unittest.TestCase):
                 "BEAD_THREAD": "tree-thread",
             }
             with mock.patch.dict(os.environ, env, clear=True):
-                bp = support.load_module()
-                workspace = bp.Workspace("review4-deep-tree", None, None, {})
+                bead = support.load_module()
+                workspace = bead.Workspace("review4-deep-tree", None, None, {})
                 events, issue_ids, previous = [], [], None
                 serial = 0
 
@@ -952,7 +952,7 @@ class DeepTreeReview4(unittest.TestCase):
                     )["id"])
                 for index in range(1099):
                     emit("dep_add", issue_ids[index], {"to": issue_ids[index + 1], "type": "blocks"})
-                bp.append_events(workspace, "tree", events)
+                bead.append_events(workspace, "tree", events)
 
             result = subprocess.run(
                 [support.BEAD, "dep", "tree", "ex-0", "--json"],

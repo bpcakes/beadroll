@@ -33,13 +33,13 @@ from tests.support import *  # noqa: F401,F403  (BEAD, Machine, Sandbox, load_mo
 # ---- from test_audit.py: first independent audit (AUDIT), 2026-10-06
 class CompatAuditCommentIds(unittest.TestCase):
     def test_existing_comment_export_id_survives_clock_skewed_new_comment(self):
-        bp=support.load_module();j=bp.Journal()
+        bead=support.load_module();j=bead.Journal()
         def uid(ms):return str(uuid.UUID(int=(ms<<80)|(7<<76)|(2<<62)))
         create=uid(1000);first=uid(3000);later=uid(2000)
         for eid,deps,op,data in [(create,[],'create',{'key':'ex-a','fields':{'title':'a'}}),(first,[create],'comment',{'text':'first'}),(later,[first],'comment',{'text':'later clock moved back'})]:
-            if eid==later:before=bp.export_records(bp.replay(j))[0]['comments'][0]['id']
+            if eid==later:before=bead.export_records(bead.replay(j))[0]['comments'][0]['id']
             j.add({'v':1,'id':eid,'replica':'a','deps':deps,'actor':{'agent':'audit'},'op':op,'issue':create,'data':data},'a')
-        after=next(c['id']for c in bp.export_records(bp.replay(j))[0]['comments']if c['text']=='first')
+        after=next(c['id']for c in bead.export_records(bead.replay(j))[0]['comments']if c['text']=='first')
         self.assertEqual(after,before,'exported existing comment id changed after another comment')
 
 
@@ -54,7 +54,7 @@ class CompatAuditRealCompatibility(unittest.TestCase):
         if not (shutil.which('br') or Path(os.path.expanduser('~/.local/bin/br')).exists()) \
                 or not (shutil.which('bv') or Path(os.path.expanduser('~/.local/bin/bv')).exists()) or not exports:
             self.skipTest('br, bv or real Beads exports unavailable on this machine')
-        with tempfile.TemporaryDirectory(prefix='bp-compat-real-') as tmp:
+        with tempfile.TemporaryDirectory(prefix='bead-compat-real-') as tmp:
             proc=subprocess.run([os.sys.executable,str(helper),'--out',tmp],capture_output=True,text=True,timeout=180)
             self.assertEqual(proc.returncode,0,proc.stderr)
             results=json.loads((Path(tmp)/'results.json').read_text())
@@ -74,16 +74,16 @@ class CompatAuditRealCompatibility(unittest.TestCase):
 # ---- from test_audit.py: first independent audit (AUDIT), 2026-10-06
 class CompatAuditRefValidation(unittest.TestCase):
     def test_ref_names_reject_code_refs_and_traversal_accept_unicode(self):
-        bp=support.load_module()
+        bead=support.load_module()
         import tempfile
-        with tempfile.TemporaryDirectory(prefix='bp-ref-validation-') as tmp, mock.patch.dict(os.environ,{'BEAD_HOME':tmp,'BEAD_WORKSPACE':'ref-audit'}):
+        with tempfile.TemporaryDirectory(prefix='bead-ref-validation-') as tmp, mock.patch.dict(os.environ,{'BEAD_HOME':tmp,'BEAD_WORKSPACE':'ref-audit'}):
             for ref in ('main','refs/heads/main','refs/tags/v1','refs/remotes/origin/main','refs/beads/../foo','refs/beads/bad..name'):
-                with self.subTest(ref=ref),self.assertRaises(bp.BpError) as caught:
-                    bp.Workspace('ref-audit',None,None,{'ref':ref}).ref
+                with self.subTest(ref=ref),self.assertRaises(bead.BeadError) as caught:
+                    bead.Workspace('ref-audit',None,None,{'ref':ref}).ref
                 self.assertEqual(caught.exception.code,'CONFIG')
             for ref in ('refs/beads/journal','refs/beads/δ','refs/tracker/journal'):
                 with self.subTest(ref=ref):
-                    self.assertEqual(bp.Workspace('ref-audit',None,None,{'ref':ref}).ref,ref)
+                    self.assertEqual(bead.Workspace('ref-audit',None,None,{'ref':ref}).ref,ref)
 
 
 if __name__ == "__main__":

@@ -526,11 +526,11 @@ class RootAudit(unittest.TestCase):
         wrapper = self.sandbox.root / "skew.py"
         wrapper.write_text("import importlib.machinery,importlib.util,sys\n"
                            "loader=importlib.machinery.SourceFileLoader('skewbp',sys.argv.pop(1))\n"
-                           "bp=importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name,loader))\n"
-                           "loader.exec_module(bp)\n"
-                           "real=bp.time.time_ns\n"
-                           "bp.time.time_ns=lambda: real()-86400*1000000000\n"
-                           "sys.exit(bp.main())\n")
+                           "bead=importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name,loader))\n"
+                           "loader.exec_module(bead)\n"
+                           "real=bead.time.time_ns\n"
+                           "bead.time.time_ns=lambda: real()-86400*1000000000\n"
+                           "sys.exit(bead.main())\n")
         p = subprocess.run([sys.executable,str(wrapper),support.BEAD,"update",self.key,"--priority","4","--json"],
                            env=self.a.env(),cwd=self.a.checkout,capture_output=True,text=True)
         self.assertEqual(p.returncode,0,p.stderr)
@@ -560,8 +560,8 @@ class ProtocolReaudit(unittest.TestCase):
 
     def interrupted_claim(self, *flags):
         args = self.mod.build_parser().parse_args(['update', self.key, '--claim', *flags]) if flags else self.mod.build_parser().parse_args(['claim', self.key])
-        with mock.patch.object(self.mod.Link, 'publish', side_effect=self.mod.BpError('REMOTE_UNREACHABLE', 'fault: before remote accepted')):
-            with self.assertRaises(self.mod.BpError):
+        with mock.patch.object(self.mod.Link, 'publish', side_effect=self.mod.BeadError('REMOTE_UNREACHABLE', 'fault: before remote accepted')):
+            with self.assertRaises(self.mod.BeadError):
                 args.func(args, self.ws, self.actor)
         self.assertNotIn('claim', self.a.show(self.key))
         return self.pending_ids()
@@ -598,8 +598,8 @@ class ProtocolReaudit(unittest.TestCase):
     def test_failed_void_publish_retry_must_not_activate_unaccepted_claim(self):
         self.interrupted_claim()
         self.a.bead('comments', 'add', self.key, 'local work after failed claim', '--offline')
-        with mock.patch.object(self.mod.Link, 'publish', side_effect=self.mod.BpError('REMOTE_UNREACHABLE', 'fault: void push unanswered')):
-            with self.assertRaises(self.mod.BpError):
+        with mock.patch.object(self.mod.Link, 'publish', side_effect=self.mod.BeadError('REMOTE_UNREACHABLE', 'fault: void push unanswered')):
+            with self.assertRaises(self.mod.BeadError):
                 self.sync()
         accepted = self.b.bead('claim', self.key)[0]['claim']
         final = self.settle()
@@ -608,16 +608,16 @@ class ProtocolReaudit(unittest.TestCase):
     def test_failed_void_push_must_leave_original_claim_unconfirmed(self):
         self.interrupted_claim()
         self.a.bead('comments', 'add', self.key, 'local work after failed claim', '--offline')
-        with mock.patch.object(self.mod.Link, 'publish', side_effect=self.mod.BpError('REMOTE_UNREACHABLE', 'fault: void push unanswered')):
-            with self.assertRaises(self.mod.BpError):
+        with mock.patch.object(self.mod.Link, 'publish', side_effect=self.mod.BeadError('REMOTE_UNREACHABLE', 'fault: void push unanswered')):
+            with self.assertRaises(self.mod.BeadError):
                 self.sync()
         self.assertNotIn('claim', self.a.show(self.key), 'unconfirmed void masks itself but unmasks original claim while remote never accepted either')
 
     def test_failed_multievent_update_void_retry_must_not_commit_edits(self):
         self.interrupted_claim('--title', 'unaccepted title', '--add-label', 'unaccepted')
         self.a.bead('comments', 'add', self.key, 'independent work')
-        with mock.patch.object(self.mod.Link, 'publish', side_effect=self.mod.BpError('REMOTE_UNREACHABLE', 'fault: void push unanswered')):
-            with self.assertRaises(self.mod.BpError):
+        with mock.patch.object(self.mod.Link, 'publish', side_effect=self.mod.BeadError('REMOTE_UNREACHABLE', 'fault: void push unanswered')):
+            with self.assertRaises(self.mod.BeadError):
                 self.sync()
         final = self.settle()
         self.assertEqual(final['title'], 'ownership target', 'failed atomic update edits revived when retry rolled back their void records')
@@ -665,7 +665,7 @@ class ProtocolReaudit(unittest.TestCase):
         with support.patched('run_git', lose_ack), support.patched('pause', interleaved_writer):
             try:
                 self.mod.cmd_claim(args, self.ws, self.actor)
-            except self.mod.BpError as exc:
+            except self.mod.BeadError as exc:
                 error = exc.code
         self.assertEqual(pushed, [True])
         self.assertEqual(written, [True])
@@ -675,7 +675,7 @@ class ProtocolReaudit(unittest.TestCase):
 
     def test_delayed_push_after_timeout_and_absent_fetch_must_not_fork(self):
         """A push the client gave up on may still land later. The claim is pending meanwhile; the
-        fences bp pushes to settle it also stall behind the same hook, so when the hook releases,
+        fences bead pushes to settle it also stall behind the same hook, so when the hook releases,
         one of several commits on the same head wins. Either way the attempt settles and no
         journal forks."""
         started = self.sandbox.root / 'hook-started'
@@ -797,11 +797,11 @@ class Protocol3(unittest.TestCase):
         self.b=support.Machine(self.sandbox,'protocol3-b'); self.b.bead('sync')
         env=mock.patch.dict(os.environ,self.a.env(BEAD_WORKSPACE=self.a.store().name),clear=True)
         env.start(); self.addCleanup(env.stop)
-        self.bp=support.load_module(); self.ws=self.bp.Workspace(self.a.store().name,None,str(self.sandbox.origin),{})
+        self.bead=support.load_module(); self.ws=self.bead.Workspace(self.a.store().name,None,str(self.sandbox.origin),{})
         self.actor={'agent':'codex','thread':'protocol3-a-thread-0001'}
 
     def pending_ids(self):  # an attempt is one file holding every event that lands with it
-        return [e['id'] for p in self.bp.pending_files(self.ws) for e in self.bp.read_attempt(p)]
+        return [e['id'] for p in self.bead.pending_files(self.ws) for e in self.bead.read_attempt(p)]
 
     def test_fence_wins_against_a_real_push_still_running_after_timeout(self):
         """The first actual receive-pack stalls; subsequent fence commit is accepted first."""
@@ -812,16 +812,16 @@ class Protocol3(unittest.TestCase):
             ' touch '+shlex.quote(str(finished))+'\nfi\nexit 0\n')
         hook.chmod(0o755)
         self.addCleanup(gate.touch)
-        link=self.bp.Link(self.ws,str(self.sandbox.origin))
-        with self.bp.locked(self.ws):
-            tip=link.fetch(); link.merge(tip); tx=self.bp.Tx(self.ws,self.actor)
-            self.bp.claim_builder(self.bp.build_parser().parse_args(['claim',self.key]),self.actor,[self.key])(tx,'online')
-            self.bp.write_attempt_file(self.ws.dir/'pending'/f"{tx.ownership[0]['id']}.json",tx.ownership)
+        link=self.bead.Link(self.ws,str(self.sandbox.origin))
+        with self.bead.locked(self.ws):
+            tip=link.fetch(); link.merge(tip); tx=self.bead.Tx(self.ws,self.actor)
+            self.bead.claim_builder(self.bead.build_parser().parse_args(['claim',self.key]),self.actor,[self.key])(tx,'online')
+            self.bead.write_attempt_file(self.ws.dir/'pending'/f"{tx.ownership[0]['id']}.json",tx.ownership)
             with support.patched('NET_TIMEOUT', .25): outcome=link.publish(tip,note='claim',pending=tx.ownership)
         self.assertEqual(outcome,'uncertain'); self.assertTrue(first.exists()); self.assertFalse(finished.exists())
         self.assertEqual(len(self.pending_ids()),1); self.assertNotIn('claim',self.a.show(self.key))
         self.a.bead('comments','add',self.key,'independent local work')
-        synced=self.bp.synchronise(self.ws,str(self.sandbox.origin),self.actor)
+        synced=self.bead.synchronise(self.ws,str(self.sandbox.origin),self.actor)
         fenced=synced['tip']; self.assertEqual(self.pending_ids(),[])
         gate.touch(); deadline=time.monotonic()+10
         while not finished.exists() and time.monotonic()<deadline: time.sleep(.01)
@@ -836,8 +836,8 @@ class Protocol3(unittest.TestCase):
     def test_reader_sees_all_or_none_of_accepted_claim_and_bundled_edits(self):
         """A real reader runs around the local confirmation write of an accepted attempt: an attempt is
         one file, so the reader sees nothing of it or all of it."""
-        args=self.bp.build_parser().parse_args(['update',self.key,'--claim','--title','after','--add-label','accepted'])
-        original=self.bp.write_atomic; observed=[]
+        args=self.bead.build_parser().parse_args(['update',self.key,'--claim','--title','after','--add-label','accepted'])
+        original=self.bead.write_atomic; observed=[]
         def around_write(path,data):
             if path.parent.name=='claims':
                 observed.append(self.a.show(self.key))
@@ -846,7 +846,7 @@ class Protocol3(unittest.TestCase):
             else:
                 original(path,data)
         with support.patched('write_atomic', around_write):
-            self.bp.cmd_update(args,self.ws,self.actor)
+            self.bead.cmd_update(args,self.ws,self.actor)
         self.assertEqual(len(observed),2,'the attempt must be confirmed by exactly one write')
         for current in observed:
             self.assertIn(('claim' in current,current['title'],current.get('labels',[])),
@@ -886,7 +886,7 @@ class Protocol3(unittest.TestCase):
         self.assertEqual(self.a.bead('info')['integrity'],[],'a half-written attempt file must never be read as events')
 
     def test_recovered_atomic_update_is_not_applied_again_after_a_later_observed_edit(self):
-        original=self.bp.run_git; applied=[]; written=[]
+        original=self.bead.run_git; applied=[]; written=[]
         def lose_ack(args,**kwargs):
             result=original(args,**kwargs)
             if args[0]=='push' and result.returncode==0 and not applied:
@@ -898,9 +898,9 @@ class Protocol3(unittest.TestCase):
                 self.a.bead('sync')
                 self.assertEqual(self.a.show(self.key)['title'],'accepted first')
                 self.a.bead('update',self.key,'--title','later observed edit')
-        args=self.bp.build_parser().parse_args(['update',self.key,'--claim','--title','accepted first'])
+        args=self.bead.build_parser().parse_args(['update',self.key,'--claim','--title','accepted first'])
         with support.patched('run_git', lose_ack), support.patched('pause', between_retries):
-            self.bp.cmd_update(args,self.ws,self.actor)
+            self.bead.cmd_update(args,self.ws,self.actor)
         self.assertEqual(applied,[True]); self.assertEqual(written,[True])
         self.b.bead('sync'); self.a.bead('sync')
         self.assertEqual(self.a.show(self.key)['title'],'later observed edit',
@@ -908,16 +908,16 @@ class Protocol3(unittest.TestCase):
 
     def test_release_recovers_a_successful_push_with_lost_acknowledgement(self):
         self.a.bead('claim',self.key)
-        original=self.bp.run_git; applied=[]
+        original=self.bead.run_git; applied=[]
         def lose_ack(args,**kwargs):
             result=original(args,**kwargs)
             if args[0]=='push' and result.returncode==0 and not applied:
                 applied.append(True); result.returncode=1; result.stdout=b''; result.stderr=b'connection closed after remote accepted'
             return result
-        args=self.bp.build_parser().parse_args(['release',self.key]); failure=None
+        args=self.bead.build_parser().parse_args(['release',self.key]); failure=None
         with support.patched('run_git', lose_ack), support.patched('pause'):
-            try: self.bp.cmd_release(args,self.ws,self.actor)
-            except self.bp.BpError as e: failure=e.code
+            try: self.bead.cmd_release(args,self.ws,self.actor)
+            except self.bead.BeadError as e: failure=e.code
         self.assertEqual(applied,[True]); self.b.bead('sync')
         self.assertNotIn('claim',self.b.show(self.key)); self.assertNotIn('claim',self.a.show(self.key))
         self.assertEqual(self.pending_ids(),[])
@@ -939,16 +939,16 @@ class Protocol3(unittest.TestCase):
             events.append(event); previous=eid
         rng=random.Random(3106); expected=None
         for _ in range(6):
-            journal=self.bp.Journal(); replicas=['machine'+str(i) for i in range(6)]; rng.shuffle(replicas)
+            journal=self.bead.Journal(); replicas=['machine'+str(i) for i in range(6)]; rng.shuffle(replicas)
             for replica in replicas:
                 for e in events:
                     if e['replica']==replica: journal.add(e,replica,sequenced=e['op'] not in ('claim','release'))
-            state=self.bp.replay(journal)
+            state=self.bead.replay(journal)
             self.assertEqual(state.integrity,[]); self.assertEqual(state.pending,[])
             for _ in range(1000):
                 first,second=rng.sample(range(len(events)),2)
                 self.assertEqual(state.saw(events[first]['id'],events[second]['id']),first>second)
-            snapshot=json.dumps(self.bp.detail(state,state.issues[uid]),sort_keys=True)
+            snapshot=json.dumps(self.bead.detail(state,state.issues[uid]),sort_keys=True)
             if expected is None: expected=snapshot
             else: self.assertEqual(snapshot,expected)
 
@@ -957,7 +957,7 @@ class Protocol3(unittest.TestCase):
         self.assertEqual(crash.returncode,98); before=self.pending_ids(); self.assertEqual(len(before),1)
         hook=self.sandbox.origin/'hooks'/'pre-receive'; hook.write_text('#!/bin/sh\nexit 1\n'); hook.chmod(0o755)
         with support.patched('pause'):
-            with self.assertRaises(self.bp.BpError) as caught: self.bp.synchronise(self.ws,str(self.sandbox.origin),self.actor)
+            with self.assertRaises(self.bead.BeadError) as caught: self.bead.synchronise(self.ws,str(self.sandbox.origin),self.actor)
         self.assertEqual(caught.exception.code,'REMOTE_REFUSED'); self.assertEqual(self.pending_ids(),before)
         self.assertNotIn('claim',self.a.show(self.key)); self.assertEqual(self.a.show(self.key)['title'],'before')
         hook.unlink(); self.a.bead('sync'); self.assertEqual(self.pending_ids(),[])
@@ -1141,15 +1141,15 @@ class ProtocolReview4(unittest.TestCase):
         a.bead("claim", key)
 
         with mock.patch.dict(os.environ, a.env(), clear=True), contextlib.chdir(a.checkout):
-            bp = support.load_module()
-            ws = bp.find_workspace()
-            actor = bp.detect_actor(None)
-            args = bp.build_parser().parse_args(["release", key])
+            bead = support.load_module()
+            ws = bead.find_workspace()
+            actor = bead.detect_actor(None)
+            args = bead.build_parser().parse_args(["release", key])
             with support.patched("drop_pending", mock.MagicMock(side_effect=RuntimeError("after confirm"))):
                 with self.assertRaisesRegex(RuntimeError, "after confirm"):
-                    bp.cmd_release(args, ws, actor)
-            self.assertEqual(len(bp.pending_files(ws)), 1)
-            self.assertEqual(len(bp.claim_files(ws)), 2)
+                    bead.cmd_release(args, ws, actor)
+            self.assertEqual(len(bead.pending_files(ws)), 1)
+            self.assertEqual(len(bead.claim_files(ws)), 2)
 
         self.assertEqual(a.show(key)["status"], "open")
         retry = a.run("release", key, "--json")

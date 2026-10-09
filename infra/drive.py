@@ -40,13 +40,13 @@ HOST_ENV = {}  # plain github.com:22 everywhere
 
 
 def run(host, *args, thread=None, agent="codex", env="", raw=False, timeout=120):
-    """Run one bp command on `host`; return parsed JSON (or an error dict with code)."""
+    """Run one bead command on `host`; return parsed JSON (or an error dict with code)."""
     thread = thread or f"{host}-thread-0001"
     if HOSTS[host] is None:
-        bp, repo = BEAD_LOCAL, REPO_LOCAL
+        bead, repo = BEAD_LOCAL, REPO_LOCAL
     else:
-        bp, repo = BEAD_REMOTE, REPO_REMOTE
-    cmd = (f"cd {repo} && BEAD_HOME={STATE} BEAD_AGENT={agent} BEAD_THREAD={thread} {HOST_ENV.get(host, '')} {env} {bp} "
+        bead, repo = BEAD_REMOTE, REPO_REMOTE
+    cmd = (f"cd {repo} && BEAD_HOME={STATE} BEAD_AGENT={agent} BEAD_THREAD={thread} {HOST_ENV.get(host, '')} {env} {bead} "
            + " ".join(shlex.quote(a) for a in args) + ("" if raw else " --json"))
     full = ["bash", "-c", cmd] if HOSTS[host] is None else ["ssh", "-o", "BatchMode=yes", HOSTS[host], "bash -c " + shlex.quote(cmd)]
     t = time.time()
@@ -219,7 +219,7 @@ def main():
         rows = [r for r in run("two", "claims")["ok"]["claims"] if r["id"] == issue]
         print("claimed from worktree:", claimed.returncode == 0, "| converged:", same, "| branch seen:", branches,
               "| label travelled with the claim:", all("from-worktree" in l for l in labels.values()),
-              "| `bp claims` on arch shows branch:", rows and rows[0].get("branch"))
+              "| `bead claims` on arch shows branch:", rows and rows[0].get("branch"))
         results["S12"] = (claimed.returncode == 0 and same and all(b == f"feature-{TAG}" for b in branches.values())
                           and all("from-worktree" in l for l in labels.values()) and rows and rows[0].get("branch") == f"feature-{TAG}")
     finally:

@@ -3,7 +3,7 @@ Reads ~/Documents/*/.beads/issues.jsonl only; writes nothing outside the scratch
 import glob, json, os, subprocess, sys, time
 BP = os.path.expanduser("~/Documents/beadroll/bead")
 env = {k: v for k, v in os.environ.items() if not k.startswith(("CLAUDE", "CODEX", "BP_"))}
-env.update(BEAD_HOME=os.environ.get("RT_HOME") or os.path.join(os.environ.get("TMPDIR", "/tmp"), "bp-roundtrip-home"), BEAD_AGENT="human")
+env.update(BEAD_HOME=os.environ.get("RT_HOME") or os.path.join(os.environ.get("TMPDIR", "/tmp"), "bead-roundtrip-home"), BEAD_AGENT="human")
 def norm(rec):
     rec = dict(rec); rec.pop("source_repo_path", None)
     if "labels" in rec: rec["labels"] = sorted(rec["labels"])

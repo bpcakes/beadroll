@@ -85,13 +85,13 @@ class G02_TrackedConfigCannotAdoptAnotherRepositorysStore(unittest.TestCase):
         """G02: a committed .beadroll.json naming another repository's URL-derived workspace id (plus a remote of
         its own) binds the checkout to that repository's existing store, reads it, publishes it to the config's
         remote, and leaves that store's remembered remote switched."""
-        bp = support.load_module()
+        bead = support.load_module()
         victim = support.Machine(self.box, "victim")
         victim.bead("init", "--prefix", "p")
         secret = victim.bead("create", "SECRET acquisition plan", "-p", "1")["id"]
         victim.bead("sync")
         pid = victim.bead("info")["workspace"]
-        self.assertEqual(pid, bp.hashlib.sha256(bp.normalize_remote(str(self.box.origin)).encode()).hexdigest()[:16],
+        self.assertEqual(pid, bead.hashlib.sha256(bead.normalize_remote(str(self.box.origin)).encode()).hexdigest()[:16],
                          "precondition: the victim's workspace id is the public URL-derived id")
 
         attacker_bare, collect = self.box.bare("attacker.git"), self.box.bare("collect.git")
@@ -611,8 +611,8 @@ class G09_ReceiptLoopVariableShadowsTheInFlightReceipt(unittest.TestCase):
         self.assertEqual(a.run("sync").returncode, 0)  # the accepted claim is found; its receipt is settled
         self.assertEqual(len(list((a.store() / "pending").glob("*.command"))), 1)
         with mock.patch.dict(os.environ, a.env(), clear=True), contextlib.chdir(a.checkout):
-            bp = support.load_module()
-            real = bp.Link.publish
+            bead = support.load_module()
+            real = bead.Link.publish
             claims = []
 
             def contended(link, tip, note="sync", pending=(), fence=False):
@@ -623,9 +623,9 @@ class G09_ReceiptLoopVariableShadowsTheInFlightReceipt(unittest.TestCase):
                 return real(link, tip, note=note, pending=pending, fence=fence)
 
             with open(os.devnull, "w", encoding="utf-8") as sink, contextlib.redirect_stdout(sink), \
-                    mock.patch.object(bp.Link, "publish", contended):
+                    mock.patch.object(bead.Link, "publish", contended):
                 try:
-                    rc = bp.run(["claim", y, "--json"])
+                    rc = bead.run(["claim", y, "--json"])
                 except TypeError as error:
                     self.fail(f"claim crashed after an ordinary refused push: TypeError: {error}")
         self.assertEqual(len(claims), 1, "the contention was not injected")
@@ -745,8 +745,8 @@ class G11_ServerHookTextDoesNotDecideThePushOutcome(unittest.TestCase):
         env = mock.patch.dict(os.environ, self.a.env(BEAD_WORKSPACE=self.a.store().name), clear=True)
         env.start()
         self.addCleanup(env.stop)
-        bp = support.load_module()
-        ws = bp.Workspace(self.a.store().name, None, str(self.box.origin), {})
+        bead = support.load_module()
+        ws = bead.Workspace(self.a.store().name, None, str(self.box.origin), {})
         actor = {"agent": "codex", "thread": "g11-thread-0001"}
         gate = self.box.root / "g11-hook-fired"
         _g11_install_post_receive(self.box, gate)
@@ -760,11 +760,11 @@ class G11_ServerHookTextDoesNotDecideThePushOutcome(unittest.TestCase):
                 b.bead("update", self.key, "--title", "later observed edit")
                 b.bead("sync")
 
-        args = bp.build_parser().parse_args(["update", self.key, "--claim", "--title", "accepted first"])
-        with mock.patch.object(bp.time, "sleep", between_retries):
+        args = bead.build_parser().parse_args(["update", self.key, "--claim", "--title", "accepted first"])
+        with mock.patch.object(bead.time, "sleep", between_retries):
             try:
-                bp.cmd_update(args, ws, actor)
-            except bp.BpError as error:
+                bead.cmd_update(args, ws, actor)
+            except bead.BeadError as error:
                 self.fail(f"the remote accepted the update, but bead reported {error.code}: {error}")
         self.assertTrue(gate.exists(), "the post-receive hook did not run")
         b.bead("sync")
@@ -1819,12 +1819,12 @@ class G25_FirstSyncRemoteIsFrozen(unittest.TestCase):
     def test_origin_remembered_by_an_older_version_is_not_preferred(self):
         """G25: a meta.json remote that is origin in another spelling (https saved, origin since switched to
         ssh after a token expired) still outranks origin."""
-        bp = support.load_module()
+        bead = support.load_module()
         state = self.box.root / "home-inprocess"
         env = {k: v for k, v in os.environ.items() if k != "BEAD_REMOTE"}
         env["BEAD_HOME"] = str(state)
         with mock.patch.dict(os.environ, env, clear=True):
-            ws = bp.Workspace("legacy-ws", "repo", "git@example.invalid:org/repo.git", {})
+            ws = bead.Workspace("legacy-ws", "repo", "git@example.invalid:org/repo.git", {})
             ws.dir.mkdir(parents=True)
             (ws.dir / "meta.json").write_text(json.dumps({"remote": "https://example.invalid/org/repo.git"}))
             self.assertEqual(ws.remote(), "git@example.invalid:org/repo.git",
@@ -2056,8 +2056,8 @@ class G28_OnlyTheLockHolderSweepsPending(unittest.TestCase):
         paused = []
         with mock.patch.dict(os.environ, self.a.env(thread="reader"), clear=True), \
                 contextlib.chdir(self.a.checkout):
-            bp = support.load_module()
-            real = bp.pending_files
+            bead = support.load_module()
+            real = bead.pending_files
 
             def pending_files(ws):
                 found = real(ws)
@@ -2068,7 +2068,7 @@ class G28_OnlyTheLockHolderSweepsPending(unittest.TestCase):
 
             with tempfile.TemporaryFile("w+") as out:
                 with support.patched("pending_files", pending_files), contextlib.redirect_stdout(out):
-                    shown = bp.run(["show", argv[1], "--json"])
+                    shown = bead.run(["show", argv[1], "--json"])
                 out.seek(0)
                 printed = out.read()
         self.assertEqual(shown, 0, printed)
@@ -2146,7 +2146,7 @@ def _g29_seen(machine, key):
 
 class G29_FailureAfterAcceptanceIsNotNothingHalfDone(unittest.TestCase):
     """G29: coordinated() drops the attempt and its receipt, then writes meta.json; publish_soon
-    catches BpError only. So an OSError (a full volume) after the remote accepted a command is
+    catches BeadError only. So an OSError (a full volume) after the remote accepted a command is
     reported as IO, which `bead prime` documents as "nothing half-done": the release or close has
     happened, and the receipt that would let a retry recognise it is already gone."""
 
@@ -2434,26 +2434,26 @@ class G32_IntegerFieldsStayBeadsReadable(unittest.TestCase):
         `cannot be negative`). New writes must refuse them; histories that already hold them still replay."""
         # Guard first: the stricter rule is for writes only. Events already written with such values (by
         # e9eed92 or by hand) keep their issue and their attempt, or upgraded machines diverge from old ones.
-        bp = support.load_module()
-        journal = bp.Journal()
+        bead = support.load_module()
+        journal = bead.Journal()
         base = "01a00000-0000-7000-8000-00000000000"
         for n, fields in enumerate(({"priority": True}, {"estimated_minutes": -7}, {"estimated_minutes": 2**40})):
             eid = base + str(n)
-            journal.add({"v": bp.FORMAT, "id": eid, "replica": "a", "deps": [base + str(n - 1)] if n else [],
+            journal.add({"v": bead.FORMAT, "id": eid, "replica": "a", "deps": [base + str(n - 1)] if n else [],
                          "actor": {"agent": "t"}, "op": "create", "issue": eid,
                          "data": {"key": f"ex-{n}", "fields": {"title": f"t{n}", **fields}}}, "a")
-        st = bp.replay(journal)
+        st = bead.replay(journal)
         self.assertEqual(sorted(i["id"] for i in st.issues.values()), ["ex-0", "ex-1", "ex-2"])
         self.assertEqual(st.integrity, [])
         with tempfile.TemporaryDirectory() as folder:
             attempt = Path(folder) / "01a00000-0000-7000-8000-000000000009.json"
-            claim = {"v": bp.FORMAT, "id": "01a00000-0000-7000-8000-000000000009", "replica": "a", "deps": [base + "2"],
+            claim = {"v": bead.FORMAT, "id": "01a00000-0000-7000-8000-000000000009", "replica": "a", "deps": [base + "2"],
                      "actor": {"agent": "t", "thread": "t1"}, "op": "claim", "issue": base + "1", "data": {"generation": 1}}
             edit = {**claim, "id": "01a00000-0000-7000-8000-00000000000a", "deps": [claim["id"]], "op": "set",
                     "data": {"fields": {"estimated_minutes": -7}}}
             attempt.write_text(json.dumps(claim) + "\n" + json.dumps(edit) + "\n")
             problems = []
-            self.assertEqual(len(bp.read_attempt(attempt, problems)), 2, problems)
+            self.assertEqual(len(bead.read_attempt(attempt, problems)), 2, problems)
 
         box = support.Sandbox()
         self.addCleanup(box.cleanup)
@@ -2571,7 +2571,7 @@ class G34_NonUtf8GitAndPsOutputIsNotATraceback(unittest.TestCase):
         self.assertNotIn("branch", m.show(json.loads(proc.stdout)["id"]))
 
     def test_every_command_with_an_origin_url_that_is_not_utf8(self):
-        """G34: find_workspace strictly decodes remote.origin.url, and help/prime catch only BpError, so a
+        """G34: find_workspace strictly decodes remote.origin.url, and help/prime catch only BeadError, so a
         Latin-1 byte in the origin URL makes every command in the checkout a traceback, help included."""
         m = support.Machine(self.box, "g34b")
         _g34_git("config", "remote.origin.url", b"https://example.invalid/caf\xe9.git", cwd=m.checkout)
@@ -3722,12 +3722,12 @@ class G54_StaleTwinRuleDropsTheReceipt(unittest.TestCase):
         x = a.bead("create", "X")["id"]
         a.bead("claim", x)
         with mock.patch.dict(os.environ, a.env(), clear=True), contextlib.chdir(a.checkout):
-            bp = support.load_module()
-            ws, actor = bp.find_workspace(), bp.detect_actor(None)
-            args = bp.build_parser().parse_args(["release", x])
+            bead = support.load_module()
+            ws, actor = bead.find_workspace(), bead.detect_actor(None)
+            args = bead.build_parser().parse_args(["release", x])
             with support.patched("drop_pending", mock.MagicMock(side_effect=RuntimeError("crash after local confirm"))):
                 with self.assertRaises(RuntimeError):
-                    bp.cmd_release(args, ws, actor)
+                    bead.cmd_release(args, ws, actor)
         pending = a.store() / "pending"
         self.assertEqual(len(list(pending.glob("*.command"))), 1)
         twin = next(pending.glob("*.json"))
@@ -3854,16 +3854,16 @@ class G57_LoneSurrogateInAJournalIsScoped(unittest.TestCase):
 
     def test_attempt_file_with_a_lone_surrogate_reads_as_text_that_encodes(self):
         """G57: the same for an attempt file (claims/*.json): its events must be printable and exportable."""
-        bp = support.load_module()
+        bead = support.load_module()
         box = support.Sandbox()
         self.addCleanup(box.cleanup)
-        claim = {"v": bp.FORMAT, "id": _g57_event_id(3), "replica": "fffffff0", "deps": [],
+        claim = {"v": bead.FORMAT, "id": _g57_event_id(3), "replica": "fffffff0", "deps": [],
                  "actor": {"agent": "human", "thread": "t\ud800"}, "op": "claim", "issue": _g57_event_id(4),
                  "data": {"generation": 1}}
         path = box.root / f"{claim['id']}.json"
         path.write_text(json.dumps(claim) + "\n")
         problems = []
-        events = bp.read_attempt(path, problems)
+        events = bead.read_attempt(path, problems)
         self.assertEqual(len(events), 1, problems)
         try:
             json.dumps(events, ensure_ascii=False).encode("utf-8")
@@ -5660,7 +5660,7 @@ class V2_InFlightAttemptAcrossActors(unittest.TestCase):
         try:
             with mock.patch.dict(os.environ, m.env(thread="actor-a", BEAD_NET_TIMEOUT="1"), clear=True), \
                     contextlib.chdir(m.checkout):
-                bp = support.load_module()
+                bead = support.load_module()
 
                 def between_rounds(seconds):  # A's lock is released and its push is still in flight
                     if seen:
@@ -5675,9 +5675,9 @@ class V2_InFlightAttemptAcrossActors(unittest.TestCase):
                     seen.append(m.run("claim", y, "--json", thread="actor-b").returncode)
                     pending_after_b.extend(_v2_pending(m))
 
-                with open(os.devnull, "w") as sink, mock.patch.object(bp.time, "sleep", between_rounds), \
+                with open(os.devnull, "w") as sink, mock.patch.object(bead.time, "sleep", between_rounds), \
                         contextlib.redirect_stdout(sink):
-                    rc = bp.run(["release", x, "--json"])
+                    rc = bead.run(["release", x, "--json"])
         finally:
             if gate.exists():
                 gate.rmdir()
@@ -5734,12 +5734,12 @@ class V2_ConfirmedTwinKeepsTheRetryRecognised(unittest.TestCase):
         x = a.bead("create", "X")["id"]
         a.bead("claim", x)
         with mock.patch.dict(os.environ, a.env(), clear=True), contextlib.chdir(a.checkout):
-            bp = support.load_module()
-            ws, actor = bp.find_workspace(), bp.detect_actor(None)
-            args = bp.build_parser().parse_args(["release", x])
+            bead = support.load_module()
+            ws, actor = bead.find_workspace(), bead.detect_actor(None)
+            args = bead.build_parser().parse_args(["release", x])
             with support.patched("drop_pending", mock.MagicMock(side_effect=RuntimeError("crash after local confirm"))):
                 with self.assertRaisesRegex(RuntimeError, "crash after local confirm"):
-                    bp.cmd_release(args, ws, actor)
+                    bead.cmd_release(args, ws, actor)
         pending = _v2_pending(a)
         self.assertEqual(sorted(name.rsplit(".", 1)[1] for name in pending), ["command", "json"], pending)
         twin = a.store() / "pending" / next(name for name in pending if name.endswith(".json"))
@@ -5988,7 +5988,7 @@ class V1_RunGitTimeoutHygiene(unittest.TestCase):
                 before = len(os.listdir("/dev/fd"))
                 started = time.monotonic()
                 for _ in range(20):
-                    with self.assertRaises(bead.BpError) as raised:
+                    with self.assertRaises(bead.BeadError) as raised:
                         bead.run_git(args, timeout=0.2, reap=reap, check=False)
                     self.assertEqual(raised.exception.code, "REMOTE_UNREACHABLE")
                 self.assertLess(time.monotonic() - started, 20 * 0.2 + 2)
