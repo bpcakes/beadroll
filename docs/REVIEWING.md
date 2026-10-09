@@ -152,6 +152,14 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - Where Python fails with a traceback, Rust answers with a structured error instead, each recorded
   as it lands (§5 row 26). In beadroll-core: `mint_key` under a parent whose children's numbers have
   more than 4,300 digits, or would count on to 4,301, is `VALIDATION` (`MintError::NumberTooLong`).
+  In the store, sync and command line (Phase 2a): a `BEAD_NET_TIMEOUT`, `BEAD_ROTATE_BYTES`,
+  `BEAD_REPACK_LOOSE` or `BEAD_REPACK_PACKS` that Python's `float()` or `int()` cannot read is
+  `CONFIG` when bead starts, `--version` included; the last segment of this machine's journal, when
+  its name is not a number and bead appends after it, is `IO`; a `published` count in `meta.json`
+  that is not a number is `IO`; a `GIT_CONFIG_COUNT` that `int()` cannot read where Python reads it
+  (it is not digits and nothing was carried over, or its digits are superscripts) is `CONFIG`; an
+  answer standard output refuses (other than a closed pipe or a hung-up terminal) is an `IO` error
+  on standard error, exit 1; a `ps` line that names no command ends the nearest-harness walk.
 - beadroll-core is proven equal to Python by `cargo xtask diff`: replay reports and JSON, over the
   journals the Python tests build and generated histories, valid and hostile. A difference is fixed
   in Rust or decided as a §5 row; the harness keeps no list of expected differences.

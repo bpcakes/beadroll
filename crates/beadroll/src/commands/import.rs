@@ -1,0 +1,44 @@
+//! Bringing a Beads JSONL export in (Python's `import_records`): ids, timestamps, relationships and
+//! unknown fields kept; one invalid record fails the whole import, before anything is written.
+
+use std::ffi::OsStr;
+
+use beadroll_core::import::{Step, Target, plan_import, read_records};
+use beadroll_core::json::{Object, Value};
+use beadroll_sync::Tx;
+
+use super::{Failure, read_utf8};
+
+/// Emits the events that import the export at `path` (`-`: standard input) into `tx`; how many
+/// records were new.
+pub(crate) fn import_records(tx: &mut Tx<'_>, path: &OsStr) -> Result<usize, Failure> {
+    let shown = path.to_string_lossy();
+    let content = read_utf8(path, &shown)?;
+    let records = read_records(&content, &shown)?;
+    let plan = plan_import(tx.state()?, &records)?;
+    let mut created: Vec<String> = Vec::new();
+    for step in plan.steps {
+        match step {
+            Step::DepRemove { issue, data } => {
+                tx.emit("dep_remove", Some(&issue.to_string()), data, None)?;
+            }
+            Step::Create(data) => {
+                let event = tx.emit("create", None, data, None)?;
+                let id = event.get("id").and_then(Value::as_str).unwrap_or_default();
+                created.push(id.to_owned());
+            }
+            Step::DepAdd { issue, to, data } => {
+                let to = match to {
+                    Target::Issue(uid) => uid.to_string(),
+                    Target::Created(n) => created.get(n).cloned().unwrap_or_default(),
+                };
+                let mut payload = Object::new();
+                payload.insert("to".into(), Value::from(to));
+                payload.extend(data);
+                let issue = created.get(issue).cloned().unwrap_or_default();
+                tx.emit("dep_add", Some(&issue), payload, None)?;
+            }
+        }
+    }
+    Ok(plan.imported)
+}

@@ -225,7 +225,7 @@ A      test_commands.Review6.test_json_keeps_bidi_text
 A      test_commands.Review6.test_prime_matches_ready_and_help_outside_a_repository_is_silent
 C-env  test_commands.Review6.test_receipt_identity_holds_for_actor_sync_stdin_and_json
 A      test_commands.Review6.test_remote_url_shapes_that_are_already_safe
-A      test_commands.SyncRepoDamage.test_a_claim_rebuilds_too_and_damage_twice_in_one_command_is_reported
+A      test_commands.SyncRepoDamage.test_a_claim_rebuilds_too_and_damage_twice_in_one_command_is_reported  # A+B: the local_damage half is ported in beadroll-git (Phase 2a); the claim half goes with roll-k2wy.7
 A      test_commands.SyncRepoDamage.test_sync_rebuilds_a_damaged_sync_repo_once_and_info_lists_the_copy
 B      test_commands.SyncRepoMaintenance.test_no_git_maintenance_in_sync_git_and_fetches_stay_packed
 A      test_commands.SyncRepoMaintenance.test_repacks_under_the_lock_when_loose_objects_pile_up
@@ -374,7 +374,7 @@ A      test_hardening.G30_DeepJsonIsBoundedAndScoped.test_line_too_deep_for_json
 D      test_hardening.G30_DeepJsonIsBoundedAndScoped.test_peer_on_python_312_keeps_working_after_a_deep_import_elsewhere  # a mixed-fleet case, Python 3.14 against Rust (§4.6)
 A      test_hardening.G31_ExportWithUnicodeLineSeparatorsImportsAgain.test_init_import_of_a_br_export_with_a_raw_line_separator
 A      test_hardening.G31_ExportWithUnicodeLineSeparatorsImportsAgain.test_own_export_with_unicode_line_separators_imports_again
-B      test_hardening.G32_IntegerFieldsStayBeadsReadable.test_writes_refuse_booleans_and_estimates_beads_cannot_read
+B      test_hardening.G32_IntegerFieldsStayBeadsReadable.test_writes_refuse_booleans_and_estimates_beads_cannot_read  # B+A: the replay and read_attempt half is ported in beadroll-store (Phase 2a); the CLI half goes with roll-k2wy.9
 A      test_hardening.G33_DuplicateIdsInOneImportFailWhole.test_concatenated_export_does_not_double_issues_or_unblock_them
 A      test_hardening.G33_DuplicateIdsInOneImportFailWhole.test_duplicate_ids_in_one_import_fail_whole
 A      test_hardening.G34_NonUtf8GitAndPsOutputIsNotATraceback.test_create_on_a_branch_whose_name_is_not_utf8

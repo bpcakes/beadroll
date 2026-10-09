@@ -9,6 +9,7 @@
 #![cfg(test)]
 
 mod commands;
+mod mixed;
 mod support;
 
 use beadroll_test_support::Sandbox;

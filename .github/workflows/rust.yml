@@ -2,8 +2,9 @@
 # formatting, lints, the tests on Linux and macOS with their doctests, cargo-deny, the oracle and the
 # differential checks. The oracle runs the Python suite against Python's ./bead, where it must pass
 # completely, and against the Rust binary, where it only reports each module's pass count until
-# Phase 2d closes. The diff job checks beadroll-core against CPython case by case. Later phases add
-# the mixed-fleet and nightly jobs. Nothing here touches a real store or a real remote: every test
+# Phase 2d closes. The diff job checks beadroll-core against CPython case by case. The mixed-fleet
+# job runs Python and Rust machines on one remote and on one store. Later phases add the nightly
+# jobs. Nothing here touches a real store or a real remote: every test
 # builds its own repositories and bare remotes in a temporary directory.
 name: rust
 
@@ -212,3 +213,42 @@ jobs:
           name: diff-cases-${{ matrix.os }}
           path: target/diff/*-*.jsonl
           if-no-files-found: ignore
+
+  mixed-fleet:
+    name: mixed fleet (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      # The Python machines run the checkout's ./bead.
+      - name: Install Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.14"
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
+        with:
+          cache: false
+          rustflags: ""
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@13608cbb45b01feb47ef444ab1a42dc41ad56f1a # v2.79.11
+        with:
+          tool: cargo-nextest@0.9.130
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          shared-key: rust-${{ runner.os }}-${{ github.job }}
+      - name: A git identity for the repositories the tests create
+        run: |
+          git config --global user.name check
+          git config --global user.email check@example.invalid
+      # Python and Rust machines converge on one remote, each reads the other's store, the published
+      # trees are the same bytes, and either settles the other's pending attempts (docs/RUST-PORT.md
+      # §4.2, item 4). Each machine names its binary, whatever BEAD_UNDER_TEST says.
+      - name: The mixed-fleet scenarios
+        run: cargo nextest run --locked --package beadroll -E 'test(/^mixed::/)'

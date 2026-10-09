@@ -1,22 +1,16 @@
-//! The `bead` command. `commands` will map typed requests to typed outcomes; `cli` will parse
-//! arguments, render results and own the output streams and exit codes; `sys` will hold the two
-//! audited unsafe spots (`docs/RUST-PORT.md` §2.1). The library target exists for the binary and
-//! its tests.
+//! The `bead` command (`docs/RUST-PORT.md` §2.1): `commands` maps typed requests to typed outcomes;
+//! `cli` parses arguments, renders results and owns the output streams and exit codes. The library
+//! target exists for the binary and its tests.
 //!
-//! Phase 0 implements no command: [`run`] refuses every invocation, so no test can pass against
-//! this binary by accident. Until Phase 2 fills it, the black-box tests run against Python's
-//! `./bead` through `BEAD_UNDER_TEST`.
+//! Phase 2a ports `init`, `create`, `show`, `list`, `ready` and `sync`; the other commands follow in
+//! Phases 2b and 2c, and until then the parser does not know them.
 
-use std::io::Write as _;
+mod cli;
+mod commands;
+
 use std::process::ExitCode;
 
-/// Runs `bead` with the process's arguments. In Phase 0 that is a refusal: one line on standard
-/// error and exit status 1, whatever the arguments.
+/// Runs `bead` with the process's arguments and returns its exit status.
 pub fn run() -> ExitCode {
-    // Nothing to do if standard error is closed: the exit status still says what happened.
-    let _ = writeln!(
-        std::io::stderr(),
-        "bead: the Rust implementation has no commands yet (docs/RUST-PORT.md §6)"
-    );
-    ExitCode::FAILURE
+    cli::main()
 }
