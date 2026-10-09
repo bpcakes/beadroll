@@ -314,12 +314,14 @@ mod tests {
 
     #[test]
     fn another_users_home_comes_from_the_password_database() {
-        let me = nix::unistd::User::from_uid(nix::unistd::getuid())
+        // root has an entry everywhere, even where the user running the tests has none (a
+        // container's arbitrary uid).
+        let root = nix::unistd::User::from_uid(nix::unistd::Uid::from_raw(0))
             .unwrap()
             .unwrap();
         assert_eq!(
-            home_of(std::ffi::OsStr::new(&me.name)),
-            Some(me.dir.into_os_string())
+            home_of(std::ffi::OsStr::new(&root.name)),
+            Some(root.dir.into_os_string())
         );
         assert_eq!(
             home_of(std::ffi::OsStr::new("no-such-user-bead-test")),
