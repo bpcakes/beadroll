@@ -343,7 +343,15 @@ impl World<'_> {
             .map(|_| char::from(DIGITS.get(self.tape.below(36)).copied().unwrap_or(b'0')))
             .collect();
         if self.tape.chance(10) {
-            format!("x.{}", self.tape.below(3) + 7)
+            // Numbered keys, some in digits only Unicode calls digits (§5 row 24).
+            let numbers = ["7", "8", "007", "\u{663}", "\u{ff13}", "\u{b3}", "1\u{663}"];
+            format!(
+                "x.{}",
+                numbers
+                    .get(self.tape.below(numbers.len()))
+                    .copied()
+                    .unwrap_or("7")
+            )
         } else {
             format!("ex-{suffix}")
         }
@@ -447,10 +455,19 @@ impl World<'_> {
             ("status", text("forged")),
         ]);
         data.insert("extra".into(), Value::Object(extra));
-        let target = if self.tape.chance(50) {
-            "ex-late".to_owned()
-        } else {
-            self.key(None)
+        let target = match self.tape.below(8) {
+            0..=3 => "ex-late".to_owned(),
+            // A key waiting under an issue, numbered past what Python reads or prints (§5 row 26).
+            4 if !self.issues.is_empty() => {
+                let parent = self
+                    .issues
+                    .get(self.tape.below(self.issues.len()))
+                    .map(|(_, k)| k.clone())
+                    .unwrap_or_default();
+                let digits = if self.tape.chance(50) { 4300 } else { 4301 };
+                format!("{parent}.{}", "9".repeat(digits))
+            }
+            _ => self.key(None),
         };
         let kind = DEP_TYPES
             .get(self.tape.below(DEP_TYPES.len()))

@@ -7,6 +7,7 @@ use beadroll_core::event::Field;
 use beadroll_core::id::EventId;
 use beadroll_core::journal::{Journal, Problem, read_attempt, read_segment};
 use beadroll_core::json::{Int, MAX_DIGITS, Object, Value};
+use beadroll_core::key::MintError;
 use beadroll_core::query::{Edges, ReadyScope};
 use beadroll_core::replay::replay;
 use beadroll_core::state::{Issue, State};
@@ -321,6 +322,24 @@ fn state_part(out: &mut Object, st: &State) {
     out.insert("cycles".into(), cycles(Edges::WaitsFor));
     out.insert("cycles_blocking".into(), cycles(Edges::Blocking));
     out.insert("export".into(), list(st.export_records(), Value::Object));
+    out.insert("mint".into(), mints(st));
+}
+
+/// The key `mint_key` gives a new issue, and a new child of each of the first twelve issues; a
+/// number too long to read, `VALIDATION` here where Python raises (§5 row 26), is
+/// `{"too_long": true}` on both sides.
+fn mints(st: &State) -> Value {
+    let parents = std::iter::once(None).chain(st.issues().take(12).map(Some));
+    list(parents, |parent| {
+        let shown = parent.map_or(Value::Null, |p| text(p.key()));
+        match st.mint_key("seed", parent) {
+            Ok(key) => obj([("parent", shown), ("key", text(key))]),
+            Err(MintError::NumberTooLong(_)) => {
+                obj([("parent", shown), ("too_long", Value::Bool(true))])
+            }
+            Err(MintError::KeySpace) => obj([("parent", shown), ("error", text("KEY_SPACE"))]),
+        }
+    })
 }
 
 /// For small journals, every pair: which event's writer saw which, and which issue waits for which.

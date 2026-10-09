@@ -164,12 +164,30 @@ def report(journal, imports):
         "cycles": bead.find_cycles(st),
         "cycles_blocking": bead.find_cycles(st, blocking_only=True),
         "export": bead.export_records(st),
+        "mint": mints(st),
         "imports": imports,
     }
     if len(applied) <= 25:
         out["saw"] = [[a, b] for a in applied for b in applied if a != b and st.saw(a, b)]
     if len(st.issues) <= 12:
         out["reaches"] = [[a, b] for a in st.issues for b in st.issues if bead.reaches(st, a, b)]
+    return out
+
+
+def mints(st):
+    """The key mint_key gives a new issue, and a new child of each of the first twelve issues. A
+    number too long to read raises in Python, where Rust answers VALIDATION (§5 row 26, decided
+    Rust-only): both are written {"too_long": true}."""
+    out = []
+    for parent in [None, *list(st.issues.values())[:12]]:
+        row = {"parent": parent["id"] if parent else None}
+        try:
+            row["key"] = bead.mint_key(st, "seed", parent)
+        except ValueError:
+            row["too_long"] = True
+        except bead.BeadError as error:
+            row["error"] = error.code
+        out.append(row)
     return out
 
 

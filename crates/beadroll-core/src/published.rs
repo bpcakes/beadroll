@@ -145,3 +145,116 @@ impl Tree {
         journal
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const WORKSPACE: &str = "01a11621-e285-7398-ab1c-b9af4864eaa2";
+
+    fn manifest(text: &str) -> (String, Vec<u8>) {
+        ("manifest.json".into(), text.as_bytes().to_vec())
+    }
+
+    fn entries(manifest_text: &str) -> Vec<(String, Vec<u8>)> {
+        vec![manifest(manifest_text)]
+    }
+
+    fn refusal(entries: Vec<(String, Vec<u8>)>) -> TreeError {
+        Tree::read(entries, WORKSPACE).err().unwrap()
+    }
+
+    #[test]
+    fn a_manifest_is_read_as_link_fetch_reads_it() {
+        let good = format!("{{\"format\": 1, \"workspace\": \"{WORKSPACE}\"}}\n");
+        assert_eq!(
+            Tree::read(entries(&good), WORKSPACE).unwrap().workspace(),
+            WORKSPACE
+        );
+        assert_eq!(refusal(Vec::new()), TreeError::NoManifest);
+        for unreadable in ["", "[1]", "{\"format\": NaN}", "{", "\"x\""] {
+            assert_eq!(
+                refusal(entries(unreadable)),
+                TreeError::UnreadableManifest,
+                "{unreadable}"
+            );
+        }
+        let other = refusal(entries("{\"format\": 1, \"workspace\": \"elsewhere\"}"));
+        assert_eq!(other.code(), Code::WorkspaceMismatch);
+        assert_eq!(
+            refusal(entries("{\"format\": 1}")).code(),
+            Code::WorkspaceMismatch
+        );
+        // Only the integer 1 is format 1 (§5 row 23); the refusal shows the format as Python's repr.
+        for (format, shown) in [
+            ("true", "True"),
+            ("1.0", "1.0"),
+            ("\"1\"", "'1'"),
+            ("2", "2"),
+            ("null", "None"),
+        ] {
+            let text = format!("{{\"format\": {format}, \"workspace\": \"{WORKSPACE}\"}}");
+            assert_eq!(
+                refusal(entries(&text)),
+                TreeError::Format(shown.into()),
+                "{format}"
+            );
+        }
+        let missing = format!("{{\"workspace\": \"{WORKSPACE}\"}}");
+        assert_eq!(refusal(entries(&missing)).code(), Code::FormatUnsupported);
+    }
+
+    #[test]
+    fn the_journal_is_read_as_load_journal_reads_a_store() {
+        let id = |n: u64| format!("019a5555-5555-7000-8000-{n:012x}");
+        let line = |n: u64, replica: &str, deps: &str| {
+            format!(
+                "{{\"v\":1,\"id\":\"{}\",\"replica\":\"{replica}\",\"deps\":[{deps}],\"op\":\"comment\",\"data\":{{}}}}\n",
+                id(n)
+            )
+        };
+        let mut files = vec![
+            manifest(&format!(
+                "{{\"format\": 1, \"workspace\": \"{WORKSPACE}\"}}"
+            )),
+            (
+                "events/b/000001.jsonl".into(),
+                line(3, "b", "").into_bytes(),
+            ),
+            (
+                "events/a/000002.jsonl".into(),
+                format!("{}{{\"torn", line(2, "a", &format!("\"{}\"", id(1)))).into_bytes(),
+            ),
+            (
+                "events/a/000001.jsonl".into(),
+                line(1, "a", "").into_bytes(),
+            ),
+            (
+                "events/a/claims/019a5555-5555-7000-8000-000000000009.json".into(),
+                line(9, "a", "").into_bytes(),
+            ),
+        ];
+        // Names a merge never copies: digits that are not ASCII, upper-case hex, other places.
+        for path in [
+            "events/a/\u{661}.jsonl",
+            "events/a/claims/ABC.json",
+            "events/a/x/1.jsonl",
+            "notes.jsonl",
+        ] {
+            files.push((path.into(), line(7, "a", "").into_bytes()));
+        }
+        let tree = Tree::read(files, WORKSPACE).unwrap();
+        let journal = tree.journal();
+        let order: Vec<String> = journal
+            .order()
+            .get("a")
+            .unwrap()
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        assert_eq!(order, [id(1), id(2)]); // its own order, the torn tail skipped
+        assert!(journal.events().keys().any(|e| e.to_string() == id(9))); // the attempt, unsequenced
+        assert!(!journal.events().keys().any(|e| e.to_string() == id(7)));
+        assert!(journal.invalid.is_empty(), "{:?}", journal.invalid);
+    }
+}
