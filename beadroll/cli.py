@@ -27,7 +27,7 @@ bead: a Beads-compatible issue tracker for agent crews working across worktrees 
 State lives outside the checkout, sync goes through a git ref, and a claim is exclusive once
 the remote accepts it. Every event records machine, agent, thread, branch and commit.
 
-Find work      ready [--epic ID]             open issues with nothing blocking them and no owner
+Find work      ready [ID]                    unblocked open issues nobody holds; ID: only its subtree
                list [-s STATUS] [-a]         issues (open ones by default); --parent, -l, -t, -p filters
                show ID...                    full detail: body, acceptance criteria, deps, comments, claim
                search TEXT   blocked   dep tree ID   dep cycles
@@ -54,7 +54,7 @@ Help           bead help COMMAND, or bead COMMAND --help; bead --version
 PRIME = """\
 beadroll workflow: read once per session, then act.
 {context}
-1. Find work     bead ready --json          unblocked issues nobody holds (--epic ID to scope)
+1. Find work     bead ready [ID] --json     unblocked issues nobody holds (ID: only its subtree)
                  bead show ID --json        description, acceptance criteria, deps, comments, who holds it
                  bead claims                what others hold, on which branch, since when
 2. Take it       bead claim ID              exclusive once the remote accepts it; ALREADY_CLAIMED: pick another
@@ -158,6 +158,16 @@ class Parser(argparse.ArgumentParser):
         raise BeadError("USAGE", message)
 
 
+class Once(argparse.Action):
+    """An option that names a scope: given twice, it is refused, as br refuses it, rather than the first
+    one being silently dropped."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        if getattr(namespace, self.dest, None) is not None:
+            parser.error(f"argument {option_string}: given more than once")
+        setattr(namespace, self.dest, values)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = Parser(prog="bead", description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="command", required=True, parser_class=Parser)
@@ -243,7 +253,6 @@ def build_parser() -> argparse.ArgumentParser:
         cmd.add_argument("-l", "--label", action="append")
         cmd.add_argument("-p", "--priority")
         cmd.add_argument("--assignee")
-        cmd.add_argument("--parent")
         cmd.add_argument("--limit", type=int, default=limit)
 
     cmd = add("list", cmd_list, "list issues (open ones by default)")
@@ -252,9 +261,14 @@ def build_parser() -> argparse.ArgumentParser:
     cmd.add_argument("--deferred", action="store_true")
     cmd.add_argument("--title-contains")
     cmd.add_argument("--id", action="append")
+    cmd.add_argument("--parent", action=Once, metavar="ID", help="only ID's direct children")
     filters(cmd, 50)
     cmd = add("ready", cmd_ready, "open issues with nothing blocking them")
-    cmd.add_argument("--epic")
+    scope = cmd.add_mutually_exclusive_group()  # one scope at a time, as br refuses --epic with --parent
+    scope.add_argument("root", nargs="?", metavar="ID",
+                       help="only issues in ID's subtree: its children, theirs, and so on")
+    scope.add_argument("--epic", action=Once, metavar="ID", help="the same as ID, as in br")
+    scope.add_argument("--parent", action=Once, metavar="ID", help="only ID's direct children")
     filters(cmd, 0)
     add("blocked", cmd_blocked, "issues waiting on something")
     cmd = add("search", cmd_search, "text search over ids, titles, bodies and comments")

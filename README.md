@@ -57,6 +57,7 @@ bead                              # the one-screen overview; bead help COMMAND f
 bead prime                        # the workflow an agent loads at the start of a session
 bead onboard                      # the instruction block for a project's AGENTS.md / CLAUDE.md
 bead ready --type task --json
+bead ready <epic> --json            # only its subtree: its children, theirs, and so on
 bead claim <id>                     # or: bead update <id> --status in_progress
 bead comments add <id> "started"
 bead close <id> --reason "done"
@@ -78,6 +79,17 @@ Commands: `create`, `show`, `update`, `list`, `ready`, `blocked`, `close`,
 `takeover`, `claims`, `log`, `info`, `machines`, and for agents `help`, `prime`,
 `onboard`. `--json` works anywhere on the command line; `bead` alone prints the
 overview.
+
+`bead ready` is the frontier: open issues that nothing blocks and nobody
+holds, by br's rule. `bead ready ID`, or `--epic ID` as in br, keeps to ID's
+subtree: its children, theirs, and so on, through every parent link and
+whatever the issues in between are (closed, deferred, claimed, an epic still
+waiting). ID itself is not part of it, nor is an issue whose key only looks
+like a child's. Readiness is still judged on the whole tracker, so a blocker
+outside the subtree (of the root, say, or of a second parent) still counts.
+`--parent ID` keeps to ID's direct children, here and in `list`. A scope that
+names no issue is `ISSUE_NOT_FOUND`, never an empty answer, and only one scope
+is taken at a time.
 
 ## What gets published
 

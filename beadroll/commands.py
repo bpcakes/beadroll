@@ -24,8 +24,8 @@ from .model import (
     payload_problem, remove_edge, replay, view, write_problem,
 )
 from .queries import (
-    brief, detail, export_records, find_cycles, is_blocked, line,
-    open_blockers, parents_of, reaches,
+    brief, descendants, detail, export_records, find_cycles, is_blocked, line,
+    open_blockers, reaches,
 )
 from .sync import (coordinated, mint_key, publish_soon, synchronise, writing)
 
@@ -524,6 +524,8 @@ def cmd_show(args, ws, actor):
 def select(st: State, args) -> list[dict]:
     statuses = set(split_list(getattr(args, "status", None)))
     want_all = getattr(args, "all", False) or "all" in statuses
+    # resolved before anything is filtered: a parent that names no issue is an error, never an empty answer
+    parent = st.resolve(args.parent)["uid"] if getattr(args, "parent", None) is not None else None
     items = []
     for issue in st.issues.values():
         if statuses and not want_all:
@@ -544,9 +546,8 @@ def select(st: State, args) -> list[dict]:
             continue
         if getattr(args, "id", None) and issue["id"] not in split_list(args.id):
             continue
-        if getattr(args, "parent", None):
-            if st.resolve(args.parent)["id"] not in {p["id"] for p in parents_of(st, issue)}:
-                continue
+        if parent is not None and (parent, "parent-child") not in issue["deps"]:
+            continue
         items.append(issue)
     return sorted(items, key=lambda i: (i["priority"], i["created_at"], i["id"]))
 
@@ -563,9 +564,13 @@ def cmd_list(args, ws, actor):
 def cmd_ready(args, ws, actor):
     st = view(ws)
     need_tracker(st)
-    args.parent = args.parent or args.epic
+    root = args.epic if args.root is None else args.root  # the parser takes one scope at most
+    # The subtree decides membership only: readiness is judged on the whole tracker, so a blocker
+    # outside it (on the root, an ancestor or a second parent) still holds an issue inside it.
+    beneath = descendants(st, st.resolve(root)["uid"]) if root is not None else None
     args.status = ["open"]
-    items = [i for i in select(st, args) if not i["claim"] and not is_blocked(st, i) and "status" not in conflicts(st, i)]
+    items = [i for i in select(st, args) if (beneath is None or i["uid"] in beneath)
+             and not i["claim"] and not is_blocked(st, i) and "status" not in conflicts(st, i)]
     if args.limit:
         items = items[:args.limit]
     return [brief(st, i) for i in items], [line(st, i) for i in items] or ["Nothing is ready"]

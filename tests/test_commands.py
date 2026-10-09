@@ -2128,3 +2128,146 @@ class PublishOnWrite(unittest.TestCase):
         self.assertEqual([i["id"] for i in two.bead("list")["issues"]], ["im-1"])
         offline = support.Machine(fresh, "three")
         self.assertEqual(offline.run("init", "--prefix", "im", "--offline", "--json").returncode, 0)
+
+
+# ---- roll-dih8.3: `bead ready ID` scopes the frontier to a subtree; the audit's findings J01-J03
+def tree_record(key, title, *parents, blocked_by=(), **fields):
+    """A Beads record that is a child of each of `parents` and waits for each of `blocked_by`."""
+    deps = [{"issue_id": key, "depends_on_id": to, "type": kind, "created_at": COMMON["created_at"], "created_by": "seed"}
+            for kind, targets in (("parent-child", parents), ("blocks", blocked_by)) for to in targets]
+    return {"id": key, "title": title, **COMMON, **fields, **({"dependencies": deps} if deps else {})}
+
+
+class ReadySubtree(unittest.TestCase):
+    """`bead ready ID`, and `--epic ID` as in br, is the frontier inside ID's subtree (J01): every issue beneath ID
+    through parent-child edges, at any depth and whatever lies in between, with readiness judged on the whole
+    tracker. `--parent ID` stays ID's direct children. A scope is resolved before anything is filtered (J02), and
+    one scope is taken at a time (J03)."""
+    TREE = [
+        tree_record("ex-e", "epic", issue_type="epic"),
+        tree_record("ex-n", "nested epic", "ex-e", issue_type="epic"),
+        tree_record("ex-t", "task in the nested epic", "ex-n", priority=1),
+        tree_record("ex-c", "closed in between", "ex-e", status="closed", closed_at="2026-01-02T00:00:00Z"),
+        tree_record("ex-c1", "beneath the closed one", "ex-c", created_at="2026-01-03T00:00:00Z"),
+        tree_record("ex-d", "deferred in between", "ex-e", status="deferred"),
+        tree_record("ex-d1", "beneath the deferred one", "ex-d", priority=0),
+        tree_record("ex-f", "feature, ready with its children", "ex-e", issue_type="feature", labels=["front"]),
+        tree_record("ex-f1", "task in the feature", "ex-f", priority=3),
+        tree_record("ex-s", "reached twice, and a child of an outsider", "ex-n", "ex-f", "ex-x",
+                    created_at="2026-01-02T00:00:00Z"),
+        tree_record("ex-x", "outsider"),
+        tree_record("ex-g", "gate outside"),
+        tree_record("ex-y", "outsider held by the gate", blocked_by=["ex-g"]),
+        tree_record("ex-q", "held through its second parent", "ex-e", "ex-y"),
+        tree_record("ex-e.99", "a child of ex-e by its key only"),
+        tree_record("ex-h", "a root held by the gate", blocked_by=["ex-g"]),
+        tree_record("ex-h1", "beneath the held root", "ex-h"),
+    ]
+    SUBTREE = ["ex-d1", "ex-t", "ex-f", "ex-s", "ex-c1", "ex-f1"]  # ex-e's ready descendants, in ready's order
+
+    def setUp(self):
+        self.box = support.Sandbox()
+        self.addCleanup(self.box.cleanup)
+        self.a = support.Machine(self.box, "a")
+        self.a.bead("init", "--prefix", "ex", "--import", str(self.records(self.TREE)))
+
+    def records(self, rows):
+        path = self.box.root / f"records-{len(rows)}.jsonl"
+        path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+        return path
+
+    def ids(self, *argv, machine=None):
+        return [issue["id"] for issue in (machine or self.a).bead("ready", *argv)]
+
+    def test_j01_the_subtree_at_any_depth_judged_on_the_whole_tracker(self):
+        """J01: `ready --epic E` matched E's direct children only, so with E -> nested epic N -> task T the global
+        frontier held T and the scoped one was empty; br's --epic is recursive."""
+        a, before = self.a, self.a.export()
+        everywhere, scoped = a.bead("ready"), a.bead("ready", "ex-e")
+        self.assertEqual({i["id"] for i in everywhere}, {*self.SUBTREE, "ex-x", "ex-g", "ex-e.99"})
+        self.assertEqual([i["id"] for i in scoped], self.SUBTREE)
+        self.assertEqual(scoped, [i for i in everywhere if i["id"] in self.SUBTREE])  # same records, same order, once each
+        self.assertEqual(a.bead("ready", "--epic", "ex-e"), scoped)  # as br's --epic
+        self.assertEqual(a.bead("ready", "e"), scoped)  # the prefix may be left out, as everywhere
+        self.assertEqual(self.ids("ex-n"), ["ex-t", "ex-s"])
+        self.assertEqual(self.ids("ex-f"), ["ex-s", "ex-f1"])  # a ready parent and its ready children
+        self.assertEqual(self.ids("ex-x"), ["ex-s"])  # every parent link counts
+        self.assertEqual(self.ids("ex-c"), ["ex-c1"])  # a closed root still has a subtree
+        self.assertEqual(self.ids("ex-h"), [])  # its prerequisite holds what is beneath it, and is not beneath it
+        self.assertEqual(self.ids("ex-t"), [])  # a leaf
+        self.assertEqual(a.run("ready", "ex-t").stdout.strip(), "Nothing is ready")
+        # --parent stays the direct children, here and in list
+        self.assertEqual(self.ids("--parent", "ex-e"), ["ex-f"])
+        self.assertEqual({i["id"] for i in a.bead("list", "--parent", "ex-e", "--all", "--limit", "0")["issues"]},
+                         {"ex-n", "ex-c", "ex-d", "ex-f", "ex-q"})
+        # filters, order and limit apply within the subtree as they do everywhere
+        self.assertEqual(self.ids("ex-e", "--type", "task"), ["ex-d1", "ex-t", "ex-s", "ex-c1", "ex-f1"])
+        self.assertEqual(self.ids("ex-e", "--label", "front"), ["ex-f"])
+        self.assertEqual(self.ids("ex-e", "--priority", "2"), ["ex-f", "ex-s", "ex-c1"])
+        self.assertEqual(self.ids("ex-e", "--limit", "2"), self.SUBTREE[:2])
+        self.assertEqual(self.ids("ex-e", "--limit", "0"), self.SUBTREE)
+        self.assertEqual([row.split()[1] for row in a.run("ready", "ex-e").stdout.splitlines()], self.SUBTREE)
+        self.assertEqual(a.export(), before)
+
+    def test_j01_claims_and_disputed_statuses_count_inside_as_everywhere(self):
+        """J01: inside the subtree an owner, a provisional claim or a disputed status takes an issue off the
+        frontier as it does everywhere, and the walk goes on beneath a claimed issue."""
+        a = self.a
+        a.bead("claim", "ex-f")
+        a.bead("claim", "ex-t", "--offline")
+        self.assertEqual(self.ids("ex-e"), ["ex-d1", "ex-s", "ex-c1", "ex-f1"])
+        self.assertEqual(self.ids("ex-f"), ["ex-s", "ex-f1"])
+        b = support.Machine(self.box, "b")
+        b.bead("sync")
+        a.bead("update", "ex-c1", "--status", "deferred", "--offline")
+        b.bead("update", "ex-c1", "--status", "open", "--offline")  # the later write, so open is the value shown
+        for machine in (a, b, a):
+            machine.bead("sync")
+        for machine in (a, b):
+            with self.subTest(machine=machine.name):
+                self.assertEqual(machine.show("ex-c1")["status"], "open")
+                self.assertIn("status", machine.show("ex-c1")["conflicts"])
+                self.assertEqual(self.ids("ex-e", machine=machine), ["ex-d1", "ex-s", "ex-f1"])
+                self.assertNotIn("ex-c1", self.ids(machine=machine))
+
+    def test_j01_a_loop_through_the_root_and_a_chain_deeper_than_the_recursion_limit(self):
+        """J01: the walk ends on a merged or imported parent loop, never counts the root as its own descendant,
+        and has no depth limit: 1,100 levels, everything in between closed."""
+        loop = [tree_record("ex-k", "in a loop", "ex-m"), tree_record("ex-m", "in the same loop", "ex-k"),
+                tree_record("ex-z", "beneath the loop", "ex-m")]
+        chain = [tree_record(f"ex-{n}", f"level {n}", *([f"ex-{n - 1}"] if n else []),
+                             **({} if n in (0, 1099) else {"status": "closed"})) for n in range(1100)]
+        self.a.bead("import", str(self.records(loop + chain)))
+        self.assertEqual(self.ids("ex-k"), ["ex-m", "ex-z"])
+        self.assertEqual(self.ids("ex-m"), ["ex-k", "ex-z"])
+        self.assertEqual(self.ids("ex-0"), ["ex-1099"])
+
+    def test_j02_a_scope_that_names_no_issue_is_an_error_whatever_else_filters(self):
+        """J02: the scope was resolved inside the candidate loop, so on an empty tracker, or once another filter had
+        left no candidate, `ready --epic missing` answered [] and a typo passed for an exhausted queue."""
+        fresh = support.Sandbox()
+        self.addCleanup(fresh.cleanup)
+        empty = support.Machine(fresh, "empty")
+        empty.bead("init", "--prefix", "ex")
+        for argv in (["ready", "missing"], ["ready", "--epic", "missing"], ["ready", "--parent", "missing"],
+                     ["list", "--parent", "missing"], ["ready", ""], ["ready", "--epic", ""], ["list", "--parent", ""]):
+            for machine, filters in ((empty, []), (self.a, ["--label", "absent"])):
+                with self.subTest(argv=argv, machine=machine.name):
+                    proc = machine.run(*argv, *filters, "--json")
+                    self.assertEqual((proc.returncode, proc.stdout), (1, ""))
+                    self.assertEqual(code(proc), "ISSUE_NOT_FOUND")
+
+    def test_j03_one_scope_at_a_time(self):
+        """J03: `ready --parent A --epic B` silently ignored B. Two scopes are refused, as br refuses --epic with
+        --parent and either one given twice, and `help ready` says what each one means."""
+        for argv in (["ready", "ex-e", "--epic", "ex-e"], ["ready", "ex-e", "--parent", "ex-f"],
+                     ["ready", "--epic", "ex-e", "--parent", "ex-f"], ["ready", "--parent", "ex-f", "ex-e"],
+                     ["ready", "--epic", "ex-e", "--epic", "ex-n"], ["ready", "--parent", "ex-e", "--parent", "ex-f"],
+                     ["list", "--parent", "ex-e", "--parent", "ex-f"]):
+            with self.subTest(argv=argv):
+                proc = self.a.run(*argv, "--json")
+                self.assertEqual((proc.returncode, proc.stdout), (2, ""))
+                self.assertEqual(code(proc), "USAGE")
+        usage = " ".join(self.a.run("help", "ready").stdout.split())
+        for meaning in ("ID's subtree", "--epic ID the same as ID", "--parent ID only ID's direct children"):
+            self.assertIn(meaning, usage)

@@ -8,6 +8,17 @@ the behaviour is kept on purpose (with the reason); **open** otherwise.
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Audit of `roll-dih8.3` (2026-10-09, ids J)
+
+The audit's reproductions and proposed acceptance criteria are recorded on `roll-dih8.3`; the
+maintainer's decision that `--epic` follows br is in `REVIEWING.md` §2.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| J01 | Medium | `ready --epic E`, another name for `--parent E`, saw only E's direct children: with E → nested epic N → task T the global frontier held T and the scoped one was empty, while br's `--epic` is recursive; `ready E` was a `USAGE` error | fixed | `ready ID` and `--epic ID` are ID's subtree: every issue beneath it through parent-child edges, at any depth and through every parent link, whatever lies in between; readiness is judged on the whole tracker; `--parent` stays direct | `test_commands.ReadySubtree` (the three `test_j01_` tests) |
+| J02 | Medium | A scope was resolved inside the candidate loop: on an empty tracker, or once another filter had left no candidate, `ready --epic missing` and `--parent missing` answered `[]`, so a typo passed for an exhausted queue | fixed | `ready` resolves its scope, and `select` the `--parent` that `list` shares, before anything is filtered: an id that names no issue, an empty one included, is `ISSUE_NOT_FOUND` | `test_j02_a_scope_that_names_no_issue_is_an_error_whatever_else_filters` |
+| J03 | Low | `ready --parent A --epic B` silently ignored B | fixed | One scope at a time: `ID`, `--epic` and `--parent` are mutually exclusive, and neither option may be given twice (`USAGE`, in `list --parent` too), as br refuses both | `test_j03_one_scope_at_a_time` |
+
 ## Project health check (2026-10-09, ids H)
 
 Reproductions and acceptance criteria are recorded in `roll-dih8.8` and `roll-dih8.9`.

@@ -85,6 +85,12 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - Exported comment ids for comments made here come from a 48-bit hash range; a collision is a
   one-in-10^14 event and is then resolved by the ids alone.
 - `dep cycles` stops after 200 cycles.
+- `ready ID` and `ready --epic ID` are one scope, ID's subtree, recursive as br's `--epic` (the
+  maintainer's decision of 2026-10-09; until then `--epic` was another name for `--parent`): every
+  issue beneath ID through parent-child edges, at any depth and through every parent link, whatever
+  lies in between; ID itself is never part of it. Readiness is judged on the whole tracker.
+  `--parent ID` stays ID's direct children, as in br and `list --parent`. One scope at a time, each
+  option given once (`USAGE`, as br refuses both), resolved before anything is filtered.
 - A repository with neither a remote nor `.beadroll.json` gets a local tracker that cannot sync.
 - Output is UTF-8 regardless of locale; human output escapes control characters; `--json` always
   wins the representation (`create --silent --json` gives `{"id": …}`); a closed stdout exits 0

@@ -31,6 +31,19 @@ def parent_of(st: State, issue: dict) -> dict | None:
     return parents[0] if parents else None
 
 
+def descendants(st: State, uid: str) -> set[str]:
+    """Every issue beneath `uid`: its children, theirs, and so on, through every parent link and
+    whatever the issues in between are. Only parent-child edges count (a key that merely looks like
+    a child's does not), and `uid` itself is never among them, even when a merged cycle leads back."""
+    found, stack = set(), list(st.children(uid))
+    while stack:
+        child = stack.pop()
+        if child != uid and child not in found:
+            found.add(child)
+            stack.extend(st.children(child))
+    return found
+
+
 def direct_blockers(st: State, issue: dict) -> list[dict]:
     return [st.issues[to] for (to, kind) in sorted(issue["deps"])
             if kind in BLOCKING and to in st.issues and not is_done(st, st.issues[to])]

@@ -6,6 +6,11 @@ versioned separately (format 1, frozen; see *Format and upgrades* in the README)
 
 ## [Unreleased]
 
+- `bead ready ID` offers only the ready issues in ID's subtree, at any depth and through every
+  parent link; `--epic ID` now means the same, as in br (it used to match ID's direct children
+  only, which `--parent ID` still does). A scope that names no issue is `ISSUE_NOT_FOUND`, in
+  `list --parent` too, instead of an empty answer, and two scopes at once (a repeated `--parent`
+  or `--epic` included) are a `USAGE` error.
 - Verification fails on every selected protocol-sweep failure, including the previously
   exempt G12 scenarios; the default slice covers interrupted owner close/delete retries.
 - `check.sh --real` reports failure when the round-trip driver fails, a bead command fails,
