@@ -25,7 +25,9 @@ pub fn nearest_harness(parent: u32, ps: &Ps<'_>) -> Option<&'static str> {
             .split(beadroll_core::text::is_space)
             .filter(|w| !w.is_empty())
             .collect();
-        let first = words.first().copied().unwrap_or_default();
+        // A row that names no command ends the walk, where Python fails reading its first word
+        // (`docs/REVIEWING.md` §2).
+        let first = words.first().copied()?;
         let command = first.rsplit('/').next().unwrap_or_default();
         if command.starts_with("codex") || first.contains("/codex") {
             return Some("codex");
@@ -88,4 +90,43 @@ pub fn detect_actor(
         actor.insert("name".into(), Value::from(named));
     }
     Value::Object(actor)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A `ps` that answers from a table of `pid -> output`, 1 for anything else.
+    fn table(rows: &'static [(u32, &'static str)]) -> impl Fn(u32) -> Option<(i32, String)> {
+        move |pid| {
+            rows.iter()
+                .find(|(at, _)| *at == pid)
+                .map_or(Some((1, String::new())), |(_, out)| {
+                    Some((0, (*out).to_owned()))
+                })
+        }
+    }
+
+    #[test]
+    fn the_walk_finds_the_nearest_harness() {
+        let ps = table(&[
+            (10, "  20 /usr/bin/zsh -l\n"),
+            (20, "30 node /opt/claude/cli.js"),
+            (30, "1 codex"),
+        ]);
+        assert_eq!(nearest_harness(10, &ps), Some("claude"));
+        let ps = table(&[(10, "20 /opt/bin/codex --worker")]);
+        assert_eq!(nearest_harness(10, &ps), Some("codex"));
+        let ps = table(&[(10, "1 /bin/sh")]);
+        assert_eq!(nearest_harness(10, &ps), None);
+        assert_eq!(nearest_harness(10, &|_| None), None);
+    }
+
+    #[test]
+    fn a_row_without_a_command_ends_the_walk() {
+        let ps = table(&[(10, "42"), (42, "1 claude")]);
+        assert_eq!(nearest_harness(10, &ps), None);
+        let ps = table(&[(10, "42 \t "), (42, "1 claude")]);
+        assert_eq!(nearest_harness(10, &ps), None);
+    }
 }
