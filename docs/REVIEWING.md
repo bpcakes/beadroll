@@ -4,7 +4,7 @@ A brief for an independent reviewer: an agent or a person who did not write this
 to find out whether the design holds, to break it if they can, and to report with
 reproductions. Reviewers do not extend the tool.
 
-Eight reviews have run; the latest audits the Rust port plan. Their reports are kept verbatim in
+Nine reviews have run; the latest two audit the Rust port plan. Their reports are kept verbatim in
 `reviews/`; every finding and what became of it is in `FINDINGS.md`. Start from what they did
 not cover.
 

@@ -3,7 +3,7 @@
 
 # Test catalog for the Rust port: tests/test_commands.py and tests/test_protocol.py
 
-Source: `tests/test_commands.py` (111 tests, 15 classes) and `tests/test_protocol.py` (54 tests, 8 classes), read in full, plus the package code they reach.
+Source: `tests/test_commands.py` (111 tests, 15 classes) and `tests/test_protocol.py` (54 tests in 7 test classes, plus the `PartialAppend` helper), read in full, plus the package code they reach.
 
 ## Legend
 
@@ -20,7 +20,7 @@ Source: `tests/test_commands.py` (111 tests, 15 classes) and `tests/test_protoco
   - `layout`: the on-disk store format 1.
   - `sync.git`: the internals of the private bare repo.
 - `B`: pure in-process logic. Becomes a Rust unit or library test.
-- `C-env`: needs a seam in the Rust code that the environment can trigger. Once Rust implements the hook, the test stays black-box and runs unchanged via `BEAD_UNDER_TEST`.
+- `C-env`: needs a hook the environment triggers. Two kinds (review 9): the crash hooks (`BEAD_TEST_CRASH_*`), which Python already has, so the test runs unchanged against either binary and is ported with the black-box tests; and a new failpoint (`docs/RUST-PORT.md` §4.5), which Python lacks, so the test is a driver today, cannot pass against Python, and is ported with the failpoint tests (`roll-k2wy.11`).
 - `C-api`: needs an in-process injection seam such as a trait, a callback or a library API. The test must be rewritten in Rust.
 - `D`: Python-specific; the column says what to test in Rust instead.
 
@@ -62,7 +62,7 @@ Source: `tests/test_commands.py` (111 tests, 15 classes) and `tests/test_protoco
 | BpTest.test_a_copied_machine_identity_is_detected | Copied machine home detected as JOURNAL_FORK | cli + copytree(home) | layout ($BEAD_HOME/replica.json) | A |
 | BpTest.test_full_segments_are_never_rewritten | Full segments keep their blob ids on the remote | cli + `git ls-tree` on remote | knob BEAD_ROTATE_BYTES=1500; remote tree layout | A |
 | BpTest.test_tracked_workspace_id_and_a_separate_coordination_remote | Tracked workspace id, coordination remote, foreign workspace refused | cli + git inspection | none | A |
-| BpTest.test_replay_does_not_depend_on_delivery_order | Replay identical under any delivery order and duplication | cli setup + inproc | lib API: Workspace, load_journal, Journal.add(sequenced=), .order/.events, replay, export_records, detail, replica_id | B |
+| BpTest.test_replay_does_not_depend_on_delivery_order | Replay identical under any delivery order and duplication | cli setup + inproc | lib API: Workspace, load_journal, Journal.add(sequenced=), .order/.events, replay, export_records, detail, replica_id | B (store: lands with Phase 2a, not core) |
 | BpTest.test_import_export_round_trips_beads_records | Beads JSONL round-trip; comment ids; idempotent reimport | cli | none | A |
 | CompatAuditCLI.test_global_json_actor_positions | --json and --actor accepted in any position | cli | none | A |
 | CompatAuditCLI.test_description_stdin_multi_id_and_filters | Stdin description, multi-id update/show, list filters | cli (stdin) | none | A |
@@ -76,10 +76,10 @@ Source: `tests/test_commands.py` (111 tests, 15 classes) and `tests/test_protoco
 | CompatAuditCLI.test_import_preserves_dependency_metadata_extra_and_tombstone_mutation | Import keeps extra fields, dependency metadata; delete tombstones | cli | none | A |
 | CompatAuditCLI.test_imported_comment_zero_id_roundtrips | Imported comment id 0 survives export | cli | none | A |
 | CompatAuditCLI.test_metadata_excludes_local_machine_identifiers | Event metadata has no paths, hostname or username | cli + reads store | layout; replica id `^[0-9a-f]{8}$` | A |
-| CompatAuditIdentity.test_detect_actor_environment_and_explicit_overrides | Actor detection from env: human, claude, codex, BEAD_* overrides | inproc+patched(env) | detect_actor as a pure function of (env map, name) | B |
-| CompatAuditIdentity.test_nearest_harness_mocked_process_tree | Nested harnesses resolved by nearest ancestor process | inproc+patched (`mock.patch.object(subprocess,'run')` fakes `ps` output) | process-tree lookup injection (`ps -o ppid=,args= -p PID`, at most 12 levels) | C-api (or C-env with a fake `ps` on PATH, if Rust still shells out to ps) |
+| CompatAuditIdentity.test_detect_actor_environment_and_explicit_overrides | Actor detection from env: human, claude, codex, BEAD_* overrides | inproc+patched(env) | detect_actor as a pure function of (env map, name) | B (store: lands with Phase 2a, not core) |
+| CompatAuditIdentity.test_nearest_harness_mocked_process_tree | Nested harnesses resolved by nearest ancestor process | inproc+patched (`mock.patch.object(subprocess,'run')` fakes `ps` output) | process-tree lookup injection (`ps -o ppid=,args= -p PID`, at most 12 levels) | C-env with a fake `ps` on PATH: Python runs `ps` from PATH, and so does Rust (§2.2), so the black-box port passes against both binaries (`roll-k2wy.7`) |
 | CompatAuditIdentity.test_missing_ps_does_not_crash_nested_actor_detection | Missing ps: falls back to codex, no crash | cli+env-fake (PATH holds only python3 and git) | process lookup fails soft; `info` outside a repo with BEAD_WORKSPACE | A |
-| CompatAuditIdentity.test_bp_thread_overrides_detected_thread_without_bp_agent | BEAD_THREAD overrides the detected thread | inproc+patched(env) | detect_actor(env) | B |
+| CompatAuditIdentity.test_bp_thread_overrides_detected_thread_without_bp_agent | BEAD_THREAD overrides the detected thread | inproc+patched(env) | detect_actor(env) | B (store: lands with Phase 2a, not core) |
 | LocationReview.test_claims_and_log_report_claim_location_and_later_activity | Claims/log report claim branch, commit and later activity | cli + git worktree | ms-precision event times (last_activity compared as strings) | A |
 | CommandsAndCompatibilityReview4.test_q05_tombstone_update_cannot_leave_a_releasable_claim | Claim+tombstone update refused cleanly or unreleasable | cli + store listing | layout: pending/*.json, events/*/claims/*.json | A |
 | CommandsAndCompatibilityReview4.test_q11_offline_close_ends_a_provisional_claim | Offline close clears seen provisional claims, keeps concurrent | cli | none | A |
@@ -117,20 +117,20 @@ Source: `tests/test_commands.py` (111 tests, 15 classes) and `tests/test_protoco
 | Review6.test_f11_stale_pending_twin_does_not_fork_a_matching_attempt | Pending twin of a confirmed attempt is not ATTEMPT_FORK | cli + store tamper | layout pending/<id>.json | A |
 | Review6.test_f12_unreadable_pending_file_is_not_fenced_forever | Junk pending file removed; at most one fence commit | cli + store tamper + `git rev-list` | layout pending/ | A |
 | Review6.test_f13_local_state_files_are_strict_json | NaN or wrong-shaped meta/replica/aliases files handled | cli + store tamper | layout meta.json, replica.json, aliases.json | A |
-| Review6.test_f14_future_clock_create_is_a_structured_error | Clock beyond 2100 gives structured create error | driver (`time.time_ns = lambda: 4.429e18`) + cli | clock injection (absolute) | C-env (e.g. a `BEAD_TEST_NOW_MS` hook) |
+| Review6.test_f14_future_clock_create_is_a_structured_error | Clock beyond 2100 gives structured create error | driver (`time.time_ns = lambda: 4.429e18`) + cli | clock injection (absolute) | C-env, new failpoint `clock=at(…)` → `roll-k2wy.11` |
 | Review6.test_f15_timeout_reaps_the_git_helper | Fetch timeout kills git-upload-pack too | cli+env-fake (`GIT_EXEC_PATH` dir with sleeping upload/receive-pack, BEAD_NET_TIMEOUT=2) | git-via-PATH; killpg on fetch timeout; env passthrough | A |
 | Review6.test_f16_read_only_store_write_is_a_structured_error | Write to a read-only store is a structured error | cli+env-fake (chmod) | not root | A |
 | Review6.test_receipt_identity_holds_for_actor_sync_stdin_and_json | Receipt survives other threads and sync; stdin and --json handled | cli+env-fake (stdin) | crash-after-push; layout pending/*.command | C-env |
 | Review6.test_remote_url_shapes_that_are_already_safe | Encoded, ssh, scp and named remote URLs stored safely | cli + reads meta.json | layout meta.json | A |
 | Review6.test_prime_matches_ready_and_help_outside_a_repository_is_silent | prime's ready count matches; help/prime/onboard stateless | cli | none | A |
 | Review6.test_incremental_mutual_import_matches_one_shot | Mutual dependency imported in two batches equals one-shot | cli | none | A |
-| Review6.test_clock_skew_does_not_override_causality | Clock 48h behind: causality, not time, settles | driver (`time.time_ns` offset) + cli | clock injection (offset) | C-env (e.g. a `BEAD_TEST_CLOCK_OFFSET_MS` hook) |
+| Review6.test_clock_skew_does_not_override_causality | Clock 48h behind: causality, not time, settles | driver (`time.time_ns` offset) + cli | clock injection (offset) | C-env, new failpoint `clock=offset(-48h)` → `roll-k2wy.11` |
 | Review6.test_closed_stdout_on_success_exits_zero_and_store_stays_private | Closed stdout after a successful read exits 0 | cli+env-fake (closed pipe) | EPIPE → exactly 0 (dying by SIGPIPE is not accepted) | A |
 | Review6.test_json_keeps_bidi_text | JSON preserves bidi characters exactly | cli | none | A |
 | FormatPolicy.test_unapplicable_events_travel_untouched_and_hold_nothing_up | Unknown-op/v2 events kept byte-for-byte and block nothing | cli + store tamper + inproc (`uuid7` only) | test-side UUIDv7 generator; layout | A |
 | SyncRepoDamage.test_sync_rebuilds_a_damaged_sync_repo_once_and_info_lists_the_copy | Damaged sync.git set aside, rebuilt once, listed | cli + sync.git tamper | sync.git: refs/beads/remote, head commit is a loose object, `sync.git.damaged-<ns>` | A |
 | SyncRepoDamage.test_a_claim_rebuilds_too_and_damage_twice_in_one_command_is_reported | Claim path rebuilds sync.git; local-damage classifier | cli + inproc (`local_damage`) | sync.git; pure classifier over git stderr | A+B |
-| SyncRepoMaintenance.test_no_git_maintenance_in_sync_git_and_fetches_stay_packed | sync.git auto-gc off; each fetch adds one pack | inproc+patched(env, chdir) (`Link`, `find_workspace`, `run_git`, `SYNC_REPO_CONFIG`) + cli | the Link's git env (GIT_CONFIG_KEY/VALUE_n) must be observable; pack counting | B+A |
+| SyncRepoMaintenance.test_no_git_maintenance_in_sync_git_and_fetches_stay_packed | sync.git auto-gc off; each fetch adds one pack | inproc+patched(env, chdir) (`Link`, `find_workspace`, `run_git`, `SYNC_REPO_CONFIG`) + cli | the Link's git env (GIT_CONFIG_KEY/VALUE_n) must be observable; pack counting | B+A (the B half is sync's: lands with Phase 2a; the CLI half goes with `roll-k2wy.7`) |
 | SyncRepoMaintenance.test_repacks_under_the_lock_when_loose_objects_pile_up | Repacks when loose objects exceed threshold; fsck clean | cli + sync.git inspection | knob BEAD_REPACK_LOOSE=3; sync.git | A |
 | PublishOnWrite.test_writes_reach_the_other_machine_without_a_sync | Every local write publishes at once | cli | none | A |
 | PublishOnWrite.test_offline_keeps_it_local_and_says_so_until_the_next_publish | --offline stays local; unpublished count reported | cli | exact human line | A |
@@ -152,7 +152,7 @@ Source: `tests/test_commands.py` (111 tests, 15 classes) and `tests/test_protoco
 | SyncAudit.test_bug_foreign_fork_report_must_not_replace_published_journal | Tampered foreign segment never overwrites remote copy | cli + store tamper + `git show` | layout; `forked_journals` holds the path | A |
 | SyncAudit.test_bug_copied_machine_id_fork_across_segments_is_detected | Copied identity forking across segments → JOURNAL_FORK | cli + copytree(home) | knob BEAD_ROTATE_BYTES (1 vs 1000000) via Machine.extra | A |
 | SyncAudit.test_bug_segment_boundary_fork_must_not_erase_concurrent_title | Segment order never invents causality | cli + copytree(home) | knob BEAD_ROTATE_BYTES | A |
-| SyncAudit.test_bug_kill_mid_append_then_successful_write_must_stay_readable | SIGKILL mid-append: readers unaffected, next write repairs | driver (`os.fdopen` 'ab' writes 100 bytes, marker, sleep 20) + env-fake (killpg) + cli | pause after a partial append | C-env (e.g. a `BEAD_TEST_HANG_MID_APPEND=<marker>` hook) |
+| SyncAudit.test_bug_kill_mid_append_then_successful_write_must_stay_readable | SIGKILL mid-append: readers unaffected, next write repairs | driver (`os.fdopen` 'ab' writes 100 bytes, marker, sleep 20) + env-fake (killpg) + cli | pause after a partial append | C-env, new failpoint `append.mid` (a partial line first) → `roll-k2wy.11` |
 | SyncAudit.test_slow_push_holds_lock_then_local_writer_completes_without_loss | Writer waits for lock held by slow push; nothing lost | cli+env-fake (python `git` on PATH: real push, marker, sleep 20; killpg) | git-via-PATH; lock held across publish; flock freed on kill | A |
 | SyncAudit.test_parallel_rotation_preserves_causal_predecessor_and_all_events | 50 parallel creates with rotation form one causal chain | cli (50 procs, 12 concurrent) | knob BEAD_ROTATE_BYTES=600; layout | A |
 | SyncAudit.test_deleted_local_segment_is_restored_from_remote | Deleted local segment restored from remote | cli + store tamper | knob BEAD_ROTATE_BYTES=200 | A |
@@ -162,7 +162,7 @@ Source: `tests/test_commands.py` (111 tests, 15 classes) and `tests/test_protoco
 | SyncAudit.test_claim_timeout_after_real_applied_push_is_recovered | Push applied but timed out: claim still recovered | cli+env-fake (push wrapper sleeps 20; BEAD_NET_TIMEOUT=0.4) | git-via-PATH; push timeout kills only the client → uncertain | A |
 | SyncAudit.test_killed_slow_fetch_does_not_block_local_writer | Stalled fetch holds no lock; writer proceeds | cli+env-fake (fetch wrapper; killpg) | git-via-PATH; first fetch outside the store lock | A |
 | SyncAudit.test_manifest_missing_and_foreign_workspace_are_refused | Ref without manifest, or another workspace's, refused | cli + `git update-ref` | BEAD_WORKSPACE | A |
-| SyncAudit.test_retry_exhaustion_retains_local_edits_and_no_partial_claim | 12 rejected pushes → SYNC_CONFLICT; nothing partial | env-fake (hostile `git` advances the ref before every push) + driver (`time.sleep` no-op) + cli | git-via-PATH; backoff-disable seam; exactly 12 attempts per command | C-env (`BEAD_FAILPOINTS=backoff@always=skip`) |
+| SyncAudit.test_retry_exhaustion_retains_local_edits_and_no_partial_claim | 12 rejected pushes → SYNC_CONFLICT; nothing partial | env-fake (hostile `git` advances the ref before every push) + driver (`time.sleep` no-op) + cli | git-via-PATH; backoff-disable seam; exactly 12 attempts per command | C-env, `backoff@always=skip` → `roll-k2wy.11` (Python ignores the failpoint, so against Python the port waits through real backoff, about 40 s) |
 | RootAudit.test_six_simultaneous_claims_have_one_winner | Six simultaneous claims: one winner; all converge | cli (6 concurrent) | none | A |
 | RootAudit.test_claim_racing_release_matches_accepted_outcome | Claim racing release ends consistent with the accepted outcome | cli (2 concurrent) | none | A |
 | RootAudit.test_two_takeovers_are_serial_and_generation_increases | Concurrent takeovers serialize; generations 2 and 3 | cli (2 concurrent) | none | A |
@@ -171,7 +171,7 @@ Source: `tests/test_commands.py` (111 tests, 15 classes) and `tests/test_protoco
 | RootAudit.test_provisional_release_and_same_thread_online_upgrade | Provisional release; same-thread online claim replaces provisional | cli | none | A |
 | RootAudit.test_nonowner_cannot_bypass_close_guard_with_status_update | Non-owner cannot close through update --status closed | cli | per-call BEAD_THREAD | A |
 | RootAudit.test_claimed_issue_is_not_ready_after_nonowner_status_update | Claimed issue stays unready after a non-owner status edit | cli | none | A |
-| RootAudit.test_clock_moves_back_but_later_observed_edit_settles_register | Clock a day back: later observed edit still wins | driver (SourceFileLoader; `bead.time.time_ns` offset) + cli | clock injection (offset) | C-env |
+| RootAudit.test_clock_moves_back_but_later_observed_edit_settles_register | Clock a day back: later observed edit still wins | driver (SourceFileLoader; `bead.time.time_ns` offset) + cli | clock injection (offset) | C-env, new failpoint `clock=offset(-1d)` → `roll-k2wy.11` |
 | ProtocolReaudit.test_refused_void_publish_must_not_activate_unaccepted_claim | Losing fence race never activates an unaccepted claim | inproc+patched (`Link.publish` raises, then a race wrapper runs b's claim; `pause`) + cli | publish fault; pre-publish interleave hook; pause hook | C-api (black-box alternative: CRASH_BEFORE_PUSH plus a PATH `git` that runs b's claim before the first push) |
 | ProtocolReaudit.test_failed_void_publish_retry_must_not_activate_unaccepted_claim | Failed fence publish; a later claim elsewhere wins | inproc+patched (`Link.publish` raises REMOTE_UNREACHABLE) + cli | publish fault injection | C-api (alternative: PATH `git` failing push with no status line) |
 | ProtocolReaudit.test_failed_void_push_must_leave_original_claim_unconfirmed | Failed fence leaves the claim unconfirmed | inproc+patched + cli | publish fault injection | C-api |
@@ -187,7 +187,7 @@ Source: `tests/test_commands.py` (111 tests, 15 classes) and `tests/test_protoco
 | RootReaudit.test_failed_claim_does_not_publish_bundled_field_edit | Refused claim publishes no bundled edit | cli | none | A |
 | Protocol3.test_fence_wins_against_a_real_push_still_running_after_timeout | Fence beats a stalled in-flight push; claim never lands | inproc+patched (`NET_TIMEOUT`=.25) + env-fake (pre-receive gate) + cli | lib API: locked, Link.fetch/merge/publish → ok/rejected/refused/uncertain, Tx, claim_builder, write_attempt_file; per-Link timeout | C-api |
 | Protocol3.test_reader_sees_all_or_none_of_accepted_claim_and_bundled_edits | Reader sees an accepted attempt all or nothing | inproc+patched (`write_atomic` wrapper runs a CLI reader around claims/ write) + cli | hook around the confirmation write | C-api |
-| Protocol3.test_kill_during_local_confirmation_does_not_leave_partial_atomic_update | SIGKILL before confirm rename: no partial update; recovers | driver (`os.replace` spins for claims/ target) + env-fake (kill) + cli | pause before the attempt file is renamed into claims/; readers ignore temp files | C-env (e.g. a `BEAD_TEST_HANG_BEFORE_CONFIRM=<marker>` hook) |
+| Protocol3.test_kill_during_local_confirmation_does_not_leave_partial_atomic_update | SIGKILL before confirm rename: no partial update; recovers | driver (`os.replace` spins for claims/ target) + env-fake (kill) + cli | pause before the attempt file is renamed into claims/; readers ignore temp files | C-env, new failpoint `atomic-write:claims/` → `roll-k2wy.11` |
 | Protocol3.test_recovered_atomic_update_is_not_applied_again_after_a_later_observed_edit | Recovered update is not reapplied over a later edit | inproc+patched (`run_git` lose-ack; `pause` runs CLI sync and update) + cli | git-runner injection; pause callback | C-api |
 | Protocol3.test_release_recovers_a_successful_push_with_lost_acknowledgement | Release with lost ack recovered and reported as success | inproc+patched (`run_git` lose-ack; `pause` no-op) + cli | git-runner injection | C-api (alternative: PATH `git` doing `push >/dev/null; exit 1` once) |
 | Protocol3.test_mixed_ownership_file_and_journal_ancestry_across_six_machines | Ancestry and replay stable across six-machine shuffles | inproc | lib API: Journal.add(sequenced=), replay, State.saw/integrity/pending/issues, detail; seeded RNG 3106 | B |

@@ -23,8 +23,8 @@ raises unless `BEAD_HOME` is set.
 |---|---|---|---|---|
 | UnitTest.test_malformed_payloads_are_scoped_and_reported | Bad create/dep_add/actor events reported; valid events still apply | inproc | Journal.add, replay; uuid7() + 2 ms sleeps; integrity `problem[:6]` == "actor ", "create", "dep_ad" | B |
 | UnitTest.test_an_ignored_newer_format_event_cannot_change_ownership | v2 takeover inert; owner's close stands; no stale entries | inproc | mutates `journal.events[id]` after add (build final event first in Rust); problem starts "event format" | B |
-| UnitTest.test_one_remote_has_one_identity_however_it_is_spelled | Four URL spellings normalise to github.com/example/project | inproc | normalize_remote(str) -> str | B |
-| UnitTest.test_the_coordination_ref_cannot_be_a_branch | heads/tags/bare/`..` refs rejected; refs/tracker/journal accepted | inproc | Workspace(wid,name,origin,config).ref raises BeadError; shells out to `git check-ref-format` | B |
+| UnitTest.test_one_remote_has_one_identity_however_it_is_spelled | Four URL spellings normalise to github.com/example/project | inproc | normalize_remote(str) -> str | B (beadroll-git's URL rules: lands with Phase 2a, not core) |
+| UnitTest.test_the_coordination_ref_cannot_be_a_branch | heads/tags/bare/`..` refs rejected; refs/tracker/journal accepted | inproc | Workspace(wid,name,origin,config).ref raises BeadError; shells out to `git check-ref-format` | B (store and git: lands with Phase 2a, not core) |
 | ReplayAuditProperties.test_six_machine_3000_event_replay_all_720_enumerations | 3000 random events: identical snapshot for all 720 delivery orders, duplicates | inproc | seed 6403, 30 issues, 6 replicas; each journal delivered forward+reversed; 16 random interleavings with random re-adds; heaviest replay test | B |
 | ReplayAuditProperties.test_missing_causes_hold_claim_and_close_of_pending_create | Events with a missing cause wait; claim not applied | inproc | st.pending ids, issue claim None | B |
 | ReplayAuditProperties.test_all_registers_keep_concurrent_clear_and_value_then_settle | Each register: concurrent clear vs value conflicts until merging write | inproc | REGISTERS, REQUIRED_FIELDS (clear rejected into integrity), conflicts(), issue.reg[field] values | B |
@@ -33,7 +33,7 @@ raises unless `BEAD_HOME` is set.
 | ReplayAuditProperties.test_tombstoned_blocker_unblocks_unless_status_disputed | Deleted blocker unblocks; concurrent reopen disputes status, re-blocks | inproc | conflicts()["status"], is_blocked | B |
 | ReplayAuditProperties.test_handwritten_offline_takeover_does_not_fence_confirmed_owner | Offline takeover cannot fence online owner's close | inproc | claim, status, stale | B |
 | ReplayAuditProperties.test_causal_write_wins_despite_backwards_clock | Causally later write wins despite older uuid7 timestamp | inproc | id rewritten to 01000000-0000-7000-8000-000000000001 | B |
-| ReplayAuditProperties.test_reused_event_ids_are_isolated_across_workspaces | Same event ids in two workspaces replay independently | inproc+env-fake | patch.dict BEAD_HOME/BEAD_WORKSPACE; Workspace, append_events, load_journal on real files. Rust: pass home path explicitly (env is process-global under parallel tests) | B |
+| ReplayAuditProperties.test_reused_event_ids_are_isolated_across_workspaces | Same event ids in two workspaces replay independently | inproc+env-fake | patch.dict BEAD_HOME/BEAD_WORKSPACE; Workspace, append_events, load_journal on real files. Rust: pass home path explicitly (env is process-global under parallel tests) | B (store: lands with Phase 2a, not core) |
 | ReplayAuditBugs.test_non_chain_same_journal_must_not_invent_ancestry | Same-journal position alone implies no causality | inproc | State.saw(a, b) | B |
 | ReplayAuditBugs.test_non_chain_claim_cannot_bypass_pending_predecessor | Claim after pending predecessor in same journal not confirmed | inproc | chain rule | B |
 | ReplayAuditBugs.test_identical_id_in_different_machine_journals_is_order_independent | Misplaced identical copy in other journal: same projection either order | inproc | Journal.add(event, physical replica) | B |
@@ -104,7 +104,7 @@ All in `StorageReaudit`; setUp: Sandbox, Machine `storage-a`, `init --prefix ex`
 |---|---|---|---|---|
 | CompatAuditCommentIds.test_existing_comment_export_id_survives_clock_skewed_new_comment | Exported comment id stable after clock-skewed later comment | inproc | hand-built UUIDv7 with ms 1000/3000/2000; Journal, replay, export_records; actor without thread | B |
 | CompatAuditRealCompatibility.test_all_available_real_exports_and_br_bv_consumers | Real Beads exports round-trip; br readiness parity; bv parses export | env-fake | subprocess `infra/compat_real.py --out tmp` (180 s); needs `br` and `bv` (PATH or ~/.local/bin) and `~/Documents/*/.beads/issues.jsonl`, else skip. Helper path = dirname(BEAD)/infra and helper runs the checkout's `./bead`, ignoring BEAD_UNDER_TEST | A (resolve helper from source tree independently of selected binary; pass BEAD_UNDER_TEST through; optional external tools/data) |
-| CompatAuditRefValidation.test_ref_names_reject_code_refs_and_traversal_accept_unicode | Six bad refs fail with CONFIG; unicode and custom refs accepted | inproc+env-fake | patch.dict BEAD_HOME/BEAD_WORKSPACE; Workspace().ref; `git check-ref-format` | B |
+| CompatAuditRefValidation.test_ref_names_reject_code_refs_and_traversal_accept_unicode | Six bad refs fail with CONFIG; unicode and custom refs accepted | inproc+env-fake | patch.dict BEAD_HOME/BEAD_WORKSPACE; Workspace().ref; `git check-ref-format` | B (store and git: lands with Phase 2a, not core) |
 | CompatCustomStatuses.test_imported_custom_statuses_are_kept_and_never_ready | Imported custom statuses kept, never ready; bead refuses setting them | cli | `init --import`; export, ready, blocked, list --limit 0, show; human show has "by unknown"; VALIDATION rc 1; stderr has "unknown status" | A |
 
 ## tests/test_check.py (9): env-fake 3, patched 5, inproc 1. D 9
@@ -161,7 +161,7 @@ process (pgrep), then deletes the hook.
 
 Proposed Rust failpoint names: `push.before`, `push.after-ok` (git transport layer, first hit by default), `ownership.before-publish`
 and `ownership.after-publish-ok` (aliases of the two BEAD_TEST_CRASH_* env hooks, which test_commands, test_hardening and
-infra/drive.py S6 also use against normal builds), `ownership.after-confirm`, `atomic-write.pending`, `atomic-write.claims`
+infra/drive.py S6 also use against normal builds), `ownership.after-confirm`, `atomic-write:pending/`, `atomic-write:claims/`
 (torn write then SIGKILL), plus storage's `publish.before`, `journal.after-enumerate`, `view.before-load-pending`,
 `identity.before-link` (pause: touch ready-file, poll go-file). Actions: exit(N), sigkill, torn-sigkill, pause-until(file),
 sleep(ms). Config e.g. `BEAD_FAILPOINTS=push.before=exit(98)`. The grammar is `point=action` for the

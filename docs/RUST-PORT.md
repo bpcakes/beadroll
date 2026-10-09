@@ -1,7 +1,7 @@
 # Porting beadroll to Rust
 
-*Plan, 2026-10-09. Baseline: `main` at 9867715 — beadroll 0.1.0, format 1, Python 3.11+. The
-maintainer's decisions of 2026-10-09 are recorded in §10.*
+*Plan, 2026-10-09, revised after reviews 8 and 9. Baseline: `main` at 9867715 — beadroll 0.1.0,
+format 1, Python 3.11+. The maintainer's decisions of 2026-10-09 are recorded in §10.*
 
 This is the plan for rewriting `bead` in Rust as a Cargo workspace, porting every test, and moving
 pancake-studio onto the new crates. It says what must not change, how the code is split and why,
@@ -22,8 +22,8 @@ are in `docs/rust-port/`; the measurements behind the numbers are in Appendix A.
   `beadroll-test-support` is the Rust `tests/support.py`. Crate boundaries make the compiler
   enforce the rule that modules import only downwards (`AGENTS.md`).
 - **Proof of no regressions comes from four directions:**
-  1. The existing Python suite drives the Rust binary through `BEAD_UNDER_TEST`. About 330 of the
-     458 tests run unchanged.
+  1. The existing Python suite drives the Rust binary through `BEAD_UNDER_TEST`. 332 of the 458
+     tests run unchanged.
   2. Every test is ported to Rust. A ported black-box test counts only once it also passes against
      the Python binary.
   3. Replay and JSON are tested differentially against CPython.
@@ -188,28 +188,34 @@ beadroll-test-support (dev-dependency of every crate's tests)      xtask (dev to
 **Why this split and not finer or coarser.**
 - Each boundary is either a consumer boundary or an ownership rule this codebase already has:
   - studio needs the pure data crate without git, a filesystem or tokio;
-  - the house rule is "exactly one crate runs git", following hushgit-git;
+  - exactly one crate runs git: beadroll's own rule, modelled on hushgit-git, which owns
+    hushgit's transport git calls (hushgit's CLI still runs git directly);
   - jig-state is the house precedent for a state crate that owns an append-only journal.
 - Splitting store from sync lets a local read-only tool, such as a status line showing "3 ready,
   1 held", link without the protocol.
 - `core` and `git` compile in parallel; the rest is a short chain.
 - A finer split (JSON, queries or the failpoint registry as separate crates) would widen the
   published API without a consumer.
-- Commands stay in the binary crate, where jig keeps them. No consumer needs an in-process command
-  API yet, and its library target is documented as existing for the binary and its tests.
+- Commands stay in the binary crate, as jig keeps its clap types and runners in its binary
+  package. No consumer needs an in-process command API yet; the library target exists for the
+  binary and its tests.
 - All crates share one version from `[workspace.package]` and none is published (§8).
 
 ### 2.2 Rules that hold in every crate
 
 - **No ambient state in libraries.** Only `beadroll`'s `cli` reads the process environment, the
   working directory and the clock offset. It builds explicit values: `Settings` (home, rotate
-  bytes, net timeout, repack thresholds, overrides), `Actor` (from a pure `detect_actor(&EnvSnapshot)`)
-  and the checkout path, then passes them down. This is what lets studio and in-process tests use
+  bytes, net timeout, repack thresholds, overrides), `Actor` (from `detect_actor(&EnvSnapshot)`),
+  the checkout path, and the environment git children inherit, from which `Link` builds
+  `sync.git`'s (§2.3d); then it passes them down. This is what lets studio and in-process tests use
   the crates. It also matters because `std::env::set_var` is `unsafe` in edition 2024; tests set
-  environments on child processes only.
+  environments on child processes only. `detect_actor` is pure except in one case: with both a
+  Claude and a Codex session variable set, Python walks the process tree with
+  `ps -o ppid=,args= -p PID` from `PATH`, up to 12 levels. Rust does the same through a function
+  the CLI passes in, so a fake `ps` drives that test against either binary.
 - **Errors.**
   - Each crate has precise `thiserror` enums whose variants are only those its operations can
-    produce (the runlimit rule).
+    produce (the runlimit rule, kept in batter's `runlimit/AGENTS.md`).
   - Each error has `fn code(&self) -> Code`. `Code` is the closed enum of wire codes, and
     `Code::as_str()` gives the string.
   - `Display` is the Python message text.
@@ -226,17 +232,29 @@ beadroll-test-support (dev-dependency of every crate's tests)      xtask (dev to
   - Issues are kept in insertion (replay) order, because `detail.dependents` and other outputs
     depend on it.
   - Objects keep Python dict order; anything else is sorted explicitly.
-- **No `print!`/`println!`/`eprintln!` anywhere.** They panic on `EPIPE`/`EIO`. The CLI writes
-  through one output module that turns a broken pipe or hung-up terminal into a quiet exit 0
-  (§2.3f).
+- **No `print!`/`println!`/`eprintln!` in the product crates.** They panic on `EPIPE`/`EIO`. The
+  CLI writes through one output module that turns a broken pipe or hung-up terminal into a quiet
+  exit 0 (§2.3f). Tests may print (`allow-print-in-tests`); xtask, a developer tool, allows
+  `print_stdout` and `print_stderr` at its crate root.
+- **Exemptions are crate-level attributes with a reason.** Cargo refuses `[lints]` entries beside
+  `workspace = true` in a member. Crate-wide policy uses `allow`, not `expect`, because a
+  crate-level `#![expect]` fails once the lint stops firing. `beadroll-test-support` is a library,
+  so the `allow-*-in-tests` settings do not reach it: its root allows `unwrap_used`, `expect_used`,
+  `panic` and `print_stderr` ("a failed fixture is a failed test").
+- **Every crate root has `//!` docs**, binaries and test roots included, because `missing_docs`
+  fires on them. Each `tests/<name>/main.rs` starts with `#![cfg(test)]`, so that clippy treats its
+  helpers as test code, and helpers shared between test modules are `pub(crate)`
+  (`unreachable_pub`).
 - **Unsafe code** is denied workspace-wide, with two documented exceptions and a `// SAFETY:` on
   each block: `beadroll::sys` (a pre-`main` stdio probe and ignoring SIGXFSZ) and
   `beadroll_git::runner` (detaching the child session and resetting SIGXFSZ before exec).
 - **House layout.**
   - No `mod.rs` files (`clippy::mod_module_files`).
-  - Files warn at 500 lines and must stay under 800 (jig's file budget).
-  - Each crate has an `AGENTS.md` with Purpose / Key entrypoints / Edit here for X / Invariants /
-    Common commands.
+  - Files warn above 500 lines and fail above 800 (jig's file budget, which studio and batter
+    share).
+  - Each crate has an `AGENTS.md` with jig's crate-guide sections: Purpose / Key entrypoints /
+    Edit here for X / Invariants / Common commands. jig makes them optional; beadroll requires
+    them.
 
 ### 2.3 Key decisions
 
@@ -410,14 +428,24 @@ So core has a small strict parser and writer:
   `settle_*`, `merge`) depend on fetch, read-tree and push operations, not on `sync.git`
   internals. Merge works on `(path → blob)` maps, which also makes it unit-testable without git.
 - **Trait later.** A `Remote` trait is introduced only with its second implementation: the
-  in-memory simulated remote of Phase 5 (§4.8). This follows the house rules against inventing an
-  abstraction before its slice and against a trait for a single implementation.
+  in-memory simulated remote of Phase 5 (§4.8). This follows pancake-studio-core's rule against
+  inventing an abstraction before its implementation slice, and the general advice against a
+  trait with one implementation.
 
 **j. Command receipts remain Python-compatible.**
-- Preserve `sync.command_signature` exactly: the object has `actor`, `args` and `request`; `args`
-  has Python's normalised argparse names, defaults and values, excluding `func`, `json` and
-  callable values. `request` includes resolved file/stdin contents. Clap's internal representation
-  is translated into this shape, not serialised directly.
+- Receipts belong to the `coordinated` commands only: `claim`, `takeover`, `release`, and `update`
+  with `--claim` or `--status in_progress`. An owner's `close` and `delete` (and `update --status
+  closed`) are local writes through `writing`: they name the claim they end, publish through
+  `publish_soon`, and write no receipt.
+- Preserve `sync.command_signature` exactly: the object has `actor`, `args` and `request`. `args`
+  is the subcommand's whole argparse namespace: every destination with its default (`null`,
+  `false`), including `command` (the subcommand's name), excluding `func` and callable values.
+  `--json` and `--actor` never reach it, because they are taken out before parsing. `request` is
+  `null` except for `update`, where it is `{"fields": …, "status": …}` after normalisation, with
+  file and stdin contents resolved. `bead claim p-1` by `{"agent": "codex", "thread": "t"}` signs
+  `{"actor": {"agent": "codex", "thread": "t"}, "args": {"command": "claim", "ids": ["p-1"],
+  "offline": false, "remote": null}, "request": null}`. Clap's internal representation is
+  translated into this shape, not serialised directly.
 - The signature uses Python's `json.dumps(..., sort_keys=True, default=str)`: sorted keys,
   ASCII escapes, spaced separators, no trailing newline. Capture fixtures from Python for each
   coordinated verb and its defaults/aliases. Rust must read and write the same signature bytes
@@ -508,6 +536,8 @@ unsafe_code = "deny"                        # two documented exceptions, §2.2
 missing_docs = "warn"
 unreachable_pub = "warn"
 rust_2018_idioms = { level = "warn", priority = -1 }
+unknown_lints = { level = "deny", priority = -10 }              # -D warnings does not catch a stale
+renamed_and_removed_lints = { level = "deny", priority = -10 }  # name in these tables; these do
 
 [workspace.lints.clippy]
 cognitive_complexity = "warn"
@@ -545,10 +575,18 @@ too-many-lines-threshold = 100
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
 allow-panic-in-tests = true
+allow-print-in-tests = true
 ```
 
-**rustfmt** uses the defaults (style edition 2024). **cargo-deny** uses runledger's `deny.toml`
-(licences, advisories, sources).
+This configuration was checked on a skeleton of all seven members with Rust 1.99.0 (review 9):
+with the crate-level exemptions of §2.2, clippy (`-D warnings -D clippy::mod_module_files`),
+nextest, doctests and cargo-deny pass with no warning, and so does rustfmt (run with 1.98.1's,
+because this Mac's 1.99.0 has no rustfmt until the toolchain file installs it).
+
+**rustfmt** uses the defaults (style edition 2024). **cargo-deny** 0.19.7 copies the `deny.toml`
+of runledger (archived into batter, which has none): no advisory ignores; licences MIT,
+Apache-2.0 (also WITH LLVM-exception), BSD-2-Clause, BSD-3-Clause, ISC, Unicode-3.0 and Zlib;
+duplicate versions warn; crates.io only.
 
 **What the dependency list leaves out:**
 
@@ -577,15 +615,17 @@ allow-panic-in-tests = true
 - resolver 3, which is MSRV-aware.
 
 **Studio's toolchain.** Studio pins 1.97.1 with MSRV 1.94. When it links `beadroll-core`, its pin
-moves to 1.99, in the same change (§7).
+moves to 1.99 in the same change (§7), and so does its image builder's `FROM rust:1.97.1` base,
+which refuses a compiler that differs from the pin.
 
 ## 4. Tests
 
 ### 4.1 What there is
 
 The suite has 458 tests in ten modules: 12,938 lines with `support.py`. They are almost all
-black-box: about 1,600 call sites run `bead` as a subprocess, and in-process patching is rare
-(`support.patched` appears 11 times).
+black-box: about 1,890 call sites run `bead` as a subprocess, and in-process patching is rare
+(`support.patched` is called 14 times in 11 tests, `mock.patch.object` 10 times); 20 tests run
+through `runpy` or loader drivers.
 
 **The fast baseline takes about 20 minutes.**
 - Measured module by module, with the modules running in parallel:
@@ -620,21 +660,37 @@ extrapolated from review 7.
 
 | Class | Meaning | Count |
 |---|---|---|
-| A | black-box, runs unchanged against any binary | 308 (14 of them need the two crash hooks) |
-| C-env | black-box once Rust implements an environment-triggered hook | 20 |
-| B | pure logic, becomes Rust unit tests | 76 |
-| C | needs an injection seam or an in-crate API | 34 |
-| D | Python-specific; rewritten as the Rust property it stands for | 20 |
+| A | black-box, runs unchanged against any binary | 308: 14 in `test_hardening` need the two crash hooks, which Python has; 2 need Phase 0's harness fixes (§4.2); V1 t1 runs only git |
+| C-env | black-box once Rust implements an environment-triggered hook | 20: 14 need only the crash hooks, so they pass against Python today (with the 14 in A, 28 tests rely on the hooks alone); 6 need new failpoints, are drivers today, and go with the failpoint tests |
+| B | pure logic, becomes Rust unit tests | 76: 60 exercise only `beadroll-core`; 16 need git, the store or sync and land with Phase 2a (listed in §6, Phase 1) |
+| C | needs an injection seam or an in-crate API | 34: 22 through failpoints, 12 through an in-crate API (C-api) |
+| D | Python-specific; rewritten as the Rust property it stands for | 20: the 9 of §4.6, `HelpAndPrime.test_every_command_has_help`, and `test_check`'s 9 and `test_hygiene`'s 1, which become xtask tests |
+
+Review 9 recounted every row from the test sources: the totals hold; the splits above are what
+each count means.
 
 ### 4.2 How we prove that nothing regressed
 
 1. **The Python suite is the oracle.** `cargo xtask oracle` runs the Python modules with
    `BEAD_UNDER_TEST=target/debug/bead`. It skips, from a checked-in list derived from the
    catalogues:
-   - the driver tests, which `runpy` the launcher and cannot target a binary;
-   - the in-process-only tests, which would only re-test Python.
+   - the driver tests, which `runpy` the launcher and cannot target a binary (20);
+   - the in-process-only tests, which would only re-test Python (75);
+   - the CLI tests whose verdict comes from patching in-process Python (19);
+   - the tests that run no `bead` at all (11: `test_check`, `test_hygiene`, V1 t1).
 
-   About 330 tests run unchanged.
+   A test that does not honour `BEAD_UNDER_TEST` is fixed in Phase 0, not skipped. Two do not
+   today: the real-export test in `test_compat` looks for `infra/compat_real.py` beside the
+   binary, and that driver runs `./bead` itself; `test_prime_and_onboard…` in `test_commands`
+   reads `AGENTS.md` beside the binary. Phase 0 makes the harness select the binary under test
+   everywhere, in the test modules and in the `infra/` drivers they run, and changes no Python
+   behaviour. The oracle also makes a bypass fail rather than pass against Python: while it
+   targets another binary, it sets a variable under which Python bead refuses to start. The check
+   lives in `cli.main`, not only in `./bead`, because `V8_Python312` runs a copy of the launcher.
+
+   332 tests run unchanged: 317 drive only the CLI, and 15 also inspect the store with Python's
+   replay. 330 of them are in the fast modules, and 27 need Rust's crash-hook aliases. The
+   real-export test joins them once Phase 0 fixes its helper.
    - **Exit criterion for the engine phase:** 100% of them pass on Linux and macOS.
    - **Format checks for free:** the mixed tests that write with the binary and then inspect with
      Python's `replay` check that Rust-written stores are well formed.
@@ -645,11 +701,19 @@ extrapolated from review 7.
      ported. A ported test that fails against Python is a porting mistake in the test.
    - Tests that need new failpoints are marked `rust_only` and reviewed against the Python test
      they replace.
-   - `cargo xtask inventory` maps every Python test id to a Rust test with the same name, kept
-     under its module path with the finding id, e.g.
-     `hardening::g12_retried_end_of_claim_is_published::…`.
+   - `cargo xtask inventory` maps every Python test id to a Rust test by one mechanical rule:
+     `<module without test_>::<snake_case(Class)>::<method without test_>`, e.g.
+     `test_hardening.G12_RetriedEndOfClaimIsPublished.test_g12_retried_close_…` becomes
+     `hardening::g12_retried_end_of_claim_is_published::g12_retried_close_…`. Over all 458 tests
+     the paths are unique and valid identifiers. A Rust test matches when its path holds the
+     class and method segments in that order, so files may group a finding's classes or split a
+     long class under the file budget (`hardening::g12::g12_retried_end_of_claim_is_published::…`).
+     Finding ids sit in every hardening class name and in some method names elsewhere; keeping
+     the class segment keeps `FINDINGS.md`'s references valid. `sweep::sweep` needs an `allow` of
+     `clippy::module_inception` with its reason.
    - The inventory fails on any unmapped test. D-class replacements are listed explicitly, so
-     `FINDINGS.md` keeps pointing at real tests.
+     `FINDINGS.md` keeps pointing at real tests. Hardening's catalogue gives some classes one row
+     for several tests ("t1", "t2" in prose); seeding the inventory splits them per method.
 3. **Differential testing against CPython.**
    - `cargo xtask diff replay` builds journals:
      - every fixture the Python tests construct;
@@ -676,8 +740,9 @@ extrapolated from review 7.
    or duplicating its events. Cover changed file/stdin requests, failed later commands, actor
    isolation, moved ownership and crashes before/after confirmation; verify receipt bytes in
    both directions. These are upgrade/rollback tests in addition to separate-machine convergence.
-5. **Golden outputs, for what tests do not fully pin.** Examples: the whole human `show`, every
-   help page, `info` keys.
+5. **Golden outputs, for what tests do not fully pin.** Examples: the whole human `show`, `info`
+   keys, and each help page's usage line and options (names, metavars, choices); the help layout
+   is clap's (§1.4), so no golden holds argparse's.
    - `cargo xtask golden` captures them from the Python binary over scripted scenarios, with ids,
      times and paths normalised.
    - Goldens are generated from Python only, never from Rust. Regenerating a golden to make Rust
@@ -687,20 +752,23 @@ extrapolated from review 7.
 
 | Python | Tests | Rust | How |
 |---|---|---|---|
-| `test_replay` | 60 | `crates/beadroll-core/tests/replay.rs` (+ `tests/replay/*.rs`) | In-process against the core API (`Journal::add` takes any `Value` and records problems); `find_cycles` generic over an edge function for the four-node oracle; 2 CLI tests move to `beadroll` |
+| `test_replay` | 60 | `crates/beadroll-core/tests/core/main.rs` (+ `tests/core/replay.rs`, `tests/core/replay/*.rs`) | In-process against the core API (`Journal::add` takes any `Value` and records problems); `find_cycles` generic over an edge function for the four-node oracle; 2 CLI tests move to `beadroll`; 3 B tests need git or the store (`normalize_remote`, `Workspace.ref`, two workspaces on disk) and land with Phase 2a |
 | `test_storage` | 9 | `crates/beadroll/tests/cli/storage.rs` | 5 black-box; 4 via failpoint handshakes (`pause-until`) |
-| `test_compat` | 4 | core tests (2) + `cli/compat.rs` (2) | The real-export/`br`/`bv` test is `#[ignore = "needs br, bv and real Beads exports"]`, also run by `xtask check --real` |
-| `test_commands` | 111 | `crates/beadroll/tests/cli/commands/*.rs` | 95 black-box, 10 crash-hook, 4 core, 1 `beadroll-sync` in-crate, 1 rewritten |
-| `test_protocol` | 54 | `cli/protocol/*.rs` + `crates/beadroll-sync/tests/` | 32 black-box, 10 failpoint, 11 in-crate API tests (fence wins, `Link` outcomes, per-`Link` timeout), 1 core |
-| `test_hardening` | 207 | `cli/hardening/{g01…g64,v1…v9}.rs` + unit tests in git/store/core | 172 black-box, 15 failpoint/API, 11 unit (the 15 `without_password` pairs, `normalize_remote`, pinned workspace ids, runner timeouts, `Workspace.remote`), 9 rewritten (§4.6) |
+| `test_compat` | 4 | a core test (comment-id export) and a store test (ref validation, which runs `git check-ref-format`) + `cli/compat.rs` (2) | The real-export/`br`/`bv` test is `#[ignore = "needs br, bv and real Beads exports"]`, also run by `xtask check --real` |
+| `test_commands` | 111 | `crates/beadroll/tests/cli/commands/*.rs` | 95 black-box; 8 on the crash hooks; 2 on the `clock` failpoint; 4 unit tests of the store, sync and replay (2 `detect_actor`, `Link`'s environment, a replay of a CLI-written store), none core-only; 1 black-box with a fake `ps` (`nearest_harness`); 1 rewritten |
+| `test_protocol` | 54 | `cli/protocol/*.rs` + `crates/beadroll-sync/tests/` | 32 black-box; 6 on the crash hooks, which Python has; 4 on new failpoints (`append.mid`, `clock`, `atomic-write:claims/`, `backoff`); 11 in-crate API tests (fence wins, `Link` outcomes, per-`Link` timeout); 1 core |
+| `test_hardening` | 207 | `cli/hardening/{g01…g65,v1…v9}.rs` + unit tests in git/store/core | 172 black-box (14 on the crash hooks); 15 failpoint/API; 11 unit tests, most of them in the git and store crates (the `without_password` pairs, `normalize_remote`, runner timeouts, `Workspace.remote`; the catalogue lists them); 9 rewritten (§4.6) |
 | `test_stress` | 2 | `cli/stress.rs`, `#[ignore = "stress: randomised models"]` | Same seeds and oracles; schedules run in parallel |
 | `test_sweep` | 1 | `cli/sweep.rs` | Failpoints replace the `runpy` wrapper; the 12-schedule slice runs by default, `BEAD_SWEEP=full` runs all 660; schedules in parallel |
 | `test_check` | 9 | `xtask` tests | The verification tooling must fail when a selected check fails |
 | `test_hygiene` | 1 | `xtask` test | Same patterns over `git ls-files` |
 
-**Test binaries.** Each crate has one integration-test binary: `tests/cli.rs` declares `mod
-commands;` and so on, with no `mod.rs` files. That keeps link time down, which pancake-studio-beads
-does the same way. Slow tests use `#[ignore = "reason"]`, the house convention.
+**Test binaries.** Each crate has one integration-test binary, rooted at `tests/<name>/main.rs`:
+`tests/cli/main.rs` declares `mod commands;`, which is `tests/cli/commands.rs`, whose modules are
+`tests/cli/commands/*.rs`, with no `mod.rs` files. A root at `tests/cli.rs` would look for
+`tests/commands.rs` instead (E0583 on 1.99.0), and Cargo would build that file as a test binary
+of its own. One binary per crate keeps link time down, which pancake-studio-beads does the same
+way. Slow tests use `#[ignore = "reason"]`, the house convention.
 
 ### 4.4 `beadroll-test-support`
 
@@ -711,7 +779,7 @@ A direct port of `support.py`:
   - `run`, `bead` (with `--json`), `show`, `ready`, `export`, `store`.
   - The environment is stripped of `CLAUDE*`, `CODEX*`, `BEAD_*` and `GIT_*` before
     `BEAD_HOME`/`BEAD_AGENT`/`BEAD_THREAD` are set.
-- Explicit binary paths: the consuming `beadroll/tests/cli.rs` evaluates
+- Explicit binary paths: the consuming `crates/beadroll/tests/cli/main.rs` evaluates
   `env!("CARGO_BIN_EXE_bead")` and passes that default into test support. The shared dependency
   must not expand the macro itself; Cargo does not define it there. Tests in other crates receive
   an executable path from xtask. Selection is per-machine override, then `BEAD_UNDER_TEST`, then
@@ -723,7 +791,9 @@ A direct port of `support.py`:
   - a PTY helper;
   - a `ulimit` runner.
 - Failpoint helpers: environment builders, and the `ready`/`go` file handshake.
-- `json!`-style event builders for core tests.
+- `json!`-style event builders for core tests. They serve core's integration tests
+  (`crates/beadroll-core/tests/core/`) only: in core's own unit tests the dev-dependency cycle
+  builds a second `beadroll_core`, and its types do not match (E0308 on 1.99.0).
 
 **What changes from Python.**
 - "No traceback" assertions become "no `panicked at`, exit status other than 101, no
@@ -742,7 +812,7 @@ and protocol tests inject through patching or drivers today. Actions:
 | `sigkill` | A real SIGKILL. The judge expects -9; an abort is a failure |
 | `torn-sigkill` | Write half, fsync, then SIGKILL |
 | `errno(ENOSPC\|EFBIG\|…)` | Fail the write with that error |
-| `fail-reply` | Report a push that succeeded as failed: the lost acknowledgement |
+| `fail-reply` | Report a push that succeeded as failed: the lost acknowledgement. It drops git's porcelain status line too, because a status flag counts as acceptance whatever the exit code |
 | `error(CODE)` | Raise that error code |
 | `pause-until(PATH)` | Touch `PATH.ready`, then wait for `PATH.go` |
 | `sleep(MS)` | Sleep for MS milliseconds |
@@ -761,14 +831,18 @@ tests cover first/nth/always dispatch and the exhaustion tests still assert exac
 | `push.before` / `push.after-ok` | Every push, including `publish_soon`, sync and fences | The sweep's `run_git` wrapper; G12 ("crash before *any* push") |
 | `push.reply` | After git push returns | `run_git` patched to report a failure after success (lost-ack tests) |
 | `publish.result` | `Link::publish` | `mock.patch.object(Link, "publish", side_effect=…)` |
-| `ownership.after-confirm` | After `confirm_ownership`, before pending cleanup | The sweep's kill-confirm; q03; G54 |
-| `atomic-write:<path-part>` | `write_atomic`, matched on the target path | kill-write-pending/-confirm; `V5_KillAtRename`; ENOSPC on `meta.json` (G29); the reader-sees-all-or-none handshake |
-| `append.mid` | Inside a segment append | The kill-mid-append driver |
+| `ownership.after-confirm` | After `confirm_ownership`, before pending cleanup | The sweep's kill-confirm; q03; G54; `V2_ConfirmedTwin` |
+| `atomic-write:<path-part>` | `write_atomic`, matched on the target path, after the temporary file is written and fsynced and before the rename; `atomic-written:<path-part>` fires after the rename | kill-write-pending/-confirm; `V5_KillAtRename`; `Protocol3`'s kill during confirmation; ENOSPC on `meta.json` (G29); the reader-sees-all-or-none handshake, which pauses at both |
+| `append.mid` | Inside a segment append, after a partial line is written and flushed (Python's driver writes 100 bytes) | The kill-mid-append driver |
 | `backoff` | The unlocked wait between rounds | `patched("pause", …)`; G11 t2; V2's "unlocked sleep"; retry-exhaustion speed |
 | `claim.before-push` | Between fetch and push of a claim | G09's competing publish |
 | `pending.after-list` | Between listing and reading `pending/` | G28 t2 |
 | `journal.after-enumerate`, `view.before-load-pending`, `identity.before-link`, `publish.before` | Reader/writer races | test_storage drivers |
 | `clock` | The UUIDv7 clock and torn/fork stamps | Drivers patching `time.time_ns` (f14 ≈ 2110, −48 h, −1 day); G47 t3 stays unique on equal stamps |
+
+Two seams need no failpoint. The process-tree walk of `detect_actor` is driven by a fake `ps` on
+`PATH` (§2.2), against either binary. `Protocol3`'s fence test needs a per-call network timeout:
+an in-crate `Link` test, or black-box with `BEAD_NET_TIMEOUT=0.25` and `backoff=exit(N)`.
 
 The tests that run Rust's in-crate APIs instead of the binary take the same registry through
 `Settings`, not the environment.
@@ -777,21 +851,29 @@ The tests that run Rust's in-crate APIs instead of the binary take the same regi
 
 - **G13:** `.beadroll.json` is UTF-8 whatever the locale. It stays black-box across ISO-8859-1,
   US-ASCII and C, without the `python3` probe.
-- **G30 t4:** nesting is capped at 100 on writes and imports, and a line a million levels deep is
-  one integrity problem, never a stack overflow.
+- **G30 t4:** after one machine tries to import a record 12,000 levels deep (refused: events nest at
+  most 100 levels and imported records 98), a peer whose reader stops lower keeps working and sees
+  what the first sees. It becomes a mixed-fleet case: Python 3.14 against Rust, whose reading
+  ceilings differ (§5 row 7). G30 t1 keeps its own property: a line a million levels deep is one
+  integrity problem, never a stack overflow.
 - **G52 t5:** `chmod 0` on the store gives `IO`. The test runs unconditionally.
 - **G59:** help contains no ESC byte on a PTY, with `FORCE_COLOR=1`, or under `--json`, and it
   says `usage: bead create`.
 - **V8_Python312:** becomes the CI matrix: Linux and macOS, and the oldest supported git (2.40)
-  beside the newest.
+  beside the newest. musl waits for public binaries, which §10 defers.
+- **`HelpAndPrime.test_every_command_has_help`:** a Rust unit test iterates clap's subcommands, and
+  the integration test runs `--help` and `help NAME` for each of the 27 names.
+- **`test_check` and `test_hygiene`:** xtask tests (§4.3). The three `RoundtripFailureReporting`
+  tests check `infra/roundtrip.py`, which stays Python (§10, decision 6): they move to `infra/`
+  beside it, and `xtask check` runs them.
 - **Checks kept in other classes:**
   - G48 (SIGXFSZ) keeps its property, using the code in §2.3f.
   - The "no Traceback" and "Exception ignored" checks become the panic and signal checks of §4.4.
 
 ### 4.7 Speed
 
-**Targets** (measured and recorded as evidence by `cargo xtask timing`, following jig's rule that
-timing is evidence, not a test gate):
+**Targets** (measured and recorded as evidence by `cargo xtask timing`; as jig's CI uploads its
+test timings, timings are evidence and never gate a test):
 
 | Suite | Rust target | Python now |
 |---|---|---|
@@ -801,11 +883,15 @@ timing is evidence, not a test gate):
 | Full sweep | ≤ 20 min | ≈ 1.7 h |
 
 **How.**
-- **nextest**, process-per-test across all cores, with the version pinned in
-  `.config/nextest.toml` as in jig. Process-per-test also isolates environments.
+- **nextest**, process-per-test, as in jig: `nextest-version` in `.config/nextest.toml` is the
+  minimum, and CI installs the exact version. Process-per-test also isolates environments.
+- **The thread count is measured, not assumed.** jig caps it at 4 because git- and process-heavy
+  tests fail spuriously at full core count; the 16-core target above is confirmed or revised in
+  Phase 3.
 - **Test groups** that limit concurrency for the git-maintenance and descriptor-limit tests.
-- **`slow-timeout`** so that hangs fail, not stall.
-- **`retries = 0`.** A flaky protocol test is a bug.
+- **`slow-timeout` with `terminate-after`**, so that hangs fail, not stall (jig's sets only the
+  warning period).
+- **`retries = 0`**, nextest's default, written down. A flaky protocol test is a bug.
 - **Cheap `bead` calls:**
   - start-up is about 1 ms instead of 60;
   - replay is in-process and fast;
@@ -837,7 +923,8 @@ timing is evidence, not a test gate):
   protocol be explored over 10⁵–10⁶ schedules in minutes, with the same invariants as the sweep:
   at most one confirmed owner, monotone generations, every accepted claim visible. The real-git
   sweep stays the end-to-end check.
-- **Fuzzing.** proptest is the house tool and drives the differential and property tests:
+- **Fuzzing.** proptest, already used in hushgit and runledger, drives the differential and
+  property tests:
   - replay is invariant under delivery order;
   - JSON round-trips in every dialect.
 
@@ -846,10 +933,18 @@ timing is evidence, not a test gate):
 
 ### 4.9 CI
 
-The workflow follows the house shape:
+The workflow copies the shape of jig-sh's `.github/workflows/rust-tests.yml`, the one sibling
+workflow that has all of it, with that file's current SHA pins:
 - `contents: read`, concurrency groups, `merge_group`, and actions pinned by SHA;
-- `setup-rust-toolchain` with `rust-cache`;
-- nextest installed with `taiki-e/install-action`.
+- `actions-rust-lang/setup-rust-toolchain` with `cache: false`, then a separate
+  `Swatinem/rust-cache` step;
+- nextest installed with `taiki-e/install-action` at the exact version.
+
+Each job joins CI with the phase that gives it something to run: fmt, clippy, test, deny and the
+oracle in Phase 0, diff in Phase 1, mixed-fleet in Phase 2a, and the nightly suites as they land.
+The oracle runs twice: against Python's `./bead`, where it must pass completely (the harness
+checking itself), and against the built binary, where it reports the pass count per module and
+gates only from the close of Phase 2d.
 
 | Job | When | What |
 |---|---|---|
@@ -857,7 +952,7 @@ The workflow follows the house shape:
 | clippy | every push and PR | `--workspace --all-targets --all-features --locked -- -D warnings -D clippy::mod_module_files` |
 | test | every push and PR | nextest on ubuntu-latest and macos-latest; `cargo test --doc` |
 | deny | every push and PR | cargo-deny |
-| oracle | every push and PR, until the cutover | Python 3.14 + `xtask oracle` against the built binary |
+| oracle | every push and PR, until the cutover | Python 3.14 + `xtask oracle` against `./bead` and against the built binary |
 | diff | every push and PR, until the cutover | bounded `xtask diff replay` and `xtask diff json` |
 | mixed-fleet | every push and PR, until the cutover | the mixed Python/Rust scenarios |
 | nightly | schedule or dispatch | stress; full sweep; volume differential runs; cargo-fuzz smoke; git-version matrix (2.40 and latest) |
@@ -869,8 +964,12 @@ The workflow follows the house shape:
 
 These are the places where "the same as Python" means CPython's semantics, not Rust's defaults.
 Each is implemented in `beadroll-core::text` or `json` and covered by the differential tests. Rows
-3 and 6 were decided on 2026-10-09: reject. Every row that departs from Python goes into
-`REVIEWING.md` §2 when the Rust implementation lands.
+3 and 6 were decided on 2026-10-09: reject. Row 7's ceiling and rows 22 to 26 came from review 9
+and are decided in Phase 1; each names the recommended choice, and the differential generators
+cover each row either way. Every row that departs from Python goes into `REVIEWING.md` §2 when
+the Rust implementation lands. The reference interpreter is CPython 3.14, the one CI runs; a
+difference that comes only from another Python version's texts or Unicode tables is recorded, not
+chased.
 
 | # | Python behaviour | Where it shows | Rust | |
 |---|---|---|---|---|
@@ -880,9 +979,9 @@ Each is implemented in `beadroll-core::text` or `json` and covered by the differ
 | 4 | Lone surrogates, escaped or raw `ED A0 80`, read as one U+FFFD each, with an integrity row | Journal and attempt lines | In the parser | keep |
 | 5 | A duplicate key keeps its last value at the first key's position | All JSON | Same | keep |
 | 6 | `UUID_RE.match` with `$` accepts a trailing newline in ids and deps | Hostile events only | Reject: ids and deps must match the UUID shape exactly | reject (decided) |
-| 7 | Readable nesting depends on the interpreter (about 1k–10k levels); writes and imports are capped at 100 and 98 | Parsing | Iterative parser with a 10,000-level ceiling; deeper is an unreadable line; caps kept | keep |
+| 7 | Readable nesting depends on the interpreter and its C stack: 994 levels on 3.11, about 10,000 on 3.12 and 3.13, 116,199 on 3.14 on this Mac; replay has no depth check, so a readable deep event applies. Writes and imports are capped at 100 and 98 | Parsing | Iterative parser with a fixed ceiling (10,000 proposed); deeper is an unreadable line; caps kept. Recommended: Python counts a line deeper than the same ceiling as unreadable too, checked before `json.loads` | decide in Phase 1 (departs from 3.14 as written) |
 | 8 | `str.strip()`/`isspace()` use Python's Unicode set (U+001C–001F count as space); `bytes.strip()` uses ASCII | `split_list`, comment emptiness, blank JSONL lines | `text::py_strip` and friends | keep |
-| 9 | `str.lower()` is full Unicode case mapping | `search`, `--title-contains` | `to_lowercase`, confirmed by `diff` | keep |
+| 9 | `str.lower()` is full Unicode case mapping | `search`, `--title-contains`; `normalize_remote`, hence derived workspace ids; `init`'s default prefix | `to_lowercase`, confirmed by `diff` | keep |
 | 10 | `os.path.realpath` is lenient and pure Python, with no case folding | Remote resolution and comparison | Port the algorithm; never libc `realpath` | keep |
 | 11 | `repr()` of values in `show`'s conflict lines: quote choice, escapes, printability | Human output | Port of the `repr` rules; printability table generated from CPython | keep |
 | 12 | `int()` accepts `" +5 "`, `"5_000"` and non-ASCII digits | `--estimate`, `--limit` | `text::py_int` | keep |
@@ -895,6 +994,11 @@ Each is implemented in `beadroll-core::text` or `json` and covered by the differ
 | 19 | 12 rounds; `U(0.1, 0.4) × attempt` | sync and ownership | Same | keep |
 | 20 | Names: `refs/beads/fetch/<pid>-<hex8>`, `.NAME.PID.tmp`, `*.torn-<ns>`, `*.fork-<ns>`, `sync.git.damaged-<ns>` | Store, `sync.git` | Same | keep |
 | 21 | `command_signature` serialises actor, normalised argparse args and resolved request; accepted receipts survive sync | `pending/*.command` | Preserve Python signature bytes and lifecycle, including same-store upgrade and rollback (§2.3j); do not delete receipts to migrate | keep |
+| 22 | JSON read from bytes: `json.loads` detects a UTF-8 BOM, UTF-16 and UTF-32 from the leading bytes, then decodes with `surrogatepass`; read from text, a BOM is an error. A journal line in UTF-16 is a valid event today | Journal and attempt lines, the torn-tail check, the manifest | Recommended: reject; Python decodes the bytes as UTF-8 (`surrogatepass`) before parsing, as Rust does | decide in Phase 1 |
+| 23 | Two readers use plain `json.loads`, not `loads_strict`: `NaN` and `Infinity` parse there, and the manifest's `format` is compared with `==`, so `true` and `1.0` pass as format 1 | `complete_prefix` (torn tails, also of fetched segments), `Link.fetch`'s manifest | Recommended: reject; both readers become strict in Python, and `format` must be the integer 1 | decide in Phase 1 |
+| 24 | `re` on `str` is Unicode-aware: `\d` matches every decimal digit (Nd), and `int()` reads it; `(?i)[a-z]` also matches U+0130, U+0131, U+017F and U+212A | `free_key` (a replay rename: `x.٣` gives way as `x.3`), `mint_key`, the merge's segment-name filter; `without_password` and `normalize_remote`, so `httpſ://h/x` derives the same workspace id as `https://h/x` | Recommended: keep, with CPython's Nd table (which `py_int` needs anyway) and these four letters; no `regex-lite` classes on these paths | decide in Phase 1 |
+| 25 | Replay's last-resort `except` stores the exception's `repr` as the integrity text, and that text differs between Python versions. Reachable: `dep_add` with a truthy `meta` that is not an object (`1`, `"x"`, `[1]`), `dep_remove` with a list or object `key` beside `to`, `free_key` on a numeric suffix over 4,300 digits | `integrity` in `info` and the differential report | Recommended: reject; `payload_problem` gains the explicit checks in Python, so both report the same validation text and Rust has no last resort | decide in Phase 1 |
+| 26 | An uncaught exception prints a traceback with exit 1: an unparsable `BEAD_NET_TIMEOUT`, `BEAD_ROTATE_BYTES` or `BEAD_REPACK_*` (at start-up, even for `--version`), a `*.jsonl` name that is not a number in this machine's own journal, `published` counts in `meta.json` that are not numbers, `mint_key` over the digit limit | Hostile settings and store files | A structured error with exit 1, never a panic: `CONFIG` for settings, `IO` for store files, `VALIDATION` for keys | depart; recorded as each lands |
 
 ## 6. Phases
 
@@ -914,9 +1018,16 @@ implementation and 15–18k for the tests.
   - `beadroll-test-support`, with caller-supplied binary paths (§4.4);
   - xtask with `oracle`, `inventory` and `timing`;
   - the oracle skip list;
-  - the test inventory seeded from the catalogues.
+  - the test inventory seeded from the catalogues;
+  - executable selection in the Python harness (§4.2): the test modules and the `infra/` drivers
+    they run (`compat_real.py`, `roundtrip.py`) honour `BEAD_UNDER_TEST`, with no change in
+    behaviour; `target/` in `.gitignore`;
+  - a committed `Cargo.lock` (CI runs `--locked`), and `.cargo/config.toml` with
+    `[alias] xtask = "run --package xtask --"`, without which `cargo xtask` does not exist; at
+    least one test lands with the skeleton, because nextest fails a run that finds none.
 - **Exit:** CI is green on the skeleton; the first ported tests pass against Python's `./bead`;
-  `xtask oracle` runs the Python suite against any binary.
+  `xtask oracle` runs the Python suite against any binary, passes completely against `./bead`,
+  and fails a test that bypasses the selected binary.
 
 **Phase 1 — Core (L)**
 - **Deliverables:**
@@ -930,21 +1041,32 @@ implementation and 15–18k for the tests.
   - the two rejections of §5 (rows 3 and 6) applied to the Python implementation too: ids and
     deps matched in full against `UUID_RE`, and `loads_strict` refusing non-finite numbers, each
     with a test and a `FINDINGS.md` row. A mixed fleet then agrees even on hostile input, and the
-    differential harness needs no list of expected differences.
+    differential harness needs no list of expected differences;
+  - decisions on §5 row 7's ceiling and rows 22 to 26, recorded in §10; every row decided
+    "reject" is applied to the Python implementation the same way, with a test and a
+    `FINDINGS.md` row.
 - **Exit:**
-  - all B-class tests are ported and green;
+  - the 60 B-class tests that exercise only `beadroll-core` are ported and green. The other 16
+    need git, the store or sync and land with Phase 2a: `test_replay`'s
+    `test_one_remote_has_one_identity…`, `test_the_coordination_ref_cannot_be_a_branch` and
+    `test_reused_event_ids_are_isolated_across_workspaces`; `test_compat`'s ref validation;
+    `test_commands`' two `detect_actor` tests, `test_replay_does_not_depend_on_delivery_order`
+    and the first `SyncRepoMaintenance` test; `test_hardening`'s G25 t3, G32, G57 t2,
+    `V1_RunGitTimeoutHygiene` and the four V7 tests;
   - `xtask diff replay`/`json` are clean on every Python fixture and on at least 100k generated
-    cases;
-  - replay of 10k events stays within its budget (Appendix A).
+    cases, including the classes of §5 row 7 and rows 22 to 26, which are decided and recorded;
+  - replay of 10k events (parsed journal to `State`, release build) is measured and recorded by
+    `xtask timing` against its Appendix A estimate. Phase 4 owns that budget; a timing is
+    evidence, not a gate (§4.7).
 
 **Phase 2 — Engine and CLI, in vertical slices (L).** Each slice raises the oracle's pass count,
 which is the progress measure.
 
 | Slice | Scope |
 |---|---|
-| 2a | The git runner with actual session detachment (§2.3f); store layout, files, lock, identity, workspace discovery; `Tx`/`writing`; `Link` fetch/merge/tree/publish; `synchronise` and `publish_soon`; `init`, `create`, `show`, `list`, `ready`, `sync`; JSON and human rendering; the output module; exit codes |
-| 2b | Every other non-ownership verb, `import`/`export`, `info`/`log`/`machines`/`claims`, `help`/`prime`/`onboard`, unpublished counts |
-| 2c | The ownership protocol (`claim`, `release`, `takeover`, `update --claim`, owner `close`/`delete`), Python-compatible receipts (§2.3j), fences, settling, the failpoint registry including repeat selectors, maintenance, rebuild |
+| 2a | The git runner with actual session detachment (§2.3f); store layout, files, lock, identity, workspace discovery; `Tx` and `writing`, including `forget_receipts`; `Link` whole: fetch, merge (which confirms pending attempts it finds on the remote), tree, publish with its four outcomes, maintenance and rebuild; `synchronise` (which sweeps, fences and drops pending attempts and adopts a published tracker) and `publish_soon`; `init`, `create`, `show`, `list`, `ready`, `sync`; JSON and human rendering; the output module; exit codes; the 16 B-class tests that need git, the store or sync (Phase 1 lists them) |
+| 2b | Every other non-ownership verb, `import`/`export`, `info`/`log`/`machines`/`claims`, `help`/`prime`/`onboard`, unpublished counts; `xtask golden` and the goldens of §4.2 |
+| 2c | The coordinated commands (`claim`, `takeover`, `release`, `update --claim` or `--status in_progress`): `coordinated`, `settle_commands`, `settle_pending` and Python-compatible receipts (§2.3j); an owner's `close`/`delete` ending its claim (`data.claim`, the `superseded` answer); the failpoint registry including repeat selectors |
 | 2d | The hardening surface: URLs and credentials, transport config, damaged `sync.git`, refusal classification, stdio, signals, locales, PTY, modes, ENOSPC/EFBIG |
 
 - **Exit:** `xtask oracle` is 100% green on Linux and macOS; the controlling-terminal and timeout
@@ -982,10 +1104,13 @@ which is the progress measure.
 - **Deliverables:**
   - a read-only differential on a **copy** of the real store. Run `show`, `list`, `ready`,
     `export`, `info`, `log` and `claims` under a scratch `BEAD_HOME` holding that copy, against
-    both binaries. Never a write: the copy still routes to the real remote.
-  - explicit executable selection and version/path preflight in the retained infrastructure
-    drivers (§8), then `infra/drive.py` and `soak.py` with the Rust binary on the four machines
-    and the throwaway repository; selecting Rust must work before the Python launcher is removed;
+    both binaries. Never a write: the copy still routes to the real remote. Outputs must be equal
+    apart from `info`'s `version` (0.1.0 against 0.2.0) and `claims`' `idle_minutes`, which
+    depends on the minute each binary runs in.
+  - explicit executable selection in `infra/drive.py` (the other drivers gain it in Phase 0) and
+    version/path preflight in the retained infrastructure drivers (§8), then `infra/drive.py` and
+    `soak.py` with the Rust binary on the four machines and the throwaway repository; selecting
+    Rust must work before the Python launcher is removed;
   - documentation (§8);
   - the last Python commit tagged, then Python removed;
   - version 0.2.0 tagged, and the development machines upgraded (§8).
@@ -1008,19 +1133,41 @@ The concrete surfaces are studio's `crates/pancake-studio-core/src/source.rs`,
 migration), `crates/pancake-studio/src/sources/{reader,worker,policy}.rs`, and
 `crates/pancake-studio-db/src/sources.rs` (source revisions and baseline resets).
 
+What studio's schema and policy already fix (checked at studio 31cfafa):
+- **One source per project.** `studio_project_sources.project_id` is the primary key, and refresh
+  cycles, publications and approval receipts each record one repository, ref and commit.
+- **Approval is per host.** `authorize_remote` admits any repository path on an operator-enabled
+  endpoint, and some credential scopes cover a whole host.
+- **The revision rule is also a trigger.** `studio_source_revision()` enforces generation and
+  access revision in the database, besides `sources.rs`.
+- **The reader is branch-shaped.** `CanonicalRef`, `clone --branch` and discovery are branch-only;
+  a refresh reads one ref and one blob, and its unchanged check compares one tip.
+- **Limits are stricter than bead's.** 10,000 issues, JSON depth 64, titles of 500 characters,
+  16 MiB of input; bead nests to 100 and has no title cap. A tracker beyond them is rejected
+  whole, by studio's all-or-nothing rule.
+- **Publications admit one input profile**, `beads-rust-jsonl-v1`, and store the input bytes.
+- `pancake-studio-core/AGENTS.md` states that persisted source refs are `refs/heads/...`.
+
 1. **Bridge.**
    - Retain the approved code repository and branch as the configuration source. Discover
      `.beadroll.json` there and keep that binding separate from the tracker source, so later
-     configuration changes can still be discovered.
+     configuration changes can still be discovered. With one source row per project, the
+     tracker binding needs its own row or columns with its own access revision, and provenance
+     records both the configuration commit and the journal commit. Decide whether the tracker ref
+     lives in `canonical_ref`; only then does its `refs/heads/*` constraint change.
    - Persist the tracker binding: approved coordination endpoint, ref, expected workspace and
      credential binding. Read both `remote` and `ref` from the tracked configuration; absent
      values default to the approved code repository and `refs/beads/journal`. Validate the
      expected workspace using the tracked `workspace` or bead's origin-derived identity rules
      and require the published manifest to match it.
-   - Pass coordination endpoints through studio's existing source approval and credential-scope
-     checks before fetching. Tracked configuration is a proposed binding, not authority to
-     redirect credentials or network access. Unsupported remote names and local-path forms
-     fail explicitly; do not resolve them using the worker's git configuration or filesystem.
+   - Because approval is per host, the tracker endpoint, ref and expected workspace are set only
+     by an operator's source command, never from `.beadroll.json`. Tracked configuration is a
+     proposed binding: a refresh whose `.beadroll.json` names a different endpoint, ref or
+     workspace fails and changes nothing. Unsupported remote names and local-path forms fail
+     explicitly; do not resolve them using the worker's git configuration or filesystem.
+   - Extend the `studio_source_revision()` trigger along with `sources.rs`, and update the
+     `refs/heads/...` invariant in `pancake-studio-core/AGENTS.md`. A refresh reads two refs and a
+     whole tree within the existing byte budget, and its unchanged check compares both tips.
    - Extend `CanonicalRef` and migrate the database's independent `refs/heads/*` constraint to
      admit valid bead coordination refs. Replace the branch-only `clone --branch` assumption
      with an exact approved-ref fetch path, retaining transport policy and object-format support.
@@ -1039,25 +1186,32 @@ migration), `crates/pancake-studio/src/sources/{reader,worker,policy}.rs`, and
    - Acceptance covers migrating an existing code-branch publication and two successive journal
      refreshes, including ancestry that needs deepening; code and coordination in distinct
      repositories; rejection of unapproved redirection, unsupported remote forms and workspace
-     mismatch; and later binding changes with obsolete refresh work rejected.
+     mismatch; later binding changes with obsolete refresh work rejected; and a tracker beyond
+     studio's limits, rejected whole.
 2. **Native.** Studio maps `State` directly to its normalised graph and drops the JSONL round trip.
-   It keeps its own rules:
+   That needs a second publication `input_profile` and its migration. It keeps its own rules:
    - limits;
    - all-or-nothing validation;
    - privacy (design, notes, comments, labels and assignee never reach member output);
    - canonical agreement and plan digests.
 
    beadroll provides typed, exact text. The digests stay studio's.
-3. **Build.** Studio adds `beadroll-core` as a rev-pinned git dependency, as it does for `batter`,
-   and moves its toolchain pin from 1.97.1 to 1.99. `sha2` 0.10, `thiserror` 2 and `uuid` 1 are
-   already in its graph. This repository is private, so every environment that builds studio
-   needs read access to it: local machines, its CI runners and the container image builder. That
-   means a deploy key or token, with `net.git-fetch-with-cli = true` so that cargo fetches through
-   git's own credentials.
+3. **Build.** Studio pins `beadroll-core` to one revision, as a git dependency the way it takes
+   `batter` or as a vendored copy (decision 7), and moves its toolchain pin (and its image
+   builder) from 1.97.1 to 1.99. `sha2` 0.10,
+   `thiserror` 2 and `indexmap` 2 are already in its graph. This repository is private, so every
+   environment that builds studio needs read access to it: local machines, its CI runners and the
+   container image builder. Studio fetches its git dependencies anonymously over HTTPS today, and
+   its image build carries no secret by rule (`infra/images/Dockerfile`: "no build argument, secret
+   mount or layer carries a secret"). How studio's builds reach a private `beadroll-core` is open
+   (§10).
 
 For the execution-runs branch: agents in devbox worktrees run `bead` instead of `br`. bead is built
-for worktrees, and every write reaches the remote at once. Studio's 30-second tracker delta then
-comes from the published ref, with each change attributed to an agent thread and a branch.
+for worktrees, and every write reaches the remote at once. That branch is not merged: its runner
+diffs the worktree's `.beads/issues.jsonl` against the base commit's export every 30 seconds, and
+with bead neither file exists. The runner must read the published ref (or the local store) and
+diff by event instead, with each change attributed to an agent thread and a branch; that is new
+runner work, not part of this port.
 
 ## 8. Distribution and cutover
 
@@ -1074,10 +1228,11 @@ Public channels wait for the open-source milestone, with the deferred backlog.
 
 | Machine | Install, or upgrade with the same command |
 |---|---|
-| With a checkout | `cargo install --locked --force --path crates/beadroll --root ~/.local`. The checkout's `rust-toolchain.toml` selects 1.99.0. |
-| Without one | `cargo install --locked --force --git git@github.com:bpcakes/beadroll.git beadroll --root ~/.local`. This needs a toolchain of at least 1.99 and read access to the repository. |
+| With a checkout | From the checkout's root: `cargo install --locked --force --path crates/beadroll --root ~/.local`. rustup reads `rust-toolchain.toml` from the current directory, not from `--path`, so run elsewhere this builds with the default toolchain and fails `rust-version`. |
+| Without one | `cargo +1.99.0 install --locked --force --config net.git-fetch-with-cli=true --git ssh://git@github.com/bpcakes/beadroll.git beadroll --root ~/.local`. cargo rejects the scp-like `git@github.com:…` form; a `--git` install never reads the repository's toolchain file, hence `+1.99.0`; fetching through git uses the machine's own SSH setup. It needs read access to the repository. |
 
-Both put `bead` in `~/.local/bin`, where `infra/` expects it. The Rust implementation is version
+Both put `bead` in `~/.local/bin`, where `infra/` expects it (cargo also writes its install records,
+`.crates.toml` and `.crates2.json`, in `~/.local`). The Rust implementation is version
 0.2.0; Python's was 0.1.0. Each machine needs rustup; it already has git.
 
 **Upgrading a machine.**
@@ -1105,6 +1260,8 @@ tests (§4.2) are both required evidence. Receipt compatibility holds throughout
   `infra/compat_real.py` also hardcode it. Add `BEAD_UNDER_TEST` as an explicit absolute local
   executable override in all three, with an installed `bead` fallback after launcher removal.
   Resolve the compatibility helper from the repository, not from the executable's directory.
+  The oracle and `xtask check --real` need this for `roundtrip.py` and `compat_real.py` long
+  before the cutover, so those two change in Phase 0 (§4.2); `drive.py` changes here.
   `soak.py` already takes its executable as its first positional argument; its caller must pass
   the selected Rust path. `drive.py` also needs per-host absolute executable overrides, retaining
   installed `~/.local/bin/bead` as its remote default. Rehearse against staged Rust binaries and
@@ -1115,7 +1272,8 @@ tests (§4.2) are both required evidence. Receipt compatibility holds throughout
   still selects Python. Retain the throwaway-remote and scratch-store restrictions.
 - Prove explicit native selection while `./bead` still exists; after deleting it, exercise the
   drivers again. Run the four-machine gate and `xtask check --real` with the selected Rust binary;
-  a passing drive with a local Python process does not count. Phase 7 owns these driver changes.
+  a passing drive with a local Python process does not count. Phase 7 owns `drive.py`'s change,
+  the preflight and both proofs.
 
 **Documentation at the cutover.**
 - `README.md`: Install (from a checkout, as above), the "small Python package" paragraph,
@@ -1147,17 +1305,19 @@ tests (§4.2) are both required evidence. Receipt compatibility holds throughout
 | Risk | Mitigation |
 |---|---|
 | Replay drifts from Python on some history | Differential testing (§4.2.3), the §5 ledger, and the mixed-fleet suite; no silent tightening |
+| The generators miss a CPython behaviour no row names (bytes decoding, Unicode `re`, interpreter-dependent depth, exception texts) | §5 rows 7 and 22 to 26 are decided in Phase 1 and generated for; a new difference adds a row |
 | CLI or output drift (help, argparse quirks, key order) | The oracle, goldens from Python, and the exact-text lists in the catalogues |
 | Process, signal and stream edge cases | §2.3f, the two audited unsafe spots, and the hardening tests that already pin each case |
 | git fidelity (environment, transport config, porcelain, translations) | Keep the binary and the exact environment; the git-version matrix |
 | Test-port fidelity | Ported tests must pass against Python; `xtask inventory` requires completeness |
+| The oracle counts a Python run as a Rust pass | Phase 0 makes every test select the binary under test, and Python bead refuses to start while the oracle targets another binary (§4.2) |
 | Hidden slowness (F_FULLFSYNC, debug builds, real sleeps) | §2.3e, the profiles, handshakes, `xtask timing` |
 | Scope creep | Parity first. Improvements go to the tracker as issues for after the cutover. |
 | Upgrade or rollback replays an accepted request | Python-compatible receipt signatures/lifecycle; same-store tests; pause writers and check every affected workspace (§8) |
 | Large Rust integer tokens are unreadable on Python | Preserve the default 4,300-digit boundary; parser/writer/import/replay fixtures; preflight non-default Python settings |
 | Studio switches source without changing its persisted binding | Source revision and schema migration; approved endpoint/ref/workspace/credentials; existing-publication and later-change tests (§7) |
 | Infrastructure gate accidentally runs Python locally | Explicit executable selection and per-machine version/path preflight before and after launcher removal (§8) |
-| Studio's builds cannot fetch the private repository | Read access for every environment that builds studio (§7) |
+| Studio's builds cannot fetch the private repository | Decision 7 (§10), before Phase 6: vendoring at a pinned revision, or credentials for every environment that builds studio, which changes its no-secret image rule (§7) |
 
 ## 10. Decisions
 
@@ -1177,6 +1337,11 @@ Still open, with a recommended default:
 
 6. **`infra/`** stays stdlib Python, driving any `bead` binary, until there is a reason to move it
    into xtask.
+7. **How studio's builds reach a private `beadroll-core`** (§7.3). Studio's image build carries no
+   secret by rule, and its CI fetches git dependencies anonymously. Recommended: vendor
+   `beadroll-core`'s source into studio at a pinned revision, refreshed by a script, so that no
+   build needs credentials and decision 4 stands. The alternative is a BuildKit secret mount plus
+   CI and local credentials, which changes studio's rule. Needed before Phase 6, not before.
 
 **Revision of 2026-10-09, after review 8.** The maintainer accepted the audit corrections. The
 port now preserves Python receipt bytes and their retry lifecycle, uses the default 4,300-digit
@@ -1188,6 +1353,16 @@ These correct the assumptions demonstrated in
 [`reviews/2026-10-09-8-codex-rust-port.md`](reviews/2026-10-09-8-codex-rust-port.md); the implementation
 and new acceptance tests remain work for the epic's existing children. The original five decisions
 above stand.
+
+**Revision of 2026-10-09, after review 9.** A readiness audit against the code, the tests, Rust
+1.99.0, the sibling repositories and studio
+([`reviews/2026-10-09-9-claude-rust-port.md`](reviews/2026-10-09-9-claude-rust-port.md)). The
+coordinated commands are named exactly, and an owner's close and delete write no receipt. Slice
+2a ports `Link` and `synchronise` whole. §5 gains row 7's ceiling and rows 22 to 26, decided in
+Phase 1. The lint configuration, test layout, install commands, CI gating and oracle harness are
+corrected so that a skeleton passes and the oracle cannot count a Python run. The test classes are
+recounted and the children reassigned to match. Studio's schema and build facts are added, with
+decision 7 open. The five decisions stand.
 
 ---
 
@@ -1273,8 +1448,10 @@ above stand.
 | `BEAD_FAILPOINTS` | New: §4.5 |
 | `BEAD_UNDER_TEST` | Read by test harnesses and retained local infrastructure drivers: explicit binary under test |
 | `PYTHONINTMAXSTRDIGITS` | CPython setting: oracle pins 4300; upgrade preflight checks the old runtime's effective limit (§8); not a Rust product setting |
-| `BEAD_SWEEP` | Read by the sweep only; `full` runs all 660 schedules |
+| `BEAD_SWEEP`, `BEAD_SWEEP_GC`, `BEAD_SWEEP_CONCURRENT` | Read by the sweep only: `full` runs all 660 schedules; `BEAD_SWEEP_GC=1` runs `git gc --prune=now` on the remote after every push, and `BEAD_SWEEP_CONCURRENT=1` runs the two follow-ups at once |
 | `BEAD_TEST_REMOTE`, `BEAD_DRIVE_HOSTS`, `BEAD_TEST_LOCAL_REPO` | Read by `infra/` only |
+| `HOME`, `TMPDIR`, `PATH` | Read implicitly: the default store root, the temporary files that take git's output, and where `git` and `ps` are found |
+| `GIT_CONFIG_COUNT` and its `GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n`, `GIT_SSH`, `GIT_SSH_COMMAND`, the `REPO_LOCATION_ENV` names | Read for `sync.git`'s environment (§2.3d): the count is extended, never replaced; either SSH variable suppresses bead's default; the location variables are removed |
 
 Product settings are read only by the CLI crate and translated into `Settings`, never read inside
 a library. Harness and infrastructure variables are consumed by their respective tools.

@@ -6,6 +6,8 @@
 Source: `tests/test_hardening.py` (6,517 lines, 102 classes, 207 test methods; subTests not counted).
 Gxx classes are review findings (docs/FINDINGS.md); Vx classes are verified properties. "t1, t2…" = test methods in file order.
 
+**Review 9 corrections.** The 14 `A†` tests pass against Python today, because Python has the crash hooks. Eight of the eleven `B` tests here are unit tests of the git and store crates, not of core: G25 t3, G32, G57 t2, `V1_RunGitTimeoutHygiene` and the four V7 tests land with Phase 2a (`docs/RUST-PORT.md` §6). Rows that cover several tests ("t1", "t2") are split per method when the inventory is seeded.
+
 **Mechanism labels.** `cli` = runs bead as a subprocess (support.Machine) and inspects exit/stdout/stderr/files/refs (plain git setup, hand-edited store files and deleted remote objects count as cli). `env-fake` = fake ssh/gpg on PATH or via GIT_SSH_COMMAND, scratch GIT_CONFIG_GLOBAL with special settings, GIT_* env tricks, locales, server hooks in the bare remote, local HTTP server, chmod/read-only, umask, ulimit, closed fds, PTYs/signals, timing bounds. `inproc` = calls package functions. `patched` = support.patched / mock in-process. `driver` = Python wrapper that imports the launcher via runpy (or runs it under another interpreter) and monkeypatches inside. "crash hook" = the CLI's own `BEAD_TEST_CRASH_BEFORE_PUSH` (exit 98) / `BEAD_TEST_CRASH_AFTER_PUSH` (exit 99), implemented only in `sync.coordinated()`.
 
 **Port classes.** `A` black-box, runs unmodified against a Rust binary via BEAD_UNDER_TEST. `A†` = A, provided the Rust binary implements the two BEAD_TEST_CRASH_* env hooks with the same exit codes. `B` in-process logic → Rust unit/integration test against crate APIs. `C` needs an injection seam (named). `D` depends on Python-specific behaviour; the Rust property to keep is in the appendix.
@@ -71,7 +73,7 @@ Gxx classes are review findings (docs/FINDINGS.md); Vx classes are verified prop
 | G57_LoneSurrogateInAJournalIsScoped | 2 | Lone surrogates read as U+FFFD, reported; both exports agree | t1 cli (planted foreign segments: escaped `\ud800` and raw ED A0 80); t2 inproc (`read_attempt`) | t2: read_attempt API | A ×1, B ×1 |
 | G58_FinishedPushIsNotAnUnansweredOne | 1 | Push git finished isn't "no answer" when helper holds stderr | cli+env-fake (fake ssh spawns `sleep 15` holding git's stderr; BEAD_NET_TIMEOUT=4; must take < 4 s) | BEAD_REMOTE; BEAD_NET_TIMEOUT; fake ssh | A |
 | G59_HelpIsPlainText | 3 | Help has no colour codes on a TTY, FORCE_COLOR or `--json` | cli+env-fake (PTY; TERM=xterm-256color; FORCE_COLOR=1; python3 argparse-colour probe → skip) | none | D (→A once the probe is dropped) |
-| G60_ArabicLetterMarkEscaped | 1 | U+061C escaped as `؜` in every human output | cli (human output) | none | A |
+| G60_ArabicLetterMarkEscaped | 1 | U+061C escaped as `\u061c` in every human output | cli (human output) | none | A |
 | G61_MergedCheckSeesOriginMain | 2 | Merged check uses origin's default branch, slashes included | cli (worktree; scratch global config) | none | A |
 | G62_DubiousOwnership | 3 | Dubious-ownership error keeps git's reason and safe.directory fix | cli+env-fake (GIT_TEST_ASSUME_DIFFERENT_OWNER; C/de/fr locales; skip probes) | none | A |
 | G63_SettleKeepsLineLevelIntegrityReports | 1 | Invalid-JSON line stays reported when a duplicate forces rebuild | cli (planted foreign segment) | none | A |
@@ -179,10 +181,10 @@ All waits below are estimates read from the code; none was measured.
 ## D-class tests and the Rust property each becomes
 
 - **G13** (3 tests). Files are always read as UTF-8, whatever the locale. Rust property: the ref "refs/beads/équipe" from .beadroll.json resolves the same under ISO-8859-1, US-ASCII and C locales, and claims on that ref still exclude each other across locales. Keep the tests black-box and drop the python3 probe.
-- **G30 t4**. Imports are bounded to MAX_NESTING = 100 levels, so every peer can replay them, including Python bead on 3.12/3.13 during the migration and Rust builds with small stacks. Optionally, test mixed Python and Rust peers.
+- **G30 t4**. Machine a imports a record 12,000 levels deep and syncs; a peer whose reader stops lower (Python 3.12/3.13 today) keeps working and sees what a sees. Events are bounded to MAX_NESTING = 100 levels and imported records to 98 (the create event holds them two levels down), so the import is refused. In Rust this becomes a mixed-fleet case: Python 3.14 and Rust peers with different reading ceilings (`docs/RUST-PORT.md` §5 row 7).
 - **G52 t5**. chmod 0 on the workspace store gives IO for `show` and `info`. Run it unconditionally.
 - **G59** (3 tests). Help contains no ESC byte on a PTY, with TERM=xterm-256color, with FORCE_COLOR=1, or in `--json help create`, and it contains "usage: bead create". This matters for clap. Drop the probe.
-- **V8_Python312**. Becomes a matrix job: the full suite against the release binary on each target (Linux glibc and musl, macOS) and the oldest supported git.
+- **V8_Python312**. Becomes a matrix job: the full suite against the release binary on Linux and macOS and the oldest supported git (musl waits for public binaries, which `docs/RUST-PORT.md` §10 defers).
 - Partly Python-specific but kept in another class: G09 (TypeError), the Traceback-free checks in G34/G38/G49/G55/G64, the "Exception ignored" check in G36, and G48 ("Python ignores SIGXFSZ").
 
 ## Porter gotchas
@@ -199,13 +201,13 @@ All waits below are estimates read from the code; none was measured.
    - Human output: create's third token is `KEY:`; claim output starts with "Claimed"; errors are printed as `Error: …`.
    - Escaping: control characters become lowercase `\xNN` or `\uNNNN`, including U+061C. PTY output equals pipe output.
    - Message substrings the tests look for: "not yet published", "password was dropped", "meta.json", "BEAD_WORKSPACE=", "refs/beads/journal", "safe.directory", "`git config --global --add safe.directory <checkout>`", "cannot reach the coordination remote", "merged into the default branch", "usage: bead create", "line is not valid JSON", "File too large" or "SIGXFSZ", and the remote's own hook text.
-   - Must not appear: "mint a new", "no answer" and "not answering".
+   - Must not appear, where a test pins it: "mint a new" in G53's `IO` error for an unreadable `replica.json` (the `IDENTITY` error does say "mint a new one"), and "no answer" or "not answering" in G18's refused push (a timeout does say "gave no answer").
 10. **Store layout.**
     - Machine.store() takes the first directory in BEAD_HOME, so BEAD_HOME must contain only the store directory.
-    - Files the tests name: `replica.json` (`{"id"}`), `aliases.json`, `<ws>/meta.json`, `lock`, `sync.git`, `events/<replica>/000001.jsonl`, `events/<r>/claims/<eid>.json`, `pending/<id>.json` and `.command`, `.NAME.PID.tmp`, `*.torn-*`, `*.fork-*`.
+    - Files the tests name: `replica.json` (`{"id"}`), `aliases.json`, `<ws>/meta.json`, `lock`, `sync.git`, `events/<replica>/000001.jsonl`, `events/<r>/claims/<eid>.json`, `pending/<id>.json` and `.command`, `.NAME.PID.tmp` (the identity's is `.replica.PID.tmp`), `*.torn-*`, `*.fork-*`.
     - Modes: everything under BEAD_HOME is 0600 or 0700, sync.git included (`git init --bare --template= --shared=0600 --object-format=<project>`). Checkout files follow the umask. A write retightens the directories to 0700; a read does not.
 11. **Pinned git behaviour.**
-    - Run git with LC_ALL=C, in a new session through an audited pre-exec `setsid` call, with output captured to files: wait for git to exit, not for its pipes to close. `process_group(0)` retains the controlling terminal and must not precede `setsid`. Retain V8's controlling-terminal test together with V1's timeout/group-kill checks.
+    - Run `sync.git`'s git with LC_ALL=C (checkout-side git keeps the caller's locale, which G62 t3 relies on), every git in a new session through an audited pre-exec `setsid` call, with output captured to files: wait for git to exit, not for its pipes to close. `process_group(0)` retains the controlling terminal and must not precede `setsid`. Retain V8's controlling-terminal test together with V1's timeout/group-kill checks.
     - On timeout, kill the whole process group for a fetch but only the child for a push.
     - Fetch into a per-process ref, then push with `--porcelain --no-verify`. Classify the result from git's own lines only, never from `remote:` lines.
     - Strip the repository-location variables (GIT_DIR, GIT_WORK_TREE, GIT_OBJECT_DIRECTORY and the rest of REPO_LOCATION_ENV).

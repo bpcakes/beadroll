@@ -8,6 +8,29 @@ the behaviour is kept on purpose (with the reason); **open** otherwise.
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Review 9: Rust port readiness (`reviews/2026-10-09-9-claude-rust-port.md`, ids T)
+
+A readiness audit of the port plan after review 8, against the code, the tests, Rust 1.99.0, the
+sibling repositories and studio. As for review 8, **plan corrected** means the document,
+catalogues and issue texts now address the finding; the cited children stay open until their work
+and tests pass. No runtime fix or new regression test is claimed here.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| T01 | Medium | §5 missed CPython semantics on replay and identity paths: JSON decoded from bytes (BOM, UTF-16/32), two lenient readers, Unicode `\d` and `(?i)`, last-resort exception texts, uncaught exceptions, and a readable depth of 994 levels on 3.11 but 116,199 on 3.14 | plan corrected | `RUST-PORT.md` §5 row 7 and rows 22–26, decided in Phase 1 with differential generators for each; `roll-k2wy.2` | Required: a differential class per row; Python tests for every row decided "reject" |
+| T02 | Medium | An owner's close and delete were described as coordinated commands with receipts; they are local writes | plan corrected | §2.3j and slice 2c name the coordinated commands and the signature's shape; `roll-k2wy.5` | Required: signature fixtures per coordinated command, showing close and delete write none |
+| T03 | Medium | The oracle could count a Python run as a Rust pass (`test_compat`'s helper, `test_prime_and_onboard`, `compat_real.py`), and Phase 0 forbade the harness fix | plan corrected | Harness selection in Phase 0; Python bead refuses to start while the oracle targets another binary; §4.2's skip groups and its 332 runnable tests; `roll-k2wy.1`, `.16` | Required: the oracle passes against `./bead` and fails a test that bypasses the selected binary |
+| T04 | Medium | Test-port assignments that the phases could not meet: 16 B tests outside core, 5 C-env tests without Python hooks, 12 C-api tests claimed twice, unowned tests, wrong figures | plan corrected | §4.1, §4.2's naming rule, §4.3, §4.6, Phase 1's exit and the catalogues; `roll-k2wy.2`, `.5`, `.7`–`.12` | `xtask inventory` (Phase 0) |
+| T05 | Medium | Slice 2a could not port `sync` without the outcome classification, maintenance, rebuild, pending handling and receipt retirement assigned to 2c | plan corrected | 2a ports `Link`, `synchronise` and `writing` whole; `roll-k2wy.3`, `.5` | Required: a pending attempt and receipt left by Python settled by Rust's sync, and the reverse |
+| T06 | Medium | The plan's lint configuration fails CI on a skeleton; the install commands fail (scp-like URL, toolchain file not read) | plan corrected | §2.2, §3, §4.4, Phase 0 and §8; `roll-k2wy.1` | Phase 0's CI on the skeleton |
+| T07 | Medium | Studio's one source per project, host-level approval and no-secret image build contradict §7 | plan corrected; decision 7 open | §7 and §10's decision 7; `roll-k2wy.15` | Required: the acceptance cases of `roll-k2wy.15` |
+| T08 | Low | The planned integration-test layout does not compile (E0583) | plan corrected | `tests/<name>/main.rs` roots (§4.3, §4.4) | Phase 0's skeleton |
+| T09 | Low | CI could not be green in Phase 0; help goldens contradicted §1.4; `xtask golden` and `check` had no owner | plan corrected | §4.2 and §4.9; `roll-k2wy.4`, `.10` | — |
+| T10 | Low | Phase 1 gated on a Phase 4 performance estimate | plan corrected | Measured and recorded in Phase 1; Phase 4 owns the budget | — |
+| T11 | Low | The cutover's real-store differential could not be identical (`version`, `idle_minutes`) | plan corrected | §6 Phase 7; `roll-k2wy.16` | — |
+| T12 | Low | Appendix C and the actor's `ps` walk were incomplete | plan corrected | Appendix C and §2.2 | — |
+| T13 | Low | Several attributions to sibling repositories were wrong or overstated | plan corrected | Wording in §2.1–§4.9 | — |
+
 ## Review 8: Rust port plan (`reviews/2026-10-09-8-codex-rust-port.md`, ids S)
 
 These are defects in the port plan, not in an existing Rust implementation. **Plan corrected**
