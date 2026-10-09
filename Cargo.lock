@@ -23,6 +23,7 @@ dependencies = [
 name = "beadroll-core"
 version = "0.2.0"
 dependencies = [
+ "beadroll-test-support",
  "indexmap",
  "sha2",
  "thiserror",
