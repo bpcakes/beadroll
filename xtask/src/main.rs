@@ -3,6 +3,7 @@
 //! - `oracle` runs the Python test suite against a `bead` binary, through `BEAD_UNDER_TEST`.
 //! - `inventory` maps every Python test to the Rust test that ports it.
 //! - `timing` runs a command and records how long it took, as evidence.
+//! - `diff` checks beadroll-core against CPython: replay reports and JSON, case by case.
 //!
 //! It is a developer tool, so it prints; the product crates do not (§2.2).
 #![allow(
@@ -14,6 +15,7 @@
     reason = "a developer tool reports on its own terminal"
 )]
 
+mod diff;
 mod inventory;
 mod oracle;
 mod timing;
@@ -38,6 +40,13 @@ usage: cargo xtask <command>
       xtask/inventory.txt and the tests both suites have. --require-complete fails while any
       Python test is unported.
 
+  diff replay|json [--cases N] [--seed S] [--jobs N] [--fixtures FILE...]
+      Check beadroll-core against CPython (docs/RUST-PORT.md §4.2): every case goes through a
+      stdlib-only Python driver (xtask/python/) and the Rust core, and the answers must be the same
+      text. replay replays journals, the fixtures in xtask/fixtures/replay/ (or --fixtures) and N
+      generated histories (default 1000) from seed S (default 1); json parses and writes. A
+      differing case is kept in target/diff/ to rerun alone with --fixtures.
+
   timing [--label NAME] [--out FILE] -- COMMAND [ARG...]
       Run COMMAND and append what it took, one JSON line, to FILE (default
       target/timing.jsonl). Timings are evidence, never a gate (docs/RUST-PORT.md §4.7).
@@ -51,12 +60,13 @@ fn main() -> ExitCode {
         Some("oracle") => oracle::main(rest),
         Some("inventory") => inventory::main(rest),
         Some("timing") => timing::main(rest),
+        Some("diff") => diff::main(rest),
         Some("help" | "-h" | "--help") => {
             print!("{USAGE}");
             return ExitCode::SUCCESS;
         }
         _ => Err(workspace::Failure::Usage(
-            "expected a command: oracle, inventory or timing".into(),
+            "expected a command: oracle, inventory, timing or diff".into(),
         )),
     };
     match outcome {
