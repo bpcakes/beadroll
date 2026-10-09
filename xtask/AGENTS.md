@@ -30,6 +30,8 @@ Rust tests that port it, and `timing` records how long a command took. Later pha
 - The skip list holds only tests that cannot target another binary or run no bead; a test that
   bypasses `BEAD_UNDER_TEST` is fixed, not skipped.
 - The oracle never touches a real store: each module gets a fresh `BEAD_HOME`.
+- Without `--bead`, the oracle tests the executable Cargo reports building, never a path it
+  works out: the target directory, a build target and the profile can each move it.
 - Unless the binary is this checkout's Python launcher, `BEADROLL_ORACLE_REFUSALS` is set and
   Python bead refuses to start, so a bypass fails instead of passing against Python.
 - Timings are evidence and never gate anything (§4.7).

@@ -160,27 +160,28 @@ pub(crate) fn unlisted_modules(root: &Path) -> Result<Vec<String>, Failure> {
         .collect())
 }
 
-/// Builds `bead` beside xtask and returns its path.
+/// Builds `bead` in the profile xtask itself was built in and returns the executable Cargo
+/// reports: the target directory, a build target and the profile can each move it, so its path is
+/// never guessed.
 fn build(root: &Path) -> Result<PathBuf, Failure> {
     let profile = workspace::profile_dir()?;
-    let status = build_command(root, &profile)?
-        .status()
+    let output = build_command(root, &profile)?
+        .stderr(Stdio::inherit())
+        .output()
         .map_err(|error| Failure::Failed(format!("cannot run cargo: {error}")))?;
-    if !status.success() {
-        return Err(Failure::Failed(format!("building bead failed ({status})")));
+    if !output.status.success() {
+        return Err(Failure::Failed(format!(
+            "building bead failed ({})",
+            output.status
+        )));
     }
-    Ok(profile.join("bead"))
+    built_executable(&String::from_utf8_lossy(&output.stdout))
 }
 
-/// The cargo command that builds `bead` into `profile`, the directory of the profile xtask was
-/// built in. It names that profile and its target directory explicitly: a nested cargo does not
-/// inherit a `--target-dir` given to the cargo that started xtask, and would otherwise build
-/// elsewhere while an old binary here was tested.
+/// The cargo command that builds `bead` in the profile of `profile`, the directory xtask was built
+/// in, and reports its artifacts as JSON on standard output.
 fn build_command(root: &Path, profile: &Path) -> Result<Command, Failure> {
-    let (Some(target), Some(name)) = (
-        profile.parent(),
-        profile.file_name().and_then(|name| name.to_str()),
-    ) else {
+    let Some(name) = profile.file_name().and_then(|name| name.to_str()) else {
         return Err(Failure::Failed(format!(
             "no profile in {}",
             profile.display()
@@ -196,14 +197,31 @@ fn build_command(root: &Path, profile: &Path) -> Result<Command, Failure> {
             "--bin",
             "bead",
         ])
-        .arg("--target-dir")
-        .arg(target)
+        .arg("--message-format=json-render-diagnostics")
         .current_dir(root);
     // Cargo's dev profile builds into `debug`; every other profile into its own name.
     if name != "debug" {
         command.args(["--profile", name]);
     }
     Ok(command)
+}
+
+/// The executable Cargo reported for the `bead` binary among its artifact messages.
+fn built_executable(messages: &str) -> Result<PathBuf, Failure> {
+    let found: Vec<String> = messages
+        .lines()
+        .filter(|line| line.contains(r#""reason":"compiler-artifact""#))
+        .filter(|line| line.contains(r#""kind":["bin"]"#))
+        .filter(|line| workspace::json_field(line, "name").as_deref() == Some("bead"))
+        .filter_map(|line| workspace::json_field(line, "executable"))
+        .collect();
+    match found.as_slice() {
+        [executable] => Ok(PathBuf::from(executable)),
+        _ => Err(Failure::Failed(format!(
+            "cargo reported {} executables for bead, not one",
+            found.len()
+        ))),
+    }
 }
 
 /// Whether `bead` is this checkout's Python launcher, the one binary the guard must not stop.

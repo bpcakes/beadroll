@@ -168,7 +168,7 @@ fn a_skip_list_naming_a_missing_test_stops_the_module() {
 }
 
 #[test]
-fn bead_is_built_into_the_target_directory_and_profile_xtask_runs_from() {
+fn bead_is_built_in_the_profile_xtask_runs_from_and_reports_its_artifacts() {
     let args = |profile: &str| {
         let command = build_command(Path::new("/repo"), Path::new(profile)).unwrap();
         assert_eq!(command.get_current_dir(), Some(Path::new("/repo")));
@@ -178,13 +178,25 @@ fn bead_is_built_into_the_target_directory_and_profile_xtask_runs_from() {
             .collect::<Vec<_>>()
             .join(" ")
     };
-    assert_eq!(
-        args("/elsewhere/target/debug"),
-        "build --locked --package beadroll --bin bead --target-dir /elsewhere/target"
-    );
-    assert_eq!(
-        args("/t/release"),
-        "build --locked --package beadroll --bin bead --target-dir /t --profile release"
-    );
+    let build =
+        "build --locked --package beadroll --bin bead --message-format=json-render-diagnostics";
+    assert_eq!(args("/target/aarch64-apple-darwin/debug"), build);
+    assert_eq!(args("/t/release"), format!("{build} --profile release"));
     assert!(build_command(Path::new("/repo"), Path::new("/")).is_err());
+}
+
+#[test]
+fn the_executable_tested_is_the_one_cargo_reports_for_bead() {
+    // What `cargo build --message-format=json-render-diagnostics` prints, shortened: the library
+    // has no executable, the binary has one, wherever a build target put it.
+    let lib = r#"{"reason":"compiler-artifact","target":{"kind":["lib"],"crate_types":["lib"],"name":"beadroll"},"executable":null,"fresh":true}"#;
+    let bin = r#"{"reason":"compiler-artifact","target":{"kind":["bin"],"crate_types":["bin"],"name":"bead"},"filenames":["/t/x86_64-unknown-linux-gnu/debug/bead"],"executable":"/t/x86_64-unknown-linux-gnu/debug/bead","fresh":false}"#;
+    let done = r#"{"reason":"build-finished","success":true}"#;
+    let messages = [lib, bin, done].join("\n");
+    assert_eq!(
+        built_executable(&messages).unwrap(),
+        PathBuf::from("/t/x86_64-unknown-linux-gnu/debug/bead")
+    );
+    assert!(built_executable(&[lib, done].join("\n")).is_err());
+    assert!(built_executable(&[bin, bin].join("\n")).is_err());
 }

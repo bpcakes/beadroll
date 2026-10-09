@@ -26,11 +26,12 @@ usage: cargo xtask <command>
 
   oracle [--bead PATH] [--report] [--stress] [--jobs N] [MODULE...]
       Run the Python test suite against a bead binary through BEAD_UNDER_TEST, without the tests
-      listed in xtask/oracle-skip.txt, and report each module. The binary is target/debug/bead,
-      built first, unless --bead names another; `--bead ./bead` runs Python's own launcher, against
-      which the suite must pass completely. The modules are check.sh's fast ones, --stress adds
-      test_stress and test_sweep, or name them. --report exits 0 when tests fail (the Rust binary,
-      until Phase 2d closes); --jobs runs that many modules at once (default 1).
+      listed in xtask/oracle-skip.txt, and report each module. The binary is the bead that Cargo
+      builds first (target/debug/bead by default) unless --bead names another; `--bead ./bead` runs
+      Python's own launcher, against which the suite must pass completely. The modules are
+      check.sh's fast ones, --stress adds test_stress and test_sweep, or name them. --report exits
+      0 when tests fail (the Rust binary, until Phase 2d closes); --jobs runs that many modules at
+      once (default 1).
 
   inventory [--require-complete]
       List every Python test with the Rust tests that port it (docs/RUST-PORT.md §4.2), from
