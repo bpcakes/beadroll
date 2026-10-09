@@ -1,0 +1,172 @@
+# The Rust port's checks (docs/RUST-PORT.md §4.9), shaped and pinned like jig-sh's rust-tests.yml:
+# formatting, lints, the tests on Linux and macOS with their doctests, cargo-deny, and the oracle.
+# The oracle runs the Python suite against Python's ./bead, where it must pass completely, and
+# against the Rust binary, where it only reports each module's pass count until Phase 2d closes.
+# Later phases add the differential, mixed-fleet and nightly jobs. Nothing here touches a real store
+# or a real remote: every test builds its own repositories and bare remotes in a temporary directory.
+name: rust
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  merge_group:
+    types:
+      - checks_requested
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fmt:
+    name: cargo fmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
+        with:
+          cache: false
+          rustflags: ""
+          components: rustfmt
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: cargo clippy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
+        with:
+          cache: false
+          rustflags: ""
+          components: clippy
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          shared-key: rust-${{ runner.os }}-${{ github.job }}
+      - name: Lint every target
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D clippy::mod_module_files
+      # The support crate must never need the binary path that only a consuming test root has.
+      - name: Build the shared test support on its own
+        run: cargo build --package beadroll-test-support --locked
+
+  test:
+    name: cargo nextest (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      # A ported black-box test counts once it passes against Python's launcher, and until Phase 2d
+      # that is the only binary it can pass against (docs/RUST-PORT.md §4.2).
+      BEAD_UNDER_TEST: ${{ github.workspace }}/bead
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      # Python runs ./bead, and the oracle's own tests run its Python runner.
+      - name: Install Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.14"
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
+        with:
+          cache: false
+          rustflags: ""
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@13608cbb45b01feb47ef444ab1a42dc41ad56f1a # v2.79.11
+        with:
+          tool: cargo-nextest@0.9.130
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          shared-key: rust-${{ runner.os }}-${{ github.job }}
+      - name: A git identity for the repositories the tests create
+        run: |
+          git config --global user.name check
+          git config --global user.email check@example.invalid
+      - name: Run the tests
+        run: cargo nextest run --workspace --locked --profile ci
+      # Without BEAD_UNDER_TEST, a machine runs the binary its test root supplies: Cargo's bead.
+      - name: Run the binary-selection tests on their default
+        run: env -u BEAD_UNDER_TEST cargo nextest run --locked --profile ci --package beadroll -E 'test(/^support::/)'
+      # Nextest does not run doctests.
+      - name: Run the doctests
+        run: cargo test --workspace --doc --locked
+      - name: Upload test timings
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-timings-${{ matrix.os }}
+          path: target/nextest/ci/junit.xml
+          retention-days: 7
+
+  deny:
+    name: cargo deny
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
+        with:
+          cache: false
+          rustflags: ""
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@13608cbb45b01feb47ef444ab1a42dc41ad56f1a # v2.79.11
+        with:
+          tool: cargo-deny@0.19.7
+      - name: Check advisories, bans, licences and sources
+        run: cargo deny --locked check
+
+  oracle:
+    name: oracle (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Install Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.14"
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
+        with:
+          cache: false
+          rustflags: ""
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          shared-key: rust-${{ runner.os }}-${{ github.job }}
+      - name: A git identity for the repositories the tests create
+        run: |
+          git config --global user.name check
+          git config --global user.email check@example.invalid
+      - name: The Python suite against Python's ./bead, which must pass completely
+        run: cargo --locked xtask oracle --bead ./bead
+      - name: The Python suite against the Rust binary, reported until Phase 2d closes
+        if: ${{ !cancelled() }}
+        run: cargo --locked xtask oracle --report
+      - name: Every Python test and the Rust tests that port it
+        if: ${{ !cancelled() }}
+        run: cargo --locked xtask inventory
