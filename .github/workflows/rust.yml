@@ -102,8 +102,9 @@ jobs:
       - name: Run the tests
         run: cargo nextest run --workspace --locked --profile ci
       # Without BEAD_UNDER_TEST, a machine runs the binary its test root supplies: Cargo's bead.
+      # The default profile writes no JUnit report, so the full run's report is the one kept.
       - name: Run the binary-selection tests on their default
-        run: env -u BEAD_UNDER_TEST cargo nextest run --locked --profile ci --package beadroll -E 'test(/^support::/)'
+        run: env -u BEAD_UNDER_TEST cargo nextest run --locked --package beadroll -E 'test(/^support::/)'
       # Nextest does not run doctests.
       - name: Run the doctests
         run: cargo test --workspace --doc --locked
