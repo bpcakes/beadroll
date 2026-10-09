@@ -302,7 +302,7 @@ def run_concurrent_stress(repo, output, waves=10, per_wave=50, seed=20261007):
 class ConcurrentReaudit(unittest.TestCase):
     def test_six_machine_3000_concurrent_commands_with_partitions(self):
         with tempfile.TemporaryDirectory(prefix="bead-concurrent-reaudit-") as tmp:
-            result = run_concurrent_stress(Path(support.BEAD).parent, Path(tmp) / "result.json")
+            result = run_concurrent_stress(support.ROOT, Path(tmp) / "result.json")
         self.assertEqual(result["status"], "passed")
         self.assertEqual(result["operations"], 3000)
 

@@ -1,7 +1,8 @@
 """Import every local Beads export into a scratch store and export it again; records must come back identical.
-Reads ~/Documents/*/.beads/issues.jsonl only; writes nothing outside the scratch store."""
+Reads ~/Documents/*/.beads/issues.jsonl only; writes nothing outside the scratch store. The bead it runs is
+the one BEAD_UNDER_TEST names (an absolute path), else this checkout's ./bead."""
 import glob, json, os, subprocess, sys, time
-BP = os.path.expanduser("~/Documents/beadroll/bead")
+BP = os.environ.get("BEAD_UNDER_TEST") or os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "bead")
 env = {k: v for k, v in os.environ.items() if not k.startswith(("CLAUDE", "CODEX", "BP_"))}
 env.update(BEAD_HOME=os.environ.get("RT_HOME") or os.path.join(os.environ.get("TMPDIR", "/tmp"), "bead-roundtrip-home"), BEAD_AGENT="human")
 def norm(rec):

@@ -305,6 +305,20 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+ORACLE_REFUSALS = "BEADROLL_ORACLE_REFUSALS"
+
+
+def refuse_for_the_oracle(refusals, argv) -> int:
+    """Python bead does not start while `cargo xtask oracle` runs the Python suite against another
+    binary (docs/RUST-PORT.md §4.2): whatever reached this one bypassed BEAD_UNDER_TEST, and its pass
+    would be Python's. The start is recorded in the file the variable names, so that the oracle fails
+    the test even if the test expected bead to fail."""
+    with contextlib.suppress(OSError), open(refusals, "a", encoding="utf-8") as log:
+        log.write(json.dumps(list(argv)) + "\n")
+    sys.stderr.write(f"bead: refusing to start: {ORACLE_REFUSALS} is set, so the oracle is testing another binary\n")
+    return 3
+
+
 def main(argv=None) -> int:
     for name in ("stdout", "stderr"):  # started with the descriptor closed (`>&-`): nobody is reading
         if getattr(sys, name) is None:
@@ -312,6 +326,9 @@ def main(argv=None) -> int:
     for stream in (sys.stdout, sys.stderr):  # the output contract is UTF-8, whatever the locale says
         with contextlib.suppress(Exception):
             stream.reconfigure(encoding="utf-8", errors="replace")
+    refusals = os.environ.get(ORACLE_REFUSALS)
+    if refusals:
+        return refuse_for_the_oracle(refusals, sys.argv[1:] if argv is None else argv)
     try:
         return run(argv)
     except BrokenPipeError:  # the reader went away mid-write: nothing to say, and no Python noise about it

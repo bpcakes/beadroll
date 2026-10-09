@@ -49,13 +49,14 @@ class CompatAuditRealCompatibility(unittest.TestCase):
         """Read only source .jsonl; helper copies into its own scratch repos with no remotes."""
         import tempfile
         import shutil
-        helper=Path(support.BEAD).resolve().parent/'infra'/'compat_real.py'
+        helper=support.ROOT/'infra'/'compat_real.py'  # the source tree's, whichever bead is under test
         exports=sorted(Path(os.path.expanduser('~/Documents')).glob('*/.beads/issues.jsonl'))
         if not (shutil.which('br') or Path(os.path.expanduser('~/.local/bin/br')).exists()) \
                 or not (shutil.which('bv') or Path(os.path.expanduser('~/.local/bin/bv')).exists()) or not exports:
             self.skipTest('br, bv or real Beads exports unavailable on this machine')
         with tempfile.TemporaryDirectory(prefix='bead-compat-real-') as tmp:
-            proc=subprocess.run([os.sys.executable,str(helper),'--out',tmp],capture_output=True,text=True,timeout=180)
+            proc=subprocess.run([os.sys.executable,str(helper),'--out',tmp],capture_output=True,text=True,timeout=180,
+                                env={**os.environ,'BEAD_UNDER_TEST':support.BEAD})
             self.assertEqual(proc.returncode,0,proc.stderr)
             results=json.loads((Path(tmp)/'results.json').read_text())
             self.assertGreater(len(results),0)

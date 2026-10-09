@@ -132,6 +132,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - Rust parity targets Python 3.11+'s default 4,300-digit decimal conversion limit on JSON input
   and output, not unlimited integer tokens. The oracle pins that default; machines with a
   non-default Python setting must resolve store compatibility before cutover (`RUST-PORT.md` §8).
+- While `cargo xtask oracle` runs the Python suite against another binary it sets
+  `BEADROLL_ORACLE_REFUSALS`; Python bead (`cli.main`, so a copy of the launcher too) then refuses
+  to start, with exit status 3, and records the attempt in the file it names. A test that bypasses
+  `BEAD_UNDER_TEST` fails instead of counting a Python run as the other binary's pass
+  (`RUST-PORT.md` §4.2).
 - `BEAD_HOME` must be absolute; the store's modes are 0700/0600 whatever the umask.
 - Only directories bead creates get private modes; a user-supplied `BEAD_HOME` is chmodded 0700
   on first write (reviewer observation, kept).

@@ -2,12 +2,13 @@
 """Real-data compatibility check (from the first independent audit): every Beads export under
 ~/Documents/*/.beads/issues.jsonl is imported into a fresh scratch tracker, exported again, loaded by
 `br` and fed to `bv`; readiness is compared with br's. Reads the exports only; bead/br/bv run in
-scratch repositories with no remotes. Writes results.json under --out."""
+scratch repositories with no remotes. Writes results.json under --out. The bead it runs is the one
+BEAD_UNDER_TEST names (an absolute path), else this checkout's ./bead."""
 import argparse, collections, json, os, pathlib, shutil, subprocess, sys, tempfile
 P=pathlib.Path
 parser=argparse.ArgumentParser();parser.add_argument('--out', default=tempfile.mkdtemp(prefix='bead-compat-real-'));parser.add_argument('--documents',default=os.path.expanduser('~/Documents'));args=parser.parse_args()
 root=P(args.out);root.mkdir(parents=True,exist_ok=True)
-bead=str(P(__file__).resolve().parent.parent/'bead')
+bead=os.environ.get('BEAD_UNDER_TEST') or str(P(__file__).resolve().parent.parent/'bead')
 br=shutil.which('br') or os.path.expanduser('~/.local/bin/br');bv=shutil.which('bv') or os.path.expanduser('~/.local/bin/bv')
 env={k:v for k,v in os.environ.items() if not k.startswith(('BEAD_','CODEX','CLAUDE','BEADS','BV_','BD_','GIT_'))}
 env.update(BEAD_HOME=str(root/'bead-home'), BEAD_AGENT='audit', BEAD_THREAD='audit-compat',XDG_CACHE_HOME=str(root/'cache'),BV_NO_CACHE='1',BV_OUTPUT_FORMAT='json')
