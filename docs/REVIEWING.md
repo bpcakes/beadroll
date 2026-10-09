@@ -136,8 +136,13 @@ Do not take the baseline from a document; run it:
 ./check.sh --real     # also import/export of the real tracker exports on this Mac
 ```
 
-`check.sh` prints one line per module and exits non-zero on any failure. Record its output in
-your report. The real-infrastructure scripts (four machines, a throwaway GitHub repository) are
+`check.sh` prints one line per module and exits non-zero on any failure, including a failed
+round-trip command or differing exported records with `--real`. A failed round trip keeps its
+full report; its imports run offline in the scratch store. The default sweep includes owner
+close/delete retries after an interrupted publish;
+the full sweep has no expected-failure exemptions. `test_check` exercises these failure paths
+with synthetic results in the fast baseline. Record the baseline output in your report.
+The real-infrastructure scripts (four machines, a throwaway GitHub repository) are
 under `infra/`; their last results are summarised in `README.md`.
 
 ## 4. Rules

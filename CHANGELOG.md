@@ -6,6 +6,12 @@ versioned separately (format 1, frozen; see *Format and upgrades* in the README)
 
 ## [Unreleased]
 
+- Verification fails on every selected protocol-sweep failure, including the previously
+  exempt G12 scenarios; the default slice covers interrupted owner close/delete retries.
+- `check.sh --real` reports failure when the round-trip driver fails, a bead command fails,
+  or exported records differ, and preserves the full failing report. Imports stay offline
+  in the scratch store.
+
 ## [0.1.0] — 2026-10-09
 
 First release.

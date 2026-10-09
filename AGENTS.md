@@ -16,8 +16,9 @@ and how it was closed; `docs/reviews/` holds the reports verbatim.
   transactions, the link to the coordination remote, the ownership protocol), `commands`, `cli`.
   `__init__.py` re-exports every name as one namespace for tests and scripts. `pyproject.toml`
   packages it; nothing else is code.
-- `tests/` — `unittest` modules by subject: `test_replay`, `test_storage`, `test_compat`,
-  `test_commands`, `test_protocol`, `test_hardening`, and the slow `test_stress`, `test_sweep`.
+- `tests/` — `unittest` modules by subject: `test_hygiene`, `test_check`, `test_replay`,
+  `test_storage`, `test_compat`, `test_commands`, `test_protocol`, `test_hardening`, and the slow
+  `test_stress`, `test_sweep`.
   `tests/support.py` has the `Sandbox`/`Machine` helpers (a bare remote and machines with their
   own homes); `tests/__init__.py` sets a scratch `BEAD_HOME`.
 - `infra/` — drives against real machines and a throwaway GitHub repository; each script's

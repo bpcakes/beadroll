@@ -6,7 +6,7 @@
 set -u
 cd "$(dirname "$0")"
 export BEAD_HOME="${BEAD_HOME:-$(mktemp -d "${TMPDIR:-/tmp}/bead-check-home.XXXXXX")}"
-modules="test_hygiene test_replay test_storage test_compat test_commands test_protocol test_hardening"
+modules="test_hygiene test_check test_replay test_storage test_compat test_commands test_protocol test_hardening"
 real=0
 for arg in "$@"; do
     case "$arg" in
@@ -29,6 +29,11 @@ for module in $modules; do
     fi
 done
 if [ "$real" -eq 1 ]; then
-    RT_HOME="$BEAD_HOME/roundtrip" python3 infra/roundtrip.py | tail -1 || status=1
+    if out=$(RT_HOME="$BEAD_HOME/roundtrip" python3 infra/roundtrip.py); then
+        printf '%s\n' "$out" | tail -1
+    else
+        status=1
+        printf '%s\n' "$out"
+    fi
 fi
 exit $status

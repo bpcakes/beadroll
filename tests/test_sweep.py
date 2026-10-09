@@ -1,8 +1,9 @@
 """The ownership protocol, enumerated (seventh independent review, 2026-10-07): three machines, nine
 operations at seven fault boundaries, every ordered pair of four follow-ups; after each step at most one
 confirmed owner, generations monotonic, identical exports after settling, and every command's answer
-consistent with the remote. The default is a ten-schedule slice touching every operation and boundary
-(about 95 s); BEAD_SWEEP=full runs all 660, BEAD_SWEEP_GC=1 and BEAD_SWEEP_CONCURRENT=1 select variants.
+consistent with the remote. The default is a twelve-schedule slice touching every operation and boundary,
+including retries of an owner's close/delete interrupted before publishing. BEAD_SWEEP=full runs all
+660; BEAD_SWEEP_GC=1 and BEAD_SWEEP_CONCURRENT=1 select variants.
 Run through `./check.sh --stress`."""
 import concurrent.futures
 import contextlib
@@ -444,18 +445,14 @@ def run_schedule(op, fault, pair, gc=False, concurrent=False):
     return run.report()
 
 
-# The slice check.sh can afford: every operation once at its most telling boundary, and every
-# boundary once, each with a pair that mixes a retry with another actor or machine.
+# The slice check.sh can afford: every operation and boundary, with pairs that mix a retry
+# with another actor or machine, including the owner's interrupted close/delete (G12).
 SLICE = [("claim", "crash-after-push", "RO"), ("release", "crash-after-push", "OR"),
          ("takeover", "timeout-landed", "SR"), ("close", "crash-before-push", "DR"),
          ("delete", "crash-after-push", "SO"), ("update-edits", "kill-confirm", "RO"),
          ("update-parent", "kill-write-pending", "DR"), ("update-closed", "timeout-fenced", "OR"),
-         ("sync", "kill-write-confirm", "SR"), ("claim", "timeout-landed", "OS")]
-
-
-# The ten schedules the full sweep fails on every host, all one cause (G12): a retried owner's close or
-# delete after a crash before its publish answers success and publishes nothing.
-G12_SCHEDULES = {(op, "crash-before-push", pair) for op in ("close", "delete") for pair in ("RD", "RO", "RS", "OR", "SR")}
+         ("sync", "kill-write-confirm", "SR"), ("claim", "timeout-landed", "OS"),
+         ("close", "crash-before-push", "RS"), ("delete", "crash-before-push", "OR")]
 
 
 class Sweep(unittest.TestCase):
@@ -465,8 +462,8 @@ class Sweep(unittest.TestCase):
     forked journals, and each command's answer consistent with what the remote holds. Measured by the
     review: 660 schedules on each of three hosts, plus 660 with `git gc --prune=now` on the remote after
     every push and 330 + 330 with the two follow-ups run concurrently; the only failures were the ten
-    G12 schedules. BEAD_SWEEP=full runs all 660 (BEAD_SWEEP_GC=1 and BEAD_SWEEP_CONCURRENT=1 select the
-    variants) and expects exactly those ten to fail until G12 is fixed."""
+    G12 schedules, fixed since that review. BEAD_SWEEP=full runs all 660 (BEAD_SWEEP_GC=1 and
+    BEAD_SWEEP_CONCURRENT=1 select the variants). Every selected schedule must pass."""
 
     def test_sweep(self):
         full = os.environ.get("BEAD_SWEEP") == "full"
@@ -480,17 +477,12 @@ class Sweep(unittest.TestCase):
                                   concurrent=concurrent_mode)
             if not result["ok"]:
                 failures.append(result)
-        unexpected = [(f["op"], f["fault"], f["pair"], f["violations"]) for f in failures
-                      if (f["op"], f["fault"], f["pair"]) not in G12_SCHEDULES]
-        self.assertEqual([], unexpected)
-        if not full:
-            self.assertEqual([], failures, "the default slice holds no G12 schedule")
+        self.assertEqual([], [(f["op"], f["fault"], f["pair"], f["violations"]) for f in failures])
 
 
 
 # ---------------------------------------------------------------------- findings G01-G65
 # One class (or more) per finding; each fails on e9eed92 because of the bug and passes once the
 # finding's proposed diff is applied. Ranked order is in the report; here they follow the ids.
-
 
 

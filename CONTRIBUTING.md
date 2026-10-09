@@ -32,7 +32,7 @@ a throwaway remote of your own.
   moves down, never up. `AGENTS.md` describes each module.
 - `tests/` — `unittest`, one module per subject (`test_replay`, `test_storage`,
   `test_compat`, `test_commands`, `test_protocol`, `test_hardening`; the slow
-  `test_stress` and `test_sweep`; `test_hygiene`). `tests/support.py` has the
+  `test_stress` and `test_sweep`; `test_hygiene` and `test_check`). `tests/support.py` has the
   sandbox and the `Machine` helper.
 - `README.md` is what the tool does; `docs/REVIEWING.md` is the map of the design
   and the list of deliberate decisions; `docs/FINDINGS.md` is the ledger of every

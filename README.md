@@ -302,10 +302,14 @@ hostname is a local alias (`bead machines --name ID=ALIAS`), never in events.
 ## Tests and reviews
 
 ```sh
-./check.sh            # every test module with a scratch store (about 20 minutes)
+./check.sh            # every fast test module with a scratch store (about 20 minutes)
 ./check.sh --stress   # also the randomised multi-machine models and the protocol sweep
 ./check.sh --real     # also import/export of the real tracker exports on this machine
 ```
+
+Every selected check must pass. `--real` exits non-zero if a command fails or exported
+records differ, and keeps the failing round-trip report instead of only its last line.
+Its imports run offline in the scratch store.
 
 `tests/` is one package organised by subject, not by who wrote the test:
 `test_replay` (causality, registers, quarantine, validation, cycles; in-process and
@@ -315,11 +319,14 @@ fast), `test_protocol` (claims, attempts, fences, lost acknowledgements, sync ra
 `test_compat` (Beads import/export, real exports, `br`/`bv`), `test_hardening`
 (the base under the protocol: git environment and remotes, URLs and credentials,
 store files and modes, output streams, imports), `test_stress` (randomised
-models) and `test_sweep` (the ownership protocol enumerated: three machines,
-nine operations at seven fault boundaries, every ordered pair of follow-ups;
-a ten-schedule slice by default, `BEAD_SWEEP=full` for all 660). `tests/support.py` holds the sandbox: every test builds its
-own repository, bare remotes and machine homes in a temporary directory, and the
-package sets a scratch `BEAD_HOME` so the default store is never touched.
+models), `test_check` (the verification commands report failures), and `test_sweep`
+(the ownership protocol enumerated: three machines, nine operations at seven
+fault boundaries, every ordered pair of follow-ups;
+a twelve-schedule slice by default, including retries of interrupted owner closes and
+deletes; `BEAD_SWEEP=full` for all 660, with no failure exemptions). `tests/support.py`
+holds the sandbox: every test builds its own repository, bare remotes and machine
+homes in a temporary directory, and the package sets a scratch `BEAD_HOME` so the
+default store is never touched.
 
 Seven independent reviews have been run against the code. Their reports are kept
 verbatim under `docs/reviews/`; `docs/FINDINGS.md` is the ledger of every finding, its status,
