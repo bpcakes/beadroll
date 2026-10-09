@@ -3,6 +3,7 @@
 //! malformed record is judged the same way whatever order the files were read in.
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use indexmap::IndexMap;
 
@@ -128,16 +129,16 @@ pub fn read_attempt(
 }
 
 /// An event as replay sees it: a valid event, or the stand-in for an id that cannot be used
-/// (`op` `quarantined` or `invalid`). Its object is kept whole.
+/// (`op` `quarantined` or `invalid`). Its object is kept whole, shared with the record it came from.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Event {
     id: EventId,
-    value: Value,
+    value: Arc<Value>,
     deps: Vec<EventId>,
 }
 
 impl Event {
-    fn new(id: EventId, value: Value) -> Event {
+    fn new(id: EventId, value: Arc<Value>) -> Event {
         let deps = value
             .get("deps")
             .and_then(Value::as_array)
@@ -203,7 +204,7 @@ impl Event {
 /// has a place in that journal's order, and when it was added.
 #[derive(Clone, Debug)]
 struct Record {
-    event: Value,
+    event: Arc<Value>,
     replica: String,
     origin: String,
     sequenced: bool,
@@ -269,8 +270,9 @@ impl Journal {
             return;
         };
         self.counter += 1;
+        let event = Arc::new(event);
         let record = Record {
-            event,
+            event: Arc::clone(&event),
             replica: replica.to_owned(),
             origin: origin.to_owned(),
             sequenced,
@@ -278,15 +280,15 @@ impl Journal {
         };
         let records = self.raw.entry(id).or_default();
         let fresh = records.is_empty() && record.own();
-        records.push(record.clone());
+        records.push(record);
         if self.settled && !self.events.contains_key(&id) && fresh {
-            self.install(id, record.event, replica, sequenced); // the common case: a fresh, valid event
+            self.install(id, event, replica, sequenced); // the common case: a fresh, valid event
         } else {
             self.settled = false;
         }
     }
 
-    fn install(&mut self, id: EventId, event: Value, replica: &str, sequenced: bool) {
+    fn install(&mut self, id: EventId, event: Arc<Value>, replica: &str, sequenced: bool) {
         let event = Event::new(id, event);
         if sequenced {
             self.order.entry(replica.to_owned()).or_default().push(id);
@@ -318,17 +320,21 @@ impl Journal {
         }
         placed.sort_by_key(|(_, _, _, placement)| placement.counter); // each journal keeps its own order
         for (id, records, own, placement) in placed {
-            let mut distinct: IndexMap<String, &Value> = IndexMap::new();
+            // Each content once, in the order found: what Python's `canonical` tells apart.
+            let mut distinct: Vec<&Arc<Value>> = Vec::new();
             for record in records {
-                distinct
-                    .entry(canonical(&record.event))
-                    .or_insert(&record.event);
+                if !distinct
+                    .iter()
+                    .any(|seen| same_content(seen, &record.event))
+                {
+                    distinct.push(&record.event);
+                }
             }
             let (event, replica) = (&placement.event, placement.replica.as_str());
             let (origin, sequenced) = (&placement.origin, placement.sequenced);
             if distinct.len() > 1 {
                 self.quarantined
-                    .insert(id, distinct.values().map(|v| (*v).clone()).collect());
+                    .insert(id, distinct.iter().map(|v| Value::clone(v)).collect());
                 let trusted = if own { listed_ids(event) } else { Vec::new() };
                 // A copy that is not valid may name anything: only a string is an issue (§5 row 29).
                 let issue = event
@@ -336,7 +342,7 @@ impl Journal {
                     .and_then(Value::as_str)
                     .map_or(Value::Null, Value::from);
                 let stand_in = placeholder(id, "quarantined", replica, trusted, ("issue", issue));
-                self.install(id, stand_in, replica, sequenced);
+                self.install(id, Arc::new(stand_in), replica, sequenced);
                 continue;
             }
             if let Some(problem) = event_problem(event) {
@@ -352,7 +358,7 @@ impl Journal {
                     listed_ids(event),
                     ("problem", problem.into()),
                 );
-                self.install(id, stand_in, replica, sequenced);
+                self.install(id, Arc::new(stand_in), replica, sequenced);
                 continue;
             }
             if !own {
@@ -367,7 +373,7 @@ impl Journal {
                     .push(Problem::new(Some(id.to_string()), origin.clone(), problem));
                 continue;
             }
-            self.install(id, event.clone(), replica, sequenced);
+            self.install(id, Arc::clone(event), replica, sequenced);
         }
         self.raw = raw;
         self.settled = true;
@@ -446,6 +452,32 @@ fn placeholder(
     members.insert("data".into(), Value::Object(Object::new()));
     members.insert(last.0.into(), last.1);
     Value::Object(members)
+}
+
+/// Whether two records hold the same content, as Python's `canonical` (sorted keys, compact) tells
+/// them apart: object members in any order, floats by their bits (`-0.0` is not `0.0`), the rest
+/// exactly. Written without recursion, so a value of any depth is compared.
+fn same_content(a: &Value, b: &Value) -> bool {
+    let mut stack = vec![(a, b)];
+    while let Some((a, b)) = stack.pop() {
+        match (a, b) {
+            (Value::Float(x), Value::Float(y)) if x.to_bits() == y.to_bits() => {}
+            (Value::Array(x), Value::Array(y)) if x.len() == y.len() => {
+                stack.extend(x.iter().zip(y))
+            }
+            (Value::Object(x), Value::Object(y)) if x.len() == y.len() => {
+                for (key, value) in x {
+                    let Some(other) = y.get(key) else {
+                        return false;
+                    };
+                    stack.push((value, other));
+                }
+            }
+            (Value::Null | Value::Bool(_) | Value::Int(_) | Value::Str(_), _) if a == b => {}
+            _ => return false,
+        }
+    }
+    true
 }
 
 /// An event's content as quarantine compares it (Python's `canonical`): sorted keys, compact.
