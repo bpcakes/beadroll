@@ -18,6 +18,19 @@ pub fn event_time(millis: u64) -> String {
     )
 }
 
+/// A UTC time `seconds` after the epoch as `last_sync` records it (Python's
+/// `datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")`), with no ceiling.
+pub fn utc_stamp(seconds: u64) -> String {
+    let (days, rest) = (seconds / 86_400, seconds % 86_400);
+    let (year, month, day) = civil(days);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+        rest / 3600,
+        rest % 3600 / 60,
+        rest % 60
+    )
+}
+
 /// The proleptic Gregorian date `days` after 1970-01-01 (Howard Hinnant's `civil_from_days`).
 fn civil(days: u64) -> (u64, u64, u64) {
     let z = days + 719_468;
@@ -34,6 +47,14 @@ fn civil(days: u64) -> (u64, u64, u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stamps_are_seconds_in_utc() {
+        // Python: datetime.fromtimestamp(1760047200, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        assert_eq!(utc_stamp(1_760_047_200), "2025-10-09T22:00:00Z");
+        assert_eq!(utc_stamp(0), "1970-01-01T00:00:00Z");
+        assert_eq!(utc_stamp(4_102_444_801), "2100-01-01T00:00:01Z");
+    }
 
     #[test]
     fn times_print_as_python_event_time() {

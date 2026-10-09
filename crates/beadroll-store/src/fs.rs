@@ -1,0 +1,283 @@
+//! The store's file rules (Python's `private_dirs`, `private_dir`, `write_atomic`, `dir_entries`):
+//! private modes whatever the umask, whole-file writes that never leave anything half done, and
+//! listings that tell an absent directory from one that cannot be read.
+
+use std::ffi::OsStr;
+use std::fs::{DirBuilder, File, OpenOptions};
+use std::io::{self, Write as _};
+use std::os::unix::ffi::OsStrExt as _;
+use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _, PermissionsExt as _};
+use std::path::{Path, PathBuf};
+
+use beadroll_core::json::{self, Value};
+use beadroll_git::IoError;
+
+use crate::error::Error;
+
+/// `path` and any missing parents made as 0700 (less the umask, as `mkdir` gives it); a race loser
+/// is fine, a file in the way is an error.
+pub fn private_dirs(path: &Path) -> Result<(), Error> {
+    let mut missing = Vec::new();
+    let mut at = path;
+    while !at.is_dir() {
+        let Some(parent) = at.parent().filter(|p| *p != at) else {
+            break;
+        };
+        missing.push(at);
+        at = if parent.as_os_str().is_empty() {
+            Path::new(".")
+        } else {
+            parent
+        };
+    }
+    for folder in missing.into_iter().rev() {
+        if let Err(error) = DirBuilder::new().mode(0o700).create(folder)
+            && !(error.kind() == io::ErrorKind::AlreadyExists && folder.is_dir())
+        {
+            return Err(IoError::at(&error, folder).into());
+        }
+    }
+    Ok(())
+}
+
+/// A directory only its owner can enter: the store and everything beneath it.
+pub fn private_dir(path: &Path) -> Result<(), Error> {
+    private_dirs(path)?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+        .map_err(|e| IoError::at(&e, path).into())
+}
+
+/// `data` written whole to a temporary file beside `path` (`.NAME.PID.tmp`), fsynced, then renamed
+/// into place. Store files are 0600; a file written into the caller's checkout (`private` false)
+/// follows the caller's umask like any other file there. A write that fails leaves nothing behind.
+pub fn write_atomic(path: &Path, data: &[u8], private: bool) -> Result<(), Error> {
+    let parent = path.parent().unwrap_or(Path::new("."));
+    if private {
+        private_dirs(parent)?;
+    } else {
+        std::fs::create_dir_all(parent).map_err(|e| Error::Io(IoError::at(&e, parent)))?;
+    }
+    let tmp = temporary(path);
+    let mode = if private { 0o600 } else { 0o666 };
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(mode)
+        .open(&tmp)
+        .map_err(|e| Error::Io(IoError::at(&e, &tmp)))?;
+    let written = file
+        .write_all(data)
+        .map_err(|e| IoError::bare(&e))
+        .and_then(|()| fsync(&file))
+        .and_then(|()| {
+            drop(file);
+            std::fs::rename(&tmp, path).map_err(|e| IoError::at(&e, path))
+        });
+    if let Err(error) = written {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(Error::Io(error));
+    }
+    Ok(())
+}
+
+/// `.NAME.PID.tmp` beside `path`, its name's bytes kept as they are.
+fn temporary(path: &Path) -> PathBuf {
+    let name = path.file_name().unwrap_or_default();
+    let mut raw = b".".to_vec();
+    raw.extend_from_slice(name.as_bytes());
+    raw.extend_from_slice(format!(".{}.tmp", std::process::id()).as_bytes());
+    path.with_file_name(OsStr::from_bytes(&raw))
+}
+
+/// `fsync(2)`, as Python's `os.fsync`: never `F_FULLFSYNC` (`docs/RUST-PORT.md` §2.3e).
+pub fn fsync(file: &File) -> Result<(), IoError> {
+    rustix::fs::fsync(file).map_err(|e| IoError::bare(&io::Error::from(e)))
+}
+
+/// A directory's entries, sorted by name. Absent is empty; one that cannot be read, or is not a
+/// directory, is an IO error, never an empty journal.
+pub fn dir_entries(folder: &Path) -> Result<Vec<PathBuf>, Error> {
+    let entries = match std::fs::read_dir(folder) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(IoError::at(&error, folder).into()),
+    };
+    let mut paths = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|e| Error::Io(IoError::at(&e, folder)))?;
+        paths.push(entry.path());
+    }
+    paths.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+    Ok(paths)
+}
+
+/// The entries of `folder` whose names end in `ending` (pathlib's `glob("*" + ending)`, which takes
+/// hidden names and directories too), sorted; nothing when `folder` is not a directory or cannot
+/// be read.
+pub fn glob_ending(folder: &Path, ending: &str) -> Vec<PathBuf> {
+    if !folder.is_dir() {
+        return Vec::new();
+    }
+    let Ok(entries) = std::fs::read_dir(folder) else {
+        return Vec::new();
+    };
+    let mut paths: Vec<PathBuf> = entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .is_some_and(|name| name.as_bytes().ends_with(ending.as_bytes()))
+        })
+        .collect();
+    paths.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+    paths
+}
+
+/// Whether `path`'s suffix (pathlib's: from the last dot, which must not begin the name) is
+/// `suffix`.
+pub fn has_suffix(path: &Path, suffix: &str) -> bool {
+    let Some(name) = path.file_name() else {
+        return false;
+    };
+    let name = name.as_bytes();
+    name.len() > suffix.len() && name.ends_with(suffix.as_bytes())
+}
+
+/// The bytes of `path`, or the IO error naming it.
+pub fn read(path: &Path) -> Result<Vec<u8>, IoError> {
+    std::fs::read(path).map_err(|e| IoError::at(&e, path))
+}
+
+/// Why a file meant to hold JSON text could not be read as such, worded as Python's `str()` of
+/// the error: the `OSError`, the `UnicodeDecodeError` of `read_text(encoding="utf-8")`, or the
+/// parser's message.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Unreadable {
+    /// The file is not there.
+    Missing,
+    /// It could not be read, or holds no JSON: Python's message.
+    Other(String),
+}
+
+/// A file's JSON, read as Python reads `loads_strict(path.read_text(encoding="utf-8"))`: strict
+/// UTF-8 (a lone surrogate's bytes are not text), then JSON.
+pub fn read_json_text(path: &Path) -> Result<Value, Unreadable> {
+    let data = match std::fs::read(path) {
+        Ok(data) => data,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Err(Unreadable::Missing),
+        Err(error) => return Err(Unreadable::Other(os_error_str(&error, path))),
+    };
+    json_text(&data).map_err(Unreadable::Other)
+}
+
+/// `loads_strict(data.decode("utf-8"))`: the value, or Python's message for why not.
+pub fn json_text(data: &[u8]) -> Result<Value, String> {
+    if let Err(error) = std::str::from_utf8(data) {
+        return Err(utf8_error(data, &error));
+    }
+    json::parse(data)
+        .map(|parsed| parsed.value)
+        .map_err(|error| error.to_string())
+}
+
+/// Python's `str(OSError)` for an error about `path`: `[Errno N] strerror: 'path'`.
+pub fn os_error_str(error: &io::Error, path: &Path) -> String {
+    let strerror = beadroll_git::strerror(error);
+    match error.raw_os_error() {
+        Some(errno) => format!(
+            "[Errno {errno}] {strerror}: {}",
+            beadroll_core::text::repr_str(&path.to_string_lossy())
+        ),
+        None => strerror,
+    }
+}
+
+/// Python's message for bytes that are not UTF-8 (`UnicodeDecodeError`).
+pub fn utf8_error(data: &[u8], error: &std::str::Utf8Error) -> String {
+    let start = error.valid_up_to();
+    let (end, reason) = match error.error_len() {
+        None => (data.len(), "unexpected end of data"),
+        Some(len) => {
+            let first = data.get(start).copied().unwrap_or_default();
+            let starts = matches!(first, 0xC2..=0xF4);
+            let reason = if starts {
+                "invalid continuation byte"
+            } else {
+                "invalid start byte"
+            };
+            (start + len, reason)
+        }
+    };
+    if end - start == 1 {
+        let byte = data.get(start).copied().unwrap_or_default();
+        format!("'utf-8' codec can't decode byte 0x{byte:02x} in position {start}: {reason}")
+    } else {
+        format!(
+            "'utf-8' codec can't decode bytes in position {start}-{}: {reason}",
+            end - 1
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decode_errors_read_as_python_words_them() {
+        let message = |data: &[u8]| utf8_error(data, &std::str::from_utf8(data).unwrap_err());
+        assert_eq!(
+            message(b"ab\xff"),
+            "'utf-8' codec can't decode byte 0xff in position 2: invalid start byte"
+        );
+        assert_eq!(
+            message(b"\xe4\x41"),
+            "'utf-8' codec can't decode byte 0xe4 in position 0: invalid continuation byte"
+        );
+        assert_eq!(
+            message(b"x\xe4\xb8"),
+            "'utf-8' codec can't decode bytes in position 1-2: unexpected end of data"
+        );
+        assert_eq!(
+            message(b"\xe4\xb8\x41"),
+            "'utf-8' codec can't decode bytes in position 0-1: invalid continuation byte"
+        );
+        assert_eq!(
+            message(b"\xed\xa0\x80"),
+            "'utf-8' codec can't decode byte 0xed in position 0: invalid continuation byte"
+        );
+    }
+
+    #[test]
+    fn atomic_writes_leave_nothing_behind_and_keep_private_modes() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("a/b/file.json");
+        write_atomic(&target, b"{}", true).unwrap();
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        assert_eq!(std::fs::read(&target).unwrap(), b"{}");
+        let names: Vec<_> = dir_entries(target.parent().unwrap()).unwrap();
+        assert_eq!(names, std::slice::from_ref(&target));
+        let blocked = dir.path().join("file-not-dir");
+        std::fs::write(&blocked, "").unwrap();
+        let error = write_atomic(&blocked.join("x"), b"", true).unwrap_err();
+        assert_eq!(error.code().as_str(), "IO");
+    }
+
+    #[test]
+    fn suffixes_and_globs_follow_pathlib() {
+        assert!(has_suffix(Path::new("/x/000001.jsonl"), ".jsonl"));
+        assert!(!has_suffix(Path::new("/x/.jsonl"), ".jsonl"));
+        assert!(has_suffix(Path::new("/x/.b.json"), ".json"));
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["a.json", ".b.json", "C.JSON", "d.json.tmp", ".json"] {
+            std::fs::write(dir.path().join(name), "").unwrap();
+        }
+        let found: Vec<String> = glob_ending(dir.path(), ".json")
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(found, [".b.json", ".json", "a.json"]);
+    }
+}

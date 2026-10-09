@@ -42,6 +42,33 @@ pub struct Rename {
     pub uid: EventId,
 }
 
+impl Integrity {
+    /// The row as Python holds it: `event`, `issue`, `problem`, and `origin` for a record a reader
+    /// could not use.
+    pub fn to_value(&self) -> crate::json::Object {
+        let mut members = crate::json::Object::new();
+        members.insert("event".into(), self.event.clone().into());
+        members.insert("issue".into(), self.issue.clone().into());
+        members.insert("problem".into(), Value::from(self.problem.as_str()));
+        if let Some(origin) = &self.origin {
+            members.insert("origin".into(), Value::from(origin.as_str()));
+        }
+        members
+    }
+}
+
+impl Rename {
+    /// The rename as Python holds it: `from`, `to`, `replica`, `uid`.
+    pub fn to_value(&self) -> crate::json::Object {
+        let mut members = crate::json::Object::new();
+        members.insert("from".into(), Value::from(self.from.as_str()));
+        members.insert("to".into(), Value::from(self.to.as_str()));
+        members.insert("replica".into(), Value::from(self.replica.as_str()));
+        members.insert("uid".into(), Value::from(self.uid.to_string()));
+        members
+    }
+}
+
 /// Why replay cannot finish: every free key a renamed copy could take is taken. Python raises it
 /// out of replay, so every command on such a tracker fails with `KEY_SPACE`.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]

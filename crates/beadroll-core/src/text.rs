@@ -1,8 +1,11 @@
 //! Python's text semantics where bead's messages and keys depend on them (`docs/RUST-PORT.md` §5):
 //! `repr()` and `str()` of the values `json.loads` produces, `isprintable()`, the two `strip()`s,
-//! and the base-36 digests keys are made of.
+//! the base-36 digests keys are made of, and `int()` and `float()` of a string.
 
+mod number;
 mod printable;
+
+pub use number::{decimal_value, py_float, py_int, py_isdigit};
 
 use std::fmt::Write as _;
 

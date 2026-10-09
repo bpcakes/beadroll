@@ -11,6 +11,14 @@ publish.workspace = true
 [dependencies]
 beadroll-core.workspace = true
 beadroll-git.workspace = true
+rustix.workspace = true
+sha2.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+beadroll-test-support.workspace = true
 
 [lints]
 workspace = true

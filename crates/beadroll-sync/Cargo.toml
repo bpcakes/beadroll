@@ -12,6 +12,11 @@ publish.workspace = true
 beadroll-core.workspace = true
 beadroll-git.workspace = true
 beadroll-store.workspace = true
+fastrand.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+beadroll-test-support.workspace = true
 
 [lints]
 workspace = true
