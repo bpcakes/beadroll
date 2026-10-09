@@ -43,10 +43,10 @@ usage: cargo xtask <command>
   diff replay|json [--cases N] [--seed S] [--jobs N] [--fixtures FILE...] [--write-cases FILE]
       Check beadroll-core against CPython (docs/RUST-PORT.md §4.2): every case goes through a
       stdlib-only Python driver (xtask/python/) and the Rust core, and the answers must be the same
-      text. replay replays journals, the fixtures in xtask/fixtures/replay/ (or --fixtures) and N
-      generated histories (default 1000) from seed S (default 1); json parses and writes. A
-      differing case is kept in target/diff/ to rerun alone with --fixtures; --write-cases keeps
-      every replay case.
+      text. replay replays journals: the fixtures in xtask/fixtures/replay/ (or --fixtures), then N
+      generated histories (default 1000) from seed S (default 1). json parses and writes: its
+      corpus (or --fixtures), then N generated values and journal lines. A differing case is kept
+      in target/diff/ to rerun alone with --fixtures; --write-cases keeps every case.
 
   timing [--label NAME] [--out FILE] -- COMMAND [ARG...]
   timing --replay N [--label NAME] [--out FILE]

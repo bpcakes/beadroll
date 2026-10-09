@@ -2,6 +2,8 @@
 //! CPython's `json` through `xtask/python/json_dump.py`.
 
 mod corpus;
+#[cfg(test)]
+mod tests;
 
 use std::process::ExitCode;
 
@@ -13,11 +15,11 @@ use proptest::test_runner::{Config, RngAlgorithm, TestRng, TestRunner};
 
 use super::generate::{self, Tape};
 use super::report::Op;
-use super::{SHOWN, in_parallel, run};
+use super::{Options, SHOWN, case_file, in_parallel, keep_cases, read_fixtures, run};
 use crate::workspace::{self, Failure};
 
 /// One case: bytes to read, or an integer built in memory (the digits, plus one) to write.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum JsonCase {
     Bytes(Vec<u8>),
     PlusOne(String),
@@ -45,6 +47,26 @@ impl JsonCase {
             }
         };
         write(&Value::Object(case), Format::COMPACT).unwrap_or_default()
+    }
+
+    /// A case as `to_line` writes it, read back: a differing case kept in `target/diff/`.
+    fn from_line(line: &str) -> Result<JsonCase, String> {
+        let parsed = parse(line.as_bytes()).map_err(|error| error.to_string())?;
+        let members = parsed
+            .value
+            .as_object()
+            .filter(|members| members.len() == 1);
+        match members.map(|members| members.iter().next()) {
+            Some(Some((name, Value::Str(text)))) if name == "bytes" => text
+                .chars()
+                .map(|c| u8::try_from(c).map_err(|_| format!("holds {c:?}, which is not a byte")))
+                .collect::<Result<Vec<u8>, String>>()
+                .map(JsonCase::Bytes),
+            Some(Some((name, Value::Str(digits)))) if name == "plus_one" => {
+                Ok(JsonCase::PlusOne(digits.clone()))
+            }
+            _ => Err("is neither {\"bytes\": TEXT} nor {\"plus_one\": DIGITS}".into()),
+        }
     }
 
     /// What the Rust core answers, as the driver writes its answer.
@@ -98,10 +120,22 @@ fn written(value: &Value) -> Value {
     Value::Object(dialects.collect())
 }
 
-/// The corpus, then random values in random dress, then the lines of generated journals: `count`
-/// cases in all, from `seed`.
-fn cases(count: usize, seed: u64) -> Vec<JsonCase> {
-    let mut out = corpus::all();
+/// The cases `options` ask for, and how many of them come first: the cases of the `--fixtures`
+/// files, or else the corpus; then `--cases` generated ones.
+fn cases(options: &Options) -> Result<(Vec<JsonCase>, usize), Failure> {
+    let mut cases = if options.fixtures.is_empty() {
+        corpus::all()
+    } else {
+        read_fixtures(&options.fixtures, JsonCase::from_line).collect::<Result<Vec<_>, _>>()?
+    };
+    let first = cases.len();
+    cases.extend(generated(options.cases, options.seed));
+    Ok((cases, first))
+}
+
+/// `count` cases from `seed`: random values in random dress, and the lines of generated journals.
+fn generated(count: usize, seed: u64) -> Vec<JsonCase> {
+    let mut out = Vec::new();
     let mut bytes = [0u8; 32];
     for (slot, byte) in bytes.iter_mut().zip(seed.to_le_bytes()) {
         *slot = byte;
@@ -135,19 +169,38 @@ fn cases(count: usize, seed: u64) -> Vec<JsonCase> {
         let mut tape = Tape::new(tree.current());
         out.push(JsonCase::Bytes(corpus::random(&mut tape)));
     }
-    out.truncate(count.max(corpus::all().len()));
+    out.truncate(count);
     out
 }
 
-pub(crate) fn main(count: usize, seed: u64, jobs: usize) -> Result<ExitCode, Failure> {
-    let cases = cases(count, seed);
+pub(super) fn main(options: &Options) -> Result<ExitCode, Failure> {
+    Ok(if differences(options)? == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    })
+}
+
+/// Runs the cases through both sides and counts those whose answers differ.
+fn differences(options: &Options) -> Result<usize, Failure> {
+    let (cases, first) = cases(options)?;
     let driver = workspace::root().join("xtask/python/json_dump.py");
     let dir = workspace::output_dir("diff")?;
+    let mut written = case_file(options)?;
     let mut failures = 0;
     for (start, chunk) in (0..).step_by(2000).zip(cases.chunks(2000)) {
         let lines: Vec<String> = chunk.iter().map(JsonCase::to_line).collect();
-        let python = run::python(&driver, &lines, jobs)?;
-        let rust = in_parallel(chunk, jobs, JsonCase::answer);
+        keep_cases(written.as_mut(), &lines)?;
+        let python = run::python(&driver, &lines, options.jobs)?;
+        let rust = in_parallel(chunk, options.jobs, JsonCase::answer)?;
+        if python.len() != lines.len() || rust.len() != lines.len() {
+            return Err(Failure::Failed(format!(
+                "of {} cases, python answered {} and rust {}",
+                lines.len(),
+                python.len(),
+                rust.len()
+            )));
+        }
         for (index, ((line, python), rust)) in lines.iter().zip(&python).zip(&rust).enumerate() {
             let Some(difference) = run::difference(python, rust) else {
                 continue;
@@ -165,13 +218,16 @@ pub(crate) fn main(count: usize, seed: u64, jobs: usize) -> Result<ExitCode, Fai
             }
         }
     }
-    println!(
-        "diff json: {} cases (seed {seed}), {failures} different",
-        cases.len()
-    );
-    Ok(if failures == 0 {
-        ExitCode::SUCCESS
+    let source = if options.fixtures.is_empty() {
+        "the corpus"
     } else {
-        ExitCode::FAILURE
-    })
+        "fixtures"
+    };
+    println!(
+        "diff json: {} cases ({first} from {source}, {} generated, seed {}), {failures} different",
+        cases.len(),
+        cases.len() - first,
+        options.seed
+    );
+    Ok(failures)
 }

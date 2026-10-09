@@ -56,7 +56,7 @@ beadroll-core against CPython case by case. Later phases add `golden` and `check
 - `cargo xtask inventory`
 - `cargo xtask timing --label NAME -- COMMAND`
 - `cargo run --release --package xtask -- timing --replay 10000`
-- `cargo xtask diff replay [--cases N] [--seed S] [--fixtures FILE]`, `cargo xtask diff json`
+- `cargo xtask diff replay [--cases N] [--seed S] [--fixtures FILE]`, and `diff json` likewise
 - `python3 xtask/python/capture_fixtures.py OUT.jsonl` (the whole suite, about 20 minutes), then
   `cargo xtask diff replay --cases 0 --fixtures OUT.jsonl`
-- `cargo test -p xtask` (the oracle's own tests need `python3` 3.11 or later)
+- `cargo test -p xtask` (the tests of the oracle and of `diff json` need `python3` 3.11 or later)
