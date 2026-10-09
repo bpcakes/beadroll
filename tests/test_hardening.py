@@ -1,6 +1,6 @@
 """The base under the protocol: git environment and remotes, URLs and credentials, store files and
 modes, output streams, imports and robustness. Gathered from the seventh independent review
-(2026-10-07-7-claude); G.. docstrings name findings in FINDINGS.md, V.. tests are properties that held."""
+(2026-10-07-7-claude); G.. docstrings name findings in docs/FINDINGS.md, V.. tests are properties that held."""
 import concurrent.futures
 import contextlib
 import http.server

@@ -33,7 +33,7 @@ Import, export, `ready` and `blocked` have been checked against `br` 0.5.7 on
 tested. The on-disk and
 published format is frozen at version 1 (changes are additive; see *Format
 and upgrades*). Seven independent reviews have been run against the code;
-every finding and its resolution is in `FINDINGS.md`.
+every finding and its resolution is in `docs/FINDINGS.md`.
 
 ## Install
 
@@ -255,7 +255,7 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   closed at exec never produce a traceback: a committed command exits 0, a
   failed one keeps its status. Help is plain text on every Python.
 - An owner's close that a takeover superseded says so: `"superseded"` on the
-  record and a `!` line, exit 0 (the decision in `REVIEWING.md` §2 stands).
+  record and a `!` line, exit 0 (the decision in `docs/REVIEWING.md` §2 stands).
 - Text comes from files and stdin as UTF-8 whatever the locale; anything else
   is `VALIDATION`. A read-only store, a full volume or a missing file is an
   `IO` error, never a traceback, and never a half-written journal. A fetch
@@ -322,8 +322,8 @@ own repository, bare remotes and machine homes in a temporary directory, and the
 package sets a scratch `BEAD_HOME` so the default store is never touched.
 
 Seven independent reviews have been run against the code. Their reports are kept
-verbatim under `reviews/`; `FINDINGS.md` is the ledger of every finding, its status,
-how it was resolved and which tests cover it. `REVIEWING.md` is the brief for the
+verbatim under `docs/reviews/`; `docs/FINDINGS.md` is the ledger of every finding, its status,
+how it was resolved and which tests cover it. `docs/REVIEWING.md` is the brief for the
 next one: the map of the design, the decisions that are not findings, the rules,
 the checklist and the deliverables. `infra/` holds the maintainer's harness against
 real machines and a throwaway GitHub repository: `drive.py` (cross-machine
@@ -401,7 +401,7 @@ nothing in bead reads or writes it after the import.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md): the setup, the one rule about stores,
 the layout and how a change is made and tested. `AGENTS.md` is the same for an
-agent working in this repository; `REVIEWING.md` is the brief for an
+agent working in this repository; `docs/REVIEWING.md` is the brief for an
 independent review. Unless you say otherwise, a contribution is licensed as the
 project is.
 

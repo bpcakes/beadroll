@@ -3,9 +3,9 @@
 beadroll is a Beads-compatible issue tracker for coding agents working across git worktrees and
 machines. The implementation is the package `beadroll/` (Python 3.11+, standard library only);
 `./bead` runs the working copy, and `uv tool install .` installs it as the `bead` command. `README.md` says
-what it does and why. `REVIEWING.md` is the map of the design, the decisions that are not
-findings, and the rules reviewers work under. `FINDINGS.md` is the ledger of every review finding
-and how it was closed; `reviews/` holds the reports verbatim.
+what it does and why. `docs/REVIEWING.md` is the map of the design, the decisions that are not
+findings, and the rules reviewers work under. `docs/FINDINGS.md` is the ledger of every review finding
+and how it was closed; `docs/reviews/` holds the reports verbatim.
 
 ## Layout
 
@@ -52,8 +52,8 @@ and how it was closed; `reviews/` holds the reports verbatim.
   to skip the wait between attempts patch `pause`, never the global `time.sleep`. A subprocess
   driver gets every name from `runpy.run_path(bead)` (the launcher re-exports the package) and
   replaces one by setting it on every `beadroll*` module in `sys.modules` (see `tests/test_sweep.py`).
-- Record deliberate decisions in `REVIEWING.md` §2 and user-facing behaviour in `README.md`; a
-  review finding you close gets its row in `FINDINGS.md`. Format 1 is frozen: additions only.
+- Record deliberate decisions in `docs/REVIEWING.md` §2 and user-facing behaviour in `README.md`; a
+  review finding you close gets its row in `docs/FINDINGS.md`. Format 1 is frozen: additions only.
 - Run the fast baseline before committing, the stress suite when the sync protocol changed. The
   commit message says what changed in behaviour, in prose.
 - After a push, a machine upgrades by rerunning its install (`uv tool install --force ...`, or a

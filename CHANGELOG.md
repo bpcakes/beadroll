@@ -21,7 +21,7 @@ First release.
   verbatim.
 - `bead prime` and `bead onboard`: the workflow and the instruction block an agent needs.
 - A private `sync.git` that bead maintains itself and rebuilds if damaged.
-- Seven independent reviews closed; the ledger is `FINDINGS.md`.
+- Seven independent reviews closed; the ledger is `docs/FINDINGS.md`.
 
 [Unreleased]: https://github.com/bpcakes/beadroll/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/bpcakes/beadroll/releases/tag/v0.1.0

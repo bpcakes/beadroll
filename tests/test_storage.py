@@ -1,7 +1,7 @@
 """Storage: segments, torn tails, rotation, readers against writers, machine identity.
 
 Gathered from: second independent audit (REAUDIT), 2026-10-06. Docstrings and names that cite
-finding ids (A.., R.., N.., C.., K.., P.., D..) refer to FINDINGS.md."""
+finding ids (A.., R.., N.., C.., K.., P.., D..) refer to docs/FINDINGS.md."""
 import argparse
 import collections
 import concurrent.futures

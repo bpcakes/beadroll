@@ -34,8 +34,8 @@ a throwaway remote of your own.
   `test_compat`, `test_commands`, `test_protocol`, `test_hardening`; the slow
   `test_stress` and `test_sweep`; `test_hygiene`). `tests/support.py` has the
   sandbox and the `Machine` helper.
-- `README.md` is what the tool does; `REVIEWING.md` is the map of the design
-  and the list of deliberate decisions; `FINDINGS.md` is the ledger of every
+- `README.md` is what the tool does; `docs/REVIEWING.md` is the map of the design
+  and the list of deliberate decisions; `docs/FINDINGS.md` is the ledger of every
   review finding and how it was closed.
 
 ## Making a change
@@ -51,7 +51,7 @@ a throwaway remote of your own.
 3. Format 1 is frozen: a change to what events or the published manifest
    contain must be additive, so that an older bead sets the new thing aside
    rather than misreads it (see *Format and upgrades* in the README).
-4. A deliberate decision goes in `REVIEWING.md` §2; user-facing behaviour in
+4. A deliberate decision goes in `docs/REVIEWING.md` §2; user-facing behaviour in
    `README.md`. Keep the two agent texts (`bead prime`, `bead onboard`) true:
    `AGENTS.md` carries the onboard block verbatim and a test checks that.
 5. Run `./check.sh` before opening a pull request; CI runs it on Linux and
