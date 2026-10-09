@@ -98,7 +98,9 @@ class Result(unittest.TestResult):
         self.refusals, self.outcomes, self.reports, self.outside = refusals, {}, [], []
 
     def note(self, test, outcome, text=None):
-        key = test.id()
+        # A skip inside `subTest` arrives with the subtest, whose id is not its test's: the outcome
+        # belongs to the enclosing test, which would otherwise count as passed without having run.
+        key = getattr(test, "test_case", test).id()
         if self.RANK[outcome] >= self.RANK[self.outcomes.get(key, "passed")]:
             self.outcomes[key] = outcome
         if text:

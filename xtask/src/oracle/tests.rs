@@ -62,7 +62,8 @@ fn options_default_to_the_fast_modules_and_check_their_values() {
 }
 
 /// A scratch suite: a `tests` package with one module whose tests run the binary under test
-/// (`echo`) or this checkout's Python launcher directly, bypassing `BEAD_UNDER_TEST`.
+/// (`echo`) or this checkout's Python launcher directly, bypassing `BEAD_UNDER_TEST`, and one
+/// whose every subtest is skipped, as a test skips where git has no translations.
 fn fixture(name: &str, guard: bool) -> (Suite, PathBuf) {
     let dir = std::env::temp_dir().join(format!("xtask-oracle-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
@@ -80,6 +81,10 @@ fn fixture(name: &str, guard: bool) -> (Suite, PathBuf) {
          \x20       self.assertNotEqual(run(LAUNCHER, '--version').returncode, 0)\n\
          \x20   def test_bypass_expecting_success(self):\n\
          \x20       self.assertEqual(run(LAUNCHER, '--version').returncode, 0)\n\
+         \x20   def test_skipped_in_subtests(self):\n\
+         \x20       for locale in ('de', 'fr'):\n\
+         \x20           with self.subTest(locale=locale):\n\
+         \x20               self.skipTest(f'no {{locale}} translations')\n\
          \x20   def test_excluded(self):\n\
          \x20       self.fail('the skip list leaves this out')\n",
     );
@@ -115,9 +120,10 @@ fn a_test_that_reaches_python_bead_instead_of_the_binary_under_test_fails() {
             summary.ran,
             summary.passed,
             summary.failed,
+            summary.skipped,
             summary.excluded
         ),
-        (3, 1, 2, 1),
+        (4, 1, 2, 1, 1),
         "{log}"
     );
     assert_eq!(result.status, Some(1));
@@ -138,10 +144,11 @@ fn against_python_itself_the_launcher_runs_as_usual() {
     let summary = result
         .summary
         .unwrap_or_else(|| panic!("no summary: {log}"));
-    // Python bead answers, so only the test that expected it to fail does.
+    // Python bead answers, so only the test that expected it to fail does; the test whose
+    // subtests were all skipped counts as skipped, not passed.
     assert_eq!(
-        (summary.ran, summary.passed, summary.failed),
-        (3, 2, 1),
+        (summary.ran, summary.passed, summary.failed, summary.skipped),
+        (4, 2, 1, 1),
         "{log}"
     );
     assert!(!suite.out.join("test_fixture.refusals").exists());
@@ -158,4 +165,26 @@ fn a_skip_list_naming_a_missing_test_stops_the_module() {
     let log = fs::read_to_string(&result.log).unwrap();
     assert!(log.contains("test_fixture.Fixture.test_gone"), "{log}");
     fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn bead_is_built_into_the_target_directory_and_profile_xtask_runs_from() {
+    let args = |profile: &str| {
+        let command = build_command(Path::new("/repo"), Path::new(profile)).unwrap();
+        assert_eq!(command.get_current_dir(), Some(Path::new("/repo")));
+        command
+            .get_args()
+            .map(|arg| arg.to_str().unwrap().to_owned())
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    assert_eq!(
+        args("/elsewhere/target/debug"),
+        "build --locked --package beadroll --bin bead --target-dir /elsewhere/target"
+    );
+    assert_eq!(
+        args("/t/release"),
+        "build --locked --package beadroll --bin bead --target-dir /t --profile release"
+    );
+    assert!(build_command(Path::new("/repo"), Path::new("/")).is_err());
 }
