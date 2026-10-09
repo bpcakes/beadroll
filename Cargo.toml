@@ -1,7 +1,7 @@
 # Cargo.toml (workspace root, beside the Python package until the cutover; docs/RUST-PORT.md §3)
 [workspace]
 resolver = "3"
-members = ["crates/*"]                    # fuzz/ is its own workspace (cargo-fuzz)
+members = ["crates/*", "xtask"]           # fuzz/ is its own workspace (cargo-fuzz)
 
 [workspace.package]
 version = "0.2.0"

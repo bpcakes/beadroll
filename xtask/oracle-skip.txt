@@ -1,0 +1,149 @@
+# The tests `cargo xtask oracle` leaves out of the Python suite (docs/RUST-PORT.md §4.2): those that
+# cannot target another binary, and those that run none. Derived from the catalogues in
+# docs/rust-port/ and checked against a run of the fast modules through a tracing copy of the
+# launcher, which recorded every test that started bead and how (test_stress and test_sweep were
+# read from their source). One `GROUP TEST-ID` per line:
+#
+#   driver      runs the launcher itself: through runpy, under another Python, as its own copy,
+#               or with sitecustomize patching inside it (20)
+#   in-process  exercises the Python package in-process; no bead it starts decides the verdict (75)
+#   patched     runs bead, but the verdict comes from patching in-process Python (19)
+#   no-bead     runs no bead at all (11)
+#
+# Every other test (333) runs unchanged against whatever BEAD_UNDER_TEST names. A test that reaches
+# bead some other way is fixed, not listed here. The runner refuses a list that names a test the
+# suite does not have.
+
+
+# Drivers: they cannot target a binary that is not the Python launcher. (20)
+driver      test_storage.StorageReaudit.test_machine_identity_can_recover_from_first_use_crash
+driver      test_storage.StorageReaudit.test_machine_identity_first_use_is_atomic_across_workspaces
+driver      test_storage.StorageReaudit.test_reader_never_confirms_a_claim_whose_push_was_rejected
+driver      test_storage.StorageReaudit.test_refused_claiming_update_leaves_the_journal_untouched_under_a_reader
+driver      test_commands.Review6.test_clock_skew_does_not_override_causality  # runpy as __main__ with time.time_ns patched
+driver      test_commands.Review6.test_f14_future_clock_create_is_a_structured_error  # runpy as __main__ with time.time_ns patched
+driver      test_protocol.Protocol3.test_kill_during_local_confirmation_does_not_leave_partial_atomic_update
+driver      test_protocol.RootAudit.test_clock_moves_back_but_later_observed_edit_settles_register
+driver      test_protocol.SyncAudit.test_bug_kill_mid_append_then_successful_write_must_stay_readable
+driver      test_protocol.SyncAudit.test_retry_exhaustion_retains_local_edits_and_no_partial_claim
+driver      test_hardening.G12_RetriedEndOfClaimIsPublished.test_g12_retried_close_publishes_the_end_of_the_claim
+driver      test_hardening.G12_RetriedEndOfClaimIsPublished.test_g12_retried_delete_publishes_the_end_of_the_claim
+driver      test_hardening.G12_RetriedEndOfClaimIsPublished.test_g12_retried_update_status_closed_publishes_the_end_of_the_claim
+driver      test_hardening.G29_FailureAfterAcceptanceIsNotNothingHalfDone.test_g29_accepted_command_is_not_reported_as_io_when_meta_cannot_be_written
+driver      test_hardening.G29_FailureAfterAcceptanceIsNotNothingHalfDone.test_g29_owner_close_whose_publish_hits_a_full_volume_is_recorded_not_failed
+driver      test_hardening.G29_FailureAfterAcceptanceIsNotNothingHalfDone.test_g29_recognised_retry_is_not_reported_as_io_when_meta_cannot_be_written
+driver      test_hardening.G30_DeepJsonIsBoundedAndScoped.test_peer_on_python_312_keeps_working_after_a_deep_import_elsewhere  # the launcher under Python 3.12 or 3.13
+driver      test_hardening.V5_KillAtRename.test_kill_at_rename_keeps_targets_whole  # sitecustomize patches os.replace inside Python bead
+driver      test_hardening.V8_Python312.test_storage_module_passes_with_bead_itself_running_on_312  # a copy of the launcher with a 3.12 shebang
+driver      test_sweep.Sweep.test_sweep
+
+# In-process tests: against another binary they would only re-test Python. (75)
+in-process  test_replay.ReplayAuditBugs.test_bad_event_schema_has_scoped_damage
+in-process  test_replay.ReplayAuditBugs.test_identical_id_in_different_machine_journals_is_order_independent
+in-process  test_replay.ReplayAuditBugs.test_non_chain_claim_cannot_bypass_pending_predecessor
+in-process  test_replay.ReplayAuditBugs.test_non_chain_same_journal_must_not_invent_ancestry
+in-process  test_replay.ReplayAuditBugs.test_quarantined_event_with_missing_cause_does_not_hold_descendants
+in-process  test_replay.ReplayAuditBugs.test_quarantined_takeover_cannot_supersede_a_valid_close
+in-process  test_replay.ReplayAuditBugs.test_second_parent_blockers_hold_child
+in-process  test_replay.ReplayAuditBugs.test_unknown_event_version_is_not_applied_silently
+in-process  test_replay.ReplayAuditBugs.test_unknown_operation_is_reported_and_does_not_mutate_timestamp
+in-process  test_replay.ReplayAuditProperties.test_all_registers_keep_concurrent_clear_and_value_then_settle
+in-process  test_replay.ReplayAuditProperties.test_causal_write_wins_despite_backwards_clock
+in-process  test_replay.ReplayAuditProperties.test_cycle_after_merge_and_partial_removal
+in-process  test_replay.ReplayAuditProperties.test_handwritten_offline_takeover_does_not_fence_confirmed_owner
+in-process  test_replay.ReplayAuditProperties.test_missing_causes_hold_claim_and_close_of_pending_create
+in-process  test_replay.ReplayAuditProperties.test_reused_event_ids_are_isolated_across_workspaces
+in-process  test_replay.ReplayAuditProperties.test_six_machine_3000_event_replay_all_720_enumerations
+in-process  test_replay.ReplayAuditProperties.test_three_machine_add_wins_labels_and_dependencies
+in-process  test_replay.ReplayAuditProperties.test_tombstoned_blocker_unblocks_unless_status_disputed
+in-process  test_replay.ReplayReaudit.test_all_registers_preserve_none_against_concurrent_value
+in-process  test_replay.ReplayReaudit.test_deep_valid_dependency_graph_does_not_overflow_cycle_scan
+in-process  test_replay.ReplayReaudit.test_duplicate_create_uid_does_not_destroy_issue
+in-process  test_replay.ReplayReaudit.test_ignored_op_with_valid_id_does_not_hold_descendant
+in-process  test_replay.ReplayReaudit.test_invalid_timestamp_is_scoped_even_when_event_is_inert
+in-process  test_replay.ReplayReaudit.test_malformed_duplicate_order_does_not_change_projection
+in-process  test_replay.ReplayReaudit.test_malformed_set_is_atomic_and_cannot_overwrite_internal_state
+in-process  test_replay.ReplayReaudit.test_missing_predecessor_holds_claim_and_close_then_recovers
+in-process  test_replay.ReplayReaudit.test_non_scalar_actor_thread_is_scoped
+in-process  test_replay.ReplayReaudit.test_offline_forged_takeover_stays_provisional_and_does_not_fence_close
+in-process  test_replay.ReplayReaudit.test_orphan_takeover_does_not_fence_another_issues_close
+in-process  test_replay.ReplayReaudit.test_partially_invalid_label_add_applies_nothing
+in-process  test_replay.ReplayReaudit.test_quarantined_variant_cannot_hold_descendants_in_cycle
+in-process  test_replay.ReplayReaudit.test_six_machine_3600_mixed_envelope_events_are_scoped_and_deterministic
+in-process  test_replay.ReplayReaudit.test_valid_six_machine_6000_events_converge_and_ancestry_is_exact
+in-process  test_replay.ReplayResiduals.test_cycle_scan_reports_each_elementary_cycle
+in-process  test_replay.ReplayResiduals.test_identical_misplaced_duplicate_does_not_change_broken_chain_result
+in-process  test_replay.ReplayResiduals.test_malformed_embedded_create_comment_is_scoped
+in-process  test_replay.ReplayResiduals.test_missing_issue_creates_cannot_alias_and_overwrite
+in-process  test_replay.ReplayResiduals.test_quarantined_common_descendant_dependency_is_scoped
+in-process  test_replay.ReplayResiduals.test_takeover_must_causally_see_the_claim_it_supersedes
+in-process  test_replay.ReplayReview4.test_d01_cycle_enumerator_matches_every_graph_through_four_nodes
+in-process  test_replay.ReplayReview4.test_q07_invalid_placeholder_cannot_bridge_a_broken_machine_chain
+in-process  test_replay.ReplayReview4.test_q09_required_register_clears_remain_queryable
+in-process  test_replay.ReplayScale.test_ownership_ancestry_stays_small_on_a_long_claim_release_history
+in-process  test_replay.ReplayThirdReview.test_create_without_issue_id_is_inert
+in-process  test_replay.ReplayThirdReview.test_identical_misplaced_duplicate_does_not_reorder_own_journal
+in-process  test_replay.ReplayThirdReview.test_malformed_imported_comment_does_not_break_queries
+in-process  test_replay.ReplayThirdReview.test_merged_dependency_cycle_reports_remaining_cycle_after_partial_removal
+in-process  test_replay.ReplayThirdReview.test_mixed_detached_ownership_ancestry_matches_exact_graph
+in-process  test_replay.ReplayThirdReview.test_new_comment_integer_survives_collision_with_later_legacy_import
+in-process  test_replay.ReplayThirdReview.test_optional_register_clears_remain_queryable
+in-process  test_replay.ReplayThirdReview.test_quarantine_agreed_cycle_is_scoped
+in-process  test_replay.ReplayThirdReview.test_quarantine_malformed_scalar_deps_is_scoped
+in-process  test_replay.ReplayThirdReview.test_valid_colliding_comments_keep_exported_ids_when_other_machine_arrives
+in-process  test_replay.Review5Replay.test_e10_extra_cannot_override_canonical_export_fields
+in-process  test_replay.UnitTest.test_an_ignored_newer_format_event_cannot_change_ownership
+in-process  test_replay.UnitTest.test_malformed_payloads_are_scoped_and_reported
+in-process  test_replay.UnitTest.test_one_remote_has_one_identity_however_it_is_spelled
+in-process  test_replay.UnitTest.test_the_coordination_ref_cannot_be_a_branch
+in-process  test_compat.CompatAuditCommentIds.test_existing_comment_export_id_survives_clock_skewed_new_comment
+in-process  test_compat.CompatAuditRefValidation.test_ref_names_reject_code_refs_and_traversal_accept_unicode
+in-process  test_commands.CompatAuditIdentity.test_bp_thread_overrides_detected_thread_without_bp_agent
+in-process  test_commands.CompatAuditIdentity.test_detect_actor_environment_and_explicit_overrides
+in-process  test_commands.CompatAuditIdentity.test_nearest_harness_mocked_process_tree
+in-process  test_protocol.Protocol3.test_mixed_ownership_file_and_journal_ancestry_across_six_machines  # its fixture runs bead; the verdict is Python's replay
+in-process  test_hardening.G14_KeyRetractionLostToConcurrentTarget.test_replay_does_not_depend_on_the_tie_break_between_the_two_concurrent_events
+in-process  test_hardening.G25_FirstSyncRemoteIsFrozen.test_origin_remembered_by_an_older_version_is_not_preferred
+in-process  test_hardening.G47_StoreIsPrivateByItsOwnModes.test_g47_two_torn_fragments_in_one_second_are_both_kept
+in-process  test_hardening.G57_LoneSurrogateInAJournalIsScoped.test_attempt_file_with_a_lone_surrogate_reads_as_text_that_encodes
+in-process  test_hardening.V1_RunGitTimeoutHygiene.test_timeouts_leak_nothing_and_reap_as_documented
+in-process  test_hardening.V4_DanglingReplayDeterminism.test_twin_key_histories_replay_identically_under_any_delivery_order
+in-process  test_hardening.V4_DanglingReplayDeterminism.test_unique_key_histories_replay_identically_under_any_delivery_order
+in-process  test_hardening.V7_NormalizeRemote.test_spellings_of_one_remote_share_an_id_and_ports_separate
+in-process  test_hardening.V7_PasswordShapesFollowGit.test_git_confirmed_password_shapes_are_dropped
+in-process  test_hardening.V7_PasswordShapesFollowGit.test_http_secrets_git_sends_are_the_ones_bead_drops
+in-process  test_hardening.V7_PasswordShapesFollowGit.test_ssh_logins_bead_keeps_are_what_git_hands_ssh
+
+# CLI tests whose verdict comes from patching in-process Python. (19)
+patched     test_protocol.Protocol3.test_fence_wins_against_a_real_push_still_running_after_timeout
+patched     test_protocol.Protocol3.test_reader_sees_all_or_none_of_accepted_claim_and_bundled_edits
+patched     test_protocol.Protocol3.test_recovered_atomic_update_is_not_applied_again_after_a_later_observed_edit
+patched     test_protocol.Protocol3.test_rejected_fences_leave_attempt_pending_and_excluded
+patched     test_protocol.Protocol3.test_release_recovers_a_successful_push_with_lost_acknowledgement
+patched     test_protocol.ProtocolReaudit.test_failed_multievent_update_void_retry_must_not_commit_edits
+patched     test_protocol.ProtocolReaudit.test_failed_void_publish_retry_must_not_activate_unaccepted_claim
+patched     test_protocol.ProtocolReaudit.test_failed_void_push_must_leave_original_claim_unconfirmed
+patched     test_protocol.ProtocolReaudit.test_nonzero_applied_push_with_interleaved_writer_must_not_fork
+patched     test_protocol.ProtocolReaudit.test_quiet_reconcile_of_unaccepted_claim_preserves_independent_work
+patched     test_protocol.ProtocolReaudit.test_refused_void_publish_must_not_activate_unaccepted_claim
+patched     test_protocol.ProtocolReview4.test_q03_crash_after_confirmation_before_cleanup_is_idempotent
+patched     test_hardening.G09_ReceiptLoopVariableShadowsTheInFlightReceipt.test_ordinary_contention_after_a_settled_receipt_retries_the_claim
+patched     test_hardening.G11_ServerHookTextDoesNotDecideThePushOutcome.test_applied_claiming_edit_is_not_rebuilt_over_a_later_observed_edit
+patched     test_hardening.G28_OnlyTheLockHolderSweepsPending.test_g28_reader_racing_a_sync_keeps_the_receipt_the_sync_kept
+patched     test_hardening.G54_StaleTwinRuleDropsTheReceipt.test_damaged_twin_of_an_accepted_release_keeps_its_receipt
+patched     test_hardening.V2_ConfirmedTwinKeepsTheRetryRecognised.test_identical_pending_twin_confirms_and_the_retry_is_recognised
+patched     test_hardening.V2_InFlightAttemptAcrossActors.test_another_actor_fences_an_in_flight_release_during_the_unlocked_sleep
+patched     test_hardening.V2_InFlightAttemptAcrossActors.test_in_flight_release_lands_before_another_actors_command
+
+# Tests that run no bead: the verification scripts, the repository lint, git alone. (11)
+no-bead     test_hygiene.RepositoryHygiene.test_tracked_files_name_no_machine_or_user
+no-bead     test_check.CheckScript.test_roundtrip_failure_fails_the_check_and_keeps_diagnostics
+no-bead     test_check.CheckScript.test_success_keeps_the_roundtrip_summary
+no-bead     test_check.CheckScript.test_successful_roundtrip_does_not_hide_a_failed_module
+no-bead     test_check.RoundtripFailureReporting.test_changed_records_fail_the_roundtrip
+no-bead     test_check.RoundtripFailureReporting.test_failed_commands_fail_the_roundtrip
+no-bead     test_check.RoundtripFailureReporting.test_identical_records_succeed
+no-bead     test_check.SweepFailureReporting.test_default_slice_retries_crashed_owner_close_and_delete
+no-bead     test_check.SweepFailureReporting.test_every_failed_schedule_fails_the_sweep
+no-bead     test_check.SweepFailureReporting.test_successful_schedules_pass
+no-bead     test_hardening.V1_PushSideTranslation.test_git_keeps_the_rejection_tokens_bead_reads_untranslated  # git alone

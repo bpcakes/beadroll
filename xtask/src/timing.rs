@@ -1,0 +1,232 @@
+//! `cargo xtask timing`: runs a command and records what it took as one JSON line, evidence for
+//! the budgets of `docs/RUST-PORT.md` §4.7 and Appendix A. A timing never decides whether
+//! anything passes.
+
+use std::ffi::OsString;
+use std::fs::OpenOptions;
+use std::io::Write as _;
+use std::os::unix::process::ExitStatusExt as _;
+use std::path::{Path, PathBuf};
+use std::process::{Command, ExitCode, ExitStatus};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+
+use crate::workspace::{self, Failure, json_string};
+
+struct Options {
+    label: Option<String>,
+    out: Option<PathBuf>,
+    command: Vec<OsString>,
+}
+
+fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
+    let mut options = Options {
+        label: None,
+        out: None,
+        command: Vec::new(),
+    };
+    let mut args = args.into_iter();
+    while let Some(arg) = args.next() {
+        let text = arg.to_string_lossy().into_owned();
+        let mut value = |name: &str| {
+            args.next()
+                .ok_or_else(|| Failure::Usage(format!("{name} needs a value")))
+        };
+        match text.as_str() {
+            "--label" => options.label = Some(value("--label")?.to_string_lossy().into_owned()),
+            "--out" => options.out = Some(PathBuf::from(value("--out")?)),
+            "--" => {
+                options.command = args.collect();
+                break;
+            }
+            _ => {
+                return Err(Failure::Usage(format!(
+                    "unexpected {text}; the command follows --"
+                )));
+            }
+        }
+    }
+    if options.command.is_empty() {
+        return Err(Failure::Usage("timing needs a command after --".into()));
+    }
+    Ok(options)
+}
+
+pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
+    let options = parse(args)?;
+    let out = match options.out {
+        Some(out) => out,
+        None => workspace::target_dir()?.join("timing.jsonl"),
+    };
+    let (program, args) = options
+        .command
+        .split_first()
+        .ok_or_else(|| Failure::Usage("timing needs a command after --".into()))?;
+    let started = SystemTime::now();
+    let clock = Instant::now();
+    let status = Command::new(program)
+        .args(args)
+        .status()
+        .map_err(|error| Failure::Failed(format!("cannot run {program:?}: {error}")))?;
+    let seconds = clock.elapsed().as_secs_f64();
+    let record = Record {
+        label: options.label.as_deref(),
+        command: &options.command,
+        status,
+        seconds,
+        started,
+        commit: git(&["rev-parse", "HEAD"]).map(|out| out.trim().to_owned()),
+        dirty: git(&["status", "--porcelain"]).map(|out| !out.trim().is_empty()),
+    };
+    append(&out, &record.to_json())?;
+    println!("timing: {seconds:.3} s, recorded in {}", out.display());
+    Ok(if status.success() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    })
+}
+
+/// git's output in the repository, or `None` if git did not answer.
+fn git(args: &[&str]) -> Option<String> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(workspace::root())
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn append(path: &Path, line: &str) -> Result<(), Failure> {
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|error| Failure::io("cannot open", path, &error))?;
+    writeln!(file, "{line}").map_err(|error| Failure::io("cannot write", path, &error))
+}
+
+/// What one timed run leaves as evidence: no host name or user, only what the machine is.
+struct Record<'a> {
+    label: Option<&'a str>,
+    command: &'a [OsString],
+    status: ExitStatus,
+    seconds: f64,
+    started: SystemTime,
+    commit: Option<String>,
+    dirty: Option<bool>,
+}
+
+impl Record<'_> {
+    fn to_json(&self) -> String {
+        let text = |value: Option<&str>| value.map_or_else(|| "null".to_owned(), json_string);
+        let command: Vec<String> = self
+            .command
+            .iter()
+            .map(|arg| json_string(&arg.to_string_lossy()))
+            .collect();
+        let status = match (self.status.code(), self.status.signal()) {
+            (Some(code), _) => code.to_string(),
+            (None, Some(signal)) => (-signal).to_string(),
+            (None, None) => "null".to_owned(),
+        };
+        let cpus = std::thread::available_parallelism().map_or(0, usize::from);
+        format!(
+            "{{\"label\": {}, \"command\": [{}], \"status\": {status}, \"seconds\": {:.3}, \"started\": {}, \
+             \"commit\": {}, \"dirty\": {}, \"os\": {}, \"arch\": {}, \"cpus\": {cpus}}}",
+            text(self.label),
+            command.join(", "),
+            self.seconds,
+            json_string(&utc(self.started)),
+            text(self.commit.as_deref()),
+            self.dirty
+                .map_or("null", |dirty| if dirty { "true" } else { "false" }),
+            json_string(std::env::consts::OS),
+            json_string(std::env::consts::ARCH),
+        )
+    }
+}
+
+/// `2026-10-09T15:04:05Z`, in UTC, to the second.
+fn utc(time: SystemTime) -> String {
+    let secs = time.duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    let (days, rest) = (secs / 86_400, secs % 86_400);
+    let (year, month, day) = civil(days);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+        rest / 3600,
+        rest % 3600 / 60,
+        rest % 60
+    )
+}
+
+/// The proleptic Gregorian date `days` after 1970-01-01 (Howard Hinnant's `civil_from_days`).
+fn civil(days: u64) -> (u64, u64, u64) {
+    let z = days + 719_468;
+    let era = z / 146_097;
+    let doe = z % 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + u64::from(month <= 2);
+    (year, month, day)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn dates_are_civil_utc() {
+        assert_eq!(utc(UNIX_EPOCH), "1970-01-01T00:00:00Z");
+        assert_eq!(
+            utc(UNIX_EPOCH + Duration::from_secs(951_782_400)),
+            "2000-02-29T00:00:00Z"
+        );
+        assert_eq!(
+            utc(UNIX_EPOCH + Duration::from_secs(1_791_558_245)),
+            "2026-10-09T15:04:05Z"
+        );
+        assert_eq!(
+            utc(UNIX_EPOCH + Duration::from_secs(4_102_444_799)),
+            "2099-12-31T23:59:59Z"
+        );
+    }
+
+    #[test]
+    fn a_record_is_one_json_object() {
+        let record = Record {
+            label: Some("replay \"10k\""),
+            command: &[OsString::from("cargo"), OsString::from("bench")],
+            status: ExitStatus::from_raw(0),
+            seconds: 1.5,
+            started: UNIX_EPOCH,
+            commit: None,
+            dirty: Some(false),
+        };
+        let json = record.to_json();
+        assert!(json.starts_with(
+            "{\"label\": \"replay \\\"10k\\\"\", \"command\": [\"cargo\", \"bench\"], \"status\": 0, \
+             \"seconds\": 1.500, \"started\": \"1970-01-01T00:00:00Z\", \"commit\": null, \"dirty\": false"
+        ), "{json}");
+        assert!(!json.contains('\n'));
+    }
+
+    #[test]
+    fn the_command_follows_two_dashes() {
+        let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
+        let options = parse(args(&["--label", "x", "--", "sleep", "--label"])).unwrap();
+        assert_eq!(options.label.as_deref(), Some("x"));
+        assert_eq!(options.command, args(&["sleep", "--label"]));
+        assert!(matches!(
+            parse(args(&["--label", "x"])),
+            Err(Failure::Usage(_))
+        ));
+        assert!(matches!(parse(args(&["sleep"])), Err(Failure::Usage(_))));
+    }
+}

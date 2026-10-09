@@ -1,0 +1,3 @@
+# `cargo xtask <command>` runs the workspace's own tooling (xtask/); without the alias it does not exist.
+[alias]
+xtask = "run --package xtask --"
