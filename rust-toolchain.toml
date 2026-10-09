@@ -1,0 +1,5 @@
+# rust-toolchain.toml — exact compiler for local builds and CI; Cargo.toml's rust-version is the minimum.
+[toolchain]
+channel = "1.99.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

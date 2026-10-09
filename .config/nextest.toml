@@ -1,0 +1,17 @@
+# cargo-nextest settings (docs/RUST-PORT.md §4.7). nextest-version is the minimum this repository
+# needs; CI installs exactly this version (.github/workflows/rust.yml).
+nextest-version = "0.9.130"
+
+[profile.default]
+# A flaky protocol test is a bug: nothing is retried (nextest's default, written down).
+retries = 0
+# Report every failure, not only the first.
+fail-fast = false
+# A hang fails instead of stalling the run: a warning every minute, killed after five.
+slow-timeout = { period = "60s", terminate-after = 5 }
+
+[profile.ci]
+# CI keeps each test's time as evidence (docs/RUST-PORT.md §4.7); timings never gate a test.
+
+[profile.ci.junit]
+path = "junit.xml"

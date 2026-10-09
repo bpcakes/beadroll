@@ -1,0 +1,25 @@
+[package]
+name = "beadroll"
+description = "The bead command: an issue tracker for coding agents across git worktrees and machines"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "bead"
+path = "src/main.rs"
+
+[dependencies]
+beadroll-core.workspace = true
+beadroll-git.workspace = true
+beadroll-store.workspace = true
+beadroll-sync.workspace = true
+
+[dev-dependencies]
+beadroll-test-support.workspace = true
+
+[lints]
+workspace = true

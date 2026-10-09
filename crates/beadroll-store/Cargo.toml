@@ -1,0 +1,16 @@
+[package]
+name = "beadroll-store"
+description = "This machine's side of bead: the store's files, lock, journals, identity and workspace discovery"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+beadroll-core.workspace = true
+beadroll-git.workspace = true
+
+[lints]
+workspace = true

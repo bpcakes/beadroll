@@ -1,0 +1,17 @@
+[package]
+name = "beadroll-sync"
+description = "The sync protocol of bead: transactions, the link to the coordination remote, ownership"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+beadroll-core.workspace = true
+beadroll-git.workspace = true
+beadroll-store.workspace = true
+
+[lints]
+workspace = true

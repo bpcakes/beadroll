@@ -1,0 +1,12 @@
+[package]
+name = "beadroll-git"
+description = "The only code in bead that starts git: the runner, its environments, typed commands and classifiers"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
