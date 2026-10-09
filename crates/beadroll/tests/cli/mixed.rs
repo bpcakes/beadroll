@@ -71,17 +71,16 @@ fn everything(bead: &Path, machine: &Machine) -> String {
 /// The settings of `machine`'s runs, for reading or writing its store in-process.
 fn settings(machine: &Machine) -> Arc<Settings> {
     let vars: BTreeMap<OsString, OsString> = machine.env(None, "codex").into_iter().collect();
-    let checkout = machine.checkout().to_path_buf();
-    let mut settings = Settings::from_process(
-        vars.clone(),
-        Some(checkout.clone()),
-        std::env::var_os("HOME").unwrap_or_default(),
-        std::env::temp_dir(),
-        &|_| None,
+    Arc::new(
+        Settings::from_process(
+            vars,
+            Some(machine.checkout().to_path_buf()),
+            std::env::var_os("HOME").unwrap_or_default(),
+            std::env::temp_dir(),
+            &|_| None,
+        )
+        .unwrap(),
     )
-    .unwrap();
-    settings.git = beadroll_git::Env::new(vars, Some(checkout), std::env::temp_dir());
-    Arc::new(settings)
 }
 
 /// The integrity rows Rust's replay finds in `machine`'s store.

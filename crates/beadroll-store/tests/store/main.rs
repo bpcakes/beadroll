@@ -8,6 +8,7 @@ mod commands;
 mod compat;
 mod hardening;
 mod replay;
+mod settings;
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;

@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::sync::Arc;
 
-use beadroll_git::{Env, SYNC_REPO_CONFIG};
+use beadroll_git::SYNC_REPO_CONFIG;
 use beadroll_store::{Settings, find_workspace};
 use beadroll_sync::Link;
 use beadroll_test_support::Machine;
@@ -45,16 +45,16 @@ fn no_git_maintenance_in_sync_git_and_fetches_stay_packed() {
     // The link machine a's bead builds, in its checkout and environment.
     let vars: BTreeMap<OsString, OsString> = a.env(None, "codex").into_iter().collect();
     let user_home = std::env::var_os("HOME").unwrap_or_default();
-    let mut settings = Settings::from_process(
-        vars.clone(),
-        Some(a.checkout().to_path_buf()),
-        user_home,
-        std::env::temp_dir(),
-        &|_| None,
-    )
-    .unwrap();
-    settings.git = Env::new(vars, Some(a.checkout().to_path_buf()), std::env::temp_dir());
-    let settings = Arc::new(settings);
+    let settings = Arc::new(
+        Settings::from_process(
+            vars,
+            Some(a.checkout().to_path_buf()),
+            user_home,
+            std::env::temp_dir(),
+            &|_| None,
+        )
+        .unwrap(),
+    );
     let ws = find_workspace(&settings).unwrap();
     let link = Link::new(&ws, sandbox.origin().as_os_str()).unwrap();
     for (key, value) in SYNC_REPO_CONFIG {

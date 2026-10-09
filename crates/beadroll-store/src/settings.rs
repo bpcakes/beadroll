@@ -65,7 +65,8 @@ pub struct Settings {
     pub repack_loose: i128,
     /// `BEAD_REPACK_PACKS`: packs in `sync.git` before it is repacked.
     pub repack_packs: i128,
-    /// The environment checkout-side git runs in, and the one `sync.git`'s is derived from.
+    /// The environment checkout-side git runs in, starting in `cwd`, and the one `sync.git`'s is
+    /// derived from.
     pub git: Env,
     /// The working directory relative paths are read from.
     pub cwd: PathBuf,
@@ -116,7 +117,8 @@ impl Settings {
             net_timeout,
             repack_loose: int("BEAD_REPACK_LOOSE", REPACK_LOOSE)?,
             repack_packs: int("BEAD_REPACK_PACKS", REPACK_PACKS)?,
-            git: Env::new(vars.clone(), None, tmp),
+            // git starts where relative paths are read from: the checkout the caller names
+            git: Env::new(vars.clone(), cwd.clone(), tmp),
             cwd: cwd.unwrap_or_else(|| PathBuf::from(".")),
             user_home,
             clock: Clock::system(),
