@@ -12,7 +12,7 @@ use std::io::Read as _;
 
 use beadroll_core::code::Code;
 use beadroll_core::event::{DONE, STATUSES};
-use beadroll_core::json::{Object, Value};
+use beadroll_core::json::{Int, Object, Value};
 use beadroll_core::op::PyInt;
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::{repr_str, strip};
@@ -188,7 +188,7 @@ pub(crate) struct FieldFlags<'a> {
     pub(crate) external_ref: Option<&'a OsStr>,
     pub(crate) priority: Option<&'a OsStr>,
     pub(crate) issue_type: Option<&'a OsStr>,
-    pub(crate) estimate: Option<i128>,
+    pub(crate) estimate: Option<Int>,
     pub(crate) status: Option<&'a OsStr>,
 }
 
@@ -222,8 +222,8 @@ pub(crate) fn field_args(flags: &FieldFlags<'_>) -> Result<Object, Failure> {
     if let Some(kind) = flags.issue_type.filter(|t| !t.is_empty()) {
         fields.insert("issue_type".into(), Value::from(text(kind)?));
     }
-    if let Some(estimate) = flags.estimate {
-        fields.insert("estimated_minutes".into(), int_value(estimate));
+    if let Some(estimate) = &flags.estimate {
+        fields.insert("estimated_minutes".into(), Value::Int(estimate.clone()));
     }
     if let Some(status) = flags.status.filter(|s| !s.is_empty()) {
         let status = text(status)?;
@@ -236,14 +236,6 @@ pub(crate) fn field_args(flags: &FieldFlags<'_>) -> Result<Object, Failure> {
         fields.insert("status".into(), Value::from(status));
     }
     Ok(fields)
-}
-
-/// A whole number argument as an event value.
-pub(crate) fn int_value(value: i128) -> Value {
-    match i64::try_from(value) {
-        Ok(small) => Value::from(small),
-        Err(_) => beadroll_core::json::from_text(&value.to_string()).unwrap_or(Value::Null),
-    }
 }
 
 /// The filters `list` and `ready` share (Python's `select`), as given.
@@ -327,7 +319,8 @@ pub(crate) fn select<'s>(st: &'s State, filters: &Filters) -> Result<Vec<&'s Iss
 }
 
 /// Python's `items[:limit]` for a list: a negative limit leaves that many off the end.
-pub(crate) fn first<T>(items: Vec<T>, limit: i128) -> Vec<T> {
+pub(crate) fn first<T>(items: Vec<T>, limit: &Int) -> Vec<T> {
+    let limit = limit.saturating_i128();
     let len = items.len() as i128;
     let keep = if limit < 0 {
         (len + limit).max(0)

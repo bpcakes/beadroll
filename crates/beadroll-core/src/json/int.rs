@@ -103,6 +103,80 @@ impl Int {
         }
     }
 
+    /// This integer plus `other`, exactly (Python's `a + b`).
+    pub fn add(&self, other: &Int) -> Int {
+        if let (Repr::Small(a), Repr::Small(b)) = (&self.0, &other.0)
+            && let Some(sum) = a.checked_add(*b)
+        {
+            return Int(Repr::Small(sum));
+        }
+        let (a_negative, a_digits) = self.sign_and_digits();
+        let (b_negative, b_digits) = other.sign_and_digits();
+        if a_negative == b_negative {
+            return Int::from_parts(a_negative, &add_digits(&a_digits, &b_digits));
+        }
+        match compare_digits(&a_digits, &b_digits) {
+            Ordering::Equal => Int(Repr::Small(0)),
+            Ordering::Greater => {
+                Int::from_parts(a_negative, &subtract_digits(&a_digits, &b_digits))
+            }
+            Ordering::Less => Int::from_parts(b_negative, &subtract_digits(&b_digits, &a_digits)),
+        }
+    }
+
+    /// This integer minus `other`, exactly (Python's `a - b`).
+    pub fn sub(&self, other: &Int) -> Int {
+        let (negative, digits) = other.sign_and_digits();
+        self.add(&Int::from_parts(!negative, &digits))
+    }
+
+    /// The integer part of `value`, toward zero, exactly (Python's `int(value)` of a float); `None`
+    /// for NaN or an infinity, which Python refuses.
+    pub fn from_f64(value: f64) -> Option<Int> {
+        if !value.is_finite() {
+            return None;
+        }
+        let whole = value.trunc();
+        if whole.abs() < 2f64.powi(63) {
+            return Some(Int(Repr::Small(whole as i64)));
+        }
+        // An integral float this large is its 53-bit mantissa times a power of two.
+        let bits = whole.to_bits();
+        let exponent = ((bits >> 52) & 0x7ff) as i64 - 1075;
+        let mantissa = (bits & ((1 << 52) - 1)) | (1 << 52);
+        let mut digits = mantissa.to_string();
+        for _ in 0..exponent.max(0) {
+            digits = add_digits(&digits, &digits);
+        }
+        Some(Int::from_parts(whole < 0.0, &digits))
+    }
+
+    /// The value in `i128`, or the nearest bound of `i128` beyond it: it compares as the integer
+    /// does against anything `i128` holds.
+    pub fn saturating_i128(&self) -> i128 {
+        match &self.0 {
+            Repr::Small(value) => i128::from(*value),
+            Repr::Big { negative, digits } => {
+                let magnitude = digits.parse::<i128>().ok();
+                match (magnitude, negative) {
+                    (Some(m), false) => m,
+                    (Some(m), true) => -m,
+                    (None, false) => i128::MAX,
+                    (None, true) => i128::MIN,
+                }
+            }
+        }
+    }
+
+    /// Python's `format(n, "0{width}d")`: the digits zero-padded after the sign to `width`
+    /// characters.
+    pub fn zero_padded(&self, width: usize) -> String {
+        let (negative, digits) = self.sign_and_digits();
+        let sign = if negative { "-" } else { "" };
+        let room = width.saturating_sub(sign.len());
+        format!("{sign}{digits:0>room$}")
+    }
+
     fn sign_and_digits(&self) -> (bool, String) {
         match &self.0 {
             Repr::Small(value) => (*value < 0, value.unsigned_abs().to_string()),
@@ -115,6 +189,58 @@ impl From<i64> for Int {
     fn from(value: i64) -> Int {
         Int(Repr::Small(value))
     }
+}
+
+/// The sum of two decimal magnitudes.
+fn add_digits(a: &str, b: &str) -> String {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    let mut out = Vec::with_capacity(a.len().max(b.len()) + 1);
+    let mut carry = 0u8;
+    for at in 0..a.len().max(b.len()) {
+        let digit = |x: &[u8]| {
+            x.len()
+                .checked_sub(at + 1)
+                .and_then(|i| x.get(i))
+                .map_or(0, |d| d - b'0')
+        };
+        let total = digit(a) + digit(b) + carry;
+        out.push(b'0' + total % 10);
+        carry = total / 10;
+    }
+    if carry > 0 {
+        out.push(b'0' + carry);
+    }
+    out.reverse();
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// The difference of two decimal magnitudes, the first not the smaller.
+fn subtract_digits(a: &str, b: &str) -> String {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    let mut out = Vec::with_capacity(a.len());
+    let mut borrow = 0i8;
+    for at in 0..a.len() {
+        let digit = |x: &[u8]| {
+            x.len()
+                .checked_sub(at + 1)
+                .and_then(|i| x.get(i))
+                .map_or(0, |d| (d - b'0') as i8)
+        };
+        let mut value = digit(a) - digit(b) - borrow;
+        borrow = 0;
+        if value < 0 {
+            value += 10;
+            borrow = 1;
+        }
+        out.push(b'0' + value as u8);
+    }
+    out.reverse();
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// How two decimal magnitudes without leading zeros compare.
+fn compare_digits(a: &str, b: &str) -> Ordering {
+    a.len().cmp(&b.len()).then_with(|| a.cmp(b))
 }
 
 /// `digits` plus one: decimal, no leading zeros.
@@ -237,6 +363,53 @@ mod tests {
             int(&"9".repeat(MAX_DIGITS)).plus_one().digit_count(),
             MAX_DIGITS + 1
         );
+    }
+
+    #[test]
+    fn arithmetic_is_exact_at_every_size() {
+        assert_eq!(
+            Int::from(i64::MAX).add(&Int::from(1)).to_string(),
+            "9223372036854775808"
+        );
+        assert_eq!(
+            Int::from(5).sub(&Int::from(i64::MIN)).to_string(),
+            "9223372036854775813"
+        );
+        assert_eq!(
+            int("100000000000000000000").sub(&int("100000000000000000001")),
+            Int::from(-1)
+        );
+        assert_eq!(
+            int("-99999999999999999999").add(&int("99999999999999999999")),
+            Int::from(0)
+        );
+        assert_eq!(Int::from(-7).sub(&Int::from(-7)), Int::from(0));
+    }
+
+    #[test]
+    fn floats_truncate_exactly() {
+        // Python: int(1e300), int(-1.5), int(2.0**70)
+        let big = "1000000000000000052504760255204420248704468581108159154915854115511802457988908195786371375080447864043704443832883878176942523235360430575644792184786706982848387200926575803737830233794788090059368953234970799945081119038967640880074652742780142494579258788820056842838115669472196386865459400540160";
+        assert_eq!(Int::from_f64(1e300).unwrap().to_string(), big);
+        assert_eq!(Int::from_f64(-1.5), Some(Int::from(-1)));
+        assert_eq!(
+            Int::from_f64(2f64.powi(70)).unwrap().to_string(),
+            "1180591620717411303424"
+        );
+        assert_eq!(Int::from_f64(f64::NAN), None);
+    }
+
+    #[test]
+    fn saturation_and_padding() {
+        assert_eq!(int(&"9".repeat(50)).saturating_i128(), i128::MAX);
+        assert_eq!(
+            int(&format!("-{}", "9".repeat(50))).saturating_i128(),
+            i128::MIN
+        );
+        assert_eq!(Int::from(-4).saturating_i128(), -4);
+        assert_eq!(Int::from(7).zero_padded(6), "000007");
+        assert_eq!(Int::from(-4).zero_padded(6), "-00004");
+        assert_eq!(Int::from(1234567).zero_padded(6), "1234567");
     }
 
     #[test]

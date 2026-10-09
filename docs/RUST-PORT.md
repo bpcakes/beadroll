@@ -181,7 +181,7 @@ beadroll-test-support (dev-dependency of every crate's tests)      xtask (dev to
 | `beadroll-git` | `run_git` and the git half of `base`/`machine`/`sync` | **The only code that starts git.** The runner: own session, timeout with reap or no-reap, output captured to unlinked files, signal names. The environments for the checkout and for `sync.git`. Typed commands. Push-outcome and local-damage classification. Remote URL rules (`without_password`, `normalize_remote`, `is_local_path`). | `tempfile`, `rustix`, `libc`, `regex-lite`, `thiserror` | store, sync, optionally studio |
 | `beadroll-store` | `machine.py`, the loaders in `model.py` | This machine: `BEAD_HOME`; the store's files and modes; lock; atomic writes; segments and torn tails; attempt, pending and receipt files; identity and aliases; workspace discovery and remote resolution; actor detection; `view`; the failpoint registry | core, git, `rustix`, `uuid`, `thiserror` | sync, `beadroll`, local read-only tools |
 | `beadroll-sync` | `sync.py` | Transactions (`Tx`, `writing`); `Link` (fetch, merge, tree, publish, maintain, rebuild); `synchronise`; the ownership protocol (`coordinated`, receipts, fences, settling); `publish_soon`; unpublished counts | core, git, store, `uuid`, `fastrand`, `thiserror` | `beadroll` |
-| `beadroll` | `commands.py`, `cli.py` | The `bead` binary. `commands/` maps typed requests to typed outcomes; `cli/` handles parsing, rendering, output streams and exit codes; `sys` holds the two audited unsafe spots (§2.3f). `main.rs` is one line. | all of the above, `clap`, `rustix`, `libc` | the development machines (`cargo install --path crates/beadroll`, §8) |
+| `beadroll` | `commands.py`, `cli.py` | The `bead` binary. `commands/` maps typed requests to typed outcomes; `cli/` handles parsing, rendering, output streams and exit codes; `sys` holds the two audited unsafe spots (§2.3f). `main.rs` is one line. | all of the above, `clap`, `rustix`, `libc`, `nix` (the password database, for `~NAME` in `BEAD_HOME`, without unsafe code) | the development machines (`cargo install --path crates/beadroll`, §8) |
 | `beadroll-test-support` | `tests/support.py` | `Sandbox`, `Machine`, git and hook fixtures, fake ssh/ps/git writers, failpoint and handshake helpers, event builders | core, `tempfile` | tests (`publish = false`) |
 | `xtask` | `check.sh` and glue | `check`, `oracle`, `diff`, `inventory`, `timing`, `golden` (§4) | — | maintainers, CI (`publish = false`) |
 
@@ -525,6 +525,7 @@ clap = { version = "4.5", features = ["derive"] }
 fastrand = "2"
 indexmap = "2"
 libc = "0.2"
+nix = { version = "0.31", default-features = false, features = ["user"] }  # ~NAME in BEAD_HOME
 proptest = "1"
 regex-lite = "0.1"                          # git message classifiers, transliterated from sync.py
 rustix = { version = "1", features = ["fs", "process", "system"] }

@@ -54,7 +54,8 @@ impl Clock {
 /// inherit, the working directory, and the clock.
 #[derive(Clone, Debug)]
 pub struct Settings {
-    bead_home: Option<OsString>,
+    /// `BEAD_HOME` as set, and as `os.path.expanduser` expands it.
+    bead_home: Option<(OsString, OsString)>,
     user_home: OsString,
     /// `BEAD_ROTATE_BYTES`: the size from which this machine starts a new segment.
     pub rotate_bytes: i128,
@@ -75,19 +76,23 @@ pub struct Settings {
 impl Settings {
     /// Settings from the process's variables (`vars`, which git children also inherit), its
     /// working directory (`cwd`, `None` when it cannot be read: git then starts in the process's
-    /// own), the user's home directory (`HOME`, else the password database's) and the directory
-    /// for temporary files. A numeric setting that is not a number is a `CONFIG` error here, where
-    /// Python dies with a traceback (`docs/RUST-PORT.md` §5 row 26).
+    /// own), the user's home directory (`HOME`, else the password database's), the directory for
+    /// temporary files, and how to find another user's home directory (`home_of`, the password
+    /// database's, for `~NAME` in `BEAD_HOME`). A numeric setting Python's `int()` or `float()`
+    /// cannot read is a `CONFIG` error here, where Python dies with a traceback
+    /// (`docs/RUST-PORT.md` §5 row 26).
     pub fn from_process(
         vars: BTreeMap<OsString, OsString>,
         cwd: Option<PathBuf>,
         user_home: OsString,
         tmp: PathBuf,
+        home_of: &dyn Fn(&OsStr) -> Option<OsString>,
     ) -> Result<Settings, Error> {
         let get = |name: &str| vars.get(OsStr::new(name)).filter(|v| !v.is_empty());
         let int = |name: &str, default: i128| -> Result<i128, Error> {
             get(name).map_or(Ok(default), |value| {
-                value.to_str().and_then(py_int).ok_or_else(|| {
+                let read = value.to_str().and_then(py_int);
+                read.map(|n| n.saturating_i128()).ok_or_else(|| {
                     Error::Config(format!(
                         "{name} must be a whole number, not {}",
                         repr_str(&value.to_string_lossy())
@@ -103,8 +108,10 @@ impl Settings {
                 ))
             })
         })?;
+        let bead_home =
+            get("BEAD_HOME").map(|value| (value.clone(), expand_user(value, &user_home, home_of)));
         Ok(Settings {
-            bead_home: get("BEAD_HOME").cloned(),
+            bead_home,
             rotate_bytes: int("BEAD_ROTATE_BYTES", ROTATE_BYTES)?,
             net_timeout,
             repack_loose: int("BEAD_REPACK_LOOSE", REPACK_LOOSE)?,
@@ -125,13 +132,15 @@ impl Settings {
     /// The store's root: `BEAD_HOME` (`~` expanded), else `~/.local/state/beadroll`. A `BEAD_HOME`
     /// that is not absolute is refused: the store never lives in a checkout.
     pub fn home(&self) -> Result<PathBuf, Error> {
-        let Some(value) = &self.bead_home else {
-            return Ok(pathlib(&expand_user(OsStr::new("~"), &self.user_home))
-                .join(".local")
-                .join("state")
-                .join("beadroll"));
+        let Some((value, expanded)) = &self.bead_home else {
+            return Ok(
+                pathlib(&expand_user(OsStr::new("~"), &self.user_home, &|_| None))
+                    .join(".local")
+                    .join("state")
+                    .join("beadroll"),
+            );
         };
-        let path = pathlib(&expand_user(value, &self.user_home));
+        let path = pathlib(expanded);
         if !path.is_absolute() {
             return Err(Error::Config(format!(
                 "BEAD_HOME must be an absolute path, not {}: the store never lives in a checkout",
@@ -142,9 +151,14 @@ impl Settings {
     }
 }
 
-/// `os.path.expanduser(path)` for `~` and `~/...` (`~user` forms are left as they are): the home
-/// directory without its trailing slashes, then the rest; `/` when that leaves nothing.
-fn expand_user(path: &OsStr, user_home: &OsStr) -> OsString {
+/// `os.path.expanduser(path)`: `~` is the user's home directory, `~NAME` that of the user `NAME`
+/// as `home_of` finds it (unchanged when there is no such user); the home directory without its
+/// trailing slashes, then the rest; `/` when that leaves nothing.
+fn expand_user(
+    path: &OsStr,
+    user_home: &OsStr,
+    home_of: &dyn Fn(&OsStr) -> Option<OsString>,
+) -> OsString {
     let bytes = path.as_bytes();
     if !bytes.starts_with(b"~") {
         return path.to_owned();
@@ -153,10 +167,19 @@ fn expand_user(path: &OsStr, user_home: &OsStr) -> OsString {
         .iter()
         .position(|b| *b == b'/')
         .map_or(bytes.len(), |at| at + 1);
-    if end != 1 {
-        return path.to_owned();
-    }
-    let mut home = user_home.as_bytes();
+    let named;
+    let home = if end == 1 {
+        user_home
+    } else {
+        match home_of(OsStr::from_bytes(&bytes[1..end])) {
+            Some(found) => {
+                named = found;
+                named.as_os_str()
+            }
+            None => return path.to_owned(),
+        }
+    };
+    let mut home = home.as_bytes();
     while let Some(trimmed) = home.strip_suffix(b"/") {
         home = trimmed;
     }
@@ -211,6 +234,7 @@ mod tests {
             Some(PathBuf::from("/w")),
             OsString::from("/srv/u/"),
             PathBuf::from("/tmp"),
+            &|name| (name == "alice").then(|| OsString::from("/srv/alice//")),
         )
     }
 
@@ -255,6 +279,12 @@ mod tests {
         let bad = settings(&[("BEAD_NET_TIMEOUT", "soon")]).unwrap_err();
         assert_eq!(bad.code().as_str(), "CONFIG");
         assert!(settings(&[("BEAD_REPACK_PACKS", "1.5")]).is_err());
+        let wide = "1".repeat(4301);
+        let refused = settings(&[("BEAD_ROTATE_BYTES", wide.as_str())]).unwrap_err();
+        assert_eq!(refused.code().as_str(), "CONFIG");
+        let big = "9".repeat(60);
+        let read = settings(&[("BEAD_ROTATE_BYTES", big.as_str())]).unwrap();
+        assert_eq!(read.rotate_bytes, i128::MAX);
     }
 
     #[test]
@@ -269,6 +299,6 @@ mod tests {
             pathlib_join(Path::new("/r"), OsStr::new("/abs")),
             Path::new("/abs")
         );
-        assert_eq!(expand_user(OsStr::new("~"), OsStr::new("")), "/");
+        assert_eq!(expand_user(OsStr::new("~"), OsStr::new(""), &|_| None), "/");
     }
 }

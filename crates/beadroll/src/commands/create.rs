@@ -27,7 +27,7 @@ pub(crate) struct CreateArgs {
     pub(crate) issue_type: Option<OsString>,
     pub(crate) status: Option<OsString>,
     pub(crate) assignee: Option<OsString>,
-    pub(crate) estimate: Option<i128>,
+    pub(crate) estimate: Option<beadroll_core::json::Int>,
     pub(crate) external_ref: Option<OsString>,
     pub(crate) parent: Option<OsString>,
     pub(crate) labels: Vec<OsString>,
@@ -58,7 +58,7 @@ pub(crate) fn create(ctx: &Context<'_>, args: &CreateArgs) -> Result<Outcome, Fa
         external_ref: args.external_ref.as_deref(),
         priority: args.priority.as_deref(),
         issue_type: args.issue_type.as_deref(),
-        estimate: args.estimate,
+        estimate: args.estimate.clone(),
         status: args.status.as_deref(),
     })?;
     fields.insert("title".into(), Value::from(title));

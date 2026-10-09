@@ -77,6 +77,7 @@ fn settings(machine: &Machine) -> Arc<Settings> {
         Some(checkout.clone()),
         std::env::var_os("HOME").unwrap_or_default(),
         std::env::temp_dir(),
+        &|_| None,
     )
     .unwrap();
     settings.git = beadroll_git::Env::new(vars, Some(checkout), std::env::temp_dir());
@@ -344,4 +345,86 @@ fn pending_attempts_rust_left_are_settled_by_python_as_by_rust() {
             );
         }
     }
+}
+
+/// What `meta.json` records as published may be anything a hand left there: both binaries read it
+/// as Python's `int(value or 0)` does and count what is unpublished with Python's exact
+/// arithmetic, so they report the same count, a huge one included.
+#[test]
+fn unpublished_counts_are_the_same_whatever_meta_json_holds() {
+    let sandbox = crate::sandbox();
+    let (py, rs) = (python(), rust());
+    let r = Machine::new(&sandbox, "rs");
+    json_as(&rs, &r, &["init", "--prefix", "ex"]);
+    json_as(&rs, &r, &["create", "one"]);
+    json_as(&rs, &r, &["create", "two"]);
+    let meta_path = r.store().join("meta.json");
+    let original = std::fs::read_to_string(&meta_path).unwrap();
+    let segment = std::fs::read_dir(r.store().join("events"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let segment = format!(
+        "events/{}/000001.jsonl",
+        segment.file_name().unwrap().to_str().unwrap()
+    );
+    for count in [
+        "-9223372036854775808",
+        "-99999999999999999999999999999999999999999999",
+        "1e20",
+        "-2.5",
+        "\" 1_0 \"",
+        "true",
+        "null",
+        "1",
+    ] {
+        let meta = original.replacen(
+            "\"published\": {",
+            &format!("\"published\": {{\n  \"{segment}\": {count},"),
+            1,
+        );
+        assert_ne!(meta, original, "meta.json has published counts");
+        std::fs::write(&meta_path, meta).unwrap();
+        let python_says = json_as(&py, &r, &["list"]);
+        let rust_says = json_as(&rs, &r, &["list"]);
+        assert_eq!(rust_says, python_says, "published count {count}");
+    }
+}
+
+/// A pending file that is not an attempt is swept by the store lock's holder; one that cannot be
+/// removed is an IO error naming it, from either binary, never a silent success.
+#[test]
+fn an_unremovable_invalid_pending_file_is_an_io_error() {
+    let sandbox = crate::sandbox();
+    let (py, rs) = (python(), rust());
+    let r = Machine::new(&sandbox, "rs");
+    json_as(&rs, &r, &["init", "--prefix", "ex"]);
+    json_as(&rs, &r, &["sync"]);
+    let pending = r.store().join("pending");
+    std::fs::create_dir_all(&pending).unwrap();
+    let junk = pending.join("0190aaaa-0000-7000-8000-000000000001.json");
+    std::fs::write(&junk, "not an attempt\n").unwrap();
+    let mode = |bits: u32| {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&pending, std::fs::Permissions::from_mode(bits)).unwrap();
+    };
+    mode(0o500);
+    let answers: Vec<(Option<i32>, String)> = [&py, &rs]
+        .iter()
+        .map(|bead| {
+            let out = run_as(bead, &r, &["sync", "--json"]);
+            (
+                out.status.code(),
+                String::from_utf8_lossy(&out.stderr).into_owned(),
+            )
+        })
+        .collect();
+    mode(0o700);
+    assert_eq!(answers[1], answers[0]);
+    assert_eq!(answers[0].0, Some(1));
+    let error = parse_json(&answers[0].1).unwrap();
+    assert_eq!(error["error"]["code"], Json::from("IO"));
+    assert!(junk.exists(), "the file stays until it can be removed");
 }

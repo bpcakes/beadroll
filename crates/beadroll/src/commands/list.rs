@@ -3,7 +3,7 @@
 use std::ffi::OsString;
 
 use beadroll_core::event::Field;
-use beadroll_core::json::{Object, Value};
+use beadroll_core::json::{Int, Object, Value};
 use beadroll_store::view;
 
 use super::{
@@ -11,17 +11,15 @@ use super::{
 };
 
 /// The filters `list` and `ready` take, as given.
-#[derive(Default)]
 pub(crate) struct FilterArgs {
     pub(crate) issue_type: Vec<OsString>,
     pub(crate) label: Vec<OsString>,
     pub(crate) priority: Option<OsString>,
     pub(crate) assignee: Option<OsString>,
-    pub(crate) limit: i128,
+    pub(crate) limit: Int,
 }
 
 /// `list`'s arguments.
-#[derive(Default)]
 pub(crate) struct ListArgs {
     pub(crate) status: Vec<OsString>,
     pub(crate) all: bool,
@@ -33,7 +31,6 @@ pub(crate) struct ListArgs {
 }
 
 /// `ready`'s arguments: one scope at most (the parser refuses more).
-#[derive(Default)]
 pub(crate) struct ReadyArgs {
     pub(crate) root: Option<OsString>,
     pub(crate) epic: Option<OsString>,
@@ -63,8 +60,8 @@ pub(crate) fn list(ctx: &Context<'_>, args: &ListArgs) -> Result<Outcome, Failur
     };
     let items = select(&st, &filters)?;
     let total = items.len();
-    let limit = args.filters.limit;
-    let shown = if limit == 0 {
+    let limit = &args.filters.limit;
+    let shown = if *limit == Int::from(0) {
         items
     } else {
         first(items, limit)
@@ -75,7 +72,7 @@ pub(crate) fn list(ctx: &Context<'_>, args: &ListArgs) -> Result<Outcome, Failur
         Value::Array(shown.iter().map(|i| Value::Object(st.brief(i))).collect()),
     );
     result.insert("total".into(), Value::from(total as i64));
-    result.insert("limit".into(), super::int_value(limit));
+    result.insert("limit".into(), Value::Int(limit.clone()));
     result.insert("offset".into(), Value::from(0));
     result.insert("has_more".into(), Value::Bool(shown.len() < total));
     let mut lines: Vec<String> = shown.iter().map(|i| st.line(i)).collect();
@@ -114,8 +111,8 @@ pub(crate) fn ready(ctx: &Context<'_>, args: &ReadyArgs) -> Result<Outcome, Fail
         .filter(|i| beneath.as_ref().is_none_or(|b| b.contains(&i.uid())))
         .filter(|i| i.claim().is_none() && !st.is_blocked(i) && !st.disputed(i, Field::Status))
         .collect();
-    if args.filters.limit != 0 {
-        items = first(items, args.filters.limit);
+    if args.filters.limit != Int::from(0) {
+        items = first(items, &args.filters.limit);
     }
     let result = Value::Array(items.iter().map(|i| Value::Object(st.brief(i))).collect());
     let mut lines: Vec<String> = items.iter().map(|i| st.line(i)).collect();

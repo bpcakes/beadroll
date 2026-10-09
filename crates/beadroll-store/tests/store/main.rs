@@ -33,5 +33,5 @@ pub(crate) fn settings(home: &Path, vars: &[(&str, &str)]) -> Arc<Settings> {
     }
     let user_home = std::env::var_os("HOME").unwrap_or_default();
     let cwd = std::env::current_dir().ok();
-    Arc::new(Settings::from_process(all, cwd, user_home, std::env::temp_dir()).unwrap())
+    Arc::new(Settings::from_process(all, cwd, user_home, std::env::temp_dir(), &|_| None).unwrap())
 }

@@ -4,7 +4,7 @@
 use std::ffi::{OsStr, OsString};
 use std::time::Duration;
 
-use beadroll_core::json::{self, Format, Object, Value};
+use beadroll_core::json::{self, Format, Int, MAX_DIGITS, Object, Value};
 use beadroll_core::text::py_int;
 use beadroll_git::{PushOutcome, exists, realpath, without_password};
 use beadroll_store::{
@@ -303,9 +303,10 @@ pub fn published_counts(ws: &Workspace) -> Result<Object, Error> {
 
 /// Events of this store the remote does not have, as of the last publish that went through;
 /// `None` when there is no remote to publish to, or when the last publish kept no counts.
-/// Everything is unpublished before the first publish. A count in `meta.json` that is not a
-/// number is an IO error, where Python dies with a traceback (`docs/RUST-PORT.md` §5 row 26).
-pub fn unpublished_count(ws: &Workspace) -> Result<Option<i64>, Error> {
+/// Everything is unpublished before the first publish. The arithmetic is Python's, exact at any
+/// size. A count in `meta.json` that is not a number, or a total too long for Python to print, is
+/// an IO error, where Python dies with a traceback (`docs/RUST-PORT.md` §5 row 26).
+pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
     match ws.remote(None) {
         Ok(Some(remote)) if !remote.is_empty() => {}
         _ => return Ok(None),
@@ -316,46 +317,52 @@ pub fn unpublished_count(ws: &Workspace) -> Result<Option<i64>, Error> {
         _ if meta.get("last_sync").is_some_and(Value::truthy) => return Ok(None),
         _ => Object::new(),
     };
-    let mut count: i64 = 0;
+    let unreadable = |what: String| {
+        Error::Store(beadroll_store::Error::io_message(format!(
+            "{}: {what}; repair it, or run `bead sync`",
+            ws.dir.join("meta.json").display()
+        )))
+    };
+    let zero = Int::from(0);
+    let mut count = Int::from(0);
     for path in segment_files(ws)? {
-        let lines = newlines(&read(&path)?) as i64;
+        let lines = Int::from(newlines(&read(&path)?) as i64);
         let known = match published.get(&relative(ws, &path)) {
-            None => 0,
+            None => Int::from(0),
             Some(value) => count_of(value).ok_or_else(|| {
-                Error::Store(beadroll_store::Error::io_message(format!(
-                    "{}: the published count of {} is not a number; repair it, or run `bead sync`",
-                    ws.dir.join("meta.json").display(),
+                unreadable(format!(
+                    "the published count of {} is not a number",
                     relative(ws, &path)
-                )))
+                ))
             })?,
         };
-        count += (lines - known).max(0);
+        let behind = lines.sub(&known);
+        count = count.add(if behind > zero { &behind } else { &zero });
     }
     for path in claim_files(ws)? {
         if !published.contains_key(&relative(ws, &path)) {
-            count += 1;
+            count = count.add(&Int::from(1));
         }
+    }
+    if count.digit_count() > MAX_DIGITS {
+        return Err(unreadable(format!(
+            "the published counts put the unpublished count beyond {MAX_DIGITS} digits"
+        )));
     }
     Ok(Some(count))
 }
 
 /// Python's `int(value or 0)` of a published count: a falsy value is 0, an integer itself, a float
 /// truncated, a string read as `int()` reads it; anything else is not a number.
-fn count_of(value: &Value) -> Option<i64> {
+fn count_of(value: &Value) -> Option<Int> {
     if !value.truthy() {
-        return Some(0);
+        return Some(Int::from(0));
     }
-    let clamp = |n: i128| i64::try_from(n).unwrap_or(if n < 0 { i64::MIN } else { i64::MAX });
     match value {
-        Value::Bool(true) => Some(1),
-        Value::Int(n) => {
-            Some(
-                n.as_i64()
-                    .unwrap_or(if n.is_negative() { i64::MIN } else { i64::MAX }),
-            )
-        }
-        Value::Float(f) if f.is_finite() => Some(f.trunc() as i64),
-        Value::Str(text) => py_int(text).map(clamp),
+        Value::Bool(true) => Some(Int::from(1)),
+        Value::Int(n) => Some(n.clone()),
+        Value::Float(f) => Int::from_f64(*f),
+        Value::Str(text) => py_int(text),
         _ => None,
     }
 }

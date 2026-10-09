@@ -65,6 +65,7 @@ fn settings(machine: &Machine) -> Arc<Settings> {
             Some(machine.checkout().to_path_buf()),
             user_home,
             std::env::temp_dir(),
+            &|_| None,
         )
         .unwrap(),
     )

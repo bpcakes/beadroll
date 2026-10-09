@@ -4,6 +4,7 @@
 
 use std::ffi::OsString;
 
+use beadroll_core::json::Int;
 use clap::{
     ArgAction, Args, ColorChoice, CommandFactory as _, FromArgMatches as _, Parser, Subcommand,
 };
@@ -39,8 +40,8 @@ pub(crate) enum Command {
     Sync(Sync),
 }
 
-/// `int(text)`, as argparse's `type=int` reads a value.
-fn int(value: &str) -> Result<i128, String> {
+/// `int(text)`, as argparse's `type=int` reads a value: exact, within Python's 4,300 digits.
+fn int(value: &str) -> Result<Int, String> {
     beadroll_core::text::py_int(value).ok_or_else(|| format!("invalid int value: '{value}'"))
 }
 
@@ -86,7 +87,7 @@ pub(crate) struct Create {
     #[arg(long)]
     pub(crate) assignee: Option<OsString>,
     #[arg(long, value_parser = int, allow_negative_numbers = true)]
-    pub(crate) estimate: Option<i128>,
+    pub(crate) estimate: Option<Int>,
     #[arg(long = "external-ref")]
     pub(crate) external_ref: Option<OsString>,
     #[arg(long)]
@@ -141,7 +142,7 @@ pub(crate) struct List {
     #[command(flatten)]
     pub(crate) filters: Filters,
     #[arg(long, value_parser = int, default_value = "50", allow_negative_numbers = true)]
-    pub(crate) limit: i128,
+    pub(crate) limit: Int,
 }
 
 #[derive(Debug, Args)]
@@ -158,7 +159,7 @@ pub(crate) struct Ready {
     #[command(flatten)]
     pub(crate) filters: Filters,
     #[arg(long, value_parser = int, default_value = "0", allow_negative_numbers = true)]
-    pub(crate) limit: i128,
+    pub(crate) limit: Int,
 }
 
 #[derive(Debug, Args)]

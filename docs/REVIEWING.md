@@ -155,8 +155,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   In the store, sync and command line (Phase 2a): a `BEAD_NET_TIMEOUT`, `BEAD_ROTATE_BYTES`,
   `BEAD_REPACK_LOOSE` or `BEAD_REPACK_PACKS` that Python's `float()` or `int()` cannot read is
   `CONFIG` when bead starts, `--version` included; the last segment of this machine's journal, when
-  its name is not a number and bead appends after it, is `IO`; a `published` count in `meta.json`
-  that is not a number is `IO`; a `GIT_CONFIG_COUNT` that `int()` cannot read where Python reads it
+  its name is not a number (or the next one's would have more than 4,300 digits) and bead appends
+  after it, is `IO`; a `published` count in `meta.json` that is not a number, or counts that make
+  the unpublished count longer than 4,300 digits, is `IO`; a `GIT_CONFIG_COUNT` that `int()` cannot read where Python reads it
   (it is not digits and nothing was carried over, or its digits are superscripts) is `CONFIG`; an
   answer standard output refuses (other than a closed pipe or a hung-up terminal) is an `IO` error
   on standard error, exit 1; a `ps` line that names no command ends the nearest-harness walk.

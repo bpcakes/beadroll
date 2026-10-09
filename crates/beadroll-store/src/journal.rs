@@ -134,14 +134,18 @@ pub fn active_segment(ws: &Workspace, replica: &str) -> Result<PathBuf, Error> {
     }
     let name = last.file_name().unwrap_or_default().to_string_lossy();
     let stem = name.strip_suffix(".jsonl").unwrap_or(&name);
-    let number = py_int(stem).ok_or_else(|| {
+    let unnumbered = || {
         Error::io_message(format!(
             "{} is not a numbered journal segment; move it out of {}",
             last.display(),
             folder.display()
         ))
-    })?;
-    Ok(folder.join(format!("{:06}.jsonl", number.saturating_add(1))))
+    };
+    let next = py_int(stem).ok_or_else(unnumbered)?.plus_one();
+    if next.digit_count() > beadroll_core::json::MAX_DIGITS {
+        return Err(unnumbered());
+    }
+    Ok(folder.join(format!("{}.jsonl", next.zero_padded(6))))
 }
 
 /// Appends sequential events to this machine's journal, after repairing any torn tail. Called with
@@ -245,11 +249,21 @@ pub fn load_pending(ws: &Workspace) -> Result<Vec<Vec<Value>>, Error> {
         if !events.is_empty() {
             out.push(events);
         } else if ws.holding() {
-            let _ = std::fs::remove_file(&path);
-            let _ = std::fs::remove_file(path.with_extension("command"));
+            remove(&path)?;
+            remove(&path.with_extension("command"))?;
         }
     }
     Ok(out)
+}
+
+/// Removes `path`; already gone is fine (Python's `unlink(missing_ok=True)`), any other failure is
+/// an IO error naming it.
+pub fn remove(path: &Path) -> Result<(), Error> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(IoError::at(&error, path).into()),
+    }
 }
 
 /// Why the store's state could not be had: a file could not be read, or a renamed copy found every

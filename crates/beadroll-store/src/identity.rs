@@ -100,12 +100,14 @@ fn mint(path: &Path) -> Result<(), Error> {
                 .map_err(|e| IoError::bare(&e))?;
             fsync(&file)
         });
-    let linked = written.and_then(|()| match std::fs::hard_link(&tmp, path) {
+    written.map_err(Error::Io)?;
+    let linked = match std::fs::hard_link(&tmp, path) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == io::ErrorKind::AlreadyExists => Ok(()), // another process won
         Err(error) => Err(IoError::at(&error, path)),
-    });
-    let _ = std::fs::remove_file(&tmp);
+    };
+    // As Python's `finally: tmp.unlink(missing_ok=True)` around the link: a failure to remove it wins.
+    crate::journal::remove(&tmp)?;
     linked.map_err(Error::Io)
 }
 

@@ -7,6 +7,7 @@
 //! whitespace here, although `str.isspace()` says it is. Then the ASCII whitespace at either end
 //! goes, and an underscore may stand only between two digits.
 
+use crate::json::Int;
 use crate::text::is_space;
 
 /// The first code point of every run of ten decimal digits (zero to nine) in Unicode 16.0, the
@@ -106,28 +107,21 @@ fn without_underscores(text: &str) -> Option<String> {
 }
 
 /// `int(text)`: an optional sign and decimal digits, underscores between them, whitespace around
-/// them. A value beyond `i128` is clamped to its bounds, which compare as Python's integer would
-/// against anything bead holds.
-pub fn py_int(text: &str) -> Option<i128> {
+/// them; exact, and refused beyond Python's 4,300 digits (leading zeros counted, underscores not), as
+/// `int()` refuses a longer string.
+pub fn py_int(text: &str) -> Option<Int> {
     let ascii = ascii_form(text)?;
-    let (negative, digits) = match ascii.as_bytes().first() {
-        Some(b'-') => (true, &ascii[1..]),
-        Some(b'+') => (false, &ascii[1..]),
-        _ => (false, ascii.as_str()),
+    let (sign, digits) = match ascii.as_bytes().first() {
+        Some(b'-') => ("-", &ascii[1..]),
+        Some(b'+') => ("", &ascii[1..]),
+        _ => ("", ascii.as_str()),
     };
     if !digits.starts_with(|c: char| c.is_ascii_digit()) {
         return None;
     }
     let digits = without_underscores(digits)?;
-    if !digits.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
-    }
-    let mut value: i128 = 0;
-    for digit in digits.bytes() {
-        let digit = i128::from(digit - b'0');
-        value = value.saturating_mul(10).saturating_add(digit);
-    }
-    Some(if negative { -value } else { value })
+    // Int::parse refuses anything but ASCII digits, and more than MAX_DIGITS of them.
+    Int::parse(&format!("{sign}{digits}"))
 }
 
 /// `float(text)`: a decimal number, `inf`, `infinity` or `nan` in any case, with an optional sign,
@@ -163,7 +157,7 @@ mod tests {
 
     #[test]
     fn ints_read_as_python_reads_them() {
-        let cases: [(&str, Option<i128>); 18] = [
+        let cases: [(&str, Option<i64>); 18] = [
             (" \u{663} ", Some(3)),
             ("1_000", Some(1000)),
             ("+5", Some(5)),
@@ -184,9 +178,16 @@ mod tests {
             ("+-1", None),
         ];
         for (text, expected) in cases {
-            assert_eq!(py_int(text), expected, "{text:?}");
+            assert_eq!(py_int(text), expected.map(Int::from), "{text:?}");
         }
-        assert_eq!(py_int(&"9".repeat(50)), Some(i128::MAX));
+        assert_eq!(py_int(&"9".repeat(50)).unwrap().to_string(), "9".repeat(50));
+        // Python refuses a string of more than 4,300 digits, leading zeros counted, underscores not.
+        assert!(py_int(&"1".repeat(4300)).is_some());
+        assert!(py_int(&"1".repeat(4301)).is_none());
+        assert!(py_int(&format!("{}1", "0".repeat(4300))).is_none());
+        assert!(py_int(&format!("-{}", "1".repeat(4301))).is_none());
+        assert!(py_int(&format!("{}1", "1_".repeat(2150))).is_some());
+        assert!(py_int(&"\u{661}".repeat(4301)).is_none());
     }
 
     #[test]

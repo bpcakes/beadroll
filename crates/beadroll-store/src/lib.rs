@@ -26,7 +26,7 @@ pub use fs::{
 pub use identity::{hex_token, machine_aliases, replica_id, uuid7};
 pub use journal::{
     ViewError, active_segment, append_events, attempt_path, claim_files, complete_prefix,
-    encode_events, load_journal, load_pending, pending_files, read_attempt, repair_tail,
+    encode_events, load_journal, load_pending, pending_files, read_attempt, remove, repair_tail,
     segment_files, view, write_attempt_file,
 };
 pub use place::{capture_where, merged_into_default, object_format};

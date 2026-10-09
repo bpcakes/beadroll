@@ -50,6 +50,7 @@ fn no_git_maintenance_in_sync_git_and_fetches_stay_packed() {
         Some(a.checkout().to_path_buf()),
         user_home,
         std::env::temp_dir(),
+        &|_| None,
     )
     .unwrap();
     settings.git = Env::new(vars, Some(a.checkout().to_path_buf()), std::env::temp_dir());

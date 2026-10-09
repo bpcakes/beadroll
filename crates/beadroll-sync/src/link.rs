@@ -60,9 +60,10 @@ impl<'a> Link<'a> {
         private_dir(&ws.dir)?;
         let git_dir = ws.dir.join("sync.git");
         let carried = transport_config(&ws.settings.git)?;
+        let int = |text: &str| beadroll_core::text::py_int(text).map(|n| n.to_string());
         let rules = CountRules {
             is_digit: &beadroll_core::text::py_isdigit,
-            int: &beadroll_core::text::py_int,
+            int: &int,
         };
         let env = sync_env(&ws.settings.git, &git_dir, &carried, &rules)?;
         Ok(Link {

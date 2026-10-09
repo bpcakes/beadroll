@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use beadroll_core::code::Code;
 use beadroll_core::event::FORMAT;
-use beadroll_core::json::{self, Format, Object, Value};
+use beadroll_core::json::{self, Format, Int, Object, Value};
 use beadroll_store::{Settings, detect_actor, find_workspace, nearest_harness};
 use beadroll_sync::{publish_soon, unpublished_count};
 
@@ -79,7 +79,16 @@ fn settings() -> Result<Settings, Failure> {
         cwd,
         user_home,
         std::env::temp_dir(),
+        &home_of,
     )?)
+}
+
+/// The home directory of the user `name`, from the password database (Python's `pwd.getpwnam`),
+/// for `~NAME` in `BEAD_HOME`.
+fn home_of(name: &std::ffi::OsStr) -> Option<OsString> {
+    let name = name.to_str()?;
+    let user = nix::unistd::User::from_name(name).ok()??;
+    Some(user.dir.into_os_string())
 }
 
 fn run(argv: Vec<OsString>) -> u8 {
@@ -161,14 +170,14 @@ fn execute(request: &Request) -> Result<Option<String>, Failure> {
             lines.push(warning);
         }
     }
-    let behind = unpublished_count(&ws)?.filter(|n| *n != 0);
+    let behind = unpublished_count(&ws)?.filter(|n| *n != Int::from(0));
     if let Some(behind) = behind {
         // after --offline, a remote that did not answer, or on a store that has never published
         if let Some(Value::Object(result)) = &mut result {
-            result.insert("unpublished".into(), Value::from(behind));
+            result.insert("unpublished".into(), Value::Int(behind.clone()));
         }
         if let Some(lines) = &mut lines {
-            let plural = if behind == 1 { "" } else { "s" };
+            let plural = if behind == Int::from(1) { "" } else { "s" };
             lines.push(format!(
                 "{behind} event{plural} not yet published: bead sync"
             ));
@@ -257,7 +266,7 @@ fn dispatch(
     })
 }
 
-fn filters(given: args::Filters, limit: i128) -> commands::FilterArgs {
+fn filters(given: args::Filters, limit: Int) -> commands::FilterArgs {
     commands::FilterArgs {
         issue_type: given.issue_type,
         label: given.label,
@@ -297,4 +306,24 @@ fn report(failure: &Failure, as_json: bool) -> u8 {
     };
     let _ = emit(Some(&text), Stream::Stderr);
     if failure.code == Code::Usage { 2 } else { 1 }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn another_users_home_comes_from_the_password_database() {
+        let me = nix::unistd::User::from_uid(nix::unistd::getuid())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            home_of(std::ffi::OsStr::new(&me.name)),
+            Some(me.dir.into_os_string())
+        );
+        assert_eq!(
+            home_of(std::ffi::OsStr::new("no-such-user-bead-test")),
+            None
+        );
+    }
 }

@@ -18,6 +18,7 @@ beadroll-git.workspace = true
 beadroll-store.workspace = true
 beadroll-sync.workspace = true
 clap.workspace = true
+nix.workspace = true
 rustix.workspace = true
 
 [dev-dependencies]
