@@ -45,7 +45,8 @@ mixed-fleet tests.
   `tests/golden/`.
 - `tests/cli/protocol.rs`, `hardening.rs`, `storage.rs`: `test_protocol`, `test_hardening` and
   `test_storage`, ported; `hardening/gate.rs`: the `pause-until` handshake (§4.5) a test holds
-  bead at.
+  bead at. `tests/cli/sweep.rs`: `test_sweep`, the ownership protocol enumerated, its boundaries
+  reached through failpoints (`fault_env`); the twelve-schedule slice runs in the fast suite.
 - `main.rs`'s `rust_only`: the machine of a test that injects a fault through a failpoint, where
   the Python test patched bead in process. Only the Rust binary has failpoints, so it runs that
   binary whatever `BEAD_UNDER_TEST` says.
@@ -87,5 +88,8 @@ mixed-fleet tests.
 - `cargo nextest run -p beadroll`: the same against the Rust binary
 - `cargo nextest run -p beadroll -E 'test(/^mixed::/)'`: the mixed-fleet tests
 - `cargo nextest run -p beadroll -E 'test(/^golden::/)'`: the Rust binary against the goldens
+- `BEAD_SWEEP=full cargo nextest run -p beadroll -E 'test(=sweep::sweep::sweep)'`: all 660
+  schedules of the sweep, in parallel (about 11 minutes on 16 cores); `BEAD_SWEEP_GC=1` and
+  `BEAD_SWEEP_CONCURRENT=1` select its variants
 - `cargo xtask golden`: capture the goldens from Python's `./bead`
 - `cargo xtask oracle`: the Python suite against the Rust binary; it must pass completely

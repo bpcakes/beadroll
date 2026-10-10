@@ -18,6 +18,7 @@ mod mixed;
 mod protocol;
 mod storage;
 mod support;
+mod sweep;
 
 use beadroll_test_support::{Machine, Sandbox};
 

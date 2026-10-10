@@ -21,6 +21,13 @@ filter = """\
     | test(=hardening::v1::v1_stalled_receive_timeouts::stalled_receive_with_a_stderr_flood_returns_within_the_timeout)"""
 threads-required = "num-cpus"
 
+# The full sweep (BEAD_SWEEP=full: 660 schedules, about 11 minutes on 16 cores and longer on fewer)
+# outlasts the five minutes after which a test counts as hung; each of its runs of bead still
+# counts as hung after 180 s.
+[[profile.default.overrides]]
+filter = "test(=sweep::sweep::sweep)"
+slow-timeout = { period = "60s", terminate-after = 60 }
+
 [profile.ci]
 # CI keeps each test's time as evidence (docs/RUST-PORT.md §4.7); timings never gate a test.
 
