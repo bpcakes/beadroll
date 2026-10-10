@@ -10,8 +10,8 @@ use beadroll_sync::{Error, Link, Mode, PushOutcome, Tx, locked, synchronise};
 use beadroll_test_support::{Json, Machine, Sandbox, git};
 
 use crate::support::{
-    Gate, Open, actor, alongside, claim, claiming_update, comments, pending_ids, release_command,
-    sandbox, text, workspace,
+    Gate, Open, actor, alongside, claim, claiming_update, comments, pending_ids, quoted,
+    release_command, sandbox, text, workspace,
 };
 
 /// Machine a's tracker with one issue, "before", synced to machine b.
@@ -54,11 +54,6 @@ impl Protocol3 {
         ];
         git(args, None).trim().to_owned()
     }
-}
-
-/// `path` quoted for the shell.
-fn quoted(path: &std::path::Path) -> String {
-    format!("'{}'", path.display().to_string().replace('\'', r"'\''"))
 }
 
 /// Whether the issue shows a claim, its title and its labels.

@@ -10,5 +10,6 @@
 //! Python's is the implementation whose stores this crate must share.
 #![cfg(test)]
 
+mod failpoints;
 mod protocol;
 mod support;

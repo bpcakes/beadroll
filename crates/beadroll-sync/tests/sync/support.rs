@@ -55,6 +55,11 @@ pub(crate) fn actor(machine: &Machine) -> Actor {
     Actor::writable(json!({"agent": "codex", "thread": thread}))
 }
 
+/// `path` quoted for the shell.
+pub(crate) fn quoted(path: &Path) -> String {
+    format!("'{}'", path.display().to_string().replace('\'', r"'\''"))
+}
+
 /// What `text` holds as a string.
 pub(crate) fn text(value: &Json) -> String {
     value.as_str().expect("a string").to_owned()

@@ -129,13 +129,16 @@ impl Link<'_> {
             }
             Err(error) => return Err(error.into()),
         };
-        if failpoints.hit("push.reply") == Some(Fired::FailReply) && push.returncode == 0 {
-            // the remote took it; the answer never arrived
+        let mut judged = push_outcome(push.returncode, &push.stdout, &push.stderr, &refspec);
+        if failpoints.hit("push.reply") == Some(Fired::FailReply) && judged.0 == PushOutcome::Ok {
+            // the remote took it, whatever the exit status said; the answer never arrived, git's
+            // status line with it
             push.returncode = 1;
             push.stdout.clear();
             push.stderr = b"connection closed after remote accepted".to_vec();
+            judged = push_outcome(push.returncode, &push.stdout, &push.stderr, &refspec);
         }
-        let (outcome, said) = push_outcome(push.returncode, &push.stdout, &push.stderr, &refspec);
+        let (outcome, said) = judged;
         if outcome == PushOutcome::Ok {
             // the remote holds it, whatever went wrong afterwards
             self.git(
