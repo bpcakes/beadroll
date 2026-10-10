@@ -8,15 +8,19 @@
 //!   keeping its last value in its first place.
 //! - [`write()`] prints a value in one of Python's `json.dumps` dialects ([`Format`]), floats as
 //!   `repr()` prints them.
+//! - [`Surrogates`] keeps the lone surrogates Python reads a file's escapes as, through a parse and
+//!   a write, for the files bead must hand back as Python would.
 
 mod int;
 mod parse;
+mod surrogates;
 mod write;
 
 use indexmap::IndexMap;
 
 pub use int::{Int, MAX_DIGITS};
 pub use parse::{MAX_DEPTH, ParseError, Parsed, nesting, parse};
+pub use surrogates::{Surrogates, lone_surrogate_escapes};
 pub use write::{Format, Style, WriteError, float_repr, write};
 
 /// A JSON object: its members in the order Python's dict keeps them.

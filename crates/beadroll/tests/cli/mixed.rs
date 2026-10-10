@@ -627,3 +627,61 @@ fn arguments_that_are_not_utf8_answer_as_in_python() {
         "nothing was written"
     );
 }
+
+/// `machines --name` rewrites `aliases.json` as Python's `json.dumps` writes it, whichever binary
+/// runs it: bytes of the name that are not UTF-8 are kept as lone surrogates, and so are those the
+/// file already held, beside its other members as they were; either binary prints such a name with
+/// a `?` for each.
+#[test]
+fn aliases_keep_bytes_that_are_not_utf8_as_python_keeps_them() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let seeded = r#"{"zz": "kept", "a\udcff": "lone \udcfe", "n": {"x": [1, 2.50, "\u00e9"]}, "dup": 1, "dup": "last"}"#;
+    let mut files = Vec::new();
+    let mut shown = Vec::new();
+    for bead in [python(), rust()] {
+        let sandbox = crate::sandbox();
+        let m = Machine::new(&sandbox, "names");
+        json_as(&bead, &m, &["init", "--prefix", "ex"]);
+        std::fs::write(m.home().join("aliases.json"), seeded).unwrap();
+        let replica = json_as(&bead, &m, &["info"])["machine"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let own = [replica.as_bytes(), b"=host\xff"].concat();
+        for given in [&b"ab\xff=c\xfed"[..], b"zz=new", b"a\xff=again", &own] {
+            let out = Command::new(&bead)
+                .args([
+                    OsStr::new("machines"),
+                    OsStr::new("--name"),
+                    OsStr::from_bytes(given),
+                ])
+                .current_dir(m.checkout())
+                .env_clear()
+                .envs(m.env(None, "codex"))
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        let file = std::fs::read(m.home().join("aliases.json")).unwrap();
+        files.push(String::from_utf8_lossy(&file).replace(&replica, "<replica>"));
+        let listed = json_as(&bead, &m, &["machines"]);
+        let human = run_as(&bead, &m, &["machines"]);
+        let line = String::from_utf8_lossy(&human.stdout).replace(&replica, "<replica>");
+        shown.push((
+            listed[0]["alias"].clone(),
+            line.split("events").next().unwrap().to_owned(),
+        ));
+    }
+    assert_eq!(files[1], files[0]);
+    assert!(
+        files[0].contains(r#""ab\udcff": "c\udcfed""#),
+        "{}",
+        files[0]
+    );
+    assert_eq!(shown[1], shown[0]);
+    assert_eq!(shown[0].0, Json::from("host?"));
+}

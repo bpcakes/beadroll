@@ -13,7 +13,8 @@ failpoint registry.
 - `src/settings.rs`: `Settings` (the variables, the environment git inherits, the working directory,
   the clock; `home()` with the `BEAD_HOME` rules), `Clock`, `pathlib`.
 - `src/fs.rs`: `private_dirs`, `private_dir`, `write_atomic`, `fsync`, `dir_entries`, `glob_ending`,
-  `read_json_text` and Python's error texts (`os_error_str`, `utf8_error`).
+  `read_json_text`, `read_json_keeping_surrogates` (a file Python rewrites whole, or whose names
+  print as Python prints them) and Python's error texts (`os_error_str`, `utf8_error`).
 - `src/identity.rs`: `replica_id`, `machine_aliases`, `uuid7`, `hex_token`.
 - `src/actor.rs`: `detect_actor`, `nearest_harness` (its `ps` passed in by the CLI).
 - `src/workspace.rs`: `Workspace` (`meta`, `save_meta`, `note_sync`, `ref_name`, `resolve_remote`,

@@ -9,7 +9,7 @@ use std::os::unix::ffi::OsStrExt as _;
 use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _, PermissionsExt as _};
 use std::path::{Path, PathBuf};
 
-use beadroll_core::json::{self, Value};
+use beadroll_core::json::{self, Surrogates, Value};
 use beadroll_git::IoError;
 
 use crate::error::Error;
@@ -169,6 +169,38 @@ pub fn read_json_text(path: &Path) -> Result<Value, Unreadable> {
         Err(error) => return Err(Unreadable::Other(os_error_str(&error, path))),
     };
     json_text(&data).map_err(Unreadable::Other)
+}
+
+/// A file's JSON as Python reads one it may write back whole, `loads_strict(path.read_text())`,
+/// each lone surrogate standing as a character the file does not otherwise hold ([`Surrogates`]):
+/// one for each code unit there or in `units`, none a character in `avoid`. What is not JSON gets
+/// Python's message, from the file as it is.
+pub fn read_json_keeping_surrogates(
+    path: &Path,
+    units: &[u16],
+    avoid: &str,
+) -> Result<(Value, Surrogates), Unreadable> {
+    let data = match std::fs::read(path) {
+        Ok(data) => data,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Err(Unreadable::Missing),
+        Err(error) => return Err(Unreadable::Other(os_error_str(&error, path))),
+    };
+    let parsed = json_text(&data).map_err(Unreadable::Other)?;
+    let text = std::str::from_utf8(&data).unwrap_or_default();
+    // more distinct stand-ins than the private-use area holds: a file no bead or Python writes
+    let Some((stood, surrogates)) = Surrogates::stand_in(text, units, avoid) else {
+        return Err(Unreadable::Other(
+            "it holds more lone surrogates and private-use characters than bead can keep apart"
+                .to_owned(),
+        ));
+    };
+    if stood == text {
+        return Ok((parsed, surrogates));
+    }
+    let value = json::parse(stood.as_bytes())
+        .map(|parsed| parsed.value)
+        .map_err(|error| Unreadable::Other(error.to_string()))?;
+    Ok((value, surrogates))
 }
 
 /// `loads_strict(data.decode("utf-8"))`: the value, or Python's message for why not.

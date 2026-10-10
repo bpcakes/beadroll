@@ -4,16 +4,17 @@ use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_core::code::Code;
-use beadroll_core::json::{self, Format, Int, Object, Value};
+use beadroll_core::json::{self, Format, Int, Object, Surrogates, Value};
 use beadroll_core::order::causal_order;
 use beadroll_core::replay::replay;
-use beadroll_core::text::{printed_text, str_of};
+use beadroll_core::text::{printed_text, str_of, surrogateescaped};
 use beadroll_core::time::event_time;
 use beadroll_store::{
-    Unreadable, ViewError, load_journal, machine_aliases, read_json_text, write_atomic,
+    Unreadable, ViewError, load_journal, machine_aliases, read_json_keeping_surrogates,
+    write_atomic,
 };
 
-use super::{Context, Failure, Outcome, arg_text, resolve_arg};
+use super::{Context, Failure, Outcome, resolve_arg};
 
 /// The tracker's events in causal order (`init` left out), or one issue's: when, which machine,
 /// agent and thread, the operation and the issue. A `limit` keeps the last that many; a negative
@@ -148,36 +149,59 @@ pub(crate) fn machines(ctx: &Context<'_>, name: Option<&OsStr>) -> Result<Outcom
 }
 
 /// Records `ID=ALIAS` in `aliases.json`, keeping every name already there; a file that cannot
-/// be read is never replaced.
+/// be read is never replaced. Bytes of the name that are not UTF-8 are kept as Python keeps them,
+/// lone surrogates, and so is any lone surrogate the file holds: the file is rewritten as Python's
+/// `json.dumps` writes it.
 fn record_alias(ctx: &Context<'_>, name: &OsStr) -> Result<(), Failure> {
     let bytes = name.as_bytes();
     let (ident, alias) = match bytes.iter().position(|b| *b == b'=') {
         Some(at) => (&bytes[..at], &bytes[at + 1..]),
         None => (bytes, &b""[..]),
     };
+    let units: Vec<u16> = surrogateescaped(bytes)
+        .into_iter()
+        .filter_map(|unit| unit.err().map(|byte| 0xDC00 | u16::from(byte)))
+        .collect();
+    let avoid = String::from_utf8_lossy(bytes).into_owned();
     let path = ctx.ws.settings.home()?.join("aliases.json");
     let shown = printed_text(path.as_os_str().as_bytes());
-    let mut aliases = match read_json_text(&path) {
-        Ok(Value::Object(aliases)) => aliases,
+    let cannot = |problem: &str| {
+        Failure::new(
+            Code::Io,
+            format!("{shown} cannot be read ({problem}); repair it before adding a name"),
+        )
+    };
+    let (aliases, surrogates) = match read_json_keeping_surrogates(&path, &units, &avoid) {
+        Ok((Value::Object(aliases), surrogates)) => (aliases, surrogates),
         Ok(_) => {
             return Err(Failure::new(
                 Code::Io,
                 format!("{shown} does not hold a JSON object; repair it before adding a name"),
             ));
         }
-        Err(Unreadable::Missing) => Object::new(),
-        Err(Unreadable::Other(problem)) => {
-            return Err(Failure::new(
-                Code::Io,
-                format!("{shown} cannot be read ({problem}); repair it before adding a name"),
-            ));
+        Err(Unreadable::Missing) => {
+            let surrogates = Surrogates::stand_in("", &units, &avoid)
+                .map(|(_, surrogates)| surrogates)
+                .ok_or_else(|| cannot("too many lone surrogates to keep apart"))?;
+            (Object::new(), surrogates)
         }
+        Err(Unreadable::Other(problem)) => return Err(cannot(&problem)),
     };
-    let (ident, _) = arg_text(OsStr::from_bytes(ident));
-    let (alias, _) = arg_text(OsStr::from_bytes(alias));
-    aliases.insert(ident, Value::from(alias));
-    let text = json::write(&Value::Object(aliases), Format::INDENTED)
+    let text = |part: &[u8]| -> String {
+        surrogateescaped(part)
+            .into_iter()
+            .map(|unit| match unit {
+                Ok(c) => c,
+                Err(byte) => surrogates
+                    .char_for(0xDC00 | u16::from(byte))
+                    .unwrap_or('\u{FFFD}'),
+            })
+            .collect()
+    };
+    let mut aliases = aliases;
+    aliases.insert(text(ident), Value::from(text(alias)));
+    let written = json::write(&Value::Object(aliases), Format::INDENTED)
         .map_err(|e| Failure::new(Code::Validation, e.to_string()))?;
-    write_atomic(&path, text.as_bytes(), true)?;
+    write_atomic(&path, surrogates.restore(&written).as_bytes(), true)?;
     Ok(())
 }

@@ -7,7 +7,7 @@ use std::io::{self, Write as _};
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::Path;
 
-use beadroll_core::json::{self, Format, Object, Value};
+use beadroll_core::json::{self, Format, Object, Surrogates, Value};
 use beadroll_git::IoError;
 
 use crate::error::Error;
@@ -119,25 +119,37 @@ fn short_hostname() -> String {
 }
 
 /// Local display names of machines: this machine's own alias from `replica.json`, then
-/// `aliases.json`. Anything unreadable or malformed is skipped.
+/// `aliases.json`. Anything unreadable or malformed is skipped. A lone surrogate Python keeps in
+/// either file (`machines --name` given bytes that are not UTF-8) prints as `?`, as Python's
+/// output prints it; a name holding one is no machine's id.
 pub fn machine_aliases(settings: &Settings) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     let Ok(home) = settings.home() else {
         return out;
     };
-    if let Ok(Value::Object(own)) = crate::fs::read_json_text(&home.join("replica.json"))
+    let read = |name: &str| crate::fs::read_json_keeping_surrogates(&home.join(name), &[], "");
+    let shown = |text: &str, surrogates: &Surrogates| -> String {
+        text.chars()
+            .map(|c| if surrogates.stands_in(c) { '?' } else { c })
+            .collect()
+    };
+    let held = |text: &str, surrogates: &Surrogates| text.chars().any(|c| surrogates.stands_in(c));
+    if let Ok((Value::Object(own), surrogates)) = read("replica.json")
         && let Some(Value::Str(id)) = own.get("id")
+        && !held(id, &surrogates)
     {
         let alias = match own.get("alias") {
-            Some(Value::Str(alias)) => alias.clone(),
+            Some(Value::Str(alias)) => shown(alias, &surrogates),
             _ => id.clone(),
         };
         out.insert(id.clone(), alias);
     }
-    if let Ok(Value::Object(aliases)) = crate::fs::read_json_text(&home.join("aliases.json")) {
+    if let Ok((Value::Object(aliases), surrogates)) = read("aliases.json") {
         for (id, alias) in aliases {
-            if let Value::Str(alias) = alias {
-                out.insert(id, alias);
+            if let Value::Str(alias) = alias
+                && !held(&id, &surrogates)
+            {
+                out.insert(id, shown(&alias, &surrogates));
             }
         }
     }

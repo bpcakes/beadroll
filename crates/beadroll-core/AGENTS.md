@@ -12,8 +12,10 @@ minting, and reading a published tree. pancake-studio links this crate alone. Ph
 
 - `src/lib.rs`: the crate root, listing the modules.
 - `src/json.rs` (`json/parse.rs`, `json/write.rs`, `json/int.rs`): `Value`, `parse`, `write`,
-  `Format`; `src/text.rs`: `repr`, `str_of`, `strip`, `b36`, and `repr_bytes`, `printed_text`
-  and `json_ascii_bytes` for bytes `surrogateescape` decodes (command lines, paths).
+  `Format`; `json/surrogates.rs`: `Surrogates`, lone surrogates kept through a read and a write.
+- `src/text.rs`: `repr`, `str_of`, `strip`, `b36`, and `surrogateescaped`, `repr_bytes`,
+  `printed_text` and `json_ascii_bytes` for bytes `surrogateescape` decodes (command lines,
+  paths).
 - `src/event.rs`: `event_problem`, `payload_problem`, `write_problem`, `Field`; `src/op.rs`: `Op`,
   an event's operation with its typed payload, and `PyInt`.
 - `src/journal.rs`: `read_segment`, `read_attempt`, `Journal`; `src/order.rs`: `causal_order`.

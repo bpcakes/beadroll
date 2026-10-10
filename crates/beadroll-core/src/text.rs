@@ -37,7 +37,7 @@ pub fn repr_str(text: &str) -> String {
 /// Bytes as the string `surrogateescape` decodes them to, as Python decodes a command line or a
 /// path: each character of the UTF-8 in them, and each byte that is not part of it, which Python
 /// keeps as the lone surrogate `U+DC00 + byte`.
-fn units(data: &[u8]) -> Vec<Result<char, u8>> {
+pub fn surrogateescaped(data: &[u8]) -> Vec<Result<char, u8>> {
     let mut units = Vec::with_capacity(data.len());
     let mut rest = data;
     while !rest.is_empty() {
@@ -67,13 +67,13 @@ fn units(data: &[u8]) -> Vec<Result<char, u8>> {
 /// [`repr_str`] shows it, and each byte that is not part of it as the lone surrogate it becomes,
 /// `\udcXX`.
 pub fn repr_bytes(data: &[u8]) -> String {
-    repr_units(units(data).into_iter())
+    repr_units(surrogateescaped(data).into_iter())
 }
 
 /// Bytes as Python prints the string `surrogateescape` decodes them to on a stream that replaces
 /// what it cannot encode, as bead's are: UTF-8 as it is, and a `?` for each byte that is not.
 pub fn printed_text(data: &[u8]) -> String {
-    units(data)
+    surrogateescaped(data)
         .into_iter()
         .map(|unit| unit.unwrap_or('?'))
         .collect()
@@ -86,7 +86,7 @@ pub fn printed_text(data: &[u8]) -> String {
 pub fn json_ascii_bytes(data: &[u8]) -> String {
     let mut out = String::with_capacity(data.len() + 2);
     out.push('"');
-    for unit in units(data) {
+    for unit in surrogateescaped(data) {
         let c = match unit {
             Ok(c) => c,
             Err(byte) => {
