@@ -4,6 +4,7 @@
 //! - `inventory` maps every Python test to the Rust test that ports it.
 //! - `timing` runs a command and records how long it took, as evidence.
 //! - `diff` checks beadroll-core against CPython: replay reports and JSON, case by case.
+//! - `golden` captures the golden outputs from Python's launcher.
 //!
 //! It is a developer tool, so it prints; the product crates do not (§2.2).
 #![allow(
@@ -16,6 +17,7 @@
 )]
 
 mod diff;
+mod golden;
 mod inventory;
 mod oracle;
 mod timing;
@@ -48,6 +50,12 @@ usage: cargo xtask <command>
       corpus (or --fixtures), then N generated values and journal lines. A differing case is kept
       in target/diff/ to rerun alone with --fixtures; --write-cases keeps every case.
 
+  golden
+      Capture the golden outputs (crates/beadroll/tests/golden/: every help page, the human output
+      of the reading commands over one scripted tracker, info's keys) from Python's ./bead, by
+      running the golden tests in capture mode against it (docs/RUST-PORT.md §4.2). Goldens come
+      from Python only; the same tests compare any other bead with them.
+
   timing [--label NAME] [--out FILE] -- COMMAND [ARG...]
   timing --replay N [--label NAME] [--out FILE]
       Run COMMAND and append what it took, one JSON line, to FILE (default
@@ -66,12 +74,13 @@ fn main() -> ExitCode {
         Some("inventory") => inventory::main(rest),
         Some("timing") => timing::main(rest),
         Some("diff") => diff::main(rest),
+        Some("golden") => golden::main(rest),
         Some("help" | "-h" | "--help") => {
             print!("{USAGE}");
             return ExitCode::SUCCESS;
         }
         _ => Err(workspace::Failure::Usage(
-            "expected a command: oracle, inventory, timing or diff".into(),
+            "expected a command: oracle, inventory, timing, diff or golden".into(),
         )),
     };
     match outcome {

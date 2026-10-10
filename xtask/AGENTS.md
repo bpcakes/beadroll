@@ -4,8 +4,9 @@
 
 `xtask` is the workspace's own tooling, run as `cargo xtask` (`docs/RUST-PORT.md` §4): `oracle`
 runs the Python test suite against any `bead` binary, `inventory` maps every Python test to the
-Rust tests that port it, `timing` records how long a command (or a replay) took, and `diff` checks
-beadroll-core against CPython case by case. Later phases add `golden` and `check`.
+Rust tests that port it, `timing` records how long a command (or a replay) took, `diff` checks
+beadroll-core against CPython case by case, and `golden` captures the golden outputs from Python's
+launcher. A later phase adds `check`.
 
 ## Key entrypoints
 
@@ -20,6 +21,8 @@ beadroll-core against CPython case by case. Later phases add `golden` and `check
   `diff/json.rs` and `json/corpus.rs` against `python/json_dump.py`; `diff/run.rs` runs the
   drivers. `python/capture_fixtures.py` records the journals the Python tests build;
   `fixtures/replay/tests.jsonl` is the sample of them CI replays.
+- `src/golden.rs`: `golden`, which runs the golden tests (`crates/beadroll/tests/cli/golden.rs`) in
+  capture mode against `./bead`; the scenarios and their normalisation live in those tests.
 - `src/workspace.rs`: paths, failures and JSON strings for all of them.
 
 ## Edit here for X
@@ -30,6 +33,7 @@ beadroll-core against CPython case by case. Later phases add `golden` and `check
 - A new Python test module: `FAST` or `SLOW` in `src/oracle.rs`.
 - A ported test that does not follow the naming rule (a D-class replacement): `=>` in
   `inventory.txt`.
+- A golden output: the scenario in `crates/beadroll/tests/cli/golden.rs`, then `cargo xtask golden`.
 - A Python behaviour the diff must cover: the generators in `src/diff/generate/` or the JSON
   corpus; something both reports must show: `report.rs` and `replay_dump.py` together.
 
@@ -43,6 +47,8 @@ beadroll-core against CPython case by case. Later phases add `golden` and `check
 - Unless the binary is this checkout's Python launcher, `BEADROLL_ORACLE_REFUSALS` is set and
   Python bead refuses to start, so a bypass fails instead of passing against Python.
 - Timings are evidence and never gate anything (§4.7).
+- Goldens are captured from Python's launcher only: the golden tests refuse to capture from any
+  other binary, and a golden is never regenerated to make Rust pass.
 - `diff` keeps no list of expected differences: a difference is fixed in Rust or decided as a row
   of `docs/RUST-PORT.md` §5 and applied to Python. Its drivers run under PYTHONINTMAXSTRDIGITS=4300
   and refuse any other limit.
@@ -54,6 +60,7 @@ beadroll-core against CPython case by case. Later phases add `golden` and `check
 - `cargo xtask oracle --bead ./bead`: the suite against Python's launcher; must pass completely
 - `cargo xtask oracle --report`: against the Rust binary, built first; reports only
 - `cargo xtask inventory`
+- `cargo xtask golden`: the goldens, from Python's `./bead`
 - `cargo xtask timing --label NAME -- COMMAND`
 - `cargo run --release --package xtask -- timing --replay 10000`
 - `cargo xtask diff replay [--cases N] [--seed S] [--fixtures FILE]`, and `diff json` likewise

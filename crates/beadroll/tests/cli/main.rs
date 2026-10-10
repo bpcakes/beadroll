@@ -9,6 +9,7 @@
 #![cfg(test)]
 
 mod commands;
+mod golden;
 mod mixed;
 mod support;
 

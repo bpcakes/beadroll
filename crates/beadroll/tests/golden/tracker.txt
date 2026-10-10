@@ -1,0 +1,346 @@
+$ bead init --prefix ex --import <ROOT>/epic.jsonl
+Tracker 'ex' at <ROOT>/home-gold-a/<WORKSPACE1> (1 issues imported)
+exit 0
+
+$ bead import <ROOT>/issues.jsonl
+Imported 5 issues
+exit 0
+
+$ bead import <ROOT>/loop-one.jsonl
+Imported 1 issues
+exit 0
+
+$ bead import <ROOT>/loop-two.jsonl
+Imported 1 issues
+exit 0
+
+$ bead machines --name <MACHINE1>=gold-a
+<MACHINE1>  gold-a             13 events  last <TIME>
+exit 0
+
+$ bead create Native child --parent ex-a -p 1 -d first line
+second line --acceptance renders -l beta -l alpha
+✓ Created ex-a.3: Native child
+exit 0
+
+# created <KEY1>
+
+$ bead comments add ex-a.1 native comment
+Comment added to ex-a.1
+exit 0
+
+$ bead comments add ex-a.1 -m - dash item
+Comment added to ex-a.1
+exit 0
+
+$ bead dep add ex-b ex-a.1
+ex-b now depends on ex-a.1
+exit 0
+
+$ bead update ex-b --notes investigating --add-label urgent --assignee alice
+Updated ex-b: Crash on start
+exit 0
+
+$ bead update ex-a.2 --status closed
+Updated ex-a.2: Help pages
+exit 0
+
+$ bead close ex-a.3 -r done for now
+✓ Closed ex-a.3: Native child
+exit 0
+
+$ bead reopen ex-a.3
+✓ Reopened ex-a.3: Native child
+exit 0
+
+$ bead delete <KEY1> -r not needed
+✓ Deleted <KEY1>: Loose end
+exit 0
+
+$ bead show ex-a
+○ ex-a · Ship the port   [P1 · OPEN]
+  last worked on branch main (<COMMIT1>)
+  type epic · created <TIME> by seed · assignee maintainer
+  description: Port bead to Rust.\x0aKeep parity.
+  acceptance_criteria: Every verb ported
+  notes: Phase 2b
+  design: One table drives the parser.
+  labels: port, rust
+  needed by (parent-child): ex-a.1 [open] Parser
+  needed by (parent-child): ex-a.2 [closed] Help pages
+  needed by (parent-child): ex-a.3 [open] Native child
+exit 0
+
+$ bead show ex-a.1
+○ ex-a.1 · Parser   [P2 · OPEN]
+  last worked on branch main (<COMMIT1>)
+  type task · created <TIME> by seed
+  acceptance_criteria: argparse parity
+  depends on (parent-child): ex-a [open] Ship the port
+  needed by (blocks): ex-a.2 [closed] Help pages
+  needed by (blocks): ex-b [open] Crash on start
+  [<TIME>] reviewer: imported note
+  [<TIME>] codex:gold-a-thread-0001@<MACHINE1>: native comment
+  [<TIME>] codex:gold-a-thread-0001@<MACHINE1>: - dash item
+exit 0
+
+$ bead show ex-a.2
+✓ ex-a.2 · Help pages   [P2 · CLOSED]
+  last worked on branch main (<COMMIT1>)
+  closed on main at <COMMIT1> · merged into the default branch
+  type task · created <TIME> by seed
+  depends on (parent-child): ex-a [open] Ship the port
+  depends on (blocks): ex-a.1 [open] Parser
+exit 0
+
+$ bead show ex-a.3
+○ ex-a.3 · Native child   [P1 · OPEN]
+  last worked on branch main (<COMMIT1>)
+  type task · created <TIME> by codex:gold-a-thread-0001@<MACHINE1>
+  description: first line\x0asecond line
+  acceptance_criteria: renders
+  labels: alpha, beta
+  depends on (parent-child): ex-a [open] Ship the port
+exit 0
+
+$ bead show ex-b
+○ ex-b · Crash on start   [P0 · OPEN]
+  last worked on branch main (<COMMIT1>)
+  type bug · created <TIME> by seed · assignee alice
+  description: bead dies when stdout is closed
+  notes: investigating
+  labels: urgent
+  depends on (blocks): ex-a.1 [open] Parser
+exit 0
+
+$ bead show ex-c
+✓ ex-c · Old feature   [P3 · CLOSED]
+  last worked on branch main (<COMMIT1>)
+  type feature · created <TIME> by seed
+  close_reason: shipped
+exit 0
+
+$ bead show ex-d
+○ ex-d · Waits on a key   [P2 · OPEN]
+  last worked on branch main (<COMMIT1>)
+  type task · created <TIME> by seed
+  acceptance_criteria: done
+  depends on (blocks): ex-zzz (not an issue yet)
+exit 0
+
+$ bead show ex-e
+○ ex-e · Loop one   [P4 · OPEN]
+  last worked on branch main (<COMMIT1>)
+  type chore · created <TIME> by seed
+  depends on (blocks): ex-f [open] Loop two
+  needed by (blocks): ex-f [open] Loop two
+exit 0
+
+$ bead show <KEY1>
+✗ <KEY1> · Loose end   [P3 · TOMBSTONE]
+  last worked on branch main (<COMMIT1>)
+  type chore · created <TIME> by codex:gold-a-thread-0001@<MACHINE1>
+  close_reason: not needed
+exit 0
+
+$ bead list
+○ ex-b [P0] [bug] - Crash on start @alice (main)
+○ ex-a [P1] [epic] - Ship the port @maintainer (main)
+○ ex-a.3 [P1] [task] - Native child (main)
+○ ex-a.1 [P2] [task] - Parser (main)
+○ ex-d [P2] [task] - Waits on a key (main)
+○ ex-e [P4] [chore] - Loop one (main)
+○ ex-f [P4] [chore] - Loop two (main)
+exit 0
+
+$ bead list --all
+○ ex-b [P0] [bug] - Crash on start @alice (main)
+○ ex-a [P1] [epic] - Ship the port @maintainer (main)
+○ ex-a.3 [P1] [task] - Native child (main)
+○ ex-a.1 [P2] [task] - Parser (main)
+✓ ex-a.2 [P2] [task] - Help pages (main)
+○ ex-d [P2] [task] - Waits on a key (main)
+✓ ex-c [P3] [feature] - Old feature (main)
+✗ <KEY1> [P3] [chore] - Loose end (main)
+○ ex-e [P4] [chore] - Loop one (main)
+○ ex-f [P4] [chore] - Loop two (main)
+exit 0
+
+$ bead list -s closed
+✓ ex-a.2 [P2] [task] - Help pages (main)
+✓ ex-c [P3] [feature] - Old feature (main)
+exit 0
+
+$ bead list --parent ex-a
+○ ex-a.3 [P1] [task] - Native child (main)
+○ ex-a.1 [P2] [task] - Parser (main)
+exit 0
+
+$ bead list -t task -p 2
+○ ex-a.1 [P2] [task] - Parser (main)
+○ ex-d [P2] [task] - Waits on a key (main)
+exit 0
+
+$ bead ready
+○ ex-a.3 [P1] [task] - Native child (main)
+○ ex-a.1 [P2] [task] - Parser (main)
+○ ex-d [P2] [task] - Waits on a key (main)
+exit 0
+
+$ bead ready ex-a
+○ ex-a.3 [P1] [task] - Native child (main)
+○ ex-a.1 [P2] [task] - Parser (main)
+exit 0
+
+$ bead ready --parent ex-a
+○ ex-a.3 [P1] [task] - Native child (main)
+○ ex-a.1 [P2] [task] - Parser (main)
+exit 0
+
+$ bead ready --limit 1
+○ ex-a.3 [P1] [task] - Native child (main)
+exit 0
+
+$ bead blocked
+○ ex-a [P1] [epic] - Ship the port @maintainer (main)  ⟵ ex-a.1, ex-a.3
+○ ex-b [P0] [bug] - Crash on start @alice (main)  ⟵ ex-a.1
+○ ex-e [P4] [chore] - Loop one (main)  ⟵ ex-f
+○ ex-f [P4] [chore] - Loop two (main)  ⟵ ex-e
+exit 0
+
+$ bead search parser
+○ ex-a [P1] [epic] - Ship the port @maintainer (main)
+○ ex-a.1 [P2] [task] - Parser (main)
+exit 0
+
+$ bead search -a old
+✓ ex-c [P3] [feature] - Old feature (main)
+exit 0
+
+$ bead search nothing-like-it
+No matches
+exit 0
+
+$ bead lint
+ex-b: missing acceptance criteria
+exit 0
+
+$ bead dep list ex-a.2
+depends on ex-a (parent-child)
+depends on ex-a.1 (blocks)
+exit 0
+
+$ bead dep ex-d
+depends on ex-zzz (blocks, not an issue yet)
+exit 0
+
+$ bead dep tree ex-a
+○ ex-a [P1] [epic] - Ship the port @maintainer (main)
+exit 0
+
+$ bead dep cycles
+ex-e -> ex-f -> ex-e
+exit 0
+
+$ bead dep cycles --blocking-only
+ex-e -> ex-f -> ex-e
+exit 0
+
+$ bead comments ex-a.1
+[<TIME>] reviewer: imported note
+[<TIME>] codex:gold-a-thread-0001@<MACHINE1>: native comment
+[<TIME>] codex:gold-a-thread-0001@<MACHINE1>: - dash item
+exit 0
+
+$ bead comments ex-b
+No comments
+exit 0
+
+$ bead log ex-a.1 --limit 0
+<TIME>  gold-a     codex  gold-a-t  create       ex-a.1  (main)
+<TIME>  gold-a     codex  gold-a-t  dep_add      ex-a.1  (main)
+<TIME>  gold-a     codex  gold-a-t  comment      ex-a.1  (main)
+<TIME>  gold-a     codex  gold-a-t  comment      ex-a.1  (main)
+exit 0
+
+$ bead log --limit 3
+<TIME>  gold-a     codex  gold-a-t  close        ex-a.3  (main)
+<TIME>  gold-a     codex  gold-a-t  reopen       ex-a.3  (main)
+<TIME>  gold-a     codex  gold-a-t  delete       <KEY1>  (main)
+exit 0
+
+$ bead machines
+<MACHINE1>  gold-a             25 events  last <TIME>
+exit 0
+
+$ bead show <KEY2>
+stderr: Error: Issue not found: <KEY2>
+exit 1
+
+$ bead dep add ex-a ex-a
+stderr: Error: ex-a -> ex-a would create a dependency cycle
+exit 1
+
+$ bead dep add ex-a.1 ex-a.2
+stderr: Error: ex-a.1 -> ex-a.2 would create a dependency cycle
+exit 1
+
+$ bead update ex-b --status bogus
+stderr: Error: unknown status 'bogus'
+exit 1
+
+$ bead update ex-b --status tombstone
+stderr: Error: use `bead delete` to tombstone an issue; it ends the claim as well
+exit 1
+
+$ bead comments add ex-b  
+stderr: Error: comment text is required
+exit 1
+
+$ bead create
+stderr: Error: a title is required
+exit 1
+
+$ bead close <KEY2>
+stderr: Error: Issue not found: <KEY2>
+exit 1
+
+$ bead sync
+Synced with <ROOT>/origin.git: pulled 25, pushed 0 event(s)
+exit 0
+
+$ bead update ex-d --title Title from A --offline
+Updated ex-d: Title from A
+1 event not yet published: bead sync
+exit 0
+
+$ bead update ex-d --title Title from B --offline
+Updated ex-d: Title from B
+1 event not yet published: bead sync
+exit 0
+
+$ bead sync
+Synced with <ROOT>/origin.git: pulled 0, pushed 1 event(s)
+exit 0
+
+$ bead sync
+Synced with <ROOT>/origin.git: pulled 1, pushed 1 event(s)
+exit 0
+
+$ bead sync
+Synced with <ROOT>/origin.git: pulled 1, pushed 0 event(s)
+exit 0
+
+$ bead show ex-d
+○ ex-d · Title from B   [P2 · OPEN]
+  last worked on branch main (<COMMIT1>)
+  type task · created <TIME> by seed
+  acceptance_criteria: done
+  depends on (blocks): ex-zzz (not an issue yet)
+  ⚠ title was changed on two machines at once: 'Title from A' by codex:gold-a-thread-0001@<MACHINE1> | 'Title from B' by codex:gold-b-thread-0001@<MACHINE2>
+exit 0
+
+$ bead list --id ex-d
+○ ex-d [P2] [task] - Title from B (main) ⚠ conflict: title
+exit 0
+

@@ -1,0 +1,4 @@
+# --json info keys: version workspace workspace_source name prefix path remote ref machine actor actor_label issues events events_by_machine segments frontier pending_ownership waiting_events integrity renamed_keys last_sync
+
+# info line keys: version workspace workspace_source name prefix path remote ref machine actor actor_label issues events events_by_machine segments frontier pending_ownership waiting_events integrity renamed_keys last_sync
+

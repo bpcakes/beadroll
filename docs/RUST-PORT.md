@@ -161,7 +161,8 @@ checklist the port is reviewed against.
 - **Two kinds of text.** Argument-parser error texts and per-command help layout may differ from
   Python's: no test pins them beyond the `usage: bead <command>` line and the help phrases the
   catalogue lists, and the error code `USAGE` and exit 2 are what agents use. Phase 2b ported
-  CPython 3.14's argparse all the same (§2.3h), so they do not differ.
+  CPython 3.14's argparse all the same (§2.3h), so they do not differ, and the goldens hold every
+  help page whole (§4.2).
 - **Hostile input.** Where Python's behaviour on hostile input is an accident, the port may differ.
   Each case needs a decision recorded in the ledger in §5, not a silent drift.
 
@@ -762,11 +763,15 @@ each count means.
    or duplicating its events. Cover changed file/stdin requests, failed later commands, actor
    isolation, moved ownership and crashes before/after confirmation; verify receipt bytes in
    both directions. These are upgrade/rollback tests in addition to separate-machine convergence.
-5. **Golden outputs, for what tests do not fully pin.** Examples: the whole human `show`, `info`
-   keys, and each help page's usage line and options (names, metavars, choices); the help layout
-   is clap's (§1.4), so no golden holds argparse's.
+5. **Golden outputs, for what tests do not fully pin.** Every help page whole (the port follows
+   argparse's layout, §2.3h), the whole human `show` and the other reading commands' human
+   output over one scripted tracker, and `info`'s keys (`crates/beadroll/tests/golden/`).
    - `cargo xtask golden` captures them from the Python binary over scripted scenarios, with ids,
-     times and paths normalised.
+     times and paths normalised: it runs the golden tests (`tests/cli/golden.rs`) in capture
+     mode against `./bead`, and they refuse to capture from any other binary; run normally, the
+     same tests compare the `bead` under test with the files. They are CPython 3.14's, the
+     reference interpreter (§5): against an older Python's launcher, argparse's help layout
+     differs.
    - Goldens are generated from Python only, never from Rust. Regenerating a golden to make Rust
      pass is exactly what the house rules forbid.
 

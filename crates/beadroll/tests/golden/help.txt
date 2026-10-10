@@ -1,0 +1,1050 @@
+$ bead 
+usage: bead [--json] [--actor NAME] COMMAND [ARGS...]
+
+bead: a Beads-compatible issue tracker for agent crews working across worktrees and machines.
+State lives outside the checkout, sync goes through a git ref, and a claim is exclusive once
+the remote accepts it. Every event records machine, agent, thread, branch and commit.
+
+Find work      ready [ID]                    unblocked open issues nobody holds; ID: only its subtree
+               list [-s STATUS] [-a]         issues (open ones by default); --parent, -l, -t, -p filters
+               show ID...                    full detail: body, acceptance criteria, deps, comments, claim
+               search TEXT   blocked   dep tree ID   dep cycles
+Do work        claim ID...                   take ownership (or: update ID --status in_progress)
+               comments add ID TEXT          record progress and decisions
+               update ID [--title T] [--notes N] [--add-label L] [--parent P] [--status S]
+               close ID -r REASON            finish: ends your claim and publishes at once
+               release ID   takeover ID -r REASON   reopen ID   delete ID -r REASON
+Shape work     create TITLE [-t TYPE] [-p 0-4] [--parent P] [--deps blocks:ID] [-l LABEL]
+               dep add A B [--type blocks|parent-child]   dep remove A B   lint
+Coordinate     sync                          exchange journals with the other machines
+               claims                        who holds what, on which branch, since when
+               log ID   info   machines
+Agents         prime                         the workflow to load at the start of a session
+               onboard                       a snippet for CLAUDE.md / AGENTS.md
+Data           init [--prefix P] [--tracked] [--import FILE]   import FILE   export [-o FILE]
+
+Flags          --json anywhere for machine output (errors: {"error":{"code","message"}} on stderr)
+               --actor NAME to name yourself; --offline for a provisional claim; -- ends options
+Help           bead help COMMAND, or bead COMMAND --help; bead --version
+exit 0
+
+$ bead help
+usage: bead [--json] [--actor NAME] COMMAND [ARGS...]
+
+bead: a Beads-compatible issue tracker for agent crews working across worktrees and machines.
+State lives outside the checkout, sync goes through a git ref, and a claim is exclusive once
+the remote accepts it. Every event records machine, agent, thread, branch and commit.
+
+Find work      ready [ID]                    unblocked open issues nobody holds; ID: only its subtree
+               list [-s STATUS] [-a]         issues (open ones by default); --parent, -l, -t, -p filters
+               show ID...                    full detail: body, acceptance criteria, deps, comments, claim
+               search TEXT   blocked   dep tree ID   dep cycles
+Do work        claim ID...                   take ownership (or: update ID --status in_progress)
+               comments add ID TEXT          record progress and decisions
+               update ID [--title T] [--notes N] [--add-label L] [--parent P] [--status S]
+               close ID -r REASON            finish: ends your claim and publishes at once
+               release ID   takeover ID -r REASON   reopen ID   delete ID -r REASON
+Shape work     create TITLE [-t TYPE] [-p 0-4] [--parent P] [--deps blocks:ID] [-l LABEL]
+               dep add A B [--type blocks|parent-child]   dep remove A B   lint
+Coordinate     sync                          exchange journals with the other machines
+               claims                        who holds what, on which branch, since when
+               log ID   info   machines
+Agents         prime                         the workflow to load at the start of a session
+               onboard                       a snippet for CLAUDE.md / AGENTS.md
+Data           init [--prefix P] [--tracked] [--import FILE]   import FILE   export [-o FILE]
+
+Flags          --json anywhere for machine output (errors: {"error":{"code","message"}} on stderr)
+               --actor NAME to name yourself; --offline for a provisional claim; -- ends options
+Help           bead help COMMAND, or bead COMMAND --help; bead --version
+exit 0
+
+$ bead -h x
+usage: bead [-h]
+            {init,import,export,create,update,claim,release,takeover,claims,close,reopen,delete,show,list,ready,blocked,search,dep,comments,lint,sync,log,info,machines,help,prime,onboard} ...
+
+The command line: parser, dispatch, the texts an agent reads.
+
+positional arguments:
+  {init,import,export,create,update,claim,release,takeover,claims,close,reopen,delete,show,list,ready,blocked,search,dep,comments,lint,sync,log,info,machines,help,prime,onboard}
+    init                create the tracker for this repository
+    import              import a Beads JSONL export
+    export              write Beads-compatible JSONL
+    create              create an issue
+    update              change fields, labels or parent; --claim or --status
+                        in_progress claims
+    claim               take ownership; it lasts until release, close or
+                        takeover
+    release             give up your claim
+    takeover            replace the current owner after investigating; needs
+                        --reason
+    claims              who holds what, and when each owner was last active
+    close               close issues
+    reopen              reopen issues
+    delete              delete issues
+    show                full detail for one or more issues
+    list                list issues (open ones by default)
+    ready               open issues with nothing blocking them
+    blocked             issues waiting on something
+    search              text search over ids, titles, bodies and comments
+    dep                 dependencies: dep add A B [--type blocks|parent-
+                        child], dep remove A B, dep list ID, dep tree ID, dep
+                        cycles
+    comments            read an issue's comments, or `comments add ID TEXT` to
+                        record one
+    lint                open work items without acceptance criteria
+    sync                exchange the journal with other machines through the
+                        coordination ref
+    log                 who did what: machine, agent, thread
+    info                where the tracker lives and who you are
+    machines            machines seen in the journal
+    help                this overview, or `help COMMAND` for one command's
+                        usage
+    prime               the workflow an agent should load at the start of a
+                        session
+    onboard             a snippet for CLAUDE.md / AGENTS.md
+
+options:
+  -h, --help            show this help message and exit
+exit 0
+
+$ bead init --help
+usage: bead init [-h] [--prefix PREFIX] [--import BEADS_JSONL] [--tracked]
+                 [--remote REMOTE] [--offline]
+
+options:
+  -h, --help            show this help message and exit
+  --prefix PREFIX
+  --import BEADS_JSONL
+  --tracked             write .beadroll.json with an explicit workspace id
+  --remote REMOTE       coordination remote (name or URL) if it is not origin
+  --offline             record locally only; the next sync or online command
+                        publishes it
+exit 0
+
+$ bead help init
+usage: bead init [-h] [--prefix PREFIX] [--import BEADS_JSONL] [--tracked]
+                 [--remote REMOTE] [--offline]
+
+options:
+  -h, --help            show this help message and exit
+  --prefix PREFIX
+  --import BEADS_JSONL
+  --tracked             write .beadroll.json with an explicit workspace id
+  --remote REMOTE       coordination remote (name or URL) if it is not origin
+  --offline             record locally only; the next sync or online command
+                        publishes it
+exit 0
+
+$ bead import --help
+usage: bead import [-h] [--offline] path
+
+positional arguments:
+  path
+
+options:
+  -h, --help  show this help message and exit
+  --offline   record locally only; the next sync or online command publishes
+              it
+exit 0
+
+$ bead help import
+usage: bead import [-h] [--offline] path
+
+positional arguments:
+  path
+
+options:
+  -h, --help  show this help message and exit
+  --offline   record locally only; the next sync or online command publishes
+              it
+exit 0
+
+$ bead export --help
+usage: bead export [-h] [-o OUTPUT]
+
+options:
+  -h, --help           show this help message and exit
+  -o, --output OUTPUT
+exit 0
+
+$ bead help export
+usage: bead export [-h] [-o OUTPUT]
+
+options:
+  -h, --help           show this help message and exit
+  -o, --output OUTPUT
+exit 0
+
+$ bead create --help
+usage: bead create [-h] [--title TITLE] [-d DESCRIPTION]
+                   [--description-file DESCRIPTION_FILE]
+                   [--acceptance-criteria ACCEPTANCE_CRITERIA] [--notes NOTES]
+                   [--design DESIGN] [-p PRIORITY] [-t TYPE] [--status STATUS]
+                   [--assignee ASSIGNEE] [--estimate ESTIMATE]
+                   [--external-ref EXTERNAL_REF] [--parent PARENT] [-l LABELS]
+                   [--deps DEPS] [--silent] [--offline]
+                   [TITLE]
+
+positional arguments:
+  TITLE
+
+options:
+  -h, --help            show this help message and exit
+  --title TITLE
+  -d, --description DESCRIPTION
+  --description-file DESCRIPTION_FILE
+  --acceptance-criteria, --acceptance ACCEPTANCE_CRITERIA
+  --notes NOTES
+  --design DESIGN
+  -p, --priority PRIORITY
+  -t, --type TYPE
+  --status, -s STATUS
+  --assignee ASSIGNEE
+  --estimate ESTIMATE
+  --external-ref EXTERNAL_REF
+  --parent PARENT
+  -l, --labels, --label LABELS
+  --deps DEPS           comma list of [type:]ISSUE
+  --silent              print only the new id
+  --offline             record locally only; the next sync or online command
+                        publishes it
+exit 0
+
+$ bead help create
+usage: bead create [-h] [--title TITLE] [-d DESCRIPTION]
+                   [--description-file DESCRIPTION_FILE]
+                   [--acceptance-criteria ACCEPTANCE_CRITERIA] [--notes NOTES]
+                   [--design DESIGN] [-p PRIORITY] [-t TYPE] [--status STATUS]
+                   [--assignee ASSIGNEE] [--estimate ESTIMATE]
+                   [--external-ref EXTERNAL_REF] [--parent PARENT] [-l LABELS]
+                   [--deps DEPS] [--silent] [--offline]
+                   [TITLE]
+
+positional arguments:
+  TITLE
+
+options:
+  -h, --help            show this help message and exit
+  --title TITLE
+  -d, --description DESCRIPTION
+  --description-file DESCRIPTION_FILE
+  --acceptance-criteria, --acceptance ACCEPTANCE_CRITERIA
+  --notes NOTES
+  --design DESIGN
+  -p, --priority PRIORITY
+  -t, --type TYPE
+  --status, -s STATUS
+  --assignee ASSIGNEE
+  --estimate ESTIMATE
+  --external-ref EXTERNAL_REF
+  --parent PARENT
+  -l, --labels, --label LABELS
+  --deps DEPS           comma list of [type:]ISSUE
+  --silent              print only the new id
+  --offline             record locally only; the next sync or online command
+                        publishes it
+exit 0
+
+$ bead update --help
+usage: bead update [-h] [--title TITLE] [-d DESCRIPTION]
+                   [--description-file DESCRIPTION_FILE]
+                   [--acceptance-criteria ACCEPTANCE_CRITERIA] [--notes NOTES]
+                   [--design DESIGN] [-p PRIORITY] [-t TYPE] [--status STATUS]
+                   [--assignee ASSIGNEE] [--estimate ESTIMATE]
+                   [--external-ref EXTERNAL_REF] [--parent PARENT] [--claim]
+                   [--force] [--add-label ADD_LABEL]
+                   [--remove-label REMOVE_LABEL] [--set-labels SET_LABELS]
+                   [--offline] [--remote REMOTE]
+                   ids [ids ...]
+
+positional arguments:
+  ids
+
+options:
+  -h, --help            show this help message and exit
+  --title TITLE
+  -d, --description DESCRIPTION
+  --description-file DESCRIPTION_FILE
+  --acceptance-criteria, --acceptance ACCEPTANCE_CRITERIA
+  --notes NOTES
+  --design DESIGN
+  -p, --priority PRIORITY
+  -t, --type TYPE
+  --status, -s STATUS
+  --assignee ASSIGNEE
+  --estimate ESTIMATE
+  --external-ref EXTERNAL_REF
+  --parent PARENT
+  --claim
+  --force               change the status of an issue someone else has claimed
+  --add-label ADD_LABEL
+  --remove-label REMOVE_LABEL
+  --set-labels SET_LABELS
+  --offline             do not contact the remote; a claim made this way is
+                        provisional
+  --remote REMOTE       coordination remote (name or URL) for this call
+exit 0
+
+$ bead help update
+usage: bead update [-h] [--title TITLE] [-d DESCRIPTION]
+                   [--description-file DESCRIPTION_FILE]
+                   [--acceptance-criteria ACCEPTANCE_CRITERIA] [--notes NOTES]
+                   [--design DESIGN] [-p PRIORITY] [-t TYPE] [--status STATUS]
+                   [--assignee ASSIGNEE] [--estimate ESTIMATE]
+                   [--external-ref EXTERNAL_REF] [--parent PARENT] [--claim]
+                   [--force] [--add-label ADD_LABEL]
+                   [--remove-label REMOVE_LABEL] [--set-labels SET_LABELS]
+                   [--offline] [--remote REMOTE]
+                   ids [ids ...]
+
+positional arguments:
+  ids
+
+options:
+  -h, --help            show this help message and exit
+  --title TITLE
+  -d, --description DESCRIPTION
+  --description-file DESCRIPTION_FILE
+  --acceptance-criteria, --acceptance ACCEPTANCE_CRITERIA
+  --notes NOTES
+  --design DESIGN
+  -p, --priority PRIORITY
+  -t, --type TYPE
+  --status, -s STATUS
+  --assignee ASSIGNEE
+  --estimate ESTIMATE
+  --external-ref EXTERNAL_REF
+  --parent PARENT
+  --claim
+  --force               change the status of an issue someone else has claimed
+  --add-label ADD_LABEL
+  --remove-label REMOVE_LABEL
+  --set-labels SET_LABELS
+  --offline             do not contact the remote; a claim made this way is
+                        provisional
+  --remote REMOTE       coordination remote (name or URL) for this call
+exit 0
+
+$ bead claim --help
+usage: bead claim [-h] [--offline] [--remote REMOTE] ids [ids ...]
+
+positional arguments:
+  ids
+
+options:
+  -h, --help       show this help message and exit
+  --offline        do not contact the remote; a claim made this way is
+                   provisional
+  --remote REMOTE  coordination remote (name or URL) for this call
+exit 0
+
+$ bead help claim
+usage: bead claim [-h] [--offline] [--remote REMOTE] ids [ids ...]
+
+positional arguments:
+  ids
+
+options:
+  -h, --help       show this help message and exit
+  --offline        do not contact the remote; a claim made this way is
+                   provisional
+  --remote REMOTE  coordination remote (name or URL) for this call
+exit 0
+
+$ bead release --help
+usage: bead release [-h] [-r REASON] [--offline] [--remote REMOTE]
+                    ids [ids ...]
+
+positional arguments:
+  ids
+
+options:
+  -h, --help           show this help message and exit
+  -r, --reason REASON
+  --offline            do not contact the remote; a claim made this way is
+                       provisional
+  --remote REMOTE      coordination remote (name or URL) for this call
+exit 0
+
+$ bead help release
+usage: bead release [-h] [-r REASON] [--offline] [--remote REMOTE]
+                    ids [ids ...]
+
+positional arguments:
+  ids
+
+options:
+  -h, --help           show this help message and exit
+  -r, --reason REASON
+  --offline            do not contact the remote; a claim made this way is
+                       provisional
+  --remote REMOTE      coordination remote (name or URL) for this call
+exit 0
+
+$ bead takeover --help
+usage: bead takeover [-h] [-r REASON] [--offline] [--remote REMOTE]
+                     ids [ids ...]
+
+positional arguments:
+  ids
+
+options:
+  -h, --help           show this help message and exit
+  -r, --reason REASON
+  --offline            do not contact the remote; a claim made this way is
+                       provisional
+  --remote REMOTE      coordination remote (name or URL) for this call
+exit 0
+
+$ bead help takeover
+usage: bead takeover [-h] [-r REASON] [--offline] [--remote REMOTE]
+                     ids [ids ...]
+
+positional arguments:
+  ids
+
+options:
+  -h, --help           show this help message and exit
+  -r, --reason REASON
+  --offline            do not contact the remote; a claim made this way is
+                       provisional
+  --remote REMOTE      coordination remote (name or URL) for this call
+exit 0
+
+$ bead claims --help
+usage: bead claims [-h]
+
+options:
+  -h, --help  show this help message and exit
+exit 0
+
+$ bead help claims
+usage: bead claims [-h]
+
+options:
+  -h, --help  show this help message and exit
+exit 0
+
+$ bead close --help
+usage: bead close [-h] [-r REASON] [--force] [--offline] [--remote REMOTE]
+                  ids [ids ...]
+
+positional arguments:
+  ids
+
+options:
+  -h, --help           show this help message and exit
+  -r, --reason REASON
+  --force              act on an issue someone else has claimed
+  --offline            do not contact the remote; a claim made this way is
+                       provisional
+  --remote REMOTE      coordination remote (name or URL) for this call
+exit 0
+
+$ bead help close
+usage: bead close [-h] [-r REASON] [--force] [--offline] [--remote REMOTE]
+                  ids [ids ...]
+
+positional arguments:
+  ids
+
+options:
+  -h, --help           show this help message and exit
+  -r, --reason REASON
+  --force              act on an issue someone else has claimed
+  --offline            do not contact the remote; a claim made this way is
+                       provisional
+  --remote REMOTE      coordination remote (name or URL) for this call
+exit 0
+
+$ bead reopen --help
+usage: bead reopen [-h] [-r REASON] [--force] [--offline] [--remote REMOTE]
+                   ids [ids ...]
+
+positional arguments:
+  ids
+
+options:
+  -h, --help           show this help message and exit
+  -r, --reason REASON
+  --force              act on an issue someone else has claimed
+  --offline            do not contact the remote; a claim made this way is
+                       provisional
+  --remote REMOTE      coordination remote (name or URL) for this call
+exit 0
+
+$ bead help reopen
+usage: bead reopen [-h] [-r REASON] [--force] [--offline] [--remote REMOTE]
+                   ids [ids ...]
+
+positional arguments:
+  ids
+
+options:
+  -h, --help           show this help message and exit
+  -r, --reason REASON
+  --force              act on an issue someone else has claimed
+  --offline            do not contact the remote; a claim made this way is
+                       provisional
+  --remote REMOTE      coordination remote (name or URL) for this call
+exit 0
+
+$ bead delete --help
+usage: bead delete [-h] [-r REASON] [--force] [--offline] [--remote REMOTE]
+                   ids [ids ...]
+
+positional arguments:
+  ids
+
+options:
+  -h, --help           show this help message and exit
+  -r, --reason REASON
+  --force              act on an issue someone else has claimed
+  --offline            do not contact the remote; a claim made this way is
+                       provisional
+  --remote REMOTE      coordination remote (name or URL) for this call
+exit 0
+
+$ bead help delete
+usage: bead delete [-h] [-r REASON] [--force] [--offline] [--remote REMOTE]
+                   ids [ids ...]
+
+positional arguments:
+  ids
+
+options:
+  -h, --help           show this help message and exit
+  -r, --reason REASON
+  --force              act on an issue someone else has claimed
+  --offline            do not contact the remote; a claim made this way is
+                       provisional
+  --remote REMOTE      coordination remote (name or URL) for this call
+exit 0
+
+$ bead show --help
+usage: bead show [-h] ids [ids ...]
+
+positional arguments:
+  ids
+
+options:
+  -h, --help  show this help message and exit
+exit 0
+
+$ bead help show
+usage: bead show [-h] ids [ids ...]
+
+positional arguments:
+  ids
+
+options:
+  -h, --help  show this help message and exit
+exit 0
+
+$ bead list --help
+usage: bead list [-h] [-s STATUS] [-a] [--deferred]
+                 [--title-contains TITLE_CONTAINS] [--id ID] [--parent ID]
+                 [-t TYPE] [-l LABEL] [-p PRIORITY] [--assignee ASSIGNEE]
+                 [--limit LIMIT]
+
+options:
+  -h, --help            show this help message and exit
+  -s, --status STATUS
+  -a, --all
+  --deferred
+  --title-contains TITLE_CONTAINS
+  --id ID
+  --parent ID           only ID's direct children
+  -t, --type TYPE
+  -l, --label LABEL
+  -p, --priority PRIORITY
+  --assignee ASSIGNEE
+  --limit LIMIT
+exit 0
+
+$ bead help list
+usage: bead list [-h] [-s STATUS] [-a] [--deferred]
+                 [--title-contains TITLE_CONTAINS] [--id ID] [--parent ID]
+                 [-t TYPE] [-l LABEL] [-p PRIORITY] [--assignee ASSIGNEE]
+                 [--limit LIMIT]
+
+options:
+  -h, --help            show this help message and exit
+  -s, --status STATUS
+  -a, --all
+  --deferred
+  --title-contains TITLE_CONTAINS
+  --id ID
+  --parent ID           only ID's direct children
+  -t, --type TYPE
+  -l, --label LABEL
+  -p, --priority PRIORITY
+  --assignee ASSIGNEE
+  --limit LIMIT
+exit 0
+
+$ bead ready --help
+usage: bead ready [-h] [-t TYPE] [-l LABEL] [-p PRIORITY]
+                  [--assignee ASSIGNEE] [--limit LIMIT]
+                  [--epic ID | --parent ID | ID]
+
+positional arguments:
+  ID                    only issues in ID's subtree: its children, theirs, and
+                        so on
+
+options:
+  -h, --help            show this help message and exit
+  --epic ID             the same as ID, as in br
+  --parent ID           only ID's direct children
+  -t, --type TYPE
+  -l, --label LABEL
+  -p, --priority PRIORITY
+  --assignee ASSIGNEE
+  --limit LIMIT
+exit 0
+
+$ bead help ready
+usage: bead ready [-h] [-t TYPE] [-l LABEL] [-p PRIORITY]
+                  [--assignee ASSIGNEE] [--limit LIMIT]
+                  [--epic ID | --parent ID | ID]
+
+positional arguments:
+  ID                    only issues in ID's subtree: its children, theirs, and
+                        so on
+
+options:
+  -h, --help            show this help message and exit
+  --epic ID             the same as ID, as in br
+  --parent ID           only ID's direct children
+  -t, --type TYPE
+  -l, --label LABEL
+  -p, --priority PRIORITY
+  --assignee ASSIGNEE
+  --limit LIMIT
+exit 0
+
+$ bead blocked --help
+usage: bead blocked [-h]
+
+options:
+  -h, --help  show this help message and exit
+exit 0
+
+$ bead help blocked
+usage: bead blocked [-h]
+
+options:
+  -h, --help  show this help message and exit
+exit 0
+
+$ bead search --help
+usage: bead search [-h] [-a] query
+
+positional arguments:
+  query
+
+options:
+  -h, --help  show this help message and exit
+  -a, --all
+exit 0
+
+$ bead help search
+usage: bead search [-h] [-a] query
+
+positional arguments:
+  query
+
+options:
+  -h, --help  show this help message and exit
+  -a, --all
+exit 0
+
+$ bead dep --help
+usage: bead dep [-h] [--type TYPE] [--blocking-only] [--offline] [words ...]
+
+positional arguments:
+  words
+
+options:
+  -h, --help       show this help message and exit
+  --type TYPE
+  --blocking-only
+  --offline        record locally only; the next sync or online command
+                   publishes it
+exit 0
+
+$ bead help dep
+usage: bead dep [-h] [--type TYPE] [--blocking-only] [--offline] [words ...]
+
+positional arguments:
+  words
+
+options:
+  -h, --help       show this help message and exit
+  --type TYPE
+  --blocking-only
+  --offline        record locally only; the next sync or online command
+                   publishes it
+exit 0
+
+$ bead comments --help
+usage: bead comments [-h] [-m MESSAGE] [-f FILE] [--author AUTHOR] [--offline]
+                     [words ...]
+
+positional arguments:
+  words
+
+options:
+  -h, --help            show this help message and exit
+  -m, --message MESSAGE
+  -f, --file FILE
+  --author AUTHOR
+  --offline             record locally only; the next sync or online command
+                        publishes it
+exit 0
+
+$ bead help comments
+usage: bead comments [-h] [-m MESSAGE] [-f FILE] [--author AUTHOR] [--offline]
+                     [words ...]
+
+positional arguments:
+  words
+
+options:
+  -h, --help            show this help message and exit
+  -m, --message MESSAGE
+  -f, --file FILE
+  --author AUTHOR
+  --offline             record locally only; the next sync or online command
+                        publishes it
+exit 0
+
+$ bead lint --help
+usage: bead lint [-h]
+
+options:
+  -h, --help  show this help message and exit
+exit 0
+
+$ bead help lint
+usage: bead lint [-h]
+
+options:
+  -h, --help  show this help message and exit
+exit 0
+
+$ bead sync --help
+usage: bead sync [-h] [--remote REMOTE]
+
+options:
+  -h, --help       show this help message and exit
+  --remote REMOTE
+exit 0
+
+$ bead help sync
+usage: bead sync [-h] [--remote REMOTE]
+
+options:
+  -h, --help       show this help message and exit
+  --remote REMOTE
+exit 0
+
+$ bead log --help
+usage: bead log [-h] [--limit LIMIT] [key]
+
+positional arguments:
+  key
+
+options:
+  -h, --help     show this help message and exit
+  --limit LIMIT
+exit 0
+
+$ bead help log
+usage: bead log [-h] [--limit LIMIT] [key]
+
+positional arguments:
+  key
+
+options:
+  -h, --help     show this help message and exit
+  --limit LIMIT
+exit 0
+
+$ bead info --help
+usage: bead info [-h]
+
+options:
+  -h, --help  show this help message and exit
+exit 0
+
+$ bead help info
+usage: bead info [-h]
+
+options:
+  -h, --help  show this help message and exit
+exit 0
+
+$ bead machines --help
+usage: bead machines [-h] [--name ID=ALIAS]
+
+options:
+  -h, --help       show this help message and exit
+  --name ID=ALIAS  give a machine a local display name
+exit 0
+
+$ bead help machines
+usage: bead machines [-h] [--name ID=ALIAS]
+
+options:
+  -h, --help       show this help message and exit
+  --name ID=ALIAS  give a machine a local display name
+exit 0
+
+$ bead help --help
+usage: bead help [-h] [COMMAND]
+
+positional arguments:
+  COMMAND
+
+options:
+  -h, --help  show this help message and exit
+exit 0
+
+$ bead help help
+usage: bead help [-h] [COMMAND]
+
+positional arguments:
+  COMMAND
+
+options:
+  -h, --help  show this help message and exit
+exit 0
+
+$ bead prime --help
+usage: bead prime [-h]
+
+options:
+  -h, --help  show this help message and exit
+exit 0
+
+$ bead help prime
+usage: bead prime [-h]
+
+options:
+  -h, --help  show this help message and exit
+exit 0
+
+$ bead onboard --help
+usage: bead onboard [-h]
+
+options:
+  -h, --help  show this help message and exit
+exit 0
+
+$ bead help onboard
+usage: bead onboard [-h]
+
+options:
+  -h, --help  show this help message and exit
+exit 0
+
+$ bead create --help
+usage: bead create [-h]
+                   [--title TITLE]
+                   [-d DESCRIPTION]
+                   [--description-file DESCRIPTION_FILE]
+                   [--acceptance-criteria ACCEPTANCE_CRITERIA]
+                   [--notes NOTES]
+                   [--design DESIGN]
+                   [-p PRIORITY]
+                   [-t TYPE]
+                   [--status STATUS]
+                   [--assignee ASSIGNEE]
+                   [--estimate ESTIMATE]
+                   [--external-ref EXTERNAL_REF]
+                   [--parent PARENT]
+                   [-l LABELS]
+                   [--deps DEPS]
+                   [--silent]
+                   [--offline]
+                   [TITLE]
+
+positional arguments:
+  TITLE
+
+options:
+  -h, --help      show this help
+                  message and exit
+  --title TITLE
+  -d, --description DESCRIPTION
+  --description-file DESCRIPTION_FILE
+  --acceptance-criteria, --acceptance ACCEPTANCE_CRITERIA
+  --notes NOTES
+  --design DESIGN
+  -p, --priority PRIORITY
+  -t, --type TYPE
+  --status, -s STATUS
+  --assignee ASSIGNEE
+  --estimate ESTIMATE
+  --external-ref EXTERNAL_REF
+  --parent PARENT
+  -l, --labels, --label LABELS
+  --deps DEPS     comma list of
+                  [type:]ISSUE
+  --silent        print only the new
+                  id
+  --offline       record locally only;
+                  the next sync or
+                  online command
+                  publishes it
+exit 0
+
+$ bead ready --help
+usage: bead ready [-h] [-t TYPE]
+                  [-l LABEL]
+                  [-p PRIORITY]
+                  [--assignee ASSIGNEE]
+                  [--limit LIMIT]
+                  [--epic ID |
+                  --parent ID | ID]
+
+positional arguments:
+  ID              only issues in ID's
+                  subtree: its
+                  children, theirs,
+                  and so on
+
+options:
+  -h, --help      show this help
+                  message and exit
+  --epic ID       the same as ID, as
+                  in br
+  --parent ID     only ID's direct
+                  children
+  -t, --type TYPE
+  -l, --label LABEL
+  -p, --priority PRIORITY
+  --assignee ASSIGNEE
+  --limit LIMIT
+exit 0
+
+$ bead -h x
+usage: bead [-h]
+            {init,import,export,create,update,claim,release,takeover,claims,close,reopen,delete,show,list,ready,blocked,search,dep,comments,lint,sync,log,info,machines,help,prime,onboard} ...
+
+The command line: parser, dispatch,
+the texts an agent reads.
+
+positional arguments:
+  {init,import,export,create,update,claim,release,takeover,claims,close,reopen,delete,show,list,ready,blocked,search,dep,comments,lint,sync,log,info,machines,help,prime,onboard}
+    init          create the tracker
+                  for this repository
+    import        import a Beads JSONL
+                  export
+    export        write Beads-
+                  compatible JSONL
+    create        create an issue
+    update        change fields,
+                  labels or parent;
+                  --claim or --status
+                  in_progress claims
+    claim         take ownership; it
+                  lasts until release,
+                  close or takeover
+    release       give up your claim
+    takeover      replace the current
+                  owner after
+                  investigating; needs
+                  --reason
+    claims        who holds what, and
+                  when each owner was
+                  last active
+    close         close issues
+    reopen        reopen issues
+    delete        delete issues
+    show          full detail for one
+                  or more issues
+    list          list issues (open
+                  ones by default)
+    ready         open issues with
+                  nothing blocking
+                  them
+    blocked       issues waiting on
+                  something
+    search        text search over
+                  ids, titles, bodies
+                  and comments
+    dep           dependencies: dep
+                  add A B [--type
+                  blocks|parent-
+                  child], dep remove A
+                  B, dep list ID, dep
+                  tree ID, dep cycles
+    comments      read an issue's
+                  comments, or
+                  `comments add ID
+                  TEXT` to record one
+    lint          open work items
+                  without acceptance
+                  criteria
+    sync          exchange the journal
+                  with other machines
+                  through the
+                  coordination ref
+    log           who did what:
+                  machine, agent,
+                  thread
+    info          where the tracker
+                  lives and who you
+                  are
+    machines      machines seen in the
+                  journal
+    help          this overview, or
+                  `help COMMAND` for
+                  one command's usage
+    prime         the workflow an
+                  agent should load at
+                  the start of a
+                  session
+    onboard       a snippet for
+                  CLAUDE.md /
+                  AGENTS.md
+
+options:
+  -h, --help      show this help
+                  message and exit
+exit 0
+
+$ bead help nonsense
+stderr: Error: unknown command 'nonsense'; try `bead help`
+exit 2
+
+$ bead --json help nonsense
+stderr: {"error": {"code": "USAGE", "message": "unknown command 'nonsense'; try `bead help`"}}
+exit 2
+
+$ bead onboard
+## Work tracking (bead)
+
+This repository tracks its work with `bead` (beadroll): one tracker shared by every worktree,
+clone and machine of this repository, stored outside the working tree, never on a code branch.
+
+- Start every session with `bead prime` and follow it. It prints the current workflow, who you
+  are and what you hold; it is the source of truth, not this file.
+- Find work with `bead ready`, claim an issue before working on it, record progress and decisions
+  with `bead comments add`, split follow-ups with `bead create "title" --parent ID`, and close with
+  `bead close ID -r "what was done"`. Every write is published at once; when a command says
+  "not yet published" (`--offline`, or the remote did not answer), run `bead sync` before you stop.
+- A claim belongs to your agent thread and lasts until release, close or takeover. A new session
+  continues its own earlier work with `bead takeover ID -r "same task, new session"`; never take
+  over someone else's work without a reason you have verified.
+- Add `--json` for machine-readable output. Errors are structured; `bead prime` lists the codes
+  and what to do about each.
+- If a `.beads/` directory is still here, it is history: do not edit it or run `br`/`bd` in this
+  repository. `bead export` writes Beads JSONL when another tool needs it.
+
+<!-- Project specifics go here: the issue prefix and the epics to start from, what "done" means
+     (tests, docs, merged where), and the branch or PR conventions a close reason should name. -->
+exit 0
+

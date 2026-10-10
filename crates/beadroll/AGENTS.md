@@ -8,7 +8,7 @@ Slices 2a and 2b (`roll-k2wy.3`, `roll-k2wy.4`) port every command but the coord
 `claim`, `release`, `takeover` and `update --claim`/`--status in_progress` parse, and answer
 `USAGE` ("not in this build of bead yet") until Slice 2c adds them; Slice 2d adds `sys`, the
 second audited unsafe spot. Its integration tests are the black-box tests ported from the Python
-suite and the mixed-fleet tests.
+suite, the golden outputs and the mixed-fleet tests.
 
 ## Key entrypoints
 
@@ -33,7 +33,8 @@ suite and the mixed-fleet tests.
 - `tests/cli/main.rs`: the one test binary's root; `sandbox()` hands test support the binary Cargo
   built (`env!("CARGO_BIN_EXE_bead")`), the only place that default can come from.
 - `tests/cli/commands/*.rs`: `tests/test_commands.py`, ported; `tests/cli/mixed.rs`: Python and Rust
-  machines on one remote and on one store.
+  machines on one remote and on one store; `tests/cli/golden.rs` and `golden/normal.rs`: the
+  golden scenarios and their normalisation, against the files in `tests/golden/`.
 
 ## Edit here for X
 
@@ -41,7 +42,10 @@ suite and the mixed-fleet tests.
   (`xtask/inventory.txt`): `test_commands.HelpAndPrime.test_x` becomes
   `commands::help_and_prime::x`. It counts once it passes against Python's `./bead`.
 - A command, its output or its exit status: `src/commands` and `src/cli`.
-- An argument or a help text: `src/cli/spec.rs`, as `beadroll/cli.py` has it.
+- An argument or a help text: `src/cli/spec.rs`, as `beadroll/cli.py` has it; then
+  `cargo xtask golden`, which captures the help pages from Python.
+- A golden scenario: `tests/cli/golden.rs`, then `cargo xtask golden`; never edit a file in
+  `tests/golden/` by hand.
 
 ## Invariants
 
@@ -54,6 +58,8 @@ suite and the mixed-fleet tests.
 - The command line is argparse's: what parses, what fails and with which text; help pages equal
   Python's at every width. Arguments stay `OsString` until a command reads them, and fail where
   Python's `surrogateescape` strings would.
+- Goldens come from Python only (`cargo xtask golden` refuses any other binary); a golden is never
+  regenerated to make Rust pass.
 - Test roots start with `#![cfg(test)]`; helpers shared between test modules are `pub(crate)`.
 - A ported test passes against Python's launcher before it counts; Rust passes it by Phase 2d.
   The mixed-fleet tests name both binaries themselves, whatever `BEAD_UNDER_TEST` says.
@@ -63,4 +69,6 @@ suite and the mixed-fleet tests.
 - `BEAD_UNDER_TEST=$PWD/bead cargo nextest run -p beadroll`: the black-box tests against Python
 - `cargo nextest run -p beadroll`: the same against the Rust binary
 - `cargo nextest run -p beadroll -E 'test(/^mixed::/)'`: the mixed-fleet tests
+- `cargo nextest run -p beadroll -E 'test(/^golden::/)'`: the Rust binary against the goldens
+- `cargo xtask golden`: capture the goldens from Python's `./bead`
 - `cargo xtask oracle --report`: the Python suite against the Rust binary
