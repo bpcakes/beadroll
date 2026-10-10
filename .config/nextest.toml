@@ -10,6 +10,13 @@ fail-fast = false
 # A hang fails instead of stalling the run: a warning every minute, killed after five.
 slow-timeout = { period = "60s", terminate-after = 5 }
 
+# This port of ActualTransportReview runs alone: its BEAD_NET_TIMEOUT of 0.1 s, meant to cut a push
+# short, caps every local fetch too, which other tests running beside it can slow past that, as they
+# do the Python original's.
+[[profile.default.overrides]]
+filter = "test(=protocol::actual_transport_review::timed_out_accepted_release_returns_success)"
+threads-required = "num-cpus"
+
 [profile.ci]
 # CI keeps each test's time as evidence (docs/RUST-PORT.md §4.7); timings never gate a test.
 

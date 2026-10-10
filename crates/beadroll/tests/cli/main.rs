@@ -13,6 +13,7 @@ mod commands;
 mod golden;
 mod hardening;
 mod mixed;
+mod protocol;
 mod support;
 
 use beadroll_test_support::Sandbox;
