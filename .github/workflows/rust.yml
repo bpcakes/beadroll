@@ -1,8 +1,8 @@
 # The Rust port's checks (docs/RUST-PORT.md §4.9), shaped and pinned like jig-sh's rust-tests.yml:
 # formatting, lints, the tests on Linux and macOS with their doctests, cargo-deny, the oracle and the
-# differential checks. The oracle runs the Python suite against Python's ./bead, where it must pass
-# completely, and against the Rust binary, where it only reports each module's pass count until
-# Phase 2d closes. The diff job checks beadroll-core against CPython case by case. The mixed-fleet
+# differential checks. The oracle runs the Python suite against Python's ./bead and against the Rust
+# binary, and it must pass completely against both since Phase 2d closed; the tests run against both
+# binaries too. The diff job checks beadroll-core against CPython case by case. The mixed-fleet
 # job runs Python and Rust machines on one remote and on one store. Later phases add the nightly
 # jobs. Nothing here touches a real store or a real remote: every test
 # builds its own repositories and bare remotes in a temporary directory.
@@ -73,8 +73,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     env:
-      # A ported black-box test counts once it passes against Python's launcher, and until Phase 2d
-      # that is the only binary it can pass against (docs/RUST-PORT.md §4.2).
+      # A ported black-box test counts once it passes against Python's launcher (docs/RUST-PORT.md
+      # §4.2); since Phase 2d it passes against the Rust binary as well.
       BEAD_UNDER_TEST: ${{ github.workspace }}/bead
     steps:
       - name: Checkout
@@ -101,10 +101,15 @@ jobs:
         run: |
           git config --global user.name check
           git config --global user.email check@example.invalid
-      - name: Run the tests
+      - name: Run the tests against Python's launcher
         run: cargo nextest run --workspace --locked --profile ci
+      # The default profile writes no JUnit report, so the first run's report is the one kept.
+      - name: Run the tests against the Rust binary
+        if: ${{ !cancelled() }}
+        run: |
+          cargo build --locked --package beadroll
+          BEAD_UNDER_TEST="$PWD/target/debug/bead" cargo nextest run --workspace --locked
       # Without BEAD_UNDER_TEST, a machine runs the binary its test root supplies: Cargo's bead.
-      # The default profile writes no JUnit report, so the full run's report is the one kept.
       - name: Run the binary-selection tests on their default
         run: env -u BEAD_UNDER_TEST cargo nextest run --locked --package beadroll -E 'test(/^support::/)'
       # Nextest does not run doctests.
@@ -167,9 +172,9 @@ jobs:
           git config --global user.email check@example.invalid
       - name: The Python suite against Python's ./bead, which must pass completely
         run: cargo --locked xtask oracle --bead ./bead
-      - name: The Python suite against the Rust binary, reported until Phase 2d closes
+      - name: The Python suite against the Rust binary, which must pass completely too
         if: ${{ !cancelled() }}
-        run: cargo --locked xtask oracle --report
+        run: cargo --locked xtask oracle
       - name: Every Python test and the Rust tests that port it
         if: ${{ !cancelled() }}
         run: cargo --locked xtask inventory

@@ -34,8 +34,8 @@ usage: cargo xtask <command>
       builds first (target/debug/bead by default) unless --bead names another; `--bead ./bead` runs
       Python's own launcher, against which the suite must pass completely. The modules are
       check.sh's fast ones, --stress adds test_stress and test_sweep, or name them. --report exits
-      0 when tests fail (the Rust binary, until Phase 2d closes); --jobs runs that many modules at
-      once (default 1).
+      0 when tests fail, to show every module's count; --jobs runs that many modules at once
+      (default 1).
 
   inventory [--require-complete]
       List every Python test with the Rust tests that port it (docs/RUST-PORT.md §4.2), from

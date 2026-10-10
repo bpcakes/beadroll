@@ -40,9 +40,10 @@ and how it was closed; `docs/reviews/` holds the reports verbatim.
   every supported Python and macOS on the newest, and the stress suite nightly or on request.
 - The Rust workspace: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets
   --all-features --locked -- -D warnings -D clippy::mod_module_files`, `BEAD_UNDER_TEST=$PWD/bead
-  cargo nextest run` (the ported black-box tests pass against Python's launcher until Phase 2d),
-  and `cargo xtask oracle --bead ./bead` (this suite through `BEAD_UNDER_TEST`; it must pass
-  completely). `.github/workflows/rust.yml` runs them on every push and pull request.
+  cargo nextest run` and `cargo nextest run` (the ported black-box tests pass against Python's
+  launcher and against the Rust binary), and `cargo xtask oracle --bead ./bead` and `cargo xtask
+  oracle` (this suite through `BEAD_UNDER_TEST`; it must pass completely against both).
+  `.github/workflows/rust.yml` runs them on every push and pull request.
 - The default store `~/.local/state/beadroll` holds this repository's own real tracker. The test
   modules set a scratch `BEAD_HOME`; set one yourself for any manual experiment
   (`export BEAD_HOME=$(mktemp -d)`), and never run `bead`, `br` or `bv` inside other repositories
