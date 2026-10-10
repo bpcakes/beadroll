@@ -4,8 +4,10 @@
 //!
 //! Every test runs `bead` through `beadroll-test-support`: the binary this package builds, unless
 //! `BEAD_UNDER_TEST` or a machine names another. A ported test counts only once it also passes
-//! against Python's launcher, and until Phase 2 gives the Rust binary its commands that is the
-//! only binary they pass against: `BEAD_UNDER_TEST=$PWD/bead cargo nextest run`.
+//! against Python's launcher (`BEAD_UNDER_TEST=$PWD/bead cargo nextest run`), and it passes
+//! against the Rust binary too. A `rust_only` test injects its faults through failpoints, which
+//! only the Rust binary has, and runs that binary whatever `BEAD_UNDER_TEST` says
+//! ([`rust_only`]).
 #![cfg(test)]
 
 mod children;
@@ -16,7 +18,7 @@ mod mixed;
 mod protocol;
 mod support;
 
-use beadroll_test_support::Sandbox;
+use beadroll_test_support::{Machine, Sandbox};
 
 /// A new sandbox whose machines run the `bead` this package builds, unless `BEAD_UNDER_TEST` or a
 /// machine names another. Only this test root can supply that default: Cargo defines
@@ -24,4 +26,12 @@ use beadroll_test_support::Sandbox;
 /// shared support crate.
 pub(crate) fn sandbox() -> Sandbox {
     Sandbox::new(env!("CARGO_BIN_EXE_bead"))
+}
+
+/// A machine of a `rust_only` test (`docs/RUST-PORT.md` §4.2): one that injects a fault through a
+/// failpoint (`BEAD_FAILPOINTS`, §4.5), which only the Rust binary has, so it runs the `bead` this
+/// package builds whatever `BEAD_UNDER_TEST` says. Such a test names the Python test it replaces,
+/// against whose assertions it is reviewed.
+pub(crate) fn rust_only(sandbox: &Sandbox, name: &str) -> Machine {
+    Machine::new(sandbox, name).with_bead(env!("CARGO_BIN_EXE_bead"))
 }

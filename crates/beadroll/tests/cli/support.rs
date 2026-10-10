@@ -64,3 +64,13 @@ fn a_machine_runs_in_its_checkout_with_its_own_identity_and_nothing_inherited() 
             .any(|v| v.starts_with("GIT_") || v.starts_with("CLAUDE") || v.starts_with("CODEX"))
     );
 }
+
+#[test]
+fn a_rust_only_machine_runs_the_binary_cargo_built_whatever_bead_under_test_says() {
+    let sandbox = crate::sandbox();
+    let machine = crate::rust_only(&sandbox, "rust");
+    assert_eq!(
+        machine.executable(),
+        PathBuf::from(env!("CARGO_BIN_EXE_bead"))
+    );
+}
