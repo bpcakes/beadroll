@@ -51,7 +51,8 @@ mixed-fleet tests.
   twelve-schedule slice runs in the fast suite, and `sweep/sweep_failure_reporting.rs`
   (`test_check.SweepFailureReporting`) checks that a failed schedule fails it.
   `tests/cli/stress.rs`: `test_stress`'s two randomised models, ignored by default; they draw
-  from `stress/python_random.rs`, CPython's `random.Random`, so a seed makes Python's choices.
+  from `stress/python_random.rs`, CPython's `random.Random`, so a seed makes Python's choices. The
+  first also runs on a mixed fleet; `mixed/g30.rs` is G30's deep import, Python against Rust.
 - `main.rs`'s `rust_only`: the machine of a test that injects a fault through a failpoint, where
   the Python test patched bead in process. Only the Rust binary has failpoints, so it runs that
   binary whatever `BEAD_UNDER_TEST` says.
@@ -92,6 +93,9 @@ mixed-fleet tests.
 - `BEAD_UNDER_TEST=$PWD/bead cargo nextest run -p beadroll`: the black-box tests against Python
 - `cargo nextest run -p beadroll`: the same against the Rust binary
 - `cargo nextest run -p beadroll -E 'test(/^mixed::/)'`: the mixed-fleet tests
+- `BEAD_UNDER_TEST=$PWD/bead BEAD_MIXED_WITH=$PWD/target/debug/bead cargo nextest run -p beadroll
+  -E 'test(/^protocol::/)'`: the protocol scenarios on fleets that alternate Python and Rust (and
+  the same with the two paths swapped)
 - `cargo nextest run -p beadroll -E 'test(/^golden::/)'`: the Rust binary against the goldens
 - `BEAD_SWEEP=full cargo nextest run -p beadroll -E 'test(=sweep::sweep::sweep)'`: all 660
   schedules of the sweep, in parallel (about 11 minutes on 16 cores); `BEAD_SWEEP_GC=1` and

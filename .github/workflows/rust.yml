@@ -3,9 +3,9 @@
 # differential checks. The oracle runs the Python suite against Python's ./bead and against the Rust
 # binary, and it must pass completely against both since Phase 2d closed; the tests run against both
 # binaries too. The diff job checks beadroll-core against CPython case by case. The mixed-fleet
-# job runs Python and Rust machines on one remote and on one store. Later phases add the nightly
-# jobs. Nothing here touches a real store or a real remote: every test
-# builds its own repositories and bare remotes in a temporary directory.
+# job runs Python and Rust machines on one remote and on one store, and the protocol scenarios on
+# fleets that alternate them. Later phases add the nightly jobs. Nothing here touches a real store or
+# a real remote: every test builds its own repositories and bare remotes in a temporary directory.
 name: rust
 
 on:
@@ -257,3 +257,16 @@ jobs:
       # §4.2, item 4). Each machine names its binary, whatever BEAD_UNDER_TEST says.
       - name: The mixed-fleet scenarios
         run: cargo nextest run --locked --package beadroll -E 'test(/^mixed::/)'
+      # The protocol scenarios on mixed fleets: BEAD_MIXED_WITH gives every second machine of a
+      # sandbox the other binary, so a scenario's machines alternate Python and Rust, each way round.
+      # A machine that injects a fault through a failpoint runs the Rust binary either way.
+      - name: The protocol scenarios, Python's machines first
+        if: ${{ !cancelled() }}
+        run: |
+          cargo build --locked --package beadroll
+          BEAD_UNDER_TEST="$PWD/bead" BEAD_MIXED_WITH="$PWD/target/debug/bead" cargo nextest run --locked --package beadroll -E 'test(/^protocol::/)'
+      - name: The protocol scenarios, Rust's machines first
+        if: ${{ !cancelled() }}
+        run: |
+          cargo build --locked --package beadroll
+          BEAD_UNDER_TEST="$PWD/target/debug/bead" BEAD_MIXED_WITH="$PWD/bead" cargo nextest run --locked --package beadroll -E 'test(/^protocol::/)'

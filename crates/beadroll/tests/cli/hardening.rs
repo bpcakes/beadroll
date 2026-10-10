@@ -31,7 +31,7 @@ mod g26;
 mod g27;
 mod g28;
 mod g29;
-mod g30;
+pub(crate) mod g30;
 mod g31;
 mod g32;
 mod g33;

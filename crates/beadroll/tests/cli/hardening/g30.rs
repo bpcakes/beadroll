@@ -3,9 +3,10 @@
 //! tracked config or a published manifest too deep is a structured error; import refuses nesting
 //! that not every machine can read. The class's fourth test, a peer whose reader stops lower
 //! keeping up after a deep import elsewhere, ran bead under Python 3.12 or 3.13: it becomes a
-//! mixed-fleet case, Python 3.14 against Rust (`docs/RUST-PORT.md` §4.6), ported with those.
+//! mixed-fleet case, Python 3.14 against Rust (`docs/RUST-PORT.md` §4.6), ported with those
+//! (`mixed/g30.rs`), which share the record and the checks here.
 
-mod g30_deep_json_is_bounded_and_scoped {
+pub(crate) mod g30_deep_json_is_bounded_and_scoped {
     use std::collections::BTreeSet;
     use std::io::Write as _;
     use std::path::Path;
@@ -57,7 +58,7 @@ mod g30_deep_json_is_bounded_and_scoped {
 
     /// `_g30_record`: a Beads record whose unknown field nests `depth` arrays (the record itself is
     /// one more level).
-    fn record(key: &str, depth: usize, field: &str) -> String {
+    pub(crate) fn record(key: &str, depth: usize, field: &str) -> String {
         format!("{}, \"{field}\": {}}}\n", head(key, "deep"), nested(depth))
     }
 
@@ -126,12 +127,12 @@ mod g30_deep_json_is_bounded_and_scoped {
     }
 
     /// `assert_no_traceback`: `what`, which `run` ran, did not crash.
-    fn assert_no_crash(run: &Run, what: &str) {
+    pub(crate) fn assert_no_crash(run: &Run, what: &str) {
         assert!(!run.crashed(), "{what} crashed: {}", tail(&run.stderr));
     }
 
     /// `assert_works`: `what`, which `run` ran, did not crash and succeeded.
-    fn assert_works(run: &Run, what: &str) {
+    pub(crate) fn assert_works(run: &Run, what: &str) {
         assert_no_crash(run, what);
         let said = last_chars(&run.stderr, 400);
         assert_eq!(run.returncode(), 0, "{what}: {said}");

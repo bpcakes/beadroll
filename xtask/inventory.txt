@@ -368,7 +368,7 @@ C      test_hardening.G29_FailureAfterAcceptanceIsNotNothingHalfDone.test_g29_re
 A      test_hardening.G30_DeepJsonIsBoundedAndScoped.test_deep_tracked_config_or_manifest_is_a_structured_error
 A      test_hardening.G30_DeepJsonIsBoundedAndScoped.test_import_refuses_nesting_that_not_every_machine_can_read
 A      test_hardening.G30_DeepJsonIsBoundedAndScoped.test_line_too_deep_for_json_is_one_integrity_problem
-D      test_hardening.G30_DeepJsonIsBoundedAndScoped.test_peer_on_python_312_keeps_working_after_a_deep_import_elsewhere  # a mixed-fleet case, Python 3.14 against Rust (§4.6)
+D      test_hardening.G30_DeepJsonIsBoundedAndScoped.test_peer_on_python_312_keeps_working_after_a_deep_import_elsewhere => mixed::g30::g30_deep_json_is_bounded_and_scoped::peer_on_rust_keeps_working_after_a_deep_import_on_python, mixed::g30::g30_deep_json_is_bounded_and_scoped::peer_on_python_keeps_working_after_a_deep_import_on_rust  # a mixed-fleet case, Python 3.14 against Rust each way round, whose reading ceilings differ (§4.6)
 A      test_hardening.G31_ExportWithUnicodeLineSeparatorsImportsAgain.test_init_import_of_a_br_export_with_a_raw_line_separator
 A      test_hardening.G31_ExportWithUnicodeLineSeparatorsImportsAgain.test_own_export_with_unicode_line_separators_imports_again
 B      test_hardening.G32_IntegerFieldsStayBeadsReadable.test_writes_refuse_booleans_and_estimates_beads_cannot_read  # B+A: the replay and read_attempt half is ported in beadroll-store (Phase 2a); the CLI half goes with roll-k2wy.9

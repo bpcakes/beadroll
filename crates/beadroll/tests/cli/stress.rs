@@ -13,6 +13,10 @@
 //!   beadroll-core's ([`replayed`], [`viewed`]), as `docs/RUST-PORT.md` §4.8 has it. Their machines
 //!   run the Rust `bead` whatever `BEAD_UNDER_TEST` says ([`crate::rust_only`]), so that, as in
 //!   Python, the implementation that reads a store in-process is the one that wrote it.
+//! - The mixed fleet (§4.2, item 4). The first model also runs with its six machines alternating
+//!   Python's `bead` and the Rust one ([`mixed_machines`]), where every full check requires the
+//!   two implementations to agree; there Rust's in-process reads take the Python machines' stores
+//!   too, which they must read as the Rust machines' own.
 //! - Randomness. Python drew its choices from `random.Random(seed)`; these ports draw them, in the
 //!   same order, from a port of it ([`Rng`], CPython's Mersenne Twister), so a seed makes the
 //!   choices Python's made. Nothing a command answers changes the reference model's draws but
@@ -37,12 +41,25 @@ use beadroll_core::json::{Format, Object, write};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
 use beadroll_store::{Settings, Workspace, load_journal, view};
-use beadroll_test_support::{Json, Machine, Run, parse_json};
+use beadroll_test_support::{Json, Machine, Run, Sandbox, parse_json};
+
+/// How a model makes its fleet: [`machines`] or [`mixed_machines`].
+pub(crate) type Fleet = fn(&Sandbox, &str) -> Vec<Machine>;
 
 /// The machines of a model: `NAME0` to `NAME5`, each running the Rust `bead`.
-pub(crate) fn machines(sandbox: &beadroll_test_support::Sandbox, name: &str) -> Vec<Machine> {
+pub(crate) fn machines(sandbox: &Sandbox, name: &str) -> Vec<Machine> {
     (0..6)
         .map(|n| crate::rust_only(sandbox, &format!("{name}{n}")))
+        .collect()
+}
+
+/// The machines of a mixed fleet: `NAME0` to `NAME5`, running Python's `bead` (the checkout's
+/// launcher) and the Rust one in turn, Python's first, whatever `BEAD_UNDER_TEST` and
+/// `BEAD_MIXED_WITH` say.
+pub(crate) fn mixed_machines(sandbox: &Sandbox, name: &str) -> Vec<Machine> {
+    let beads = [crate::mixed::python(), crate::mixed::rust()];
+    (0..6)
+        .map(|n| Machine::new(sandbox, &format!("{name}{n}")).with_bead(&beads[n % 2]))
         .collect()
 }
 

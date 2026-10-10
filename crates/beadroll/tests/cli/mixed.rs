@@ -18,16 +18,17 @@ use beadroll_sync::{Link, PushOutcome, Tx, locked};
 use beadroll_test_support::{Json, Machine, git, parse_json};
 
 mod actors;
+mod g30;
 mod receipts;
 mod retries;
 
 /// The Rust `bead` this package builds.
-fn rust() -> PathBuf {
+pub(crate) fn rust() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_bead"))
 }
 
 /// Python's launcher in this checkout (`./bead`), until the cutover removes it.
-fn python() -> PathBuf {
+pub(crate) fn python() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../bead")
         .canonicalize()

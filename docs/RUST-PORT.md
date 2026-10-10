@@ -823,7 +823,9 @@ A direct port of `support.py`:
   Cargo gives no `bead`, supply the checkout's Python launcher until the cutover removes it
   (`crates/beadroll-sync/tests/sync/`). Selection is per-machine override, then
   `BEAD_UNDER_TEST`, then the supplied default. Phase 0 can supply Python's absolute `./bead` path
-  before Rust works.
+  before Rust works. `BEAD_MIXED_WITH`, set to a second binary, gives it to every second machine
+  a sandbox makes, unless the machine has its own: the protocol scenarios then run on fleets that
+  alternate the two implementations, each way round (§4.2, item 4).
 - Fixtures:
   - writers for pre-receive hooks (stall, gate, refuse, slow post-receive);
   - fake `ssh`, `ps` and `git` shims;
