@@ -1,5 +1,17 @@
 //! `tests/test_commands.py`, ported.
 
 mod bp_test;
+mod commands_and_compatibility_review4;
+mod compat_audit_cli;
+mod compat_audit_identity;
+mod deep_tree_review4;
+mod format_policy;
 mod help_and_prime;
+mod location_review;
+mod publish_on_write;
+mod ready_subtree;
+mod review5_cli;
+mod review5_positive_controls;
+mod review6;
+mod sync_repo_damage;
 mod sync_repo_maintenance;

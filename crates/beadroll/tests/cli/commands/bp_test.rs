@@ -1,17 +1,29 @@
-//! `BpTest`: the core behaviours, end to end.
+//! `BpTest`: the core behaviours, end to end. Its tests are grouped by subject in the modules
+//! below; the replay test and the helpers they share are here.
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use beadroll_core::journal::Journal;
 use beadroll_core::json::{Format, Value, write};
 use beadroll_core::replay::replay;
 use beadroll_store::{Settings, Workspace, load_journal, replica_id};
-use beadroll_test_support::{Json, Machine, Sandbox};
+use beadroll_test_support::{Json, Machine, Run, Sandbox};
+
+mod checkouts;
+mod claims;
+mod compat;
+mod crashes;
+mod graph;
+mod integrity;
+mod merges;
+mod remotes;
 
 /// Machine a owns an initialised tracker with issues X and Y; machine b has synced it.
-fn two_machines(sandbox: &Sandbox) -> (Machine, Machine, String, String) {
+pub(crate) fn two_machines(sandbox: &Sandbox) -> (Machine, Machine, String, String) {
     let a = Machine::new(sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
     let x = a.bead(["create", "Issue X", "-d", "original"]).unwrap()["id"].clone();
@@ -24,7 +36,7 @@ fn two_machines(sandbox: &Sandbox) -> (Machine, Machine, String, String) {
 }
 
 /// Every machine syncs twice; then they must export the same records and show the same issues.
-fn settle(machines: &[&Machine]) {
+pub(crate) fn settle(machines: &[&Machine]) {
     for machine in machines.iter().chain(machines) {
         machine.bead(["sync"]);
     }
@@ -53,6 +65,95 @@ fn settle(machines: &[&Machine]) {
         views.iter().all(|v| *v == views[0]),
         "machines disagree on claims or conflicts"
     );
+}
+
+/// The `id` of a record bead printed: an issue, or what `create` made.
+pub(crate) fn id(record: &Json) -> String {
+    match record["id"].as_str() {
+        Some(id) => id.to_owned(),
+        None => panic!("no id in {record:?}"),
+    }
+}
+
+/// Who holds the claim on `issue`, as `show` prints it.
+pub(crate) fn owner(issue: &Json) -> &str {
+    let owner = issue["claim"]["owner"].as_str();
+    owner.unwrap_or_else(|| panic!("no claim owner in {issue:?}"))
+}
+
+/// `[row[key] for row in rows]`: the member `key` of every row of the list `rows`.
+pub(crate) fn column(rows: &Json, key: &str) -> Vec<Json> {
+    let rows = rows
+        .as_array()
+        .unwrap_or_else(|| panic!("not a list: {rows:?}"));
+    rows.iter().map(|row| row[key].clone()).collect()
+}
+
+/// How many items the list `list` holds, as Python's `len` counts them.
+pub(crate) fn length(list: &Json) -> usize {
+    let items = list
+        .as_array()
+        .unwrap_or_else(|| panic!("not a list: {list:?}"));
+    items.len()
+}
+
+/// The exit statuses of `runs`, in ascending order.
+pub(crate) fn sorted_codes(runs: &[Run]) -> Vec<i32> {
+    let mut codes: Vec<i32> = runs.iter().map(Run::returncode).collect();
+    codes.sort_unstable();
+    codes
+}
+
+/// `f` of every job, run on `workers` threads at once, in the order of the jobs: what
+/// `list(ThreadPoolExecutor(workers).map(f, jobs))` gives. A job that panics fails the test.
+pub(crate) fn pool_map<J, R, F>(workers: usize, jobs: &[J], f: F) -> Vec<R>
+where
+    J: Sync,
+    R: Send,
+    F: Fn(&J) -> R + Sync,
+{
+    let next = AtomicUsize::new(0);
+    std::thread::scope(|scope| {
+        let threads: Vec<_> = (0..workers)
+            .map(|_| {
+                scope.spawn(|| {
+                    let mut done = Vec::new();
+                    loop {
+                        let index = next.fetch_add(1, Ordering::SeqCst);
+                        let Some(job) = jobs.get(index) else {
+                            return done;
+                        };
+                        done.push((index, f(job)));
+                    }
+                })
+            })
+            .collect();
+        let mut done: Vec<(usize, R)> = threads
+            .into_iter()
+            .flat_map(|thread| thread.join().expect("a job panicked"))
+            .collect();
+        done.sort_by_key(|(index, _)| *index);
+        done.into_iter().map(|(_, result)| result).collect()
+    })
+}
+
+/// The segments of the journal in `store`, `events/*/*.jsonl`, in order of their paths.
+pub(crate) fn segments(store: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    for replica in std::fs::read_dir(store.join("events")).unwrap() {
+        let replica = replica.unwrap().path();
+        if !replica.is_dir() {
+            continue;
+        }
+        for entry in std::fs::read_dir(&replica).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_name().to_str().unwrap().ends_with(".jsonl") {
+                found.push(entry.path());
+            }
+        }
+    }
+    found.sort();
+    found
 }
 
 /// The settings of a `bead` run on `machine`, as the test reads its store in-process.
