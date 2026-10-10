@@ -45,12 +45,21 @@ fn ops_by_a(bead: &Path, a: &Machine) -> Vec<String> {
         .collect()
 }
 
+/// How the first binary leaves the store when the second replaces it.
+#[derive(Clone, Copy, Debug)]
+enum Switch {
+    /// It syncs first: no ownership is pending, and the accepted attempt's receipt is kept.
+    AfterSync,
+    /// It stops with the accepted attempt still pending, for the second to settle.
+    Outstanding,
+}
+
 /// `first` leaves an accepted claiming update whose acknowledgement was lost; another machine
-/// edits the issue after it; `first` syncs, which leaves no ownership pending but keeps the
-/// receipt. Then `second` runs on the same home as the same actor: another actor's identical
-/// command is refused, and the retry is recognised and retired without applying anything again,
-/// so the newer edit stands.
-fn retried_by_the_other(first: &Path, second: &Path) {
+/// edits the issue after it; `first` syncs (or, `Outstanding`, leaves the attempt pending). Then
+/// `second` runs on the same home as the same actor: another actor's identical command is refused,
+/// and the retry is recognised and retired without applying anything again, so the newer edit
+/// stands, the claim stays the actor's, and nothing is left pending or damaged.
+fn retried_by_the_other(first: &Path, second: &Path, switch: Switch) {
     let sandbox = crate::sandbox();
     let (a, b) = (Machine::new(&sandbox, "a"), Machine::new(&sandbox, "b"));
     tracker(first, &sandbox, &a);
@@ -64,15 +73,26 @@ fn retried_by_the_other(first: &Path, second: &Path) {
     ok(second, &b, &["sync"]);
     ok(second, &b, &["update", "ex-a", "--title", "newer title"]);
     ok(second, &b, &["sync"]);
-    ok(first, &a, &["sync"]);
-    assert_eq!(
-        ok(first, &a, &["info"])["pending_ownership"],
-        Json::Array(Vec::new())
-    );
+    let pending = match switch {
+        Switch::AfterSync => {
+            ok(first, &a, &["sync"]);
+            Some(0)
+        }
+        Switch::Outstanding => None,
+    };
+    let info = ok(first, &a, &["info"]);
+    let left = info["pending_ownership"].as_array().map(<[Json]>::len);
+    match pending {
+        Some(none) => assert_eq!(left, Some(none), "{switch:?}: sync settles the attempt"),
+        None => assert!(
+            left.is_some_and(|n| n > 0),
+            "{switch:?}: the attempt is still pending"
+        ),
+    }
     assert_eq!(
         receipts(&a).len(),
         1,
-        "sync keeps an accepted attempt's receipt"
+        "{switch:?}: the accepted attempt's receipt is kept"
     );
 
     let mut other = RETRIED.to_vec();
@@ -110,6 +130,13 @@ fn retried_by_the_other(first: &Path, second: &Path) {
         receipts(&a).is_empty(),
         "a recognised retry retires its receipt"
     );
+    let info = ok(second, &a, &["info"]);
+    assert_eq!(
+        info["pending_ownership"],
+        Json::Array(Vec::new()),
+        "{switch:?}"
+    );
+    assert_eq!(info["integrity"], Json::Array(Vec::new()), "{switch:?}");
 }
 
 /// The same command with other content on standard input is another request: `second` applies it,
@@ -141,12 +168,22 @@ fn changed_content_is_a_new_request(first: &Path, second: &Path) {
 
 #[test]
 fn rust_recognises_an_accepted_request_python_left() {
-    retried_by_the_other(&python(), &rust());
+    retried_by_the_other(&python(), &rust(), Switch::AfterSync);
 }
 
 #[test]
 fn python_recognises_an_accepted_request_rust_left() {
-    retried_by_the_other(&rust(), &python());
+    retried_by_the_other(&rust(), &python(), Switch::AfterSync);
+}
+
+#[test]
+fn rust_settles_and_recognises_an_outstanding_request_python_left() {
+    retried_by_the_other(&python(), &rust(), Switch::Outstanding);
+}
+
+#[test]
+fn python_settles_and_recognises_an_outstanding_request_rust_left() {
+    retried_by_the_other(&rust(), &python(), Switch::Outstanding);
 }
 
 #[test]

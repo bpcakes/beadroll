@@ -42,9 +42,10 @@ fn pending_suffixes(machine: &Machine) -> Vec<String> {
 /// merits (x is closed).
 ///
 /// Recalibrated for Rust's bead (`docs/RUST-PORT.md` §4.4), which needs more descriptors than
-/// Python's to reach the same paths. Measured on macOS, Python's bead reads the tracker (`show`)
-/// from -n 8 and gets `claim` and `sync` through from -n 10; Rust's reads it from -n 10 and gets
-/// them through from -n 11, and below 10 every command fails. So the test runs the Python test's
+/// Python's to reach the same paths. Measured once the port was whole (2026-10-10), on macOS and
+/// on Linux alike, after this test's lost-ack close: Python's bead reads the tracker (`show`) from
+/// -n 8 and gets `claim` and `sync` through from -n 10; Rust's reads it from -n 10 and gets them
+/// through from -n 11, and below 10 every command fails. So the test runs the Python test's
 /// limits, 8, 10 and 11, and the same limits two descriptors higher, 10, 12 and 13. Each binary
 /// meets its descriptors running out between the read and the coordinated commands (Python at 8,
 /// Rust at 10) and enough of them for everything (Python from 10, Rust from 11); at 8, Rust's also
