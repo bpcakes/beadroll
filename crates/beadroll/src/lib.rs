@@ -12,5 +12,6 @@ use std::process::ExitCode;
 /// Runs `bead` with the process's arguments and returns its exit status.
 pub fn run() -> ExitCode {
     sys::ignore_file_size_signal();
+    sys::keep_inherited_descriptors_from_children();
     cli::main()
 }

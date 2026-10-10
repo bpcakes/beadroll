@@ -16,7 +16,8 @@ mixed-fleet tests.
 - `src/main.rs`: the executable; it calls `beadroll::run`.
 - `src/sys.rs`: what bead needs of the operating system around `main` (§2.3f), one of the two
   audited unsafe spots: a constructor that records whether standard input was open at exec, before
-  the runtime reopens it on `/dev/null`, and SIGXFSZ ignored, as CPython ignores it.
+  the runtime reopens it on `/dev/null`; SIGXFSZ ignored, as CPython ignores it; and the descriptors
+  bead was started with kept from the processes it starts, as Python's `close_fds=True` keeps them.
 - `src/cli.rs`: the flow of one run (`--json`, `--actor` and `--` read first, settings, the
   parse, the workspace, the command, publishing what it wrote, the unpublished count, rendering,
   errors). Its parts:

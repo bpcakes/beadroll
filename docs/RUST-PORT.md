@@ -374,6 +374,10 @@ So core has a small strict parser and writer:
   - stdout and stderr go to unlinked temp files. bead waits for the child, not for its pipes,
     because helpers may hold stderr open. Output is read with `read_at` from offset 0.
   - stdin, when given, comes from a temp file.
+  - No other descriptor reaches git: Python starts it with `close_fds=True`. bead marks every
+    descriptor it was started with, beyond the standard three, close-on-exec once at start-up
+    (`beadroll::sys`), so neither git nor `ps` inherits one; those bead opens itself are
+    close-on-exec already.
   - The timeout is a waiter thread plus `recv_timeout`. On expiry: `killpg` for a fetch, `kill` of
     the client alone for a push.
   - A signal death is reported as `killed by SIGNAME`.

@@ -8,6 +8,7 @@
 //! only binary they pass against: `BEAD_UNDER_TEST=$PWD/bead cargo nextest run`.
 #![cfg(test)]
 
+mod children;
 mod commands;
 mod golden;
 mod hardening;
