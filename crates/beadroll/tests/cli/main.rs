@@ -17,6 +17,7 @@ mod hardening;
 mod mixed;
 mod protocol;
 mod storage;
+mod stress;
 mod support;
 mod sweep;
 
