@@ -2,6 +2,7 @@
 //! unknown fields kept; one invalid record fails the whole import, before anything is written.
 
 use std::ffi::OsStr;
+use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_core::import::{Step, Target, plan_import, read_records};
 use beadroll_core::json::{Object, Value};
@@ -26,9 +27,15 @@ pub(crate) fn import(ctx: &Context<'_>, path: &OsStr) -> Result<Outcome, Failure
 /// Emits the events that import the export at `path` (`-`: standard input) into `tx`; how many
 /// records were new.
 pub(crate) fn import_records(tx: &mut Tx<'_>, path: &OsStr) -> Result<usize, Failure> {
-    let shown = path.to_string_lossy();
-    let content = read_utf8(path, &shown)?;
-    let records = read_records(&content, &shown)?;
+    let content = read_utf8(path, path)?;
+    // the file's name begins every message about its records, as it was given
+    let records = match path.to_str() {
+        Some(shown) => read_records(&content, shown)?,
+        None => read_records(&content, "").map_err(|error| {
+            let message = [path.as_bytes(), error.to_string().as_bytes()].concat();
+            Failure::bytes(error.code(), message)
+        })?,
+    };
     let plan = plan_import(tx.state()?, &records)?;
     let mut created: Vec<String> = Vec::new();
     for step in plan.steps {

@@ -1,6 +1,6 @@
 //! `bead comments`: an issue's comments, or `comments add ID TEXT` to record one.
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 
 use beadroll_core::code::Code;
@@ -72,7 +72,9 @@ fn add(
 ) -> Result<Outcome, Failure> {
     let (text, valid) = match (&args.message, &args.file) {
         (Some(message), _) if !message.is_empty() => arg_text(message),
-        (_, Some(file)) if !file.is_empty() => (read_utf8(file, "the comment file")?, true),
+        (_, Some(file)) if !file.is_empty() => {
+            (read_utf8(file, OsStr::new("the comment file"))?, true)
+        }
         _ => {
             let joined = rest
                 .iter()

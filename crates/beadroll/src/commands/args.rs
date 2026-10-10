@@ -188,7 +188,7 @@ pub(crate) fn field_args(title: Option<&OsStr>, flags: &ContentArgs) -> Result<P
     for (name, value) in texts {
         match (name, flags.description_file.as_deref()) {
             ("description", Some(path)) if !path.is_empty() => {
-                let text = read_utf8(path, name)?;
+                let text = read_utf8(path, OsStr::new(name))?;
                 fields.values.insert(name.into(), Value::from(text));
             }
             _ => {

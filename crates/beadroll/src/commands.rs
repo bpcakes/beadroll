@@ -27,7 +27,7 @@ use beadroll_core::json::{Int, Object, Value};
 use beadroll_core::op::PyInt;
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::{printed_text, repr_str, strip};
-use beadroll_store::{ViewError, Workspace};
+use beadroll_store::{ViewError, Workspace, pathlib};
 use beadroll_sync::Tx;
 
 pub(crate) use args::{
@@ -243,7 +243,9 @@ pub(crate) fn split_list(values: &[String]) -> Vec<String> {
 }
 
 /// A text argument from a file (`-` for standard input), decoded as UTF-8 whatever the locale says.
-pub(crate) fn read_utf8(path: &OsStr, what: &str) -> Result<String, Failure> {
+/// The file is read as Python reads `Path(path)`, its spelling normalised as pathlib normalises it
+/// (`dir//name/.` is `dir/name`); `what` names it in the error, as it was given.
+pub(crate) fn read_utf8(path: &OsStr, what: &OsStr) -> Result<String, Failure> {
     let raw = if path == "-" {
         let mut raw = Vec::new();
         std::io::stdin()
@@ -251,10 +253,15 @@ pub(crate) fn read_utf8(path: &OsStr, what: &str) -> Result<String, Failure> {
             .map_err(|e| Failure::from(beadroll_git::IoError::bare(&e)))?;
         raw
     } else {
-        std::fs::read(path).map_err(|e| Failure::from(beadroll_git::IoError::at(&e, path)))?
+        let path = pathlib(path);
+        std::fs::read(&path).map_err(|e| Failure::from(beadroll_git::IoError::at(&e, &path)))?
     };
-    String::from_utf8(raw)
-        .map_err(|_| Failure::new(Code::Validation, format!("{what} is not valid UTF-8")))
+    String::from_utf8(raw).map_err(|_| {
+        Failure::bytes(
+            Code::Validation,
+            [what.as_bytes(), b" is not valid UTF-8"].concat(),
+        )
+    })
 }
 
 /// Whether `me` ended the issue's last claim by closing or deleting it (Python's `ended_by`). The

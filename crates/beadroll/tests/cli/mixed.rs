@@ -685,3 +685,67 @@ fn aliases_keep_bytes_that_are_not_utf8_as_python_keeps_them() {
     assert_eq!(shown[1], shown[0]);
     assert_eq!(shown[0].0, Json::from("host?"));
 }
+
+/// A path given on the command line is used as Python's `Path()` spells it (`dump.jsonl/.` is
+/// `dump.jsonl`), and named in errors as `Path()` spells it, or as given where Python names the
+/// argument itself; for either binary, in both output modes.
+#[test]
+fn paths_are_read_and_written_where_pythons_pathlib_puts_them() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let sandbox = crate::sandbox();
+    let (py, rs) = (python(), rust());
+    let m = Machine::new(&sandbox, "paths");
+    json_as(&py, &m, &["init", "--prefix", "ex"]);
+    let key = id(&json_as(&py, &m, &["create", "seed"]));
+    let dir = m.checkout();
+    std::fs::write(dir.join("note.txt"), "from a file\n").unwrap();
+    std::fs::write(dir.join("bad.jsonl"), "{not json\n").unwrap();
+    // a name that is not UTF-8: Linux takes it; macOS refuses it, and the import fails to open it
+    let _ = std::fs::write(dir.join(OsStr::from_bytes(b"bad\xff.jsonl")), "{not json\n");
+    let ask = |bead: &Path, args: &[&[u8]]| {
+        let args: Vec<&OsStr> = args.iter().map(|a| OsStr::from_bytes(a)).collect();
+        let out = Command::new(bead)
+            .args(&args)
+            .current_dir(dir)
+            .env_clear()
+            .envs(m.env(None, "codex"))
+            .output()
+            .unwrap();
+        (out.status.code(), out.stdout, out.stderr)
+    };
+    for target in ["dump.jsonl/", "dump.jsonl/.", "./sub//..//dump.jsonl"] {
+        let mut answers = Vec::new();
+        for bead in [&py, &rs] {
+            let _ = std::fs::remove_file(dir.join("dump.jsonl"));
+            std::fs::create_dir_all(dir.join("sub")).unwrap();
+            let answer = ask(bead, &[b"export", b"-o", target.as_bytes()]);
+            let written = std::fs::read(dir.join("dump.jsonl")).ok();
+            answers.push((answer, written));
+        }
+        assert_eq!(answers[1], answers[0], "{target}");
+        assert!(answers[0].1.is_some(), "{target}: {:?}", answers[0].0);
+    }
+    for args in [
+        &[&b"create"[..], b"t", b"--description-file", b"missing//x/."][..],
+        &[b"import", b"./bad.jsonl/"],
+        &[b"import", b"bad\xff.jsonl"],
+        &[b"comments", b"add", key.as_bytes(), b"-f", b"no//such/"],
+    ] {
+        for json in [false, true] {
+            let mut all = args.to_vec();
+            if json {
+                all.push(b"--json");
+            }
+            assert_eq!(ask(&rs, &all), ask(&py, &all), "{all:?}");
+        }
+    }
+    let read = |bead: &Path| {
+        ask(
+            bead,
+            &[b"comments", b"add", key.as_bytes(), b"-f", b"note.txt/"],
+        )
+    };
+    assert_eq!(read(&rs), read(&py));
+    let comments = json_as(&py, &m, &["comments", &key]);
+    assert_eq!(comments.as_array().unwrap().len(), 2, "{comments:?}");
+}

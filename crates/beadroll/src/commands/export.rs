@@ -2,12 +2,11 @@
 
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
-use std::path::Path;
 
 use beadroll_core::code::Code;
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::text::printed_text;
-use beadroll_store::{view, write_atomic};
+use beadroll_store::{pathlib, view, write_atomic};
 
 use super::{Context, Failure, Outcome};
 
@@ -25,7 +24,8 @@ pub(crate) fn export(ctx: &Context<'_>, output: Option<&OsStr>) -> Result<Outcom
     let Some(output) = output.filter(|o| !o.is_empty()) else {
         return Ok(Outcome::raw(text));
     };
-    write_atomic(Path::new(output), text.as_bytes(), false)?;
+    // written where Python's `Path(args.output)` points: `dump.jsonl/` is `dump.jsonl`
+    write_atomic(&pathlib(output), text.as_bytes(), false)?;
     let count = st.issues().count();
     let shown = printed_text(output.as_bytes());
     let mut result = Object::new();
