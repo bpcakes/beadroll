@@ -10,6 +10,7 @@
 
 mod commands;
 mod golden;
+mod hardening;
 mod mixed;
 mod support;
 

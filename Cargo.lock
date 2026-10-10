@@ -17,6 +17,7 @@ dependencies = [
  "beadroll-store",
  "beadroll-sync",
  "beadroll-test-support",
+ "libc",
  "nix",
  "rustix",
 ]

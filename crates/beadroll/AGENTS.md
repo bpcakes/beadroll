@@ -6,13 +6,17 @@
 typed outcomes, `cli` parses arguments, renders results and owns the output streams and exit codes.
 Slices 2a and 2b (`roll-k2wy.3`, `roll-k2wy.4`) port every command but the coordinated ones, which
 Slice 2c (`roll-k2wy.5`) adds: `claim`, `release`, `takeover` and `update --claim`/`--status
-in_progress`, with their receipts. Slice 2d adds `sys`, the second audited unsafe spot. Its
+in_progress`, with their receipts. Slice 2d (`roll-k2wy.6`) added `sys`, one of the two audited
+unsafe spots, and the Python suite passes against it whole. Its
 integration tests are the black-box tests ported from the Python suite, the golden outputs and the
 mixed-fleet tests.
 
 ## Key entrypoints
 
 - `src/main.rs`: the executable; it calls `beadroll::run`.
+- `src/sys.rs`: what bead needs of the operating system around `main` (§2.3f), one of the two
+  audited unsafe spots: a constructor that records whether standard input was open at exec, before
+  the runtime reopens it on `/dev/null`, and SIGXFSZ ignored, as CPython ignores it.
 - `src/cli.rs`: the flow of one run (`--json`, `--actor` and `--` read first, settings, the
   parse, the workspace, the command, publishing what it wrote, the unpublished count, rendering,
   errors). Its parts:
@@ -65,7 +69,7 @@ mixed-fleet tests.
 - Goldens come from Python only (`cargo xtask golden` refuses any other binary); a golden is never
   regenerated to make Rust pass.
 - Test roots start with `#![cfg(test)]`; helpers shared between test modules are `pub(crate)`.
-- A ported test passes against Python's launcher before it counts; Rust passes it by Phase 2d.
+- A ported test passes against Python's launcher before it counts, and against the Rust binary.
   The mixed-fleet tests name both binaries themselves, whatever `BEAD_UNDER_TEST` says.
 
 ## Common commands
@@ -75,4 +79,4 @@ mixed-fleet tests.
 - `cargo nextest run -p beadroll -E 'test(/^mixed::/)'`: the mixed-fleet tests
 - `cargo nextest run -p beadroll -E 'test(/^golden::/)'`: the Rust binary against the goldens
 - `cargo xtask golden`: capture the goldens from Python's `./bead`
-- `cargo xtask oracle --report`: the Python suite against the Rust binary
+- `cargo xtask oracle`: the Python suite against the Rust binary; it must pass completely

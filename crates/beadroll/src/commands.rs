@@ -248,6 +248,12 @@ pub(crate) fn split_list(values: &[String]) -> Vec<String> {
 /// The file is read as Python reads `Path(path)`, its spelling normalised as pathlib normalises it
 /// (`dir//name/.` is `dir/name`); `what` names it in the error, as it was given.
 pub(crate) fn read_utf8(path: &OsStr, what: &OsStr) -> Result<String, Failure> {
+    if path == "-" && crate::sys::stdin_closed() {
+        return Err(Failure::new(
+            Code::Io,
+            "standard input is closed, so - cannot be read",
+        ));
+    }
     let raw = if path == "-" {
         let mut raw = Vec::new();
         std::io::stdin()
