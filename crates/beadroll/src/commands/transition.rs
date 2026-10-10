@@ -6,7 +6,6 @@ use std::ffi::OsString;
 use beadroll_core::code::Code;
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
-use beadroll_core::state::actor_label;
 use beadroll_core::text::str_of;
 use beadroll_store::view;
 use beadroll_sync::{publish_soon, writing};
@@ -38,7 +37,7 @@ pub(crate) fn transition(
     let ends_claims = matches!(op, "close" | "delete");
     let (mut result, ended, named) = writing(ctx.ws, ctx.actor, |tx| {
         need_tracker(tx.state()?)?;
-        let me = actor_label(Some(&tx.actor), &tx.replica);
+        let me = ctx.actor.label(&tx.replica);
         let mut ended = false;
         // the claim each issue's event names: it ends exactly that claim, never a successor's
         let mut named: Vec<(EventId, EventId)> = Vec::new();
@@ -55,7 +54,7 @@ pub(crate) fn transition(
                 )
             };
             if let Some(held) = &held
-                && held.owner != me
+                && !me.is(&held.owner)
                 && !args.force
             {
                 return Err(Failure::new(
@@ -70,7 +69,7 @@ pub(crate) fn transition(
             if let Some(reason) = args.reason.as_deref().filter(|r| !r.is_empty()) {
                 data.insert("reason".into(), Value::from(text(reason)?));
             }
-            if ends_claims && let Some(held) = held.as_ref().filter(|held| held.owner == me) {
+            if ends_claims && let Some(held) = held.as_ref().filter(|held| me.is(&held.owner)) {
                 data.insert("claim".into(), Value::from(held.id.to_string()));
                 match named.iter_mut().find(|(issue, _)| *issue == uid) {
                     Some(entry) => entry.1 = held.id,

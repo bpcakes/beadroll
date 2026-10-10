@@ -6,9 +6,8 @@ use std::ffi::OsStr;
 use beadroll_core::code::Code;
 use beadroll_core::event::Field;
 use beadroll_core::json::{Object, Value};
-use beadroll_core::state::actor_label;
 use beadroll_core::text::{repr, repr_bytes, str_of};
-use beadroll_store::{Actor, Settings, Workspace, replica_id, view};
+use beadroll_store::{Actor, Label, Settings, Workspace, replica_id, view};
 
 use super::help;
 use super::parse::{Namespace, Page};
@@ -25,7 +24,7 @@ pub(crate) fn run(
 ) -> Result<Outcome, Failure> {
     match ns.spec.name {
         "help" => help_page(ns.text("command_name"), settings),
-        "prime" => prime(ws, &actor.value, settings),
+        "prime" => prime(ws, actor, settings),
         _ => Ok(text_outcome("onboard", ONBOARD)),
     }
 }
@@ -65,10 +64,10 @@ fn help_page(name: Option<&OsStr>, settings: &Settings) -> Result<Outcome, Failu
 
 /// The workflow, with where this agent stands: who it is, and in a repository with a tracker how
 /// many issues are ready, which it holds and when this machine last synced.
-fn prime(ws: Option<&Workspace>, actor: &Value, settings: &Settings) -> Result<Outcome, Failure> {
+fn prime(ws: Option<&Workspace>, actor: &Actor, settings: &Settings) -> Result<Outcome, Failure> {
     let replica = replica_id(settings, false)?;
-    let me = actor_label(Some(actor), replica.as_deref().unwrap_or("?"));
-    let mut context = vec![format!("You are {me} (machine, agent, thread).")];
+    let me = actor.label(replica.as_deref().unwrap_or("?"));
+    let mut context = vec![format!("You are {} (machine, agent, thread).", me.shown())];
     match ws {
         Some(ws) => match standing(ws, &me) {
             Ok(line) => context.push(line),
@@ -88,19 +87,19 @@ fn prime(ws: Option<&Workspace>, actor: &Value, settings: &Settings) -> Result<O
     let text = PRIME.replacen("{context}", &format!("{}\n", context.join("\n")), 1);
     let mut outcome = text_outcome("prime", &text);
     if let Some(Value::Object(result)) = &mut outcome.result {
-        result.insert("actor".into(), Value::from(me));
+        result.insert("actor".into(), Value::from(me.shown()));
     }
     Ok(outcome)
 }
 
 /// The tracker's line in `prime`: how many issues are ready, which `me` holds, how many of this
 /// machine's attempts await the remote, and the last sync.
-fn standing(ws: &Workspace, me: &str) -> Result<String, Failure> {
+fn standing(ws: &Workspace, me: &Label) -> Result<String, Failure> {
     let st = view(ws)?;
     need_tracker(&st)?;
     let held: Vec<&str> = st
         .issues()
-        .filter(|i| i.claim().is_some_and(|c| c.owner == me))
+        .filter(|i| i.claim().is_some_and(|c| me.is(&c.owner)))
         .map(|i| i.key())
         .collect();
     let ready = st

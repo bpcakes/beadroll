@@ -2,9 +2,10 @@
 //! the harness environment, overrides from `BEAD_*` and `--actor`.
 
 use std::ffi::{OsStr, OsString};
-use std::os::unix::ffi::OsStrExt as _;
+use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 
 use beadroll_core::json::{Object, Value};
+use beadroll_core::state::actor_label;
 use beadroll_core::text::printed_text;
 
 use crate::settings::Settings;
@@ -53,14 +54,24 @@ pub fn nearest_harness(parent: u32, ps: &Ps<'_>) -> Option<&'static str> {
 
 /// The caller, as events record it: the actor object, and whether all of its text came as valid
 /// UTF-8. Python keeps bytes that are not (in `--actor` or the environment) as lone surrogates, so
-/// none of its writes can be encoded; the actor still reads as itself, a `?` for each such byte,
-/// and no receipt is ever its.
+/// none of its writes can be encoded; the actor still reads as itself, a `?` for each such byte, no
+/// receipt is ever its, and it holds no claim, for no owner a journal names holds a lone surrogate.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Actor {
-    /// `{"agent", "thread"?, "name"?}`.
+    /// `{"agent", "thread"?, "name"?}`, as bead prints it.
     pub value: Value,
     /// Whether its text is valid UTF-8.
     pub writable: bool,
+    /// Its members as they were given, byte for byte; `None` when `value` is all there is.
+    given: Option<Given>,
+}
+
+/// The members of an actor as they were given.
+#[derive(Clone, Debug, PartialEq)]
+struct Given {
+    agent: OsString,
+    thread: Option<OsString>,
+    name: Option<OsString>,
 }
 
 impl Actor {
@@ -69,7 +80,52 @@ impl Actor {
         Actor {
             value,
             writable: true,
+            given: None,
         }
+    }
+
+    /// The owner this actor's claims are held by on `replica` (Python's `actor_label`): its name,
+    /// else `agent:thread@replica`, or `agent@replica` without a thread; kept as the bytes it was
+    /// given.
+    pub fn label(&self, replica: &str) -> Label {
+        let Some(given) = &self.given else {
+            return Label(actor_label(Some(&self.value), replica).into_bytes());
+        };
+        let set = |member: &Option<OsString>| member.clone().filter(|m| !m.is_empty());
+        if let Some(name) = set(&given.name) {
+            return Label(name.into_vec());
+        }
+        let mut label = given.agent.clone().into_vec();
+        if let Some(thread) = set(&given.thread) {
+            label.push(b':');
+            label.extend_from_slice(thread.as_bytes());
+        }
+        label.push(b'@');
+        label.extend_from_slice(replica.as_bytes());
+        Label(label)
+    }
+}
+
+/// An actor's label (Python's `actor_label`), as the bytes it was given.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Label(Vec<u8>);
+
+impl Label {
+    /// Whether `owner`, as a journal names it, is this label. An owner is always UTF-8, so a label
+    /// whose bytes are not is no one's: the string Python holds them as, with its lone surrogates,
+    /// equals no text a journal holds.
+    pub fn is(&self, owner: &str) -> bool {
+        self.0 == owner.as_bytes()
+    }
+
+    /// As bead prints it: a `?` for each byte that is not UTF-8.
+    pub fn shown(&self) -> String {
+        printed_text(&self.0)
+    }
+
+    /// Its bytes, for a message that keeps them (`\udcXX` in JSON, as Python escapes them).
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
     }
 }
 
@@ -109,24 +165,27 @@ pub fn detect_actor(
             (Some(OsString::from("human")), None)
         };
     let thread = raw("BEAD_THREAD").or(thread);
+    let agent = agent.unwrap_or_default();
     let mut actor = Object::new();
-    actor.insert(
-        "agent".into(),
-        Value::from(text(agent.as_deref().unwrap_or_default())),
-    );
-    if let Some(thread) = thread {
-        actor.insert("thread".into(), Value::from(text(&thread)));
+    actor.insert("agent".into(), Value::from(text(&agent)));
+    if let Some(thread) = &thread {
+        actor.insert("thread".into(), Value::from(text(thread)));
     }
-    let named = name
+    let name = name
         .filter(|n| !n.is_empty())
         .map(OsStr::to_os_string)
         .or_else(|| raw("BEAD_ACTOR"));
-    if let Some(named) = named {
-        actor.insert("name".into(), Value::from(text(&named)));
+    if let Some(name) = &name {
+        actor.insert("name".into(), Value::from(text(name)));
     }
     Actor {
         value: Value::Object(actor),
         writable,
+        given: Some(Given {
+            agent,
+            thread,
+            name,
+        }),
     }
 }
 

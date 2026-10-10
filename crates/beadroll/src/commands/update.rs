@@ -9,9 +9,9 @@ use beadroll_core::code::Code;
 use beadroll_core::event::DONE;
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
-use beadroll_core::state::{Issue, State, actor_label};
+use beadroll_core::state::{Issue, State};
 use beadroll_core::text::str_of;
-use beadroll_store::view;
+use beadroll_store::{Actor, Label, view};
 use beadroll_sync::{Mode, Tx, coordinated, publish_soon, writing};
 
 use super::ownership::{ClaimStep, command_signature, still_held};
@@ -52,6 +52,7 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
     let mut notes = Vec::new();
     let ended = if wants_claim {
         let step = ClaimStep {
+            actor: ctx.actor,
             keys: &args.ids,
             takeover: None,
         };
@@ -71,7 +72,7 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
             |tx, mode| -> Result<Mode, Failure> {
                 let mode = step.run(tx, mode)?;
                 tx.conditional = true;
-                ended.extend(edits(tx, args, &fields, status.as_deref())?);
+                ended.extend(edits(tx, ctx.actor, args, &fields, status.as_deref())?);
                 Ok(mode)
             },
         )?;
@@ -84,7 +85,7 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
         ended
     } else {
         writing(ctx.ws, ctx.actor, |tx| {
-            edits(tx, args, &fields, status.as_deref())
+            edits(tx, ctx.actor, args, &fields, status.as_deref())
         })?
     };
     // the same promptness `bead close` gives
@@ -122,13 +123,14 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
 /// the issues whose claim a close ends.
 fn edits(
     tx: &mut Tx<'_>,
+    actor: &Actor,
     args: &UpdateArgs,
     fields: &Payload,
     status: Option<&str>,
 ) -> Result<Vec<String>, Failure> {
     let st: State = tx.state()?.clone();
     need_tracker(&st)?;
-    let me = actor_label(Some(&tx.actor), &tx.replica);
+    let me = actor.label(&tx.replica);
     let targets = args
         .ids
         .iter()
@@ -158,7 +160,7 @@ fn check(
     st: &State,
     issue: &Issue,
     args: &UpdateArgs,
-    me: &str,
+    me: &Label,
     status: Option<&str>,
     new_parent: Option<EventId>,
 ) -> Result<(), Failure> {
@@ -176,7 +178,7 @@ fn check(
         ));
     }
     if let (Some(_), Some(held)) = (status, held)
-        && held.owner != me
+        && !me.is(&held.owner)
         && !args.force
     {
         return Err(Failure::new(
@@ -188,7 +190,7 @@ fn check(
             ),
         ));
     }
-    if status == Some("open") && held.is_some_and(|held| held.owner == me) {
+    if status == Some("open") && held.is_some_and(|held| me.is(&held.owner)) {
         return Err(Failure::new(
             Code::Validation,
             format!("{}: use `bead release` to give up your claim", issue.key()),
@@ -210,7 +212,7 @@ fn edit(
     fields: &Payload,
     status: Option<&str>,
     new_parent: Option<EventId>,
-    me: &str,
+    me: &Label,
 ) -> Result<(), Failure> {
     let uid = issue.uid().to_string();
     if !fields.values.is_empty() {
@@ -226,7 +228,7 @@ fn edit(
         Some("closed") => {
             // the same transition `bead close` makes, ending exactly our claim
             let mut data = Object::new();
-            if let Some(held) = issue.claim().filter(|held| held.owner == me) {
+            if let Some(held) = issue.claim().filter(|held| me.is(&held.owner)) {
                 data.insert("claim".into(), Value::from(held.id.to_string()));
             }
             tx.emit("close", Some(&uid), data, None)?;

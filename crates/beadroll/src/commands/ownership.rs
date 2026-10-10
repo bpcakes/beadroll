@@ -7,7 +7,7 @@ use std::ffi::{OsStr, OsString};
 use beadroll_core::code::Code;
 use beadroll_core::event::Field;
 use beadroll_core::json::{Format, Object, Value, write};
-use beadroll_core::state::{State, actor_label};
+use beadroll_core::state::State;
 use beadroll_core::text::str_of;
 use beadroll_store::{Actor, replica_id, view};
 use beadroll_sync::{Mode, Tx, coordinated};
@@ -49,6 +49,7 @@ pub(crate) fn command_signature(actor: &Actor, asked: &str, request: Option<&Val
 /// claimed for the actor, generation one more than its last; with `takeover`, from its owner. A
 /// done issue, a disputed status, or (without `takeover`) someone else's claim refuses all of it.
 pub(crate) struct ClaimStep<'a> {
+    pub(crate) actor: &'a Actor,
     pub(crate) keys: &'a [OsString],
     pub(crate) takeover: Option<&'a OsStr>,
 }
@@ -57,7 +58,7 @@ impl ClaimStep<'_> {
     pub(crate) fn run(&self, tx: &mut Tx<'_>, mode: Mode) -> Result<Mode, Failure> {
         let st: State = tx.state()?.clone();
         need_tracker(&st)?;
-        let me = actor_label(Some(&tx.actor), &tx.replica);
+        let me = self.actor.label(&tx.replica);
         for key in self.keys {
             let issue = resolve_arg(&st, key)?;
             let held = issue.claim();
@@ -76,7 +77,7 @@ impl ClaimStep<'_> {
                     ),
                 ));
             }
-            if held.is_some_and(|held| held.owner == me) {
+            if held.is_some_and(|held| me.is(&held.owner)) {
                 continue;
             }
             if let Some(held) = held
@@ -118,11 +119,11 @@ impl ClaimStep<'_> {
 /// holds.
 pub(crate) fn still_held(ctx: &Context<'_>, st: &State, keys: &[OsString]) -> Result<(), Failure> {
     let replica = replica_id(&ctx.ws.settings, true)?.unwrap_or_default();
-    let me = actor_label(Some(&ctx.actor.value), &replica);
+    let me = ctx.actor.label(&replica);
     for key in keys {
         let issue = resolve_arg(st, key)?;
         match issue.claim() {
-            Some(held) if held.owner == me => {}
+            Some(held) if me.is(&held.owner) => {}
             Some(held) => {
                 return Err(Failure::new(
                     Code::AlreadyClaimed,
@@ -158,6 +159,7 @@ fn details(st: &State, keys: &[OsString]) -> Result<Vec<Object>, Failure> {
 /// `bead claim`: takes ownership of each issue.
 pub(crate) fn claim(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome, Failure> {
     let step = ClaimStep {
+        actor: ctx.actor,
         keys: &args.ids,
         takeover: None,
     };
@@ -204,6 +206,7 @@ pub(crate) fn takeover(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcom
         return Err(Failure::new(Code::Validation, "a takeover needs --reason"));
     };
     let step = ClaimStep {
+        actor: ctx.actor,
         keys: &args.ids,
         takeover: Some(reason),
     };
@@ -248,12 +251,12 @@ pub(crate) fn release(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome
         |tx, mode| -> Result<Mode, Failure> {
             let st: State = tx.state()?.clone();
             need_tracker(&st)?;
-            let me = actor_label(Some(&tx.actor), &tx.replica);
+            let me = ctx.actor.label(&tx.replica);
             for key in &args.ids {
                 let issue = resolve_arg(&st, key)?;
                 let uid = issue.uid().to_string();
                 let held = issue.claim();
-                if let Some(held) = held.filter(|held| held.owner == me) {
+                if let Some(held) = held.filter(|held| me.is(&held.owner)) {
                     let mut data = Object::new();
                     data.insert("claim".into(), Value::from(held.id.to_string()));
                     let mut valid = true;
@@ -264,16 +267,18 @@ pub(crate) fn release(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome
                     }
                     tx.emit("release", Some(&uid), data, None)?;
                     encodable(valid)?;
-                } else if issue.provisional_claims().iter().any(|p| p.owner == me) {
+                } else if issue.provisional_claims().iter().any(|p| me.is(&p.owner)) {
                     tx.emit("release", Some(&uid), Object::new(), None)?;
                 } else {
-                    let by = held
-                        .map(|held| format!("; it is held by {}", held.owner))
-                        .unwrap_or_default();
-                    return Err(Failure::new(
-                        Code::NotOwner,
-                        format!("{} is not claimed by {me}{by}", issue.key()),
-                    ));
+                    // the label as it was given: Python's message holds its lone surrogates
+                    let mut message = format!("{} is not claimed by ", issue.key()).into_bytes();
+                    message.extend_from_slice(me.as_bytes());
+                    if let Some(held) = held {
+                        message.extend_from_slice(
+                            format!("; it is held by {}", held.owner).as_bytes(),
+                        );
+                    }
+                    return Err(Failure::bytes(Code::NotOwner, message));
                 }
             }
             Ok(mode)

@@ -4,7 +4,7 @@ use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_core::journal::Journal;
 use beadroll_core::json::{Object, Value};
-use beadroll_core::state::{State, actor_label};
+use beadroll_core::state::State;
 use beadroll_core::text::{printed_text, str_of};
 use beadroll_store::{
     Workspace, dir_entries, load_journal, load_pending, replica_id, segment_files, view,
@@ -59,13 +59,8 @@ pub(crate) fn info(ctx: &Context<'_>) -> Result<Outcome, Failure> {
     result.insert("ref".into(), Value::from(ws.ref_name()?));
     result.insert("machine".into(), Value::from(replica.clone()));
     result.insert("actor".into(), ctx.actor.value.clone());
-    result.insert(
-        "actor_label".into(),
-        Value::from(actor_label(
-            Some(&ctx.actor.value),
-            replica.as_deref().unwrap_or("?"),
-        )),
-    );
+    let label = ctx.actor.label(replica.as_deref().unwrap_or("?"));
+    result.insert("actor_label".into(), Value::from(label.shown()));
     numbers(ws, &mut journal, &st, &mut result)?;
     let synced = ws.meta(false)?.get("last_sync").cloned();
     result.insert("last_sync".into(), synced.unwrap_or(Value::Null));

@@ -28,7 +28,7 @@ use beadroll_core::json::{Int, Object, Value};
 use beadroll_core::op::PyInt;
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::{printed_text, repr_str, strip};
-use beadroll_store::{Actor, ViewError, Workspace, pathlib};
+use beadroll_store::{Actor, Label, ViewError, Workspace, pathlib};
 use beadroll_sync::Tx;
 
 pub(crate) use args::{
@@ -269,11 +269,11 @@ pub(crate) fn read_utf8(path: &OsStr, what: &OsStr) -> Result<String, Failure> {
 /// Whether `me` ended the issue's last claim by closing or deleting it (Python's `ended_by`). The
 /// run that did so may have died before it published that, so a retry of the command publishes
 /// as promptly as the first run.
-pub(crate) fn ended_by(issue: &Issue, me: &str) -> bool {
+pub(crate) fn ended_by(issue: &Issue, me: &Label) -> bool {
     issue
         .claim_history()
         .last()
-        .is_some_and(|last| last.ended_by == me && matches!(last.how, "close" | "delete"))
+        .is_some_and(|last| me.is(&last.ended_by) && matches!(last.how, "close" | "delete"))
 }
 
 /// Takes back the edges of `issue` to `to` this writer sees (Python's `remove_edge`); `kind`

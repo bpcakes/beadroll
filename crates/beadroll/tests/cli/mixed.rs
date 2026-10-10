@@ -17,6 +17,7 @@ use beadroll_store::{
 use beadroll_sync::{Link, PushOutcome, Tx, locked};
 use beadroll_test_support::{Json, Machine, git, parse_json};
 
+mod actors;
 mod receipts;
 mod retries;
 

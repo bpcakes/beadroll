@@ -17,8 +17,9 @@ remote resolution, actor detection, and `view`. Slice 2a (`roll-k2wy.3`) built i
   print as Python prints them) and Python's error texts (`os_error_str`, `utf8_error`).
 - `src/identity.rs`: `replica_id`, `machine_aliases`, `uuid7`, `hex_token`.
 - `src/actor.rs`: `detect_actor`, `nearest_harness` (its `ps` passed in by the CLI); an `Actor` is
-  its JSON value and whether it can write (not when Python would hold its text as lone
-  surrogates).
+  its JSON value, whether it can write (not when Python would hold its text as lone surrogates),
+  and its `label` (Python's `actor_label` over the bytes it was given): claims are compared by
+  `Label::is`, never by the printed text, so an actor that is not UTF-8 holds nothing.
 - `src/failpoint.rs`: `Failpoints`, the registry `Settings` carries (`BEAD_FAILPOINTS` and the two
   crash hooks): `hit`, `hit_path` for `atomic-write:`/`atomic-written:`, `has`, and `hits`, which
   in-crate tests read to check that a fault fired; `POINTS`, every point bead has.
