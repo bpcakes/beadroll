@@ -1,5 +1,7 @@
 //! The processes bead starts get standard input, output and error and nothing else, whatever bead
-//! was started with: Python starts them through `subprocess` with `close_fds=True`.
+//! was started with: Python starts them through `subprocess` with `close_fds=True`. And since
+//! Phase 4 (`docs/RUST-PORT.md` Appendix B): which gits bead starts, what it asks them and when,
+//! and what it reads from git's files instead, each answered as Python's git answers it.
 
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::PathBuf;
@@ -324,4 +326,72 @@ fn the_branch_an_event_records_is_read_when_its_transaction_starts() {
     assert_eq!(branches(&key), [Json::from("during-create")]);
     moved_during(&["claim", &key, "--json"], "during-claim");
     assert_eq!(branches(&key).last(), Some(&Json::from("during-claim")));
+}
+
+/// sync.git's object format is the one git reads, which its config alone does not say: git reads
+/// a config without `core.repositoryformatversion` without its extensions, so a SHA-256 sync.git
+/// whose config lost that line is SHA-1 to git. Python's `rev-parse --show-object-format` before
+/// a fetch then finds it made in another format than the project's, and makes it again. A SHA-256
+/// project's machine whose sync.git config lost the line syncs as before, its sync.git SHA-256
+/// again. The project is made by `git init`, not cloned from its empty origin as G26's is: this
+/// runs under git 2.40 too.
+#[test]
+fn a_sync_git_whose_config_lost_its_format_version_is_made_again() {
+    let sandbox = crate::sandbox();
+    let origin = sandbox.root().join("origin256.git");
+    let origin_path = origin.to_str().unwrap();
+    git(
+        [
+            "init",
+            "-q",
+            "--bare",
+            "--object-format=sha256",
+            origin_path,
+        ],
+        None,
+    );
+    let project = sandbox.root().join("project256");
+    let project_path = project.to_str().unwrap();
+    git(["init", "-q", "--object-format=sha256", project_path], None);
+    git(["remote", "add", "origin", origin_path], Some(&project));
+    let a = Machine::new(&sandbox, "a");
+    let init = a.cmd(["init", "--prefix", "of"]).cwd(&project).run();
+    assert_eq!(init.returncode(), 0, "{}", init.stderr);
+    let sync_git = a.store().join("sync.git");
+    let sync_git_path = sync_git.to_str().unwrap().to_owned();
+    let format = || {
+        let args = [
+            "--git-dir",
+            &sync_git_path,
+            "rev-parse",
+            "--show-object-format",
+        ];
+        git(args, None).trim().to_owned()
+    };
+    assert_eq!(format(), "sha256");
+    let config = sync_git.join("config");
+    let text = std::fs::read_to_string(&config).unwrap();
+    let lost: String = text
+        .lines()
+        .filter(|line| !line.trim().starts_with("repositoryformatversion"))
+        .map(|line| format!("{line}\n"))
+        .collect();
+    assert_ne!(lost, text, "a config with a format version: {text}");
+    std::fs::write(&config, lost).unwrap();
+    assert_eq!(
+        format(),
+        "sha1",
+        "git reads the config without its extensions"
+    );
+    let create = a.cmd(["create", "one", "--json"]).cwd(&project).run();
+    assert_eq!(create.returncode(), 0, "{}", create.stderr);
+    let sync = a.cmd(["sync", "--json"]).cwd(&project).run();
+    assert_eq!(sync.returncode(), 0, "{}", sync.stderr);
+    assert_eq!(
+        format(),
+        "sha256",
+        "sync.git made again in the project's format"
+    );
+    let published = git(["ls-remote", origin_path, "refs/beads/journal"], None);
+    assert!(!published.trim().is_empty(), "nothing published");
 }

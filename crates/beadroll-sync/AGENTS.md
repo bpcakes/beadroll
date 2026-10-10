@@ -64,7 +64,9 @@ ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `settle_
 ## Common commands
 
 - `cargo nextest run -p beadroll-sync`: the in-crate tests, the machines around them running
-  Python's `./bead`; with `BEAD_UNDER_TEST=$PWD/target/debug/bead`, the Rust binary
+  Python's `./bead`; with `BEAD_UNDER_TEST=$PWD/target/debug/bead`, the Rust binary (`link::`'s
+  count of the test process's children and descriptors needs a process of its own, which `cargo
+  test` does not give it)
 - `cargo clippy -p beadroll-sync --all-targets -- -D warnings -D clippy::mod_module_files`
 - The mixed-fleet tests that drive this crate against Python: `cargo nextest run -p beadroll -E
   'test(/^mixed::/)'`

@@ -1609,7 +1609,7 @@ decision 7 open. The five decisions stand.
 | Python call | Purpose | After Phase 4 |
 |---|---|---|
 | `init --bare …` | Created once | Unchanged |
-| `rev-parse --show-object-format` | Format check | Read `extensions.objectformat` once |
+| `rev-parse --show-object-format` | Format check | Read `extensions.objectformat` and the format version once |
 | `fetch … +REF:refs/beads/fetch/<pid>-<hex>` | Fetch | Unchanged |
 | `rev-parse <fetch ref>`, `cat-file blob TIP:manifest.json`, `ls-tree -r -z TIP`, `cat-file blob SHA` ×N, `rev-parse TIP^{tree}` | Reading the remote tree | One long-lived `cat-file --batch`; trees parsed in-process |
 | `update-ref refs/beads/remote TIP`, `update-ref -d <fetch ref>` | Refs after a fetch | Unchanged (see below) |
@@ -1640,9 +1640,13 @@ decision 7 open. The five decisions stand.
   or 64 lower-case hex digits) and a branch; otherwise Python's two calls run, in its order (no
   `--abbrev-ref` once `rev-parse HEAD` has failed): one process more than Python in a repository
   with no commit yet, or when git finds the branch name ambiguous.
-- **`sync.git`'s format** is read from its config when that is a plain one naming the wanted format;
-  anything else (another format, a config this reader does not follow to the letter) still asks
-  `rev-parse --show-object-format`, so `sync.git` is only ever set aside on git's word.
+- **`sync.git`'s format** is read from its config when that is a plain one naming the wanted format
+  where git reads it: at format version 1, or SHA-1 at version 0 with no format named. Without
+  `core.repositoryformatversion` git reads the config without its extensions, so a SHA-256
+  `sync.git` whose config lost that line is SHA-1 to git (the first build trusted the line and
+  kept a `sync.git` Python makes again; review of `roll-k2wy.13`). Anything else (another format, a
+  version that leaves the format to git, a config this reader does not follow to the letter) still
+  asks `rev-parse --show-object-format`, so `sync.git` is only ever set aside on git's word.
 - **The reader** is `cat-file --batch-command` (git 2.36), not `--batch`: `info` resolves the fetch
   ref without reading its object, as `rev-parse` does, beside `contents`. The listing and
   `TIP^{tree}` follow git's `decode_tree_entry` and `parse_commit_buffer`, and check the commit's

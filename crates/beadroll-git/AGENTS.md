@@ -35,7 +35,8 @@ the calls.
 - `src/alongside.rs`: `Git::run_alongside`, two local gits at once, both started from the calling
   thread.
 - `src/format.rs`: `stored_format`, `StoredFormat`: `extensions.objectformat` read from a plain
-  config file. `src/hash.rs`: object names (SHA-1 written out, SHA-256 from `sha2`).
+  config file, where its `core.repositoryformatversion` makes git read it. `src/hash.rs`: object
+  names (SHA-1 written out, SHA-256 from `sha2`).
 - `src/env.rs`: `sync_env` (Python's `Link.__init__` environment), `transport_settings` (Python's
   `config --null --get-regexp` of `TRANSPORT_KEYS`, asked each time a link is made),
   `transport_config` (from its answer), `REPO_LOCATION_ENV`, `SYNC_REPO_CONFIG`, `CountRules` (how
