@@ -6,7 +6,8 @@
 runs the Python test suite against any `bead` binary, `inventory` maps every Python test to the
 Rust tests that port it, `timing` records how long a command (or a replay) took, `diff` checks
 beadroll-core against CPython case by case, and `golden` captures the golden outputs from Python's
-launcher. A later phase adds `check`.
+launcher. `check` runs the workspace's baseline: its tests, its doctests and the `infra/` drivers'
+tests, with `--stress` the stress models and with `--real` the real-export checks.
 
 ## Key entrypoints
 
@@ -23,6 +24,9 @@ launcher. A later phase adds `check`.
   `fixtures/replay/tests.jsonl` is the sample of them CI replays.
 - `src/golden.rs`: `golden`, which runs the golden tests (`crates/beadroll/tests/cli/golden.rs`) in
   capture mode against `./bead`; the scenarios and their normalisation live in those tests.
+- `src/check.rs`: `check`, its steps and how each is reported; `check_script` runs it with a fake
+  `cargo` and `python3`, as `test_check.CheckScript` ran `check.sh`.
+- `src/hygiene.rs`: `test_hygiene` ported, the repository lint (a test only).
 - `src/workspace.rs`: paths, failures and JSON strings for all of them.
 
 ## Edit here for X
@@ -34,6 +38,8 @@ launcher. A later phase adds `check`.
 - A ported test that does not follow the naming rule (a D-class replacement): `=>` in
   `inventory.txt`.
 - A golden output: the scenario in `crates/beadroll/tests/cli/golden.rs`, then `cargo xtask golden`.
+- A step of the baseline: `steps` in `src/check.rs`; a test of an `infra/` driver: `infra/test_*.py`
+  beside it, which `check.sh` and `check` both run.
 - A Python behaviour the diff must cover: the generators in `src/diff/generate/` or the JSON
   corpus; something both reports must show: `report.rs` and `replay_dump.py` together.
 
@@ -52,11 +58,16 @@ launcher. A later phase adds `check`.
 - `diff` keeps no list of expected differences: a difference is fixed in Rust or decided as a row
   of `docs/RUST-PORT.md` §5 and applied to Python. Its drivers run under PYTHONINTMAXSTRDIGITS=4300
   and refuse any other limit.
-- Its dependencies are beadroll-core, proptest (which draws the generated cases) and sha2; it
-  may print (its crate root allows it).
+- `check` gives every step a fresh scratch `BEAD_HOME` under `target/check/`, never the real
+  store, and fails when any step fails, the later steps still running; a round trip that passes
+  shows only its summary, one that fails everything it printed.
+- Its dependencies are beadroll-core, proptest (which draws the generated cases) and sha2, and for
+  its tests regex-lite (the hygiene patterns, as Python writes them) and tempfile; it may print
+  (its crate root allows it).
 
 ## Common commands
 
+- `cargo xtask check [--stress] [--real]`: the workspace's baseline, one line per step
 - `cargo xtask oracle --bead ./bead`: the suite against Python's launcher; must pass completely
 - `cargo xtask oracle --report`: against the Rust binary, built first; reports only
 - `cargo xtask inventory`

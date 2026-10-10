@@ -14,18 +14,15 @@
 
 
 # test_hygiene
-D      test_hygiene.RepositoryHygiene.test_tracked_files_name_no_machine_or_user  # an xtask test: the same patterns over git ls-files (§4.3)
+D      test_hygiene.RepositoryHygiene.test_tracked_files_name_no_machine_or_user  # an xtask test, hygiene::repository_hygiene: the same patterns over git ls-files (§4.3)
 
 # test_check
-D      test_check.CheckScript.test_roundtrip_failure_fails_the_check_and_keeps_diagnostics  # an xtask test of the verification tooling (§4.3)
-D      test_check.CheckScript.test_success_keeps_the_roundtrip_summary  # an xtask test of the verification tooling (§4.3)
-D      test_check.CheckScript.test_successful_roundtrip_does_not_hide_a_failed_module  # an xtask test of the verification tooling (§4.3)
-D      test_check.RoundtripFailureReporting.test_changed_records_fail_the_roundtrip  # moves to infra/ beside roundtrip.py; xtask check runs it (§4.6)
-D      test_check.RoundtripFailureReporting.test_failed_commands_fail_the_roundtrip  # moves to infra/ beside roundtrip.py; xtask check runs it (§4.6)
-D      test_check.RoundtripFailureReporting.test_identical_records_succeed  # moves to infra/ beside roundtrip.py; xtask check runs it (§4.6)
-D      test_check.SweepFailureReporting.test_default_slice_retries_crashed_owner_close_and_delete  # an xtask test of the verification tooling (§4.3)
-D      test_check.SweepFailureReporting.test_every_failed_schedule_fails_the_sweep  # an xtask test of the verification tooling (§4.3)
-D      test_check.SweepFailureReporting.test_successful_schedules_pass  # an xtask test of the verification tooling (§4.3)
+D      test_check.CheckScript.test_roundtrip_failure_fails_the_check_and_keeps_diagnostics  # an xtask test of xtask check, check::check_script (§4.3)
+D      test_check.CheckScript.test_success_keeps_the_roundtrip_summary  # an xtask test of xtask check, check::check_script (§4.3)
+D      test_check.CheckScript.test_successful_roundtrip_does_not_hide_a_failed_module  # an xtask test of xtask check, check::check_script (§4.3)
+D      test_check.SweepFailureReporting.test_default_slice_retries_crashed_owner_close_and_delete  # beside the Rust sweep it checks, sweep::sweep_failure_reporting (§4.6)
+D      test_check.SweepFailureReporting.test_every_failed_schedule_fails_the_sweep  # beside the Rust sweep it checks, sweep::sweep_failure_reporting (§4.6)
+D      test_check.SweepFailureReporting.test_successful_schedules_pass  # beside the Rust sweep it checks, sweep::sweep_failure_reporting (§4.6)
 
 # test_replay
 B      test_replay.PortAlignment.test_u01_numbers_beyond_a_float_are_not_json_numbers

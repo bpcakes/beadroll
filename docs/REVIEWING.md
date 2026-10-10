@@ -197,8 +197,9 @@ Do not take the baseline from a document; run it:
 round-trip command or differing exported records with `--real`. A failed round trip keeps its
 full report; its imports run offline in the scratch store. The default sweep includes owner
 close/delete retries after an interrupted publish;
-the full sweep has no expected-failure exemptions. `test_check` exercises these failure paths
-with synthetic results in the fast baseline. Record the baseline output in your report.
+the full sweep has no expected-failure exemptions. `test_check` and `infra/test_roundtrip.py`
+exercise these failure paths with synthetic results in the fast baseline. Record the baseline
+output in your report.
 The real-infrastructure scripts (four machines, a throwaway GitHub repository) are
 under `infra/`; their last results are summarised in `README.md`.
 

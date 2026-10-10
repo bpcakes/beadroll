@@ -91,7 +91,7 @@ Reproductions and acceptance criteria are recorded in `roll-dih8.8` and `roll-di
 | Id | Severity | Finding | Status | Resolution | Tests |
 |---|---|---|---|---|---|
 | H01 | Medium | The full ownership sweep still accepted the ten G12 failures after G12 was fixed | fixed | Every selected schedule must pass; the default slice now includes interrupted owner close/delete retries | `test_check.SweepFailureReporting`, `test_sweep.Sweep`, `test_hardening.G12_RetriedEndOfClaimIsPublished` |
-| H02 | Medium | `check.sh --real` lost the round-trip process's exit status through `tail`; the driver also returned success after failed commands or differing records | fixed | The driver imports offline and exits non-zero on failed import/export/readiness or mismatched records; the checker preserves failure and prints the full failing report | `test_check.CheckScript`, `test_check.RoundtripFailureReporting` |
+| H02 | Medium | `check.sh --real` lost the round-trip process's exit status through `tail`; the driver also returned success after failed commands or differing records | fixed | The driver imports offline and exits non-zero on failed import/export/readiness or mismatched records; the checker preserves failure and prints the full failing report | `test_check.CheckScript`, `RoundtripFailureReporting` (`infra/test_roundtrip.py`) |
 
 ## Review 7 (`reviews/2026-10-07-7-claude.md`, ids G)
 

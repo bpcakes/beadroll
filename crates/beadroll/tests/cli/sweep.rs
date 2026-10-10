@@ -23,6 +23,7 @@ mod run;
     reason = "the inventory's rule names the port of Sweep.test_sweep sweep::sweep::sweep"
 )]
 mod sweep;
+mod sweep_failure_reporting;
 
 /// The threads: two actors on m1, one each on m2 and m3.
 const A1: &str = "m1-a1";

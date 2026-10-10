@@ -362,7 +362,8 @@ next one: the map of the design, the decisions that are not findings, the rules,
 the checklist and the deliverables. `infra/` holds the maintainer's harness against
 real machines and a throwaway GitHub repository: `drive.py` (cross-machine
 scenarios over ssh), `soak.py` (random agent-like traffic), `roundtrip.py`
-(import/export over real Beads exports) and the synthetic `seed.jsonl`.
+(import/export over real Beads exports, with its tests beside it in `test_roundtrip.py`) and the
+synthetic `seed.jsonl`.
 
 ## Design decisions that changed while building
 

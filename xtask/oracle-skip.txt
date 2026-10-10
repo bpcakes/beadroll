@@ -8,7 +8,7 @@
 #               or with sitecustomize patching inside it (20)
 #   in-process  exercises the Python package in-process; no bead it starts decides the verdict (85)
 #   patched     runs bead, but the verdict comes from patching in-process Python (19)
-#   no-bead     runs no bead at all (11)
+#   no-bead     runs no bead at all (8)
 #
 # Every other test (338) runs unchanged against whatever BEAD_UNDER_TEST names. A test that reaches
 # bead some other way is fixed, not listed here. The runner refuses a list that names a test the
@@ -145,14 +145,12 @@ patched     test_hardening.V2_ConfirmedTwinKeepsTheRetryRecognised.test_identica
 patched     test_hardening.V2_InFlightAttemptAcrossActors.test_another_actor_fences_an_in_flight_release_during_the_unlocked_sleep
 patched     test_hardening.V2_InFlightAttemptAcrossActors.test_in_flight_release_lands_before_another_actors_command
 
-# Tests that run no bead: the verification scripts, the repository lint, git alone. (11)
+# Tests that run no bead: the verification scripts, the repository lint, git alone. (8; the three
+# round-trip tests left the suite for infra/test_roundtrip.py)
 no-bead     test_hygiene.RepositoryHygiene.test_tracked_files_name_no_machine_or_user
 no-bead     test_check.CheckScript.test_roundtrip_failure_fails_the_check_and_keeps_diagnostics
 no-bead     test_check.CheckScript.test_success_keeps_the_roundtrip_summary
 no-bead     test_check.CheckScript.test_successful_roundtrip_does_not_hide_a_failed_module
-no-bead     test_check.RoundtripFailureReporting.test_changed_records_fail_the_roundtrip
-no-bead     test_check.RoundtripFailureReporting.test_failed_commands_fail_the_roundtrip
-no-bead     test_check.RoundtripFailureReporting.test_identical_records_succeed
 no-bead     test_check.SweepFailureReporting.test_default_slice_retries_crashed_owner_close_and_delete
 no-bead     test_check.SweepFailureReporting.test_every_failed_schedule_fails_the_sweep
 no-bead     test_check.SweepFailureReporting.test_successful_schedules_pass

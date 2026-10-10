@@ -163,7 +163,7 @@ pub(crate) fn unlisted_modules(root: &Path) -> Result<Vec<String>, Failure> {
 /// Builds `bead` in the profile xtask itself was built in and returns the executable Cargo
 /// reports: the target directory, a build target and the profile can each move it, so its path is
 /// never guessed.
-fn build(root: &Path) -> Result<PathBuf, Failure> {
+pub(crate) fn build(root: &Path) -> Result<PathBuf, Failure> {
     let profile = workspace::profile_dir()?;
     let output = build_command(root, &profile)?
         .stderr(Stdio::inherit())

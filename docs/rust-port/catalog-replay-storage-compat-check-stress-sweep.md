@@ -120,21 +120,21 @@ All in `StorageReaudit`; setUp: Sandbox, Machine `storage-a`, `init --prefix ex`
 
 | class.method | subject | mechanism | seams/fakes needed | port |
 |---|---|---|---|---|
-| CheckScript.test_success_keeps_the_roundtrip_summary | `check.sh --real` success shows only roundtrip summary line | env-fake | copies check.sh to temp; fake `python3` sh script on PATH; CHECK_TEST_MODULE_STATUS / CHECK_TEST_REAL_STATUS; 10 s timeout | D: keep while check.sh drives; else test the new runner's exit status and summary |
-| CheckScript.test_roundtrip_failure_fails_the_check_and_keeps_diagnostics | Roundtrip failure fails check.sh, keeps stdout and stderr | env-fake | same | D |
-| CheckScript.test_successful_roundtrip_does_not_hide_a_failed_module | Failed module fails check.sh despite roundtrip success | env-fake | same | D |
-| SweepFailureReporting.test_every_failed_schedule_fails_the_sweep | Each of 11 injected failing schedules fails Sweep, both modes | patched | mock.patch.object(test_sweep, schedules / SLICE / run_schedule); BEAD_SWEEP ""/full, GC=0, CONCURRENT=0 | D: meta-test of the Rust sweep runner |
-| SweepFailureReporting.test_successful_schedules_pass | Passing schedule report lets Sweep pass, both modes | patched | same | D |
-| SweepFailureReporting.test_default_slice_retries_crashed_owner_close_and_delete | Default slice includes close/delete crash-before-push retry-first pairs | inproc | reads test_sweep.SLICE | D: assert the Rust slice keeps these |
-| RoundtripFailureReporting.test_identical_records_succeed | roundtrip.py: identical records exit 0, "TOTAL 1/1", init --offline | patched | runpy infra/roundtrip.py; mock glob.glob and subprocess.run; RT_HOME | D |
-| RoundtripFailureReporting.test_failed_commands_fail_the_roundtrip | init/export/ready failure: non-zero exit, error text printed | patched | same | D |
-| RoundtripFailureReporting.test_changed_records_fail_the_roundtrip | Changed export: non-zero, "TOTAL 0/1", DIFF line | patched | same | D |
+| CheckScript.test_success_keeps_the_roundtrip_summary | `check.sh --real` success shows only roundtrip summary line | env-fake | copies check.sh to temp; fake `python3` sh script on PATH; CHECK_TEST_MODULE_STATUS / CHECK_TEST_REAL_STATUS; 10 s timeout | D: keep while check.sh drives; else test the new runner's exit status and summary: `check::check_script`, `xtask check` with a fake `cargo` and `python3` |
+| CheckScript.test_roundtrip_failure_fails_the_check_and_keeps_diagnostics | Roundtrip failure fails check.sh, keeps stdout and stderr | env-fake | same | D: `check::check_script` |
+| CheckScript.test_successful_roundtrip_does_not_hide_a_failed_module | Failed module fails check.sh despite roundtrip success | env-fake | same | D: `check::check_script` |
+| SweepFailureReporting.test_every_failed_schedule_fails_the_sweep | Each of 11 injected failing schedules fails Sweep, both modes | patched | mock.patch.object(test_sweep, schedules / SLICE / run_schedule); BEAD_SWEEP ""/full, GC=0, CONCURRENT=0 | D: meta-test of the Rust sweep runner, beside it: `sweep::sweep_failure_reporting` |
+| SweepFailureReporting.test_successful_schedules_pass | Passing schedule report lets Sweep pass, both modes | patched | same | D: `sweep::sweep_failure_reporting` |
+| SweepFailureReporting.test_default_slice_retries_crashed_owner_close_and_delete | Default slice includes close/delete crash-before-push retry-first pairs | inproc | reads test_sweep.SLICE | D: assert the Rust slice keeps these: `sweep::sweep_failure_reporting` |
+| RoundtripFailureReporting.test_identical_records_succeed | roundtrip.py: identical records exit 0, "TOTAL 1/1", init --offline | patched | runpy infra/roundtrip.py; mock glob.glob and subprocess.run; RT_HOME | D: moved to `infra/test_roundtrip.py`, beside `roundtrip.py` (§4.6) |
+| RoundtripFailureReporting.test_failed_commands_fail_the_roundtrip | init/export/ready failure: non-zero exit, error text printed | patched | same | D: moved to `infra/test_roundtrip.py` (§4.6) |
+| RoundtripFailureReporting.test_changed_records_fail_the_roundtrip | Changed export: non-zero, "TOTAL 0/1", DIFF line | patched | same | D: moved to `infra/test_roundtrip.py` (§4.6) |
 
 ## tests/test_hygiene.py (1): inproc 1. D 1
 
 | class.method | subject | mechanism | seams/fakes needed | port |
 |---|---|---|---|---|
-| RepositoryHygiene.test_tracked_files_name_no_machine_or_user | No tracked file names a home dir, .local host, ssh target | inproc | `git ls-files -z` + three regexes; skips .png/.jsonl/undecodable; four placeholders allowed | D: language-agnostic repo lint, keep as is on the Rust repo |
+| RepositoryHygiene.test_tracked_files_name_no_machine_or_user | No tracked file names a home dir, .local host, ssh target | inproc | `git ls-files -z` + three regexes; skips .png/.jsonl/undecodable; four placeholders allowed | D: language-agnostic repo lint, kept as is in Python and ported as `hygiene::repository_hygiene` (an xtask test) |
 
 ## tests/test_stress.py (2): cli+inproc 2. C 2
 

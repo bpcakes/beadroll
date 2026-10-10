@@ -5,6 +5,7 @@
 //! - `timing` runs a command and records how long it took, as evidence.
 //! - `diff` checks beadroll-core against CPython: replay reports and JSON, case by case.
 //! - `golden` captures the golden outputs from Python's launcher.
+//! - `check` runs the workspace's baseline: its tests, and with options the slow and real ones.
 //!
 //! It is a developer tool, so it prints; the product crates do not (§2.2).
 #![allow(
@@ -16,8 +17,11 @@
     reason = "a developer tool reports on its own terminal"
 )]
 
+mod check;
 mod diff;
 mod golden;
+#[cfg(test)]
+mod hygiene;
 mod inventory;
 mod oracle;
 mod timing;
@@ -27,6 +31,14 @@ use std::process::ExitCode;
 
 const USAGE: &str = "\
 usage: cargo xtask <command>
+
+  check [--stress] [--real]
+      Run the workspace's baseline with a scratch BEAD_HOME, one line per step, and fail when any
+      step fails: the tests through nextest (BEAD_UNDER_TEST and BEAD_SWEEP reach them as set),
+      the doctests, and the Python tests of the infra/ drivers. --stress adds the stress models;
+      --real adds the real-export compatibility test and infra/roundtrip.py over this machine's
+      Beads exports, against BEAD_UNDER_TEST or else the bead Cargo builds. Each step's whole
+      output is kept in target/check/.
 
   oracle [--bead PATH] [--report] [--stress] [--jobs N] [MODULE...]
       Run the Python test suite against a bead binary through BEAD_UNDER_TEST, without the tests
@@ -75,12 +87,13 @@ fn main() -> ExitCode {
         Some("timing") => timing::main(rest),
         Some("diff") => diff::main(rest),
         Some("golden") => golden::main(rest),
+        Some("check") => check::main(rest),
         Some("help" | "-h" | "--help") => {
             print!("{USAGE}");
             return ExitCode::SUCCESS;
         }
         _ => Err(workspace::Failure::Usage(
-            "expected a command: oracle, inventory, timing, diff or golden".into(),
+            "expected a command: check, oracle, inventory, timing, diff or golden".into(),
         )),
     };
     match outcome {

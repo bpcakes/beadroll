@@ -23,13 +23,15 @@ and how it was closed; `docs/reviews/` holds the reports verbatim.
   `tests/support.py` has the `Sandbox`/`Machine` helpers (a bare remote and machines with their
   own homes); `tests/__init__.py` sets a scratch `BEAD_HOME`.
 - `infra/` — drives against real machines and a throwaway GitHub repository; each script's
-  docstring says what it needs. `check.sh` is the baseline.
+  docstring says what it needs, and `test_roundtrip.py` tests `roundtrip.py` beside it. `check.sh`
+  is the baseline.
 - `crates/` — the Rust port: `beadroll-core`, `beadroll-git`, `beadroll-store`, `beadroll-sync`,
   `beadroll` (the `bead` binary) and `beadroll-test-support` (the Rust `tests/support.py`), each
   with its own `AGENTS.md`; `Cargo.toml`, `Cargo.lock` and `rust-toolchain.toml` are at the root.
 - `xtask/` — `cargo xtask`: `oracle` runs this Python suite against any `bead` binary, without
   the tests `oracle-skip.txt` lists; `inventory` maps every Python test (`inventory.txt`) to the
-  Rust tests that port it; `timing` records how long a command took.
+  Rust tests that port it; `timing` records how long a command took; `check` runs the Rust
+  workspace's baseline.
 
 ## Before you change anything
 
@@ -43,7 +45,9 @@ and how it was closed; `docs/reviews/` holds the reports verbatim.
   cargo nextest run` and `cargo nextest run` (the ported black-box tests pass against Python's
   launcher and against the Rust binary), and `cargo xtask oracle --bead ./bead` and `cargo xtask
   oracle` (this suite through `BEAD_UNDER_TEST`; it must pass completely against both).
-  `.github/workflows/rust.yml` runs them on every push and pull request.
+  `.github/workflows/rust.yml` runs them on every push and pull request. `cargo xtask check
+  [--stress] [--real]` runs the workspace's tests, its doctests and the `infra/` drivers' tests in
+  one go, one line per step; at the cutover `./check.sh` becomes a wrapper around it.
 - The default store `~/.local/state/beadroll` holds this repository's own real tracker. The test
   modules set a scratch `BEAD_HOME`; set one yourself for any manual experiment
   (`export BEAD_HOME=$(mktemp -d)`), and never run `bead`, `br` or `bv` inside other repositories

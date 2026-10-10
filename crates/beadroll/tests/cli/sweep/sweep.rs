@@ -18,10 +18,10 @@ use super::run::Run;
 use super::{SLICE, Schedule, Variant, schedules};
 
 /// What one schedule came to: its violations, and its steps but the setup and the views.
-struct Report {
-    schedule: Schedule,
-    violations: Vec<String>,
-    steps: Vec<Step>,
+pub(super) struct Report {
+    pub(super) schedule: Schedule,
+    pub(super) violations: Vec<String>,
+    pub(super) steps: Vec<Step>,
 }
 
 /// Runs one schedule in a sandbox of its own, removed when it is done. A schedule that cannot even
@@ -58,9 +58,9 @@ fn driver_error(panic: &(dyn Any + Send)) -> String {
     format!("driver error: {said}")
 }
 
-/// Runs `chosen` in parallel, each schedule in its own sandbox, on as many workers as the machine
-/// has cores; the reports in the order of `chosen`.
-fn run_all(chosen: &[Schedule], variant: Variant) -> Vec<Report> {
+/// Runs `chosen` through `run` in parallel, on as many workers as the machine has cores (each
+/// schedule in a sandbox of its own); the reports in the order of `chosen`.
+fn run_all(chosen: &[Schedule], run: &(dyn Fn(Schedule) -> Report + Sync)) -> Vec<Report> {
     let cores = std::thread::available_parallelism().map_or(4, usize::from);
     let workers = cores.min(chosen.len()).max(1);
     let next = AtomicUsize::new(0);
@@ -69,7 +69,7 @@ fn run_all(chosen: &[Schedule], variant: Variant) -> Vec<Report> {
         for _ in 0..workers {
             scope.spawn(|| {
                 while let Some(schedule) = chosen.get(next.fetch_add(1, Ordering::Relaxed)) {
-                    let report = run_schedule(*schedule, variant);
+                    let report = run(*schedule);
                     let mut reports = reports.lock().unwrap_or_else(PoisonError::into_inner);
                     reports.push(report);
                 }
@@ -114,6 +114,49 @@ fn set(name: &str, value: &str) -> bool {
     std::env::var_os(name).is_some_and(|set| set == value)
 }
 
+/// The schedules a sweep runs: with `full` (`BEAD_SWEEP=full`) every one of `every`, else the
+/// `slice`; in the concurrent variant only the pairs whose letters are in order, each unordered
+/// pair once.
+pub(super) fn selected(
+    full: bool,
+    concurrent: bool,
+    every: Vec<Schedule>,
+    slice: &[Schedule],
+) -> Vec<Schedule> {
+    let mut chosen = if full { every } else { slice.to_vec() };
+    if concurrent {
+        chosen.retain(|schedule| {
+            let letters = schedule.pair.as_bytes();
+            letters[0] < letters[1]
+        });
+    }
+    chosen
+}
+
+/// Runs `chosen` through `run` and fails naming every schedule that found a violation, with its
+/// violations and its steps.
+pub(super) fn verdict(
+    chosen: &[Schedule],
+    variant: Variant,
+    run: &(dyn Fn(Schedule) -> Report + Sync),
+) -> Result<(), String> {
+    let reports = run_all(chosen, run);
+    let failures: Vec<String> = reports
+        .iter()
+        .filter(|report| !report.violations.is_empty())
+        .map(|report| describe(report, variant))
+        .collect();
+    if failures.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "{} of {} schedules failed:\n\n{}",
+        failures.len(),
+        chosen.len(),
+        failures.join("\n")
+    ))
+}
+
 #[test]
 fn sweep() {
     let every = schedules();
@@ -130,29 +173,10 @@ fn sweep() {
         gc: set("BEAD_SWEEP_GC", "1"),
         concurrent: set("BEAD_SWEEP_CONCURRENT", "1"),
     };
-    let mut chosen = if set("BEAD_SWEEP", "full") {
-        every
-    } else {
-        SLICE.to_vec()
-    };
-    if variant.concurrent {
-        // the pairs whose letters are in order: each unordered pair once
-        chosen.retain(|schedule| {
-            let letters = schedule.pair.as_bytes();
-            letters[0] < letters[1]
-        });
+    let chosen = selected(set("BEAD_SWEEP", "full"), variant.concurrent, every, &SLICE);
+    if let Err(failures) = verdict(&chosen, variant, &|schedule| {
+        run_schedule(schedule, variant)
+    }) {
+        panic!("{failures}");
     }
-    let reports = run_all(&chosen, variant);
-    let failures: Vec<String> = reports
-        .iter()
-        .filter(|report| !report.violations.is_empty())
-        .map(|report| describe(report, variant))
-        .collect();
-    assert!(
-        failures.is_empty(),
-        "{} of {} schedules failed:\n\n{}",
-        failures.len(),
-        chosen.len(),
-        failures.join("\n")
-    );
 }

@@ -654,7 +654,9 @@ version = "0.2.0"
 dependencies = [
  "beadroll-core",
  "proptest",
+ "regex-lite",
  "sha2",
+ "tempfile",
 ]
 
 [[package]]

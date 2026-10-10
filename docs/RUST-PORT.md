@@ -798,7 +798,7 @@ each count means.
 | `test_hardening` | 208 | `cli/hardening/{g01…g65,v1…v9}.rs` + unit tests in git/store/core | 172 black-box (14 on the crash hooks); 15 failpoint/API; 12 unit tests, most of them in the git and store crates (the `without_password` pairs, `normalize_remote`, URL schemes, runner timeouts, `Workspace.remote`; the catalogue lists them); 9 rewritten (§4.6) |
 | `test_stress` | 2 | `cli/stress.rs`, `#[ignore = "stress: randomised models"]` | Same seeds and oracles; schedules run in parallel |
 | `test_sweep` | 1 | `cli/sweep.rs` | Failpoints replace the `runpy` wrapper; the 12-schedule slice runs by default, `BEAD_SWEEP=full` runs all 660; schedules in parallel |
-| `test_check` | 9 | `xtask` tests | The verification tooling must fail when a selected check fails |
+| `test_check` | 9 | `xtask` tests (`check::check_script`), the sweep's own (`sweep::sweep_failure_reporting`) and `infra/test_roundtrip.py` | The verification tooling must fail when a selected check fails; the sweep's reporting tests sit beside the sweep, whose runner is test code xtask cannot reach |
 | `test_hygiene` | 1 | `xtask` test | Same patterns over `git ls-files` |
 
 **Test binaries.** Each crate has one integration-test binary, rooted at `tests/<name>/main.rs`:
@@ -920,7 +920,8 @@ The tests that run Rust's in-crate APIs instead of the binary take the same regi
   names.
 - **`test_check` and `test_hygiene`:** xtask tests (§4.3). The three `RoundtripFailureReporting`
   tests check `infra/roundtrip.py`, which stays Python (§10, decision 6): they move to `infra/`
-  beside it, and `xtask check` runs them.
+  beside it, and `xtask check` runs them, as `./check.sh` does until the cutover.
+  `SweepFailureReporting` checks the sweep's own runner, so its port sits beside the sweep.
 - **Checks kept in other classes:**
   - G48 (SIGXFSZ) keeps its property, using the code in §2.3f.
   - The "no Traceback" and "Exception ignored" checks become the panic and signal checks of §4.4.
