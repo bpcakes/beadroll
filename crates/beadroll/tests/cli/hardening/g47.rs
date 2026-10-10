@@ -166,4 +166,55 @@ mod g47_store_is_private_by_its_own_modes {
         assert_eq!(named.returncode(), 0, "{}", named.stderr);
         assert_eq!(loose(m.home()), Vec::<String>::new());
     }
+
+    /// G47: (secondary) torn and fork copies are named by whole seconds, so a second fragment of
+    /// the same segment within one second overwrites the first one.
+    ///
+    /// Replaces `G47_StoreIsPrivateByItsOwnModes`'s
+    /// `test_g47_two_torn_fragments_in_one_second_are_both_kept`, which calls `repair_tail` twice
+    /// in process with `time.time` fixed at 1791394588.25. Rust has one clock, the `clock`
+    /// failpoint's, set for a whole run (`clock@always=at(NS)`): each fragment here is cut off by
+    /// a `sync` whose clock reads a moment of that second, the second one nanosecond after the
+    /// first, both 1791394588.25 to `time.time()`'s float. A `rust_only` test; the class's umask
+    /// has nothing to do with names, and is not set here.
+    #[test]
+    fn g47_two_torn_fragments_in_one_second_are_both_kept() {
+        let sandbox = crate::sandbox();
+        let m = crate::rust_only(&sandbox, "g47-torn");
+        m.bead(["init", "--prefix", "ex"]);
+        m.bead(["create", "one"]);
+        let folder = m.store().join("events").join(replica(&m));
+        let segment = last_segment(&folder);
+        // each fragment, and the moment the sync that cuts it off reads
+        let cuts: [(&[u8], i128); 2] = [
+            (br#"{"first"#, 1_791_394_588_250_000_000),
+            (br#"{"second"#, 1_791_394_588_250_000_001),
+        ];
+        for (fragment, at) in cuts {
+            let mut file = OpenOptions::new().append(true).open(&segment).unwrap();
+            file.write_all(fragment).unwrap();
+            drop(file);
+            let repaired = m
+                .cmd(["sync", "--json"])
+                .env("BEAD_FAILPOINTS", format!("clock@always=at({at})"))
+                .run();
+            assert_eq!(repaired.returncode(), 0, "{}", repaired.stderr);
+        }
+        let torn = format!("{}.torn-", segment.file_name().unwrap().to_str().unwrap());
+        let mut fragments: Vec<(String, Vec<u8>)> = names(&folder)
+            .into_iter()
+            .filter(|(_, name)| name.starts_with(&torn))
+            .map(|(path, name)| (name, std::fs::read(path).unwrap()))
+            .collect();
+        fragments.sort();
+        let (stamped, mut kept): (Vec<String>, Vec<Vec<u8>>) = fragments.into_iter().unzip();
+        kept.sort();
+        assert_eq!(
+            kept,
+            [br#"{"first"#.to_vec(), br#"{"second"#.to_vec()],
+            "a torn fragment was overwritten by a later one"
+        );
+        // named by the clock the failpoint set: both were cut off within that one second
+        assert_eq!(stamped, cuts.map(|(_, at)| format!("{torn}{at}")));
+    }
 }

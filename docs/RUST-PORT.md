@@ -892,7 +892,7 @@ As Slice 2c built it (`crates/beadroll-store/src/failpoint.rs`):
 | `claim.before-push` | Between fetch and push of a claim | G09's competing publish |
 | `pending.after-list` | Between listing and reading `pending/` | G28 t2 |
 | `journal.after-enumerate`, `view.before-load-pending`, `identity.before-link`, `publish.before` | Reader/writer races | test_storage drivers |
-| `clock` | The UUIDv7 clock and torn/fork stamps | Drivers patching `time.time_ns` (f14 ≈ 2110, −48 h, −1 day); G47 t3 stays unique on equal stamps |
+| `clock` | The UUIDv7 clock and torn/fork stamps | Drivers patching `time.time_ns` (f14 ≈ 2110, −48 h, −1 day); G47 t3: two torn fragments within one second stay apart, their names in nanoseconds (equal stamps would share one, in Python as in Rust) |
 
 Two seams need no failpoint. The process-tree walk of `detect_actor` is driven by a fake `ps` on
 `PATH` (§2.2), against either binary. `Protocol3`'s fence test needs a per-call network timeout:

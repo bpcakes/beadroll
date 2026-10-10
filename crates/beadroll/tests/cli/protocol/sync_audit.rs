@@ -4,7 +4,8 @@
 //! fetch. Its tests are grouped by subject in the modules below; the helpers they share, the
 //! class's own (`setUp`, `two`, `own_segment`, `remote_blob`, `wait_marker`, `git_wrapper`) among
 //! them, are here. The kill in the middle of an append and the exhaustion of a command's retries
-//! need Rust-only failpoints (`append.mid`, `backoff`), and are ported with them.
+//! are `rust_only`: they stop the Rust `bead` at its `append.mid` failpoint, and skip its waits
+//! between rounds at `backoff`.
 
 use std::ffi::{OsStr, OsString};
 use std::fs::Permissions;
@@ -25,10 +26,19 @@ mod remote_ref;
 mod segments;
 mod stalls;
 
+/// How a test makes its machines: `Machine::new`, or `crate::rust_only` for a test that injects its
+/// fault through a failpoint.
+type Make = fn(&Sandbox, &str) -> Machine;
+
 /// The class's `setUp`: machine a, its tracker initialised with the prefix `audit`, and the key of
 /// the one issue it holds, `Original issue`.
 fn setup(sandbox: &Sandbox) -> (Machine, String) {
-    let a = Machine::new(sandbox, "a");
+    setup_with(sandbox, Machine::new)
+}
+
+/// `setUp` with machine a made by `make`.
+fn setup_with(sandbox: &Sandbox, make: Make) -> (Machine, String) {
+    let a = make(sandbox, "a");
     a.bead(["init", "--prefix", "audit"]);
     let created = a.bead(["create", "Original issue"]).expect("the issue");
     let key = created["id"].as_str().expect("the issue's id").to_owned();
@@ -37,8 +47,13 @@ fn setup(sandbox: &Sandbox) -> (Machine, String) {
 
 /// `two`: a publishes its tracker, and a second machine, b, syncs it.
 fn two(sandbox: &Sandbox, a: &Machine) -> Machine {
+    two_with(sandbox, a, Machine::new)
+}
+
+/// `two` with machine b made by `make`.
+fn two_with(sandbox: &Sandbox, a: &Machine, make: Make) -> Machine {
     a.bead(["sync"]);
-    let b = Machine::new(sandbox, "b");
+    let b = make(sandbox, "b");
     b.bead(["sync"]);
     b
 }

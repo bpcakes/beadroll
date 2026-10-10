@@ -16,6 +16,8 @@ mod g28_only_the_lock_holder_sweeps_pending {
 
     use beadroll_test_support::{Json, Machine, Run, Sandbox, code};
 
+    use crate::hardening::gate::{Gate, beside};
+
     /// The hook that stops a command after the remote took its push, before bead hears back.
     const CRASH_AFTER_PUSH: &str = "BEAD_TEST_CRASH_AFTER_PUSH";
 
@@ -31,10 +33,10 @@ mod g28_only_the_lock_holder_sweeps_pending {
         result["id"].as_str().expect("an id").to_owned()
     }
 
-    /// The class's `setUp`: machine a publishes its tracker (prefix `gp`), which holds the issue
-    /// `x`; its key.
-    fn set_up(sandbox: &Sandbox) -> (Machine, String) {
-        let a = Machine::new(sandbox, "a");
+    /// The class's `setUp`: machine a (made by `make`) publishes its tracker (prefix `gp`), which
+    /// holds the issue `x`; its key.
+    fn set_up(sandbox: &Sandbox, make: fn(&Sandbox, &str) -> Machine) -> (Machine, String) {
+        let a = make(sandbox, "a");
         a.bead(["init", "--prefix", "gp"]);
         let key = id(a.bead(["create", "x"]));
         a.bead(["sync"]);
@@ -105,7 +107,7 @@ mod g28_only_the_lock_holder_sweeps_pending {
             return; // root reads a mode-000 file: the Python test skips
         }
         let sandbox = crate::sandbox();
-        let (a, key) = set_up(&sandbox);
+        let (a, key) = set_up(&sandbox, Machine::new);
         for name in ["update --claim --status closed", "release"] {
             let (argv, attempt) = if name == "release" {
                 release_with_lost_ack(&a)
@@ -133,6 +135,52 @@ mod g28_only_the_lock_holder_sweeps_pending {
         }
     }
 
+    /// G28: a reader between its glob of pending/ and its read, while a locked sync confirms the
+    /// attempt (removing the pending file, keeping the receipt), deletes that receipt.
+    ///
+    /// Replaces `G28_OnlyTheLockHolderSweepsPending`'s
+    /// `test_g28_reader_racing_a_sync_keeps_the_receipt_the_sync_kept`, which patches
+    /// `pending_files` so that the reader's first listing that finds an attempt runs the sync
+    /// before the reader reads it; here `pending.after-list=pause-until(...)` stops the reader (a
+    /// `show` on its own thread) at its first listing, which finds the attempt, while the sync
+    /// runs.
+    #[test]
+    fn g28_reader_racing_a_sync_keeps_the_receipt_the_sync_kept() {
+        let sandbox = crate::sandbox();
+        let (a, _) = set_up(&sandbox, crate::rust_only);
+        let (argv, attempt) = release_with_lost_ack(&a);
+        let receipt = attempt.with_extension("command");
+        let listed = Gate::new(&sandbox, "g28-pending-listed");
+        let failpoints = format!("pending.after-list={}", listed.action());
+        let (shown, paused) = beside(
+            || {
+                let show = a.cmd(["show", &argv[1], "--json"]).thread("reader");
+                show.env("BEAD_FAILPOINTS", &failpoints).run()
+            },
+            |finished| {
+                // listed, not yet read: a locked writer runs now
+                listed.meet(finished, || {
+                    let synced = a.run(["sync", "--json"]);
+                    let left = (attempt.exists(), receipt.exists());
+                    (synced.returncode(), synced.stderr, left.0, left.1)
+                })
+            },
+        );
+        assert_eq!(shown.returncode(), 0, "{}{}", shown.stdout, shown.stderr);
+        let paused = paused.expect("the reader never reached pending/");
+        assert_eq!(
+            paused,
+            (0, String::new(), false, true),
+            "the sync confirms the attempt and keeps its receipt"
+        );
+        assert!(
+            receipt.exists(),
+            "a reader (show, no lock) deleted the receipt the locked sync kept"
+        );
+        let retry = a.cmd(with_json(&argv)).run();
+        assert_eq!(retry.returncode(), 0, "{}", retry.stderr);
+    }
+
     /// G28: readers try to delete a junk pending file, so every read fails with IO on a read-only
     /// store.
     #[test]
@@ -141,7 +189,7 @@ mod g28_only_the_lock_holder_sweeps_pending {
             return; // root writes a read-only store: the Python test skips
         }
         let sandbox = crate::sandbox();
-        let (a, key) = set_up(&sandbox);
+        let (a, key) = set_up(&sandbox, Machine::new);
         let store = a.store();
         let pending = store.join("pending");
         std::fs::create_dir_all(&pending).expect("the store's pending/");
@@ -175,7 +223,7 @@ mod g28_only_the_lock_holder_sweeps_pending {
             return; // root reads a mode-000 file: the Python test skips
         }
         let sandbox = crate::sandbox();
-        let (a, _) = set_up(&sandbox);
+        let (a, _) = set_up(&sandbox, Machine::new);
         let (argv, attempt) = release_with_lost_ack(&a);
         let receipt = attempt.with_extension("command");
         chmod(&attempt, 0);

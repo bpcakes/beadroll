@@ -1,15 +1,17 @@
-//! The journal's segments: the torn tail an interrupted append leaves, an append the file-size limit
-//! cuts short, rotation under parallel writers, and a segment deleted from the store.
+//! The journal's segments: the torn tail an interrupted append leaves, an append killed midway or
+//! cut short by the file-size limit, rotation under parallel writers, and a segment deleted from
+//! the store.
 
 use std::fs::OpenOptions;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 use beadroll_test_support::{Json, Machine, parse_json};
 
-use super::{jsonl, own_segment, setup};
+use super::{Worker, jsonl, own_segment, setup, setup_with, wait_marker};
 
 /// The unterminated fragment an append interrupted mid-line leaves at the end of a segment.
 const TORN: &[u8] = br#"{"v":1,"id":"interrupted"#;
@@ -176,6 +178,40 @@ fn bug_file_size_limit_partial_append_must_not_poison_next_write() {
         0,
         "partial failed write poisons the next accepted append: {}",
         read.stderr
+    );
+}
+
+/// A writer killed in the middle of an append, part of its line in the segment, leaves the journal
+/// readable: a reader meanwhile, and after the kill, sees the issue as it was; the next write
+/// succeeds, and so does the sync after it.
+///
+/// Python's driver writes the first 100 bytes of each append, flushes them and sleeps there until
+/// the test kills it with its process group. Here the Rust `bead` (`rust_only`) writes and flushes
+/// the first half of the line and stops at `append.mid` (`append.mid@always=pause-until(PATH)`,
+/// every append of the run, as the driver's), and the test kills it the same way, which ends it by
+/// SIGKILL (-9). Stopped there, it holds the store lock while the reader runs, as Python's does.
+#[test]
+fn bug_kill_mid_append_then_successful_write_must_stay_readable() {
+    let sandbox = crate::sandbox();
+    let (a, key) = setup_with(&sandbox, crate::rust_only);
+    let marker = sandbox.root().join("append-started");
+    let spec = format!("append.mid@always=pause-until({})", marker.display());
+    let writing = a.cmd(["create", "killed writer", "--json"]);
+    let mut worker = Worker::start(writing.env("BEAD_FAILPOINTS", spec), true);
+    wait_marker(&sandbox.root().join("append-started.ready"), &mut worker);
+    assert_eq!(a.show(&key)["title"].as_str(), Some("Original issue"));
+    worker.kill().expect("the writer's process group");
+    let killed = worker.communicate(Some(Duration::from_secs(5)));
+    assert_eq!(killed.returncode(), -9, "{}", killed.stderr);
+    assert_eq!(a.show(&key)["title"].as_str(), Some("Original issue"));
+    let later = a.run(["create", "accepted after killed writer", "--json"]);
+    assert_eq!(later.returncode(), 0, "{}", later.stderr);
+    let result = a.run(["sync", "--json"]);
+    assert_eq!(
+        result.returncode(),
+        0,
+        "killed append and next accepted write prevent sync: {}",
+        result.stderr
     );
 }
 

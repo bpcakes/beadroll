@@ -16,6 +16,7 @@ mod golden;
 mod hardening;
 mod mixed;
 mod protocol;
+mod storage;
 mod support;
 
 use beadroll_test_support::{Machine, Sandbox};

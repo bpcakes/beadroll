@@ -50,14 +50,17 @@ fn remote_head(sandbox: &Sandbox) -> String {
 }
 
 mod g11_server_hook_text_does_not_decide_the_push_outcome {
-    use beadroll_test_support::{Machine, Sandbox};
+    use std::path::Path;
+
+    use beadroll_test_support::{Json, Machine, Sandbox, parse_json};
 
     use super::{install_post_receive, remote_head};
+    use crate::hardening::gate::{Gate, beside};
 
-    /// The class's `setUp`: machine `g11` has initialised tracker `ex`, created the issue `one` and
-    /// synced. Returns the machine and the issue's key.
-    fn set_up(sandbox: &Sandbox) -> (Machine, String) {
-        let a = Machine::new(sandbox, "g11");
+    /// The class's `setUp`: machine `g11` (made by `make`) has initialised tracker `ex`, created
+    /// the issue `one` and synced. Returns the machine and the issue's key.
+    fn set_up(sandbox: &Sandbox, make: fn(&Sandbox, &str) -> Machine) -> (Machine, String) {
+        let a = make(sandbox, "g11");
         a.bead(["init", "--prefix", "ex"]);
         let created = a.bead(["create", "one"]).expect("the new issue");
         let key = created["id"].as_str().expect("the issue's id").to_owned();
@@ -73,7 +76,7 @@ mod g11_server_hook_text_does_not_decide_the_push_outcome {
     #[test]
     fn applied_release_is_not_reported_not_owner_because_a_hook_printed_rejected() {
         let sandbox = crate::sandbox();
-        let (a, key) = set_up(&sandbox);
+        let (a, key) = set_up(&sandbox, Machine::new);
         a.bead(["claim", &key]);
         let gate = sandbox.root().join("g11-hook-fired");
         install_post_receive(&sandbox, &gate);
@@ -94,6 +97,99 @@ mod g11_server_hook_text_does_not_decide_the_push_outcome {
             0,
             "the remote applied the release, but bead reported: {}",
             released.stderr.trim()
+        );
+    }
+
+    /// Every event in the files under `dir` whose names hold `.json` (`rglob("*.json*")`), each
+    /// line of them read as JSON, as the Python test reads them.
+    fn events_under(dir: &Path, found: &mut Vec<Json>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                events_under(&path, found);
+                continue;
+            }
+            let name = path.file_name().unwrap().to_string_lossy();
+            if !name.contains(".json") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).unwrap();
+            let lines = text.lines().filter(|line| !line.trim().is_empty());
+            found.extend(lines.map(|line| parse_json(line).unwrap()));
+        }
+    }
+
+    /// G11: the same misclassification loses an update. The accepted `update --claim --title` is
+    /// dropped as refused and rebuilt after the retry sleep; meanwhile another machine saw the
+    /// accepted title and changed it, and the rebuilt attempt sets the old title again on top of
+    /// that later edit.
+    ///
+    /// Replaces `G11_ServerHookTextDoesNotDecideThePushOutcome`'s
+    /// `test_applied_claiming_edit_is_not_rebuilt_over_a_later_observed_edit`, which runs
+    /// `cmd_update` in process with `time.sleep` patched for the whole command, its first call
+    /// running machine b; here `backoff@always=pause-until(...)` stops every wait between rounds
+    /// at a gate, the first until b has run, any later one passing it open. A push recognised as
+    /// accepted has no second round, and b never runs, as in Python.
+    #[test]
+    fn applied_claiming_edit_is_not_rebuilt_over_a_later_observed_edit() {
+        let sandbox = crate::sandbox();
+        let (a, key) = set_up(&sandbox, crate::rust_only);
+        let b = crate::rust_only(&sandbox, "g11b");
+        b.bead(["sync"]);
+        let workspace = a.store().file_name().unwrap().to_owned();
+        let fired = sandbox.root().join("g11-hook-fired");
+        install_post_receive(&sandbox, &fired);
+        let between = Gate::new(&sandbox, "g11-between-rounds");
+        let failpoints = format!("backoff@always={}", between.action());
+        let argv = ["update", &key, "--claim", "--title", "accepted first"];
+        let (updated, later) = beside(
+            || {
+                let update = a.cmd(argv).env("BEAD_WORKSPACE", &workspace);
+                update.env("BEAD_FAILPOINTS", &failpoints).run()
+            },
+            |finished| {
+                between.meet(finished, || {
+                    b.bead(["sync"]);
+                    assert_eq!(
+                        b.show(&key)["title"].as_str(),
+                        Some("accepted first"),
+                        "b did not see the accepted edit"
+                    );
+                    b.bead(["update", &key, "--title", "later observed edit"]);
+                    b.bead(["sync"]);
+                })
+            },
+        );
+        assert!(!updated.crashed(), "{}", updated.stderr);
+        assert_eq!(
+            updated.returncode(),
+            0,
+            "the remote accepted the update, but bead reported {}",
+            updated.stderr.trim()
+        );
+        assert!(fired.exists(), "the post-receive hook did not run");
+        b.bead(["sync"]);
+        a.bead(["sync"]);
+        let mut events = Vec::new();
+        events_under(&a.store().join("events"), &mut events);
+        let sets = events.iter().filter(|event| {
+            event["op"].as_str() == Some("set")
+                && event["data"]["fields"]["title"].as_str() == Some("accepted first")
+        });
+        assert_eq!(
+            sets.count(),
+            1,
+            "the accepted edit was dropped as refused and emitted a second time"
+        );
+        let expected = if later.is_some() {
+            "later observed edit"
+        } else {
+            "accepted first"
+        };
+        assert_eq!(
+            a.show(&key)["title"].as_str(),
+            Some(expected),
+            "the rebuilt edit overwrote a later edit that had seen the accepted one"
         );
     }
 }

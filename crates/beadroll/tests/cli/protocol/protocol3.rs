@@ -1,24 +1,33 @@
 //! `Protocol3`, black-box: a fence the remote refuses settles nothing, so the attempt it was to
-//! settle stays pending and counts for nothing until one lands (the third independent review,
-//! 2026-10-06). The class's in-process tests are in `beadroll-sync`
+//! settle stays pending and counts for nothing until one lands; and a claiming update killed while
+//! it confirms the attempt the remote accepted leaves all of it or none, never part (the third
+//! independent review, 2026-10-06). The kill is the Rust `bead`'s `atomic-write:claims/`
+//! failpoint. The class's in-process tests are in `beadroll-sync`
 //! (`tests/sync/protocol/protocol3.rs`).
 
 use std::os::unix::fs::PermissionsExt as _;
 
 use beadroll_store::{glob_ending, read_attempt};
-use beadroll_test_support::{Machine, Sandbox, code};
+use beadroll_test_support::{Json, Machine, Sandbox, code};
 
 /// Machine a's tracker with one issue, "before", synced to machine b: the class's `setUp`, less
 /// the in-process store its other tests open.
 struct Protocol3 {
     sandbox: Sandbox,
     a: Machine,
+    b: Machine,
     key: String,
 }
 
 fn setup() -> Protocol3 {
+    setup_with(Machine::new)
+}
+
+/// `setUp` with machines made by `make`: `Machine::new`, or `crate::rust_only` for a test that
+/// injects its fault through a failpoint.
+fn setup_with(make: fn(&Sandbox, &str) -> Machine) -> Protocol3 {
     let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "protocol3-a");
+    let a = make(&sandbox, "protocol3-a");
     a.bead(["init", "--prefix", "ex"]);
     let created = a.bead(["create", "before"]).unwrap();
     let key = created["id"]
@@ -26,10 +35,30 @@ fn setup() -> Protocol3 {
         .expect("the new issue's id")
         .to_owned();
     a.bead(["sync"]);
-    // machine b only syncs here: no test of this file reads it again
-    let b = Machine::new(&sandbox, "protocol3-b");
+    let b = make(&sandbox, "protocol3-b");
     b.bead(["sync"]);
-    Protocol3 { sandbox, a, key }
+    Protocol3 { sandbox, a, b, key }
+}
+
+/// `value[key]` as Python indexes a dict: the member, or the test fails.
+fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
+    value
+        .get(key)
+        .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
+}
+
+/// What a reader sees of a claiming update on `issue`: whether it is claimed, its title and its
+/// labels (none when it has none), `("claim" in issue, issue["title"], issue.get("labels", []))`.
+fn seen(issue: &Json) -> (bool, String, Vec<String>) {
+    let title = member(issue, "title").as_str().expect("a title");
+    let labels = issue.get("labels").and_then(Json::as_array);
+    let labels = labels.unwrap_or_default().iter();
+    let labels = labels.map(|label| label.as_str().expect("a label").to_owned());
+    (
+        issue.get("claim").is_some(),
+        title.to_owned(),
+        labels.collect(),
+    )
 }
 
 impl Protocol3 {
@@ -74,4 +103,61 @@ fn rejected_fences_leave_attempt_pending_and_excluded() {
     s.a.bead(["sync"]);
     assert_eq!(s.pending_ids(), Vec::<String>::new());
     assert!(s.a.show(&s.key).get("claim").is_none());
+}
+
+/// Remote accepts all files; SIGKILL stops local confirmation after its first file.
+///
+/// Python's driver stops in the atomic write of the attempt file into `claims/`, its bytes on disk
+/// under a temporary name and the rename into place not done, and the test kills it there. Here
+/// the Rust `bead` (`rust_only`) is killed by SIGKILL at that point, the `atomic-write` of every
+/// target in `claims/` before its rename (`atomic-write:claims/@always=sigkill`, as the driver
+/// stops every such rename); an end by SIGKILL (-9), which only the failpoint sends, shows that the
+/// confirmation was reached.
+#[test]
+fn kill_during_local_confirmation_does_not_leave_partial_atomic_update() {
+    let s = setup_with(crate::rust_only);
+    let update = [
+        "update",
+        &s.key,
+        "--claim",
+        "--title",
+        "after",
+        "--add-label",
+        "accepted",
+        "--json",
+    ];
+    let process =
+        s.a.cmd(update)
+            .env("BEAD_FAILPOINTS", "atomic-write:claims/@always=sigkill")
+            .run();
+    assert_eq!(
+        process.returncode(),
+        -9,
+        "confirmation fault boundary was not reached: {}",
+        process.stderr
+    );
+    let partial = s.a.show(&s.key);
+    s.b.bead(["sync"]);
+    let remote = s.b.show(&s.key);
+    s.a.bead(["sync"]);
+    let recovered = s.a.show(&s.key);
+    assert_eq!(recovered["title"].as_str(), Some("after"));
+    assert_eq!(
+        member(&recovered, "labels"),
+        &Json::Array(vec![Json::from("accepted")])
+    );
+    assert_eq!(member(&recovered, "claim"), member(&remote, "claim"));
+    let none = (false, "before".to_owned(), Vec::new());
+    let all = (true, "after".to_owned(), vec!["accepted".to_owned()]);
+    let partial = seen(&partial);
+    assert!(
+        partial == none || partial == all,
+        "SIGKILL leaves accepted claim visible while other events of the transaction remain only \
+         pending: {partial:?}"
+    );
+    assert_eq!(
+        s.a.bead(["info"]).unwrap()["integrity"],
+        Json::Array(Vec::new()),
+        "a half-written attempt file must never be read as events"
+    );
 }

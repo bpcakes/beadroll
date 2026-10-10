@@ -43,6 +43,12 @@ mixed-fleet tests.
   for byte and recognised across a switch of binaries; `tests/cli/golden.rs` and
   `golden/normal.rs`: the golden scenarios and their normalisation, against the files in
   `tests/golden/`.
+- `tests/cli/protocol.rs`, `hardening.rs`, `storage.rs`: `test_protocol`, `test_hardening` and
+  `test_storage`, ported; `hardening/gate.rs`: the `pause-until` handshake (§4.5) a test holds
+  bead at.
+- `main.rs`'s `rust_only`: the machine of a test that injects a fault through a failpoint, where
+  the Python test patched bead in process. Only the Rust binary has failpoints, so it runs that
+  binary whatever `BEAD_UNDER_TEST` says.
 
 ## Edit here for X
 
@@ -71,7 +77,9 @@ mixed-fleet tests.
   regenerated to make Rust pass.
 - Test roots start with `#![cfg(test)]`; helpers shared between test modules are `pub(crate)`.
 - A ported test passes against Python's launcher before it counts, and against the Rust binary.
-  The mixed-fleet tests name both binaries themselves, whatever `BEAD_UNDER_TEST` says.
+  The mixed-fleet tests name both binaries themselves, whatever `BEAD_UNDER_TEST` says. A
+  `rust_only` test runs the Rust binary alone and is reviewed against the Python test it replaces:
+  each failpoint fires where the Python patch did, as often as it did.
 
 ## Common commands
 

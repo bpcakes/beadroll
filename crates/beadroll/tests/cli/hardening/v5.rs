@@ -350,6 +350,85 @@ mod v5_side_files_ignored {
     }
 }
 
+mod v5_kill_at_rename {
+    use super::*;
+
+    /// The names in `dir` that start with `start` and end with `end`, as `glob("START*END")`.
+    fn named(dir: &Path, start: &str, end: &str) -> Vec<String> {
+        let listed = std::fs::read_dir(dir).unwrap_or_else(|error| panic!("{dir:?}: {error}"));
+        let names = listed.map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned());
+        names
+            .filter(|name| name.starts_with(start) && name.ends_with(end))
+            .collect()
+    }
+
+    /// Verified (V5): a SIGKILL between the temp write and the rename never damages the target:
+    /// an export -o target keeps its old bytes, and a claim killed while writing its confirmed
+    /// attempt file is recognised on retry. The review measured export killed rc -9 with target
+    /// 'previous export' and a leftover .issues.jsonl.<pid>.tmp; claim killed rc -9 leaving
+    /// claims/.<id>.json.<pid>.tmp plus pending json and command; retry claim rc 0, owner
+    /// codex:<thread>@<machine>, integrity [], pending_ownership [].
+    ///
+    /// Replaces `V5_KillAtRename`'s `test_kill_at_rename_keeps_targets_whole`, which loads a
+    /// `sitecustomize` whose `os.replace` kills bead with SIGKILL when the target holds
+    /// `BEAD_KILL_AT_REPLACE`; here `atomic-write:<part>=sigkill` does the same at the first such
+    /// write, after its temporary file is written and fsynced and before the rename: a `rust_only`
+    /// test, without the Python test's probe of `python3`.
+    #[test]
+    fn kill_at_rename_keeps_targets_whole() {
+        let sandbox = crate::sandbox();
+        let m = crate::rust_only(&sandbox, "v5k");
+        m.bead(["init", "--prefix", "ex", "--remote", origin(&sandbox)]);
+        let key = id(m.bead(["create", "one"]));
+        let target = m.checkout().join("issues.jsonl");
+        std::fs::write(&target, "previous export\n").unwrap();
+        let killed = m
+            .cmd(["export", "-o", "issues.jsonl"])
+            .env("BEAD_FAILPOINTS", "atomic-write:issues.jsonl=sigkill")
+            .run();
+        assert_eq!(killed.returncode(), -9, "{}", killed.stderr);
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            "previous export\n"
+        );
+        assert!(!named(m.checkout(), ".issues.jsonl.", ".tmp").is_empty());
+        let killed = m
+            .cmd(["claim", &key, "--json"])
+            .env("BEAD_FAILPOINTS", "atomic-write:/claims/=sigkill")
+            .run();
+        assert_eq!(killed.returncode(), -9, "{}", killed.stderr);
+        let events = std::fs::read_dir(m.store().join("events")).unwrap();
+        let claims = events.map(|replica| replica.unwrap().path().join("claims"));
+        let leftovers: Vec<String> = claims
+            .filter(|dir| dir.is_dir())
+            .flat_map(|dir| named(&dir, ".", ".tmp"))
+            .filter(|name| name.contains(".json."))
+            .collect();
+        assert!(
+            !leftovers.is_empty(),
+            "no temporary attempt file in claims/"
+        );
+        assert_eq!(named(&m.store().join("pending"), "", "").len(), 2);
+        let retried = m.run(["claim", &key, "--json"]);
+        assert_eq!(retried.returncode(), 0, "{}", retried.stderr);
+        let info = m.bead(["info"]).expect("bead info prints a record");
+        let none = Json::Array(Vec::new());
+        assert_eq!(
+            (
+                member(&info, "integrity"),
+                member(&info, "pending_ownership")
+            ),
+            (&none, &none)
+        );
+        let machine = member(&info, "machine").as_str().expect("the machine's id");
+        let shown = m.show(&key);
+        assert_eq!(
+            member(member(&shown, "claim"), "owner").as_str(),
+            Some(format!("codex:v5k-thread-0001@{machine}").as_str())
+        );
+    }
+}
+
 mod v5_signing_config_is_inert {
     use super::*;
 

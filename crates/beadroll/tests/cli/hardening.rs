@@ -1,4 +1,7 @@
-//! `tests/test_hardening.py`'s black-box tests, ported under the inventory's naming rule.
+//! `tests/test_hardening.py`'s black-box tests, ported under the inventory's naming rule. The
+//! tests whose Python originals patch bead in process inject the same fault through a failpoint
+//! instead, on machines that run the Rust binary (`crate::rust_only`); `gate` meets a bead
+//! stopped at a `pause-until` failpoint.
 
 mod g01;
 mod g02;
@@ -8,8 +11,10 @@ mod g05;
 mod g06;
 mod g07;
 mod g08;
+mod g09;
 mod g10;
 mod g11;
+mod g12;
 mod g14;
 mod g15;
 mod g16;
@@ -25,6 +30,7 @@ mod g25;
 mod g26;
 mod g27;
 mod g28;
+mod g29;
 mod g30;
 mod g31;
 mod g32;
@@ -49,6 +55,7 @@ mod g50;
 mod g51;
 mod g52;
 mod g53;
+mod g54;
 mod g55;
 mod g56;
 mod g57;
@@ -59,6 +66,7 @@ mod g62;
 mod g63;
 mod g64;
 mod g65;
+mod gate;
 mod v1;
 mod v2;
 mod v3;

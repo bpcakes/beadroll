@@ -1,13 +1,14 @@
 //! `Review6`: the sixth independent review's findings (F01 to F16, `docs/FINDINGS.md`) and the
 //! properties it verified, one module per subject. F09's replay half is ported in beadroll-core
-//! (`tests/core/commands.rs`); F14 and the clock-skew test need the `clock` failpoint, and are
-//! ported with it.
+//! (`tests/core/commands.rs`); F14 and the clock-skew test, in `clock.rs`, set the Rust `bead`'s
+//! clock with its `clock` failpoint.
 
 use std::path::{Path, PathBuf};
 
 use beadroll_core::json::{Format, Object, write};
 use beadroll_test_support::{Json, Machine, Sandbox, json};
 
+mod clock;
 mod git_helper;
 mod input;
 mod output;

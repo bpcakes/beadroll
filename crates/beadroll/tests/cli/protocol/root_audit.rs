@@ -2,9 +2,9 @@
 //! remote (`docs/reviews/2026-10-06-1-audit.md`, A09). Claims, takeovers and releases raced from
 //! several machines end where the operations the remote accepted lead, with one confirmed owner at
 //! most and generations that only grow; a forced close or a tombstone ends ownership; a
-//! provisional claim can be released, or replaced by its thread's online claim; and a status edit
-//! obeys the ownership rules `close` does. The clock-skew test needs the `clock` failpoint and is
-//! ported with it.
+//! provisional claim can be released, or replaced by its thread's online claim; a status edit
+//! obeys the ownership rules `close` does; and an edit made after another settles the register
+//! even when its clock reads earlier, which the Rust `bead`'s `clock` failpoint shows.
 
 use std::sync::Barrier;
 
@@ -13,7 +13,13 @@ use beadroll_test_support::{Json, Machine, Run, Sandbox, code, parse_json};
 /// `setUp`: machine `root-a` has initialised tracker `root`, created the issue every test works
 /// on and synced. Returns the machine and the issue's id.
 fn set_up(sandbox: &Sandbox) -> (Machine, String) {
-    let a = Machine::new(sandbox, "root-a");
+    set_up_with(sandbox, Machine::new)
+}
+
+/// `setUp` with machine `root-a` made by `make`: `Machine::new`, or `crate::rust_only` for a test
+/// that injects its fault through a failpoint.
+fn set_up_with(sandbox: &Sandbox, make: fn(&Sandbox, &str) -> Machine) -> (Machine, String) {
+    let a = make(sandbox, "root-a");
     a.bead(["init", "--prefix", "root"]);
     let created = a.bead(["create", "ownership check"]).expect("the issue");
     let key = created["id"].as_str().expect("an id").to_owned();
@@ -267,5 +273,44 @@ fn claimed_issue_is_not_ready_after_nonowner_status_update() {
     assert!(
         !a.ready().contains(&key),
         "ready offers an issue that still has a confirmed owner"
+    );
+}
+
+/// The clock reading of each `set` event on `key`, in the order `bead log` lists them: the
+/// milliseconds since the epoch that lead its id (a UUIDv7).
+fn set_stamps(machine: &Machine, key: &str) -> Vec<i64> {
+    let log = machine.bead(["log", key, "--limit", "0"]).expect("a log");
+    let rows = log.as_array().expect("bead log prints a list");
+    let sets = rows.iter().filter(|row| row["op"].as_str() == Some("set"));
+    sets.map(|row| {
+        let id = row["event"].as_str().expect("an event id").replace('-', "");
+        i64::from_str_radix(&id[..12], 16).expect("a UUIDv7")
+    })
+    .collect()
+}
+
+/// The clock moves a day back between two edits of one register: the later edit, which has seen
+/// the earlier, settles it, with no conflict, although it is stamped earlier.
+///
+/// Python's driver loads bead with `time.time_ns` a day behind for the whole run; here the Rust
+/// `bead` (`rust_only`) makes the second edit with `clock@always=offset(-1d)`, every reading of its
+/// clock shifted. Since causality would decide the register the same way with the clock right, the
+/// port also shows that it was not: the second edit is stamped more than 23 hours before the first.
+#[test]
+fn clock_moves_back_but_later_observed_edit_settles_register() {
+    let sandbox = crate::sandbox();
+    let (a, key) = set_up_with(&sandbox, crate::rust_only);
+    a.bead(["update", &key, "--priority", "0"]);
+    let behind = ("BEAD_FAILPOINTS", "clock@always=offset(-1d)");
+    let update = a.cmd(["update", &key, "--priority", "4", "--json"]);
+    let p = update.env(behind.0, behind.1).run();
+    assert_eq!(p.returncode(), 0, "{}", p.stderr);
+    let issue = a.show(&key);
+    assert_eq!(issue["priority"].as_i64(), Some(4), "{issue:?}");
+    assert!(issue.get("conflicts").is_none(), "{issue:?}");
+    let stamps = set_stamps(&a, &key);
+    assert!(
+        matches!(stamps[..], [seen, behind] if seen - behind > 23 * 3600 * 1000),
+        "{stamps:?}"
     );
 }

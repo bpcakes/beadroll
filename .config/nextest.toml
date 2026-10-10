@@ -10,13 +10,14 @@ fail-fast = false
 # A hang fails instead of stalling the run: a warning every minute, killed after five.
 slow-timeout = { period = "60s", terminate-after = 5 }
 
-# These run alone, their clocks tight: ActualTransportReview's BEAD_NET_TIMEOUT of 0.1 s, meant to cut
-# a push short, caps every local fetch too, and V1's stalled receive must answer within 3.5 s of a
-# 1.5 s timeout; tests running beside them can slow those fetches past the mark, as they do the
-# Python originals'.
+# These run alone, their clocks tight: ActualTransportReview's BEAD_NET_TIMEOUT of 0.1 s and
+# SyncAudit's of 0.4 s, meant to cut a push short, cap every local fetch too, and V1's stalled
+# receive must answer within 3.5 s of a 1.5 s timeout; tests running beside them can slow those
+# fetches past the mark, as they do the Python originals'.
 [[profile.default.overrides]]
 filter = """\
     test(=protocol::actual_transport_review::timed_out_accepted_release_returns_success) \
+    | test(=protocol::sync_audit::lost_acks::claim_timeout_after_real_applied_push_is_recovered) \
     | test(=hardening::v1::v1_stalled_receive_timeouts::stalled_receive_with_a_stderr_flood_returns_within_the_timeout)"""
 threads-required = "num-cpus"
 
