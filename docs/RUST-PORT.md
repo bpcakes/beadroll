@@ -383,6 +383,10 @@ So core has a small strict parser and writer:
 - **SIGXFSZ.** CPython ignores it, so a file-size limit becomes `EFBIG` and then an `IO` error.
   bead ignores SIGXFSZ at start-up, and the runner resets it to default in git children through
   `pre_exec`, so git still dies "killed by SIGXFSZ".
+  - An append opens the segment with `O_APPEND` and then seeks to its end, as CPython's append mode
+    does. Darwin checks the limit against the descriptor's offset, not the end the write goes to,
+    so a fresh descriptor at offset 0 would let an append run past the limit by up to the limit
+    itself; Python's segment stops exactly at the limit, and so does Rust's (Slice 2d).
 - **SIGPIPE.** Rust already ignores it.
   - Every write goes through the output module: `EPIPE`, or `EIO` on a character device, means
     exit 0 quietly.

@@ -3,7 +3,7 @@
 //! this machine's pending attempts, and the state they replay into.
 
 use std::fs::OpenOptions;
-use std::io::Write as _;
+use std::io::{Seek as _, SeekFrom, Write as _};
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::{Path, PathBuf};
 
@@ -168,6 +168,9 @@ pub fn append_events(ws: &Workspace, replica: &str, events: &[Value]) -> Result<
         .mode(0o600)
         .open(&path)
         .map_err(|e| IoError::at(&e, &path))?;
+    // at the end before the first write, where CPython's append mode puts it: a file-size limit is
+    // then checked against the end of the file, which Darwin reads from the descriptor's offset
+    file.seek(SeekFrom::End(0)).map_err(|e| IoError::bare(&e))?;
     let failpoints = &ws.settings.failpoints;
     let mut rest: &[u8] = &data;
     if failpoints.has("append.mid") {
