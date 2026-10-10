@@ -1,69 +1,69 @@
 //! `tests/test_hardening.py`'s black-box tests, ported under the inventory's naming rule.
 
-mod g56_closed_stdin_is_a_structured_error {
-    use std::process::Command;
-
-    use beadroll_test_support::{Machine, parse_json};
-
-    /// `arg` quoted for the shell.
-    fn quoted(arg: &str) -> String {
-        format!("'{}'", arg.replace('\'', r"'\''"))
-    }
-
-    /// G56: `-` names standard input; with descriptor 0 closed (Python's `sys.stdin is None`),
-    /// `comments add -f -`, `update`/`create --description-file -` and `import -` answer with a
-    /// structured error and write nothing, as they do when it is open but unreadable; an open
-    /// standard input still works.
-    #[test]
-    fn closed_stdin_for_every_dash_reader_is_a_structured_error() {
-        let sandbox = crate::sandbox();
-        let m = Machine::new(&sandbox, "g56");
-        m.bead(["init", "--prefix", "cs"]);
-        let key = m.bead(["create", "seed"]).unwrap()["id"]
-            .as_str()
-            .unwrap()
-            .to_owned();
-        let before = m.export();
-        let cases: [(&str, &[&str]); 4] = [
-            ("comments add -f -", &["comments", "add", &key, "-f", "-"]),
-            (
-                "update --description-file -",
-                &["update", &key, "--description-file", "-"],
-            ),
-            (
-                "create --description-file -",
-                &["create", "other", "--description-file", "-"],
-            ),
-            ("import -", &["import", "-"]),
-        ];
-        let bead = m.executable().display().to_string();
-        for (label, args) in cases {
-            let mut words = vec![quoted(&bead)];
-            words.extend(args.iter().map(|a| quoted(a)));
-            words.push("--json".to_owned());
-            let script = format!("{} <&-", words.join(" "));
-            let out = Command::new("/bin/sh")
-                .args(["-c", &script])
-                .current_dir(m.checkout())
-                .env_clear()
-                .envs(m.env(None, "codex"))
-                .output()
-                .unwrap();
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            assert!(
-                !stderr.contains("Traceback") && !stderr.contains("panicked at"),
-                "{label} with stdin closed crashed: {stderr}"
-            );
-            assert_eq!(out.status.code(), Some(1), "{label}: {stderr}");
-            let error = parse_json(&stderr).unwrap();
-            let code = error["error"]["code"].as_str().unwrap_or_default();
-            assert!(["IO", "VALIDATION"].contains(&code), "{label}: {stderr}");
-        }
-        assert_eq!(m.export(), before);
-        // an open stdin still works
-        m.cmd(["update", &key, "--description-file", "-"])
-            .stdin("from stdin")
-            .json();
-        assert_eq!(m.show(&key)["description"].as_str(), Some("from stdin"));
-    }
-}
+mod g01;
+mod g02;
+mod g03;
+mod g04;
+mod g05;
+mod g06;
+mod g07;
+mod g08;
+mod g10;
+mod g11;
+mod g14;
+mod g15;
+mod g16;
+mod g17;
+mod g18;
+mod g19;
+mod g20;
+mod g21;
+mod g22;
+mod g23;
+mod g24;
+mod g25;
+mod g26;
+mod g27;
+mod g28;
+mod g30;
+mod g31;
+mod g33;
+mod g34;
+mod g35;
+mod g36;
+mod g37;
+mod g38;
+mod g39;
+mod g40;
+mod g41;
+mod g42;
+mod g43;
+mod g44;
+mod g45;
+mod g46;
+mod g47;
+mod g48;
+mod g49;
+mod g50;
+mod g51;
+mod g52;
+mod g53;
+mod g55;
+mod g56;
+mod g57;
+mod g58;
+mod g60;
+mod g61;
+mod g62;
+mod g63;
+mod g64;
+mod g65;
+mod v1;
+mod v2;
+mod v3;
+mod v4;
+mod v5;
+mod v6;
+mod v7;
+mod v8;
+mod v9;
