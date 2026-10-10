@@ -30,9 +30,12 @@ are in `docs/rust-port/`; the measurements behind the numbers are in Appendix A.
   4. Mixed Python/Rust fleets must converge.
 - **Speed.**
   - Read commands: 120–200 ms → about 15 ms.
-  - Publishing writes against a local remote: 630–730 ms → about 180 ms with the same git calls,
-    about 90 ms once calls are consolidated. Against GitHub, both are bound by the network round
-    trip.
+  - Publishing writes against a local remote: 630–730 ms → about 180 ms with the same git calls.
+    Consolidated, they were estimated at about 90 ms and are not: Phase 4 put four of the gits
+    back to ask the configuration and HEAD where Python asks them and to leave the fetch refs at
+    Python's pace, and measured 124–127 ms on a loaded machine, where `main`'s binary ran a fifth
+    slower than when the first build met the estimate (Appendix A). Against GitHub, both are bound
+    by the network round trip.
   - Fast test suite: about 20 minutes → target under 2 minutes on this Mac (16 cores).
   - Full ownership sweep: about 1.7 hours → target under 20 minutes.
 - **Order of work:**
@@ -180,7 +183,7 @@ beadroll-test-support (dev-dependency of every crate's tests)      xtask (dev to
 | Crate | From Python | Owns | Depends on | Consumers |
 |---|---|---|---|---|
 | `beadroll-core` | `model.py`, `queries.py`, parts of `base.py` | Python-compatible JSON; Python text semantics; event ids and times; event validation; journal settling (duplicates, quarantine, placeholders); causal order; replay; state; readiness, blockers, descendants, cycles; issue views; Beads import planning and export; key minting; reading a published tree. **No I/O, processes, clock or environment.** | `indexmap`, `sha2`, `thiserror` | studio; all crates |
-| `beadroll-git` | `run_git` and the git half of `base`/`machine`/`sync` | **The only code that starts git.** The runner: own session, timeout with reap or no-reap, output captured to unlinked files, signal names. The environments for the checkout and for `sync.git`. Typed commands. Push-outcome and local-damage classification. Remote URL rules (`without_password`, `normalize_remote`, `is_local_path`). | `tempfile`, `rustix`, `libc`, `regex-lite`, `thiserror` | store, sync, optionally studio |
+| `beadroll-git` | `run_git` and the git half of `base`/`machine`/`sync` | **The only code that starts git.** The runner: own session, timeout with reap or no-reap, output captured to unlinked files, signal names. The long-lived gits of Phase 4 and git's tree and commit reading mirrored in-process (Appendix B). The environments for the checkout and for `sync.git`. Typed commands. Push-outcome and local-damage classification. Remote URL rules (`without_password`, `normalize_remote`, `is_local_path`). | `tempfile`, `rustix`, `libc`, `regex-lite`, `sha2` (object names), `thiserror` | store, sync, optionally studio |
 | `beadroll-store` | `machine.py`, the loaders in `model.py` | This machine: `BEAD_HOME`; the store's files and modes; lock; atomic writes; segments and torn tails; attempt, pending and receipt files; identity and aliases; workspace discovery and remote resolution; actor detection; `view`; the failpoint registry | core, git, `rustix`, `uuid`, `thiserror` | sync, `beadroll`, local read-only tools |
 | `beadroll-sync` | `sync.py` | Transactions (`Tx`, `writing`); `Link` (fetch, merge, tree, publish, maintain, rebuild); `synchronise`; the ownership protocol (`coordinated`, receipts, fences, settling); `publish_soon`; unpublished counts | core, git, store, `uuid`, `fastrand`, `thiserror` | `beadroll` |
 | `beadroll` | `commands.py`, `cli.py` | The `bead` binary. `commands/` maps typed requests to typed outcomes; `cli/` handles parsing, rendering, output streams and exit codes; `sys` holds the two audited unsafe spots (§2.3f). `main.rs` is one line. | all of the above, `rustix` (with `termios`, for the width help pages wrap at), `libc`, `nix` (the password database, for `~NAME` in `BEAD_HOME`, without unsafe code) | the development machines (`cargo install --path crates/beadroll`, §8) |
@@ -351,16 +354,31 @@ So core has a small strict parser and writer:
   - the default `GIT_SSH_COMMAND` set only when the user has none;
   - `SYNC_REPO_CONFIG` last.
   - git is found on `PATH`; tests rely on PATH shims, so no new variable is needed.
-- **Phase 4 consolidation (Appendix B).**
-  - One `rev-parse` and one `config --get-regexp` for discovery.
+- **Phase 4 consolidation (Appendix B; built in `roll-k2wy.13`).**
+  - One `rev-parse` for the repository's top, common directory and format, run beside origin's own
+    `config --get-regexp` when the workspace is first found.
+  - What can change while bead runs is asked where Python asks it, by Python's call, and never
+    kept: origin's URLs each time the workspace is found, the transport settings each time a link
+    is made, HEAD and its branch (one `rev-parse` where its answer is certain) each time a
+    transaction starts. A `git config` or `git checkout` while bead waits for the store lock is
+    what the command goes by, as with Python.
   - No `check-ref-format` for the default ref.
-  - One long-lived `cat-file --batch` for every object read.
-  - `update-ref --stdin` transactions.
-  - Hashing each local file once per command.
-  - This takes a publishing write from 26–27 git processes to about 8.
+  - One long-lived `cat-file --batch-command` for every object read.
+  - An `update-ref --stdin` transaction for `refs/beads/remote` after a push. The two refs a fetch
+    leaves are still Python's two `update-ref`s, at its pace: one transaction right after the fetch
+    deletes the fetch's own ref while the fetches other bead processes of the store started with
+    it still list every ref, and git fails those (G16).
+  - One `hash-object` for every blob between fetches, one `mktree --batch` a publish.
+  - This takes a publishing write from 26–27 git processes to 14, a sync with nothing new from 20
+    to 10 (Appendix A).
+  - The rule that makes it safe: every answer is the one Python's git gives, asked when Python asks
+    it. Whatever bead cannot answer with certainty in-process or from a long-lived git (missing,
+    damaged, unusual, no git) goes to the git Python runs, whose answer or failure, classified as
+    before, is the one given.
 - **Optional in-process objects.** Writing blob, tree and commit objects in-process (loose objects,
-  SHA-1/SHA-256) would save about five more processes. It is done only if Phase 4 numbers justify
-  it, and every sandbox is `git fsck --strict`-checked in tests.
+  SHA-1/SHA-256) would save about three more processes. Not done: Phase 4's numbers did not
+  justify it (Appendix A). It would need a zlib bead does not depend on for git's own loose-object
+  bytes, git's date and signing rules for commits, and git's existence checks against packs.
 
 **e. Durability and locking follow Python's trade-offs.**
 - **fsync.** Rust's `File::sync_all`/`sync_data` on Apple platforms is `F_FULLFSYNC`. Measured here
@@ -947,9 +965,11 @@ test timings, timings are evidence and never gate a test):
 | Stress | ≤ 10 min | 7–17 min | 7.1 and 8.4 min, the two models (Python's first: 10.7 min) |
 | Full sweep | ≤ 20 min | ≈ 1.7 h | 11.4 min on this Mac, the 660 schedules in parallel |
 
-The fast suite misses its target on this Mac; consolidating the git calls (Phase 4, Appendix B) is
-meant to meet it. The Mac's fast-suite times are in `target/timing.jsonl`, written by `cargo xtask
-timing`; CI keeps its own per run.
+The fast suite misses its target on this Mac. Consolidating the git calls (Phase 4, Appendix B) was
+meant to meet it and did not: after it, the suite's 676 tests took 195 s (216 s with Python's
+launcher as the bead under test) on 2026-10-10, while Spotlight's indexing and another project's
+process kept the load at about 14. The Mac's fast-suite times are in `target/timing.jsonl`, written
+by `cargo xtask timing`; CI keeps its own per run.
 
 **How.**
 - **nextest**, process-per-test, as in jig: `nextest-version` in `.config/nextest.toml` is the
@@ -1492,7 +1512,9 @@ decision 7 open. The five decisions stand.
 
 - **Rust estimates from those numbers.** These are targets for Phase 4 to confirm.
   - Reads: about 15 ms.
-  - Publishing writes: about 180 ms with the same calls, about 90 ms consolidated.
+  - Publishing writes: about 180 ms with the same calls, about 90 ms consolidated. Phase 4 missed
+    the second: asking what Python asks where Python asks it, and keeping the fetch refs at
+    Python's pace, put four gits back (below).
   - Replay of 10k events: ≤ 20 ms in a release build. Python takes 0.7 s. Measured in Phase 1
     (`cargo run --release --package xtask -- timing --replay 10000`, a valid history on six
     machines, parsed and settled outside the clock, best of seven): 20 ms; Python's replay of the
@@ -1532,6 +1554,38 @@ decision 7 open. The five decisions stand.
     them. Both are public types of beadroll-core that the CLI and xtask use. A compact
     representation would be an API change across crates, which Phase 4 does not make: it is
     filed as roll-dih8.11.
+- **Phase 4: git, measured (this Mac, 2026-10-10, `roll-k2wy.13`).**
+  - How: release builds of `main` before and after the consolidation of Appendix B, each in a
+    scratch tracker of 30 issues on a local bare remote; their runs interleaved one by one, so that
+    both met the same load, the median of 15 runs each, measured twice; git processes counted by a
+    logging `git` first on `PATH`. The machine was not quiet: load about 5 (a process of another
+    project held one of the 16 cores throughout), and `main`'s binary ran about a fifth slower than
+    in a first measurement on a quiet machine (a publishing write then 172–182 ms, a sync 107 ms,
+    the reads 16 ms).
+
+    | Command | Before | After | git processes |
+    |---|---|---|---|
+    | `show`/`list`/`ready` | 20.6–21.2 ms | 15.4–15.6 ms | 3 → 3 |
+    | `info` | 24.5–24.9 ms | 15.2–15.4 ms | 4 → 3 |
+    | `sync` with nothing new | 129.8–131.7 ms | 62.5–63.1 ms | 20 → 10 |
+    | `create`, `comments add` | 207.6–210.5 ms | 126.6–127.1 ms | 26 → 14 |
+    | `claim` | 204.8–213.4 ms | 123.7–127.1 ms | 27 → 14 |
+
+  - **The reads estimate (about 15 ms) is met; the publishing-write estimate (about 90 ms) is
+    not.** The first build of the consolidation met it on the quiet machine (a publishing write
+    91–94 ms, 10 gits, a sync 42 ms, 8 gits). Three things asked or written where and as Python
+    asks or writes them put four gits back: HEAD and its branch when each transaction starts (one
+    `rev-parse`, about 4 ms like any git); the transport settings when each link is made (one
+    `config`, 4–6 ms); and Python's two `update-ref`s after each fetch, instead of one transaction
+    (G16, Appendix B; 8–10 ms). The last two were measured against the build without them, on the
+    same machine at the same time. The push (about 35 ms, most of it the remote's `receive-pack`)
+    and the fetch (about 15 ms) are close to half of a publishing write. Each remaining git costs
+    about 4 ms, a millisecond of it the runner's `fork`: the audited `setsid` needs `pre_exec`,
+    which rules out `posix_spawn`.
+  - In-process objects would save `hash-object`, `mktree` and `commit-tree`, under 10 ms now that
+    the first two start while the round reads: not justified (§2.3d). The two `update-ref`s after a
+    fetch could go back into one transaction only once concurrent fetches no longer fail on a
+    fetch ref that disappears while they list refs, in both implementations.
 
 ## Appendix B. git invocations, and their consolidation
 
@@ -1539,11 +1593,12 @@ decision 7 open. The five decisions stand.
 
 | Python call | Purpose | After Phase 4 |
 |---|---|---|
-| `rev-parse --show-toplevel` | Repository root | One combined `rev-parse` (toplevel, absolute common dir, object format; `HEAD` and `--abbrev-ref HEAD` for `where`), falling back to single calls when the combined one fails |
+| `rev-parse --show-toplevel` | Repository root | One combined `rev-parse` (toplevel, absolute common dir, object format), falling back to single calls when the combined one fails |
 | `rev-parse --path-format=absolute --git-common-dir` | Local id, without an origin | (combined) |
 | `rev-parse --show-object-format` | The project's format | (combined) |
-| `rev-parse HEAD`, `rev-parse --abbrev-ref HEAD` | `where` | (combined) |
-| `config --get-regexp ^remote\.origin\.(push)?url$` and `config --null --get-regexp <transport keys>` | origin; carried transport settings | One `config --null --get-regexp` over both patterns |
+| `rev-parse HEAD`, `rev-parse --abbrev-ref HEAD` | `where` | One `rev-parse HEAD --abbrev-ref HEAD` when each transaction starts, falling back to Python's two |
+| `config --get-regexp ^remote\.origin\.(push)?url$` | origin | Unchanged, each time the workspace is found; the first time beside the combined `rev-parse` |
+| `config --null --get-regexp <transport keys>` | Carried transport settings | Unchanged, each time a link is made |
 | `cat-file --batch` (`HEAD:` and `origin/HEAD:.beadroll.json`) | Committed config | Unchanged; only when the tree has no `.beadroll.json` |
 | `remote get-url NAME` | A remote given by name | Unchanged |
 | `check-ref-format REF` | A tracked ref | Skipped for the default ref |
@@ -1557,12 +1612,74 @@ decision 7 open. The five decisions stand.
 | `rev-parse --show-object-format` | Format check | Read `extensions.objectformat` once |
 | `fetch … +REF:refs/beads/fetch/<pid>-<hex>` | Fetch | Unchanged |
 | `rev-parse <fetch ref>`, `cat-file blob TIP:manifest.json`, `ls-tree -r -z TIP`, `cat-file blob SHA` ×N, `rev-parse TIP^{tree}` | Reading the remote tree | One long-lived `cat-file --batch`; trees parsed in-process |
-| `update-ref refs/beads/remote TIP`, `update-ref -d <fetch ref>`, `update-ref refs/beads/remote COMMIT` | Ref bookkeeping | `update-ref --stdin` transactions |
+| `update-ref refs/beads/remote TIP`, `update-ref -d <fetch ref>` | Refs after a fetch | Unchanged (see below) |
+| `update-ref refs/beads/remote COMMIT` | The ref after a push | An `update-ref --stdin` transaction |
 | `hash-object -w --no-filters --stdin-paths` (twice per sync), `hash-object -w --stdin` | Blobs | Once per command |
 | `mktree` × (replicas + claims folders + 2) | Trees | `mktree --batch`, or in-process objects if Phase 4 justifies them |
 | `commit-tree` | The commit | Unchanged |
 | `push --porcelain --no-verify` | The push | Unchanged |
 | `repack -a -d -q`, `prune --expire=1.hour.ago` | Maintenance | Unchanged |
+
+**As built in Phase 4 (`roll-k2wy.13`).** The columns above, with these particulars:
+- **Checkout side** (`beadroll_git::Checkout`, asked through `Settings::fact`): discovery's combined
+  call is `rev-parse --show-toplevel --path-format=absolute --git-common-dir --show-object-format`,
+  its three lines kept only when their shapes show they cannot have shifted (an absolute top and
+  common directory, a known format). A bare repository or none fails it, and each fact is then
+  asked on its own when needed: one process more than Python there. `init`'s and
+  `resolve_remote`'s `--show-toplevel` come from the same answer, and so does the format a link
+  gives `sync.git`: none of the three can change while bead runs. Configuration can, so it is
+  never kept: origin's URLs are Python's own `config --get-regexp`, asked each time the workspace
+  is found (`Checkout::origin_urls`), and the transport settings Python's own `config --null
+  --get-regexp`, asked each time a link is made (`beadroll_git::transport_settings`): a setting
+  changed while a write waits for the store lock is the one its publish uses. Built first as one
+  `config` at discovery over both patterns, they were the ones of before the lock.
+- **Where the caller works** (`beadroll_git::head_and_branch`) is never kept: it is asked when each
+  transaction starts, under the store lock and in every round of an ownership command, where
+  Python's `Tx` asks it, so a `git checkout` while bead waits is what the event records. One
+  `rev-parse HEAD --abbrev-ref HEAD` answers when its two lines can only be HEAD's full name (40
+  or 64 lower-case hex digits) and a branch; otherwise Python's two calls run, in its order (no
+  `--abbrev-ref` once `rev-parse HEAD` has failed): one process more than Python in a repository
+  with no commit yet, or when git finds the branch name ambiguous.
+- **`sync.git`'s format** is read from its config when that is a plain one naming the wanted format;
+  anything else (another format, a config this reader does not follow to the letter) still asks
+  `rev-parse --show-object-format`, so `sync.git` is only ever set aside on git's word.
+- **The reader** is `cat-file --batch-command` (git 2.36), not `--batch`: `info` resolves the fetch
+  ref without reading its object, as `rev-parse` does, beside `contents`. The listing and
+  `TIP^{tree}` follow git's `decode_tree_entry` and `parse_commit_buffer`, and check the commit's
+  and the root tree's contents against their names, as `ls-tree` and `rev-parse` do.
+- **Writers.** `hash-object -w --no-filters --stdin-paths` writes every blob of a round, the
+  attempt's and the manifest's through files of their own in the temporary directory; the merge's
+  and the tree's hashing both still happen, so `sync.git` gets exactly the objects Python writes. A
+  `hash-object` never outlives a fetch (one that looked for packs before it would write loose
+  copies of what it brought). `mktree --batch` makes one publish's trees. The update after a push
+  is a transaction of an `update-ref --stdin`, falling back to the one-shot call, whose error is
+  the one reported.
+- **The refs after a fetch** stay Python's `update-ref refs/beads/remote TIP` and `update-ref -d
+  <fetch ref>`, the tip read through the `cat-file`. Built first as one transaction of an
+  `update-ref` started before the fetch, they deleted the fetch ref within a millisecond of the
+  fetch, while the fetches the store's other bead processes had started with it were still checking
+  what they brought against every ref (`rev-list --not --all`). git lists loose refs before it
+  reads them, takes one gone by then for a broken ref, and by default dies on a broken ref there
+  (`fatal: bad object refs/beads/fetch/...`): the concurrent command failed with
+  `REMOTE_UNREACHABLE`. G16's test failed in 8 of 120 runs so, against none of 120 with `main`'s
+  binary or with Python's two calls. Seven processes fetching at once with plain git and then
+  keeping the refs lost 13 of 2,100 fetches with the transaction, 2 of 2,100 with only the
+  deletion a call of its own, and none of 7,000 with Python's two calls, whether the tip came from
+  `rev-parse` or the `cat-file`. Python's calls do not remove the race; they take long enough for
+  the other fetches' checks to be over first.
+- **Overlap.** Finding the workspace runs the combined `rev-parse` and origin's `config` side by
+  side (`Checkout::origin_urls`, `Git::run_alongside`: both started from one thread, so neither can
+  inherit the other's descriptors). A link starts its `cat-file` before the fetch, its
+  `hash-object` and `mktree` as soon as the fetch is done, and its `update-ref` before
+  `commit-tree` once a publish has something to push, so that their start-up overlaps other work
+  (the push itself starts with nothing beside it: a slow machine must not make it slower).
+- **Fallback.** Every in-process or long-lived answer that is not certain is `NoAnswer`, and the
+  git Python runs for that question is run instead.
+- **Processes now:** a read 3, `info` 3, a sync with nothing new 10, a publishing write or a
+  one-round claim 14 (each further round of a claim starts its own fetch, two `update-ref`s,
+  `hash-object`, `mktree`, `commit-tree`, push and `rev-parse` of HEAD; a sync that adopts a
+  published tracker makes a second link, with its own transport `config`; with a tracked
+  `.beadroll.json`, one fewer each).
 
 ## Appendix C. Environment variables
 

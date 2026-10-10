@@ -10,7 +10,7 @@ use std::sync::LazyLock;
 use regex_lite::Regex;
 
 use crate::error::Error;
-use crate::runner::Env;
+use crate::runner::{Env, Output};
 
 /// The keys that say how git reaches remotes from the checkout (`git config --get-regexp`).
 pub const TRANSPORT_KEYS: &str =
@@ -53,15 +53,21 @@ pub const DEFAULT_SSH_COMMAND: &str =
 static RESETTABLE: LazyLock<Option<Regex>> =
     LazyLock::new(|| Regex::new(r"^(credential\.(.+\.)?helper|http\.(.+\.)?extraheader)$").ok());
 
-/// How git reaches remotes from the checkout (Python's `transport_config`): the caller's repository
-/// configuration, its includeIf includes and the global ones, which `sync.git` (elsewhere, with no
-/// remotes) does not all see. Given at command-line precedence in this order, these make
-/// `sync.git`'s git reach the remote as the caller's does: lists that can be reset are emptied first,
-/// so nothing is sent twice. A key without a value means `true`.
-pub fn transport_config(checkout: &Env) -> Result<Vec<(String, String)>, Error> {
-    let proc = checkout
-        .git(["config", "--null", "--get-regexp", TRANSPORT_KEYS])
-        .run()?;
+/// What `git config --null --get-regexp` prints for [`TRANSPORT_KEYS`] in the checkout that `env`
+/// runs git in, asked now: Python's `transport_config` asks it each time a link is made, so a
+/// setting changed while bead waited for the store lock is the one the link uses.
+pub fn transport_settings(env: &Env) -> Result<Output, Error> {
+    env.git(["config", "--null", "--get-regexp", TRANSPORT_KEYS])
+        .run()
+}
+
+/// How git reaches remotes from the checkout (Python's `transport_config`), from what `git config
+/// --null --get-regexp` printed for [`TRANSPORT_KEYS`] there ([`transport_settings`]): the caller's
+/// repository configuration, its includeIf includes and the global ones, which `sync.git`
+/// (elsewhere, with no remotes) does not all see. Given at command-line precedence in this order,
+/// these make `sync.git`'s git reach the remote as the caller's does: lists that can be reset are
+/// emptied first, so nothing is sent twice. A key without a value means `true`.
+pub fn transport_config(proc: &Output) -> Vec<(String, String)> {
     let mut rows = Vec::new();
     if proc.success() {
         for item in String::from_utf8_lossy(&proc.stdout).split('\0') {
@@ -82,7 +88,7 @@ pub fn transport_config(checkout: &Env) -> Result<Vec<(String, String)>, Error> 
         }
     }
     resets.extend(rows);
-    Ok(resets)
+    resets
 }
 
 /// How `GIT_CONFIG_COUNT` is read, as Python reads it: `str.isdigit()` decides whether the caller

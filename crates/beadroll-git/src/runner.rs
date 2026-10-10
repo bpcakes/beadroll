@@ -162,7 +162,26 @@ impl Git<'_> {
         Ok(self.text()?.to_string_lossy().into_owned())
     }
 
+    /// Whether this git has a time limit.
+    pub(crate) fn has_timeout(&self) -> bool {
+        self.timeout.is_some()
+    }
+
     fn execute(self) -> Result<(Output, Vec<OsString>), Error> {
+        let (command, out, err) = self.prepare()?;
+        let waited = wait_for(command, self.timeout, self.reap)?;
+        let Some(status) = waited else {
+            let first = self.args.first().map(|a| a.to_string_lossy());
+            return Err(Error::Timeout {
+                command: first.unwrap_or_default().into_owned(),
+                seconds: format!("{:.0}", self.timeout.unwrap_or_default()),
+            });
+        };
+        Ok((finished(status, &out, &err)?, self.args))
+    }
+
+    /// The command that runs this git, its output going to the two unlinked files returned with it.
+    pub(crate) fn prepare(&self) -> Result<(Command, File, File), Error> {
         let tmp = &self.env.tmp;
         let unlinked = || tempfile::tempfile_in(tmp).map_err(|e| Error::Io(IoError::bare(&e)));
         let out = unlinked()?;
@@ -191,24 +210,20 @@ impl Git<'_> {
             command.current_dir(dir);
         }
         detach(&mut command);
-        let waited = wait_for(command, self.timeout, self.reap)?;
-        let Some(status) = waited else {
-            let first = self.args.first().map(|a| a.to_string_lossy());
-            return Err(Error::Timeout {
-                command: first.unwrap_or_default().into_owned(),
-                seconds: format!("{:.0}", self.timeout.unwrap_or_default()),
-            });
-        };
-        let returncode = status
-            .code()
-            .unwrap_or_else(|| -status.signal().unwrap_or_default());
-        let output = Output {
-            returncode,
-            stdout: read_whole(&out)?,
-            stderr: read_whole(&err)?,
-        };
-        Ok((output, self.args))
+        Ok((command, out, err))
     }
+}
+
+/// What a git that ended with `status` did: its exit status as Python reports it, and its output.
+pub(crate) fn finished(status: ExitStatus, out: &File, err: &File) -> Result<Output, Error> {
+    let returncode = status
+        .code()
+        .unwrap_or_else(|| -status.signal().unwrap_or_default());
+    Ok(Output {
+        returncode,
+        stdout: read_whole(out)?,
+        stderr: read_whole(err)?,
+    })
 }
 
 /// What a git process did: its exit status as Python reports it (the negated signal number when a
@@ -233,6 +248,16 @@ impl Output {
     /// with `errors="replace"`.
     pub fn stdout_text(&self) -> String {
         String::from_utf8_lossy(strip_ascii(&self.stdout)).into_owned()
+    }
+
+    /// What [`Git::text`] gives when `git ARGS` answered with this output: standard output without
+    /// the ASCII whitespace at either end, or [`Error::Failed`] naming the command.
+    pub fn checked_text(self, args: &[&str]) -> Result<OsString, Error> {
+        if self.returncode != 0 {
+            let args: Vec<OsString> = args.iter().map(OsString::from).collect();
+            return Err(failure(&args, &self));
+        }
+        Ok(OsString::from_vec(strip_ascii(&self.stdout).to_vec()))
     }
 }
 
@@ -322,7 +347,7 @@ fn wait_for(
 
 /// Kills git (with `reap`, its whole process group: git and every helper it started) after a
 /// timeout. Already gone is fine.
-fn kill(pid: u32, reap: bool) {
+pub(crate) fn kill(pid: u32, reap: bool) {
     let Some(pid) = i32::try_from(pid)
         .ok()
         .and_then(rustix::process::Pid::from_raw)
@@ -348,7 +373,7 @@ fn kill(pid: u32, reap: bool) {
     unsafe_code,
     reason = "one of the two audited unsafe spots (docs/RUST-PORT.md §2.2): code that runs in the child between fork and exec"
 )]
-fn detach(command: &mut Command) {
+pub(crate) fn detach(command: &mut Command) {
     // SAFETY: the closure runs in the forked child before exec, where only async-signal-safe calls
     // are allowed. It calls setsid(2) and signal(2), both async-signal-safe, and builds an
     // io::Error from errno, which neither allocates nor takes a lock. It touches no memory shared

@@ -6,9 +6,9 @@ use std::ffi::OsStr;
 
 use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Format, Object, Value};
-use beadroll_git::{PushOutcome, push_outcome};
+use beadroll_git::{PushOutcome, Trees, push_outcome};
 use beadroll_store::{
-    Fired, REMOTE_REF, attempt_path, encode_events, hex_token, relative, repair_tail, segment_files,
+    Fired, attempt_path, encode_events, hex_token, relative, repair_tail, segment_files,
 };
 
 use super::Link;
@@ -16,16 +16,18 @@ use crate::error::Error;
 
 impl Link<'_> {
     /// The tree to publish: the manifest and every journal file, with `pending`'s attempt at the
-    /// place it will live if accepted. An interrupted write is never published.
-    fn tree(&self, pending: &[Value]) -> Result<String, Error> {
+    /// place it will live if accepted. An interrupted write is never published. Its trees are made
+    /// by one `mktree --batch`: the one the last fetch started, or one started now, ready when the
+    /// blobs are.
+    fn tree(&mut self, pending: &[Value]) -> Result<String, Error> {
+        let mut trees = self.trees.take().or_else(|| Trees::start(&self.env).ok());
         for path in segment_files(self.ws)? {
             repair_tail(self.ws, &path)?;
         }
         let mut blobs = self.local_blobs()?;
         if !pending.is_empty() {
             let place = relative(self.ws, &attempt_path(self.ws, pending));
-            let args = ["hash-object", "-w", "--stdin"].map(OsStr::new);
-            blobs.insert(place, self.git(&args, Some(encode_events(pending)?))?);
+            blobs.insert(place, self.blob_of(encode_events(pending)?)?);
         }
         let mut folders: BTreeMap<String, BTreeMap<String, Vec<String>>> = BTreeMap::new();
         for (path, sha) in &blobs {
@@ -41,29 +43,27 @@ impl Link<'_> {
                     parts.last().copied().unwrap_or_default()
                 ));
         }
-        let mktree = ["mktree"].map(OsStr::new);
         let mut rows = String::new();
         for (replica, groups) in &folders {
             let mut entries = groups.get("").cloned().unwrap_or_default().concat();
             if let Some(claims) = groups.get("claims") {
-                let tree = self.git(&mktree, Some(claims.concat().into_bytes()))?;
+                let tree = self.make_tree(&mut trees, claims.concat())?;
                 entries.push_str(&format!("040000 tree {tree}\tclaims\n"));
             }
-            let tree = self.git(&mktree, Some(entries.into_bytes()))?;
+            let tree = self.make_tree(&mut trees, entries)?;
             rows.push_str(&format!("040000 tree {tree}\t{replica}\n"));
         }
-        let events = self.git(&mktree, Some(rows.into_bytes()))?;
+        let events = self.make_tree(&mut trees, rows)?;
         let mut manifest = Object::new();
         manifest.insert("format".into(), Value::from(FORMAT));
         manifest.insert("workspace".into(), Value::from(self.ws.id.as_str()));
         let mut manifest = json::write(&Value::Object(manifest), Format::SORTED_ASCII)
             .map_err(|e| Error::Validation(e.to_string()))?;
         manifest.push('\n');
-        let args = ["hash-object", "-w", "--stdin"].map(OsStr::new);
-        let manifest_sha = self.git(&args, Some(manifest.into_bytes()))?;
+        let manifest_sha = self.blob_of(manifest.into_bytes())?;
         let top =
             format!("040000 tree {events}\tevents\n100644 blob {manifest_sha}\tmanifest.json\n");
-        self.git(&mktree, Some(top.into_bytes()))
+        self.make_tree(&mut trees, top)
     }
 
     /// A conditional update: the new commit's parent is the head fetched, and the push is a plain
@@ -89,13 +89,14 @@ impl Link<'_> {
         let tree = self.tree(pending)?;
         if let Some(tip) = tip
             && !fence
+            && self.tip_tree(tip)? == tree
         {
-            let current = format!("{tip}^{{tree}}");
-            if self.git(&[OsStr::new("rev-parse"), current.as_ref()], None)? == tree {
-                self.last_commit = Some(tip.to_owned());
-                return Ok(PushOutcome::Ok);
-            }
+            self.last_commit = Some(tip.to_owned());
+            return Ok(PushOutcome::Ok);
         }
+        // there is a push to make: the `update-ref` for the ref after it starts while the commit is
+        // made, and is ready when the push is done
+        self.ready_refs();
         let subject = format!("bead {note} {}", hex_token(12));
         let mut args: Vec<&OsStr> = vec![OsStr::new("commit-tree"), OsStr::new(&tree)];
         if let Some(tip) = tip {
@@ -141,14 +142,7 @@ impl Link<'_> {
         let (outcome, said) = judged;
         if outcome == PushOutcome::Ok {
             // the remote holds it, whatever went wrong afterwards
-            self.git(
-                &[
-                    OsStr::new("update-ref"),
-                    REMOTE_REF.as_ref(),
-                    commit.as_ref(),
-                ],
-                None,
-            )?;
+            self.keep_published(&commit)?;
             self.last_commit = Some(commit);
             failpoints.hit("push.after-ok");
             return Ok(PushOutcome::Ok);

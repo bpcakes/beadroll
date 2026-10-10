@@ -2,6 +2,7 @@
 //! the checkout's branch and commit, and what its repository knows about them.
 
 use beadroll_core::json::{Object, Value};
+use beadroll_git::{Fact, HeadAnswers, head_and_branch};
 
 use crate::error::Error;
 use crate::settings::Settings;
@@ -9,17 +10,17 @@ use crate::workspace::Workspace;
 
 /// The branch and commit the caller is working on (`{"branch", "commit"}`), when the command runs
 /// inside a checkout and the tracked configuration does not turn this off (`"where": false`). A
-/// detached HEAD, or a branch name that is not UTF-8, records no branch.
+/// detached HEAD, or a branch name that is not UTF-8, records no branch. Asked of git each time, as
+/// Python asks when each transaction starts: a branch switched meanwhile is the one recorded.
 pub fn capture_where(ws: &Workspace) -> Result<Option<Value>, Error> {
     if ws.config.get("where") == Some(&Value::Bool(false)) {
         return Ok(None);
     }
-    let git = &ws.settings.git;
-    let head = git.git(["rev-parse", "HEAD"]).run()?;
-    if !head.success() {
+    let HeadAnswers { head, branch } = head_and_branch(&ws.settings.git)?;
+    // `rev-parse HEAD` failed (no commit here): no place, and its branch was not asked
+    let (true, Some(branch)) = (head.success(), branch) else {
         return Ok(None);
-    }
-    let branch = git.git(["rev-parse", "--abbrev-ref", "HEAD"]).run()?;
+    };
     let branch = std::str::from_utf8(&branch.stdout)
         .map(|text| beadroll_core::text::strip(text).to_owned())
         .unwrap_or_default();
@@ -100,10 +101,7 @@ pub fn merged_into_default(settings: &Settings, commit: &str) -> Result<Option<b
 
 /// The object format (`sha1` or `sha256`) of the repository bead runs in; `None` outside one.
 pub fn object_format(settings: &Settings) -> Result<Option<String>, Error> {
-    let probe = settings
-        .git
-        .git(["rev-parse", "--show-object-format"])
-        .run()?;
+    let probe = settings.fact(Fact::ObjectFormat)?;
     let found = if probe.success() {
         probe.stdout_text()
     } else {

@@ -3,7 +3,9 @@
 //! (`xtask/inventory.txt`). Each drives this crate's API in this process (`Link`, `Tx`, `locked`,
 //! `coordinated`, `synchronise`) on one machine's store, while the machines around it run `bead`.
 //! Where Python patched a function to inject a fault, a failpoint does it, and the registry reaches
-//! the API through `Settings`, never through the process environment (§4.5).
+//! the API through `Settings`, never through the process environment (§4.5). Beside them, `link`
+//! checks what Python has no counterpart of: the long-lived gits a link keeps (Appendix B) end with
+//! it.
 //!
 //! The machines run `BEAD_UNDER_TEST` when it is set, else the checkout's Python launcher
 //! (`./bead`): Cargo names the `bead` it builds only to the `beadroll` package's own tests, and
@@ -11,5 +13,6 @@
 #![cfg(test)]
 
 mod failpoints;
+mod link;
 mod protocol;
 mod support;

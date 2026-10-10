@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use beadroll_core::text::{py_float, py_int, repr_str};
-use beadroll_git::Env;
+use beadroll_git::{Checkout, Env, Fact, Output};
 
 use crate::error::Error;
 use crate::failpoint::{Failpoints, Fired};
@@ -87,6 +87,9 @@ pub struct Settings {
     /// The environment checkout-side git runs in, starting in `cwd`, and the one `sync.git`'s is
     /// derived from.
     pub git: Env,
+    /// What checkout-side git says about the repository and its configuration, asked once in
+    /// [`Settings::git`] (`docs/RUST-PORT.md` Appendix B): set `git` before the first question.
+    pub checkout: Checkout,
     /// The working directory relative paths are read from.
     pub cwd: PathBuf,
     /// The clock event ids and stamps are read from.
@@ -145,6 +148,7 @@ impl Settings {
             repack_packs: int("BEAD_REPACK_PACKS", REPACK_PACKS)?,
             // git starts where relative paths are read from: the checkout the caller names
             git: Env::new(vars.clone(), cwd.clone(), tmp),
+            checkout: Checkout::default(),
             cwd: cwd.unwrap_or_else(|| PathBuf::from(".")),
             user_home,
             clock: Clock::with_failpoints(Arc::clone(&failpoints)),
@@ -156,6 +160,11 @@ impl Settings {
     /// `os.environ.get(name)` read for its truth).
     pub fn var(&self, name: &str) -> Option<&OsStr> {
         self.git.var(name).filter(|value| !value.is_empty())
+    }
+
+    /// What the checkout's `git rev-parse` prints for `fact` alone ([`Checkout::fact`]).
+    pub fn fact(&self, fact: Fact) -> Result<Output, beadroll_git::Error> {
+        self.checkout.fact(&self.git, fact)
     }
 
     /// The store's root: `BEAD_HOME` (`~` expanded), else `~/.local/state/beadroll`. A `BEAD_HOME`

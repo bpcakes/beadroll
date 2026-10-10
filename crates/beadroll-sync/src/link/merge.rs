@@ -1,7 +1,6 @@
 //! Bringing the remote's journals in (Python's `Link.merge`).
 
 use std::collections::HashMap;
-use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use beadroll_core::replay::replay;
@@ -90,33 +89,18 @@ impl Link<'_> {
             .collect();
         if let Some(tip) = tip {
             let local = self.local_blobs()?;
-            let listing = self
-                .check(&[
-                    OsStr::new("ls-tree"),
-                    "-r".as_ref(),
-                    "-z".as_ref(),
-                    tip.as_ref(),
-                ])?
-                .stdout;
-            for row in listing.split(|b| *b == 0) {
-                // -z: the same names whatever core.quotePath says
-                let Ok(row) = std::str::from_utf8(row) else {
+            for (path, sha) in self.listing(tip)? {
+                let Ok(path) = String::from_utf8(path) else {
                     continue; // a name no bead writes
                 };
-                let Some((meta, path)) = row.split_once('\t') else {
-                    continue; // the empty tail
-                };
-                let Some(sha) = meta.split_whitespace().nth(2) else {
-                    continue;
-                };
-                if attempt_shaped(path) {
-                    if self.merge_attempt(path, sha, &local, &pending)? {
+                if attempt_shaped(&path) {
+                    if self.merge_attempt(&path, &sha, &local, &pending)? {
                         pulled += 1;
                     }
                     continue;
                 }
-                if segment_shaped(path) {
-                    pulled += self.merge_segment(path, sha, &local, own.as_deref())?;
+                if segment_shaped(&path) {
+                    pulled += self.merge_segment(&path, &sha, &local, own.as_deref())?;
                 }
             }
         }

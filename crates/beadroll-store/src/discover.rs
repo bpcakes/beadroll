@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use beadroll_core::json::{Object, Value};
 use beadroll_core::text::repr_str;
-use beadroll_git::{is_local_path, normalize_remote, realpath};
+use beadroll_git::{Fact, Output, is_local_path, normalize_remote, realpath};
 use sha2::{Digest as _, Sha256};
 
 use crate::error::Error;
@@ -112,14 +112,15 @@ pub fn moved_workspaces(settings: &Settings) -> Result<Object, Error> {
     })
 }
 
-/// The checkout's origin: where `git push origin` goes, its first push URL, else its first URL (the
-/// one git fetches from), as configured (`insteadOf` stays git's, not the id's). A relative path is
-/// read from the top of the checkout.
-fn origin(settings: &Settings, root: Option<&Path>) -> Result<OsString, Error> {
-    let proc = settings
-        .git
-        .git(["config", "--get-regexp", r"^remote\.origin\.(push)?url$"])
-        .run()?;
+/// The checkout's origin, from what `git config --get-regexp ^remote\.origin\.(push)?url$`
+/// printed there (`asked`): where `git push origin` goes, its first push URL, else its first URL
+/// (the one git fetches from), as configured (`insteadOf` stays git's, not the id's). A relative
+/// path is read from the top of the checkout.
+fn origin(
+    asked: Result<Output, beadroll_git::Error>,
+    root: Option<&Path>,
+) -> Result<OsString, Error> {
+    let proc = asked?;
     let mut found: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
     if proc.success() {
         for line in split_lines(&proc.stdout) {
@@ -183,8 +184,10 @@ fn split_lines(data: &[u8]) -> Vec<&[u8]> {
 /// `.beadroll.json` names the workspace explicitly; without one, the id is derived from the origin
 /// URL, so every worktree and clone agrees; without an origin, it is local to the repository.
 pub fn find_workspace(settings: &Arc<Settings>) -> Result<Workspace, Error> {
-    let git = &settings.git;
-    let top = git.git(["rev-parse", "--show-toplevel"]).run()?;
+    // origin's URLs, asked each time as Python asks them; the first time, beside the top of the
+    // checkout, which does not wait for them (their answer, or failure, is read where Python asks)
+    let origin_urls = settings.checkout.origin_urls(&settings.git);
+    let top = settings.fact(Fact::Toplevel)?;
     let root: Option<PathBuf> = top.success().then(|| {
         let raw = crate::strip_ascii(&top.stdout);
         pathlib(OsStr::from_bytes(raw))
@@ -212,7 +215,7 @@ pub fn find_workspace(settings: &Arc<Settings>) -> Result<Workspace, Error> {
         }
         _ => committed_config(settings)?,
     };
-    let origin = origin(settings, root.as_deref())?;
+    let origin = origin(origin_urls, root.as_deref())?;
     let cwd = &settings.cwd;
     let normalized = (!origin.is_empty()).then(|| normalize_remote(&origin, cwd));
     let name: Option<OsString> = match &normalized {
@@ -281,10 +284,7 @@ pub fn find_workspace(settings: &Arc<Settings>) -> Result<Workspace, Error> {
 
 /// The id of a repository without an origin: a hash of its common directory, symlinks resolved.
 fn local_id(settings: &Settings) -> Result<String, Error> {
-    let common = settings
-        .git
-        .git(["rev-parse", "--path-format=absolute", "--git-common-dir"])
-        .run()?;
+    let common = settings.fact(Fact::CommonDir)?;
     if !common.success() {
         // git's own reason, in the user's language: no repository here, or one git refuses to use
         // (dubious ownership, with the safe.directory command that fixes it). One line.

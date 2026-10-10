@@ -11,7 +11,8 @@ remote resolution, actor detection, and `view`. Slice 2a (`roll-k2wy.3`) built i
 ## Key entrypoints
 
 - `src/settings.rs`: `Settings` (the variables, the environment git inherits, the working directory,
-  the clock; `home()` with the `BEAD_HOME` rules), `Clock`, `pathlib`.
+  the clock; `home()` with the `BEAD_HOME` rules; `checkout` and `fact`: what checkout-side git says
+  of the repository, asked once, `docs/RUST-PORT.md` Appendix B), `Clock`, `pathlib`.
 - `src/fs.rs`: `private_dirs`, `private_dir`, `write_atomic`, `fsync`, `dir_entries`, `glob_ending`,
   `read_json_text`, `read_json_keeping_surrogates` (a file Python rewrites whole, or whose names
   print as Python prints them) and Python's error texts (`os_error_str`, `utf8_error`).
@@ -46,6 +47,14 @@ remote resolution, actor detection, and `view`. Slice 2a (`roll-k2wy.3`) built i
 - Settings arrive as values (`Settings`); this crate never reads the process environment or the
   working directory (§2.2). A numeric `BEAD_*` setting that is not a number is a `CONFIG` error
   when the settings are built (§5 row 26).
+- The repository's top, common directory and format are asked through `Settings::fact` (one
+  `rev-parse`, each answer what Python's single call prints), never one call a question; the
+  default coordination ref is valid without `check-ref-format`. `git` is set before the first
+  question: the answers are its environment's. Nothing that can change while bead runs is kept:
+  `find_workspace` asks origin's URLs each time it runs (`Checkout::origin_urls`, Python's own
+  call), and `capture_where` asks HEAD and its branch each time it runs (`head_and_branch`):
+  Python's `Tx` asks when each transaction starts, under the store lock, and the event records
+  what HEAD is then.
 - Failpoints reach code through `Settings` only, never the process environment; anything they cannot
   do as written (an unknown point, an action the point cannot take, a second spec for one point)
   is `CONFIG` when the settings are built.

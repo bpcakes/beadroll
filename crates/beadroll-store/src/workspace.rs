@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::text::repr_str;
-use beadroll_git::{exists, is_local_path, normalize_remote, realpath, without_password};
+use beadroll_git::{Fact, exists, is_local_path, normalize_remote, realpath, without_password};
 
 use crate::error::Error;
 use crate::fs::{Unreadable, read_json_text, write_atomic};
@@ -194,7 +194,8 @@ impl Workspace {
     }
 
     /// The coordination ref: the tracked one, else `refs/beads/journal`. It must be a valid ref
-    /// outside branches, tags and remote-tracking refs.
+    /// outside branches, tags and remote-tracking refs: `git check-ref-format` decides, except for
+    /// the default, which is one (`docs/RUST-PORT.md` Appendix B).
     pub fn ref_name(&self) -> Result<String, Error> {
         let name = match self.config.get("ref") {
             Some(value) if value.truthy() => beadroll_core::text::str_of(value),
@@ -204,14 +205,14 @@ impl Workspace {
             || ["refs/heads/", "refs/tags/", "refs/remotes/"]
                 .iter()
                 .any(|code| name.starts_with(code));
-        if bad
-            || !self
-                .settings
-                .git
-                .git(["check-ref-format", name.as_str()])
-                .run()?
-                .success()
-        {
+        let valid = || -> Result<bool, Error> {
+            if name == DEFAULT_REF {
+                return Ok(true);
+            }
+            let checked = self.settings.git.git(["check-ref-format", name.as_str()]);
+            Ok(checked.run()?.success())
+        };
+        if bad || !valid()? {
             return Err(Error::Config(format!(
                 "coordination ref {} must be a valid ref outside branches and tags",
                 repr_str(&name)
@@ -245,7 +246,7 @@ impl Workspace {
         let value = without_password(&value).0;
         let mut value = value;
         if !typed && is_local_path(&value) && !value.as_bytes().starts_with(b"/") {
-            let top = git.git(["rev-parse", "--show-toplevel"]).run()?;
+            let top = self.settings.fact(Fact::Toplevel)?;
             if top.success() {
                 let top = crate::strip_ascii(&top.stdout);
                 // os.path.join(top, value)

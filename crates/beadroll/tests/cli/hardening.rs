@@ -68,7 +68,7 @@ mod g62;
 mod g63;
 mod g64;
 mod g65;
-mod gate;
+pub(crate) mod gate;
 mod v1;
 mod v2;
 mod v3;

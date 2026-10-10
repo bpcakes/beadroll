@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::text::repr;
-use beadroll_git::{exists, realpath, without_password};
+use beadroll_git::{Fact, exists, realpath, without_password};
 use beadroll_store::{Settings, Workspace, find_workspace, uuid7, write_atomic};
 use beadroll_sync::{publish_soon, writing};
 
@@ -86,7 +86,7 @@ fn remote_argument(
     };
     if !remote.as_bytes().starts_with(b"/") && exists(&remote, cwd) && unnamed()? {
         let real = realpath(&remote, cwd);
-        let top = git.git(["rev-parse", "--show-toplevel"]).run()?;
+        let top = settings.fact(Fact::Toplevel)?;
         let top_dir = top.success().then(|| {
             let shown = String::from_utf8_lossy(&top.stdout);
             let shown = beadroll_core::text::strip(&shown).to_owned();
@@ -105,7 +105,9 @@ fn remote_argument(
 /// without a password: none is ever written back, even a hand-set one.
 fn write_tracked(ws: &Workspace, remote: Option<&OsStr>) -> Result<(), Failure> {
     let settings = &ws.settings;
-    let top = settings.git.git(["rev-parse", "--show-toplevel"]).text()?;
+    let top = settings
+        .fact(Fact::Toplevel)?
+        .checked_text(Fact::Toplevel.args())?;
     let mut config: Object = ws.config.clone();
     let workspace = match config.get("workspace") {
         Some(value) if value.truthy() => value.clone(),

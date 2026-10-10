@@ -1,24 +1,34 @@
 //! The coordination ref on one remote, reached through a private bare repository (Python's `Link`).
 //! The pushed history holds the manifest and the journals and nothing else: no code commits are
 //! its ancestors and no code objects are reachable from it.
+//!
+//! Python runs one git for each question it asks `sync.git`. A link keeps a few gits instead
+//! (`docs/RUST-PORT.md` Appendix B): a `cat-file` for every object it reads (`link/read.rs`), and
+//! a `hash-object`, a `mktree` and an `update-ref` for what it writes (`link/write.rs`). Each
+//! answer is the one the git Python runs gives, and that git is run whenever a kept one has no
+//! certain answer, so every failure reads as before. They end with the link, or when `sync.git` is
+//! set aside. The refs a fetch leaves are set by Python's own two calls, at its pace: other
+//! processes' fetches are still reading every ref then ([`Link::keep_fetched`]).
 
 mod merge;
 mod publish;
+mod read;
+mod write;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
-use std::os::unix::ffi::OsStrExt as _;
 use std::path::PathBuf;
 
 use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Value};
 use beadroll_core::text::{repr, str_of};
 use beadroll_git::{
-    CountRules, Env, IoError, local_damage, remote_lacks_objects, sync_env, transport_config,
+    CountRules, Env, Hasher, IoError, Objects, Refs, StoredFormat, Trees, local_damage,
+    remote_lacks_objects, stored_format, sync_env, transport_config, transport_settings,
 };
 use beadroll_store::{
-    REMOTE_REF, Workspace, claim_files, dir_entries, has_suffix, hex_token, object_format,
-    private_dir, read, relative, segment_files,
+    Workspace, claim_files, dir_entries, has_suffix, hex_token, object_format, private_dir, read,
+    relative, segment_files,
 };
 
 use crate::error::Error;
@@ -50,27 +60,40 @@ pub struct Link<'a> {
     pub rebuilt: Option<String>,
     /// The commit the last publish left the remote at.
     pub last_commit: Option<String>,
+    /// `cat-file --batch-command` in `sync.git`: every object read.
+    objects: Objects,
+    /// `hash-object --stdin-paths` in `sync.git`, started after a fetch and ended by the next: one
+    /// kept across a fetch would not look in the pack the fetch brought.
+    hasher: Option<Hasher>,
+    /// `mktree --batch` for the next publish's trees, started after a fetch as `hasher` is.
+    trees: Option<Trees>,
+    /// `update-ref --stdin` in `sync.git`, started once a publish has something to push:
+    /// `refs/beads/remote` after the push.
+    refs: Option<Refs>,
 }
 
 impl<'a> Link<'a> {
     /// The link of `ws` to `remote`: its ref checked, its environment built from the checkout's
-    /// with the checkout's transport settings carried over.
+    /// with the checkout's transport settings carried over, asked of git now, as Python asks them
+    /// each time it makes a link.
     pub fn new(ws: &'a Workspace, remote: &OsStr) -> Result<Link<'a>, Error> {
         let ref_name = ws.ref_name()?;
         private_dir(&ws.dir)?;
         let git_dir = ws.dir.join("sync.git");
-        let carried = transport_config(&ws.settings.git)?;
+        let settings = &ws.settings;
+        let carried = transport_config(&transport_settings(&settings.git)?);
         let int = |text: &str| beadroll_core::text::py_int(text).map(|n| n.to_string());
         let rules = CountRules {
             is_digit: &beadroll_core::text::py_isdigit,
             int: &int,
         };
-        let env = sync_env(&ws.settings.git, &git_dir, &carried, &rules)?;
+        let env = sync_env(&settings.git, &git_dir, &carried, &rules)?;
         Ok(Link {
             ws,
             url: remote.to_owned(),
             ref_name,
             git_dir,
+            objects: Objects::new(&env),
             env,
             object_format: None,
             last_error: String::new(),
@@ -80,6 +103,9 @@ impl<'a> Link<'a> {
             confirmed_events: Vec::new(),
             rebuilt: None,
             last_commit: None,
+            hasher: None,
+            trees: None,
+            refs: None,
         })
     }
 
@@ -128,9 +154,18 @@ impl<'a> Link<'a> {
         ))
     }
 
+    /// Ends the gits this link keeps in `sync.git`: it is being set aside.
+    fn stop_gits(&mut self) {
+        self.objects.stop();
+        self.hasher = None;
+        self.trees = None;
+        self.refs = None;
+    }
+
     /// `sync.git` is a cache of what the remote holds and of `events/`: a damaged one is set aside,
     /// kept for a look, and made again by the next fetch. Lock held.
     pub fn rebuild(&mut self) -> Result<(), Error> {
+        self.stop_gits();
         let aside = self.git_dir.with_file_name(format!(
             "sync.git.damaged-{}",
             self.ws.settings.clock.now_ns()
@@ -177,13 +212,17 @@ impl<'a> Link<'a> {
     /// Fetches exactly the coordination ref: its head, or `None` if nobody has published. The
     /// manifest must name this workspace in format 1.
     pub fn fetch(&mut self) -> Result<Option<String>, Error> {
+        // what this fetch brings may be in a pack a `hash-object` or `mktree` started earlier
+        // would not see
+        self.hasher = None;
+        self.trees = None;
         if self.object_format.is_none() {
             // sync.git hashes like the project, not like this machine's default
             let wanted = object_format(&self.ws.settings)?.unwrap_or_default();
-            let have = self.run(&[OsStr::new("rev-parse"), "--show-object-format".as_ref()])?;
-            if !wanted.is_empty() && have.success() && have.stdout_text() != wanted {
+            if !wanted.is_empty() && self.stored_format_differs(&wanted)? {
                 // made in another format it can never exchange objects with the remote; it holds
                 // nothing that is not also in events/ or on the remote, so it is made again
+                self.stop_gits();
                 let stale = self
                     .git_dir
                     .with_file_name(format!(".sync.{}.stale", hex_token(32)));
@@ -198,6 +237,9 @@ impl<'a> Link<'a> {
             self.object_format = Some(wanted);
         }
         self.ensure_repository()?;
+        // the reader starts while the fetch runs, ready when it is done: it finds names and
+        // objects afresh at each question
+        self.objects.start();
         // Into a ref of this process's own: git fetch updates its destination only if it still
         // holds the value it read first, and every bead process of this store fetches at its own
         // time.
@@ -216,15 +258,34 @@ impl<'a> Link<'a> {
             ])
             .timeout(self.ws.settings.net_timeout)
             .run()?;
+        let nothing = !proc.success() && found_nothing(&proc.stderr);
+        if proc.success() || nothing {
+            // the writers start once the fetch's pack is in place, ready when the round writes
+            self.hasher = Hasher::start(&self.env).ok();
+            self.trees = Trees::start(&self.env).ok();
+        }
         if !proc.success() {
             return self.fetch_failed(&proc.stderr);
         }
-        let tip = self.git(&[OsStr::new("rev-parse"), mine.as_ref()], None)?;
+        let tip = self.fetched_tip(&mine)?;
         // keeps what was fetched reachable
-        self.run(&[OsStr::new("update-ref"), REMOTE_REF.as_ref(), tip.as_ref()])?;
-        self.run(&[OsStr::new("update-ref"), "-d".as_ref(), mine.as_ref()])?;
+        self.keep_fetched(&tip, &mine)?;
         self.check_manifest(&tip)?;
         Ok(Some(tip))
+    }
+
+    /// Whether `sync.git` was made in another object format than `wanted` (Python's `rev-parse
+    /// --show-object-format` there, compared): its config's `extensions.objectformat` when that
+    /// names `wanted`, else git's own answer, a failing git meaning no.
+    fn stored_format_differs(&self, wanted: &str) -> Result<bool, Error> {
+        match stored_format(&self.git_dir) {
+            StoredFormat::Absent => Ok(false),
+            StoredFormat::Named(have) if have == wanted => Ok(false),
+            StoredFormat::Named(_) | StoredFormat::Unsure => {
+                let have = self.run(&[OsStr::new("rev-parse"), "--show-object-format".as_ref()])?;
+                Ok(have.success() && have.stdout_text() != wanted)
+            }
+        }
     }
 
     /// A missing or unfinished `sync.git` (a failed or interrupted init) completed in place, with no
@@ -255,7 +316,7 @@ impl<'a> Link<'a> {
     }
 
     fn fetch_failed(&self, stderr: &[u8]) -> Result<Option<String>, Error> {
-        if stderr.windows(15).any(|w| w == b"find remote ref") {
+        if found_nothing(stderr) {
             return Ok(None);
         }
         let said = String::from_utf8_lossy(stderr);
@@ -277,18 +338,16 @@ impl<'a> Link<'a> {
         )))
     }
 
-    fn check_manifest(&self, tip: &str) -> Result<(), Error> {
-        let (shown_ref, url) = (&self.ref_name, self.url_text());
-        let object = format!("{tip}:manifest.json");
-        let manifest = self.run(&[OsStr::new("cat-file"), "blob".as_ref(), object.as_ref()])?;
-        if !manifest.success() {
+    fn check_manifest(&mut self, tip: &str) -> Result<(), Error> {
+        let (shown_ref, url) = (self.ref_name.clone(), self.url_text());
+        let Some(manifest) = self.manifest(tip)? else {
             return Err(Error::ManifestMissing(format!(
                 "{shown_ref} on {url} has no manifest; refusing to adopt it"
             )));
-        }
+        };
         let unreadable =
             || Error::ManifestMissing(format!("{shown_ref} on {url} has an unreadable manifest"));
-        let Ok(parsed) = json::parse(&manifest.stdout) else {
+        let Ok(parsed) = json::parse(&manifest) else {
             return Err(unreadable());
         };
         let Value::Object(parsed) = parsed.value else {
@@ -320,27 +379,6 @@ impl<'a> Link<'a> {
         Ok(())
     }
 
-    /// Every local journal file in `sync.git` as a blob, by its path in the store.
-    fn local_blobs(&self) -> Result<BTreeMap<String, String>, Error> {
-        let mut files = segment_files(self.ws)?;
-        files.extend(claim_files(self.ws)?);
-        if files.is_empty() {
-            return Ok(BTreeMap::new());
-        }
-        let mut input = Vec::new();
-        for file in &files {
-            input.extend_from_slice(file.as_os_str().as_bytes());
-            input.push(b'\n');
-        }
-        let args = ["hash-object", "-w", "--no-filters", "--stdin-paths"].map(OsStr::new);
-        let shas = self.git(&args, Some(input))?;
-        Ok(files
-            .iter()
-            .zip(shas.split_whitespace())
-            .map(|(file, sha)| (relative(self.ws, file), sha.to_owned()))
-            .collect())
-    }
-
     /// Events of this store the remote does not have, as of the last merge: each segment's lines
     /// less the remote's, and each attempt file the remote lacks.
     pub fn unpublished(&self) -> Result<i64, Error> {
@@ -361,13 +399,11 @@ impl<'a> Link<'a> {
         }
         Ok(count)
     }
+}
 
-    /// The `sync.git` objects of `sha`, read with `cat-file blob`.
-    fn blob(&self, sha: &str) -> Result<Vec<u8>, Error> {
-        Ok(self
-            .check(&[OsStr::new("cat-file"), "blob".as_ref(), sha.as_ref()])?
-            .stdout)
-    }
+/// Whether a failed fetch found no coordination ref: nobody has published.
+fn found_nothing(stderr: &[u8]) -> bool {
+    stderr.windows(15).any(|w| w == b"find remote ref")
 }
 
 /// How many lines `data` holds (Python's `data.count(b"\n")`).

@@ -174,6 +174,23 @@ These were decided deliberately. Report problems *with* them, not their existenc
   that cannot fire as written is `CONFIG` (`RUST-PORT.md` §2.3g, §4.5; the maintainer's decision
   of 2026-10-09). In-crate tests pass the registry in `Settings`; `error(CODE)` at
   `ownership.after-confirm` is their in-process form of Q03's interruption.
+- The Rust binary starts fewer gits than Python (Phase 4, `RUST-PORT.md` Appendix B): one combined
+  `rev-parse` for the repository's top, common directory and format, and in `sync.git` a
+  long-lived `cat-file --batch-command`, `hash-object --stdin-paths` and `mktree --batch`, and an
+  `update-ref --stdin` for the ref after a push, with the listing and `TIP^{tree}` worked out
+  in-process as git works them out. Whatever is not certain goes to the git Python runs for it,
+  and its answer or failure is the one given; `sync.git` gets the same objects and refs. What can
+  change while bead runs is asked by Python's own call where Python asks it: origin's URLs each
+  time the workspace is found, the transport settings each time a link is made, HEAD and its
+  branch (one `rev-parse` where its answer is certain) each time a transaction starts. The two
+  refs after a fetch stay Python's two `update-ref`s, at Python's pace: as one transaction they
+  deleted the fetch's own ref while concurrent fetches of the store still listed every ref, and git
+  failed those (G16; Appendix B). What still differs: which gits run (one more `rev-parse` where a
+  combined one cannot answer: a bare repository or none at discovery, no commit yet or a branch
+  name git finds ambiguous when a transaction starts); origin's `config` runs, read-only, beside
+  the first `rev-parse`, so also in discovery's early-error paths where Python stops before asking
+  for origin; and a SIGKILL while a blob is hashed can leave a file in the temporary directory (the
+  attempt's or the manifest's content, never in the store).
 - `BEAD_HOME` must be absolute; the store's modes are 0700/0600 whatever the umask.
 - Only directories bead creates get private modes; a user-supplied `BEAD_HOME` is chmodded 0700
   on first write (reviewer observation, kept).
