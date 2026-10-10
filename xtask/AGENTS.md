@@ -33,7 +33,8 @@ tests, with `--stress` the stress models and with `--real` the real-export check
 
 - A Python test added, renamed or removed: `inventory.txt`, and `oracle-skip.txt` if it cannot run
   against another binary (the runner and the inventory both refuse a list that disagrees with the
-  suite).
+  suite). Since Phase 3 every Python test has its Rust port, and CI runs `inventory
+  --require-complete`: a new Python test lands with its port, or a `=>` replacement.
 - A new Python test module: `FAST` or `SLOW` in `src/oracle.rs`.
 - A ported test that does not follow the naming rule (a D-class replacement): `=>` in
   `inventory.txt`.
@@ -70,7 +71,7 @@ tests, with `--stress` the stress models and with `--real` the real-export check
 - `cargo xtask check [--stress] [--real]`: the workspace's baseline, one line per step
 - `cargo xtask oracle --bead ./bead`: the suite against Python's launcher; must pass completely
 - `cargo xtask oracle --report`: against the Rust binary, built first; reports only
-- `cargo xtask inventory`
+- `cargo xtask inventory [--require-complete]`: CI requires every Python test ported
 - `cargo xtask golden`: the goldens, from Python's `./bead`
 - `cargo xtask timing --label NAME -- COMMAND`
 - `cargo run --release --package xtask -- timing --replay 10000`

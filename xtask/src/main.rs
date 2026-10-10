@@ -18,6 +18,8 @@
 )]
 
 mod check;
+#[cfg(test)]
+mod ci;
 mod diff;
 mod golden;
 #[cfg(test)]

@@ -933,12 +933,16 @@ The tests that run Rust's in-crate APIs instead of the binary take the same regi
 **Targets** (measured and recorded as evidence by `cargo xtask timing`; as jig's CI uploads its
 test timings, timings are evidence and never gate a test):
 
-| Suite | Rust target | Python now |
-|---|---|---|
-| Fast suite, this Mac (16 cores) | ≤ 2 min | ≈ 20 min |
-| Fast suite, a 4-core CI runner | ≤ 6 min | |
-| Stress | ≤ 10 min | 7–17 min |
-| Full sweep | ≤ 20 min | ≈ 1.7 h |
+| Suite | Rust target | Python now | Rust at Phase 3's close (2026-10-10) |
+|---|---|---|---|
+| Fast suite, this Mac (16 cores) | ≤ 2 min | ≈ 20 min | 3.5 min: 643 tests in 211 s (219 s with Python's launcher as the bead under test) |
+| Fast suite, a 4-core CI runner | ≤ 6 min | | 2.6 min on ubuntu-latest; 11.4 min on a 3-core macos-latest |
+| Stress | ≤ 10 min | 7–17 min | 7.1 and 8.4 min, the two models (Python's first: 10.7 min) |
+| Full sweep | ≤ 20 min | ≈ 1.7 h | 11.4 min on this Mac, the 660 schedules in parallel |
+
+The fast suite misses its target on this Mac; consolidating the git calls (Phase 4, Appendix B) is
+meant to meet it. The Mac's fast-suite times are in `target/timing.jsonl`, written by `cargo xtask
+timing`; CI keeps its own per run.
 
 **How.**
 - **nextest**, process-per-test, as in jig: `nextest-version` in `.config/nextest.toml` is the
@@ -1000,6 +1004,9 @@ workflow that has all of it, with that file's current SHA pins:
 
 Each job joins CI with the phase that gives it something to run: fmt, clippy, test, deny and the
 oracle in Phase 0, diff in Phase 1, mixed-fleet in Phase 2a, and the nightly suites as they land.
+Phase 3 starts the nightly workflow, `.github/workflows/rust-nightly.yml`: the tests under git
+2.40 built from source, against both binaries (V8's replacement, §4.6), and the stress models
+with the full sweep; the volume differential runs and the fuzzing smoke join it in Phase 5.
 The oracle runs twice: against Python's `./bead`, where it must pass completely (the harness
 checking itself), and against the built binary, where it reports the pass count per module and
 gates only from the close of Phase 2d.

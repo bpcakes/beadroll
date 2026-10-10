@@ -1,0 +1,112 @@
+# The Rust port's nightly checks (docs/RUST-PORT.md §4.9): the tests under the oldest git bead
+# supports, 2.40, built from source, beside the newer git every push already tests with
+# (V8_Python312's replacement, §4.6); and the slow suites, the stress models and the full ownership
+# sweep (§4.8). Nothing here touches a real store or a real remote: every test builds its own
+# repositories and bare remotes in a temporary directory.
+name: rust-nightly
+
+on:
+  schedule:
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  oldest-git:
+    name: cargo nextest (ubuntu-latest, git 2.40)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      BEAD_UNDER_TEST: ${{ github.workspace }}/bead
+      GIT_VERSION: "2.40.4"
+      # kernel.org's sha256sums.asc for git-2.40.4.tar.xz
+      GIT_SHA256: 8016dfeb9ba598a2e591270092b642ac70e65660606905277ea8e4c309b65d18
+      # Two tests fail under git 2.40 for reasons filed, not bead's: G26's SHA-256 project cannot
+      # even be pushed by git (roll-k2wy.21), and V1 reads a message older git words differently
+      # (roll-k2wy.17). Every other test runs.
+      KNOWN_ON_OLD_GIT: >-
+        test(=hardening::g26::g26_object_format::sha256_project_syncs)
+        | test(=hardening::v1::v1_push_side_translation::git_keeps_the_rejection_tokens_bead_reads_untranslated)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Install Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.14"
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
+        with:
+          cache: false
+          rustflags: ""
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@13608cbb45b01feb47ef444ab1a42dc41ad56f1a # v2.79.11
+        with:
+          tool: cargo-nextest@0.9.130
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          shared-key: rust-${{ runner.os }}-${{ github.job }}
+      # libcurl: the transport tests reach their HTTP server through git-remote-http.
+      - name: Build git ${{ env.GIT_VERSION }} from source
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libcurl4-openssl-dev libexpat1-dev libssl-dev zlib1g-dev
+          curl -fsSL "https://mirrors.edge.kernel.org/pub/software/scm/git/git-$GIT_VERSION.tar.xz" -o git.tar.xz
+          echo "$GIT_SHA256  git.tar.xz" | sha256sum -c -
+          tar xf git.tar.xz
+          make -C "git-$GIT_VERSION" -j4 prefix="$HOME/git" NO_GETTEXT=1 NO_TCLTK=1 NO_PERL=1 NO_PYTHON=1 all install > git-build.log 2>&1 || { tail -40 git-build.log; exit 1; }
+          echo "$HOME/git/bin" >> "$GITHUB_PATH"
+      - name: The tests run that git
+        run: test "$(git --version)" = "git version $GIT_VERSION"
+      - name: A git identity for the repositories the tests create
+        run: |
+          git config --global user.name check
+          git config --global user.email check@example.invalid
+      - name: Run the tests against Python's launcher
+        run: cargo nextest run --workspace --locked -E "not ($KNOWN_ON_OLD_GIT)"
+      - name: Run the tests against the Rust binary
+        if: ${{ !cancelled() }}
+        run: |
+          cargo build --locked --package beadroll
+          BEAD_UNDER_TEST="$PWD/target/debug/bead" cargo nextest run --workspace --locked -E "not ($KNOWN_ON_OLD_GIT)"
+
+  slow:
+    name: stress models and full sweep (ubuntu-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Install Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.14"
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
+        with:
+          cache: false
+          rustflags: ""
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@13608cbb45b01feb47ef444ab1a42dc41ad56f1a # v2.79.11
+        with:
+          tool: cargo-nextest@0.9.130
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          shared-key: rust-${{ runner.os }}-${{ github.job }}
+      - name: A git identity for the repositories the tests create
+        run: |
+          git config --global user.name check
+          git config --global user.email check@example.invalid
+      # The models' machines run the Rust binary, and the first model's mixed variant alternates
+      # Python's launcher and it, whatever BEAD_UNDER_TEST says.
+      - name: The stress models
+        run: cargo nextest run --locked --package beadroll --run-ignored only -E 'test(/^stress::/)'
+      - name: The full ownership sweep, all 660 schedules
+        if: ${{ !cancelled() }}
+        env:
+          BEAD_SWEEP: full
+        run: cargo nextest run --locked --package beadroll -E 'test(=sweep::sweep::sweep)'

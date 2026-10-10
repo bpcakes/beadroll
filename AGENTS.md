@@ -45,9 +45,11 @@ and how it was closed; `docs/reviews/` holds the reports verbatim.
   cargo nextest run` and `cargo nextest run` (the ported black-box tests pass against Python's
   launcher and against the Rust binary), and `cargo xtask oracle --bead ./bead` and `cargo xtask
   oracle` (this suite through `BEAD_UNDER_TEST`; it must pass completely against both).
-  `.github/workflows/rust.yml` runs them on every push and pull request. `cargo xtask check
-  [--stress] [--real]` runs the workspace's tests, its doctests and the `infra/` drivers' tests in
-  one go, one line per step; at the cutover `./check.sh` becomes a wrapper around it.
+  `.github/workflows/rust.yml` runs them on every push and pull request, and
+  `.github/workflows/rust-nightly.yml` nightly: the tests under git 2.40, the oldest supported,
+  and the stress models with the full sweep. `cargo xtask check [--stress] [--real]` runs the
+  workspace's tests, its doctests and the `infra/` drivers' tests in one go, one line per step; at
+  the cutover `./check.sh` becomes a wrapper around it.
 - The default store `~/.local/state/beadroll` holds this repository's own real tracker. The test
   modules set a scratch `BEAD_HOME`; set one yourself for any manual experiment
   (`export BEAD_HOME=$(mktemp -d)`), and never run `bead`, `br` or `bv` inside other repositories

@@ -185,4 +185,26 @@ mod g52_unreadable_store_is_io {
             assert_eq!(code.as_deref(), Some("IO"), "{}: {message}", args[0]);
         }
     }
+
+    /// G52: with `chmod 0` on the workspace store, `show` and `info` answer `IO`, not
+    /// `NOT_INITIALIZED` for `show` and exit 0 with no issues for `info`, as Python 3.14 answered
+    /// before the fix, its `Path.is_dir()` returning `False` on EACCES. D-class
+    /// (`docs/RUST-PORT.md` §4.6): the Python test ran only on Python 3.14 and later; this one runs
+    /// whichever bead is under test, skipped only as root, as the whole class is.
+    #[test]
+    fn g52_unenterable_store_is_io_not_no_tracker() {
+        if skipped_as_root() {
+            return;
+        }
+        let sandbox = crate::sandbox();
+        let a = Machine::new(&sandbox, "g52-a");
+        a.bead(["init", "--prefix", "ex"]);
+        let key = id(a.bead(["create", "x"]));
+        // its mode comes back before the sandbox goes, which could not remove it otherwise
+        let _mode = Unreadable::new(&a.store(), 0o000);
+        for args in [vec!["show", key.as_str()], vec!["info"]] {
+            let (code, message) = g52_error(&a.run(args.iter().chain(&["--json"])));
+            assert_eq!(code.as_deref(), Some("IO"), "{}: {message}", args[0]);
+        }
+    }
 }

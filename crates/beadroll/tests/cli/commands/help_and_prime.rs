@@ -48,6 +48,49 @@ fn help_command_shows_one_commands_usage() {
     assert_eq!(code(&a.run(["help", "nonsense", "--json"])), "USAGE");
 }
 
+/// The 27 commands, in Python's declaration order.
+const COMMANDS: [&str; 27] = [
+    "init", "import", "export", "create", "update", "claim", "release", "takeover", "claims",
+    "close", "reopen", "delete", "show", "list", "ready", "blocked", "search", "dep", "comments",
+    "lint", "sync", "log", "info", "machines", "help", "prime", "onboard",
+];
+
+/// The commands the bead under test offers, as its parser lists them when it refuses one it does
+/// not have: argparse's `invalid choice: ... (choose from 'init', 'import', ...)`.
+fn offered(a: &Machine) -> Vec<String> {
+    let refused = a.run(["no-such-command", "--json"]);
+    assert_eq!(code(&refused), "USAGE", "{}", refused.stderr);
+    let error = parse_json(&refused.stderr).unwrap();
+    let message = error["error"]["message"].as_str().expect("a message");
+    let choices = message
+        .split_once("(choose from ")
+        .and_then(|(_, rest)| rest.strip_suffix(')'))
+        .unwrap_or_else(|| panic!("no choices in {message:?}"));
+    // quoted as Python 3.14 quotes them; unquoted would do as well
+    let names = choices.split(", ").map(|name| name.trim_matches('\''));
+    names.map(str::to_owned).collect()
+}
+
+/// D-class (`docs/RUST-PORT.md` §4.6): the Python test read the commands from argparse in
+/// process, as the unit test in `src/cli/spec.rs` reads the command table. Here the bead under
+/// test offers the 27 commands, and each answers both `NAME --help` and `help NAME` with its
+/// usage.
+#[test]
+fn every_command_has_help() {
+    let (_sandbox, a) = set_up();
+    let offered = offered(&a);
+    assert!(offered.len() > 20, "{offered:?}");
+    assert_eq!(offered, COMMANDS, "the commands bead offers");
+    for name in COMMANDS {
+        for argv in [[name, "--help"], ["help", name]] {
+            let result = a.run(argv);
+            assert_eq!(result.returncode(), 0, "{argv:?}: {}", result.stderr);
+            let (stdout, usage) = (&result.stdout, format!("usage: bead {name}"));
+            assert!(stdout.contains(&usage), "{argv:?}: {stdout}");
+        }
+    }
+}
+
 #[test]
 fn prime_and_onboard_work_with_and_without_a_tracker() {
     let (sandbox, a) = set_up();

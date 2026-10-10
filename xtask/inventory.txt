@@ -14,15 +14,15 @@
 
 
 # test_hygiene
-D      test_hygiene.RepositoryHygiene.test_tracked_files_name_no_machine_or_user  # an xtask test, hygiene::repository_hygiene: the same patterns over git ls-files (§4.3)
+D      test_hygiene.RepositoryHygiene.test_tracked_files_name_no_machine_or_user => hygiene::repository_hygiene::tracked_files_name_no_machine_or_user  # an xtask test, hygiene::repository_hygiene: the same patterns over git ls-files (§4.3)
 
 # test_check
-D      test_check.CheckScript.test_roundtrip_failure_fails_the_check_and_keeps_diagnostics  # an xtask test of xtask check, check::check_script (§4.3)
-D      test_check.CheckScript.test_success_keeps_the_roundtrip_summary  # an xtask test of xtask check, check::check_script (§4.3)
-D      test_check.CheckScript.test_successful_roundtrip_does_not_hide_a_failed_module  # an xtask test of xtask check, check::check_script (§4.3)
-D      test_check.SweepFailureReporting.test_default_slice_retries_crashed_owner_close_and_delete  # beside the Rust sweep it checks, sweep::sweep_failure_reporting (§4.6)
-D      test_check.SweepFailureReporting.test_every_failed_schedule_fails_the_sweep  # beside the Rust sweep it checks, sweep::sweep_failure_reporting (§4.6)
-D      test_check.SweepFailureReporting.test_successful_schedules_pass  # beside the Rust sweep it checks, sweep::sweep_failure_reporting (§4.6)
+D      test_check.CheckScript.test_roundtrip_failure_fails_the_check_and_keeps_diagnostics => check::check_script::roundtrip_failure_fails_the_check_and_keeps_diagnostics  # an xtask test of xtask check, check::check_script (§4.3)
+D      test_check.CheckScript.test_success_keeps_the_roundtrip_summary => check::check_script::success_keeps_the_roundtrip_summary  # an xtask test of xtask check, check::check_script (§4.3)
+D      test_check.CheckScript.test_successful_roundtrip_does_not_hide_a_failed_module => check::check_script::successful_roundtrip_does_not_hide_a_failed_module  # an xtask test of xtask check, check::check_script (§4.3)
+D      test_check.SweepFailureReporting.test_default_slice_retries_crashed_owner_close_and_delete => sweep::sweep_failure_reporting::default_slice_retries_crashed_owner_close_and_delete  # beside the Rust sweep it checks, sweep::sweep_failure_reporting (§4.6)
+D      test_check.SweepFailureReporting.test_every_failed_schedule_fails_the_sweep => sweep::sweep_failure_reporting::every_failed_schedule_fails_the_sweep  # beside the Rust sweep it checks, sweep::sweep_failure_reporting (§4.6)
+D      test_check.SweepFailureReporting.test_successful_schedules_pass => sweep::sweep_failure_reporting::successful_schedules_pass  # beside the Rust sweep it checks, sweep::sweep_failure_reporting (§4.6)
 
 # test_replay
 B      test_replay.PortAlignment.test_u01_numbers_beyond_a_float_are_not_json_numbers
@@ -169,7 +169,7 @@ A      test_commands.CompatAuditIdentity.test_missing_ps_does_not_crash_nested_a
 C-env  test_commands.CompatAuditIdentity.test_nearest_harness_mocked_process_tree  # C-env as its catalogue row says (review 9); the catalogue's totals table and §4.1 still count it as C-api
 A      test_commands.DeepTreeReview4.test_q08_deep_valid_dependency_tree_does_not_overflow
 A      test_commands.FormatPolicy.test_unapplicable_events_travel_untouched_and_hold_nothing_up
-D      test_commands.HelpAndPrime.test_every_command_has_help  # a unit test over clap's subcommands, and `--help` and `help NAME` for each of the 27 names (§4.6)
+D      test_commands.HelpAndPrime.test_every_command_has_help => cli::spec::tests::every_command_has_help, commands::help_and_prime::every_command_has_help  # a unit test over the command table (src/cli/spec.rs), and NAME --help and help NAME for each of the 27 names (§4.6)
 A      test_commands.HelpAndPrime.test_help_command_shows_one_commands_usage
 A      test_commands.HelpAndPrime.test_no_arguments_and_help_print_the_overview_and_exit_zero
 A      test_commands.HelpAndPrime.test_prime_and_onboard_work_with_and_without_a_tracker
@@ -316,9 +316,9 @@ A      test_hardening.G11_ServerHookTextDoesNotDecideThePushOutcome.test_applied
 C      test_hardening.G12_RetriedEndOfClaimIsPublished.test_g12_retried_close_publishes_the_end_of_the_claim
 C      test_hardening.G12_RetriedEndOfClaimIsPublished.test_g12_retried_delete_publishes_the_end_of_the_claim
 C      test_hardening.G12_RetriedEndOfClaimIsPublished.test_g12_retried_update_status_closed_publishes_the_end_of_the_claim
-D      test_hardening.G13_TrackedConfigIsUtf8WhateverTheLocale.test_ascii_locale_reads_a_valid_utf8_config  # black-box under ISO-8859-1, US-ASCII and C, without the python3 probe (§4.6)
-D      test_hardening.G13_TrackedConfigIsUtf8WhateverTheLocale.test_latin1_claim_excludes_a_utf8_claim  # black-box under ISO-8859-1, US-ASCII and C, without the python3 probe (§4.6)
-D      test_hardening.G13_TrackedConfigIsUtf8WhateverTheLocale.test_latin1_session_resolves_the_committed_ref  # black-box under ISO-8859-1, US-ASCII and C, without the python3 probe (§4.6)
+D      test_hardening.G13_TrackedConfigIsUtf8WhateverTheLocale.test_ascii_locale_reads_a_valid_utf8_config => hardening::g13::g13_tracked_config_is_utf8_whatever_the_locale::ascii_locale_reads_a_valid_utf8_config, hardening::g13::g13_tracked_config_is_utf8_whatever_the_locale::c_locale_reads_a_valid_utf8_config  # black-box under US-ASCII and C, the locales asked of locale -a, not python3 (§4.6)
+D      test_hardening.G13_TrackedConfigIsUtf8WhateverTheLocale.test_latin1_claim_excludes_a_utf8_claim => hardening::g13::g13_tracked_config_is_utf8_whatever_the_locale::latin1_claim_excludes_a_utf8_claim  # black-box under ISO-8859-1, the locale asked of locale -a, not python3 (§4.6)
+D      test_hardening.G13_TrackedConfigIsUtf8WhateverTheLocale.test_latin1_session_resolves_the_committed_ref => hardening::g13::g13_tracked_config_is_utf8_whatever_the_locale::latin1_session_resolves_the_committed_ref  # black-box under ISO-8859-1, the locale asked of locale -a, not python3 (§4.6)
 A      test_hardening.G14_KeyRetractionLostToConcurrentTarget.test_dep_remove_of_a_dangling_key_survives_a_concurrent_target_import
 A      test_hardening.G14_KeyRetractionLostToConcurrentTarget.test_reimport_that_drops_the_dependency_survives_a_concurrent_target_import
 B      test_hardening.G14_KeyRetractionLostToConcurrentTarget.test_replay_does_not_depend_on_the_tie_break_between_the_two_concurrent_events
@@ -418,7 +418,7 @@ A      test_hardening.G51_UnusableTrackedConfigIsAnError.test_following_the_hint
 A      test_hardening.G51_UnusableTrackedConfigIsAnError.test_unresolvable_config_link_is_config_not_absent
 A      test_hardening.G52_UnreadableStoreIsIO.test_g52_create_into_an_unlistable_journal_is_refused_not_lost
 A      test_hardening.G52_UnreadableStoreIsIO.test_g52_store_that_is_not_a_directory_is_io
-D      test_hardening.G52_UnreadableStoreIsIO.test_g52_unenterable_store_is_io_not_no_tracker  # black-box, run unconditionally (§4.6)
+D      test_hardening.G52_UnreadableStoreIsIO.test_g52_unenterable_store_is_io_not_no_tracker => hardening::g52::g52_unreadable_store_is_io::g52_unenterable_store_is_io_not_no_tracker  # black-box, whichever bead and Python, skipped only as root like its class (§4.6)
 A      test_hardening.G52_UnreadableStoreIsIO.test_g52_unlistable_claims_do_not_turn_a_claimed_issue_ready
 A      test_hardening.G52_UnreadableStoreIsIO.test_g52_unlistable_own_journal_is_io_not_no_tracker
 A      test_hardening.G53_UnreadableIdentityIsIo.test_g53_guard_undecodable_identity_stays_a_structured_identity_error
@@ -429,9 +429,9 @@ A      test_hardening.G56_ClosedStdinIsAStructuredError.test_closed_stdin_for_ev
 B      test_hardening.G57_LoneSurrogateInAJournalIsScoped.test_attempt_file_with_a_lone_surrogate_reads_as_text_that_encodes
 A      test_hardening.G57_LoneSurrogateInAJournalIsScoped.test_export_to_a_file_survives_a_lone_surrogate_in_a_journal
 A      test_hardening.G58_FinishedPushIsNotAnUnansweredOne.test_finished_push_is_not_reported_unanswered_when_a_helper_keeps_stderr
-D      test_hardening.G59_HelpIsPlainText.test_command_dash_help_on_a_terminal_writes_no_escape_sequences  # black-box, without the probe: no ESC byte on a PTY, with FORCE_COLOR=1 or --json (§4.6)
-D      test_hardening.G59_HelpIsPlainText.test_forced_colour_reaches_neither_help_text_nor_json  # black-box, without the probe: no ESC byte on a PTY, with FORCE_COLOR=1 or --json (§4.6)
-D      test_hardening.G59_HelpIsPlainText.test_help_command_on_a_terminal_shows_no_colour_codes  # black-box, without the probe: no ESC byte on a PTY, with FORCE_COLOR=1 or --json (§4.6)
+D      test_hardening.G59_HelpIsPlainText.test_command_dash_help_on_a_terminal_writes_no_escape_sequences => hardening::g59::g59_help_is_plain_text::command_dash_help_on_a_terminal_writes_no_escape_sequences  # black-box, without the probe: no ESC byte on a PTY (§4.6)
+D      test_hardening.G59_HelpIsPlainText.test_forced_colour_reaches_neither_help_text_nor_json => hardening::g59::g59_help_is_plain_text::forced_colour_reaches_neither_help_text_nor_json  # black-box, without the probe: no ESC byte with FORCE_COLOR=1 or under --json (§4.6)
+D      test_hardening.G59_HelpIsPlainText.test_help_command_on_a_terminal_shows_no_colour_codes => hardening::g59::g59_help_is_plain_text::help_command_on_a_terminal_shows_no_colour_codes  # black-box, without the probe: no ESC byte on a PTY (§4.6)
 A      test_hardening.G60_ArabicLetterMarkEscaped.test_arabic_letter_mark_is_escaped_like_the_other_bidi_controls
 A      test_hardening.G61_MergedCheckSeesOriginMain.test_commit_on_origin_main_is_merged_although_local_main_is_stale
 A      test_hardening.G61_MergedCheckSeesOriginMain.test_default_branch_with_a_slash_is_looked_up_whole
@@ -481,7 +481,7 @@ B      test_hardening.V7_PasswordShapesFollowGit.test_ssh_logins_bead_keeps_are_
 A      test_hardening.V8_HangupOfTheControllingTerminal.test_hangup_of_the_controlling_terminal_ends_bead_quietly
 A      test_hardening.V8_PruneOnThePrivateSyncRepo.test_prune_now_on_the_private_sync_repo_during_syncs_is_transient
 A      test_hardening.V8_PtyOutputMatchesPipeOutput.test_pty_output_matches_pipe_output_and_escapes_hostile_text
-D      test_hardening.V8_Python312.test_storage_module_passes_with_bead_itself_running_on_312  # becomes the CI matrix: Linux, macOS, git 2.40 and the newest (§4.6)
+D      test_hardening.V8_Python312.test_storage_module_passes_with_bead_itself_running_on_312 => ci::v8_python312::the_suite_runs_on_linux_macos_and_the_oldest_supported_git  # the CI matrix: Linux and macOS on every push, git 2.40 against both binaries nightly, which an xtask test keeps (§4.6)
 A      test_hardening.V8_RecoveryFromAPrunedRemote.test_resetting_the_ref_to_the_last_valid_commit_converges_without_loss
 A      test_hardening.V8_RemoteMaintenance.test_gc_prune_now_aggressive_after_every_remote_operation
 A      test_hardening.V8_RemoteMaintenance.test_repack_and_auto_gc_running_concurrently_with_pushes_and_fetches
