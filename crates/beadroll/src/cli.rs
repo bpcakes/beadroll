@@ -2,13 +2,17 @@
 //! working directory and arguments; it finds the workspace, runs a command, publishes what it
 //! wrote, and renders the result, as JSON with `--json` or as lines for a human.
 
-mod args;
+mod free;
+mod help;
 mod output;
+mod parse;
+mod spec;
 mod tempdir;
 mod texts;
+mod wrap;
 
 use std::collections::BTreeMap;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStrExt as _;
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -16,12 +20,13 @@ use std::sync::Arc;
 use beadroll_core::code::Code;
 use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Format, Int, Object, Value};
+use beadroll_core::text::json_ascii_bytes;
 use beadroll_store::{Settings, detect_actor, find_workspace, nearest_harness};
 use beadroll_sync::{publish_soon, unpublished_count};
 
 use crate::commands::{self, Context, Failure, Outcome};
-use args::{Command, Parsed};
 use output::{Stream, Unwritten, emit, visible};
+use parse::{Namespace, Parsed};
 
 /// The version this binary reports.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -134,23 +139,31 @@ fn execute(request: &Request) -> Result<Option<String>, Failure> {
             texts::OVERVIEW.trim_end_matches('\n').to_owned()
         }));
     }
-    let command = match args::parse(args) {
-        Parsed::Command(command) => command,
+    let ns = match parse::parse(args) {
+        Parsed::Command(ns) => ns,
         Parsed::Help(page) => {
             // `COMMAND --help`: the page, delivered like any output
+            let page = help::render(page, help::columns(settings.var("COLUMNS")));
             return match output::emit_raw(page.as_bytes()) {
                 Ok(()) | Err(Unwritten::Gone) => Ok(None),
                 Err(Unwritten::Failed(error)) => Err(beadroll_git::IoError::bare(&error).into()),
             };
         }
-        Parsed::Usage(message) => return Err(Failure::new(Code::Usage, message)),
+        Parsed::Usage(message) => return Err(Failure::bytes(Code::Usage, message)),
     };
+    let free = ns.spec.workspace_free;
     // git is about to run for the first time: its output files need a directory (Python's
     // gettempdir, found on the first TemporaryFile).
     let tmp = tempdir::temporary_directory(settings.git.vars(), Some(settings.cwd.as_path()))?;
     settings.git = settings.git.with_tmp(tmp);
     let settings = Arc::new(settings);
-    let ws = find_workspace(&settings)?;
+    let ws = match find_workspace(&settings) {
+        Ok(ws) => Some(ws),
+        // help, prime and onboard work anywhere: they pass over bead's own errors, not the
+        // system's
+        Err(error) if free && error.code() != Code::Io => None,
+        Err(error) => return Err(error.into()),
+    };
     let name = request
         .name
         .as_ref()
@@ -158,37 +171,14 @@ fn execute(request: &Request) -> Result<Option<String>, Failure> {
     let actor = detect_actor(&settings, name.as_deref(), &|| {
         nearest_harness(std::os::unix::process::parent_id(), &run_ps)
     });
-    let ctx = Context {
-        ws: &ws,
-        actor: &actor,
+    let (outcome, offline, remote) = match &ws {
+        Some(ws) if !free => dispatch(&Context { ws, actor: &actor }, &ns)?,
+        _ => (free::run(&ns, ws.as_ref(), &actor, &settings)?, false, None),
     };
-    let (outcome, offline, remote) = dispatch(&ctx, *command)?;
-    let Outcome {
-        mut result,
-        mut lines,
-    } = outcome;
-    if ws.wrote()
-        && !offline
-        && let Some(warning) = publish_soon(&ws, offline, remote.as_deref())
-    {
-        // a local write is published at once, as a close is
-        if let Some(lines) = &mut lines {
-            lines.push(warning);
-        }
-    }
-    let behind = unpublished_count(&ws)?.filter(|n| *n != Int::from(0));
-    if let Some(behind) = behind {
-        // after --offline, a remote that did not answer, or on a store that has never published
-        if let Some(Value::Object(result)) = &mut result {
-            result.insert("unpublished".into(), Value::Int(behind.clone()));
-        }
-        if let Some(lines) = &mut lines {
-            let plural = if behind == Int::from(1) { "" } else { "s" };
-            lines.push(format!(
-                "{behind} event{plural} not yet published: bead sync"
-            ));
-        }
-    }
+    let Some((result, lines)) = finish(outcome, ws.as_ref().filter(|_| !free), offline, &remote)?
+    else {
+        return Ok(None);
+    };
     Ok(match (result, lines) {
         (None, None) => None,
         (result, _) if request.as_json => {
@@ -205,80 +195,210 @@ fn execute(request: &Request) -> Result<Option<String>, Failure> {
     })
 }
 
+/// A command's answer: the result `--json` prints and the lines a human reads.
+type Answer = (Option<Value>, Option<Vec<String>>);
+
+/// What follows a command: its own output written (`export`), what it wrote published unless it
+/// was `--offline`, and the count of events not yet published added; the result and lines then,
+/// or `None` when a reader went away.
+fn finish(
+    outcome: Outcome,
+    ws: Option<&beadroll_store::Workspace>,
+    offline: bool,
+    remote: &Option<OsString>,
+) -> Result<Option<Answer>, Failure> {
+    let Outcome {
+        mut result,
+        mut lines,
+        raw,
+    } = outcome;
+    if let Some(raw) = raw {
+        // the command's own output (`export`): written as the command runs, so a reader that went
+        // away ends the run there, and a failed write is the command's IO error
+        match output::emit_raw(raw.as_bytes()) {
+            Ok(()) => {}
+            Err(Unwritten::Gone) => return Ok(None),
+            Err(Unwritten::Failed(error)) => {
+                return Err(beadroll_git::IoError::bare(&error).into());
+            }
+        }
+    }
+    let Some(ws) = ws else {
+        return Ok(Some((result, lines)));
+    };
+    if ws.wrote()
+        && !offline
+        && let Some(warning) = publish_soon(ws, offline, remote.as_deref())
+    {
+        // a local write is published at once, as a close is
+        if let Some(lines) = &mut lines {
+            lines.push(warning);
+        }
+    }
+    let behind = unpublished_count(ws)?.filter(|n| *n != Int::from(0));
+    if let Some(behind) = behind {
+        // after --offline, a remote that did not answer, or on a store that has never published
+        if let Some(Value::Object(result)) = &mut result {
+            result.insert("unpublished".into(), Value::Int(behind.clone()));
+        }
+        if let Some(lines) = &mut lines {
+            let plural = if behind == Int::from(1) { "" } else { "s" };
+            lines.push(format!(
+                "{behind} event{plural} not yet published: bead sync"
+            ));
+        }
+    }
+    Ok(Some((result, lines)))
+}
+
 /// Runs the command; with what it says about publishing: whether it was `--offline`, and the
 /// remote it named.
 fn dispatch(
     ctx: &Context<'_>,
-    command: Command,
+    ns: &Namespace,
 ) -> Result<(Outcome, bool, Option<OsString>), Failure> {
-    Ok(match command {
-        Command::Init(a) => {
-            let (offline, remote) = (a.offline, a.remote.clone());
-            let args = commands::InitArgs {
-                prefix: a.prefix,
-                import_path: a.import_path,
-                tracked: a.tracked,
-                remote: a.remote,
-                offline: a.offline,
-            };
-            (commands::init(ctx, args)?, offline, remote)
-        }
-        Command::Create(a) => {
-            let args = commands::CreateArgs {
-                title_pos: a.title_pos,
-                title: a.title,
-                description: a.description,
-                description_file: a.description_file,
-                acceptance_criteria: a.acceptance_criteria,
-                notes: a.notes,
-                design: a.design,
-                priority: a.priority,
-                issue_type: a.issue_type,
-                status: a.status,
-                assignee: a.assignee,
-                estimate: a.estimate,
-                external_ref: a.external_ref,
-                parent: a.parent,
-                labels: a.labels,
-                deps: a.deps,
-                silent: a.silent,
-                offline: a.offline,
-            };
-            (commands::create(ctx, &args)?, args.offline, None)
-        }
-        Command::Show(a) => (commands::show(ctx, &a.ids)?, false, None),
-        Command::List(a) => {
-            let args = commands::ListArgs {
-                status: a.status,
-                all: a.all,
-                deferred: a.deferred,
-                title_contains: a.title_contains,
-                id: a.id,
-                parent: a.parent.into_iter().next(),
-                filters: filters(a.filters, a.limit),
-            };
-            (commands::list(ctx, &args)?, false, None)
-        }
-        Command::Ready(a) => {
-            let args = commands::ReadyArgs {
-                root: a.root,
-                epic: a.epic.into_iter().next(),
-                parent: a.parent.into_iter().next(),
-                filters: filters(a.filters, a.limit),
-            };
-            (commands::ready(ctx, &args)?, false, None)
-        }
-        Command::Sync(a) => (commands::sync(ctx, a.remote.as_ref())?, false, a.remote),
-    })
+    let offline = ns.flag("offline");
+    let remote = ns.text("remote").map(OsStr::to_os_string);
+    let outcome = match ns.spec.name {
+        "init" => commands::init(
+            ctx,
+            commands::InitArgs {
+                prefix: owned(ns, "prefix"),
+                import_path: owned(ns, "import_path"),
+                tracked: ns.flag("tracked"),
+                remote: remote.clone(),
+                offline,
+            },
+        )?,
+        "import" => commands::import(ctx, ns.text("path").unwrap_or_default())?,
+        "export" => commands::export(ctx, ns.text("output"))?,
+        "create" => commands::create(
+            ctx,
+            &commands::CreateArgs {
+                title_pos: owned(ns, "title_pos"),
+                title: owned(ns, "title"),
+                fields: content(ns),
+                labels: ns.texts("labels").to_vec(),
+                deps: ns.texts("deps").to_vec(),
+                silent: ns.flag("silent"),
+            },
+        )?,
+        "update" => commands::update(
+            ctx,
+            &commands::UpdateArgs {
+                ids: ns.texts("ids").to_vec(),
+                title: owned(ns, "title"),
+                fields: content(ns),
+                claim: ns.flag("claim"),
+                force: ns.flag("force"),
+                add_label: ns.texts("add_label").to_vec(),
+                remove_label: ns.texts("remove_label").to_vec(),
+                set_labels: owned(ns, "set_labels"),
+                offline,
+                remote: remote.clone(),
+            },
+        )?,
+        name @ ("close" | "reopen" | "delete") => commands::transition(
+            ctx,
+            name,
+            &commands::TransitionArgs {
+                ids: ns.texts("ids").to_vec(),
+                reason: owned(ns, "reason"),
+                force: ns.flag("force"),
+                offline,
+                remote: remote.clone(),
+            },
+        )?,
+        "show" => commands::show(ctx, ns.texts("ids"))?,
+        "list" => commands::list(
+            ctx,
+            &commands::ListArgs {
+                status: ns.texts("status").to_vec(),
+                all: ns.flag("all"),
+                deferred: ns.flag("deferred"),
+                title_contains: owned(ns, "title_contains"),
+                id: ns.texts("id").to_vec(),
+                parent: owned(ns, "parent"),
+                filters: filters(ns),
+            },
+        )?,
+        "ready" => commands::ready(
+            ctx,
+            &commands::ReadyArgs {
+                root: owned(ns, "root"),
+                epic: owned(ns, "epic"),
+                parent: owned(ns, "parent"),
+                filters: filters(ns),
+            },
+        )?,
+        "blocked" => commands::blocked(ctx)?,
+        "search" => commands::search(ctx, ns.text("query").unwrap_or_default(), ns.flag("all"))?,
+        "dep" => commands::dep(
+            ctx,
+            ns.texts("words"),
+            ns.text("type"),
+            ns.flag("blocking_only"),
+        )?,
+        "comments" => commands::comments(
+            ctx,
+            &commands::CommentArgs {
+                words: ns.texts("words").to_vec(),
+                message: owned(ns, "message"),
+                file: owned(ns, "file"),
+                author: owned(ns, "author"),
+            },
+        )?,
+        "lint" => commands::lint(ctx)?,
+        "sync" => commands::sync(ctx, remote.as_ref())?,
+        "log" => commands::log(ctx, ns.text("key"), ns.int("limit"))?,
+        "info" => commands::info(ctx)?,
+        "machines" => commands::machines(ctx, ns.text("name"))?,
+        "claims" => commands::claims(ctx, real_time())?,
+        other => return Err(commands::not_yet(other)),
+    };
+    Ok((outcome, offline, remote))
 }
 
-fn filters(given: args::Filters, limit: Int) -> commands::FilterArgs {
+/// Python's `time.time()`: seconds since the epoch on the real clock, which the `clock` failpoint
+/// does not shift (it shifts `time.time_ns`, which event ids are made from).
+fn real_time() -> f64 {
+    match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+        Ok(since) => since.as_nanos() as f64 / 1e9,
+        Err(before) => -(before.duration().as_nanos() as f64) / 1e9,
+    }
+}
+
+/// A text argument, owned.
+fn owned(ns: &Namespace, dest: &str) -> Option<OsString> {
+    ns.text(dest).map(OsStr::to_os_string)
+}
+
+/// The fields `create` and `update` both set (Python's `content_flags`).
+fn content(ns: &Namespace) -> commands::ContentArgs {
+    commands::ContentArgs {
+        description: owned(ns, "description"),
+        description_file: owned(ns, "description_file"),
+        acceptance_criteria: owned(ns, "acceptance_criteria"),
+        notes: owned(ns, "notes"),
+        design: owned(ns, "design"),
+        priority: owned(ns, "priority"),
+        issue_type: owned(ns, "type"),
+        status: owned(ns, "status"),
+        assignee: owned(ns, "assignee"),
+        estimate: ns.int("estimate").cloned(),
+        external_ref: owned(ns, "external_ref"),
+        parent: owned(ns, "parent"),
+    }
+}
+
+/// The filters `list` and `ready` share.
+fn filters(ns: &Namespace) -> commands::FilterArgs {
     commands::FilterArgs {
-        issue_type: given.issue_type,
-        label: given.label,
-        priority: given.priority,
-        assignee: given.assignee,
-        limit,
+        issue_type: ns.texts("type").to_vec(),
+        label: ns.texts("label").to_vec(),
+        priority: owned(ns, "priority"),
+        assignee: owned(ns, "assignee"),
+        limit: ns.int("limit").cloned().unwrap_or_else(|| Int::from(0)),
     }
 }
 
@@ -300,15 +420,22 @@ fn write(value: &Value, format: Format) -> Result<String, Failure> {
 /// Reports `failure` on standard error: `{"error": {"code", "message"}}` with `--json`, else
 /// `Error: message`. The status is the command's (2 for `USAGE`, else 1), whatever stderr does.
 fn report(failure: &Failure, as_json: bool) -> u8 {
-    let text = if as_json {
-        let mut error = Object::new();
-        error.insert("code".into(), Value::from(failure.code.as_str()));
-        error.insert("message".into(), Value::from(failure.message.as_str()));
-        let mut body = Object::new();
-        body.insert("error".into(), Value::Object(error));
-        json::write(&Value::Object(body), Format::ASCII).unwrap_or_default()
-    } else {
-        format!("Error: {}", visible(&failure.message))
+    let text = match (as_json, &failure.raw) {
+        // bytes that are not UTF-8 escaped as the lone surrogates Python holds them as
+        (true, Some(raw)) => format!(
+            "{{\"error\": {{\"code\": {}, \"message\": {}}}}}",
+            json_ascii_bytes(failure.code.as_str().as_bytes()),
+            json_ascii_bytes(raw)
+        ),
+        (true, None) => {
+            let mut error = Object::new();
+            error.insert("code".into(), Value::from(failure.code.as_str()));
+            error.insert("message".into(), Value::from(failure.message.as_str()));
+            let mut body = Object::new();
+            body.insert("error".into(), Value::Object(error));
+            json::write(&Value::Object(body), Format::ASCII).unwrap_or_default()
+        }
+        (false, _) => format!("Error: {}", visible(&failure.printed())),
     };
     let _ = emit(Some(&text), Stream::Stderr);
     if failure.code == Code::Usage { 2 } else { 1 }

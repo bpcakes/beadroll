@@ -7,17 +7,16 @@ use beadroll_core::text::{repr, str_of};
 use beadroll_core::view::icon;
 use beadroll_store::{merged_into_default, view};
 
-use super::{Context, Failure, Outcome, need_tracker, resolve, texts};
+use super::{Context, Failure, Outcome, need_tracker, resolve_arg};
 
 /// The issues `ids` name in full, each with whether the commit that closed it is on the default
 /// branch.
 pub(crate) fn show(ctx: &Context<'_>, ids: &[OsString]) -> Result<Outcome, Failure> {
-    let keys = texts(ids)?;
     let st = view(ctx.ws)?;
     need_tracker(&st)?;
     let mut result = Vec::new();
-    for key in &keys {
-        let issue = resolve(&st, key)?;
+    for key in ids {
+        let issue = resolve_arg(&st, key)?;
         let mut detail = st.detail(issue);
         if issue.status() == "closed"
             && let Some(at) = detail.get_index_of("closed_on")

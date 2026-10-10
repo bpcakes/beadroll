@@ -31,14 +31,104 @@ pub fn is_printable(c: char) -> bool {
 /// double quote, the quote and backslash escaped, and anything not printable as `\t`, `\n`, `\r`,
 /// `\xhh`, `\uhhhh` or `\Uhhhhhhhh`.
 pub fn repr_str(text: &str) -> String {
-    let quote = if text.contains('\'') && !text.contains('"') {
-        '"'
-    } else {
-        '\''
-    };
-    let mut out = String::with_capacity(text.len() + 2);
+    repr_units(text.chars().map(Ok))
+}
+
+/// Bytes as the string `surrogateescape` decodes them to, as Python decodes a command line or a
+/// path: each character of the UTF-8 in them, and each byte that is not part of it, which Python
+/// keeps as the lone surrogate `U+DC00 + byte`.
+fn units(data: &[u8]) -> Vec<Result<char, u8>> {
+    let mut units = Vec::with_capacity(data.len());
+    let mut rest = data;
+    while !rest.is_empty() {
+        match std::str::from_utf8(rest) {
+            Ok(text) => {
+                units.extend(text.chars().map(Ok));
+                break;
+            }
+            Err(error) => {
+                let (valid, after) = rest.split_at(error.valid_up_to());
+                units.extend(
+                    std::str::from_utf8(valid)
+                        .unwrap_or_default()
+                        .chars()
+                        .map(Ok),
+                );
+                let bad = error.error_len().unwrap_or(after.len());
+                units.extend(after.iter().take(bad).map(|b| Err(*b)));
+                rest = after.get(bad..).unwrap_or_default();
+            }
+        }
+    }
+    units
+}
+
+/// Bytes as Python's `repr()` shows the string `surrogateescape` decodes them to: UTF-8 as
+/// [`repr_str`] shows it, and each byte that is not part of it as the lone surrogate it becomes,
+/// `\udcXX`.
+pub fn repr_bytes(data: &[u8]) -> String {
+    repr_units(units(data).into_iter())
+}
+
+/// Bytes as Python prints the string `surrogateescape` decodes them to on a stream that replaces
+/// what it cannot encode, as bead's are: UTF-8 as it is, and a `?` for each byte that is not.
+pub fn printed_text(data: &[u8]) -> String {
+    units(data)
+        .into_iter()
+        .map(|unit| unit.unwrap_or('?'))
+        .collect()
+}
+
+/// Bytes as `json.dumps(text)` writes the string `surrogateescape` decodes them to, ASCII-escaped
+/// (`ensure_ascii`), quotes included: `\"`, `\\`, `\n` and the like, `\uXXXX` for everything
+/// outside printable ASCII (a surrogate pair beyond the BMP), and `\udcXX` for each byte that is
+/// not UTF-8.
+pub fn json_ascii_bytes(data: &[u8]) -> String {
+    let mut out = String::with_capacity(data.len() + 2);
+    out.push('"');
+    for unit in units(data) {
+        let c = match unit {
+            Ok(c) => c,
+            Err(byte) => {
+                let _ = write!(out, "\\u{:04x}", 0xDC00 | u32::from(byte));
+                continue;
+            }
+        };
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{8}' => out.push_str("\\b"),
+            '\u{c}' => out.push_str("\\f"),
+            ' '..='~' => out.push(c),
+            _ => {
+                let mut pair = [0u16; 2];
+                for half in c.encode_utf16(&mut pair) {
+                    let _ = write!(out, "\\u{half:04x}");
+                }
+            }
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// `repr()` of a string made of characters and of bytes `surrogateescape` kept as lone surrogates.
+fn repr_units(units: impl Iterator<Item = Result<char, u8>> + Clone) -> String {
+    let has = |wanted: char| units.clone().any(|unit| unit == Ok(wanted));
+    let quote = if has('\'') && !has('"') { '"' } else { '\'' };
+    let mut out = String::new();
     out.push(quote);
-    for c in text.chars() {
+    for unit in units {
+        let c = match unit {
+            Ok(c) => c,
+            Err(byte) => {
+                let _ = write!(out, "\\u{:04x}", 0xDC00 | u32::from(byte));
+                continue;
+            }
+        };
         let code = u32::from(c);
         match c {
             _ if c == quote || c == '\\' => {
@@ -181,6 +271,18 @@ mod tests {
             "'\\x7f\\x00\\u200b\\xa0\\u0378é😀\\U000e0001\\\\\\t\\n\\r'"
         );
         assert!(is_printable(' ') && is_printable('é') && !is_printable('\u{2028}'));
+    }
+
+    #[test]
+    fn bytes_that_are_not_utf8_read_as_surrogateescape_makes_them() {
+        // Python: repr(b"a\xe2\x82b'".decode("utf-8", "surrogateescape"))
+        assert_eq!(repr_bytes(b"a\xe2\x82b'"), "\"a\\udce2\\udc82b'\"");
+        assert_eq!(printed_text(b"a\xffb\xe2\x82"), "a?b??");
+        // Python: json.dumps(b'"\\\n\x7f\xc3\xa9\xf0\x9f\x98\x80\xff\x08\x0c\x01'.decode(...))
+        assert_eq!(
+            json_ascii_bytes(b"\"\\\n\x7f\xc3\xa9\xf0\x9f\x98\x80\xff\x08\x0c\x01"),
+            r#""\"\\\n\u007f\u00e9\ud83d\ude00\udcff\b\f\u0001""#
+        );
     }
 
     #[test]

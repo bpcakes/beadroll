@@ -1,0 +1,135 @@
+//! `bead blocked`, `bead search` and `bead lint`: questions about the whole tracker.
+
+use std::ffi::OsStr;
+
+use beadroll_core::event::{DONE, Field};
+use beadroll_core::json::{Object, Value};
+use beadroll_core::state::Issue;
+use beadroll_core::text::str_of;
+use beadroll_store::view;
+
+use super::{Context, Failure, Outcome, need_tracker};
+
+/// Open issues something holds back, by key, each with the issues blocking it.
+pub(crate) fn blocked(ctx: &Context<'_>) -> Result<Outcome, Failure> {
+    let st = view(ctx.ws)?;
+    need_tracker(&st)?;
+    let mut items: Vec<&Issue> = st
+        .issues()
+        .filter(|i| !DONE.contains(&i.status()) && st.is_blocked(i))
+        .collect();
+    items.sort_by(|a, b| a.key().cmp(b.key()));
+    let mut result = Vec::new();
+    let mut lines = Vec::new();
+    for issue in items {
+        let blockers: Vec<String> = st
+            .open_blockers(issue)
+            .iter()
+            .map(|b| b.key().to_owned())
+            .collect();
+        lines.push(format!("{}  ⟵ {}", st.line(issue), blockers.join(", ")));
+        let mut item = st.brief(issue);
+        item.insert(
+            "blocked_by".into(),
+            Value::Array(blockers.into_iter().map(Value::from).collect()),
+        );
+        result.push(Value::Object(item));
+    }
+    if lines.is_empty() {
+        lines.push("Nothing is blocked".to_owned());
+    }
+    Ok(Outcome::new(Value::Array(result), lines))
+}
+
+/// Issues whose key, title, texts or comments contain `query`, whatever the case; open ones
+/// unless `all`. A query that is not UTF-8 is contained in nothing, as Python's lone surrogates
+/// are not.
+pub(crate) fn search(ctx: &Context<'_>, query: &OsStr, all: bool) -> Result<Outcome, Failure> {
+    let st = view(ctx.ws)?;
+    need_tracker(&st)?;
+    let needle = query.to_str().map(str::to_lowercase);
+    let mut hits: Vec<&Issue> = Vec::new();
+    for issue in st.issues() {
+        if DONE.contains(&issue.status()) && !all {
+            continue;
+        }
+        let Some(needle) = &needle else {
+            continue;
+        };
+        let mut haystack: Vec<String> = vec![issue.key().to_owned(), issue.title().to_owned()];
+        for field in [
+            Field::Description,
+            Field::AcceptanceCriteria,
+            Field::Notes,
+            Field::Design,
+            Field::ExternalRef,
+        ] {
+            let text = issue
+                .get(field)
+                .filter(|v| v.truthy())
+                .map(str_of)
+                .unwrap_or_default();
+            haystack.push(text);
+        }
+        for comment in issue.comments() {
+            haystack.push(comment.get("text").map(|t| str_of(&t)).unwrap_or_default());
+        }
+        if haystack
+            .iter()
+            .any(|text| text.to_lowercase().contains(needle.as_str()))
+        {
+            hits.push(issue);
+        }
+    }
+    hits.sort_by(|a, b| {
+        a.priority()
+            .cmp(&b.priority())
+            .then_with(|| a.key().cmp(b.key()))
+    });
+    let result = Value::Array(hits.iter().map(|i| Value::Object(st.brief(i))).collect());
+    let mut lines: Vec<String> = hits.iter().map(|i| st.line(i)).collect();
+    if lines.is_empty() {
+        lines.push("No matches".to_owned());
+    }
+    Ok(Outcome::new(result, lines))
+}
+
+/// Open tasks, bugs and features without acceptance criteria, by key.
+pub(crate) fn lint(ctx: &Context<'_>) -> Result<Outcome, Failure> {
+    let st = view(ctx.ws)?;
+    need_tracker(&st)?;
+    let mut missing: Vec<&Issue> = st
+        .issues()
+        .filter(|i| {
+            !DONE.contains(&i.status())
+                && matches!(i.issue_type(), "task" | "bug" | "feature")
+                && !i.get(Field::AcceptanceCriteria).is_some_and(Value::truthy)
+        })
+        .collect();
+    missing.sort_by(|a, b| a.key().cmp(b.key()));
+    let problem = "missing acceptance criteria";
+    let findings: Vec<Value> = missing
+        .iter()
+        .map(|issue| {
+            let mut item = Object::new();
+            item.insert("id".into(), Value::from(issue.key()));
+            item.insert(
+                "title".into(),
+                issue.get(Field::Title).cloned().unwrap_or(Value::Null),
+            );
+            item.insert("problem".into(), Value::from(problem));
+            Value::Object(item)
+        })
+        .collect();
+    let mut lines: Vec<String> = missing
+        .iter()
+        .map(|issue| format!("{}: {problem}", issue.key()))
+        .collect();
+    if lines.is_empty() {
+        lines.push("Clean".to_owned());
+    }
+    let mut result = Object::new();
+    result.insert("count".into(), Value::from(findings.len() as i64));
+    result.shift_insert(0, "findings".into(), Value::Array(findings));
+    Ok(Outcome::new(result, lines))
+}

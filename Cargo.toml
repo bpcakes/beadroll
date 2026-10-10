@@ -17,14 +17,13 @@ beadroll-git   = { path = "crates/beadroll-git" }
 beadroll-store = { path = "crates/beadroll-store" }
 beadroll-sync  = { path = "crates/beadroll-sync" }
 beadroll-test-support = { path = "crates/beadroll-test-support" }
-clap = { version = "4.5", features = ["derive"] }
 fastrand = "2"
 indexmap = "2"
 libc = "0.2"
 nix = { version = "0.31", default-features = false, features = ["user"] }  # ~NAME in BEAD_HOME: getpwnam_r without unsafe code
 proptest = "1"
 regex-lite = "0.1"                          # git message classifiers, transliterated from sync.py
-rustix = { version = "1", features = ["fs", "process", "system"] }
+rustix = { version = "1", features = ["fs", "process", "system", "termios"] }  # termios: the terminal width help pages wrap at
 sha2 = "0.10"                               # the version studio already builds
 tempfile = "3"
 thiserror = "2"

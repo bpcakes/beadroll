@@ -1,13 +1,27 @@
-//! Bringing a Beads JSONL export in (Python's `import_records`): ids, timestamps, relationships and
+//! Bringing a Beads JSONL export in (Python's `cmd_import` and `import_records`): ids, timestamps, relationships and
 //! unknown fields kept; one invalid record fails the whole import, before anything is written.
 
 use std::ffi::OsStr;
 
 use beadroll_core::import::{Step, Target, plan_import, read_records};
 use beadroll_core::json::{Object, Value};
-use beadroll_sync::Tx;
+use beadroll_sync::{Tx, writing};
 
-use super::{Failure, read_utf8};
+use super::{Context, Failure, Outcome, need_tracker, read_utf8};
+
+/// `bead import PATH`: the export's records brought into this tracker, published at once.
+pub(crate) fn import(ctx: &Context<'_>, path: &OsStr) -> Result<Outcome, Failure> {
+    let count = writing(ctx.ws, ctx.actor, |tx| {
+        need_tracker(tx.state()?)?;
+        import_records(tx, path)
+    })?;
+    let mut result = Object::new();
+    result.insert("imported".into(), Value::from(count as i64));
+    Ok(Outcome::new(
+        result,
+        vec![format!("Imported {count} issues")],
+    ))
+}
 
 /// Emits the events that import the export at `path` (`-`: standard input) into `tx`; how many
 /// records were new.

@@ -450,3 +450,180 @@ fn a_tmpdir_that_does_not_exist_falls_back_as_python_does() {
         );
     }
 }
+
+/// A Beads export with what an import keeps: unknown fields, comments, a closed and a deleted
+/// record, a dependency on a key that is not an issue yet.
+const BEADS: &str = r#"{"id":"ex-m","title":"Imported epic","description":"from br","status":"open","priority":1,"issue_type":"epic","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z","created_by":"seed","labels":["kept"],"source_repo":".","future_field":{"kept":true}}
+{"id":"ex-m.1","title":"Imported child","status":"closed","priority":2,"issue_type":"task","created_at":"2026-01-01T01:00:00Z","updated_at":"2026-01-02T00:00:00Z","closed_at":"2026-01-02T00:00:00Z","close_reason":"done","created_by":"seed","external_ref":"gh-7","dependencies":[{"issue_id":"ex-m.1","depends_on_id":"ex-m","type":"parent-child","created_at":"2026-01-01T01:00:00Z","created_by":"seed","metadata":"{}","thread_id":""},{"issue_id":"ex-m.1","depends_on_id":"ex-later","type":"blocks","created_at":"2026-01-01T01:00:00Z","created_by":"seed"}],"comments":[{"id":41,"issue_id":"ex-m.1","author":"someone","text":"imported comment","created_at":"2026-01-01T02:00:00Z"}]}
+{"id":"ex-gone","title":"Removed","status":"tombstone","priority":3,"issue_type":"bug","created_at":"2026-01-01T03:00:00Z","updated_at":"2026-01-03T00:00:00Z","deleted_at":"2026-01-03T00:00:00Z","deleted_by":"seed","delete_reason":"duplicate","created_by":"seed"}
+"#;
+
+/// Python and Rust export one tracker byte for byte: whichever wrote its events (imports, creates,
+/// updates, labels, dependencies taken back, comments, closes, a delete) and whichever reads the
+/// store, on either machine, to standard output or to a file.
+#[test]
+fn python_and_rust_export_the_same_tracker_byte_for_byte() {
+    let sandbox = crate::sandbox();
+    let (py, rs) = (python(), rust());
+    let p = Machine::new(&sandbox, "py");
+    let r = Machine::new(&sandbox, "rs");
+    let beads = sandbox.root().join("beads.jsonl");
+    std::fs::write(&beads, BEADS).unwrap();
+    let beads = beads.display().to_string();
+    json_as(&py, &p, &["init", "--prefix", "ex", "--import", &beads]);
+    let x = id(&json_as(
+        &py,
+        &p,
+        &["create", "python task", "--parent", "ex-m", "-l", "a,b"],
+    ));
+    json_as(&py, &p, &["comments", "add", &x, "from python"]);
+    json_as(&rs, &r, &["sync"]);
+    // the Rust machine writes with every 2b command that writes
+    let y = id(&json_as(
+        &rs,
+        &r,
+        &["create", "rust task", "-p", "0", "--deps", &x],
+    ));
+    json_as(
+        &rs,
+        &r,
+        &[
+            "update",
+            &y,
+            "--notes",
+            "née\u{2028}line",
+            "--add-label",
+            "rust",
+            "--estimate",
+            "45",
+        ],
+    );
+    json_as(
+        &rs,
+        &r,
+        &["update", &x, "--set-labels", "c", "--parent", &y],
+    );
+    json_as(
+        &rs,
+        &r,
+        &[
+            "comments",
+            "add",
+            &y,
+            "-m",
+            "from rust",
+            "--author",
+            "reviewer",
+        ],
+    );
+    json_as(&rs, &r, &["dep", "add", "ex-m", &y]);
+    json_as(&rs, &r, &["dep", "remove", "ex-m", &y]);
+    json_as(&rs, &r, &["dep", "rm", "ex-m.1", "ex-later"]);
+    json_as(&rs, &r, &["close", &x, "-r", "done in rust"]);
+    json_as(&rs, &r, &["reopen", &x]);
+    let z = id(&json_as(&rs, &r, &["create", "doomed"]));
+    json_as(&rs, &r, &["delete", &z, "-r", "not needed"]);
+    let more = sandbox.root().join("more.jsonl");
+    std::fs::write(
+        &more,
+        r#"{"id":"ex-later","title":"Arrived later","status":"open","priority":2,"issue_type":"task","created_at":"2026-01-04T00:00:00Z","updated_at":"2026-01-04T00:00:00Z","created_by":"seed"}"#,
+    )
+    .unwrap();
+    json_as(&rs, &r, &["import", &more.display().to_string()]);
+    for (bead, machine) in [(&rs, &r), (&py, &p), (&rs, &r)] {
+        json_as(bead, machine, &["sync"]);
+    }
+    let export = |bead: &Path, machine: &Machine| {
+        let out = run_as(bead, machine, &["export"]);
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        out.stdout
+    };
+    let expected = export(&py, &p);
+    assert!(!expected.is_empty());
+    assert_eq!(
+        export(&rs, &p),
+        expected,
+        "Rust exports Python's store differently"
+    );
+    assert_eq!(export(&py, &r), expected, "the machines did not converge");
+    assert_eq!(
+        export(&rs, &r),
+        expected,
+        "Rust exports its own store differently"
+    );
+    let file = r.checkout().join("out.jsonl");
+    json_as(&rs, &r, &["export", "-o", &file.display().to_string()]);
+    assert_eq!(std::fs::read(&file).unwrap(), expected);
+    assert_eq!(everything(&rs, &r), everything(&py, &p));
+}
+
+/// Arguments that are not UTF-8 behave as Python's `surrogateescape` strings do, for either binary:
+/// they match no key, fail only where they would be written (after every other check), and an
+/// error that quotes them prints `?` for each such byte, or `\udcXX` in JSON.
+#[test]
+fn arguments_that_are_not_utf8_answer_as_in_python() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let sandbox = crate::sandbox();
+    let (py, rs) = (python(), rust());
+    let m = Machine::new(&sandbox, "bytes");
+    let ask = |bead: &Path, args: &[&[u8]]| {
+        let args: Vec<&OsStr> = args.iter().map(|a| OsStr::from_bytes(a)).collect();
+        let out = Command::new(bead)
+            .args(&args)
+            .current_dir(m.checkout())
+            .env_clear()
+            .envs(m.env(None, "codex"))
+            .output()
+            .unwrap();
+        (out.status.code(), out.stdout, out.stderr)
+    };
+    let both = |args: &[&[u8]]| {
+        for json in [false, true] {
+            let mut all = args.to_vec();
+            if json {
+                all.push(b"--json");
+            }
+            let python = ask(&py, &all);
+            assert_eq!(ask(&rs, &all), python, "{all:?}");
+        }
+    };
+    // before the tracker exists: a title that cannot be written is not the first problem
+    both(&[b"create", b"t\xff"]);
+    json_as(&py, &m, &["init", "--prefix", "ex"]);
+    let key = id(&json_as(&py, &m, &["create", "seed"]));
+    let key = key.as_bytes();
+    for args in [
+        &[&b"create"[..], b"t", b"x\xff"][..],
+        &[b"create", b"--de=\xff"],
+        &[b"show", b"ex-\xff"],
+        &[b"update", b"\xff", b"--title", b"t"],
+        &[b"update", key, b"--title", b"\xff"],
+        &[
+            b"update",
+            key,
+            b"--add-label",
+            b"a,\xff",
+            b"--status",
+            b"bogus",
+        ],
+        &[b"comments", b"add", key, b"\xff"],
+        &[b"create", b"t", b"--description-file", b"/nonexistent/\xff"],
+        &[b"help", b"\xff"],
+        &[b"list", b"--limit", b"\xff"],
+        &[b"dep", b"add", key, b"ex-\xff"],
+        &[b"dep", b"--type", b"\xff", b"add", key, key],
+        &[b"search", b"\xff"],
+        &[b"close", key, b"-r", b"\xff"],
+    ] {
+        both(args);
+    }
+    assert_eq!(
+        ask(&rs, &[b"export"]),
+        ask(&py, &[b"export"]),
+        "nothing was written"
+    );
+}

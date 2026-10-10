@@ -1,34 +1,64 @@
 //! The commands (Python's `commands.py`): typed arguments in, a result and its human lines out.
 
+mod args;
+mod claims;
+mod comments;
 mod create;
+mod dep;
+mod export;
+mod history;
 mod import;
+mod info;
 mod init;
 mod list;
+mod queries;
 mod show;
 mod sync;
+mod transition;
+mod update;
 
 use std::ffi::{OsStr, OsString};
 use std::io::Read as _;
+use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_core::code::Code;
-use beadroll_core::event::{DONE, STATUSES};
+use beadroll_core::event::DONE;
 use beadroll_core::json::{Int, Object, Value};
 use beadroll_core::op::PyInt;
 use beadroll_core::state::{Issue, State};
-use beadroll_core::text::{repr_str, strip};
+use beadroll_core::text::{printed_text, repr_str, strip};
 use beadroll_store::{ViewError, Workspace};
+use beadroll_sync::Tx;
 
+pub(crate) use args::{
+    ContentArgs, Payload, arg_text, arg_texts, encodable, field_args, resolve_arg, rpartition,
+    split_args,
+};
+pub(crate) use claims::claims;
+pub(crate) use comments::{CommentArgs, comments};
 pub(crate) use create::{CreateArgs, create};
+pub(crate) use dep::dep;
+pub(crate) use export::export;
+pub(crate) use history::{log, machines};
+pub(crate) use import::import;
+pub(crate) use info::info;
 pub(crate) use init::{InitArgs, init};
 pub(crate) use list::{FilterArgs, ListArgs, ReadyArgs, list, ready};
+pub(crate) use queries::{blocked, lint, search};
 pub(crate) use show::show;
 pub(crate) use sync::sync;
+pub(crate) use transition::{TransitionArgs, transition};
+pub(crate) use update::{UpdateArgs, update};
 
 /// A command's failure: the code and message bead reports (Python's `BeadError`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Failure {
     pub(crate) code: Code,
     pub(crate) message: String,
+    /// The message's bytes, when bytes of the command line or of a path in it are not UTF-8
+    /// (`message` shows each as U+FFFD): Python holds them as lone surrogates, which it prints as
+    /// `?` and escapes in JSON as `\udcXX`.
+    pub(crate) raw: Option<Vec<u8>>,
 }
 
 impl Failure {
@@ -36,19 +66,59 @@ impl Failure {
         Failure {
             code,
             message: message.into(),
+            raw: None,
         }
+    }
+
+    /// A failure whose message is `raw`, bytes that may not all be UTF-8.
+    pub(crate) fn bytes(code: Code, raw: Vec<u8>) -> Failure {
+        match String::from_utf8(raw) {
+            Ok(message) => Failure::new(code, message),
+            Err(error) => Failure {
+                code,
+                message: String::from_utf8_lossy(error.as_bytes()).into_owned(),
+                raw: Some(error.into_bytes()),
+            },
+        }
+    }
+
+    /// The message as Python prints it: a byte that is not UTF-8 is a `?`.
+    pub(crate) fn printed(&self) -> String {
+        match &self.raw {
+            Some(raw) => printed_text(raw),
+            None => self.message.clone(),
+        }
+    }
+}
+
+/// An operating-system error's message as Python's command line writes it, `{strerror}: {path}`,
+/// with the path's bytes as they are.
+fn os_failure(error: &beadroll_git::IoError) -> Failure {
+    match &error.path {
+        Some(path) => {
+            let mut raw = format!("{}: ", error.strerror).into_bytes();
+            raw.extend_from_slice(path.as_os_str().as_bytes());
+            Failure::bytes(Code::Io, raw)
+        }
+        None => Failure::new(Code::Io, error.to_string()),
     }
 }
 
 impl From<beadroll_sync::Error> for Failure {
     fn from(error: beadroll_sync::Error) -> Failure {
-        Failure::new(error.code(), error.to_string())
+        match error {
+            beadroll_sync::Error::Store(error) => error.into(),
+            error => Failure::new(error.code(), error.to_string()),
+        }
     }
 }
 
 impl From<beadroll_store::Error> for Failure {
     fn from(error: beadroll_store::Error) -> Failure {
-        Failure::new(error.code(), error.to_string())
+        match &error {
+            beadroll_store::Error::Io(io) => os_failure(io),
+            _ => Failure::new(error.code(), error.to_string()),
+        }
     }
 }
 
@@ -60,7 +130,7 @@ impl From<beadroll_git::Error> for Failure {
 
 impl From<beadroll_git::IoError> for Failure {
     fn from(error: beadroll_git::IoError) -> Failure {
-        Failure::new(Code::Io, error.to_string())
+        os_failure(&error)
     }
 }
 
@@ -85,12 +155,13 @@ impl From<beadroll_core::import::ImportError> for Failure {
     }
 }
 
-/// What a command answers: the result `--json` prints, and the lines a human reads (`None` for a
-/// command that wrote its own output).
+/// What a command answers: the result `--json` prints, and the lines a human reads; or, for a
+/// command that writes its own output (`export`), that output as it is.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Outcome {
     pub(crate) result: Option<Value>,
     pub(crate) lines: Option<Vec<String>>,
+    pub(crate) raw: Option<String>,
 }
 
 impl Outcome {
@@ -98,6 +169,16 @@ impl Outcome {
         Outcome {
             result: Some(result.into()),
             lines: Some(lines),
+            raw: None,
+        }
+    }
+
+    /// Output written as it is, whatever `--json` says, with no result or lines after it.
+    pub(crate) fn raw(text: String) -> Outcome {
+        Outcome {
+            result: None,
+            lines: None,
+            raw: Some(text),
         }
     }
 }
@@ -176,66 +257,52 @@ pub(crate) fn read_utf8(path: &OsStr, what: &str) -> Result<String, Failure> {
         .map_err(|_| Failure::new(Code::Validation, format!("{what} is not valid UTF-8")))
 }
 
-/// The fields `create` and `update` set from their flags, in Python's order.
-pub(crate) struct FieldFlags<'a> {
-    pub(crate) title: Option<&'a OsStr>,
-    pub(crate) description: Option<&'a OsStr>,
-    pub(crate) description_file: Option<&'a OsStr>,
-    pub(crate) acceptance_criteria: Option<&'a OsStr>,
-    pub(crate) notes: Option<&'a OsStr>,
-    pub(crate) design: Option<&'a OsStr>,
-    pub(crate) assignee: Option<&'a OsStr>,
-    pub(crate) external_ref: Option<&'a OsStr>,
-    pub(crate) priority: Option<&'a OsStr>,
-    pub(crate) issue_type: Option<&'a OsStr>,
-    pub(crate) estimate: Option<Int>,
-    pub(crate) status: Option<&'a OsStr>,
+/// Whether `me` ended the issue's last claim by closing or deleting it (Python's `ended_by`). The
+/// run that did so may have died before it published that, so a retry of the command publishes
+/// as promptly as the first run.
+pub(crate) fn ended_by(issue: &Issue, me: &str) -> bool {
+    issue
+        .claim_history()
+        .last()
+        .is_some_and(|last| last.ended_by == me && matches!(last.how, "close" | "delete"))
 }
 
-/// The fields given (Python's `field_args`): texts first, then priority, type, estimate and status.
-pub(crate) fn field_args(flags: &FieldFlags<'_>) -> Result<Object, Failure> {
-    let mut fields = Object::new();
-    let texts = [
-        ("title", flags.title),
-        ("description", flags.description),
-        ("acceptance_criteria", flags.acceptance_criteria),
-        ("notes", flags.notes),
-        ("design", flags.design),
-        ("assignee", flags.assignee),
-        ("external_ref", flags.external_ref),
-    ];
-    for (name, value) in texts {
-        let value = match (name, flags.description_file) {
-            ("description", Some(path)) if !path.is_empty() => Some(read_utf8(path, name)?),
-            _ => value.map(text).transpose()?,
-        };
-        if let Some(value) = value {
-            fields.insert(name.into(), Value::from(value));
-        }
+/// Takes back the edges of `issue` to `to` this writer sees (Python's `remove_edge`); `kind`
+/// `None` is every kind. When one of them is an imported dependency on a key (tagged with the
+/// issue's own create), the key is taken back as well: a concurrent import of the same key that
+/// sorts first keeps the key, and after the merge the imported dependency binds to that copy.
+pub(crate) fn remove_edge(
+    tx: &mut Tx<'_>,
+    st: &State,
+    issue: &Issue,
+    to: &str,
+    kind: Option<&str>,
+) -> Result<(), Failure> {
+    let uid = issue.uid();
+    let imported = issue.dep_tags().iter().any(|((target, k), tags)| {
+        target == to && kind.is_none_or(|kind| kind == k) && tags.contains_key(&uid)
+    });
+    let kind = kind.map_or(Value::Null, Value::from);
+    let mut data = Object::new();
+    data.insert("to".into(), Value::from(to));
+    data.insert("type".into(), kind.clone());
+    tx.emit("dep_remove", Some(&uid.to_string()), data, None)?;
+    if imported {
+        let mut data = Object::new();
+        data.insert("key".into(), Value::from(st.key_of(to)));
+        data.insert("type".into(), kind);
+        tx.emit("dep_remove", Some(&uid.to_string()), data, None)?;
     }
-    if let Some(priority) = flags.priority {
-        fields.insert(
-            "priority".into(),
-            Value::from(parse_priority(&text(priority)?)?),
-        );
-    }
-    if let Some(kind) = flags.issue_type.filter(|t| !t.is_empty()) {
-        fields.insert("issue_type".into(), Value::from(text(kind)?));
-    }
-    if let Some(estimate) = &flags.estimate {
-        fields.insert("estimated_minutes".into(), Value::Int(estimate.clone()));
-    }
-    if let Some(status) = flags.status.filter(|s| !s.is_empty()) {
-        let status = text(status)?;
-        if !STATUSES.contains(&status.as_str()) {
-            return Err(Failure::new(
-                Code::Validation,
-                format!("unknown status {}", repr_str(&status)),
-            ));
-        }
-        fields.insert("status".into(), Value::from(status));
-    }
-    Ok(fields)
+    Ok(())
+}
+
+/// A command the Rust bead does not have yet: the coordinated ones arrive with Phase 2c
+/// (`docs/RUST-PORT.md` §6).
+pub(crate) fn not_yet(what: &str) -> Failure {
+    Failure::new(
+        Code::Usage,
+        format!("{what} is not in this build of bead yet (docs/RUST-PORT.md §6, Phase 2c)"),
+    )
 }
 
 /// The filters `list` and `ready` share (Python's `select`), as given.

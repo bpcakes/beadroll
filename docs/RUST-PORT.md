@@ -158,9 +158,10 @@ checklist the port is reviewed against.
 
 - **Internals.** Anything internal can change, including how many git processes a command starts,
   as long as their observable effects are the same.
-- **Two kinds of text.** Argument-parser error texts and per-command help layout come from clap,
-  not argparse. No test pins them beyond the `usage: bead <command>` line and the help phrases the
-  catalogue lists; the error code `USAGE` and exit 2 are what agents use.
+- **Two kinds of text.** Argument-parser error texts and per-command help layout may differ from
+  Python's: no test pins them beyond the `usage: bead <command>` line and the help phrases the
+  catalogue lists, and the error code `USAGE` and exit 2 are what agents use. Phase 2b ported
+  CPython 3.14's argparse all the same (§2.3h), so they do not differ.
 - **Hostile input.** Where Python's behaviour on hostile input is an accident, the port may differ.
   Each case needs a decision recorded in the ledger in §5, not a silent drift.
 
@@ -181,7 +182,7 @@ beadroll-test-support (dev-dependency of every crate's tests)      xtask (dev to
 | `beadroll-git` | `run_git` and the git half of `base`/`machine`/`sync` | **The only code that starts git.** The runner: own session, timeout with reap or no-reap, output captured to unlinked files, signal names. The environments for the checkout and for `sync.git`. Typed commands. Push-outcome and local-damage classification. Remote URL rules (`without_password`, `normalize_remote`, `is_local_path`). | `tempfile`, `rustix`, `libc`, `regex-lite`, `thiserror` | store, sync, optionally studio |
 | `beadroll-store` | `machine.py`, the loaders in `model.py` | This machine: `BEAD_HOME`; the store's files and modes; lock; atomic writes; segments and torn tails; attempt, pending and receipt files; identity and aliases; workspace discovery and remote resolution; actor detection; `view`; the failpoint registry | core, git, `rustix`, `uuid`, `thiserror` | sync, `beadroll`, local read-only tools |
 | `beadroll-sync` | `sync.py` | Transactions (`Tx`, `writing`); `Link` (fetch, merge, tree, publish, maintain, rebuild); `synchronise`; the ownership protocol (`coordinated`, receipts, fences, settling); `publish_soon`; unpublished counts | core, git, store, `uuid`, `fastrand`, `thiserror` | `beadroll` |
-| `beadroll` | `commands.py`, `cli.py` | The `bead` binary. `commands/` maps typed requests to typed outcomes; `cli/` handles parsing, rendering, output streams and exit codes; `sys` holds the two audited unsafe spots (§2.3f). `main.rs` is one line. | all of the above, `clap`, `rustix`, `libc`, `nix` (the password database, for `~NAME` in `BEAD_HOME`, without unsafe code) | the development machines (`cargo install --path crates/beadroll`, §8) |
+| `beadroll` | `commands.py`, `cli.py` | The `bead` binary. `commands/` maps typed requests to typed outcomes; `cli/` handles parsing, rendering, output streams and exit codes; `sys` holds the two audited unsafe spots (§2.3f). `main.rs` is one line. | all of the above, `rustix` (with `termios`, for the width help pages wrap at), `libc`, `nix` (the password database, for `~NAME` in `BEAD_HOME`, without unsafe code) | the development machines (`cargo install --path crates/beadroll`, §8) |
 | `beadroll-test-support` | `tests/support.py` | `Sandbox`, `Machine`, git and hook fixtures, fake ssh/ps/git writers, failpoint and handshake helpers, event builders | core, `tempfile` | tests (`publish = false`) |
 | `xtask` | `check.sh` and glue | `check`, `oracle`, `diff`, `inventory`, `timing`, `golden` (§4) | — | maintainers, CI (`publish = false`) |
 
@@ -196,7 +197,7 @@ beadroll-test-support (dev-dependency of every crate's tests)      xtask (dev to
 - `core` and `git` compile in parallel; the rest is a short chain.
 - A finer split (JSON, queries or the failpoint registry as separate crates) would widen the
   published API without a consumer.
-- Commands stay in the binary crate, as jig keeps its clap types and runners in its binary
+- Commands stay in the binary crate, as jig keeps its argument types and runners in its binary
   package. No consumer needs an in-process command API yet; the library target exists for the
   binary and its tests.
 - All crates share one version from `[workspace.package]` and none is published (§8).
@@ -391,8 +392,9 @@ So core has a small strict parser and writer:
     probe was tested on this Mac with Rust 1.99: it tells `0<&-` apart from `< /dev/null`.
   - Closed stdout and stderr keep std's `/dev/null` behaviour, which matches Python's.
 - **Arguments** are read with `args_os`. Text arguments stay `OsString` until they are used, so
-  non-UTF-8 input gives exactly `{"code": "VALIDATION", "message": "text is not valid UTF-8"}`
-  with exit 1, not a clap error.
+  non-UTF-8 input fails where Python's `surrogateescape` strings fail: `{"code": "VALIDATION",
+  "message": "text is not valid UTF-8"}` with exit 1 where it would be written, `ISSUE_NOT_FOUND`
+  where it names an issue, never as a parser error.
 
 **g. Fault injection uses failpoints compiled into every build and activated by the environment.**
 - **Syntax.** `BEAD_FAILPOINTS='push.after-ok=exit(99);backoff@always=skip'` is parsed once at start-up.
@@ -407,18 +409,31 @@ So core has a small strict parser and writer:
   release builds, at the cost of a second build for every test command and for the oracle. §4.5
   lists the points and actions.
 
-**h. The CLI uses clap, configured for argparse parity.**
-- **Parsing.**
-  - clap 4.5 with derive, as in jig, hushgit and sealtask.
-  - `infer_long_args(true)`: argparse accepts unambiguous prefixes.
-  - `args_override_self(true)`: argparse keeps the last value.
-  - Explicit "given more than once" errors for `--parent`/`--epic`.
-  - `ready`'s mutually exclusive scope (`ID`, `--epic` or `--parent`).
-  - `ColorChoice::Never`, a help template that starts with lower-case `usage: bead <command>`, and
-    `disable_help_subcommand` (`help` is a bead command).
-  - Every clap error maps to `USAGE` with exit 2.
-- **Pre-parse.** `--json`/`--actor` extraction and `--` handling stay as in Python, before clap
-  runs.
+**h. The CLI is argparse, ported.**
+- **Why not clap.** The plan chose clap, configured for argparse parity, as in jig, hushgit and
+  sealtask. Phase 2b found that no configuration keeps argparse's behaviour (§5 row 13), which
+  classes every argument as an option or a value before it assigns any, and takes positionals
+  greedily up to the next option: `update A --status open B` leaves `B` unrecognised; `-d "- item"`
+  and `-1x` are values; `--silent=yes` is "ignored explicit argument"; `-as open` is `-a -s open`;
+  `--acc` is ambiguous between `--acceptance-criteria` and its alias. clap accepts or refuses each
+  of these differently, so the port follows argparse's algorithm instead, and has no clap.
+- **One table.** `cli/spec.rs` holds every command's arguments as `build_parser` declares them:
+  option strings in order, destination, metavar, `nargs`, action (`store`, `store_true`,
+  `append`, bead's `Once`), type and help text. The parser, the help pages and, from Phase 2c, the
+  receipt signature (argparse's namespace, every destination with its default) are all read from
+  it.
+- **Parsing.** `cli/parse.rs` ports CPython 3.14's `_parse_known_args` for the actions the table
+  uses, with the subparsers action: unambiguous prefixes, the last value of a repeated option,
+  combined short flags and attached values, `--`, "given more than once" for `--parent`/`--epic`,
+  `ready`'s mutually exclusive scope, and argparse's own error texts. Every error is `USAGE` with
+  exit 2. Arguments stay the OS's bytes until a command reads them, as `surrogateescape` keeps
+  them: bytes that are not UTF-8 match no key and fail only where they would be written, and an
+  error that quotes them prints `?` for each, or `\udcXX` in JSON.
+- **Help.** `cli/help.rs` ports `HelpFormatter` (the usage line and its wrapping, the sections,
+  the help column) and `cli/wrap.rs` `textwrap.wrap`, at the width `shutil.get_terminal_size`
+  reads (`COLUMNS`, else the terminal on standard output, else 80) less two. Never coloured.
+- **Pre-parse.** `--json`/`--actor` extraction and `--` handling stay as in Python, before the
+  parser runs.
 - **Rendering.**
   - Each command returns a typed outcome.
   - The outcome renders to an ordered `Value` (Python key order, conditional keys).
@@ -521,14 +536,13 @@ beadroll-git   = { path = "crates/beadroll-git" }
 beadroll-store = { path = "crates/beadroll-store" }
 beadroll-sync  = { path = "crates/beadroll-sync" }
 beadroll-test-support = { path = "crates/beadroll-test-support" }
-clap = { version = "4.5", features = ["derive"] }
 fastrand = "2"
 indexmap = "2"
 libc = "0.2"
 nix = { version = "0.31", default-features = false, features = ["user"] }  # ~NAME in BEAD_HOME
 proptest = "1"
 regex-lite = "0.1"                          # git message classifiers, transliterated from sync.py
-rustix = { version = "1", features = ["fs", "process", "system"] }
+rustix = { version = "1", features = ["fs", "process", "system", "termios"] }
 sha2 = "0.10"                               # the version studio already builds
 tempfile = "3"
 thiserror = "2"
@@ -869,8 +883,9 @@ The tests that run Rust's in-crate APIs instead of the binary take the same regi
   says `usage: bead create`.
 - **V8_Python312:** becomes the CI matrix: Linux and macOS, and the oldest supported git (2.40)
   beside the newest. musl waits for public binaries, which §10 defers.
-- **`HelpAndPrime.test_every_command_has_help`:** a Rust unit test iterates clap's subcommands, and
-  the integration test runs `--help` and `help NAME` for each of the 27 names.
+- **`HelpAndPrime.test_every_command_has_help`:** a Rust unit test iterates the command table
+  (`cli/spec.rs`), and the integration test runs `--help` and `help NAME` for each of the 27
+  names.
 - **`test_check` and `test_hygiene`:** xtask tests (§4.3). The three `RoundtripFailureReporting`
   tests check `infra/roundtrip.py`, which stays Python (§10, decision 6): they move to `infra/`
   beside it, and `xtask check` runs them.
@@ -995,7 +1010,7 @@ chased.
 | 10 | `os.path.realpath` is lenient and pure Python, with no case folding | Remote resolution and comparison | Port the algorithm; never libc `realpath` | keep |
 | 11 | `repr()` of values in `show`'s conflict lines: quote choice, escapes, printability | Human output | Port of the `repr` rules; printability table generated from CPython | keep |
 | 12 | `int()` accepts `" +5 "`, `"5_000"` and non-ASCII digits | `--estimate`, `--limit` | `text::py_int` | keep |
-| 13 | argparse: prefix abbreviations, last value wins, its own error texts and help layout | CLI | clap configured as in §2.3h; texts differ where nothing pins them | keep behaviour |
+| 13 | argparse: prefix abbreviations, last value wins, its own error texts and help layout | CLI | argparse's parser, help formatter and `textwrap` ported (§2.3h): behaviour and texts kept | keep behaviour |
 | 14 | `str(True)` is `True` in human lines (`[PTrue]`) | `list`, `ready`, `show` | `PyInt: Display` | keep |
 | 15 | `OSError` reads `"{strerror}: {filename}"`, and a rename names its target | IO errors | Paths attached at every call; libc `strerror` text | keep |
 | 16 | `json.dumps` dialects | Everywhere | `json::Format` | keep |
