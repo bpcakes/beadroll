@@ -377,7 +377,10 @@ So core has a small strict parser and writer:
   - No other descriptor reaches git: Python starts it with `close_fds=True`. bead marks every
     descriptor it was started with, beyond the standard three, close-on-exec once at start-up
     (`beadroll::sys`), so neither git nor `ps` inherits one; those bead opens itself are
-    close-on-exec already.
+    close-on-exec already. Linux does it in one `close_range(3, ~0, CLOSE_RANGE_CLOEXEC)`, as
+    CPython closes them with `close_range`; elsewhere, or on a kernel before 5.11, bead marks each
+    descriptor `/dev/fd` or `/proc/self/fd` lists, or failing both every number below the soft
+    limit on open files, as CPython's fallback does.
   - The timeout is a waiter thread plus `recv_timeout`. On expiry: `killpg` for a fetch, `kill` of
     the client alone for a push.
   - A signal death is reported as `killed by SIGNAME`.
