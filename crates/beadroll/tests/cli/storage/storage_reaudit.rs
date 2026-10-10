@@ -8,6 +8,8 @@
 //! `pause-until(PATH)` handshake: bead touches `PATH.ready` and waits for `PATH.go`, which the test
 //! watches and opens while bead runs beside it (`started`). A driver that waits at every call for
 //! the whole run is `point@always`; one that waits at its first call only is the plain `point`.
+//! The class's five black-box tests, which damage the store by hand and run the bead under test,
+//! are in `damaged`.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -18,12 +20,17 @@ use beadroll_test_support::{Json, Machine, Run, Sandbox, code, parse_json};
 
 use started::{Gate, Started, wait};
 
+mod damaged;
 mod started;
 
-/// The class's `setUp`: machine `storage-a` has initialised the tracker `ex` and created the issue
-/// the tests work on, `storage survivor`. Returns the machine and the issue's id.
-fn set_up(sandbox: &Sandbox) -> (Machine, String) {
-    let a = crate::rust_only(sandbox, "storage-a");
+/// How a test makes its machines: `Machine::new`, which runs the bead under test, or
+/// `crate::rust_only` for a test that stops bead at a failpoint.
+type Make = fn(&Sandbox, &str) -> Machine;
+
+/// The class's `setUp`: machine `storage-a`, made by `make`, has initialised the tracker `ex` and
+/// created the issue the tests work on, `storage survivor`. Returns the machine and the issue's id.
+fn set_up(sandbox: &Sandbox, make: Make) -> (Machine, String) {
+    let a = make(sandbox, "storage-a");
     a.bead(["init", "--prefix", "ex"]);
     let created = a.bead(["create", "storage survivor"]).expect("the issue");
     let key = created["id"].as_str().expect("the issue's id").to_owned();
@@ -39,20 +46,25 @@ fn own(machine: &Machine) -> String {
         .to_owned()
 }
 
-/// `two`: a publishes its tracker, and a second machine, `storage-b`, syncs it.
-fn two(sandbox: &Sandbox, a: &Machine) -> Machine {
+/// `two`: a publishes its tracker, and a second machine, `storage-b`, made by `make`, syncs it.
+fn two(sandbox: &Sandbox, a: &Machine, make: Make) -> Machine {
     a.bead(["sync"]);
-    let b = crate::rust_only(sandbox, "storage-b");
+    let b = make(sandbox, "storage-b");
     b.bead(["sync"]);
     b
+}
+
+/// The segments of the machine's own journal, in order:
+/// `sorted((store / "events" / own).glob("*.jsonl"))`.
+fn segments(machine: &Machine) -> Vec<PathBuf> {
+    let folder = machine.store().join("events").join(own(machine));
+    glob_ending(&folder, ".jsonl")
 }
 
 /// The machine's own journal, each segment's bytes by its path:
 /// `{p: p.read_bytes() for p in (store / "events" / own).glob("*.jsonl")}`.
 fn journal(machine: &Machine) -> BTreeMap<PathBuf, Vec<u8>> {
-    let folder = machine.store().join("events").join(own(machine));
-    let segments = glob_ending(&folder, ".jsonl");
-    segments
+    segments(machine)
         .into_iter()
         .map(|path| {
             let bytes = std::fs::read(&path).expect("a segment");
@@ -118,8 +130,8 @@ fn identity_temporaries(home: &Path) -> Vec<PathBuf> {
 #[test]
 fn refused_claiming_update_leaves_the_journal_untouched_under_a_reader() {
     let sandbox = crate::sandbox();
-    let (a, key) = set_up(&sandbox);
-    let b = two(&sandbox, &a);
+    let (a, key) = set_up(&sandbox, crate::rust_only);
+    let b = two(&sandbox, &a, crate::rust_only);
     let (publish, read) = (Gate::new(&sandbox, "publish"), Gate::new(&sandbox, "read"));
     let journal_before = journal(&a);
     let update = [
@@ -192,8 +204,8 @@ fn refused_claiming_update_leaves_the_journal_untouched_under_a_reader() {
 #[test]
 fn reader_never_confirms_a_claim_whose_push_was_rejected() {
     let sandbox = crate::sandbox();
-    let (a, key) = set_up(&sandbox);
-    let b = two(&sandbox, &a);
+    let (a, key) = set_up(&sandbox, crate::rust_only);
+    let b = two(&sandbox, &a, crate::rust_only);
     let (publish, read) = (Gate::new(&sandbox, "claim"), Gate::new(&sandbox, "view"));
     let claiming = a.cmd(["claim", &key, "--json"]);
     let mut claimer = Started::start(claiming.env("BEAD_FAILPOINTS", publish.at("publish.before")));
@@ -234,7 +246,7 @@ fn reader_never_confirms_a_claim_whose_push_was_rejected() {
 #[test]
 fn machine_identity_first_use_is_atomic_across_workspaces() {
     let sandbox = crate::sandbox();
-    let _ = set_up(&sandbox);
+    let _ = set_up(&sandbox, crate::rust_only);
     let fresh = crate::rust_only(&sandbox, "identity-fresh");
     let gate = Gate::new(&sandbox, "identity");
     let init = |workspace: &str| {
@@ -290,7 +302,7 @@ fn machine_identity_first_use_is_atomic_across_workspaces() {
 #[test]
 fn machine_identity_can_recover_from_first_use_crash() {
     let sandbox = crate::sandbox();
-    let _ = set_up(&sandbox);
+    let _ = set_up(&sandbox, crate::rust_only);
     let fresh = crate::rust_only(&sandbox, "identity-killed");
     let gate = Gate::new(&sandbox, "identity-killed");
     let init = || {

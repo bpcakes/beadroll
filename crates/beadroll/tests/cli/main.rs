@@ -12,10 +12,12 @@
 
 mod children;
 mod commands;
+mod compat;
 mod golden;
 mod hardening;
 mod mixed;
 mod protocol;
+mod replay;
 mod storage;
 mod stress;
 mod support;

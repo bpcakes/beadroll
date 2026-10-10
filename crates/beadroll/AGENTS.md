@@ -43,10 +43,12 @@ mixed-fleet tests.
   for byte and recognised across a switch of binaries; `tests/cli/golden.rs` and
   `golden/normal.rs`: the golden scenarios and their normalisation, against the files in
   `tests/golden/`.
-- `tests/cli/protocol.rs`, `hardening.rs`, `storage.rs`: `test_protocol`, `test_hardening` and
-  `test_storage`, ported; `hardening/gate.rs`: the `pause-until` handshake (§4.5) a test holds
-  bead at. `tests/cli/sweep.rs`: `test_sweep`, the ownership protocol enumerated, its boundaries
-  reached through failpoints (`fault_env`); the twelve-schedule slice runs in the fast suite.
+- `tests/cli/protocol.rs`, `hardening.rs`, `storage.rs`, `compat.rs`, `replay.rs`: the black-box
+  tests of `test_protocol`, `test_hardening`, `test_storage`, `test_compat` (its real-export test
+  `#[ignore]`d) and `test_replay`, ported; `hardening/gate.rs`: the `pause-until` handshake (§4.5)
+  a test holds bead at. `tests/cli/sweep.rs`: `test_sweep`, the ownership protocol enumerated, its
+  boundaries reached through failpoints (`fault_env`); the twelve-schedule slice runs in the fast
+  suite.
   `tests/cli/stress.rs`: `test_stress`'s two randomised models, ignored by default; they draw
   from `stress/python_random.rs`, CPython's `random.Random`, so a seed makes Python's choices.
 - `main.rs`'s `rust_only`: the machine of a test that injects a fault through a failpoint, where
