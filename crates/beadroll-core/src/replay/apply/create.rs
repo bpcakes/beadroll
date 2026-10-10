@@ -1,0 +1,215 @@
+//! A create applied (Python's `apply_event` for `create`, and `materialise_dangling`): the issue it
+//! makes, and the imported dependencies on keys that become edges once the key exists.
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use indexmap::IndexMap;
+
+use crate::event::{Field, REGISTERS};
+use crate::id::EventId;
+use crate::journal::Event;
+use crate::json::{Int, Object, Value};
+use crate::op::Create;
+use crate::state::{Comment, Issue, KeySpace, Knowledge, Rename, State};
+use crate::time::event_time;
+
+use super::dangling_type;
+
+/// Makes the issue a create names.
+pub(super) fn create(
+    st: &mut State,
+    k: &Knowledge,
+    event: &Event,
+    create: &Create,
+    who: &str,
+    when: &str,
+) -> Result<(), KeySpace> {
+    let eid = event.id();
+    let mut key = create.key.clone();
+    if st.by_key.contains_key(&key) {
+        // Two machines minted the same key before they synced.
+        let free = st.free_key(&key, eid)?;
+        st.renames.push(Rename {
+            from: std::mem::replace(&mut key, free.clone()),
+            to: free,
+            replica: event.replica().to_owned(),
+            uid: eid,
+        });
+    }
+    let mut issue = new_issue(event, create, key.clone(), who, when);
+    st.by_key.insert(key, eid);
+    materialise_dangling(k, &st.by_key, &mut issue);
+    let waits = !issue.dangling.is_empty();
+    st.issues.insert(eid, issue);
+    // An import may have named this key before it existed. Each issue's materialising touches that
+    // issue alone, so the issues still waiting are all there is to visit, in any order.
+    let (by_key, issues) = (&st.by_key, &mut st.issues);
+    st.awaiting.retain(|uid| {
+        let Some(other) = issues
+            .get_mut(uid)
+            .filter(|other| !other.dangling.is_empty())
+        else {
+            return false;
+        };
+        materialise_dangling(k, by_key, other);
+        !other.dangling.is_empty()
+    });
+    if waits {
+        st.awaiting.push(eid);
+    }
+    Ok(())
+}
+
+/// The issue a create makes, under `key`: its defaults, then the fields it carries, with a register
+/// for each, and what an import brings (labels, extras, comments, dependencies on keys).
+fn new_issue(event: &Event, create: &Create, key: String, who: &str, when: &str) -> Issue {
+    let eid = event.id();
+    let place = event.get("where").filter(|place| place.truthy()).cloned();
+    let mut origin = Object::new();
+    origin.insert("machine".into(), Value::from(event.replica()));
+    for (name, value) in event
+        .get("actor")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flatten()
+    {
+        origin.insert(name.clone(), value.clone());
+    }
+    if let Some(place) = &place {
+        origin.insert("where".into(), place.clone());
+    }
+    let mut issue = Issue {
+        uid: eid,
+        key,
+        fields: Default::default(),
+        reg: IndexMap::new(),
+        label_tags: create
+            .labels
+            .iter()
+            .map(|label| (label.clone(), BTreeSet::from([eid])))
+            .collect(),
+        dep_tags: IndexMap::new(),
+        labels: BTreeSet::new(),
+        deps: IndexMap::new(),
+        comments: create.comments.iter().map(imported_comment).collect(),
+        extra: create.extra.clone(),
+        dangling: create.dangling.clone(),
+        retracted: BTreeMap::new(),
+        claim: None,
+        claim_generation: Int::from(0),
+        claim_history: Vec::new(),
+        provisional_claims: Vec::new(),
+        lost_claims: Vec::new(),
+        stale: Vec::new(),
+        unconfirmed: Vec::new(),
+        origin,
+        where_: place,
+        closed_on: None,
+    };
+    let defaults = [
+        (Field::Title, Value::from("")),
+        (Field::Status, Value::from("open")),
+        (Field::Priority, Value::from(2)),
+        (Field::IssueType, Value::from("task")),
+        (Field::CreatedAt, Value::from(when)),
+        (Field::CreatedBy, Value::from(who)),
+        (Field::UpdatedAt, Value::from(when)),
+    ];
+    for (field, value) in defaults {
+        issue.set(field, Some(value));
+    }
+    for (field, value) in &create.fields {
+        issue.set(*field, Some(value.clone()));
+    }
+    let given = |field: Field| {
+        create
+            .fields
+            .iter()
+            .find(|(f, _)| *f == field)
+            .map(|(_, value)| value)
+    };
+    if create.imported && given(Field::CreatedBy).is_none() {
+        issue.set(Field::CreatedBy, Some(Value::Null)); // the record's author is unknown, not the importer
+    }
+    for field in REGISTERS {
+        if let Some(value) = given(field) {
+            issue
+                .reg
+                .insert(field, BTreeMap::from([(eid, value.clone())]));
+        }
+    }
+    let mut status = Object::new();
+    status.insert(
+        "status".into(),
+        issue.field(Field::Status).cloned().unwrap_or(Value::Null),
+    );
+    for field in [Field::ClosedAt, Field::CloseReason] {
+        if let Some(value) = given(field) {
+            status.insert(field.name().into(), value.clone());
+        }
+    }
+    issue.reg.insert(
+        Field::Status,
+        BTreeMap::from([(eid, Value::Object(status))]),
+    );
+    issue
+}
+
+/// A comment an imported record carried, as Python keeps it: `{"uid": None, **comment}`.
+fn imported_comment(comment: &Object) -> Comment {
+    let mut members = Object::new();
+    members.insert("uid".into(), Value::Null);
+    members.extend(
+        comment
+            .iter()
+            .map(|(name, value)| (name.clone(), value.clone())),
+    );
+    Comment::Imported(members)
+}
+
+/// An imported dependency on a key that did not exist yet becomes a real edge the moment the key
+/// does, tagged with the create that carried it, so every machine derives the same edge and a later
+/// removal that saw that create can take it away.
+fn materialise_dangling(k: &Knowledge, by_key: &IndexMap<String, EventId>, issue: &mut Issue) {
+    let uid = issue.uid;
+    let mut kept = Vec::new();
+    for dep in std::mem::take(&mut issue.dangling) {
+        let target = dep
+            .get("depends_on_id")
+            .and_then(Value::as_str)
+            .and_then(|key| by_key.get(key));
+        let Some(target) = target.copied().filter(|target| *target != uid) else {
+            kept.push(dep);
+            continue;
+        };
+        let (target, kind) = (target.to_string(), dangling_type(&dep));
+        let removals = [(target.clone(), Some(kind.clone())), (target.clone(), None)];
+        let taken_back = removals
+            .iter()
+            .filter_map(|removed| issue.retracted.get(removed))
+            .flatten()
+            .any(|removal| k.saw(*removal, uid));
+        if taken_back {
+            continue; // taken back before the target existed, by someone who had seen this import
+        }
+        let mut meta = Object::new(); // as dep_add stamps it
+        meta.insert("created_at".into(), Value::from(event_time(uid.millis())));
+        let creator = k
+            .journal
+            .event(uid)
+            .map_or_else(String::new, crate::state::actor_of);
+        meta.insert("created_by".into(), Value::from(creator));
+        for name in ["created_at", "created_by", "metadata", "thread_id"] {
+            if let Some(value) = dep.get(name) {
+                meta.insert(name.into(), value.clone());
+            }
+        }
+        issue
+            .dep_tags
+            .entry((target, kind))
+            .or_default()
+            .entry(uid)
+            .or_insert(Value::Object(meta));
+    }
+    issue.dangling = kept;
+}

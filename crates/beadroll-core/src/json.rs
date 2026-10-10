@@ -45,11 +45,28 @@ pub enum Value {
     Object(Object),
 }
 
+/// How many members an object may have and still be searched in order: comparing a few keys is
+/// quicker than hashing one, and an event and most of what it holds are that small.
+const SCAN: usize = 12;
+
+/// The member `key` of `members`, as `IndexMap::get` finds it (keys are unique): a small object
+/// is searched in order, a larger one by hash.
+pub(crate) fn member<'a>(members: &'a Object, key: &str) -> Option<&'a Value> {
+    if members.len() <= SCAN {
+        members
+            .iter()
+            .find(|(name, _)| name.as_str() == key)
+            .map(|(_, value)| value)
+    } else {
+        members.get(key)
+    }
+}
+
 impl Value {
     /// The member `key`, if this is an object that has it: Python's `value.get(key)` on a dict.
     pub fn get(&self, key: &str) -> Option<&Value> {
         match self {
-            Value::Object(members) => members.get(key),
+            Value::Object(members) => member(members, key),
             _ => None,
         }
     }

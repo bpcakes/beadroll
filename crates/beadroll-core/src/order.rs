@@ -47,75 +47,159 @@ pub fn effective_deps(journal: &Journal, event: &Event) -> Vec<EventId> {
 /// causes, in journal order. A quarantined id whose remaining causes loop back onto it is released:
 /// it applies nothing.
 pub fn causal_order(journal: &Journal) -> (Vec<EventId>, Vec<EventId>) {
-    let events = journal.events();
-    let mut waiting = vec![0i64; events.len()];
-    let mut dependents: Vec<Vec<usize>> = vec![Vec::new(); events.len()];
-    let mut ready = BinaryHeap::new();
-    for (index, event) in events.values().enumerate() {
-        let deps = effective_deps(journal, event);
-        if let Some(count) = waiting.get_mut(index) {
-            *count = i64::try_from(deps.len()).unwrap_or(i64::MAX);
-        }
-        for dep in &deps {
-            // A cause this journal does not hold never applies; the event waits for good.
-            if let Some(slot) = events
-                .get_index_of(dep)
-                .and_then(|at| dependents.get_mut(at))
-            {
-                slot.push(index);
-            }
-        }
-        if deps.is_empty() {
-            ready.push(Reverse(event.id()));
-        }
+    let order = Order::of(journal);
+    let ids = |at: &[usize]| -> Vec<EventId> {
+        at.iter()
+            .filter_map(|at| journal.events().get_index(*at))
+            .map(|(id, _)| *id)
+            .collect()
+    };
+    (ids(&order.ordered), ids(&order.pending))
+}
+
+/// [`causal_order`] by each event's index in the journal's events, with the causes each event
+/// waits for that the journal holds, so that replay need not look an id up again.
+pub(crate) struct Order {
+    /// The events in the order replay applies them.
+    pub(crate) ordered: Vec<usize>,
+    /// The events that wait for missing causes, in journal order.
+    pub(crate) pending: Vec<usize>,
+    /// Every event's effective causes that the journal holds, by index, as listed.
+    causes: Lists,
+}
+
+/// A list of event indices for every event, kept flat.
+struct Lists {
+    /// Where each event's list begins in `items`; the last entry closes the last list.
+    starts: Vec<usize>,
+    items: Vec<usize>,
+}
+
+impl Lists {
+    fn get(&self, at: usize) -> &[usize] {
+        let start = self.starts.get(at).copied().unwrap_or(0);
+        let end = self.starts.get(at + 1).copied().unwrap_or(start);
+        self.items.get(start..end).unwrap_or_default()
     }
-    let mut ordered = Vec::new();
-    let mut applied = vec![false; events.len()];
-    loop {
-        while let Some(Reverse(id)) = ready.pop() {
-            let Some(index) = events.get_index_of(&id) else {
-                continue;
-            };
-            ordered.push(id);
-            if let Some(flag) = applied.get_mut(index) {
-                *flag = true;
+
+    /// The lists turned around: for every event, the events whose lists hold it, ascending, once
+    /// for each time it is held.
+    fn reversed(&self) -> Lists {
+        let count = self.starts.len().saturating_sub(1);
+        let mut starts = vec![0usize; count + 1];
+        for item in &self.items {
+            if let Some(slot) = starts.get_mut(item + 1) {
+                *slot += 1;
             }
-            for &child in dependents.get(index).map(Vec::as_slice).unwrap_or_default() {
-                let Some(count) = waiting.get_mut(child) else {
-                    continue;
-                };
-                *count -= 1;
-                if *count == 0
-                    && let Some((child_id, _)) = events.get_index(child)
+        }
+        for at in 1..starts.len() {
+            let before = starts.get(at - 1).copied().unwrap_or(0);
+            if let Some(slot) = starts.get_mut(at) {
+                *slot += before;
+            }
+        }
+        let mut items = vec![0usize; self.items.len()];
+        let mut filled = starts.clone();
+        for at in 0..count {
+            for item in self.get(at) {
+                if let Some(slot) = filled.get_mut(*item)
+                    && let Some(entry) = items.get_mut(*slot)
                 {
-                    ready.push(Reverse(*child_id));
+                    *entry = at;
+                    *slot += 1;
                 }
             }
         }
-        let stuck: Vec<usize> = journal
-            .quarantined()
-            .keys()
-            .filter_map(|id| events.get_index_of(id))
-            .filter(|at| {
-                !applied.get(*at).copied().unwrap_or(true)
-                    && waiting.get(*at).is_some_and(|w| *w > 0)
-            })
-            .collect();
-        if stuck.is_empty() {
-            break;
-        }
-        for at in stuck {
-            if let (Some(count), Some((id, _))) = (waiting.get_mut(at), events.get_index(at)) {
-                *count = 0;
-                ready.push(Reverse(*id));
+        Lists { starts, items }
+    }
+}
+
+impl Order {
+    /// The effective causes of the event at `at` that the journal holds, by index, as listed
+    /// (a cause named twice is here twice).
+    pub(crate) fn causes(&self, at: usize) -> &[usize] {
+        self.causes.get(at)
+    }
+
+    /// Kahn's algorithm over the effective causes, the ready events in a heap by id, as Python's
+    /// `heapq` takes them.
+    pub(crate) fn of(journal: &Journal) -> Order {
+        let events = journal.events();
+        let count = events.len();
+        // Signed, as Python's counts are: a released id's causes may still count down past zero.
+        let mut waiting = vec![0i64; count];
+        let mut causes = Lists {
+            starts: Vec::with_capacity(count + 1),
+            items: Vec::with_capacity(count),
+        };
+        let mut ready = BinaryHeap::new();
+        for (index, event) in events.values().enumerate() {
+            causes.starts.push(causes.items.len());
+            let listed = journal.quarantined().contains_key(&event.id());
+            let deps = if listed {
+                effective_deps(journal, event)
+            } else {
+                Vec::new()
+            };
+            let deps = if listed { &deps[..] } else { event.deps() };
+            if let Some(count) = waiting.get_mut(index) {
+                // A cause this journal does not hold never applies: the event waits for good.
+                *count = i64::try_from(deps.len()).unwrap_or(i64::MAX);
+            }
+            let held = deps.iter().filter_map(|dep| events.get_index_of(dep));
+            causes.items.extend(held);
+            if deps.is_empty() {
+                ready.push(Reverse((event.id(), index)));
             }
         }
+        causes.starts.push(causes.items.len());
+        let dependents = causes.reversed();
+        let mut ordered = Vec::with_capacity(count);
+        let mut applied = vec![false; count];
+        loop {
+            while let Some(Reverse((_, index))) = ready.pop() {
+                ordered.push(index);
+                if let Some(flag) = applied.get_mut(index) {
+                    *flag = true;
+                }
+                for &child in dependents.get(index) {
+                    let Some(count) = waiting.get_mut(child) else {
+                        continue;
+                    };
+                    *count -= 1;
+                    if *count == 0
+                        && let Some((child_id, _)) = events.get_index(child)
+                    {
+                        ready.push(Reverse((*child_id, child)));
+                    }
+                }
+            }
+            let stuck: Vec<usize> = journal
+                .quarantined()
+                .keys()
+                .filter_map(|id| events.get_index_of(id))
+                .filter(|at| {
+                    !applied.get(*at).copied().unwrap_or(true)
+                        && waiting.get(*at).is_some_and(|w| *w > 0)
+                })
+                .collect();
+            if stuck.is_empty() {
+                break;
+            }
+            for at in stuck {
+                if let (Some(count), Some((id, _))) = (waiting.get_mut(at), events.get_index(at)) {
+                    *count = 0;
+                    ready.push(Reverse((*id, at)));
+                }
+            }
+        }
+        let pending = (0..count)
+            .filter(|at| !applied.get(*at).copied().unwrap_or(false))
+            .collect();
+        Order {
+            ordered,
+            pending,
+            causes,
+        }
     }
-    let pending = events
-        .keys()
-        .enumerate()
-        .filter(|(at, _)| !applied.get(*at).copied().unwrap_or(false))
-        .map(|(_, id)| *id)
-        .collect();
-    (ordered, pending)
 }

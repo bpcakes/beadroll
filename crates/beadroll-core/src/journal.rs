@@ -2,16 +2,19 @@
 //! lines parsed into events, and the events of every file settled together, so that a duplicated or
 //! malformed record is judged the same way whatever order the files were read in.
 
+mod read;
+
 use std::collections::HashSet;
 use std::sync::Arc;
 
 use indexmap::IndexMap;
 
-use crate::event::{event_problem, payload_problem};
+use crate::event::event_problem;
 use crate::id::EventId;
-use crate::json::{self, Format, Object, ParseError, Value};
+use crate::json::{self, Format, Object, Value};
 use crate::op::Op;
-use crate::text::strip_bytes;
+
+pub use read::{loads_line, read_attempt, read_segment};
 
 /// Something a reader could not use: an unreadable line or file, an event that fails validation, a
 /// copy in the wrong journal. Replay reports each as an integrity row.
@@ -33,100 +36,6 @@ impl Problem {
             problem: problem.into(),
         }
     }
-}
-
-/// One journal or attempt line (Python's `loads_line`): the value, with a lone surrogate read as
-/// U+FFFD and reported, because such text can be neither printed nor exported.
-pub fn loads_line(
-    line: &[u8],
-    origin: &str,
-    number: usize,
-    problems: Option<&mut Vec<Problem>>,
-) -> Result<Value, ParseError> {
-    let parsed = json::parse(line)?;
-    if parsed.lone_surrogates
-        && let Some(problems) = problems
-    {
-        let event = parsed
-            .value
-            .get("id")
-            .and_then(Value::as_str)
-            .map(str::to_owned);
-        let origin = format!("{origin}:{}", number + 1);
-        problems.push(Problem::new(
-            event,
-            origin,
-            "text is not valid UTF-8; it reads as U+FFFD",
-        ));
-    }
-    Ok(parsed.value)
-}
-
-/// The events of one segment (Python's `read_segment`). A torn tail (an unreadable last line, which
-/// another process may still be appending) is skipped; any other unreadable line is reported.
-pub fn read_segment(
-    data: &[u8],
-    origin: &str,
-    mut problems: Option<&mut Vec<Problem>>,
-) -> Vec<Value> {
-    let lines: Vec<&[u8]> = data.split(|b| *b == b'\n').collect();
-    let mut events = Vec::new();
-    for (number, line) in lines.iter().enumerate() {
-        if strip_bytes(line).is_empty() {
-            continue;
-        }
-        match loads_line(line, origin, number, problems.as_deref_mut()) {
-            Ok(event) => events.push(event),
-            Err(_) if number + 1 == lines.len() => break,
-            Err(_) => {
-                if let Some(problems) = problems.as_deref_mut() {
-                    let origin = format!("{origin}:{}", number + 1);
-                    problems.push(Problem::new(None, origin, "line is not valid JSON"));
-                }
-            }
-        }
-    }
-    events
-}
-
-/// The events of one attempt file (Python's `read_attempt` on bytes already read): an attempt counts
-/// whole or not at all, so any bad line empties it, reported.
-pub fn read_attempt(
-    data: &[u8],
-    origin: &str,
-    mut problems: Option<&mut Vec<Problem>>,
-) -> Vec<Value> {
-    let mut events = Vec::new();
-    for (number, line) in data.split(|b| *b == b'\n').enumerate() {
-        if strip_bytes(line).is_empty() {
-            continue;
-        }
-        let problem = match loads_line(line, origin, number, problems.as_deref_mut()) {
-            Err(_) => Some("line is not valid JSON".to_owned()),
-            Ok(event) if !matches!(event, Value::Object(_)) => {
-                Some("attempt line is not an event".to_owned())
-            }
-            Ok(event) => match event_problem(&event).or_else(|| payload_problem(&event)) {
-                None => {
-                    events.push(event);
-                    None
-                }
-                problem => problem,
-            },
-        };
-        if let Some(problem) = problem {
-            if let Some(problems) = problems.as_deref_mut() {
-                let origin = format!("{origin}:{}", number + 1);
-                problems.push(Problem::new(
-                    None,
-                    origin,
-                    format!("{problem}; the whole attempt is ignored"),
-                ));
-            }
-            return Vec::new();
-        }
-    }
-    events
 }
 
 /// An event as replay sees it: a valid event, or the stand-in for an id that cannot be used
@@ -221,12 +130,13 @@ impl Event {
 }
 
 /// One record of an id as it was added: the event, the journal it was found in, where, whether it
-/// has a place in that journal's order, and when it was added.
+/// has a place in that journal's order, and when it was added. The records of one file share its
+/// names.
 #[derive(Clone, Debug)]
 struct Record {
     event: Arc<Value>,
-    replica: String,
-    origin: String,
+    replica: Arc<str>,
+    origin: Arc<str>,
     sequenced: bool,
     counter: u64,
 }
@@ -235,7 +145,19 @@ impl Record {
     /// Whether it is a valid event found in its own machine's journal.
     fn own(&self) -> bool {
         event_problem(&self.event).is_none()
-            && self.event.get("replica").and_then(Value::as_str) == Some(&self.replica)
+            && self.event.get("replica").and_then(Value::as_str) == Some(&*self.replica)
+    }
+}
+
+/// `name` shared with `last`, the name the record before gave, when it is the same.
+fn shared(last: &mut Option<Arc<str>>, name: &str) -> Arc<str> {
+    match last {
+        Some(same) if **same == *name => Arc::clone(same),
+        _ => {
+            let name: Arc<str> = Arc::from(name);
+            *last = Some(Arc::clone(&name));
+            name
+        }
     }
 }
 
@@ -252,6 +174,8 @@ pub struct Journal {
     counter: u64,
     settled: bool,
     referenced: HashSet<EventId>,
+    /// The machine and the origin the last record named: the next ones from its file share them.
+    last_names: (Option<Arc<str>>, Option<Arc<str>>),
 }
 
 impl Default for Journal {
@@ -272,6 +196,7 @@ impl Journal {
             counter: 0,
             settled: true,
             referenced: HashSet::new(),
+            last_names: (None, None),
         }
     }
 
@@ -293,12 +218,13 @@ impl Journal {
         let event = Arc::new(event);
         let record = Record {
             event: Arc::clone(&event),
-            replica: replica.to_owned(),
-            origin: origin.to_owned(),
+            replica: shared(&mut self.last_names.0, replica),
+            origin: shared(&mut self.last_names.1, origin),
             sequenced,
             counter: self.counter,
         };
-        let records = self.raw.entry(id).or_default();
+        // Nearly every id has one record: room for that one alone.
+        let records = self.raw.entry(id).or_insert_with(|| Vec::with_capacity(1));
         let fresh = records.is_empty() && record.own();
         records.push(record);
         if self.settled && !self.events.contains_key(&id) && fresh {
@@ -311,7 +237,12 @@ impl Journal {
     fn install(&mut self, id: EventId, event: Arc<Value>, replica: &str, sequenced: bool) {
         let event = Event::new(id, event);
         if sequenced {
-            self.order.entry(replica.to_owned()).or_default().push(id);
+            match self.order.get_mut(replica) {
+                Some(ids) => ids.push(id),
+                None => {
+                    self.order.insert(replica.to_owned(), vec![id]);
+                }
+            }
         }
         self.referenced.extend(event.deps.iter().copied());
         self.events.insert(id, event);
@@ -350,7 +281,7 @@ impl Journal {
                     distinct.push(&record.event);
                 }
             }
-            let (event, replica) = (&placement.event, placement.replica.as_str());
+            let (event, replica) = (&placement.event, &*placement.replica);
             let (origin, sequenced) = (&placement.origin, placement.sequenced);
             if distinct.len() > 1 {
                 self.quarantined
@@ -368,7 +299,7 @@ impl Journal {
             if let Some(problem) = event_problem(event) {
                 self.invalid.push(Problem::new(
                     Some(id.to_string()),
-                    origin.clone(),
+                    origin.to_string(),
                     problem.clone(),
                 ));
                 let stand_in = placeholder(
@@ -389,8 +320,11 @@ impl Journal {
                 let problem = format!(
                     "written by machine {writer} but found only in machine {replica}'s journal"
                 );
-                self.invalid
-                    .push(Problem::new(Some(id.to_string()), origin.clone(), problem));
+                self.invalid.push(Problem::new(
+                    Some(id.to_string()),
+                    origin.to_string(),
+                    problem,
+                ));
                 continue;
             }
             self.install(id, Arc::clone(event), replica, sequenced);

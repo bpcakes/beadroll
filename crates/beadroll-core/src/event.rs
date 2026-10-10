@@ -3,7 +3,7 @@
 //! (`write_problem`). Each answers with Python's message, or `None`.
 
 use crate::id::EventId;
-use crate::json::{Int, Object, Value};
+use crate::json::{Int, Object, Value, member};
 use crate::key::number_too_long;
 use crate::op::PyInt;
 use crate::text::repr_str;
@@ -344,7 +344,7 @@ pub fn data_of(event: &Value) -> Option<&Object> {
 pub fn payload_problem(event: &Value) -> Option<String> {
     let op = event.get("op").and_then(Value::as_str).unwrap_or_default();
     let data = data_of(event);
-    let get = |key: &str| data.and_then(|d| d.get(key));
+    let get = |key: &str| data.and_then(|d| member(d, key));
     if !KNOWN_OPS.contains(&op) {
         return Some(format!("unknown operation {}", repr_str(op)));
     }
@@ -360,7 +360,7 @@ pub fn payload_problem(event: &Value) -> Option<String> {
             Some(fields) => fields_problem(fields, false),
         },
         "dep_add" | "dep_remove" => {
-            let has_to = data.is_some_and(|d| d.contains_key("to"));
+            let has_to = data.is_some_and(|d| member(d, "to").is_some());
             let target = if has_to || op == "dep_add" {
                 get("to")
             } else {
@@ -404,7 +404,7 @@ fn create_problem(
     data: Option<&Object>,
     strings: &dyn Fn(&str) -> bool,
 ) -> Option<String> {
-    let get = |key: &str| data.and_then(|d| d.get(key));
+    let get = |key: &str| data.and_then(|d| member(d, key));
     if event.get("issue") != event.get("id") {
         return Some("create event does not name itself as the issue".into());
     }

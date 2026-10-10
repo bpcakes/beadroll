@@ -71,12 +71,17 @@ usage: cargo xtask <command>
       from Python only; the same tests compare any other bead with them.
 
   timing [--label NAME] [--out FILE] -- COMMAND [ARG...]
-  timing --replay N [--label NAME] [--out FILE]
+  timing --replay N [--ownership] [--label NAME] [--out FILE]
+  timing --load DIR [--no-replay]
       Run COMMAND and append what it took, one JSON line, to FILE (default
       target/timing.jsonl); or replay a parsed journal of N valid events in-process, the best of
       seven runs, with Python's replay of the same journal beside it (run it from a release
-      build: cargo run --release --package xtask -- timing --replay 10000). Timings are
-      evidence, never a gate (docs/RUST-PORT.md §4.7).
+      build: cargo run --release --package xtask -- timing --replay 10000). --ownership makes
+      about half the events claims, takeovers and releases in attempt files. The journal is
+      written under target/timing/ while it is measured, and the record also holds the peak
+      memory (as /usr/bin/time reports it) of a process that loads it from disk and replays it,
+      of one that only loads it, and of Python's doing the same: --load DIR is that process.
+      Timings are evidence, never a gate (docs/RUST-PORT.md §4.7).
 ";
 
 fn main() -> ExitCode {

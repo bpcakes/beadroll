@@ -18,9 +18,13 @@ minting, and reading a published tree. pancake-studio links this crate alone. Ph
   paths).
 - `src/event.rs`: `event_problem`, `payload_problem`, `write_problem`, `Field`; `src/op.rs`: `Op`,
   an event's operation with its typed payload, and `PyInt`.
-- `src/journal.rs`: `read_segment`, `read_attempt`, `Journal`; `src/order.rs`: `causal_order`.
-- `src/replay.rs` (`replay/apply.rs`): `replay`; `src/state.rs` (`state/issue.rs`,
-  `state/seen.rs`): `State`, `Issue`, claims, `saw`.
+- `src/journal.rs` (`journal/read.rs`): `read_segment`, `read_attempt`, `Journal`;
+  `src/order.rs`: `causal_order`, and `Order`, the same by event index.
+- `src/replay.rs` (`replay/apply.rs`, with `apply/claims.rs` and `apply/create.rs`): `replay`;
+  `src/state.rs` (`state/issue.rs`, `state/seen.rs`): `State`, `Issue`, claims, `saw`.
+- `state/seen.rs`: what every event had seen, as one clock per event over chains (each machine's
+  journal, and chains of the unsequenced events of attempt files): the ancestry index behind
+  `saw`, in place of Python's per-event `seen` and `own_anc` bitsets.
 - `src/query.rs`, `src/view.rs`, `src/export.rs`, `src/import.rs`, `src/published.rs`: queries,
   `brief`/`detail`/`line`, `export_records`, `read_records`/`plan_import`, `Tree`.
 - `tests/core/`: the Python suite's tests of the core, under the inventory's naming rule.
@@ -45,6 +49,9 @@ minting, and reading a published tree. pancake-studio links this crate alone. Ph
 - No `HashMap` or `HashSet` iteration order reaches an output; issues keep replay order.
 - Its answers are Python's, proven differentially against CPython (`xtask diff`, §4.2); a
   departure is a decided row in §5, never a drift.
+- `saw` answers what Python's bitsets answer: `state/seen/tests.rs` checks every pair against
+  them on hostile histories. Replay's speed and memory are measured by
+  `cargo run --release --package xtask -- timing --replay N [--ownership]`.
 
 ## Common commands
 

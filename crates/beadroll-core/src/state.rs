@@ -13,7 +13,7 @@ use crate::key;
 use crate::text::str_of;
 
 pub use issue::{Claim, Comment, EndedClaim, Issue, LostClaim, Provisional, Stale};
-pub(crate) use seen::{Bits, Knowledge, Seen};
+pub(crate) use seen::{Knowledge, Place, raise, reached};
 
 /// A problem replay reports: an unusable record, or an event it could not apply.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -95,6 +95,10 @@ pub struct State {
     /// Each parent's children, by the text their parent-child edges name, in replay order: built
     /// once replay ends, when edges no longer change.
     pub(crate) children: std::collections::HashMap<String, Vec<EventId>>,
+    /// The issues that may still hold imported dependencies on keys that were not issues yet, in
+    /// the order created. Only a create gives an issue such dependencies, so a new key need look
+    /// at these alone, not at every issue.
+    pub(crate) awaiting: Vec<EventId>,
 }
 
 impl State {
@@ -112,6 +116,7 @@ impl State {
             comment_count: 0,
             last_by_thread: IndexMap::new(),
             children: std::collections::HashMap::new(),
+            awaiting: Vec::new(),
         }
     }
 
@@ -342,11 +347,24 @@ pub fn actor_label(actor: Option<&Value>, replica: &str) -> String {
     if let Some(name) = member("name").filter(|name| name.truthy()) {
         return str_of(name);
     }
-    let agent = member("agent").map_or_else(|| "human".to_owned(), str_of);
-    match member("thread").filter(|thread| thread.truthy()) {
-        Some(thread) => format!("{agent}:{}@{replica}", str_of(thread)),
-        None => format!("{agent}@{replica}"),
+    // Replay names the writer of every event it applies: built in place, `str()` only for what
+    // is not text already.
+    let push = |label: &mut String, value: &Value| match value {
+        Value::Str(text) => label.push_str(text),
+        other => label.push_str(&str_of(other)),
+    };
+    let mut label = String::with_capacity(24 + replica.len());
+    match member("agent") {
+        Some(agent) => push(&mut label, agent),
+        None => label.push_str("human"),
     }
+    if let Some(thread) = member("thread").filter(|thread| thread.truthy()) {
+        label.push(':');
+        push(&mut label, thread);
+    }
+    label.push('@');
+    label.push_str(replica);
+    label
 }
 
 /// A state is immutable once replayed and shared between threads behind an `Arc` (§2.4).

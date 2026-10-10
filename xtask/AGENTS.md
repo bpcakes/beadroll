@@ -15,7 +15,11 @@ tests, with `--stress` the stress models and with `--real` the real-export check
 - `src/oracle.rs`, `python/oracle.py`, `oracle-skip.txt`: the oracle, its Python runner and the
   tests it leaves out.
 - `src/inventory.rs`, `inventory.txt`: the inventory and its seed, one row per Python test.
-- `src/timing.rs`, `src/timing/replay.rs`: `timing`, and `timing --replay N`.
+- `src/timing.rs`, `src/timing/replay.rs`: `timing`, and `timing --replay N`; `timing/history.rs`:
+  the histories it replays (`--ownership`: heavy in claims, takeovers and releases in attempt
+  files); `timing/memory.rs`: the journal written under `target/timing/` while it is measured,
+  `timing --load DIR` (the process that loads and replays it), and peak memory as
+  `/usr/bin/time` reports it.
 - `src/diff.rs`: `diff replay` and `diff json`. `diff/report.rs` builds the report
   `python/replay_dump.py` builds from Python; `diff/generate/` draws histories (`model.rs`, then
   `hostile.rs` and `imports.rs` damage and import them; `scenarios.rs` holds fixed ones);
@@ -74,7 +78,7 @@ tests, with `--stress` the stress models and with `--real` the real-export check
 - `cargo xtask inventory [--require-complete]`: CI requires every Python test ported
 - `cargo xtask golden`: the goldens, from Python's `./bead`
 - `cargo xtask timing --label NAME -- COMMAND`
-- `cargo run --release --package xtask -- timing --replay 10000`
+- `cargo run --release --package xtask -- timing --replay 10000`, and with `--ownership`
 - `cargo xtask diff replay [--cases N] [--seed S] [--fixtures FILE]`, and `diff json` likewise
 - `python3 xtask/python/capture_fixtures.py OUT.jsonl` (the whole suite, about 20 minutes), then
   `cargo xtask diff replay --cases 0 --fixtures OUT.jsonl`

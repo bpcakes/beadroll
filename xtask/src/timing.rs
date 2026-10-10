@@ -1,8 +1,11 @@
 //! `cargo xtask timing`: runs a command and records what it took as one JSON line, evidence for
 //! the budgets of `docs/RUST-PORT.md` §4.7 and Appendix A. With `--replay N` it times
-//! beadroll-core's replay of N events in-process instead ([`replay`]). A timing never decides
-//! whether anything passes.
+//! beadroll-core's replay of N events in-process instead ([`replay`]), and measures the peak memory
+//! of a process that loads them from disk and replays them ([`memory`], `--load DIR`). A timing
+//! never decides whether anything passes.
 
+mod history;
+mod memory;
 mod replay;
 
 use std::ffi::OsString;
@@ -21,6 +24,13 @@ struct Options {
     command: Vec<OsString>,
     /// Time replay of this many events instead of a command.
     replay: Option<usize>,
+    /// Which history `--replay` generates.
+    shape: history::Shape,
+    /// Load the journal written in this directory and replay it once: the process whose peak
+    /// memory `--replay` measures.
+    load: Option<PathBuf>,
+    /// With `--load`, stop once the journal is loaded.
+    no_replay: bool,
 }
 
 fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
@@ -29,6 +39,9 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
         out: None,
         command: Vec::new(),
         replay: None,
+        shape: history::Shape::Plain,
+        load: None,
+        no_replay: false,
     };
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
@@ -47,6 +60,9 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
                 })?;
                 options.replay = Some(count);
             }
+            "--ownership" => options.shape = history::Shape::Ownership,
+            "--load" => options.load = Some(PathBuf::from(value("--load")?)),
+            "--no-replay" => options.no_replay = true,
             "--" => {
                 options.command = args.collect();
                 break;
@@ -58,23 +74,34 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
             }
         }
     }
-    if options.command.is_empty() && options.replay.is_none() {
+    if options.command.is_empty() && options.replay.is_none() && options.load.is_none() {
         return Err(Failure::Usage(
             "timing needs --replay N, or a command after --".into(),
         ));
+    }
+    if options.shape != history::Shape::Plain && options.replay.is_none() {
+        return Err(Failure::Usage(
+            "--ownership shapes the history of --replay N".into(),
+        ));
+    }
+    if options.no_replay && options.load.is_none() {
+        return Err(Failure::Usage("--no-replay goes with --load DIR".into()));
     }
     Ok(options)
 }
 
 pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
     let options = parse(args)?;
+    if let Some(dir) = &options.load {
+        return memory::main(dir, !options.no_replay);
+    }
     let out = match options.out {
         Some(out) => out,
         None => workspace::target_dir()?.join("timing.jsonl"),
     };
     if let Some(count) = options.replay {
         let started = SystemTime::now();
-        let measured = replay::measure(count, options.label.as_deref())?;
+        let measured = replay::measure(count, options.shape, options.label.as_deref())?;
         let line = format!("{measured}{}", context(started));
         append(&out, &line)?;
         println!("timing: {line}\nrecorded in {}", out.display());
@@ -268,5 +295,30 @@ mod tests {
             Err(Failure::Usage(_))
         ));
         assert!(matches!(parse(args(&["sleep"])), Err(Failure::Usage(_))));
+    }
+
+    #[test]
+    fn ownership_shapes_a_replay_and_load_names_a_directory() {
+        let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
+        let options = parse(args(&["--replay", "10", "--ownership"])).unwrap();
+        assert_eq!(options.replay, Some(10));
+        assert_eq!(options.shape, history::Shape::Ownership);
+        assert_eq!(
+            parse(args(&["--replay", "10"])).unwrap().shape,
+            history::Shape::Plain
+        );
+        let options = parse(args(&["--load", "dir", "--no-replay"])).unwrap();
+        assert_eq!(options.load, Some(PathBuf::from("dir")));
+        assert!(options.no_replay);
+        for wrong in [
+            &["--ownership", "--", "true"][..],
+            &["--replay", "10", "--no-replay"],
+            &["--load"],
+        ] {
+            assert!(
+                matches!(parse(args(wrong)), Err(Failure::Usage(_))),
+                "{wrong:?}"
+            );
+        }
     }
 }

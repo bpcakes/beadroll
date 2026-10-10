@@ -318,15 +318,22 @@ So core has a small strict parser and writer:
 
 **c. The replay data layout favours speed, but the algorithm does not change.**
 - **Layout.**
-  - Events are interned to `u32` indices, and replicas to small indices.
-  - Causal order is Kahn's algorithm over a `BinaryHeap<Reverse<EventId>>`, which is identical to
-    Python's `heapq` on id strings.
-  - Version vectors are small per-event vectors.
-  - Ancestry over ownership events stays a shared, deduplicated bitset per event.
+  - Events are taken by their index in the journal, and replicas by small indices.
+  - Causal order is Kahn's algorithm over a `BinaryHeap<Reverse<(EventId, index)>>`, which is
+    identical to Python's `heapq` on id strings: ids are unique, so the index never decides.
+  - What each event had seen is one clock per event, kept in one shared arena (below).
 - **Correctness first.** Phase 1 ports `saw`, the three replay phases, registers, add-wins sets
   and `materialise_dangling` as they are, and proves them equal to Python differentially.
 - **Optimisation later.** A reachability index or roaring bitmaps (`README.md`, *Known limits*)
-  come only in Phase 4, and only if measurements ask for them.
+  come only in Phase 4, and only if measurements ask for them. They did: in an ownership-heavy
+  history of 200,000 events, the per-event bitsets ported from Python took 1.5 GB of the 2.4 GB
+  live during replay (Appendix A). The index is a chain decomposition (`state/seen.rs` in beadroll-core):
+  - every machine's journal is a chain;
+  - each unsequenced event joins a chain whose last event is among its ancestors, or starts one;
+  - so one position per chain says which of that chain's events an event had seen.
+
+  `saw` answers exactly what the bitsets answered, and a test compares every pair of events
+  against them on hostile histories.
 
 **d. git stays the git binary. Calls are consolidated later.**
 - **Why the binary.** Every repository in the house runs git as a subprocess, and beadroll's
@@ -1496,6 +1503,35 @@ decision 7 open. The five decisions stand.
 - **Locking:** a Rust `File::lock` holder blocks Python's `fcntl.flock(LOCK_EX | LOCK_NB)`.
 - **Test suite:** the module times and the slowest tests are in §4.1. The sum of per-test durations
   is about 1,220 s.
+- **Phase 4: replay, measured (this Mac, 2026-10-10).**
+  - How: `cargo run --release --package xtask -- timing --replay N [--ownership]`, best of
+    seven, with the journal parsed and settled outside the clock. In the ownership-heavy
+    histories about 55% of the events are claims, takeovers and releases in attempt files.
+  - Peak memory: the resident set of a fresh process that loads the journal from disk and
+    replays it (`timing --load`), as `/usr/bin/time` reports it. Python is measured the same
+    way, with the best of three runs for its time.
+
+    | Events | Replay | Peak (the journal alone) | Python: replay, peak |
+    |---|---|---|---|
+    | 10k | 7.9 ms | 52 MB (37 MB) | 73 ms, 57 MB |
+    | 10k, ownership-heavy | 10.6 ms | 52 MB (41 MB) | 100 ms, 63 MB |
+    | 50k | 53 ms | 236 MB (170 MB) | 0.65 s, 199 MB |
+    | 50k, ownership-heavy | 66 ms | 245 MB (190 MB) | 0.98 s, 270 MB |
+    | 200k | 0.26 s | 921 MB (670 MB) | 8.9 s, 722 MB |
+    | 200k, ownership-heavy | 0.33 s | 958 MB (747 MB) | 11.8 s, 1.70 GB |
+
+  - Before Phase 4's changes, the same tool measured 0.71 s and 1.06 GB at 200k, and 0.88 s and
+    2.78 GB ownership-heavy, the bitsets taking most of the latter (§2.3c).
+  - **The time budgets are met. The 150 MB budget at 200k is not, and is explained.** The loaded
+    journal alone takes 670–747 MB:
+    - every event is kept as its parsed JSON object beside its typed operation;
+    - that `Value` tree is about 2 KB an event, since each object is an `IndexMap` with a
+      `String` per key.
+
+    Replay's own share is 210–250 MB, mostly registers and dependency tags as `Issue` holds
+    them. Both are public types of beadroll-core that the CLI and xtask use. A compact
+    representation would be an API change across crates, which Phase 4 does not make: it is
+    filed as roll-dih8.11.
 
 ## Appendix B. git invocations, and their consolidation
 
