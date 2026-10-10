@@ -23,8 +23,9 @@ and how it was closed; `docs/reviews/` holds the reports verbatim.
   `tests/support.py` has the `Sandbox`/`Machine` helpers (a bare remote and machines with their
   own homes); `tests/__init__.py` sets a scratch `BEAD_HOME`.
 - `infra/` — drives against real machines and a throwaway GitHub repository; each script's
-  docstring says what it needs, and `test_roundtrip.py` tests `roundtrip.py` beside it. `check.sh`
-  is the baseline.
+  docstring says what it needs. `selected.py` chooses the bead a driver runs here and records it
+  before any test data is written; `test_roundtrip.py` and `test_drive.py` test the drivers beside
+  them. `check.sh` is the baseline.
 - `crates/` — the Rust port: `beadroll-core`, `beadroll-git`, `beadroll-store`, `beadroll-sync`,
   `beadroll` (the `bead` binary) and `beadroll-test-support` (the Rust `tests/support.py`), each
   with its own `AGENTS.md`; `Cargo.toml`, `Cargo.lock` and `rust-toolchain.toml` are at the root.
@@ -83,7 +84,9 @@ and how it was closed; `docs/reviews/` holds the reports verbatim.
   commit message says what changed in behaviour, in prose.
 - After a push, a machine upgrades by rerunning its install (`uv tool install --force ...`, or a
   venv `pip install` where there is no uv); the `infra/` scripts run the installed `~/.local/bin/bead`
-  on each machine and `./bead` here.
+  on each machine and `./bead` here, unless `BEAD_UNDER_TEST` (here) or `BEAD_DRIVE_BEADS` (by host)
+  name another by its absolute path, and `BEAD_EXPECT_VERSION` makes each refuse a bead that reports
+  another version or is a script.
 
 ## Releasing
 

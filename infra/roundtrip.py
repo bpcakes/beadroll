@@ -1,8 +1,11 @@
 """Import every local Beads export into a scratch store and export it again; records must come back identical.
-Reads ~/Documents/*/.beads/issues.jsonl only; writes nothing outside the scratch store. The bead it runs is
-the one BEAD_UNDER_TEST names (an absolute path), else this checkout's ./bead."""
+Reads ~/Documents/*/.beads/issues.jsonl only; writes nothing outside the scratch store. The bead it runs, and
+the preflight record of it before any data is written, are infra/selected.py's: the one BEAD_UNDER_TEST names
+(an absolute path), else this checkout's ./bead while it exists, else the installed one."""
 import glob, json, os, subprocess, sys, time
-BP = os.environ.get("BEAD_UNDER_TEST") or os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "bead")
+import selected
+BP = selected.local_bead()
+selected.preflight(BP)
 env = {k: v for k, v in os.environ.items() if not k.startswith(("CLAUDE", "CODEX", "BP_"))}
 env.update(BEAD_HOME=os.environ.get("RT_HOME") or os.path.join(os.environ.get("TMPDIR", "/tmp"), "bead-roundtrip-home"), BEAD_AGENT="human")
 def norm(rec):

@@ -26,13 +26,18 @@ class RoundtripFailureReporting(unittest.TestCase):
         self.record = {"id": "x-a", "title": "Example", "status": "open"}
         self.source.write_text(json.dumps(self.record) + "\n")
         self.commands = []
+        # the bead under test: a native build as the preflight reads it, never run (subprocess.run is replaced)
+        self.bead = self.root / "bead"
+        self.bead.write_bytes(b"\x7fELF stand-in\n")
 
-    def roundtrip(self, failed_command=None, changed=False):
+    def roundtrip(self, failed_command=None, changed=False, version="bead 0.2.0", expect=""):
         def files(pattern):
             return [str(self.source)] if pattern.endswith("*/.beads/issues.jsonl") else []
 
         def bead(args, **kwargs):
             self.commands.append(args)
+            if args[1:] == ["--version"]:
+                return subprocess.CompletedProcess(args, 0, version + "\n", "")
             if args[1] == failed_command:
                 return subprocess.CompletedProcess(args, 17, "", "synthetic command failure")
             record = {**self.record, "title": "Changed"} if changed else self.record
@@ -40,9 +45,12 @@ class RoundtripFailureReporting(unittest.TestCase):
             return subprocess.CompletedProcess(args, 0, output, "")
 
         output = io.StringIO()
-        with mock.patch.dict(os.environ, RT_HOME=str(self.root / "store")), \
+        environ = {"RT_HOME": str(self.root / "store"), "BEAD_UNDER_TEST": str(self.bead), "BEAD_EXPECT_VERSION": expect}
+        with mock.patch.dict(os.environ, environ), \
                 mock.patch("glob.glob", side_effect=files), \
                 mock.patch("subprocess.run", side_effect=bead), contextlib.redirect_stdout(output):
+            if not expect:
+                del os.environ["BEAD_EXPECT_VERSION"]
             try:
                 runpy.run_path(str(ROOT / "infra" / "roundtrip.py"), run_name="__main__")
             except SystemExit as error:
@@ -53,7 +61,18 @@ class RoundtripFailureReporting(unittest.TestCase):
         status, output = self.roundtrip()
         self.assertEqual(status, 0, output)
         self.assertIn("TOTAL 1/1 records identical", output)
-        self.assertIn("--offline", self.commands[0])
+        self.assertEqual(self.commands[0], [str(self.bead), "--version"])
+        self.assertIn("--offline", self.commands[1])
+        record = json.loads(output.split("preflight: ", 1)[1].splitlines()[0])
+        self.assertEqual((record["path"], record["version"], record["kind"]), (str(self.bead), "bead 0.2.0", "native"))
+
+    def test_the_bead_is_checked_before_any_data_is_written(self):
+        status, output = self.roundtrip(version="bead 0.1.0", expect="0.2.0")
+        self.assertNotEqual(status, 0, output)
+        self.assertIn("reports 'bead 0.1.0', not 'bead 0.2.0'", status)
+        self.assertEqual(self.commands, [[str(self.bead), "--version"]])
+        status, output = self.roundtrip(expect="0.2.0")
+        self.assertEqual(status, 0, output)
 
     def test_failed_commands_fail_the_roundtrip(self):
         for command in ("init", "export", "ready"):

@@ -6,11 +6,20 @@ Configuration (environment):
   BEAD_DRIVE_HOSTS       three ssh targets for the roles one, two, three: "one=user@host1,two=host2,three=user@host3"
   BEAD_TEST_REMOTE       the throwaway repository, e.g. git@github.com:owner/throwaway.git (never a real one)
   BEAD_TEST_LOCAL_REPO   a clone of it on this machine (default ~/beads-poc-test/repo)
-Setup (once): on each remote host the `bead` command installed at ~/.local/bin/bead and a clone of the
-throwaway repository at ~/beads-poc-test/repo (plus soak.py for the soak); here, the clone above. To reset
-the tracker: `git push origin :refs/beads/journal`, `rm -rf ~/.local/state/beads-poc-test` everywhere,
-then `bead init --prefix bpt --import seed.jsonl` from here and `bead sync` on the others, all with
-BEAD_HOME=$HOME/.local/state/beads-poc-test."""
+  BEAD_UNDER_TEST        the bead to run here, an absolute path (default: this checkout's ./bead while it exists,
+                         else the installed ~/.local/bin/bead; infra/selected.py)
+  BEAD_DRIVE_BEADS       the bead to run on the remote hosts, by role, absolute paths there:
+                         "one=/path/bead,three=/path/bead" (default: each host's installed ~/.local/bin/bead)
+  BEAD_EXPECT_VERSION    the version every machine's bead must report, e.g. 0.2.0; each must then also be a native
+                         build, never a script (Python's launcher or installed entry point)
+Before any test data is written, a preflight prints one `preflight:` JSON line per machine: its role, system,
+the bead selected there, the first line its `--version` prints, its kind (native, script or missing) and a
+digest; a machine that does not meet BEAD_EXPECT_VERSION stops the run. `drive.py --preflight` stops after it.
+Setup (once): on each remote host a bead (installed at ~/.local/bin/bead, or staged anywhere and named in
+BEAD_DRIVE_BEADS) and a clone of the throwaway repository at ~/beads-poc-test/repo (plus soak.py for the soak);
+here, the clone above. To reset the tracker: `git push origin :refs/beads/journal`,
+`rm -rf ~/.local/state/beads-poc-test` everywhere, then `bead init --prefix bpt --import seed.jsonl` from here
+and `bead sync` on the others, all with BEAD_HOME=$HOME/.local/state/beads-poc-test."""
 import concurrent.futures as cf
 import hashlib
 import json
@@ -19,6 +28,8 @@ import shlex
 import subprocess
 import sys
 import time
+
+import selected
 
 TAG = time.strftime("%H%M%S")
 
@@ -30,25 +41,77 @@ for pair in filter(None, os.environ.get("BEAD_DRIVE_HOSTS", "").split(",")):
 TEST_REMOTE = os.environ.get("BEAD_TEST_REMOTE", "")
 if set(HOSTS) != {"local", "one", "two", "three"} or not TEST_REMOTE:
     sys.exit("drive.py needs BEAD_DRIVE_HOSTS=one=user@host,two=host,three=user@host and BEAD_TEST_REMOTE (see the docstring)")
-BEAD_REMOTE = "~/.local/bin/bead"
+
+
+def remote_beads(environ, roles):
+    """The bead each remote role runs: BEAD_DRIVE_BEADS's absolute path for it, else its installed one."""
+    chosen = {}
+    for pair in filter(None, environ.get("BEAD_DRIVE_BEADS", "").split(",")):
+        role, _, path = (part.strip() for part in pair.partition("="))
+        if role not in roles:
+            sys.exit(f"BEAD_DRIVE_BEADS names {role!r}, which is not one of {', '.join(sorted(roles))}")
+        if not path.startswith("/"):
+            sys.exit(f"BEAD_DRIVE_BEADS gives {role} {path!r}, which is not an absolute path")
+        chosen[role] = path
+    return {role: chosen.get(role, selected.INSTALLED) for role in roles}
+
+
+BEADS = {"local": selected.local_bead(), **remote_beads(os.environ, set(HOSTS) - {"local"})}  # role -> the bead it runs
+EXPECT = os.environ.get("BEAD_EXPECT_VERSION", "")
 REPO_REMOTE = "~/beads-poc-test/repo"
-BEAD_LOCAL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bead")  # this checkout's launcher
 REPO_LOCAL = os.environ.get("BEAD_TEST_LOCAL_REPO") or os.path.expanduser("~/beads-poc-test/repo")  # a clone of the throwaway repo
 STATE = "$HOME/.local/state/beads-poc-test"
 # A LAN that throttles bursts of ssh connections to github.com:22 can use GitHub's SSH-over-443 endpoint instead.
 HOST_ENV = {}  # plain github.com:22 everywhere
 
 
+def word(path):
+    """`path` as one word of a bash command: quoted, its leading `~/` left for bash to expand."""
+    return "~/" + shlex.quote(path[2:]) if path.startswith("~/") else shlex.quote(path)
+
+
+def over(host, cmd):
+    """The command that runs bash command `cmd` on `host`: here, or through ssh."""
+    return ["bash", "-c", cmd] if HOSTS[host] is None else ["ssh", "-o", "BatchMode=yes", HOSTS[host], "bash -c " + shlex.quote(cmd)]
+
+
+# What a machine's bead is, printed as six lines: role-free facts the preflight records.
+PROBE = ('b={bead}; '
+         'if [ -e "$b" ]; then v=$("$b" --version 2>&1 | head -n 1); else v=; fi; '
+         'if [ ! -e "$b" ]; then k=missing; elif [ "$(head -c 2 "$b")" = "#!" ]; then k=script; else k=native; fi; '
+         'd=$( (sha256sum "$b" 2>/dev/null || shasum -a 256 "$b" 2>/dev/null) | cut -c1-16); '
+         'printf "%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n" "$b" "$v" "$k" "$d" "$(uname -sm)" end')
+
+
+def probe(host):
+    """The preflight's record of `host`'s bead (selected.describe's fields, its role and its system)."""
+    proc = subprocess.run(over(host, PROBE.format(bead=word(BEADS[host]))), capture_output=True, text=True, timeout=120)
+    lines = proc.stdout.split("\n")
+    if proc.returncode or len(lines) < 6 or lines[5] != "end":
+        sys.exit(f"preflight: cannot reach {host} ({HOSTS[host] or 'here'}): {proc.stderr.strip()[-300:]}")
+    path, version, kind, digest, system = lines[:5]
+    return {"role": host, "system": system, "path": path, "version": version, "kind": kind, "sha256": digest}
+
+
+def preflight():
+    """Before any test data is written: every machine's record, printed; the run stops unless every bead is
+    what BEAD_EXPECT_VERSION asks for."""
+    rows = parallel(probe, list(HOSTS))
+    for row in rows:
+        print("preflight:", json.dumps(row, sort_keys=True), flush=True)
+    wrong = [f"{row['role']}: {why}" for row in rows if (why := selected.verdict(row, EXPECT))]
+    if wrong:
+        sys.exit("preflight: " + "; ".join(wrong))
+    return rows
+
+
 def run(host, *args, thread=None, agent="codex", env="", raw=False, timeout=120):
     """Run one bead command on `host`; return parsed JSON (or an error dict with code)."""
     thread = thread or f"{host}-thread-0001"
-    if HOSTS[host] is None:
-        bead, repo = BEAD_LOCAL, REPO_LOCAL
-    else:
-        bead, repo = BEAD_REMOTE, REPO_REMOTE
-    cmd = (f"cd {repo} && BEAD_HOME={STATE} BEAD_AGENT={agent} BEAD_THREAD={thread} {HOST_ENV.get(host, '')} {env} {bead} "
-           + " ".join(shlex.quote(a) for a in args) + ("" if raw else " --json"))
-    full = ["bash", "-c", cmd] if HOSTS[host] is None else ["ssh", "-o", "BatchMode=yes", HOSTS[host], "bash -c " + shlex.quote(cmd)]
+    repo = REPO_LOCAL if HOSTS[host] is None else REPO_REMOTE
+    cmd = (f"cd {repo} && BEAD_HOME={STATE} BEAD_AGENT={agent} BEAD_THREAD={thread} {HOST_ENV.get(host, '')} {env} "
+           + word(BEADS[host]) + " " + " ".join(shlex.quote(a) for a in args) + ("" if raw else " --json"))
+    full = over(host, cmd)
     t = time.time()
     proc = subprocess.run(full, capture_output=True, text=True, timeout=timeout)
     if proc.returncode == 255 and HOSTS[host] is not None and not proc.stderr.strip():
@@ -96,7 +159,13 @@ def section(title):
     print(f"\n### {title}", flush=True)
 
 
-def main():
+def main(argv):
+    section("preflight: the bead each machine runs")
+    preflight()
+    if argv == ["--preflight"]:
+        return 0
+    if argv:
+        sys.exit(f"drive.py takes no arguments but --preflight, not {argv}")
     results = {}
     section("S1 four machines claim the same issue at the same moment")
     target = ready_ids("local")[0]
@@ -202,7 +271,7 @@ def main():
     wt = REPO_LOCAL + "-wt"
     subprocess.run(["git", "-C", REPO_LOCAL, "worktree", "add", "-q", wt, "-b", f"feature-{TAG}"], check=True, capture_output=True)
     try:
-        cmd = f"cd {wt} && BEAD_HOME={STATE} {BEAD_LOCAL} info --json"
+        cmd = f"cd {wt} && BEAD_HOME={STATE} {word(BEADS['local'])} info --json"
         info = json.loads(subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, check=True).stdout)
         status = subprocess.run(["git", "-C", wt, "status", "--porcelain"], capture_output=True, text=True).stdout
         print("same workspace:", info["workspace"] == run("local", "info")["ok"]["workspace"], "| worktree clean:", status == "")
@@ -210,7 +279,7 @@ def main():
 
         section("S12 a claim made in the worktree carries its branch to every machine")
         issue = ready_ids("local")[5]
-        cmd = f"cd {wt} && BEAD_HOME={STATE} BEAD_AGENT=codex BEAD_THREAD=local-wt-thread {BEAD_LOCAL} update {shlex.quote(issue)} --claim --add-label from-worktree --json"
+        cmd = f"cd {wt} && BEAD_HOME={STATE} BEAD_AGENT=codex BEAD_THREAD=local-wt-thread {word(BEADS['local'])} update {shlex.quote(issue)} --claim --add-label from-worktree --json"
         claimed = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True)
         same, _ = settle()
         views = {h: show(h, issue) for h in HOSTS}
@@ -230,4 +299,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
