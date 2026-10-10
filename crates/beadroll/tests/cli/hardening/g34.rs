@@ -307,8 +307,9 @@ mod g34_non_utf8_git_and_ps_output_is_not_a_traceback {
             "claude-session-0001".into(),
         );
         env.insert("CODEX_THREAD_ID".into(), "codex-thread-0001".into());
-        // `; :` stops the shell from exec-ing bead: the shell stays its parent
-        let script = r#""$0" "$1" --json; :"#;
+        // `; exit $?` stops the shell from exec-ing bead, so that the shell stays its parent, and
+        // hands on bead's own status, which the checks below read
+        let script = r#""$0" "$1" --json; exit $?"#;
         // the ASCII control first
         for argument in [b"resume.txt".as_slice(), b"r\xe9sum\xe9.txt"] {
             let output = Command::new("sh")
