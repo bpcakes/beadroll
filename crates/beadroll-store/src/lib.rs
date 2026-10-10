@@ -9,6 +9,7 @@
 mod actor;
 mod discover;
 mod error;
+mod failpoint;
 mod fs;
 mod identity;
 mod journal;
@@ -16,9 +17,10 @@ mod place;
 mod settings;
 mod workspace;
 
-pub use actor::{Ps, detect_actor, nearest_harness};
+pub use actor::{Actor, Ps, detect_actor, nearest_harness};
 pub use discover::{checked_config, find_workspace, moved_workspaces};
 pub use error::{Error, git_code};
+pub use failpoint::{Action, Failpoints, Fired, POINTS, Selector, kill_self};
 pub use fs::{
     Unreadable, dir_entries, fsync, glob_ending, has_suffix, json_text, os_error_str, private_dir,
     private_dirs, read, read_json_keeping_surrogates, read_json_text, utf8_error, write_atomic,

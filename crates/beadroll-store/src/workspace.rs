@@ -152,7 +152,12 @@ impl Workspace {
         }
         let text = json::write(&Value::Object(meta), Format::INDENTED)
             .map_err(|e| Error::io_message(e.to_string()))?;
-        write_atomic(&self.dir.join("meta.json"), text.as_bytes(), true)
+        write_atomic(
+            &self.dir.join("meta.json"),
+            text.as_bytes(),
+            true,
+            &self.settings.failpoints,
+        )
     }
 
     /// Bookkeeping once the remote has accepted. It never turns a command that took effect into a

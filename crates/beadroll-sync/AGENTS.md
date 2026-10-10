@@ -5,7 +5,7 @@
 `crates/beadroll-sync` is the sync protocol of bead (`docs/RUST-PORT.md` §2.1): transactions (`Tx`,
 `writing`), the link to the coordination remote (fetch, merge, tree, publish, maintenance,
 rebuild), `synchronise` with its settling of this machine's pending attempts, `publish_soon` and the
-unpublished counts. Slice 2a (`roll-k2wy.3`) built these; Slice 2c (`roll-k2wy.5`) adds the
+unpublished counts. Slice 2a (`roll-k2wy.3`) built these; Slice 2c (`roll-k2wy.5`) added the
 ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `settle_pending`).
 
 ## Key entrypoints
@@ -15,7 +15,13 @@ ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `settle_
   `Link::merge`; `src/link/publish.rs`: its tree and `Link::publish`.
 - `src/synchronise.rs`: `synchronise` and `Synced`, `adopt_published`, `publish_soon`,
   `published_counts`, `unpublished_count`, `pause`, `ROUNDS`.
+- `src/ownership.rs`: `coordinated` (the twelve rounds of a claim, takeover, release or claiming
+  update), `settle_commands` (receipts), `settle_pending` (fences), `forget`, `Mode`, `Settled`.
 - `src/error.rs`: `Error`, each variant with its code.
+- `tests/sync/`: the Python suite's in-crate protocol tests, under the inventory's naming rule;
+  `support.rs` opens a machine's store in the test's process and runs the command bodies through
+  `coordinated`. Faults come from failpoints passed in `Settings`; the machines around it run
+  `BEAD_UNDER_TEST`, else the checkout's Python launcher.
 
 ## Edit here for X
 
@@ -34,7 +40,8 @@ ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `settle_
 
 ## Common commands
 
-- `cargo test -p beadroll-sync`
+- `cargo nextest run -p beadroll-sync`: the in-crate tests, the machines around them running
+  Python's `./bead`; with `BEAD_UNDER_TEST=$PWD/target/debug/bead`, the Rust binary
 - `cargo clippy -p beadroll-sync --all-targets -- -D warnings -D clippy::mod_module_files`
 - The mixed-fleet tests that drive this crate against Python: `cargo nextest run -p beadroll -E
   'test(/^mixed::/)'`

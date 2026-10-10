@@ -49,7 +49,7 @@ pub fn replica_id(settings: &Settings, create: bool) -> Result<Option<String>, E
             return Ok(None);
         }
         private_dir(&home)?;
-        mint(&path)?;
+        mint(&path, settings)?;
     }
     let raw = std::fs::read(&path).map_err(|error| {
         Error::io_message(format!(
@@ -81,7 +81,7 @@ fn is_lower_hex(b: u8) -> bool {
 }
 
 /// Writes a new identity beside `path` and links it into place; another process may win.
-fn mint(path: &Path) -> Result<(), Error> {
+fn mint(path: &Path, settings: &Settings) -> Result<(), Error> {
     let tmp = path.with_file_name(format!(".replica.{}.tmp", std::process::id()));
     let mut body = Object::new();
     body.insert("id".into(), Value::from(hex_token(8)));
@@ -101,6 +101,7 @@ fn mint(path: &Path) -> Result<(), Error> {
             fsync(&file)
         });
     written.map_err(Error::Io)?;
+    settings.failpoints.hit("identity.before-link");
     let linked = match std::fs::hard_link(&tmp, path) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == io::ErrorKind::AlreadyExists => Ok(()), // another process won

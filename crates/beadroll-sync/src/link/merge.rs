@@ -160,7 +160,7 @@ impl Link<'_> {
                 )));
             }
             if local.get(path).map(String::as_str) != Some(sha) {
-                write_atomic(&target, &theirs, true)?;
+                write_atomic(&target, &theirs, true, &self.ws.settings.failpoints)?;
             }
             crate::tx::remove(pending_path)?;
             self.confirmed.push(attempt_id);
@@ -169,13 +169,18 @@ impl Link<'_> {
         }
         let new = if target.exists() {
             // an immutable file that differs from the accepted copy was damaged here
-            write_atomic(&fork_path(self, &target), &read(&target)?, true)?;
+            write_atomic(
+                &fork_path(self, &target),
+                &read(&target)?,
+                true,
+                &self.ws.settings.failpoints,
+            )?;
             self.forks.push(path.to_owned());
             false
         } else {
             true
         };
-        write_atomic(&target, &theirs, true)?;
+        write_atomic(&target, &theirs, true, &self.ws.settings.failpoints)?;
         Ok(new)
     }
 
@@ -207,14 +212,19 @@ impl Link<'_> {
         }
         if theirs.starts_with(&ours) {
             let pulled = newlines(&theirs) as i64 - newlines(&ours) as i64;
-            write_atomic(&target, &theirs, true)?;
+            write_atomic(&target, &theirs, true, &self.ws.settings.failpoints)?;
             return Ok(pulled);
         }
         if Some(replica) == own {
             return Err(Error::JournalFork(OWN_FORK.to_owned()));
         }
-        write_atomic(&fork_path(self, &target), &ours, true)?;
-        write_atomic(&target, &theirs, true)?;
+        write_atomic(
+            &fork_path(self, &target),
+            &ours,
+            true,
+            &self.ws.settings.failpoints,
+        )?;
+        write_atomic(&target, &theirs, true, &self.ws.settings.failpoints)?;
         self.forks.push(path.to_owned());
         Ok(0)
     }

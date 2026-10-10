@@ -164,11 +164,7 @@ fn execute(request: &Request) -> Result<Option<String>, Failure> {
         Err(error) if free && error.code() != Code::Io => None,
         Err(error) => return Err(error.into()),
     };
-    let name = request
-        .name
-        .as_ref()
-        .map(|n| n.to_string_lossy().into_owned());
-    let actor = detect_actor(&settings, name.as_deref(), &|| {
+    let actor = detect_actor(&settings, request.name.as_deref(), &|| {
         nearest_harness(std::os::unix::process::parent_id(), &run_ps)
     });
     let (outcome, offline, remote) = match &ws {
@@ -272,32 +268,8 @@ fn dispatch(
         )?,
         "import" => commands::import(ctx, ns.text("path").unwrap_or_default())?,
         "export" => commands::export(ctx, ns.text("output"))?,
-        "create" => commands::create(
-            ctx,
-            &commands::CreateArgs {
-                title_pos: owned(ns, "title_pos"),
-                title: owned(ns, "title"),
-                fields: content(ns),
-                labels: ns.texts("labels").to_vec(),
-                deps: ns.texts("deps").to_vec(),
-                silent: ns.flag("silent"),
-            },
-        )?,
-        "update" => commands::update(
-            ctx,
-            &commands::UpdateArgs {
-                ids: ns.texts("ids").to_vec(),
-                title: owned(ns, "title"),
-                fields: content(ns),
-                claim: ns.flag("claim"),
-                force: ns.flag("force"),
-                add_label: ns.texts("add_label").to_vec(),
-                remove_label: ns.texts("remove_label").to_vec(),
-                set_labels: owned(ns, "set_labels"),
-                offline,
-                remote: remote.clone(),
-            },
-        )?,
+        "create" => commands::create(ctx, &create_args(ns))?,
+        "update" => commands::update(ctx, &update_args(ns))?,
         name @ ("close" | "reopen" | "delete") => commands::transition(
             ctx,
             name,
@@ -354,7 +326,20 @@ fn dispatch(
         "info" => commands::info(ctx)?,
         "machines" => commands::machines(ctx, ns.text("name"))?,
         "claims" => commands::claims(ctx, real_time())?,
-        other => return Err(commands::not_yet(other)),
+        name => {
+            let args = commands::OwnershipArgs {
+                ids: ns.texts("ids").to_vec(),
+                reason: owned(ns, "reason"),
+                offline,
+                remote: remote.clone(),
+                asked: ns.asked(),
+            };
+            match name {
+                "claim" => commands::claim(ctx, &args)?,
+                "takeover" => commands::takeover(ctx, &args)?,
+                _ => commands::release(ctx, &args)?,
+            }
+        }
     };
     Ok((outcome, offline, remote))
 }
@@ -365,6 +350,35 @@ fn real_time() -> f64 {
     match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
         Ok(since) => since.as_nanos() as f64 / 1e9,
         Err(before) => -(before.duration().as_nanos() as f64) / 1e9,
+    }
+}
+
+/// `create`'s arguments.
+fn create_args(ns: &Namespace) -> commands::CreateArgs {
+    commands::CreateArgs {
+        title_pos: owned(ns, "title_pos"),
+        title: owned(ns, "title"),
+        fields: content(ns),
+        labels: ns.texts("labels").to_vec(),
+        deps: ns.texts("deps").to_vec(),
+        silent: ns.flag("silent"),
+    }
+}
+
+/// `update`'s arguments, with the command line as its receipt names it.
+fn update_args(ns: &Namespace) -> commands::UpdateArgs {
+    commands::UpdateArgs {
+        ids: ns.texts("ids").to_vec(),
+        title: owned(ns, "title"),
+        fields: content(ns),
+        claim: ns.flag("claim"),
+        force: ns.flag("force"),
+        add_label: ns.texts("add_label").to_vec(),
+        remove_label: ns.texts("remove_label").to_vec(),
+        set_labels: owned(ns, "set_labels"),
+        offline: ns.flag("offline"),
+        remote: owned(ns, "remote"),
+        asked: ns.asked(),
     }
 }
 

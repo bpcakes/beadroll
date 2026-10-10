@@ -8,7 +8,7 @@ use beadroll_core::event::Field;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::state::actor_label;
 use beadroll_core::text::{repr, repr_bytes, str_of};
-use beadroll_store::{Settings, Workspace, replica_id, view};
+use beadroll_store::{Actor, Settings, Workspace, replica_id, view};
 
 use super::help;
 use super::parse::{Namespace, Page};
@@ -20,12 +20,12 @@ use crate::commands::{Failure, Outcome, need_tracker};
 pub(crate) fn run(
     ns: &Namespace,
     ws: Option<&Workspace>,
-    actor: &Value,
+    actor: &Actor,
     settings: &Settings,
 ) -> Result<Outcome, Failure> {
     match ns.spec.name {
         "help" => help_page(ns.text("command_name"), settings),
-        "prime" => prime(ws, actor, settings),
+        "prime" => prime(ws, &actor.value, settings),
         _ => Ok(text_outcome("onboard", ONBOARD)),
     }
 }

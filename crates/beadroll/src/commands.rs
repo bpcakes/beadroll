@@ -11,6 +11,7 @@ mod import;
 mod info;
 mod init;
 mod list;
+mod ownership;
 mod queries;
 mod show;
 mod sync;
@@ -27,7 +28,7 @@ use beadroll_core::json::{Int, Object, Value};
 use beadroll_core::op::PyInt;
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::{printed_text, repr_str, strip};
-use beadroll_store::{ViewError, Workspace, pathlib};
+use beadroll_store::{Actor, ViewError, Workspace, pathlib};
 use beadroll_sync::Tx;
 
 pub(crate) use args::{
@@ -44,6 +45,7 @@ pub(crate) use import::import;
 pub(crate) use info::info;
 pub(crate) use init::{InitArgs, init};
 pub(crate) use list::{FilterArgs, ListArgs, ReadyArgs, list, ready};
+pub(crate) use ownership::{OwnershipArgs, claim, release, takeover};
 pub(crate) use queries::{blocked, lint, search};
 pub(crate) use show::show;
 pub(crate) use sync::sync;
@@ -186,7 +188,7 @@ impl Outcome {
 /// What every command is given: the workspace (when there is one), the actor, and the settings.
 pub(crate) struct Context<'a> {
     pub(crate) ws: &'a Workspace,
-    pub(crate) actor: &'a Value,
+    pub(crate) actor: &'a Actor,
 }
 
 /// An argument as text: text that is not valid UTF-8 cannot be written to an event.
@@ -301,15 +303,6 @@ pub(crate) fn remove_edge(
         tx.emit("dep_remove", Some(&uid.to_string()), data, None)?;
     }
     Ok(())
-}
-
-/// A command the Rust bead does not have yet: the coordinated ones arrive with Phase 2c
-/// (`docs/RUST-PORT.md` §6).
-pub(crate) fn not_yet(what: &str) -> Failure {
-    Failure::new(
-        Code::Usage,
-        format!("{what} is not in this build of bead yet (docs/RUST-PORT.md §6, Phase 2c)"),
-    )
 }
 
 /// The filters `list` and `ready` share (Python's `select`), as given.

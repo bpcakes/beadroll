@@ -8,8 +8,8 @@ use beadroll_core::json::{self, Format, Int, MAX_DIGITS, Object, Value};
 use beadroll_core::text::py_int;
 use beadroll_git::{PushOutcome, exists, realpath, without_password};
 use beadroll_store::{
-    Workspace, claim_files, load_pending, moved_workspaces, pending_files, read, relative,
-    segment_files, view, write_atomic,
+    Failpoints, Fired, Workspace, claim_files, load_pending, moved_workspaces, pending_files, read,
+    relative, segment_files, view, write_atomic,
 };
 
 use crate::error::Error;
@@ -20,8 +20,11 @@ use crate::tx::{drop_pending, locked};
 pub const ROUNDS: u32 = 12;
 
 /// The wait between attempts against a moving remote: `U(0.1, 0.4) × attempt` seconds, outside
-/// the store lock.
-pub fn pause(attempt: u32) {
+/// the store lock. The `backoff` failpoint passes here (`skip` waits not at all).
+pub fn pause(attempt: u32, failpoints: &Failpoints) {
+    if failpoints.hit("backoff") == Some(Fired::Skip) {
+        return;
+    }
     let seconds = (0.1 + fastrand::f64() * 0.3) * f64::from(attempt);
     std::thread::sleep(Duration::from_secs_f64(seconds));
 }
@@ -144,7 +147,7 @@ pub fn synchronise(ws: &Workspace, remote: &OsStr) -> Result<Synced, Error> {
                 return synchronise(&adopted, remote);
             }
         }
-        pause(attempt);
+        pause(attempt, &ws.settings.failpoints);
     }
     let Some(attempts) = settled else {
         return Err(Error::SyncConflict(format!(
@@ -282,6 +285,7 @@ pub fn adopt_published(
         &ws.settings.home()?.join("moved.json"),
         text.as_bytes(),
         true,
+        &ws.settings.failpoints,
     )?;
     Ok(Some(adopted))
 }

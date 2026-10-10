@@ -58,11 +58,11 @@ pub(crate) fn info(ctx: &Context<'_>) -> Result<Outcome, Failure> {
     result.insert("remote".into(), remote);
     result.insert("ref".into(), Value::from(ws.ref_name()?));
     result.insert("machine".into(), Value::from(replica.clone()));
-    result.insert("actor".into(), ctx.actor.clone());
+    result.insert("actor".into(), ctx.actor.value.clone());
     result.insert(
         "actor_label".into(),
         Value::from(actor_label(
-            Some(ctx.actor),
+            Some(&ctx.actor.value),
             replica.as_deref().unwrap_or("?"),
         )),
     );

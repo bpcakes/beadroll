@@ -17,6 +17,9 @@ use beadroll_store::{
 use beadroll_sync::{Link, PushOutcome, Tx, locked};
 use beadroll_test_support::{Json, Machine, git, parse_json};
 
+mod receipts;
+mod retries;
+
 /// The Rust `bead` this package builds.
 fn rust() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_bead"))
@@ -288,7 +291,7 @@ fn leave_pending(ws: &Workspace, actor: &Value, issue: &str, publish: bool) {
     locked(ws, || -> Result<(), beadroll_sync::Error> {
         let tip = link.fetch()?;
         link.merge(tip.as_deref())?;
-        let mut tx = Tx::new(ws, actor.clone())?;
+        let mut tx = Tx::new(ws, &beadroll_store::Actor::writable(actor.clone()))?;
         let mut data = Object::new();
         data.insert("mode".into(), Value::from("online"));
         data.insert("generation".into(), Value::from(1));
@@ -303,8 +306,13 @@ fn leave_pending(ws: &Workspace, actor: &Value, issue: &str, publish: bool) {
             &folder.join(format!("{first}.command")),
             receipt.as_bytes(),
             true,
+            &ws.settings.failpoints,
         )?;
-        write_attempt_file(&folder.join(format!("{first}.json")), &tx.ownership)?;
+        write_attempt_file(
+            &folder.join(format!("{first}.json")),
+            &tx.ownership,
+            &ws.settings.failpoints,
+        )?;
         if publish {
             let outcome = link.publish(tip.as_deref(), "claim", &tx.ownership, false)?;
             assert_eq!(outcome, PushOutcome::Ok);

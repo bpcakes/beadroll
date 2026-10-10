@@ -1,7 +1,11 @@
 //! Who is calling (Python's `detect_actor` and `nearest_harness`): an agent type and a thread from
 //! the harness environment, overrides from `BEAD_*` and `--actor`.
 
+use std::ffi::{OsStr, OsString};
+use std::os::unix::ffi::OsStrExt as _;
+
 use beadroll_core::json::{Object, Value};
+use beadroll_core::text::printed_text;
 
 use crate::settings::Settings;
 
@@ -47,49 +51,83 @@ pub fn nearest_harness(parent: u32, ps: &Ps<'_>) -> Option<&'static str> {
     None
 }
 
+/// The caller, as events record it: the actor object, and whether all of its text came as valid
+/// UTF-8. Python keeps bytes that are not (in `--actor` or the environment) as lone surrogates, so
+/// none of its writes can be encoded; the actor still reads as itself, a `?` for each such byte,
+/// and no receipt is ever its.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Actor {
+    /// `{"agent", "thread"?, "name"?}`.
+    pub value: Value,
+    /// Whether its text is valid UTF-8.
+    pub writable: bool,
+}
+
+impl Actor {
+    /// An actor whose text is valid UTF-8.
+    pub fn writable(value: Value) -> Actor {
+        Actor {
+            value,
+            writable: true,
+        }
+    }
+}
+
 /// The caller's actor: `{"agent", "thread"?, "name"?}` in that order. `BEAD_AGENT` (with
 /// `BEAD_THREAD`) wins; with both a Claude and a Codex session in the environment, the nearest
 /// harness in the process tree decides (Codex when none is found); then Claude, then Codex, else
 /// `human`. `BEAD_THREAD` overrides the thread, and `name` (`--actor`) or `BEAD_ACTOR` names it.
 pub fn detect_actor(
     settings: &Settings,
-    name: Option<&str>,
+    name: Option<&OsStr>,
     nearest: &dyn Fn() -> Option<&'static str>,
-) -> Value {
-    let var = |key: &str| settings.var(key).map(|v| v.to_string_lossy().into_owned());
-    let claude_thread = var("CLAUDE_CODE_SESSION_ID");
-    let codex_thread = var("CODEX_THREAD_ID").or_else(|| var("CODEX_SESSION_ID"));
-    let (agent, thread) = if let Some(agent) = var("BEAD_AGENT") {
-        (agent, var("BEAD_THREAD"))
-    } else if claude_thread.is_some() && codex_thread.is_some() {
-        let agent = nearest().unwrap_or("codex");
-        let thread = if agent == "codex" {
-            codex_thread
-        } else {
-            claude_thread
-        };
-        (agent.to_owned(), thread)
-    } else if claude_thread.is_some() || var("CLAUDECODE").is_some() {
-        ("claude".to_owned(), claude_thread)
-    } else if codex_thread.is_some() {
-        ("codex".to_owned(), codex_thread)
-    } else {
-        ("human".to_owned(), None)
+) -> Actor {
+    let mut writable = true;
+    let mut text = |value: &OsStr| -> String {
+        writable &= value.to_str().is_some();
+        printed_text(value.as_bytes())
     };
-    let thread = var("BEAD_THREAD").or(thread);
+    let raw = |key: &str| settings.var(key).map(OsStr::to_os_string);
+    let claude_thread = raw("CLAUDE_CODE_SESSION_ID");
+    let codex_thread = raw("CODEX_THREAD_ID").or_else(|| raw("CODEX_SESSION_ID"));
+    let (agent, thread): (Option<OsString>, Option<OsString>) =
+        if let Some(agent) = raw("BEAD_AGENT") {
+            (Some(agent), raw("BEAD_THREAD"))
+        } else if claude_thread.is_some() && codex_thread.is_some() {
+            let agent = nearest().unwrap_or("codex");
+            let thread = if agent == "codex" {
+                codex_thread
+            } else {
+                claude_thread
+            };
+            (Some(OsString::from(agent)), thread)
+        } else if claude_thread.is_some() || raw("CLAUDECODE").is_some() {
+            (Some(OsString::from("claude")), claude_thread)
+        } else if codex_thread.is_some() {
+            (Some(OsString::from("codex")), codex_thread)
+        } else {
+            (Some(OsString::from("human")), None)
+        };
+    let thread = raw("BEAD_THREAD").or(thread);
     let mut actor = Object::new();
-    actor.insert("agent".into(), Value::from(agent));
+    actor.insert(
+        "agent".into(),
+        Value::from(text(agent.as_deref().unwrap_or_default())),
+    );
     if let Some(thread) = thread {
-        actor.insert("thread".into(), Value::from(thread));
+        actor.insert("thread".into(), Value::from(text(&thread)));
     }
     let named = name
         .filter(|n| !n.is_empty())
-        .map(str::to_owned)
-        .or_else(|| var("BEAD_ACTOR"));
+        .map(OsStr::to_os_string)
+        .or_else(|| raw("BEAD_ACTOR"));
     if let Some(named) = named {
-        actor.insert("name".into(), Value::from(named));
+        actor.insert("name".into(), Value::from(text(&named)));
     }
-    Value::Object(actor)
+    Actor {
+        value: Value::Object(actor),
+        writable,
+    }
 }
 
 #[cfg(test)]

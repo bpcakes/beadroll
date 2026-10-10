@@ -8,7 +8,7 @@ use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_git::{PushOutcome, push_outcome};
 use beadroll_store::{
-    REMOTE_REF, attempt_path, encode_events, hex_token, relative, repair_tail, segment_files,
+    Fired, REMOTE_REF, attempt_path, encode_events, hex_token, relative, repair_tail, segment_files,
 };
 
 use super::Link;
@@ -70,6 +70,10 @@ impl Link<'_> {
     /// fast-forward, so the remote refuses it if anyone else got there first. With `fence`, a
     /// commit is pushed even when nothing changed, so that any earlier in-flight update on the same
     /// head dies. [`Link::last_error`] keeps what git said when it did not go through.
+    ///
+    /// Failpoints: `publish.before` and `publish.result` (`error(CODE)` fails the publish) at its
+    /// start; `push.before`, `push.reply` (`fail-reply` turns an accepted push into a lost
+    /// acknowledgement) and `push.after-ok` around the push.
     pub fn publish(
         &mut self,
         tip: Option<&str>,
@@ -77,6 +81,11 @@ impl Link<'_> {
         pending: &[Value],
         fence: bool,
     ) -> Result<PushOutcome, Error> {
+        let failpoints = std::sync::Arc::clone(&self.ws.settings.failpoints);
+        failpoints.hit("publish.before");
+        if let Some(Fired::Error(code)) = failpoints.hit("publish.result") {
+            return Err(Error::injected(code, "publish.result"));
+        }
         let tree = self.tree(pending)?;
         if let Some(tip) = tip
             && !fence
@@ -98,6 +107,7 @@ impl Link<'_> {
         // --no-verify: the user's client pre-push hooks are written for their code pushes; the
         // remote's own hooks still apply. `--`: a repository-controlled remote string is never a
         // git option.
+        failpoints.hit("push.before");
         let pushed = self
             .env
             .git([
@@ -111,7 +121,7 @@ impl Link<'_> {
             .timeout(self.ws.settings.net_timeout)
             .reap(false)
             .run();
-        let push = match pushed {
+        let mut push = match pushed {
             Ok(push) => push,
             Err(error @ beadroll_git::Error::Timeout { .. }) => {
                 self.last_error = error.to_string();
@@ -119,6 +129,12 @@ impl Link<'_> {
             }
             Err(error) => return Err(error.into()),
         };
+        if failpoints.hit("push.reply") == Some(Fired::FailReply) && push.returncode == 0 {
+            // the remote took it; the answer never arrived
+            push.returncode = 1;
+            push.stdout.clear();
+            push.stderr = b"connection closed after remote accepted".to_vec();
+        }
         let (outcome, said) = push_outcome(push.returncode, &push.stdout, &push.stderr, &refspec);
         if outcome == PushOutcome::Ok {
             // the remote holds it, whatever went wrong afterwards
@@ -131,6 +147,7 @@ impl Link<'_> {
                 None,
             )?;
             self.last_commit = Some(commit);
+            failpoints.hit("push.after-ok");
             return Ok(PushOutcome::Ok);
         }
         self.last_error = said;

@@ -125,6 +125,7 @@ fn write_tracked(ws: &Workspace, remote: Option<&OsStr>) -> Result<(), Failure> 
         &Path::new(&top).join(".beadroll.json"),
         body.as_bytes(),
         false,
+        &settings.failpoints,
     )?;
     Ok(())
 }

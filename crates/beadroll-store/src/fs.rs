@@ -13,6 +13,7 @@ use beadroll_core::json::{self, Surrogates, Value};
 use beadroll_git::IoError;
 
 use crate::error::Error;
+use crate::failpoint::{Failpoints, Fired};
 
 /// `path` and any missing parents made as 0700 (less the umask, as `mkdir` gives it); a race loser
 /// is fine, a file in the way is an error.
@@ -50,7 +51,14 @@ pub fn private_dir(path: &Path) -> Result<(), Error> {
 /// `data` written whole to a temporary file beside `path` (`.NAME.PID.tmp`), fsynced, then renamed
 /// into place. Store files are 0600; a file written into the caller's checkout (`private` false)
 /// follows the caller's umask like any other file there. A write that fails leaves nothing behind.
-pub fn write_atomic(path: &Path, data: &[u8], private: bool) -> Result<(), Error> {
+/// The failpoints `atomic-write:<part>` (before the rename) and `atomic-written:<part>` (after
+/// it) fire for a target whose path holds `<part>`.
+pub fn write_atomic(
+    path: &Path,
+    data: &[u8],
+    private: bool,
+    failpoints: &Failpoints,
+) -> Result<(), Error> {
     let parent = path.parent().unwrap_or(Path::new("."));
     if private {
         private_dirs(parent)?;
@@ -70,6 +78,11 @@ pub fn write_atomic(path: &Path, data: &[u8], private: bool) -> Result<(), Error
         .write_all(data)
         .map_err(|e| IoError::bare(&e))
         .and_then(|()| fsync(&file))
+        .and_then(|()| match failpoints.hit_path("atomic-write", path) {
+            // the write fails as a full volume fails it
+            Some(Fired::Errno(errno)) => Err(IoError::bare(&io::Error::from_raw_os_error(errno))),
+            _ => Ok(()),
+        })
         .and_then(|()| {
             drop(file);
             std::fs::rename(&tmp, path).map_err(|e| IoError::at(&e, path))
@@ -78,6 +91,7 @@ pub fn write_atomic(path: &Path, data: &[u8], private: bool) -> Result<(), Error
         let _ = std::fs::remove_file(&tmp);
         return Err(Error::Io(error));
     }
+    failpoints.hit_path("atomic-written", path);
     Ok(())
 }
 
@@ -285,7 +299,7 @@ mod tests {
     fn atomic_writes_leave_nothing_behind_and_keep_private_modes() {
         let dir = tempfile::tempdir().unwrap();
         let target = dir.path().join("a/b/file.json");
-        write_atomic(&target, b"{}", true).unwrap();
+        write_atomic(&target, b"{}", true, &Failpoints::none()).unwrap();
         let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
         assert_eq!(std::fs::read(&target).unwrap(), b"{}");
@@ -293,7 +307,7 @@ mod tests {
         assert_eq!(names, std::slice::from_ref(&target));
         let blocked = dir.path().join("file-not-dir");
         std::fs::write(&blocked, "").unwrap();
-        let error = write_atomic(&blocked.join("x"), b"", true).unwrap_err();
+        let error = write_atomic(&blocked.join("x"), b"", true, &Failpoints::none()).unwrap_err();
         assert_eq!(error.code().as_str(), "IO");
     }
 

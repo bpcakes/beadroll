@@ -12,11 +12,11 @@ use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 
 use beadroll_core::json::Int;
-use beadroll_core::text::repr_bytes;
+use beadroll_core::text::{json_ascii_bytes, repr_bytes};
 
 use super::spec::{Action, ArgSpec, COMMAND, CommandSpec, HELP_FLAG, Nargs, find};
 use classify::{Candidate, parse_optional};
-use values::{default, option_count, positional_count, values_of};
+use values::{default, json_of, option_count, positional_count, values_of};
 
 /// A value in the namespace argparse builds.
 #[derive(Clone, Debug, PartialEq)]
@@ -90,6 +90,25 @@ impl Namespace {
             Value::Int(int) => Some(int),
             _ => None,
         }
+    }
+
+    /// The namespace as Python's `command_signature` writes it, `json.dumps(asked,
+    /// sort_keys=True)`: `command` and every destination with its value or default, sorted,
+    /// ASCII-escaped (bytes that are not UTF-8 as the lone surrogates Python holds them as).
+    pub(crate) fn asked(&self) -> String {
+        let mut entries: Vec<(&str, String)> =
+            vec![("command", json_ascii_bytes(self.spec.name.as_bytes()))];
+        entries.extend(
+            self.values
+                .iter()
+                .map(|(dest, value)| (*dest, json_of(value))),
+        );
+        entries.sort_by(|a, b| a.0.cmp(b.0));
+        let members: Vec<String> = entries
+            .iter()
+            .map(|(dest, value)| format!("{}: {value}", json_ascii_bytes(dest.as_bytes())))
+            .collect();
+        format!("{{{}}}", members.join(", "))
     }
 }
 

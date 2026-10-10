@@ -1,11 +1,12 @@
 //! What argparse makes of an argument's strings: its default, its value converted to its type,
 //! how many strings an option or a positional takes (`_match_argument`, `_get_nargs_pattern`),
-//! and whether a string is a negative number, which is a value.
+//! and whether a string is a negative number, which is a value; and a value as `json.dumps`
+//! writes it into a receipt.
 
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStrExt as _;
 
-use beadroll_core::text::{decimal_value, py_int, repr_bytes, repr_str};
+use beadroll_core::text::{decimal_value, json_ascii_bytes, py_int, repr_bytes, repr_str};
 
 use super::super::spec::{Action, ArgSpec, COMMANDS, Kind, Nargs, find};
 use super::{Stop, Value, argument_error};
@@ -116,4 +117,23 @@ pub(super) fn looks_negative(arg: &[u8]) -> bool {
         .chars()
         .next()
         .is_some_and(|c| decimal_value(c).is_some())
+}
+
+/// A namespace value as `json.dumps` writes it, ASCII-escaped: bytes that are not UTF-8 as the lone
+/// surrogates Python holds them as.
+pub(super) fn json_of(value: &Value) -> String {
+    match value {
+        Value::None => "null".to_owned(),
+        Value::Bool(true) => "true".to_owned(),
+        Value::Bool(false) => "false".to_owned(),
+        Value::Int(int) => int.to_string(),
+        Value::Text(text) => json_ascii_bytes(text.as_bytes()),
+        Value::List(items) => {
+            let items: Vec<String> = items
+                .iter()
+                .map(|i| json_ascii_bytes(i.as_bytes()))
+                .collect();
+            format!("[{}]", items.join(", "))
+        }
+    }
 }

@@ -202,6 +202,11 @@ fn record_alias(ctx: &Context<'_>, name: &OsStr) -> Result<(), Failure> {
     aliases.insert(text(ident), Value::from(text(alias)));
     let written = json::write(&Value::Object(aliases), Format::INDENTED)
         .map_err(|e| Failure::new(Code::Validation, e.to_string()))?;
-    write_atomic(&path, surrogates.restore(&written).as_bytes(), true)?;
+    write_atomic(
+        &path,
+        surrogates.restore(&written).as_bytes(),
+        true,
+        &ctx.ws.settings.failpoints,
+    )?;
     Ok(())
 }

@@ -5,12 +5,14 @@ use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use beadroll_core::text::{py_float, py_int, repr_str};
 use beadroll_git::Env;
 
 use crate::error::Error;
+use crate::failpoint::{Failpoints, Fired};
 
 /// Segment rotation size when `BEAD_ROTATE_BYTES` is unset.
 pub const ROTATE_BYTES: i128 = 256 * 1024;
@@ -22,11 +24,12 @@ pub const REPACK_LOOSE: i128 = 1000;
 /// `BEAD_REPACK_PACKS` is unset.
 pub const REPACK_PACKS: i128 = 40;
 
-/// The clock event ids and stamps are read from: the system's, shifted by an offset the `clock`
-/// failpoint sets (zero otherwise).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// The clock event ids and stamps are read from (Python's `time.time_ns`): the system's, shifted by
+/// an offset, and as the `clock` failpoint has it at each reading (`offset(±DUR)`, `at(TIME)`).
+#[derive(Clone, Debug, Default)]
 pub struct Clock {
     offset_ns: i128,
+    failpoints: Option<Arc<Failpoints>>,
 }
 
 impl Clock {
@@ -37,7 +40,18 @@ impl Clock {
 
     /// The system clock shifted by `offset_ns` nanoseconds.
     pub fn shifted(offset_ns: i128) -> Clock {
-        Clock { offset_ns }
+        Clock {
+            offset_ns,
+            failpoints: None,
+        }
+    }
+
+    /// The system clock, as the `clock` failpoint of `failpoints` has it.
+    pub fn with_failpoints(failpoints: Arc<Failpoints>) -> Clock {
+        Clock {
+            offset_ns: 0,
+            failpoints: Some(failpoints),
+        }
     }
 
     /// Nanoseconds since the epoch (Python's `time.time_ns()`).
@@ -46,7 +60,12 @@ impl Clock {
             Ok(since) => since.as_nanos() as i128,
             Err(before) => -(before.duration().as_nanos() as i128),
         };
-        real + self.offset_ns
+        let now = real + self.offset_ns;
+        match self.failpoints.as_ref().and_then(|f| f.hit("clock")) {
+            Some(Fired::Offset(ns)) => now + ns,
+            Some(Fired::At(ns)) => ns,
+            _ => now,
+        }
     }
 }
 
@@ -72,6 +91,8 @@ pub struct Settings {
     pub cwd: PathBuf,
     /// The clock event ids and stamps are read from.
     pub clock: Clock,
+    /// The failpoints of this invocation (`BEAD_FAILPOINTS` and the crash hooks).
+    pub failpoints: Arc<Failpoints>,
 }
 
 impl Settings {
@@ -111,6 +132,11 @@ impl Settings {
         })?;
         let bead_home =
             get("BEAD_HOME").map(|value| (value.clone(), expand_user(value, &user_home, home_of)));
+        let failpoints = Arc::new(Failpoints::from_env(
+            get("BEAD_FAILPOINTS").map(OsString::as_os_str),
+            get("BEAD_TEST_CRASH_BEFORE_PUSH").is_some(),
+            get("BEAD_TEST_CRASH_AFTER_PUSH").is_some(),
+        )?);
         Ok(Settings {
             bead_home,
             rotate_bytes: int("BEAD_ROTATE_BYTES", ROTATE_BYTES)?,
@@ -121,7 +147,8 @@ impl Settings {
             git: Env::new(vars.clone(), cwd.clone(), tmp),
             cwd: cwd.unwrap_or_else(|| PathBuf::from(".")),
             user_home,
-            clock: Clock::system(),
+            clock: Clock::with_failpoints(Arc::clone(&failpoints)),
+            failpoints,
         })
     }
 

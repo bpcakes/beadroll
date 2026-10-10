@@ -12,8 +12,8 @@ use beadroll_core::replay::replay;
 use beadroll_core::state::State;
 use beadroll_git::IoError;
 use beadroll_store::{
-    Workspace, append_events, attempt_path, capture_where, encode_events, glob_ending, json_text,
-    load_journal, private_dir, private_dirs, replica_id, uuid7, write_attempt_file,
+    Actor, Workspace, append_events, attempt_path, capture_where, encode_events, glob_ending,
+    json_text, load_journal, private_dir, private_dirs, replica_id, uuid7, write_attempt_file,
 };
 
 use crate::error::Error;
@@ -43,25 +43,28 @@ pub struct Tx<'a> {
     pub ownership: Vec<Value>,
     /// Whether later events belong to the attempt.
     pub conditional: bool,
+    /// Whether the actor's text can be written ([`Actor::writable`]).
+    writable: bool,
     state: Option<State>,
 }
 
 impl<'a> Tx<'a> {
     /// A transaction of `actor` on `ws`: this machine's identity (minted on first use), the store's
     /// journal, and where the caller works.
-    pub fn new(ws: &'a Workspace, actor: Value) -> Result<Tx<'a>, Error> {
+    pub fn new(ws: &'a Workspace, actor: &Actor) -> Result<Tx<'a>, Error> {
         let replica = replica_id(&ws.settings, true)?.unwrap_or_default();
         let journal = load_journal(ws)?;
         let place = capture_where(ws)?;
         Ok(Tx {
             ws,
-            actor,
+            actor: actor.value.clone(),
             replica,
             journal,
             place,
             pending: Vec::new(),
             ownership: Vec::new(),
             conditional: false,
+            writable: actor.writable,
             state: None,
         })
     }
@@ -124,6 +127,11 @@ impl<'a> Tx<'a> {
             )));
         }
         encode_events(std::slice::from_ref(&event))?;
+        if !self.writable {
+            // the actor's text is not UTF-8: Python holds it as lone surrogates, which no event
+            // can be encoded with
+            return Err(Error::Validation("text is not valid UTF-8".to_owned()));
+        }
         if OWNERSHIP.contains(&op) || self.conditional {
             self.ownership.push(event.clone());
             // later emits build on it
@@ -171,7 +179,7 @@ fn take_lock(ws: &Workspace) -> Result<std::fs::File, Error> {
 /// The attempt counts: written, as one file, where every machine reads it.
 pub fn confirm_ownership(ws: &Workspace, events: &[Value]) -> Result<(), Error> {
     if !events.is_empty() {
-        write_attempt_file(&attempt_path(ws, events), events)?;
+        write_attempt_file(&attempt_path(ws, events), events, &ws.settings.failpoints)?;
     }
     Ok(())
 }
@@ -182,11 +190,11 @@ pub fn confirm_ownership(ws: &Workspace, events: &[Value]) -> Result<(), Error> 
 /// new command. Nothing is written if `body` fails.
 pub fn writing<T, E: From<Error>>(
     ws: &Workspace,
-    actor: &Value,
+    actor: &Actor,
     body: impl FnOnce(&mut Tx<'_>) -> Result<T, E>,
 ) -> Result<T, E> {
     locked(ws, || {
-        let mut tx = Tx::new(ws, actor.clone())?;
+        let mut tx = Tx::new(ws, actor)?;
         let replica = tx.replica.clone();
         if tx.state()?.chain_breaks().contains_key(&replica) {
             return Err(Error::JournalFork(
@@ -205,7 +213,7 @@ pub fn writing<T, E: From<Error>>(
                 confirm_ownership(ws, &tx.ownership)?;
             }
             if !tx.pending.is_empty() || !tx.ownership.is_empty() {
-                forget_receipts(ws, actor)?;
+                forget_receipts(ws, &actor.value)?;
                 ws.set_wrote(true);
             }
             Ok(())

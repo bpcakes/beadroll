@@ -5,8 +5,8 @@
 `crates/beadroll-store` is this machine's side of bead (`docs/RUST-PORT.md` §2.1): the settings the
 CLI hands down, `BEAD_HOME`, the store's files and modes, the lock's file, atomic writes, journal
 segments and torn tails, attempt and pending files, identity and aliases, workspace discovery and
-remote resolution, actor detection, and `view`. Slice 2a (`roll-k2wy.3`) built it; Slice 2c adds the
-failpoint registry.
+remote resolution, actor detection, and `view`. Slice 2a (`roll-k2wy.3`) built it; Slice 2c
+(`roll-k2wy.5`) added the failpoint registry.
 
 ## Key entrypoints
 
@@ -16,7 +16,12 @@ failpoint registry.
   `read_json_text`, `read_json_keeping_surrogates` (a file Python rewrites whole, or whose names
   print as Python prints them) and Python's error texts (`os_error_str`, `utf8_error`).
 - `src/identity.rs`: `replica_id`, `machine_aliases`, `uuid7`, `hex_token`.
-- `src/actor.rs`: `detect_actor`, `nearest_harness` (its `ps` passed in by the CLI).
+- `src/actor.rs`: `detect_actor`, `nearest_harness` (its `ps` passed in by the CLI); an `Actor` is
+  its JSON value and whether it can write (not when Python would hold its text as lone
+  surrogates).
+- `src/failpoint.rs`: `Failpoints`, the registry `Settings` carries (`BEAD_FAILPOINTS` and the two
+  crash hooks): `hit`, `hit_path` for `atomic-write:`/`atomic-written:`, `has`, and `hits`, which
+  in-crate tests read to check that a fault fired; `POINTS`, every point bead has.
 - `src/workspace.rs`: `Workspace` (`meta`, `save_meta`, `note_sync`, `ref_name`, `resolve_remote`,
   `remote`), `stamp`; `src/discover.rs`: `find_workspace`, `checked_config`, `moved_workspaces`.
 - `src/journal.rs`: segment, attempt and pending files, `append_events`, `repair_tail`,
@@ -27,8 +32,8 @@ failpoint registry.
 
 - A file in the store, its name, mode or how it is written: here.
 - Workspace discovery, identity, actor detection: here.
-- A failpoint's registry and parsing (§2.3g, §4.5): here, from Slice 2c; the points themselves sit
-  where they fire.
+- A failpoint's registry and parsing (§2.3g, §4.5): `src/failpoint.rs`; the points themselves sit
+  where they fire. A new point joins `POINTS`, and an action a point can take joins `allowed`.
 
 ## Invariants
 
@@ -40,6 +45,9 @@ failpoint registry.
 - Settings arrive as values (`Settings`); this crate never reads the process environment or the
   working directory (§2.2). A numeric `BEAD_*` setting that is not a number is a `CONFIG` error
   when the settings are built (§5 row 26).
+- Failpoints reach code through `Settings` only, never the process environment; anything they cannot
+  do as written (an unknown point, an action the point cannot take, a second spec for one point)
+  is `CONFIG` when the settings are built.
 - It depends on `beadroll-core` and `beadroll-git` only, of the workspace.
 
 ## Common commands

@@ -15,6 +15,7 @@ use beadroll_core::text::py_int;
 use beadroll_git::IoError;
 
 use crate::error::Error;
+use crate::failpoint::{Failpoints, Fired, kill_self};
 use crate::fs::{dir_entries, fsync, glob_ending, has_suffix, private_dirs, read, write_atomic};
 use crate::workspace::Workspace;
 
@@ -112,9 +113,9 @@ pub fn repair_tail(ws: &Workspace, path: &Path) -> Result<(), Error> {
         // an incomplete fragment, not just a missing newline
         let name = path.file_name().unwrap_or_default().to_string_lossy();
         let torn = path.with_file_name(format!("{name}.torn-{}", ws.settings.clock.now_ns()));
-        write_atomic(&torn, &data[fixed.len()..], true)?;
+        write_atomic(&torn, &data[fixed.len()..], true, &ws.settings.failpoints)?;
     }
-    write_atomic(path, &fixed, true)
+    write_atomic(path, &fixed, true, &ws.settings.failpoints)
 }
 
 /// Where this machine appends next: the last segment, or a new one once that has reached the
@@ -149,7 +150,8 @@ pub fn active_segment(ws: &Workspace, replica: &str) -> Result<PathBuf, Error> {
 }
 
 /// Appends sequential events to this machine's journal, after repairing any torn tail. Called with
-/// the store lock held.
+/// the store lock held. With the `append.mid` failpoint set, the first half of the line is written
+/// and flushed before it is passed (`torn-sigkill` fsyncs that half and dies there).
 pub fn append_events(ws: &Workspace, replica: &str, events: &[Value]) -> Result<(), Error> {
     let folder = ws.events_dir.join(replica);
     for segment in glob_ending(&folder, ".jsonl") {
@@ -166,14 +168,30 @@ pub fn append_events(ws: &Workspace, replica: &str, events: &[Value]) -> Result<
         .mode(0o600)
         .open(&path)
         .map_err(|e| IoError::at(&e, &path))?;
-    file.write_all(&data).map_err(|e| IoError::bare(&e))?;
+    let failpoints = &ws.settings.failpoints;
+    let mut rest: &[u8] = &data;
+    if failpoints.has("append.mid") {
+        let (half, after) = data.split_at(data.len() / 2);
+        file.write_all(half).map_err(|e| IoError::bare(&e))?;
+        file.flush().map_err(|e| IoError::bare(&e))?;
+        if failpoints.hit("append.mid") == Some(Fired::TornSigkill) {
+            fsync(&file)?;
+            kill_self();
+        }
+        rest = after;
+    }
+    file.write_all(rest).map_err(|e| IoError::bare(&e))?;
     fsync(&file)?;
     Ok(())
 }
 
 /// Writes an attempt whole: a reader sees all of it or none of it.
-pub fn write_attempt_file(path: &Path, events: &[Value]) -> Result<(), Error> {
-    write_atomic(path, &encode_events(events)?, true)
+pub fn write_attempt_file(
+    path: &Path,
+    events: &[Value],
+    failpoints: &Failpoints,
+) -> Result<(), Error> {
+    write_atomic(path, &encode_events(events)?, true, failpoints)
 }
 
 /// The events of the attempt file at `path`, as replay reads them: an unreadable file, or any bad
@@ -198,7 +216,9 @@ pub fn read_attempt(path: &Path, problems: Option<&mut Vec<Problem>>) -> Vec<Val
 /// Every event the store holds: the segments, then the accepted attempt files, settled.
 pub fn load_journal(ws: &Workspace) -> Result<Journal, Error> {
     let mut journal = Journal::new();
-    for path in segment_files(ws)? {
+    let segments = segment_files(ws)?;
+    ws.settings.failpoints.hit("journal.after-enumerate");
+    for path in segments {
         let data = read(&path)?;
         let origin = path.display().to_string();
         let replica = folder_name(&path, 1);
@@ -238,7 +258,9 @@ fn folder_name(path: &Path, up: usize) -> String {
 /// skips a file that vanished (settled meanwhile by the lock holder, which keeps the receipt).
 pub fn load_pending(ws: &Workspace) -> Result<Vec<Vec<Value>>, Error> {
     let mut out = Vec::new();
-    for path in pending_files(ws) {
+    let listed = pending_files(ws);
+    ws.settings.failpoints.hit("pending.after-list");
+    for path in listed {
         let data = match std::fs::read(&path) {
             Ok(data) => data,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
@@ -282,6 +304,7 @@ pub enum ViewError {
 /// unconfirmed ownership attempts listed on their issues but counting for nothing.
 pub fn view(ws: &Workspace) -> Result<State, ViewError> {
     let mut state = replay(load_journal(ws)?)?;
+    ws.settings.failpoints.hit("view.before-load-pending");
     for attempt in load_pending(ws)? {
         for event in &attempt {
             state.add_unconfirmed(event);

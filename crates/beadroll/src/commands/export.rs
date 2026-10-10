@@ -25,7 +25,12 @@ pub(crate) fn export(ctx: &Context<'_>, output: Option<&OsStr>) -> Result<Outcom
         return Ok(Outcome::raw(text));
     };
     // written where Python's `Path(args.output)` points: `dump.jsonl/` is `dump.jsonl`
-    write_atomic(&pathlib(output), text.as_bytes(), false)?;
+    write_atomic(
+        &pathlib(output),
+        text.as_bytes(),
+        false,
+        &ctx.ws.settings.failpoints,
+    )?;
     let count = st.issues().count();
     let shown = printed_text(output.as_bytes());
     let mut result = Object::new();

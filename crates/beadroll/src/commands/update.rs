@@ -1,7 +1,7 @@
 //! `bead update`: fields, labels and parent, checked for every issue before anything is written.
 //! Changing the status of an issue someone else holds needs `--force`; closing your own claim this
-//! way ends it and is published at once. A claim (`--claim`, `--status in_progress`) is
-//! coordinated with the remote, which is Phase 2c's (`docs/RUST-PORT.md` §6).
+//! way ends it and is published at once. A claim (`--claim`, `--status in_progress`) and the edits
+//! made with it are one attempt, coordinated with the remote: both land, or neither.
 
 use std::ffi::OsString;
 
@@ -12,11 +12,12 @@ use beadroll_core::json::{Object, Value};
 use beadroll_core::state::{Issue, State, actor_label};
 use beadroll_core::text::str_of;
 use beadroll_store::view;
-use beadroll_sync::{Tx, publish_soon, writing};
+use beadroll_sync::{Mode, Tx, coordinated, publish_soon, writing};
 
+use super::ownership::{ClaimStep, command_signature, still_held};
 use super::{
     ContentArgs, Context, Failure, Outcome, Payload, arg_texts, encodable, ended_by, field_args,
-    need_tracker, not_yet, remove_edge, resolve_arg, split_args,
+    need_tracker, remove_edge, resolve_arg, split_args,
 };
 
 /// `update`'s arguments.
@@ -31,6 +32,8 @@ pub(crate) struct UpdateArgs {
     pub(crate) set_labels: Option<OsString>,
     pub(crate) offline: bool,
     pub(crate) remote: Option<OsString>,
+    /// The parsed command line as the receipt names it (`Namespace::asked`).
+    pub(crate) asked: String,
 }
 
 /// Changes each issue as asked; its detail afterwards.
@@ -44,12 +47,46 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
         ));
     }
     // in_progress is reached only through a claim
-    if args.claim || status.as_deref() == Some("in_progress") {
-        return Err(not_yet("update --claim (or --status in_progress)"));
-    }
-    let ended = writing(ctx.ws, ctx.actor, |tx| {
-        edits(tx, args, &fields, status.as_deref())
-    })?;
+    let wants_claim = args.claim || status.as_deref() == Some("in_progress");
+    let status = status.filter(|status| status != "in_progress");
+    let mut notes = Vec::new();
+    let ended = if wants_claim {
+        let step = ClaimStep {
+            keys: &args.ids,
+            takeover: None,
+        };
+        let mut request = Object::new();
+        request.insert("fields".into(), Value::Object(fields.values.clone()));
+        request.insert("status".into(), Value::from(status.clone()));
+        let request = Value::Object(request);
+        let signature = command_signature(ctx.actor, &args.asked, Some(&request));
+        let mut ended = Vec::new();
+        // the claim and its edits are one attempt: both land, or neither
+        let mode = coordinated(
+            ctx.ws,
+            ctx.actor,
+            args.offline,
+            args.remote.as_deref(),
+            &signature,
+            |tx, mode| -> Result<Mode, Failure> {
+                let mode = step.run(tx, mode)?;
+                tx.conditional = true;
+                ended.extend(edits(tx, args, &fields, status.as_deref())?);
+                Ok(mode)
+            },
+        )?;
+        if mode == Mode::Offline {
+            notes.push("claim is PROVISIONAL: not exclusive until claimed online".to_owned());
+        } else if status.as_deref() != Some("closed") {
+            // a claiming close ends the claim on purpose
+            still_held(ctx, &view(ctx.ws)?, &args.ids)?;
+        }
+        ended
+    } else {
+        writing(ctx.ws, ctx.actor, |tx| {
+            edits(tx, args, &fields, status.as_deref())
+        })?
+    };
     // the same promptness `bead close` gives
     let warning = if ended.is_empty() {
         None
@@ -69,6 +106,7 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
             format!("Updated {}: {}", field("id"), field("title"))
         })
         .collect();
+    lines.extend(notes);
     if let Some(warning) = warning {
         for item in &mut result {
             // --json is told too: the other machines do not know yet

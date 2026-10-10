@@ -169,6 +169,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
   to start, with exit status 3, and records the attempt in the file it names. A test that bypasses
   `BEAD_UNDER_TEST` fails instead of counting a Python run as the other binary's pass
   (`RUST-PORT.md` §4.2).
+- The Rust binary has failpoints in every build, activated only by `BEAD_FAILPOINTS` and the two
+  crash hooks Python has (`BEAD_TEST_CRASH_BEFORE_PUSH`/`AFTER_PUSH`, which are aliases); a spec
+  that cannot fire as written is `CONFIG` (`RUST-PORT.md` §2.3g, §4.5; the maintainer's decision
+  of 2026-10-09). In-crate tests pass the registry in `Settings`; `error(CODE)` at
+  `ownership.after-confirm` is their in-process form of Q03's interruption.
 - `BEAD_HOME` must be absolute; the store's modes are 0700/0600 whatever the umask.
 - Only directories bead creates get private modes; a user-supplied `BEAD_HOME` is chmodded 0700
   on first write (reviewer observation, kept).

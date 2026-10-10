@@ -4,11 +4,11 @@
 
 `crates/beadroll` is the `bead` binary (`docs/RUST-PORT.md` §2.1): `commands` maps typed requests to
 typed outcomes, `cli` parses arguments, renders results and owns the output streams and exit codes.
-Slices 2a and 2b (`roll-k2wy.3`, `roll-k2wy.4`) port every command but the coordinated ones:
-`claim`, `release`, `takeover` and `update --claim`/`--status in_progress` parse, and answer
-`USAGE` ("not in this build of bead yet") until Slice 2c adds them; Slice 2d adds `sys`, the
-second audited unsafe spot. Its integration tests are the black-box tests ported from the Python
-suite, the golden outputs and the mixed-fleet tests.
+Slices 2a and 2b (`roll-k2wy.3`, `roll-k2wy.4`) port every command but the coordinated ones, which
+Slice 2c (`roll-k2wy.5`) adds: `claim`, `release`, `takeover` and `update --claim`/`--status
+in_progress`, with their receipts. Slice 2d adds `sys`, the second audited unsafe spot. Its
+integration tests are the black-box tests ported from the Python suite, the golden outputs and the
+mixed-fleet tests.
 
 ## Key entrypoints
 
@@ -29,12 +29,15 @@ suite, the golden outputs and the mixed-fleet tests.
   `Outcome` and the helpers commands share; `src/commands/args.rs`: command-line text as Python's
   `surrogateescape` strings behave (`resolve_arg`, `field_args`, `Payload`, `encodable`);
   `src/commands/*.rs`: one command or a family each (`transition.rs` is close, reopen and delete;
-  `queries.rs` blocked, search and lint; `history.rs` log and machines).
+  `queries.rs` blocked, search and lint; `history.rs` log and machines; `ownership.rs` claim,
+  takeover and release, the claim step `update` shares, and `command_signature`, the receipt).
 - `tests/cli/main.rs`: the one test binary's root; `sandbox()` hands test support the binary Cargo
   built (`env!("CARGO_BIN_EXE_bead")`), the only place that default can come from.
 - `tests/cli/commands/*.rs`: `tests/test_commands.py`, ported; `tests/cli/mixed.rs`: Python and Rust
-  machines on one remote and on one store; `tests/cli/golden.rs` and `golden/normal.rs`: the
-  golden scenarios and their normalisation, against the files in `tests/golden/`.
+  machines on one remote and on one store, and `mixed/receipts.rs`, their receipts compared byte
+  for byte and recognised across a switch of binaries; `tests/cli/golden.rs` and
+  `golden/normal.rs`: the golden scenarios and their normalisation, against the files in
+  `tests/golden/`.
 
 ## Edit here for X
 
@@ -43,7 +46,8 @@ suite, the golden outputs and the mixed-fleet tests.
   `commands::help_and_prime::x`. It counts once it passes against Python's `./bead`.
 - A command, its output or its exit status: `src/commands` and `src/cli`.
 - An argument or a help text: `src/cli/spec.rs`, as `beadroll/cli.py` has it; then
-  `cargo xtask golden`, which captures the help pages from Python.
+  `cargo xtask golden`, which captures the help pages from Python. An argument of a coordinated
+  command is part of its receipt (`Namespace::asked`): `mixed::receipts` must stay green.
 - A golden scenario: `tests/cli/golden.rs`, then `cargo xtask golden`; never edit a file in
   `tests/golden/` by hand.
 

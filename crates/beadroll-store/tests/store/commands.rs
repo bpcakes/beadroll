@@ -7,7 +7,9 @@ mod compat_audit_identity {
     fn actor(vars: &[(&str, &str)], name: Option<&str>) -> Json {
         let home = tempfile::tempdir().unwrap();
         let settings = crate::settings(home.path(), vars);
-        detect_actor(&settings, name, &|| None)
+        let actor = detect_actor(&settings, name.map(std::ffi::OsStr::new), &|| None);
+        assert!(actor.writable);
+        actor.value
     }
 
     #[test]

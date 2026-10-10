@@ -783,7 +783,7 @@ each count means.
 | `test_storage` | 9 | `crates/beadroll/tests/cli/storage.rs` | 5 black-box; 4 via failpoint handshakes (`pause-until`) |
 | `test_compat` | 4 | a core test (comment-id export) and a store test (ref validation, which runs `git check-ref-format`) + `cli/compat.rs` (2) | The real-export/`br`/`bv` test is `#[ignore = "needs br, bv and real Beads exports"]`, also run by `xtask check --real` |
 | `test_commands` | 113 | `crates/beadroll/tests/cli/commands/*.rs` | 97 black-box; 8 on the crash hooks; 2 on the `clock` failpoint; 4 unit tests of the store, sync and replay (2 `detect_actor`, `Link`'s environment, a replay of a CLI-written store), none core-only; 1 black-box with a fake `ps` (`nearest_harness`); 1 rewritten |
-| `test_protocol` | 57 | `cli/protocol/*.rs` + `crates/beadroll-sync/tests/` | 35 black-box; 6 on the crash hooks, which Python has; 4 on new failpoints (`append.mid`, `clock`, `atomic-write:claims/`, `backoff`); 11 in-crate API tests (fence wins, `Link` outcomes, per-`Link` timeout); 1 core |
+| `test_protocol` | 57 | `cli/protocol/*.rs` + `crates/beadroll-sync/tests/sync/protocol/` | 35 black-box; 6 on the crash hooks, which Python has; 4 on new failpoints (`append.mid`, `clock`, `atomic-write:claims/`, `backoff`); 11 in-crate API tests (fence wins, `Link` outcomes, per-`Link` timeout), ported in Slice 2c; 1 core |
 | `test_hardening` | 208 | `cli/hardening/{g01…g65,v1…v9}.rs` + unit tests in git/store/core | 172 black-box (14 on the crash hooks); 15 failpoint/API; 12 unit tests, most of them in the git and store crates (the `without_password` pairs, `normalize_remote`, URL schemes, runner timeouts, `Workspace.remote`; the catalogue lists them); 9 rewritten (§4.6) |
 | `test_stress` | 2 | `cli/stress.rs`, `#[ignore = "stress: randomised models"]` | Same seeds and oracles; schedules run in parallel |
 | `test_sweep` | 1 | `cli/sweep.rs` | Failpoints replace the `runpy` wrapper; the 12-schedule slice runs by default, `BEAD_SWEEP=full` runs all 660; schedules in parallel |
@@ -808,9 +808,11 @@ A direct port of `support.py`:
     `BEAD_HOME`/`BEAD_AGENT`/`BEAD_THREAD` are set.
 - Explicit binary paths: the consuming `crates/beadroll/tests/cli/main.rs` evaluates
   `env!("CARGO_BIN_EXE_bead")` and passes that default into test support. The shared dependency
-  must not expand the macro itself; Cargo does not define it there. Tests in other crates receive
-  an executable path from xtask. Selection is per-machine override, then `BEAD_UNDER_TEST`, then
-  the supplied default. Phase 0 can supply Python's absolute `./bead` path before Rust works.
+  must not expand the macro itself; Cargo does not define it there. Tests in other crates, which
+  Cargo gives no `bead`, supply the checkout's Python launcher until the cutover removes it
+  (`crates/beadroll-sync/tests/sync/`). Selection is per-machine override, then
+  `BEAD_UNDER_TEST`, then the supplied default. Phase 0 can supply Python's absolute `./bead` path
+  before Rust works.
 - Fixtures:
   - writers for pre-receive hooks (stall, gate, refuse, slow post-receive);
   - fake `ssh`, `ps` and `git` shims;
@@ -851,6 +853,20 @@ Specs are `point=action` (first hit), `point@nth(k)=action` (one hit, `k >= 1`),
 registry. Invalid selectors and duplicate specs for one point are `CONFIG` errors.
 `backoff@always=skip` removes every retry wait; `backoff=skip` removes only the first. The registry
 tests cover first/nth/always dispatch and the exhaustion tests still assert exactly 12 rounds.
+
+As Slice 2c built it (`crates/beadroll-store/src/failpoint.rs`):
+- **Which point takes which action.** Every point but `clock` can `exit`, `sigkill`, `sleep` and
+  `pause-until`. `torn-sigkill` belongs to `append.mid`, `errno` to `atomic-write:`, `fail-reply`
+  to `push.reply`, `skip` to `backoff`, and `offset`/`at` to `clock`. `error(CODE)` fails
+  `publish.result`, and fails the command at `ownership.after-confirm`, which leaves its attempt
+  confirmed and its pending twin in place (Q03's interruption, in process). Any other pairing,
+  an unknown point or a code bead does not have is `CONFIG`.
+- **Arguments.** Durations take `ns`, `us`, `ms`, `s`, `m`, `h` or `d` with an optional sign;
+  `at` takes nanoseconds since the epoch; `errno` names one of `ENOSPC`, `EFBIG`, `EIO`, `EACCES`,
+  `EPERM`, `EROFS`, `EDQUOT`, `EMFILE`, `ENFILE`, `ENOENT` and `EINTR`; `BEAD_FAILPOINTS` must be
+  UTF-8. A `pause-until` waits at most 300 seconds for its `.go` file.
+- **In-crate tests** build `Settings` with `BEAD_FAILPOINTS` among its variables and read
+  `Failpoints::hits` to check that the fault they injected was reached.
 
 | Point | Where | Replaces |
 |---|---|---|

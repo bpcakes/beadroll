@@ -61,7 +61,7 @@ fn write_issue(
     args: &CreateArgs,
     fields: &Payload,
 ) -> Result<(String, String, Object), Failure> {
-    let clock = tx.ws.settings.clock;
+    let clock = tx.ws.settings.clock.clone();
     let (deps, parent_uid, key, uid) = {
         let st = tx.state()?;
         need_tracker(st)?;

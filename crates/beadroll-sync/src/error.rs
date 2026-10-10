@@ -61,6 +61,19 @@ pub enum Error {
     /// `git init` of the sync repository failed (`GIT_ERROR`).
     #[error("{0}")]
     GitError(String),
+    /// An ownership attempt of this machine is unsettled, and the push that would settle it did
+    /// not complete (`UNRESOLVED`).
+    #[error("{0}")]
+    Unresolved(String),
+    /// A failure a failpoint injected (`error(CODE)`, at `publish.result` or
+    /// `ownership.after-confirm`), with its code.
+    #[error("{} injected by the {point} failpoint", .code.as_str())]
+    Injected {
+        /// The code it fails with.
+        code: Code,
+        /// The point that injected it.
+        point: &'static str,
+    },
 }
 
 impl Error {
@@ -82,7 +95,14 @@ impl Error {
             Error::SyncRepoDamaged(_) => Code::SyncRepoDamaged,
             Error::SyncConflict(_) => Code::SyncConflict,
             Error::GitError(_) => Code::GitError,
+            Error::Unresolved(_) => Code::Unresolved,
+            Error::Injected { code, .. } => *code,
         }
+    }
+
+    /// A failure the failpoint at `point` injected under `code`.
+    pub fn injected(code: Code, point: &'static str) -> Error {
+        Error::Injected { code, point }
     }
 
     /// Whether this came from the operating system rather than from bead (Python's `OSError`, as
