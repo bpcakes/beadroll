@@ -28,6 +28,24 @@ pub(crate) struct InitArgs {
     pub(crate) offline: bool,
 }
 
+/// `os.path.normpath(path)` for an absolute `path`: `.` and `..` folded as written, no symbolic link
+/// resolved.
+fn normpath(path: &OsStr) -> PathBuf {
+    let mut parts: Vec<&[u8]> = Vec::new();
+    for part in path.as_bytes().split(|b| *b == b'/') {
+        match part {
+            b"" | b"." => {}
+            b".." => {
+                parts.pop();
+            }
+            _ => parts.push(part),
+        }
+    }
+    let mut out = b"/".to_vec();
+    out.extend(parts.join(&b'/'));
+    PathBuf::from(OsString::from_vec(out))
+}
+
 /// `os.path.relpath(path, start)`: `path` from `start`, both absolute.
 fn relpath(path: &Path, start: &Path) -> PathBuf {
     let parts = |p: &Path| -> Vec<Vec<u8>> {
@@ -82,7 +100,12 @@ fn stored_remote(ws: &Workspace, typed: &OsStr, live: &Endpoint) -> Result<OsStr
     }
     let settings = &ws.settings;
     let cwd = &settings.cwd;
-    let target = realpath(&live.url, cwd);
+    // where it leads, as written when git rewrites it so (symbolic links left as they are)
+    let target = if ws.rewrites(&live.url)? {
+        normpath(&live.url)
+    } else {
+        realpath(&live.url, cwd)
+    };
     let top = settings.fact(Fact::Toplevel)?;
     if !top.success() {
         return Ok(target.into_os_string());

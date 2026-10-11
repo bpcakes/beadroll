@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use beadroll_core::json::{self, Format, Int, MAX_DIGITS, Object, Value};
 use beadroll_core::text::{py_int, shell_quote};
-use beadroll_git::{PushOutcome, exists, realpath, without_password};
+use beadroll_git::PushOutcome;
 use beadroll_store::{
     Endpoint, Failpoints, Fired, Workspace, claim_files, load_pending, moved_workspaces,
     pending_files, read, relative, segment_files, view, workspaces_named, write_atomic,
@@ -280,17 +280,11 @@ pub fn adopt_published(
     if ws.id != *derived {
         return Ok(None);
     }
-    let origin = without_password(ws.origin.as_deref().unwrap_or_default()).0;
-    if origin.is_empty() {
+    // this checkout's origin, as a sync with it reaches it
+    let Some(origin) = ws.origin_endpoint()? else {
         return Ok(None);
-    }
-    let cwd = &ws.settings.cwd;
-    let resolved = if exists(&origin, cwd) {
-        realpath(&origin, cwd).into_os_string()
-    } else {
-        origin
     };
-    if remote != resolved {
+    if remote != origin.url {
         return Ok(None);
     }
     if !segment_files(ws)?.is_empty()

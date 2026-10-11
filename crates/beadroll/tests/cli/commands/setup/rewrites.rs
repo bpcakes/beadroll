@@ -3,7 +3,6 @@
 //! fetch NAME` and `git push NAME`, a remote's own push URL left as it is, an alias never taken for
 //! a remote of the same name, and the advice it gives naming the remote as it was chosen.
 
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 
 use beadroll_test_support::{Json, Machine, code, git, parse_json};
@@ -371,36 +370,6 @@ fn an_inherited_remote_never_takes_an_alias_for_its_name() {
     );
 }
 
-/// `init --remote` given origin's own push URL, which a `pushInsteadOf` rule would rewrite, when
-/// its first publish fails: nothing is published after it through the URL as typed, which the
-/// rule would send elsewhere; the events wait, counted, for the next sync.
-#[test]
-fn init_publishes_only_where_it_chose_to() {
-    let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "a");
-    let own = format!("file://{}", text(sandbox.origin()));
-    commit(&a, &["remote", "set-url", "--push", "origin", &own]);
-    let pushed = sandbox.bare("push.git");
-    let rewrite = format!("url.{}.pushInsteadOf", text(&pushed));
-    commit(&a, &["config", &rewrite, &own]);
-    // from now on origin refuses every push
-    let hook = sandbox.origin().join("hooks").join("pre-receive");
-    std::fs::write(&hook, "#!/bin/sh\necho refused >&2\nexit 1\n").expect("a hook");
-    let executable = std::fs::Permissions::from_mode(0o755);
-    std::fs::set_permissions(&hook, executable).expect("an executable hook");
-    let run = a.run(["init", "--prefix", "ex", "--remote", &own, "--json"]);
-    assert_eq!(run.returncode(), 0, "{}", run.stderr);
-    let result = parse_json(&run.stdout).expect("a result");
-    let behind = result["unpublished"].as_i64();
-    assert!(behind.is_some_and(|n| n > 0), "{result:?}");
-    let refs = ["--git-dir", text(&pushed), "for-each-ref", "refs/beads"];
-    assert_eq!(
-        git(refs, None),
-        "",
-        "a publish after init's went where the rule sends the URL"
-    );
-}
-
 /// A remote whose URL is a path through a symbolic link, which an `insteadOf` rule rewrites: git
 /// rewrites the path as written, which bead hands it, not the path the link resolves to.
 #[test]
@@ -432,4 +401,71 @@ fn a_rewritten_path_through_a_link_is_left_to_git() {
         "",
         "bead resolved the link before git could rewrite it"
     );
+}
+
+/// `init --tracked --remote` given a relative path through a symbolic link whose full spelling an
+/// `insteadOf` rule rewrites: stored as written, from the top of the checkout, so that the
+/// commands after reach it as `init` did.
+#[test]
+fn init_tracked_stores_a_rewritten_path_as_written() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let (local, shared) = (sandbox.bare("local.git"), sandbox.bare("shared.git"));
+    let link = a.checkout().join("link.git");
+    std::os::unix::fs::symlink(&local, &link).expect("a link");
+    let rule = format!("url.{}.insteadOf", text(&shared));
+    commit(&a, &["config", &rule, text(&link)]);
+    json(
+        &a,
+        &[
+            "init",
+            "--tracked",
+            "--prefix",
+            "ex",
+            "--remote",
+            "link.git",
+        ],
+    );
+    assert_eq!(tracked_file(&a)["remote"].as_str(), Some("link.git"));
+    let synced = a.run(["sync", "--json"]);
+    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
+    let refs = |remote: &Path| {
+        git(
+            ["--git-dir", text(remote), "for-each-ref", "refs/beads"],
+            None,
+        )
+    };
+    assert_ne!(
+        refs(&shared),
+        "",
+        "nothing reached where the rule sends the path"
+    );
+    assert_eq!(
+        refs(&local),
+        "",
+        "the link was resolved before git could rewrite it"
+    );
+}
+
+/// A repository moved to a place this checkout's origin reaches through a symbolic link that an
+/// `insteadOf` rule rewrites: the tracker published there under the old id is adopted, origin
+/// compared as a sync reaches it.
+#[test]
+fn a_moved_tracker_is_adopted_through_a_rewritten_origin() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--prefix", "ex"]);
+    json(&a, &["create", "before the move"]);
+    let moved = sandbox.root().join("moved.git");
+    mirror(&sandbox, &moved);
+    let link = sandbox.root().join("moved-link.git");
+    std::os::unix::fs::symlink(&moved, &link).expect("a link");
+    let b = Machine::new(&sandbox, "b");
+    set_origin(&b, &link);
+    let rule = format!("url.file://{}.insteadOf", text(&moved));
+    commit(&b, &["config", &rule, text(&link)]);
+    let synced = b.run(["sync", "--json"]);
+    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
+    assert_eq!(titles(&b), ["before the move"]);
+    assert_eq!(workspace(&b), workspace(&a));
 }

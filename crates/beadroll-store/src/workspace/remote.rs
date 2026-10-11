@@ -212,15 +212,19 @@ impl Workspace {
         if let Some(used) = used {
             return self.remembered_endpoint(&used).map(Some);
         }
-        match self.origin.clone().filter(|origin| !origin.is_empty()) {
-            None => Ok(None),
-            Some(origin) => {
-                let mut endpoint = self.endpoint_at(&origin, false)?;
-                endpoint.own_push_url = self.origin_push;
-                endpoint.name = Some(OsString::from("origin"));
-                Ok(Some(endpoint))
-            }
-        }
+        self.origin_endpoint()
+    }
+
+    /// Origin as it is reached when it is the coordination remote: its URL as discovery read it,
+    /// its own push URL or not; `None` when the checkout has none.
+    pub fn origin_endpoint(&self) -> Result<Option<Endpoint>, Error> {
+        let Some(origin) = self.origin.clone().filter(|origin| !origin.is_empty()) else {
+            return Ok(None);
+        };
+        let mut endpoint = self.endpoint_at(&origin, false)?;
+        endpoint.own_push_url = self.origin_push;
+        endpoint.name = Some(OsString::from("origin"));
+        Ok(Some(endpoint))
     }
 
     /// The remote last named here, `used`, as it is reached: a URL, a remote's own push URL or not
@@ -274,14 +278,24 @@ impl Workspace {
         if own_push_url != Some(false) {
             return Ok(false);
         }
-        let fetched = git
-            .git([OsStr::new("remote"), OsStr::new("get-url"), tracked])
-            .run()?;
-        if !fetched.success() {
-            return Ok(false);
+        // older versions went through the URL git fetches the name from, and pushed there: the
+        // name is that same remote only if git pushes it there too
+        for push in [false, true] {
+            let mut args = vec![OsStr::new("remote"), OsStr::new("get-url")];
+            if push {
+                args.push(OsStr::new("--push"));
+            }
+            args.push(tracked);
+            let asked = git.git(args).run()?;
+            if !asked.success() {
+                return Ok(false);
+            }
+            let formerly = OsString::from_vec(crate::strip_ascii(&asked.stdout).to_vec());
+            if self.endpoint_at(&formerly, false)?.url != remembered.url {
+                return Ok(false);
+            }
         }
-        let formerly = OsString::from_vec(crate::strip_ascii(&fetched.stdout).to_vec());
-        Ok(self.endpoint_at(&formerly, false)?.url == remembered.url)
+        Ok(true)
     }
 }
 

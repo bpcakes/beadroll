@@ -4,6 +4,7 @@
 //! remote saved, typed or given as a path; and where git reaches a remote from, the top of the
 //! checkout. Git's own rewrites of a remote's URL are in `rewrites`.
 
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
 use beadroll_core::json::{Format, write};
@@ -350,5 +351,57 @@ fn a_tracked_name_spelled_like_the_saved_alias_is_a_change() {
         git(refs, None),
         "",
         "the store moved to the remote of the alias's name"
+    );
+}
+
+/// A store that coordinates through a repository, whose `.beadroll.json` is changed to name a
+/// remote that git fetches from there but pushes elsewhere (`insteadOf` and `pushInsteadOf` for
+/// its URL): another place for every write; refused (`CONFIG`) until changed deliberately.
+#[test]
+fn a_tracked_name_that_pushes_elsewhere_is_a_change() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--prefix", "ex"]);
+    let (first, second) = (sandbox.bare("A.git"), sandbox.bare("B.git"));
+    json(&a, &["sync", "--remote", text(&first)]);
+    let fetched = format!("url.{}.insteadOf", text(&first));
+    let pushed = format!("url.{}.pushInsteadOf", text(&second));
+    commit(&a, &["config", &fetched, "alias"]);
+    commit(&a, &["config", &pushed, "alias"]);
+    commit(&a, &["remote", "add", "tracker", "alias"]);
+    let tracked = a.checkout().join(".beadroll.json");
+    std::fs::write(tracked, "{\"remote\": \"tracker\"}\n").expect("a tracked file");
+    assert_eq!(code(&a.run(["sync", "--json"])), "CONFIG");
+    let refs = ["--git-dir", text(&second), "for-each-ref", "refs/beads"];
+    assert_eq!(git(refs, None), "", "a write went where the name pushes");
+}
+
+/// `init --remote` given origin's own push URL, which a `pushInsteadOf` rule would rewrite, when
+/// its first publish fails: nothing is published after it through the URL as typed, which the
+/// rule would send elsewhere; the events wait, counted, for the next sync.
+#[test]
+fn init_publishes_only_where_it_chose_to() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let own = format!("file://{}", text(sandbox.origin()));
+    commit(&a, &["remote", "set-url", "--push", "origin", &own]);
+    let pushed = sandbox.bare("push.git");
+    let rewrite = format!("url.{}.pushInsteadOf", text(&pushed));
+    commit(&a, &["config", &rewrite, &own]);
+    // from now on origin refuses every push
+    let hook = sandbox.origin().join("hooks").join("pre-receive");
+    std::fs::write(&hook, "#!/bin/sh\necho refused >&2\nexit 1\n").expect("a hook");
+    let executable = std::fs::Permissions::from_mode(0o755);
+    std::fs::set_permissions(&hook, executable).expect("an executable hook");
+    let run = a.run(["init", "--prefix", "ex", "--remote", &own, "--json"]);
+    assert_eq!(run.returncode(), 0, "{}", run.stderr);
+    let result = parse_json(&run.stdout).expect("a result");
+    let behind = result["unpublished"].as_i64();
+    assert!(behind.is_some_and(|n| n > 0), "{result:?}");
+    let refs = ["--git-dir", text(&pushed), "for-each-ref", "refs/beads"];
+    assert_eq!(
+        git(refs, None),
+        "",
+        "a publish after init's went where the rule sends the URL"
     );
 }
