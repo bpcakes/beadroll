@@ -5,6 +5,7 @@
 
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
+use std::os::unix::ffi::OsStringExt as _;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -21,6 +22,22 @@ fn scrubbed() -> BTreeMap<OsString, OsString> {
                 .any(|prefix| key.starts_with(prefix.as_bytes()))
         })
         .collect()
+}
+
+/// The interpreter Python's launcher starts with (`#!/usr/bin/env python3`), as its
+/// `sys.executable` names it; `None` without a `python3` on the test's PATH. The Rust bead needs
+/// none, but the suite may be pointed at `python-0.1.0`'s launcher during the rollback window.
+fn python() -> Option<PathBuf> {
+    let output = Command::new("python3")
+        .args(["-I", "-c", "import sys; print(sys.executable)"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())?;
+    let mut executable = output.stdout;
+    if executable.pop() != Some(b'\n') || executable.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(OsString::from_vec(executable)))
 }
 
 /// The executable `name` on the test's own PATH, as `shutil.which` finds it.
@@ -94,7 +111,10 @@ fn missing_ps_does_not_crash_nested_actor_detection() {
     let root = sandbox.root().join("identity-nops");
     let bin_dir = root.join("bin");
     std::fs::create_dir_all(&bin_dir).unwrap();
-    // git and nothing else: no `ps` to walk the process tree with.
+    // git, and python3 for a launcher under test, but no `ps` to walk the process tree with
+    if let Some(python) = python() {
+        std::os::unix::fs::symlink(python, bin_dir.join("python3")).unwrap();
+    }
     let git = which("git").expect("git on the test's PATH");
     std::os::unix::fs::symlink(git, bin_dir.join("git")).unwrap();
     let p = nested_info(&sandbox, &root, bin_dir.as_os_str());
