@@ -47,9 +47,9 @@ Python implementation, so they went with it; `python-0.1.0` has them.
 - Without `BEAD_UNDER_TEST`, `check --real` tests the executable Cargo reports building, never a
   path it works out: the target directory, a build target and the profile can each move it.
 - Timings are evidence and never gate anything (§4.7).
-- `timing --sync` runs `bead` on a scratch store and remote under `target/timing/`, which it
-  removes after, as workspace `timing`, never the real store, with none of the shell's `BEAD_*` and
-  `GIT_*` variables.
+- `timing --sync` runs `bead` and git on a scratch store, checkout and remote under
+  `target/timing/`, which it removes after, as workspace `timing`, never the real store or another
+  repository: none of them inherits the shell's `BEAD_*` and `GIT_*` variables.
 - Its dependency is beadroll-core, and for its tests regex-lite (the hygiene patterns, as Python
   wrote them), sha2 (the plain history's digest) and tempfile; it may print (its crate root
   allows it).

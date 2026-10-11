@@ -179,17 +179,10 @@ impl World {
         self.home.join(WORKSPACE)
     }
 
-    /// `bead ARGS` in the checkout, on the scratch store, nothing of this shell's bead or git
-    /// settings inherited; a failure fails the timing.
+    /// `bead ARGS` in the checkout, on the scratch store ([`isolated`]); a failure fails the
+    /// timing.
     fn bead(&self, args: &[&str]) -> Result<(), Failure> {
-        let mut command = Command::new(&self.bead);
-        for (key, _) in std::env::vars_os() {
-            let name = key.to_string_lossy();
-            if name.starts_with("BEAD_") || name.starts_with("GIT_") {
-                command.env_remove(&key);
-            }
-        }
-        let output = command
+        let output = isolated(&self.bead)
             .args(args)
             .current_dir(&self.checkout)
             .env("BEAD_HOME", &self.home)
@@ -221,9 +214,23 @@ impl World {
     }
 }
 
-/// `git ARGS` in `dir`; a failure fails the timing.
+/// `program`, run with none of this shell's `BEAD_*` and `GIT_*` variables: they would take bead
+/// to another store, or git to another repository (`GIT_DIR`), than the scratch ones.
+fn isolated(program: impl AsRef<OsStr>) -> Command {
+    let mut command = Command::new(program);
+    for (key, _) in std::env::vars_os() {
+        let name = key.to_string_lossy();
+        if name.starts_with("BEAD_") || name.starts_with("GIT_") {
+            command.env_remove(&key);
+        }
+    }
+    command
+}
+
+/// `git ARGS` in `dir`, in the scratch repositories alone ([`isolated`]); a failure fails the
+/// timing.
 fn git(dir: &Path, args: &[&str]) -> Result<(), Failure> {
-    let output = Command::new("git")
+    let output = isolated("git")
         .args(args.iter().map(OsStr::new))
         .current_dir(dir)
         .stdin(Stdio::null())
@@ -242,6 +249,21 @@ fn git(dir: &Path, args: &[&str]) -> Result<(), Failure> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_scratch_gits_and_beads_inherit_no_repository_or_store() {
+        let command = isolated("git");
+        let removed: Vec<String> = command
+            .get_envs()
+            .filter(|(_, value)| value.is_none())
+            .map(|(key, _)| key.to_string_lossy().into_owned())
+            .collect();
+        for (key, _) in std::env::vars_os() {
+            let name = key.to_string_lossy().into_owned();
+            let ours = name.starts_with("BEAD_") || name.starts_with("GIT_");
+            assert_eq!(removed.contains(&name), ours, "{name}");
+        }
+    }
 
     #[test]
     fn a_journal_is_cut_where_bead_would_rotate_it() {
