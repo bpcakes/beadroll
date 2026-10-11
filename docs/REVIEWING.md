@@ -172,8 +172,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   deliberately; a store whose remembered remote is a tracked name as older versions resolved it
   (`git remote get-url`, `insteadOf` applied) goes on through the name, unless the name has a
   push URL of its own, which they never went through, or git pushes it elsewhere (`git remote
-  get-url --push`). `init --tracked` stores a relative path from the top of the checkout, as
-  written where a rule rewrites it, and adoption compares origin as a sync reaches it.
+  get-url --push`). `init --tracked` stores a relative path from the top of the checkout, and
+  one a rule rewrites as the very spelling that reads back as written (`.`, `..` and symbolic
+  links kept); adoption compares origin as a sync reaches it.
 - Output is UTF-8 regardless of locale; human output escapes control characters; `--json` always
   wins the representation (`create --silent --json` gives `{"id": …}`); a closed stdout exits 0
   quietly.

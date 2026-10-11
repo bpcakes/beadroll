@@ -469,3 +469,36 @@ fn a_moved_tracker_is_adopted_through_a_rewritten_origin() {
     assert_eq!(titles(&b), ["before the move"]);
     assert_eq!(workspace(&b), workspace(&a));
 }
+
+/// `init --tracked --remote ./tracker.git` where an `insteadOf` rule rewrites the path's full
+/// spelling, `./` included: stored so that it reads back as that very spelling, which the rule
+/// still matches.
+#[test]
+fn init_tracked_stores_a_rewritten_path_as_it_reads_back() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let shared = sandbox.bare("shared.git");
+    let spelled = format!("{}/./tracker.git", text(a.checkout()));
+    let rule = format!("url.{}.insteadOf", text(&shared));
+    commit(&a, &["config", &rule, &spelled]);
+    json(
+        &a,
+        &[
+            "init",
+            "--tracked",
+            "--prefix",
+            "ex",
+            "--remote",
+            "./tracker.git",
+        ],
+    );
+    assert_eq!(tracked_file(&a)["remote"].as_str(), Some("./tracker.git"));
+    let synced = a.run(["sync", "--json"]);
+    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
+    let refs = ["--git-dir", text(&shared), "for-each-ref", "refs/beads"];
+    assert_ne!(
+        git(refs, None),
+        "",
+        "nothing reached where the rule sends the path"
+    );
+}

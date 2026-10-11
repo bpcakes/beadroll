@@ -28,24 +28,6 @@ pub(crate) struct InitArgs {
     pub(crate) offline: bool,
 }
 
-/// `os.path.normpath(path)` for an absolute `path`: `.` and `..` folded as written, no symbolic link
-/// resolved.
-fn normpath(path: &OsStr) -> PathBuf {
-    let mut parts: Vec<&[u8]> = Vec::new();
-    for part in path.as_bytes().split(|b| *b == b'/') {
-        match part {
-            b"" | b"." => {}
-            b".." => {
-                parts.pop();
-            }
-            _ => parts.push(part),
-        }
-    }
-    let mut out = b"/".to_vec();
-    out.extend(parts.join(&b'/'));
-    PathBuf::from(OsString::from_vec(out))
-}
-
 /// `os.path.relpath(path, start)`: `path` from `start`, both absolute.
 fn relpath(path: &Path, start: &Path) -> PathBuf {
     let parts = |p: &Path| -> Vec<Vec<u8>> {
@@ -100,18 +82,31 @@ fn stored_remote(ws: &Workspace, typed: &OsStr, live: &Endpoint) -> Result<OsStr
     }
     let settings = &ws.settings;
     let cwd = &settings.cwd;
-    // where it leads, as written when git rewrites it so (symbolic links left as they are)
-    let target = if ws.rewrites(&live.url)? {
-        normpath(&live.url)
-    } else {
-        realpath(&live.url, cwd)
-    };
     let top = settings.fact(Fact::Toplevel)?;
-    if !top.success() {
-        return Ok(target.into_os_string());
+    // the top as a stored path is read from: git's line, stripped, then a slash
+    let base = top.success().then(|| {
+        let mut base = beadroll_core::text::strip_bytes(&top.stdout).to_vec();
+        if !base.ends_with(b"/") {
+            base.push(b'/');
+        }
+        base
+    });
+    if ws.rewrites(&live.url)? {
+        // where it leads, as written, since git rewrites it so: the very spelling that reads back
+        // as it from the top of the checkout (`.`, `..` and symbolic links kept), else whole
+        let written = base
+            .as_ref()
+            .and_then(|base| live.url.as_bytes().strip_prefix(base.as_slice()));
+        return Ok(written.map_or_else(
+            || live.url.clone(),
+            |rest| OsStr::from_bytes(rest).to_owned(),
+        ));
     }
-    let shown = String::from_utf8_lossy(&top.stdout);
-    let top_dir = realpath(OsStr::new(beadroll_core::text::strip(&shown)), cwd);
+    let target = realpath(&live.url, cwd);
+    let Some(base) = base else {
+        return Ok(target.into_os_string());
+    };
+    let top_dir = realpath(OsStr::from_bytes(&base), cwd);
     Ok(relpath(&target, &top_dir).into_os_string())
 }
 
