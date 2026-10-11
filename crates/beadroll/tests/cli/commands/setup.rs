@@ -2,13 +2,17 @@
 //! checkout, the workspace derived from the origin URL; on every other checkout and machine `bead
 //! sync`, or an `init` that joins the tracker the remote already publishes instead of starting a
 //! second one. A tracked `.beadroll.json` is the exception, and `info` and `prime` say when it does
-//! not reach the other checkouts. A repository that moves keeps its tracker.
+//! not reach the other checkouts. A repository that moves keeps its tracker. What a remote's name
+//! means is in `remotes`, the warning in `warnings`.
 
 use std::path::Path;
 
 use beadroll_test_support::{Json, Machine, Sandbox, code, git, parse_json};
 
 use crate::hardening::gate::{Gate, beside};
+
+mod remotes;
+mod warnings;
 
 /// `path` as the text git and bead are given.
 fn text(path: &Path) -> &str {
@@ -71,6 +75,13 @@ fn set_origin(machine: &Machine, url: &Path) {
 fn commit(machine: &Machine, args: &[&str]) {
     let identity = ["-c", "user.name=t", "-c", "user.email=t@example.invalid"];
     git(identity.iter().chain(args), Some(machine.checkout()));
+}
+
+/// The tracked file `a` commits, pushed to origin's default branch, so that clones read it.
+fn commit_tracked_file(a: &Machine) {
+    commit(a, &["add", ".beadroll.json"]);
+    commit(a, &["commit", "-q", "-m", "tracker"]);
+    commit(a, &["push", "-q", "origin", "HEAD:main"]);
 }
 
 /// A second machine's `init` joins the tracker the remote already publishes: no second `init`
@@ -273,119 +284,6 @@ fn not_initialized_points_to_sync_first() {
     assert!(primed.stdout.contains(said), "{}", primed.stdout);
 }
 
-/// `info` and `prime` warn while the checkout's `.beadroll.json` does not reach the other checkouts
-/// and machines: not committed, only staged, committed but not on origin's default branch, changed
-/// after its commit; and say nothing once it is there.
-#[test]
-fn info_and_prime_warn_about_a_tracked_file_the_others_do_not_see() {
-    let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "a");
-    // whatever the user's git hides from its own status
-    commit(&a, &["config", "status.showUntrackedFiles", "no"]);
-    json(&a, &["init", "--tracked", "--prefix", "ex"]);
-    let warning = || -> Option<String> {
-        json(&a, &["info"])["tracked_config_warning"]
-            .as_str()
-            .map(str::to_owned)
-    };
-    let said = warning().expect("a warning");
-    assert!(
-        said.starts_with(".beadroll.json is not committed"),
-        "{said}"
-    );
-    let primed = a.run(["prime"]);
-    let first = "Warning: .beadroll.json is not committed";
-    assert!(primed.stdout.contains(first), "{}", primed.stdout);
-    commit(&a, &["add", ".beadroll.json"]);
-    let said = warning().expect("a warning");
-    assert!(
-        said.starts_with(".beadroll.json is added but not committed"),
-        "{said}"
-    );
-    commit(&a, &["commit", "-q", "-m", "tracker"]);
-    let said = warning().expect("a warning");
-    assert!(said.contains("not on origin's default branch"), "{said}");
-    commit(&a, &["push", "-q", "origin", "HEAD:main"]);
-    assert_eq!(warning(), None);
-    assert!(!a.run(["prime"]).stdout.contains("Warning:"));
-    let mut changed = tracked_file(&a);
-    if let Json::Object(fields) = &mut changed {
-        fields.insert("where".into(), Json::Bool(false));
-    }
-    let body = beadroll_core::json::write(&changed, beadroll_core::json::Format::INDENTED)
-        .expect("JSON text");
-    std::fs::write(a.checkout().join(".beadroll.json"), body).expect("the tracked file");
-    let said = warning().expect("a warning");
-    assert!(
-        said.starts_with(".beadroll.json differs from its committed copy"),
-        "{said}"
-    );
-}
-
-/// `init --tracked --remote` given origin's own URL stores the name `origin`, so the tracked file
-/// follows origin when the repository moves, where a stored URL would keep the old place.
-#[test]
-fn init_tracked_given_origins_url_stores_its_name() {
-    let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "a");
-    let origin = text(sandbox.origin());
-    json(
-        &a,
-        &["init", "--tracked", "--prefix", "ex", "--remote", origin],
-    );
-    assert_eq!(tracked_file(&a)["remote"].as_str(), Some("origin"));
-    json(&a, &["create", "before the move"]);
-    let moved = sandbox.root().join("moved.git");
-    mirror(&sandbox, &moved);
-    set_origin(&a, &moved);
-    json(&a, &["create", "after the move"]);
-    let synced = json(&a, &["sync"]);
-    let resolved = moved.canonicalize().expect("the moved remote");
-    assert_eq!(synced["remote"].as_str(), Some(text(&resolved)));
-    let b = Machine::new(&sandbox, "b");
-    set_origin(&b, &moved);
-    commit(&a, &["push", "-q", "origin", "HEAD:main"]);
-    json(&b, &["sync"]);
-    assert_eq!(titles(&b), ["after the move", "before the move"]);
-}
-
-/// Origin is where `git push origin` goes (G22): a checkout whose origin fetches from one URL and
-/// pushes to another coordinates through the push URL, and a tracked `origin` (what `init --tracked
-/// --remote` stores for that URL) resolves to the same push URL, never the fetch one.
-#[test]
-fn a_tracked_origin_resolves_to_where_git_pushes() {
-    let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "a");
-    let pushed = sandbox.bare("push.git");
-    let push_url = ["remote", "set-url", "--push", "origin", text(&pushed)];
-    git(push_url, Some(a.checkout()));
-    let init = [
-        "init",
-        "--tracked",
-        "--prefix",
-        "ex",
-        "--remote",
-        text(&pushed),
-    ];
-    json(&a, &init);
-    assert_eq!(tracked_file(&a)["remote"].as_str(), Some("origin"));
-    json(&a, &["create", "coordinated"]);
-    let synced = json(&a, &["sync"]);
-    let resolved = pushed.canonicalize().expect("the push remote");
-    assert_eq!(synced["remote"].as_str(), Some(text(&resolved)));
-    let fetched = [
-        "--git-dir",
-        text(sandbox.origin()),
-        "for-each-ref",
-        "refs/beads",
-    ];
-    assert_eq!(
-        git(fetched, None),
-        "",
-        "bead published to origin's fetch URL"
-    );
-}
-
 /// The ref gone between the adoption and the adopted tracker's fetch: the adoption is already
 /// remembered, so `init` starts nothing, rather than write where the next command does not look.
 #[test]
@@ -451,103 +349,4 @@ fn init_reports_what_it_left_unpublished_in_the_adopted_tracker() {
     assert_eq!(result["joined"], Json::Bool(true), "{result:?}");
     let behind = result["unpublished"].as_i64();
     assert!(behind.is_some_and(|n| n > 0), "{result:?}");
-}
-
-/// The tracked file `a` commits, pushed to origin's default branch, so that clones read it.
-fn commit_tracked_file(a: &Machine) {
-    commit(a, &["add", ".beadroll.json"]);
-    commit(a, &["commit", "-q", "-m", "tracker"]);
-    commit(a, &["push", "-q", "origin", "HEAD:main"]);
-}
-
-/// A clone whose committed `.beadroll.json` names `"remote": "origin"`: `init --remote origin` joins
-/// the tracker without writing anything, and records the remote as where `origin` leads, as a sync
-/// would, so that the commands after it, which compare the two, keep working.
-#[test]
-fn init_joining_records_a_named_remote_as_where_it_leads() {
-    let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "a");
-    json(
-        &a,
-        &["init", "--tracked", "--prefix", "ex", "--remote", "origin"],
-    );
-    assert_eq!(tracked_file(&a)["remote"].as_str(), Some("origin"));
-    commit_tracked_file(&a);
-    let key = json(&a, &["create", "shared"])["id"]
-        .as_str()
-        .expect("an id")
-        .to_owned();
-    let b = Machine::new(&sandbox, "b");
-    let joined = json(&b, &["init", "--remote", "origin"]);
-    assert_eq!(joined["joined"], Json::Bool(true), "{joined:?}");
-    let synced = b.run(["sync", "--json"]);
-    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
-    let claimed = b.run(["claim", &key, "--json"]);
-    assert_eq!(claimed.returncode(), 0, "{}", claimed.stderr);
-}
-
-/// A checkout with no `refs/remotes/origin/HEAD` (as `git init` and `git remote add` leave it)
-/// cannot tell whether origin's default branch has the committed file: `info` says so, and how to
-/// let bead check; once origin/HEAD is known, it has nothing to say.
-#[test]
-fn a_checkout_without_origin_head_says_it_cannot_tell() {
-    let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "a");
-    commit(&a, &["remote", "set-head", "origin", "-d"]);
-    json(&a, &["init", "--tracked", "--prefix", "ex"]);
-    commit_tracked_file(&a);
-    let info = json(&a, &["info"]);
-    let said = info["tracked_config_warning"].as_str().expect("a warning");
-    assert!(
-        said.contains("`git remote set-head origin --auto`"),
-        "{said}"
-    );
-    commit(&a, &["remote", "set-head", "origin", "--auto"]);
-    assert_eq!(json(&a, &["info"])["tracked_config_warning"].as_str(), None);
-}
-
-/// A committed `.beadroll.json` changed under `--skip-worktree`, which hides the change from `git
-/// status`: `info` compares the file itself with its commit and still warns.
-#[test]
-fn a_change_git_status_does_not_show_is_still_warned_about() {
-    let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "a");
-    json(&a, &["init", "--tracked", "--prefix", "ex"]);
-    commit_tracked_file(&a);
-    assert_eq!(json(&a, &["info"])["tracked_config_warning"].as_str(), None);
-    commit(&a, &["update-index", "--skip-worktree", ".beadroll.json"]);
-    let mut changed = tracked_file(&a);
-    if let Json::Object(fields) = &mut changed {
-        fields.insert("where".into(), Json::Bool(false));
-    }
-    let body = beadroll_core::json::write(&changed, beadroll_core::json::Format::INDENTED)
-        .expect("JSON text");
-    std::fs::write(a.checkout().join(".beadroll.json"), body).expect("the tracked file");
-    let info = json(&a, &["info"]);
-    let said = info["tracked_config_warning"].as_str().expect("a warning");
-    assert!(
-        said.starts_with(".beadroll.json differs from its committed copy"),
-        "{said}"
-    );
-}
-
-/// A remote's name means its URL as configured, as discovery reads origin's: with a
-/// `pushInsteadOf` that spells origin's push URL another way, `sync --remote origin` still names
-/// this checkout's origin, and adopts the tracker a moved repository published under its old id.
-#[test]
-fn a_named_origin_is_the_configured_url_whatever_git_rewrites() {
-    let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "a");
-    json(&a, &["init", "--prefix", "ex"]);
-    json(&a, &["create", "before the move"]);
-    let moved = sandbox.root().join("moved.git");
-    mirror(&sandbox, &moved);
-    let b = Machine::new(&sandbox, "b");
-    set_origin(&b, &moved);
-    let spelled = format!("url.file://{}.pushInsteadOf", text(&moved));
-    commit(&b, &["config", &spelled, text(&moved)]);
-    let synced = b.run(["sync", "--remote", "origin", "--json"]);
-    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
-    assert_eq!(titles(&b), ["before the move"]);
-    assert_eq!(workspace(&b), workspace(&a));
 }
