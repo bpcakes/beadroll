@@ -154,14 +154,16 @@ These were decided deliberately. Report problems *with* them, not their existenc
   remote's name, origin, or the remote last named here, its `remote_push_url` saved beside it in
   `meta.json`), never inferred from other remotes' URLs. A relative path is read from the top of
   the checkout when it is stored and from the cwd when it was typed just now, whether it exists or
-  not, unless an `insteadOf` or `pushInsteadOf` rule is a prefix of it (then it is git's); git
-  reaches a remote from the top of the checkout, so a relative path it makes of a rewritten URL
-  is read from there too. A URL bead resolved already (the remote last named here, origin's, one
+  not, unless an `insteadOf` or `pushInsteadOf` rule is a prefix of it (then it is git's), and a
+  path that symbolic links resolve elsewhere is given to git as written when a rule rewrites it;
+  git reaches a remote from the top of the checkout, so a relative path it makes of a rewritten
+  URL is read from there too. A URL bead resolved already (the remote last named here, origin's, one
   git answered) is a URL, never read as a remote's name, which only a remote given just now or
   tracked can be; older versions saved a remote's name as `init --remote` was given it until a
   sync replaced it, and a saved value that names a remote and that no rule rewrites is still that
-  remote. `--remote` given origin's own URL is stored as `origin` and reached as origin is, its
-  own push URL included, from `init`'s first publish on; a remote remembered with origin's URL but
+  remote. `--remote` given origin's own URL (and not a configured remote's name, which wins over
+  a same-named path) is stored as `origin` and reached as origin is, its own push URL included,
+  from `init`'s first publish on; a remote remembered with origin's URL but
   pushed to otherwise is not origin. The advice to bring a moved repository's tracker along gives
   the remote by its URL, which names the same place on every machine, or by the name it was
   chosen by where the URL alone is not reached as the remote is (a remote's own push URL, or one

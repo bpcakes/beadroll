@@ -9,7 +9,10 @@ use std::path::{Path, PathBuf};
 use beadroll_core::json::{Format, write};
 use beadroll_test_support::{Json, Machine, code, git, parse_json};
 
-use super::{commit, commit_tracked_file, json, mirror, set_origin, text, titles, tracked_file};
+use super::{
+    alias_both_ways, commit, commit_tracked_file, json, mirror, set_origin, text, titles,
+    tracked_file,
+};
 
 /// `store`'s `meta.json` saying that it last went through `remote`, as an older bead left it.
 fn save_remote(store: &Path, remote: &str) {
@@ -264,4 +267,88 @@ fn a_tracked_remote_pushed_to_otherwise_is_a_change() {
     let body = write(&config, Format::INDENTED).expect("JSON text");
     std::fs::write(a.checkout().join(".beadroll.json"), body).expect("the tracked file");
     assert_eq!(code(&a.run(["sync", "--json"])), "CONFIG");
+}
+
+/// `init --remote NAME` where NAME is a configured remote's name and also, as a path from where
+/// `init` runs, origin's repository: the remote of that name, which wins over a same-named path.
+#[test]
+fn init_given_a_remotes_name_that_is_also_origins_path_reaches_the_remote() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let inside = a.checkout().join("tracker");
+    git(["init", "-q", "--bare", "-b", "main", text(&inside)], None);
+    set_origin(&a, &inside);
+    let named = sandbox.bare("named.git");
+    commit(&a, &["remote", "add", "tracker", text(&named)]);
+    json(&a, &["init", "--prefix", "ex", "--remote", "tracker"]);
+    let refs = |remote: &Path| {
+        git(
+            ["--git-dir", text(remote), "for-each-ref", "refs/beads"],
+            None,
+        )
+    };
+    assert_ne!(refs(&named), "", "nothing reached the remote named");
+    assert_eq!(refs(&inside), "", "init took the name for origin's path");
+}
+
+/// A remote whose URL is an alias git rewrites and also another remote's name: bead reaches the
+/// rewritten URL, as git does, and so does every command after, which goes by the URL it saved,
+/// never by the remote that URL also names.
+#[test]
+fn a_saved_url_that_names_another_remote_stays_a_url() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--prefix", "ex"]);
+    let (first, second) = (sandbox.bare("A.git"), sandbox.bare("B.git"));
+    alias_both_ways(&a, &first, &second);
+    let synced = a.run(["sync", "--remote", "tracker", "--json"]);
+    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
+    json(&a, &["create", "after"]);
+    let refs = |remote: &Path| {
+        git(
+            ["--git-dir", text(remote), "for-each-ref", "refs/beads"],
+            None,
+        )
+    };
+    assert_ne!(
+        refs(&first),
+        "",
+        "nothing reached the URL the alias is rewritten to"
+    );
+    assert_eq!(
+        refs(&second),
+        "",
+        "a later command took the saved URL for a remote's name"
+    );
+}
+
+/// A store saved with a remote's URL that is an alias git rewrites, whose `.beadroll.json` is
+/// changed to name the remote of the alias's name: the same spelling, another remote; refused.
+#[test]
+fn a_tracked_name_spelled_like_the_saved_alias_is_a_change() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let (first, second) = (sandbox.bare("A.git"), sandbox.bare("B.git"));
+    alias_both_ways(&a, &first, &second);
+    json(
+        &a,
+        &["init", "--tracked", "--prefix", "ex", "--remote", "tracker"],
+    );
+    let mut config = tracked_file(&a);
+    if let Json::Object(fields) = &mut config {
+        fields.insert("remote".into(), Json::Str("alias".into()));
+    }
+    let body = beadroll_core::json::write(&config, beadroll_core::json::Format::INDENTED);
+    std::fs::write(
+        a.checkout().join(".beadroll.json"),
+        body.expect("JSON text"),
+    )
+    .unwrap();
+    assert_eq!(code(&a.run(["sync", "--json"])), "CONFIG");
+    let refs = ["--git-dir", text(&second), "for-each-ref", "refs/beads"];
+    assert_eq!(
+        git(refs, None),
+        "",
+        "the store moved to the remote of the alias's name"
+    );
 }

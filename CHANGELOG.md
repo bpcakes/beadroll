@@ -44,7 +44,8 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   (`remote_push_url` in `meta.json`), and a tracked remote that would push otherwise than the
   store did is refused (`CONFIG`); a relative path typed in a subdirectory is
   read from there, also by `init --tracked`, which stores it from the top of the checkout whether
-  it exists or not. A URL bead saved or read is never taken for the name of another remote, while
+  it exists or not, and a path through symbolic links that a rule rewrites is left to git as
+  written. A URL bead saved or read is never taken for the name of another remote, while
   a remote's name an older bead saved (`init --offline --remote NAME`) is still that remote.
   `init` given origin's own URL reaches it as origin from its first publish, its own push URL
   included, and a remote that only shares origin's URL, pushed to otherwise, is remembered rather

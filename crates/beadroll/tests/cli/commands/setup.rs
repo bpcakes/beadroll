@@ -85,6 +85,15 @@ fn commit_tracked_file(a: &Machine) {
     commit(a, &["push", "-q", "origin", "HEAD:main"]);
 }
 
+/// `machine`'s checkout with a remote `tracker` whose URL is `alias`, which an `insteadOf` rule
+/// rewrites to `first`, and a remote named `alias` at `second`.
+fn alias_both_ways(machine: &Machine, first: &Path, second: &Path) {
+    let rewrite = format!("url.{}.insteadOf", text(first));
+    commit(machine, &["config", &rewrite, "alias"]);
+    commit(machine, &["remote", "add", "alias", text(second)]);
+    commit(machine, &["remote", "add", "tracker", "alias"]);
+}
+
 /// A second machine's `init` joins the tracker the remote already publishes: no second `init`
 /// event, the first machine's prefix whatever `--prefix` asks, its issues there at once.
 #[test]
@@ -460,4 +469,26 @@ fn init_tracked_in_a_subdirectory_reads_a_missing_path_from_there() {
     assert_eq!(tracked_file(&a)["remote"].as_str(), Some("tracker.git"));
     let refs = ["--git-dir", text(&beside), "for-each-ref", "refs/beads"];
     assert_eq!(git(refs, None), "", "init published beside the checkout");
+}
+
+/// A repository moved to a place whose own push URL origin now has: the tracker adopted there is
+/// reached through origin, which is never remembered, its own push URL included, so that the
+/// commands after follow origin as it is configured then.
+#[test]
+fn an_adopted_tracker_does_not_remember_origin_by_its_push_url() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--prefix", "ex"]);
+    json(&a, &["create", "before the move"]);
+    let moved = sandbox.root().join("moved.git");
+    mirror(&sandbox, &moved);
+    let b = Machine::new(&sandbox, "b");
+    set_origin(&b, &moved);
+    let own = format!("file://{}", text(&moved));
+    commit(&b, &["remote", "set-url", "--push", "origin", &own]);
+    json(&b, &["sync"]);
+    assert_eq!(workspace(&b), workspace(&a));
+    let meta = b.home().join(workspace(&b)).join("meta.json");
+    let meta = parse_json(&std::fs::read_to_string(meta).expect("a meta.json")).expect("JSON");
+    assert_eq!(meta.get("remote"), None, "{meta:?}");
 }

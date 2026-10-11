@@ -309,6 +309,7 @@ pub fn adopt_published(
         return Ok(None);
     };
     adopted.derived = Some(derived.clone());
+    adopted.origin_push = ws.origin_push;
     let mut moved = moved_workspaces(&ws.settings)?;
     moved.insert(derived.clone(), Value::from(found.as_str()));
     let text = json::write(&Value::Object(moved), Format::INDENTED)

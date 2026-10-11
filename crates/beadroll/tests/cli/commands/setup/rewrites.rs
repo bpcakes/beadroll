@@ -8,7 +8,9 @@ use std::path::Path;
 
 use beadroll_test_support::{Json, Machine, code, git, parse_json};
 
-use super::{commit, json, mirror, set_origin, text, titles, tracked_file, workspace};
+use super::{
+    alias_both_ways, commit, json, mirror, set_origin, text, titles, tracked_file, workspace,
+};
 
 /// A remote's name means its URL as configured, as discovery reads origin's: with a
 /// `pushInsteadOf` that spells origin's push URL another way, `sync --remote origin` still names
@@ -197,46 +199,6 @@ fn origin_is_pushed_to_as_git_pushes_to_it_whatever_other_remotes_say() {
         refs(sandbox.origin()),
         "",
         "bead pushed to origin's URL as it is"
-    );
-}
-
-/// `machine`'s checkout with a remote `tracker` whose URL is `alias`, which an `insteadOf` rule
-/// rewrites to `first`, and a remote named `alias` at `second`.
-fn alias_both_ways(machine: &Machine, first: &Path, second: &Path) {
-    let rewrite = format!("url.{}.insteadOf", text(first));
-    commit(machine, &["config", &rewrite, "alias"]);
-    commit(machine, &["remote", "add", "alias", text(second)]);
-    commit(machine, &["remote", "add", "tracker", "alias"]);
-}
-
-/// A remote whose URL is an alias git rewrites and also another remote's name: bead reaches the
-/// rewritten URL, as git does, and so does every command after, which goes by the URL it saved,
-/// never by the remote that URL also names.
-#[test]
-fn a_saved_url_that_names_another_remote_stays_a_url() {
-    let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "a");
-    json(&a, &["init", "--prefix", "ex"]);
-    let (first, second) = (sandbox.bare("A.git"), sandbox.bare("B.git"));
-    alias_both_ways(&a, &first, &second);
-    let synced = a.run(["sync", "--remote", "tracker", "--json"]);
-    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
-    json(&a, &["create", "after"]);
-    let refs = |remote: &Path| {
-        git(
-            ["--git-dir", text(remote), "for-each-ref", "refs/beads"],
-            None,
-        )
-    };
-    assert_ne!(
-        refs(&first),
-        "",
-        "nothing reached the URL the alias is rewritten to"
-    );
-    assert_eq!(
-        refs(&second),
-        "",
-        "a later command took the saved URL for a remote's name"
     );
 }
 
@@ -436,5 +398,38 @@ fn init_publishes_only_where_it_chose_to() {
         git(refs, None),
         "",
         "a publish after init's went where the rule sends the URL"
+    );
+}
+
+/// A remote whose URL is a path through a symbolic link, which an `insteadOf` rule rewrites: git
+/// rewrites the path as written, which bead hands it, not the path the link resolves to.
+#[test]
+fn a_rewritten_path_through_a_link_is_left_to_git() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--prefix", "ex"]);
+    let (local, shared) = (sandbox.bare("local.git"), sandbox.bare("shared.git"));
+    let link = sandbox.root().join("link.git");
+    std::os::unix::fs::symlink(&local, &link).expect("a link");
+    let rule = format!("url.{}.insteadOf", text(&shared));
+    commit(&a, &["config", &rule, text(&link)]);
+    commit(&a, &["remote", "add", "tracker", text(&link)]);
+    let synced = a.run(["sync", "--remote", "tracker", "--json"]);
+    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
+    let refs = |remote: &Path| {
+        git(
+            ["--git-dir", text(remote), "for-each-ref", "refs/beads"],
+            None,
+        )
+    };
+    assert_ne!(
+        refs(&shared),
+        "",
+        "nothing reached where the rule sends the path"
+    );
+    assert_eq!(
+        refs(&local),
+        "",
+        "bead resolved the link before git could rewrite it"
     );
 }

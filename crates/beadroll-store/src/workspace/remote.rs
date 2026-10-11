@@ -152,7 +152,13 @@ impl Workspace {
         }
         let cwd = &self.settings.cwd;
         let url = if exists(&value, cwd) {
-            realpath(&value, cwd).into_os_string()
+            let real = realpath(&value, cwd).into_os_string();
+            // git rewrites the path as written, which the resolved one may no longer start with
+            if real != value && rewritten(git, &value)? {
+                value
+            } else {
+                real
+            }
         } else {
             value
         };
@@ -204,15 +210,7 @@ impl Workspace {
             return self.resolve_endpoint(&tracked, false).map(Some);
         }
         if let Some(used) = used {
-            // older versions saved a remote's name as `init --remote` was given it, until a sync
-            // replaced it with its URL; this one saves URLs, and one spelled like a remote's name
-            // is an alias git rewrites
-            if self.names_remote(&used)? && !self.rewrites(&used)? {
-                return self.resolve_endpoint(&used, false).map(Some);
-            }
-            let mut endpoint = self.endpoint_at(&used, false)?;
-            endpoint.own_push_url = self.remembered_push(&used);
-            return Ok(Some(endpoint));
+            return self.remembered_endpoint(&used).map(Some);
         }
         match self.origin.clone().filter(|origin| !origin.is_empty()) {
             None => Ok(None),
@@ -223,6 +221,21 @@ impl Workspace {
                 Ok(Some(endpoint))
             }
         }
+    }
+
+    /// The remote last named here, `used`, as it is reached: a URL, a remote's own push URL or not
+    /// as saved beside it ([`Workspace::note_sync`]), unless it is a remote's name an older version
+    /// saved.
+    fn remembered_endpoint(&self, used: &OsStr) -> Result<Endpoint, Error> {
+        // older versions saved a remote's name as `init --remote` was given it, until a sync
+        // replaced it with its URL; this one saves URLs, and one spelled like a remote's name is
+        // an alias git rewrites
+        if self.names_remote(used)? && !self.rewrites(used)? {
+            return self.resolve_endpoint(used, false);
+        }
+        let mut endpoint = self.endpoint_at(used, false)?;
+        endpoint.own_push_url = self.remembered_push(used);
+        Ok(endpoint)
     }
 
     /// Whether `used`, the remote last named here, was a remote's own push URL when it was chosen:
@@ -240,16 +253,15 @@ impl Workspace {
     /// same remote spelled another way, unless the name has a push URL of its own: they went
     /// through its other URL then, and moving to the push URL is done deliberately.
     fn leads_to(&self, tracked: &OsStr, used: &OsStr) -> Result<bool, Error> {
-        // reached as it was too: pushed to as a remote's own push URL or not
-        let pushed = self.remembered_push(used);
-        if tracked == used && !pushed {
-            return Ok(true);
-        }
+        // both as they are reached, whatever their spellings: one can be a remote's name and the
+        // other a URL spelled the same
+        let remembered = self.remembered_endpoint(used)?;
         let endpoint = self.resolve_endpoint(tracked, false)?;
-        if endpoint.url == used {
-            return Ok(endpoint.own_push_url == pushed);
+        if endpoint.url == remembered.url {
+            // reached as it was too: pushed to as a remote's own push URL or not
+            return Ok(endpoint.own_push_url == remembered.own_push_url);
         }
-        if pushed {
+        if remembered.own_push_url {
             // saved by this version, which older ones' spellings do not concern
             return Ok(false);
         }
@@ -269,7 +281,7 @@ impl Workspace {
             return Ok(false);
         }
         let formerly = OsString::from_vec(crate::strip_ascii(&fetched.stdout).to_vec());
-        Ok(self.endpoint_at(&formerly, false)?.url == used)
+        Ok(self.endpoint_at(&formerly, false)?.url == remembered.url)
     }
 }
 

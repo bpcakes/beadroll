@@ -263,7 +263,8 @@ fn given_remote(
                 .to_owned(),
         );
     }
-    let names_origin = ctx.ws.is_origin(&typed);
+    // a configured remote's name wins over a same-named path, origin's included
+    let names_origin = !ctx.ws.names_remote(&typed)? && ctx.ws.is_origin(&typed);
     // origin's own URL is reached as origin is, its own push URL included, as every command after
     // reaches it, whether the file stores it by name or no file is written
     let live = if names_origin {
