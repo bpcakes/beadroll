@@ -100,6 +100,113 @@ fn committed_config(settings: &Settings) -> Result<Object, Error> {
     Ok(Object::new())
 }
 
+/// Why this checkout's `.beadroll.json` does not reach the other checkouts and machines, if it does
+/// not: it is not committed (untracked, ignored or only staged), it differs from its commit, or
+/// origin's default branch, which a clone and a worktree on an older branch read it from
+/// ([`committed_config`]), lacks it or holds another. `None` when it is committed there unchanged,
+/// or when the tree has none (the committed copy is then the one in use). Two git calls.
+pub fn tracked_config_warning(settings: &Settings) -> Result<Option<String>, Error> {
+    let top = settings.fact(Fact::Toplevel)?;
+    if !top.success() {
+        return Ok(None);
+    }
+    let root = pathlib(OsStr::from_bytes(crate::strip_ascii(&top.stdout)));
+    if !root.join(".beadroll.json").exists() {
+        return Ok(None);
+    }
+    let status = settings
+        .git
+        .git([
+            "status",
+            "--porcelain=v1",
+            "--ignored",
+            "--",
+            ":/.beadroll.json",
+        ])
+        .run()?;
+    let unseen = "other worktrees, clones and machines of this repository do not see it, and \
+                  use the workspace derived from the origin URL instead";
+    let code: &[u8] = status.stdout.get(..2).unwrap_or_default();
+    let warning = match code {
+        b"??" => Some(format!(
+            ".beadroll.json is not committed: {unseen}; commit it"
+        )),
+        b"!!" => Some(format!(
+            ".beadroll.json is ignored by git, so it is never committed: {unseen}; commit it"
+        )),
+        [b'A', _] => Some(format!(
+            ".beadroll.json is added but not committed: {unseen}; commit it"
+        )),
+        [] => None,
+        _ => Some(
+            ".beadroll.json differs from its committed copy, which the other checkouts and \
+             machines use: commit the change"
+                .to_owned(),
+        ),
+    };
+    if warning.is_some() || !status.success() {
+        return Ok(warning);
+    }
+    // committed here: is it what a clone, or a worktree on another branch, reads?
+    let input =
+        "HEAD:.beadroll.json\nrefs/remotes/origin/HEAD\nrefs/remotes/origin/HEAD:.beadroll.json\n";
+    let found = settings
+        .git
+        .git(["cat-file", "--batch-check"])
+        .input(input.as_bytes().to_vec())
+        .run()?;
+    let lines: Vec<&[u8]> = found.stdout.split(|b| *b == b'\n').collect();
+    let oid = |line: Option<&&[u8]>| -> Option<Vec<u8>> {
+        let line = line?;
+        (!line.ends_with(b" missing")).then(|| {
+            line.split(|b| *b == b' ')
+                .next()
+                .unwrap_or_default()
+                .to_vec()
+        })
+    };
+    let (here, default_branch, there) = (oid(lines.first()), oid(lines.get(1)), oid(lines.get(2)));
+    Ok(match (here, default_branch, there) {
+        (Some(_), Some(_), None) => Some(
+            ".beadroll.json is committed here but not on origin's default branch: clones and \
+             worktrees on other branches do not see it until it is merged there"
+                .to_owned(),
+        ),
+        (Some(here), Some(_), Some(there)) if here != there => Some(
+            ".beadroll.json differs from the copy on origin's default branch, which clones and \
+             worktrees on other branches read: merge it there"
+                .to_owned(),
+        ),
+        _ => None,
+    })
+}
+
+/// The other workspaces of this store whose `meta.json` names `name`, by id: where a repository
+/// that moved left its tracker, when nothing is published at its new URL.
+pub fn workspaces_named(
+    settings: &Settings,
+    name: &OsStr,
+    except: &str,
+) -> Result<Vec<String>, Error> {
+    let Ok(entries) = std::fs::read_dir(settings.home()?) else {
+        return Ok(Vec::new());
+    };
+    let wanted = name.to_string_lossy();
+    let mut found: Vec<String> = entries
+        .flatten()
+        .filter(|entry| entry.path().is_dir())
+        .map(|entry| (entry.file_name().to_string_lossy().into_owned(), entry.path()))
+        .filter(|(id, _)| id != except)
+        .filter(|(_, path)| {
+            matches!(read_json_text(&path.join("meta.json")),
+                Ok(Value::Object(meta)) if matches!(meta.get("name"), Some(Value::Str(n)) if *n == wanted))
+        })
+        .map(|(id, _)| id)
+        .collect();
+    found.sort();
+    Ok(found)
+}
+
 /// URL-derived ids whose repository's tracker was found under another id (`adopt_published`).
 pub fn moved_workspaces(settings: &Settings) -> Result<Object, Error> {
     let path = settings.home()?.join("moved.json");
@@ -309,7 +416,7 @@ fn local_id(settings: &Settings) -> Result<String, Error> {
 }
 
 /// `[0-9a-f]{16}|local-[0-9a-f]{12}`, whole: the shape of an id bead derives itself.
-fn derived_shaped(id: &str) -> bool {
+pub fn derived_shaped(id: &str) -> bool {
     let hex = |s: &str, n: usize| {
         s.len() == n && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
     };

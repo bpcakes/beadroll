@@ -218,18 +218,19 @@ fn ask(machine: &Machine, dir: Option<&Path>, key: &str, case: &Case) {
 fn arguments_that_are_not_utf8_answer_as_python_did() {
     let sandbox = crate::sandbox();
     let m = Machine::new(&sandbox, "bytes");
-    // before the tracker exists, a title that cannot be written is not the first problem
+    // before the tracker exists, a title that cannot be written is not the first problem (the
+    // message is bead's own since roll-dih8.13 made `sync` the first advice; Python's named `init`)
     let uninitialised: Case = (
         &[b"create", b"t\xff"],
         (
             1,
             "",
-            "Error: no tracker for this repository yet: run `bead init` or `bead sync`",
+            "Error: no tracker for this repository here yet: run `bead sync` to fetch it from its remote, or `bead init` to start one if it has none",
         ),
         (
             1,
             "",
-            r#"{"error": {"code": "NOT_INITIALIZED", "message": "no tracker for this repository yet: run `bead init` or `bead sync`"}}"#,
+            r#"{"error": {"code": "NOT_INITIALIZED", "message": "no tracker for this repository here yet: run `bead sync` to fetch it from its remote, or `bead init` to start one if it has none"}}"#,
         ),
     );
     ask(&m, None, "", &uninitialised);

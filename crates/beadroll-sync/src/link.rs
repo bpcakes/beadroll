@@ -109,6 +109,39 @@ impl<'a> Link<'a> {
         })
     }
 
+    /// Whether `remote` publishes a tracker at `ws`'s coordination ref, asked with `git ls-remote`
+    /// in a link's environment (the checkout's transport settings, no prompt) without `sync.git`,
+    /// which it does not need: nothing is written, not even `ws`'s directory. `None` when the remote
+    /// cannot be asked.
+    pub fn publishes(ws: &Workspace, remote: &OsStr) -> Result<Option<bool>, Error> {
+        let ref_name = ws.ref_name()?;
+        let settings = &ws.settings;
+        let carried = transport_config(&transport_settings(&settings.git)?);
+        let int = |text: &str| beadroll_core::text::py_int(text).map(|n| n.to_string());
+        let rules = CountRules {
+            is_digit: &beadroll_core::text::py_isdigit,
+            int: &int,
+        };
+        let env = sync_env(&settings.git, &ws.dir.join("sync.git"), &carried, &rules)?;
+        let mut vars = env.vars().clone();
+        vars.remove(OsStr::new("GIT_DIR"));
+        let listed = env
+            .with_vars(vars)
+            .git([
+                OsStr::new("ls-remote"),
+                "--refs".as_ref(),
+                "--".as_ref(),
+                remote,
+                ref_name.as_ref(),
+            ])
+            .timeout(settings.net_timeout)
+            .run();
+        Ok(match listed {
+            Ok(listed) if listed.success() => Some(!listed.stdout.is_empty()),
+            _ => None,
+        })
+    }
+
     /// The remote, for messages.
     pub fn url_text(&self) -> String {
         self.url.to_string_lossy().into_owned()

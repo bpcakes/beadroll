@@ -11,8 +11,10 @@ to do, what to check, and the two things that are not obvious.
   README). Nothing is needed on the other machines until they sync.
 - The repository has an `origin` you can push to. bead derives the tracker's
   identity from that URL and publishes to `refs/beads/journal` there; no branch
-  is touched. If you cannot push to origin, or want the tracker elsewhere, see
-  *Configuration* in the README (`bead init --tracked --remote …`).
+  is touched and nothing is committed. That is the path to take. Only if you
+  cannot push to origin, or want the tracker elsewhere, use a tracked
+  `.beadroll.json` (*Configuration* in the README: `bead init --tracked
+  --remote …`), and commit it on the default branch in the same change.
 - A current `.beads/issues.jsonl`. If your tracker lives in `br`'s or `bd`'s
   database only, export it first (`br sync --export-only`, or `bd export`).
 
@@ -28,6 +30,10 @@ labels, statuses, timestamps — and **publishes the tracker at once**: when the
 command returns, `refs/beads/journal` on origin holds it. The output says how
 many records came in and whether anything is still unpublished (only if the
 remote did not answer; then `bead sync` later).
+
+Do it once, on one machine. Every other checkout and machine runs `bead sync`
+to fetch the tracker; an `init` there finds it published and joins it rather
+than starting a second one.
 
 Check it:
 

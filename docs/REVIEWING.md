@@ -127,6 +127,16 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `--parent ID` stays ID's direct children, as in br and `list --parent`. One scope at a time, each
   option given once (`USAGE`, as br refuses both), resolved before anything is filtered.
 - A repository with neither a remote nor `.beadroll.json` gets a local tracker that cannot sync.
+- Setting a tracker up has one path (the maintainer's decision of 2026-10-11, roll-dih8.13): the
+  URL-derived workspace, nothing committed; a tracked `.beadroll.json` only for a coordination
+  remote other than origin or for `"where": false`, committed on the default branch. `bead init`
+  asks the remote first (`git ls-remote`, nothing written for a remote that publishes nothing):
+  a tracker already published there is joined, adopted as `sync` adopts it when it was published
+  under another id, and `init --tracked` records its id; one it cannot adopt is refused
+  (`WORKSPACE_MISMATCH`), even under an explicit `BEAD_WORKSPACE`, since that tracker could never
+  publish there. An unreachable remote, `--offline` or no remote: `init` starts the tracker as
+  before. `--remote` given origin's own URL is stored as `origin`. `info` and `prime` warn while
+  `.beadroll.json` would not reach the other checkouts.
 - Output is UTF-8 regardless of locale; human output escapes control characters; `--json` always
   wins the representation (`create --silent --json` gives `{"id": …}`); a closed stdout exits 0
   quietly.

@@ -225,7 +225,8 @@ const READY_FILTERS: [ArgSpec; 5] = filters("0");
 const INIT: &[ArgSpec] = &[
     opt(&["--prefix"], "prefix"),
     opt(&["--import"], "import_path").metavar("BEADS_JSONL"),
-    flag(&["--tracked"], "tracked").help("write .beadroll.json with an explicit workspace id"),
+    flag(&["--tracked"], "tracked")
+        .help("write .beadroll.json naming this tracker, to commit: only for a remote other than origin, or \"where\": false"),
     opt(&["--remote"], "remote").help("coordination remote (name or URL) if it is not origin"),
     OFFLINE_LOCAL,
 ];

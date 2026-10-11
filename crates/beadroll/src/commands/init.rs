@@ -4,13 +4,15 @@
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
+use beadroll_core::code::Code;
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::text::repr;
 use beadroll_git::{Fact, exists, realpath, without_password};
-use beadroll_store::{Settings, Workspace, find_workspace, uuid7, write_atomic};
-use beadroll_sync::{publish_soon, writing};
+use beadroll_store::{
+    Settings, Workspace, derived_shaped, find_workspace, uuid7, view, write_atomic,
+};
+use beadroll_sync::{Error as SyncError, Link, publish_soon, synchronise, writing};
 
 use super::import::import_records;
 use super::{Context, Failure, Outcome, text};
@@ -100,10 +102,56 @@ fn remote_argument(
     Ok((remote, had_password))
 }
 
+/// The tracker `init` joined: the remote that published it and how many events it brought.
+struct Joined {
+    pulled: i64,
+    remote: String,
+}
+
+/// What the remote holds of this repository's tracker when `init` finds none here.
+enum Published {
+    /// One, now pulled here (adopted, as `bead sync` adopts it, when this checkout's id is derived
+    /// from its URL and the tracker was published under another).
+    Joined(Joined),
+    /// None, or the remote could not be asked: `init` starts the tracker.
+    Nothing,
+}
+
+/// Asks the remote before `init` starts a tracker here, so that a repository never gets a second
+/// one: a tracker the remote already publishes is joined as `bead sync` joins it, and one published
+/// under an id this checkout cannot adopt is refused (`WORKSPACE_MISMATCH`, saying how to name it).
+/// With a tracker here already, `--offline` or no remote, nothing is asked; a remote that cannot be
+/// asked is left to the publish, which says why.
+fn join_published(
+    ws: &Workspace,
+    remote: Option<&OsStr>,
+    offline: bool,
+) -> Result<Published, Failure> {
+    if offline || view(ws)?.prefix().is_some() {
+        return Ok(Published::Nothing);
+    }
+    let Some(remote) = ws.remote(remote)?.filter(|r| !r.is_empty()) else {
+        return Ok(Published::Nothing);
+    };
+    // asked first, so that nothing is written here for a remote that publishes nothing
+    if Link::publishes(ws, &remote)? != Some(true) {
+        return Ok(Published::Nothing);
+    }
+    match synchronise(ws, &remote) {
+        Ok(synced) => Ok(Published::Joined(Joined {
+            pulled: synced.pulled,
+            remote: synced.remote.to_string_lossy().into_owned(),
+        })),
+        Err(error @ SyncError::WorkspaceMismatch { .. }) => Err(error.into()),
+        Err(_) => Ok(Published::Nothing),
+    }
+}
+
 /// Writes `.beadroll.json` at the top of the checkout: the configuration it has (unknown keys
-/// kept), a workspace id minted unless it names one, and `remote`, or the configured remote
-/// without a password: none is ever written back, even a hand-set one.
-fn write_tracked(ws: &Workspace, remote: Option<&OsStr>) -> Result<(), Failure> {
+/// kept), a workspace id (this tracker's when `keep`, as when the remote already published it,
+/// else minted) unless it names one, and `remote`, or the configured remote without a password:
+/// none is ever written back, even a hand-set one.
+fn write_tracked(ws: &Workspace, remote: Option<&OsStr>, keep: bool) -> Result<(), Failure> {
     let settings = &ws.settings;
     let top = settings
         .fact(Fact::Toplevel)?
@@ -111,6 +159,21 @@ fn write_tracked(ws: &Workspace, remote: Option<&OsStr>) -> Result<(), Failure> 
     let mut config: Object = ws.config.clone();
     let workspace = match config.get("workspace") {
         Some(value) if value.truthy() => value.clone(),
+        _ if keep => {
+            // adopted from the id an earlier URL derived, which no tracked file may name
+            if ws.derived.as_ref().is_some_and(|d| *d != ws.id) && derived_shaped(&ws.id) {
+                return Err(Failure::new(
+                    Code::Config,
+                    format!(
+                        "this repository's tracker is published under {}, the id its earlier URL \
+                         derived, and .beadroll.json cannot name another URL's id: keep the \
+                         URL-derived workspace, which already uses that tracker here",
+                        ws.id
+                    ),
+                ));
+            }
+            Value::from(ws.id.as_str())
+        }
         _ => Value::from(uuid7(&settings.clock)),
     };
     config.insert("workspace".into(), workspace);
@@ -132,30 +195,81 @@ fn write_tracked(ws: &Workspace, remote: Option<&OsStr>) -> Result<(), Failure> 
     Ok(())
 }
 
-/// Creates the tracker here: the `init` event (once), an optional import, the remote recorded,
-/// and publishes at once unless `--offline`.
-pub(crate) fn init(ctx: &Context<'_>, mut args: InitArgs) -> Result<Outcome, Failure> {
-    let settings = Arc::clone(&ctx.ws.settings);
-    let mut notes = Vec::new();
-    if let Some(remote) = args.remote.clone().filter(|r| !r.is_empty()) {
-        let (remote, had_password) = remote_argument(&settings, &remote, args.tracked)?;
-        if had_password {
-            notes.push(
-                "the password was dropped from the remote URL: bead never stores one; use a git \
-                 credential helper"
-                    .to_owned(),
-            );
-        }
-        args.remote = Some(remote);
-    }
-    let remote_given = args.remote.clone().filter(|r| !r.is_empty());
-    let tracked_ws: Option<Workspace> = if args.tracked {
-        write_tracked(ctx.ws, remote_given.as_deref())?;
-        Some(find_workspace(&settings)?)
-    } else {
-        None
+/// The workspace `init` writes to, `None` for this checkout's own, and the tracker it joined.
+struct Chosen {
+    ws: Option<Workspace>,
+    joined: Option<Joined>,
+}
+
+/// Where `init` writes: the tracker the remote already publishes ([`join_published`]), else this
+/// checkout's; with `--tracked`, the one `.beadroll.json` names once written, with the joined
+/// tracker's id, and origin's own URL stored as `origin` (`names_origin`).
+fn workspace_for(
+    ctx: &Context<'_>,
+    remote: Option<&OsStr>,
+    names_origin: bool,
+    tracked: bool,
+    offline: bool,
+) -> Result<Chosen, Failure> {
+    let settings = &ctx.ws.settings;
+    let (ws, joined) = match join_published(ctx.ws, remote, offline)? {
+        Published::Joined(joined) => (Some(find_workspace(settings)?), Some(joined)),
+        Published::Nothing => (None, None),
     };
-    let ws: &Workspace = tracked_ws.as_ref().unwrap_or(ctx.ws);
+    if !tracked {
+        return Ok(Chosen { ws, joined });
+    }
+    let base = ws.as_ref().unwrap_or(ctx.ws);
+    let origin = OsString::from("origin");
+    let stored = if names_origin {
+        Some(origin.as_os_str())
+    } else {
+        remote
+    };
+    write_tracked(base, stored, joined.is_some())?;
+    Ok(Chosen {
+        ws: Some(find_workspace(settings)?),
+        joined,
+    })
+}
+
+/// `init`'s `--remote` as it is stored ([`remote_argument`]), with whether it is origin's own URL,
+/// which a tracked file stores by name so that it follows origin when it moves; a dropped password
+/// is said in `notes`.
+fn given_remote(
+    ctx: &Context<'_>,
+    args: &InitArgs,
+    notes: &mut Vec<String>,
+) -> Result<(Option<OsString>, bool), Failure> {
+    let Some(remote) = args.remote.clone().filter(|r| !r.is_empty()) else {
+        return Ok((None, false));
+    };
+    let names_origin = ctx.ws.is_origin(&without_password(&remote).0);
+    let (remote, had_password) = remote_argument(&ctx.ws.settings, &remote, args.tracked)?;
+    if had_password {
+        notes.push(
+            "the password was dropped from the remote URL: bead never stores one; use a git \
+             credential helper"
+                .to_owned(),
+        );
+    }
+    Ok((Some(remote).filter(|r| !r.is_empty()), names_origin))
+}
+
+/// Creates the tracker here: the `init` event (once), an optional import, the remote recorded,
+/// and publishes at once unless `--offline`. A tracker the remote already publishes is joined
+/// instead of a second one started ([`join_published`]).
+pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure> {
+    let mut notes = Vec::new();
+    let (remote_given, names_origin) = given_remote(ctx, &args, &mut notes)?;
+    let Chosen { ws: chosen, joined } = workspace_for(
+        ctx,
+        remote_given.as_deref(),
+        names_origin,
+        args.tracked,
+        args.offline,
+    )?;
+    let ws: &Workspace = chosen.as_ref().unwrap_or(ctx.ws);
     let prefix_flag = args.prefix.as_deref().map(text).transpose()?;
     let (prefix, imported) = writing(ws, ctx.actor, |tx| -> Result<_, Failure> {
         if tx.state()?.prefix().is_none() {
@@ -193,7 +307,7 @@ pub(crate) fn init(ctx: &Context<'_>, mut args: InitArgs) -> Result<Outcome, Fai
             None => None,
         }
     } else {
-        remote_given
+        remote_given.clone()
     };
     let mut values = Vec::new();
     if let Some(name) = &ws.name {
@@ -205,7 +319,7 @@ pub(crate) fn init(ctx: &Context<'_>, mut args: InitArgs) -> Result<Outcome, Fai
     ws.save_meta(&values)?;
     if ws.wrote() && !args.offline {
         // the tracker exists for the other machines now, not at a later sync
-        if let Some(warning) = publish_soon(ws, args.offline, args.remote.as_deref()) {
+        if let Some(warning) = publish_soon(ws, args.offline, remote_given.as_deref()) {
             notes.push(warning);
         }
     }
@@ -215,7 +329,15 @@ pub(crate) fn init(ctx: &Context<'_>, mut args: InitArgs) -> Result<Outcome, Fai
     result.insert("path".into(), Value::from(ws.dir.display().to_string()));
     result.insert("imported".into(), Value::from(imported as i64));
     result.insert("tracked_config".into(), Value::Bool(!ws.config.is_empty()));
-    let mut lines = vec![format!(
+    result.insert("joined".into(), Value::Bool(joined.is_some()));
+    let mut lines = Vec::new();
+    if let Some(Joined { pulled, remote }) = &joined {
+        lines.push(format!(
+            "{remote} already publishes this repository's tracker: joined it (pulled {pulled} \
+             event(s)), no second one started"
+        ));
+    }
+    lines.push(format!(
         "Tracker {} at {}{}",
         repr(&prefix),
         ws.dir.display(),
@@ -224,7 +346,7 @@ pub(crate) fn init(ctx: &Context<'_>, mut args: InitArgs) -> Result<Outcome, Fai
         } else {
             String::new()
         }
-    )];
+    ));
     if args.tracked {
         lines.push(
             "Wrote .beadroll.json: commit it so every checkout and machine uses this workspace"

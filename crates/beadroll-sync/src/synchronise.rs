@@ -9,7 +9,7 @@ use beadroll_core::text::py_int;
 use beadroll_git::{PushOutcome, exists, realpath, without_password};
 use beadroll_store::{
     Failpoints, Fired, Workspace, claim_files, load_pending, moved_workspaces, pending_files, read,
-    relative, segment_files, view, write_atomic,
+    relative, segment_files, view, workspaces_named, write_atomic,
 };
 
 use crate::error::Error;
@@ -185,6 +185,33 @@ pub fn synchronise(ws: &Workspace, remote: &OsStr) -> Result<Synced, Error> {
     })
 }
 
+/// `NOT_INITIALIZED` when neither this store nor `shown`, the remote, has a tracker: `bead init`
+/// starts one, and a repository that moved without its tracker gets it back from a machine that
+/// has it, published under its own id: this machine, when it holds a workspace of the same name.
+fn nothing_published(ws: &Workspace, shown: &str) -> Error {
+    let mut message = format!(
+        "no tracker here and none published on {shown}: run `bead init` to start one. If this \
+         repository moved and its tracker stayed behind, publish it here from a machine that has \
+         it: `BEAD_WORKSPACE=ID bead sync`, ID as that machine's `bead info` shows it"
+    );
+    let named = match &ws.name {
+        Some(name) => workspaces_named(&ws.settings, name, &ws.id).unwrap_or_default(),
+        None => Vec::new(),
+    };
+    if !named.is_empty() {
+        let commands: Vec<String> = named
+            .iter()
+            .map(|id| format!("`BEAD_WORKSPACE={id} bead sync`"))
+            .collect();
+        let name = ws.name.as_deref().unwrap_or_default().to_string_lossy();
+        message.push_str(&format!(
+            "; this machine has a tracker named {name}: {}",
+            commands.join(" or ")
+        ));
+    }
+    Error::NotInitialized(message)
+}
+
 /// One round: whether it went through (the remote took the publish).
 fn sync_round(
     ws: &Workspace,
@@ -202,9 +229,7 @@ fn sync_round(
         }
         *pulled += link.merge(tip.as_deref())?;
         if tip.is_none() && segment_files(ws)?.is_empty() {
-            return Err(Error::NotInitialized(
-                "no tracker here and none published on the remote: run `bead init`".to_owned(),
-            ));
+            return Err(nothing_published(ws, &link.url_text()));
         }
         *pushed = link.unpublished()?;
         let fence = !load_pending(ws)?.is_empty();

@@ -6,6 +6,25 @@ versioned separately (format 1, frozen; see *Format and upgrades* in the README)
 
 ## [Unreleased]
 
+One golden path for setting up a repository's tracker (roll-dih8.13): `bead init` once, from any
+checkout, nothing committed; `bead sync` on every other checkout and machine.
+
+- `bead init` asks the remote before it starts a tracker. A tracker the repository already
+  publishes there is joined, with no second `init` event, and adopted as `sync` adopts it when it
+  was published under another id (a moved repository, or a tracked `.beadroll.json` the clone
+  lacks); `init --tracked` records that tracker's id. A published tracker it cannot adopt is
+  refused with `WORKSPACE_MISMATCH`. Before, `init` there started a second tracker, whose writes
+  could never be published.
+- `NOT_INITIALIZED` says to run `bead sync` first and `bead init` only to start a tracker the
+  repository does not have; when the remote publishes none, `sync` says how to bring a moved
+  repository's tracker along, naming this machine's tracker of the same name when it has one.
+- `bead info` (`tracked_config_warning`) and `bead prime` warn while `.beadroll.json` is not
+  committed, differs from its commit, or is not on origin's default branch: the other checkouts
+  and machines do not see it.
+- `bead init --tracked --remote` given origin's own URL stores `origin`, so the file follows origin
+  when the repository moves.
+- The README describes the golden path and moving a repository, and MIGRATING runs the import once.
+
 ## [0.2.0] — 2026-10-11
 
 bead is now the Rust implementation: one binary, built from the Cargo workspace in `crates/`,

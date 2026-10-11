@@ -39,7 +39,8 @@ black-box tests ported from the Python suite, the golden outputs captured from P
   takeover and release, the claim step `update` shares, and `command_signature`, the receipt).
 - `tests/cli/main.rs`: the one test binary's root; `sandbox()` hands test support the binary Cargo
   built (`env!("CARGO_BIN_EXE_bead")`), the only place that default can come from.
-- `tests/cli/commands/*.rs`: `tests/test_commands.py`, ported; `tests/cli/golden.rs` and
+- `tests/cli/commands/*.rs`: `tests/test_commands.py`, ported, and `commands/setup.rs`, the golden
+  path of setting a tracker up (roll-dih8.13); `tests/cli/golden.rs` and
   `golden/normal.rs`: the golden scenarios and their normalisation, against the files in
   `tests/golden/`, captured from Python's `./bead` before the cutover.
 - `tests/cli/parity.rs` and `parity/*.rs`: what the mixed-fleet tests held the Rust bead to, on

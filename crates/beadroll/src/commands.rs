@@ -209,7 +209,8 @@ pub(crate) fn need_tracker(st: &State) -> Result<(), Failure> {
     if st.prefix().is_none() {
         return Err(Failure::new(
             Code::NotInitialized,
-            "no tracker for this repository yet: run `bead init` or `bead sync`",
+            "no tracker for this repository here yet: run `bead sync` to fetch it from its remote, or \
+             `bead init` to start one if it has none",
         ));
     }
     Ok(())

@@ -7,7 +7,7 @@ use beadroll_core::code::Code;
 use beadroll_core::event::Field;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::text::{repr, repr_bytes, str_of};
-use beadroll_store::{Actor, Label, Settings, Workspace, replica_id, view};
+use beadroll_store::{Actor, Label, Settings, Workspace, replica_id, tracked_config_warning, view};
 
 use super::help;
 use super::parse::{Namespace, Page};
@@ -74,7 +74,8 @@ fn prime(ws: Option<&Workspace>, actor: &Actor, settings: &Settings) -> Result<O
             // the system's errors are not an answer here; bead's are
             Err(failure) if failure.code == Code::Io => return Err(failure),
             Err(failure) => context.push(format!(
-                "No tracker here yet ({}): run `bead init` or `bead sync`.",
+                "No tracker here yet ({}): run `bead sync` to fetch this repository's tracker, or \
+                 `bead init` to start one if it has none.",
                 failure.code.as_str()
             )),
         },
@@ -83,6 +84,10 @@ fn prime(ws: Option<&Workspace>, actor: &Actor, settings: &Settings) -> Result<O
              repo."
                 .to_owned(),
         ),
+    }
+    // a tracked configuration the other checkouts do not see splits the tracker: said first
+    if let Some(warning) = ws.and_then(|ws| tracked_config_warning(&ws.settings).ok().flatten()) {
+        context.insert(0, format!("Warning: {warning}."));
     }
     let text = PRIME.replacen("{context}", &format!("{}\n", context.join("\n")), 1);
     let mut outcome = text_outcome("prime", &text);

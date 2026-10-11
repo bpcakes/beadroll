@@ -85,11 +85,15 @@ bead export -o /tmp/x/.beads/issues.jsonl   # for bv or any Beads reader
 bead info                           # where the store is, who you are, what the remote still lacks
 ```
 
-On another machine or in another clone of the same repository: install `bead`
-and run `bead sync` there; the tracker is found from the origin URL. Every
-command that writes publishes before it returns (`--offline` keeps a write
-local); `sync` is the catch-up after `--offline` or a remote that did not
-answer, and `ready`, `show`, `list` and the other reads never touch the network.
+Set a repository up once, from any checkout: `bead init`, with `--import` when
+it comes from Beads. Nothing is committed: the tracker is found from the origin
+URL, so every worktree, clone and machine of the repository shares it. On
+another machine or in another clone, install `bead` and run `bead sync` there;
+an `init` there joins the tracker the remote already publishes and never starts
+a second one. Every command that writes publishes before it returns
+(`--offline` keeps a write local); `sync` is the catch-up after `--offline` or a
+remote that did not answer, and `ready`, `show`, `list` and the other reads
+never touch the network.
 
 Commands: `create`, `show`, `update`, `list`, `ready`, `blocked`, `close`,
 `reopen`, `delete`, `dep add|remove|list|tree|cycles`, `comments [add]`,
@@ -307,19 +311,29 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
 
 ## Configuration
 
-Without configuration the workspace is derived from the origin URL (where
+The golden path needs none. The workspace is derived from the origin URL (where
 `git push origin` goes: the first `pushurl`, else the first `url`, read as git
 reads it, so `host:path`, ssh aliases and `gh:` shortcuts are remotes, not
-paths) and the coordination remote is origin, looked up each time. `bead init
---tracked [--remote NAME_OR_URL]` writes a `.beadroll.json` to commit: an
-explicit workspace id, and optionally a different coordination remote. Running
-it again keeps the keys it does not manage. A checkout whose tree predates the
-file reads the committed copy (`HEAD`, then `origin/HEAD`). `--remote` and
-`$BEAD_REMOTE` override it per call; a tracked remote that differs from the one
-a store already uses is refused until named deliberately, and a tracked id that
-is another repository's derived id is refused outright: a cloned repository
-cannot attach you to someone else's store. If a repository was renamed, the
-first `sync` adopts its published tracker and remembers the mapping.
+paths; `git@host:org/repo` and `https://host/org/repo` are one workspace) and
+the coordination remote is origin, looked up each time, so nothing is
+committed and every checkout finds the same tracker. Before `bead init` starts
+a tracker it asks the remote: one already published there is joined instead,
+and adopted when it was published under another id (below).
+
+A tracked `.beadroll.json` is the exception: for a coordination remote other
+than origin, or for `"where": false`. `bead init --tracked [--remote
+NAME_OR_URL]` writes one with an explicit workspace id (the published
+tracker's, when there is one) and optionally a different coordination remote;
+origin's own URL is stored as `origin`, so the file follows origin when it
+moves. Commit it on the default branch at once: a checkout whose tree predates
+the file reads the committed copy (`HEAD`, then `origin/HEAD`), but a file that
+is not committed, or not on the default branch, reaches no other checkout, and
+`bead info` and `bead prime` warn about it until it does. Running it again keeps
+the keys it does not manage. `--remote` and `$BEAD_REMOTE` override it per
+call; a tracked remote that differs from the one a store already uses is
+refused until named deliberately, and a tracked id that is another repository's
+derived id is refused outright: a cloned repository cannot attach you to someone
+else's store.
 
 bead's own git runs in a private bare repository with the checkout's transport
 settings carried over (`http.*.extraheader`, credential helpers,
@@ -334,6 +348,27 @@ commands). When one agent is started from inside the other's session both are
 present, and `bead` picks the nearest agent in the process tree. `BEAD_AGENT`,
 `BEAD_THREAD` and `--actor NAME` override them. The machine is an opaque id; its
 hostname is a local alias (`bead machines --name ID=ALIAS`), never in events.
+
+## Moving a repository
+
+A new origin URL (a rename, another owner, another host) gives the URL-derived
+workspace a new id. Each machine, once its checkout's origin is the new URL,
+finds no tracker until its first `bead sync` (or `bead init`), which adopts the
+tracker published under the old id and remembers the mapping (`moved.json` in
+`BEAD_HOME`). That needs the move to carry the tracker's ref,
+`refs/beads/journal`: a rename or a transfer on a forge keeps every ref, and
+`git push --mirror` copies them. An import that copies only branches and tags
+leaves it behind: `bead sync` then says none is published and names this
+machine's tracker of the same name if it has one; `BEAD_WORKSPACE=ID bead sync`
+on a machine that has it publishes it at the new URL, and every other machine's
+next `sync` adopts it. Until a machine's origin moves it keeps using the old
+URL, which a forge's rename redirects.
+
+A tracked `.beadroll.json` keeps its id through any move. With its remote left
+to origin, or named `origin`, the first `sync` after the move publishes the
+tracker at the new URL if it is not there yet. A tracked remote stored as a URL
+keeps pointing at the old place: `bead init --tracked --remote origin` rewrites
+it, and the file is committed again.
 
 ## Tests and reviews
 

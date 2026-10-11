@@ -18,7 +18,10 @@ mod settings;
 mod workspace;
 
 pub use actor::{Actor, Label, Ps, detect_actor, nearest_harness};
-pub use discover::{checked_config, find_workspace, moved_workspaces};
+pub use discover::{
+    checked_config, derived_shaped, find_workspace, moved_workspaces, tracked_config_warning,
+    workspaces_named,
+};
 pub use error::{Error, git_code};
 pub use failpoint::{Action, Failpoints, Fired, POINTS, Selector, kill_self};
 pub use fs::{

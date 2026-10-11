@@ -7,7 +7,8 @@ use beadroll_core::json::{Object, Value};
 use beadroll_core::state::State;
 use beadroll_core::text::{printed_text, str_of};
 use beadroll_store::{
-    Workspace, dir_entries, load_journal, load_pending, replica_id, segment_files, view,
+    Workspace, dir_entries, load_journal, load_pending, replica_id, segment_files,
+    tracked_config_warning, view,
 };
 
 use super::{Context, Failure, Outcome};
@@ -49,6 +50,10 @@ pub(crate) fn info(ctx: &Context<'_>) -> Result<Outcome, Failure> {
     result.insert("version".into(), Value::from(VERSION));
     result.insert("workspace".into(), Value::from(ws.id.as_str()));
     result.insert("workspace_source".into(), Value::from(source));
+    // only when there is one: a tracked configuration the other checkouts do not see
+    if let Some(warning) = tracked_config_warning(&ws.settings)? {
+        result.insert("tracked_config_warning".into(), Value::from(warning));
+    }
     result.insert("name".into(), name);
     result.insert("prefix".into(), st.prefix().cloned().unwrap_or(Value::Null));
     result.insert(

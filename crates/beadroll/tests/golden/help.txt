@@ -115,7 +115,8 @@ options:
   -h, --help            show this help message and exit
   --prefix PREFIX
   --import BEADS_JSONL
-  --tracked             write .beadroll.json with an explicit workspace id
+  --tracked             write .beadroll.json naming this tracker, to commit:
+                        only for a remote other than origin, or "where": false
   --remote REMOTE       coordination remote (name or URL) if it is not origin
   --offline             record locally only; the next sync or online command
                         publishes it
@@ -129,7 +130,8 @@ options:
   -h, --help            show this help message and exit
   --prefix PREFIX
   --import BEADS_JSONL
-  --tracked             write .beadroll.json with an explicit workspace id
+  --tracked             write .beadroll.json naming this tracker, to commit:
+                        only for a remote other than origin, or "where": false
   --remote REMOTE       coordination remote (name or URL) if it is not origin
   --offline             record locally only; the next sync or online command
                         publishes it

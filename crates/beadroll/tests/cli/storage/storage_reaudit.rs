@@ -249,8 +249,10 @@ fn machine_identity_first_use_is_atomic_across_workspaces() {
     let _ = set_up(&sandbox, crate::rust_only);
     let fresh = crate::rust_only(&sandbox, "identity-fresh");
     let gate = Gate::new(&sandbox, "identity");
+    // offline: these are workspaces named beside the tracker `set_up` published, which `init`
+    // online refuses to start a second tracker against; the machine's identity is what is tested
     let init = |workspace: &str| {
-        let init = fresh.cmd(["init", "--json"]);
+        let init = fresh.cmd(["init", "--offline", "--json"]);
         init.env("BEAD_WORKSPACE", workspace)
     };
     let pausing =
@@ -305,8 +307,9 @@ fn machine_identity_can_recover_from_first_use_crash() {
     let _ = set_up(&sandbox, crate::rust_only);
     let fresh = crate::rust_only(&sandbox, "identity-killed");
     let gate = Gate::new(&sandbox, "identity-killed");
+    // offline, as in the test above: a workspace named beside the published tracker
     let init = || {
-        let init = fresh.cmd(["init", "--json"]);
+        let init = fresh.cmd(["init", "--offline", "--json"]);
         init.env("BEAD_WORKSPACE", "identity-crash")
     };
     let pausing = init().env("BEAD_FAILPOINTS", gate.at("identity.before-link@always"));
