@@ -66,6 +66,9 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   file (its identity on disk, its lines, its blob) is a cache, `sync.git/journal-memo`: a file
   that keeps its identity is not hashed again, and its remembered blob goes into a tree only when
   it is sure to be in `sync.git`; the tree published is the one hashing every file makes.
+- `cargo xtask timing --sync N [--ownership] [--rotate BYTES]` times a publishing `bead sync` on a
+  scratch store of N events against a local bare remote, with the store's memo of its journal files
+  and without it; `docs/RUST-PORT.md` Appendix A has the figures at 200,000 events.
 
 ## [0.2.0] — 2026-10-11
 

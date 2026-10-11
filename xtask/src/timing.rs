@@ -1,12 +1,14 @@
 //! `cargo xtask timing`: runs a command and records what it took as one JSON line, evidence for
 //! the budgets of `docs/RUST-PORT.md` §4.7 and Appendix A. With `--replay N` it times
 //! beadroll-core's replay of N events in-process instead ([`replay`]), and measures the peak memory
-//! of a process that loads them from disk and replays them ([`memory`], `--load DIR`). A timing
-//! never decides whether anything passes.
+//! of a process that loads them from disk and replays them ([`memory`], `--load DIR`); with `--sync
+//! N`, a publishing `bead sync` on a store of N events ([`sync`]). A timing never decides whether
+//! anything passes.
 
 mod history;
 mod memory;
 mod replay;
+mod sync;
 
 use std::ffi::OsString;
 use std::fs::OpenOptions;
@@ -24,7 +26,11 @@ struct Options {
     command: Vec<OsString>,
     /// Time replay of this many events instead of a command.
     replay: Option<usize>,
-    /// Which history `--replay` generates.
+    /// Time a publishing sync on a store of this many events instead of a command.
+    sync: Option<usize>,
+    /// Where `--sync` rotates the journals it writes.
+    rotate: Option<usize>,
+    /// Which history `--replay` or `--sync` generates.
     shape: history::Shape,
     /// Load the journal written in this directory and replay it once: the process whose peak
     /// memory `--replay` measures.
@@ -39,6 +45,8 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
         out: None,
         command: Vec::new(),
         replay: None,
+        sync: None,
+        rotate: None,
         shape: history::Shape::Plain,
         load: None,
         no_replay: false,
@@ -53,13 +61,9 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
         match text.as_str() {
             "--label" => options.label = Some(value("--label")?.to_string_lossy().into_owned()),
             "--out" => options.out = Some(PathBuf::from(value("--out")?)),
-            "--replay" => {
-                let count = value("--replay")?.to_string_lossy().into_owned();
-                let count = count.parse().map_err(|_| {
-                    Failure::Usage(format!("--replay takes a number of events, not {count}"))
-                })?;
-                options.replay = Some(count);
-            }
+            "--replay" => options.replay = Some(number(&value("--replay")?, "--replay", "events")?),
+            "--sync" => options.sync = Some(number(&value("--sync")?, "--sync", "events")?),
+            "--rotate" => options.rotate = Some(number(&value("--rotate")?, "--rotate", "bytes")?),
             "--ownership" => options.shape = history::Shape::Ownership,
             "--load" => options.load = Some(PathBuf::from(value("--load")?)),
             "--no-replay" => options.no_replay = true,
@@ -74,14 +78,23 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
             }
         }
     }
-    if options.command.is_empty() && options.replay.is_none() && options.load.is_none() {
+    let measured = options.replay.is_some() || options.sync.is_some();
+    if options.command.is_empty() && !measured && options.load.is_none() {
         return Err(Failure::Usage(
-            "timing needs --replay N, or a command after --".into(),
+            "timing needs --replay N, --sync N, or a command after --".into(),
         ));
     }
-    if options.shape != history::Shape::Plain && options.replay.is_none() {
+    if options.replay.is_some() && options.sync.is_some() {
+        return Err(Failure::Usage("--replay N or --sync N, not both".into()));
+    }
+    if options.shape != history::Shape::Plain && !measured {
         return Err(Failure::Usage(
-            "--ownership shapes the history of --replay N".into(),
+            "--ownership shapes the history of --replay N or --sync N".into(),
+        ));
+    }
+    if options.rotate == Some(0) || options.rotate.is_some() && options.sync.is_none() {
+        return Err(Failure::Usage(
+            "--rotate BYTES, more than none, goes with --sync N".into(),
         ));
     }
     if options.no_replay && options.load.is_none() {
@@ -99,6 +112,15 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
         Some(out) => out,
         None => workspace::target_dir()?.join("timing.jsonl"),
     };
+    if let Some(count) = options.sync {
+        let started = SystemTime::now();
+        let rotate = options.rotate.unwrap_or(sync::ROTATE_BYTES);
+        let measured = sync::measure(count, options.shape, rotate, options.label.as_deref())?;
+        let line = format!("{measured}{}", context(started));
+        append(&out, &line)?;
+        println!("timing: {line}\nrecorded in {}", out.display());
+        return Ok(ExitCode::SUCCESS);
+    }
     if let Some(count) = options.replay {
         let started = SystemTime::now();
         let measured = replay::measure(count, options.shape, options.label.as_deref())?;
@@ -134,6 +156,13 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
     } else {
         ExitCode::FAILURE
     })
+}
+
+/// A count given to `option`, of `what`.
+fn number(text: &std::ffi::OsStr, option: &str, what: &str) -> Result<usize, Failure> {
+    let text = text.to_string_lossy();
+    text.parse()
+        .map_err(|_| Failure::Usage(format!("{option} takes a number of {what}, not {text}")))
 }
 
 /// git's output in the repository, or `None` if git did not answer.
@@ -295,6 +324,28 @@ mod tests {
             Err(Failure::Usage(_))
         ));
         assert!(matches!(parse(args(&["sleep"])), Err(Failure::Usage(_))));
+    }
+
+    #[test]
+    fn sync_takes_a_count_a_shape_and_a_rotation() {
+        let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
+        let options = parse(args(&["--sync", "200", "--ownership", "--rotate", "4096"])).unwrap();
+        assert_eq!(options.sync, Some(200));
+        assert_eq!(options.rotate, Some(4096));
+        assert_eq!(options.shape, history::Shape::Ownership);
+        assert_eq!(parse(args(&["--sync", "10"])).unwrap().rotate, None);
+        for wrong in [
+            &["--sync", "ten"][..],
+            &["--sync", "10", "--replay", "10"],
+            &["--sync", "10", "--rotate", "0"],
+            &["--replay", "10", "--rotate", "4096"],
+            &["--rotate", "4096", "--", "true"],
+        ] {
+            assert!(
+                matches!(parse(args(wrong)), Err(Failure::Usage(_))),
+                "{wrong:?}"
+            );
+        }
     }
 
     #[test]

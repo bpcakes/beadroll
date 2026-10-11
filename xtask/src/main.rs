@@ -37,6 +37,7 @@ usage: cargo xtask <command>
 
   timing [--label NAME] [--out FILE] -- COMMAND [ARG...]
   timing --replay N [--ownership] [--label NAME] [--out FILE]
+  timing --sync N [--ownership] [--rotate BYTES] [--label NAME] [--out FILE]
   timing --load DIR [--no-replay]
       Run COMMAND and append what it took, one JSON line, to FILE (default
       target/timing.jsonl); or replay a parsed journal of N valid events in-process, the best of
@@ -45,6 +46,10 @@ usage: cargo xtask <command>
       attempt files. The journal is written under target/timing/ while it is measured, and the
       record also holds the peak memory (as /usr/bin/time reports it) of a process that loads it
       from disk and replays it, and of one that only loads it: --load DIR is that process.
+      --sync N times a publishing bead sync (BEAD_UNDER_TEST, else the bead Cargo builds in
+      xtask's profile) on a scratch store of those N events, its journals rotated at BYTES (bead's
+      default, 262144), against a local bare remote: the first sync, then the best of five after a
+      local write each, with the store's memo of its journal files and without it.
       Timings are evidence, never a gate (docs/RUST-PORT.md §4.7).
 ";
 

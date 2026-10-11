@@ -1596,6 +1596,29 @@ decision 7 open. The five decisions stand.
     the first two start while the round reads: not justified (§2.3d). The two `update-ref`s after a
     fetch could go back into one transaction only once concurrent fetches no longer fail on a
     fetch ref that disappears while they list refs, in both implementations.
+- **roll-lqjj.1: a publishing sync, measured (this Mac, 2026-10-11).**
+  - How: `cargo run --release --package xtask -- timing --sync N [--ownership] [--rotate BYTES]`.
+    The history `--replay` generates is written as a store holds it (each machine's journal in
+    segments rotated at BYTES, 256 KiB by default as bead rotates, and its attempt files),
+    published once to a local bare remote, and then synced after a local write each time, the best
+    of five: with the store's memo of its journal files, and with the memo removed before each
+    sync, so that every file is hashed and read as before roll-lqjj.1.
+
+    | Events | Segments | Attempt files | Journal | Sync | Without the memo |
+    |---|---|---|---|---|---|
+    | 50k | 54 | 0 | 13 MB | 0.89 s | 0.97 s |
+    | 200k | 207 | 0 | 54 MB | 3.43 s | 3.49 s |
+    | 200k, rotated at 4 MiB | 18 | 0 | 54 MB | 3.37 s | 3.40 s |
+    | 200k, ownership-heavy | 96 | 91,952 | 73 MB | 11.2 s | 14.2 s |
+
+  - The sync figure at 200,000 events is the same with 18 full segments as with 207: it does not
+    grow with them. Hashing was a small part of it on the plain history (git hashes 54 MB in about
+    30 ms, and a publish hashed it twice); on the ownership-heavy one, 92,000 attempt files hashed
+    twice cost 3 s a sync, which the memo removes. What still grows is the rest, in proportion to
+    the events (3.9 times the time for 4 times the events): each sync loads and replays the whole
+    journal three times (`view` before and after, and the merge's check for chain breaks), which
+    the local projection (roll-lqjj.2) takes on; and it lists, stats and names in its tree every
+    attempt file, which only a checkpoint (roll-lqjj.4) would change.
 
 ## Appendix B. git invocations, and their consolidation
 
