@@ -405,3 +405,81 @@ fn init_publishes_only_where_it_chose_to() {
         "a publish after init's went where the rule sends the URL"
     );
 }
+
+/// A store an older bead left going through a URL that an `insteadOf` rule rewrites, whose
+/// `.beadroll.json` names a remote that another rule rewrites to that very URL: git rewrites once,
+/// so the saved URL reaches one place and the name another; refused (`CONFIG`).
+#[test]
+fn a_tracked_name_reaching_another_place_than_the_saved_url_is_a_change() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let init = json(&a, &["init", "--prefix", "ex", "--offline"]);
+    let store = PathBuf::from(init["path"].as_str().expect("a path"));
+    let (named, saved) = (sandbox.bare("B.git"), sandbox.bare("C.git"));
+    let to_named = format!("url.{}.insteadOf", text(&named));
+    let to_saved = format!("url.{}.insteadOf", text(&saved));
+    commit(&a, &["config", &to_named, "alias:repo"]);
+    commit(&a, &["config", &to_saved, text(&named)]);
+    commit(&a, &["remote", "add", "tracker", "alias:repo"]);
+    save_remote(&store, text(&named));
+    let tracked = a.checkout().join(".beadroll.json");
+    std::fs::write(tracked, "{\"remote\": \"tracker\"}\n").expect("a tracked file");
+    assert_eq!(code(&a.run(["sync", "--json"])), "CONFIG");
+}
+
+/// A remote whose own push URL is origin's URL, which a `pushInsteadOf` rule sends elsewhere when
+/// it is origin's: a sync through that remote is remembered as it was reached, not forgotten as
+/// origin, so the commands after publish where it did.
+#[test]
+fn a_remote_pushed_to_by_origins_url_is_not_forgotten_as_origin() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--prefix", "ex"]);
+    let origin = text(sandbox.origin());
+    let pushed = sandbox.bare("push.git");
+    let rewrite = format!("url.{}.pushInsteadOf", text(&pushed));
+    commit(&a, &["config", &rewrite, origin]);
+    let tracker = sandbox.bare("tracker.git");
+    commit(&a, &["remote", "add", "tracker", text(&tracker)]);
+    commit(&a, &["remote", "set-url", "--push", "tracker", origin]);
+    let synced = a.run(["sync", "--remote", "tracker", "--json"]);
+    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
+    json(&a, &["create", "after"]);
+    let refs = ["--git-dir", text(&pushed), "for-each-ref", "refs/beads"];
+    assert_eq!(
+        git(refs, None),
+        "",
+        "a later command reached origin's URL as origin"
+    );
+}
+
+/// A remote whose URL is a symbolic link to origin's repository, which an `insteadOf` rule
+/// rewrites to another repository: a sync through it is remembered, not forgotten as origin,
+/// which the link alone would make it, and the writes after go where the sync went.
+#[test]
+fn a_remote_rewritten_away_from_origin_is_not_forgotten_as_origin() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--prefix", "ex"]);
+    let tip = || {
+        git(
+            [
+                "--git-dir",
+                text(sandbox.origin()),
+                "rev-parse",
+                "refs/beads/journal",
+            ],
+            None,
+        )
+    };
+    let before = tip();
+    let coord = sandbox.bare("coord.git");
+    let link = sandbox.root().join("link.git");
+    std::os::unix::fs::symlink(sandbox.origin(), &link).expect("a link");
+    let rule = format!("url.{}.insteadOf", text(&coord));
+    commit(&a, &["config", &rule, text(&link)]);
+    commit(&a, &["remote", "add", "tracker", text(&link)]);
+    json(&a, &["sync", "--remote", "tracker"]);
+    json(&a, &["create", "after"]);
+    assert_eq!(tip(), before, "a write after the sync went to origin");
+}

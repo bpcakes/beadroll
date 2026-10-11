@@ -163,18 +163,20 @@ These were decided deliberately. Report problems *with* them, not their existenc
   sync replaced it, and a saved value that names a remote and that no rule rewrites is still that
   remote. `--remote` given origin's own URL (and not a configured remote's name, which wins over
   a same-named path) is stored as `origin` and reached as origin is, its own push URL included,
-  from `init`'s first publish on; a remote remembered with origin's URL but
-  pushed to otherwise is not origin. The advice to bring a moved repository's tracker along gives
-  the remote by its URL, which names the same place on every machine, or by the name it was
-  chosen by where the URL alone is not reached as the remote is (a remote's own push URL, or one
-  `--remote` would read as another remote's name). A tracked remote that would change how the
-  store's remote is reached, its URL or how it is pushed to, is refused (`CONFIG`) until changed
-  deliberately; a store whose remembered remote is a tracked name as older versions resolved it
-  (`git remote get-url`, `insteadOf` applied) goes on through the name, unless the name has a
-  push URL of its own, which they never went through, or git pushes it elsewhere (`git remote
-  get-url --push`). `init --tracked` stores a relative path from the top of the checkout, and
-  one a rule rewrites as the very spelling that reads back as written (`.`, `..` and symbolic
-  links kept); adoption compares origin as a sync reaches it.
+  from `init`'s first publish on; a remote remembered with origin's URL but pushed to otherwise
+  is not origin, nor one whose spelling or origin's a rule rewrites, which can send the two apart
+  (a link to origin's repository rewritten to another). The advice to bring a moved repository's
+  tracker along gives the remote by its URL, which names the same place on every machine, or by
+  the name it was chosen by where the URL alone is not reached as the remote is (a remote's own
+  push URL, or one `--remote` would read as another remote's name). A tracked remote is the
+  store's remote only where both reach the same places: the same spelling pushed to alike (its
+  own push URL or not), or, spelled otherwise (an older version saved a name as git expanded
+  it), where git fetches and pushes both alike, each rewrite applied once as git applies it, from
+  the rules themselves (`git remote get-url` answers only for remotes configured in the
+  repository); any other change is refused (`CONFIG`) until made deliberately. `init --tracked`
+  stores a relative path from the top of the checkout, and one a rule rewrites as the very
+  spelling that reads back as written (`.`, `..` and symbolic links kept); adoption compares
+  origin as a sync reaches it.
 - Output is UTF-8 regardless of locale; human output escapes control characters; `--json` always
   wins the representation (`create --silent --json` gives `{"id": …}`); a closed stdout exits 0
   quietly.

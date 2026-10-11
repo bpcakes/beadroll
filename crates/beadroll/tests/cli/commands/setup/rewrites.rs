@@ -306,32 +306,6 @@ fn the_advice_gives_a_remote_with_its_own_push_url_by_its_name() {
     assert!(synced.stderr.contains(&command), "{}", synced.stderr);
 }
 
-/// A remote whose own push URL is origin's URL, which a `pushInsteadOf` rule sends elsewhere when
-/// it is origin's: a sync through that remote is remembered as it was reached, not forgotten as
-/// origin, so the commands after publish where it did.
-#[test]
-fn a_remote_pushed_to_by_origins_url_is_not_forgotten_as_origin() {
-    let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "a");
-    json(&a, &["init", "--prefix", "ex"]);
-    let origin = text(sandbox.origin());
-    let pushed = sandbox.bare("push.git");
-    let rewrite = format!("url.{}.pushInsteadOf", text(&pushed));
-    commit(&a, &["config", &rewrite, origin]);
-    let tracker = sandbox.bare("tracker.git");
-    commit(&a, &["remote", "add", "tracker", text(&tracker)]);
-    commit(&a, &["remote", "set-url", "--push", "tracker", origin]);
-    let synced = a.run(["sync", "--remote", "tracker", "--json"]);
-    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
-    json(&a, &["create", "after"]);
-    let refs = ["--git-dir", text(&pushed), "for-each-ref", "refs/beads"];
-    assert_eq!(
-        git(refs, None),
-        "",
-        "a later command reached origin's URL as origin"
-    );
-}
-
 /// A remote whose URL is an alias git rewrites, and a remote of the alias's name that only the
 /// configuration bead inherits defines (here through `GIT_CONFIG_COUNT`), which `sync.git` sees
 /// too: bead gives git the URL as a remote's URL, never as an argument git would take for that

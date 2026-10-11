@@ -54,20 +54,28 @@ impl Workspace {
     pub fn remembered_remote(&self) -> Result<Option<OsString>, Error> {
         let meta = self.meta(true)?;
         Ok(match meta.get("remote") {
-            Some(Value::Str(remote)) if !self.is_origin_as_reached(remote, &meta) => {
+            Some(Value::Str(remote)) if !self.is_origin_as_reached(remote, &meta)? => {
                 Some(OsString::from(remote))
             }
             _ => None,
         })
     }
 
-    /// Whether `remote`, remembered in `meta`, is origin as origin is reached: its URL, however
-    /// spelled, and pushed to as origin is (its own push URL or not). A remote that shares only
-    /// origin's URL is another endpoint, which a `pushInsteadOf` rule can send elsewhere, and stays
+    /// Whether `remote`, remembered in `meta`, is origin as origin is reached: pushed to as origin
+    /// is (its own push URL or not), and its URL, however spelled, unless a rule rewrites one of
+    /// the two spellings, which can send them apart (a link to origin's repository rewritten to
+    /// another, say). A remote that only shares origin's URL is another endpoint and stays
     /// remembered.
-    pub(crate) fn is_origin_as_reached(&self, remote: &str, meta: &Object) -> bool {
+    pub(crate) fn is_origin_as_reached(&self, remote: &str, meta: &Object) -> Result<bool, Error> {
         let pushed = matches!(meta.get("remote_push_url"), Some(Value::Str(url)) if url == remote);
-        self.is_origin(OsStr::new(remote)) && pushed == self.origin_push
+        let Some(origin) = self.origin.as_deref() else {
+            return Ok(false);
+        };
+        let remote = OsStr::new(remote);
+        if pushed != self.origin_push || !self.is_origin(remote) {
+            return Ok(false);
+        }
+        Ok(origin == remote || (!self.rewrites(remote)? && !self.rewrites(origin)?))
     }
 
     /// One remote spelling (a configured remote's name, a URL, a path) reduced to the URL bead
@@ -257,45 +265,30 @@ impl Workspace {
     /// same remote spelled another way, unless the name has a push URL of its own: they went
     /// through its other URL then, and moving to the push URL is done deliberately.
     fn leads_to(&self, tracked: &OsStr, used: &OsStr) -> Result<bool, Error> {
-        // both as they are reached, whatever their spellings: one can be a remote's name and the
-        // other a URL spelled the same
         let remembered = self.remembered_endpoint(used)?;
         let endpoint = self.resolve_endpoint(tracked, false)?;
         if endpoint.url == remembered.url {
-            // reached as it was too: pushed to as a remote's own push URL or not
+            // the same spelling, reached alike only when pushed to alike (its own push URL or not)
             return Ok(endpoint.own_push_url == remembered.own_push_url);
         }
-        if remembered.own_push_url {
-            // saved by this version, which older ones' spellings do not concern
-            return Ok(false);
-        }
-        let git = &self.settings.git;
-        let own_push_url = if name_shaped(tracked) {
-            configured_remote(git, tracked)?.map(|remote| remote.push)
-        } else {
-            None
+        // spelled otherwise (an older version saved a name as git expanded it, a URL in another
+        // form): the same remote only where git fetches and pushes both alike
+        Ok(self.destinations(&endpoint)? == self.destinations(&remembered)?)
+    }
+
+    /// Where git takes `endpoint`, fetching and pushing, each rewrite applied once as git applies
+    /// it ([`rewrite`]): `insteadOf` for both, but `pushInsteadOf` first for a push to a URL that
+    /// is not a remote's own push URL. Each spelled as [`normalize_remote`] spells one place.
+    fn destinations(&self, endpoint: &Endpoint) -> Result<[OsString; 2], Error> {
+        let rules = rewrite_rules(&self.settings.git)?;
+        let url = endpoint.url.as_bytes();
+        let fetched = rewrite(url, &rules, false).unwrap_or_else(|| url.to_vec());
+        let pushed = match endpoint.own_push_url {
+            true => fetched.clone(),
+            false => rewrite(url, &rules, true).unwrap_or_else(|| fetched.clone()),
         };
-        if own_push_url != Some(false) {
-            return Ok(false);
-        }
-        // older versions went through the URL git fetches the name from, and pushed there: the
-        // name is that same remote only if git pushes it there too
-        for push in [false, true] {
-            let mut args = vec![OsStr::new("remote"), OsStr::new("get-url")];
-            if push {
-                args.push(OsStr::new("--push"));
-            }
-            args.push(tracked);
-            let asked = git.git(args).run()?;
-            if !asked.success() {
-                return Ok(false);
-            }
-            let formerly = OsString::from_vec(crate::strip_ascii(&asked.stdout).to_vec());
-            if self.endpoint_at(&formerly, false)?.url != remembered.url {
-                return Ok(false);
-            }
-        }
-        Ok(true)
+        let cwd = &self.settings.cwd;
+        Ok([fetched, pushed].map(|place| normalize_remote(OsStr::from_bytes(&place), cwd)))
     }
 }
 
@@ -322,7 +315,25 @@ fn name_shaped(value: &OsStr) -> bool {
 /// `url.<base>.pushInsteadOf` configured here is a prefix of it, as git matches them. Asked of the
 /// rules, never by having git expand `url`, which it reads as a remote's name when it is one.
 fn rewritten(git: &beadroll_git::Env, url: &OsStr) -> Result<bool, Error> {
-    let rules = git
+    let url = url.as_bytes();
+    Ok(rewrite_rules(git)?
+        .iter()
+        .any(|rule| url.starts_with(&rule.prefix)))
+}
+
+/// One `url.<base>.insteadOf <prefix>` (or `pushInsteadOf`) configured here.
+struct Rule {
+    /// Whether it is a `pushInsteadOf`, for pushes alone.
+    push: bool,
+    /// What a URL starts with for the rule to apply.
+    prefix: Vec<u8>,
+    /// What that start becomes.
+    base: Vec<u8>,
+}
+
+/// The rewrite rules configured here, in git's order.
+fn rewrite_rules(git: &beadroll_git::Env) -> Result<Vec<Rule>, Error> {
+    let listed = git
         .git([
             "config",
             "--null",
@@ -330,14 +341,47 @@ fn rewritten(git: &beadroll_git::Env, url: &OsStr) -> Result<bool, Error> {
             r"^url\..+\.(insteadof|pushinsteadof)$",
         ])
         .run()?;
-    Ok(rules.success()
-        && rules.stdout.split(|b| *b == 0).any(|rule| {
-            let prefix = rule
-                .iter()
-                .position(|b| *b == b'\n')
-                .map(|at| &rule[at + 1..]);
-            prefix.is_some_and(|prefix| url.as_bytes().starts_with(prefix))
-        }))
+    let mut rules = Vec::new();
+    if !listed.success() {
+        return Ok(rules);
+    }
+    for item in listed.stdout.split(|b| *b == 0) {
+        let Some(at) = item.iter().position(|b| *b == b'\n') else {
+            continue;
+        };
+        let (key, prefix) = (&item[..at], &item[at + 1..]);
+        // git lowers the key, never the base between `url.` and it
+        let Some(rest) = key.strip_prefix(b"url.") else {
+            continue;
+        };
+        let (base, push) = match rest.strip_suffix(b".pushinsteadof") {
+            Some(base) => (base, true),
+            None => match rest.strip_suffix(b".insteadof") {
+                Some(base) => (base, false),
+                None => continue,
+            },
+        };
+        rules.push(Rule {
+            push,
+            prefix: prefix.to_vec(),
+            base: base.to_vec(),
+        });
+    }
+    Ok(rules)
+}
+
+/// `url` as git rewrites it by the `rules` of one kind (`push`), once (git's `alias_url`): the base
+/// of the longest prefix that matches, the first of equal length, then the rest; `None` when no
+/// prefix matches.
+fn rewrite(url: &[u8], rules: &[Rule], push: bool) -> Option<Vec<u8>> {
+    let mut longest: Option<&Rule> = None;
+    for rule in rules.iter().filter(|rule| rule.push == push) {
+        let longer = longest.is_none_or(|best| rule.prefix.len() > best.prefix.len());
+        if url.starts_with(&rule.prefix) && longer {
+            longest = Some(rule);
+        }
+    }
+    longest.map(|rule| [rule.base.as_slice(), &url[rule.prefix.len()..]].concat())
 }
 
 /// A remote as git is configured with it.
@@ -433,6 +477,25 @@ mod tests {
             split_lines(b"a b\r\nc\xc2\x85d\xffe\n"),
             [&b"a b"[..], b"c", b"d\xffe"]
         );
+    }
+
+    #[test]
+    fn a_url_is_rewritten_once_by_its_longest_matching_prefix() {
+        let rule = |push, prefix: &str, base: &str| Rule {
+            push,
+            prefix: prefix.as_bytes().to_vec(),
+            base: base.as_bytes().to_vec(),
+        };
+        let rules = [
+            rule(false, "a", "/one/"),
+            rule(false, "ab", "/two/"),
+            rule(false, "ab", "/three/"),
+            rule(true, "ab", "/pushed/"),
+        ];
+        assert_eq!(rewrite(b"abc", &rules, false), Some(b"/two/c".to_vec()));
+        assert_eq!(rewrite(b"axe", &rules, false), Some(b"/one/xe".to_vec()));
+        assert_eq!(rewrite(b"abc", &rules, true), Some(b"/pushed/c".to_vec()));
+        assert_eq!(rewrite(b"zz", &rules, false), None);
     }
 
     #[test]
