@@ -135,6 +135,13 @@ impl Memo {
         }
     }
 
+    /// Forgets every blob, keeping what else is remembered: each file is hashed again.
+    pub fn forget_blobs(&mut self) {
+        for file in self.files.values_mut() {
+            self.changed |= file.blob.take().is_some();
+        }
+    }
+
     /// Forgets every file but those `keep` names: the ones the store holds now.
     pub fn retain(&mut self, keep: impl Fn(&str) -> bool) {
         let before = self.files.len();
@@ -326,7 +333,18 @@ mod tests {
         memo.changed = false;
         memo.hashed("p", key(11), sha);
         assert!(!memo.changed, "nothing new was learnt");
-        memo.retain(|path| path != "p");
+        memo.files
+            .insert("q".into(), remembered(3, Some(1), Some(sha)));
+        memo.changed = false;
+        memo.forget_blobs();
+        assert!(memo.changed, "a blob was forgotten");
+        assert_eq!(
+            memo.files["q"],
+            remembered(3, Some(1), None),
+            "its lines are kept"
+        );
+        assert_eq!(memo.blob("q", &key(3)), None);
+        memo.retain(|path| path != "p" && path != "q");
         assert!(memo.changed && memo.files.is_empty());
     }
 }

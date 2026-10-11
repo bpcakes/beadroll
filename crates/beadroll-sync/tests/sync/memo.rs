@@ -291,3 +291,36 @@ fn a_remembered_blob_sync_git_lost_is_hashed_again() {
     assert_eq!(after.hashed, [first.as_str()]);
     assert!(has(blob));
 }
+
+/// A blob the published tree names that `sync.git` lost (its loose object deleted, as damage
+/// would) is made again: the publish whose tree could not name it hashes every file once more, as
+/// one did before the memo, instead of failing every command after.
+#[test]
+fn a_published_blob_sync_git_lost_is_made_again() {
+    let sandbox = sandbox();
+    let origin = sandbox.origin();
+    let (_a, ws, _, _b) = set_up(&sandbox);
+    let quiet = round(&ws, origin);
+    let first = own_segment(&ws, 1);
+    let blob = git(
+        ["hash-object", ws.dir.join(&first).to_str().expect("UTF-8")],
+        None,
+    );
+    let blob = blob.trim();
+    let loose = ws
+        .dir
+        .join("sync.git/objects")
+        .join(&blob[..2])
+        .join(&blob[2..]);
+    assert!(loose.exists(), "a's own blob is loose in its sync.git");
+    std::fs::remove_file(&loose).expect("the loose object");
+    let healed = round(&ws, origin);
+    assert_eq!(
+        healed.hashed,
+        journal_files(&ws),
+        "every file, hashed again"
+    );
+    assert_eq!(healed.tree, quiet.tree);
+    assert!(loose.exists(), "made again");
+    assert_eq!(round(&ws, origin).hashed, Vec::<String>::new());
+}

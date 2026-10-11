@@ -254,6 +254,12 @@ impl<'a> Link<'a> {
         self.memo.get_or_insert_with(|| Memo::load(ws))
     }
 
+    /// Forgets every blob remembered and made: each file is hashed again when next needed.
+    fn forget_blobs(&mut self) {
+        self.memo().forget_blobs();
+        self.made.clear();
+    }
+
     /// Writes the memo back if it changed. Lock held.
     fn save_memo(&mut self) {
         if let Some(memo) = &mut self.memo {
