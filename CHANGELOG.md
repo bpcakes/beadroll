@@ -33,7 +33,8 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   `insteadOf` left to git), as origin itself did; it used to be the fetch URL as git expanded it,
   another place when the two differ. A store an older bead left with a tracked name saved as git
   rewrote it goes on through the name, unless the name has a push URL of its own; a URL that
-  reads as a relative path but that git rewrites is left to git.
+  reads as a relative path but that git rewrites is left to git, and git reaches the remote from
+  the top of the checkout, so a rewrite to a relative path is read from there wherever bead runs.
 - `bead init --json` reports `unpublished` for the tracker it wrote to, also when that is not the
   checkout's own (a joined, adopted or tracked one).
 - The README describes the golden path and moving a repository, and MIGRATING runs the import once.

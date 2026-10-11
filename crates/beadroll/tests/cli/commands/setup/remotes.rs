@@ -182,3 +182,37 @@ fn a_remote_git_rewrites_is_not_read_as_a_path() {
     let result = parse_json(&run.stdout).expect("a result");
     assert_eq!(result.get("unpublished"), None, "{result:?}");
 }
+
+/// A remote whose URL git rewrites to a relative path (`url."../".insteadOf`), with bead run in a
+/// subdirectory: the path is read from the top of the checkout, as bead reads every relative remote
+/// path, not from where bead runs.
+#[test]
+fn a_rewrite_to_a_relative_path_is_read_from_the_top() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let tracker = sandbox.bare("tracker.git");
+    commit(&a, &["config", "url.../.insteadOf", "company:"]);
+    commit(&a, &["remote", "add", "tracker", "company:tracker.git"]);
+    let below = a.checkout().join("src");
+    std::fs::create_dir(&below).expect("a subdirectory");
+    // the checkout is the sandbox's `a-main`, beside tracker.git
+    let init = [
+        "init",
+        "--tracked",
+        "--prefix",
+        "ex",
+        "--remote",
+        "tracker",
+        "--json",
+    ];
+    let run = a.cmd(init).cwd(&below).run();
+    assert_eq!(run.returncode(), 0, "{}", run.stderr);
+    let refs = ["--git-dir", text(&tracker), "for-each-ref", "refs/beads"];
+    assert_ne!(
+        git(refs, None),
+        "",
+        "the tracker did not reach the rewritten remote"
+    );
+    let synced = a.cmd(["sync", "--json"]).cwd(&below).run();
+    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
+}

@@ -87,6 +87,15 @@ impl Env {
         }
     }
 
+    /// The same environment and output files with git starting in `dir`.
+    pub fn with_dir(&self, dir: PathBuf) -> Env {
+        Env {
+            vars: self.vars.clone(),
+            dir: Some(dir),
+            tmp: self.tmp.clone(),
+        }
+    }
+
     /// `git ARGS` in this environment, to adjust and run.
     pub fn git<I, S>(&self, args: I) -> Git<'_>
     where

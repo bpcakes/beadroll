@@ -58,7 +58,8 @@ ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `settle_
   Python makes them: one at the start of `synchronise` and another if it adopts a published
   tracker, one before the rounds of `coordinated`, and a write's through `publish_soon` once its
   transaction has let go of the store lock. A setting changed while bead waited is the one the
-  link uses.
+  link uses. A link's git starts at the top of the checkout, where bead reads a relative remote
+  path from, so that one git makes of a rewritten URL is read from there too.
 - Receipt signatures and retirement stay Python's while a store may still meet Python's bead,
   rollback to `python-0.1.0` included (§2.3j, `REVIEWING.md` §2); sync keeps an accepted
   attempt's receipt. `crates/beadroll/tests/cli/parity/receipts.rs` pins the bytes Python wrote.

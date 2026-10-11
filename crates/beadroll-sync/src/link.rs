@@ -17,13 +17,14 @@ mod write;
 
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
+use std::os::unix::ffi::OsStrExt as _;
 use std::path::PathBuf;
 
 use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Value};
 use beadroll_core::text::{repr, str_of};
 use beadroll_git::{
-    CountRules, Env, Hasher, IoError, Objects, Refs, StoredFormat, Trees, local_damage,
+    CountRules, Env, Fact, Hasher, IoError, Objects, Refs, StoredFormat, Trees, local_damage,
     remote_lacks_objects, stored_format, sync_env, transport_config, transport_settings,
 };
 use beadroll_store::{
@@ -72,6 +73,28 @@ pub struct Link<'a> {
     refs: Option<Refs>,
 }
 
+/// The environment a link to `ws`'s remote runs git in ([`sync_env`], with `GIT_DIR` its
+/// `sync.git`), starting at the top of the checkout when there is one: bead reads a relative remote
+/// path from there wherever it runs, and git reads one it makes of a rewritten URL (`insteadOf`,
+/// `pushInsteadOf`) from where it starts.
+fn link_env(ws: &Workspace) -> Result<Env, Error> {
+    let settings = &ws.settings;
+    let carried = transport_config(&transport_settings(&settings.git)?);
+    let int = |text: &str| beadroll_core::text::py_int(text).map(|n| n.to_string());
+    let rules = CountRules {
+        is_digit: &beadroll_core::text::py_isdigit,
+        int: &int,
+    };
+    let env = sync_env(&settings.git, &ws.dir.join("sync.git"), &carried, &rules)?;
+    let top = settings.fact(Fact::Toplevel)?;
+    Ok(if top.success() {
+        let top = beadroll_core::text::strip_bytes(&top.stdout);
+        env.with_dir(PathBuf::from(OsStr::from_bytes(top)))
+    } else {
+        env
+    })
+}
+
 impl<'a> Link<'a> {
     /// The link of `ws` to `remote`: its ref checked, its environment built from the checkout's
     /// with the checkout's transport settings carried over, asked of git now, as Python asks them
@@ -80,14 +103,7 @@ impl<'a> Link<'a> {
         let ref_name = ws.ref_name()?;
         private_dir(&ws.dir)?;
         let git_dir = ws.dir.join("sync.git");
-        let settings = &ws.settings;
-        let carried = transport_config(&transport_settings(&settings.git)?);
-        let int = |text: &str| beadroll_core::text::py_int(text).map(|n| n.to_string());
-        let rules = CountRules {
-            is_digit: &beadroll_core::text::py_isdigit,
-            int: &int,
-        };
-        let env = sync_env(&settings.git, &git_dir, &carried, &rules)?;
+        let env = link_env(ws)?;
         Ok(Link {
             ws,
             url: remote.to_owned(),
@@ -116,13 +132,7 @@ impl<'a> Link<'a> {
     pub fn publishes(ws: &Workspace, remote: &OsStr) -> Result<Option<bool>, Error> {
         let ref_name = ws.ref_name()?;
         let settings = &ws.settings;
-        let carried = transport_config(&transport_settings(&settings.git)?);
-        let int = |text: &str| beadroll_core::text::py_int(text).map(|n| n.to_string());
-        let rules = CountRules {
-            is_digit: &beadroll_core::text::py_isdigit,
-            int: &int,
-        };
-        let env = sync_env(&settings.git, &ws.dir.join("sync.git"), &carried, &rules)?;
+        let env = link_env(ws)?;
         let mut vars = env.vars().clone();
         vars.remove(OsStr::new("GIT_DIR"));
         let listed = env
