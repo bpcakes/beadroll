@@ -350,3 +350,32 @@ fn init_reports_what_it_left_unpublished_in_the_adopted_tracker() {
     let behind = result["unpublished"].as_i64();
     assert!(behind.is_some_and(|n| n > 0), "{result:?}");
 }
+
+/// `init --tracked --remote` given a path in a subdirectory: the path goes into the tracked file
+/// relative to the top of the checkout, and the tracker the remote publishes is reached where the
+/// path leads, not where that stored spelling would lead from the subdirectory.
+#[test]
+fn init_tracked_in_a_subdirectory_joins_the_tracker_its_path_leads_to() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--tracked", "--prefix", "ex"]);
+    json(&a, &["create", "shared"]);
+    commit_tracked_file(&a);
+    let b = Machine::new(&sandbox, "b");
+    let below = b.checkout().join("src");
+    std::fs::create_dir(&below).expect("a subdirectory");
+    // the checkout is the sandbox's `b-main`, beside origin.git
+    let init = [
+        "init",
+        "--tracked",
+        "--remote",
+        "../../origin.git",
+        "--json",
+    ];
+    let run = b.cmd(init).cwd(&below).run();
+    assert_eq!(run.returncode(), 0, "{}", run.stderr);
+    let result = parse_json(&run.stdout).expect("a result");
+    assert_eq!(result["joined"], Json::Bool(true), "{result:?}");
+    assert_eq!(titles(&b), ["shared"]);
+    assert_eq!(events(&b), events(&a));
+}

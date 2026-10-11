@@ -149,7 +149,7 @@ pub fn tracked_config_warning(settings: &Settings, origin: bool) -> Result<Optio
             _ => format!(".beadroll.json is not committed: {unseen}; commit it"),
         }));
     };
-    if *content != here {
+    if !same_settings(content, &here) {
         return Ok(Some(
             ".beadroll.json differs from its committed copy, which the other checkouts and \
              machines use: commit the change"
@@ -175,6 +175,16 @@ pub fn tracked_config_warning(settings: &Settings, origin: bool) -> Result<Optio
         ),
         _ => None,
     })
+}
+
+/// Whether two texts of `.beadroll.json` hold the same settings: compared as JSON, so that line
+/// endings git converts on checkout (`core.autocrlf`, `eol`), or layout alone, make no difference;
+/// a text that is not JSON is compared as it is.
+fn same_settings(committed: &[u8], here: &[u8]) -> bool {
+    match (json_text(committed), json_text(here)) {
+        (Ok(committed), Ok(here)) => committed == here,
+        _ => committed == here,
+    }
 }
 
 /// The `count` objects `git cat-file --batch` printed, in order: each one's id and content, or

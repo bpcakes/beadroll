@@ -2,11 +2,26 @@
 //! configured with, where `git push NAME` goes, read as discovery reads origin (G22); and origin's
 //! own URL stored as `origin`, so that the tracked file follows origin when the repository moves.
 
-use beadroll_test_support::{Json, Machine, git};
+use std::path::{Path, PathBuf};
+
+use beadroll_core::json::{Format, write};
+use beadroll_test_support::{Json, Machine, code, git, parse_json};
 
 use super::{
     commit, commit_tracked_file, json, mirror, set_origin, text, titles, tracked_file, workspace,
 };
+
+/// `store`'s `meta.json` saying that it last went through `remote`, as an older bead left it.
+fn save_remote(store: &Path, remote: &str) {
+    let path = store.join("meta.json");
+    let body = std::fs::read_to_string(&path).expect("a meta.json");
+    let mut meta = parse_json(&body).expect("valid JSON");
+    if let Json::Object(fields) = &mut meta {
+        fields.insert("remote".into(), Json::Str(remote.to_owned()));
+    }
+    let body = write(&meta, Format::INDENTED).expect("JSON text");
+    std::fs::write(&path, body).expect("the meta.json");
+}
 
 /// `init --tracked --remote` given origin's own URL stores the name `origin`, so the tracked file
 /// follows origin when the repository moves, where a stored URL would keep the old place.
@@ -117,4 +132,53 @@ fn a_named_origin_is_the_configured_url_whatever_git_rewrites() {
     assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
     assert_eq!(titles(&b), ["before the move"]);
     assert_eq!(workspace(&b), workspace(&a));
+}
+
+/// A tracked remote's name whose URL git rewrites (`url.<base>.insteadOf`), in a store an older
+/// bead left: it saved the name as `git remote get-url` gives it, rewritten, which is the same
+/// remote as the URL configured, so bead goes on through it. A push URL of the name's own is
+/// another place, which older beads never went through: moving there stays deliberate.
+#[test]
+fn a_tracked_remote_saved_as_git_rewrote_it_is_still_the_same_remote() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let tracker = sandbox.bare("tracker.git");
+    let rewrite = format!("url.{}/.insteadOf", text(sandbox.root()));
+    commit(&a, &["config", &rewrite, "company:"]);
+    commit(&a, &["remote", "add", "tracker", "company:tracker.git"]);
+    let init = ["init", "--tracked", "--prefix", "ex", "--remote", "tracker"];
+    let store = PathBuf::from(json(&a, &init)["path"].as_str().expect("a path"));
+    save_remote(&store, text(&tracker));
+    let synced = a.run(["sync", "--json"]);
+    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
+    let elsewhere = sandbox.bare("elsewhere.git");
+    let push_url = ["remote", "set-url", "--push", "tracker", text(&elsewhere)];
+    commit(&a, &push_url);
+    save_remote(&store, text(&tracker));
+    assert_eq!(code(&a.run(["sync", "--json"])), "CONFIG");
+}
+
+/// A remote whose URL reads as a relative path that git rewrites (`url.<base>.insteadOf`): bead
+/// leaves it to git, rather than make a path of it from the top of the checkout, which git could
+/// no longer rewrite.
+#[test]
+fn a_remote_git_rewrites_is_not_read_as_a_path() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let tracker = sandbox.bare("tracker.git");
+    let rewrite = format!("url.{}/.insteadOf", text(sandbox.root()));
+    commit(&a, &["config", &rewrite, "company/"]);
+    commit(&a, &["remote", "add", "tracker", "company/tracker.git"]);
+    let init = ["init", "--tracked", "--prefix", "ex", "--remote", "tracker"];
+    let run = a.run(init.iter().chain(&["--json"]));
+    assert_eq!(run.returncode(), 0, "{}", run.stderr);
+    json(&a, &["create", "published"]);
+    let published = ["--git-dir", text(&tracker), "for-each-ref", "refs/beads"];
+    assert_ne!(
+        git(published, None),
+        "",
+        "nothing reached the rewritten remote"
+    );
+    let result = parse_json(&run.stdout).expect("a result");
+    assert_eq!(result.get("unpublished"), None, "{result:?}");
 }

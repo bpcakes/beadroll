@@ -223,18 +223,15 @@ impl Workspace {
 
     /// One remote spelling (a configured remote's name, a URL, a path) reduced to the one bead
     /// uses, as git would read it: a configured remote wins over a same-named path, a stored
-    /// relative path is read from the top of the checkout whatever the cwd, a path typed just now
-    /// (`typed`) from the cwd. A password is dropped.
+    /// relative path is read from the top of the checkout whatever the cwd, unless git rewrites it
+    /// (`insteadOf`), a path typed just now (`typed`) from the cwd. A password is dropped.
     pub fn resolve_remote(&self, value: &OsStr, typed: bool) -> Result<OsString, Error> {
         let git = &self.settings.git;
         let mut value = value.to_owned();
         let mut typed = typed;
-        let name_shaped = !value.is_empty()
-            && value
-                .as_bytes()
-                .iter()
-                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'));
-        if name_shaped && let Some(url) = remote_url(git, &value)? {
+        if name_shaped(&value)
+            && let Some(Configured { url, .. }) = configured_remote(git, &value)?
+        {
             // where `git push NAME` goes, as configured, as discovery reads origin (G22): git
             // applies `insteadOf` and `pushInsteadOf` itself when bead hands it that URL
             value = url;
@@ -243,6 +240,11 @@ impl Workspace {
         let value = without_password(&value).0;
         let mut value = value;
         if !typed && is_local_path(&value) && !value.as_bytes().starts_with(b"/") {
+            if rewritten(git, &value)? {
+                // a path in spelling only: git makes a URL of it, which it could no longer do to
+                // the path bead would make of it
+                return Ok(value);
+            }
             let top = self.settings.fact(Fact::Toplevel)?;
             if top.success() {
                 let top = crate::strip_ascii(&top.stdout);
@@ -283,7 +285,7 @@ impl Workspace {
             Err(_) => None, // a damaged meta.json: only fatal when it is the sole record
         };
         if let (Some(tracked), Some(used)) = (&tracked, &used)
-            && self.resolve_remote(tracked, false)? != *used
+            && !self.leads_to(tracked, used)?
         {
             return Err(Error::Config(format!(
                 ".beadroll.json names coordination remote {}, but this tracker already coordinates \
@@ -301,12 +303,70 @@ impl Workspace {
             Some(value) => self.resolve_remote(&value, false).map(Some),
         }
     }
+
+    /// Whether the tracked remote `tracked` leads to `used`, the one this store last went through:
+    /// resolved as now, or, for a remote's name, as older versions resolved and saved it, its URL
+    /// as git rewrites it for fetching (`git remote get-url`, `insteadOf` applied). That is the
+    /// same remote spelled another way, unless the name has a push URL of its own: they went
+    /// through its other URL then, and moving to the push URL is done deliberately.
+    fn leads_to(&self, tracked: &OsStr, used: &OsStr) -> Result<bool, Error> {
+        if self.resolve_remote(tracked, false)? == used {
+            return Ok(true);
+        }
+        let git = &self.settings.git;
+        let own_push_url = if name_shaped(tracked) {
+            configured_remote(git, tracked)?.map(|remote| remote.push)
+        } else {
+            None
+        };
+        if own_push_url != Some(false) {
+            return Ok(false);
+        }
+        let fetched = git
+            .git([OsStr::new("remote"), OsStr::new("get-url"), tracked])
+            .run()?;
+        if !fetched.success() {
+            return Ok(false);
+        }
+        let formerly = OsString::from_vec(crate::strip_ascii(&fetched.stdout).to_vec());
+        Ok(self.resolve_remote(&formerly, false)? == used)
+    }
 }
 
-/// The URL remote `name` is configured with, asked of git now and read as discovery reads origin's
-/// ([`configured_url`]); `None` when no remote of that name has one. `name` has a
-/// remote name's shape, `[A-Za-z0-9._-]`, so only its dots need escaping in git's pattern.
-fn remote_url(git: &beadroll_git::Env, name: &OsStr) -> Result<Option<OsString>, Error> {
+/// Whether `value` has a remote name's shape, `[A-Za-z0-9._-]+`: a configured remote of that name
+/// wins over a same-named path.
+fn name_shaped(value: &OsStr) -> bool {
+    !value.is_empty()
+        && value
+            .as_bytes()
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
+
+/// Whether git rewrites `url` (`url.<base>.insteadOf`) before it reaches it: what `git ls-remote
+/// --get-url` makes of it, without asking any remote, is something else.
+fn rewritten(git: &beadroll_git::Env, url: &OsStr) -> Result<bool, Error> {
+    if url.as_bytes().starts_with(b"-") {
+        return Ok(false);
+    }
+    let expanded = git
+        .git([OsStr::new("ls-remote"), OsStr::new("--get-url"), url])
+        .run()?;
+    Ok(expanded.success() && crate::strip_ascii(&expanded.stdout) != url.as_bytes())
+}
+
+/// A remote as git is configured with it.
+struct Configured {
+    /// Its URL, read as discovery reads origin's ([`configured_url`]).
+    url: OsString,
+    /// Whether that is a push URL of its own, rather than the URL git also fetches from.
+    push: bool,
+}
+
+/// Remote `name` as git is configured with it, asked now; `None` when no remote of that name has a
+/// URL. `name` has a remote name's shape, `[A-Za-z0-9._-]`, so only its dots need escaping in
+/// git's pattern.
+fn configured_remote(git: &beadroll_git::Env, name: &OsStr) -> Result<Option<Configured>, Error> {
     let escaped = name.to_string_lossy().replace('.', "\\.");
     let pattern = format!("^remote\\.{escaped}\\.(push)?url$");
     let listed = git
@@ -316,33 +376,38 @@ fn remote_url(git: &beadroll_git::Env, name: &OsStr) -> Result<Option<OsString>,
         return Ok(None);
     }
     let url = configured_url(&listed.stdout, name.as_bytes());
-    Ok((!url.is_empty()).then(|| OsString::from_vec(url)))
+    let push = listed_url(&listed.stdout, name.as_bytes(), b"pushurl").is_some();
+    Ok((!url.is_empty()).then(|| Configured {
+        url: OsString::from_vec(url),
+        push,
+    }))
 }
 
 /// The URL remote `name` is configured with, from what `git config --get-regexp
 /// ^remote\.NAME\.(push)?url$` printed (`listed`): where `git push NAME` goes, its first push URL,
 /// else its first URL (the one git fetches from), as configured (`insteadOf` stays git's, not the
 /// id's); empty when it has neither. Discovery reads origin with it, and a remote named by the
-/// user is read the same way ([`Workspace::resolve_remote`], [`remote_url`]).
+/// user is read the same way ([`Workspace::resolve_remote`], [`configured_remote`]).
 pub(crate) fn configured_url(listed: &[u8], name: &[u8]) -> Vec<u8> {
-    let found: Vec<(&[u8], &[u8])> = split_lines(listed)
-        .into_iter()
-        .map(|line| match line.iter().position(|b| *b == b' ') {
+    listed_url(listed, name, b"pushurl")
+        .or_else(|| listed_url(listed, name, b"url"))
+        .map(<[u8]>::to_vec)
+        .unwrap_or_default()
+}
+
+/// The first value of `remote.NAME.KEY` that is not empty in what `git config --get-regexp`
+/// printed (`listed`), as configured.
+fn listed_url<'a>(listed: &'a [u8], name: &[u8], key: &[u8]) -> Option<&'a [u8]> {
+    // git lowers the section and the key, never the remote's name
+    let wanted = [&b"remote."[..], name, b".", key].concat();
+    split_lines(listed).into_iter().find_map(|line| {
+        let (listed_key, url) = match line.iter().position(|b| *b == b' ') {
             Some(at) => (&line[..at], &line[at + 1..]),
             None => (line, &b""[..]),
-        })
-        .collect();
-    for wanted in [&b"pushurl"[..], b"url"] {
-        // git lowers the section and the key, never the remote's name
-        let key = [&b"remote."[..], name, b".", wanted].concat();
-        for (listed_key, url) in &found {
-            let url = beadroll_git::py_strip(url);
-            if *listed_key == key.as_slice() && !url.is_empty() {
-                return url.to_vec();
-            }
-        }
-    }
-    Vec::new()
+        };
+        let url = beadroll_git::py_strip(url);
+        (listed_key == wanted.as_slice() && !url.is_empty()).then_some(url)
+    })
 }
 
 /// Python's `str.splitlines()` over text decoded with `surrogateescape`: the line boundaries are

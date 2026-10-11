@@ -141,7 +141,12 @@ These were decided deliberately. Report problems *with* them, not their existenc
   remote: `init` starts the tracker as before. `--remote` given origin's own URL is stored as
   `origin`, and a remote's name resolves to the URL `git push NAME` is configured with (its first
   push URL, else its first URL, `insteadOf` and `pushInsteadOf` left to git), as origin is read
-  (G22). `info` and `prime` warn while `.beadroll.json` would not reach the other checkouts.
+  (G22); a stored relative path that git rewrites is git's, not a path from the top of the
+  checkout. A store whose remembered remote is a tracked name as older versions resolved it (`git
+  remote get-url`, `insteadOf` applied) goes on through the name, unless the name has a push URL
+  of its own, which they never went through: that move stays deliberate (`CONFIG`). `info` and
+  `prime` warn while `.beadroll.json` would not reach the other checkouts, comparing it with its
+  commit as JSON, so line endings git converts are no change.
 - Output is UTF-8 regardless of locale; human output escapes control characters; `--json` always
   wins the representation (`create --silent --json` gives `{"id": …}`); a closed stdout exits 0
   quietly.

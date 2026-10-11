@@ -197,18 +197,20 @@ struct Chosen {
     joined: Option<Joined>,
 }
 
-/// Where `init` writes: the tracker the remote already publishes ([`join_published`]), else this
-/// checkout's; with `--tracked`, the one `.beadroll.json` names once written, with the joined
-/// tracker's id, and origin's own URL stored as `origin` (`names_origin`).
+/// Where `init` writes: the tracker the remote already publishes ([`join_published`], reached
+/// where `live` leads), else this checkout's; with `--tracked`, the one `.beadroll.json` names once
+/// written, with the joined tracker's id, and `remote` as it is stored, origin's own URL as
+/// `origin` (`names_origin`).
 fn workspace_for(
     ctx: &Context<'_>,
     remote: Option<&OsStr>,
+    live: Option<&OsStr>,
     names_origin: bool,
     tracked: bool,
     offline: bool,
 ) -> Result<Chosen, Failure> {
     let settings = &ctx.ws.settings;
-    let (ws, joined) = match join_published(ctx.ws, remote, offline)? {
+    let (ws, joined) = match join_published(ctx.ws, live, offline)? {
         Published::Joined(joined) => (Some(find_workspace(settings)?), Some(joined)),
         Published::Nothing => (None, None),
     };
@@ -272,9 +274,16 @@ fn given_remote(
 pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure> {
     let mut notes = Vec::new();
     let (remote_given, names_origin) = given_remote(ctx, &args, &mut notes)?;
+    // where the remote leads, for reaching it now and recording it: a path stored for the tracked
+    // file is relative to the top of the checkout, as it will be read, wherever init runs
+    let live = match &remote_given {
+        Some(remote) => Some(ctx.ws.resolve_remote(remote, !args.tracked)?),
+        None => None,
+    };
     let Chosen { ws: chosen, joined } = workspace_for(
         ctx,
         remote_given.as_deref(),
+        live.as_deref(),
         names_origin,
         args.tracked,
         args.offline,
@@ -311,21 +320,17 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
     })?;
     // `init --tracked --remote` is the deliberate switch: record it, so the tracked remote is the
     // one in use; resolved, as a sync records it, since a name is compared by where it leads
-    let recorded = match &remote_given {
-        Some(remote) => Some(ws.resolve_remote(remote, false)?),
-        None => None,
-    };
     let mut values = Vec::new();
     if let Some(name) = &ws.name {
         values.push(("name", Value::from(name.to_string_lossy().into_owned())));
     }
-    if let Some(remote) = &recorded {
+    if let Some(remote) = &live {
         values.push(("remote", Value::from(remote.to_string_lossy().into_owned())));
     }
     ws.save_meta(&values)?;
     if ws.wrote() && !args.offline {
         // the tracker exists for the other machines now, not at a later sync
-        if let Some(warning) = publish_soon(ws, args.offline, remote_given.as_deref()) {
+        if let Some(warning) = publish_soon(ws, args.offline, live.as_deref()) {
             notes.push(warning);
         }
     }

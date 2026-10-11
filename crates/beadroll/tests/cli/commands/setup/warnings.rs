@@ -2,7 +2,7 @@
 //! other checkouts and machines.
 
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine};
+use beadroll_test_support::{Json, Machine, git};
 
 use super::{commit, commit_tracked_file, json, tracked_file};
 
@@ -96,4 +96,24 @@ fn a_change_git_status_does_not_show_is_still_warned_about() {
         said.starts_with(".beadroll.json differs from its committed copy"),
         "{said}"
     );
+}
+
+/// A committed `.beadroll.json` checked out with the line endings git converts to
+/// (`core.autocrlf`): the same settings as its commit, and no change to git either, so `info` has
+/// nothing to warn about.
+#[test]
+fn line_endings_git_converts_are_no_change() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--tracked", "--prefix", "ex"]);
+    commit_tracked_file(&a);
+    commit(&a, &["config", "core.autocrlf", "true"]);
+    // checked out again, as a clone with that setting checks it out
+    let path = a.checkout().join(".beadroll.json");
+    std::fs::remove_file(&path).expect("the tracked file");
+    commit(&a, &["checkout", "--", ".beadroll.json"]);
+    let body = std::fs::read_to_string(&path).expect("the tracked file");
+    assert!(body.contains("\r\n"), "{body:?}");
+    assert_eq!(git(["status", "--porcelain"], Some(a.checkout())), "");
+    assert_eq!(json(&a, &["info"])["tracked_config_warning"].as_str(), None);
 }
