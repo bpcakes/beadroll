@@ -135,10 +135,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
   under another id, and once the remote has said it publishes one, any failure to join it fails
   `init`, which then starts nothing. One it cannot adopt is refused (`WORKSPACE_MISMATCH`), even
   under an explicit `BEAD_WORKSPACE`, since that tracker could never publish there. `init
-  --tracked` keeps a tracked id the remote publishes, and never pins a URL-derived one (`CONFIG`):
-  that id would stop matching when the URL changed, and the file would then be refused as
-  another repository's. Nor does it mint a new id beside a URL-derived tracker this checkout
-  already has, joined or started here: that would be a second tracker. An unreachable remote, one that publishes nothing, `--offline` or no
+  --tracked` names the tracker this checkout has, joined just now or here already (a tracked id
+  the remote publishes, one an earlier `init` adopted), and mints a new id only where there is
+  none, since a new id beside it would be a second tracker; it never pins a URL-derived one
+  (`CONFIG`): that id would stop matching when the URL changed, and the file would then be
+  refused as another repository's. An unreachable remote, one that publishes nothing, `--offline` or no
   remote: `init` starts the tracker as before. `--remote` given origin's own URL is stored as
   `origin`, and a remote's name resolves to the URL `git push NAME` is configured with (its first
   push URL, else its first URL, `insteadOf` and `pushInsteadOf` left to git), as origin is read

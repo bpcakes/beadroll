@@ -1,6 +1,7 @@
 //! What a remote given by name means (`--remote`, `$BEAD_REMOTE`, `.beadroll.json`): the URL it is
-//! configured with, where `git push NAME` goes, read as discovery reads origin (G22); and origin's
-//! own URL stored as `origin`, so that the tracked file follows origin when the repository moves.
+//! configured with, where `git push NAME` goes, read as discovery reads origin (G22); origin's own
+//! URL stored as `origin`, so that the tracked file follows origin when the repository moves; and
+//! where git reaches a remote from, the top of the checkout.
 
 use std::path::{Path, PathBuf};
 
@@ -215,4 +216,27 @@ fn a_rewrite_to_a_relative_path_is_read_from_the_top() {
     );
     let synced = a.cmd(["sync", "--json"]).cwd(&below).run();
     assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
+}
+
+/// A checkout whose directory's name ends in a space: git reaches the remote from that directory,
+/// as `git rev-parse --show-toplevel` prints it, the space kept.
+#[test]
+fn a_checkout_whose_name_ends_in_a_space_reaches_its_remote() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let spaced = sandbox.clone("spaced ", None);
+    let init = a
+        .cmd(["init", "--prefix", "ex", "--json"])
+        .cwd(&spaced)
+        .run();
+    assert_eq!(init.returncode(), 0, "{}", init.stderr);
+    let synced = a.cmd(["sync", "--json"]).cwd(&spaced).run();
+    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
+    let refs = [
+        "--git-dir",
+        text(sandbox.origin()),
+        "for-each-ref",
+        "refs/beads",
+    ];
+    assert_ne!(git(refs, None), "", "nothing reached the remote");
 }

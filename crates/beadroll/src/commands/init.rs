@@ -158,8 +158,8 @@ fn join_published(
 }
 
 /// Writes `.beadroll.json` at the top of the checkout: the configuration it has (unknown keys
-/// kept), a workspace id (this tracker's when `keep`, as when the remote already published it,
-/// else minted) unless it names one, and `remote`, or the configured remote without a password:
+/// kept), a workspace id (this tracker's when `keep`, as when it is already here or the remote
+/// published it, else minted) unless it names one, and `remote`, or the configured remote without a password:
 /// none is ever written back, even a hand-set one.
 fn write_tracked(ws: &Workspace, remote: Option<&OsStr>, keep: bool) -> Result<(), Failure> {
     let settings = &ws.settings;
@@ -218,10 +218,12 @@ fn workspace_for(
         return Ok(Chosen { ws, joined });
     }
     let base = ws.as_ref().unwrap_or(ctx.ws);
+    // the tracker this checkout has, joined just now or here already (an earlier init may have
+    // adopted it): the file names it, since a new id would start a second tracker beside it
+    let has_tracker = joined.is_some() || view(base)?.prefix().is_some();
     // a URL-derived id named in a tracked file would stop matching when the URL changed, and the
-    // file would then be refused as another repository's id; a new id would start a second
-    // tracker beside it: such a tracker stays URL-derived, joined just now or here already
-    if derived_shaped(&base.id) && (joined.is_some() || view(base)?.prefix().is_some()) {
+    // file would then be refused as another repository's id: such a tracker stays URL-derived
+    if has_tracker && derived_shaped(&base.id) {
         return Err(Failure::new(
             Code::Config,
             format!(
@@ -240,7 +242,7 @@ fn workspace_for(
     } else {
         remote
     };
-    write_tracked(base, stored, joined.is_some())?;
+    write_tracked(base, stored, has_tracker)?;
     Ok(Chosen {
         ws: Some(find_workspace(settings)?),
         joined,

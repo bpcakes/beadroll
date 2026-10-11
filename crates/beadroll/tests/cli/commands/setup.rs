@@ -415,3 +415,22 @@ fn the_advice_to_bring_a_tracker_along_names_the_remote_asked() {
         "the tracker did not reach the remote asked"
     );
 }
+
+/// `init --tracked` on a clone whose plain `init` already adopted the tracked tracker the remote
+/// publishes (the clone lacks the file): the file names that tracker, as when `init --tracked`
+/// joins it itself, never a new id beside it.
+#[test]
+fn init_tracked_names_the_tracker_an_earlier_init_adopted() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--tracked", "--prefix", "ex"]);
+    json(&a, &["create", "shared"]);
+    let b = Machine::new(&sandbox, "b");
+    let joined = json(&b, &["init"]);
+    assert_eq!(joined["joined"], Json::Bool(true), "{joined:?}");
+    json(&b, &["init", "--tracked"]);
+    assert_eq!(tracked_file(&b)["workspace"], tracked_file(&a)["workspace"]);
+    assert_eq!(workspace(&b), workspace(&a));
+    assert_eq!(titles(&b), ["shared"]);
+    assert_eq!(events(&b), events(&a));
+}

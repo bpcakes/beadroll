@@ -88,7 +88,8 @@ fn link_env(ws: &Workspace) -> Result<Env, Error> {
     let env = sync_env(&settings.git, &ws.dir.join("sync.git"), &carried, &rules)?;
     let top = settings.fact(Fact::Toplevel)?;
     Ok(if top.success() {
-        let top = beadroll_core::text::strip_bytes(&top.stdout);
+        // the line git prints, without its end: a directory's name may end in a space
+        let top = top.stdout.strip_suffix(b"\n").unwrap_or(&top.stdout);
         env.with_dir(PathBuf::from(OsStr::from_bytes(top)))
     } else {
         env
