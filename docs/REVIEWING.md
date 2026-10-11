@@ -157,8 +157,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   and that no rule rewrites is still that remote. `--remote` given origin's own URL is reached as
   origin is, its own push URL included, from `init`'s first publish on. The advice to bring a
   moved repository's tracker along gives the remote by its URL, which names the same place on
-  every machine, or by the name it was chosen by where `--remote` would read that URL as another
-  remote's. A store whose remembered remote is a tracked name as older versions resolved it (`git
+  every machine, or by the name it was chosen by where the URL alone is not reached as the remote
+  is: a remote's own push URL, or one `--remote` would read as another remote's name. A store
+  whose remembered remote is a tracked name as older versions resolved it (`git
   remote get-url`, `insteadOf` applied) goes on through the name, unless the name has a push URL
   of its own, which they never went through: that move stays deliberate (`CONFIG`). `info` and
   `prime` warn while `.beadroll.json` would not reach the other checkouts, comparing it with its
@@ -276,7 +277,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - `BEAD_HOME` must be absolute; the store's modes are 0700/0600 whatever the umask.
 - Only directories bead creates get private modes; a user-supplied `BEAD_HOME` is chmodded 0700
   on first write (reviewer observation, kept).
-- origin is never remembered as the coordination remote; only a remote named otherwise is. A
+- origin is never remembered as the coordination remote; only a remote named otherwise is,
+  including one that shares origin's URL but is pushed to otherwise (its own push URL where
+  origin's is not, or the reverse), since a `pushInsteadOf` rule can send the two apart. A
   tracked config seeds a new store's remote but never silently moves an existing store's.
 - bead's pushes skip the user's client hooks (`--no-verify`); the remote's hooks still apply.
 - The remote string reaches git after `--`; a tracked workspace id shaped like a URL-derived id

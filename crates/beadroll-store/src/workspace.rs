@@ -2,7 +2,7 @@
 //! coordination remote it uses (Python's `Workspace`).
 
 use std::cell::Cell;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -156,7 +156,7 @@ impl Workspace {
             }
         }
         if let Some(Value::Str(remote)) = meta.get("remote")
-            && self.is_origin(OsStr::new(remote))
+            && self.is_origin_as_reached(remote, &meta)
         {
             meta.shift_remove("remote");
             meta.shift_remove("remote_push_url");

@@ -310,3 +310,62 @@ fn init_given_origins_own_push_url_reaches_it_as_origin() {
     );
     assert_eq!(refs(&pushed), "", "the first publish took it for any URL");
 }
+
+/// `machine`'s origin moved to a place of the same name (`origin.git` beside the sandbox's), with
+/// nothing there: its tracker stayed behind.
+fn moved_without_its_tracker(sandbox: &beadroll_test_support::Sandbox, machine: &Machine) {
+    let elsewhere = sandbox.root().join("elsewhere");
+    std::fs::create_dir(&elsewhere).expect("a directory");
+    let moved = elsewhere.join("origin.git");
+    git(["init", "-q", "--bare", "-b", "main", text(&moved)], None);
+    set_origin(machine, &moved);
+}
+
+/// The advice to bring a moved repository's tracker along gives a remote chosen by name that has a
+/// push URL of its own by that name: as a URL alone it would be pushed to with the `pushInsteadOf`
+/// rule that sends it elsewhere.
+#[test]
+fn the_advice_gives_a_remote_with_its_own_push_url_by_its_name() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--prefix", "ex"]);
+    let old = workspace(&a);
+    moved_without_its_tracker(&sandbox, &a);
+    let tracker = sandbox.bare("tracker.git");
+    let own = format!("file://{}", text(&tracker));
+    commit(&a, &["remote", "add", "tracker", text(&tracker)]);
+    commit(&a, &["remote", "set-url", "--push", "tracker", &own]);
+    let other = sandbox.bare("other.git");
+    let rewrite = format!("url.file://{}.pushInsteadOf", text(&other));
+    commit(&a, &["config", &rewrite, &own]);
+    let synced = a.run(["sync", "--remote", "tracker", "--json"]);
+    assert_eq!(code(&synced), "NOT_INITIALIZED", "{}", synced.stderr);
+    let command = format!("BEAD_WORKSPACE={old} bead sync --remote tracker");
+    assert!(synced.stderr.contains(&command), "{}", synced.stderr);
+}
+
+/// A remote whose own push URL is origin's URL, which a `pushInsteadOf` rule sends elsewhere when
+/// it is origin's: a sync through that remote is remembered as it was reached, not forgotten as
+/// origin, so the commands after publish where it did.
+#[test]
+fn a_remote_pushed_to_by_origins_url_is_not_forgotten_as_origin() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--prefix", "ex"]);
+    let origin = text(sandbox.origin());
+    let pushed = sandbox.bare("push.git");
+    let rewrite = format!("url.{}.pushInsteadOf", text(&pushed));
+    commit(&a, &["config", &rewrite, origin]);
+    let tracker = sandbox.bare("tracker.git");
+    commit(&a, &["remote", "add", "tracker", text(&tracker)]);
+    commit(&a, &["remote", "set-url", "--push", "tracker", origin]);
+    let synced = a.run(["sync", "--remote", "tracker", "--json"]);
+    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
+    json(&a, &["create", "after"]);
+    let refs = ["--git-dir", text(&pushed), "for-each-ref", "refs/beads"];
+    assert_eq!(
+        git(refs, None),
+        "",
+        "a later command reached origin's URL as origin"
+    );
+}

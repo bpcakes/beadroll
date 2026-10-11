@@ -5,7 +5,7 @@
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 
-use beadroll_core::json::Value;
+use beadroll_core::json::{Object, Value};
 use beadroll_git::{Fact, exists, is_local_path, normalize_remote, realpath, without_password};
 
 use super::Workspace;
@@ -54,11 +54,20 @@ impl Workspace {
     pub fn remembered_remote(&self) -> Result<Option<OsString>, Error> {
         let meta = self.meta(true)?;
         Ok(match meta.get("remote") {
-            Some(Value::Str(remote)) if !self.is_origin(OsStr::new(remote)) => {
+            Some(Value::Str(remote)) if !self.is_origin_as_reached(remote, &meta) => {
                 Some(OsString::from(remote))
             }
             _ => None,
         })
+    }
+
+    /// Whether `remote`, remembered in `meta`, is origin as origin is reached: its URL, however
+    /// spelled, and pushed to as origin is (its own push URL or not). A remote that shares only
+    /// origin's URL is another endpoint, which a `pushInsteadOf` rule can send elsewhere, and stays
+    /// remembered.
+    pub(crate) fn is_origin_as_reached(&self, remote: &str, meta: &Object) -> bool {
+        let pushed = matches!(meta.get("remote_push_url"), Some(Value::Str(url)) if url == remote);
+        self.is_origin(OsStr::new(remote)) && pushed == self.origin_push
     }
 
     /// One remote spelling (a configured remote's name, a URL, a path) reduced to the URL bead
@@ -89,11 +98,15 @@ impl Workspace {
     }
 
     /// How a command gives `endpoint` again with `--remote`, on any machine: its URL, which names
-    /// the same place everywhere, unless `--remote` would read that URL as a remote's name here (an
-    /// alias git rewrites, spelled like one); then the name of the remote it was chosen by.
+    /// the same place everywhere, unless that URL alone is not reached as the endpoint is: when it
+    /// is a remote's own push URL (as a URL it would be pushed to with `pushInsteadOf`), or when
+    /// `--remote` would read it as a remote's name here (an alias git rewrites, spelled like one).
+    /// Then the name of the remote it was chosen by.
     pub fn spelling(&self, endpoint: &Endpoint) -> Result<OsString, Error> {
         Ok(match &endpoint.name {
-            Some(name) if self.names_remote(&endpoint.url)? => name.clone(),
+            Some(name) if endpoint.own_push_url || self.names_remote(&endpoint.url)? => {
+                name.clone()
+            }
             _ => endpoint.url.clone(),
         })
     }
