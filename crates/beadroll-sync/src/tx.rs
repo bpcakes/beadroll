@@ -106,11 +106,11 @@ impl<'a> Tx<'a> {
         event.insert("op".into(), Value::from(op));
         let issue = issue.filter(|issue| !issue.is_empty()).unwrap_or(&id);
         event.insert("issue".into(), Value::from(issue));
-        event.insert("data".into(), Value::Object(data));
+        event.insert("data".into(), Value::from(data));
         if let Some(place) = &self.place {
             event.insert("where".into(), place.clone());
         }
-        let event = Value::Object(event);
+        let event = Value::from(event);
         let problem = event_problem(&event)
             .or_else(|| payload_problem(&event))
             .or_else(|| write_problem(&event));

@@ -142,7 +142,7 @@ fn new_issue(event: &Event, create: &Create, key: String, who: &str, when: &str)
     }
     issue
         .reg
-        .insert(Field::Status, IdMap::of(eid, Value::Object(status)));
+        .insert(Field::Status, IdMap::of(eid, Value::from(status)));
     issue
 }
 
@@ -198,7 +198,7 @@ fn materialise_dangling(k: &Knowledge, by_key: &IndexMap<String, EventId>, issue
         issue
             .dep_tags
             .get_or_insert_with((target, kind), IdMap::default)
-            .insert_if_absent(uid, Value::Object(meta));
+            .insert_if_absent(uid, Value::from(meta));
     }
     issue.dangling = kept;
 }

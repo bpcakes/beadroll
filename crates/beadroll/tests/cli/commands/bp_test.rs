@@ -180,8 +180,8 @@ fn view(journal: Journal) -> String {
     let st = replay(journal).unwrap();
     let mut issues: Vec<_> = st.issues().collect();
     issues.sort_by(|a, b| a.key().cmp(b.key()));
-    let export = Value::Array(st.export_records().into_iter().map(Value::Object).collect());
-    let details = Value::Array(issues.iter().map(|i| Value::Object(st.detail(i))).collect());
+    let export = Value::Array(st.export_records().into_iter().map(Value::from).collect());
+    let details = Value::Array(issues.iter().map(|i| Value::from(st.detail(i))).collect());
     write(&Value::Array(vec![export, details]), Format::SORTED_ASCII).unwrap()
 }
 

@@ -52,7 +52,7 @@ mod g04_tracked_init_keeps_hand_set_config {
     fn read_object(path: &Path) -> Object {
         let read = std::fs::read_to_string(path).unwrap();
         match parse_json(&read) {
-            Ok(Json::Object(members)) => members,
+            Ok(Json::Object(members)) => *members,
             other => panic!(
                 "{} is not a JSON object ({other:?}): {read}",
                 path.display()
@@ -62,7 +62,7 @@ mod g04_tracked_init_keeps_hand_set_config {
 
     /// Writes `config` to `path` as `json.dumps(config, indent=1) + "\n"` does.
     fn write_indented(path: &Path, config: Object) {
-        let written = write(&Json::Object(config), Format::INDENTED).expect("a config");
+        let written = write(&Json::from(config), Format::INDENTED).expect("a config");
         std::fs::write(path, written + "\n").unwrap();
     }
 
@@ -71,7 +71,7 @@ mod g04_tracked_init_keeps_hand_set_config {
         let Json::Object(members) = members else {
             panic!("{members:?} is not an object");
         };
-        config.extend(members);
+        config.extend(*members);
     }
 
     /// The journal segments in `machine`'s store, in order of their paths:
@@ -209,7 +209,7 @@ mod g04_tracked_init_keeps_hand_set_config {
         write_indented(&config_path, config);
         let again = m.run(["init", "--tracked", "--json"]);
         assert_eq!(again.returncode(), 0, "{}", again.stderr);
-        let rewritten = Json::Object(read_object(&config_path));
+        let rewritten = Json::from(read_object(&config_path));
         let dumped = write(&rewritten, Format::ASCII).expect("a config");
         assert!(!dumped.contains("supersecret"), "{dumped}");
         assert_eq!(

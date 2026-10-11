@@ -111,7 +111,7 @@ pub(crate) fn transition(
         })
         .collect();
     lines.extend(notes);
-    let result = Value::Array(result.into_iter().map(Value::Object).collect());
+    let result = Value::Array(result.into_iter().map(Value::from).collect());
     Ok(Outcome::new(result, lines))
 }
 

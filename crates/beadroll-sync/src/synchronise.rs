@@ -108,7 +108,7 @@ impl Synced {
             Value::from(self.waiting_events as i64),
         );
         out.insert("integrity".into(), Value::from(self.integrity as i64));
-        Value::Object(out)
+        Value::from(out)
     }
 }
 
@@ -160,7 +160,7 @@ pub fn synchronise(ws: &Workspace, remote: &Endpoint) -> Result<Synced, Error> {
     if let Some(name) = &ws.name {
         values.push(("name", Value::from(name.to_string_lossy().into_owned())));
     }
-    values.push(("published", Value::Object(link.published_counts()?)));
+    values.push(("published", Value::from(link.published_counts()?)));
     ws.note_sync(remote, &values);
     ws.set_wrote(false);
     Ok(Synced {
@@ -176,7 +176,7 @@ pub fn synchronise(ws: &Workspace, remote: &Endpoint) -> Result<Synced, Error> {
             .renames()
             .iter()
             .skip(known_renames)
-            .map(|r| Value::Object(r.to_value()))
+            .map(|r| Value::from(r.to_value()))
             .collect(),
         forked_journals: link.forks.clone(),
         confirmed: link.confirmed.clone(),
@@ -307,7 +307,7 @@ pub fn adopt_published(
     adopted.origin_push = ws.origin_push;
     let mut moved = moved_workspaces(&ws.settings)?;
     moved.insert(derived.clone(), Value::from(found.as_str()));
-    let text = json::write(&Value::Object(moved), Format::INDENTED)
+    let text = json::write(&Value::from(moved), Format::INDENTED)
         .map_err(|e| Error::Validation(e.to_string()))?;
     write_atomic(
         &ws.settings.home()?.join("moved.json"),
@@ -330,7 +330,7 @@ pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
     }
     let meta = ws.meta(false)?;
     let published = match meta.get("published") {
-        Some(Value::Object(published)) => published.clone(),
+        Some(Value::Object(published)) => (**published).clone(),
         _ if meta.get("last_sync").is_some_and(Value::truthy) => return Ok(None),
         _ => Object::new(),
     };

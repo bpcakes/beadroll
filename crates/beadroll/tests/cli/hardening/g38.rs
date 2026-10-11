@@ -41,18 +41,18 @@ fn record(key: &str, title: &str, more: Json) -> Json {
     members.insert("title".into(), Json::from(title));
     for part in [common(), more] {
         match part {
-            Json::Object(part) => members.extend(part),
+            Json::Object(part) => members.extend(*part),
             other => panic!("{other:?} is not an object"),
         }
     }
-    Json::Object(members)
+    Json::from(members)
 }
 
 /// `record` with a `comments` member holding `comments`.
 fn with_comments(key: &str, title: &str, comments: Json) -> Json {
     let mut more = Object::new();
     more.insert("comments".into(), comments);
-    record(key, title, Json::Object(more))
+    record(key, title, Json::from(more))
 }
 
 /// `records` as a JSONL file's text, each line as `json.dumps(record) + "\n"` writes it.

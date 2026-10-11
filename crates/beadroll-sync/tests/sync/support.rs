@@ -142,7 +142,7 @@ pub(crate) fn claiming_update(
         let mut fields = Object::new();
         fields.insert("title".into(), Value::from(title));
         let mut data = Object::new();
-        data.insert("fields".into(), Value::Object(fields));
+        data.insert("fields".into(), Value::from(fields));
         tx.emit("set", Some(&uid), data, None)?;
         if let Some(label) = label {
             let mut data = Object::new();

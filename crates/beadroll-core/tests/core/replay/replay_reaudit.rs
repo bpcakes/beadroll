@@ -86,10 +86,10 @@ pub(crate) fn row(row: &Integrity) -> Json {
 pub(crate) fn projection(journal: Journal) -> String {
     let st = replay(journal).unwrap();
     let canonical = |value: &Json| write(value, Format::CANONICAL).unwrap();
-    let records = Json::Array(st.export_records().into_iter().map(Json::Object).collect());
+    let records = Json::Array(st.export_records().into_iter().map(Json::from).collect());
     let details = Json::Array(
         st.issues()
-            .map(|issue| Json::Object(st.detail(issue)))
+            .map(|issue| Json::from(st.detail(issue)))
             .collect(),
     );
     let mut integrity: Vec<Json> = st.integrity().iter().map(row).collect();
@@ -343,7 +343,7 @@ fn all_registers_preserve_none_against_concurrent_value() {
         let members = clearable
             .iter()
             .map(|field| (field.name().to_owned(), value(*field)));
-        json!({"fields": (Json::Object(members.collect()))})
+        json!({"fields": (Json::Object(Box::new(members.collect())))})
     };
     let left = f.event("set", "b", &[&uid], Some(&uid), fields(&|_| Json::Null));
     let a_value = |field: Field| {

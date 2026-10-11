@@ -123,7 +123,7 @@ fn q09_required_register_clears_remain_queryable() {
             "seed",
             &[id_of(&create)],
             on,
-            json!({"fields": (Json::Object(clear_fields))}),
+            json!({"fields": (Json::from(clear_fields))}),
         );
         let state = replay(journal(&[&init, &create, &clear])).unwrap();
         let issue = state.issue(uid(&create)).unwrap();

@@ -53,8 +53,8 @@ fn event(id: &str, replica: &str, deps: &[String], text: &str) -> Value {
     event.insert("deps".into(), Value::Array(deps));
     event.insert("op".into(), Value::from("comment"));
     event.insert("issue".into(), Value::from(id));
-    event.insert("data".into(), Value::Object(data));
-    Value::Object(event)
+    event.insert("data".into(), Value::from(data));
+    Value::from(event)
 }
 
 /// A hostile history of `count` events on four machines, about half of them in attempt files; and

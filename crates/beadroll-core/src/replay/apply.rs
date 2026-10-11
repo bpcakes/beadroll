@@ -199,7 +199,7 @@ fn dep_add(c: &Ctx<'_>, issue: &mut Issue, to: &str, kind: Option<&str>, meta: &
     issue
         .dep_tags
         .get_or_insert_with((to.to_owned(), kind), IdMap::default)
-        .insert(c.eid, Value::Object(stamp));
+        .insert(c.eid, Value::from(stamp));
     true
 }
 
@@ -337,7 +337,7 @@ fn write_status(
         issue,
         Field::Status,
         (at, eid),
-        Value::Object(value),
+        Value::from(value),
         supersede,
     );
 }

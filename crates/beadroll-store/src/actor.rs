@@ -179,7 +179,7 @@ pub fn detect_actor(
         actor.insert("name".into(), Value::from(text(name)));
     }
     Actor {
-        value: Value::Object(actor),
+        value: Value::from(actor),
         writable,
         given: Some(Given {
             agent,

@@ -89,7 +89,7 @@ pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
     let mut result = Object::new();
     result.insert(
         "claims".into(),
-        Value::Array(rows.into_iter().map(Value::Object).collect()),
+        Value::Array(rows.into_iter().map(Value::from).collect()),
     );
     result.insert("last_sync".into(), synced.unwrap_or(Value::Null));
     Ok(Outcome::new(result, lines))

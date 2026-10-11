@@ -102,7 +102,7 @@ fn write_issue(
     let (labels, labels_valid) = arg_texts(&split_args(&args.labels));
     let mut data = Object::new();
     data.insert("key".into(), Value::from(key));
-    data.insert("fields".into(), Value::Object(fields.values.clone()));
+    data.insert("fields".into(), Value::from(fields.values.clone()));
     data.insert(
         "labels".into(),
         Value::Array(labels.into_iter().map(Value::from).collect()),

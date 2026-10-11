@@ -123,7 +123,7 @@ impl State {
                         members.get(name).cloned().unwrap_or(Value::Null),
                     );
                 }
-                Value::Object(out)
+                Value::from(out)
             });
             rec.insert("comments".into(), comments.collect::<Vec<_>>().into());
         }
@@ -161,7 +161,7 @@ impl State {
             };
             (text("depends_on_id").to_owned(), text("type").to_owned())
         });
-        dependencies.into_iter().map(Value::Object).collect()
+        dependencies.into_iter().map(Value::from).collect()
     }
 }
 

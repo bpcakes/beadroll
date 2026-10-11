@@ -36,7 +36,7 @@ pub fn capture_where(ws: &Workspace) -> Result<Option<Value>, Error> {
         "commit".into(),
         Value::from(beadroll_core::text::strip(&commit)),
     );
-    Ok(Some(Value::Object(place)))
+    Ok(Some(Value::from(place)))
 }
 
 /// Whether `commit` is reachable from the default branch as this checkout knows it: true when the

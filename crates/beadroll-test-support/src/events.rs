@@ -22,7 +22,7 @@ macro_rules! json {
     ([ $($item:tt),+ $(,)? ]) => { $crate::Json::Array(::std::vec![ $( $crate::json!($item) ),+ ]) };
     ({}) => { $crate::Json::Object(::std::default::Default::default()) };
     ({ $($key:literal : $value:tt),+ $(,)? }) => {
-        $crate::Json::Object([ $( (::std::string::String::from($key), $crate::json!($value)) ),+ ].into_iter().collect())
+        $crate::Json::Object(::std::boxed::Box::new([ $( (::std::string::String::from($key), $crate::json!($value)) ),+ ].into_iter().collect()))
     };
     ($other:expr) => { $crate::Json::from($other) };
 }
@@ -60,7 +60,7 @@ impl Event {
         members.insert("actor".into(), json!({"agent": "test", "thread": "a"}));
         members.insert("op".into(), Json::from(op));
         members.insert("issue".into(), Json::from(id));
-        members.insert("data".into(), Json::Object(Object::new()));
+        members.insert("data".into(), Json::from(Object::new()));
         Event(members)
     }
 
@@ -113,7 +113,7 @@ impl Event {
 
     /// The event.
     pub fn json(self) -> Json {
-        Json::Object(self.0)
+        Json::from(self.0)
     }
 }
 

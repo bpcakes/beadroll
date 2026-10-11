@@ -103,7 +103,7 @@ fn numbers(
     for (replica, ids) in machines {
         by_machine.insert(replica.clone(), Value::from(ids.len() as i64));
     }
-    result.insert("events_by_machine".into(), Value::Object(by_machine));
+    result.insert("events_by_machine".into(), Value::from(by_machine));
     result.insert(
         "segments".into(),
         Value::from(segment_files(ws)?.len() as i64),
@@ -127,13 +127,13 @@ fn numbers(
     let integrity = st
         .integrity()
         .iter()
-        .map(|row| Value::Object(row.to_value()))
+        .map(|row| Value::from(row.to_value()))
         .collect();
     result.insert("integrity".into(), Value::Array(integrity));
     let renames = st
         .renames()
         .iter()
-        .map(|rename| Value::Object(rename.to_value()))
+        .map(|rename| Value::from(rename.to_value()))
         .collect();
     result.insert("renamed_keys".into(), Value::Array(renames));
     Ok(())

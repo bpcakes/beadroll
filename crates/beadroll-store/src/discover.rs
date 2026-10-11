@@ -49,7 +49,7 @@ pub fn checked_config(config: Value, path: &str) -> Result<Object, Error> {
             )));
         }
     }
-    Ok(config)
+    Ok(*config)
 }
 
 /// The committed `.beadroll.json`, for a checkout whose tree has none (a worktree on a branch cut

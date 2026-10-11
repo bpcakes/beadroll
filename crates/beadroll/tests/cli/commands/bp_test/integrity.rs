@@ -109,10 +109,10 @@ fn one_corrupt_event_does_not_stop_the_tracker() {
     data.insert("fields".into(), json!({"title": "forged"}));
     let mut forged = victim.as_object().unwrap().clone();
     forged.insert("replica".into(), Json::from("ffffffff"));
-    forged.insert("data".into(), Json::Object(data));
+    forged.insert("data".into(), Json::from(data));
     let folder = store.join("events").join("ffffffff");
     std::fs::create_dir(&folder).unwrap();
-    let line = write(&Json::Object(forged), Format::ASCII).unwrap() + "\n";
+    let line = write(&Json::from(forged), Format::ASCII).unwrap() + "\n";
     std::fs::write(folder.join("000001.jsonl"), line).unwrap();
     let info = a.bead(["info"]).unwrap();
     // the ambiguous event is reported, with both variants kept

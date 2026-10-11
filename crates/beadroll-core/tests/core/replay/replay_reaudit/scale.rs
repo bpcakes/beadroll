@@ -206,7 +206,7 @@ fn valid_payload(rng: &mut Rng, n: usize) -> (&'static str, Json) {
                     .clone(),
             };
             let fields = [(field.name().to_owned(), value)].into_iter().collect();
-            json!({"fields": (Json::Object(fields))})
+            json!({"fields": (Json::Object(Box::new(fields)))})
         }
         "label_add" | "label_remove" => json!({"labels": [(format!("label{}", n % 13))]}),
         _ => json!({"text": (format!("comment{n}"))}),

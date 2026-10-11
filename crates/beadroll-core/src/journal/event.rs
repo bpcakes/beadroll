@@ -284,18 +284,21 @@ fn written_alike(a: &Value, b: &Value) -> bool {
         && x.len() == y.len()
         && x.values().all(scalar)
     {
-        return x.iter().zip(y).all(|((key, value), (other_key, other))| {
-            key == other_key && same_scalar(value, other)
-        });
+        return x
+            .iter()
+            .zip(y.iter())
+            .all(|((key, value), (other_key, other))| {
+                key == other_key && same_scalar(value, other)
+            });
     }
     let mut stack = vec![(a, b)];
     while let Some((a, b)) = stack.pop() {
         match (a, b) {
             (Value::Array(x), Value::Array(y)) if x.len() == y.len() => {
-                stack.extend(x.iter().zip(y));
+                stack.extend(x.iter().zip(y.iter()));
             }
             (Value::Object(x), Value::Object(y)) if x.len() == y.len() => {
-                for ((key, value), (other_key, other)) in x.iter().zip(y) {
+                for ((key, value), (other_key, other)) in x.iter().zip(y.iter()) {
                     if key != other_key {
                         return false;
                     }

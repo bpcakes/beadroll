@@ -43,14 +43,14 @@ fn uid(event: &Json) -> EventId {
 fn with(event: &Json, name: &str, value: Json) -> Json {
     let mut members = event.as_object().unwrap().clone();
     members.insert(name.to_owned(), value);
-    Json::Object(members)
+    Json::from(members)
 }
 
 /// `{**base, **extra}`.
 fn merged(base: &Json, extra: &Json) -> Json {
     let mut members = base.as_object().unwrap().clone();
     members.extend(extra.as_object().unwrap().clone());
-    Json::Object(members)
+    Json::from(members)
 }
 
 fn problems(state: &State) -> Vec<&str> {
@@ -277,7 +277,7 @@ fn u08_imported_comments_carry_neither_a_uid_nor_a_where() {
         [uid(&kept)]
     );
     assert_eq!(problems(&state), ["create event has a malformed comment"]);
-    let shown = Json::Object(state.detail(state.issue(uid(&kept)).unwrap()));
+    let shown = Json::from(state.detail(state.issue(uid(&kept)).unwrap()));
     let shown: Vec<&Json> = shown["comments"]
         .as_array()
         .unwrap()
@@ -351,7 +351,7 @@ fn u09_a_create_cannot_clear_created_at() {
             "a",
             &[],
             None,
-            json!({"key": "ex-1", "fields": (Json::Object(fields))}),
+            json!({"key": "ex-1", "fields": (Json::from(fields))}),
         );
         assert_eq!(payload_problem(&create), None, "{name}");
     }

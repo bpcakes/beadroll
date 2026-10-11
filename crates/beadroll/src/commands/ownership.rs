@@ -189,7 +189,7 @@ pub(crate) fn claim(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome, 
             )
         })
         .collect();
-    let result = Value::Array(result.into_iter().map(Value::Object).collect());
+    let result = Value::Array(result.into_iter().map(Value::from).collect());
     Ok(Outcome::new(result, lines))
 }
 
@@ -235,7 +235,7 @@ pub(crate) fn takeover(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcom
             format!("Took over {id} (generation {generation}): {reason}")
         })
         .collect();
-    let result = Value::Array(result.into_iter().map(Value::Object).collect());
+    let result = Value::Array(result.into_iter().map(Value::from).collect());
     Ok(Outcome::new(result, lines))
 }
 
@@ -297,6 +297,6 @@ pub(crate) fn release(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome
             format!("Released {}: {}", field("id"), field("title"))
         })
         .collect();
-    let result = Value::Array(result.into_iter().map(Value::Object).collect());
+    let result = Value::Array(result.into_iter().map(Value::from).collect());
     Ok(Outcome::new(result, lines))
 }

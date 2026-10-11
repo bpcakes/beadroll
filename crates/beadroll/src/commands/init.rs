@@ -191,7 +191,7 @@ fn write_tracked(ws: &Workspace, remote: Option<&OsStr>, keep: bool) -> Result<(
         let kept = without_password(OsStr::new(remote)).0;
         config.insert("remote".into(), Value::from(text(&kept)?));
     }
-    let mut body = json::write(&Value::Object(config), Format::INDENTED)
+    let mut body = json::write(&Value::from(config), Format::INDENTED)
         .map_err(|e| Failure::new(beadroll_core::code::Code::Validation, e.to_string()))?;
     body.push('\n');
     write_atomic(

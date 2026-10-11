@@ -304,7 +304,7 @@ impl State {
         if let Some(place) = event.get("where").filter(|place| place.truthy()) {
             entry.insert("where".into(), place.clone());
         }
-        issue.unconfirmed.push(Value::Object(entry));
+        issue.unconfirmed.push(Value::from(entry));
         true
     }
 

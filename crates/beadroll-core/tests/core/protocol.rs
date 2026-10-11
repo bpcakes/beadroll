@@ -110,7 +110,7 @@ mod protocol3 {
                 );
             }
             let issue = state.issue_named(&uid).unwrap();
-            let snapshot = write(&Value::Object(state.detail(issue)), Format::CANONICAL).unwrap();
+            let snapshot = write(&Value::from(state.detail(issue)), Format::CANONICAL).unwrap();
             match &expected {
                 None => expected = Some(snapshot),
                 Some(expected) => assert_eq!(&snapshot, expected),

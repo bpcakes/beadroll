@@ -57,9 +57,9 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
             takeover: None,
         };
         let mut request = Object::new();
-        request.insert("fields".into(), Value::Object(fields.values.clone()));
+        request.insert("fields".into(), Value::from(fields.values.clone()));
         request.insert("status".into(), Value::from(status.clone()));
-        let request = Value::Object(request);
+        let request = Value::from(request);
         let signature = command_signature(ctx.actor, &args.asked, Some(&request));
         let mut ended = Vec::new();
         // the claim and its edits are one attempt: both land, or neither
@@ -115,7 +115,7 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
         }
         lines.push(warning);
     }
-    let result = Value::Array(result.into_iter().map(Value::Object).collect());
+    let result = Value::Array(result.into_iter().map(Value::from).collect());
     Ok(Outcome::new(result, lines))
 }
 
@@ -276,7 +276,7 @@ fn edit(
 /// `{name: value}`.
 fn with(name: &str, value: Object) -> Object {
     let mut out = Object::new();
-    out.insert(name.into(), Value::Object(value));
+    out.insert(name.into(), Value::from(value));
     out
 }
 

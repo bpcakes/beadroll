@@ -70,7 +70,7 @@ mod g32_integer_fields_stay_beads_readable {
             };
             let mut all = json!({"title": (format!("t{n}"))});
             if let (Json::Object(all), Json::Object(extra)) = (&mut all, extra) {
-                all.extend(extra);
+                all.extend(*extra);
             }
             let event = json!({
                 "v": 1, "id": (id.as_str()), "replica": "a", "deps": deps, "actor": {"agent": "t"},

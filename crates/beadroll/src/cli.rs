@@ -125,7 +125,7 @@ fn execute(request: &Request) -> Result<Option<String>, Failure> {
             let mut out = Object::new();
             out.insert("version".into(), Value::from(VERSION));
             out.insert("format".into(), Value::from(FORMAT));
-            write(&Value::Object(out), Format::ASCII)?
+            write(&Value::from(out), Format::ASCII)?
         } else {
             format!("bead {VERSION}")
         }));
@@ -134,7 +134,7 @@ fn execute(request: &Request) -> Result<Option<String>, Failure> {
         return Ok(Some(if request.as_json {
             let mut out = Object::new();
             out.insert("help".into(), Value::from(texts::OVERVIEW));
-            write(&Value::Object(out), Format::ASCII)?
+            write(&Value::from(out), Format::ASCII)?
         } else {
             texts::OVERVIEW.trim_end_matches('\n').to_owned()
         }));
@@ -435,8 +435,8 @@ fn report(failure: &Failure, as_json: bool) -> u8 {
             error.insert("code".into(), Value::from(failure.code.as_str()));
             error.insert("message".into(), Value::from(failure.message.as_str()));
             let mut body = Object::new();
-            body.insert("error".into(), Value::Object(error));
-            json::write(&Value::Object(body), Format::ASCII).unwrap_or_default()
+            body.insert("error".into(), Value::from(error));
+            json::write(&Value::from(body), Format::ASCII).unwrap_or_default()
         }
         (false, _) => format!("Error: {}", visible(&failure.printed())),
     };

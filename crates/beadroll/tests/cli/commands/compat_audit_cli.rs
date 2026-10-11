@@ -255,7 +255,7 @@ fn metadata_excludes_local_machine_identifiers() {
     for event in journal_events(&a.store()) {
         let mut metadata = event.as_object().unwrap().clone();
         metadata.shift_remove("data");
-        let text = dumps(&Json::Object(metadata));
+        let text = dumps(&Json::from(metadata));
         for word in &forbidden {
             assert!(!text.contains(word.as_str()), "{word:?} in {text}");
         }

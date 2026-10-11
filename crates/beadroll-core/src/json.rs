@@ -41,8 +41,9 @@ pub enum Value {
     Str(String),
     /// An array.
     Array(Vec<Value>),
-    /// An object.
-    Object(Object),
+    /// An object, boxed: a value is as large as its largest kind, and objects are a few of the
+    /// values a journal and its state hold (roll-dih8.11).
+    Object(Box<Object>),
 }
 
 /// How many members an object may have and still be searched in order: comparing a few keys is
@@ -196,7 +197,7 @@ impl From<bool> for Value {
 
 impl From<Object> for Value {
     fn from(members: Object) -> Value {
-        Value::Object(members)
+        Value::Object(Box::new(members))
     }
 }
 
@@ -226,7 +227,7 @@ mod tests {
             Value::Float(-0.0),
             Value::from(""),
             Value::Array(vec![]),
-            Value::Object(Object::new()),
+            Value::from(Object::new()),
         ];
         assert!(falsy.iter().all(|v| !v.truthy()));
         let truthy = [

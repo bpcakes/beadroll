@@ -202,11 +202,11 @@ fn plain(w: &mut Writer, count: usize) {
             }
             7 => {
                 claims.push((w.id(), issue.clone()));
-                ("claim", Value::Object(Object::new()))
+                ("claim", Value::from(Object::new()))
             }
             8 => match claims.iter().rev().find(|(_, on)| *on == issue) {
                 Some((claim, _)) => ("release", obj(&[("claim", claim.clone().into())])),
-                None => ("reopen", Value::Object(Object::new())),
+                None => ("reopen", Value::from(Object::new())),
             },
             _ => ("close", obj(&[("reason", "done".into())])),
         };
@@ -268,7 +268,7 @@ fn ownership(w: &mut Writer, count: usize) {
                 w.append(m, "close", Some(&uid), obj(&data));
             }
             40..=44 => {
-                w.append(m, "reopen", Some(&uid), Value::Object(Object::new()));
+                w.append(m, "reopen", Some(&uid), Value::from(Object::new()));
             }
             _ if offline => {
                 // Claimed offline: provisional, never displacing a confirmed owner.
@@ -323,12 +323,11 @@ fn edit(n: usize) -> Value {
 }
 
 fn obj(members: &[(&str, Value)]) -> Value {
-    Value::Object(
-        members
-            .iter()
-            .map(|(k, v)| ((*k).to_owned(), v.clone()))
-            .collect(),
-    )
+    let members: Object = members
+        .iter()
+        .map(|(k, v)| ((*k).to_owned(), v.clone()))
+        .collect();
+    Value::from(members)
 }
 
 #[cfg(test)]

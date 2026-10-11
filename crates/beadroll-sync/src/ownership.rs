@@ -336,7 +336,7 @@ impl<E> From<Error> for Round<E> {
 /// The remote has all of this store: the counts it holds, and nothing left unpublished.
 fn published(ws: &Workspace, link: &mut Link<'_>, remote: &Endpoint) -> Result<(), Error> {
     let counts = link.published_counts()?;
-    ws.note_sync(remote, &[("published", Value::Object(counts))]);
+    ws.note_sync(remote, &[("published", Value::from(counts))]);
     ws.set_wrote(false);
     Ok(())
 }

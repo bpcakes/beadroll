@@ -23,11 +23,11 @@ fn record(key: &str, title: &str, more: Json) -> Json {
     members.insert("title".into(), Json::from(title));
     for part in [common(), more] {
         match part {
-            Json::Object(part) => members.extend(part),
+            Json::Object(part) => members.extend(*part),
             other => panic!("{other:?} is not an object"),
         }
     }
-    Json::Object(members)
+    Json::from(members)
 }
 
 /// `_g33_tail`: the last line of `text` that is not blank, or nothing.

@@ -134,10 +134,10 @@ mod v3_import_shape_errors {
                 let Json::Object(members) = part else {
                     panic!("{part:?} is not an object")
                 };
-                record.extend(members);
+                record.extend(*members);
             }
             let source = sandbox.root().join(format!("{name}.jsonl"));
-            let line = write(&Json::Object(record), Format::ASCII).expect("a record");
+            let line = write(&Json::from(record), Format::ASCII).expect("a record");
             std::fs::write(&source, line + "\n").unwrap();
             let run = machine.run(["import", source.to_str().unwrap(), "--json"]);
             assert!(!run.crashed(), "{name}: {}", run.stderr);

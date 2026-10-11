@@ -54,10 +54,10 @@ mod g32_integer_fields_stay_beads_readable {
                 let Json::Object(part) = part else {
                     panic!("members, not {part:?}");
                 };
-                record.extend(part);
+                record.extend(*part);
             }
             let path = sandbox.root().join(format!("{name}.jsonl"));
-            let line = write(&Json::Object(record), Format::ASCII).unwrap() + "\n";
+            let line = write(&Json::from(record), Format::ASCII).unwrap() + "\n";
             std::fs::write(&path, line).unwrap();
             let path = path.display().to_string();
             assert_refused(
