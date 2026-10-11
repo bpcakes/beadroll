@@ -22,7 +22,7 @@ use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Format, Int, Object, Value};
 use beadroll_core::text::json_ascii_bytes;
 use beadroll_store::{Settings, detect_actor, find_workspace, nearest_harness};
-use beadroll_sync::{publish_soon, unpublished_count};
+use beadroll_sync::publish_soon;
 
 use crate::commands::{self, Context, Failure, Outcome};
 use output::{Stream, Unwritten, emit, visible};
@@ -207,6 +207,7 @@ fn finish(
         mut result,
         mut lines,
         raw,
+        settled,
     } = outcome;
     if let Some(raw) = raw {
         // the command's own output (`export`): written as the command runs, so a reader that went
@@ -219,7 +220,7 @@ fn finish(
             }
         }
     }
-    let Some(ws) = ws else {
+    let Some(ws) = ws.filter(|_| !settled) else {
         return Ok(Some((result, lines)));
     };
     if ws.wrote()
@@ -231,19 +232,7 @@ fn finish(
             lines.push(warning);
         }
     }
-    let behind = unpublished_count(ws)?.filter(|n| *n != Int::from(0));
-    if let Some(behind) = behind {
-        // after --offline, a remote that did not answer, or on a store that has never published
-        if let Some(Value::Object(result)) = &mut result {
-            result.insert("unpublished".into(), Value::Int(behind.clone()));
-        }
-        if let Some(lines) = &mut lines {
-            let plural = if behind == Int::from(1) { "" } else { "s" };
-            lines.push(format!(
-                "{behind} event{plural} not yet published: bead sync"
-            ));
-        }
-    }
+    commands::note_unpublished(ws, &mut result, &mut lines)?;
     Ok(Some((result, lines)))
 }
 

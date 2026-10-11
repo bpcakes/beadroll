@@ -29,7 +29,7 @@ use beadroll_core::op::PyInt;
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::{printed_text, repr_str, strip};
 use beadroll_store::{Actor, Label, ViewError, Workspace, pathlib};
-use beadroll_sync::Tx;
+use beadroll_sync::{Tx, unpublished_count};
 
 pub(crate) use args::{
     ContentArgs, Payload, arg_text, arg_texts, encodable, field_args, resolve_arg, rpartition,
@@ -164,6 +164,9 @@ pub(crate) struct Outcome {
     pub(crate) result: Option<Value>,
     pub(crate) lines: Option<Vec<String>>,
     pub(crate) raw: Option<String>,
+    /// The command published and counted what it left unpublished itself ([`note_unpublished`]),
+    /// as `init` does when it wrote through another workspace than the one it was given.
+    pub(crate) settled: bool,
 }
 
 impl Outcome {
@@ -172,6 +175,7 @@ impl Outcome {
             result: Some(result.into()),
             lines: Some(lines),
             raw: None,
+            settled: false,
         }
     }
 
@@ -181,8 +185,31 @@ impl Outcome {
             result: None,
             lines: None,
             raw: Some(text),
+            settled: false,
         }
     }
+}
+
+/// What `ws` has not published, said in `result` (`unpublished`) and `lines`, when there is any:
+/// after `--offline`, a remote that did not answer, or on a store that has never published.
+pub(crate) fn note_unpublished(
+    ws: &Workspace,
+    result: &mut Option<Value>,
+    lines: &mut Option<Vec<String>>,
+) -> Result<(), Failure> {
+    let Some(behind) = unpublished_count(ws)?.filter(|n| *n != Int::from(0)) else {
+        return Ok(());
+    };
+    if let Some(Value::Object(result)) = result {
+        result.insert("unpublished".into(), Value::Int(behind.clone()));
+    }
+    if let Some(lines) = lines {
+        let plural = if behind == Int::from(1) { "" } else { "s" };
+        lines.push(format!(
+            "{behind} event{plural} not yet published: bead sync"
+        ));
+    }
+    Ok(())
 }
 
 /// What every command is given: the workspace (when there is one), the actor, and the settings.

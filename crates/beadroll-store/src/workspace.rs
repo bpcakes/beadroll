@@ -236,7 +236,13 @@ impl Workspace {
                 .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'));
         if name_shaped {
             let named = git
-                .git([OsStr::new("remote"), OsStr::new("get-url"), &value])
+                // where `git push NAME` goes, as origin itself is read (G22)
+                .git([
+                    OsStr::new("remote"),
+                    OsStr::new("get-url"),
+                    OsStr::new("--push"),
+                    &value,
+                ])
                 .run()?;
             if named.success() {
                 value = OsString::from_vec(crate::strip_ascii(&named.stdout).to_vec());

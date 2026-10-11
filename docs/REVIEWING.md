@@ -138,8 +138,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   --tracked` keeps a tracked id the remote publishes, and never pins a URL-derived one (`CONFIG`):
   that id would stop matching when the URL changed, and the file would then be refused as
   another repository's. An unreachable remote, one that publishes nothing, `--offline` or no
-  remote: `init` starts the tracker as before. `--remote` given origin's own URL is stored as `origin`. `info` and `prime` warn while
-  `.beadroll.json` would not reach the other checkouts.
+  remote: `init` starts the tracker as before. `--remote` given origin's own URL is stored as
+  `origin`, and a remote's name resolves to its push URL, where `git push NAME` goes, as origin
+  does (G22). `info` and `prime` warn while `.beadroll.json` would not reach the other checkouts.
 - Output is UTF-8 regardless of locale; human output escapes control characters; `--json` always
   wins the representation (`create --silent --json` gives `{"id": …}`); a closed stdout exits 0
   quietly.

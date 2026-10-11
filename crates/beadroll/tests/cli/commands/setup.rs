@@ -8,6 +8,8 @@ use std::path::Path;
 
 use beadroll_test_support::{Json, Machine, Sandbox, code, git, parse_json};
 
+use crate::hardening::gate::{Gate, beside};
+
 /// `path` as the text git and bead are given.
 fn text(path: &Path) -> &str {
     path.to_str().expect("a UTF-8 path")
@@ -345,4 +347,108 @@ fn init_tracked_given_origins_url_stores_its_name() {
     commit(&a, &["push", "-q", "origin", "HEAD:main"]);
     json(&b, &["sync"]);
     assert_eq!(titles(&b), ["after the move", "before the move"]);
+}
+
+/// Origin is where `git push origin` goes (G22): a checkout whose origin fetches from one URL and
+/// pushes to another coordinates through the push URL, and a tracked `origin` (what `init --tracked
+/// --remote` stores for that URL) resolves to the same push URL, never the fetch one.
+#[test]
+fn a_tracked_origin_resolves_to_where_git_pushes() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let pushed = sandbox.bare("push.git");
+    let push_url = ["remote", "set-url", "--push", "origin", text(&pushed)];
+    git(push_url, Some(a.checkout()));
+    let init = [
+        "init",
+        "--tracked",
+        "--prefix",
+        "ex",
+        "--remote",
+        text(&pushed),
+    ];
+    json(&a, &init);
+    assert_eq!(tracked_file(&a)["remote"].as_str(), Some("origin"));
+    json(&a, &["create", "coordinated"]);
+    let synced = json(&a, &["sync"]);
+    let resolved = pushed.canonicalize().expect("the push remote");
+    assert_eq!(synced["remote"].as_str(), Some(text(&resolved)));
+    let fetched = [
+        "--git-dir",
+        text(sandbox.origin()),
+        "for-each-ref",
+        "refs/beads",
+    ];
+    assert_eq!(
+        git(fetched, None),
+        "",
+        "bead published to origin's fetch URL"
+    );
+}
+
+/// The ref gone between the adoption and the adopted tracker's fetch: the adoption is already
+/// remembered, so `init` starts nothing, rather than write where the next command does not look.
+#[test]
+fn init_starts_nothing_when_the_adopted_tracker_vanishes() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--prefix", "ex"]);
+    json(&a, &["create", "before the move"]);
+    let moved = sandbox.root().join("moved.git");
+    mirror(&sandbox, &moved);
+    let b = crate::rust_only(&sandbox, "b");
+    set_origin(&b, &moved);
+    let gate = Gate::new(&sandbox, "adopted-fetch");
+    let failpoints = format!("fetch.result@nth(2)={}", gate.action());
+    let gone = [
+        "--git-dir",
+        text(&moved),
+        "update-ref",
+        "-d",
+        "refs/beads/journal",
+    ];
+    let (run, met) = beside(
+        || {
+            let init = b.cmd(["init", "--json"]);
+            init.env("BEAD_FAILPOINTS", &failpoints).run()
+        },
+        |finished| gate.meet(finished, || git(gone, None)),
+    );
+    assert!(
+        met.is_some(),
+        "bead never reached the adopted tracker's fetch"
+    );
+    assert_eq!(code(&run), "NOT_INITIALIZED", "{}", run.stderr);
+    assert_eq!(code(&b.run(["list", "--json"])), "NOT_INITIALIZED");
+}
+
+/// An `init` that adopted another workspace counts what it left unpublished there: an import the
+/// remote refused to take is reported as unpublished, as for any other write.
+#[test]
+fn init_reports_what_it_left_unpublished_in_the_adopted_tracker() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--prefix", "ex"]);
+    json(&a, &["create", "before the move"]);
+    let moved = sandbox.root().join("moved.git");
+    mirror(&sandbox, &moved);
+    // from now on the moved remote refuses every push
+    let hook = moved.join("hooks").join("pre-receive");
+    std::fs::write(&hook, "#!/bin/sh\necho refused >&2\nexit 1\n").expect("a hook");
+    let executable = std::os::unix::fs::PermissionsExt::from_mode(0o755);
+    std::fs::set_permissions(&hook, executable).expect("an executable hook");
+    let b = Machine::new(&sandbox, "b");
+    set_origin(&b, &moved);
+    let records = sandbox.root().join("import.jsonl");
+    let record = concat!(
+        r#"{"id":"ex-imp","title":"imported","status":"open","priority":2,"issue_type":"task","#,
+        r#""created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}"#,
+    );
+    std::fs::write(&records, format!("{record}\n")).expect("an export");
+    let run = b.run(["init", "--import", text(&records), "--json"]);
+    assert_eq!(run.returncode(), 0, "{}", run.stderr);
+    let result = parse_json(&run.stdout).expect("a result");
+    assert_eq!(result["joined"], Json::Bool(true), "{result:?}");
+    let behind = result["unpublished"].as_i64();
+    assert!(behind.is_some_and(|n| n > 0), "{result:?}");
 }

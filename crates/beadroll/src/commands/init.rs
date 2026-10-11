@@ -144,8 +144,15 @@ fn join_published(
             pulled: synced.pulled,
             remote: synced.remote.to_string_lossy().into_owned(),
         })),
-        // published when asked and gone since: nothing to join
-        Err(SyncError::NotInitialized(_)) => Ok(Published::Nothing),
+        // published when asked and gone since: nothing to join, unless an adoption was already
+        // remembered, which the next command follows: then this one starts nothing either
+        Err(error @ SyncError::NotInitialized(_)) => {
+            if find_workspace(&ws.settings)?.id == ws.id {
+                Ok(Published::Nothing)
+            } else {
+                Err(error.into())
+            }
+        }
         Err(error) => Err(error.into()),
     }
 }
@@ -357,5 +364,11 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
         );
     }
     lines.extend(notes);
-    Ok(Outcome::new(result, lines))
+    let mut outcome = Outcome::new(result, lines);
+    if let Some(chosen) = &chosen {
+        // written through another workspace than the one the command was given: its own count
+        super::note_unpublished(chosen, &mut outcome.result, &mut outcome.lines)?;
+        outcome.settled = true;
+    }
+    Ok(outcome)
 }
