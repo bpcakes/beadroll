@@ -145,38 +145,45 @@ These were decided deliberately. Report problems *with* them, not their existenc
   warn while `.beadroll.json` would not reach the other checkouts, comparing it with its commit as
   JSON, so line endings git converts are no change; where the tree lacks it and HEAD's copy is in
   use, that copy is checked against origin's default branch.
-- A remote is reached as git reaches it by name (G22). A remote's name resolves to the URL `git
-  push NAME` is configured with (its first push URL, else its first URL), and git is given that
-  URL as the URL of a remote defined for the command (`remote.bead-<token>.url`, and `.pushurl`
-  for a remote's own push URL, through `GIT_CONFIG_COUNT`), never as an argument it would read as
-  a remote's name: it rewrites it as for `git fetch NAME` and `git push NAME` (`insteadOf`, and
-  `pushInsteadOf` except to a remote's own push URL). The endpoint carries how it was chosen (a
-  remote's name, origin, or the remote last named here, its `remote_push_url` saved beside it in
-  `meta.json`), never inferred from other remotes' URLs. A relative path is read from the top of
-  the checkout when it is stored and from the cwd when it was typed just now, whether it exists or
-  not, unless an `insteadOf` or `pushInsteadOf` rule is a prefix of it (then it is git's), and a
-  path that symbolic links resolve elsewhere is given to git as written when a rule rewrites it;
-  git reaches a remote from the top of the checkout, so a relative path it makes of a rewritten
-  URL is read from there too. A URL bead resolved already (the remote last named here, origin's, one
-  git answered) is a URL, never read as a remote's name, which only a remote given just now or
-  tracked can be; older versions saved a remote's name as `init --remote` was given it until a
-  sync replaced it, and a saved value that names a remote and that no rule rewrites is still that
-  remote. `--remote` given origin's own URL (and not a configured remote's name, which wins over
-  a same-named path) is stored as `origin` and reached as origin is, its own push URL included,
-  from `init`'s first publish on; a remote remembered with origin's URL but pushed to otherwise
-  is not origin, nor one whose spelling or origin's a rule rewrites, which can send the two apart
-  (a link to origin's repository rewritten to another). The advice to bring a moved repository's
-  tracker along gives the remote by its URL, which names the same place on every machine, or by
-  the name it was chosen by where the URL alone is not reached as the remote is (a remote's own
-  push URL, or one `--remote` would read as another remote's name). A tracked remote is the
-  store's remote only where both reach the same places: the same spelling pushed to alike (its
-  own push URL or not), or, spelled otherwise (an older version saved a name as git expanded
-  it), where git fetches and pushes both alike, each rewrite applied once as git applies it, from
-  the rules themselves (`git remote get-url` answers only for remotes configured in the
-  repository); any other change is refused (`CONFIG`) until made deliberately. `init --tracked`
-  stores a relative path from the top of the checkout, and one a rule rewrites as the very
-  spelling that reads back as written (`.`, `..` and symbolic links kept); adoption compares
-  origin as a sync reaches it.
+- A remote is kept as it was chosen (G22; the maintainer's course correction of 2026-10-11,
+  roll-dih8.13: rounds of findings came from resolving the choice to a URL at once and using that
+  string for transport, memory, comparison and advice, which made bead re-implement git's remote
+  semantics piece by piece). The choice is the name of a remote the checkout configures (origin
+  when none is chosen), or a URL or a path as given; it is what `meta.json` remembers, what is
+  compared, and what advice gives back (`bead sync --remote origin`). A name is read for its URL
+  only to reach the remote: the URL `git push NAME` is configured with (its first push URL, else
+  its first URL, a password dropped), given to git as the URL of a remote defined for the command
+  (`remote.bead-<token>.url`, and `.pushurl` for a remote's own push URL, through
+  `GIT_CONFIG_COUNT`), never as an argument git would read as a remote's name, so that git
+  rewrites it as for `git fetch NAME` and `git push NAME` (`insteadOf`, and `pushInsteadOf` except
+  to a remote's own push URL), from the top of the checkout. A configured remote's name wins over
+  a same-named path, in a value remembered or tracked too, as in 0.2.0. A URL or a path is read
+  once: a relative path from the top of the checkout when it is stored and from the cwd when it
+  was typed just now, through its symbolic links, whether it exists or not, except a spelling an
+  `insteadOf` or `pushInsteadOf` rule is a prefix of (as written or as resolved), which is git's
+  as written.
+- Two choices are the same remote only as chosen: the same name, or the same URL so read; never
+  two spellings taken for one place (`x` and `x.git` are two repositories, and two spellings git
+  rewrites to one place are two choices). A tracked remote that is not the one the store last
+  went through is refused (`CONFIG`) until changed deliberately (`bead sync --remote`, `bead init
+  --tracked --remote`), with one allowance for older versions, which saved a name as git expanded
+  it: a tracked name and a saved URL are the same where git's own answers agree (`git remote
+  get-url` with and without `--push` for the name, `git ls-remote --get-url` for the URL, every
+  rule applied once), each read as the link reads it, a relative path from the top of the
+  checkout through its symbolic links. Going back to 0.2.0 or Python, a store whose tracked and
+  remembered remote are one name is refused there until `bead sync --remote NAME`, as they refused
+  a name their own `init --offline --remote` saved.
+- Origin is the name `origin`, never remembered: it is looked up each time, so `git remote set-url
+  origin` is followed, as a remote chosen by another name is. Origin's own URL (the one `git push
+  origin` is configured with) given as a URL, spelled alike, is origin, reached as origin is, its
+  own push URL included: `init --tracked` stores it as `origin`, and a sync given it forgets it. A
+  remote of another name is never origin, whatever its URL. A remembered value is origin when it is
+  that name or, as older versions saved it, origin's URL: spelled alike, or, for two URLs that are
+  not local paths and that no rule rewrites, the same repository however spelled (G25: ssh or
+  https, `.git`), as the URL-derived id takes them. A tracker published under another id is
+  adopted only through origin. `init --tracked` stores a relative path from the top of the
+  checkout, and one a rule rewrites as the very spelling that reads back as written (`.`, `..`
+  and symbolic links kept).
 - Output is UTF-8 regardless of locale; human output escapes control characters; `--json` always
   wins the representation (`create --silent --json` gives `{"id": …}`); a closed stdout exits 0
   quietly.
@@ -289,10 +296,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - `BEAD_HOME` must be absolute; the store's modes are 0700/0600 whatever the umask.
 - Only directories bead creates get private modes; a user-supplied `BEAD_HOME` is chmodded 0700
   on first write (reviewer observation, kept).
-- origin is never remembered as the coordination remote; only a remote named otherwise is,
-  including one that shares origin's URL but is pushed to otherwise (its own push URL where
-  origin's is not, or the reverse), since a `pushInsteadOf` rule can send the two apart. A
-  tracked config seeds a new store's remote but never silently moves an existing store's.
+- origin is never remembered as the coordination remote; only a remote chosen otherwise is: by
+  its name, also one that shares origin's URL (its own push URL, or a `pushInsteadOf` rule, can
+  send the two apart), or by a URL other than origin's (G25: in any spelling of its repository on
+  a forge). A tracked config seeds a new store's remote but never silently moves an existing
+  store's.
 - bead's pushes skip the user's client hooks (`--no-verify`); the remote's hooks still apply.
 - The remote string reaches git after `--`; a tracked workspace id shaped like a URL-derived id
   that is not this origin's is refused.

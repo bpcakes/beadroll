@@ -263,8 +263,8 @@ fn workspace_for(
 
 /// `init`'s `--remote`: where it leads, read from where it was typed ([`Workspace::resolve_endpoint`]),
 /// and, with `--tracked`, how the file stores it ([`stored_remote`]), else as typed; with whether it
-/// is origin's own URL, which a tracked file stores by name so that it follows origin when it
-/// moves. A dropped password is said in `notes`.
+/// is origin, by its name or its own URL, which a tracked file stores by name so that it follows
+/// origin when it moves. A dropped password is said in `notes`.
 fn given_remote(
     ctx: &Context<'_>,
     args: &InitArgs,
@@ -281,15 +281,11 @@ fn given_remote(
                 .to_owned(),
         );
     }
-    // a configured remote's name wins over a same-named path, origin's included
-    let names_origin = !ctx.ws.names_remote(&typed)? && ctx.ws.is_origin(&typed);
-    // origin's own URL is reached as origin is, its own push URL included, as every command after
+    // a configured remote's name wins over a same-named path, origin's included; origin's own
+    // URL is origin, reached as origin is (its own push URL included), as every command after
     // reaches it, whether the file stores it by name or no file is written
-    let live = if names_origin {
-        ctx.ws.resolve_endpoint(OsStr::new("origin"), false)?
-    } else {
-        ctx.ws.resolve_endpoint(&typed, true)?
-    };
+    let live = ctx.ws.resolve_endpoint(&typed, true)?;
+    let names_origin = live.name.as_deref() == Some(OsStr::new("origin"));
     let stored = if args.tracked {
         stored_remote(ctx.ws, &typed, &live)?
     } else {
@@ -308,7 +304,7 @@ struct Given {
     stored: OsString,
     /// Where it leads.
     live: Endpoint,
-    /// Whether it is origin's own URL.
+    /// Whether it is origin, by its name or its own URL.
     names_origin: bool,
 }
 
@@ -364,7 +360,7 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
         values.push(("name", Value::from(name.to_string_lossy().into_owned())));
     }
     if let Some(remote) = &live {
-        values.extend(remembered(remote));
+        values.push(("remote", remembered(remote)));
     }
     ws.save_meta(&values)?;
     if ws.wrote() && !args.offline {

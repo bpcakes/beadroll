@@ -137,7 +137,7 @@ pub fn synchronise(ws: &Workspace, remote: &Endpoint) -> Result<Synced, Error> {
                     continue;
                 }
                 let adopted = if attempt == 1 {
-                    adopt_published(ws, &remote.url, &error)?
+                    adopt_published(ws, remote, &error)?
                 } else {
                     None
                 };
@@ -187,14 +187,14 @@ pub fn synchronise(ws: &Workspace, remote: &Endpoint) -> Result<Synced, Error> {
 
 /// `NOT_INITIALIZED` when neither this store nor `remote` has a tracker: `bead init` starts one, and
 /// a repository that moved without its tracker gets it back from a machine that has it, published
-/// under its own id to `remote` given by name on the command line ([`Workspace::spelling`]), where
-/// that tracker would not otherwise go: this machine, when it holds a workspace of the same name.
+/// under its own id to `remote` given on the command line as it was chosen ([`Endpoint::chosen`]),
+/// where that tracker would not otherwise go: this machine, when it holds a workspace of the same
+/// name.
 fn nothing_published(ws: &Workspace, remote: &Endpoint) -> Error {
     let shown = remote.url.to_string_lossy();
-    let spelled = ws.spelling(remote).unwrap_or_else(|_| remote.url.clone());
     let sync = format!(
         "bead sync --remote {}",
-        shell_quote(&spelled.to_string_lossy())
+        shell_quote(&remote.chosen().to_string_lossy())
     );
     let mut message = format!(
         "no tracker here and none published on {shown}: run `bead init` to start one. If this \
@@ -264,7 +264,7 @@ fn sync_round(
 /// never adopted.
 pub fn adopt_published(
     ws: &Workspace,
-    remote: &OsStr,
+    remote: &Endpoint,
     error: &Error,
 ) -> Result<Option<Workspace>, Error> {
     let Error::WorkspaceMismatch {
@@ -280,11 +280,12 @@ pub fn adopt_published(
     if ws.id != *derived {
         return Ok(None);
     }
-    // this checkout's origin, as a sync with it reaches it
-    let Some(origin) = ws.origin_endpoint()? else {
-        return Ok(None);
+    // this checkout's origin, chosen by its name or given as its very URL
+    let origin = match &remote.name {
+        Some(name) => name == "origin",
+        None => ws.is_origin_url(&remote.url)?,
     };
-    if remote != origin.url {
+    if !origin {
         return Ok(None);
     }
     if !segment_files(ws)?.is_empty()

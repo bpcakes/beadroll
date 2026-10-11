@@ -1,8 +1,9 @@
 //! What a remote given by name means (`--remote`, `$BEAD_REMOTE`, `.beadroll.json`): the URL it is
 //! configured with, where `git push NAME` goes, read as discovery reads origin (G22); origin's own
 //! URL stored as `origin`, so that the tracked file follows origin when the repository moves; a
-//! remote saved, typed or given as a path; and where git reaches a remote from, the top of the
-//! checkout. Git's own rewrites of a remote's URL are in `rewrites`.
+//! remote remembered as it was chosen, by its name or as a URL, an older bead's saved URL, one
+//! typed or given as a path; and where git reaches a remote from, the top of the checkout. Git's
+//! own rewrites of a remote's URL are in `rewrites`.
 
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
@@ -16,7 +17,7 @@ use super::{
 };
 
 /// `store`'s `meta.json` saying that it last went through `remote`, as an older bead left it.
-fn save_remote(store: &Path, remote: &str) {
+pub(super) fn save_remote(store: &Path, remote: &str) {
     let path = store.join("meta.json");
     let body = std::fs::read_to_string(&path).expect("a meta.json");
     let mut meta = parse_json(&body).expect("valid JSON");
@@ -92,10 +93,11 @@ fn a_tracked_origin_resolves_to_where_git_pushes() {
 }
 
 /// A clone whose committed `.beadroll.json` names `"remote": "origin"`: `init --remote origin` joins
-/// the tracker without writing anything, and records the remote as where `origin` leads, as a sync
-/// would, so that the commands after it, which compare the two, keep working.
+/// the tracker without writing anything, and keeps the remote as it was chosen, origin, which is
+/// never remembered, as a sync would, so that the commands after it, which compare the tracked
+/// remote with the one remembered, keep working.
 #[test]
-fn init_joining_records_a_named_remote_as_where_it_leads() {
+fn init_joining_keeps_a_named_remote_as_it_was_chosen() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
     json(
@@ -246,8 +248,8 @@ fn a_remote_name_an_older_bead_saved_is_that_remote() {
     );
 }
 
-/// A store that last went through a remote's own push URL, whose `.beadroll.json` is changed from
-/// that remote's name to the URL itself: the same URL, but pushed to as any URL, which a
+/// A store that goes through a remote by its name, whose `.beadroll.json` is changed to that
+/// remote's own push URL: the same URL, but another choice, pushed to as any URL, which a
 /// `pushInsteadOf` rule can send elsewhere; refused (`CONFIG`) until changed deliberately.
 #[test]
 fn a_tracked_remote_pushed_to_otherwise_is_a_change() {
@@ -293,10 +295,10 @@ fn init_given_a_remotes_name_that_is_also_origins_path_reaches_the_remote() {
 }
 
 /// A remote whose URL is an alias git rewrites and also another remote's name: bead reaches the
-/// rewritten URL, as git does, and so does every command after, which goes by the URL it saved,
-/// never by the remote that URL also names.
+/// rewritten URL, as git does, and so does every command after, which goes by the remote's name it
+/// remembered and gives git that remote's URL as a URL, never as the remote it also names.
 #[test]
-fn a_saved_url_that_names_another_remote_stays_a_url() {
+fn a_url_that_names_another_remote_stays_a_url() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
     json(&a, &["init", "--prefix", "ex"]);
@@ -319,12 +321,12 @@ fn a_saved_url_that_names_another_remote_stays_a_url() {
     assert_eq!(
         refs(&second),
         "",
-        "a later command took the saved URL for a remote's name"
+        "a later command took the remote's URL for a remote's name"
     );
 }
 
-/// A store saved with a remote's URL that is an alias git rewrites, whose `.beadroll.json` is
-/// changed to name the remote of the alias's name: the same spelling, another remote; refused.
+/// A store that goes through a remote whose URL is an alias git rewrites, whose `.beadroll.json` is
+/// changed to name the remote of the alias's name: that URL's spelling, another remote; refused.
 #[test]
 fn a_tracked_name_spelled_like_the_saved_alias_is_a_change() {
     let sandbox = crate::sandbox();
@@ -428,8 +430,8 @@ fn a_tracked_name_reaching_another_place_than_the_saved_url_is_a_change() {
 }
 
 /// A remote whose own push URL is origin's URL, which a `pushInsteadOf` rule sends elsewhere when
-/// it is origin's: a sync through that remote is remembered as it was reached, not forgotten as
-/// origin, so the commands after publish where it did.
+/// it is origin's: a sync through that remote is remembered by its name, not forgotten as origin,
+/// so the commands after publish where it did.
 #[test]
 fn a_remote_pushed_to_by_origins_url_is_not_forgotten_as_origin() {
     let sandbox = crate::sandbox();
@@ -454,8 +456,8 @@ fn a_remote_pushed_to_by_origins_url_is_not_forgotten_as_origin() {
 }
 
 /// A remote whose URL is a symbolic link to origin's repository, which an `insteadOf` rule
-/// rewrites to another repository: a sync through it is remembered, not forgotten as origin,
-/// which the link alone would make it, and the writes after go where the sync went.
+/// rewrites to another repository: a sync through it is remembered by its name, not forgotten as
+/// origin, which the link alone would make it, and the writes after go where the sync went.
 #[test]
 fn a_remote_rewritten_away_from_origin_is_not_forgotten_as_origin() {
     let sandbox = crate::sandbox();

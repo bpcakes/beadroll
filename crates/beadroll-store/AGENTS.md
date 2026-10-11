@@ -27,7 +27,8 @@ remote resolution, actor detection, and `view`. Slice 2a (`roll-k2wy.3`) built i
 - `src/workspace.rs`: `Workspace` (`meta`, `save_meta`, `note_sync`, `ref_name`), `stamp`;
   `src/workspace/remote.rs`: what a remote given to bead means (`resolve_endpoint`, `endpoint`,
   an `Endpoint` being the URL, whether it is a remote's own push URL and the name it was chosen
-  by; `resolve_remote` and `remote`, their URLs; `spelling`, how advice gives it; `is_origin`)
+  by; `Endpoint::chosen`, the remote as it was chosen, which a store remembers and compares and
+  advice gives; `resolve_remote` and `remote`, their URLs; `remembered_remote`, `is_origin_url`)
   and a remote's URL as git is configured with it (`configured_url`, which discovery reads origin
   with); `src/discover.rs`: `find_workspace`, `checked_config`, `moved_workspaces`,
   `tracked_config_warning` (a `.beadroll.json` the other checkouts do not see), `workspaces_named`.

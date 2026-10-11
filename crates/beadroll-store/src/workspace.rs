@@ -2,7 +2,7 @@
 //! coordination remote it uses (Python's `Workspace`).
 
 use std::cell::Cell;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -156,10 +156,9 @@ impl Workspace {
             }
         }
         if let Some(Value::Str(remote)) = meta.get("remote")
-            && self.is_origin_as_reached(remote, &meta)?
+            && self.is_origin_chosen(OsStr::new(remote))?
         {
             meta.shift_remove("remote");
-            meta.shift_remove("remote_push_url");
         }
         let text = json::write(&Value::Object(meta), Format::INDENTED)
             .map_err(|e| Error::io_message(e.to_string()))?;
@@ -175,7 +174,7 @@ impl Workspace {
     /// failure: a full volume or a damaged `meta.json` only leaves `last_sync` behind.
     pub fn note_sync(&self, remote: &Endpoint, values: &[(&str, Value)]) {
         let mut all: Vec<(&str, Value)> = values.to_vec();
-        all.extend(remembered(remote));
+        all.push(("remote", remembered(remote)));
         all.push(("last_sync", Value::from(stamp())));
         let _ = self.save_meta(&all);
     }
@@ -209,17 +208,11 @@ impl Workspace {
     }
 }
 
-/// What `meta.json` records of `remote`, the endpoint a store went through: its URL, and beside it
-/// the same URL when it was a remote's own push URL, which the next command chosen by it, with no
-/// name to look up, pushes to as that remote's (`null` forgets an earlier one).
-pub fn remembered(remote: &Endpoint) -> [(&'static str, Value); 2] {
-    let url = Value::from(remote.url.to_string_lossy().into_owned());
-    let pushed = if remote.own_push_url {
-        url.clone()
-    } else {
-        Value::Null
-    };
-    [("remote", url), ("remote_push_url", pushed)]
+/// What `meta.json` records of `remote`, the remote a store went through: as it was chosen, a
+/// remote's name or a URL ([`Endpoint::chosen`]), which the next command reads again as it reads a
+/// remote given to it (a name is looked up then).
+pub fn remembered(remote: &Endpoint) -> Value {
+    Value::from(remote.chosen().to_string_lossy().into_owned())
 }
 
 /// `[A-Za-z0-9][A-Za-z0-9._-]{0,99}`, whole.

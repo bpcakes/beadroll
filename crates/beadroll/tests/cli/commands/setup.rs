@@ -11,6 +11,7 @@ use beadroll_test_support::{Json, Machine, Sandbox, code, git, parse_json};
 
 use crate::hardening::gate::{Gate, beside};
 
+mod chosen;
 mod remotes;
 mod rewrites;
 mod warnings;
@@ -272,9 +273,11 @@ fn a_move_without_the_tracker_says_how_to_bring_it_along() {
     set_origin(&a, &moved);
     let synced = a.run(["sync", "--json"]);
     assert_eq!(code(&synced), "NOT_INITIALIZED", "{}", synced.stderr);
-    let command = format!("BEAD_WORKSPACE={old} bead sync --remote {}", text(&moved));
+    // origin, as the sync chose it: by its name, which this checkout now leads to the new place
+    let command = format!("BEAD_WORKSPACE={old} bead sync --remote origin");
     assert!(synced.stderr.contains(&command), "{}", synced.stderr);
-    let published = a.cmd(["sync", "--json"]).env("BEAD_WORKSPACE", &old).run();
+    let advised = ["sync", "--remote", "origin", "--json"];
+    let published = a.cmd(advised).env("BEAD_WORKSPACE", &old).run();
     assert_eq!(published.returncode(), 0, "{}", published.stderr);
     json(&a, &["sync"]);
     assert_eq!(titles(&a), ["before the move"]);

@@ -328,7 +328,8 @@ tracker stays URL-derived, since its id would stop matching when the URL
 changed) and optionally a different coordination remote. Origin's own URL is stored as `origin`, so the file follows
 origin when it moves; a remote given by name, here or in `--remote` and
 `$BEAD_REMOTE`, means the URL it is configured with for `git push` (its first
-push URL, else its first URL, `insteadOf` left to git), as origin itself does.
+push URL, else its first URL, `insteadOf` left to git), as origin itself does,
+and a store remembers it by that name, looked up again by every command.
 Commit the file on the default branch at once: a checkout whose tree predates
 it reads the committed copy (`HEAD`, then `origin/HEAD`), but a file that is
 not committed, or not on the default branch, reaches no other checkout, and
@@ -364,8 +365,8 @@ tracker published under the old id and remembers the mapping (`moved.json` in
 `git push --mirror` copies them. An import that copies only branches and tags
 leaves it behind: `bead sync` then says none is published and names this
 machine's tracker of the same name if it has one; `BEAD_WORKSPACE=ID bead sync
---remote NEW_URL` on a machine that has it publishes it at the new URL, and every
-other machine's next `sync` adopts it. Until a machine's origin moves it keeps using the old
+--remote origin` on a machine that has it, its origin moved, publishes it at the new
+URL, and every other machine's next `sync` adopts it. Until a machine's origin moves it keeps using the old
 URL, which a forge's rename redirects.
 
 A tracked `.beadroll.json` keeps its id through any move. With its remote left
