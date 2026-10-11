@@ -16,7 +16,7 @@ use beadroll_test_support::{Json, Machine, Sandbox};
 use super::call::{Step, answer, exec, tail};
 use super::{
     A1, A2, B1, C1, Keys, OPS, Op, Pre, STALL, STALL_FENCED, STALL_LANDED, Schedule, Variant,
-    fault_env,
+    fault_env, fault_fired,
 };
 
 mod observe;
@@ -242,7 +242,8 @@ impl Run {
                 self.ok(m3, &["sync"], C1);
             }
             Pre::Sync => {
-                self.ok(m1, &["comments", "add", x, "local work"], A1);
+                // a comment publishes at once; offline it waits for the sync under test
+                self.ok(m1, &["comments", "add", x, "local work", "--offline"], A1);
                 self.ok(m2, &["claim", y], B1);
             }
         }
@@ -279,6 +280,22 @@ impl Run {
             hook(&self.sandbox, "pre-receive", &script);
         }
         fault_env(self.schedule.op, fault)
+    }
+
+    /// A violation unless the operation's run `op` shows that the schedule's fault fired
+    /// ([`fault_fired`]): the stall hook's mark stays after the hook is taken away.
+    fn fired(&self, op: &Step) {
+        let stalled = self.sandbox.root().join("hook-started").exists();
+        if !fault_fired(self.schedule.fault, op.rc, stalled) {
+            let code = op.code.as_deref().unwrap_or("-");
+            self.violation(format!(
+                "op: {} never fired: bead {} -> rc {} {code} ({} ms)",
+                self.schedule.fault,
+                op.argv.join(" "),
+                op.rc,
+                op.ms
+            ));
+        }
     }
 
     /// Lets a stalled receive-pack finish (landing or failing), then takes the stall hook away.
@@ -342,6 +359,7 @@ impl Run {
         let env = run.fault_args();
         let first = run.call(&run.m1, &op_argv, A1, Some(env), "op");
         run.quiesce();
+        run.fired(&first);
         let before = run.observe("op");
         run.judge(&first, &before, ("m1", A1), None);
         let pair = run.schedule.pair;

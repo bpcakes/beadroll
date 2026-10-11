@@ -2,9 +2,10 @@
 //! enumerated (seventh independent review, 2026-10-07). Three machines, nine operations at seven
 //! fault boundaries, every ordered pair of four follow-ups; after each step at most one confirmed
 //! owner, generations monotonic, identical exports after settling, and every command's answer
-//! consistent with the remote. The default is a twelve-schedule slice touching every operation and
-//! boundary, including retries of an owner's close/delete interrupted before publishing
-//! ([`SLICE`]). `BEAD_SWEEP=full` runs all 660; `BEAD_SWEEP_GC=1` and `BEAD_SWEEP_CONCURRENT=1`
+//! consistent with the remote. Every schedule shows that its fault fired ([`fault_fired`]): one
+//! whose operation never reached its boundary tests nothing, and fails. The default is a
+//! thirteen-schedule slice touching every operation and boundary, including retries of an owner's
+//! close/delete interrupted before publishing and a sync stopped at its push ([`SLICE`]). `BEAD_SWEEP=full` runs all 660; `BEAD_SWEEP_GC=1` and `BEAD_SWEEP_CONCURRENT=1`
 //! select the variants. Schedules run in parallel, each in its own sandbox.
 //!
 //! The Python sweep reached its boundaries inside one bead process through a `runpy` wrapper that
@@ -14,6 +15,8 @@
 //! failpoint.
 
 use std::collections::BTreeMap;
+
+use call::Rc;
 
 mod call;
 mod judge;
@@ -40,7 +43,8 @@ enum Pre {
     A1Holds,
     /// B1 on m2 holds X, and every machine has seen it.
     B1Holds,
-    /// Local work on m1 to publish, and another machine's attempt (B1's claim of Y) to copy in.
+    /// Local work on m1 to publish, recorded offline so that the sync has it to push, and another
+    /// machine's attempt (B1's claim of Y) to copy in.
     Sync,
 }
 
@@ -188,8 +192,9 @@ const fn schedule(op: &'static str, fault: &'static str, pair: &'static str) -> 
 }
 
 /// The slice the fast suite can afford: every operation and boundary, with pairs that mix a retry
-/// with another actor or machine, including the owner's interrupted close/delete (G12).
-const SLICE: [Schedule; 12] = [
+/// with another actor or machine, including the owner's interrupted close/delete (G12) and a sync
+/// whose push lands unacknowledged (roll-dih8.10).
+const SLICE: [Schedule; 13] = [
     schedule("claim", "crash-after-push", "RO"),
     schedule("release", "crash-after-push", "OR"),
     schedule("takeover", "timeout-landed", "SR"),
@@ -202,6 +207,7 @@ const SLICE: [Schedule; 12] = [
     schedule("claim", "timeout-landed", "OS"),
     schedule("close", "crash-before-push", "RS"),
     schedule("delete", "crash-before-push", "OR"),
+    schedule("sync", "crash-after-push", "RS"),
 ];
 
 /// How every schedule of a sweep runs: `gc`, the remote collects garbage after every push it
@@ -265,6 +271,19 @@ fn fault_env(op: &str, fault: &str) -> (&'static str, &'static str) {
         _ => return ("BEAD_NET_TIMEOUT", NET_TIMEOUT),
     };
     ("BEAD_FAILPOINTS", spec)
+}
+
+/// Whether the run of the operation shows that `fault` fired, ending it at its boundary: the exit
+/// its failpoint gives (98 before the push, 99 once the remote accepted it), a SIGKILL (-9), or,
+/// for a timeout, the remote's stall hook started (`stalled`) by the operation's push, which the
+/// client then waited on past its timeout. Any other end means the operation never got there.
+fn fault_fired(fault: &str, rc: Rc, stalled: bool) -> bool {
+    match fault {
+        "crash-before-push" => rc.is(98),
+        "crash-after-push" => rc.is(99),
+        "kill-confirm" | "kill-write-pending" | "kill-write-confirm" => rc.is(-9),
+        _ => stalled,
+    }
 }
 
 /// The first push stalls past the client's timeout, then lets receive-pack try its update; every

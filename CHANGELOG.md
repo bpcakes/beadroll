@@ -54,6 +54,10 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   with `REMOTE_UNREACHABLE` when one fetch finds another's fetch ref gone while git reads the refs
   (`fatal: bad object refs/beads/fetch/…`), or the directory of its own removed while git makes
   it: the fetch is tried again after a short wait, five attempts in all (roll-dih8.12).
+- The protocol sweep fails a schedule whose fault never fired: the operation must end at its
+  boundary (exit 98 or 99, a SIGKILL, or the remote's stalled push). The sync schedules record
+  their local work offline, so the 48 at the push and timeout boundaries now push, where they
+  passed with nothing to publish, and the default slice stops a sync at its push (roll-dih8.10).
 
 ## [0.2.0] — 2026-10-11
 

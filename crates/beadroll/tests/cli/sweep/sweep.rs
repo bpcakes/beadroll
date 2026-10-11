@@ -1,7 +1,8 @@
-//! `Sweep.test_sweep`. Verified property (sweep): for every schedule, at most one confirmed owner,
-//! generations monotonic, every confirmed claim one the remote accepted, identical exports, `show`
-//! and `claims` everywhere after settling, no waiting events, integrity entries, pending attempts
-//! or forked journals, and each command's answer consistent with what the remote holds. Measured
+//! `Sweep.test_sweep`. Verified property (sweep): for every schedule, its fault fired at its
+//! boundary, at most one confirmed owner, generations monotonic, every confirmed claim one the
+//! remote accepted, identical exports, `show` and `claims` everywhere after settling, no waiting
+//! events, integrity entries, pending attempts or forked journals, and each command's answer
+//! consistent with what the remote holds. Measured
 //! by the review: 660 schedules on each of three hosts, plus 660 with `git gc --prune=now` on the
 //! remote after every push and 330 + 330 with the two follow-ups run concurrently; the only
 //! failures were the ten G12 schedules, fixed since that review. `BEAD_SWEEP=full` runs all 660

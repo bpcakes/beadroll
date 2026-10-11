@@ -53,9 +53,10 @@ black-box tests ported from the Python suite, the golden outputs captured from P
   tests of `test_protocol`, `test_hardening`, `test_storage`, `test_compat` (its real-export test
   `#[ignore]`d, run by `cargo xtask check --real`) and `test_replay`, ported; `hardening/gate.rs`:
   the `pause-until` handshake (§4.5) a test holds bead at. `tests/cli/sweep.rs`: `test_sweep`, the
-  ownership protocol enumerated, its boundaries reached through failpoints (`fault_env`); the
-  twelve-schedule slice runs in the fast suite, and `sweep/sweep_failure_reporting.rs`
-  (`test_check.SweepFailureReporting`) checks that a failed schedule fails it.
+  ownership protocol enumerated, its boundaries reached through failpoints (`fault_env`), each
+  schedule showing that its fault fired (`fault_fired`); the thirteen-schedule slice runs in the
+  fast suite, and `sweep/sweep_failure_reporting.rs` (`test_check.SweepFailureReporting`) checks
+  that a failed schedule fails it, and one whose fault never fired.
   `tests/cli/stress.rs`: `test_stress`'s two randomised models, ignored by default; they draw
   from `stress/python_random.rs`, CPython's `random.Random`, so a seed makes Python's choices.
 - `main.rs`'s `rust_only`: the machine of a test that injects a fault through a failpoint, where

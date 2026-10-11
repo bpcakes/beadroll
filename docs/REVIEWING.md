@@ -337,7 +337,9 @@ step, gives each a scratch `BEAD_HOME`, and exits non-zero on any failure, inclu
 round-trip command or differing exported records with `--real`. A failed step keeps its full
 output in `target/check/`, and a failed round trip shows its whole report; its imports run
 offline in the scratch store. The default sweep includes owner close/delete retries after an
-interrupted publish; the full sweep (`BEAD_SWEEP=full`) has no expected-failure exemptions.
+interrupted publish; the full sweep (`BEAD_SWEEP=full`) has no expected-failure exemptions. Every
+schedule must show that its fault fired (the operation's exit 98 or 99, its SIGKILL, or the
+remote's stall hook started by its push), so none passes without reaching its boundary.
 xtask's `check::check_script`, the sweep's `sweep_failure_reporting` and
 `infra/test_roundtrip.py` exercise these failure paths with synthetic results in the fast
 baseline. Record the baseline output in your report.

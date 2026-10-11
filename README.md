@@ -398,8 +398,9 @@ tracking), `compat` (Beads import/export, real exports, `br`/`bv`), `hardening` 
 the protocol: git environment and remotes, URLs and credentials, store files and modes, output
 streams, imports), `stress` (randomised models, run by `--stress`), and `sweep` (the ownership
 protocol enumerated: three machines, nine operations at seven fault boundaries, every ordered
-pair of follow-ups; a twelve-schedule slice by default, including retries of interrupted owner
-closes and deletes; `BEAD_SWEEP=full` for all 660, with no failure exemptions). `golden` compares
+pair of follow-ups, each schedule showing that its fault fired; a thirteen-schedule slice by
+default, including retries of interrupted owner closes and deletes and a sync stopped at its
+push; `BEAD_SWEEP=full` for all 660, with no failure exemptions). `golden` compares
 every help page and the reading commands' output with Python's, captured before the cutover, and
 `parity` holds what the mixed Python and Rust fleets checked, among it receipts byte for byte as
 Python wrote them. `crates/beadroll-test-support` holds the sandbox: every test builds its own

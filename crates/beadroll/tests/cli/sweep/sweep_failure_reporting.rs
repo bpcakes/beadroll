@@ -1,12 +1,15 @@
 //! `test_check.SweepFailureReporting`, ported (`docs/RUST-PORT.md` §4.6): the sweep fails when a
 //! schedule fails, in the slice and in the full sweep alike, and passes when none does; and its
-//! slice keeps retrying the owner's close and delete interrupted before publishing (G12). Where
+//! slice keeps retrying the owner's close and delete interrupted before publishing (G12). A
+//! schedule whose fault never fired fails, and the slice stops a sync at its push
+//! (roll-dih8.10). Where
 //! Python patched `schedules`, `SLICE` and `run_schedule`, a synthetic report stands in for the run
 //! of a sweep whose every list is that one schedule. These tests live beside the sweep they check,
 //! whose runner is test code of this binary that xtask cannot reach.
 
+use super::call::Rc;
 use super::sweep::{Report, selected, verdict};
-use super::{SLICE, Schedule, Variant, schedule};
+use super::{FAULTS, SLICE, Schedule, Variant, fault_fired, schedule};
 
 /// The pairs that retry first, or after another actor or machine: G12's interrupted closes and
 /// deletes, retried.
@@ -69,4 +72,38 @@ fn default_slice_retries_crashed_owner_close_and_delete() {
             "the slice retries no {op} crashed before publishing"
         );
     }
+}
+
+/// A schedule whose operation ended without reaching its boundary tests nothing (roll-dih8.10: the
+/// sync schedules at the push and timeout boundaries returned 0 with nothing to push): only the
+/// end its fault gives counts as the fault having fired.
+#[test]
+fn a_fault_that_never_fired_fails_its_schedule() {
+    for fault in FAULTS {
+        assert!(
+            !fault_fired(fault, Rc::Exit(0), false),
+            "{fault} after exit 0"
+        );
+        assert!(!fault_fired(fault, Rc::Hang, false), "{fault} after a hang");
+    }
+    assert!(fault_fired("crash-before-push", Rc::Exit(98), false));
+    assert!(!fault_fired("crash-before-push", Rc::Exit(99), false));
+    assert!(fault_fired("crash-after-push", Rc::Exit(99), false));
+    assert!(!fault_fired("crash-after-push", Rc::Exit(98), false));
+    for fault in ["kill-confirm", "kill-write-pending", "kill-write-confirm"] {
+        assert!(fault_fired(fault, Rc::Exit(-9), false), "{fault}");
+        assert!(!fault_fired(fault, Rc::Exit(1), false), "{fault}");
+    }
+    for fault in ["timeout-fenced", "timeout-landed"] {
+        assert!(fault_fired(fault, Rc::Exit(1), true), "{fault}");
+        assert!(fault_fired(fault, Rc::Exit(0), true), "{fault}");
+    }
+}
+
+#[test]
+fn the_slice_stops_a_sync_at_its_push() {
+    let pushed = SLICE.iter().any(|slice| {
+        slice.op == "sync" && matches!(slice.fault, "crash-before-push" | "crash-after-push")
+    });
+    assert!(pushed, "the slice stops no sync at its push");
 }
