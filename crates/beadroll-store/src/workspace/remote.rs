@@ -71,21 +71,36 @@ impl Workspace {
     /// reaches remotes from the top of the checkout), unless git rewrites it (`insteadOf`). A
     /// password is dropped.
     pub fn resolve_endpoint(&self, value: &OsStr, typed: bool) -> Result<Endpoint, Error> {
-        let git = &self.settings.git;
-        let mut value = value.to_owned();
-        let mut typed = typed;
-        let mut own_push_url = false;
-        if name_shaped(&value)
-            && let Some(Configured { url, push }) = configured_remote(git, &value)?
+        if name_shaped(value)
+            && let Some(Configured { url, push }) = configured_remote(&self.settings.git, value)?
         {
             // where `git push NAME` goes, as configured, as discovery reads origin (G22): git
             // applies `insteadOf` itself when bead hands it that URL, and `pushInsteadOf` unless
             // it is the remote's own push URL, as for `git push NAME`
-            value = url;
-            typed = false;
-            own_push_url = push;
+            let mut endpoint = self.endpoint_at(&url, false)?;
+            endpoint.own_push_url = push;
+            return Ok(endpoint);
         }
-        let value = without_password(&value).0;
+        self.endpoint_at(value, typed)
+    }
+
+    /// Whether `value` names a remote configured here, which wins over a same-named path.
+    pub fn names_remote(&self, value: &OsStr) -> Result<bool, Error> {
+        Ok(name_shaped(value) && configured_remote(&self.settings.git, value)?.is_some())
+    }
+
+    /// Whether git rewrites `url` before it reaches it: an `insteadOf` or `pushInsteadOf` rule
+    /// configured here is a prefix of it.
+    pub fn rewrites(&self, url: &OsStr) -> Result<bool, Error> {
+        rewritten(&self.settings.git, url)
+    }
+
+    /// `value`, a URL or a path and never a remote's name (a URL bead resolved already, remembered
+    /// or read from git, may be spelled like one), as [`Workspace::resolve_endpoint`] reads one.
+    fn endpoint_at(&self, value: &OsStr, typed: bool) -> Result<Endpoint, Error> {
+        let git = &self.settings.git;
+        let own_push_url = false;
+        let value = without_password(value).0;
         let mut value = value;
         if is_local_path(&value) && !value.as_bytes().starts_with(b"/") {
             if rewritten(git, &value)? {
@@ -157,14 +172,14 @@ impl Workspace {
             return self.resolve_endpoint(&tracked, false).map(Some);
         }
         if let Some(used) = used {
-            let mut endpoint = self.resolve_endpoint(&used, false)?;
+            let mut endpoint = self.endpoint_at(&used, false)?;
             endpoint.own_push_url = self.remembered_push(&used);
             return Ok(Some(endpoint));
         }
         match self.origin.clone().filter(|origin| !origin.is_empty()) {
             None => Ok(None),
             Some(origin) => {
-                let mut endpoint = self.resolve_endpoint(&origin, false)?;
+                let mut endpoint = self.endpoint_at(&origin, false)?;
                 endpoint.own_push_url = self.origin_push;
                 Ok(Some(endpoint))
             }
@@ -205,7 +220,7 @@ impl Workspace {
             return Ok(false);
         }
         let formerly = OsString::from_vec(crate::strip_ascii(&fetched.stdout).to_vec());
-        Ok(self.resolve_remote(&formerly, false)? == used)
+        Ok(self.endpoint_at(&formerly, false)?.url == used)
     }
 }
 

@@ -411,3 +411,61 @@ fn a_typed_relative_path_is_read_from_where_it_was_typed() {
         "bead reached the path from the top of the checkout"
     );
 }
+
+/// `machine`'s checkout with a remote `tracker` whose URL is `alias`, which an `insteadOf` rule
+/// rewrites to `first`, and a remote named `alias` at `second`.
+fn alias_both_ways(machine: &Machine, first: &Path, second: &Path) {
+    let rewrite = format!("url.{}.insteadOf", text(first));
+    commit(machine, &["config", &rewrite, "alias"]);
+    commit(machine, &["remote", "add", "alias", text(second)]);
+    commit(machine, &["remote", "add", "tracker", "alias"]);
+}
+
+/// A remote whose URL is an alias git rewrites and also another remote's name: bead reaches the
+/// rewritten URL, as git does, and so does every command after, which goes by the URL it saved,
+/// never by the remote that URL also names.
+#[test]
+fn a_saved_url_that_names_another_remote_stays_a_url() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--prefix", "ex"]);
+    let (first, second) = (sandbox.bare("A.git"), sandbox.bare("B.git"));
+    alias_both_ways(&a, &first, &second);
+    let synced = a.run(["sync", "--remote", "tracker", "--json"]);
+    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
+    json(&a, &["create", "after"]);
+    let refs = |remote: &Path| {
+        git(
+            ["--git-dir", text(remote), "for-each-ref", "refs/beads"],
+            None,
+        )
+    };
+    assert_ne!(
+        refs(&first),
+        "",
+        "nothing reached the URL the alias is rewritten to"
+    );
+    assert_eq!(
+        refs(&second),
+        "",
+        "a later command took the saved URL for a remote's name"
+    );
+}
+
+/// The same alias seen by `init`: the URL it is rewritten to publishes a tracker, the remote of the
+/// same name does not; `init` asks the first, as every exchange with the remote reaches it, and
+/// joins its tracker.
+#[test]
+fn init_asks_a_url_that_names_another_remote_as_the_url_it_is() {
+    let sandbox = crate::sandbox();
+    let (first, second) = (sandbox.bare("A.git"), sandbox.bare("B.git"));
+    let a = Machine::new(&sandbox, "a");
+    alias_both_ways(&a, &first, &second);
+    json(&a, &["init", "--prefix", "ex", "--remote", "tracker"]);
+    json(&a, &["create", "shared"]);
+    let b = Machine::new(&sandbox, "b");
+    alias_both_ways(&b, &first, &second);
+    let joined = json(&b, &["init", "--remote", "tracker"]);
+    assert_eq!(joined["joined"], Json::Bool(true), "{joined:?}");
+    assert_eq!(titles(&b), ["shared"]);
+}

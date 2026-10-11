@@ -130,7 +130,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - Setting a tracker up has one path (the maintainer's decision of 2026-10-11, roll-dih8.13): the
   URL-derived workspace, nothing committed; a tracked `.beadroll.json` only for a coordination
   remote other than origin or for `"where": false`, committed on the default branch. `bead init`
-  asks the remote first (`git ls-remote`, nothing written for a remote that publishes nothing):
+  asks the remote first (`git ls-remote` as a link asks, from a bare repository with no remotes,
+  made aside so that nothing is written in the store for a remote that publishes nothing):
   a tracker already published there is joined, adopted as `sync` adopts it when it was published
   under another id, and once the remote has said it publishes one, any failure to join it fails
   `init`, which then starts nothing. One it cannot adopt is refused (`WORKSPACE_MISMATCH`), even
@@ -149,7 +150,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   typed just now is read from the cwd, whether it exists or not. A remote's own push URL is
   pushed to as `git push NAME` pushes there, without `pushInsteadOf`: the endpoint carries how it
   was chosen (a remote's name, origin, or the remote last named here, its `remote_push_url` saved
-  beside it in `meta.json`), never inferred from other remotes' URLs. A store whose remembered remote is a tracked name as older versions resolved it (`git
+  beside it in `meta.json`), never inferred from other remotes' URLs. A URL bead resolved already
+  (the remote last named here, origin's, one git answered) is a URL, never read as a remote's
+  name, which only a remote given just now or tracked can be. A store whose remembered remote is a tracked name as older versions resolved it (`git
   remote get-url`, `insteadOf` applied) goes on through the name, unless the name has a push URL
   of its own, which they never went through: that move stays deliberate (`CONFIG`). `info` and
   `prime` warn while `.beadroll.json` would not reach the other checkouts, comparing it with its

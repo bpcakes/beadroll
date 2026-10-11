@@ -8,10 +8,9 @@ use std::path::{Path, PathBuf};
 use beadroll_core::code::Code;
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::text::repr;
-use beadroll_git::{Fact, exists, realpath, without_password};
+use beadroll_git::{Fact, is_local_path, realpath, without_password};
 use beadroll_store::{
-    Endpoint, Settings, Workspace, derived_shaped, find_workspace, remembered, uuid7, view,
-    write_atomic,
+    Endpoint, Workspace, derived_shaped, find_workspace, remembered, uuid7, view, write_atomic,
 };
 use beadroll_sync::{
     Error as SyncError, Link, publish_soon, publish_soon_to, synchronise, writing,
@@ -72,37 +71,25 @@ fn default_prefix(name: &str) -> String {
     }
 }
 
-/// The remote `init` was given, without a password: a path typed relative to the cwd that is
-/// not a configured remote's name becomes absolute, or relative to the top of the checkout when it
-/// goes into the tracked configuration (a stored one is read from there). Whether a password was
-/// dropped.
-fn remote_argument(
-    settings: &Settings,
-    remote: &OsStr,
-    tracked: bool,
-) -> Result<(OsString, bool), Failure> {
-    let (git, cwd) = (&settings.git, &settings.cwd);
-    let (mut remote, had_password) = without_password(remote);
-    let unnamed = || -> Result<bool, Failure> {
-        let named = git
-            .git([OsStr::new("remote"), OsStr::new("get-url"), &remote])
-            .run()?;
-        Ok(!named.success())
-    };
-    if !remote.as_bytes().starts_with(b"/") && exists(&remote, cwd) && unnamed()? {
-        let real = realpath(&remote, cwd);
-        let top = settings.fact(Fact::Toplevel)?;
-        let top_dir = top.success().then(|| {
-            let shown = String::from_utf8_lossy(&top.stdout);
-            let shown = beadroll_core::text::strip(&shown).to_owned();
-            realpath(OsStr::new(&shown), cwd)
-        });
-        remote = match (&top_dir, tracked) {
-            (Some(top_dir), true) => relpath(&real, top_dir).into_os_string(),
-            _ => real.into_os_string(),
-        };
+/// How `init --tracked` stores the `--remote` it was given, typed as `typed` and leading to `live`:
+/// as typed when it is a configured remote's name, a URL, an absolute path or a path git rewrites;
+/// any other relative path, typed in a subdirectory or not and whether it exists or not, relative
+/// to the top of the checkout, which a stored one is read from.
+fn stored_remote(ws: &Workspace, typed: &OsStr, live: &Endpoint) -> Result<OsString, Failure> {
+    let relative = is_local_path(typed) && !typed.as_bytes().starts_with(b"/");
+    if !relative || ws.names_remote(typed)? || ws.rewrites(typed)? {
+        return Ok(typed.to_owned());
     }
-    Ok((remote, had_password))
+    let settings = &ws.settings;
+    let cwd = &settings.cwd;
+    let target = realpath(&live.url, cwd);
+    let top = settings.fact(Fact::Toplevel)?;
+    if !top.success() {
+        return Ok(target.into_os_string());
+    }
+    let shown = String::from_utf8_lossy(&top.stdout);
+    let top_dir = realpath(OsStr::new(beadroll_core::text::strip(&shown)), cwd);
+    Ok(relpath(&target, &top_dir).into_os_string())
 }
 
 /// The tracker `init` joined: the remote that published it and how many events it brought.
@@ -143,7 +130,7 @@ fn join_published(
         return Ok(Published::Nothing);
     };
     // asked first, so that nothing is written here for a remote that publishes nothing
-    if Link::publishes(ws, &remote.url)? != Some(true) {
+    if Link::publishes(ws, &remote)? != Some(true) {
         return Ok(Published::Nothing);
     }
     match synchronise(ws, &remote) {
@@ -256,19 +243,19 @@ fn workspace_for(
     })
 }
 
-/// `init`'s `--remote` as it is stored ([`remote_argument`]), with whether it is origin's own URL,
-/// which a tracked file stores by name so that it follows origin when it moves; a dropped password
-/// is said in `notes`.
+/// `init`'s `--remote`: where it leads, read from where it was typed ([`Workspace::resolve_endpoint`]),
+/// and, with `--tracked`, how the file stores it ([`stored_remote`]), else as typed; with whether it
+/// is origin's own URL, which a tracked file stores by name so that it follows origin when it
+/// moves. A dropped password is said in `notes`.
 fn given_remote(
     ctx: &Context<'_>,
     args: &InitArgs,
     notes: &mut Vec<String>,
-) -> Result<(Option<OsString>, bool), Failure> {
+) -> Result<Option<Given>, Failure> {
     let Some(remote) = args.remote.clone().filter(|r| !r.is_empty()) else {
-        return Ok((None, false));
+        return Ok(None);
     };
-    let names_origin = ctx.ws.is_origin(&without_password(&remote).0);
-    let (remote, had_password) = remote_argument(&ctx.ws.settings, &remote, args.tracked)?;
+    let (typed, had_password) = without_password(&remote);
     if had_password {
         notes.push(
             "the password was dropped from the remote URL: bead never stores one; use a git \
@@ -276,7 +263,27 @@ fn given_remote(
                 .to_owned(),
         );
     }
-    Ok((Some(remote).filter(|r| !r.is_empty()), names_origin))
+    let live = ctx.ws.resolve_endpoint(&typed, true)?;
+    let stored = if args.tracked {
+        stored_remote(ctx.ws, &typed, &live)?
+    } else {
+        typed.clone()
+    };
+    Ok(Some(Given {
+        names_origin: ctx.ws.is_origin(&typed),
+        stored,
+        live,
+    }))
+}
+
+/// The `--remote` `init` was given ([`given_remote`]).
+struct Given {
+    /// How the tracked file stores it.
+    stored: OsString,
+    /// Where it leads.
+    live: Endpoint,
+    /// Whether it is origin's own URL.
+    names_origin: bool,
 }
 
 /// Creates the tracker here: the `init` event (once), an optional import, the remote recorded,
@@ -284,18 +291,13 @@ fn given_remote(
 /// instead of a second one started ([`join_published`]).
 pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure> {
     let mut notes = Vec::new();
-    let (remote_given, names_origin) = given_remote(ctx, &args, &mut notes)?;
-    // where the remote leads, for reaching it now and recording it: a path stored for the tracked
-    // file is relative to the top of the checkout, as it will be read, wherever init runs
-    let live = match &remote_given {
-        Some(remote) => Some(ctx.ws.resolve_endpoint(remote, !args.tracked)?),
-        None => None,
-    };
+    let given = given_remote(ctx, &args, &mut notes)?;
+    let live = given.as_ref().map(|given| given.live.clone());
     let Chosen { ws: chosen, joined } = workspace_for(
         ctx,
-        remote_given.as_deref(),
+        given.as_ref().map(|given| given.stored.as_os_str()),
         live.as_ref(),
-        names_origin,
+        given.as_ref().is_some_and(|given| given.names_origin),
         args.tracked,
         args.offline,
     )?;

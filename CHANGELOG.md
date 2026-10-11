@@ -38,7 +38,8 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   A remote's own push URL is pushed to as `git push NAME` pushes there, without the
   `pushInsteadOf` rewrites git applies to other URLs, also by the commands after that go by the
   remote it saved (`remote_push_url` in `meta.json`); a relative path typed in a subdirectory is
-  read from there.
+  read from there, also by `init --tracked`, which stores it from the top of the checkout whether
+  it exists or not. A URL bead saved or read is never taken for the name of another remote.
 - `bead init --json` reports `unpublished` for the tracker it wrote to, also when that is not the
   checkout's own (a joined, adopted or tracked one).
 - The README describes the golden path and moving a repository, and MIGRATING runs the import once.

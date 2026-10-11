@@ -434,3 +434,29 @@ fn init_tracked_names_the_tracker_an_earlier_init_adopted() {
     assert_eq!(titles(&b), ["shared"]);
     assert_eq!(events(&b), events(&a));
 }
+
+/// `init --tracked --remote` given, in a subdirectory, a relative path that leads nowhere yet:
+/// read from the subdirectory as typed, never from the top of the checkout, where the same
+/// spelling names another place; the tracked file stores it from the top, where it is read.
+#[test]
+fn init_tracked_in_a_subdirectory_reads_a_missing_path_from_there() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    // what `../tracker.git` names from the top of the checkout, the sandbox's `a-main`
+    let beside = sandbox.bare("tracker.git");
+    let below = a.checkout().join("src");
+    std::fs::create_dir(&below).expect("a subdirectory");
+    let init = [
+        "init",
+        "--tracked",
+        "--prefix",
+        "ex",
+        "--remote",
+        "../tracker.git",
+    ];
+    let run = a.cmd(init.iter().chain(&["--json"])).cwd(&below).run();
+    assert_eq!(run.returncode(), 0, "{}", run.stderr);
+    assert_eq!(tracked_file(&a)["remote"].as_str(), Some("tracker.git"));
+    let refs = ["--git-dir", text(&beside), "for-each-ref", "refs/beads"];
+    assert_eq!(git(refs, None), "", "init published beside the checkout");
+}
