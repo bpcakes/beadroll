@@ -1,9 +1,8 @@
 //! `test_hardening.V8_Python312`, rewritten as the property it stands for (`docs/RUST-PORT.md`
 //! §4.6): the suite runs wherever bead is supported. The Python test ran a module with bead itself
-//! on the oldest Python it supports; the Rust bead needs no Python, so what varies is the system
+//! on the oldest Python it supported; the Rust bead needs no Python, so what varies is the system
 //! and git. Every push runs the tests on Linux and macOS, and every night under the oldest git the
-//! README supports, built from source, against both binaries. This test keeps the workflows saying
-//! so.
+//! README supports, built from source. This test keeps the workflows saying so.
 
 /// `V8_Python312`.
 mod v8_python312 {
@@ -26,7 +25,7 @@ mod v8_python312 {
             "rust.yml's tests lost `{systems}`"
         );
 
-        // "Python 3.11+ and git 2.40+": the oldest git bead supports.
+        // "git 2.40+": the oldest git bead supports.
         let readme = read("README.md");
         let supported = Regex::new(r"git (\d+\.\d+)\+").expect("a valid pattern");
         let oldest = supported
@@ -49,11 +48,12 @@ mod v8_python312 {
             nightly.contains(checked),
             "the nightly does not check its git"
         );
-        for against in [
-            "BEAD_UNDER_TEST: ${{ github.workspace }}/bead",
-            r#"BEAD_UNDER_TEST="$PWD/target/debug/bead" cargo nextest run --workspace"#,
-        ] {
-            assert!(nightly.contains(against), "the nightly lost `{against}`");
-        }
+        // The workspace's tests, on the bead Cargo builds: what each machine is meant to run.
+        let tested = "cargo nextest run --workspace";
+        assert!(nightly.contains(tested), "the nightly lost `{tested}`");
+        assert!(
+            !nightly.contains("BEAD_UNDER_TEST"),
+            "the nightly tests a bead other than the one Cargo builds"
+        );
     }
 }

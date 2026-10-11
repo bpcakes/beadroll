@@ -6,7 +6,8 @@
 and text semantics, event ids and times, event validation, journal settling, causal order, replay
 into state, readiness and the other queries, issue views, Beads import planning and export, key
 minting, and reading a published tree. pancake-studio links this crate alone. Phase 1
-(`roll-k2wy.2`) built it, proven equal to Python's implementation by `cargo xtask diff`.
+(`roll-k2wy.2`) built it, proven equal to Python's implementation by `cargo xtask diff` until the
+cutover removed both (`python-0.1.0` has them).
 
 ## Key entrypoints
 
@@ -27,16 +28,19 @@ minting, and reading a published tree. pancake-studio links this crate alone. Ph
   `saw`, in place of Python's per-event `seen` and `own_anc` bitsets.
 - `src/query.rs`, `src/view.rs`, `src/export.rs`, `src/import.rs`, `src/published.rs`: queries,
   `brief`/`detail`/`line`, `export_records`, `read_records`/`plan_import`, `Tree`.
-- `tests/core/`: the Python suite's tests of the core, under the inventory's naming rule.
+- `tests/core/`: the Python suite's tests of the core, ported under the naming rule of
+  `docs/RUST-PORT.md` §4.2.
 
 ## Edit here for X
 
 - Reading or writing JSON the way Python does (§2.3a, §5): `src/json/`.
-- What an event may hold: `src/event.rs`, with its Python message, and Python's `payload_problem`
-  changed the same way.
-- Replay, state, readiness, cycles, views, import planning and export: the module of that name;
-  every change is checked with `cargo xtask diff replay` against `beadroll/model.py`,
-  `queries.py` and `commands.py`.
+- What an event may hold: `src/event.rs`, with its Python message. Format 1 is frozen: a change
+  is additive, so that a bead that predates it, `python-0.1.0`'s included, sets the new thing
+  aside rather than misreads it.
+- Replay, state, readiness, cycles, views, import planning and export: the module of that name.
+  Until the cutover every change was checked against Python's `model.py`, `queries.py` and
+  `commands.py` by `cargo xtask diff`; the tests in `tests/core/` and the black-box tests of the
+  `beadroll` crate are what holds it now.
 - Anything that reads a file, starts a process, or asks the clock or the environment: not here,
   but `beadroll-store`, `beadroll-git`, or the CLI, which passes the value down.
 
@@ -47,8 +51,8 @@ minting, and reading a published tree. pancake-studio links this crate alone. Ph
 - No panics: `unwrap`, `expect`, `panic!`, `todo!` and `unimplemented!` are denied, and replay
   is total: every input is applied or reported.
 - No `HashMap` or `HashSet` iteration order reaches an output; issues keep replay order.
-- Its answers are Python's, proven differentially against CPython (`xtask diff`, §4.2); a
-  departure is a decided row in §5, never a drift.
+- Its answers are Python's, proven differentially against CPython until the cutover (`xtask
+  diff`, §4.2); a departure is a decided row in §5, never a drift.
 - `saw` answers what Python's bitsets answer: `state/seen/tests.rs` checks every pair against
   them on hostile histories. Replay's speed and memory are measured by
   `cargo run --release --package xtask -- timing --replay N [--ownership]`.
@@ -56,5 +60,4 @@ minting, and reading a published tree. pancake-studio links this crate alone. Ph
 ## Common commands
 
 - `cargo test -p beadroll-core` (unit tests and `tests/core/`)
-- `cargo xtask diff replay` and `cargo xtask diff json` (against CPython; `--cases N`, `--seed S`)
 - `cargo clippy -p beadroll-core --all-targets -- -D warnings -D clippy::mod_module_files`

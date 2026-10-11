@@ -1,12 +1,10 @@
-# The Rust port's checks (docs/RUST-PORT.md §4.9), shaped and pinned like jig-sh's rust-tests.yml:
-# formatting, lints, the tests on Linux and macOS with their doctests, cargo-deny, the oracle and the
-# differential checks. The oracle runs the Python suite against Python's ./bead and against the Rust
-# binary, and it must pass completely against both since Phase 2d closed; the tests run against both
-# binaries too. The diff job checks beadroll-core against CPython case by case. The mixed-fleet
-# job runs Python and Rust machines on one remote and on one store, and the protocol scenarios on
-# fleets that alternate them. The nightly checks are rust-nightly.yml's. Nothing here touches a real
-# store or a real remote: every test builds its own repositories and bare remotes in a temporary
-# directory.
+# bead's checks on every push and pull request (docs/RUST-PORT.md §4.9), shaped and pinned like
+# jig-sh's rust-tests.yml: formatting, lints, the tests on Linux and macOS with their doctests,
+# cargo-deny, and the tests of the infra/ drivers on every Python they may meet. The oracle, the
+# differential checks against CPython and the mixed Python/Rust fleets ran here until the cutover
+# removed the Python implementation (python-0.1.0 has them). The nightly checks are
+# rust-nightly.yml's. Nothing here touches a real store or a real remote: every test builds its own
+# repositories and bare remotes in a temporary directory.
 name: rust
 
 on:
@@ -73,18 +71,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-    env:
-      # A ported black-box test counts once it passes against Python's launcher (docs/RUST-PORT.md
-      # §4.2); since Phase 2d it passes against the Rust binary as well.
-      BEAD_UNDER_TEST: ${{ github.workspace }}/bead
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      # Python runs ./bead, and the oracle's own tests run its Python runner.
-      - name: Install Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.14"
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
         with:
@@ -102,17 +91,10 @@ jobs:
         run: |
           git config --global user.name check
           git config --global user.email check@example.invalid
-      - name: Run the tests against Python's launcher
+      # Every machine of every test runs the bead this build makes: the beadroll package's tests
+      # are given it by Cargo, the other crates' find it in the profile directory above them.
+      - name: Run the tests
         run: cargo nextest run --workspace --locked --profile ci
-      # The default profile writes no JUnit report, so the first run's report is the one kept.
-      - name: Run the tests against the Rust binary
-        if: ${{ !cancelled() }}
-        run: |
-          cargo build --locked --package beadroll
-          BEAD_UNDER_TEST="$PWD/target/debug/bead" cargo nextest run --workspace --locked
-      # Without BEAD_UNDER_TEST, a machine runs the binary its test root supplies: Cargo's bead.
-      - name: Run the binary-selection tests on their default
-        run: env -u BEAD_UNDER_TEST cargo nextest run --locked --package beadroll -E 'test(/^support::/)'
       # Nextest does not run doctests.
       - name: Run the doctests
         run: cargo test --workspace --doc --locked
@@ -143,131 +125,28 @@ jobs:
       - name: Check advisories, bans, licences and sources
         run: cargo deny --locked check
 
-  oracle:
-    name: oracle (${{ matrix.os }})
+  # The infra/ drivers stay stdlib Python (docs/RUST-PORT.md §8) and run on the maintainer's
+  # machines with whatever Python each has, so their tests run on the Pythons check.sh ran them on
+  # before the cutover: 3.11 to 3.14 on Linux, the newest on macOS. They drive stand-ins, never a
+  # bead.
+  infra:
+    name: infra drivers (${{ matrix.os }}, python ${{ matrix.python }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest]
+        python: ["3.11", "3.12", "3.13", "3.14"]
+        include:
+          - os: macos-latest
+            python: "3.14"
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Install Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: "3.14"
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
-        with:
-          cache: false
-          rustflags: ""
-      - name: Cache Rust artifacts
-        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
-        with:
-          shared-key: rust-${{ runner.os }}-${{ github.job }}
-      - name: A git identity for the repositories the tests create
-        run: |
-          git config --global user.name check
-          git config --global user.email check@example.invalid
-      - name: The Python suite against Python's ./bead, which must pass completely
-        run: cargo --locked xtask oracle --bead ./bead
-      - name: The Python suite against the Rust binary, which must pass completely too
-        if: ${{ !cancelled() }}
-        run: cargo --locked xtask oracle
-      - name: Every Python test and the Rust tests that port it
-        if: ${{ !cancelled() }}
-        run: cargo --locked xtask inventory --require-complete
-
-  diff:
-    name: diff (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - name: Install Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.14"
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
-        with:
-          cache: false
-          rustflags: ""
-      - name: Cache Rust artifacts
-        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
-        with:
-          shared-key: rust-${{ runner.os }}-${{ github.job }}
-      # A bounded run until the cutover (docs/RUST-PORT.md §4.2): the Python tests' fixtures in
-      # xtask/fixtures/replay/ and 20,000 generated histories, from a seed that changes every run, so
-      # that runs explore; a failing case is kept in target/diff/ and its seed printed.
-      - name: Replay against CPython
-        run: cargo --locked run --release --package xtask -- diff replay --cases 20000 --seed ${{ github.run_number }}
-      - name: JSON against CPython
-        if: ${{ !cancelled() }}
-        run: cargo --locked run --release --package xtask -- diff json --cases 20000 --seed ${{ github.run_number }}
-      - name: Keep the cases that differ
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: diff-cases-${{ matrix.os }}
-          path: target/diff/*-*.jsonl
-          if-no-files-found: ignore
-
-  mixed-fleet:
-    name: mixed fleet (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      # The Python machines run the checkout's ./bead.
-      - name: Install Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.14"
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
-        with:
-          cache: false
-          rustflags: ""
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@13608cbb45b01feb47ef444ab1a42dc41ad56f1a # v2.79.11
-        with:
-          tool: cargo-nextest@0.9.130
-      - name: Cache Rust artifacts
-        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
-        with:
-          shared-key: rust-${{ runner.os }}-${{ github.job }}
-      - name: A git identity for the repositories the tests create
-        run: |
-          git config --global user.name check
-          git config --global user.email check@example.invalid
-      # Python and Rust machines converge on one remote, each reads the other's store, the published
-      # trees are the same bytes, and either settles the other's pending attempts (docs/RUST-PORT.md
-      # §4.2, item 4). Each machine names its binary, whatever BEAD_UNDER_TEST says.
-      - name: The mixed-fleet scenarios
-        run: cargo nextest run --locked --package beadroll -E 'test(/^mixed::/)'
-      # The protocol scenarios on mixed fleets: BEAD_MIXED_WITH gives every second machine of a
-      # sandbox the other binary, so a scenario's machines alternate Python and Rust, each way round.
-      # A machine that injects a fault through a failpoint runs the Rust binary either way.
-      - name: The protocol scenarios, Python's machines first
-        if: ${{ !cancelled() }}
-        run: |
-          cargo build --locked --package beadroll
-          BEAD_UNDER_TEST="$PWD/bead" BEAD_MIXED_WITH="$PWD/target/debug/bead" cargo nextest run --locked --package beadroll -E 'test(/^protocol::/)'
-      - name: The protocol scenarios, Rust's machines first
-        if: ${{ !cancelled() }}
-        run: |
-          cargo build --locked --package beadroll
-          BEAD_UNDER_TEST="$PWD/target/debug/bead" BEAD_MIXED_WITH="$PWD/bead" cargo nextest run --locked --package beadroll -E 'test(/^protocol::/)'
+          python-version: ${{ matrix.python }}
+      - name: The drivers' own tests
+        run: python3 -m unittest discover -s infra -p 'test_*.py'

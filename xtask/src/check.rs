@@ -1,7 +1,6 @@
-//! `cargo xtask check [--stress] [--real]`: the Rust workspace's baseline before a commit, as
-//! `./check.sh` is the Python package's (`docs/RUST-PORT.md` §4.3, §4.9); at the cutover
-//! `./check.sh` becomes a thin wrapper around it. Every step runs with a scratch `BEAD_HOME` and
-//! gets one line; a failed step fails the check, and the steps after it still run.
+//! `cargo xtask check [--stress] [--real]`: the workspace's baseline before a commit
+//! (`docs/RUST-PORT.md` §4.9), which `./check.sh` runs. Every step runs with a scratch `BEAD_HOME`
+//! and gets one line; a failed step fails the check, and the steps after it still run.
 //!
 //! - `tests`: the workspace's tests through nextest, the sweep's slice among them;
 //!   `BEAD_UNDER_TEST` and `BEAD_SWEEP` reach them as they are set;
@@ -10,8 +9,8 @@
 //! - with `--stress`, `stress`: the ignored stress models;
 //! - with `--real`, `compat real` and then `roundtrip`: the real-export compatibility test, and
 //!   `infra/roundtrip.py` over this machine's Beads exports, against `BEAD_UNDER_TEST` or else the
-//!   bead Cargo builds. As in `check.sh`, a round trip that passes shows only its summary, the
-//!   last line; one that fails shows everything it printed.
+//!   bead Cargo builds. A round trip that passes shows only its summary, the last line; one that
+//!   fails shows everything it printed.
 //!
 //! A failed step shows what it printed but nextest's progress lines; `target/check/` keeps each
 //! step's whole output.
@@ -22,7 +21,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Output, Stdio};
 use std::time::Instant;
 
-use crate::oracle;
 use crate::workspace::{self, Failure};
 
 /// The real-export compatibility test, `#[ignore]`d until a check asks for it.
@@ -63,7 +61,7 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
             match std::env::var_os("BEAD_UNDER_TEST").filter(|b| !b.is_empty()) {
                 Some(bead) => std::path::absolute(&bead)
                     .map_err(|error| Failure::io("cannot resolve", Path::new(&bead), &error))?,
-                None => oracle::build(&root)?,
+                None => build(&root)?,
             },
         )
     } else {
@@ -91,6 +89,70 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
     })
 }
 
+/// Builds `bead` in the profile xtask itself was built in and returns the executable Cargo
+/// reports: the target directory, a build target and the profile can each move it, so its path is
+/// never guessed.
+fn build(root: &Path) -> Result<PathBuf, Failure> {
+    let profile = workspace::profile_dir()?;
+    let output = build_command(root, &profile)?
+        .stderr(Stdio::inherit())
+        .output()
+        .map_err(|error| Failure::Failed(format!("cannot run cargo: {error}")))?;
+    if !output.status.success() {
+        return Err(Failure::Failed(format!(
+            "building bead failed ({})",
+            output.status
+        )));
+    }
+    built_executable(&String::from_utf8_lossy(&output.stdout))
+}
+
+/// The cargo command that builds `bead` in the profile of `profile`, the directory xtask was built
+/// in, and reports its artifacts as JSON on standard output.
+fn build_command(root: &Path, profile: &Path) -> Result<Command, Failure> {
+    let Some(name) = profile.file_name().and_then(|name| name.to_str()) else {
+        return Err(Failure::Failed(format!(
+            "no profile in {}",
+            profile.display()
+        )));
+    };
+    let mut command = Command::new(workspace::cargo());
+    command
+        .args([
+            "build",
+            "--locked",
+            "--package",
+            "beadroll",
+            "--bin",
+            "bead",
+        ])
+        .arg("--message-format=json-render-diagnostics")
+        .current_dir(root);
+    // Cargo's dev profile builds into `debug`; every other profile into its own name.
+    if name != "debug" {
+        command.args(["--profile", name]);
+    }
+    Ok(command)
+}
+
+/// The executable Cargo reported for the `bead` binary among its artifact messages.
+fn built_executable(messages: &str) -> Result<PathBuf, Failure> {
+    let found: Vec<String> = messages
+        .lines()
+        .filter(|line| line.contains(r#""reason":"compiler-artifact""#))
+        .filter(|line| line.contains(r#""kind":["bin"]"#))
+        .filter(|line| workspace::json_field(line, "name").as_deref() == Some("bead"))
+        .filter_map(|line| workspace::json_field(line, "executable"))
+        .collect();
+    match found.as_slice() {
+        [executable] => Ok(PathBuf::from(executable)),
+        _ => Err(Failure::Failed(format!(
+            "cargo reported {} executables for bead, not one",
+            found.len()
+        ))),
+    }
+}
+
 /// Where a check runs and with what.
 struct Setup {
     root: PathBuf,
@@ -110,7 +172,7 @@ enum Kind {
     Nextest,
     Doctests,
     Unittest,
-    /// `infra/roundtrip.py`, reported as `check.sh` reports it.
+    /// `infra/roundtrip.py`, reported by its own summary line ([`report_roundtrip`]).
     Roundtrip,
 }
 
@@ -267,8 +329,9 @@ fn run(
     Ok(passed)
 }
 
-/// A round trip as `check.sh` reports it: when it passed, only the last line it printed, its
-/// summary; when it failed, everything it printed. What it said on standard error goes to `err`.
+/// A round trip: when it passed, only the last line it printed, its summary; when it failed,
+/// everything it printed, so that a failure keeps its whole report (H02 in `docs/FINDINGS.md`).
+/// What it said on standard error goes to `err`.
 fn report_roundtrip(output: &Output, out: &mut dyn Write, err: &mut dyn Write) -> io::Result<()> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     if output.status.success() {
@@ -358,153 +421,6 @@ fn diagnostics(kind: Kind, output: &Output) -> Vec<String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn options_are_stress_and_real_and_nothing_else() {
-        let args = |list: &[&str]| list.iter().map(OsString::from).collect::<Vec<_>>();
-        assert_eq!(parse(args(&[])).ok(), Some(Options::default()));
-        let both = Options {
-            stress: true,
-            real: true,
-        };
-        assert_eq!(parse(args(&["--real", "--stress"])).ok(), Some(both));
-        assert!(matches!(
-            parse(args(&["--full"])),
-            Err(Failure::Usage(message)) if message == "unknown option --full"
-        ));
-    }
-
-    #[test]
-    fn summaries_are_read_from_each_runners_output() {
-        let output = |stdout: &str, stderr: &str| Output {
-            status: std::process::ExitStatus::default(),
-            stdout: stdout.as_bytes().to_vec(),
-            stderr: stderr.as_bytes().to_vec(),
-        };
-        let nextest = output(
-            "",
-            "        PASS [   0.1s] (1/2) x\n     Summary [ 232.489s] 603 tests run: 603 passed (2 leaky), 2 skipped\n",
-        );
-        assert_eq!(
-            summary(Kind::Nextest, &nextest).as_deref(),
-            Some("603 tests run: 603 passed (2 leaky), 2 skipped")
-        );
-        let doctests = output(
-            "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\n\
-             test result: FAILED. 1 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out\n",
-            "",
-        );
-        let summed = summary(Kind::Doctests, &doctests);
-        assert_eq!(summed.as_deref(), Some("3 passed, 3 failed"));
-        let unittest = output("", "...\n------\nRan 3 tests in 0.012s\n\nOK\n");
-        assert_eq!(
-            summary(Kind::Unittest, &unittest).as_deref(),
-            Some("Ran 3 tests in 0.012s OK")
-        );
-        assert_eq!(
-            summary(Kind::Nextest, &output("error: could not compile", "")),
-            None
-        );
-    }
-
-    #[test]
-    fn a_failed_nextest_run_shows_what_failed_without_the_progress() {
-        let failed = Output {
-            status: std::process::ExitStatus::default(),
-            stdout: Vec::new(),
-            stderr: b"        PASS [   0.1s] (1/2) a\n        FAIL [   0.2s] (2/2) b\n  thread 'b' panicked\n     Summary [   0.3s] 2 tests run: 1 passed, 1 failed\n".to_vec(),
-        };
-        let shown = diagnostics(Kind::Nextest, &failed);
-        assert_eq!(shown.len(), 3, "{shown:?}");
-        assert!(shown[0].contains("FAIL") && shown[1].contains("panicked"));
-    }
-}
-
-/// `test_check.CheckScript`, ported (`docs/RUST-PORT.md` §4.6): the check must fail when a selected
-/// step fails, shown with synthetic results only. A fake `cargo` and a fake `python3` stand in for
-/// the real ones, as Python's test put a fake `python3` on `PATH`: every test step exits with the
-/// module status, and the round trip prints its details and summary, and a diagnostic on standard
-/// error when it fails.
+mod check_script;
 #[cfg(test)]
-mod check_script {
-    use std::os::unix::fs::PermissionsExt as _;
-
-    use super::*;
-
-    /// A check with `--real` whose test steps exit with `module_status` and whose round trip
-    /// exits with `real_status`: whether it passed, and what it printed on each stream.
-    fn check(module_status: i32, real_status: i32) -> (bool, String, String) {
-        let dir = tempfile::tempdir().expect("a scratch directory");
-        let verdict = if module_status == 0 { "OK" } else { "FAILED" };
-        let cargo = script(
-            dir.path(),
-            "cargo",
-            &format!(
-                "echo '     Summary [   0.001s] 1 test run: 1 passed'\n\
-                 echo 'test result: ok. 1 passed; 0 failed'\n\
-                 exit {module_status}\n"
-            ),
-        );
-        let python = script(
-            dir.path(),
-            "python3",
-            &format!(
-                "if [ \"$1\" = \"-m\" ]; then\n\
-                 echo 'Ran 1 test in 0.001s'\necho {verdict}\nexit {module_status}\nfi\n\
-                 echo 'roundtrip details'\necho 'roundtrip summary'\n\
-                 if [ {real_status} -ne 0 ]; then echo 'roundtrip diagnostic' >&2; fi\n\
-                 exit {real_status}\n"
-            ),
-        );
-        let setup = Setup {
-            root: dir.path().to_path_buf(),
-            cargo,
-            python,
-            home: dir.path().join("home"),
-            logs: dir.path().to_path_buf(),
-            bead: Some(dir.path().join("bead")),
-        };
-        let options = Options {
-            stress: false,
-            real: true,
-        };
-        let (mut out, mut err) = (Vec::new(), Vec::new());
-        let passed = run(&steps(&setup, options), &setup, &mut out, &mut err).expect("a report");
-        let text = |bytes: Vec<u8>| String::from_utf8(bytes).expect("UTF-8");
-        (passed, text(out), text(err))
-    }
-
-    /// An executable shell script `name` in `dir` with `body`: its path.
-    fn script(dir: &Path, name: &str, body: &str) -> OsString {
-        let path = dir.join(name);
-        std::fs::write(&path, format!("#!/bin/sh\n{body}")).expect("the fake tool");
-        let executable = std::fs::Permissions::from_mode(0o755);
-        std::fs::set_permissions(&path, executable).expect("an executable fake");
-        path.into_os_string()
-    }
-
-    #[test]
-    fn success_keeps_the_roundtrip_summary() {
-        let (passed, out, err) = check(0, 0);
-        assert!(passed, "{out}{err}");
-        assert_eq!(out.lines().last(), Some("roundtrip summary"), "{out}");
-        assert!(!out.contains("roundtrip details"), "{out}");
-    }
-
-    #[test]
-    fn roundtrip_failure_fails_the_check_and_keeps_diagnostics() {
-        let (passed, out, err) = check(0, 17);
-        assert!(!passed, "{out}");
-        assert!(err.contains("roundtrip diagnostic"), "{err}");
-        assert!(out.contains("roundtrip details"), "{out}");
-    }
-
-    #[test]
-    fn successful_roundtrip_does_not_hide_a_failed_module() {
-        let (passed, out, _) = check(19, 0);
-        assert!(!passed, "{out}");
-        assert!(out.contains("roundtrip summary"), "{out}");
-    }
-}
+mod tests;

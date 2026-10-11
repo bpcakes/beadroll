@@ -3,6 +3,11 @@
 *Plan, 2026-10-09, revised after reviews 8 and 9. Baseline: `main` at 9867715 — beadroll 0.1.0,
 format 1, Python 3.11+. The maintainer's decisions of 2026-10-09 are recorded in §10.*
 
+*Status, 2026-10-11: the cutover of Phase 7 (`roll-k2wy.16`) removed the Python implementation,
+its tests and the tooling that compared with it or ran it (the oracle, `diff`, the inventory, the
+goldens' capture, the mixed fleets); its last commit is tagged `python-0.1.0`, and bead 0.2.0 is
+the Rust workspace alone. What follows is the plan as written and followed, kept as history.*
+
 This is the plan for rewriting `bead` in Rust as a Cargo workspace, porting every test, and moving
 pancake-studio onto the new crates. It says what must not change, how the code is split and why,
 how we prove that nothing regressed, and in what order the work lands. The per-test port catalogues
@@ -846,8 +851,9 @@ A direct port of `support.py`:
   `env!("CARGO_BIN_EXE_bead")` and passes that default into test support. The shared dependency
   must not expand the macro itself; Cargo does not define it there. Tests in other crates, which
   Cargo gives no `bead`, supply the checkout's Python launcher until the cutover removes it
-  (`crates/beadroll-sync/tests/sync/`). Selection is per-machine override, then
-  `BEAD_UNDER_TEST`, then the supplied default. Phase 0 can supply Python's absolute `./bead` path
+  (`crates/beadroll-sync/tests/sync/`); since the cutover they supply the `bead` Cargo built in
+  the profile directory above them (`beadroll_test_support::built_bead`). Selection is
+  per-machine override, then `BEAD_UNDER_TEST`, then the supplied default. Phase 0 can supply Python's absolute `./bead` path
   before Rust works. `BEAD_MIXED_WITH`, set to a second binary, gives it to every second machine
   a sandbox makes, unless the machine has its own: the protocol scenarios then run on fleets that
   alternate the two implementations, each way round (§4.2, item 4).
@@ -1355,8 +1361,10 @@ Machines can upgrade in any order. Separate-machine convergence and same-store u
 tests (§4.2) are both required evidence. Receipt compatibility holds throughout this window.
 
 **Infrastructure executable selection, before removal.**
-- `infra/drive.py` currently hardcodes the local `./bead`; `infra/roundtrip.py` and
-  `infra/compat_real.py` also hardcode it. Add `BEAD_UNDER_TEST` as an explicit absolute local
+- `infra/drive.py` hardcoded the local `./bead`, and so did `infra/roundtrip.py` and
+  `infra/compat_real.py` until Phase 0; since `roll-k2wy.16` (c87e43a) all three take the bead
+  `infra/selected.py` chooses, and since the launcher's removal that is `BEAD_UNDER_TEST`, else the
+  installed `~/.local/bin/bead`. The plan was: add `BEAD_UNDER_TEST` as an explicit absolute local
   executable override in all three, with an installed `bead` fallback after launcher removal.
   Resolve the compatibility helper from the repository, not from the executable's directory.
   The oracle and `xtask check --real` need this for `roundtrip.py` and `compat_real.py` long
@@ -1700,10 +1708,10 @@ decision 7 open. The five decisions stand.
 | `BEAD_TEST_CRASH_BEFORE_PUSH`, `BEAD_TEST_CRASH_AFTER_PUSH` | Crash hooks, exits 98 and 99; aliases of failpoints |
 | `BEAD_FAILPOINTS` | New: §4.5 |
 | `BEAD_UNDER_TEST` | Read by test harnesses and retained local infrastructure drivers: explicit binary under test |
-| `BEADROLL_ORACLE_REFUSALS` | Set by `cargo xtask oracle` while it targets a binary other than `./bead`: Python bead refuses to start (exit 3) and records the attempt in the file it names (§4.2) |
-| `PYTHONINTMAXSTRDIGITS` | CPython setting: oracle pins 4300; upgrade preflight checks the old runtime's effective limit (§8); not a Rust product setting |
+| `BEADROLL_ORACLE_REFUSALS` | Until the cutover: set by `cargo xtask oracle` while it targets a binary other than `./bead`: Python bead refuses to start (exit 3) and records the attempt in the file it names (§4.2) |
+| `PYTHONINTMAXSTRDIGITS` | CPython setting: the oracle pinned 4300 until the cutover; upgrade preflight checks the old runtime's effective limit (§8); not a Rust product setting |
 | `BEAD_SWEEP`, `BEAD_SWEEP_GC`, `BEAD_SWEEP_CONCURRENT` | Read by the sweep only: `full` runs all 660 schedules; `BEAD_SWEEP_GC=1` runs `git gc --prune=now` on the remote after every push, and `BEAD_SWEEP_CONCURRENT=1` runs the two follow-ups at once |
-| `BEAD_TEST_REMOTE`, `BEAD_DRIVE_HOSTS`, `BEAD_TEST_LOCAL_REPO` | Read by `infra/` only |
+| `BEAD_TEST_REMOTE`, `BEAD_DRIVE_HOSTS`, `BEAD_DRIVE_BEADS`, `BEAD_EXPECT_VERSION`, `BEAD_TEST_LOCAL_REPO` | Read by `infra/` only (`BEAD_DRIVE_BEADS`: each remote host's bead; `BEAD_EXPECT_VERSION`: the version every machine's bead must report, as a native build) |
 | `HOME`, `TMPDIR`, `PATH` | Read implicitly: the default store root, the temporary files that take git's output, and where `git` and `ps` are found |
 | `GIT_CONFIG_COUNT` and its `GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n`, `GIT_SSH`, `GIT_SSH_COMMAND`, the `REPO_LOCATION_ENV` names | Read for `sync.git`'s environment (§2.3d): the count is extended, never replaced; either SSH variable suppresses bead's default; the location variables are removed |
 

@@ -1,7 +1,7 @@
 //! The memory replay needs: the peak resident set of a process that does nothing but load a journal
 //! written to disk and replay it (`timing --load DIR`), so that neither the generator nor xtask's
 //! own copies count. The kernel keeps every process's peak; `/usr/bin/time` reports it when the
-//! process exits (`-l` on macOS, `-v` with GNU time on Linux), for Python's process as for Rust's.
+//! process exits (`-l` on macOS, `-v` with GNU time on Linux).
 
 use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};

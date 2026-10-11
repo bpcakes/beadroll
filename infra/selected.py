@@ -1,8 +1,9 @@
 """Which bead an infra driver runs on this machine, and the record of it (docs/RUST-PORT.md §8).
 
-The bead is the one BEAD_UNDER_TEST names, which must be an absolute path; else this checkout's ./bead while
-it exists; else the installed ~/.local/bin/bead. A driver's helpers are found in this source tree, never
-beside the bead. Before a driver writes test data it records the bead it selected: its path, the first line
+The bead is the one BEAD_UNDER_TEST names, which must be an absolute path (a build of this checkout, such as
+target/release/bead, or a staged one); else the installed ~/.local/bin/bead. Until the cutover this checkout's
+Python launcher, ./bead, came between the two. A driver's helpers are found in this source tree, never beside
+the bead. Before a driver writes test data it records the bead it selected: its path, the first line
 `--version` prints, whether it is a script (Python's launcher or installed entry point) or a native build, and
 a digest of it. With BEAD_EXPECT_VERSION set (0.2.0 at the cutover), a bead that reports another version or is
 a script stops the driver there."""
@@ -11,7 +12,6 @@ import json
 import os
 import subprocess
 
-SOURCE_TREE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INSTALLED = "~/.local/bin/bead"
 
 
@@ -23,8 +23,7 @@ def local_bead(environ=None):
         if not os.path.isabs(chosen):
             raise SystemExit(f"BEAD_UNDER_TEST must be an absolute path, not {chosen!r}")
         return chosen
-    launcher = os.path.join(SOURCE_TREE, "bead")
-    return launcher if os.path.exists(launcher) else os.path.expanduser(INSTALLED)
+    return os.path.expanduser(INSTALLED)
 
 
 def describe(bead):

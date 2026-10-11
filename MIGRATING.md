@@ -6,7 +6,8 @@ to do, what to check, and the two things that are not obvious.
 
 ## Before
 
-- `bead` installed on this machine (`uv tool install beadroll`, or see the
+- `bead` installed on this machine (`cargo install --locked --force --path
+  crates/beadroll --root ~/.local` from a checkout's root; *Install* in the
   README). Nothing is needed on the other machines until they sync.
 - The repository has an `origin` you can push to. bead derives the tracker's
   identity from that URL and publishes to `refs/beads/journal` there; no branch

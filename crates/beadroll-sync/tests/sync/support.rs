@@ -12,12 +12,12 @@ use std::time::{Duration, Instant};
 use beadroll_core::json::{Format, Object, Value, write};
 use beadroll_store::{Actor, Settings, Workspace, pending_files, read_attempt};
 use beadroll_sync::{Error, Mode, Tx, coordinated};
-use beadroll_test_support::{Json, Machine, Sandbox, json};
+use beadroll_test_support::{Json, Machine, Sandbox, built_bead, json};
 
-/// A sandbox whose machines run `BEAD_UNDER_TEST`, else the checkout's Python launcher.
+/// A sandbox whose machines run `BEAD_UNDER_TEST`, else the `bead` Cargo built beside this test
+/// binary ([`built_bead`]); a missing one fails the test, saying how to build it.
 pub(crate) fn sandbox() -> Sandbox {
-    let launcher = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bead");
-    Sandbox::new(launcher.canonicalize().expect("the checkout's ./bead"))
+    Sandbox::new(built_bead())
 }
 
 /// The settings of `machine`'s runs, from its checkout, with `vars` set besides

@@ -2,17 +2,20 @@
 
 ## Purpose
 
-`crates/beadroll-test-support` is the Rust `tests/support.py` (`docs/RUST-PORT.md` §4.4): a
-`Sandbox` (a temporary root with a bare `origin.git` whose `main` has one commit) and `Machine`s
-(each with its own home, clone and identity) that run a `bead` binary, for the black-box tests of
-every crate. Later phases add the fixtures the ported tests need: hooks, fake `ssh`, `ps` and
-`git`, PTYs and failpoint handshakes. For beadroll-core's integration tests it builds events.
+`crates/beadroll-test-support` is the Rust port of the Python suite's `tests/support.py`
+(`docs/RUST-PORT.md` §4.4): a `Sandbox` (a temporary root with a bare `origin.git` whose `main` has
+one commit) and `Machine`s (each with its own home, clone and identity) that run a `bead` binary,
+for the black-box tests of every crate. Later phases added the fixtures the ported tests need:
+hooks, fake `ssh`, `ps` and `git`, PTYs and failpoint handshakes. For beadroll-core's integration
+tests it builds events.
 
 ## Key entrypoints
 
 - `src/sandbox.rs`: `Sandbox`, `git`, `select_bead`, the choice between `BEAD_UNDER_TEST` and the
-  caller's default, and `select_mixed`, the second `bead` that `BEAD_MIXED_WITH` names for every
-  second machine of a sandbox (`Sandbox::selecting` takes both values instead of reading them).
+  caller's default (`Sandbox::selecting` takes the variable's value instead of reading it), and
+  `built_bead`, the default of the tests of a crate other than `beadroll`: the `bead` Cargo built in
+  the profile directory above the running test (`<target>/<profile>/bead` beside
+  `<target>/<profile>/deps/`).
 - `src/machine.rs`: `Machine` (`run`, `bead`, `show`, `ready`, `export`, `store`, `with_bead`),
   `Invocation` (a run's directory, thread, agent, environment and input), `Run`, `code`.
 - `src/lib.rs`: `Json` (beadroll-core's `Value`) and `parse_json`, which read `bead --json`.
@@ -22,22 +25,20 @@ every crate. Later phases add the fixtures the ported tests need: hooks, fake `s
 
 ## Edit here for X
 
-- Something every ported test needs from its world: here, ported from `tests/support.py` or the
-  test module's own helpers.
+- Something every test needs from its world: here, as `tests/support.py` had it (`python-0.1.0`)
+  or as the test module's own helpers grew it.
 - How a machine's environment is built: `Machine::env`, which mirrors `Machine.env`.
 
 ## Invariants
 
 - The default binary is always the caller's: this crate never expands
   `env!("CARGO_BIN_EXE_bead")`, which Cargo defines only for the integration tests of the package
-  that builds `bead`. It builds on its own: `cargo build -p beadroll-test-support`.
+  that builds `bead`. A crate other than `beadroll` passes `built_bead()`. It builds on its own:
+  `cargo build -p beadroll-test-support`.
 - A machine's binary is its own override, else `BEAD_UNDER_TEST`, else the supplied default; each
-  must be an absolute path.
-- `BEAD_MIXED_WITH`, set and not empty, names a second `bead` (an absolute path) for a mixed fleet
-  (`docs/RUST-PORT.md` §4.2, item 4): every second machine a sandbox makes, the second, the fourth
-  and so on in the order `Machine::new` makes them, runs it instead of the one above, unless it has
-  its own override (`with_bead`, which `rust_only` uses). Unset or empty, it changes nothing. A
-  sandbox counts its machines with an atomic, since tests make them from several threads.
+  must be an absolute path. The sandbox's `bead` must exist: a sandbox fails its test at once when
+  it does not, saying how to build it, so that a test never fails command by command on a missing
+  binary.
 - A run's environment is the test's, less every `CLAUDE*`, `CODEX*`, `BEAD_*` and `GIT_*`
   variable, then the machine's home and identity, then its extras.
 - Nothing outside the sandbox is written; dropping it removes it.
@@ -48,6 +49,3 @@ every crate. Later phases add the fixtures the ported tests need: hooks, fake `s
 
 - `cargo test -p beadroll-test-support`
 - `cargo build -p beadroll-test-support`
-- `BEAD_UNDER_TEST=$PWD/bead BEAD_MIXED_WITH=$PWD/target/debug/bead cargo nextest run -p beadroll
-  -E 'test(/^protocol::/)'`: the protocol scenarios on a mixed fleet, Python's machines first; the
-  same with the two paths swapped puts Rust's first

@@ -1,5 +1,5 @@
 //! The parser against what CPython 3.14's `loads_strict` answers (each expectation was read from
-//! it); `cargo xtask diff json` checks the rest at volume.
+//! it); until the cutover `cargo xtask diff json` checked the rest at volume.
 
 use super::*;
 use crate::json::{Format, write};

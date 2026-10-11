@@ -4,7 +4,7 @@
 `br` and fed to `bv`; readiness is compared with br's. Reads the exports only; bead/br/bv run in
 scratch repositories with no remotes. Writes results.json under --out. The bead it runs, and the preflight
 record of it before any data is written, are infra/selected.py's: the one BEAD_UNDER_TEST names (an absolute
-path), else this checkout's ./bead while it exists, else the installed one."""
+path), else the installed one."""
 import argparse, collections, json, os, pathlib, shutil, subprocess, sys, tempfile
 import selected
 P=pathlib.Path

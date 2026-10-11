@@ -26,22 +26,20 @@ pub struct Machine {
 
 impl Machine {
     /// A machine `name` in `sandbox`: home `home-NAME` (bead creates it), checkout `NAME-main`
-    /// cloned from `origin.git`, running the sandbox's `bead`; or, when `BEAD_MIXED_WITH` names a
-    /// second one, that one if it is the second, the fourth and so on of the machines made in the
-    /// sandbox ([`Sandbox::mixed_with`]).
+    /// cloned from `origin.git`, running the sandbox's `bead`.
     pub fn new(sandbox: &Sandbox, name: &str) -> Machine {
         Machine {
             name: name.to_owned(),
             home: sandbox.root().join(format!("home-{name}")),
             checkout: sandbox.clone(&format!("{name}-main"), None),
-            bead: sandbox.next_bead(),
+            bead: sandbox.bead().to_path_buf(),
             extra: BTreeMap::new(),
         }
     }
 
-    /// This machine runs `bead` whatever the sandbox chose, `BEAD_UNDER_TEST` and
-    /// `BEAD_MIXED_WITH` included: one binary per machine, for fleets that mix implementations. It
-    /// must be an absolute path.
+    /// This machine runs `bead` whatever the sandbox chose, `BEAD_UNDER_TEST` included: one
+    /// binary per machine, for a test that needs this build's own (its failpoints) or a stand-in.
+    /// It must be an absolute path.
     pub fn with_bead(mut self, bead: impl Into<PathBuf>) -> Machine {
         let bead = bead.into();
         assert!(

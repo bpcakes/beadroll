@@ -1,7 +1,7 @@
 """Import every local Beads export into a scratch store and export it again; records must come back identical.
 Reads ~/Documents/*/.beads/issues.jsonl only; writes nothing outside the scratch store. The bead it runs, and
 the preflight record of it before any data is written, are infra/selected.py's: the one BEAD_UNDER_TEST names
-(an absolute path), else this checkout's ./bead while it exists, else the installed one."""
+(an absolute path), else the installed one."""
 import glob, json, os, subprocess, sys, time
 import selected
 BP = selected.local_bead()

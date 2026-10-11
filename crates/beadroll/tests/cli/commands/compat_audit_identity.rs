@@ -5,7 +5,6 @@
 
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
-use std::os::unix::ffi::OsStringExt as _;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -22,21 +21,6 @@ fn scrubbed() -> BTreeMap<OsString, OsString> {
                 .any(|prefix| key.starts_with(prefix.as_bytes()))
         })
         .collect()
-}
-
-/// The interpreter Python's launcher starts with (`#!/usr/bin/env python3`), as its
-/// `sys.executable` names it; `None` without a `python3` on the test's PATH. Rust's bead needs none.
-fn python() -> Option<PathBuf> {
-    let output = Command::new("python3")
-        .args(["-I", "-c", "import sys; print(sys.executable)"])
-        .output()
-        .ok()
-        .filter(|output| output.status.success())?;
-    let mut executable = output.stdout;
-    if executable.pop() != Some(b'\n') || executable.is_empty() {
-        return None;
-    }
-    Some(PathBuf::from(OsString::from_vec(executable)))
 }
 
 /// The executable `name` on the test's own PATH, as `shutil.which` finds it.
@@ -74,9 +58,9 @@ fn nested_info(sandbox: &Sandbox, root: &Path, path: &OsStr) -> Run {
 }
 
 /// The process-tree walk settles nested harnesses: the nearest harness among bead's ancestors is
-/// the caller, and its session the thread. The Python test replaces `subprocess.run` in-process;
-/// here a fake `ps` first on PATH, which both binaries run from there, answers every lookup with
-/// the harness as a child of init.
+/// the caller, and its session the thread. The Python test replaced `subprocess.run` in-process;
+/// here a fake `ps` first on PATH, which bead runs from there, answers every lookup with the
+/// harness as a child of init.
 #[test]
 fn nearest_harness_mocked_process_tree() {
     let sandbox = crate::sandbox();
@@ -110,9 +94,7 @@ fn missing_ps_does_not_crash_nested_actor_detection() {
     let root = sandbox.root().join("identity-nops");
     let bin_dir = root.join("bin");
     std::fs::create_dir_all(&bin_dir).unwrap();
-    if let Some(python) = python() {
-        std::os::unix::fs::symlink(python, bin_dir.join("python3")).unwrap();
-    }
+    // git and nothing else: no `ps` to walk the process tree with.
     let git = which("git").expect("git on the test's PATH");
     std::os::unix::fs::symlink(git, bin_dir.join("git")).unwrap();
     let p = nested_info(&sandbox, &root, bin_dir.as_os_str());

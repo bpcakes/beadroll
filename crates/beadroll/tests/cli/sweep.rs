@@ -20,7 +20,7 @@ mod judge;
 mod run;
 #[allow(
     clippy::module_inception,
-    reason = "the inventory's rule names the port of Sweep.test_sweep sweep::sweep::sweep"
+    reason = "the porting rule names the port of Sweep.test_sweep sweep::sweep::sweep"
 )]
 mod sweep;
 mod sweep_failure_reporting;

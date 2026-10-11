@@ -8,7 +8,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "infra"))
@@ -127,15 +126,14 @@ class DrivePreflight(unittest.TestCase):
 
 
 class LocalSelection(unittest.TestCase):
-    def test_the_local_bead_is_the_one_named_else_the_checkouts_else_the_installed_one(self):
+    def test_the_local_bead_is_the_one_named_else_the_installed_one(self):
         self.assertEqual(selected.local_bead({"BEAD_UNDER_TEST": "/opt/bead"}), "/opt/bead")
         with self.assertRaises(SystemExit):
             selected.local_bead({"BEAD_UNDER_TEST": "target/debug/bead"})
-        with tempfile.TemporaryDirectory(prefix="bead-select-test-") as tree:
-            with mock.patch.object(selected, "SOURCE_TREE", tree):
-                self.assertEqual(selected.local_bead({}), os.path.expanduser("~/.local/bin/bead"))
-                Path(tree, "bead").write_text("#!/bin/sh\n")
-                self.assertEqual(selected.local_bead({}), os.path.join(tree, "bead"))
+        # never a bead found in this checkout: unset or empty, the installed one
+        installed = os.path.expanduser("~/.local/bin/bead")
+        self.assertEqual(selected.local_bead({}), installed)
+        self.assertEqual(selected.local_bead({"BEAD_UNDER_TEST": ""}), installed)
 
     def test_the_verdict_wants_the_version_from_a_native_build(self):
         row = {"path": "/b", "version": "bead 0.2.0", "kind": "native", "sha256": "0" * 16}

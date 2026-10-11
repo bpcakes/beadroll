@@ -11,13 +11,9 @@
 //! a release or a takeover. Closes are always `--offline`, and only of issues the model has no
 //! owner for. The seed is Python's, 20261006, drawn from in Python's order by [`Rng`], CPython's
 //! generator: which commands run depends only on the draws and on how many issues there are, so
-//! these are Python's 2,400 commands (see `stress.rs`).
-//!
-//! The model runs twice: on six Rust machines, as Python's ran on six of its own, and on a mixed
-//! fleet (`docs/RUST-PORT.md` §4.2, item 4), where the machines alternate Python's `bead` and the
-//! Rust one. The mixed run is the same model, seed and checks, so every full check also requires
-//! Python and Rust machines to export the same bytes and show the same details and ready set, and
-//! neither to report an integrity problem.
+//! these are Python's 2,400 commands (see `stress.rs`). Its six machines run the Rust `bead`, as
+//! Python's model ran six of its own. Until the cutover the same model also ran on a mixed fleet,
+//! the machines alternating Python's `bead` and the Rust one (`docs/RUST-PORT.md` §4.2, item 4).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
@@ -26,8 +22,8 @@ use beadroll_core::id::EventId;
 use beadroll_test_support::{Json, Machine, Run};
 
 use super::{
-    Fleet, Rng, details, each, error_code, id, machines, missing, mixed_machines, realized,
-    replayed, reply, run_json, sorted, status_disputed, words,
+    Rng, details, each, error_code, id, machines, missing, realized, replayed, reply, run_json,
+    sorted, status_disputed, words,
 };
 
 /// What a step of the model does.
@@ -153,12 +149,12 @@ struct Soak {
     started: Instant,
 }
 
-/// `audit_model_run`: `operations` commands drawn from `seed` on the machines `fleet` makes, then
-/// the run's summary.
-fn audit_model_run(operations: usize, seed: u64, fleet: Fleet) -> Soak {
+/// `audit_model_run`: `operations` commands drawn from `seed` on six machines, then the run's
+/// summary.
+fn audit_model_run(operations: usize, seed: u64) -> Soak {
     let started = Instant::now();
     let sandbox = crate::sandbox();
-    let machines = fleet(&sandbox, "soak");
+    let machines = machines(&sandbox, "soak");
     let root = &machines[0];
     root.bead(["init", "--prefix", "soak"]);
     let create = |title: String| id(&root.bead(["create", &title]).expect("an issue"));
@@ -397,18 +393,7 @@ impl Soak {
 #[test]
 #[ignore = "stress: randomised models"]
 fn six_machine_2400_operation_reference_model() {
-    let soak = audit_model_run(2400, 20_261_006, machines);
-    assert_eq!(soak.checks.len(), 8);
-    let operations: usize = soak.counts.values().sum();
-    assert_eq!(operations, 2400);
-}
-
-/// The same 2,400 commands, model and checks on a mixed fleet: the six machines alternate Python's
-/// `bead` and the Rust one, Python's first, whatever the environment says.
-#[test]
-#[ignore = "stress: randomised models"]
-fn six_machine_2400_operation_reference_model_on_a_mixed_fleet() {
-    let soak = audit_model_run(2400, 20_261_006, mixed_machines);
+    let soak = audit_model_run(2400, 20_261_006);
     assert_eq!(soak.checks.len(), 8);
     let operations: usize = soak.counts.values().sum();
     assert_eq!(operations, 2400);

@@ -6,8 +6,8 @@ Configuration (environment):
   BEAD_DRIVE_HOSTS       three ssh targets for the roles one, two, three: "one=user@host1,two=host2,three=user@host3"
   BEAD_TEST_REMOTE       the throwaway repository, e.g. git@github.com:owner/throwaway.git (never a real one)
   BEAD_TEST_LOCAL_REPO   a clone of it on this machine (default ~/beads-poc-test/repo)
-  BEAD_UNDER_TEST        the bead to run here, an absolute path (default: this checkout's ./bead while it exists,
-                         else the installed ~/.local/bin/bead; infra/selected.py)
+  BEAD_UNDER_TEST        the bead to run here, an absolute path (default: the installed ~/.local/bin/bead;
+                         infra/selected.py)
   BEAD_DRIVE_BEADS       the bead to run on the remote hosts, by role, absolute paths there:
                          "one=/path/bead,three=/path/bead" (default: each host's installed ~/.local/bin/bead)
   BEAD_EXPECT_VERSION    the version every machine's bead must report, e.g. 0.2.0; each must then also be a native

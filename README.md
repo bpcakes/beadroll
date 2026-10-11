@@ -1,6 +1,6 @@
 # beadroll
 
-[![check](https://github.com/bpcakes/beadroll/actions/workflows/check.yml/badge.svg)](https://github.com/bpcakes/beadroll/actions/workflows/check.yml)
+[![rust](https://github.com/bpcakes/beadroll/actions/workflows/rust.yml/badge.svg)](https://github.com/bpcakes/beadroll/actions/workflows/rust.yml)
 
 **An issue tracker for coding agents that works across git worktrees, clones
 and machines, and keeps its state off your code branches.**
@@ -19,8 +19,11 @@ It reads and writes [Beads](https://github.com/steveyegge/beads) JSONL
 command and exports back for `bv` or any Beads reader. The command is `bead`;
 its verbs mirror the `br` verbs agents actually use.
 
-A small Python package (`beadroll/`: `base`, `machine`, `model`, `queries`,
-`sync`, `commands`, `cli`), standard library only, Python 3.11+ and git 2.40+.
+One binary, `bead`, built from a Cargo workspace (`crates/`: the pure core,
+git, the store, the sync protocol and the command line), for macOS and Linux
+with git 2.40+. Up to 0.1.0 it was a Python package (the tag `python-0.1.0`);
+0.2.0 is the same tool in Rust, reading and writing the same stores and
+published trees, with the same commands, output and error codes.
 
 ## Status
 
@@ -37,16 +40,31 @@ every finding and its resolution is in `docs/FINDINGS.md`.
 
 ## Install
 
+bead is built from source; there is no package to download. It needs
+[rustup](https://rustup.rs), which fetches the pinned toolchain (Rust 1.99.0,
+`rust-toolchain.toml`) on first use. From a checkout's root:
+
 ```sh
-uv tool install git+https://github.com/bpcakes/beadroll   # or: pipx install git+https://...
-uv tool install --force .                                  # from a checkout
+cargo install --locked --force --path crates/beadroll --root ~/.local
 bead --version
 ```
 
-Without `uv` or `pipx`, use a virtual environment:
-`python3 -m venv ~/.local/share/beadroll && ~/.local/share/beadroll/bin/pip install <checkout>`
-and link `~/.local/share/beadroll/bin/bead` into `~/.local/bin`. In the
-checkout, `./bead` runs the working copy. Start-up is about 25 ms.
+Run it from the root: rustup reads `rust-toolchain.toml` from the current
+directory, not from `--path`, and elsewhere it builds with the default
+toolchain, which fails `rust-version`. Without a checkout, given read access to
+the repository:
+
+```sh
+cargo +1.99.0 install --locked --force --config net.git-fetch-with-cli=true \
+  --git ssh://git@github.com/bpcakes/beadroll.git beadroll --root ~/.local
+```
+
+cargo refuses the scp-like `git@github.com:…` form; a `--git` install never
+reads the repository's toolchain file, hence `+1.99.0`; fetching through git
+uses the machine's own SSH setup. Either command puts `bead` in
+`~/.local/bin`, and run again it upgrades it. In a checkout, `cargo build
+--package beadroll` builds the working copy as `target/debug/bead`. Start-up
+is about 2 ms, and a read (`show`, `list`, `ready`) about 15 ms.
 
 ## Quick start
 
@@ -271,7 +289,7 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   for.
 - A closed stdout or stderr, a terminal that hung up (EIO) or a descriptor
   closed at exec never produce a traceback: a committed command exits 0, a
-  failed one keeps its status. Help is plain text on every Python.
+  failed one keeps its status. Help is plain text, never coloured.
 - An owner's close that a takeover superseded says so: `"superseded"` on the
   record and a `!` line, exit 0 (the decision in `docs/REVIEWING.md` §2 stands).
 - Text comes from files and stdin as UTF-8 whatever the locale; anything else
@@ -320,50 +338,49 @@ hostname is a local alias (`bead machines --name ID=ALIAS`), never in events.
 ## Tests and reviews
 
 ```sh
-./check.sh            # every fast test module with a scratch store (about 20 minutes)
-./check.sh --stress   # also the randomised multi-machine models and the protocol sweep
-./check.sh --real     # also import/export of the real tracker exports on this machine
+./check.sh            # every test, the doctests and the infra/ drivers' tests (about 4 minutes)
+./check.sh --stress   # also the randomised multi-machine models
+./check.sh --real     # also import/export of this machine's real tracker exports, with br and bv
 ```
 
-Every selected check must pass. `--real` exits non-zero if a command fails or exported
-records differ, and keeps the failing round-trip report instead of only its last line.
-Its imports run offline in the scratch store.
+`./check.sh` runs `cargo xtask check` with the options given: one line per step, a scratch
+`BEAD_HOME` for every step, and a non-zero exit when any step fails, the later steps still
+running. It needs rustup and cargo-nextest. Every selected check must pass. `--real` exits
+non-zero if a command fails or exported records differ, and keeps the failing round-trip report
+instead of only its last line. Its imports run offline in the scratch store.
 
-`tests/` is one package organised by subject, not by who wrote the test:
-`test_replay` (causality, registers, quarantine, validation, cycles; in-process and
-fast), `test_protocol` (claims, attempts, fences, lost acknowledgements, sync races),
-`test_storage` (segments, torn tails, identity, readers against writers),
-`test_commands` (every verb end to end, identity detection, branch tracking),
-`test_compat` (Beads import/export, real exports, `br`/`bv`), `test_hardening`
-(the base under the protocol: git environment and remotes, URLs and credentials,
-store files and modes, output streams, imports), `test_stress` (randomised
-models), `test_check` (the verification commands report failures), and `test_sweep`
-(the ownership protocol enumerated: three machines, nine operations at seven
-fault boundaries, every ordered pair of follow-ups;
-a twelve-schedule slice by default, including retries of interrupted owner closes and
-deletes; `BEAD_SWEEP=full` for all 660, with no failure exemptions). `tests/support.py`
-holds the sandbox: every test builds its own repository, bare remotes and machine
-homes in a temporary directory, and the package sets a scratch `BEAD_HOME` so the
-default store is never touched.
+The tests are the Cargo workspace's, one integration-test binary per crate, organised by subject
+as the Python suite they were ported from was, test by test: `replay` (causality, registers,
+quarantine, validation, cycles; in beadroll-core, in-process and fast), `protocol` (claims,
+attempts, fences, lost acknowledgements, sync races), `storage` (segments, torn tails, identity,
+readers against writers), `commands` (every verb end to end, identity detection, branch
+tracking), `compat` (Beads import/export, real exports, `br`/`bv`), `hardening` (the base under
+the protocol: git environment and remotes, URLs and credentials, store files and modes, output
+streams, imports), `stress` (randomised models, run by `--stress`), and `sweep` (the ownership
+protocol enumerated: three machines, nine operations at seven fault boundaries, every ordered
+pair of follow-ups; a twelve-schedule slice by default, including retries of interrupted owner
+closes and deletes; `BEAD_SWEEP=full` for all 660, with no failure exemptions). `golden` compares
+every help page and the reading commands' output with Python's, captured before the cutover, and
+`parity` holds what the mixed Python and Rust fleets checked, among it receipts byte for byte as
+Python wrote them. `crates/beadroll-test-support` holds the sandbox: every test builds its own
+repository, bare remotes and machine homes in a temporary directory, each machine with a scratch
+`BEAD_HOME`, so the default store is never touched.
 
-Every test that runs bead runs the one `BEAD_UNDER_TEST` names, by default the
-checkout's `./bead`. That is how the Rust port (`docs/RUST-PORT.md`, a Cargo
-workspace beside the package) is held to this suite: `cargo xtask oracle` runs it
-against any `bead` binary, leaving out only the tests that cannot target one
-(`xtask/oracle-skip.txt`). While it targets another binary it sets
-`BEADROLL_ORACLE_REFUSALS`, under which Python bead refuses to start, so a test
-that slipped past `BEAD_UNDER_TEST` fails instead of passing on Python.
-`cargo xtask inventory` lists every test here with the Rust test that ports it.
+Every test that runs bead runs the one Cargo builds, unless `BEAD_UNDER_TEST` names another by its
+absolute path. Until 0.2.0 bead was a Python package, whose suite the Rust tests port; the
+port's tests passed against both, and the last Python is tagged `python-0.1.0`
+(`docs/RUST-PORT.md` is the plan the port followed).
 
 Seven independent reviews have been run against the code. Their reports are kept
 verbatim under `docs/reviews/`; `docs/FINDINGS.md` is the ledger of every finding, its status,
 how it was resolved and which tests cover it. `docs/REVIEWING.md` is the brief for the
 next one: the map of the design, the decisions that are not findings, the rules,
 the checklist and the deliverables. `infra/` holds the maintainer's harness against
-real machines and a throwaway GitHub repository: `drive.py` (cross-machine
-scenarios over ssh), `soak.py` (random agent-like traffic), `roundtrip.py`
-(import/export over real Beads exports, with its tests beside it in `test_roundtrip.py`) and the
-synthetic `seed.jsonl`.
+real machines and a throwaway GitHub repository, stdlib Python that drives any `bead`:
+`drive.py` (cross-machine scenarios over ssh), `soak.py` (random agent-like traffic),
+`roundtrip.py` (import/export over real Beads exports), `selected.py` (which bead each runs, and
+the record of it before any test data is written), their tests beside them, and the synthetic
+`seed.jsonl`.
 
 ## Design decisions that changed while building
 
@@ -396,14 +413,21 @@ synthetic `seed.jsonl`.
   alone and one of them moves. Beads readers accept these ids; `br` would not
   have minted them.
 - `dep cycles` lists every elementary cycle, up to 200.
-- Ancestry over ownership events is kept as one bitset per event: memory grows
-  with (events × ownership events)/8, about 60 MB at 10,000 ownership events.
-  A permanent implementation would use a reachability index.
+- What each event had seen is kept as one clock per event over chains: every
+  machine's journal is a chain, and the claims, releases and takeovers of
+  attempt files join chains of their own, about one for each machine that
+  writes them. A clock holds the furthest position seen on each chain, so
+  whether one event saw another is one comparison, and memory grows with events
+  × chains rather than with events × ownership events. Replaying 200,000
+  events, about 55% of them in attempt files, takes 0.33 s and peaks at 958 MB,
+  747 MB of it the loaded journal (`docs/RUST-PORT.md`, Appendix A; Python's
+  bitsets took 11.8 s and 1.7 GB).
 - The branch recorded on an event is whatever `HEAD` was in the directory the
   command ran in. It is a trace, not a lock: a claim does not pin a branch.
-- With no persisted projection, every command replays the journal: measured
-  by the fifth review at 0.7 s / 45 MB for 10k events, 3.4 s / 125 MB at 50k and
-  14 s / 412 MB at 200k, far beyond the trackers measured so far (the largest
+- With no persisted projection, every command replays the journal: 8 ms and a
+  52 MB peak for 10k events, 53 ms / 236 MB at 50k and 0.26 s / 921 MB at
+  200k (`docs/RUST-PORT.md`, Appendix A; most of the memory is the loaded
+  journal, roll-dih8.11), far beyond the trackers measured so far (the largest
   real one is 280 issues). A persisted projection is the obvious next step if
   that ever matters.
   A fetch or push that gets no answer fails after `BEAD_NET_TIMEOUT` seconds

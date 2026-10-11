@@ -1,4 +1,5 @@
-//! `tests/test_hardening.py`'s black-box tests, ported under the inventory's naming rule. The
+//! `tests/test_hardening.py`'s black-box tests, ported under the naming rule of
+//! `docs/RUST-PORT.md` §4.2, which keeps `docs/FINDINGS.md`'s class references valid. The
 //! tests whose Python originals patch bead in process inject the same fault through a failpoint
 //! instead, on machines that run the Rust binary (`crate::rust_only`); `gate` meets a bead
 //! stopped at a `pause-until` failpoint.
@@ -32,7 +33,7 @@ mod g26;
 mod g27;
 mod g28;
 mod g29;
-pub(crate) mod g30;
+mod g30;
 mod g31;
 mod g32;
 mod g33;

@@ -10,13 +10,34 @@ not cover.
 
 ## 1. What this is
 
-`beadroll/` (a Python 3.11+ package of seven modules, standard library only — `base`, `machine`,
-`model`, `queries`, `sync`, `commands`, `cli`, each importing only the ones before it; `./bead` runs the
-working copy, `uv tool install .` installs the `bead` command) is a proof-of-concept issue tracker
-for coding agents that work from many git worktrees and several machines at once. It replaces
-the workflow around `br` (beads_rust), whose tracker state lives in a file tracked on code
-branches: dirty checkouts, tracker-only commits, merge conflicts, state split between worktrees
-and machines.
+`bead` is a proof-of-concept issue tracker for coding agents that work from many git worktrees and
+several machines at once. It replaces the workflow around `br` (beads_rust), whose tracker state
+lives in a file tracked on code branches: dirty checkouts, tracker-only commits, merge conflicts,
+state split between worktrees and machines.
+
+It is one binary, built from a Cargo workspace (Rust 1.99) whose crates each depend only on the
+ones before them, which the compiler enforces (`docs/RUST-PORT.md` §2.1):
+
+- `beadroll-core`: Python-compatible JSON and text, event validation, journals and their settling,
+  causal order, replay into state, readiness and the other queries, issue views, Beads import
+  planning and export. No filesystem, processes, clock or environment.
+- `beadroll-git`: the only code that starts git: the runner (its own session, timeouts, output to
+  unlinked files), the environments of the checkout and of `sync.git`, remote URL rules, the
+  classification of push outcomes and local damage.
+- `beadroll-store`: this machine: `BEAD_HOME`, the store's files, modes and lock, segments and torn
+  tails, attempt, pending and receipt files, identity, the workspace a checkout resolves to, the
+  failpoint registry.
+- `beadroll-sync`: transactions, the link to the coordination remote, `synchronise` and the
+  ownership protocol.
+- `beadroll`: the `bead` binary, `commands` and `cli` (parsing, rendering, output streams, exit
+  codes); `beadroll-test-support`: the sandbox the black-box tests run it in.
+
+`cargo build --package beadroll` builds the working copy as `target/debug/bead`; `README.md`'s
+*Install* has `cargo install`. Until 0.2.0 bead was a Python package of seven modules, which the
+Rust implementation ports with nothing changed in behaviour except where Python's failed: the
+structured errors below where Python died with a traceback (§5 row 26), and a coordination ref
+named by its UTF-8 bytes under any locale (`roll-k2wy.18`). The last of the Python package is the
+tag `python-0.1.0`, and its function names survive in the Rust ones below.
 
 The design under test, in the order it is best read:
 
@@ -24,18 +45,18 @@ The design under test, in the order it is best read:
   (`$BEAD_HOME/<workspace>/events/<machine>/<segment>.jsonl`). A machine only appends to its own
   journal. A full segment is never rewritten.
 - **Every event names the frontier its writer had seen** (`deps`; ids are UUIDv7). Current state
-  is the replay of all journals in causal order (`causal_order`, `replay`). Machines merge by
-  exchanging files; nothing is text-merged.
-- **One store per repository per machine**, outside every working tree (`find_workspace`:
-  tracked `.beadroll.json`, else a hash of the normalised origin URL, else a local id). Nothing is
-  ever written inside a checkout.
+  is the replay of all journals in causal order (`causal_order`, `replay`, beadroll-core).
+  Machines merge by exchanging files; nothing is text-merged.
+- **One store per repository per machine**, outside every working tree (`find_workspace`,
+  beadroll-store: tracked `.beadroll.json`, else a hash of the normalised origin URL, else a local
+  id). Nothing is ever written inside a checkout.
 - **Sync through one dedicated git ref** (`refs/beads/journal`) on one coordination remote,
   through a private bare repo (`sync.git`). The pushed history holds a manifest and the
   journals, never code. A push is a plain fast-forward whose parent is the fetched head, so the
-  remote refuses it if anyone else published first (`Link.publish`).
-- **Claims are persistent and settled online** (`coordinated`). Ownership events are not
-  journal records: an *attempt* (the `claim`/`release`/`takeover` plus any edits made in the
-  same command) is one file under `events/<machine>/claims/`, written first under `pending/`,
+  remote refuses it if anyone else published first (`Link::publish`, beadroll-sync).
+- **Claims are persistent and settled online** (`coordinated`, beadroll-sync). Ownership events
+  are not journal records: an *attempt* (the `claim`/`release`/`takeover` plus any edits made in
+  the same command) is one file under `events/<machine>/claims/`, written first under `pending/`,
   where it counts for nothing anywhere until the remote holds it. A refused push drops the
   attempt; an unanswered one stays pending until a later contact finds it on the remote
   (confirmed) or fences it off with a commit on the same head (`settle_pending`). Attempt files
@@ -49,11 +70,14 @@ The design under test, in the order it is best read:
   makes an issue not ready, not claimable, and not "done" for dependents.
 - **Labels and dependency edges are add-wins sets**: a removal removes only the additions its
   writer had seen.
-- **Identity on every event**: opaque machine id, agent type and thread id (`detect_actor`).
-  **Place on every event**: branch and commit of the checkout the command ran in (`where`).
-- **Beads JSONL is an import/export format only** (`import_records`, `export_records`).
+- **Identity on every event**: opaque machine id, agent type and thread id (`detect_actor`,
+  beadroll-store). **Place on every event**: branch and commit of the checkout the command ran in
+  (`where`, `capture_where`).
+- **Beads JSONL is an import/export format only** (`plan_import`, `export_records`,
+  beadroll-core).
 
-Read `README.md`, then `bead` top to bottom, then `tests/support.py` and one test module.
+Read `README.md`, then each crate's `AGENTS.md` and code in the order above, then
+`beadroll-test-support` and one test module.
 
 ## 2. Decisions you must not report as findings
 
@@ -83,9 +107,16 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - One event with two different payloads is quarantined alone; nothing waits on it.
 - The store lock is held while a sync or claim pushes (about a second against GitHub).
 - Publishing is serialised on one ref; under heavy contention claims take seconds.
-- No compaction beyond segment rotation. No persisted projection (replay is ~80 ms).
-- Ancestry over ownership events is a bitset per event (memory ~ events × ownership events / 8);
-  a permanent implementation would use a reachability index.
+- No compaction beyond segment rotation. No persisted projection: every command replays the
+  journal, 8 ms for 10,000 events and 0.26 s for 200,000 (`RUST-PORT.md` Appendix A).
+- What each event had seen is one clock per event over chains, the reachability index of
+  `state/seen.rs` (`RUST-PORT.md` §2.3c): every machine's journal is a chain, and each event of an
+  attempt file joins a chain whose last event is among its ancestors, or starts one, so there are
+  about as many chains as machines that write attempts. A clock holds the furthest position the
+  event saw on each chain, and `saw` is `clock[chain] >= position`. Memory grows with events ×
+  chains, not with events × ownership events as Python's bitsets did: 200,000 events, 55% of them
+  in attempt files, replay in 0.33 s with a 958 MB peak, 747 MB of it the loaded journal itself
+  (roll-dih8.11).
 - Exported comment ids for comments made here come from a 48-bit hash range; a collision is a
   one-in-10^14 event and is then resolved by the ids alone.
 - `dep cycles` stops after 200 cycles.
@@ -129,9 +160,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
   ever be needed, follows writers-lag-readers through the manifest; none is planned.
 - Events nest at most 100 levels (`MAX_NESTING`); replay keeps looser type rules than writes
   (`write_problem`) so histories written before a rule mean the same on every machine.
-- Rust parity targets Python 3.11+'s default 4,300-digit decimal conversion limit on JSON input
-  and output, not unlimited integer tokens. The oracle pins that default; machines with a
-  non-default Python setting must resolve store compatibility before cutover (`RUST-PORT.md` §8).
+- Integers have any size up to Python 3.11+'s default 4,300-digit decimal conversion limit on JSON
+  input and output, not unlimited integer tokens (§5 row 2). The oracle pinned that default until
+  the cutover; a machine whose Python ran with another limit had to resolve its store's
+  compatibility before it upgraded (`RUST-PORT.md` §8).
 - What a journal line, attempt file or manifest means does not depend on the Python reading it
   (`RUST-PORT.md` §5 rows 3, 6, 7, 22 and 23): JSON is read from bytes as UTF-8 with surrogates
   passed (no byte-order mark, UTF-16 or UTF-32 is guessed), at most 512 levels deep (counted before
@@ -147,9 +179,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   more, an imported comment with a `uid` or a `where`, a create clearing `created_at`; a
   quarantined id's stand-in names its issue only by a string; an import refuses an escaped lone
   surrogate anywhere in a record. Replay has no last resort to reach.
-- A renamed copy that finds every free key taken fails replay with `KEY_SPACE` in both
-  implementations: Python's replay raises it, and beadroll-core's `replay` returns it.
-- Where Python fails with a traceback, Rust answers with a structured error instead, each recorded
+- A renamed copy that finds every free key taken fails replay with `KEY_SPACE`, as in Python,
+  whose replay raised it: beadroll-core's `replay` returns it.
+- Where Python failed with a traceback, Rust answers with a structured error instead, each recorded
   as it lands (§5 row 26). In beadroll-core: `mint_key` under a parent whose children's numbers have
   more than 4,300 digits, or would count on to 4,301, is `VALIDATION` (`MintError::NumberTooLong`).
   In the store, sync and command line (Phase 2a): a `BEAD_NET_TIMEOUT`, `BEAD_ROTATE_BYTES`,
@@ -161,16 +193,29 @@ These were decided deliberately. Report problems *with* them, not their existenc
   (it is not digits and nothing was carried over, or its digits are superscripts) is `CONFIG`; an
   answer standard output refuses (other than a closed pipe or a hung-up terminal) is an `IO` error
   on standard error, exit 1; a `ps` line that names no command ends the nearest-harness walk.
-- beadroll-core is proven equal to Python by `cargo xtask diff`: replay reports and JSON, over the
-  journals the Python tests build and generated histories, valid and hostile. A difference is fixed
-  in Rust or decided as a §5 row; the harness keeps no list of expected differences.
-- While `cargo xtask oracle` runs the Python suite against another binary it sets
-  `BEADROLL_ORACLE_REFUSALS`; Python bead (`cli.main`, so a copy of the launcher too) then refuses
-  to start, with exit status 3, and records the attempt in the file it names. A test that bypasses
-  `BEAD_UNDER_TEST` fails instead of counting a Python run as the other binary's pass
-  (`RUST-PORT.md` §4.2).
-- The Rust binary has failpoints in every build, activated only by `BEAD_FAILPOINTS` and the two
-  crash hooks Python has (`BEAD_TEST_CRASH_BEFORE_PUSH`/`AFTER_PUSH`, which are aliases); a spec
+- The Rust bead keeps CPython's semantics wherever Python's bead had them, as `RUST-PORT.md` §5
+  rows 1 to 21 record (the rows not stated above): replay takes a boolean where an integer is due
+  (`"v": true` is format 1; a `true` priority sorts as 1 and prints as `True`), as histories
+  written before `write_problem` had it, while writes refuse one; a lone surrogate in a line,
+  escaped or raw, reads as one U+FFFD
+  and is reported; a duplicate key keeps its last value at its first key's place; whitespace,
+  `strip()` and lower case are Python's Unicode ones where Python used them (`split_list`, comment
+  emptiness, `search`, `normalize_remote`); a path is resolved as `os.path.realpath` resolves it,
+  never by libc; `--estimate` and `--limit` read numbers as `int()` does (`" +5 "`, `5_000`);
+  conflict values print as `repr()` prints them, and `True` as `True`; an OS error reads
+  `"{strerror}: {path}"`, a rename's naming its target; the JSON of each output and file is the
+  `json.dumps` dialect Python wrote it in; the command line is argparse's, its errors and help
+  pages included (§2.3h); SIGXFSZ is ignored, so a file-size limit is an `IO` error, and standard
+  input closed at exec is no stream, `-` then an `IO` error; a sync or ownership command makes 12
+  rounds with `U(0.1, 0.4) × attempt` seconds between them; the names of fetch refs, temporary
+  files and set-aside copies are Python's.
+- beadroll-core was proven equal to Python by `cargo xtask diff` until the cutover: replay reports
+  and JSON, over the journals the Python tests built and generated histories, valid and hostile.
+  A difference was fixed in Rust or decided as a §5 row; the harness kept no list of expected
+  differences. Since the cutover the goldens (`crates/beadroll/tests/golden/`) and the answers
+  `parity` pins hold what Python's bead printed.
+- The binary has failpoints in every build, activated only by `BEAD_FAILPOINTS` and the two
+  crash hooks Python had (`BEAD_TEST_CRASH_BEFORE_PUSH`/`AFTER_PUSH`, which are aliases); a spec
   that cannot fire as written is `CONFIG` (`RUST-PORT.md` §2.3g, §4.5; the maintainer's decision
   of 2026-10-09). In-crate tests pass the registry in `Settings`; `error(CODE)` at
   `ownership.after-confirm` is their in-process form of Q03's interruption.
@@ -205,18 +250,20 @@ These were decided deliberately. Report problems *with* them, not their existenc
 Do not take the baseline from a document; run it:
 
 ```sh
-./check.sh            # all test modules except the slow models, with a scratch BEAD_HOME
+./check.sh            # every test but the slow models, the doctests and the infra/ drivers' tests
 ./check.sh --stress   # also the randomised multi-machine models (several minutes)
 ./check.sh --real     # also import/export of the real tracker exports on this Mac
 ```
 
-`check.sh` prints one line per module and exits non-zero on any failure, including a failed
-round-trip command or differing exported records with `--real`. A failed round trip keeps its
-full report; its imports run offline in the scratch store. The default sweep includes owner
-close/delete retries after an interrupted publish;
-the full sweep has no expected-failure exemptions. `test_check` and `infra/test_roundtrip.py`
-exercise these failure paths with synthetic results in the fast baseline. Record the baseline
-output in your report.
+`check.sh` runs `cargo xtask check` (it needs rustup and cargo-nextest): it prints one line per
+step, gives each a scratch `BEAD_HOME`, and exits non-zero on any failure, including a failed
+round-trip command or differing exported records with `--real`. A failed step keeps its full
+output in `target/check/`, and a failed round trip shows its whole report; its imports run
+offline in the scratch store. The default sweep includes owner close/delete retries after an
+interrupted publish; the full sweep (`BEAD_SWEEP=full`) has no expected-failure exemptions.
+xtask's `check::check_script`, the sweep's `sweep_failure_reporting` and
+`infra/test_roundtrip.py` exercise these failure paths with synthetic results in the fast
+baseline. Record the baseline output in your report.
 The real-infrastructure scripts (four machines, a throwaway GitHub repository) are
 under `infra/`; their last results are summarised in `README.md`.
 
@@ -224,8 +271,8 @@ under `infra/`; their last results are summarised in `README.md`.
 
 - Work in a scratch directory. **Always set `BEAD_HOME`** to a scratch path before running `bead`;
   the default (`~/.local/state/beadroll`) holds the project's own real tracker (this repository
-  dogfoods `bead`; its `.beadroll.json` names that workspace) and must not be touched. `tests/__init__.py`
-  sets a scratch `BEAD_HOME` for the test modules; do it yourself for anything else.
+  dogfoods `bead`; its `.beadroll.json` names that workspace) and must not be touched. The tests
+  give every machine a scratch `BEAD_HOME`; do it yourself for anything else.
 - Run `bead` only inside repositories you created for the test, or with `BEAD_WORKSPACE` set.
   Never run it inside the real repositories under `~/Documents` (the origin URL would route you
   to a real workspace id). Reading their `.beads/issues.jsonl` files is fine; do not copy their
@@ -233,16 +280,18 @@ under `infra/`; their last results are summarised in `README.md`.
 - Local bare repositories are the default remote. The only real remote you may push to is the
   throwaway repository the maintainer provides in `$BEAD_TEST_REMOTE` (private, synthetic data).
   Do not create other repositories or refs anywhere, and do not push to `main` there.
-- Do not modify `bead`, `README.md`, `FINDINGS.md`, existing tests or earlier reports. Proposed
-  fixes go in your report as unified diffs.
+- Do not modify bead's code (`crates/`), `README.md`, `FINDINGS.md`, existing tests or earlier
+  reports. Proposed fixes go in your report as unified diffs.
 - Do not change SSH, firewall, git or shell configuration on any machine. Do not run `br` or
   `bv` inside real repositories (`br where` writes lock files).
 - Starting Codex or Claude Code sessions from a test is for identity detection only: at most a
   couple, and say so in the report.
-- In-process tests replace a beadroll name with `tests.support.patched(name, value)` (the package
-  imports names, so patching one module does not reach the others); to skip bead's wait between
-  attempts patch `pause`, never the global `time.sleep` (`subprocess` polls through it; a callback
-  there deadlocks on the store lock under load).
+- Inject faults with failpoints (`BEAD_FAILPOINTS`, `RUST-PORT.md` §4.5), never by patching bead
+  or the clock: `backoff@always=skip` skips bead's wait between attempts, never a shortened sleep;
+  `pause-until(PATH)` holds bead at a point until the test touches `PATH.go`; `exit(N)`,
+  `sigkill`, `errno(...)` and `fail-reply` stop or fail it there; `clock`'s `offset` and `at` move
+  its clock. A spec that cannot fire as written is `CONFIG`, so a fault never silently misses.
+  Tests that call the crates in-process pass the registry in `Settings`.
 - Report outcomes faithfully: a test you could not run is "not run", not "passed".
 
 ## 5. Checklist
@@ -252,11 +301,13 @@ happened, and attach the reproduction (command or test).
 
 **Replay and causality**
 - Same event set → same projection, conflicts, claims and readiness under every delivery
-  order, duplicate delivery, and journal enumeration order (`tests/test_replay.py` permutes
+  order, duplicate delivery, and journal enumeration order (beadroll-core's `replay` tests permute
   three to six machines; try more, and thousands of events).
-- Version-vector ancestry (`State.saw`) depends on each event depending, directly or not, on
-  its predecessor in the same journal, and on bitsets for ownership events. Construct journals
-  where that fails (hand-written events) and see what replay does.
+- Ancestry (`State::saw`) depends on each event depending, directly or not, on its predecessor
+  in the same journal, and on the chains the events of attempt files join (`state/seen.rs`): an
+  event joins a chain only when the chain's last event is among its ancestors, and its clock
+  holds the furthest position it saw on every chain. Construct journals where that fails
+  (hand-written events, ownership events whose ancestors cross chains) and see what replay does.
 - Events whose causes are missing must wait (`pending`), never be treated as concurrent.
 - Unknown `op`, unknown `v`, missing fields, non-UUID ids, deps that are not lists: is the
   damage scoped to the event?
@@ -265,7 +316,7 @@ happened, and attach the reproduction (command or test).
 - Concurrent writers on one machine (`writing` uses `flock`); readers take no lock and must
   tolerate a torn tail and a half-written attempt file. Kill `-9` a writer at every boundary.
 - Segment rotation (`active_segment`, `BEAD_ROTATE_BYTES`) under two local writers.
-- Merge rule (`Link.merge`): one side must be a prefix of the other. Own-journal fork error,
+- Merge rule (`Link::merge`): one side must be a prefix of the other. Own-journal fork error,
   foreign-fork report, a remote truncated or rewritten (`git push --force` to the ref), an
   extra segment, a segment deleted locally.
 - Duplicates: the same id in two journals with identical payloads; reused ids across
@@ -281,7 +332,7 @@ happened, and attach the reproduction (command or test).
   whose fetch was stale.
 - Lost acknowledgement at every point: `BEAD_TEST_CRASH_BEFORE_PUSH`, `BEAD_TEST_CRASH_AFTER_PUSH`,
   a push killed mid-flight, a push that times out (`BEAD_NET_TIMEOUT`) but was applied, a
-  receive hook that stalls (see `test_protocol`). Then: a retry of the same command, a
+  receive hook that stalls (see the `protocol` tests). Then: a retry of the same command, a
   different command, a `sync`, from the same and from a new process.
 - The `superseded` pre-pass in `replay`: find a case where a takeover rejects a legitimate
   write, or where a hand-written takeover corrupts ownership.
@@ -320,8 +371,8 @@ happened, and attach the reproduction (command or test).
 ## 6. Stress-test plan
 
 Simulate machines locally: each is its own `BEAD_HOME` and its own clone of one local bare
-repository. `tests/support.py` (`Sandbox`, `Machine`) shows the pattern; `tests/test_stress.py`
-has two randomised models to extend.
+repository. `beadroll-test-support` (`Sandbox`, `Machine`) shows the pattern;
+`crates/beadroll/tests/cli/stress/` has two randomised models to extend.
 
 1. **Randomised model check.** 6 machines, 2,000+ operations drawn from the real distribution
    (show 32%, update 12%, list 9%, ready 6%, close 5%, create 5%, dep 5%, comments 4%,
@@ -330,8 +381,9 @@ has two randomised models to extend.
    round: identical exports and per-issue `show` everywhere; at most one confirmed owner per
    issue, equal to the model; every accepted claim visible everywhere; no `waiting_events`,
    `integrity` entries or `forked_journals`; readiness consistent with blockers.
-2. **Fault injection.** `kill -9` during append, fetch, push and confirmation; the crash hooks;
-   disk full; read-only store mid-run; clock skew (offset `time.time_ns`).
+2. **Fault injection.** `kill -9` during append, fetch, push and confirmation (the failpoints'
+   `sigkill`, `torn-sigkill`, `exit(N)`); the crash hooks; disk full (`errno(ENOSPC)`); read-only
+   store mid-run; clock skew (the `clock` failpoint's `offset`).
 3. **Hostile remote.** A clone that force-pushes old or foreign commits to `refs/beads/journal`,
    deletes the ref, or replaces the manifest.
 4. **Optional, with the real remote.** `infra/drive.py` and `infra/soak.py`; see their
@@ -348,9 +400,10 @@ has two randomised models to extend.
    Design observations clearly separated from bugs, and from the accepted decisions in §2.
    Exactly which checks in §5 and §6 you ran, with numbers, and which you did not. Any side
    effects you caused anywhere, even if cleaned up. The `check.sh` output you started from.
-2. **Tests**, in a new module `tests/test_review<n>.py` that imports `tests.support`: every bug
-   as a failing test, every property you verified as a passing one, each test's docstring
-   naming the finding id. The maintainer folds them into the subject modules when the findings
-   are closed; do not edit the existing modules.
+2. **Tests**, in a new module `review<n>` of the `beadroll` crate's test binary
+   (`crates/beadroll/tests/cli/review<n>.rs`, declared in its `main.rs`), built on
+   `beadroll-test-support`: every bug as a failing test, every property you verified as a passing
+   one, each test's doc comment naming the finding id. The maintainer folds them into the subject
+   modules when the findings are closed; do not edit the existing modules.
 3. **Proposed ledger rows** for `FINDINGS.md`, one per finding, at the end of the report.
 4. Your scripts, kept runnable, in your scratch directory.

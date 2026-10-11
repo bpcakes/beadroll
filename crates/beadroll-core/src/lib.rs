@@ -1,6 +1,7 @@
 //! The pure core of `bead` (`docs/RUST-PORT.md` §2.1): everything that reads and derives a tracker,
 //! with no I/O (no filesystem, processes, clock or environment), so pancake-studio can link it alone.
-//! Its answers are Python bead's, proven differentially against CPython (`cargo xtask diff`).
+//! Its answers are Python bead's, proven differentially against CPython until the cutover removed
+//! the Python implementation (`cargo xtask diff`, at `python-0.1.0`).
 //!
 //! - [`json`] and [`text`]: Python's `json` and string semantics where bead depends on them.
 //! - [`id`], [`time`] and [`key`]: event ids, event times, and the keys bead mints and renames.

@@ -2,11 +2,13 @@
 //! journal line too deep is one integrity problem, never a crash that takes down every command; a
 //! tracked config or a published manifest too deep is a structured error; import refuses nesting
 //! that not every machine can read. The class's fourth test, a peer whose reader stops lower
-//! keeping up after a deep import elsewhere, ran bead under Python 3.12 or 3.13: it becomes a
-//! mixed-fleet case, Python 3.14 against Rust (`docs/RUST-PORT.md` §4.6), ported with those
-//! (`mixed/g30.rs`), which share the record and the checks here.
+//! keeping up after a deep import elsewhere, ran bead under Python 3.12 or 3.13. It became a
+//! mixed-fleet case, Python 3.14 against Rust, whose reading ceilings differ (`docs/RUST-PORT.md`
+//! §4.6), until the cutover removed Python's launcher; what remains of it is the peer that keeps
+//! working beside a refused deep import, both machines on the one bead
+//! (`peer_keeps_working_after_a_deep_import_elsewhere`).
 
-pub(crate) mod g30_deep_json_is_bounded_and_scoped {
+mod g30_deep_json_is_bounded_and_scoped {
     use std::collections::BTreeSet;
     use std::io::Write as _;
     use std::path::Path;
@@ -58,7 +60,7 @@ pub(crate) mod g30_deep_json_is_bounded_and_scoped {
 
     /// `_g30_record`: a Beads record whose unknown field nests `depth` arrays (the record itself is
     /// one more level).
-    pub(crate) fn record(key: &str, depth: usize, field: &str) -> String {
+    fn record(key: &str, depth: usize, field: &str) -> String {
         format!("{}, \"{field}\": {}}}\n", head(key, "deep"), nested(depth))
     }
 
@@ -127,12 +129,12 @@ pub(crate) mod g30_deep_json_is_bounded_and_scoped {
     }
 
     /// `assert_no_traceback`: `what`, which `run` ran, did not crash.
-    pub(crate) fn assert_no_crash(run: &Run, what: &str) {
+    fn assert_no_crash(run: &Run, what: &str) {
         assert!(!run.crashed(), "{what} crashed: {}", tail(&run.stderr));
     }
 
     /// `assert_works`: `what`, which `run` ran, did not crash and succeeded.
-    pub(crate) fn assert_works(run: &Run, what: &str) {
+    fn assert_works(run: &Run, what: &str) {
         assert_no_crash(run, what);
         let said = last_chars(&run.stderr, 400);
         assert_eq!(run.returncode(), 0, "{what}: {said}");
@@ -261,5 +263,47 @@ pub(crate) mod g30_deep_json_is_bounded_and_scoped {
         let custom = exported.get("custom").expect("its custom field");
         let written = write(custom, Format::ASCII).expect("the field");
         assert_eq!(written, nested(50));
+    }
+
+    /// The ids of the issues a `bead list --json` printed: `{i["id"] for i in listed["issues"]}`.
+    fn ids(listed: &Json) -> BTreeSet<String> {
+        let issues = listed["issues"].as_array().expect("a list of issues");
+        let id = |issue: &Json| issue["id"].as_str().expect("an id").to_owned();
+        issues.iter().map(id).collect()
+    }
+
+    /// G30: after one machine tries to import a record 12,000 levels deep, refused whole, a peer
+    /// keeps working and sees what the first sees. In the Python test
+    /// (`test_peer_on_python_312_keeps_working_after_a_deep_import_elsewhere`) the peer's reader
+    /// stopped lower than the importer's, and until the cutover Python's bead and the Rust one
+    /// stood each way round.
+    #[test]
+    fn peer_keeps_working_after_a_deep_import_elsewhere() {
+        let sandbox = crate::sandbox();
+        let a = set_up(&sandbox);
+        a.bead(["sync"]);
+        let b = Machine::new(&sandbox, "g30b");
+        assert_works(&b.run(["sync", "--json"]), "the peer's first sync");
+        let path = sandbox.root().join("deep.jsonl");
+        std::fs::write(&path, record("ex-deep", 12_000, "x_state")).expect("the record");
+        let imported = a.run(["import", text(&path), "--json"]);
+        assert_no_crash(&imported, "the deep import");
+        let accepted = imported.returncode() == 0;
+        assert!(
+            !accepted,
+            "the deep record was imported: {}",
+            imported.stdout
+        );
+        assert_eq!(code(&imported), "VALIDATION", "the deep import");
+        a.bead(["create", "made after the import"]);
+        a.bead(["sync"]);
+        let synced = b.run(["sync", "--json"]);
+        assert_works(&synced, "the peer's sync after the import");
+        let listed = b.run(["list", "--all", "--limit", "0", "--json"]);
+        assert_works(&listed, "the peer's list");
+        let seen = parse_json(&listed.stdout).expect("bead list prints a record");
+        let first = a.bead(["list", "--all", "--limit", "0"]);
+        assert_eq!(ids(&seen), ids(&first.expect("bead list prints a record")));
+        assert_eq!(ids(&seen).len(), 2, "{seen:?}");
     }
 }

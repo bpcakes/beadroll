@@ -47,7 +47,8 @@ the calls.
 - `src/error.rs`: `Error`, `IoError` (Python's `OSError` text), `strerror`; `src/signal.rs`:
   signal names; `src/text.rs`: Python's `strip()` and `splitlines()` where git's output is read.
 - `tests/git/`: the Python suite's tests of the URL rules, the runner's timeouts and the
-  local-damage classifier, under the inventory's naming rule. The unit tests of the Phase 4 code
+  local-damage classifier, ported under the naming rule of `docs/RUST-PORT.md` §4.2. The unit
+  tests of the Phase 4 code
   compare each in-process answer with git's own, in both object formats (`src/testing.rs`).
 
 ## Edit here for X

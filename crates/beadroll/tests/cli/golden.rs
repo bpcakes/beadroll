@@ -1,11 +1,12 @@
 //! Golden outputs, for what other tests do not pin whole (`docs/RUST-PORT.md` §4.2 item 5): every
 //! help page, the whole human `show`, the human output of the other reading commands over one
 //! scripted tracker, and `info`'s keys, with ids, keys, machines, commits, times and paths
-//! normalised (`golden/normal.rs`). `cargo xtask golden` captures them from Python's `./bead`, and
-//! only from it (`BEAD_GOLDEN_CAPTURE`); otherwise each test compares the `bead` under test with
-//! its file in `tests/golden/`. Regenerating a golden to make Rust pass is never the fix. They are
-//! CPython 3.14's, the reference interpreter (`docs/RUST-PORT.md` §5): an older Python's argparse
-//! lays help pages out otherwise.
+//! normalised (`golden/normal.rs`). Each test compares the `bead` under test with its file in
+//! `tests/golden/`. The files were captured from Python's `./bead` under CPython 3.14, the reference
+//! interpreter (`docs/RUST-PORT.md` §5), and only from it, until the cutover removed the launcher
+//! (`python-0.1.0` has it, and `cargo xtask golden`, which captured them): they are what bead
+//! answered before the port, and regenerating one to make the Rust bead pass is never the fix. A
+//! deliberate change of what bead prints edits the file by hand, in the change that makes it.
 
 mod normal;
 
@@ -14,9 +15,6 @@ use std::path::{Path, PathBuf};
 use beadroll_test_support::{Machine, Sandbox};
 
 use normal::Normaliser;
-
-/// Set by `cargo xtask golden`: write the transcripts instead of comparing them.
-const CAPTURE: &str = "BEAD_GOLDEN_CAPTURE";
 
 /// One test's commands and what `bead` printed for them.
 struct Transcript {
@@ -69,24 +67,11 @@ impl Transcript {
         self.text.push_str(&format!("# {line}\n\n"));
     }
 
-    /// Compares the transcript with its golden file, or (`BEAD_GOLDEN_CAPTURE`, from Python's
-    /// launcher only) writes it.
-    fn finish(self, sandbox: &Sandbox) {
+    /// Compares the transcript with its golden file.
+    fn finish(self) {
         let path = golden_dir().join(format!("{}.txt", self.name));
-        if std::env::var_os(CAPTURE).is_some_and(|v| !v.is_empty()) {
-            let launcher = workspace_root().join("bead");
-            assert_eq!(
-                sandbox.bead().canonicalize().ok(),
-                launcher.canonicalize().ok(),
-                "goldens are captured from Python's ./bead only, never from {}",
-                sandbox.bead().display()
-            );
-            std::fs::create_dir_all(golden_dir()).expect("the golden directory");
-            std::fs::write(&path, &self.text).expect("the golden file");
-            return;
-        }
-        let expected = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("{}: {e}; run `cargo xtask golden`", path.display()));
+        let expected =
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         if self.text != expected {
             let first = self
                 .text
@@ -110,10 +95,6 @@ impl Transcript {
             );
         }
     }
-}
-
-fn workspace_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
 fn golden_dir() -> PathBuf {
@@ -173,7 +154,7 @@ fn help_pages() {
     t.record_with(&a, &["help", "nonsense"], &wide);
     t.record_with(&a, &["--json", "help", "nonsense"], &wide);
     t.record(&a, &["onboard"]);
-    t.finish(&sandbox);
+    t.finish();
 }
 
 /// What `reading_commands_over_one_tracker` asks of the tracker, after building it: each issue
@@ -243,7 +224,7 @@ fn reading_commands_over_one_tracker() {
     t.record(&a, &["sync"]);
     t.record(&a, &["show", "ex-d"]);
     t.record(&b, &["list", "--id", "ex-d"]);
-    t.finish(&sandbox);
+    t.finish();
 }
 
 /// The scripted tracker on `a`: the imports, then native work with every command that writes;
@@ -342,5 +323,5 @@ fn info_keys() {
         .filter_map(|line| line.split_once(':').map(|(key, _)| key))
         .collect();
     t.note(&format!("info line keys: {}", keys.join(" ")));
-    t.finish(&sandbox);
+    t.finish();
 }

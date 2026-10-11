@@ -48,26 +48,7 @@ pub(crate) fn output_dir(name: &str) -> Result<PathBuf, Failure> {
     Ok(dir)
 }
 
-/// The Python test modules: every `tests/test_*.py`, by name, sorted.
-pub(crate) fn test_modules(root: &Path) -> Result<Vec<String>, Failure> {
-    let tests = root.join("tests");
-    let listing = std::fs::read_dir(&tests).map_err(|e| Failure::io("cannot list", &tests, &e))?;
-    let mut modules = Vec::new();
-    for entry in listing {
-        let name = entry
-            .map_err(|e| Failure::io("cannot list", &tests, &e))?
-            .file_name();
-        if let Some(module) = name.to_str().and_then(|n| n.strip_suffix(".py"))
-            && module.starts_with("test_")
-        {
-            modules.push(module.to_owned());
-        }
-    }
-    modules.sort();
-    Ok(modules)
-}
-
-/// The Python that runs the test suite, as `check.sh` finds it.
+/// The Python that runs the `infra/` drivers and their tests, the first `python3` on `PATH`.
 pub(crate) fn python() -> OsString {
     OsString::from("python3")
 }
@@ -168,9 +149,15 @@ mod tests {
     }
 
     #[test]
-    fn the_root_holds_the_launcher_and_the_tests() {
+    fn the_root_holds_the_workspace_and_the_infra_drivers() {
         let root = root();
-        assert!(root.join("bead").is_file());
-        assert!(root.join("tests").join("support.py").is_file());
+        assert!(root.join("Cargo.toml").is_file());
+        assert!(
+            root.join("crates")
+                .join("beadroll")
+                .join("Cargo.toml")
+                .is_file()
+        );
+        assert!(root.join("infra").join("roundtrip.py").is_file());
     }
 }

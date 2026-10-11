@@ -1,8 +1,9 @@
-# The Rust port's nightly checks (docs/RUST-PORT.md §4.9): the tests under the oldest git bead
-# supports, 2.40, built from source, beside the newer git every push already tests with
-# (V8_Python312's replacement, §4.6); and the slow suites, the stress models and the full ownership
-# sweep (§4.8). Nothing here touches a real store or a real remote: every test builds its own
-# repositories and bare remotes in a temporary directory.
+# bead's nightly checks (docs/RUST-PORT.md §4.9): the tests under the oldest git bead supports,
+# 2.40, built from source, beside the newer git every push already tests with (V8_Python312's
+# replacement, §4.6); and the slow suites, the stress models and the full ownership sweep (§4.8).
+# Until the cutover the tests also ran here against Python's launcher, and the first stress model
+# on a fleet that alternated the two implementations. Nothing here touches a real store or a real
+# remote: every test builds its own repositories and bare remotes in a temporary directory.
 name: rust-nightly
 
 on:
@@ -19,7 +20,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      BEAD_UNDER_TEST: ${{ github.workspace }}/bead
       GIT_VERSION: "2.40.4"
       # kernel.org's sha256sums.asc for git-2.40.4.tar.xz
       GIT_SHA256: 8016dfeb9ba598a2e591270092b642ac70e65660606905277ea8e4c309b65d18
@@ -32,10 +32,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - name: Install Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.14"
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
         with:
@@ -65,13 +61,8 @@ jobs:
         run: |
           git config --global user.name check
           git config --global user.email check@example.invalid
-      - name: Run the tests against Python's launcher
+      - name: Run the tests
         run: cargo nextest run --workspace --locked -E "not ($KNOWN_ON_OLD_GIT)"
-      - name: Run the tests against the Rust binary
-        if: ${{ !cancelled() }}
-        run: |
-          cargo build --locked --package beadroll
-          BEAD_UNDER_TEST="$PWD/target/debug/bead" cargo nextest run --workspace --locked -E "not ($KNOWN_ON_OLD_GIT)"
 
   slow:
     name: stress models and full sweep (ubuntu-latest)
@@ -80,10 +71,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - name: Install Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.14"
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
         with:
@@ -101,8 +88,6 @@ jobs:
         run: |
           git config --global user.name check
           git config --global user.email check@example.invalid
-      # The models' machines run the Rust binary, and the first model's mixed variant alternates
-      # Python's launcher and it, whatever BEAD_UNDER_TEST says.
       - name: The stress models
         run: cargo nextest run --locked --package beadroll --run-ignored only -E 'test(/^stress::/)'
       - name: The full ownership sweep, all 660 schedules

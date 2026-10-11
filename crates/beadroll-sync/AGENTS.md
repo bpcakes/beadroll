@@ -22,10 +22,11 @@ ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `settle_
 - `src/ownership.rs`: `coordinated` (the twelve rounds of a claim, takeover, release or claiming
   update), `settle_commands` (receipts), `settle_pending` (fences), `forget`, `Mode`, `Settled`.
 - `src/error.rs`: `Error`, each variant with its code.
-- `tests/sync/`: the Python suite's in-crate protocol tests, under the inventory's naming rule;
-  `support.rs` opens a machine's store in the test's process and runs the command bodies through
-  `coordinated`. Faults come from failpoints passed in `Settings`; the machines around it run
-  `BEAD_UNDER_TEST`, else the checkout's Python launcher.
+- `tests/sync/`: the Python suite's in-crate protocol tests, ported under the naming rule of
+  `docs/RUST-PORT.md` §4.2; `support.rs` opens a machine's store in the test's process and runs the
+  command bodies through `coordinated`. Faults come from failpoints passed in `Settings`; the
+  machines around it run `BEAD_UNDER_TEST`, else the Rust `bead` Cargo built in the profile
+  directory above the test binary (`beadroll_test_support::built_bead`, below).
 
 ## Edit here for X
 
@@ -57,16 +58,21 @@ ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `settle_
   tracker, one before the rounds of `coordinated`, and a write's through `publish_soon` once its
   transaction has let go of the store lock. A setting changed while bead waited is the one the
   link uses.
-- Receipt signatures and retirement stay Python's while either implementation may use a store,
-  rollback included (§2.3j, `REVIEWING.md` §2); sync keeps an accepted attempt's receipt.
+- Receipt signatures and retirement stay Python's while a store may still meet Python's bead,
+  rollback to `python-0.1.0` included (§2.3j, `REVIEWING.md` §2); sync keeps an accepted
+  attempt's receipt. `crates/beadroll/tests/cli/parity/receipts.rs` pins the bytes Python wrote.
 - It depends on `beadroll-core`, `beadroll-git` and `beadroll-store` only, of the workspace.
+- The machines of its tests run the `bead` the workspace builds, never a path worked out from the
+  source tree: `BEAD_UNDER_TEST` when it is set, else `built_bead()`, the `bead` in the profile
+  directory above the test binary, which is wherever Cargo put this build (target directory,
+  build target, profile). A run that builds the `beadroll` package makes it fresh (`cargo nextest
+  run --workspace`); one of this package alone does not, and uses whatever `bead` an earlier build
+  left there, so build it first. Without one, the first sandbox fails the test and says how.
 
 ## Common commands
 
-- `cargo nextest run -p beadroll-sync`: the in-crate tests, the machines around them running
-  Python's `./bead`; with `BEAD_UNDER_TEST=$PWD/target/debug/bead`, the Rust binary (`link::`'s
-  count of the test process's children and descriptors needs a process of its own, which `cargo
-  test` does not give it)
+- `cargo build -p beadroll && cargo nextest run -p beadroll-sync`: the in-crate tests, the
+  machines around them running that `bead` (`link::`'s count of the test process's children and
+  descriptors needs a process of its own, which `cargo test` does not give it)
+- `cargo nextest run --workspace`: the same with every other crate's tests, `bead` built first
 - `cargo clippy -p beadroll-sync --all-targets -- -D warnings -D clippy::mod_module_files`
-- The mixed-fleet tests that drive this crate against Python: `cargo nextest run -p beadroll -E
-  'test(/^mixed::/)'`

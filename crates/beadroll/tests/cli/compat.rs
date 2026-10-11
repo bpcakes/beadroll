@@ -304,11 +304,11 @@ mod compat_audit_real_compatibility {
 
     /// Read only source .jsonl; helper copies into its own scratch repos with no remotes.
     ///
-    /// The helper runs under `python3` from PATH, as `./bead` does, where the Python test runs it
-    /// under its own interpreter. Without `br` or `bv`, on PATH or in `~/.local/bin`, or without a
-    /// real export, Python skips; this test says so on standard error and passes. Each tracker is
-    /// judged on its own, as in the Python test's `subTest`: the first check its row fails, and
-    /// the test fails when any row does.
+    /// The helper (`infra/compat_real.py`) runs under `python3` from PATH, as the `infra/` drivers
+    /// do, where the Python test ran it under its own interpreter. Without `br` or `bv`, on PATH or
+    /// in `~/.local/bin`, or without a real export, Python skipped; this test says so on standard
+    /// error and passes. Each tracker is judged on its own, as in the Python test's `subTest`: the
+    /// first check its row fails, and the test fails when any row does.
     #[test]
     #[ignore = "needs br, bv and real Beads exports"]
     fn all_available_real_exports_and_br_bv_consumers() {
