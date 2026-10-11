@@ -39,6 +39,10 @@ tests it builds events.
   must be an absolute path. The sandbox's `bead` must exist: a sandbox fails its test at once when
   it does not, saying how to build it, so that a test never fails command by command on a missing
   binary.
+- A sandbox's bare repositories never maintain themselves (`receive.autogc` false): after a push,
+  git's auto maintenance would repack a remote in the background, whenever its sample of loose
+  objects (`objects/17`, times 256) passes a threshold, and pack the objects a test is about to
+  inspect or damage (roll-k2wy.20). A test that wants a repack runs it.
 - A run's environment is the test's, less every `CLAUDE*`, `CODEX*`, `BEAD_*` and `GIT_*`
   variable, then the machine's home and identity, then its extras.
 - Nothing outside the sandbox is written; dropping it removes it.

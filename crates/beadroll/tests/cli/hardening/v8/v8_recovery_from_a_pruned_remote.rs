@@ -50,7 +50,7 @@ fn resetting_the_ref_to_the_last_valid_commit_converges_without_loss() {
         .join("objects")
         .join(&tip[..2])
         .join(&tip[2..]);
-    // small pushes arrive as loose objects
+    // small pushes arrive as loose objects, and the sandbox's remote never repacks itself
     assert!(loose.exists(), "{}", loose.display());
     // the lost commit
     std::fs::remove_file(&loose).unwrap();

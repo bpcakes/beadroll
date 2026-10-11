@@ -114,7 +114,11 @@ impl Sandbox {
         &self.bead
     }
 
-    /// A new bare repository `name` in the sandbox, whose default branch is `main`.
+    /// A new bare repository `name` in the sandbox, whose default branch is `main`, and which never
+    /// maintains itself: after every push git would start its auto maintenance there
+    /// (`receive.autogc`), detached, and repack the remote behind the test's back, packing the very
+    /// objects a test inspects or damages (roll-k2wy.20). It changes only when a test or bead
+    /// changes it.
     pub fn bare(&self, name: &str) -> PathBuf {
         let path = self.root.join(name);
         let args: [&OsStr; 5] = [
@@ -125,6 +129,13 @@ impl Sandbox {
             "main".as_ref(),
         ];
         git(args.into_iter().chain([path.as_os_str()]), None);
+        let config: [&OsStr; 4] = [
+            "--git-dir".as_ref(),
+            path.as_os_str(),
+            "config".as_ref(),
+            "receive.autogc".as_ref(),
+        ];
+        git(config.into_iter().chain(["false".as_ref()]), None);
         path
     }
 
@@ -221,5 +232,63 @@ mod tests {
         let profile = test.parent().and_then(Path::parent).unwrap();
         assert_eq!(built_bead(), profile.join("bead"));
         assert_eq!(test.parent().and_then(Path::file_name).unwrap(), "deps");
+    }
+
+    /// What a test pushes into a sandbox remote stays as it arrived (roll-k2wy.20). git's auto
+    /// maintenance after a push counts loose objects by `objects/17` alone, times 256, so two loose
+    /// objects there read as 512, over the 100 at which git 2.55's geometric repack runs; run in the
+    /// foreground, as here, a remote that maintained itself would answer the push with every object
+    /// packed and none left loose.
+    #[test]
+    fn a_push_leaves_the_remotes_objects_as_they_arrived() {
+        let sandbox = Sandbox::selecting(std::env::current_exe().unwrap(), None);
+        let origin = sandbox.origin();
+        let remote = |args: &[&str]| {
+            let git_dir: [&OsStr; 2] = ["--git-dir".as_ref(), origin.as_os_str()];
+            git(git_dir.into_iter().chain(args.iter().map(OsStr::new)), None)
+        };
+        // two loose objects in objects/17: candidates hashed in the remote's own format, two of them
+        // written
+        let candidates = sandbox.root().join("candidates");
+        std::fs::create_dir(&candidates).unwrap();
+        let paths: Vec<String> = (0..2000)
+            .map(|n| {
+                let path = candidates.join(n.to_string());
+                std::fs::write(&path, format!("loose object {n}\n")).unwrap();
+                path.display().to_string()
+            })
+            .collect();
+        let mut hash = vec!["hash-object"];
+        hash.extend(paths.iter().map(String::as_str));
+        let ids = remote(&hash);
+        let named_17: Vec<&str> = ids
+            .lines()
+            .zip(&paths)
+            .filter(|(id, _)| id.starts_with("17"))
+            .map(|(_, path)| path.as_str())
+            .take(2)
+            .collect();
+        let mut write = vec!["hash-object", "-w"];
+        write.extend(&named_17);
+        remote(&write);
+        let seventeen = std::fs::read_dir(origin.join("objects").join("17")).unwrap();
+        assert_eq!(seventeen.count(), 2, "{named_17:?}");
+        // a remote that maintained itself would do it before the push returns
+        remote(&["config", "maintenance.autoDetach", "false"]);
+        remote(&["config", "gc.autoDetach", "false"]);
+        let work = sandbox.clone("pusher", None);
+        let identity = ["-c", "user.name=t", "-c", "user.email=t@example.invalid"];
+        let commit = ["commit", "-q", "--allow-empty", "-m", "pushed"];
+        git(identity.into_iter().chain(commit), Some(&work));
+        git(["push", "-q", "origin", "HEAD:main"], Some(&work));
+        let pushed = git(["rev-parse", "HEAD"], Some(&work));
+        let pushed = pushed.trim();
+        let loose = origin.join("objects").join(&pushed[..2]).join(&pushed[2..]);
+        let packs: Vec<_> = std::fs::read_dir(origin.join("objects").join("pack"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert!(loose.exists(), "the pushed commit was packed: {packs:?}");
+        assert!(packs.is_empty(), "the remote repacked itself: {packs:?}");
     }
 }
