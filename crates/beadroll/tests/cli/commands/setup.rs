@@ -144,19 +144,23 @@ fn init_after_a_move_adopts_the_tracker_published_under_the_old_id() {
 
 /// `init --tracked` where the remote publishes a URL-derived tracker joins it but writes no
 /// `.beadroll.json`: naming that id would stop working when the URL changed (the file would then be
-/// refused as another repository's id), and minting another would split the tracker.
+/// refused as another repository's id), and minting another would split the tracker. So again
+/// once the tracker is here, brought by the refused run or started here by a plain `init`.
 #[test]
 fn init_tracked_never_pins_a_url_derived_tracker() {
     let sandbox = crate::sandbox();
     let (a, b) = (Machine::new(&sandbox, "a"), Machine::new(&sandbox, "b"));
     json(&a, &["init", "--prefix", "ex"]);
     json(&a, &["create", "shared"]);
-    let refused = b.run(["init", "--tracked", "--json"]);
-    assert_eq!(code(&refused), "CONFIG", "{}", refused.stderr);
-    assert!(refused.stderr.contains("URL-derived"), "{}", refused.stderr);
-    assert!(!b.checkout().join(".beadroll.json").exists());
+    for machine in [&b, &b, &a] {
+        let refused = machine.run(["init", "--tracked", "--json"]);
+        assert_eq!(code(&refused), "CONFIG", "{}", refused.stderr);
+        assert!(refused.stderr.contains("URL-derived"), "{}", refused.stderr);
+        assert!(!machine.checkout().join(".beadroll.json").exists());
+    }
     assert_eq!(titles(&b), ["shared"]);
     assert_eq!(workspace(&b), workspace(&a));
+    assert_eq!(events(&b), events(&a));
 }
 
 /// `init --tracked` on a clone that lacks the tracked file keeps the tracked id the remote
@@ -258,7 +262,7 @@ fn a_move_without_the_tracker_says_how_to_bring_it_along() {
     set_origin(&a, &moved);
     let synced = a.run(["sync", "--json"]);
     assert_eq!(code(&synced), "NOT_INITIALIZED", "{}", synced.stderr);
-    let command = format!("BEAD_WORKSPACE={old} bead sync");
+    let command = format!("BEAD_WORKSPACE={old} bead sync --remote {}", text(&moved));
     assert!(synced.stderr.contains(&command), "{}", synced.stderr);
     let published = a.cmd(["sync", "--json"]).env("BEAD_WORKSPACE", &old).run();
     assert_eq!(published.returncode(), 0, "{}", published.stderr);
@@ -378,4 +382,36 @@ fn init_tracked_in_a_subdirectory_joins_the_tracker_its_path_leads_to() {
     assert_eq!(result["joined"], Json::Bool(true), "{result:?}");
     assert_eq!(titles(&b), ["shared"]);
     assert_eq!(events(&b), events(&a));
+}
+
+/// A moved repository's tracker brought along to a remote named on the command line: the advice
+/// names that remote too, where the tracker left behind would not go by itself (it goes to origin,
+/// or to the remote it last went through), and following it publishes the tracker there.
+#[test]
+fn the_advice_to_bring_a_tracker_along_names_the_remote_asked() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--prefix", "ex"]);
+    json(&a, &["create", "before the move"]);
+    let old = workspace(&a);
+    // the same name at another place, so that the tracker of that name here is named
+    let elsewhere = sandbox.root().join("elsewhere");
+    std::fs::create_dir(&elsewhere).expect("a directory");
+    let moved = elsewhere.join("origin.git");
+    git(["init", "-q", "--bare", "-b", "main", text(&moved)], None);
+    set_origin(&a, &moved);
+    let tracker = sandbox.bare("tracker.git");
+    let synced = a.run(["sync", "--remote", text(&tracker), "--json"]);
+    assert_eq!(code(&synced), "NOT_INITIALIZED", "{}", synced.stderr);
+    let command = format!("BEAD_WORKSPACE={old} bead sync --remote {}", text(&tracker));
+    assert!(synced.stderr.contains(&command), "{}", synced.stderr);
+    let advised = ["sync", "--remote", text(&tracker), "--json"];
+    let published = a.cmd(advised).env("BEAD_WORKSPACE", &old).run();
+    assert_eq!(published.returncode(), 0, "{}", published.stderr);
+    let refs = ["--git-dir", text(&tracker), "for-each-ref", "refs/beads"];
+    assert_ne!(
+        git(refs, None),
+        "",
+        "the tracker did not reach the remote asked"
+    );
 }

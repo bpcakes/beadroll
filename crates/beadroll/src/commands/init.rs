@@ -219,15 +219,17 @@ fn workspace_for(
     }
     let base = ws.as_ref().unwrap_or(ctx.ws);
     // a URL-derived id named in a tracked file would stop matching when the URL changed, and the
-    // file would then be refused as another repository's id: such a tracker stays URL-derived
-    if joined.is_some() && derived_shaped(&base.id) {
+    // file would then be refused as another repository's id; a new id would start a second
+    // tracker beside it: such a tracker stays URL-derived, joined just now or here already
+    if derived_shaped(&base.id) && (joined.is_some() || view(base)?.prefix().is_some()) {
         return Err(Failure::new(
             Code::Config,
             format!(
-                "this repository's tracker is URL-derived (workspace {}), and it is now here; a \
-                 .beadroll.json naming that id would stop working when the URL changes, so none \
-                 was written. Keep the URL-derived setup; a .beadroll.json without a workspace \
-                 id can still hold \"where\": false or another remote",
+                "this repository's tracker is URL-derived (workspace {}), and it is here; a \
+                 .beadroll.json naming that id would stop working when the URL changes, and one \
+                 naming a new id would start a second tracker, so none was written. Keep the \
+                 URL-derived setup; a .beadroll.json without a workspace id can still hold \
+                 \"where\": false or another remote",
                 base.id
             ),
         ));

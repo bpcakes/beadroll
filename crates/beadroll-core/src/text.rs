@@ -233,6 +233,20 @@ pub fn strip_bytes(data: &[u8]) -> &[u8] {
     data.get(start..end).unwrap_or_default()
 }
 
+/// `shlex.quote(text)`: `text` as one word to a POSIX shell, as it is when every character is safe
+/// there (ASCII letters, digits and `_@%+=:,./-`), else in single quotes, each one inside closed,
+/// quoted and reopened.
+pub fn shell_quote(text: &str) -> String {
+    if text.is_empty() {
+        return "''".to_owned();
+    }
+    let safe = |c: char| c.is_ascii_alphanumeric() || "_@%+=:,./-".contains(c);
+    if text.chars().all(safe) {
+        return text.to_owned();
+    }
+    format!("'{}'", text.replace('\'', "'\"'\"'"))
+}
+
 /// Bead's base-36 digest of `bytes`, read as one big-endian number: least significant digit first,
 /// as Python's `b36` builds it.
 pub fn b36(bytes: &[u8]) -> String {
@@ -304,6 +318,16 @@ mod tests {
         assert_eq!(strip_bytes(b"\x0b\x0c x\t\n"), b"x");
         assert_eq!(strip_bytes(b" \xa0 "), b"\xa0");
         assert_eq!(strip_bytes(b"  "), b"");
+    }
+
+    #[test]
+    fn shell_quote_matches_python() {
+        // Python: shlex.quote(text) for each
+        assert_eq!(shell_quote("git@host:o/r.git"), "git@host:o/r.git");
+        assert_eq!(shell_quote(""), "''");
+        assert_eq!(shell_quote("a b"), "'a b'");
+        assert_eq!(shell_quote("it's"), "'it'\"'\"'s'");
+        assert_eq!(shell_quote("é"), "'é'");
     }
 
     #[test]

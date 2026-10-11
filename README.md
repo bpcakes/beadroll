@@ -363,9 +363,9 @@ tracker published under the old id and remembers the mapping (`moved.json` in
 `refs/beads/journal`: a rename or a transfer on a forge keeps every ref, and
 `git push --mirror` copies them. An import that copies only branches and tags
 leaves it behind: `bead sync` then says none is published and names this
-machine's tracker of the same name if it has one; `BEAD_WORKSPACE=ID bead sync`
-on a machine that has it publishes it at the new URL, and every other machine's
-next `sync` adopts it. Until a machine's origin moves it keeps using the old
+machine's tracker of the same name if it has one; `BEAD_WORKSPACE=ID bead sync
+--remote NEW_URL` on a machine that has it publishes it at the new URL, and every
+other machine's next `sync` adopts it. Until a machine's origin moves it keeps using the old
 URL, which a forge's rename redirects.
 
 A tracked `.beadroll.json` keeps its id through any move. With its remote left

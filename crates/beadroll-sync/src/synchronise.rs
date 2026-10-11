@@ -5,7 +5,7 @@ use std::ffi::{OsStr, OsString};
 use std::time::Duration;
 
 use beadroll_core::json::{self, Format, Int, MAX_DIGITS, Object, Value};
-use beadroll_core::text::py_int;
+use beadroll_core::text::{py_int, shell_quote};
 use beadroll_git::{PushOutcome, exists, realpath, without_password};
 use beadroll_store::{
     Failpoints, Fired, Workspace, claim_files, load_pending, moved_workspaces, pending_files, read,
@@ -187,12 +187,14 @@ pub fn synchronise(ws: &Workspace, remote: &OsStr) -> Result<Synced, Error> {
 
 /// `NOT_INITIALIZED` when neither this store nor `shown`, the remote, has a tracker: `bead init`
 /// starts one, and a repository that moved without its tracker gets it back from a machine that
-/// has it, published under its own id: this machine, when it holds a workspace of the same name.
+/// has it, published under its own id to `shown` by name, which that tracker would not otherwise
+/// go to: this machine, when it holds a workspace of the same name.
 fn nothing_published(ws: &Workspace, shown: &str) -> Error {
+    let sync = format!("bead sync --remote {}", shell_quote(shown));
     let mut message = format!(
         "no tracker here and none published on {shown}: run `bead init` to start one. If this \
          repository moved and its tracker stayed behind, publish it here from a machine that has \
-         it: `BEAD_WORKSPACE=ID bead sync`, ID as that machine's `bead info` shows it"
+         it: `BEAD_WORKSPACE=ID {sync}`, ID as that machine's `bead info` shows it"
     );
     let named = match &ws.name {
         Some(name) => workspaces_named(&ws.settings, name, &ws.id).unwrap_or_default(),
@@ -201,7 +203,7 @@ fn nothing_published(ws: &Workspace, shown: &str) -> Error {
     if !named.is_empty() {
         let commands: Vec<String> = named
             .iter()
-            .map(|id| format!("`BEAD_WORKSPACE={id} bead sync`"))
+            .map(|id| format!("`BEAD_WORKSPACE={id} {sync}`"))
             .collect();
         let name = ws.name.as_deref().unwrap_or_default().to_string_lossy();
         message.push_str(&format!(
