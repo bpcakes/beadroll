@@ -304,6 +304,9 @@ fn valid_six_machine_6000_events_converge_and_ancestry_is_exact() {
         );
     }
     // Arbitrary interleaving of complete machine journals, preserving each journal's bytes.
+    let written: std::collections::HashMap<EventId, &Json> = (events.iter())
+        .map(|event| (EventId::parse(&id(event)).unwrap(), event))
+        .collect();
     for order in rng.orders(36) {
         let mut j = Journal::new();
         for machine in &order {
@@ -313,7 +316,7 @@ fn valid_six_machine_6000_events_converge_and_ancestry_is_exact() {
                 .map(Vec::as_slice)
                 .unwrap_or_default()
             {
-                let event = base.event(*eid).unwrap().value().clone();
+                let event = written[eid].clone();
                 j.add(event.clone(), machine, "", true);
                 j.add(event, machine, "", true);
             }

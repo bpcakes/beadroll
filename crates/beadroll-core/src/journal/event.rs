@@ -1,0 +1,343 @@
+//! An event as a journal keeps it (roll-dih8.11): what replay and `log` read of a record, read once
+//! when the record is added. The record's JSON object is not kept, so that a journal costs a few
+//! hundred bytes an event rather than kilobytes: its content is a digest, which tells two records
+//! of one id apart (`content`), and the machines, issues, actors and places that events repeat are
+//! held once ([`Shared`]).
+
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::Arc;
+
+use crate::event::{FORMAT, event_problem, payload_problem};
+use crate::id::EventId;
+use crate::json::{self, Format, Object, Value};
+use crate::op::{Op, PyInt};
+use crate::text::str_of;
+
+use super::content::{Digest, Digester};
+
+/// An event as replay sees it: a valid event, or the stand-in for an id that cannot be used (`op`
+/// `quarantined` or `invalid`). Journals share their events, so a clone costs a count.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Event(Arc<Read>);
+
+/// What was read of one record.
+#[derive(Debug, PartialEq)]
+struct Read {
+    id: EventId,
+    /// Its causes, as listed: the members of `deps` that are UUIDs.
+    deps: Box<[EventId]>,
+    op: Op,
+    /// The machine it names (`replica`), or `""`.
+    replica: Arc<str>,
+    /// The issue it names, when that is text.
+    issue: Option<Arc<str>>,
+    /// Its `actor` and its `where`, as written.
+    actor: Option<Arc<Value>>,
+    place: Option<Arc<Value>>,
+    /// Whether its payload says it came from an import (`data.imported`).
+    imported: bool,
+    /// What is wrong with it, if anything: few records have anything.
+    trouble: Option<Box<Trouble>>,
+    /// Its content, as this journal tells contents apart.
+    digest: Digest,
+    source: Arc<Source>,
+    /// The how-manyth record it was, as records were added.
+    counter: u64,
+}
+
+/// Where records were found: the journal of machine `replica` (which a record may not name), the
+/// file, and whether its records have places in that journal's order.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct Source {
+    pub(crate) replica: Arc<str>,
+    pub(crate) origin: Arc<str>,
+    pub(crate) sequenced: bool,
+}
+
+/// What is wrong with a record.
+#[derive(Debug, PartialEq)]
+enum Trouble {
+    /// It is not a valid event (`event_problem`).
+    Invalid(String),
+    /// It is a valid event that replay cannot apply all the same: a format this bead does not
+    /// read, or a payload it does not write.
+    Flaw(String),
+}
+
+/// Python's `value != n` for an integer field: `true` equals 1.
+fn same_int(value: &Value, n: i64) -> bool {
+    PyInt::read(value).is_some_and(|value| value == PyInt::from(n))
+}
+
+impl Event {
+    /// What `value`, the `counter`-th record added and found in `source`, holds under `id`.
+    pub(crate) fn read(
+        id: EventId,
+        value: &Value,
+        source: &Arc<Source>,
+        counter: u64,
+        shared: &mut Shared,
+    ) -> Event {
+        let deps = value
+            .get("deps")
+            .and_then(Value::as_array)
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|dep| dep.as_str().and_then(EventId::parse))
+            .collect();
+        let name = value.get("op").and_then(Value::as_str).unwrap_or_default();
+        let empty = Object::new();
+        let data = value
+            .get("data")
+            .and_then(Value::as_object)
+            .unwrap_or(&empty);
+        let trouble = match event_problem(value) {
+            Some(problem) => Some(Trouble::Invalid(problem)),
+            None => match value.get("v").filter(|v| !same_int(v, FORMAT)) {
+                Some(version) => Some(format!(
+                    "event format v{} is not one this version of bead reads",
+                    str_of(version)
+                )),
+                None => payload_problem(value),
+            }
+            .map(Trouble::Flaw),
+        };
+        let replica = value
+            .get("replica")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        Event(Arc::new(Read {
+            id,
+            deps,
+            op: Op::read(name, data),
+            replica: shared.text(replica),
+            issue: value
+                .get("issue")
+                .and_then(Value::as_str)
+                .map(|issue| shared.text(issue)),
+            actor: value.get("actor").map(|actor| shared.value(actor)),
+            place: value.get("where").map(|place| shared.value(place)),
+            imported: data.get("imported").is_some_and(Value::truthy),
+            trouble: trouble.map(Box::new),
+            digest: shared.digester.digest(value),
+            source: Arc::clone(source),
+            counter,
+        }))
+    }
+
+    /// The stand-in for an id that cannot be used, found as `placement` was: it keeps the id's
+    /// place in that journal and the causes `deps`, names the issue `issue`, and applies nothing.
+    pub(crate) fn stand_in(
+        placement: &Event,
+        op: Op,
+        deps: Box<[EventId]>,
+        issue: Option<Arc<str>>,
+    ) -> Event {
+        let source = Arc::clone(&placement.0.source);
+        Event(Arc::new(Read {
+            id: placement.0.id,
+            deps,
+            op,
+            replica: Arc::clone(&source.replica),
+            issue,
+            actor: None,
+            place: None,
+            imported: false,
+            trouble: None,
+            digest: [0; 2],
+            source,
+            counter: placement.0.counter,
+        }))
+    }
+
+    /// Its id.
+    pub fn id(&self) -> EventId {
+        self.0.id
+    }
+
+    /// The events it names as causes, as listed (`deps`).
+    pub fn deps(&self) -> &[EventId] {
+        &self.0.deps
+    }
+
+    /// Its operation, with its payload read as replay reads it.
+    pub fn op(&self) -> &Op {
+        &self.0.op
+    }
+
+    /// The name of its operation, as written (`quarantined` and `invalid` for a stand-in).
+    pub fn op_name(&self) -> &str {
+        self.0.op.name()
+    }
+
+    /// The machine that wrote it.
+    pub fn replica(&self) -> &str {
+        &self.0.replica
+    }
+
+    /// The issue it is about, if it names one.
+    pub fn issue(&self) -> Option<&str> {
+        self.0.issue.as_deref()
+    }
+
+    /// Its `actor`, as written.
+    pub fn actor(&self) -> Option<&Value> {
+        self.0.actor.as_deref()
+    }
+
+    /// Its `where`, as written.
+    pub fn place(&self) -> Option<&Value> {
+        self.0.place.as_deref()
+    }
+
+    /// The machine it names, shared with every event that names it.
+    pub(crate) fn shared_replica(&self) -> &Arc<str> {
+        &self.0.replica
+    }
+
+    /// Its `actor`, shared with every event written alike.
+    pub(crate) fn shared_actor(&self) -> Option<&Arc<Value>> {
+        self.0.actor.as_ref()
+    }
+
+    /// Its `where`, shared with every event written alike.
+    pub(crate) fn shared_place(&self) -> Option<&Arc<Value>> {
+        self.0.place.as_ref()
+    }
+
+    /// Whether its payload says it came from an import: Python's `data.get("imported")`.
+    pub fn imported(&self) -> bool {
+        self.0.imported
+    }
+
+    /// Why replay cannot apply this valid event: its format or its payload.
+    pub(crate) fn flaw(&self) -> Option<&str> {
+        match self.0.trouble.as_deref() {
+            Some(Trouble::Flaw(flaw)) => Some(flaw),
+            _ => None,
+        }
+    }
+
+    /// Why it is not a valid event, if it is not.
+    pub(crate) fn problem(&self) -> Option<&str> {
+        match self.0.trouble.as_deref() {
+            Some(Trouble::Invalid(problem)) => Some(problem),
+            _ => None,
+        }
+    }
+
+    /// Its content's digest: equal for two records exactly when they hold the same content.
+    pub(crate) fn digest(&self) -> &Digest {
+        &self.0.digest
+    }
+
+    /// Where its record was found.
+    pub(crate) fn source(&self) -> &Arc<Source> {
+        &self.0.source
+    }
+
+    /// The how-manyth record it was.
+    pub(crate) fn counter(&self) -> u64 {
+        self.0.counter
+    }
+
+    /// Whether it is a valid event found in its own machine's journal.
+    pub(crate) fn own(&self) -> bool {
+        self.problem().is_none() && self.0.replica == self.0.source.replica
+    }
+}
+
+/// The texts and values a journal's events repeat, each held once: machines, issues and files,
+/// actors and places. A value is shared only with one written alike, its members in the same order,
+/// so that each prints as it was written. Also the room records are digested in.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Shared {
+    texts: HashSet<Arc<str>>,
+    values: HashMap<String, Arc<Value>>,
+    /// The values held last: an event most often names the actor and the place the one before did.
+    recent: VecDeque<Arc<Value>>,
+    digester: Digester,
+}
+
+/// Whether `value` holds no other value.
+fn scalar(value: &Value) -> bool {
+    !matches!(value, Value::Array(_) | Value::Object(_))
+}
+
+/// Whether `a`, a scalar, is written as `b` is.
+fn same_scalar(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Float(x), Value::Float(y)) => x.to_bits() == y.to_bits(),
+        (Value::Null | Value::Bool(_) | Value::Int(_) | Value::Str(_), _) => a == b,
+        _ => false,
+    }
+}
+
+/// How many values [`Shared::recent`] keeps.
+const RECENT: usize = 4;
+
+/// Whether `a` and `b` are written alike: equal, with their objects' members in the same order and
+/// floats of the same bits. Compared without recursion, so a value of any depth is compared; a flat
+/// object, as actors and places are, without any room taken.
+fn written_alike(a: &Value, b: &Value) -> bool {
+    if let (Value::Object(x), Value::Object(y)) = (a, b)
+        && x.len() == y.len()
+        && x.values().all(scalar)
+    {
+        return x.iter().zip(y).all(|((key, value), (other_key, other))| {
+            key == other_key && same_scalar(value, other)
+        });
+    }
+    let mut stack = vec![(a, b)];
+    while let Some((a, b)) = stack.pop() {
+        match (a, b) {
+            (Value::Array(x), Value::Array(y)) if x.len() == y.len() => {
+                stack.extend(x.iter().zip(y));
+            }
+            (Value::Object(x), Value::Object(y)) if x.len() == y.len() => {
+                for ((key, value), (other_key, other)) in x.iter().zip(y) {
+                    if key != other_key {
+                        return false;
+                    }
+                    stack.push((value, other));
+                }
+            }
+            (Value::Float(x), Value::Float(y)) if x.to_bits() == y.to_bits() => {}
+            (Value::Null | Value::Bool(_) | Value::Int(_) | Value::Str(_), _) if a == b => {}
+            _ => return false,
+        }
+    }
+    true
+}
+
+impl Shared {
+    /// `text`, held once.
+    pub(crate) fn text(&mut self, text: &str) -> Arc<str> {
+        if let Some(held) = self.texts.get(text) {
+            return Arc::clone(held);
+        }
+        let held: Arc<str> = Arc::from(text);
+        self.texts.insert(Arc::clone(&held));
+        held
+    }
+
+    /// `value`, held once with every value written alike.
+    pub(crate) fn value(&mut self, value: &Value) -> Arc<Value> {
+        if let Some(held) = self.recent.iter().find(|held| written_alike(held, value)) {
+            return Arc::clone(held);
+        }
+        let held = match json::write(value, Format::COMPACT) {
+            Ok(written) => Arc::clone(
+                self.values
+                    .entry(written)
+                    .or_insert_with(|| Arc::new(value.clone())),
+            ),
+            Err(_) => Arc::new(value.clone()), // too long or too deep to print: kept alone
+        };
+        if self.recent.len() == RECENT {
+            self.recent.pop_back();
+        }
+        self.recent.push_front(Arc::clone(&held));
+        held
+    }
+}

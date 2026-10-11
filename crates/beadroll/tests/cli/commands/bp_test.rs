@@ -7,10 +7,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use beadroll_core::journal::Journal;
+use beadroll_core::id::EventId;
+use beadroll_core::journal::{Journal, read_segment};
 use beadroll_core::json::{Format, Value, write};
 use beadroll_core::replay::replay;
-use beadroll_store::{Settings, Workspace, load_journal, replica_id};
+use beadroll_store::{
+    Settings, Workspace, claim_files, load_journal, read_attempt, replica_id, segment_files,
+};
 use beadroll_test_support::{Json, Machine, Run, Sandbox};
 
 mod checkouts;
@@ -216,12 +219,17 @@ fn replay_does_not_depend_on_delivery_order() {
     let ws = Workspace::new(settings.clone(), id, None, None, Default::default()).unwrap();
     let journal = load_journal(&ws).unwrap();
     let expected = view(journal.clone());
-    let sequenced: Vec<_> = journal.order().values().flatten().copied().collect();
-    let ownership: Vec<Value> = journal
-        .events()
-        .iter()
-        .filter(|(id, _)| !sequenced.contains(id))
-        .map(|(_, event)| event.value().clone())
+    // the records as the store holds them: a journal keeps only what replay reads of each
+    let segments = segment_files(&ws).unwrap().into_iter();
+    let mut written: BTreeMap<EventId, Value> = BTreeMap::new();
+    for event in segments.flat_map(|path| read_segment(&std::fs::read(path).unwrap(), "", None)) {
+        written.insert(
+            EventId::parse(event["id"].as_str().unwrap()).unwrap(),
+            event,
+        );
+    }
+    let ownership: Vec<Value> = (claim_files(&ws).unwrap().iter())
+        .flat_map(|path| read_attempt(path, None))
         .collect();
     let mut replicas: Vec<String> = journal.order().keys().cloned().collect();
     let mut orders = Vec::new();
@@ -232,8 +240,7 @@ fn replay_does_not_depend_on_delivery_order() {
         for replica in order.iter().chain(&order) {
             // every event delivered twice
             for id in &journal.order()[replica] {
-                let event = journal.event(*id).unwrap().value().clone();
-                shuffled.add(event, replica, "", true);
+                shuffled.add(written[id].clone(), replica, "", true);
             }
             for event in &ownership {
                 if event["replica"].as_str() == Some(replica.as_str()) {
@@ -246,14 +253,14 @@ fn replay_does_not_depend_on_delivery_order() {
     let own = replica_id(&settings, true).unwrap().unwrap();
     let mut partial = Journal::new();
     for id in &journal.order()[&own] {
-        partial.add(journal.event(*id).unwrap().value().clone(), &own, "", true);
+        partial.add(written[id].clone(), &own, "", true);
     }
     let st = replay(partial).unwrap();
     assert!(!st.pending().is_empty());
     let waiting: Vec<String> = st
         .pending()
         .iter()
-        .map(|id| write(journal.event(*id).unwrap().value(), Format::SPACED).unwrap())
+        .map(|id| write(&written[id], Format::SPACED).unwrap())
         .collect();
     assert!(waiting.join(" ").contains("after seeing everything"));
 }

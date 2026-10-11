@@ -7,14 +7,12 @@ mod apply;
 
 use std::collections::HashSet;
 
-use crate::event::{FORMAT, payload_problem};
 use crate::id::EventId;
 use crate::journal::Journal;
 use crate::json::Value;
-use crate::op::{Op, PyInt};
+use crate::op::Op;
 use crate::order::Order;
 use crate::state::{Integrity, KeySpace, Knowledge, Place, State, actor_label, raise, reached};
-use crate::text::str_of;
 use crate::time::event_time;
 
 /// Folds `journal` into current state. Fails only as Python's replay does, when a renamed copy can
@@ -53,10 +51,7 @@ pub fn replay(mut journal: Journal) -> Result<State, KeySpace> {
         issue.deps = issue
             .dep_tags
             .iter()
-            .filter_map(|(edge, tags)| {
-                tags.first_key_value()
-                    .map(|(_, meta)| (edge.clone(), meta.clone()))
-            })
+            .filter_map(|(edge, tags)| tags.first().map(|(_, meta)| (edge.clone(), meta.clone())))
             .collect();
     }
     st.index_children();
@@ -118,24 +113,15 @@ fn observe(k: &mut Knowledge, order: &Order) -> Vec<Option<String>> {
             Some("one event id with different contents".to_owned())
         } else if event.op_name() == "invalid" {
             Some(String::new())
-        } else if let Some(version) = event.get("v").filter(|v| !same_int(v, FORMAT)) {
-            Some(format!(
-                "event format v{} is not one this version of bead reads",
-                str_of(version)
-            ))
         } else {
-            payload_problem(event.value())
+            // its format or its payload, found when it was read
+            event.flaw().map(str::to_owned)
         };
         if let Some(slot) = inert.get_mut(at) {
             *slot = reason;
         }
     }
     inert
-}
-
-/// Python's `value != n` for an integer field: `true` equals 1.
-fn same_int(value: &Value, n: i64) -> bool {
-    PyInt::read(value).is_some_and(|value| value == PyInt::from(n))
 }
 
 /// Phase 2: ownership bookkeeping, over applicable events only. A takeover is settled online, so it
@@ -214,7 +200,7 @@ fn apply_all(
             }
             continue;
         }
-        let actor = event.get("actor").filter(|actor| actor.truthy());
+        let actor = event.actor().filter(|actor| actor.truthy());
         let who = actor_label(actor, event.replica());
         let when = event_time(id.millis());
         let thread = actor
@@ -228,14 +214,14 @@ fn apply_all(
             .filter(|_| applied)
             .and_then(|uid| st.issues.get_mut(&uid))
         {
-            if !event.data().get("imported").is_some_and(Value::truthy) {
+            if !event.imported() {
                 issue.set(
                     crate::event::Field::UpdatedAt,
                     Some(Value::from(when.as_str())),
                 );
             }
-            if let Some(place) = event.get("where").filter(|place| place.truthy()) {
-                issue.where_ = Some(place.clone());
+            if let Some(place) = event.shared_place().filter(|place| place.truthy()) {
+                issue.where_ = Some(std::sync::Arc::clone(place));
             }
         }
     }

@@ -123,7 +123,7 @@ impl State {
             .map(|comment| Value::Object(shown_comment(comment)));
         out.insert("comments".into(), comments.collect::<Vec<_>>().into());
         out.insert("blocked".into(), Value::from(self.is_blocked(issue)));
-        out.insert("origin".into(), Value::Object(issue.origin().clone()));
+        out.insert("origin".into(), Value::Object(issue.origin()));
         if let Some(place) = issue.where_().filter(|place| place.truthy()) {
             out.insert("where".into(), place.clone());
         }

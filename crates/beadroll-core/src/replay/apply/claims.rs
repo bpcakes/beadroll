@@ -36,7 +36,7 @@ pub(super) fn claim(c: &Ctx<'_>, issue: &mut Issue, claiming: &Claiming) -> bool
             .filter(|g| !g.is_zero())
             .map(PyInt::number);
         issue.claim_generation = given.filter(|given| *given > next).unwrap_or(next);
-        issue.claim = Some(Claim {
+        issue.claim = Some(Box::new(Claim {
             id: c.eid,
             owner: who.to_owned(),
             machine: c.event.replica().to_owned(),
@@ -51,7 +51,7 @@ pub(super) fn claim(c: &Ctx<'_>, issue: &mut Issue, claiming: &Claiming) -> bool
                 .unwrap_or("online")
                 .to_owned(),
             where_: c.place.cloned(),
-        });
+        }));
         issue.provisional_claims.retain(|p| p.owner != who);
         c.write_status(issue, "in_progress", None, &[]);
         c.write(issue, Field::Assignee, Value::from(who), &[]);
@@ -113,9 +113,10 @@ pub(super) fn close(c: &Ctx<'_>, issue: &mut Issue, ending: &Ending, closing: bo
         &supersede,
     );
     if !closing {
-        issue.extra.insert("deleted_at".into(), Value::from(c.when));
-        issue.extra.insert("deleted_by".into(), Value::from(c.who));
-        issue.extra.insert(
+        let extra = issue.extra_mut();
+        extra.insert("deleted_at".into(), Value::from(c.when));
+        extra.insert("deleted_by".into(), Value::from(c.who));
+        extra.insert(
             "delete_reason".into(),
             Value::from(reason.unwrap_or_default()),
         );
@@ -138,7 +139,7 @@ pub(super) fn close(c: &Ctx<'_>, issue: &mut Issue, ending: &Ending, closing: bo
     if closing {
         issue.provisional_claims.retain(|p| !c.k.saw_at(c.at, p.id));
         if let Some(place) = c.place {
-            issue.closed_on = Some(place.clone());
+            issue.closed_on = Some(std::sync::Arc::clone(place));
         }
     }
     true
@@ -166,7 +167,7 @@ fn takes_over(claim: Option<Held>, claiming: &Claiming) -> bool {
 /// A member of the event's actor, as the claim records it.
 fn actor_text(event: &Event, key: &str) -> Option<String> {
     event
-        .get("actor")
+        .actor()
         .and_then(|actor| actor.get(key))
         .and_then(Value::as_str)
         .map(str::to_owned)
@@ -175,7 +176,7 @@ fn actor_text(event: &Event, key: &str) -> Option<String> {
 fn end_claim(issue: &mut Issue, how: &'static str, who: &str, when: &str, reason: Option<&str>) {
     if let Some(claim) = issue.claim.take() {
         issue.claim_history.push(EndedClaim {
-            claim,
+            claim: *claim,
             ended: when.to_owned(),
             ended_by: who.to_owned(),
             how,

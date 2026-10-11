@@ -2,13 +2,14 @@
 //! come from, its comments, and the record of who held it.
 
 use std::collections::{BTreeMap, BTreeSet};
-
-use indexmap::IndexMap;
+use std::sync::{Arc, LazyLock};
 
 use crate::event::Field;
 use crate::id::EventId;
 use crate::json::{Int, Object, Value};
 use crate::op::PyInt;
+
+use super::small::{IdMap, IdSet, VecMap};
 
 /// An issue.
 #[derive(Clone, Debug, PartialEq)]
@@ -18,26 +19,39 @@ pub struct Issue {
     /// Each field by [`Field::index`]: absent, or its value (`null` included, as Python keeps a
     /// field a create cleared).
     pub(crate) fields: [Option<Value>; 16],
-    pub(crate) reg: IndexMap<Field, BTreeMap<EventId, Value>>,
-    pub(crate) label_tags: BTreeMap<String, BTreeSet<EventId>>,
-    pub(crate) dep_tags: IndexMap<(String, String), BTreeMap<EventId, Value>>,
+    pub(crate) reg: VecMap<Field, IdMap<Value>>,
+    pub(crate) label_tags: VecMap<String, IdSet>,
+    pub(crate) dep_tags: VecMap<(String, String), IdMap<Value>>,
     pub(crate) labels: BTreeSet<String>,
-    pub(crate) deps: IndexMap<(String, String), Value>,
+    pub(crate) deps: VecMap<(String, String), Value>,
     pub(crate) comments: Vec<Comment>,
-    pub(crate) extra: Object,
+    /// Few issues have extras: boxed, so that the others keep a pointer.
+    pub(crate) extra: Option<Box<Object>>,
     pub(crate) dangling: Vec<Value>,
-    pub(crate) retracted: BTreeMap<(String, Option<String>), BTreeSet<EventId>>,
-    pub(crate) claim: Option<Claim>,
+    pub(crate) retracted: BTreeMap<(String, Option<String>), IdSet>,
+    pub(crate) claim: Option<Box<Claim>>,
     pub(crate) claim_generation: Int,
     pub(crate) claim_history: Vec<EndedClaim>,
     pub(crate) provisional_claims: Vec<Provisional>,
     pub(crate) lost_claims: Vec<LostClaim>,
     pub(crate) stale: Vec<Stale>,
     pub(crate) unconfirmed: Vec<Value>,
-    pub(crate) origin: Object,
-    pub(crate) where_: Option<Value>,
-    pub(crate) closed_on: Option<Value>,
+    pub(crate) origin: Origin,
+    pub(crate) where_: Option<Arc<Value>>,
+    pub(crate) closed_on: Option<Arc<Value>>,
 }
+
+/// Where an issue was created, kept as the create's machine, actor and place, which events share:
+/// [`Issue::origin`] makes the object from them.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Origin {
+    pub(crate) machine: Arc<str>,
+    pub(crate) actor: Option<Arc<Value>>,
+    pub(crate) place: Option<Arc<Value>>,
+}
+
+/// The extras of an issue that has none.
+static NO_EXTRA: LazyLock<Object> = LazyLock::new(Object::new);
 
 impl Issue {
     /// Its id: the id of the create that made it.
@@ -95,8 +109,9 @@ impl Issue {
             .unwrap_or_else(|| PyInt::from(2))
     }
 
-    /// Every value of each register two writers may have set without seeing each other.
-    pub fn registers(&self) -> &IndexMap<Field, BTreeMap<EventId, Value>> {
+    /// Every value of each register two writers may have set without seeing each other, the
+    /// registers in the order first written.
+    pub fn registers(&self) -> &VecMap<Field, IdMap<Value>> {
         &self.reg
     }
 
@@ -105,24 +120,24 @@ impl Issue {
         &self.labels
     }
 
-    /// The events behind each label, empty once removed.
-    pub fn label_tags(&self) -> &BTreeMap<String, BTreeSet<EventId>> {
+    /// The events behind each label, empty once removed, the labels in the order first added.
+    pub fn label_tags(&self) -> &VecMap<String, IdSet> {
         &self.label_tags
     }
 
     /// Its dependencies: `(target, type)` and the metadata of the earliest addition, in the order
     /// first added. A target is an issue's uid, or text that names no issue.
-    pub fn deps(&self) -> &IndexMap<(String, String), Value> {
+    pub fn deps(&self) -> &VecMap<(String, String), Value> {
         &self.deps
     }
 
     /// The additions behind each dependency, empty once removed.
-    pub fn dep_tags(&self) -> &IndexMap<(String, String), BTreeMap<EventId, Value>> {
+    pub fn dep_tags(&self) -> &VecMap<(String, String), IdMap<Value>> {
         &self.dep_tags
     }
 
     /// Dependencies removed by target and type (`None` for every type), and the removals.
-    pub fn retracted(&self) -> &BTreeMap<(String, Option<String>), BTreeSet<EventId>> {
+    pub fn retracted(&self) -> &BTreeMap<(String, Option<String>), IdSet> {
         &self.retracted
     }
 
@@ -133,7 +148,12 @@ impl Issue {
 
     /// Fields of an imported record bead does not know, and what a delete records.
     pub fn extra(&self) -> &Object {
-        &self.extra
+        self.extra.as_deref().unwrap_or(&NO_EXTRA)
+    }
+
+    /// Its extras, to change.
+    pub(crate) fn extra_mut(&mut self) -> &mut Object {
+        self.extra.get_or_insert_with(Box::default)
     }
 
     /// Imported dependencies on keys that are not issues yet.
@@ -143,7 +163,7 @@ impl Issue {
 
     /// Who holds it, if anyone.
     pub fn claim(&self) -> Option<&Claim> {
-        self.claim.as_ref()
+        self.claim.as_deref()
     }
 
     /// How many times it has been claimed, as the highest generation seen.
@@ -176,19 +196,37 @@ impl Issue {
         &self.unconfirmed
     }
 
-    /// Where it was created: the machine, the actor and the checkout.
-    pub fn origin(&self) -> &Object {
-        &self.origin
+    /// Where it was created: the machine, the members of the create's actor, and the checkout.
+    pub fn origin(&self) -> Object {
+        let Origin {
+            machine,
+            actor,
+            place,
+        } = &self.origin;
+        let mut origin = Object::new();
+        origin.insert("machine".into(), Value::from(&**machine));
+        for (name, value) in actor
+            .as_deref()
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+        {
+            origin.insert(name.clone(), value.clone());
+        }
+        if let Some(place) = place {
+            origin.insert("where".into(), Value::clone(place));
+        }
+        origin
     }
 
     /// Where it was last worked on.
     pub fn where_(&self) -> Option<&Value> {
-        self.where_.as_ref()
+        self.where_.as_deref()
     }
 
     /// Where it was closed, until reopened.
     pub fn closed_on(&self) -> Option<&Value> {
-        self.closed_on.as_ref()
+        self.closed_on.as_deref()
     }
 }
 
@@ -212,7 +250,7 @@ pub struct Claim {
     /// `online`, or how the claim says it was made.
     pub mode: String,
     /// The checkout it was made in.
-    pub where_: Option<Value>,
+    pub where_: Option<Arc<Value>>,
 }
 
 impl Claim {
@@ -228,7 +266,7 @@ impl Claim {
         out.insert("since".into(), Value::from(self.since.as_str()));
         out.insert("mode".into(), Value::from(self.mode.as_str()));
         if let Some(place) = &self.where_ {
-            out.insert("where".into(), place.clone());
+            out.insert("where".into(), Value::clone(place));
         }
         out
     }
@@ -273,7 +311,7 @@ pub struct Provisional {
     /// When.
     pub since: String,
     /// The checkout it was made in.
-    pub where_: Option<Value>,
+    pub where_: Option<Arc<Value>>,
 }
 
 impl Provisional {
@@ -284,7 +322,7 @@ impl Provisional {
         out.insert("owner".into(), Value::from(self.owner.as_str()));
         out.insert("since".into(), Value::from(self.since.as_str()));
         if let Some(place) = &self.where_ {
-            out.insert("where".into(), place.clone());
+            out.insert("where".into(), Value::clone(place));
         }
         out
     }
@@ -356,7 +394,7 @@ pub enum Comment {
         /// When.
         created_at: String,
         /// The checkout it was written in.
-        where_: Option<Value>,
+        where_: Option<Arc<Value>>,
     },
     /// A comment an imported record carried, as Python keeps it: `{"uid": null, ...}`.
     Imported(Object),
@@ -384,7 +422,7 @@ impl Comment {
                 out.insert("text".into(), Value::from(text.as_str()));
                 out.insert("created_at".into(), Value::from(created_at.as_str()));
                 if let Some(place) = where_ {
-                    out.insert("where".into(), place.clone());
+                    out.insert("where".into(), Value::clone(place));
                 }
                 out
             }

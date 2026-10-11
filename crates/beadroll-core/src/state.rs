@@ -3,6 +3,7 @@
 
 mod issue;
 mod seen;
+mod small;
 
 use indexmap::IndexMap;
 
@@ -12,8 +13,10 @@ use crate::json::Value;
 use crate::key;
 use crate::text::str_of;
 
+pub(crate) use issue::Origin;
 pub use issue::{Claim, Comment, EndedClaim, Issue, LostClaim, Provisional, Stale};
 pub(crate) use seen::{Knowledge, Place, raise, reached};
+pub use small::{IdMap, IdSet, VecMap};
 
 /// A problem replay reports: an unusable record, or an event it could not apply.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -84,7 +87,8 @@ pub struct State {
     pub(crate) knowledge: Knowledge,
     pub(crate) prefix: Option<Value>,
     pub(crate) name: Option<Value>,
-    pub(crate) issues: IndexMap<EventId, Issue>,
+    /// Boxed, so that what a map of them keeps spare as it grows is a pointer a place, not an issue.
+    pub(crate) issues: IndexMap<EventId, Box<Issue>>,
     pub(crate) by_key: IndexMap<String, EventId>,
     pub(crate) renames: Vec<Rename>,
     pub(crate) integrity: Vec<Integrity>,
@@ -138,22 +142,22 @@ impl State {
 
     /// The issues, in the order replay created them.
     pub fn issues(&self) -> impl Iterator<Item = &Issue> {
-        self.issues.values()
+        self.issues.values().map(|issue| &**issue)
     }
 
     /// The issue `uid`, if there is one.
     pub fn issue(&self, uid: EventId) -> Option<&Issue> {
-        self.issues.get(&uid)
+        self.issues.get(&uid).map(|issue| &**issue)
     }
 
     /// The issue whose uid is the text `uid`, if there is one: a dependency names its target so.
     pub fn issue_named(&self, uid: &str) -> Option<&Issue> {
-        EventId::parse(uid).and_then(|uid| self.issues.get(&uid))
+        EventId::parse(uid).and_then(|uid| self.issue(uid))
     }
 
     /// The issues, in bytewise key order.
     pub fn issues_by_key(&self) -> Vec<&Issue> {
-        let mut issues: Vec<&Issue> = self.issues.values().collect();
+        let mut issues: Vec<&Issue> = self.issues().collect();
         issues.sort_by(|a, b| a.key().cmp(b.key()));
         issues
     }
@@ -212,7 +216,7 @@ impl State {
                 .map_or_else(|| "None".to_owned(), str_of);
             self.by_key.get(&format!("{prefix}-{key}"))
         })?;
-        self.issues.get(uid)
+        self.issue(*uid)
     }
 
     /// The key of the issue `uid` names, or `uid` itself when that is not an issue
@@ -338,7 +342,7 @@ impl State {
 /// How bead names the actor of an event (Python's `actor_label`): its name, or `agent:thread@machine`,
 /// or `agent@machine`.
 pub fn actor_of(event: &Event) -> String {
-    actor_label(event.get("actor"), event.replica())
+    actor_label(event.actor(), event.replica())
 }
 
 /// Python's `actor_label(event.get("actor") or {}, replica)`.

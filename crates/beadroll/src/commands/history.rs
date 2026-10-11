@@ -54,7 +54,7 @@ pub(crate) fn log(
     for event in rows {
         let actor = |key: &str| {
             event
-                .get("actor")
+                .actor()
                 .filter(|a| a.truthy())
                 .and_then(|a| a.get(key))
                 .cloned()
@@ -68,7 +68,7 @@ pub(crate) fn log(
             None => Value::Null,
         };
         let branch = event
-            .get("where")
+            .place()
             .filter(|w| w.truthy())
             .and_then(|w| w.get("branch"))
             .cloned()

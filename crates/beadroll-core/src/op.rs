@@ -129,22 +129,23 @@ pub struct Ending {
     pub reason: Option<String>,
 }
 
-/// An event's operation and its payload.
+/// An event's operation and its payload. A journal keeps one for each event, so what few events
+/// carry is boxed, and the operation stays small (roll-dih8.11).
 #[derive(Clone, Debug, PartialEq)]
 pub enum Op {
     /// The tracker's prefix and name; the first `init` in causal order sets them.
     Init {
         /// The prefix: any JSON value, read with `str()` where a key is made of it.
-        prefix: Option<Value>,
+        prefix: Option<Box<Value>>,
         /// The name.
-        name: Option<Value>,
+        name: Option<Box<Value>>,
     },
     /// A new issue.
     Create(Box<Create>),
     /// Fields set.
     Set(Vec<(Field, Value)>),
     /// A claim.
-    Claim(Claiming),
+    Claim(Box<Claiming>),
     /// The end of a claim by its owner.
     Release(Ending),
     /// The issue closed.
@@ -167,7 +168,7 @@ pub enum Op {
         /// Its type; `blocks` when absent or empty.
         kind: Option<String>,
         /// Metadata an import carried.
-        meta: Object,
+        meta: Box<Object>,
     },
     /// Dependencies taken back: those to `to`, or an imported one on `key`.
     DepRemove {
@@ -227,9 +228,36 @@ fn ending(data: &Object) -> Ending {
 }
 
 impl Op {
+    /// The operation's name, as an event names it: what [`Op::read`] read it from.
+    pub fn name(&self) -> &str {
+        match self {
+            Op::Init { .. } => "init",
+            Op::Create(_) => "create",
+            Op::Set(_) => "set",
+            Op::Claim(_) => "claim",
+            Op::Release(_) => "release",
+            Op::Close(_) => "close",
+            Op::Reopen => "reopen",
+            Op::Delete(_) => "delete",
+            Op::Comment { .. } => "comment",
+            Op::DepAdd { .. } => "dep_add",
+            Op::DepRemove { .. } => "dep_remove",
+            Op::LabelAdd(_) => "label_add",
+            Op::LabelRemove(_) => "label_remove",
+            Op::LabelSet(_) => "label_set",
+            Op::Quarantined => "quarantined",
+            Op::Invalid => "invalid",
+            Op::Unknown(name) => name,
+        }
+    }
+
     /// The operation `name` asks for, its payload read from `data`.
     pub fn read(name: &str, data: &Object) -> Op {
-        let present = |key: &str| data.get(key).filter(|v| **v != Value::Null).cloned();
+        let present = |key: &str| {
+            data.get(key)
+                .filter(|v| **v != Value::Null)
+                .map(|v| Box::new(v.clone()))
+        };
         match name {
             "init" => Op::Init {
                 prefix: present("prefix"),
@@ -259,12 +287,12 @@ impl Op {
                 imported: data.get("imported").is_some_and(Value::truthy),
             })),
             "set" => Op::Set(fields(data)),
-            "claim" => Op::Claim(Claiming {
+            "claim" => Op::Claim(Box::new(Claiming {
                 mode: text(data, "mode"),
                 takeover: text(data, "takeover"),
                 reason: text(data, "reason"),
                 generation: data.get("generation").and_then(PyInt::read),
-            }),
+            })),
             "release" => Op::Release(ending(data)),
             "close" => Op::Close(ending(data)),
             "reopen" => Op::Reopen,
@@ -276,11 +304,12 @@ impl Op {
             "dep_add" => Op::DepAdd {
                 to: text(data, "to").unwrap_or_default(),
                 kind: text(data, "type"),
-                meta: data
-                    .get("meta")
-                    .and_then(Value::as_object)
-                    .cloned()
-                    .unwrap_or_default(),
+                meta: Box::new(
+                    data.get("meta")
+                        .and_then(Value::as_object)
+                        .cloned()
+                        .unwrap_or_default(),
+                ),
             },
             "dep_remove" => Op::DepRemove {
                 to: text(data, "to"),

@@ -6,7 +6,6 @@ use std::collections::{BTreeSet, BinaryHeap};
 
 use crate::id::EventId;
 use crate::journal::{Event, Journal};
-use crate::json::Value;
 
 /// What an event waits for. A quarantined id is inert anyway, so it waits only for causes that
 /// exist: those its own journal's copy names (that copy is as trustworthy as the journal's other
@@ -26,13 +25,7 @@ pub fn effective_deps(journal: &Journal, event: &Event) -> Vec<EventId> {
     }
     let mut common: Option<BTreeSet<EventId>> = None;
     for variant in variants {
-        let listed = variant
-            .get("deps")
-            .and_then(Value::as_array)
-            .unwrap_or_default();
-        let deps: BTreeSet<EventId> = listed
-            .iter()
-            .filter_map(|dep| dep.as_str().and_then(EventId::parse))
+        let deps: BTreeSet<EventId> = (variant.deps().iter().copied())
             .filter(|dep| journal.event(*dep).is_some())
             .collect();
         common = Some(match common {
