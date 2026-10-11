@@ -39,9 +39,9 @@ pub(super) fn claim(c: &Ctx<'_>, issue: &mut Issue, claiming: &Claiming) -> bool
         issue.claim = Some(Box::new(Claim {
             id: c.eid,
             owner: who.to_owned(),
-            machine: c.event.replica().to_owned(),
-            agent: actor_text(c.event, "agent"),
-            thread: actor_text(c.event, "thread"),
+            machine: c.event.trace.replica().to_owned(),
+            agent: actor_text(c.event.trace, "agent"),
+            thread: actor_text(c.event.trace, "thread"),
             generation: issue.claim_generation.clone(),
             since: c.when.to_owned(),
             mode: claiming
@@ -165,9 +165,8 @@ fn takes_over(claim: Option<Held>, claiming: &Claiming) -> bool {
 }
 
 /// A member of the event's actor, as the claim records it.
-fn actor_text(event: &Event, key: &str) -> Option<String> {
-    event
-        .actor()
+fn actor_text(trace: &Event, key: &str) -> Option<String> {
+    (trace.actor())
         .and_then(|actor| actor.get(key))
         .and_then(Value::as_str)
         .map(str::to_owned)

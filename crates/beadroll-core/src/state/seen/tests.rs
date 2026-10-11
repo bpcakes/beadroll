@@ -191,15 +191,11 @@ fn every_answer_is_the_bitsets_answer_on_hostile_histories() {
     for _ in 0..24 {
         let count = 50 + rng.below(250);
         let (journal, missing) = history(&mut rng, count);
-        let st = replay(journal.clone()).unwrap();
-        let expected = bitset_saw(st.journal());
-        let ids: Vec<EventId> = st
-            .journal()
-            .events()
-            .keys()
-            .copied()
-            .chain(missing)
-            .collect();
+        let mut settled = journal.clone();
+        settled.settle();
+        let st = replay(journal).unwrap();
+        let expected = bitset_saw(&settled);
+        let ids: Vec<EventId> = st.events().chain(missing).collect();
         for &a in &ids {
             for &b in &ids {
                 assert_eq!(st.saw(a, b), expected(a, b), "{a} saw {b}");

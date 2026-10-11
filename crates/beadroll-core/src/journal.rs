@@ -17,6 +17,7 @@ use crate::json::{self, Format, Value};
 use crate::op::Op;
 
 pub use event::Event;
+pub(crate) use event::Rest;
 pub use read::{loads_line, read_attempt, read_segment};
 
 use event::{Shared, Source};
@@ -64,6 +65,16 @@ pub struct Journal {
     shared: Shared,
     /// Where the last record was found: the next ones from its file share it.
     last_source: Option<Arc<Source>>,
+}
+
+/// A settled journal taken apart for replay (roll-dih8.11): its events by id, in the order
+/// installed, each machine's append order, the ids found with several contents, and what could not
+/// be used. Its raw records go with the rest: replay reads each event once.
+pub(crate) struct Parts {
+    pub(crate) events: IndexMap<EventId, Event>,
+    pub(crate) order: IndexMap<String, Vec<EventId>>,
+    pub(crate) quarantined: HashSet<EventId>,
+    pub(crate) invalid: Vec<Problem>,
 }
 
 impl Default for Journal {
@@ -235,6 +246,17 @@ impl Journal {
         drop(by_id);
         self.raw = raw;
         self.settled = true;
+    }
+
+    /// The journal taken apart for replay, settled first.
+    pub(crate) fn into_parts(mut self) -> Parts {
+        self.settle();
+        Parts {
+            events: self.events,
+            order: self.order,
+            quarantined: self.quarantined.into_keys().collect(),
+            invalid: self.invalid,
+        }
     }
 
     /// The frontier: events nothing else here has built on yet, in order.

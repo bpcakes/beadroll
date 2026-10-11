@@ -5,9 +5,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use indexmap::IndexMap;
 
+use super::Doing;
 use crate::event::{Field, REGISTERS};
 use crate::id::EventId;
-use crate::journal::Event;
 use crate::json::{Int, Object, Value};
 use crate::op::Create;
 use crate::state::{
@@ -21,12 +21,12 @@ use super::dangling_type;
 pub(super) fn create(
     st: &mut State,
     k: &Knowledge,
-    event: &Event,
+    event: &Doing<'_>,
     create: &Create,
     who: &str,
     when: &str,
 ) -> Result<(), KeySpace> {
-    let eid = event.id();
+    let eid = event.id;
     let mut key = create.key.clone();
     if st.by_key.contains_key(&key) {
         // Two machines minted the same key before they synced.
@@ -34,7 +34,7 @@ pub(super) fn create(
         st.renames.push(Rename {
             from: std::mem::replace(&mut key, free.clone()),
             to: free,
-            replica: event.replica().to_owned(),
+            replica: event.trace.replica().to_owned(),
             uid: eid,
         });
     }
@@ -64,12 +64,14 @@ pub(super) fn create(
 
 /// The issue a create makes, under `key`: its defaults, then the fields it carries, with a register
 /// for each, and what an import brings (labels, extras, comments, dependencies on keys).
-fn new_issue(event: &Event, create: &Create, key: String, who: &str, when: &str) -> Issue {
-    let eid = event.id();
-    let place = event.shared_place().filter(|place| place.truthy()).cloned();
+fn new_issue(event: &Doing<'_>, create: &Create, key: String, who: &str, when: &str) -> Issue {
+    let eid = event.id;
+    let place = (event.what.place.as_ref())
+        .filter(|place| place.truthy())
+        .cloned();
     let origin = Origin {
-        machine: std::sync::Arc::clone(event.shared_replica()),
-        actor: event.shared_actor().cloned(),
+        machine: std::sync::Arc::clone(event.trace.shared_replica()),
+        actor: event.trace.shared_actor().cloned(),
         place: place.clone(),
     };
     let mut issue = Issue {
@@ -185,10 +187,7 @@ fn materialise_dangling(k: &Knowledge, by_key: &IndexMap<String, EventId>, issue
         }
         let mut meta = Object::new(); // as dep_add stamps it
         meta.insert("created_at".into(), Value::from(event_time(uid.millis())));
-        let creator = k
-            .journal
-            .event(uid)
-            .map_or_else(String::new, crate::state::actor_of);
+        let creator = k.who(uid).unwrap_or_default();
         meta.insert("created_by".into(), Value::from(creator));
         for name in ["created_at", "created_by", "metadata", "thread_id"] {
             if let Some(value) = dep.get(name) {

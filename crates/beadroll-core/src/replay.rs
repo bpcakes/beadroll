@@ -2,13 +2,17 @@
 //! events gets the same result. Three phases, as in Python: what every event had seen and which
 //! cannot apply at all; which claims a takeover supersedes; then each event applied in causal order.
 //! Events are taken by their index in the journal throughout, so that no phase looks an id up again.
+//!
+//! Replay takes its journal apart (roll-dih8.11): the state keeps of each event only what `saw` and
+//! `who` read, its causes, machine and actor, and lets go of what an event applies once it has
+//! applied it, so that a journal and its state are not both held whole.
 
 mod apply;
 
 use std::collections::HashSet;
 
 use crate::id::EventId;
-use crate::journal::Journal;
+use crate::journal::{Journal, Parts, Rest};
 use crate::json::Value;
 use crate::op::Op;
 use crate::order::Order;
@@ -19,26 +23,49 @@ use crate::time::event_time;
 /// find no free key (`KEY_SPACE`).
 pub fn replay(mut journal: Journal) -> Result<State, KeySpace> {
     journal.settle();
-    let order = Order::of(&journal);
-    let mut st = State::new(journal);
-    st.pending = order
-        .pending
-        .iter()
-        .filter_map(|at| st.knowledge.journal.events().get_index(*at))
+    let mut order = Order::of(&journal);
+    let Parts {
+        mut events,
+        order: chains,
+        quarantined,
+        invalid,
+    } = journal.into_parts();
+    // What each event does, taken from it by index: the state keeps the rest of each event.
+    let mut applying: Vec<Option<Box<Rest>>> = (events.values_mut())
+        .map(|event| Some(event.take_rest()))
+        .collect();
+    let placeholder = |at: usize| {
+        applying
+            .get(at)
+            .and_then(Option::as_deref)
+            .is_some_and(|what| matches!(what.op, Op::Quarantined | Op::Invalid))
+    };
+    let mut st = State::new(Knowledge::new(events, &chains, placeholder));
+    drop(chains);
+    st.pending = (order.pending.iter())
+        .filter_map(|at| st.knowledge.events.get_index(*at))
         .map(|(id, _)| *id)
         .collect();
-    for entry in &st.knowledge.journal.invalid {
+    for entry in invalid {
         st.integrity.push(Integrity {
-            event: entry.event.clone(),
+            event: entry.event,
             issue: None,
-            problem: entry.problem.clone(),
-            origin: Some(entry.origin.clone()),
+            problem: entry.problem,
+            origin: Some(entry.origin),
         });
     }
-    let mut inert = observe(&mut st.knowledge, &order);
-    let superseded = settle_takeovers(&st.knowledge, &order.ordered, &mut inert);
+    let mut inert = observe(&mut st.knowledge, &order, &applying, &quarantined);
+    order.forget_causes(); // what follows needs the order alone
+    let superseded = settle_takeovers(&st.knowledge, &order.ordered, &applying, &mut inert);
     let knowledge = std::mem::take(&mut st.knowledge);
-    let applied = apply_all(&mut st, &knowledge, &order.ordered, &inert, &superseded);
+    let applied = apply_all(
+        &mut st,
+        &knowledge,
+        &order.ordered,
+        &mut applying,
+        &inert,
+        &superseded,
+    );
     st.knowledge = knowledge;
     applied?;
     for issue in st.issues.values_mut() {
@@ -60,15 +87,19 @@ pub fn replay(mut journal: Journal) -> Result<State, KeySpace> {
 
 /// Phase 1: what every event had seen, and which events cannot be applied at all, each with the
 /// integrity text it is reported with (empty: reported when it was loaded), by event index.
-fn observe(k: &mut Knowledge, order: &Order) -> Vec<Option<String>> {
+fn observe(
+    k: &mut Knowledge,
+    order: &Order,
+    applying: &[Option<Box<Rest>>],
+    quarantined: &HashSet<EventId>,
+) -> Vec<Option<String>> {
     let Knowledge {
-        journal,
+        events,
         replicas,
         applicable,
         ancestry,
         chain_breaks,
     } = k;
-    let events = journal.events();
     let placeholder = |op: &str| matches!(op, "quarantined" | "invalid");
     // The last position before `number` in a machine's journal that holds an applicable event.
     let predecessor = |replica: u32, number: u32| -> i64 {
@@ -87,6 +118,9 @@ fn observe(k: &mut Knowledge, order: &Order) -> Vec<Option<String>> {
         let Some((&id, event)) = events.get_index(at) else {
             continue;
         };
+        let Some(what) = applying.get(at).and_then(Option::as_deref) else {
+            continue;
+        };
         let causes = order.causes(at);
         ancestry.gather(causes, &mut clock, &mut spare);
         if let Place::Sequenced(replica, number) = ancestry.place(at) {
@@ -95,7 +129,7 @@ fn observe(k: &mut Knowledge, order: &Order) -> Vec<Option<String>> {
                 // and do not pretend it saw what came before (a copied machine identity looks like
                 // this). A placeholder that fails this must not lend its position to what follows.
                 let name = replicas.get(replica as usize).cloned().unwrap_or_default();
-                if !placeholder(event.op_name())
+                if !placeholder(what.op.name())
                     && let Some(slot) = inert.get_mut(at)
                 {
                     *slot = Some(format!(
@@ -109,13 +143,13 @@ fn observe(k: &mut Knowledge, order: &Order) -> Vec<Option<String>> {
             raise(&mut clock, replica, number);
         }
         ancestry.record(at, &clock, causes, event.replica());
-        let reason = if journal.quarantined().contains_key(&id) {
+        let reason = if quarantined.contains(&id) {
             Some("one event id with different contents".to_owned())
-        } else if event.op_name() == "invalid" {
+        } else if what.op.name() == "invalid" {
             Some(String::new())
         } else {
             // its format or its payload, found when it was read
-            event.flaw().map(str::to_owned)
+            what.flaw().map(str::to_owned)
         };
         if let Some(slot) = inert.get_mut(at) {
             *slot = reason;
@@ -130,27 +164,31 @@ fn observe(k: &mut Knowledge, order: &Order) -> Vec<Option<String>> {
 fn settle_takeovers(
     k: &Knowledge,
     ordered: &[usize],
+    applying: &[Option<Box<Rest>>],
     inert: &mut [Option<String>],
 ) -> HashSet<EventId> {
-    let events = k.journal.events();
+    let what = |at: usize| applying.get(at).and_then(Option::as_deref);
     let mut superseded = HashSet::new();
     for &at in ordered {
-        let Some((_, event)) = events.get_index(at) else {
+        let Some(event) = what(at) else {
             continue;
         };
-        if inert.get(at).is_some_and(Option::is_some) || event.op_name() != "claim" {
+        if inert.get(at).is_some_and(Option::is_some) {
             continue;
         }
-        let Op::Claim(claiming) = event.op() else {
+        let Op::Claim(claiming) = &event.op else {
             continue;
         };
         let Some(takeover) = claiming.takeover.as_deref().filter(|t| !t.is_empty()) else {
             continue;
         };
-        let previous = EventId::parse(takeover).and_then(|p| events.get_full(&p));
+        let previous = EventId::parse(takeover).and_then(|p| {
+            let (before, previous, _) = k.events.get_full(&p)?;
+            Some((before, *previous, what(before)?))
+        });
         let refused = match previous {
-            Some((before, &previous, earlier))
-                if earlier.op_name() == "claim" && earlier.issue() == event.issue() =>
+            Some((before, previous, earlier))
+                if matches!(earlier.op, Op::Claim(_)) && earlier.issue == event.issue =>
             {
                 if !k.saw_at(at, previous) {
                     Some("takeover of a claim its writer had not seen")
@@ -179,15 +217,19 @@ fn apply_all(
     st: &mut State,
     k: &Knowledge,
     ordered: &[usize],
+    applying: &mut [Option<Box<Rest>>],
     inert: &[Option<String>],
     superseded: &HashSet<EventId>,
 ) -> Result<(), KeySpace> {
-    let events = k.journal.events();
     for &at in ordered {
-        let Some((&id, event)) = events.get_index(at) else {
+        let Some((&id, trace)) = k.events.get_index(at) else {
             continue;
         };
-        let uid = event.issue();
+        // applied once: what it does goes with this turn of the loop
+        let Some(event) = applying.get_mut(at).and_then(Option::take) else {
+            continue;
+        };
+        let uid = event.issue.as_deref();
         if let Some(reason) = inert.get(at).and_then(Option::as_ref) {
             if !reason.is_empty() {
                 let issue = uid.map(|uid| st.key_of(uid).to_owned());
@@ -200,27 +242,33 @@ fn apply_all(
             }
             continue;
         }
-        let actor = event.actor().filter(|actor| actor.truthy());
-        let who = actor_label(actor, event.replica());
+        let actor = trace.actor().filter(|actor| actor.truthy());
+        let who = actor_label(actor, trace.replica());
         let when = event_time(id.millis());
         let thread = actor
             .and_then(|actor| actor.get("thread"))
             .and_then(Value::as_str);
         st.last_by_thread
-            .insert((event.replica().to_owned(), thread.map(str::to_owned)), id);
-        let applied = apply::apply_event(st, k, at, event, &who, &when, superseded)?;
+            .insert((trace.replica().to_owned(), thread.map(str::to_owned)), id);
+        let doing = apply::Doing {
+            at,
+            id,
+            trace,
+            what: &event,
+        };
+        let applied = apply::apply_event(st, k, &doing, &who, &when, superseded)?;
         let target = uid.and_then(EventId::parse);
         if let Some(issue) = target
             .filter(|_| applied)
             .and_then(|uid| st.issues.get_mut(&uid))
         {
-            if !event.imported() {
+            if !event.imported {
                 issue.set(
                     crate::event::Field::UpdatedAt,
                     Some(Value::from(when.as_str())),
                 );
             }
-            if let Some(place) = event.shared_place().filter(|place| place.truthy()) {
+            if let Some(place) = event.place.as_ref().filter(|place| place.truthy()) {
                 issue.where_ = Some(std::sync::Arc::clone(place));
             }
         }

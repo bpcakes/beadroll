@@ -375,9 +375,8 @@ impl Soak {
     /// each is the current claim of its issue or in its claim history.
     fn check_store(&self, step: usize, machine: &Machine) {
         let state = replayed(machine);
-        let events = state.journal().events();
         let lost: Vec<&String> = (self.model.accepted.iter())
-            .filter(|claim| !EventId::parse(claim).is_some_and(|e| events.contains_key(&e)))
+            .filter(|claim| !EventId::parse(claim).is_some_and(|e| state.holds(e)))
             .collect();
         assert!(lost.is_empty(), "{step}: lost accepted event {lost:?}");
         let gone = missing(&self.model.accepted, &realized(&state));

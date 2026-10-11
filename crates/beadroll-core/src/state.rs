@@ -106,9 +106,9 @@ pub struct State {
 }
 
 impl State {
-    pub(crate) fn new(journal: Journal) -> State {
+    pub(crate) fn new(knowledge: Knowledge) -> State {
         State {
-            knowledge: Knowledge::new(journal),
+            knowledge,
             prefix: None,
             name: None,
             issues: IndexMap::new(),
@@ -124,9 +124,14 @@ impl State {
         }
     }
 
-    /// The journal it was replayed from.
-    pub fn journal(&self) -> &Journal {
-        &self.knowledge.journal
+    /// Whether `event` was among the events it was replayed from.
+    pub fn holds(&self, event: EventId) -> bool {
+        self.knowledge.events.contains_key(&event)
+    }
+
+    /// The events it was replayed from, by id, in their journal's order.
+    pub fn events(&self) -> impl Iterator<Item = EventId> {
+        self.knowledge.events.keys().copied()
     }
 
     /// The tracker's prefix, as its first `init` set it: any JSON value, read with `str()` where a
@@ -227,9 +232,7 @@ impl State {
 
     /// Who wrote `event`, as bead names an actor (Python's `State.who`).
     pub fn who(&self, event: EventId) -> String {
-        self.journal()
-            .event(event)
-            .map_or_else(String::new, actor_of)
+        self.knowledge.who(event).unwrap_or_default()
     }
 
     /// Keys a new or renamed issue must not take: every issue's, and every key an imported dependency

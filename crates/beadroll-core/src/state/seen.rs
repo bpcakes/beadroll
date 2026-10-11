@@ -28,7 +28,8 @@ use std::collections::HashMap;
 use indexmap::IndexMap;
 
 use crate::id::EventId;
-use crate::journal::Journal;
+use crate::journal::Event;
+use crate::state::actor_label;
 
 /// Where an event is: a chain and its position there.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -268,10 +269,11 @@ pub(crate) fn raise(clock: &mut Vec<(u32, u32)>, chain: u32, position: u32) {
     }
 }
 
-/// The journal, and what each of its events had seen.
+/// Every event replay took from its journal, by id, in the journal's order, and what each had
+/// seen. Replay has taken what each event does: what is left is what `saw` and `who` read.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Knowledge {
-    pub(crate) journal: Journal,
+    pub(crate) events: IndexMap<EventId, Event>,
     /// The machines with a journal, in the journal's order.
     pub(crate) replicas: Vec<String>,
     /// Each machine's positions that hold an applicable event (not a placeholder), ascending.
@@ -281,21 +283,26 @@ pub(crate) struct Knowledge {
 }
 
 impl Knowledge {
-    pub(crate) fn new(journal: Journal) -> Knowledge {
-        let events = journal.events();
-        let replicas: Vec<String> = journal.order().keys().cloned().collect();
+    /// What `events` had seen, to be observed, given each machine's append `order` and which events
+    /// are placeholders, by index.
+    pub(crate) fn new(
+        events: IndexMap<EventId, Event>,
+        order: &IndexMap<String, Vec<EventId>>,
+        placeholder: impl Fn(usize) -> bool,
+    ) -> Knowledge {
+        let replicas: Vec<String> = order.keys().cloned().collect();
         let mut places = vec![Place::Nowhere; events.len()];
         let mut applicable = Vec::with_capacity(replicas.len());
-        for (replica, ids) in journal.order().values().enumerate() {
+        for (replica, ids) in order.values().enumerate() {
             let mut positions = Vec::new();
             for (number, id) in ids.iter().enumerate() {
-                let Some((at, _, event)) = events.get_full(id) else {
+                let Some(at) = events.get_index_of(id) else {
                     continue;
                 };
                 if let Some(place) = places.get_mut(at) {
                     *place = Place::Sequenced(small(replica), small(number));
                 }
-                if !matches!(event.op_name(), "quarantined" | "invalid") {
+                if !placeholder(at) {
                     positions.push(small(number));
                 }
             }
@@ -310,7 +317,7 @@ impl Knowledge {
             last: HashMap::new(),
         };
         Knowledge {
-            journal,
+            events,
             replicas,
             applicable,
             ancestry,
@@ -320,8 +327,7 @@ impl Knowledge {
 
     /// Whether the writer of `event` had already seen `other`.
     pub(crate) fn saw(&self, event: EventId, other: EventId) -> bool {
-        self.journal
-            .events()
+        self.events
             .get_index_of(&event)
             .is_some_and(|at| self.saw_at(at, other))
     }
@@ -329,16 +335,22 @@ impl Knowledge {
     /// Whether the writer of the event at `at` had already seen `other`: it names `other` as a
     /// cause, or `other` is within its clock.
     pub(crate) fn saw_at(&self, at: usize, other: EventId) -> bool {
-        let events = self.journal.events();
-        if events
+        if self
+            .events
             .get_index(at)
             .is_some_and(|(_, event)| event.deps().contains(&other))
         {
             return true;
         }
-        events
+        self.events
             .get_index_of(&other)
             .is_some_and(|other| self.ancestry.reaches(at, other))
+    }
+
+    /// Who wrote `event`, as bead names an actor, if it was replayed.
+    pub(crate) fn who(&self, event: EventId) -> Option<String> {
+        let event = self.events.get(&event)?;
+        Some(actor_label(event.actor(), event.replica()))
     }
 }
 

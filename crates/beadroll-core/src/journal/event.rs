@@ -5,7 +5,7 @@
 //! held once ([`Shared`]).
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use crate::event::{FORMAT, event_problem, payload_problem};
 use crate::id::EventId;
@@ -20,22 +20,31 @@ use super::content::{Digest, Digester};
 #[derive(Clone, Debug, PartialEq)]
 pub struct Event(Arc<Read>);
 
-/// What was read of one record.
+/// What was read of one record: what a replayed state keeps of it, its causes, machine and actor,
+/// and the rest, which replay takes and lets go of once it has applied the event.
 #[derive(Debug, PartialEq)]
 struct Read {
     id: EventId,
     /// Its causes, as listed: the members of `deps` that are UUIDs.
     deps: Box<[EventId]>,
-    op: Op,
     /// The machine it names (`replica`), or `""`.
     replica: Arc<str>,
-    /// The issue it names, when that is text.
-    issue: Option<Arc<str>>,
-    /// Its `actor` and its `where`, as written.
+    /// Its `actor`, as written.
     actor: Option<Arc<Value>>,
-    place: Option<Arc<Value>>,
+    /// What it does and how it was found; gone once replay has taken it.
+    rest: Option<Box<Rest>>,
+}
+
+/// What an event does, and how its record was found.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Rest {
+    pub(crate) op: Op,
+    /// The issue it names, when that is text.
+    pub(crate) issue: Option<Arc<str>>,
+    /// Its `where`, as written.
+    pub(crate) place: Option<Arc<Value>>,
     /// Whether its payload says it came from an import (`data.imported`).
-    imported: bool,
+    pub(crate) imported: bool,
     /// What is wrong with it, if anything: few records have anything.
     trouble: Option<Box<Trouble>>,
     /// Its content, as this journal tells contents apart.
@@ -55,7 +64,7 @@ pub(crate) struct Source {
 }
 
 /// What is wrong with a record.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 enum Trouble {
     /// It is not a valid event (`event_problem`).
     Invalid(String),
@@ -64,9 +73,36 @@ enum Trouble {
     Flaw(String),
 }
 
+/// What an event replay has taken the rest of answers: a placeholder that applies nothing. Only
+/// replay takes the rest, and it reads it from what it took.
+static TAKEN: LazyLock<Rest> = LazyLock::new(|| Rest {
+    op: Op::Invalid,
+    issue: None,
+    place: None,
+    imported: false,
+    trouble: None,
+    digest: [0; 2],
+    source: Arc::new(Source {
+        replica: Arc::from(""),
+        origin: Arc::from(""),
+        sequenced: false,
+    }),
+    counter: 0,
+});
+
 /// Python's `value != n` for an integer field: `true` equals 1.
 fn same_int(value: &Value, n: i64) -> bool {
     PyInt::read(value).is_some_and(|value| value == PyInt::from(n))
+}
+
+impl Rest {
+    /// Why replay cannot apply this valid event: its format or its payload.
+    pub(crate) fn flaw(&self) -> Option<&str> {
+        match self.trouble.as_deref() {
+            Some(Trouble::Flaw(flaw)) => Some(flaw),
+            _ => None,
+        }
+    }
 }
 
 impl Event {
@@ -106,22 +142,25 @@ impl Event {
             .get("replica")
             .and_then(Value::as_str)
             .unwrap_or_default();
-        Event(Arc::new(Read {
-            id,
-            deps,
+        let rest = Rest {
             op: Op::read(name, data),
-            replica: shared.text(replica),
             issue: value
                 .get("issue")
                 .and_then(Value::as_str)
                 .map(|issue| shared.text(issue)),
-            actor: value.get("actor").map(|actor| shared.value(actor)),
             place: value.get("where").map(|place| shared.value(place)),
             imported: data.get("imported").is_some_and(Value::truthy),
             trouble: trouble.map(Box::new),
             digest: shared.digester.digest(value),
             source: Arc::clone(source),
             counter,
+        };
+        Event(Arc::new(Read {
+            id,
+            deps,
+            replica: shared.text(replica),
+            actor: value.get("actor").map(|actor| shared.value(actor)),
+            rest: Some(Box::new(rest)),
         }))
     }
 
@@ -133,21 +172,39 @@ impl Event {
         deps: Box<[EventId]>,
         issue: Option<Arc<str>>,
     ) -> Event {
-        let source = Arc::clone(&placement.0.source);
-        Event(Arc::new(Read {
-            id: placement.0.id,
-            deps,
+        let found = placement.rest();
+        let source = Arc::clone(&found.source);
+        let rest = Rest {
             op,
-            replica: Arc::clone(&source.replica),
             issue,
-            actor: None,
             place: None,
             imported: false,
             trouble: None,
             digest: [0; 2],
-            source,
-            counter: placement.0.counter,
+            source: Arc::clone(&source),
+            counter: found.counter,
+        };
+        Event(Arc::new(Read {
+            id: placement.0.id,
+            deps,
+            replica: Arc::clone(&source.replica),
+            actor: None,
+            rest: Some(Box::new(rest)),
         }))
+    }
+
+    /// What it does and how it was found.
+    fn rest(&self) -> &Rest {
+        self.0.rest.as_deref().unwrap_or(&TAKEN)
+    }
+
+    /// What it does, taken for replay to apply: moved out when this is the event's only handle,
+    /// so that it goes once applied; copied when a journal that shares the event lives on.
+    pub(crate) fn take_rest(&mut self) -> Box<Rest> {
+        match Arc::get_mut(&mut self.0).and_then(|read| read.rest.take()) {
+            Some(rest) => rest,
+            None => Box::new(self.rest().clone()),
+        }
     }
 
     /// Its id.
@@ -162,12 +219,12 @@ impl Event {
 
     /// Its operation, with its payload read as replay reads it.
     pub fn op(&self) -> &Op {
-        &self.0.op
+        &self.rest().op
     }
 
     /// The name of its operation, as written (`quarantined` and `invalid` for a stand-in).
     pub fn op_name(&self) -> &str {
-        self.0.op.name()
+        self.op().name()
     }
 
     /// The machine that wrote it.
@@ -177,17 +234,12 @@ impl Event {
 
     /// The issue it is about, if it names one.
     pub fn issue(&self) -> Option<&str> {
-        self.0.issue.as_deref()
+        self.rest().issue.as_deref()
     }
 
     /// Its `actor`, as written.
     pub fn actor(&self) -> Option<&Value> {
         self.0.actor.as_deref()
-    }
-
-    /// Its `where`, as written.
-    pub fn place(&self) -> Option<&Value> {
-        self.0.place.as_deref()
     }
 
     /// The machine it names, shared with every event that names it.
@@ -200,27 +252,19 @@ impl Event {
         self.0.actor.as_ref()
     }
 
-    /// Its `where`, shared with every event written alike.
-    pub(crate) fn shared_place(&self) -> Option<&Arc<Value>> {
-        self.0.place.as_ref()
+    /// Its `where`, as written.
+    pub fn place(&self) -> Option<&Value> {
+        self.rest().place.as_deref()
     }
 
     /// Whether its payload says it came from an import: Python's `data.get("imported")`.
     pub fn imported(&self) -> bool {
-        self.0.imported
-    }
-
-    /// Why replay cannot apply this valid event: its format or its payload.
-    pub(crate) fn flaw(&self) -> Option<&str> {
-        match self.0.trouble.as_deref() {
-            Some(Trouble::Flaw(flaw)) => Some(flaw),
-            _ => None,
-        }
+        self.rest().imported
     }
 
     /// Why it is not a valid event, if it is not.
     pub(crate) fn problem(&self) -> Option<&str> {
-        match self.0.trouble.as_deref() {
+        match self.rest().trouble.as_deref() {
             Some(Trouble::Invalid(problem)) => Some(problem),
             _ => None,
         }
@@ -228,22 +272,22 @@ impl Event {
 
     /// Its content's digest: equal for two records exactly when they hold the same content.
     pub(crate) fn digest(&self) -> &Digest {
-        &self.0.digest
+        &self.rest().digest
     }
 
     /// Where its record was found.
     pub(crate) fn source(&self) -> &Arc<Source> {
-        &self.0.source
+        &self.rest().source
     }
 
     /// The how-manyth record it was.
     pub(crate) fn counter(&self) -> u64 {
-        self.0.counter
+        self.rest().counter
     }
 
     /// Whether it is a valid event found in its own machine's journal.
     pub(crate) fn own(&self) -> bool {
-        self.problem().is_none() && self.0.replica == self.0.source.replica
+        self.problem().is_none() && self.0.replica == self.rest().source.replica
     }
 }
 

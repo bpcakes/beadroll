@@ -108,6 +108,15 @@ impl Lists {
 }
 
 impl Order {
+    /// Lets go of what each event waits for: once replay has observed what every event had seen,
+    /// it needs the order alone.
+    pub(crate) fn forget_causes(&mut self) {
+        self.causes = Lists {
+            starts: Vec::new(),
+            items: Vec::new(),
+        };
+    }
+
     /// The effective causes of the event at `at` that the journal holds, by index, as listed
     /// (a cause named twice is here twice).
     pub(crate) fn causes(&self, at: usize) -> &[usize] {
