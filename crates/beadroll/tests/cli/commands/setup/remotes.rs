@@ -275,3 +275,76 @@ fn a_remotes_own_push_url_is_pushed_to_as_git_pushes_to_it() {
         "bead pushed where the rule sends other URLs"
     );
 }
+
+/// The remote bead defines for a push to a remote's own push URL is named for that push: one of a
+/// fixed name that the configuration it inherits defines already (here through `GIT_CONFIG_COUNT`)
+/// adds nothing to where it pushes.
+#[test]
+fn the_remote_defined_for_a_push_inherits_no_urls() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--prefix", "ex"]);
+    let tracker = sandbox.bare("tracker.git");
+    let other = sandbox.bare("other.git");
+    let own = format!("file://{}", text(&tracker));
+    commit(&a, &["remote", "add", "tracker", text(&tracker)]);
+    commit(&a, &["remote", "set-url", "--push", "tracker", &own]);
+    let synced = a
+        .cmd(["sync", "--remote", "tracker", "--json"])
+        .env("GIT_CONFIG_COUNT", "1")
+        .env("GIT_CONFIG_KEY_0", "remote.bead-coordination.pushurl")
+        .env("GIT_CONFIG_VALUE_0", text(&other))
+        .run();
+    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
+    let refs = |remote: &Path| {
+        git(
+            ["--git-dir", text(remote), "for-each-ref", "refs/beads"],
+            None,
+        )
+    };
+    assert_ne!(
+        refs(&tracker),
+        "",
+        "nothing reached the remote's own push URL"
+    );
+    assert_eq!(refs(&other), "", "the push went to an inherited URL too");
+}
+
+/// A remote whose URL is a relative path that is also another remote's name (`remote.tracker.url
+/// = origin`, a repository `origin` in the checkout): bead reads the URL as the path it is, not as
+/// the remote `origin`.
+#[test]
+fn a_remote_url_that_names_another_remote_is_still_a_path() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let inside = a.checkout().join("origin");
+    git(["init", "-q", "--bare", "-b", "main", text(&inside)], None);
+    commit(&a, &["remote", "add", "tracker", "origin"]);
+    let init = [
+        "init",
+        "--tracked",
+        "--prefix",
+        "ex",
+        "--remote",
+        "tracker",
+        "--json",
+    ];
+    let run = a.run(init);
+    assert_eq!(run.returncode(), 0, "{}", run.stderr);
+    let refs = |remote: &Path| {
+        git(
+            ["--git-dir", text(remote), "for-each-ref", "refs/beads"],
+            None,
+        )
+    };
+    assert_ne!(
+        refs(&inside),
+        "",
+        "nothing reached the path the remote names"
+    );
+    assert_eq!(
+        refs(sandbox.origin()),
+        "",
+        "bead went to the remote origin instead"
+    );
+}

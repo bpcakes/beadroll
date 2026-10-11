@@ -143,8 +143,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   remote: `init` starts the tracker as before. `--remote` given origin's own URL is stored as
   `origin`, and a remote's name resolves to the URL `git push NAME` is configured with (its first
   push URL, else its first URL, `insteadOf` and `pushInsteadOf` left to git), as origin is read
-  (G22); a stored relative path that git rewrites is git's, not a path from the top of the
-  checkout, and git reaches a remote from the top of the checkout, so a relative path it makes of
+  (G22); a stored relative path that git rewrites (an `insteadOf` or `pushInsteadOf` rule is a
+  prefix of it) is git's, not a path from the top of the checkout, and git reaches a remote from the top of the checkout, so a relative path it makes of
   a rewritten URL is read from there, as bead reads one, wherever bead runs; a remote's own push
   URL is pushed to as `git push NAME` pushes there, without `pushInsteadOf`. A store whose remembered remote is a tracked name as older versions resolved it (`git
   remote get-url`, `insteadOf` applied) goes on through the name, unless the name has a push URL

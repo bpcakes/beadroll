@@ -14,9 +14,6 @@ use beadroll_store::{
 use super::Link;
 use crate::error::Error;
 
-/// The remote a push to a remote's own push URL goes through, defined on its command line alone.
-const PUSH_REMOTE: &str = "bead-coordination";
-
 impl Link<'_> {
     /// The tree to publish: the manifest and every journal file, with `pending`'s attempt at the
     /// place it will live if accepted. An interrupted write is never published. Its trees are made
@@ -110,7 +107,8 @@ impl Link<'_> {
         let refspec = format!("{commit}:{}", self.ref_name);
         // a remote's own push URL is pushed to as `git push NAME` pushes there, without the
         // `pushInsteadOf` rewrites git applies to a URL given to it: through a remote defined for
-        // this push alone, with that URL as its push URL
+        // this push alone, with that URL as its push URL, named for this push so that no
+        // configuration it inherits defines that remote already (its URLs would be added to)
         let mut own_push_url = false;
         for pushed in &self.push_urls {
             if self.ws.resolve_remote(pushed, false)? == self.url {
@@ -118,8 +116,9 @@ impl Link<'_> {
                 break;
             }
         }
+        let name = format!("bead-push-{}", hex_token(12));
         let defined = ["url", "pushurl"].map(|key| {
-            let mut setting = OsString::from(format!("remote.{PUSH_REMOTE}.{key}="));
+            let mut setting = OsString::from(format!("remote.{name}.{key}="));
             setting.push(&self.url);
             setting
         });
@@ -134,7 +133,7 @@ impl Link<'_> {
         // git option.
         args.extend(["push", "--porcelain", "--no-verify", "--"].map(OsStr::new));
         args.push(if own_push_url {
-            OsStr::new(PUSH_REMOTE)
+            OsStr::new(&name)
         } else {
             &self.url
         });

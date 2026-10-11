@@ -158,16 +158,26 @@ fn name_shaped(value: &OsStr) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
 }
 
-/// Whether git rewrites `url` (`url.<base>.insteadOf`) before it reaches it: what `git ls-remote
-/// --get-url` makes of it, without asking any remote, is something else.
+/// Whether git rewrites `url` before it reaches it: some `url.<base>.insteadOf` or
+/// `url.<base>.pushInsteadOf` configured here is a prefix of it, as git matches them. Asked of the
+/// rules, never by having git expand `url`, which it reads as a remote's name when it is one.
 fn rewritten(git: &beadroll_git::Env, url: &OsStr) -> Result<bool, Error> {
-    if url.as_bytes().starts_with(b"-") {
-        return Ok(false);
-    }
-    let expanded = git
-        .git([OsStr::new("ls-remote"), OsStr::new("--get-url"), url])
+    let rules = git
+        .git([
+            "config",
+            "--null",
+            "--get-regexp",
+            r"^url\..+\.(insteadof|pushinsteadof)$",
+        ])
         .run()?;
-    Ok(expanded.success() && crate::strip_ascii(&expanded.stdout) != url.as_bytes())
+    Ok(rules.success()
+        && rules.stdout.split(|b| *b == 0).any(|rule| {
+            let prefix = rule
+                .iter()
+                .position(|b| *b == b'\n')
+                .map(|at| &rule[at + 1..]);
+            prefix.is_some_and(|prefix| url.as_bytes().starts_with(prefix))
+        }))
 }
 
 /// A remote as git is configured with it.
