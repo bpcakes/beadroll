@@ -1,6 +1,6 @@
 //! What git's messages mean to bead (transliterated from `sync.py`): whether a complaint is about
-//! `sync.git`'s own objects, whether a fetch found the remote missing objects, and what a push's
-//! porcelain status line says happened.
+//! `sync.git`'s own objects, whether a fetch found the remote missing objects or lost to another
+//! process's fetch, and what a push's porcelain status line says happened.
 
 use std::sync::LazyLock;
 
@@ -70,6 +70,22 @@ pub fn remote_lacks_objects(said: &str) -> bool {
         .filter(|line| relayed(line))
         .collect();
     search(&REMOTE_LACKS, &relayed.join("\n"))
+}
+
+/// Whether a failed fetch lost to another process's fetch, each of which lands in a ref of its own
+/// under `namespace` and deletes it after: git listed such a ref that was gone when it read it
+/// (`bad object REF`, ref paranoia being on), or the directory of the fetch's own ref vanished
+/// while git made it (`cannot lock ref 'REF'`, after git's own tries). Never a line the remote
+/// relayed: its refs are not this repository's.
+pub fn lost_to_other_fetch(said: &str, namespace: &str) -> bool {
+    let (listed, locked) = (
+        format!("bad object {namespace}"),
+        format!("cannot lock ref '{namespace}"),
+    );
+    py_splitlines(said)
+        .into_iter()
+        .filter(|line| !relayed(line))
+        .any(|line| line.contains(&listed) || line.contains(&locked))
 }
 
 /// What became of a push, as `Link.publish` reads it.
@@ -154,6 +170,25 @@ mod tests {
         for pattern in [&LOCAL_DAMAGE, &REMOTE_LACKS, &RACE, &VERDICT] {
             assert!(pattern.is_some());
         }
+    }
+
+    #[test]
+    fn a_fetch_lost_to_another_is_told_by_its_own_fetch_refs() {
+        let fetch = "refs/beads/fetch/";
+        let listed = "fatal: bad object refs/beads/fetch/4242-0a1b2c3d\n\
+                      error: /srv/r.git did not send all necessary objects\n";
+        assert!(lost_to_other_fetch(listed, fetch));
+        let made = "error: cannot lock ref 'refs/beads/fetch/4243-0a1b2c3d': unable to create \
+                    directory for /s/sync.git/refs/beads/fetch/4243-0a1b2c3d\n \
+                    ! [new ref] refs/beads/journal -> refs/beads/fetch/4243-0a1b2c3d (unable to \
+                    update local ref)\n";
+        assert!(lost_to_other_fetch(made, fetch));
+        let relayed = "remote: fatal: bad object refs/beads/fetch/1-00\n";
+        assert!(!lost_to_other_fetch(relayed, fetch));
+        let elsewhere = "fatal: bad object refs/beads/remote\n";
+        assert!(!lost_to_other_fetch(elsewhere, fetch));
+        let unreachable = "fatal: '/srv/gone.git' does not appear to be a git repository\n";
+        assert!(!lost_to_other_fetch(unreachable, fetch));
     }
 
     #[test]

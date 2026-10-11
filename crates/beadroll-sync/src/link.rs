@@ -11,6 +11,7 @@
 //! processes' fetches are still reading every ref then ([`Link::keep_fetched`]).
 
 mod asked;
+mod fetch;
 mod merge;
 mod publish;
 mod read;
@@ -21,17 +22,14 @@ use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStrExt as _;
 use std::path::PathBuf;
 
-use beadroll_core::event::FORMAT;
-use beadroll_core::json::{self, Value};
-use beadroll_core::text::{repr, str_of};
+use beadroll_core::json::Value;
 use beadroll_git::{
-    CountRules, Env, Fact, Hasher, IoError, Objects, Refs, StoredFormat, Trees, local_damage,
-    remote_lacks_objects, stored_format, sync_env, transport_config, transport_settings,
-    with_settings,
+    CountRules, Env, Fact, Hasher, IoError, Objects, Refs, Trees, local_damage, sync_env,
+    transport_config, transport_settings, with_settings,
 };
 use beadroll_store::{
-    Endpoint, Fired, Workspace, claim_files, dir_entries, has_suffix, hex_token, object_format,
-    private_dir, read, relative, segment_files,
+    Endpoint, Workspace, claim_files, dir_entries, has_suffix, hex_token, private_dir, read,
+    relative, segment_files,
 };
 
 use crate::error::Error;
@@ -273,187 +271,6 @@ impl<'a> Link<'a> {
         Ok(true)
     }
 
-    /// Fetches exactly the coordination ref: its head, or `None` if nobody has published. The
-    /// manifest must name this workspace in format 1.
-    ///
-    /// Failpoint: `fetch.result` (`error(CODE)` fails the fetch) at its start.
-    pub fn fetch(&mut self) -> Result<Option<String>, Error> {
-        if let Some(Fired::Error(code)) = self.ws.settings.failpoints.hit("fetch.result") {
-            return Err(Error::injected(code, "fetch.result"));
-        }
-        // what this fetch brings may be in a pack a `hash-object` or `mktree` started earlier
-        // would not see
-        self.hasher = None;
-        self.trees = None;
-        self.prepare_repository()?;
-        // the reader starts while the fetch runs, ready when it is done: it finds names and
-        // objects afresh at each question
-        self.objects.start();
-        // Into a ref of this process's own: git fetch updates its destination only if it still
-        // holds the value it read first, and every bead process of this store fetches at its own
-        // time.
-        let mine = format!("refs/beads/fetch/{}-{}", std::process::id(), hex_token(8));
-        let refspec = format!("+{}:{mine}", self.ref_name);
-        let proc = self
-            .remote_env()
-            .git([
-                OsStr::new("fetch"),
-                "--quiet".as_ref(),
-                "--no-tags".as_ref(),
-                "--no-write-fetch-head".as_ref(),
-                "--".as_ref(),
-                self.remote_name.as_ref(),
-                refspec.as_ref(),
-            ])
-            .timeout(self.ws.settings.net_timeout)
-            .run()?;
-        let nothing = !proc.success() && found_nothing(&proc.stderr);
-        if proc.success() || nothing {
-            // the writers start once the fetch's pack is in place, ready when the round writes
-            self.hasher = Hasher::start(&self.env).ok();
-            self.trees = Trees::start(&self.env).ok();
-        }
-        if !proc.success() {
-            return self.fetch_failed(&proc.stderr);
-        }
-        let tip = self.fetched_tip(&mine)?;
-        // keeps what was fetched reachable
-        self.keep_fetched(&tip, &mine)?;
-        self.check_manifest(&tip)?;
-        Ok(Some(tip))
-    }
-
-    /// Whether `sync.git` was made in another object format than `wanted` (Python's `rev-parse
-    /// --show-object-format` there, compared): its config's `extensions.objectformat` when that
-    /// names `wanted`, else git's own answer, a failing git meaning no.
-    fn stored_format_differs(&self, wanted: &str) -> Result<bool, Error> {
-        match stored_format(&self.git_dir) {
-            StoredFormat::Absent => Ok(false),
-            StoredFormat::Named(have) if have == wanted => Ok(false),
-            StoredFormat::Named(_) | StoredFormat::Unsure => {
-                let have = self.run(&[OsStr::new("rev-parse"), "--show-object-format".as_ref()])?;
-                Ok(have.success() && have.stdout_text() != wanted)
-            }
-        }
-    }
-
-    /// A missing or unfinished `sync.git` (a failed or interrupted init) completed in place, with no
-    /// template (the user's hooks are for their repositories) and private modes. Two processes may
-    /// race here; whichever loses finds the directory in place.
-    /// `sync.git`, in the project's object format: made if it is not there, made again if it was
-    /// made in another.
-    fn prepare_repository(&mut self) -> Result<(), Error> {
-        if self.object_format.is_none() {
-            // sync.git hashes like the project, not like this machine's default
-            let wanted = object_format(&self.ws.settings)?.unwrap_or_default();
-            if !wanted.is_empty() && self.stored_format_differs(&wanted)? {
-                // made in another format it can never exchange objects with the remote; it holds
-                // nothing that is not also in events/ or on the remote, so it is made again
-                self.stop_gits();
-                let stale = self
-                    .git_dir
-                    .with_file_name(format!(".sync.{}.stale", hex_token(32)));
-                match std::fs::rename(&self.git_dir, &stale) {
-                    Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-                        return Err(IoError::at(&error, &stale).into());
-                    }
-                    _ => {}
-                }
-                let _ = std::fs::remove_dir_all(&stale);
-            }
-            self.object_format = Some(wanted);
-        }
-        self.ensure_repository()
-    }
-
-    fn ensure_repository(&self) -> Result<(), Error> {
-        let complete = ["HEAD", "objects", "refs"]
-            .iter()
-            .all(|part| self.git_dir.join(part).exists());
-        if complete {
-            return Ok(());
-        }
-        let format = self.object_format.clone().unwrap_or_default();
-        let mut args: Vec<OsString> = ["init", "--quiet", "--bare", "--template=", "--shared=0600"]
-            .iter()
-            .map(OsString::from)
-            .collect();
-        if !format.is_empty() {
-            args.push(format!("--object-format={format}").into());
-        }
-        args.push(self.git_dir.clone().into_os_string());
-        let created = self.env.git(&args).run()?;
-        if !created.success() && !self.git_dir.join("HEAD").exists() {
-            let said = String::from_utf8_lossy(&created.stderr);
-            return Err(Error::GitError(py_strip(&said).to_owned()));
-        }
-        Ok(())
-    }
-
-    fn fetch_failed(&self, stderr: &[u8]) -> Result<Option<String>, Error> {
-        if found_nothing(stderr) {
-            return Ok(None);
-        }
-        let said = String::from_utf8_lossy(stderr);
-        let said = py_strip(&said);
-        let (shown_ref, url) = (&self.ref_name, self.url_text());
-        if remote_lacks_objects(said) {
-            return Err(Error::RemoteDamaged(format!(
-                "{shown_ref} on {url} names objects that remote no longer has; retrying will not \
-                 help. Every machine keeps its own journal: delete the ref there (`git update-ref -d \
-                 {shown_ref}` in that repository), then run `bead sync` on every machine to publish \
-                 again. git said: {said}"
-            )));
-        }
-        if local_damage(said) {
-            return Err(self.damage(said));
-        }
-        Err(Error::RemoteUnreachable(format!(
-            "cannot reach the coordination remote {url}: {said}"
-        )))
-    }
-
-    fn check_manifest(&mut self, tip: &str) -> Result<(), Error> {
-        let (shown_ref, url) = (self.ref_name.clone(), self.url_text());
-        let Some(manifest) = self.manifest(tip)? else {
-            return Err(Error::ManifestMissing(format!(
-                "{shown_ref} on {url} has no manifest; refusing to adopt it"
-            )));
-        };
-        let unreadable =
-            || Error::ManifestMissing(format!("{shown_ref} on {url} has an unreadable manifest"));
-        let Ok(parsed) = json::parse(&manifest) else {
-            return Err(unreadable());
-        };
-        let Value::Object(parsed) = parsed.value else {
-            return Err(unreadable());
-        };
-        let found = parsed.get("workspace").cloned().unwrap_or(Value::Null);
-        if found != Value::from(self.ws.id.as_str()) {
-            let shown = str_of(&found);
-            return Err(Error::WorkspaceMismatch {
-                message: format!(
-                    "{shown_ref} on {url} belongs to workspace {shown}, not {}; if that is this \
-                     repository's tracker (renamed, or its URL spelled differently here), set \
-                     BEAD_WORKSPACE={shown} or commit a .beadroll.json holding {{\"workspace\": \
-                     \"{shown}\"}}",
-                    self.ws.id
-                ),
-                found,
-            });
-        }
-        let version = parsed.get("format").cloned().unwrap_or(Value::Null);
-        // true and 1.0 equal 1 in Python, but are not format 1
-        if !matches!(&version, Value::Int(n) if n.as_i64() == Some(FORMAT)) {
-            return Err(Error::FormatUnsupported(format!(
-                "{shown_ref} on {url} is in format {}; this version of bead reads format {FORMAT} \
-                 only and will not rewrite it",
-                repr(&version)
-            )));
-        }
-        Ok(())
-    }
-
     /// Events of this store the remote does not have, as of the last merge: each segment's lines
     /// less the remote's, and each attempt file the remote lacks.
     pub fn unpublished(&self) -> Result<i64, Error> {
@@ -476,17 +293,7 @@ impl<'a> Link<'a> {
     }
 }
 
-/// Whether a failed fetch found no coordination ref: nobody has published.
-fn found_nothing(stderr: &[u8]) -> bool {
-    stderr.windows(15).any(|w| w == b"find remote ref")
-}
-
 /// How many lines `data` holds (Python's `data.count(b"\n")`).
 pub(crate) fn newlines(data: &[u8]) -> usize {
     data.iter().filter(|b| **b == b'\n').count()
-}
-
-/// Python's `str.strip()`.
-fn py_strip(text: &str) -> &str {
-    beadroll_core::text::strip(text)
 }

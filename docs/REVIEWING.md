@@ -299,6 +299,17 @@ These were decided deliberately. Report problems *with* them, not their existenc
   the first `rev-parse`, so also in discovery's early-error paths where Python stops before asking
   for origin; and a SIGKILL while a blob is hashed can leave a file in the temporary directory (the
   attempt's or the manifest's content, never in the store).
+- A fetch that loses to another process's fetch of the store is tried again (roll-dih8.12): git's
+  checks of a fetch read every ref, and every process fetches into a ref of its own under
+  `refs/beads/fetch/` that it deletes after, so git can find such a ref gone between listing it
+  and reading it (`bad object refs/beads/fetch/…`), or the directory of its own removed while it
+  makes it (`cannot lock ref 'refs/beads/fetch/…'`), and it fails the fetch though the remote
+  answered. Only git's own lines count, never one the remote relayed. Five attempts in all, a
+  wait of `U(10, 50) ms × attempt` before each new one, short because a claim fetches under the
+  store lock; after the fifth the fetch fails as it did before (`REMOTE_UNREACHABLE`, git's
+  words). Chosen over `transfer.hideRefs=refs/beads/fetch`, which keeps those refs out of the
+  check only where git's fetch honours hidden refs (2.55 does, 2.40, the oldest supported, does
+  not) and leaves the lock form as it is.
 - `BEAD_HOME` must be absolute; the store's modes are 0700/0600 whatever the umask.
 - Only directories bead creates get private modes; a user-supplied `BEAD_HOME` is chmodded 0700
   on first write (reviewer observation, kept).

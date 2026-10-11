@@ -1,12 +1,16 @@
 //! G16: concurrent bead processes on one machine share no fetch destination: each fetch lands in a
-//! ref of its own process (`docs/FINDINGS.md`).
+//! ref of its own process (`docs/FINDINGS.md`), and a fetch that loses to another process's
+//! fetch, its ref gone while git read the refs, is tried again (roll-dih8.12).
 
 mod g16_concurrent_processes_share_no_fetch_destination {
+    use std::path::PathBuf;
     use std::process::{Output, Stdio};
     use std::sync::mpsc::{self, Receiver};
     use std::time::Duration;
 
-    use beadroll_test_support::{Invocation, Json, Machine, Run, parse_json};
+    use beadroll_test_support::{Invocation, Json, Machine, Run, code, parse_json};
+
+    use crate::hardening::gate::{Gate, beside};
 
     /// A `bead` started beside others, as `subprocess.Popen` starts one: nothing on its standard
     /// input, its output piped and read to the end by a thread of its own, which hands it over
@@ -107,5 +111,65 @@ mod g16_concurrent_processes_share_no_fetch_destination {
         let exported = a.export();
         b.bead(["sync"]);
         assert_eq!(exported, b.export());
+    }
+
+    /// A ref among the fetch refs of `machine`'s `sync.git` that names no object: what git takes
+    /// another process's fetch ref for when it is gone between listing it and reading it.
+    fn broken_fetch_ref(machine: &Machine) -> PathBuf {
+        let path = machine.store().join("sync.git/refs/beads/fetch/1-0badc0de");
+        std::fs::create_dir_all(path.parent().expect("a directory")).expect("the fetch refs");
+        std::fs::write(&path, format!("{}\n", "deadbeef".repeat(5))).expect("a broken ref");
+        path
+    }
+
+    /// roll-dih8.12: git's checks of a fetch read every ref, so a fetch could find another
+    /// process's fetch ref gone between listing it and reading it (`fatal: bad object
+    /// refs/beads/fetch/...`), and the command failed with REMOTE_UNREACHABLE although the remote
+    /// answered. A fetch ref that names no object stands in for that one: the fetch fails on it
+    /// and waits to try again, the ref goes as the other process's does once its fetch is over,
+    /// and the next attempt goes through.
+    #[test]
+    fn a_fetch_that_loses_to_another_fetch_tries_again() {
+        let sandbox = crate::sandbox();
+        let a = crate::rust_only(&sandbox, "g16-again");
+        a.bead(["init", "--prefix", "ex"]);
+        let other = broken_fetch_ref(&a);
+        let gate = Gate::new(&sandbox, "g16-fetch-again");
+        let failpoints = format!("fetch.retry={}", gate.action());
+        let (synced, met) = beside(
+            || {
+                let sync = a.cmd(["sync", "--json"]);
+                sync.env("BEAD_FAILPOINTS", &failpoints).run()
+            },
+            |finished| gate.meet(finished, || std::fs::remove_file(&other)),
+        );
+        let met = met.unwrap_or_else(|| panic!("no second attempt: {}", synced.stderr));
+        met.expect("the other fetch's ref went");
+        assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
+    }
+
+    /// A fetch that loses every time is not tried for ever: after five attempts, four waits, it
+    /// fails as it did before it was tried again, REMOTE_UNREACHABLE in git's own words.
+    #[test]
+    fn a_fetch_that_keeps_losing_gives_up_after_five_attempts() {
+        let sandbox = crate::sandbox();
+        let a = crate::rust_only(&sandbox, "g16-gives-up");
+        a.bead(["init", "--prefix", "ex"]);
+        broken_fetch_ref(&a);
+        let waited = |nth: u32| {
+            let failpoints = format!("fetch.retry@nth({nth})=exit(7)");
+            a.cmd(["sync", "--json"])
+                .env("BEAD_FAILPOINTS", failpoints)
+                .run()
+        };
+        let fourth = waited(4);
+        assert_eq!(fourth.returncode(), 7, "no fourth wait: {}", fourth.stderr);
+        let given_up = waited(5);
+        assert_eq!(code(&given_up), "REMOTE_UNREACHABLE", "{}", given_up.stderr);
+        let said = message(&given_up);
+        assert!(
+            said.contains("bad object refs/beads/fetch/1-0badc0de"),
+            "{said}"
+        );
     }
 }

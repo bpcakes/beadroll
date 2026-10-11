@@ -28,7 +28,9 @@ mod url;
 mod writers;
 
 pub use checkout::{Checkout, Fact, HeadAnswers, ORIGIN_KEYS, head_and_branch};
-pub use classify::{PushOutcome, local_damage, push_outcome, remote_lacks_objects};
+pub use classify::{
+    PushOutcome, local_damage, lost_to_other_fetch, push_outcome, remote_lacks_objects,
+};
 pub use env::{
     CountRules, DEFAULT_SSH_COMMAND, REPO_LOCATION_ENV, SYNC_REPO_CONFIG, TRANSPORT_KEYS, sync_env,
     transport_config, transport_settings, with_settings,

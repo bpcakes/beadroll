@@ -50,6 +50,10 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
 - `bead init --json` reports `unpublished` for the tracker it wrote to, also when that is not the
   checkout's own (a joined, adopted or tracked one).
 - The README describes the golden path and moving a repository, and MIGRATING runs the import once.
+- Concurrent bead processes of one store (agents in several worktrees) no longer fail a command
+  with `REMOTE_UNREACHABLE` when one fetch finds another's fetch ref gone while git reads the refs
+  (`fatal: bad object refs/beads/fetch/…`), or the directory of its own removed while git makes
+  it: the fetch is tried again after a short wait, five attempts in all (roll-dih8.12).
 
 ## [0.2.0] — 2026-10-11
 

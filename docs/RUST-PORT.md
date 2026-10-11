@@ -901,7 +901,7 @@ tests cover first/nth/always dispatch and the exhaustion tests still assert exac
 As Slice 2c built it (`crates/beadroll-store/src/failpoint.rs`):
 - **Which point takes which action.** Every point but `clock` can `exit`, `sigkill`, `sleep` and
   `pause-until`. `torn-sigkill` belongs to `append.mid`, `errno` to `atomic-write:`, `fail-reply`
-  to `push.reply`, `skip` to `backoff`, and `offset`/`at` to `clock`. `error(CODE)` fails
+  to `push.reply`, `skip` to `backoff` and `fetch.retry`, and `offset`/`at` to `clock`. `error(CODE)` fails
   `publish.result` and `fetch.result`, and fails the command at `ownership.after-confirm`, which leaves its attempt
   confirmed and its pending twin in place (Q03's interruption, in process). Any other pairing,
   an unknown point or a code bead does not have is `CONFIG`.
@@ -919,6 +919,7 @@ As Slice 2c built it (`crates/beadroll-store/src/failpoint.rs`):
 | `push.reply` | After git push returns | `run_git` patched to report a failure after success (lost-ack tests) |
 | `publish.result` | `Link::publish` | `mock.patch.object(Link, "publish", side_effect=…)` |
 | `fetch.result` | `Link::fetch`, at its start | Added after the port (roll-dih8.13): a fetch that fails after an earlier one went through, as after an adoption |
+| `fetch.retry` | `Link::fetch`, before the wait to try again a fetch that lost to another process's fetch | Added after the port (roll-dih8.12): the other fetch's ref gone while git read the refs, held for a test to act; `skip` waits not at all |
 | `ownership.after-confirm` | After `confirm_ownership`, before pending cleanup | The sweep's kill-confirm; q03; G54; `V2_ConfirmedTwin` |
 | `atomic-write:<path-part>` | `write_atomic`, matched on the target path, after the temporary file is written and fsynced and before the rename; `atomic-written:<path-part>` fires after the rename | kill-write-pending/-confirm; `V5_KillAtRename`; `Protocol3`'s kill during confirmation; ENOSPC on `meta.json` (G29); the reader-sees-all-or-none handshake, which pauses at both |
 | `append.mid` | Inside a segment append, after a partial line is written and flushed (Python's driver writes 100 bytes) | The kill-mid-append driver |
