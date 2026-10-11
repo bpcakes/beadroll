@@ -452,3 +452,81 @@ fn init_reports_what_it_left_unpublished_in_the_adopted_tracker() {
     let behind = result["unpublished"].as_i64();
     assert!(behind.is_some_and(|n| n > 0), "{result:?}");
 }
+
+/// The tracked file `a` commits, pushed to origin's default branch, so that clones read it.
+fn commit_tracked_file(a: &Machine) {
+    commit(a, &["add", ".beadroll.json"]);
+    commit(a, &["commit", "-q", "-m", "tracker"]);
+    commit(a, &["push", "-q", "origin", "HEAD:main"]);
+}
+
+/// A clone whose committed `.beadroll.json` names `"remote": "origin"`: `init --remote origin` joins
+/// the tracker without writing anything, and records the remote as where `origin` leads, as a sync
+/// would, so that the commands after it, which compare the two, keep working.
+#[test]
+fn init_joining_records_a_named_remote_as_where_it_leads() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(
+        &a,
+        &["init", "--tracked", "--prefix", "ex", "--remote", "origin"],
+    );
+    assert_eq!(tracked_file(&a)["remote"].as_str(), Some("origin"));
+    commit_tracked_file(&a);
+    let key = json(&a, &["create", "shared"])["id"]
+        .as_str()
+        .expect("an id")
+        .to_owned();
+    let b = Machine::new(&sandbox, "b");
+    let joined = json(&b, &["init", "--remote", "origin"]);
+    assert_eq!(joined["joined"], Json::Bool(true), "{joined:?}");
+    let synced = b.run(["sync", "--json"]);
+    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
+    let claimed = b.run(["claim", &key, "--json"]);
+    assert_eq!(claimed.returncode(), 0, "{}", claimed.stderr);
+}
+
+/// A checkout with no `refs/remotes/origin/HEAD` (as `git init` and `git remote add` leave it)
+/// cannot tell whether origin's default branch has the committed file: `info` says so, and how to
+/// let bead check; once origin/HEAD is known, it has nothing to say.
+#[test]
+fn a_checkout_without_origin_head_says_it_cannot_tell() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    commit(&a, &["remote", "set-head", "origin", "-d"]);
+    json(&a, &["init", "--tracked", "--prefix", "ex"]);
+    commit_tracked_file(&a);
+    let info = json(&a, &["info"]);
+    let said = info["tracked_config_warning"].as_str().expect("a warning");
+    assert!(
+        said.contains("`git remote set-head origin --auto`"),
+        "{said}"
+    );
+    commit(&a, &["remote", "set-head", "origin", "--auto"]);
+    assert_eq!(json(&a, &["info"])["tracked_config_warning"].as_str(), None);
+}
+
+/// A committed `.beadroll.json` changed under `--skip-worktree`, which hides the change from `git
+/// status`: `info` compares the file itself with its commit and still warns.
+#[test]
+fn a_change_git_status_does_not_show_is_still_warned_about() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--tracked", "--prefix", "ex"]);
+    commit_tracked_file(&a);
+    assert_eq!(json(&a, &["info"])["tracked_config_warning"].as_str(), None);
+    commit(&a, &["update-index", "--skip-worktree", ".beadroll.json"]);
+    let mut changed = tracked_file(&a);
+    if let Json::Object(fields) = &mut changed {
+        fields.insert("where".into(), Json::Bool(false));
+    }
+    let body = beadroll_core::json::write(&changed, beadroll_core::json::Format::INDENTED)
+        .expect("JSON text");
+    std::fs::write(a.checkout().join(".beadroll.json"), body).expect("the tracked file");
+    let info = json(&a, &["info"]);
+    let said = info["tracked_config_warning"].as_str().expect("a warning");
+    assert!(
+        said.starts_with(".beadroll.json differs from its committed copy"),
+        "{said}"
+    );
+}

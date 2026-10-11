@@ -101,86 +101,108 @@ fn committed_config(settings: &Settings) -> Result<Object, Error> {
 }
 
 /// Why this checkout's `.beadroll.json` does not reach the other checkouts and machines, if it does
-/// not: it is not committed (untracked, ignored or only staged), it differs from its commit, or
-/// origin's default branch, which a clone and a worktree on an older branch read it from
-/// ([`committed_config`]), lacks it or holds another. `None` when it is committed there unchanged,
-/// or when the tree has none (the committed copy is then the one in use). Two git calls; an
-/// untracked file is reported whatever the user's `status.showUntrackedFiles`.
-pub fn tracked_config_warning(settings: &Settings) -> Result<Option<String>, Error> {
+/// not: it is not committed (untracked, ignored or only staged), its content is not its commit's
+/// (whatever `--skip-worktree` or `--assume-unchanged` hide from `git status`), or origin's default
+/// branch, which a clone and a worktree on an older branch read it from ([`committed_config`]),
+/// lacks it or holds another; with an `origin` but no `refs/remotes/origin/HEAD` to tell its
+/// default branch by, that is said too. `None` when it is committed there unchanged, or when the
+/// tree has none (the committed copy is then the one in use). One git call, two when it is not
+/// committed (to say why).
+pub fn tracked_config_warning(settings: &Settings, origin: bool) -> Result<Option<String>, Error> {
     let top = settings.fact(Fact::Toplevel)?;
     if !top.success() {
         return Ok(None);
     }
     let root = pathlib(OsStr::from_bytes(crate::strip_ascii(&top.stdout)));
-    if !root.join(".beadroll.json").exists() {
+    let Ok(here) = std::fs::read(root.join(".beadroll.json")) else {
         return Ok(None);
-    }
-    let status = settings
-        .git
-        .git([
-            "status",
-            "--porcelain=v1",
-            "--untracked-files=all",
-            "--ignored",
-            "--",
-            ":/.beadroll.json",
-        ])
-        .run()?;
-    let unseen = "other worktrees, clones and machines of this repository do not see it, and \
-                  use the workspace derived from the origin URL instead";
-    let code: &[u8] = status.stdout.get(..2).unwrap_or_default();
-    let warning = match code {
-        b"??" => Some(format!(
-            ".beadroll.json is not committed: {unseen}; commit it"
-        )),
-        b"!!" => Some(format!(
-            ".beadroll.json is ignored by git, so it is never committed: {unseen}; commit it"
-        )),
-        [b'A', _] => Some(format!(
-            ".beadroll.json is added but not committed: {unseen}; commit it"
-        )),
-        [] => None,
-        _ => Some(
-            ".beadroll.json differs from its committed copy, which the other checkouts and \
-             machines use: commit the change"
-                .to_owned(),
-        ),
     };
-    if warning.is_some() || !status.success() {
-        return Ok(warning);
-    }
-    // committed here: is it what a clone, or a worktree on another branch, reads?
     let input =
         "HEAD:.beadroll.json\nrefs/remotes/origin/HEAD\nrefs/remotes/origin/HEAD:.beadroll.json\n";
     let found = settings
         .git
-        .git(["cat-file", "--batch-check"])
+        .git(["cat-file", "--batch"])
         .input(input.as_bytes().to_vec())
         .run()?;
-    let lines: Vec<&[u8]> = found.stdout.split(|b| *b == b'\n').collect();
-    let oid = |line: Option<&&[u8]>| -> Option<Vec<u8>> {
-        let line = line?;
-        (!line.ends_with(b" missing")).then(|| {
-            line.split(|b| *b == b' ')
-                .next()
-                .unwrap_or_default()
-                .to_vec()
-        })
+    let objects = batch_objects(if found.success() { &found.stdout } else { b"" }, 3);
+    let unseen = "other worktrees, clones and machines of this repository do not see it, and \
+                  use the workspace derived from the origin URL instead";
+    let Some((committed, content)) = objects[0].as_ref() else {
+        // never committed: why, as git's status says it
+        let status = settings
+            .git
+            .git([
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+                "--ignored",
+                "--",
+                ":/.beadroll.json",
+            ])
+            .run()?;
+        let code: &[u8] = status.stdout.get(..2).unwrap_or_default();
+        return Ok(Some(match code {
+            b"!!" => format!(
+                ".beadroll.json is ignored by git, so it is never committed: {unseen}; commit it"
+            ),
+            [b'A', _] => format!(".beadroll.json is added but not committed: {unseen}; commit it"),
+            _ => format!(".beadroll.json is not committed: {unseen}; commit it"),
+        }));
     };
-    let (here, default_branch, there) = (oid(lines.first()), oid(lines.get(1)), oid(lines.get(2)));
-    Ok(match (here, default_branch, there) {
-        (Some(_), Some(_), None) => Some(
+    if *content != here {
+        return Ok(Some(
+            ".beadroll.json differs from its committed copy, which the other checkouts and \
+             machines use: commit the change"
+                .to_owned(),
+        ));
+    }
+    Ok(match (&objects[1], &objects[2]) {
+        (None, _) if origin => Some(
+            ".beadroll.json is committed, but this checkout cannot tell whether origin's default \
+             branch, which clones read it from, has it (no refs/remotes/origin/HEAD): `git remote \
+             set-head origin --auto` lets bead check"
+                .to_owned(),
+        ),
+        (Some(_), None) => Some(
             ".beadroll.json is committed here but not on origin's default branch: clones and \
              worktrees on other branches do not see it until it is merged there"
                 .to_owned(),
         ),
-        (Some(here), Some(_), Some(there)) if here != there => Some(
+        (Some(_), Some((there, _))) if there != committed => Some(
             ".beadroll.json differs from the copy on origin's default branch, which clones and \
              worktrees on other branches read: merge it there"
                 .to_owned(),
         ),
         _ => None,
     })
+}
+
+/// The `count` objects `git cat-file --batch` printed, in order: each one's id and content, or
+/// `None` where it said `missing`.
+fn batch_objects(mut out: &[u8], count: usize) -> Vec<Option<(Vec<u8>, Vec<u8>)>> {
+    let mut objects = Vec::with_capacity(count);
+    for _ in 0..count {
+        let (header, rest) = match out.iter().position(|b| *b == b'\n') {
+            Some(at) => (&out[..at], &out[at + 1..]),
+            None => (out, &b""[..]),
+        };
+        out = rest;
+        let fields: Vec<&[u8]> = header.split(|b| *b == b' ').collect();
+        let size = match fields.as_slice() {
+            [_, _, size] => std::str::from_utf8(size)
+                .ok()
+                .and_then(|s| s.parse::<usize>().ok()),
+            _ => None,
+        };
+        let Some(size) = size else {
+            objects.push(None);
+            continue;
+        };
+        let content = out.get(..size).unwrap_or(out).to_vec();
+        out = out.get(size + 1..).unwrap_or_default();
+        objects.push(Some((fields[0].to_vec(), content)));
+    }
+    objects
 }
 
 /// The other workspaces of this store whose `meta.json` names `name`, by id: where a repository

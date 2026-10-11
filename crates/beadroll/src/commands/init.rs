@@ -310,14 +310,10 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
         Ok((prefix, imported))
     })?;
     // `init --tracked --remote` is the deliberate switch: record it, so the tracked remote is the
-    // one in use.
-    let recorded = if args.tracked {
-        match &remote_given {
-            Some(remote) => Some(ws.resolve_remote(remote, false)?),
-            None => None,
-        }
-    } else {
-        remote_given.clone()
+    // one in use; resolved, as a sync records it, since a name is compared by where it leads
+    let recorded = match &remote_given {
+        Some(remote) => Some(ws.resolve_remote(remote, false)?),
+        None => None,
     };
     let mut values = Vec::new();
     if let Some(name) = &ws.name {

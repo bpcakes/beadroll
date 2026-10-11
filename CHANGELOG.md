@@ -21,8 +21,9 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   repository does not have; when the remote publishes none, `sync` says how to bring a moved
   repository's tracker along, naming this machine's tracker of the same name when it has one.
 - `bead info` (`tracked_config_warning`) and `bead prime` warn while `.beadroll.json` is not
-  committed, differs from its commit, or is not on origin's default branch: the other checkouts
-  and machines do not see it.
+  committed, differs from its commit (even under `--skip-worktree`), or is not on origin's default
+  branch: the other checkouts and machines do not see it. A checkout with no
+  `refs/remotes/origin/HEAD` is told it cannot check that (`git remote set-head origin --auto`).
 - `bead init --tracked --remote` given origin's own URL stores `origin`, so the file follows origin
   when the repository moves. A remote given by name (`--remote`, `$BEAD_REMOTE`, `.beadroll.json`)
   now means its push URL, where `git push NAME` goes, as origin itself did; it used to be the fetch
