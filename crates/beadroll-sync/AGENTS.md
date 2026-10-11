@@ -11,10 +11,10 @@ ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `settle_
 ## Key entrypoints
 
 - `src/tx.rs`: `Tx` (`emit`, `state`), `locked`, `writing`, `forget_receipts`, `drop_pending`.
-- `src/link.rs`: `Link` (`fetch`, `unpublished`, `maintain`, `rebuild`; `Link::publishes`, the
+- `src/link.rs`: `Link` (`fetch`, `unpublished`, `maintain`, `rebuild`) and the gits it keeps in
+  `sync.git` (`docs/RUST-PORT.md` Appendix B); `src/link/asked.rs`: `Link::publishes`, the
   `ls-remote` that `init` asks before it starts a tracker, as a link asks but from a bare
-  repository made aside, writing nothing in the store) and the gits it keeps in
-  `sync.git` (`docs/RUST-PORT.md` Appendix B); `src/link/merge.rs`: `Link::merge`;
+  repository made aside, writing nothing in the store; `src/link/merge.rs`: `Link::merge`;
   `src/link/publish.rs`: its tree and `Link::publish`; `src/link/read.rs`: the remote's tree read
   through the link's `cat-file`; `src/link/write.rs`: blobs, trees and the ref after a push through
   its `hash-object`, `mktree` and `update-ref`, and the refs after a fetch through Python's own

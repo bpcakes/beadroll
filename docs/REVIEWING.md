@@ -152,7 +152,13 @@ These were decided deliberately. Report problems *with* them, not their existenc
   was chosen (a remote's name, origin, or the remote last named here, its `remote_push_url` saved
   beside it in `meta.json`), never inferred from other remotes' URLs. A URL bead resolved already
   (the remote last named here, origin's, one git answered) is a URL, never read as a remote's
-  name, which only a remote given just now or tracked can be. A store whose remembered remote is a tracked name as older versions resolved it (`git
+  name, which only a remote given just now or tracked can be; older versions saved a remote's name
+  as `init --remote` was given it until a sync replaced it, and a saved value that names a remote
+  and that no rule rewrites is still that remote. `--remote` given origin's own URL is reached as
+  origin is, its own push URL included, from `init`'s first publish on. The advice to bring a
+  moved repository's tracker along gives the remote by its URL, which names the same place on
+  every machine, or by the name it was chosen by where `--remote` would read that URL as another
+  remote's. A store whose remembered remote is a tracked name as older versions resolved it (`git
   remote get-url`, `insteadOf` applied) goes on through the name, unless the name has a push URL
   of its own, which they never went through: that move stays deliberate (`CONFIG`). `info` and
   `prime` warn while `.beadroll.json` would not reach the other checkouts, comparing it with its

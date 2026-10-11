@@ -263,14 +263,21 @@ fn given_remote(
                 .to_owned(),
         );
     }
-    let live = ctx.ws.resolve_endpoint(&typed, true)?;
+    let names_origin = ctx.ws.is_origin(&typed);
+    // origin's own URL is reached as origin is, its own push URL included, as every command after
+    // reaches it, whether the file stores it by name or no file is written
+    let live = if names_origin {
+        ctx.ws.resolve_endpoint(OsStr::new("origin"), false)?
+    } else {
+        ctx.ws.resolve_endpoint(&typed, true)?
+    };
     let stored = if args.tracked {
         stored_remote(ctx.ws, &typed, &live)?
     } else {
-        typed.clone()
+        typed
     };
     Ok(Some(Given {
-        names_origin: ctx.ws.is_origin(&typed),
+        names_origin,
         stored,
         live,
     }))

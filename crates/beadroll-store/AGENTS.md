@@ -26,9 +26,10 @@ remote resolution, actor detection, and `view`. Slice 2a (`roll-k2wy.3`) built i
   in-crate tests read to check that a fault fired; `POINTS`, every point bead has.
 - `src/workspace.rs`: `Workspace` (`meta`, `save_meta`, `note_sync`, `ref_name`), `stamp`;
   `src/workspace/remote.rs`: what a remote given to bead means (`resolve_endpoint`, `endpoint`,
-  an `Endpoint` being the URL and whether it is a remote's own push URL; `resolve_remote` and
-  `remote`, their URLs; `is_origin`) and a remote's URL as git is configured with it
-  (`configured_url`, which discovery reads origin with); `src/discover.rs`: `find_workspace`, `checked_config`, `moved_workspaces`,
+  an `Endpoint` being the URL, whether it is a remote's own push URL and the name it was chosen
+  by; `resolve_remote` and `remote`, their URLs; `spelling`, how advice gives it; `is_origin`)
+  and a remote's URL as git is configured with it (`configured_url`, which discovery reads origin
+  with); `src/discover.rs`: `find_workspace`, `checked_config`, `moved_workspaces`,
   `tracked_config_warning` (a `.beadroll.json` the other checkouts do not see), `workspaces_named`.
 - `src/journal.rs`: segment, attempt and pending files, `append_events`, `repair_tail`,
   `load_journal`, `load_pending`, `view`; `src/place.rs`: `capture_where`, `merged_into_default`.

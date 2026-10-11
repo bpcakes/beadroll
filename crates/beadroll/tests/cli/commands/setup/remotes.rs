@@ -1,16 +1,15 @@
 //! What a remote given by name means (`--remote`, `$BEAD_REMOTE`, `.beadroll.json`): the URL it is
 //! configured with, where `git push NAME` goes, read as discovery reads origin (G22); origin's own
-//! URL stored as `origin`, so that the tracked file follows origin when the repository moves; and
-//! where git reaches a remote from, the top of the checkout.
+//! URL stored as `origin`, so that the tracked file follows origin when the repository moves; a
+//! remote saved, typed or given as a path; and where git reaches a remote from, the top of the
+//! checkout. Git's own rewrites of a remote's URL are in `rewrites`.
 
 use std::path::{Path, PathBuf};
 
 use beadroll_core::json::{Format, write};
 use beadroll_test_support::{Json, Machine, code, git, parse_json};
 
-use super::{
-    commit, commit_tracked_file, json, mirror, set_origin, text, titles, tracked_file, workspace,
-};
+use super::{commit, commit_tracked_file, json, mirror, set_origin, text, titles, tracked_file};
 
 /// `store`'s `meta.json` saying that it last went through `remote`, as an older bead left it.
 fn save_remote(store: &Path, remote: &str) {
@@ -114,27 +113,6 @@ fn init_joining_records_a_named_remote_as_where_it_leads() {
     assert_eq!(claimed.returncode(), 0, "{}", claimed.stderr);
 }
 
-/// A remote's name means its URL as configured, as discovery reads origin's: with a
-/// `pushInsteadOf` that spells origin's push URL another way, `sync --remote origin` still names
-/// this checkout's origin, and adopts the tracker a moved repository published under its old id.
-#[test]
-fn a_named_origin_is_the_configured_url_whatever_git_rewrites() {
-    let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "a");
-    json(&a, &["init", "--prefix", "ex"]);
-    json(&a, &["create", "before the move"]);
-    let moved = sandbox.root().join("moved.git");
-    mirror(&sandbox, &moved);
-    let b = Machine::new(&sandbox, "b");
-    set_origin(&b, &moved);
-    let spelled = format!("url.file://{}.pushInsteadOf", text(&moved));
-    commit(&b, &["config", &spelled, text(&moved)]);
-    let synced = b.run(["sync", "--remote", "origin", "--json"]);
-    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
-    assert_eq!(titles(&b), ["before the move"]);
-    assert_eq!(workspace(&b), workspace(&a));
-}
-
 /// A tracked remote's name whose URL git rewrites (`url.<base>.insteadOf`), in a store an older
 /// bead left: it saved the name as `git remote get-url` gives it, rewritten, which is the same
 /// remote as the URL configured, so bead goes on through it. A push URL of the name's own is
@@ -159,65 +137,6 @@ fn a_tracked_remote_saved_as_git_rewrote_it_is_still_the_same_remote() {
     assert_eq!(code(&a.run(["sync", "--json"])), "CONFIG");
 }
 
-/// A remote whose URL reads as a relative path that git rewrites (`url.<base>.insteadOf`): bead
-/// leaves it to git, rather than make a path of it from the top of the checkout, which git could
-/// no longer rewrite.
-#[test]
-fn a_remote_git_rewrites_is_not_read_as_a_path() {
-    let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "a");
-    let tracker = sandbox.bare("tracker.git");
-    let rewrite = format!("url.{}/.insteadOf", text(sandbox.root()));
-    commit(&a, &["config", &rewrite, "company/"]);
-    commit(&a, &["remote", "add", "tracker", "company/tracker.git"]);
-    let init = ["init", "--tracked", "--prefix", "ex", "--remote", "tracker"];
-    let run = a.run(init.iter().chain(&["--json"]));
-    assert_eq!(run.returncode(), 0, "{}", run.stderr);
-    json(&a, &["create", "published"]);
-    let published = ["--git-dir", text(&tracker), "for-each-ref", "refs/beads"];
-    assert_ne!(
-        git(published, None),
-        "",
-        "nothing reached the rewritten remote"
-    );
-    let result = parse_json(&run.stdout).expect("a result");
-    assert_eq!(result.get("unpublished"), None, "{result:?}");
-}
-
-/// A remote whose URL git rewrites to a relative path (`url."../".insteadOf`), with bead run in a
-/// subdirectory: the path is read from the top of the checkout, as bead reads every relative remote
-/// path, not from where bead runs.
-#[test]
-fn a_rewrite_to_a_relative_path_is_read_from_the_top() {
-    let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "a");
-    let tracker = sandbox.bare("tracker.git");
-    commit(&a, &["config", "url.../.insteadOf", "company:"]);
-    commit(&a, &["remote", "add", "tracker", "company:tracker.git"]);
-    let below = a.checkout().join("src");
-    std::fs::create_dir(&below).expect("a subdirectory");
-    // the checkout is the sandbox's `a-main`, beside tracker.git
-    let init = [
-        "init",
-        "--tracked",
-        "--prefix",
-        "ex",
-        "--remote",
-        "tracker",
-        "--json",
-    ];
-    let run = a.cmd(init).cwd(&below).run();
-    assert_eq!(run.returncode(), 0, "{}", run.stderr);
-    let refs = ["--git-dir", text(&tracker), "for-each-ref", "refs/beads"];
-    assert_ne!(
-        git(refs, None),
-        "",
-        "the tracker did not reach the rewritten remote"
-    );
-    let synced = a.cmd(["sync", "--json"]).cwd(&below).run();
-    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
-}
-
 /// A checkout whose directory's name ends in a space: git reaches the remote from that directory,
 /// as `git rev-parse --show-toplevel` prints it, the space kept.
 #[test]
@@ -239,83 +158,6 @@ fn a_checkout_whose_name_ends_in_a_space_reaches_its_remote() {
         "refs/beads",
     ];
     assert_ne!(git(refs, None), "", "nothing reached the remote");
-}
-
-/// A remote with a push URL of its own that a `pushInsteadOf` rule would rewrite: `git push NAME`
-/// leaves such a URL as it is, and so does bead, which publishes where it fetches from rather than
-/// where the rule sends other URLs; so do the commands after, which go by the remote it saved.
-#[test]
-fn a_remotes_own_push_url_is_pushed_to_as_git_pushes_to_it() {
-    let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "a");
-    json(&a, &["init", "--prefix", "ex"]);
-    let tracker = sandbox.bare("tracker.git");
-    let other = sandbox.bare("other.git");
-    let own = format!("file://{}", text(&tracker));
-    commit(&a, &["remote", "add", "tracker", text(&tracker)]);
-    commit(&a, &["remote", "set-url", "--push", "tracker", &own]);
-    let rewrite = format!("url.file://{}.pushInsteadOf", text(&other));
-    commit(&a, &["config", &rewrite, &own]);
-    let synced = a.run(["sync", "--remote", "tracker", "--json"]);
-    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
-    let refs = |remote: &Path| {
-        git(
-            ["--git-dir", text(remote), "for-each-ref", "refs/beads"],
-            None,
-        )
-    };
-    assert_ne!(
-        refs(&tracker),
-        "",
-        "nothing reached the remote's own push URL"
-    );
-    assert_eq!(
-        refs(&other),
-        "",
-        "bead pushed where the rule sends other URLs"
-    );
-    json(&a, &["create", "after"]);
-    let resynced = a.run(["sync", "--json"]);
-    assert_eq!(resynced.returncode(), 0, "{}", resynced.stderr);
-    assert_eq!(
-        refs(&other),
-        "",
-        "the remote it saved was pushed to as any URL"
-    );
-}
-
-/// The remote bead defines for a push to a remote's own push URL is named for that push: one of a
-/// fixed name that the configuration it inherits defines already (here through `GIT_CONFIG_COUNT`)
-/// adds nothing to where it pushes.
-#[test]
-fn the_remote_defined_for_a_push_inherits_no_urls() {
-    let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "a");
-    json(&a, &["init", "--prefix", "ex"]);
-    let tracker = sandbox.bare("tracker.git");
-    let other = sandbox.bare("other.git");
-    let own = format!("file://{}", text(&tracker));
-    commit(&a, &["remote", "add", "tracker", text(&tracker)]);
-    commit(&a, &["remote", "set-url", "--push", "tracker", &own]);
-    let synced = a
-        .cmd(["sync", "--remote", "tracker", "--json"])
-        .env("GIT_CONFIG_COUNT", "1")
-        .env("GIT_CONFIG_KEY_0", "remote.bead-coordination.pushurl")
-        .env("GIT_CONFIG_VALUE_0", text(&other))
-        .run();
-    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
-    let refs = |remote: &Path| {
-        git(
-            ["--git-dir", text(remote), "for-each-ref", "refs/beads"],
-            None,
-        )
-    };
-    assert_ne!(
-        refs(&tracker),
-        "",
-        "nothing reached the remote's own push URL"
-    );
-    assert_eq!(refs(&other), "", "the push went to an inherited URL too");
 }
 
 /// A remote whose URL is a relative path that is also another remote's name (`remote.tracker.url
@@ -357,39 +199,6 @@ fn a_remote_url_that_names_another_remote_is_still_a_path() {
     );
 }
 
-/// Origin by default, with no push URL of its own and a `pushInsteadOf` rule for its URL: bead
-/// publishes where `git push origin` goes, the rule applied, even though another remote has that
-/// URL as its own push URL, which only a push to that remote leaves as it is.
-#[test]
-fn origin_is_pushed_to_as_git_pushes_to_it_whatever_other_remotes_say() {
-    let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "a");
-    let pushed = sandbox.bare("push.git");
-    let origin = text(sandbox.origin());
-    let rewrite = format!("url.{}.pushInsteadOf", text(&pushed));
-    commit(&a, &["config", &rewrite, origin]);
-    let other = sandbox.bare("other.git");
-    commit(&a, &["remote", "add", "other", text(&other)]);
-    commit(&a, &["remote", "set-url", "--push", "other", origin]);
-    json(&a, &["init", "--prefix", "ex"]);
-    let refs = |remote: &Path| {
-        git(
-            ["--git-dir", text(remote), "for-each-ref", "refs/beads"],
-            None,
-        )
-    };
-    assert_ne!(
-        refs(&pushed),
-        "",
-        "nothing reached where git push origin goes"
-    );
-    assert_eq!(
-        refs(sandbox.origin()),
-        "",
-        "bead pushed to origin's URL as it is"
-    );
-}
-
 /// A relative path typed in a subdirectory names a place from there, also where nothing is: bead
 /// reaches it from there, not from the top of the checkout, where git starts.
 #[test]
@@ -412,60 +221,23 @@ fn a_typed_relative_path_is_read_from_where_it_was_typed() {
     );
 }
 
-/// `machine`'s checkout with a remote `tracker` whose URL is `alias`, which an `insteadOf` rule
-/// rewrites to `first`, and a remote named `alias` at `second`.
-fn alias_both_ways(machine: &Machine, first: &Path, second: &Path) {
-    let rewrite = format!("url.{}.insteadOf", text(first));
-    commit(machine, &["config", &rewrite, "alias"]);
-    commit(machine, &["remote", "add", "alias", text(second)]);
-    commit(machine, &["remote", "add", "tracker", "alias"]);
-}
-
-/// A remote whose URL is an alias git rewrites and also another remote's name: bead reaches the
-/// rewritten URL, as git does, and so does every command after, which goes by the URL it saved,
-/// never by the remote that URL also names.
+/// A store an older bead left with a remote's name saved as `init --offline --remote NAME` gave it,
+/// no sync having replaced it with its URL yet: the name, which no rule rewrites, is that remote.
 #[test]
-fn a_saved_url_that_names_another_remote_stays_a_url() {
+fn a_remote_name_an_older_bead_saved_is_that_remote() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
-    json(&a, &["init", "--prefix", "ex"]);
-    let (first, second) = (sandbox.bare("A.git"), sandbox.bare("B.git"));
-    alias_both_ways(&a, &first, &second);
-    let synced = a.run(["sync", "--remote", "tracker", "--json"]);
+    let tracker = sandbox.bare("tracker.git");
+    commit(&a, &["remote", "add", "tracker", text(&tracker)]);
+    let init = json(&a, &["init", "--prefix", "ex", "--offline"]);
+    let store = PathBuf::from(init["path"].as_str().expect("a path"));
+    save_remote(&store, "tracker");
+    let synced = a.run(["sync", "--json"]);
     assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
-    json(&a, &["create", "after"]);
-    let refs = |remote: &Path| {
-        git(
-            ["--git-dir", text(remote), "for-each-ref", "refs/beads"],
-            None,
-        )
-    };
+    let refs = ["--git-dir", text(&tracker), "for-each-ref", "refs/beads"];
     assert_ne!(
-        refs(&first),
+        git(refs, None),
         "",
-        "nothing reached the URL the alias is rewritten to"
+        "the saved name was not taken for its remote"
     );
-    assert_eq!(
-        refs(&second),
-        "",
-        "a later command took the saved URL for a remote's name"
-    );
-}
-
-/// The same alias seen by `init`: the URL it is rewritten to publishes a tracker, the remote of the
-/// same name does not; `init` asks the first, as every exchange with the remote reaches it, and
-/// joins its tracker.
-#[test]
-fn init_asks_a_url_that_names_another_remote_as_the_url_it_is() {
-    let sandbox = crate::sandbox();
-    let (first, second) = (sandbox.bare("A.git"), sandbox.bare("B.git"));
-    let a = Machine::new(&sandbox, "a");
-    alias_both_ways(&a, &first, &second);
-    json(&a, &["init", "--prefix", "ex", "--remote", "tracker"]);
-    json(&a, &["create", "shared"]);
-    let b = Machine::new(&sandbox, "b");
-    alias_both_ways(&b, &first, &second);
-    let joined = json(&b, &["init", "--remote", "tracker"]);
-    assert_eq!(joined["joined"], Json::Bool(true), "{joined:?}");
-    assert_eq!(titles(&b), ["shared"]);
 }

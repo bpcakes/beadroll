@@ -20,8 +20,9 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   published.
 - `NOT_INITIALIZED` says to run `bead sync` first and `bead init` only to start a tracker the
   repository does not have; when the remote publishes none, `sync` says how to bring a moved
-  repository's tracker along to that remote (`BEAD_WORKSPACE=ID bead sync --remote URL`), naming
-  this machine's tracker of the same name when it has one.
+  repository's tracker along to that remote (`BEAD_WORKSPACE=ID bead sync --remote URL`, or the
+  remote's name where its URL would be read as another remote's), naming this machine's tracker of
+  the same name when it has one.
 - `bead info` (`tracked_config_warning`) and `bead prime` warn while `.beadroll.json` is not
   committed, differs from its commit as JSON (even under `--skip-worktree`; line endings git
   converts are no difference), or is not on origin's default branch, also when the tree lacks the
@@ -39,7 +40,10 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   `pushInsteadOf` rewrites git applies to other URLs, also by the commands after that go by the
   remote it saved (`remote_push_url` in `meta.json`); a relative path typed in a subdirectory is
   read from there, also by `init --tracked`, which stores it from the top of the checkout whether
-  it exists or not. A URL bead saved or read is never taken for the name of another remote.
+  it exists or not. A URL bead saved or read is never taken for the name of another remote, while
+  a remote's name an older bead saved (`init --offline --remote NAME`) is still that remote.
+  `init` given origin's own URL reaches it as origin from its first publish, its own push URL
+  included.
 - `bead init --json` reports `unpublished` for the tracker it wrote to, also when that is not the
   checkout's own (a joined, adopted or tracked one).
 - The README describes the golden path and moving a repository, and MIGRATING runs the import once.

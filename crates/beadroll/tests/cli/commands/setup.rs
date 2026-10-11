@@ -3,7 +3,7 @@
 //! sync`, or an `init` that joins the tracker the remote already publishes instead of starting a
 //! second one. A tracked `.beadroll.json` is the exception, and `info` and `prime` say when it does
 //! not reach the other checkouts. A repository that moves keeps its tracker. What a remote's name
-//! means is in `remotes`, the warning in `warnings`.
+//! means is in `remotes`, git's rewrites of its URL in `rewrites`, the warning in `warnings`.
 
 use std::path::Path;
 
@@ -12,6 +12,7 @@ use beadroll_test_support::{Json, Machine, Sandbox, code, git, parse_json};
 use crate::hardening::gate::{Gate, beside};
 
 mod remotes;
+mod rewrites;
 mod warnings;
 
 /// `path` as the text git and bead are given.

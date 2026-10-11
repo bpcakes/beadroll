@@ -185,12 +185,17 @@ pub fn synchronise(ws: &Workspace, remote: &Endpoint) -> Result<Synced, Error> {
     })
 }
 
-/// `NOT_INITIALIZED` when neither this store nor `shown`, the remote, has a tracker: `bead init`
-/// starts one, and a repository that moved without its tracker gets it back from a machine that
-/// has it, published under its own id to `shown` by name, which that tracker would not otherwise
-/// go to: this machine, when it holds a workspace of the same name.
-fn nothing_published(ws: &Workspace, shown: &str) -> Error {
-    let sync = format!("bead sync --remote {}", shell_quote(shown));
+/// `NOT_INITIALIZED` when neither this store nor `remote` has a tracker: `bead init` starts one, and
+/// a repository that moved without its tracker gets it back from a machine that has it, published
+/// under its own id to `remote` given by name on the command line ([`Workspace::spelling`]), where
+/// that tracker would not otherwise go: this machine, when it holds a workspace of the same name.
+fn nothing_published(ws: &Workspace, remote: &Endpoint) -> Error {
+    let shown = remote.url.to_string_lossy();
+    let spelled = ws.spelling(remote).unwrap_or_else(|_| remote.url.clone());
+    let sync = format!(
+        "bead sync --remote {}",
+        shell_quote(&spelled.to_string_lossy())
+    );
     let mut message = format!(
         "no tracker here and none published on {shown}: run `bead init` to start one. If this \
          repository moved and its tracker stayed behind, publish it here from a machine that has \
@@ -231,7 +236,7 @@ fn sync_round(
         }
         *pulled += link.merge(tip.as_deref())?;
         if tip.is_none() && segment_files(ws)?.is_empty() {
-            return Err(nothing_published(ws, &link.url_text()));
+            return Err(nothing_published(ws, &link.endpoint()));
         }
         *pushed = link.unpublished()?;
         let fence = !load_pending(ws)?.is_empty();

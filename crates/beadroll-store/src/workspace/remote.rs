@@ -21,6 +21,8 @@ pub struct Endpoint {
     pub url: OsString,
     /// Whether it is the remote's own push URL.
     pub own_push_url: bool,
+    /// The name of the remote it was chosen by, when it was (`origin` for origin).
+    pub name: Option<OsString>,
 }
 
 impl Endpoint {
@@ -29,6 +31,7 @@ impl Endpoint {
         Endpoint {
             url: url.into(),
             own_push_url: false,
+            name: None,
         }
     }
 }
@@ -79,9 +82,20 @@ impl Workspace {
             // it is the remote's own push URL, as for `git push NAME`
             let mut endpoint = self.endpoint_at(&url, false)?;
             endpoint.own_push_url = push;
+            endpoint.name = Some(value.to_owned());
             return Ok(endpoint);
         }
         self.endpoint_at(value, typed)
+    }
+
+    /// How a command gives `endpoint` again with `--remote`, on any machine: its URL, which names
+    /// the same place everywhere, unless `--remote` would read that URL as a remote's name here (an
+    /// alias git rewrites, spelled like one); then the name of the remote it was chosen by.
+    pub fn spelling(&self, endpoint: &Endpoint) -> Result<OsString, Error> {
+        Ok(match &endpoint.name {
+            Some(name) if self.names_remote(&endpoint.url)? => name.clone(),
+            _ => endpoint.url.clone(),
+        })
     }
 
     /// Whether `value` names a remote configured here, which wins over a same-named path.
@@ -109,6 +123,7 @@ impl Workspace {
                 return Ok(Endpoint {
                     url: value,
                     own_push_url,
+                    name: None,
                 });
             }
             let base = if typed {
@@ -128,7 +143,11 @@ impl Workspace {
         } else {
             value
         };
-        Ok(Endpoint { url, own_push_url })
+        Ok(Endpoint {
+            url,
+            own_push_url,
+            name: None,
+        })
     }
 
     /// The URL of the one coordination endpoint ([`Workspace::endpoint`]).
@@ -172,6 +191,12 @@ impl Workspace {
             return self.resolve_endpoint(&tracked, false).map(Some);
         }
         if let Some(used) = used {
+            // older versions saved a remote's name as `init --remote` was given it, until a sync
+            // replaced it with its URL; this one saves URLs, and one spelled like a remote's name
+            // is an alias git rewrites
+            if self.names_remote(&used)? && !self.rewrites(&used)? {
+                return self.resolve_endpoint(&used, false).map(Some);
+            }
             let mut endpoint = self.endpoint_at(&used, false)?;
             endpoint.own_push_url = self.remembered_push(&used);
             return Ok(Some(endpoint));
@@ -181,6 +206,7 @@ impl Workspace {
             Some(origin) => {
                 let mut endpoint = self.endpoint_at(&origin, false)?;
                 endpoint.own_push_url = self.origin_push;
+                endpoint.name = Some(OsString::from("origin"));
                 Ok(Some(endpoint))
             }
         }
@@ -201,7 +227,7 @@ impl Workspace {
     /// same remote spelled another way, unless the name has a push URL of its own: they went
     /// through its other URL then, and moving to the push URL is done deliberately.
     fn leads_to(&self, tracked: &OsStr, used: &OsStr) -> Result<bool, Error> {
-        if self.resolve_remote(tracked, false)? == used {
+        if tracked == used || self.resolve_remote(tracked, false)? == used {
             return Ok(true);
         }
         let git = &self.settings.git;
