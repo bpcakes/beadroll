@@ -21,7 +21,7 @@ use beadroll_store::{
 
 use crate::error::Error;
 use crate::link::Link;
-use crate::synchronise::{ROUNDS, conflict_detail, pause, published_counts, refused};
+use crate::synchronise::{ROUNDS, conflict_detail, pause, refused};
 use crate::tx::{Tx, confirm_ownership, drop_pending, locked, remove, writing};
 
 /// How an ownership change was made.
@@ -197,14 +197,14 @@ pub fn coordinated<E: From<Error>>(
                 // it had landed: the work is done, not to be redone
                 drop_pending(ws, std::slice::from_ref(events))?;
                 forget(&stale)?;
-                published(ws, &remote)?;
+                published(ws, &mut link, &remote)?;
                 return Ok(Some(*answer));
             }
             let (done, settled) = settle_commands(ws, &replica, actor, signature)?;
             stale = settled;
             if done {
                 // an earlier run of this command was accepted
-                published(ws, &remote)?;
+                published(ws, &mut link, &remote)?;
                 return Ok(Some(Mode::Online));
             }
             match settle_pending(ws, &mut link, tip.as_deref())? {
@@ -235,7 +235,7 @@ pub fn coordinated<E: From<Error>>(
                 PushOutcome::Ok => {
                     // this command went through: the actor has moved on from those
                     forget(&stale)?;
-                    published(ws, &remote)?;
+                    published(ws, &mut link, &remote)?;
                     Ok(Some(answer))
                 }
                 PushOutcome::Refused => Err(refused(&link).into()),
@@ -334,8 +334,8 @@ impl<E> From<Error> for Round<E> {
 }
 
 /// The remote has all of this store: the counts it holds, and nothing left unpublished.
-fn published(ws: &Workspace, remote: &Endpoint) -> Result<(), Error> {
-    let counts = published_counts(ws)?;
+fn published(ws: &Workspace, link: &mut Link<'_>, remote: &Endpoint) -> Result<(), Error> {
+    let counts = link.published_counts()?;
     ws.note_sync(remote, &[("published", Value::Object(counts))]);
     ws.set_wrote(false);
     Ok(())

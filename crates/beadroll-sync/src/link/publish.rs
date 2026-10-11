@@ -24,7 +24,8 @@ impl Link<'_> {
         for path in segment_files(self.ws)? {
             repair_tail(self.ws, &path)?;
         }
-        let mut blobs = self.local_blobs()?;
+        let mut blobs = self.local_blobs(true)?;
+        self.save_memo();
         if !pending.is_empty() {
             let place = relative(self.ws, &attempt_path(self.ws, pending));
             blobs.insert(place, self.blob_of(encode_events(pending)?)?);

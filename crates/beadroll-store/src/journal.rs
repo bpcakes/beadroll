@@ -3,7 +3,7 @@
 //! this machine's pending attempts, and the state they replay into.
 
 use std::fs::OpenOptions;
-use std::io::{Seek as _, SeekFrom, Write as _};
+use std::io::{Read as _, Seek as _, SeekFrom, Write as _};
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::{Path, PathBuf};
 
@@ -102,8 +102,12 @@ pub fn complete_prefix(data: &[u8]) -> Vec<u8> {
 }
 
 /// Drops an interrupted final write, kept beside the segment as `NAME.torn-<ns>` for diagnosis, so
-/// that later appends stay readable.
+/// that later appends stay readable. A segment that is empty or ends with a newline is whole, and
+/// only its last byte is read: a sync repairs every segment, and their length is the history's.
 pub fn repair_tail(ws: &Workspace, path: &Path) -> Result<(), Error> {
+    if ends_whole(path)? {
+        return Ok(());
+    }
     let data = read(path)?;
     let fixed = complete_prefix(&data);
     if fixed == data {
@@ -116,6 +120,26 @@ pub fn repair_tail(ws: &Workspace, path: &Path) -> Result<(), Error> {
         write_atomic(&torn, &data[fixed.len()..], true, &ws.settings.failpoints)?;
     }
     write_atomic(path, &fixed, true, &ws.settings.failpoints)
+}
+
+/// Whether the file at `path` is empty or ends with a newline, from its last byte alone; a file
+/// that cannot be opened is the IO error naming it, as reading it whole would be, and anything
+/// but a regular file is left to that read.
+fn ends_whole(path: &Path) -> Result<bool, Error> {
+    let mut file = std::fs::File::open(path).map_err(|e| IoError::at(&e, path))?;
+    let meta = file.metadata().map_err(|e| IoError::at(&e, path))?;
+    if !meta.is_file() {
+        return Ok(false);
+    }
+    let len = meta.len();
+    if len == 0 {
+        return Ok(true);
+    }
+    let mut last = [0u8];
+    file.seek(SeekFrom::Start(len - 1))
+        .and_then(|_| file.read_exact(&mut last))
+        .map_err(|e| IoError::at(&e, path))?;
+    Ok(last == *b"\n")
 }
 
 /// Where this machine appends next: the last segment, or a new one once that has reached the
@@ -314,4 +338,35 @@ pub fn view(ws: &Workspace) -> Result<State, ViewError> {
         }
     }
     Ok(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A segment is whole when it is empty or ends with a newline, which its last byte says; any
+    /// other file is read whole, a directory included, and one that is not there is the IO error
+    /// naming it, as that read's is.
+    #[test]
+    fn a_segment_is_whole_by_its_last_byte() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = |name: &str, data: &[u8]| {
+            let path = dir.path().join(name);
+            std::fs::write(&path, data).unwrap();
+            path
+        };
+        assert!(ends_whole(&file("empty", b"")).unwrap());
+        assert!(ends_whole(&file("whole", b"{}\n{}\n")).unwrap());
+        assert!(!ends_whole(&file("torn", b"{}\n{\"v\"")).unwrap());
+        assert!(!ends_whole(&file("unended", b"{}")).unwrap());
+        let folder = dir.path().join("000001.jsonl");
+        std::fs::create_dir(&folder).unwrap();
+        assert!(!ends_whole(&folder).unwrap(), "left to the whole read");
+        let missing = dir.path().join("missing");
+        let read = std::fs::read(&missing).unwrap_err();
+        assert_eq!(
+            ends_whole(&missing).unwrap_err(),
+            Error::Io(IoError::at(&read, &missing))
+        );
+    }
 }

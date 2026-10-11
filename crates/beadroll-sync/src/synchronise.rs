@@ -160,7 +160,7 @@ pub fn synchronise(ws: &Workspace, remote: &Endpoint) -> Result<Synced, Error> {
     if let Some(name) = &ws.name {
         values.push(("name", Value::from(name.to_string_lossy().into_owned())));
     }
-    values.push(("published", Value::Object(published_counts(ws)?)));
+    values.push(("published", Value::Object(link.published_counts()?)));
     ws.note_sync(remote, &values);
     ws.set_wrote(false);
     Ok(Synced {
@@ -316,21 +316,6 @@ pub fn adopt_published(
         &ws.settings.failpoints,
     )?;
     Ok(Some(adopted))
-}
-
-/// What the remote holds of this store the moment a publish went through: lines per journal
-/// segment and one per attempt file, by path. Kept in `meta.json` so that the unpublished count
-/// needs no network.
-pub fn published_counts(ws: &Workspace) -> Result<Object, Error> {
-    let mut counts = Object::new();
-    for path in segment_files(ws)? {
-        let lines = newlines(&read(&path)?) as i64;
-        counts.insert(relative(ws, &path), Value::from(lines));
-    }
-    for path in claim_files(ws)? {
-        counts.insert(relative(ws, &path), Value::from(1));
-    }
-    Ok(counts)
 }
 
 /// Events of this store the remote does not have, as of the last publish that went through;

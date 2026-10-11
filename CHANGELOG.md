@@ -58,6 +58,14 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   boundary (exit 98 or 99, a SIGKILL, or the remote's stalled push). The sync schedules record
   their local work offline, so the 48 at the push and timeout boundaries now push, where they
   passed with nothing to publish, and the default slice stops a sync at its push (roll-dih8.10).
+- A publishing write (a sync, a claim, a published local write) hashes only the journal files that
+  changed since bead last hashed them, once: the active segment, new attempt files and files whose
+  length or identity changed, where it hashed every segment and attempt file of the store twice
+  (roll-lqjj.1). It no longer reads every segment to count its lines or to compare it with the
+  published copy, and checks a segment for a torn tail by its last byte. What it remembers of each
+  file (its identity on disk, its lines, its blob) is a cache, `sync.git/journal-memo`: a file
+  that keeps its identity is not hashed again, and its remembered blob goes into a tree only when
+  it is sure to be in `sync.git`; the tree published is the one hashing every file makes.
 
 ## [0.2.0] — 2026-10-11
 

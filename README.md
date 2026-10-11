@@ -256,6 +256,11 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   checked whole before anything is written: one bad record fails it.
 - Several bead processes on one machine (agents in different worktrees) never
   collide inside the private `sync.git`: each fetch lands in a ref of its own.
+- A publish hashes only the journal files that changed since the last one: the
+  segment being appended to and new claim files, not the whole history. What
+  bead remembers of each file is a cache, `sync.git/journal-memo`: a file that
+  changed in any way is hashed again, and deleting the memo, or `sync.git`
+  itself, is always safe.
 - When the publish of an owner's close could not go out, the `--json` answer
   says so (`"unpublished": "recorded locally, not yet published (…)"`) and a
   retry of the close publishes as the first run would have.

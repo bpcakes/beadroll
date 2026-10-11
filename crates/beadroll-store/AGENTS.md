@@ -32,8 +32,12 @@ remote resolution, actor detection, and `view`. Slice 2a (`roll-k2wy.3`) built i
   and a remote's URL as git is configured with it (`configured_url`, which discovery reads origin
   with); `src/discover.rs`: `find_workspace`, `checked_config`, `moved_workspaces`,
   `tracked_config_warning` (a `.beadroll.json` the other checkouts do not see), `workspaces_named`.
-- `src/journal.rs`: segment, attempt and pending files, `append_events`, `repair_tail`,
-  `load_journal`, `load_pending`, `view`; `src/place.rs`: `capture_where`, `merged_into_default`.
+- `src/journal.rs`: segment, attempt and pending files, `append_events`, `repair_tail` (a segment
+  that ends with a newline is whole, and only its last byte is read), `load_journal`,
+  `load_pending`, `view`; `src/place.rs`: `capture_where`, `merged_into_default`.
+- `src/memo.rs`: `Memo`, what the store remembers of each journal file between commands (its
+  identity on disk, `FileKey`, its lines and its blob in `sync.git`), kept as
+  `sync.git/journal-memo` (`memo_path`) by the holder of the store lock (roll-lqjj.1).
 - `tests/store/`: the Python suite's tests of the store, ported under the naming rule of
   `docs/RUST-PORT.md` §4.2.
 
@@ -47,6 +51,8 @@ remote resolution, actor detection, and `view`. Slice 2a (`roll-k2wy.3`) built i
 ## Invariants
 
 - The bytes on disk are format 1's, exactly as Python writes them (§1.1); format 1 is frozen.
+  The memo is no part of it: a cache in `sync.git` that goes with it, and a memo that is
+  missing, cannot be read or names a file whose identity changed counts for nothing.
 - Directories 0700 and files 0600 throughout the store, whatever the umask; files written into a
   checkout follow the umask.
 - Atomic writes use Python's temporary names and `fsync(2)` through `rustix`, not `sync_all`

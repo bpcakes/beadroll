@@ -299,6 +299,19 @@ These were decided deliberately. Report problems *with* them, not their existenc
   the first `rev-parse`, so also in discovery's early-error paths where Python stops before asking
   for origin; and a SIGKILL while a blob is hashed can leave a file in the temporary directory (the
   attempt's or the manifest's content, never in the store).
+- A publish hashes only the journal files it cannot vouch for (roll-lqjj.1, step 2 of epic
+  roll-lqjj): the store remembers, in `sync.git/journal-memo`, each segment's and attempt file's
+  identity on disk when it was hashed (length, modification and change times, inode, device: what
+  git's index compares), its lines and its blob. A file that keeps that identity is not hashed: a
+  merge compares the remembered blob with the published one as it is, and a publish names it in a
+  tree only when it is sure to be in `sync.git`, because this command's link made it or the tree of
+  the tip it merged holds it at that path; otherwise the file is hashed. A gc drops a blob no ref
+  reaches (`prune_now_on_the_private_sync_repo_during_syncs_is_transient`), and one named in a
+  tree would fail every `mktree` after. Keyed by more than the path and length the issue named,
+  since a fork the published copy replaces, or a file rewritten in place, can keep its length. The
+  memo is a cache, never a source: missing, unreadable or stale, it counts for nothing; one that
+  cannot be written is left as it was; it goes with `sync.git`. The merge still asks git what
+  Python asks, in the same order: fewer files to `hash-object`, then the published tree.
 - A fetch that loses to another process's fetch of the store is tried again (roll-dih8.12): git's
   checks of a fetch read every ref, and every process fetches into a ref of its own under
   `refs/beads/fetch/` that it deletes after, so git can find such a ref gone between listing it

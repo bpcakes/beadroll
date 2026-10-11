@@ -9,6 +9,12 @@
 //! certain answer, so every failure reads as before. They end with the link, or when `sync.git` is
 //! set aside. The refs a fetch leaves are set by Python's own two calls, at its pace: other
 //! processes' fetches are still reading every ref then ([`Link::keep_fetched`]).
+//!
+//! A link hashes only the journal files it cannot vouch for (roll-lqjj.1): the store's memo
+//! (`beadroll_store::Memo`) remembers each file's blob for the identity the file had when it was
+//! hashed, and a publish uses a remembered blob while the file keeps that identity and the blob is
+//! sure to be in `sync.git`: this link made it, or the tree of the tip it last merged holds it at
+//! that path. The tree it publishes is the one hashing every file would make.
 
 mod asked;
 mod fetch;
@@ -17,18 +23,18 @@ mod publish;
 mod read;
 mod write;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStrExt as _;
 use std::path::PathBuf;
 
-use beadroll_core::json::Value;
+use beadroll_core::json::{Object, Value};
 use beadroll_git::{
     CountRules, Env, Fact, Hasher, IoError, Objects, Refs, Trees, local_damage, sync_env,
     transport_config, transport_settings, with_settings,
 };
 use beadroll_store::{
-    Endpoint, Workspace, claim_files, dir_entries, has_suffix, hex_token, private_dir, read,
+    Endpoint, Memo, Workspace, claim_files, dir_entries, has_suffix, hex_token, private_dir,
     relative, segment_files,
 };
 
@@ -78,6 +84,16 @@ pub struct Link<'a> {
     /// `update-ref --stdin` in `sync.git`, started once a publish has something to push:
     /// `refs/beads/remote` after the push.
     refs: Option<Refs>,
+    /// What is remembered of the store's journal files: read again by each merge, under the store
+    /// lock, added to as files are hashed, counted and written, and written back when it changed.
+    memo: Option<Memo>,
+    /// The blobs this link has made in `sync.git` itself since it was made or last set aside.
+    made: HashSet<String>,
+    /// The blob the tree of the last merged tip holds at each path.
+    listed: HashMap<String, String>,
+    /// The store's journal files this link has handed to `hash-object`, by path, in order: a file
+    /// whose remembered blob it could use is not among them.
+    pub hashed: Vec<String>,
 }
 
 /// The environment a link to `ws`'s remote runs git in ([`sync_env`], with `GIT_DIR` its
@@ -153,6 +169,10 @@ impl<'a> Link<'a> {
             hasher: None,
             trees: None,
             refs: None,
+            memo: None,
+            made: HashSet::new(),
+            listed: HashMap::new(),
+            hashed: Vec::new(),
         })
     }
 
@@ -216,12 +236,29 @@ impl<'a> Link<'a> {
         ))
     }
 
-    /// Ends the gits this link keeps in `sync.git`: it is being set aside.
+    /// Ends the gits this link keeps in `sync.git`, and forgets which blobs it holds and the memo
+    /// kept there: it is being set aside.
     fn stop_gits(&mut self) {
         self.objects.stop();
         self.hasher = None;
         self.trees = None;
         self.refs = None;
+        self.memo = None;
+        self.made.clear();
+        self.listed.clear();
+    }
+
+    /// What is remembered of the store's journal files, read when first needed.
+    fn memo(&mut self) -> &mut Memo {
+        let ws = self.ws;
+        self.memo.get_or_insert_with(|| Memo::load(ws))
+    }
+
+    /// Writes the memo back if it changed. Lock held.
+    fn save_memo(&mut self) {
+        if let Some(memo) = &mut self.memo {
+            memo.save(self.ws);
+        }
     }
 
     /// `sync.git` is a cache of what the remote holds and of `events/`: a damaged one is set aside,
@@ -246,8 +283,8 @@ impl<'a> Link<'a> {
     /// Repacks `sync.git` when loose objects or packs have piled up: one pack, loose copies of
     /// packed objects gone, unreachable loose objects older than an hour gone (an in-flight fetch's
     /// are younger). Lock held, so no bead process of this store is writing; git's own maintenance
-    /// is off.
-    pub fn maintain(&self) -> Result<bool, Error> {
+    /// is off. A blob this link wrote may be gone afterwards, unless a tree it published holds it.
+    pub fn maintain(&mut self) -> Result<bool, Error> {
         let objects = self.git_dir.join("objects");
         let mut loose = 0usize;
         for n in 0..256 {
@@ -268,28 +305,46 @@ impl<'a> Link<'a> {
             "-q".as_ref(),
         ])?;
         self.run(&[OsStr::new("prune"), "--expire=1.hour.ago".as_ref()])?;
+        self.made.clear();
         Ok(true)
     }
 
     /// Events of this store the remote does not have, as of the last merge: each segment's lines
-    /// less the remote's, and each attempt file the remote lacks.
-    pub fn unpublished(&self) -> Result<i64, Error> {
+    /// less the remote's, and each attempt file the remote lacks. A segment's lines are counted
+    /// only when the memo does not know them.
+    pub fn unpublished(&mut self) -> Result<i64, Error> {
+        let ws = self.ws;
         let mut count: i64 = 0;
-        for path in segment_files(self.ws)? {
-            let lines = newlines(&read(&path)?);
-            let known = self
-                .remote_counts
-                .get(&relative(self.ws, &path))
-                .copied()
-                .unwrap_or(0);
+        for path in segment_files(ws)? {
+            let name = relative(ws, &path);
+            let lines = self.memo().lines(&name, &path)?;
+            let known = self.remote_counts.get(&name).copied().unwrap_or(0);
             count += lines as i64 - known as i64;
         }
-        for path in claim_files(self.ws)? {
-            if !self.remote_counts.contains_key(&relative(self.ws, &path)) {
+        for path in claim_files(ws)? {
+            if !self.remote_counts.contains_key(&relative(ws, &path)) {
                 count += 1;
             }
         }
         Ok(count)
+    }
+
+    /// What the remote holds of this store the moment a publish went through: lines per journal
+    /// segment and one per attempt file, by path (Python's `published_counts`), a segment's lines
+    /// counted only when the memo does not know them. Kept in `meta.json` so that the unpublished
+    /// count needs no network.
+    pub fn published_counts(&mut self) -> Result<Object, Error> {
+        let ws = self.ws;
+        let mut counts = Object::new();
+        for path in segment_files(ws)? {
+            let name = relative(ws, &path);
+            let lines = self.memo().lines(&name, &path)? as i64;
+            counts.insert(name, Value::from(lines));
+        }
+        for path in claim_files(ws)? {
+            counts.insert(relative(ws, &path), Value::from(1));
+        }
+        Ok(counts)
     }
 }
 
