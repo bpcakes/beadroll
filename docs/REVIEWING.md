@@ -4,9 +4,9 @@ A brief for an independent reviewer: an agent or a person who did not write this
 to find out whether the design holds, to break it if they can, and to report with
 reproductions. Reviewers do not extend the tool.
 
-Nine reviews have run; the latest two audit the Rust port plan. Their reports are kept verbatim in
-`reviews/`; every finding and what became of it is in `FINDINGS.md`. Start from what they did
-not cover.
+Ten reviews have run; reviews 8 and 9 audit the Rust port plan, and review 10 is Codex's, task by
+task, of epic `roll-lqjj`. Their reports are kept verbatim in `reviews/`; every finding and what
+became of it is in `FINDINGS.md`. Start from what they did not cover.
 
 ## 1. What this is
 
@@ -310,7 +310,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   tree would fail every `mktree` after. Keyed by more than the path and length the issue named,
   since a fork the published copy replaces, or a file rewritten in place, can keep its length. The
   memo is a cache, never a source: missing, unreadable or stale, it counts for nothing; one that
-  cannot be written is left as it was; it goes with `sync.git`. The merge still asks git what
+  cannot be written is left as it was; it goes with `sync.git`; and a publish whose tree cannot be
+  made from remembered blobs, short of damage (an object lost while the published tree names it),
+  hashes every file once more, as every publish did before (L02). The merge still asks git what
   Python asks, in the same order: fewer files to `hash-object`, then the published tree.
 - A fetch that loses to another process's fetch of the store is tried again (roll-dih8.12): git's
   checks of a fetch read every ref, and every process fetches into a ref of its own under
