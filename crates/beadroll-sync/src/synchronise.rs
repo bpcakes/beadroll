@@ -283,7 +283,7 @@ pub fn adopt_published(
     // this checkout's origin, chosen by its name or given as its very URL
     let origin = match &remote.name {
         Some(name) => name == "origin",
-        None => ws.is_origin_url(&remote.url)?,
+        None => ws.is_origin_url(&remote.url, false),
     };
     if !origin {
         return Ok(None);

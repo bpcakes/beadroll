@@ -41,8 +41,8 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   tracked remote is the store's when it is the same name or the same URL, or, in a
   store an older bead left with a tracked name saved as git expanded it, where git's own answers
   agree; any other change is refused (`CONFIG`) until made deliberately. Origin's own URL given as
-  a URL is origin, reached as origin is, its own push URL included, and `init --tracked --remote`
-  stores it as `origin`, so the file follows origin when the repository moves. A relative path
+  a URL spelled as configured is origin, reached as origin is, its own push URL included, and
+  `init --tracked --remote` stores it as `origin`, so the file follows origin when the repository moves. A relative path
   typed in a subdirectory is read from there, also by `init --tracked`, which stores it from the
   top of the checkout whether it exists or not; a path a rule rewrites is left to git as written.
   Going back to 0.2.0, a store whose tracked and remembered remote are one name is refused there

@@ -185,3 +185,43 @@ fn origin_is_reached_as_configured_where_a_rule_rewrites_it() {
         "a write went elsewhere than git takes origin"
     );
 }
+
+/// Origin configured as a relative path, and `--remote` given that path made absolute, which a rule
+/// rewrites to another repository: not origin's spelling, so a URL of its own, reached where git
+/// takes it, never at origin.
+#[test]
+fn origins_relative_path_made_absolute_is_a_url_of_its_own() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    // the checkout is the sandbox's `a-main`, beside coord.git
+    let coord = sandbox.bare("coord.git");
+    commit(&a, &["remote", "set-url", "origin", "../coord.git"]);
+    json(&a, &["init", "--prefix", "ex"]);
+    let elsewhere = sandbox.bare("elsewhere.git");
+    let rule = format!("url.{}.insteadOf", text(&elsewhere));
+    commit(&a, &["config", &rule, text(&coord)]);
+    json(&a, &["sync", "--remote", text(&coord)]);
+    assert!(
+        holds_tracker(&elsewhere),
+        "the sync took the URL for origin"
+    );
+}
+
+/// A tracked remote's name configured with a password in its URL, in a store an older bead left
+/// with the URL it led to saved without the password, as it saved every URL: git's answers for the
+/// name are read without it too, so the saved URL is still that remote.
+#[test]
+fn a_saved_url_for_a_name_with_a_password_is_still_that_remote() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let init = json(&a, &["init", "--prefix", "ex", "--offline"]);
+    let store = PathBuf::from(init["path"].as_str().expect("a path"));
+    let url = "https://example.invalid/org/tracker.git";
+    let configured = "https://user:secret@example.invalid/org/tracker.git";
+    commit(&a, &["remote", "add", "tracker", configured]);
+    let tracked = a.checkout().join(".beadroll.json");
+    std::fs::write(tracked, "{\"remote\": \"tracker\"}\n").expect("a tracked file");
+    save_remote(&store, url);
+    let info = json(&a, &["info"]);
+    assert_eq!(info["remote"].as_str(), Some(url), "{info:?}");
+}

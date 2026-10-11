@@ -75,10 +75,10 @@ impl Workspace {
         if chosen.is_empty() || self.names_remote(chosen)? {
             return Ok(false);
         }
-        let url = self.endpoint_at(chosen, false)?.url;
-        if self.is_origin_url(&url)? {
+        if self.is_origin_url(chosen, false) {
             return Ok(true);
         }
+        let url = without_password(chosen).0;
         let cwd = &self.settings.cwd;
         Ok(!is_local_path(&url)
             && !is_local_path(&origin)
@@ -87,13 +87,16 @@ impl Workspace {
             && !self.rewrites(&origin)?)
     }
 
-    /// Whether `url`, read as [`Workspace::endpoint_at`] reads a URL, is origin's, read the same
-    /// way: the same spelling, never two spellings taken for one place.
-    pub fn is_origin_url(&self, url: &OsStr) -> Result<bool, Error> {
-        let Some(origin) = self.origin.clone().filter(|origin| !origin.is_empty()) else {
-            return Ok(false);
+    /// Whether `value`, a URL or a path as given, is origin's own URL: spelled as origin is
+    /// configured, a password dropped from each, which git reaches alike, rules and all; never two
+    /// spellings taken for one place. A relative path typed just now (`typed`) is read from where
+    /// it was typed, a path of its own.
+    pub fn is_origin_url(&self, value: &OsStr, typed: bool) -> bool {
+        let Some(origin) = self.origin.as_deref().filter(|origin| !origin.is_empty()) else {
+            return false;
         };
-        Ok(self.endpoint_at(&origin, false)?.url == url)
+        let relative = is_local_path(value) && !value.as_bytes().starts_with(b"/");
+        !(typed && relative) && without_password(value).0 == without_password(origin).0
     }
 
     /// One remote spelling (a configured remote's name, a URL, a path) reduced to the URL bead
@@ -118,13 +121,12 @@ impl Workspace {
                 name: Some(value.to_owned()),
             });
         }
-        let endpoint = self.endpoint_at(value, typed)?;
-        if self.is_origin_url(&endpoint.url)?
+        if self.is_origin_url(value, typed)
             && let Some(origin) = self.origin_endpoint()
         {
             return Ok(origin);
         }
-        Ok(endpoint)
+        self.endpoint_at(value, typed)
     }
 
     /// Whether `value` names a remote configured here, which wins over a same-named path.
@@ -243,10 +245,10 @@ impl Workspace {
     }
 
     /// Whether `saved`, a URL an older version remembered for remote `name` (`git remote get-url
-    /// NAME`, resolved), is where git takes that remote: git fetches the name there and pushes it
-    /// there, and takes `saved` itself there too, each answer git's own (`git remote get-url`,
-    /// with and without `--push`, and `git ls-remote --get-url`, every rule applied once), read
-    /// as the link reads it.
+    /// NAME`, resolved, its password dropped), is where git takes that remote: git fetches the
+    /// name there and pushes it there, and takes `saved` itself there too, each answer git's own
+    /// (`git remote get-url`, with and without `--push`, and `git ls-remote --get-url`, every rule
+    /// applied once), read as the link reads it, a password dropped as from every URL.
     fn saved_for(&self, name: &OsStr, saved: &OsStr) -> Result<bool, Error> {
         if saved.as_bytes().starts_with(b"-") {
             return Ok(false);
@@ -268,7 +270,7 @@ impl Workspace {
             let Some(url) = answer else {
                 return Ok(false);
             };
-            places.push(self.place(&url)?);
+            places.push(self.place(&without_password(&url).0)?);
         }
         Ok(places.windows(2).all(|pair| pair[0] == pair[1]))
     }

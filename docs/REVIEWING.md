@@ -170,7 +170,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   it: a tracked name and a saved URL are the same where git's own answers agree (`git remote
   get-url` with and without `--push` for the name, `git ls-remote --get-url` for the URL, every
   rule applied once), each read as the link reads it, a relative path from the top of the
-  checkout through its symbolic links. Going back to 0.2.0 or Python, a store whose tracked and
+  checkout through its symbolic links, a password dropped as from every URL. Going back to 0.2.0 or Python, a store whose tracked and
   remembered remote are one name is refused there until `bead sync --remote NAME`, as they refused
   a name their own `init --offline --remote` saved.
 - Origin is the name `origin`, never remembered: it is looked up each time, so `git remote set-url
@@ -178,9 +178,12 @@ These were decided deliberately. Report problems *with* them, not their existenc
   reaches it, by the URL it is configured with (a relative path, or a spelling a rule rewrites,
   left to git as written), whether it is named or nothing is; only the URL-derived id reads a
   relative path from the top of the checkout first. Origin's own URL (the one `git push
-  origin` is configured with) given as a URL, spelled alike, is origin, reached as origin is, its
-  own push URL included: `init --tracked` stores it as `origin`, and a sync given it forgets it. A
-  remote of another name is never origin, whatever its URL. A remembered value is origin when it is
+  origin` is configured with) given as a URL spelled as configured (a password dropped from each),
+  which git reaches alike, rules and all, is origin, reached as origin is, its own push URL
+  included: `init --tracked` stores it as `origin`, and a sync given it forgets it. Any other
+  spelling of the same place is a URL of its own (an absolute path for origin's relative one,
+  which a rule can send elsewhere), and so is a relative path typed just now, read from where it
+  was typed. A remote of another name is never origin, whatever its URL. A remembered value is origin when it is
   that name or, as older versions saved it, origin's URL: spelled alike, or, for two URLs that are
   not local paths and that no rule rewrites, the same repository however spelled (G25: ssh or
   https, `.git`), as the URL-derived id takes them. A tracker published under another id is
