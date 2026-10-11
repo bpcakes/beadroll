@@ -6,6 +6,7 @@ import json
 import os
 import runpy
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +14,9 @@ from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parent.parent
+# roundtrip.py imports selected from beside it, which `python3 infra/roundtrip.py` finds there and
+# runpy.run_path does not, so this puts infra/ where a run of the script would have it
+sys.path.insert(0, str(ROOT / "infra"))
 
 
 class RoundtripFailureReporting(unittest.TestCase):
@@ -86,3 +90,12 @@ class RoundtripFailureReporting(unittest.TestCase):
         self.assertNotEqual(status, 0, output)
         self.assertIn("TOTAL 0/1 records identical", output)
         self.assertIn("DIFF", output)
+
+
+class StandaloneRun(unittest.TestCase):
+    def test_the_tests_run_alone_by_their_dotted_name(self):
+        # a fresh interpreter with only the repository root to import from, as `python3 -m unittest
+        # infra.test_roundtrip` starts: roundtrip.py's own import of selected must still find it
+        proc = subprocess.run([sys.executable, "-m", "unittest", "infra.test_roundtrip.RoundtripFailureReporting"],
+                              cwd=ROOT, capture_output=True, text=True, timeout=120)
+        self.assertEqual(proc.returncode, 0, proc.stderr[-2000:])
