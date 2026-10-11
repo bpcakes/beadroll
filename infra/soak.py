@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Random agent-like traffic against the beads POC on one machine. Logs one JSON line per command.
 Usage: soak.py BP REPO SECONDS SEED LOGFILE   (BEAD_HOME etc. come from the environment)
-BP is the bead to run, as its caller selected it. Before any traffic, the log's first line records it (its
-path, the first line `--version` prints, its kind, native or script, and a digest), and with
-BEAD_EXPECT_VERSION set (0.2.0 at the cutover) a bead that reports another version or is a script stops the
-soak: infra/selected.py's rules, repeated here because this file runs on hosts that have only it."""
+BP is the bead to run, as its caller selected it, by its absolute path: the preflight reads it from where
+this starts and the traffic runs it in REPO, so a relative path could name two beads, and it is refused
+before anything runs. Before any traffic, the log's first line records it (its path, the first line
+`--version` prints, its kind, native or script, and a digest), and with BEAD_EXPECT_VERSION set (0.2.0 at
+the cutover) a bead that reports another version or is a script stops the soak: infra/selected.py's rules,
+repeated here because this file runs on hosts that have only it."""
 import hashlib
 import json
 import os
@@ -14,6 +16,8 @@ import sys
 import time
 
 bead, repo, seconds, seed, logfile = sys.argv[1], sys.argv[2], float(sys.argv[3]), int(sys.argv[4]), sys.argv[5]
+if not os.path.isabs(bead):
+    sys.exit(f"soak.py: BP must be an absolute path, not {bead!r}")
 random.seed(seed)
 words = "ledger invoice export worker retry queue schema audit login token cache index proxy budget gate loop".split()
 log = open(logfile, "a")

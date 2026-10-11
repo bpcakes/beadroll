@@ -172,6 +172,24 @@ class SoakPreflight(unittest.TestCase):
             self.assertIn("not a native 'bead 0.2.0'", proc.stderr)
             self.assertEqual(len(rows), 1, rows)
 
+    def test_a_bead_named_by_a_relative_path_is_refused_before_anything_runs(self):
+        # ./bead would be the one where soak.py starts to the preflight, and REPO's to the traffic
+        with tempfile.TemporaryDirectory(prefix="bead-soak-test-") as tmp:
+            here, repo, runs, log = Path(tmp, "here"), Path(tmp, "repo"), Path(tmp, "runs.log"), Path(tmp, "soak.log")
+            for folder, version in ((here, "bead 0.2.0"), (repo, "bead 0.1.0")):
+                folder.mkdir()
+                bead = folder / "bead"
+                bead.write_text(f'#!/bin/sh\necho "$0" >> {runs}\n'
+                                f'if [ "$1" = --version ]; then echo "{version}"; else echo "{{}}"; fi\n')
+                bead.chmod(0o755)
+            env = {key: value for key, value in os.environ.items() if not key.startswith("BEAD_")}
+            proc = subprocess.run([sys.executable, str(ROOT / "infra" / "soak.py"), "./bead", str(repo), "0", "1", str(log)],
+                                  cwd=here, env=env, capture_output=True, text=True, timeout=120)
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("soak.py: BP must be an absolute path, not './bead'", proc.stderr)
+            self.assertFalse(runs.exists(), runs.read_text() if runs.exists() else "")
+            self.assertFalse(log.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
