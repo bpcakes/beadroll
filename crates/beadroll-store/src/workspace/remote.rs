@@ -11,6 +11,28 @@ use beadroll_git::{Fact, exists, is_local_path, normalize_remote, realpath, with
 use super::Workspace;
 use crate::error::Error;
 
+/// Where a store coordinates ([`Workspace::endpoint`]): the URL bead fetches from and publishes to,
+/// and whether it is the push URL of its own (`remote.NAME.pushurl`) of the remote it was chosen
+/// by, which git pushes to as configured, without the `pushInsteadOf` rewrites it applies to any
+/// other URL, and so does bead.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Endpoint {
+    /// The URL, as bead hands it to git.
+    pub url: OsString,
+    /// Whether it is the remote's own push URL.
+    pub own_push_url: bool,
+}
+
+impl Endpoint {
+    /// The endpoint at `url`, given by its URL alone: git applies its rewrites to it as to any URL.
+    pub fn at(url: impl Into<OsString>) -> Endpoint {
+        Endpoint {
+            url: url.into(),
+            own_push_url: false,
+        }
+    }
+}
+
 impl Workspace {
     /// Whether `url` is this checkout's origin, however it is spelled.
     pub fn is_origin(&self, url: &OsStr) -> bool {
@@ -36,59 +58,80 @@ impl Workspace {
         })
     }
 
-    /// One remote spelling (a configured remote's name, a URL, a path) reduced to the one bead
-    /// uses, as git would read it: a configured remote wins over a same-named path, a stored
-    /// relative path is read from the top of the checkout whatever the cwd, unless git rewrites it
-    /// (`insteadOf`), a path typed just now (`typed`) from the cwd. A password is dropped.
+    /// One remote spelling (a configured remote's name, a URL, a path) reduced to the URL bead
+    /// uses ([`Workspace::resolve_endpoint`]).
     pub fn resolve_remote(&self, value: &OsStr, typed: bool) -> Result<OsString, Error> {
+        Ok(self.resolve_endpoint(value, typed)?.url)
+    }
+
+    /// One remote spelling (a configured remote's name, a URL, a path) reduced to the one bead
+    /// uses, as git would read it: a configured remote wins over a same-named path, and is its own
+    /// push URL when it has one; a relative path is read from the top of the checkout when it is
+    /// stored, from the cwd when it was typed just now (`typed`), whether it exists or not (git
+    /// reaches remotes from the top of the checkout), unless git rewrites it (`insteadOf`). A
+    /// password is dropped.
+    pub fn resolve_endpoint(&self, value: &OsStr, typed: bool) -> Result<Endpoint, Error> {
         let git = &self.settings.git;
         let mut value = value.to_owned();
         let mut typed = typed;
+        let mut own_push_url = false;
         if name_shaped(&value)
-            && let Some(Configured { url, .. }) = configured_remote(git, &value)?
+            && let Some(Configured { url, push }) = configured_remote(git, &value)?
         {
             // where `git push NAME` goes, as configured, as discovery reads origin (G22): git
-            // applies `insteadOf` and `pushInsteadOf` itself when bead hands it that URL
+            // applies `insteadOf` itself when bead hands it that URL, and `pushInsteadOf` unless
+            // it is the remote's own push URL, as for `git push NAME`
             value = url;
             typed = false;
+            own_push_url = push;
         }
         let value = without_password(&value).0;
         let mut value = value;
-        if !typed && is_local_path(&value) && !value.as_bytes().starts_with(b"/") {
+        if is_local_path(&value) && !value.as_bytes().starts_with(b"/") {
             if rewritten(git, &value)? {
                 // a path in spelling only: git makes a URL of it, which it could no longer do to
                 // the path bead would make of it
-                return Ok(value);
+                return Ok(Endpoint {
+                    url: value,
+                    own_push_url,
+                });
             }
-            let top = self.settings.fact(Fact::Toplevel)?;
-            if top.success() {
-                let top = crate::strip_ascii(&top.stdout);
-                // os.path.join(top, value)
-                let mut joined = top.to_vec();
-                if !joined.is_empty() && !joined.ends_with(b"/") {
-                    joined.push(b'/');
-                }
-                joined.extend_from_slice(value.as_bytes());
-                value = OsString::from_vec(joined);
+            let base = if typed {
+                Some(self.settings.cwd.as_os_str().as_bytes().to_vec())
+            } else {
+                let top = self.settings.fact(Fact::Toplevel)?;
+                top.success()
+                    .then(|| crate::strip_ascii(&top.stdout).to_vec())
+            };
+            if let Some(base) = base {
+                value = joined(base, &value);
             }
         }
         let cwd = &self.settings.cwd;
-        Ok(if exists(&value, cwd) {
+        let url = if exists(&value, cwd) {
             realpath(&value, cwd).into_os_string()
         } else {
             value
-        })
+        };
+        Ok(Endpoint { url, own_push_url })
+    }
+
+    /// The URL of the one coordination endpoint ([`Workspace::endpoint`]).
+    pub fn remote(&self, override_: Option<&OsStr>) -> Result<Option<OsString>, Error> {
+        Ok(self.endpoint(override_)?.map(|endpoint| endpoint.url))
     }
 
     /// The one coordination endpoint: `override` (`--remote`), else `BEAD_REMOTE`, the tracked
-    /// configuration, the remote last named here, then origin. A tracked configuration seeds a new
-    /// store's remote, but never silently moves an existing store's.
-    pub fn remote(&self, override_: Option<&OsStr>) -> Result<Option<OsString>, Error> {
+    /// configuration, the remote last named here, then origin, each with how it was chosen (a
+    /// remote's own push URL or not; the remote last named here as it was saved beside it). A
+    /// tracked configuration seeds a new store's remote, but never silently moves an existing
+    /// store's.
+    pub fn endpoint(&self, override_: Option<&OsStr>) -> Result<Option<Endpoint>, Error> {
         let typed = override_
             .filter(|value| !value.is_empty())
             .or_else(|| self.settings.var("BEAD_REMOTE"));
         if let Some(typed) = typed {
-            return self.resolve_remote(typed, true).map(Some);
+            return self.resolve_endpoint(typed, true).map(Some);
         }
         let tracked = self
             .config_str("remote")
@@ -110,13 +153,31 @@ impl Workspace {
                 used.to_string_lossy()
             )));
         }
-        let value = tracked
-            .or(used)
-            .or_else(|| self.origin.clone().filter(|o| !o.is_empty()));
-        match value {
-            None => Ok(None),
-            Some(value) => self.resolve_remote(&value, false).map(Some),
+        if let Some(tracked) = tracked {
+            return self.resolve_endpoint(&tracked, false).map(Some);
         }
+        if let Some(used) = used {
+            let mut endpoint = self.resolve_endpoint(&used, false)?;
+            endpoint.own_push_url = self.remembered_push(&used);
+            return Ok(Some(endpoint));
+        }
+        match self.origin.clone().filter(|origin| !origin.is_empty()) {
+            None => Ok(None),
+            Some(origin) => {
+                let mut endpoint = self.resolve_endpoint(&origin, false)?;
+                endpoint.own_push_url = self.origin_push;
+                Ok(Some(endpoint))
+            }
+        }
+    }
+
+    /// Whether `used`, the remote last named here, was a remote's own push URL when it was chosen:
+    /// `remote_push_url` in `meta.json`, saved beside it ([`Workspace::note_sync`]), names it.
+    fn remembered_push(&self, used: &OsStr) -> bool {
+        let Ok(meta) = self.meta(false) else {
+            return false;
+        };
+        matches!(meta.get("remote_push_url"), Some(Value::Str(pushed)) if OsStr::new(pushed) == used)
     }
 
     /// Whether the tracked remote `tracked` leads to `used`, the one this store last went through:
@@ -146,6 +207,15 @@ impl Workspace {
         let formerly = OsString::from_vec(crate::strip_ascii(&fetched.stdout).to_vec());
         Ok(self.resolve_remote(&formerly, false)? == used)
     }
+}
+
+/// `os.path.join(base, value)`: `value` after `base` and a slash.
+fn joined(mut base: Vec<u8>, value: &OsStr) -> OsString {
+    if !base.is_empty() && !base.ends_with(b"/") {
+        base.push(b'/');
+    }
+    base.extend_from_slice(value.as_bytes());
+    OsString::from_vec(base)
 }
 
 /// Whether `value` has a remote name's shape, `[A-Za-z0-9._-]+`: a configured remote of that name
@@ -222,7 +292,7 @@ pub(crate) fn configured_url(listed: &[u8], name: &[u8]) -> Vec<u8> {
 
 /// The first value of `remote.NAME.KEY` that is not empty in what `git config --get-regexp`
 /// printed (`listed`), as configured.
-fn listed_url<'a>(listed: &'a [u8], name: &[u8], key: &[u8]) -> Option<&'a [u8]> {
+pub(crate) fn listed_url<'a>(listed: &'a [u8], name: &[u8], key: &[u8]) -> Option<&'a [u8]> {
     // git lowers the section and the key, never the remote's name
     let wanted = [&b"remote."[..], name, b".", key].concat();
     split_lines(listed).into_iter().find_map(|line| {

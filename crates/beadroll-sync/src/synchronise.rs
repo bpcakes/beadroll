@@ -8,8 +8,8 @@ use beadroll_core::json::{self, Format, Int, MAX_DIGITS, Object, Value};
 use beadroll_core::text::{py_int, shell_quote};
 use beadroll_git::{PushOutcome, exists, realpath, without_password};
 use beadroll_store::{
-    Failpoints, Fired, Workspace, claim_files, load_pending, moved_workspaces, pending_files, read,
-    relative, segment_files, view, workspaces_named, write_atomic,
+    Endpoint, Failpoints, Fired, Workspace, claim_files, load_pending, moved_workspaces,
+    pending_files, read, relative, segment_files, view, workspaces_named, write_atomic,
 };
 
 use crate::error::Error;
@@ -117,7 +117,7 @@ impl Synced {
 /// any the remote holds, and a fence commit on the head makes sure the rest can no longer land
 /// before they are dropped. A damaged `sync.git` is rebuilt once. A URL-derived workspace that finds
 /// this checkout's origin holding a tracker under another id adopts it (`moved.json`).
-pub fn synchronise(ws: &Workspace, remote: &OsStr) -> Result<Synced, Error> {
+pub fn synchronise(ws: &Workspace, remote: &Endpoint) -> Result<Synced, Error> {
     let mut link = Link::new(ws, remote)?;
     let known_renames = view(ws)?.renames().len();
     let (mut pulled, mut pushed) = (0i64, 0i64);
@@ -137,7 +137,7 @@ pub fn synchronise(ws: &Workspace, remote: &OsStr) -> Result<Synced, Error> {
                     continue;
                 }
                 let adopted = if attempt == 1 {
-                    adopt_published(ws, remote, &error)?
+                    adopt_published(ws, &remote.url, &error)?
                 } else {
                     None
                 };
@@ -168,7 +168,7 @@ pub fn synchronise(ws: &Workspace, remote: &OsStr) -> Result<Synced, Error> {
         pushed,
         attempts,
         tip: link.last_commit.clone(),
-        remote: remote.to_owned(),
+        remote: remote.url.clone(),
         sync_repo_rebuilt: link.rebuilt.clone(),
         repacked,
         issues: state.issues().count(),
@@ -405,13 +405,30 @@ pub fn publish_soon(ws: &Workspace, offline: bool, remote: Option<&OsStr>) -> Op
         return None;
     }
     let outcome = ws
-        .remote(remote)
+        .endpoint(remote)
         .map_err(Error::from)
         .and_then(|remote| match remote {
             None => Ok(()),
-            Some(remote) if remote.is_empty() => Ok(()),
-            Some(remote) => synchronise(ws, &remote).map(drop),
+            Some(remote) => publish_to(ws, &remote),
         });
+    not_yet_published(outcome)
+}
+
+/// [`publish_soon`] to `remote`, chosen already.
+pub fn publish_soon_to(ws: &Workspace, remote: &Endpoint) -> Option<String> {
+    not_yet_published(publish_to(ws, remote))
+}
+
+/// A sync with `remote`, when there is one to publish to.
+fn publish_to(ws: &Workspace, remote: &Endpoint) -> Result<(), Error> {
+    if remote.url.is_empty() {
+        return Ok(());
+    }
+    synchronise(ws, remote).map(drop)
+}
+
+/// What a failed publish says: the local write stands, not yet published.
+fn not_yet_published(outcome: Result<(), Error>) -> Option<String> {
     let error = outcome.err()?;
     Some(match error.os_error() {
         Some(said) => format!("recorded locally, not yet published (IO: {said})"),

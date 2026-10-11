@@ -2,7 +2,7 @@
 //! (the second independent audit, 2026-10-06).
 
 use beadroll_core::code::Code;
-use beadroll_store::Workspace;
+use beadroll_store::{Endpoint, Workspace};
 use beadroll_sync::synchronise;
 use beadroll_test_support::{Json, Machine, Sandbox};
 
@@ -60,7 +60,7 @@ impl Reaudit {
     /// A sync of machine a in this process, its every publish failing as unreachable.
     fn failed_sync(&self) {
         let ws = self.ws(UNREACHABLE);
-        let error = synchronise(&ws, self.sandbox.origin().as_os_str()).unwrap_err();
+        let error = synchronise(&ws, &Endpoint::at(self.sandbox.origin())).unwrap_err();
         assert_eq!(error.code(), Code::RemoteUnreachable, "{error}");
     }
 
@@ -88,7 +88,7 @@ fn refused_void_publish_must_not_activate_unaccepted_claim() {
         gate.action()
     ));
     let (report, accepted) = alongside(
-        || synchronise(&ws, s.sandbox.origin().as_os_str()),
+        || synchronise(&ws, &Endpoint::at(s.sandbox.origin())),
         |done| {
             gate.meet(done, || {
                 s.b.bead(["claim", &s.key]).unwrap()[0]["claim"].clone()

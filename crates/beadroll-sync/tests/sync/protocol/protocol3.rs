@@ -5,7 +5,7 @@
 use std::os::unix::fs::PermissionsExt as _;
 use std::time::{Duration, Instant};
 
-use beadroll_store::{Workspace, write_attempt_file};
+use beadroll_store::{Endpoint, Workspace, write_attempt_file};
 use beadroll_sync::{Error, Link, Mode, PushOutcome, Tx, locked, synchronise};
 use beadroll_test_support::{Json, Machine, Sandbox, git};
 
@@ -93,7 +93,7 @@ fn fence_wins_against_a_real_push_still_running_after_timeout() {
     let short = workspace(&s.a, s.sandbox.origin(), &[("BEAD_NET_TIMEOUT", "0.25")]);
     let actor = actor(&s.a);
     let outcome = locked(&ws, || -> Result<PushOutcome, Error> {
-        let mut link = Link::new(&ws, origin)?;
+        let mut link = Link::new(&ws, &Endpoint::at(origin))?;
         let tip = link.fetch()?;
         link.merge(tip.as_deref())?;
         let mut tx = Tx::new(&ws, &actor)?;
@@ -101,7 +101,12 @@ fn fence_wins_against_a_real_push_still_running_after_timeout() {
         let id = text(&tx.ownership[0]["id"]);
         let pending = ws.dir.join("pending").join(format!("{id}.json"));
         write_attempt_file(&pending, &tx.ownership, &ws.settings.failpoints)?;
-        Link::new(&short, origin)?.publish(tip.as_deref(), "claim", &tx.ownership, false)
+        Link::new(&short, &Endpoint::at(origin))?.publish(
+            tip.as_deref(),
+            "claim",
+            &tx.ownership,
+            false,
+        )
     })
     .unwrap();
     assert_eq!(outcome, PushOutcome::Uncertain);
@@ -110,7 +115,7 @@ fn fence_wins_against_a_real_push_still_running_after_timeout() {
     assert_eq!(pending_ids(&ws).len(), 1);
     assert!(s.a.show(&s.key).get("claim").is_none());
     s.a.bead(["comments", "add", &s.key, "independent local work"]);
-    let synced = synchronise(&ws, origin).unwrap();
+    let synced = synchronise(&ws, &Endpoint::at(origin)).unwrap();
     let fenced = synced.tip.unwrap();
     assert_eq!(pending_ids(&ws), Vec::<String>::new());
     std::fs::write(&gate, b"").unwrap();

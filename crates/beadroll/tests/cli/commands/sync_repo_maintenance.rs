@@ -6,7 +6,7 @@ use std::ffi::OsString;
 use std::sync::Arc;
 
 use beadroll_git::SYNC_REPO_CONFIG;
-use beadroll_store::{Settings, find_workspace};
+use beadroll_store::{Endpoint, Settings, find_workspace};
 use beadroll_sync::Link;
 use beadroll_test_support::{Json, Machine, Sandbox, git, parse_json};
 
@@ -64,7 +64,7 @@ fn no_git_maintenance_in_sync_git_and_fetches_stay_packed() {
         .unwrap(),
     );
     let ws = find_workspace(&settings).unwrap();
-    let link = Link::new(&ws, sandbox.origin().as_os_str()).unwrap();
+    let link = Link::new(&ws, &Endpoint::at(sandbox.origin())).unwrap();
     for (key, value) in SYNC_REPO_CONFIG {
         let seen = link.env.git(["config", "--get", key]).string().unwrap();
         assert_eq!(seen, value, "{key}");

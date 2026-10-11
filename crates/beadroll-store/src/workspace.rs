@@ -15,7 +15,8 @@ use crate::settings::Settings;
 
 mod remote;
 
-pub(crate) use remote::configured_url;
+pub use remote::Endpoint;
+pub(crate) use remote::{configured_url, listed_url};
 
 /// The coordination ref when the tracked configuration names none.
 pub const DEFAULT_REF: &str = "refs/beads/journal";
@@ -31,6 +32,9 @@ pub struct Workspace {
     pub name: Option<OsString>,
     /// The checkout's origin URL, as configured.
     pub origin: Option<OsString>,
+    /// Whether that is origin's own push URL (`remote.origin.pushurl`), which git pushes to as
+    /// configured, without `pushInsteadOf`.
+    pub origin_push: bool,
     /// The tracked configuration (`.beadroll.json`): what it says, unknown keys included.
     pub config: Object,
     /// The URL-derived id, when that is where this id came from (`adopt_published`).
@@ -66,6 +70,7 @@ impl Workspace {
             id: id.to_owned(),
             name,
             origin,
+            origin_push: false,
             config,
             derived: None,
             events_dir: dir.join("events"),
@@ -129,8 +134,9 @@ impl Workspace {
     }
 
     /// Records `values` in `meta.json`, in their order after the keys it has; empty values are
-    /// skipped. A damaged file is kept for [`Workspace::remote`] to report, unless a remote is
-    /// being recorded: that repairs it. Origin is never recorded: it is looked up each time.
+    /// skipped, and a `null` one forgets its key. A damaged file is kept for [`Workspace::remote`]
+    /// to report, unless a remote is being recorded: that repairs it. Origin is never recorded: it
+    /// is looked up each time.
     pub fn save_meta(&self, values: &[(&str, Value)]) -> Result<(), Error> {
         let mut meta = match self.meta(true) {
             Ok(meta) => meta,
@@ -145,12 +151,15 @@ impl Workspace {
         for (key, value) in values {
             if value.truthy() {
                 meta.insert((*key).to_owned(), value.clone());
+            } else if matches!(value, Value::Null) {
+                meta.shift_remove(*key);
             }
         }
         if let Some(Value::Str(remote)) = meta.get("remote")
             && self.is_origin(OsStr::new(remote))
         {
             meta.shift_remove("remote");
+            meta.shift_remove("remote_push_url");
         }
         let text = json::write(&Value::Object(meta), Format::INDENTED)
             .map_err(|e| Error::io_message(e.to_string()))?;
@@ -164,9 +173,9 @@ impl Workspace {
 
     /// Bookkeeping once the remote has accepted. It never turns a command that took effect into a
     /// failure: a full volume or a damaged `meta.json` only leaves `last_sync` behind.
-    pub fn note_sync(&self, remote: &OsStr, values: &[(&str, Value)]) {
+    pub fn note_sync(&self, remote: &Endpoint, values: &[(&str, Value)]) {
         let mut all: Vec<(&str, Value)> = values.to_vec();
-        all.push(("remote", Value::from(remote.to_string_lossy().into_owned())));
+        all.extend(remembered(remote));
         all.push(("last_sync", Value::from(stamp())));
         let _ = self.save_meta(&all);
     }
@@ -198,6 +207,19 @@ impl Workspace {
         }
         Ok(name)
     }
+}
+
+/// What `meta.json` records of `remote`, the endpoint a store went through: its URL, and beside it
+/// the same URL when it was a remote's own push URL, which the next command chosen by it, with no
+/// name to look up, pushes to as that remote's (`null` forgets an earlier one).
+pub fn remembered(remote: &Endpoint) -> [(&'static str, Value); 2] {
+    let url = Value::from(remote.url.to_string_lossy().into_owned());
+    let pushed = if remote.own_push_url {
+        url.clone()
+    } else {
+        Value::Null
+    };
+    [("remote", url), ("remote_push_url", pushed)]
 }
 
 /// `[A-Za-z0-9][A-Za-z0-9._-]{0,99}`, whole.

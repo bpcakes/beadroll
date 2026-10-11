@@ -10,8 +10,8 @@ use super::{Context, Failure, Outcome};
 
 /// Synchronises with the coordination remote (`--remote`, or the one this tracker uses).
 pub(crate) fn sync(ctx: &Context<'_>, remote: Option<&OsString>) -> Result<Outcome, Failure> {
-    let remote = ctx.ws.remote(remote.map(OsString::as_os_str))?;
-    let Some(remote) = remote.filter(|r| !r.is_empty()) else {
+    let remote = ctx.ws.endpoint(remote.map(OsString::as_os_str))?;
+    let Some(remote) = remote.filter(|remote| !remote.url.is_empty()) else {
         return Err(Failure::new(
             Code::NoRemote,
             "no coordination remote known for this tracker: pass --remote",
@@ -20,7 +20,7 @@ pub(crate) fn sync(ctx: &Context<'_>, remote: Option<&OsString>) -> Result<Outco
     let synced = synchronise(ctx.ws, &remote)?;
     let mut lines = vec![format!(
         "Synced with {}: pulled {}, pushed {} event(s)",
-        remote.to_string_lossy(),
+        remote.url.to_string_lossy(),
         synced.pulled,
         synced.pushed
     )];

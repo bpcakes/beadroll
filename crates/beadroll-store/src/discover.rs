@@ -14,7 +14,7 @@ use sha2::{Digest as _, Sha256};
 use crate::error::Error;
 use crate::fs::{Unreadable, json_text, read_json_text};
 use crate::settings::{Settings, pathlib, pathlib_join};
-use crate::workspace::{Workspace, configured_url};
+use crate::workspace::{Workspace, configured_url, listed_url};
 
 /// The tracked configuration's keys bead reads, and the JSON type each must have.
 const CONFIG_KEYS: [(&str, &str); 4] = [
@@ -266,17 +266,18 @@ pub fn moved_workspaces(settings: &Settings) -> Result<Object, Error> {
 }
 
 /// The checkout's origin, from what `git config --get-regexp ^remote\.origin\.(push)?url$`
-/// printed there (`asked`): its [`configured_url`]. A relative path is read from the top of the
-/// checkout.
+/// printed there (`asked`): its [`configured_url`], and whether that is its own push URL. A
+/// relative path is read from the top of the checkout.
 fn origin(
     asked: Result<Output, beadroll_git::Error>,
     root: Option<&Path>,
-) -> Result<OsString, Error> {
+) -> Result<(OsString, bool), Error> {
     let proc = asked?;
-    let origin = if proc.success() {
-        configured_url(&proc.stdout, b"origin")
+    let (origin, push) = if proc.success() {
+        let push = listed_url(&proc.stdout, b"origin", b"pushurl").is_some();
+        (configured_url(&proc.stdout, b"origin"), push)
     } else {
-        Vec::new()
+        (Vec::new(), false)
     };
     let origin = OsString::from_vec(origin);
     if let Some(root) = root
@@ -284,9 +285,9 @@ fn origin(
         && is_local_path(&origin)
         && !origin.as_bytes().starts_with(b"/")
     {
-        return Ok(pathlib_join(root, &origin).into_os_string());
+        return Ok((pathlib_join(root, &origin).into_os_string(), push));
     }
-    Ok(origin)
+    Ok((origin, push))
 }
 
 /// Identifies the tracker from the repository, never from the checkout path. A tracked
@@ -324,7 +325,7 @@ pub fn find_workspace(settings: &Arc<Settings>) -> Result<Workspace, Error> {
         }
         _ => committed_config(settings)?,
     };
-    let origin = origin(origin_urls, root.as_deref())?;
+    let (origin, origin_push) = origin(origin_urls, root.as_deref())?;
     let cwd = &settings.cwd;
     let normalized = (!origin.is_empty()).then(|| normalize_remote(&origin, cwd));
     let name: Option<OsString> = match &normalized {
@@ -383,6 +384,7 @@ pub fn find_workspace(settings: &Arc<Settings>) -> Result<Workspace, Error> {
         (!origin.is_empty()).then_some(origin),
         config,
     )?;
+    ws.origin_push = origin_push;
     ws.derived = if overridden.is_none() && tracked_id.is_none() {
         derived
     } else {

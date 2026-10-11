@@ -18,8 +18,8 @@ pub use error::Error;
 pub use link::Link;
 pub use ownership::{Mode, Settled, coordinated, forget, settle_commands, settle_pending};
 pub use synchronise::{
-    ROUNDS, Synced, adopt_published, conflict_detail, pause, publish_soon, published_counts,
-    refused, synchronise, unpublished_count,
+    ROUNDS, Synced, adopt_published, conflict_detail, pause, publish_soon, publish_soon_to,
+    published_counts, refused, synchronise, unpublished_count,
 };
 pub use tx::{
     OWNERSHIP, Tx, confirm_ownership, drop_pending, forget_receipts, locked, remove, writing,

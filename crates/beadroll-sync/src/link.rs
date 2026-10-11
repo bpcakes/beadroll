@@ -25,11 +25,11 @@ use beadroll_core::json::{self, Value};
 use beadroll_core::text::{repr, str_of};
 use beadroll_git::{
     CountRules, Env, Fact, Hasher, IoError, Objects, Refs, StoredFormat, Trees, local_damage,
-    push_urls, remote_lacks_objects, stored_format, sync_env, transport_config, transport_settings,
+    remote_lacks_objects, stored_format, sync_env, transport_config, transport_settings,
 };
 use beadroll_store::{
-    Fired, Workspace, claim_files, dir_entries, has_suffix, hex_token, object_format, private_dir,
-    read, relative, segment_files,
+    Endpoint, Fired, Workspace, claim_files, dir_entries, has_suffix, hex_token, object_format,
+    private_dir, read, relative, segment_files,
 };
 
 use crate::error::Error;
@@ -40,9 +40,9 @@ pub struct Link<'a> {
     ws: &'a Workspace,
     /// The remote, as git is given it.
     pub url: OsString,
-    /// The remotes' own push URLs in the checkout, as configured: a push to one goes as `git push
-    /// NAME` goes there, without `pushInsteadOf`.
-    push_urls: Vec<OsString>,
+    /// Whether that is the remote's own push URL, which a push goes to as `git push NAME` goes
+    /// there, without `pushInsteadOf` ([`Endpoint`]).
+    own_push_url: bool,
     /// The coordination ref.
     pub ref_name: String,
     /// The private bare repository, `<ws>/sync.git`.
@@ -79,12 +79,10 @@ pub struct Link<'a> {
 /// The environment a link to `ws`'s remote runs git in ([`sync_env`], with `GIT_DIR` its
 /// `sync.git`), starting at the top of the checkout when there is one: bead reads a relative remote
 /// path from there wherever it runs, and git reads one it makes of a rewritten URL (`insteadOf`,
-/// `pushInsteadOf`) from where it starts. With it, the remotes' own push URLs ([`push_urls`]), from
-/// the same question.
-fn link_env(ws: &Workspace) -> Result<(Env, Vec<OsString>), Error> {
+/// `pushInsteadOf`) from where it starts.
+fn link_env(ws: &Workspace) -> Result<Env, Error> {
     let settings = &ws.settings;
-    let transport = transport_settings(&settings.git)?;
-    let carried = transport_config(&transport);
+    let carried = transport_config(&transport_settings(&settings.git)?);
     let int = |text: &str| beadroll_core::text::py_int(text).map(|n| n.to_string());
     let rules = CountRules {
         is_digit: &beadroll_core::text::py_isdigit,
@@ -92,33 +90,32 @@ fn link_env(ws: &Workspace) -> Result<(Env, Vec<OsString>), Error> {
     };
     let env = sync_env(&settings.git, &ws.dir.join("sync.git"), &carried, &rules)?;
     let top = settings.fact(Fact::Toplevel)?;
-    let env = if top.success() {
+    Ok(if top.success() {
         // the line git prints, without its end: a directory's name may end in a space
         let top = top.stdout.strip_suffix(b"\n").unwrap_or(&top.stdout);
         env.with_dir(PathBuf::from(OsStr::from_bytes(top)))
     } else {
         env
-    };
-    Ok((env, push_urls(&transport)))
+    })
 }
 
 impl<'a> Link<'a> {
     /// The link of `ws` to `remote`: its ref checked, its environment built from the checkout's
     /// with the checkout's transport settings carried over, asked of git now, as Python asks them
     /// each time it makes a link.
-    pub fn new(ws: &'a Workspace, remote: &OsStr) -> Result<Link<'a>, Error> {
+    pub fn new(ws: &'a Workspace, remote: &Endpoint) -> Result<Link<'a>, Error> {
         let ref_name = ws.ref_name()?;
         private_dir(&ws.dir)?;
         let git_dir = ws.dir.join("sync.git");
-        let (env, push_urls) = link_env(ws)?;
+        let env = link_env(ws)?;
         Ok(Link {
             ws,
-            url: remote.to_owned(),
+            url: remote.url.clone(),
+            own_push_url: remote.own_push_url,
             ref_name,
             git_dir,
             objects: Objects::new(&env),
             env,
-            push_urls,
             object_format: None,
             last_error: String::new(),
             remote_counts: HashMap::new(),
@@ -140,7 +137,7 @@ impl<'a> Link<'a> {
     pub fn publishes(ws: &Workspace, remote: &OsStr) -> Result<Option<bool>, Error> {
         let ref_name = ws.ref_name()?;
         let settings = &ws.settings;
-        let (env, _) = link_env(ws)?;
+        let env = link_env(ws)?;
         let mut vars = env.vars().clone();
         vars.remove(OsStr::new("GIT_DIR"));
         let listed = env

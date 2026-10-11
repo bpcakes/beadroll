@@ -60,7 +60,7 @@ fn pending_attempts_a_stopped_claim_left_are_settled_by_sync() {
 /// receipt first, then the pending attempt; with `publish`, pushed with the journal, its answer
 /// lost (the attempt stays pending).
 fn leave_pending(ws: &Workspace, actor: &Value, issue: &str, publish: bool) {
-    let remote = ws.remote(None).unwrap().unwrap();
+    let remote = ws.endpoint(None).unwrap().unwrap();
     let mut link = Link::new(ws, &remote).unwrap();
     locked(ws, || -> Result<(), beadroll_sync::Error> {
         let tip = link.fetch()?;

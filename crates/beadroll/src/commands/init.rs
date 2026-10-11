@@ -10,9 +10,12 @@ use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::text::repr;
 use beadroll_git::{Fact, exists, realpath, without_password};
 use beadroll_store::{
-    Settings, Workspace, derived_shaped, find_workspace, uuid7, view, write_atomic,
+    Endpoint, Settings, Workspace, derived_shaped, find_workspace, remembered, uuid7, view,
+    write_atomic,
 };
-use beadroll_sync::{Error as SyncError, Link, publish_soon, synchronise, writing};
+use beadroll_sync::{
+    Error as SyncError, Link, publish_soon, publish_soon_to, synchronise, writing,
+};
 
 use super::import::import_records;
 use super::{Context, Failure, Outcome, text};
@@ -126,17 +129,21 @@ enum Published {
 /// asked; a remote that cannot be asked, or publishes nothing, is left to the publish, as before.
 fn join_published(
     ws: &Workspace,
-    remote: Option<&OsStr>,
+    remote: Option<&Endpoint>,
     offline: bool,
 ) -> Result<Published, Failure> {
     if offline || view(ws)?.prefix().is_some() {
         return Ok(Published::Nothing);
     }
-    let Some(remote) = ws.remote(remote)?.filter(|r| !r.is_empty()) else {
+    let remote = match remote {
+        Some(remote) => Some(remote.clone()),
+        None => ws.endpoint(None)?,
+    };
+    let Some(remote) = remote.filter(|remote| !remote.url.is_empty()) else {
         return Ok(Published::Nothing);
     };
     // asked first, so that nothing is written here for a remote that publishes nothing
-    if Link::publishes(ws, &remote)? != Some(true) {
+    if Link::publishes(ws, &remote.url)? != Some(true) {
         return Ok(Published::Nothing);
     }
     match synchronise(ws, &remote) {
@@ -204,7 +211,7 @@ struct Chosen {
 fn workspace_for(
     ctx: &Context<'_>,
     remote: Option<&OsStr>,
-    live: Option<&OsStr>,
+    live: Option<&Endpoint>,
     names_origin: bool,
     tracked: bool,
     offline: bool,
@@ -281,13 +288,13 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
     // where the remote leads, for reaching it now and recording it: a path stored for the tracked
     // file is relative to the top of the checkout, as it will be read, wherever init runs
     let live = match &remote_given {
-        Some(remote) => Some(ctx.ws.resolve_remote(remote, !args.tracked)?),
+        Some(remote) => Some(ctx.ws.resolve_endpoint(remote, !args.tracked)?),
         None => None,
     };
     let Chosen { ws: chosen, joined } = workspace_for(
         ctx,
         remote_given.as_deref(),
-        live.as_deref(),
+        live.as_ref(),
         names_origin,
         args.tracked,
         args.offline,
@@ -329,14 +336,16 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
         values.push(("name", Value::from(name.to_string_lossy().into_owned())));
     }
     if let Some(remote) = &live {
-        values.push(("remote", Value::from(remote.to_string_lossy().into_owned())));
+        values.extend(remembered(remote));
     }
     ws.save_meta(&values)?;
     if ws.wrote() && !args.offline {
         // the tracker exists for the other machines now, not at a later sync
-        if let Some(warning) = publish_soon(ws, args.offline, live.as_deref()) {
-            notes.push(warning);
-        }
+        let warning = match &live {
+            Some(remote) => publish_soon_to(ws, remote),
+            None => publish_soon(ws, args.offline, None),
+        };
+        notes.extend(warning);
     }
     let mut result = Object::new();
     result.insert("workspace".into(), Value::from(ws.id.as_str()));

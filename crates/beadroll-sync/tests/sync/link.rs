@@ -3,6 +3,7 @@
 
 use std::process::Command;
 
+use beadroll_store::Endpoint;
 use beadroll_sync::synchronise;
 use beadroll_test_support::Machine;
 
@@ -41,13 +42,14 @@ fn the_gits_a_link_keeps_end_with_it() {
     a.bead(["create", "x"]);
     a.bead(["sync"]);
     let ws = workspace(&a, sandbox.origin(), &[]);
-    synchronise(&ws, sandbox.origin().as_os_str()).expect("a first sync");
+    let origin = Endpoint::at(sandbox.origin());
+    synchronise(&ws, &origin).expect("a first sync");
     let before = open_descriptors();
     for _ in 0..3 {
-        synchronise(&ws, sandbox.origin().as_os_str()).expect("a sync");
+        synchronise(&ws, &origin).expect("a sync");
     }
     let nowhere = sandbox.root().join("nowhere.git");
-    let error = synchronise(&ws, nowhere.as_os_str()).expect_err("no remote there");
+    let error = synchronise(&ws, &Endpoint::at(&nowhere)).expect_err("no remote there");
     assert_eq!(error.code().as_str(), "REMOTE_UNREACHABLE", "{error}");
     assert_eq!(children(), Vec::<String>::new());
     assert_eq!(open_descriptors(), before);

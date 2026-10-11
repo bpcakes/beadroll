@@ -316,20 +316,7 @@ mod tests {
         );
         let settings = crate::transport_settings(&env).unwrap();
         assert_eq!(settings, env.git(transport).run().unwrap());
-        assert_eq!(
-            settings.stdout,
-            b"remote.origin.pushurl\na b\0remote.origin.pushurl\0url.git@h:.insteadof\nh:\0"
-        );
-        // the push URLs are read from it, never carried into sync.git
-        assert_eq!(
-            crate::push_urls(&settings),
-            [std::ffi::OsString::from("a b")]
-        );
-        let carried = crate::transport_config(&settings);
-        assert!(
-            carried.iter().all(|(key, _)| !key.ends_with(".pushurl")),
-            "{carried:?}"
-        );
+        assert_eq!(settings.stdout, b"url.git@h:.insteadof\nh:\0");
     }
 
     #[test]

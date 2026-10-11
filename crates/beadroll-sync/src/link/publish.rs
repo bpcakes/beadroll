@@ -109,13 +109,7 @@ impl Link<'_> {
         // `pushInsteadOf` rewrites git applies to a URL given to it: through a remote defined for
         // this push alone, with that URL as its push URL, named for this push so that no
         // configuration it inherits defines that remote already (its URLs would be added to)
-        let mut own_push_url = false;
-        for pushed in &self.push_urls {
-            if self.ws.resolve_remote(pushed, false)? == self.url {
-                own_push_url = true;
-                break;
-            }
-        }
+        let own_push_url = self.own_push_url;
         let name = format!("bead-push-{}", hex_token(12));
         let defined = ["url", "pushurl"].map(|key| {
             let mut setting = OsString::from(format!("remote.{name}.{key}="));

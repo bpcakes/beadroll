@@ -243,7 +243,7 @@ fn a_checkout_whose_name_ends_in_a_space_reaches_its_remote() {
 
 /// A remote with a push URL of its own that a `pushInsteadOf` rule would rewrite: `git push NAME`
 /// leaves such a URL as it is, and so does bead, which publishes where it fetches from rather than
-/// where the rule sends other URLs.
+/// where the rule sends other URLs; so do the commands after, which go by the remote it saved.
 #[test]
 fn a_remotes_own_push_url_is_pushed_to_as_git_pushes_to_it() {
     let sandbox = crate::sandbox();
@@ -273,6 +273,14 @@ fn a_remotes_own_push_url_is_pushed_to_as_git_pushes_to_it() {
         refs(&other),
         "",
         "bead pushed where the rule sends other URLs"
+    );
+    json(&a, &["create", "after"]);
+    let resynced = a.run(["sync", "--json"]);
+    assert_eq!(resynced.returncode(), 0, "{}", resynced.stderr);
+    assert_eq!(
+        refs(&other),
+        "",
+        "the remote it saved was pushed to as any URL"
     );
 }
 
@@ -346,5 +354,60 @@ fn a_remote_url_that_names_another_remote_is_still_a_path() {
         refs(sandbox.origin()),
         "",
         "bead went to the remote origin instead"
+    );
+}
+
+/// Origin by default, with no push URL of its own and a `pushInsteadOf` rule for its URL: bead
+/// publishes where `git push origin` goes, the rule applied, even though another remote has that
+/// URL as its own push URL, which only a push to that remote leaves as it is.
+#[test]
+fn origin_is_pushed_to_as_git_pushes_to_it_whatever_other_remotes_say() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let pushed = sandbox.bare("push.git");
+    let origin = text(sandbox.origin());
+    let rewrite = format!("url.{}.pushInsteadOf", text(&pushed));
+    commit(&a, &["config", &rewrite, origin]);
+    let other = sandbox.bare("other.git");
+    commit(&a, &["remote", "add", "other", text(&other)]);
+    commit(&a, &["remote", "set-url", "--push", "other", origin]);
+    json(&a, &["init", "--prefix", "ex"]);
+    let refs = |remote: &Path| {
+        git(
+            ["--git-dir", text(remote), "for-each-ref", "refs/beads"],
+            None,
+        )
+    };
+    assert_ne!(
+        refs(&pushed),
+        "",
+        "nothing reached where git push origin goes"
+    );
+    assert_eq!(
+        refs(sandbox.origin()),
+        "",
+        "bead pushed to origin's URL as it is"
+    );
+}
+
+/// A relative path typed in a subdirectory names a place from there, also where nothing is: bead
+/// reaches it from there, not from the top of the checkout, where git starts.
+#[test]
+fn a_typed_relative_path_is_read_from_where_it_was_typed() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--prefix", "ex"]);
+    // what `../tracker.git` names from the top of the checkout, the sandbox's `a-main`
+    let beside = sandbox.bare("tracker.git");
+    let below = a.checkout().join("src");
+    std::fs::create_dir(&below).expect("a subdirectory");
+    let sync = ["sync", "--remote", "../tracker.git", "--json"];
+    let synced = a.cmd(sync).cwd(&below).run();
+    assert_ne!(synced.returncode(), 0, "{}", synced.stdout);
+    let refs = ["--git-dir", text(&beside), "for-each-ref", "refs/beads"];
+    assert_eq!(
+        git(refs, None),
+        "",
+        "bead reached the path from the top of the checkout"
     );
 }

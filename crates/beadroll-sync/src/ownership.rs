@@ -15,8 +15,8 @@ use beadroll_core::code::Code;
 use beadroll_core::json::Value;
 use beadroll_git::PushOutcome;
 use beadroll_store::{
-    Actor, Fired, Workspace, append_events, attempt_path, glob_ending, json_text, load_pending,
-    private_dirs, read, replica_id, write_atomic, write_attempt_file,
+    Actor, Endpoint, Fired, Workspace, append_events, attempt_path, glob_ending, json_text,
+    load_pending, private_dirs, read, replica_id, write_atomic, write_attempt_file,
 };
 
 use crate::error::Error;
@@ -165,8 +165,8 @@ pub fn coordinated<E: From<Error>>(
     signature: &str,
     mut build: impl FnMut(&mut Tx<'_>, Mode) -> Result<Mode, E>,
 ) -> Result<Mode, E> {
-    let remote = ws.remote(remote).map_err(|e| E::from(e.into()))?;
-    let remote = remote.filter(|remote| !remote.is_empty());
+    let remote = ws.endpoint(remote).map_err(|e| E::from(e.into()))?;
+    let remote = remote.filter(|remote| !remote.url.is_empty());
     let remote = match remote {
         Some(remote) if !offline => remote,
         known => {
@@ -334,7 +334,7 @@ impl<E> From<Error> for Round<E> {
 }
 
 /// The remote has all of this store: the counts it holds, and nothing left unpublished.
-fn published(ws: &Workspace, remote: &OsStr) -> Result<(), Error> {
+fn published(ws: &Workspace, remote: &Endpoint) -> Result<(), Error> {
     let counts = published_counts(ws)?;
     ws.note_sync(remote, &[("published", Value::Object(counts))]);
     ws.set_wrote(false);

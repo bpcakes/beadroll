@@ -38,7 +38,7 @@ pub use place::{capture_where, merged_into_default, object_format};
 pub use settings::{
     Clock, NET_TIMEOUT, REPACK_LOOSE, REPACK_PACKS, ROTATE_BYTES, Settings, pathlib, pathlib_join,
 };
-pub use workspace::{DEFAULT_REF, REMOTE_REF, Workspace, relative, stamp};
+pub use workspace::{DEFAULT_REF, Endpoint, REMOTE_REF, Workspace, relative, remembered, stamp};
 
 /// `data.strip()` on bytes: without the ASCII whitespace at either end.
 pub(crate) fn strip_ascii(data: &[u8]) -> &[u8] {
