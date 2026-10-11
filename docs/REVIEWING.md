@@ -174,7 +174,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
   remembered remote are one name is refused there until `bead sync --remote NAME`, as they refused
   a name their own `init --offline --remote` saved.
 - Origin is the name `origin`, never remembered: it is looked up each time, so `git remote set-url
-  origin` is followed, as a remote chosen by another name is. Origin's own URL (the one `git push
+  origin` is followed, as a remote chosen by another name is, and reached as `git push origin`
+  reaches it, by the URL it is configured with (a relative path, or a spelling a rule rewrites,
+  left to git as written), whether it is named or nothing is; only the URL-derived id reads a
+  relative path from the top of the checkout first. Origin's own URL (the one `git push
   origin` is configured with) given as a URL, spelled alike, is origin, reached as origin is, its
   own push URL included: `init --tracked` stores it as `origin`, and a sync given it forgets it. A
   remote of another name is never origin, whatever its URL. A remembered value is origin when it is

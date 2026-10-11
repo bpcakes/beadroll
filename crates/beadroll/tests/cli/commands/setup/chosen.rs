@@ -155,3 +155,33 @@ fn a_name_rewritten_to_a_relative_path_is_compared_from_the_top() {
     let synced = a.cmd(["sync", "--json"]).cwd(&below).run();
     assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
 }
+
+/// Origin configured as a relative path that a rule rewrites (`url.<base>.insteadOf`): bead
+/// reaches it as `git push origin` does, by the spelling configured, which git rewrites, whether
+/// origin is named or nothing is, so a write after `init --remote origin` goes where it went.
+#[test]
+fn origin_is_reached_as_configured_where_a_rule_rewrites_it() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let tracker = sandbox.bare("tracker.git");
+    let rule = format!("url.{}/.insteadOf", text(sandbox.root()));
+    commit(&a, &["config", &rule, "company/"]);
+    commit(&a, &["remote", "set-url", "origin", "company/tracker.git"]);
+    json(&a, &["init", "--prefix", "ex", "--remote", "origin"]);
+    let tip = || {
+        let ask = [
+            "--git-dir",
+            text(&tracker),
+            "rev-parse",
+            "refs/beads/journal",
+        ];
+        git(ask, None)
+    };
+    let before = tip();
+    json(&a, &["create", "after"]);
+    assert_ne!(
+        tip(),
+        before,
+        "a write went elsewhere than git takes origin"
+    );
+}

@@ -30,7 +30,9 @@ pub struct Workspace {
     pub id: String,
     /// Its display name: the origin's last path component, else the checkout's directory.
     pub name: Option<OsString>,
-    /// The checkout's origin URL, as configured.
+    /// The checkout's origin URL, as configured: where `git push origin` goes (its first push URL,
+    /// else its first URL), a relative path as written, which git reads from the top of the
+    /// checkout, where bead runs it.
     pub origin: Option<OsString>,
     /// Whether that is origin's own push URL (`remote.origin.pushurl`), which git pushes to as
     /// configured, without `pushInsteadOf`.

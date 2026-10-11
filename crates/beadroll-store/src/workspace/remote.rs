@@ -215,8 +215,10 @@ impl Workspace {
         }
     }
 
-    /// Origin as it is reached when it is the coordination remote: its URL as discovery read it,
-    /// its own push URL or not; `None` when the checkout has none.
+    /// Origin as it is reached when it is the coordination remote, as `git push origin` reaches it:
+    /// its URL as configured ([`Workspace::origin`]), its own push URL or not, the same endpoint
+    /// as the name `origin` given ([`Workspace::resolve_endpoint`]); `None` when the checkout has
+    /// none.
     pub fn origin_endpoint(&self) -> Option<Endpoint> {
         let origin = self.origin.clone().filter(|origin| !origin.is_empty())?;
         Some(Endpoint {

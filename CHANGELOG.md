@@ -36,7 +36,9 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   when the two differ. bead gives git that URL as a remote defined for the command, never as an
   argument git could take for another remote's name, so that git rewrites it as for `git fetch
   NAME` and `git push NAME` (a remote's own push URL without `pushInsteadOf`), from the top of the
-  checkout. A tracked remote is the store's when it is the same name or the same URL, or, in a
+  checkout; origin too, by the spelling it is configured with, which `info` and `sync` now show,
+  where bead used to make a relative path absolute that a rule could then no longer rewrite. A
+  tracked remote is the store's when it is the same name or the same URL, or, in a
   store an older bead left with a tracked name saved as git expanded it, where git's own answers
   agree; any other change is refused (`CONFIG`) until made deliberately. Origin's own URL given as
   a URL is origin, reached as origin is, its own push URL included, and `init --tracked --remote`

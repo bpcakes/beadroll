@@ -266,28 +266,27 @@ pub fn moved_workspaces(settings: &Settings) -> Result<Object, Error> {
 }
 
 /// The checkout's origin, from what `git config --get-regexp ^remote\.origin\.(push)?url$`
-/// printed there (`asked`): its [`configured_url`], and whether that is its own push URL. A
-/// relative path is read from the top of the checkout.
-fn origin(
-    asked: Result<Output, beadroll_git::Error>,
-    root: Option<&Path>,
-) -> Result<(OsString, bool), Error> {
+/// printed there (`asked`): its [`configured_url`] as configured, the URL bead gives git to reach
+/// origin as `git push origin` does (a relative path, or a spelling a rule rewrites, left to git),
+/// and whether that is its own push URL.
+fn origin(asked: Result<Output, beadroll_git::Error>) -> Result<(OsString, bool), Error> {
     let proc = asked?;
-    let (origin, push) = if proc.success() {
-        let push = listed_url(&proc.stdout, b"origin", b"pushurl").is_some();
-        (configured_url(&proc.stdout, b"origin"), push)
-    } else {
-        (Vec::new(), false)
-    };
-    let origin = OsString::from_vec(origin);
-    if let Some(root) = root
-        && !origin.is_empty()
-        && is_local_path(&origin)
-        && !origin.as_bytes().starts_with(b"/")
-    {
-        return Ok((pathlib_join(root, &origin).into_os_string(), push));
+    if !proc.success() {
+        return Ok((OsString::new(), false));
     }
-    Ok((origin, push))
+    let push = listed_url(&proc.stdout, b"origin", b"pushurl").is_some();
+    let url = configured_url(&proc.stdout, b"origin");
+    Ok((OsString::from_vec(url), push))
+}
+
+/// `origin` as the URL-derived id reads it: a relative path from the top of the checkout.
+fn anchored(origin: &OsStr, root: Option<&Path>) -> OsString {
+    match root {
+        Some(root) if is_local_path(origin) && !origin.as_bytes().starts_with(b"/") => {
+            pathlib_join(root, origin).into_os_string()
+        }
+        _ => origin.to_owned(),
+    }
 }
 
 /// Identifies the tracker from the repository, never from the checkout path. A tracked
@@ -325,9 +324,10 @@ pub fn find_workspace(settings: &Arc<Settings>) -> Result<Workspace, Error> {
         }
         _ => committed_config(settings)?,
     };
-    let (origin, origin_push) = origin(origin_urls, root.as_deref())?;
+    let (origin, origin_push) = origin(origin_urls)?;
     let cwd = &settings.cwd;
-    let normalized = (!origin.is_empty()).then(|| normalize_remote(&origin, cwd));
+    let normalized =
+        (!origin.is_empty()).then(|| normalize_remote(&anchored(&origin, root.as_deref()), cwd));
     let name: Option<OsString> = match &normalized {
         Some(normalized) => {
             let bytes = normalized.as_bytes();
