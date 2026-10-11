@@ -530,3 +530,24 @@ fn a_change_git_status_does_not_show_is_still_warned_about() {
         "{said}"
     );
 }
+
+/// A remote's name means its URL as configured, as discovery reads origin's: with a
+/// `pushInsteadOf` that spells origin's push URL another way, `sync --remote origin` still names
+/// this checkout's origin, and adopts the tracker a moved repository published under its old id.
+#[test]
+fn a_named_origin_is_the_configured_url_whatever_git_rewrites() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--prefix", "ex"]);
+    json(&a, &["create", "before the move"]);
+    let moved = sandbox.root().join("moved.git");
+    mirror(&sandbox, &moved);
+    let b = Machine::new(&sandbox, "b");
+    set_origin(&b, &moved);
+    let spelled = format!("url.file://{}.pushInsteadOf", text(&moved));
+    commit(&b, &["config", &spelled, text(&moved)]);
+    let synced = b.run(["sync", "--remote", "origin", "--json"]);
+    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
+    assert_eq!(titles(&b), ["before the move"]);
+    assert_eq!(workspace(&b), workspace(&a));
+}

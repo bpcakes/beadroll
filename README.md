@@ -327,11 +327,12 @@ already publishes is kept; a URL-derived tracker stays URL-derived, since its id
 would stop matching when the URL changed) and optionally a different
 coordination remote. Origin's own URL is stored as `origin`, so the file follows
 origin when it moves; a remote given by name, here or in `--remote` and
-`$BEAD_REMOTE`, means where `git push NAME` goes, its push URL, as origin itself
-does. Commit the file on the default branch at once: a checkout whose tree
-predates it reads the committed copy (`HEAD`, then `origin/HEAD`), but a file
-that is not committed, or not on the default branch, reaches no other checkout,
-and `bead info` and `bead prime` warn about it until it does. Running it again
+`$BEAD_REMOTE`, means the URL it is configured with for `git push` (its first
+push URL, else its first URL, `insteadOf` left to git), as origin itself does.
+Commit the file on the default branch at once: a checkout whose tree predates
+it reads the committed copy (`HEAD`, then `origin/HEAD`), but a file that is
+not committed, or not on the default branch, reaches no other checkout, and
+`bead info` and `bead prime` warn about it until it does. Running it again
 keeps the keys it does not manage. `--remote` and `$BEAD_REMOTE` override it per
 call; a tracked remote that differs from the one a store already uses is
 refused until named deliberately, and a tracked id that is another repository's

@@ -234,20 +234,11 @@ impl Workspace {
                 .as_bytes()
                 .iter()
                 .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'));
-        if name_shaped {
-            let named = git
-                // where `git push NAME` goes, as origin itself is read (G22)
-                .git([
-                    OsStr::new("remote"),
-                    OsStr::new("get-url"),
-                    OsStr::new("--push"),
-                    &value,
-                ])
-                .run()?;
-            if named.success() {
-                value = OsString::from_vec(crate::strip_ascii(&named.stdout).to_vec());
-                typed = false;
-            }
+        if name_shaped && let Some(url) = remote_url(git, &value)? {
+            // where `git push NAME` goes, as configured, as discovery reads origin (G22): git
+            // applies `insteadOf` and `pushInsteadOf` itself when bead hands it that URL
+            value = url;
+            typed = false;
         }
         let value = without_password(&value).0;
         let mut value = value;
@@ -312,6 +303,76 @@ impl Workspace {
     }
 }
 
+/// The URL remote `name` is configured with, asked of git now and read as discovery reads origin's
+/// ([`configured_url`]); `None` when no remote of that name has one. `name` has a
+/// remote name's shape, `[A-Za-z0-9._-]`, so only its dots need escaping in git's pattern.
+fn remote_url(git: &beadroll_git::Env, name: &OsStr) -> Result<Option<OsString>, Error> {
+    let escaped = name.to_string_lossy().replace('.', "\\.");
+    let pattern = format!("^remote\\.{escaped}\\.(push)?url$");
+    let listed = git
+        .git(["config", "--get-regexp", pattern.as_str()])
+        .run()?;
+    if !listed.success() {
+        return Ok(None);
+    }
+    let url = configured_url(&listed.stdout, name.as_bytes());
+    Ok((!url.is_empty()).then(|| OsString::from_vec(url)))
+}
+
+/// The URL remote `name` is configured with, from what `git config --get-regexp
+/// ^remote\.NAME\.(push)?url$` printed (`listed`): where `git push NAME` goes, its first push URL,
+/// else its first URL (the one git fetches from), as configured (`insteadOf` stays git's, not the
+/// id's); empty when it has neither. Discovery reads origin with it, and a remote named by the
+/// user is read the same way ([`Workspace::resolve_remote`], [`remote_url`]).
+pub(crate) fn configured_url(listed: &[u8], name: &[u8]) -> Vec<u8> {
+    let found: Vec<(&[u8], &[u8])> = split_lines(listed)
+        .into_iter()
+        .map(|line| match line.iter().position(|b| *b == b' ') {
+            Some(at) => (&line[..at], &line[at + 1..]),
+            None => (line, &b""[..]),
+        })
+        .collect();
+    for wanted in [&b"pushurl"[..], b"url"] {
+        // git lowers the section and the key, never the remote's name
+        let key = [&b"remote."[..], name, b".", wanted].concat();
+        for (listed_key, url) in &found {
+            let url = beadroll_git::py_strip(url);
+            if *listed_key == key.as_slice() && !url.is_empty() {
+                return url.to_vec();
+            }
+        }
+    }
+    Vec::new()
+}
+
+/// Python's `str.splitlines()` over text decoded with `surrogateescape`: the line boundaries are
+/// ASCII or multi-byte characters that never appear inside another character's encoding.
+fn split_lines(data: &[u8]) -> Vec<&[u8]> {
+    let mut lines = Vec::new();
+    let mut start = 0;
+    let mut at = 0;
+    while at < data.len() {
+        let width = match &data[at..] {
+            [b'\r', b'\n', ..] => 2,
+            [b'\n' | b'\r' | 0x0b | 0x0c | 0x1c | 0x1d | 0x1e, ..] => 1,
+            [0xc2, 0x85, ..] => 2,
+            [0xe2, 0x80, 0xa8 | 0xa9, ..] => 3,
+            _ => 0,
+        };
+        if width == 0 {
+            at += 1;
+            continue;
+        }
+        lines.push(&data[start..at]);
+        at += width;
+        start = at;
+    }
+    if start < data.len() {
+        lines.push(&data[start..]);
+    }
+    lines
+}
+
 /// `[A-Za-z0-9][A-Za-z0-9._-]{0,99}`, whole.
 fn opaque_token(id: &str) -> bool {
     let bytes = id.as_bytes();
@@ -337,4 +398,29 @@ pub fn relative(ws: &Workspace, path: &Path) -> String {
         .unwrap_or(path)
         .to_string_lossy()
         .into_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lines_split_as_python_splits_decoded_text() {
+        assert_eq!(
+            split_lines(b"a b\r\nc\xc2\x85d\xffe\n"),
+            [&b"a b"[..], b"c", b"d\xffe"]
+        );
+    }
+
+    #[test]
+    fn a_remotes_configured_url_is_its_first_push_url_else_its_first_url() {
+        let listed = b"remote.up.stream.url /fetch\nremote.up.stream.pushurl\n\
+                       remote.up.stream.pushurl /push\nremote.up.stream.pushurl /second\n\
+                       remote.Up.stream.pushurl /other\n";
+        assert_eq!(configured_url(listed, b"up.stream"), b"/push");
+        assert_eq!(configured_url(listed, b"Up.stream"), b"/other");
+        assert_eq!(configured_url(listed, b"up"), b"");
+        let fetched = b"remote.origin.url /fetch\nremote.origin.url /second\n";
+        assert_eq!(configured_url(fetched, b"origin"), b"/fetch");
+    }
 }

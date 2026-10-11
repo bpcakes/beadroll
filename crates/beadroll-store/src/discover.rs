@@ -14,7 +14,7 @@ use sha2::{Digest as _, Sha256};
 use crate::error::Error;
 use crate::fs::{Unreadable, json_text, read_json_text};
 use crate::settings::{Settings, pathlib, pathlib_join};
-use crate::workspace::Workspace;
+use crate::workspace::{Workspace, configured_url};
 
 /// The tracked configuration's keys bead reads, and the JSON type each must have.
 const CONFIG_KEYS: [(&str, &str); 4] = [
@@ -244,34 +244,18 @@ pub fn moved_workspaces(settings: &Settings) -> Result<Object, Error> {
 }
 
 /// The checkout's origin, from what `git config --get-regexp ^remote\.origin\.(push)?url$`
-/// printed there (`asked`): where `git push origin` goes, its first push URL, else its first URL
-/// (the one git fetches from), as configured (`insteadOf` stays git's, not the id's). A relative
-/// path is read from the top of the checkout.
+/// printed there (`asked`): its [`configured_url`]. A relative path is read from the top of the
+/// checkout.
 fn origin(
     asked: Result<Output, beadroll_git::Error>,
     root: Option<&Path>,
 ) -> Result<OsString, Error> {
     let proc = asked?;
-    let mut found: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
-    if proc.success() {
-        for line in split_lines(&proc.stdout) {
-            let (key, url) = match line.iter().position(|b| *b == b' ') {
-                Some(at) => (&line[..at], &line[at + 1..]),
-                None => (line, &b""[..]),
-            };
-            found.push((key.to_vec(), url.to_vec()));
-        }
-    }
-    let mut origin = Vec::new();
-    'keys: for wanted in ["remote.origin.pushurl", "remote.origin.url"] {
-        for (key, url) in &found {
-            let url = beadroll_git::py_strip(url);
-            if key.as_slice() == wanted.as_bytes() && !url.is_empty() {
-                origin = url.to_vec();
-                break 'keys;
-            }
-        }
-    }
+    let origin = if proc.success() {
+        configured_url(&proc.stdout, b"origin")
+    } else {
+        Vec::new()
+    };
     let origin = OsString::from_vec(origin);
     if let Some(root) = root
         && !origin.is_empty()
@@ -281,34 +265,6 @@ fn origin(
         return Ok(pathlib_join(root, &origin).into_os_string());
     }
     Ok(origin)
-}
-
-/// Python's `str.splitlines()` over text decoded with `surrogateescape`: the line boundaries are
-/// ASCII or multi-byte characters that never appear inside another character's encoding.
-fn split_lines(data: &[u8]) -> Vec<&[u8]> {
-    let mut lines = Vec::new();
-    let mut start = 0;
-    let mut at = 0;
-    while at < data.len() {
-        let width = match &data[at..] {
-            [b'\r', b'\n', ..] => 2,
-            [b'\n' | b'\r' | 0x0b | 0x0c | 0x1c | 0x1d | 0x1e, ..] => 1,
-            [0xc2, 0x85, ..] => 2,
-            [0xe2, 0x80, 0xa8 | 0xa9, ..] => 3,
-            _ => 0,
-        };
-        if width == 0 {
-            at += 1;
-            continue;
-        }
-        lines.push(&data[start..at]);
-        at += width;
-        start = at;
-    }
-    if start < data.len() {
-        lines.push(&data[start..]);
-    }
-    lines
 }
 
 /// Identifies the tracker from the repository, never from the checkout path. A tracked
@@ -472,11 +428,7 @@ mod tests {
     }
 
     #[test]
-    fn lines_split_as_python_splits_decoded_text() {
-        assert_eq!(
-            split_lines(b"a b\r\nc\xc2\x85d\xffe\n"),
-            [&b"a b"[..], b"c", b"d\xffe"]
-        );
+    fn derived_ids_are_known_by_their_shape() {
         assert!(derived_shaped("0123456789abcdef") && derived_shaped("local-0123456789ab"));
         assert!(!derived_shaped("0123456789ABCDEF") && !derived_shaped("local-x"));
     }

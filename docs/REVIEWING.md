@@ -139,8 +139,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   that id would stop matching when the URL changed, and the file would then be refused as
   another repository's. An unreachable remote, one that publishes nothing, `--offline` or no
   remote: `init` starts the tracker as before. `--remote` given origin's own URL is stored as
-  `origin`, and a remote's name resolves to its push URL, where `git push NAME` goes, as origin
-  does (G22). `info` and `prime` warn while `.beadroll.json` would not reach the other checkouts.
+  `origin`, and a remote's name resolves to the URL `git push NAME` is configured with (its first
+  push URL, else its first URL, `insteadOf` and `pushInsteadOf` left to git), as origin is read
+  (G22). `info` and `prime` warn while `.beadroll.json` would not reach the other checkouts.
 - Output is UTF-8 regardless of locale; human output escapes control characters; `--json` always
   wins the representation (`create --silent --json` gives `{"id": …}`); a closed stdout exits 0
   quietly.

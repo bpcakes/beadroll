@@ -26,8 +26,9 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   `refs/remotes/origin/HEAD` is told it cannot check that (`git remote set-head origin --auto`).
 - `bead init --tracked --remote` given origin's own URL stores `origin`, so the file follows origin
   when the repository moves. A remote given by name (`--remote`, `$BEAD_REMOTE`, `.beadroll.json`)
-  now means its push URL, where `git push NAME` goes, as origin itself did; it used to be the fetch
-  URL, another place when the two differ.
+  now means the URL it is configured with for `git push` (its first push URL, else its first URL,
+  `insteadOf` left to git), as origin itself did; it used to be the fetch URL as git expanded it,
+  another place when the two differ.
 - `bead init --json` reports `unpublished` for the tracker it wrote to, also when that is not the
   checkout's own (a joined, adopted or tracked one).
 - The README describes the golden path and moving a repository, and MIGRATING runs the import once.
