@@ -18,7 +18,7 @@ use beadroll_core::code::Code;
 use crate::error::Error;
 
 /// The points bead has, besides `atomic-write:<path part>` and `atomic-written:<path part>`.
-pub const POINTS: [&str; 16] = [
+pub const POINTS: [&str; 17] = [
     "ownership.before-publish",
     "ownership.after-publish-ok",
     "ownership.after-confirm",
@@ -27,6 +27,7 @@ pub const POINTS: [&str; 16] = [
     "push.reply",
     "publish.result",
     "publish.before",
+    "fetch.result",
     "append.mid",
     "backoff",
     "claim.before-push",
@@ -321,7 +322,10 @@ fn allowed(point: &str, action: &Action) -> Result<(), String> {
         Action::TornSigkill => point == "append.mid",
         Action::Errno(_) => point.starts_with("atomic-write:"),
         Action::FailReply => point == "push.reply",
-        Action::Error(_) => matches!(point, "publish.result" | "ownership.after-confirm"),
+        Action::Error(_) => matches!(
+            point,
+            "publish.result" | "fetch.result" | "ownership.after-confirm"
+        ),
         Action::Skip => point == "backoff",
         Action::Offset(_) | Action::At(_) => point == "clock",
     };

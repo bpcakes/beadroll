@@ -120,8 +120,10 @@ enum Published {
 /// Asks the remote before `init` starts a tracker here, so that a repository never gets a second
 /// one: a tracker the remote already publishes is joined as `bead sync` joins it, and one published
 /// under an id this checkout cannot adopt is refused (`WORKSPACE_MISMATCH`, saying how to name it).
-/// With a tracker here already, `--offline` or no remote, nothing is asked; a remote that cannot be
-/// asked is left to the publish, which says why.
+/// Once the remote has said it publishes one, any failure to join it fails `init`, which then
+/// starts nothing, so nothing is written where a later command would not look (an adoption may
+/// already have been remembered). With a tracker here already, `--offline` or no remote, nothing is
+/// asked; a remote that cannot be asked, or publishes nothing, is left to the publish, as before.
 fn join_published(
     ws: &Workspace,
     remote: Option<&OsStr>,
@@ -142,8 +144,9 @@ fn join_published(
             pulled: synced.pulled,
             remote: synced.remote.to_string_lossy().into_owned(),
         })),
-        Err(error @ SyncError::WorkspaceMismatch { .. }) => Err(error.into()),
-        Err(_) => Ok(Published::Nothing),
+        // published when asked and gone since: nothing to join
+        Err(SyncError::NotInitialized(_)) => Ok(Published::Nothing),
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -159,21 +162,7 @@ fn write_tracked(ws: &Workspace, remote: Option<&OsStr>, keep: bool) -> Result<(
     let mut config: Object = ws.config.clone();
     let workspace = match config.get("workspace") {
         Some(value) if value.truthy() => value.clone(),
-        _ if keep => {
-            // adopted from the id an earlier URL derived, which no tracked file may name
-            if ws.derived.as_ref().is_some_and(|d| *d != ws.id) && derived_shaped(&ws.id) {
-                return Err(Failure::new(
-                    Code::Config,
-                    format!(
-                        "this repository's tracker is published under {}, the id its earlier URL \
-                         derived, and .beadroll.json cannot name another URL's id: keep the \
-                         URL-derived workspace, which already uses that tracker here",
-                        ws.id
-                    ),
-                ));
-            }
-            Value::from(ws.id.as_str())
-        }
+        _ if keep => Value::from(ws.id.as_str()),
         _ => Value::from(uuid7(&settings.clock)),
     };
     config.insert("workspace".into(), workspace);
@@ -220,6 +209,20 @@ fn workspace_for(
         return Ok(Chosen { ws, joined });
     }
     let base = ws.as_ref().unwrap_or(ctx.ws);
+    // a URL-derived id named in a tracked file would stop matching when the URL changed, and the
+    // file would then be refused as another repository's id: such a tracker stays URL-derived
+    if joined.is_some() && derived_shaped(&base.id) {
+        return Err(Failure::new(
+            Code::Config,
+            format!(
+                "this repository's tracker is URL-derived (workspace {}), and it is now here; a \
+                 .beadroll.json naming that id would stop working when the URL changes, so none \
+                 was written. Keep the URL-derived setup; a .beadroll.json without a workspace \
+                 id can still hold \"where\": false or another remote",
+                base.id
+            ),
+        ));
+    }
     let origin = OsString::from("origin");
     let stored = if names_origin {
         Some(origin.as_os_str())

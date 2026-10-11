@@ -322,8 +322,10 @@ and adopted when it was published under another id (below).
 
 A tracked `.beadroll.json` is the exception: for a coordination remote other
 than origin, or for `"where": false`. `bead init --tracked [--remote
-NAME_OR_URL]` writes one with an explicit workspace id (the published
-tracker's, when there is one) and optionally a different coordination remote;
+NAME_OR_URL]` writes one with an explicit workspace id (a tracked id the remote
+already publishes is kept; a URL-derived tracker stays URL-derived, since its id
+would stop matching when the URL changed) and optionally a different coordination
+remote;
 origin's own URL is stored as `origin`, so the file follows origin when it
 moves. Commit it on the default branch at once: a checkout whose tree predates
 the file reads the committed copy (`HEAD`, then `origin/HEAD`), but a file that

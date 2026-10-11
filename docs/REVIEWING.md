@@ -132,10 +132,13 @@ These were decided deliberately. Report problems *with* them, not their existenc
   remote other than origin or for `"where": false`, committed on the default branch. `bead init`
   asks the remote first (`git ls-remote`, nothing written for a remote that publishes nothing):
   a tracker already published there is joined, adopted as `sync` adopts it when it was published
-  under another id, and `init --tracked` records its id; one it cannot adopt is refused
-  (`WORKSPACE_MISMATCH`), even under an explicit `BEAD_WORKSPACE`, since that tracker could never
-  publish there. An unreachable remote, `--offline` or no remote: `init` starts the tracker as
-  before. `--remote` given origin's own URL is stored as `origin`. `info` and `prime` warn while
+  under another id, and once the remote has said it publishes one, any failure to join it fails
+  `init`, which then starts nothing. One it cannot adopt is refused (`WORKSPACE_MISMATCH`), even
+  under an explicit `BEAD_WORKSPACE`, since that tracker could never publish there. `init
+  --tracked` keeps a tracked id the remote publishes, and never pins a URL-derived one (`CONFIG`):
+  that id would stop matching when the URL changed, and the file would then be refused as
+  another repository's. An unreachable remote, one that publishes nothing, `--offline` or no
+  remote: `init` starts the tracker as before. `--remote` given origin's own URL is stored as `origin`. `info` and `prime` warn while
   `.beadroll.json` would not reach the other checkouts.
 - Output is UTF-8 regardless of locale; human output escapes control characters; `--json` always
   wins the representation (`create --silent --json` gives `{"id": …}`); a closed stdout exits 0

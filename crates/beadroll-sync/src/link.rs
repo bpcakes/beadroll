@@ -27,8 +27,8 @@ use beadroll_git::{
     remote_lacks_objects, stored_format, sync_env, transport_config, transport_settings,
 };
 use beadroll_store::{
-    Workspace, claim_files, dir_entries, has_suffix, hex_token, object_format, private_dir, read,
-    relative, segment_files,
+    Fired, Workspace, claim_files, dir_entries, has_suffix, hex_token, object_format, private_dir,
+    read, relative, segment_files,
 };
 
 use crate::error::Error;
@@ -244,7 +244,12 @@ impl<'a> Link<'a> {
 
     /// Fetches exactly the coordination ref: its head, or `None` if nobody has published. The
     /// manifest must name this workspace in format 1.
+    ///
+    /// Failpoint: `fetch.result` (`error(CODE)` fails the fetch) at its start.
     pub fn fetch(&mut self) -> Result<Option<String>, Error> {
+        if let Some(Fired::Error(code)) = self.ws.settings.failpoints.hit("fetch.result") {
+            return Err(Error::injected(code, "fetch.result"));
+        }
         // what this fetch brings may be in a pack a `hash-object` or `mktree` started earlier
         // would not see
         self.hasher = None;

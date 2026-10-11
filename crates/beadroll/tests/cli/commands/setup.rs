@@ -129,21 +129,71 @@ fn init_after_a_move_adopts_the_tracker_published_under_the_old_id() {
     assert!(b.home().join("moved.json").exists());
 }
 
-/// `init --tracked` where the remote already publishes the repository's tracker records that
-/// tracker's id, the one the URL derives, instead of minting another and splitting the tracker.
+/// `init --tracked` where the remote publishes a URL-derived tracker joins it but writes no
+/// `.beadroll.json`: naming that id would stop working when the URL changed (the file would then be
+/// refused as another repository's id), and minting another would split the tracker.
 #[test]
-fn init_tracked_where_a_tracker_is_published_keeps_its_id() {
+fn init_tracked_never_pins_a_url_derived_tracker() {
     let sandbox = crate::sandbox();
     let (a, b) = (Machine::new(&sandbox, "a"), Machine::new(&sandbox, "b"));
     json(&a, &["init", "--prefix", "ex"]);
     json(&a, &["create", "shared"]);
+    let refused = b.run(["init", "--tracked", "--json"]);
+    assert_eq!(code(&refused), "CONFIG", "{}", refused.stderr);
+    assert!(refused.stderr.contains("URL-derived"), "{}", refused.stderr);
+    assert!(!b.checkout().join(".beadroll.json").exists());
+    assert_eq!(titles(&b), ["shared"]);
+    assert_eq!(workspace(&b), workspace(&a));
+}
+
+/// `init --tracked` on a clone that lacks the tracked file keeps the tracked id the remote
+/// publishes, instead of minting another and splitting the tracker.
+#[test]
+fn init_tracked_keeps_the_tracked_id_the_remote_publishes() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--tracked", "--prefix", "ex"]);
+    let id = tracked_file(&a)["workspace"].clone();
+    json(&a, &["create", "shared"]);
+    let b = Machine::new(&sandbox, "b");
     let joined = json(&b, &["init", "--tracked"]);
     assert_eq!(joined["joined"], Json::Bool(true), "{joined:?}");
-    assert_eq!(
-        tracked_file(&b)["workspace"].as_str(),
-        Some(workspace(&a).as_str())
-    );
+    assert_eq!(tracked_file(&b)["workspace"], id);
     assert_eq!(titles(&b), ["shared"]);
+}
+
+/// Once the remote has said it publishes the tracker, a failure to join it fails `init`, which
+/// then starts nothing: after a move, the adoption is remembered before the adopted tracker is
+/// fetched, and an import written to the store the checkout had would be where no later command
+/// looks. The next sync joins the tracker, without the import.
+#[test]
+fn init_starts_nothing_when_joining_the_published_tracker_fails() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--prefix", "ex"]);
+    json(&a, &["create", "before the move"]);
+    let moved = sandbox.root().join("moved.git");
+    mirror(&sandbox, &moved);
+    let b = crate::rust_only(&sandbox, "b");
+    set_origin(&b, &moved);
+    let records = sandbox.root().join("import.jsonl");
+    let record = concat!(
+        r#"{"id":"ex-imp","title":"imported","status":"open","priority":2,"issue_type":"task","#,
+        r#""created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}"#,
+    );
+    std::fs::write(&records, format!("{record}\n")).expect("an export");
+    // the adopted tracker's fetch, the second of the run, fails
+    let failed = b
+        .cmd(["init", "--import", text(&records), "--json"])
+        .env(
+            "BEAD_FAILPOINTS",
+            "fetch.result@nth(2)=error(REMOTE_UNREACHABLE)",
+        )
+        .run();
+    assert_eq!(code(&failed), "REMOTE_UNREACHABLE", "{}", failed.stderr);
+    json(&b, &["sync"]);
+    assert_eq!(titles(&b), ["before the move"]);
+    assert_eq!(workspace(&b), workspace(&a));
 }
 
 /// A tracked id other than the one the remote publishes cannot be adopted: `init` refuses it,
@@ -228,6 +278,8 @@ fn not_initialized_points_to_sync_first() {
 fn info_and_prime_warn_about_a_tracked_file_the_others_do_not_see() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
+    // whatever the user's git hides from its own status
+    commit(&a, &["config", "status.showUntrackedFiles", "no"]);
     json(&a, &["init", "--tracked", "--prefix", "ex"]);
     let warning = || -> Option<String> {
         json(&a, &["info"])["tracked_config_warning"]

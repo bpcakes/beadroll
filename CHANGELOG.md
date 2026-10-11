@@ -12,9 +12,11 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
 - `bead init` asks the remote before it starts a tracker. A tracker the repository already
   publishes there is joined, with no second `init` event, and adopted as `sync` adopts it when it
   was published under another id (a moved repository, or a tracked `.beadroll.json` the clone
-  lacks); `init --tracked` records that tracker's id. A published tracker it cannot adopt is
-  refused with `WORKSPACE_MISMATCH`. Before, `init` there started a second tracker, whose writes
-  could never be published.
+  lacks); a failure to join it fails `init`, which then starts nothing. `init --tracked` keeps a
+  tracked id the remote publishes, and refuses (`CONFIG`) to pin a URL-derived one, whose id
+  would stop matching when the URL changed. A published tracker it cannot adopt is refused with
+  `WORKSPACE_MISMATCH`. Before, `init` there started a second tracker, whose writes could never be
+  published.
 - `NOT_INITIALIZED` says to run `bead sync` first and `bead init` only to start a tracker the
   repository does not have; when the remote publishes none, `sync` says how to bring a moved
   repository's tracker along, naming this machine's tracker of the same name when it has one.

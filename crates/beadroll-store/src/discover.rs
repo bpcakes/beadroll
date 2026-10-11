@@ -104,7 +104,8 @@ fn committed_config(settings: &Settings) -> Result<Object, Error> {
 /// not: it is not committed (untracked, ignored or only staged), it differs from its commit, or
 /// origin's default branch, which a clone and a worktree on an older branch read it from
 /// ([`committed_config`]), lacks it or holds another. `None` when it is committed there unchanged,
-/// or when the tree has none (the committed copy is then the one in use). Two git calls.
+/// or when the tree has none (the committed copy is then the one in use). Two git calls; an
+/// untracked file is reported whatever the user's `status.showUntrackedFiles`.
 pub fn tracked_config_warning(settings: &Settings) -> Result<Option<String>, Error> {
     let top = settings.fact(Fact::Toplevel)?;
     if !top.success() {
@@ -119,6 +120,7 @@ pub fn tracked_config_warning(settings: &Settings) -> Result<Option<String>, Err
         .git([
             "status",
             "--porcelain=v1",
+            "--untracked-files=all",
             "--ignored",
             "--",
             ":/.beadroll.json",
