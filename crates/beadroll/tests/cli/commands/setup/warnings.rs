@@ -117,3 +117,21 @@ fn line_endings_git_converts_are_no_change() {
     assert_eq!(git(["status", "--porcelain"], Some(a.checkout())), "");
     assert_eq!(json(&a, &["info"])["tracked_config_warning"].as_str(), None);
 }
+
+/// A committed `.beadroll.json` missing from the working tree (deleted, or left out of a sparse
+/// checkout), which bead then reads from HEAD: `info` still says while that commit is not on
+/// origin's default branch, where the other clones read it.
+#[test]
+fn a_committed_file_missing_here_is_still_checked_against_the_default_branch() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--tracked", "--prefix", "ex"]);
+    commit(&a, &["add", ".beadroll.json"]);
+    commit(&a, &["commit", "-q", "-m", "tracker"]);
+    std::fs::remove_file(a.checkout().join(".beadroll.json")).expect("the tracked file");
+    let info = json(&a, &["info"]);
+    let said = info["tracked_config_warning"].as_str().expect("a warning");
+    assert!(said.contains("not on origin's default branch"), "{said}");
+    commit(&a, &["push", "-q", "origin", "HEAD:main"]);
+    assert_eq!(json(&a, &["info"])["tracked_config_warning"].as_str(), None);
+}

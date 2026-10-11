@@ -240,3 +240,38 @@ fn a_checkout_whose_name_ends_in_a_space_reaches_its_remote() {
     ];
     assert_ne!(git(refs, None), "", "nothing reached the remote");
 }
+
+/// A remote with a push URL of its own that a `pushInsteadOf` rule would rewrite: `git push NAME`
+/// leaves such a URL as it is, and so does bead, which publishes where it fetches from rather than
+/// where the rule sends other URLs.
+#[test]
+fn a_remotes_own_push_url_is_pushed_to_as_git_pushes_to_it() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--prefix", "ex"]);
+    let tracker = sandbox.bare("tracker.git");
+    let other = sandbox.bare("other.git");
+    let own = format!("file://{}", text(&tracker));
+    commit(&a, &["remote", "add", "tracker", text(&tracker)]);
+    commit(&a, &["remote", "set-url", "--push", "tracker", &own]);
+    let rewrite = format!("url.file://{}.pushInsteadOf", text(&other));
+    commit(&a, &["config", &rewrite, &own]);
+    let synced = a.run(["sync", "--remote", "tracker", "--json"]);
+    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
+    let refs = |remote: &Path| {
+        git(
+            ["--git-dir", text(remote), "for-each-ref", "refs/beads"],
+            None,
+        )
+    };
+    assert_ne!(
+        refs(&tracker),
+        "",
+        "nothing reached the remote's own push URL"
+    );
+    assert_eq!(
+        refs(&other),
+        "",
+        "bead pushed where the rule sends other URLs"
+    );
+}

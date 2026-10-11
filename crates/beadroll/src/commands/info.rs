@@ -51,7 +51,7 @@ pub(crate) fn info(ctx: &Context<'_>) -> Result<Outcome, Failure> {
     result.insert("workspace".into(), Value::from(ws.id.as_str()));
     result.insert("workspace_source".into(), Value::from(source));
     // only when there is one: a tracked configuration the other checkouts do not see
-    if let Some(warning) = tracked_config_warning(&ws.settings, ws.origin.is_some())? {
+    if let Some(warning) = tracked_config_warning(ws)? {
         result.insert("tracked_config_warning".into(), Value::from(warning));
     }
     result.insert("name".into(), name);

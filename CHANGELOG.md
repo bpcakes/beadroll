@@ -24,8 +24,8 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   this machine's tracker of the same name when it has one.
 - `bead info` (`tracked_config_warning`) and `bead prime` warn while `.beadroll.json` is not
   committed, differs from its commit as JSON (even under `--skip-worktree`; line endings git
-  converts are no difference), or is not on origin's default branch: the other checkouts and
-  machines do not see it. A checkout with no
+  converts are no difference), or is not on origin's default branch, also when the tree lacks the
+  file and HEAD's copy is the one in use: the other checkouts and machines do not see it. A checkout with no
   `refs/remotes/origin/HEAD` is told it cannot check that (`git remote set-head origin --auto`).
 - `bead init --tracked --remote` given origin's own URL stores `origin`, so the file follows origin
   when the repository moves. A remote given by name (`--remote`, `$BEAD_REMOTE`, `.beadroll.json`)
@@ -35,6 +35,8 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   rewrote it goes on through the name, unless the name has a push URL of its own; a URL that
   reads as a relative path but that git rewrites is left to git, and git reaches the remote from
   the top of the checkout, so a rewrite to a relative path is read from there wherever bead runs.
+  A remote's own push URL is pushed to as `git push NAME` pushes there, without the
+  `pushInsteadOf` rewrites git applies to other URLs.
 - `bead init --json` reports `unpublished` for the tracker it wrote to, also when that is not the
   checkout's own (a joined, adopted or tracked one).
 - The README describes the golden path and moving a repository, and MIGRATING runs the import once.

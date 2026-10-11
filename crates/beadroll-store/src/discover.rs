@@ -105,18 +105,21 @@ fn committed_config(settings: &Settings) -> Result<Object, Error> {
 /// (whatever `--skip-worktree` or `--assume-unchanged` hide from `git status`), or origin's default
 /// branch, which a clone and a worktree on an older branch read it from ([`committed_config`]),
 /// lacks it or holds another; with an `origin` but no `refs/remotes/origin/HEAD` to tell its
-/// default branch by, that is said too. `None` when it is committed there unchanged, or when the
-/// tree has none (the committed copy is then the one in use). One git call, two when it is not
-/// committed (to say why).
-pub fn tracked_config_warning(settings: &Settings, origin: bool) -> Result<Option<String>, Error> {
+/// default branch by, that is said too. The same goes for HEAD's copy where the tree has none
+/// (deleted, or left out of a sparse checkout), which `ws` then uses. `None` when the copy in use is
+/// on the default branch unchanged, or when `ws` uses none: then git is not asked. One git call,
+/// two when the file is not committed (to say why).
+pub fn tracked_config_warning(ws: &Workspace) -> Result<Option<String>, Error> {
+    let settings = &ws.settings;
     let top = settings.fact(Fact::Toplevel)?;
     if !top.success() {
         return Ok(None);
     }
     let root = pathlib(OsStr::from_bytes(crate::strip_ascii(&top.stdout)));
-    let Ok(here) = std::fs::read(root.join(".beadroll.json")) else {
+    let here = std::fs::read(root.join(".beadroll.json")).ok();
+    if here.is_none() && ws.config.is_empty() {
         return Ok(None);
-    };
+    }
     let input =
         "HEAD:.beadroll.json\nrefs/remotes/origin/HEAD\nrefs/remotes/origin/HEAD:.beadroll.json\n";
     let found = settings
@@ -125,39 +128,22 @@ pub fn tracked_config_warning(settings: &Settings, origin: bool) -> Result<Optio
         .input(input.as_bytes().to_vec())
         .run()?;
     let objects = batch_objects(if found.success() { &found.stdout } else { b"" }, 3);
-    let unseen = "other worktrees, clones and machines of this repository do not see it, and \
-                  use the workspace derived from the origin URL instead";
-    let Some((committed, content)) = objects[0].as_ref() else {
-        // never committed: why, as git's status says it
-        let status = settings
-            .git
-            .git([
-                "status",
-                "--porcelain=v1",
-                "--untracked-files=all",
-                "--ignored",
-                "--",
-                ":/.beadroll.json",
-            ])
-            .run()?;
-        let code: &[u8] = status.stdout.get(..2).unwrap_or_default();
-        return Ok(Some(match code {
-            b"!!" => format!(
-                ".beadroll.json is ignored by git, so it is never committed: {unseen}; commit it"
-            ),
-            [b'A', _] => format!(".beadroll.json is added but not committed: {unseen}; commit it"),
-            _ => format!(".beadroll.json is not committed: {unseen}; commit it"),
-        }));
+    let committed = match (objects[0].as_ref(), &here) {
+        // neither here nor at HEAD: the default branch's copy, which every clone reads, or none
+        (None, None) => return Ok(None),
+        (None, Some(_)) => return not_committed(settings).map(Some),
+        (Some((_, content)), Some(here)) if !same_settings(content, here) => {
+            return Ok(Some(
+                ".beadroll.json differs from its committed copy, which the other checkouts and \
+                 machines use: commit the change"
+                    .to_owned(),
+            ));
+        }
+        // the tree's copy is the commit's, or the tree has none and HEAD's is the one in use
+        (Some((committed, _)), _) => committed,
     };
-    if !same_settings(content, &here) {
-        return Ok(Some(
-            ".beadroll.json differs from its committed copy, which the other checkouts and \
-             machines use: commit the change"
-                .to_owned(),
-        ));
-    }
     Ok(match (&objects[1], &objects[2]) {
-        (None, _) if origin => Some(
+        (None, _) if ws.origin.is_some() => Some(
             ".beadroll.json is committed, but this checkout cannot tell whether origin's default \
              branch, which clones read it from, has it (no refs/remotes/origin/HEAD): `git remote \
              set-head origin --auto` lets bead check"
@@ -174,6 +160,32 @@ pub fn tracked_config_warning(settings: &Settings, origin: bool) -> Result<Optio
                 .to_owned(),
         ),
         _ => None,
+    })
+}
+
+/// Why the tree's `.beadroll.json`, which HEAD lacks, is not committed, as git's status says it:
+/// ignored, only added, or neither.
+fn not_committed(settings: &Settings) -> Result<String, Error> {
+    let unseen = "other worktrees, clones and machines of this repository do not see it, and \
+                  use the workspace derived from the origin URL instead";
+    let status = settings
+        .git
+        .git([
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "--ignored",
+            "--",
+            ":/.beadroll.json",
+        ])
+        .run()?;
+    let code: &[u8] = status.stdout.get(..2).unwrap_or_default();
+    Ok(match code {
+        b"!!" => format!(
+            ".beadroll.json is ignored by git, so it is never committed: {unseen}; commit it"
+        ),
+        [b'A', _] => format!(".beadroll.json is added but not committed: {unseen}; commit it"),
+        _ => format!(".beadroll.json is not committed: {unseen}; commit it"),
     })
 }
 

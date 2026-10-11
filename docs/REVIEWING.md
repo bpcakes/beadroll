@@ -145,11 +145,13 @@ These were decided deliberately. Report problems *with* them, not their existenc
   push URL, else its first URL, `insteadOf` and `pushInsteadOf` left to git), as origin is read
   (G22); a stored relative path that git rewrites is git's, not a path from the top of the
   checkout, and git reaches a remote from the top of the checkout, so a relative path it makes of
-  a rewritten URL is read from there, as bead reads one, wherever bead runs. A store whose remembered remote is a tracked name as older versions resolved it (`git
+  a rewritten URL is read from there, as bead reads one, wherever bead runs; a remote's own push
+  URL is pushed to as `git push NAME` pushes there, without `pushInsteadOf`. A store whose remembered remote is a tracked name as older versions resolved it (`git
   remote get-url`, `insteadOf` applied) goes on through the name, unless the name has a push URL
   of its own, which they never went through: that move stays deliberate (`CONFIG`). `info` and
   `prime` warn while `.beadroll.json` would not reach the other checkouts, comparing it with its
-  commit as JSON, so line endings git converts are no change.
+  commit as JSON, so line endings git converts are no change; where the tree lacks it and HEAD's
+  copy is in use, that copy is checked against origin's default branch.
 - Output is UTF-8 regardless of locale; human output escapes control characters; `--json` always
   wins the representation (`create --silent --json` gives `{"id": …}`); a closed stdout exits 0
   quietly.

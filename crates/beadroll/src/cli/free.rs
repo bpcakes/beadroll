@@ -86,11 +86,7 @@ fn prime(ws: Option<&Workspace>, actor: &Actor, settings: &Settings) -> Result<O
         ),
     }
     // a tracked configuration the other checkouts do not see splits the tracker: said first
-    let warning = ws.and_then(|ws| {
-        tracked_config_warning(&ws.settings, ws.origin.is_some())
-            .ok()
-            .flatten()
-    });
+    let warning = ws.and_then(|ws| tracked_config_warning(ws).ok().flatten());
     if let Some(warning) = warning {
         context.insert(0, format!("Warning: {warning}."));
     }

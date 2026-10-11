@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
+use std::os::unix::ffi::OsStringExt as _;
 use std::path::Path;
 use std::sync::LazyLock;
 
@@ -12,9 +13,10 @@ use regex_lite::Regex;
 use crate::error::Error;
 use crate::runner::{Env, Output};
 
-/// The keys that say how git reaches remotes from the checkout (`git config --get-regexp`).
-pub const TRANSPORT_KEYS: &str =
-    r"^(core\.sshcommand|ssh\.variant|http\..+|credential\..+|url\..+\.(insteadof|pushinsteadof))$";
+/// The keys that say how git reaches remotes from the checkout (`git config --get-regexp`): the
+/// transport settings `sync.git` is given ([`transport_config`]), and the remotes' own push URLs,
+/// which git pushes to without `pushInsteadOf` ([`push_urls`]) and which `sync.git` is not given.
+pub const TRANSPORT_KEYS: &str = r"^(core\.sshcommand|ssh\.variant|http\..+|credential\..+|url\..+\.(insteadof|pushinsteadof)|remote\..+\.pushurl)$";
 
 /// Where the caller's repository is (`git rev-parse --local-env-vars`, less the `-c` settings, which
 /// stay the caller's): none of it may reach `sync.git`.
@@ -74,9 +76,10 @@ pub fn transport_config(proc: &Output) -> Vec<(String, String)> {
             if item.is_empty() {
                 continue;
             }
-            match item.split_once('\n') {
-                Some((key, value)) => rows.push((key.to_owned(), value.to_owned())),
-                None => rows.push((item.to_owned(), "true".to_owned())),
+            let (key, value) = item.split_once('\n').unwrap_or((item, "true"));
+            // a remote's push URL is read for the push itself, never given to sync.git
+            if !is_push_url_key(key.as_bytes()) {
+                rows.push((key.to_owned(), value.to_owned()));
             }
         }
     }
@@ -89,6 +92,31 @@ pub fn transport_config(proc: &Output) -> Vec<(String, String)> {
     }
     resets.extend(rows);
     resets
+}
+
+/// The remotes' own push URLs (`remote.NAME.pushurl`), as configured, from what `git config --null
+/// --get-regexp` printed for [`TRANSPORT_KEYS`] ([`transport_settings`]): git pushes to a remote
+/// there as it is, without the `pushInsteadOf` rewrites it applies to any other URL.
+pub fn push_urls(proc: &Output) -> Vec<OsString> {
+    let mut urls = Vec::new();
+    if proc.success() {
+        for item in proc.stdout.split(|b| *b == 0) {
+            if let Some(at) = item.iter().position(|b| *b == b'\n') {
+                let url = crate::py_strip(&item[at + 1..]);
+                if is_push_url_key(&item[..at]) && !url.is_empty() {
+                    urls.push(OsString::from_vec(url.to_vec()));
+                }
+            }
+        }
+    }
+    urls
+}
+
+/// Whether `key`, as `git config` prints it (section and key lowered), is a remote's push URL.
+fn is_push_url_key(key: &[u8]) -> bool {
+    key.starts_with(b"remote.")
+        && key.ends_with(b".pushurl")
+        && key.len() > b"remote..pushurl".len()
 }
 
 /// How `GIT_CONFIG_COUNT` is read, as Python reads it: `str.isdigit()` decides whether the caller
