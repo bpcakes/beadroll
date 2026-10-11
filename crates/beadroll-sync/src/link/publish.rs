@@ -2,7 +2,7 @@
 //! a commit on the fetched head, and a push whose outcome is git's own status line.
 
 use std::collections::BTreeMap;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 
 use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Format, Object, Value};
@@ -105,37 +105,21 @@ impl Link<'_> {
         args.extend([OsStr::new("-m"), OsStr::new(&subject)]);
         let commit = self.git(&args, None)?;
         let refspec = format!("{commit}:{}", self.ref_name);
-        // a remote's own push URL is pushed to as `git push NAME` pushes there, without the
-        // `pushInsteadOf` rewrites git applies to a URL given to it: through a remote defined for
-        // this push alone, with that URL as its push URL, named for this push so that no
-        // configuration it inherits defines that remote already (its URLs would be added to)
-        let own_push_url = self.own_push_url;
-        let name = format!("bead-push-{}", hex_token(12));
-        let defined = ["url", "pushurl"].map(|key| {
-            let mut setting = OsString::from(format!("remote.{name}.{key}="));
-            setting.push(&self.url);
-            setting
-        });
-        let mut args: Vec<&OsStr> = Vec::new();
-        if own_push_url {
-            for setting in &defined {
-                args.extend([OsStr::new("-c"), setting.as_os_str()]);
-            }
-        }
+        // through the link's remote, as `git push NAME` pushes (its own push URL as it is);
         // --no-verify: the user's client pre-push hooks are written for their code pushes; the
         // remote's own hooks still apply. `--`: a repository-controlled remote string is never a
         // git option.
-        args.extend(["push", "--porcelain", "--no-verify", "--"].map(OsStr::new));
-        args.push(if own_push_url {
-            OsStr::new(&name)
-        } else {
-            &self.url
-        });
-        args.push(refspec.as_ref());
         failpoints.hit("push.before");
         let pushed = self
-            .env
-            .git(args)
+            .remote_env()
+            .git([
+                OsStr::new("push"),
+                "--porcelain".as_ref(),
+                "--no-verify".as_ref(),
+                "--".as_ref(),
+                self.remote_name.as_ref(),
+                refspec.as_ref(),
+            ])
             .timeout(self.ws.settings.net_timeout)
             .reap(false)
             .run();

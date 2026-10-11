@@ -27,6 +27,7 @@ use beadroll_core::text::{repr, str_of};
 use beadroll_git::{
     CountRules, Env, Fact, Hasher, IoError, Objects, Refs, StoredFormat, Trees, local_damage,
     remote_lacks_objects, stored_format, sync_env, transport_config, transport_settings,
+    with_settings,
 };
 use beadroll_store::{
     Endpoint, Fired, Workspace, claim_files, dir_entries, has_suffix, hex_token, object_format,
@@ -44,6 +45,8 @@ pub struct Link<'a> {
     /// Whether that is the remote's own push URL, which a push goes to as `git push NAME` goes
     /// there, without `pushInsteadOf` ([`Endpoint`]).
     own_push_url: bool,
+    /// The name git knows the remote by in this link's commands ([`defining_remote`]).
+    remote_name: String,
     /// The name of the remote it was chosen by, when it was ([`Endpoint`]).
     name: Option<OsString>,
     /// The coordination ref.
@@ -102,6 +105,26 @@ fn link_env(ws: &Workspace) -> Result<Env, Error> {
     })
 }
 
+/// `env` with `name` a remote at `url` ([`with_settings`]), with `url` as its push URL too when it
+/// is a remote's own push URL: git, given `name`, reads `url` as a remote's URL, never as the name
+/// of another remote, which a URL spelled like one would be as an argument (one of the checkout's
+/// remotes, or one the configuration it inherits defines), and rewrites it as it does that
+/// remote's (`insteadOf`, and for a push `pushInsteadOf` unless it is the remote's own push URL),
+/// as for `git fetch NAME` and `git push NAME`. `name` is made for the link, so that no
+/// configuration defines that remote already: its URLs would be added to.
+pub(crate) fn defining_remote(env: &Env, name: &str, url: &OsStr, own_push_url: bool) -> Env {
+    let keys: &[&str] = if own_push_url {
+        &["url", "pushurl"]
+    } else {
+        &["url"]
+    };
+    let settings: Vec<(String, OsString)> = keys
+        .iter()
+        .map(|key| (format!("remote.{name}.{key}"), url.to_owned()))
+        .collect();
+    with_settings(env, &settings)
+}
+
 impl<'a> Link<'a> {
     /// The link of `ws` to `remote`: its ref checked, its environment built from the checkout's
     /// with the checkout's transport settings carried over, asked of git now, as Python asks them
@@ -115,6 +138,7 @@ impl<'a> Link<'a> {
             ws,
             url: remote.url.clone(),
             own_push_url: remote.own_push_url,
+            remote_name: format!("bead-{}", hex_token(12)),
             name: remote.name.clone(),
             ref_name,
             git_dir,
@@ -137,6 +161,12 @@ impl<'a> Link<'a> {
     /// The remote, for messages.
     pub fn url_text(&self) -> String {
         self.url.to_string_lossy().into_owned()
+    }
+
+    /// This link's environment with its remote defined ([`defining_remote`]), for the gits that
+    /// reach it.
+    fn remote_env(&self) -> Env {
+        defining_remote(&self.env, &self.remote_name, &self.url, self.own_push_url)
     }
 
     /// The endpoint this link reaches, as it was chosen.
@@ -265,14 +295,14 @@ impl<'a> Link<'a> {
         let mine = format!("refs/beads/fetch/{}-{}", std::process::id(), hex_token(8));
         let refspec = format!("+{}:{mine}", self.ref_name);
         let proc = self
-            .env
+            .remote_env()
             .git([
                 OsStr::new("fetch"),
                 "--quiet".as_ref(),
                 "--no-tags".as_ref(),
                 "--no-write-fetch-head".as_ref(),
                 "--".as_ref(),
-                &self.url,
+                self.remote_name.as_ref(),
                 refspec.as_ref(),
             ])
             .timeout(self.ws.settings.net_timeout)

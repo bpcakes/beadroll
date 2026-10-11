@@ -240,8 +240,18 @@ impl Workspace {
     /// same remote spelled another way, unless the name has a push URL of its own: they went
     /// through its other URL then, and moving to the push URL is done deliberately.
     fn leads_to(&self, tracked: &OsStr, used: &OsStr) -> Result<bool, Error> {
-        if tracked == used || self.resolve_remote(tracked, false)? == used {
+        // reached as it was too: pushed to as a remote's own push URL or not
+        let pushed = self.remembered_push(used);
+        if tracked == used && !pushed {
             return Ok(true);
+        }
+        let endpoint = self.resolve_endpoint(tracked, false)?;
+        if endpoint.url == used {
+            return Ok(endpoint.own_push_url == pushed);
+        }
+        if pushed {
+            // saved by this version, which older ones' spellings do not concern
+            return Ok(false);
         }
         let git = &self.settings.git;
         let own_push_url = if name_shaped(tracked) {

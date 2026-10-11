@@ -37,9 +37,12 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   rewrote it goes on through the name, unless the name has a push URL of its own; a URL that
   reads as a relative path but that git rewrites is left to git, and git reaches the remote from
   the top of the checkout, so a rewrite to a relative path is read from there wherever bead runs.
-  A remote's own push URL is pushed to as `git push NAME` pushes there, without the
-  `pushInsteadOf` rewrites git applies to other URLs, also by the commands after that go by the
-  remote it saved (`remote_push_url` in `meta.json`); a relative path typed in a subdirectory is
+  bead gives git the coordination remote as a remote defined for the command, never as an
+  argument git could take for another remote's name, a checkout's or an inherited one. A remote's
+  own push URL is pushed to as `git push NAME` pushes there, without the `pushInsteadOf` rewrites
+  git applies to other URLs, also by the commands after that go by the remote it saved
+  (`remote_push_url` in `meta.json`), and a tracked remote that would push otherwise than the
+  store did is refused (`CONFIG`); a relative path typed in a subdirectory is
   read from there, also by `init --tracked`, which stores it from the top of the checkout whether
   it exists or not. A URL bead saved or read is never taken for the name of another remote, while
   a remote's name an older bead saved (`init --offline --remote NAME`) is still that remote.

@@ -241,3 +241,27 @@ fn a_remote_name_an_older_bead_saved_is_that_remote() {
         "the saved name was not taken for its remote"
     );
 }
+
+/// A store that last went through a remote's own push URL, whose `.beadroll.json` is changed from
+/// that remote's name to the URL itself: the same URL, but pushed to as any URL, which a
+/// `pushInsteadOf` rule can send elsewhere; refused (`CONFIG`) until changed deliberately.
+#[test]
+fn a_tracked_remote_pushed_to_otherwise_is_a_change() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let tracker = sandbox.bare("tracker.git");
+    let own = format!("file://{}", text(&tracker));
+    commit(&a, &["remote", "add", "tracker", text(&tracker)]);
+    commit(&a, &["remote", "set-url", "--push", "tracker", &own]);
+    json(
+        &a,
+        &["init", "--tracked", "--prefix", "ex", "--remote", "tracker"],
+    );
+    let mut config = tracked_file(&a);
+    if let Json::Object(fields) = &mut config {
+        fields.insert("remote".into(), Json::Str(own));
+    }
+    let body = write(&config, Format::INDENTED).expect("JSON text");
+    std::fs::write(a.checkout().join(".beadroll.json"), body).expect("the tracked file");
+    assert_eq!(code(&a.run(["sync", "--json"])), "CONFIG");
+}

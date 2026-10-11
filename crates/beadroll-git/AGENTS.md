@@ -39,7 +39,8 @@ the calls.
   names (SHA-1 written out, SHA-256 from `sha2`).
 - `src/env.rs`: `sync_env` (Python's `Link.__init__` environment), `transport_settings` (Python's
   `config --null --get-regexp` of `TRANSPORT_KEYS`, asked each time a link is made),
-  `transport_config` (from its answer), `REPO_LOCATION_ENV`, `SYNC_REPO_CONFIG`, `CountRules` (how
+  `transport_config` (from its answer), `with_settings` (settings after a link's `GIT_CONFIG_COUNT`
+  ones, as `-c` gives them), `REPO_LOCATION_ENV`, `SYNC_REPO_CONFIG`, `CountRules` (how
   `GIT_CONFIG_COUNT` is read).
 - `src/classify.rs`: `local_damage`, `remote_lacks_objects`, `push_outcome` and `PushOutcome`.
 - `src/url.rs`: `without_password`, `normalize_remote`, `is_local_path`, `py_strip`, `py_lower`.

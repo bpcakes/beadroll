@@ -61,9 +61,10 @@ ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `settle_
   transaction has let go of the store lock. A setting changed while bead waited is the one the
   link uses. A link's git starts at the top of the checkout, where bead reads a relative remote
   path from, so that one git makes of a rewritten URL is read from there too. A link is made for an
-  `Endpoint` (`Workspace::endpoint`): a push to a remote's own push URL goes through a remote
-  defined for that push alone, under a name of its own, as `git push NAME` goes there, without
-  `pushInsteadOf`.
+  `Endpoint` (`Workspace::endpoint`), and every git that reaches the remote (its fetch, its push,
+  `init`'s `ls-remote`) is given it as a remote defined for the link under a name of its own
+  (`defining_remote`, through `GIT_CONFIG_COUNT`), its own push URL as its `pushurl`: git never
+  takes the URL for another remote's name, and pushes as `git push NAME` would.
 - Receipt signatures and retirement stay Python's while a store may still meet Python's bead,
   rollback to `python-0.1.0` included (§2.3j, `REVIEWING.md` §2); sync keeps an accepted
   attempt's receipt. `crates/beadroll/tests/cli/parity/receipts.rs` pins the bytes Python wrote.

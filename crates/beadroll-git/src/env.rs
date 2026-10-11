@@ -53,6 +53,25 @@ pub const DEFAULT_SSH_COMMAND: &str =
 static RESETTABLE: LazyLock<Option<Regex>> =
     LazyLock::new(|| Regex::new(r"^(credential\.(.+\.)?helper|http\.(.+\.)?extraheader)$").ok());
 
+/// `env`, a link's ([`sync_env`]), with `settings` given after its `GIT_CONFIG_COUNT` settings: at
+/// command-line precedence, as `git -c KEY=VALUE` gives them, but in the environment, so that
+/// git's command stays its first argument, where the tests' wrappers and accounts look for it.
+pub fn with_settings(env: &Env, settings: &[(String, OsString)]) -> Env {
+    let mut vars = env.vars().clone();
+    let count_var = OsStr::new("GIT_CONFIG_COUNT");
+    let count = vars
+        .get(count_var)
+        .and_then(|value| value.to_str())
+        .map_or_else(Decimal::zero, Decimal::read);
+    for (index, (key, value)) in settings.iter().enumerate() {
+        let at = count.plus(index);
+        vars.insert(format!("GIT_CONFIG_KEY_{at}").into(), key.into());
+        vars.insert(format!("GIT_CONFIG_VALUE_{at}").into(), value.clone());
+    }
+    vars.insert(count_var.into(), count.plus(settings.len()).into());
+    env.with_vars(vars)
+}
+
 /// What `git config --null --get-regexp` prints for [`TRANSPORT_KEYS`] in the checkout that `env`
 /// runs git in, asked now: Python's `transport_config` asks it each time a link is made, so a
 /// setting changed while bead waited for the store lock is the one the link uses.

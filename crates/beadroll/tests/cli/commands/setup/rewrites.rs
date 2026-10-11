@@ -3,6 +3,7 @@
 //! fetch NAME` and `git push NAME`, a remote's own push URL left as it is, an alias never taken for
 //! a remote of the same name, and the advice it gives naming the remote as it was chosen.
 
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 
 use beadroll_test_support::{Json, Machine, code, git, parse_json};
@@ -367,5 +368,73 @@ fn a_remote_pushed_to_by_origins_url_is_not_forgotten_as_origin() {
         git(refs, None),
         "",
         "a later command reached origin's URL as origin"
+    );
+}
+
+/// A remote whose URL is an alias git rewrites, and a remote of the alias's name that only the
+/// configuration bead inherits defines (here through `GIT_CONFIG_COUNT`), which `sync.git` sees
+/// too: bead gives git the URL as a remote's URL, never as an argument git would take for that
+/// remote, and reaches what the alias is rewritten to.
+#[test]
+fn an_inherited_remote_never_takes_an_alias_for_its_name() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--prefix", "ex"]);
+    let (first, second) = (sandbox.bare("A.git"), sandbox.bare("B.git"));
+    let rewrite = format!("url.{}.insteadOf", text(&first));
+    commit(&a, &["config", &rewrite, "alias"]);
+    commit(&a, &["remote", "add", "tracker", "alias"]);
+    let synced = a
+        .cmd(["sync", "--remote", "tracker", "--json"])
+        .env("GIT_CONFIG_COUNT", "1")
+        .env("GIT_CONFIG_KEY_0", "remote.alias.url")
+        .env("GIT_CONFIG_VALUE_0", text(&second))
+        .run();
+    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
+    let refs = |remote: &Path| {
+        git(
+            ["--git-dir", text(remote), "for-each-ref", "refs/beads"],
+            None,
+        )
+    };
+    assert_ne!(
+        refs(&first),
+        "",
+        "nothing reached what the alias is rewritten to"
+    );
+    assert_eq!(
+        refs(&second),
+        "",
+        "the inherited remote took the alias for its name"
+    );
+}
+
+/// `init --remote` given origin's own push URL, which a `pushInsteadOf` rule would rewrite, when
+/// its first publish fails: nothing is published after it through the URL as typed, which the
+/// rule would send elsewhere; the events wait, counted, for the next sync.
+#[test]
+fn init_publishes_only_where_it_chose_to() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let own = format!("file://{}", text(sandbox.origin()));
+    commit(&a, &["remote", "set-url", "--push", "origin", &own]);
+    let pushed = sandbox.bare("push.git");
+    let rewrite = format!("url.{}.pushInsteadOf", text(&pushed));
+    commit(&a, &["config", &rewrite, &own]);
+    // from now on origin refuses every push
+    let hook = sandbox.origin().join("hooks").join("pre-receive");
+    std::fs::write(&hook, "#!/bin/sh\necho refused >&2\nexit 1\n").expect("a hook");
+    let executable = std::fs::Permissions::from_mode(0o755);
+    std::fs::set_permissions(&hook, executable).expect("an executable hook");
+    let run = a.run(["init", "--prefix", "ex", "--remote", &own, "--json"]);
+    assert_eq!(run.returncode(), 0, "{}", run.stderr);
+    let result = parse_json(&run.stdout).expect("a result");
+    let behind = result["unpublished"].as_i64();
+    assert!(behind.is_some_and(|n| n > 0), "{result:?}");
+    let refs = ["--git-dir", text(&pushed), "for-each-ref", "refs/beads"];
+    assert_eq!(
+        git(refs, None),
+        "",
+        "a publish after init's went where the rule sends the URL"
     );
 }
