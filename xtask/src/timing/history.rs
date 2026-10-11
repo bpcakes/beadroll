@@ -40,6 +40,26 @@ pub(crate) struct Files {
     pub(crate) attempts: Vec<(String, Vec<u8>)>,
 }
 
+/// The rotation size bead uses when `BEAD_ROTATE_BYTES` is unset (`beadroll_store::ROTATE_BYTES`).
+pub(crate) const ROTATE_BYTES: usize = 256 * 1024;
+
+/// A machine's journal cut into segments as bead rotates it: a new one started once the last has
+/// reached `rotate` bytes, each of whole lines.
+pub(crate) fn segments(journal: &[u8], rotate: usize) -> Vec<&[u8]> {
+    let mut cuts: Vec<&[u8]> = Vec::new();
+    let mut start = 0;
+    for (at, byte) in journal.iter().enumerate() {
+        if *byte == b'\n' && at + 1 - start >= rotate {
+            cuts.push(&journal[start..=at]);
+            start = at + 1;
+        }
+    }
+    if start < journal.len() {
+        cuts.push(&journal[start..]);
+    }
+    cuts
+}
+
 /// A history of `count` events.
 pub(crate) fn history(count: usize, shape: Shape) -> Vec<Files> {
     let mut writer = Writer::new();

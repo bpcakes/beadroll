@@ -11,14 +11,13 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Instant;
 
-use super::history::{Files, Shape, history};
+use super::history::{Files, Shape, history, segments};
 use crate::workspace::{self, Failure, json_string};
 
 /// How many syncs each figure is the best of.
 const RUNS: usize = 5;
 
-/// The rotation size bead uses when `BEAD_ROTATE_BYTES` is unset (`beadroll_store::ROTATE_BYTES`).
-pub(crate) const ROTATE_BYTES: usize = 256 * 1024;
+pub(crate) use super::history::ROTATE_BYTES;
 
 /// The workspace the store is opened as.
 const WORKSPACE: &str = "timing";
@@ -114,13 +113,7 @@ fn write_store(store: &Path, files: &[Files], rotate: usize) -> Result<Layout, F
         let claims = folder.join("claims");
         std::fs::create_dir_all(&claims)
             .map_err(|error| Failure::io("cannot create", &claims, &error))?;
-        let mut segments: Vec<Vec<u8>> = Vec::new();
-        for line in machine.segment.split_inclusive(|b| *b == b'\n') {
-            match segments.last_mut() {
-                Some(last) if last.len() < rotate => last.extend_from_slice(line),
-                _ => segments.push(line.to_vec()),
-            }
-        }
+        let segments = segments(&machine.segment, rotate);
         for (n, data) in segments.iter().enumerate() {
             let path = folder.join(format!("{:06}.jsonl", n + 1));
             std::fs::write(&path, data)

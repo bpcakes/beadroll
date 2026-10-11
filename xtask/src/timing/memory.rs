@@ -9,11 +9,12 @@ use std::process::{Command, ExitCode, Stdio};
 use beadroll_core::journal::{Journal, read_attempt, read_segment};
 use beadroll_core::replay::replay;
 
-use super::history::Files;
+use super::history::{Files, ROTATE_BYTES, segments};
 use crate::workspace::Failure;
 
-/// Writes `files` under `dir` as a store holds them: `REPLICA/000001.jsonl` and
-/// `REPLICA/claims/ID.json`, replacing whatever was there.
+/// Writes `files` under `dir` as a store holds them: `REPLICA/000001.jsonl` on, rotated as bead
+/// rotates its journal, and `REPLICA/claims/ID.json`, replacing whatever was there. The process
+/// that loads them then reads a segment at a time, as bead does.
 pub(crate) fn write_files(dir: &Path, files: &[Files]) -> Result<(), Failure> {
     if dir.exists() {
         std::fs::remove_dir_all(dir).map_err(|error| Failure::io("cannot remove", dir, &error))?;
@@ -22,9 +23,13 @@ pub(crate) fn write_files(dir: &Path, files: &[Files]) -> Result<(), Failure> {
         let claims = dir.join(&machine.replica).join("claims");
         std::fs::create_dir_all(&claims)
             .map_err(|error| Failure::io("cannot create", &claims, &error))?;
-        let segment = dir.join(&machine.replica).join("000001.jsonl");
-        std::fs::write(&segment, &machine.segment)
-            .map_err(|error| Failure::io("cannot write", &segment, &error))?;
+        for (n, data) in segments(&machine.segment, ROTATE_BYTES).iter().enumerate() {
+            let segment = dir
+                .join(&machine.replica)
+                .join(format!("{:06}.jsonl", n + 1));
+            std::fs::write(&segment, data)
+                .map_err(|error| Failure::io("cannot write", &segment, &error))?;
+        }
         for (name, data) in &machine.attempts {
             let path = claims.join(name);
             std::fs::write(&path, data)
