@@ -8,9 +8,9 @@
 //! (`locale -a`) and run under ISO-8859-1, US-ASCII and C whichever bead is under test; where the
 //! system lacks the locale, the test says so on standard error and returns.
 //!
-//! Until the cutover they ran against Python's launcher too, whose bead outside macOS hands git
-//! the committed ref in the locale's codeset (roll-k2wy.18): there the cases that pass the ref to
-//! git returned early. They run whole against the Rust bead everywhere.
+//! Pointed at Python's launcher (`python-0.1.0`'s, during the rollback window), whose bead outside
+//! macOS hands git the committed ref in the locale's codeset (roll-k2wy.18), the cases that pass the
+//! ref to git say so and return. They run whole against the Rust bead everywhere.
 
 use std::process::{Command, Stdio};
 
@@ -47,6 +47,24 @@ fn installed(wanted: &str) -> Option<String> {
         eprintln!("skipped: locale -a lists no {wanted} locale here");
     }
     found.map(str::to_owned)
+}
+
+/// Whether `machine` runs a Python launcher outside macOS, where CPython encodes the arguments it
+/// hands git in the locale's codeset (macOS's filesystem encoding is UTF-8 whatever the locale): a
+/// case that passes the committed ref to git then meets roll-k2wy.18, says so and returns. The Rust
+/// bead is a native executable; Python's launcher, `python-0.1.0`'s, is a script.
+fn meets_roll_k2wy_18(machine: &Machine) -> bool {
+    let mut head = [0u8; 2];
+    let script = std::fs::File::open(machine.executable())
+        .and_then(|mut file| std::io::Read::read_exact(&mut file, &mut head))
+        .is_ok_and(|()| &head == b"#!");
+    let meets = script && !cfg!(target_vendor = "apple");
+    if meets {
+        eprintln!(
+            "skipped: Python's bead hands git the ref in the locale's codeset (roll-k2wy.18)"
+        );
+    }
+    meets
 }
 
 /// `_g13_locale`: `invocation` under `locale`, in `LC_ALL` and `LANG`. As in the Python test,
@@ -105,6 +123,9 @@ fn reads_a_valid_utf8_config(wanted: &str) {
     };
     let sandbox = crate::sandbox();
     let (_a, b, _key) = set_up(&sandbox);
+    if meets_roll_k2wy_18(&b) {
+        return;
+    }
     let info = under(b.cmd(["info", "--json"]), &locale).run();
     assert_eq!(
         info.returncode(),
@@ -119,7 +140,10 @@ fn reads_a_valid_utf8_config(wanted: &str) {
 mod g13_tracked_config_is_utf8_whatever_the_locale {
     use beadroll_test_support::parse_json;
 
-    use super::{REF, coordination_refs, installed, reads_a_valid_utf8_config, set_up, under};
+    use super::{
+        REF, coordination_refs, installed, meets_roll_k2wy_18, reads_a_valid_utf8_config, set_up,
+        under,
+    };
 
     /// G13: under an ISO-8859-1 locale bead reads the UTF-8 `.beadroll.json` as UTF-8 and uses the
     /// committed ref, instead of decoding it as Latin-1 and using another.
@@ -150,6 +174,9 @@ mod g13_tracked_config_is_utf8_whatever_the_locale {
         };
         let sandbox = crate::sandbox();
         let (a, b, key) = set_up(&sandbox);
+        if meets_roll_k2wy_18(&b) {
+            return;
+        }
         let claim = b.cmd(["claim", &key, "--json"]).thread("g13-b-agent");
         let first = under(claim, &latin1).run();
         assert_eq!(first.returncode(), 0, "{}", first.stderr);
