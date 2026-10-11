@@ -17,3 +17,7 @@ Full review comments:
 
 - [P2] Recover when a memoized published blob is missing locally — /Users/<name>/Documents/beadroll/crates/beadroll-sync/src/link/write.rs:46-50
   If a published journal blob disappears from `sync.git` while its tree and memo survive, this branch still reuses its ID. `mktree` then reports `entry ... object ... is unavailable`, which `local_damage()` does not classify as rebuildable, leaving the command failing with `GIT_ERROR` and the unusable memo intact. Previously, full hashing recreated the missing blob from the journal. Add an unavailable-object fallback that invalidates and rehashes the cached entry or rebuilds the repository, preserving the [cache recovery contract](docs/REVIEWING.md#L212-L215).
+
+## roll-lqjj.1, round 2: `e0f380f6d5eb76301ea5c25537982a9cffc4550a..b1b1e7b35d0c7688979eb084da87d6cbca6fc329`
+
+Reviewed only e0f380f6d5eb76301ea5c25537982a9cffc4550a..b1b1e7b35d0c7688979eb084da87d6cbca6fc329. No actionable defects found. Tests remain unverified: ./check.sh could not start because the read-only sandbox denied access to Cargo’s build lock.
