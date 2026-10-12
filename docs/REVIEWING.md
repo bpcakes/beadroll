@@ -283,7 +283,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `TEXT`, `N`, `LABEL`), so argparse's errors name them too (`the following arguments are
   required: ID`); receipt signatures use destinations, which did not change. `bead -h` describes
   bead, where Python's module docstring had leaked in. The help golden's changes are intentional
-  (roll-dih8.21).
+  (roll-dih8.21). Since roll-dih8.23 clap lays the pages out (below); the texts stayed.
 - bead's own texts are laid out when printed, not stored wrapped (roll-dih8.22): the overview,
   `prime` and the help pages' epilogs are paragraphs and rows of heading, term and description
   (`cli/texts.rs`), laid out by `cli/layout.rs` with `textwrap`, by display width, breaking only
@@ -294,9 +294,34 @@ These were decided deliberately. Report problems *with* them, not their existenc
   reading; with neither (a pipe, an agent) nothing wraps, and `--json` always carries the
   unwrapped text, so what an agent reads does not depend on a width. That makes these texts
   differ between a terminal and a pipe, as argparse's pages already did; the V8 contract that a
-  terminal and a pipe print alike holds for the data commands. Argparse's pages keep their own
-  formatter (§5 row 13); an epilog is laid out at their width. `ONBOARD` stays verbatim: it is
+  terminal and a pipe print alike holds for the data commands. clap lays out the command pages
+  (roll-dih8.23); an epilog is laid out at their width. `ONBOARD` stays verbatim: it is
   `AGENTS.md`'s text, kept equal by a test.
+- The command line is clap's (roll-dih8.23, the maintainer's decision of 2026-10-12): the argparse
+  port (`RUST-PORT.md` §2.3h, §5 row 13) bought byte parity with the Python bead while both ran,
+  and Python is retired. clap is built from the same table (`cli/spec.rs`), and its matches become
+  the same namespace: every destination with its value or default, so commands read what they
+  read and a receipt signs the same bytes (the parity receipts hold them). Kept from argparse: an
+  unambiguous prefix of a long option names it, the last value of an option wins, an option's
+  value may start with `-`, a scope is given once. Changed: a positional's value that starts with
+  `-` goes after `--` (free text taking such values swallowed mistyped options, and `--offline`
+  after a comment); positionals and options mix (`update A --status open B` updates both);
+  errors are clap's, with its suggestions, `USAGE` and exit 2 as before, the usage after them for
+  a human only; a quoted argument that is not UTF-8 keeps its bytes, `?` for a human and `\udcXX`
+  in JSON. `--json`, `--actor` and `--color` are still read before parsing; clap lists them as
+  global options and refuses them abbreviated, which it alone would see. Root help (`bead -h
+  create`) is the overview.
+- Colour (roll-dih8.23): commands give their lines as parts that say what they are (an id, a
+  status, a warning: `commands::Line`), never how they look; `cli::paint` escapes each part, then
+  paints it when the stream shows colour. Each stream decides alone: `--color always|never`, else
+  `NO_COLOR` (not empty) off, `CLICOLOR_FORCE` (not empty or `0`) on, `CLICOLOR=0` or `TERM=dumb`
+  off, else a terminal on. `--json` never; a pipe or a file never unless forced. `FORCE_COLOR` is
+  deliberately not followed: agent harnesses and CI set it, and their agents parse bead's output.
+  Escaping comes before painting, so the only escape sequences bead writes are its own SGR codes:
+  G59's tests now hold that help on a terminal is coloured but never shows a code as text, and
+  that neither a pipe under `FORCE_COLOR` nor JSON carries one; V8's hold a terminal to a pipe
+  byte for byte with `NO_COLOR`, and with colour once bead's own codes are taken out. Test
+  machines drop `NO_COLOR` and `CLICOLOR*` from the inherited environment.
 - A remote is kept as it was chosen (G22; the maintainer's course correction of 2026-10-11,
   roll-dih8.13: rounds of findings came from resolving the choice to a URL at once and using that
   string for transport, memory, comparison and advice, which made bead re-implement git's remote
@@ -424,8 +449,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   never by libc; `--estimate` and `--limit` read numbers as `int()` does (`" +5 "`, `5_000`);
   conflict values print as `repr()` prints them, and `True` as `True`; an OS error reads
   `"{strerror}: {path}"`, a rename's naming its target; the JSON of each output and file is the
-  `json.dumps` dialect Python wrote it in; the command line is argparse's, its errors and help
-  pages included (§2.3h); SIGXFSZ is ignored, so a file-size limit is an `IO` error, and standard
+  `json.dumps` dialect Python wrote it in; the command line was argparse's, its errors and help
+  pages included (§2.3h), until clap replaced it (roll-dih8.23, above); SIGXFSZ is ignored, so a file-size limit is an `IO` error, and standard
   input closed at exec is no stream, `-` then an `IO` error; a sync or ownership command makes 12
   rounds with `U(0.1, 0.4) × attempt` seconds between them; the names of fetch refs, temporary
   files and set-aside copies are Python's.

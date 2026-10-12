@@ -15,7 +15,7 @@ use beadroll_store::{
     write_atomic,
 };
 
-use super::{Context, Failure, Outcome, resolve_arg};
+use super::{Context, Failure, Line, Outcome, Tone, resolve_arg};
 
 /// The tracker's events in causal order, excluding `init`, or one issue's events: time, machine,
 /// who (the actor's name when it was given one, as its claims are labelled, else its agent and
@@ -105,20 +105,20 @@ pub(crate) fn log(
             }
             op => op.name().to_owned(),
         };
-        let mut line = format!(
-            "{}  {:<10} {who:<15}  {op:<12} {}",
-            at.chars().take(19).collect::<String>(),
-            machine,
-            str_of(&issue)
-        );
+        let mut line = Line::new()
+            .with(Tone::Dim, at.chars().take(19).collect::<String>())
+            .with(Tone::Plain, format!("  {machine:<10} "))
+            .with(Tone::Who, format!("{who:<15}"))
+            .with(Tone::Plain, format!("  {op:<12} "))
+            .with(Tone::Id, str_of(&issue));
         if branch.truthy() {
-            line.push_str(&format!("  ({})", str_of(&branch)));
+            line.push(Tone::Dim, format!("  ({})", str_of(&branch)));
         }
         lines.push(line);
         result.push(Value::from(row));
     }
     if lines.is_empty() {
-        lines.push("No events".to_owned());
+        lines.push("No events".into());
     }
     Ok(Outcome::new(Value::Array(result), lines))
 }

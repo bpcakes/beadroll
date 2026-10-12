@@ -109,6 +109,17 @@ A command that would change nothing says so instead of writing: a `close`,
 that names nothing to change answers `Unchanged`. `bead log` names who wrote
 each event as claims do: the `--actor` or `BEAD_ACTOR` name when one was given,
 else the agent and its thread; a `set` row names the fields it changed.
+A mistyped command or option is a usage error that says which one was meant
+(`bead lis`: `tip: some similar subcommands exist: 'lint', 'list'`); a long
+option may be shortened while it stays unambiguous (`--stat`), and a value that
+starts with `-` goes after `--` unless it is an option's (`--title "- x"`).
+
+On a terminal bead's output is coloured: an issue's status mark, id and priority,
+its type and branch dimmed, warnings and errors, and the help pages. Into a pipe
+or a file, and with `--json`, it never is. `--color always|never` decides, else
+`NO_COLOR` turns colour off and `CLICOLOR_FORCE` on (`CLICOLOR=0` and
+`TERM=dumb` off too); `FORCE_COLOR` is not followed, since agent harnesses set it.
+What an issue says is escaped first, so colour never carries a code of its own.
 
 `bead ready` is the frontier: open issues that nothing blocks and nobody
 holds, by br's rule. `bead ready ID`, or `--epic ID` as in br, keeps to ID's
@@ -328,7 +339,8 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   for.
 - A closed stdout or stderr, a terminal that hung up (EIO) or a descriptor
   closed at exec never produce a traceback: a committed command exits 0, a
-  failed one keeps its status. Help is plain text, never coloured.
+  failed one keeps its status. Output is plain text into a pipe, a file and
+  with `--json`; on a terminal it is coloured (below).
 - An owner's close that a takeover superseded says so: `"superseded"` on the
   record and a `!` line, exit 0 (the decision in `docs/REVIEWING.md` §2 stands).
 - Text comes from files and stdin as UTF-8 whatever the locale; anything else

@@ -10,6 +10,8 @@ use beadroll_core::text::parse_integer;
 use textwrap::core::display_width;
 use textwrap::{Options, WordSeparator, WordSplitter};
 
+use crate::commands::{Line, Tone};
+
 /// The widest a text is laid out, however wide the terminal: longer lines are hard to read.
 const READABLE: usize = 100;
 
@@ -68,16 +70,29 @@ pub(crate) fn width(variable: Option<&OsStr>) -> Option<usize> {
     Some(width.min(READABLE))
 }
 
-/// `blocks` laid out `width` wide, a blank line between them, ending with a newline.
+/// `blocks` laid out `width` wide as plain text, a blank line between them, ending with a newline.
 pub(crate) fn lay_out(blocks: &[Block], width: Option<usize>) -> String {
-    let parts: Vec<String> = blocks
+    let lines: Vec<String> = lay_out_lines(blocks, width)
         .iter()
-        .map(|block| match block {
-            Block::Text(text) => paragraph(text, width),
-            Block::Rows(rows) => table(rows, width).join("\n"),
-        })
+        .map(Line::text)
         .collect();
-    format!("{}\n", parts.join("\n\n"))
+    format!("{}\n", lines.join("\n"))
+}
+
+/// `blocks` laid out `width` wide, a blank line between them: lines whose headings and terms say
+/// what they are, for a terminal to paint.
+pub(crate) fn lay_out_lines(blocks: &[Block], width: Option<usize>) -> Vec<Line> {
+    let mut lines = Vec::new();
+    for (index, block) in blocks.iter().enumerate() {
+        if index > 0 {
+            lines.push(Line::new());
+        }
+        match block {
+            Block::Text(text) => lines.extend(paragraph_lines(text, width)),
+            Block::Rows(rows) => lines.extend(table(rows, width)),
+        }
+    }
+    lines
 }
 
 /// Prose wrapped `width` wide at its spaces, without a final newline.
@@ -85,15 +100,18 @@ pub(crate) fn paragraph(text: &str, width: Option<usize>) -> String {
     fill(text, width, 0, 0).join("\n")
 }
 
+/// Prose wrapped `width` wide at its spaces, as lines.
+pub(crate) fn paragraph_lines(text: &str, width: Option<usize>) -> Vec<Line> {
+    fill(text, width, 0, 0)
+        .into_iter()
+        .map(Line::from)
+        .collect()
+}
+
 /// How many columns `text` takes on a terminal: two for a wide character, none for a combining
 /// one.
 fn length(text: &str) -> usize {
     display_width(text)
-}
-
-/// `text` padded with spaces to `width` columns.
-fn padded(text: &str, width: usize) -> String {
-    format!("{text}{}", " ".repeat(width.saturating_sub(length(text))))
 }
 
 /// A space no line breaks at while a text is wrapped.
@@ -147,7 +165,7 @@ fn fill(text: &str, width: Option<usize>, first: usize, rest: usize) -> Vec<Stri
 
 /// `rows` as lines: in columns when the width leaves the descriptions [`NARROWEST`] or more,
 /// else stacked.
-fn table(rows: &[Row], width: Option<usize>) -> Vec<String> {
+fn table(rows: &[Row], width: Option<usize>) -> Vec<Line> {
     let headings = rows
         .iter()
         .map(|row| length(row.heading))
@@ -168,69 +186,90 @@ fn table(rows: &[Row], width: Option<usize>) -> Vec<String> {
     if room.is_some_and(|room| room < term_width + NARROWEST) {
         return stacked(rows, width, if headings == 0 { 0 } else { 2 });
     }
+    let column = heading_width + term_width;
     let mut lines = Vec::new();
     for row in rows {
         if row.heading.is_empty() && row.term.is_empty() && row.about.is_empty() {
-            lines.push(String::new());
+            lines.push(Line::new());
             continue;
         }
-        let mut text = Vec::new();
+        // the row's lines after the heading column, which the first line's heading fills
+        let mut text: Vec<Line> = Vec::new();
         if row.term.is_empty() {
-            text.extend(fill(row.about, width, heading_width, heading_width));
-        } else if row.about.is_empty() {
-            text.extend(fill(row.term, width, heading_width, heading_width + 2));
-        } else {
-            let column = heading_width + term_width;
-            if length(row.term) + 2 <= term_width {
-                let mut about = fill(row.about, width, column, column);
-                if let Some(first) = about.first_mut() {
-                    *first = format!(
-                        "{}{}{}",
-                        " ".repeat(heading_width),
-                        padded(row.term, term_width),
-                        first.trim_start()
-                    );
-                }
-                text.extend(about);
-            } else {
-                text.extend(fill(row.term, width, heading_width, heading_width + 2));
-                text.extend(fill(row.about, width, column, column));
+            text.extend(plain(
+                fill(row.about, width, heading_width, heading_width),
+                heading_width,
+            ));
+        } else if row.about.is_empty() || length(row.term) + 2 > term_width {
+            let term = fill(row.term, width, heading_width, heading_width + 2);
+            text.extend(terms(term, heading_width));
+            if !row.about.is_empty() {
+                text.extend(plain(fill(row.about, width, column, column), heading_width));
             }
-        }
-        // every first line starts with the heading column's spaces
-        if let Some(first) = text.first_mut() {
-            *first = format!(
-                "{}{}",
-                padded(row.heading, heading_width),
-                &first[heading_width..]
+        } else {
+            let mut about = fill(row.about, width, column, column).into_iter();
+            let first = about.next().unwrap_or_default();
+            text.push(
+                Line::toned(Tone::Term, row.term)
+                    .with(Tone::Plain, " ".repeat(term_width - length(row.term)))
+                    .with(Tone::Plain, first.trim_start()),
             );
+            text.extend(plain(about.collect(), heading_width));
         }
-        lines.extend(text);
+        for (index, line) in text.into_iter().enumerate() {
+            let lead = if index == 0 {
+                let gap = heading_width.saturating_sub(length(row.heading));
+                Line::toned(Tone::Heading, row.heading).with(Tone::Plain, " ".repeat(gap))
+            } else {
+                Line::toned(Tone::Plain, " ".repeat(heading_width))
+            };
+            lines.push(lead.then(line));
+        }
     }
     lines
 }
 
+/// Laid-out lines without their first `at` columns (spaces), as prose.
+fn plain(lines: Vec<String>, at: usize) -> Vec<Line> {
+    lines
+        .into_iter()
+        .map(|line| Line::from(line.get(at..).unwrap_or_default().to_owned()))
+        .collect()
+}
+
+/// Laid-out lines without their first `at` columns (spaces), as terms after their indent.
+fn terms(lines: Vec<String>, at: usize) -> Vec<Line> {
+    lines
+        .into_iter()
+        .map(|line| {
+            let rest = line.get(at..).unwrap_or_default();
+            let term = rest.trim_start();
+            Line::toned(Tone::Plain, &rest[..rest.len() - term.len()]).with(Tone::Term, term)
+        })
+        .collect()
+}
+
 /// `rows` one above another: a heading on its own line, a term `indent` in and its description
 /// two columns further, prose `indent` in.
-fn stacked(rows: &[Row], width: Option<usize>, indent: usize) -> Vec<String> {
+fn stacked(rows: &[Row], width: Option<usize>, indent: usize) -> Vec<Line> {
     let mut lines = Vec::new();
     for row in rows {
         if !row.heading.is_empty() {
-            lines.push(row.heading.to_owned());
+            lines.push(Line::toned(Tone::Heading, row.heading));
         }
         if row.term.is_empty() && row.about.is_empty() {
             if row.heading.is_empty() {
-                lines.push(String::new());
+                lines.push(Line::new());
             }
             continue;
         }
         if row.term.is_empty() {
-            lines.extend(fill(row.about, width, indent, indent));
+            lines.extend(plain(fill(row.about, width, indent, indent), 0));
             continue;
         }
-        lines.extend(fill(row.term, width, indent, indent + 2));
+        lines.extend(terms(fill(row.term, width, indent, indent + 2), 0));
         if !row.about.is_empty() {
-            lines.extend(fill(row.about, width, indent + 2, indent + 2));
+            lines.extend(plain(fill(row.about, width, indent + 2, indent + 2), 0));
         }
     }
     lines

@@ -10,6 +10,7 @@ mod history;
 mod import;
 mod info;
 mod init;
+mod line;
 mod list;
 mod ownership;
 mod queries;
@@ -46,6 +47,7 @@ pub(crate) use history::{log, machines};
 pub(crate) use import::import;
 pub(crate) use info::info;
 pub(crate) use init::{InitArgs, init};
+pub(crate) use line::{Line, Tone};
 pub(crate) use list::{FilterArgs, ListArgs, ReadyArgs, list, ready};
 pub(crate) use ownership::{OwnershipArgs, claim, release, takeover};
 pub(crate) use queries::{blocked, lint, search};
@@ -62,6 +64,8 @@ pub(crate) struct Failure {
     /// The original message bytes when a command-line argument or path is not UTF-8. `message`
     /// substitutes U+FFFD; human output uses `?`, and JSON uses `\udcXX` escapes.
     pub(crate) raw: Option<Vec<u8>>,
+    /// What a human reads after the message of a usage error: the usage, and where help is.
+    pub(crate) after: Option<String>,
 }
 
 impl Failure {
@@ -70,6 +74,17 @@ impl Failure {
             code,
             message: message.into(),
             raw: None,
+            after: None,
+        }
+    }
+
+    /// A usage error: `message`, bytes that may not all be UTF-8, then `after` for a human (the
+    /// usage, and where help is).
+    pub(crate) fn usage(message: impl Into<Vec<u8>>, after: impl Into<String>) -> Failure {
+        let after: String = after.into();
+        Failure {
+            after: Some(after).filter(|after| !after.is_empty()),
+            ..Failure::bytes(Code::Usage, message.into())
         }
     }
 
@@ -81,6 +96,7 @@ impl Failure {
                 code,
                 message: String::from_utf8_lossy(error.as_bytes()).into_owned(),
                 raw: Some(error.into_bytes()),
+                after: None,
             },
         }
     }
@@ -163,7 +179,7 @@ impl From<beadroll_core::import::ImportError> for Failure {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Outcome {
     pub(crate) result: Option<Value>,
-    pub(crate) lines: Option<Vec<String>>,
+    pub(crate) lines: Option<Vec<Line>>,
     pub(crate) raw: Option<String>,
     /// The command published and counted what it left unpublished itself ([`note_unpublished`]),
     /// as `init` does when it wrote through another workspace than the one it was given.
@@ -171,10 +187,10 @@ pub(crate) struct Outcome {
 }
 
 impl Outcome {
-    pub(crate) fn new(result: impl Into<Value>, lines: Vec<String>) -> Outcome {
+    pub(crate) fn new<L: Into<Line>>(result: impl Into<Value>, lines: Vec<L>) -> Outcome {
         Outcome {
             result: Some(result.into()),
-            lines: Some(lines),
+            lines: Some(lines.into_iter().map(Into::into).collect()),
             raw: None,
             settled: false,
         }
@@ -196,7 +212,7 @@ impl Outcome {
 pub(crate) fn note_unpublished(
     ws: &Workspace,
     result: &mut Option<Value>,
-    lines: &mut Option<Vec<String>>,
+    lines: &mut Option<Vec<Line>>,
 ) -> Result<(), Failure> {
     let Some(behind) = unpublished_count(ws)?.filter(|n| *n != Int::from(0)) else {
         return Ok(());
@@ -206,8 +222,9 @@ pub(crate) fn note_unpublished(
     }
     if let Some(lines) = lines {
         let plural = if behind == Int::from(1) { "" } else { "s" };
-        lines.push(format!(
-            "{behind} event{plural} not yet published: bead sync"
+        lines.push(Line::toned(
+            Tone::Warning,
+            format!("{behind} event{plural} not yet published: bead sync"),
         ));
     }
     Ok(())
@@ -443,4 +460,36 @@ pub(crate) fn first<T>(items: Vec<T>, limit: &Int) -> Vec<T> {
         limit.min(len)
     };
     items.into_iter().take(keep as usize).collect()
+}
+
+/// An issue's one-line summary ([`State::row`]) as parts: its status icon, id and priority
+/// toned, its type and branch dim, its assignee and any conflict marked.
+pub(crate) fn row(st: &State, issue: &Issue) -> Line {
+    let row = st.row(issue);
+    let mut line = Line::new()
+        .with(Tone::of_status(&row.status), row.icon)
+        .with(Tone::Plain, " ")
+        .with(Tone::Id, row.key)
+        .with(Tone::Plain, " ")
+        .with(
+            Tone::of_priority(&row.priority),
+            format!("[P{}]", row.priority),
+        )
+        .with(Tone::Plain, " ")
+        .with(Tone::Dim, format!("[{}]", row.kind))
+        .with(Tone::Plain, " - ")
+        .with(Tone::Plain, row.title);
+    if let Some(who) = row.assignee {
+        line.push(Tone::Who, format!(" @{who}"));
+    }
+    if let Some(branch) = row.branch {
+        line.push(Tone::Dim, format!(" ({branch})"));
+    }
+    if !row.disputed.is_empty() {
+        line.push(
+            Tone::Warning,
+            format!(" ⚠ conflict: {}", row.disputed.join(", ")),
+        );
+    }
+    line
 }

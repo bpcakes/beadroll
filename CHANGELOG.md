@@ -6,6 +6,22 @@ versioned separately (format 1, frozen; see *Format and upgrades* in the README)
 
 ## [Unreleased]
 
+- The command line is clap's (roll-dih8.23): the argparse port, kept for parity with the Python
+  bead until its cutover, is gone. Commands read the same values and receipts sign the same bytes;
+  a long option may still be shortened while unambiguous, and the last value of an option still
+  wins. Errors are clap's and suggest what was meant (`unrecognized subcommand 'lis'; tip: some
+  similar subcommands exist: 'lint', 'list'`), still `USAGE` with exit 2, with the usage after
+  them for a human; a byte that is not UTF-8 still shows as `?`, or `\udcXX` in JSON. A positional
+  value that starts with `-` goes after `--`. Help pages are clap's (`Usage: bead create
+  [OPTIONS] [TITLE]`), with `--json`, `--actor` and `--color` under *Global options*, which must
+  be written in full.
+- Colour on a terminal: issue rows (status mark, id, priority; type and branch dimmed), `show`,
+  `claims`, `log`, warnings, errors, the overview, `prime` and the help pages. `--color
+  auto|always|never`; with `auto`, `NO_COLOR` turns it off, `CLICOLOR_FORCE` on, `CLICOLOR=0` and
+  `TERM=dumb` off, else a stream is coloured when it is a terminal. Never into a pipe or a file,
+  never with `--json`, never instead of escaping: what an issue says is escaped before anything is
+  painted. `FORCE_COLOR` is not followed: agent harnesses set it, and their agents parse bead's
+  output.
 - `bead log` names who wrote each event as claims do: an event written with `--actor NAME` or
   `BEAD_ACTOR` shows that name, where it showed the agent and thread as if they had written it;
   `log --json` rows gain `name` (null without one). A `set` row names the fields it changed

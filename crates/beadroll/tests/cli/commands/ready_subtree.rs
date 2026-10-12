@@ -357,8 +357,8 @@ fn j03_one_scope_at_a_time() {
     let usage = help.split_whitespace().collect::<Vec<_>>().join(" ");
     for meaning in [
         "ID's subtree",
-        "--epic ID the same as ID",
-        "--parent ID only ID's direct children",
+        "--epic <ID> the same as ID",
+        "--parent <ID> only ID's direct children",
     ] {
         assert!(usage.contains(meaning), "no {meaning:?} in {usage}");
     }

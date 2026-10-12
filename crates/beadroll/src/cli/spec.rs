@@ -1,6 +1,6 @@
 //! The command argument table: option strings in display order, destination, metavar, value
-//! count, action, value type and help text. The parser, help pages and receipt signatures all use
-//! this table.
+//! count, action, value type and help text. clap's command line, its help pages and receipt
+//! signatures are all built from it (`parse`).
 
 use super::layout::Block;
 use super::texts;
@@ -24,8 +24,6 @@ pub(crate) enum Nargs {
     ZeroOrMore,
     /// `+`: at least one positional.
     OneOrMore,
-    /// The command and everything after it (the subparsers action's `PARSER`).
-    Parser,
 }
 
 /// The action taken when an argument is supplied.
@@ -39,10 +37,6 @@ pub(crate) enum Action {
     Append,
     /// bead's `Once`: an option that names a scope; a second one is a usage error.
     Once,
-    /// `-h`/`--help`: the page, and nothing else is done.
-    Help,
-    /// The subparsers action: the command, which parses the rest of the line.
-    Commands,
 }
 
 /// The type a value is read as.
@@ -151,37 +145,9 @@ impl ArgSpec {
     pub(crate) fn is_positional(&self) -> bool {
         self.flags.is_empty()
     }
-
-    /// Whether it must be given: a positional that takes one value or more, and the command.
-    pub(crate) fn is_required(&self) -> bool {
-        self.is_positional() && matches!(self.nargs, Nargs::One | Nargs::OneOrMore | Nargs::Parser)
-    }
-
-    /// The name used in diagnostics: option strings joined by `/`, else metavar, else
-    /// destination.
-    pub(crate) fn name(&self) -> String {
-        match (self.flags, self.metavar) {
-            ([], Some(metavar)) => metavar.to_owned(),
-            ([], None) => self.dest.to_owned(),
-            (flags, _) => flags.join("/"),
-        }
-    }
 }
 
-/// `-h`/`--help`, which every parser has first.
-pub(crate) const HELP_FLAG: ArgSpec = ArgSpec {
-    action: Action::Help,
-    ..flag(&["-h", "--help"], "help")
-}
-.help("show this help message and exit");
-
-/// The command, `bead`'s one positional: its choices are the commands' names.
-pub(crate) const COMMAND: ArgSpec = ArgSpec {
-    action: Action::Commands,
-    ..positional("command", Nargs::Parser)
-};
-
-/// The description shown by `bead -h`.
+/// What `bead`'s own clap command says of itself.
 pub(crate) const DESCRIPTION: &str = "bead: a Beads-compatible issue tracker for agent crews \
      working across worktrees and machines. `bead help` gives the overview, `bead help COMMAND` \
      one command's page.";

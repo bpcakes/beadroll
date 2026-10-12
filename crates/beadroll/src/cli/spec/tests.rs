@@ -4,12 +4,12 @@ use std::collections::BTreeSet;
 use std::ffi::OsString;
 
 use super::{COMMANDS, find};
-use crate::cli::help::render;
+use crate::cli::help::page;
 use crate::cli::parse::{Page, Parsed, parse};
 
 /// `HelpAndPrime.test_every_command_has_help` over the table (`docs/RUST-PORT.md` §4.6): more
 /// than 20 commands, each under a name of its own, which `help NAME` finds; `NAME --help`
-/// shows that command's page, which starts `usage: bead NAME`.
+/// shows that command's page, whose usage is `bead NAME`.
 #[test]
 fn every_command_has_help() {
     let names: BTreeSet<&str> = COMMANDS.iter().map(|command| command.name).collect();
@@ -17,11 +17,11 @@ fn every_command_has_help() {
     assert!(names.len() > 20, "{names:?}");
     for name in names {
         assert!(find(name).is_some(), "help {name} finds no command");
-        let page = match parse(&[OsString::from(name), OsString::from("--help")]) {
-            Parsed::Help(page @ Page::Command(spec)) if spec.name == name => page,
+        let spec = match parse(&[OsString::from(name), OsString::from("--help")]) {
+            Parsed::Help(Page::Command(spec)) if spec.name == name => spec,
             other => panic!("{name} --help: {other:?}"),
         };
-        let text = render(page, 80);
-        assert!(text.starts_with(&format!("usage: bead {name}")), "{text}");
+        let text = page(spec, Some(80), false);
+        assert!(text.contains(&format!("Usage: bead {name}")), "{text}");
     }
 }

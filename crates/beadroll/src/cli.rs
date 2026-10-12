@@ -6,11 +6,11 @@ mod free;
 mod help;
 mod layout;
 mod output;
+mod paint;
 mod parse;
 mod spec;
 mod tempdir;
 mod texts;
-mod wrap;
 
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
@@ -25,9 +25,10 @@ use beadroll_core::text::json_ascii_bytes;
 use beadroll_store::{Settings, detect_actor, find_workspace, nearest_harness};
 use beadroll_sync::publish_soon;
 
-use crate::commands::{self, Context, Failure, Outcome};
-use output::{Stream, Unwritten, emit, visible};
-use parse::{Namespace, Parsed};
+use crate::commands::{self, Context, Failure, Line, Outcome, Tone};
+use output::{Stream, Unwritten, emit};
+use paint::{Colors, When};
+use parse::{Namespace, Page, Parsed};
 
 /// The version this binary reports.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -43,11 +44,13 @@ pub(crate) fn main_with(argv: Vec<OsString>) -> ExitCode {
     ExitCode::from(run(argv))
 }
 
-/// What the command line asked for once `--json`, `--actor` and `--` are read: everything after
-/// `--` is data, never an option; `--json` counts anywhere before it, `--actor` once.
+/// What the command line asked for once `--json`, `--actor`, `--color` and `--` are read:
+/// everything after `--` is data, never an option; `--json` counts anywhere before it, `--actor`
+/// once, the last `--color` (`None` for one without its value).
 struct Request {
     as_json: bool,
     name: Option<OsString>,
+    color: Option<Option<OsString>>,
     args: Vec<OsString>,
 }
 
@@ -69,12 +72,50 @@ fn read_request(argv: Vec<OsString>) -> Request {
             break;
         }
     }
+    let mut color = None;
+    let mut index = 0;
+    while index < head.len() {
+        if head[index] == "--color" {
+            color = Some(head.get(index + 1).cloned());
+            head.drain(index..(index + 2).min(head.len()));
+        } else if let Some(value) = head[index].as_bytes().strip_prefix(b"--color=") {
+            color = Some(Some(OsString::from(std::ffi::OsStr::from_bytes(value))));
+            head.remove(index);
+        } else {
+            index += 1;
+        }
+    }
     head.extend(tail.iter().cloned());
     Request {
         as_json,
         name,
+        color,
         args: head,
     }
+}
+
+/// Which streams show colour: none with `--json`, else as `--color` and the environment say
+/// ([`paint::colors`]); a `--color` that names no choice is a usage error.
+fn colors_for(request: &Request) -> Result<Colors, Failure> {
+    let when = match &request.color {
+        None => When::Auto,
+        Some(given) => given.as_deref().and_then(When::named).ok_or_else(|| {
+            let shown = given
+                .as_deref()
+                .map_or_else(String::new, |g| g.to_string_lossy().into_owned());
+            Failure::usage(
+                format!(
+                    "invalid value '{shown}' for '--color <WHEN>' [possible values: auto, \
+                     always, never]"
+                ),
+                "",
+            )
+        })?,
+    };
+    if request.as_json {
+        return Ok(Colors::default());
+    }
+    Ok(paint::colors(when, &|key| std::env::var_os(key)))
 }
 
 /// The settings of this process.
@@ -118,7 +159,11 @@ fn home_of(name: &std::ffi::OsStr) -> Option<OsString> {
 fn run(argv: Vec<OsString>) -> u8 {
     let request = read_request(argv);
     let as_json = request.as_json;
-    match execute(&request) {
+    let colors = match colors_for(&request) {
+        Ok(colors) => colors,
+        Err(failure) => return report(&failure, as_json, false),
+    };
+    match execute(&request, colors) {
         Ok(None) => 0,
         Ok(Some(rendered)) => {
             match emit(Some(&rendered), Stream::Stdout) {
@@ -127,15 +172,17 @@ fn run(argv: Vec<OsString>) -> u8 {
                 Err(Unwritten::Failed(error)) => report(
                     &Failure::new(Code::Io, beadroll_git::IoError::bare(&error).to_string()),
                     as_json,
+                    colors.stderr,
                 ),
             }
         }
-        Err(failure) => report(&failure, as_json),
+        Err(failure) => report(&failure, as_json, colors.stderr),
     }
 }
 
 /// Runs the request: the text for standard output, `None` when nothing (more) is to be printed.
-fn execute(request: &Request) -> Result<Option<String>, Failure> {
+/// Standard output shows colour when `colors` says so.
+fn execute(request: &Request, colors: Colors) -> Result<Option<String>, Failure> {
     let mut settings = settings()?;
     let args = &request.args;
     if args.len() == 1 && (args[0] == "--version" || args[0] == "-V") {
@@ -148,8 +195,8 @@ fn execute(request: &Request) -> Result<Option<String>, Failure> {
             format!("bead {VERSION}")
         }));
     }
-    if args.is_empty() || (args.len() == 1 && (args[0] == "-h" || args[0] == "--help")) {
-        return Ok(Some(if request.as_json {
+    let overview = || -> Result<Option<String>, Failure> {
+        Ok(Some(if request.as_json {
             // laid out for no width: the reader wraps it
             let mut out = Object::new();
             let overview = layout::lay_out(texts::OVERVIEW, None);
@@ -157,21 +204,25 @@ fn execute(request: &Request) -> Result<Option<String>, Failure> {
             write(&Value::from(out), Format::ASCII)?
         } else {
             let width = layout::width(settings.var("COLUMNS"));
-            let overview = layout::lay_out(texts::OVERVIEW, width);
-            overview.trim_end_matches('\n').to_owned()
-        }));
+            let overview = layout::lay_out_lines(texts::OVERVIEW, width);
+            paint::render_all(&overview, colors.stdout)
+        }))
+    };
+    if args.is_empty() || (args.len() == 1 && (args[0] == "-h" || args[0] == "--help")) {
+        return overview();
     }
     let ns = match parse::parse(args) {
         Parsed::Command(ns) => ns,
-        Parsed::Help(page) => {
+        Parsed::Help(Page::Top) => return overview(),
+        Parsed::Help(Page::Command(spec)) => {
             // `COMMAND --help`: the page, delivered like any output
-            let page = help::render(page, help::columns(settings.var("COLUMNS")));
+            let page = help::page(spec, layout::width(settings.var("COLUMNS")), colors.stdout);
             return match output::emit_raw(page.as_bytes()) {
                 Ok(()) | Err(Unwritten::Gone) => Ok(None),
                 Err(Unwritten::Failed(error)) => Err(beadroll_git::IoError::bare(&error).into()),
             };
         }
-        Parsed::Usage(message) => return Err(Failure::bytes(Code::Usage, message)),
+        Parsed::Usage(usage) => return Err(Failure::usage(usage.message, usage.usage)),
     };
     let free = ns.spec.workspace_free;
     // Select a directory for output files before starting the first git process.
@@ -190,7 +241,11 @@ fn execute(request: &Request) -> Result<Option<String>, Failure> {
     });
     let (outcome, offline, remote) = match &ws {
         Some(ws) if !free => dispatch(&Context { ws, actor: &actor }, &ns)?,
-        _ => (free::run(&ns, ws.as_ref(), &actor, &settings)?, false, None),
+        _ => (
+            free::run(&ns, ws.as_ref(), &actor, &settings, colors.stdout)?,
+            false,
+            None,
+        ),
     };
     let Some((result, lines)) = finish(outcome, ws.as_ref().filter(|_| !free), offline, &remote)?
     else {
@@ -201,19 +256,12 @@ fn execute(request: &Request) -> Result<Option<String>, Failure> {
         (result, _) if request.as_json => {
             Some(write(&result.unwrap_or(Value::Null), Format::SPACED)?)
         }
-        (_, lines) => Some(
-            lines
-                .unwrap_or_default()
-                .iter()
-                .map(|line| visible(line))
-                .collect::<Vec<_>>()
-                .join("\n"),
-        ),
+        (_, lines) => Some(paint::render_all(&lines.unwrap_or_default(), colors.stdout)),
     })
 }
 
 /// A command's answer: the result `--json` prints and the lines a human reads.
-type Answer = (Option<Value>, Option<Vec<String>>);
+type Answer = (Option<Value>, Option<Vec<Line>>);
 
 /// What follows a command: its own output written (`export`), what it wrote published unless it
 /// was `--offline`, and the count of events not yet published added; the result and lines then,
@@ -250,7 +298,7 @@ fn finish(
     {
         // a local write is published at once, as a close is
         if let Some(lines) = &mut lines {
-            lines.push(warning);
+            lines.push(Line::toned(Tone::Warning, warning));
         }
     }
     commands::note_unpublished(ws, &mut result, &mut lines)?;
@@ -442,8 +490,9 @@ fn write(value: &Value, format: Format) -> Result<String, Failure> {
 }
 
 /// Reports `failure` on standard error: `{"error": {"code", "message"}}` with `--json`, else
-/// `Error: message`. The status is the command's (2 for `USAGE`, else 1), whatever stderr does.
-fn report(failure: &Failure, as_json: bool) -> u8 {
+/// `Error: message`, painted when `color`. The status is the command's (2 for `USAGE`, else 1),
+/// whatever stderr does.
+fn report(failure: &Failure, as_json: bool, color: bool) -> u8 {
     let text = match (as_json, &failure.raw) {
         // Escape bytes that are not UTF-8 as lone surrogates.
         (true, Some(raw)) => format!(
@@ -459,7 +508,27 @@ fn report(failure: &Failure, as_json: bool) -> u8 {
             body.insert("error".into(), Value::from(error));
             json::write(&Value::from(body), Format::ASCII).unwrap_or_default()
         }
-        (false, _) => format!("Error: {}", visible(&failure.printed())),
+        (false, _) => {
+            let mut lines = vec![
+                Line::toned(Tone::Error, "Error:")
+                    .with(Tone::Plain, " ")
+                    .with(Tone::Plain, failure.printed()),
+            ];
+            if let Some(after) = &failure.after {
+                lines.push(Line::new());
+                lines.extend(
+                    after
+                        .split('\n')
+                        .map(|line| match line.strip_prefix("Usage:") {
+                            Some(usage) => {
+                                Line::toned(Tone::Heading, "Usage:").with(Tone::Plain, usage)
+                            }
+                            None => Line::from(line),
+                        }),
+                );
+            }
+            paint::render_all(&lines, color)
+        }
     };
     let _ = emit(Some(&text), Stream::Stderr);
     if failure.code == Code::Usage { 2 } else { 1 }

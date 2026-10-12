@@ -11,21 +11,23 @@ use beadroll_store::{
 };
 
 use super::help;
-use super::layout::{self, lay_out, paragraph};
-use super::parse::{Namespace, Page};
+use super::layout::{self, lay_out, lay_out_lines, paragraph, paragraph_lines};
+use super::parse::Namespace;
 use super::spec::find;
 use super::texts::{ONBOARD, OVERVIEW, PRIME, PRIME_TITLE};
-use crate::commands::{Failure, Outcome, need_tracker};
+use crate::commands::{Failure, Line, Outcome, Tone, need_tracker};
 
-/// Runs `help`, `prime` or `onboard`; `ws` is the workspace when there is one.
+/// Runs `help`, `prime` or `onboard`; `ws` is the workspace when there is one. A help page is
+/// coloured when `color`.
 pub(crate) fn run(
     ns: &Namespace,
     ws: Option<&Workspace>,
     actor: &Actor,
     settings: &Settings,
+    color: bool,
 ) -> Result<Outcome, Failure> {
     match ns.spec.name {
-        "help" => help_page(ns.text("command_name"), settings),
+        "help" => help_page(ns.text("command_name"), settings, color),
         "prime" => prime(ws, actor, settings),
         _ => Ok(text_outcome("onboard", ONBOARD)),
     }
@@ -33,30 +35,30 @@ pub(crate) fn run(
 
 /// The text as `{name: text}`, and as its lines.
 fn text_outcome(name: &str, text: &str) -> Outcome {
-    laid_out(name, text, text)
+    let lines = text
+        .trim_end_matches('\n')
+        .split('\n')
+        .map(Line::from)
+        .collect();
+    laid_out(name, text, lines)
 }
 
 /// `{name: text}`, `text` laid out for no width so that the reader wraps it, and `shown`, laid
 /// out for this terminal, as its lines.
-fn laid_out(name: &str, text: &str, shown: &str) -> Outcome {
+fn laid_out(name: &str, text: &str, shown: Vec<Line>) -> Outcome {
     let mut result = Object::new();
     result.insert(name.into(), Value::from(text));
-    let lines = shown
-        .trim_end_matches('\n')
-        .split('\n')
-        .map(str::to_owned)
-        .collect();
-    Outcome::new(result, lines)
+    Outcome::new(result, shown)
 }
 
 /// The overview, or one command's help page.
-fn help_page(name: Option<&OsStr>, settings: &Settings) -> Result<Outcome, Failure> {
+fn help_page(name: Option<&OsStr>, settings: &Settings, color: bool) -> Result<Outcome, Failure> {
     let Some(name) = name.filter(|n| !n.is_empty()) else {
         let width = layout::width(settings.var("COLUMNS"));
         return Ok(laid_out(
             "help",
             &lay_out(OVERVIEW, None),
-            &lay_out(OVERVIEW, width),
+            lay_out_lines(OVERVIEW, width),
         ));
     };
     let Some(spec) = name.to_str().and_then(find) else {
@@ -68,10 +70,14 @@ fn help_page(name: Option<&OsStr>, settings: &Settings) -> Result<Outcome, Failu
             ),
         ));
     };
-    let columns = help::columns(settings.var("COLUMNS"));
-    Ok(text_outcome(
+    let width = layout::width(settings.var("COLUMNS"));
+    // clap's page, painted already
+    let shown = help::page(spec, width, color);
+    let shown = Line::toned(Tone::Verbatim, shown.trim_end_matches('\n'));
+    Ok(laid_out(
         "help",
-        &help::render(Page::Command(spec), columns),
+        &help::page(spec, None, false),
+        vec![shown],
     ))
 }
 
@@ -103,15 +109,19 @@ fn prime(ws: Option<&Workspace>, actor: &Actor, settings: &Settings) -> Result<O
     if let Some(warning) = warning {
         context.insert(0, format!("Warning: {warning}."));
     }
-    let text = |width| {
-        let head: Vec<String> = std::iter::once(PRIME_TITLE)
-            .chain(context.iter().map(String::as_str))
-            .map(|line| paragraph(line, width))
-            .collect();
-        format!("{}\n\n{}", head.join("\n"), lay_out(PRIME, width))
-    };
+    let head: Vec<String> = std::iter::once(PRIME_TITLE)
+        .chain(context.iter().map(String::as_str))
+        .map(|line| paragraph(line, None))
+        .collect();
+    let text = format!("{}\n\n{}", head.join("\n"), lay_out(PRIME, None));
     let width = layout::width(settings.var("COLUMNS"));
-    let mut outcome = laid_out("prime", &text(None), &text(width));
+    let mut shown = vec![Line::toned(Tone::Strong, PRIME_TITLE)];
+    for line in &context {
+        shown.extend(paragraph_lines(line, width));
+    }
+    shown.push(Line::new());
+    shown.extend(lay_out_lines(PRIME, width));
+    let mut outcome = laid_out("prime", &text, shown);
     if let Some(Value::Object(result)) = &mut outcome.result {
         result.insert("actor".into(), Value::from(me.shown()));
     }

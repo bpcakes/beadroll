@@ -212,28 +212,73 @@ impl State {
 
     /// The one-line issue summary before output escaping.
     pub fn line(&self, issue: &Issue) -> String {
-        let who = issue
-            .get(Field::Assignee)
-            .filter(|a| a.truthy())
-            .map(|a| format!(" @{}", str_of(a)))
-            .unwrap_or_default();
-        let disputed = disputed(self, issue);
-        let flag = if disputed.is_empty() {
-            String::new()
-        } else {
-            format!(" ⚠ conflict: {}", disputed.join(", "))
-        };
-        let branch = branch(issue.where_())
-            .map(|b| format!(" ({})", str_of(b)))
-            .unwrap_or_default();
-        format!(
-            "{} {} [P{}] [{}] - {}{who}{branch}{flag}",
-            icon(issue.status()),
-            issue.key(),
-            issue.priority(),
-            str_of(&field(issue, Field::IssueType)),
-            str_of(&field(issue, Field::Title)),
-        )
+        self.row(issue).to_string()
+    }
+
+    /// The one-line issue summary in parts, for a reader that shows them apart ([`Row`]).
+    pub fn row(&self, issue: &Issue) -> Row {
+        Row {
+            icon: icon(issue.status()),
+            status: issue.status().to_owned(),
+            key: issue.key().to_owned(),
+            priority: issue.priority().to_string(),
+            kind: str_of(&field(issue, Field::IssueType)),
+            title: str_of(&field(issue, Field::Title)),
+            assignee: issue
+                .get(Field::Assignee)
+                .filter(|a| a.truthy())
+                .map(str_of),
+            branch: branch(issue.where_()).map(str_of),
+            disputed: disputed(self, issue),
+        }
+    }
+}
+
+/// An issue's one-line summary in parts: `{icon} {key} [P{priority}] [{kind}] - {title}`, then
+/// ` @{assignee}`, ` ({branch})` and ` ⚠ conflict: {disputed}` when there are any.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Row {
+    /// The status icon ([`icon`]).
+    pub icon: &'static str,
+    /// The status.
+    pub status: String,
+    /// The key.
+    pub key: String,
+    /// The priority, as it prints.
+    pub priority: String,
+    /// The type.
+    pub kind: String,
+    /// The title.
+    pub title: String,
+    /// The assignee, when there is one.
+    pub assignee: Option<String>,
+    /// The branch it was last worked on, when one is named.
+    pub branch: Option<String>,
+    /// The names of its disputed fields, sorted.
+    pub disputed: Vec<String>,
+}
+
+impl std::fmt::Display for Row {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Row {
+            icon,
+            key,
+            priority,
+            kind,
+            title,
+            ..
+        } = self;
+        write!(out, "{icon} {key} [P{priority}] [{kind}] - {title}")?;
+        if let Some(who) = &self.assignee {
+            write!(out, " @{who}")?;
+        }
+        if let Some(branch) = &self.branch {
+            write!(out, " ({branch})")?;
+        }
+        if !self.disputed.is_empty() {
+            write!(out, " ⚠ conflict: {}", self.disputed.join(", "))?;
+        }
+        Ok(())
     }
 }
 

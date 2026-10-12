@@ -7,7 +7,8 @@ use beadroll_core::json::{Int, Object, Value};
 use beadroll_store::view_outline;
 
 use super::{
-    Context, Failure, Filters, Outcome, first, need_tracker, resolve, select, text, texts,
+    Context, Failure, Filters, Line, Outcome, first, need_tracker, resolve, row, select, text,
+    texts,
 };
 
 /// The filters `list` and `ready` take, as given.
@@ -75,9 +76,9 @@ pub(crate) fn list(ctx: &Context<'_>, args: &ListArgs) -> Result<Outcome, Failur
     result.insert("limit".into(), Value::Int(limit.clone()));
     result.insert("offset".into(), Value::from(0));
     result.insert("has_more".into(), Value::Bool(shown.len() < total));
-    let mut lines: Vec<String> = shown.iter().map(|i| st.line(i)).collect();
+    let mut lines: Vec<Line> = shown.iter().map(|i| row(&st, i)).collect();
     if lines.is_empty() {
-        lines.push("No issues".to_owned());
+        lines.push("No issues".into());
     }
     Ok(Outcome::new(result, lines))
 }
@@ -115,9 +116,9 @@ pub(crate) fn ready(ctx: &Context<'_>, args: &ReadyArgs) -> Result<Outcome, Fail
         items = first(items, &args.filters.limit);
     }
     let result = Value::Array(items.iter().map(|i| Value::from(st.brief(i))).collect());
-    let mut lines: Vec<String> = items.iter().map(|i| st.line(i)).collect();
+    let mut lines: Vec<Line> = items.iter().map(|i| row(&st, i)).collect();
     if lines.is_empty() {
-        lines.push("Nothing is ready".to_owned());
+        lines.push("Nothing is ready".into());
     }
     Ok(Outcome::new(result, lines))
 }

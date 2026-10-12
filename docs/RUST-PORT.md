@@ -460,6 +460,9 @@ So core has a small strict parser and writer:
   lists the points and actions.
 
 **h. The CLI is argparse, ported.**
+- **Superseded (roll-dih8.23).** With the Python bead retired, the parity this bought had no reader
+  left: clap parses now, built from the same table into the same namespace a receipt signs
+  (`docs/REVIEWING.md` §2). What follows is how the port worked until then.
 - **Why not clap.** The plan chose clap, configured for argparse parity, as in jig, hushgit and
   sealtask. Phase 2b found that no configuration keeps argparse's behaviour (§5 row 13), which
   classes every argument as an option or a value before it assigns any, and takes positionals
@@ -668,8 +671,8 @@ duplicate versions warn; crates.io only.
 
 `fastrand` exists only for backoff jitter. `textwrap` (no default features but `unicode-width`)
 lays out bead's own texts, the overview, `prime` and the help pages' epilogs, by display width
-(roll-dih8.22); argparse's pages keep `cli/wrap.rs`, the port of Python's `textwrap` they were
-made with.
+(roll-dih8.22). `clap` (no default features, no derive macros) parses the command line and lays
+out its help pages since roll-dih8.23, which retired the argparse port and `cli/wrap.rs`.
 
 **Recent Rust the design uses** (each compiled and checked on 1.99.0, edition 2024):
 - let chains for the many validation ladders;
@@ -1115,7 +1118,7 @@ chased.
 | 10 | `os.path.realpath` is lenient and pure Python, with no case folding | Remote resolution and comparison | Port the algorithm; never libc `realpath` | keep |
 | 11 | `repr()` of values in `show`'s conflict lines: quote choice, escapes, printability | Human output | Port of the `repr` rules; printability table generated from CPython | keep |
 | 12 | `int()` accepts `" +5 "`, `"5_000"` and non-ASCII digits | `--estimate`, `--limit` | `text::parse_integer` | keep |
-| 13 | argparse: prefix abbreviations, last value wins, its own error texts and help layout | CLI | argparse's parser, help formatter and `textwrap` ported (§2.3h): behaviour and texts kept | keep behaviour |
+| 13 | argparse: prefix abbreviations, last value wins, its own error texts and help layout | CLI | argparse's parser, help formatter and `textwrap` ported (§2.3h): behaviour and texts kept; since roll-dih8.23 clap keeps the behaviour, not the texts | keep behaviour |
 | 14 | `str(True)` is `True` in human lines (`[PTrue]`) | `list`, `ready`, `show` | `IntegerField: Display` | keep |
 | 15 | `OSError` reads `"{strerror}: {filename}"`, and a rename names its target | IO errors | Paths attached at every call; libc `strerror` text | keep |
 | 16 | `json.dumps` dialects | Everywhere | `json::Format` | keep |

@@ -65,11 +65,16 @@ const NOT_UTF8_JSON: (i32, &str, &str) = (
 const ARGUMENTS: [Case; 14] = [
     (
         &[b"create", b"t", b"x\xff"],
-        (2, "", "Error: unrecognized arguments: x?"),
         (
             2,
             "",
-            r#"{"error": {"code": "USAGE", "message": "unrecognized arguments: x\udcff"}}"#,
+            "Error: unexpected argument 'x?' found\n\nUsage: bead create [OPTIONS] [TITLE]\n\n\
+             For more information, try '--help'.",
+        ),
+        (
+            2,
+            "",
+            r#"{"error": {"code": "USAGE", "message": "unexpected argument 'x\udcff' found"}}"#,
         ),
     ),
     (
@@ -77,13 +82,14 @@ const ARGUMENTS: [Case; 14] = [
         (
             2,
             "",
-            "Error: ambiguous option: --de=? could match --description, --description-file, \
-             --design, --deps",
+            "Error: unexpected argument '--de' found; tip: a similar argument exists: '--deps'\n\n\
+             Usage: bead create --deps <[TYPE:]ISSUE> [TITLE]\n\n\
+             For more information, try '--help'.",
         ),
         (
             2,
             "",
-            r#"{"error": {"code": "USAGE", "message": "ambiguous option: --de=\udcff could match --description, --description-file, --design, --deps"}}"#,
+            r#"{"error": {"code": "USAGE", "message": "unexpected argument '--de' found; tip: a similar argument exists: '--deps'"}}"#,
         ),
     ),
     (
@@ -153,12 +159,13 @@ const ARGUMENTS: [Case; 14] = [
         (
             2,
             "",
-            r"Error: argument --limit: invalid int value: '\udcff'",
+            "Error: invalid value '?' for '--limit <N>': not a whole number\n\n\
+             Usage: bead list [OPTIONS]\n\nFor more information, try '--help'.",
         ),
         (
             2,
             "",
-            r#"{"error": {"code": "USAGE", "message": "argument --limit: invalid int value: '\\udcff'"}}"#,
+            r#"{"error": {"code": "USAGE", "message": "invalid value '\udcff' for '--limit <N>': not a whole number"}}"#,
         ),
     ),
     (

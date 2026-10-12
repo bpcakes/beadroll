@@ -8,7 +8,7 @@ use super::layout::{BLANK, Block, Row, row};
 
 /// The overview of every command.
 pub(crate) const OVERVIEW: &[Block] = &[
-    Block::Text("usage: bead [--json] [--actor NAME] COMMAND [ARGS...]"),
+    Block::Text("Usage: bead [--json] [--actor NAME] [--color WHEN] COMMAND [ARGS...]"),
     Block::Text(
         "bead: a Beads-compatible issue tracker for agent crews working across worktrees and \
          machines. State lives outside the checkout, sync goes through a git ref, and a claim is \
@@ -92,6 +92,11 @@ const COMMANDS: &[Row] = &[
         "anywhere, for machine output; errors are {\"error\":{\"code\",\"message\"}} on stderr",
     ),
     row("", "--actor NAME", "to name yourself"),
+    row(
+        "",
+        "--color WHEN",
+        "auto (the default: on a terminal, unless NO_COLOR), always or never",
+    ),
     row(
         "",
         "--offline",

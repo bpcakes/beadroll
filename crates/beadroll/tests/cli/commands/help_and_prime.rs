@@ -37,7 +37,7 @@ fn help_command_shows_one_commands_usage() {
     let result = a.run(["help", "claim"]);
     assert_eq!(result.returncode(), 0, "{}", result.stderr);
     assert!(
-        result.stdout.contains("usage: bead claim"),
+        result.stdout.contains("Usage: bead claim"),
         "{}",
         result.stdout
     );
@@ -55,37 +55,25 @@ const COMMANDS: [&str; 27] = [
     "lint", "sync", "log", "info", "machines", "help", "prime", "onboard",
 ];
 
-/// The available commands, parsed from the invalid-choice diagnostic's list of choices.
-fn offered(a: &Machine) -> Vec<String> {
-    let refused = a.run(["no-such-command", "--json"]);
-    assert_eq!(code(&refused), "USAGE", "{}", refused.stderr);
-    let error = parse_json(&refused.stderr).unwrap();
-    let message = error["error"]["message"].as_str().expect("a message");
-    let choices = message
-        .split_once("(choose from ")
-        .and_then(|(_, rest)| rest.strip_suffix(')'))
-        .unwrap_or_else(|| panic!("no choices in {message:?}"));
-    // Quoted command names; unquoted names would also be accepted here.
-    let names = choices.split(", ").map(|name| name.trim_matches('\''));
-    names.map(str::to_owned).collect()
-}
-
-/// Each of the 27 commands must answer both `NAME --help` and `help NAME` with its usage. The
-/// unit test in `src/cli/spec.rs` checks the command table itself.
+/// Each of the 27 commands answers both `NAME --help` and `help NAME` with its usage, and a name
+/// that is no command is a usage error that suggests the one meant. The unit test in
+/// `src/cli/spec.rs` checks the command table itself.
 #[test]
 fn every_command_has_help() {
     let (_sandbox, a) = set_up();
-    let offered = offered(&a);
-    assert!(offered.len() > 20, "{offered:?}");
-    assert_eq!(offered, COMMANDS, "the commands bead offers");
     for name in COMMANDS {
         for argv in [[name, "--help"], ["help", name]] {
             let result = a.run(argv);
             assert_eq!(result.returncode(), 0, "{argv:?}: {}", result.stderr);
-            let (stdout, usage) = (&result.stdout, format!("usage: bead {name}"));
+            let (stdout, usage) = (&result.stdout, format!("Usage: bead {name}"));
             assert!(stdout.contains(&usage), "{argv:?}: {stdout}");
         }
     }
+    let refused = a.run(["lisst", "--json"]);
+    assert_eq!(code(&refused), "USAGE", "{}", refused.stderr);
+    let error = parse_json(&refused.stderr).unwrap();
+    let message = error["error"]["message"].as_str().expect("a message");
+    assert!(message.contains("'list'"), "{message}");
 }
 
 #[test]

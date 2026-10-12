@@ -1,5 +1,5 @@
 $ bead 
-usage: bead [--json] [--actor NAME] COMMAND [ARGS...]
+Usage: bead [--json] [--actor NAME] [--color WHEN] COMMAND [ARGS...]
 
 bead: a Beads-compatible issue tracker for agent crews working across worktrees
 and machines. State lives outside the checkout, sync goes through a git ref, and
@@ -35,6 +35,8 @@ Data        init [--prefix P] [--tracked] [--import FILE]   import FILE
 Flags       --json                 anywhere, for machine output; errors are
                                    {"error":{"code","message"}} on stderr
             --actor NAME           to name yourself
+            --color WHEN           auto (the default: on a terminal, unless
+                                   NO_COLOR), always or never
             --offline              record locally only; a claim made so is
                                    provisional
             --                     ends options
@@ -44,8 +46,8 @@ Help        help COMMAND           one command's page, as bead COMMAND --help
 exit 0
 
 $ bead 
-usage: bead [--json] [--actor NAME]
-COMMAND [ARGS...]
+Usage: bead [--json] [--actor NAME]
+[--color WHEN] COMMAND [ARGS...]
 
 bead: a Beads-compatible issue tracker
 for agent crews working across worktrees
@@ -114,6 +116,9 @@ Flags
     stderr
   --actor NAME
     to name yourself
+  --color WHEN
+    auto (the default: on a terminal,
+    unless NO_COLOR), always or never
   --offline
     record locally only; a claim made so
     is provisional
@@ -128,7 +133,7 @@ Help
 exit 0
 
 $ bead 
-usage: bead [--json] [--actor NAME] COMMAND [ARGS...]
+Usage: bead [--json] [--actor NAME] [--color WHEN] COMMAND [ARGS...]
 
 bead: a Beads-compatible issue tracker for agent crews working across worktrees and machines. State lives outside the checkout, sync goes through a git ref, and a claim is exclusive once the remote accepts it. Every event records machine, agent, thread, branch and commit.
 
@@ -152,6 +157,7 @@ Data        init [--prefix P] [--tracked] [--import FILE]   import FILE   export
 
 Flags       --json                 anywhere, for machine output; errors are {"error":{"code","message"}} on stderr
             --actor NAME           to name yourself
+            --color WHEN           auto (the default: on a terminal, unless NO_COLOR), always or never
             --offline              record locally only; a claim made so is provisional
             --                     ends options
 Help        help COMMAND           one command's page, as bead COMMAND --help shows it
@@ -228,7 +234,7 @@ Rules  Ownership belongs to your agent thread; a new session is a new owner. Con
 exit 0
 
 $ bead help
-usage: bead [--json] [--actor NAME] COMMAND [ARGS...]
+Usage: bead [--json] [--actor NAME] [--color WHEN] COMMAND [ARGS...]
 
 bead: a Beads-compatible issue tracker for agent crews working across worktrees
 and machines. State lives outside the checkout, sync goes through a git ref, and
@@ -264,6 +270,8 @@ Data        init [--prefix P] [--tracked] [--import FILE]   import FILE
 Flags       --json                 anywhere, for machine output; errors are
                                    {"error":{"code","message"}} on stderr
             --actor NAME           to name yourself
+            --color WHEN           auto (the default: on a terminal, unless
+                                   NO_COLOR), always or never
             --offline              record locally only; a claim made so is
                                    provisional
             --                     ends options
@@ -273,738 +281,981 @@ Help        help COMMAND           one command's page, as bead COMMAND --help
 exit 0
 
 $ bead -h x
-usage: bead [-h]
-            {init,import,export,create,update,claim,release,takeover,claims,close,reopen,delete,show,list,ready,blocked,search,dep,comments,lint,sync,log,info,machines,help,prime,onboard} ...
+Usage: bead [--json] [--actor NAME] [--color WHEN] COMMAND [ARGS...]
 
-bead: a Beads-compatible issue tracker for agent crews working across
-worktrees and machines. `bead help` gives the overview, `bead help COMMAND`
-one command's page.
+bead: a Beads-compatible issue tracker for agent crews working across worktrees
+and machines. State lives outside the checkout, sync goes through a git ref, and
+a claim is exclusive once the remote accepts it. Every event records machine,
+agent, thread, branch and commit.
 
-positional arguments:
-  {init,import,export,create,update,claim,release,takeover,claims,close,reopen,delete,show,list,ready,blocked,search,dep,comments,lint,sync,log,info,machines,help,prime,onboard}
-    init                create the tracker for this repository
-    import              import a Beads JSONL export
-    export              write Beads-compatible JSONL
-    create              create an issue
-    update              change fields, labels or parent; --claim or --status
-                        in_progress claims
-    claim               take ownership; it lasts until release, close or
-                        takeover
-    release             give up your claim
-    takeover            replace the current owner after investigating; needs
-                        --reason
-    claims              who holds what, and when each owner was last active
-    close               close issues
-    reopen              reopen issues
-    delete              delete issues
-    show                full detail for one or more issues
-    list                list issues (open ones by default)
-    ready               open issues with nothing blocking them
-    blocked             issues waiting on something
-    search              text search over ids, titles, bodies and comments
-    dep                 dependencies between issues: add, remove, list, tree,
-                        cycles
-    comments            read an issue's comments, or `comments add ID TEXT` to
-                        record one
-    lint                open work items without acceptance criteria
-    sync                exchange the journal with other machines through the
-                        coordination ref
-    log                 who did what: time, machine, actor (its name, else
-                        agent and thread), operation
-    info                where the tracker lives and who you are
-    machines            machines seen in the journal
-    help                this overview, or `help COMMAND` for one command's
-                        usage
-    prime               the workflow an agent should load at the start of a
-                        session
-    onboard             a snippet for CLAUDE.md / AGENTS.md
+Find work   ready [ID]             unblocked open issues nobody holds; ID: only
+                                   its subtree
+            list [-s STATUS] [-a]  issues (open ones by default); --parent, -l,
+                                   -t, -p filters
+            show ID...             full detail: body, acceptance criteria, deps,
+                                   comments, claim
+            search TEXT   blocked   dep tree ID   dep cycles
+Do work     claim ID...            take ownership (or: update ID --status
+                                   in_progress)
+            comments add ID TEXT   record progress and decisions
+            update ID [--title T] [--notes N] [--add-label L] [--parent P]
+              [--status S]
+            close ID -r REASON     finish: ends your claim and publishes at once
+            release ID   takeover ID -r REASON   reopen ID   delete ID -r REASON
+Shape work  create TITLE [-t TYPE] [-p 0-4] [--parent P] [--deps blocks:ID]
+              [-l LABEL]
+            dep add A B [--type blocks|parent-child]   dep remove A B   lint
+Coordinate  sync                   exchange journals with the other machines
+            claims                 who holds what, on which branch, since when
+            log ID   info   machines
+Agents      prime                  the workflow to load at the start of a
+                                   session
+            onboard                a snippet for CLAUDE.md / AGENTS.md
+Data        init [--prefix P] [--tracked] [--import FILE]   import FILE
+              export [-o FILE]
 
-options:
-  -h, --help            show this help message and exit
+Flags       --json                 anywhere, for machine output; errors are
+                                   {"error":{"code","message"}} on stderr
+            --actor NAME           to name yourself
+            --color WHEN           auto (the default: on a terminal, unless
+                                   NO_COLOR), always or never
+            --offline              record locally only; a claim made so is
+                                   provisional
+            --                     ends options
+Help        help COMMAND           one command's page, as bead COMMAND --help
+                                   shows it
+            --version              this bead's version
 exit 0
 
 $ bead init --help
-usage: bead init [-h] [--prefix PREFIX] [--import BEADS_JSONL] [--tracked]
-                 [--remote REMOTE] [--offline]
-
 create the tracker for this repository
 
-options:
-  -h, --help            show this help message and exit
-  --prefix PREFIX       the issue id prefix (default: from the repository's
-                        name)
-  --import BEADS_JSONL  a Beads JSONL export to import (- for standard input)
-  --tracked             write .beadroll.json naming this tracker, to commit:
-                        only for a remote other than origin, or "where": false
-  --remote REMOTE       coordination remote (name or URL) if it is not origin
-  --offline             record locally only; the next sync or online command
-                        publishes it
+Usage: bead init [OPTIONS]
+
+Options:
+      --prefix <PREFIX>       the issue id prefix (default: from the
+                              repository's name)
+      --import <BEADS_JSONL>  a Beads JSONL export to import (- for standard
+                              input)
+      --tracked               write .beadroll.json naming this tracker, to
+                              commit: only for a remote other than origin, or
+                              "where": false
+      --remote <REMOTE>       coordination remote (name or URL) if it is not
+                              origin
+      --offline               record locally only; the next sync or online
+                              command publishes it
+  -h, --help                  Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help init
-usage: bead init [-h] [--prefix PREFIX] [--import BEADS_JSONL] [--tracked]
-                 [--remote REMOTE] [--offline]
-
 create the tracker for this repository
 
-options:
-  -h, --help            show this help message and exit
-  --prefix PREFIX       the issue id prefix (default: from the repository's
-                        name)
-  --import BEADS_JSONL  a Beads JSONL export to import (- for standard input)
-  --tracked             write .beadroll.json naming this tracker, to commit:
-                        only for a remote other than origin, or "where": false
-  --remote REMOTE       coordination remote (name or URL) if it is not origin
-  --offline             record locally only; the next sync or online command
-                        publishes it
+Usage: bead init [OPTIONS]
+
+Options:
+      --prefix <PREFIX>       the issue id prefix (default: from the
+                              repository's name)
+      --import <BEADS_JSONL>  a Beads JSONL export to import (- for standard
+                              input)
+      --tracked               write .beadroll.json naming this tracker, to
+                              commit: only for a remote other than origin, or
+                              "where": false
+      --remote <REMOTE>       coordination remote (name or URL) if it is not
+                              origin
+      --offline               record locally only; the next sync or online
+                              command publishes it
+  -h, --help                  Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead import --help
-usage: bead import [-h] [--offline] FILE
-
 import a Beads JSONL export
 
-positional arguments:
-  FILE        a Beads JSONL export (- for standard input)
+Usage: bead import [OPTIONS] <FILE>
 
-options:
-  -h, --help  show this help message and exit
-  --offline   record locally only; the next sync or online command publishes
-              it
+Arguments:
+  <FILE>  a Beads JSONL export (- for standard input)
+
+Options:
+      --offline  record locally only; the next sync or online command publishes
+                 it
+  -h, --help     Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help import
-usage: bead import [-h] [--offline] FILE
-
 import a Beads JSONL export
 
-positional arguments:
-  FILE        a Beads JSONL export (- for standard input)
+Usage: bead import [OPTIONS] <FILE>
 
-options:
-  -h, --help  show this help message and exit
-  --offline   record locally only; the next sync or online command publishes
-              it
+Arguments:
+  <FILE>  a Beads JSONL export (- for standard input)
+
+Options:
+      --offline  record locally only; the next sync or online command publishes
+                 it
+  -h, --help     Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead export --help
-usage: bead export [-h] [-o FILE]
-
 write Beads-compatible JSONL
 
-options:
-  -h, --help         show this help message and exit
-  -o, --output FILE  write to FILE instead of standard output
+Usage: bead export [OPTIONS]
+
+Options:
+  -o, --output <FILE>  write to FILE instead of standard output
+  -h, --help           Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help export
-usage: bead export [-h] [-o FILE]
-
 write Beads-compatible JSONL
 
-options:
-  -h, --help         show this help message and exit
-  -o, --output FILE  write to FILE instead of standard output
+Usage: bead export [OPTIONS]
+
+Options:
+  -o, --output <FILE>  write to FILE instead of standard output
+  -h, --help           Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead create --help
-usage: bead create [-h] [--title TITLE] [-d DESCRIPTION]
-                   [--description-file FILE] [--acceptance-criteria TEXT]
-                   [--notes NOTES] [--design DESIGN] [-p PRIORITY] [-t TYPE]
-                   [--status STATUS] [--assignee ASSIGNEE]
-                   [--estimate MINUTES] [--external-ref EXTERNAL_REF]
-                   [--parent PARENT] [-l LABEL] [--deps [TYPE:]ISSUE]
-                   [--silent] [--offline]
-                   [TITLE]
-
 create an issue
 
-positional arguments:
-  TITLE                 the issue's title
+Usage: bead create [OPTIONS] [TITLE]
 
-options:
-  -h, --help            show this help message and exit
-  --title TITLE         the title, given as an option instead
-  -d, --description DESCRIPTION
-                        the body
-  --description-file FILE
-                        the body, read from FILE (- for standard input)
-  --acceptance-criteria, --acceptance TEXT
-                        what done means (`bead lint` lists work without it)
-  --notes NOTES         working notes
-  --design DESIGN       design notes
-  -p, --priority PRIORITY
-                        0 (most urgent) to 4
-  -t, --type TYPE       task, bug, feature, epic, chore, or a word of your own
-  --status, -s STATUS   open, blocked, deferred or closed; in_progress is
-                        reached by claiming
-  --assignee ASSIGNEE   who it is assigned to
-  --estimate MINUTES    estimated minutes
-  --external-ref EXTERNAL_REF
-                        a reference elsewhere: gh-12, a URL
-  --parent PARENT       the issue it is a child of
-  -l, --labels, --label LABEL
-                        a label (repeat it or use commas)
-  --deps [TYPE:]ISSUE   issues it depends on, comma-separated (below)
-  --silent              print only the new id
-  --offline             record locally only; the next sync or online command
-                        publishes it
+Arguments:
+  [TITLE]  the issue's title
+
+Options:
+      --title <TITLE>
+          the title, given as an option instead
+  -d, --description <DESCRIPTION>
+          the body
+      --description-file <FILE>
+          the body, read from FILE (- for standard input)
+      --acceptance-criteria <TEXT>
+          what done means (`bead lint` lists work without it) [alias:
+          --acceptance]
+      --notes <NOTES>
+          working notes
+      --design <DESIGN>
+          design notes
+  -p, --priority <PRIORITY>
+          0 (most urgent) to 4
+  -t, --type <TYPE>
+          task, bug, feature, epic, chore, or a word of your own
+  -s, --status <STATUS>
+          open, blocked, deferred or closed; in_progress is reached by claiming
+      --assignee <ASSIGNEE>
+          who it is assigned to
+      --estimate <MINUTES>
+          estimated minutes
+      --external-ref <EXTERNAL_REF>
+          a reference elsewhere: gh-12, a URL
+      --parent <PARENT>
+          the issue it is a child of
+  -l, --labels <LABEL>
+          a label (repeat it or use commas) [alias: --label]
+      --deps <[TYPE:]ISSUE>
+          issues it depends on, comma-separated (below)
+      --silent
+          print only the new id
+      --offline
+          record locally only; the next sync or online command publishes it
+  -h, --help
+          Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 
 A new issue is an open task at priority 2 unless -s, -t or -p say otherwise.
 
---deps names the issues the new one depends on. ISSUE (or blocks:ISSUE) keeps
-it from being ready until ISSUE is done: closed or deleted. Another type, such
-as related:ISSUE or discovered-from:ISSUE, records a link that blocks nothing.
+--deps names the issues the new one depends on. ISSUE (or blocks:ISSUE) keeps it
+from being ready until ISSUE is done: closed or deleted. Another type, such as
+related:ISSUE or discovered-from:ISSUE, records a link that blocks nothing.
 exit 0
 
 $ bead help create
-usage: bead create [-h] [--title TITLE] [-d DESCRIPTION]
-                   [--description-file FILE] [--acceptance-criteria TEXT]
-                   [--notes NOTES] [--design DESIGN] [-p PRIORITY] [-t TYPE]
-                   [--status STATUS] [--assignee ASSIGNEE]
-                   [--estimate MINUTES] [--external-ref EXTERNAL_REF]
-                   [--parent PARENT] [-l LABEL] [--deps [TYPE:]ISSUE]
-                   [--silent] [--offline]
-                   [TITLE]
-
 create an issue
 
-positional arguments:
-  TITLE                 the issue's title
+Usage: bead create [OPTIONS] [TITLE]
 
-options:
-  -h, --help            show this help message and exit
-  --title TITLE         the title, given as an option instead
-  -d, --description DESCRIPTION
-                        the body
-  --description-file FILE
-                        the body, read from FILE (- for standard input)
-  --acceptance-criteria, --acceptance TEXT
-                        what done means (`bead lint` lists work without it)
-  --notes NOTES         working notes
-  --design DESIGN       design notes
-  -p, --priority PRIORITY
-                        0 (most urgent) to 4
-  -t, --type TYPE       task, bug, feature, epic, chore, or a word of your own
-  --status, -s STATUS   open, blocked, deferred or closed; in_progress is
-                        reached by claiming
-  --assignee ASSIGNEE   who it is assigned to
-  --estimate MINUTES    estimated minutes
-  --external-ref EXTERNAL_REF
-                        a reference elsewhere: gh-12, a URL
-  --parent PARENT       the issue it is a child of
-  -l, --labels, --label LABEL
-                        a label (repeat it or use commas)
-  --deps [TYPE:]ISSUE   issues it depends on, comma-separated (below)
-  --silent              print only the new id
-  --offline             record locally only; the next sync or online command
-                        publishes it
+Arguments:
+  [TITLE]  the issue's title
+
+Options:
+      --title <TITLE>
+          the title, given as an option instead
+  -d, --description <DESCRIPTION>
+          the body
+      --description-file <FILE>
+          the body, read from FILE (- for standard input)
+      --acceptance-criteria <TEXT>
+          what done means (`bead lint` lists work without it) [alias:
+          --acceptance]
+      --notes <NOTES>
+          working notes
+      --design <DESIGN>
+          design notes
+  -p, --priority <PRIORITY>
+          0 (most urgent) to 4
+  -t, --type <TYPE>
+          task, bug, feature, epic, chore, or a word of your own
+  -s, --status <STATUS>
+          open, blocked, deferred or closed; in_progress is reached by claiming
+      --assignee <ASSIGNEE>
+          who it is assigned to
+      --estimate <MINUTES>
+          estimated minutes
+      --external-ref <EXTERNAL_REF>
+          a reference elsewhere: gh-12, a URL
+      --parent <PARENT>
+          the issue it is a child of
+  -l, --labels <LABEL>
+          a label (repeat it or use commas) [alias: --label]
+      --deps <[TYPE:]ISSUE>
+          issues it depends on, comma-separated (below)
+      --silent
+          print only the new id
+      --offline
+          record locally only; the next sync or online command publishes it
+  -h, --help
+          Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 
 A new issue is an open task at priority 2 unless -s, -t or -p say otherwise.
 
---deps names the issues the new one depends on. ISSUE (or blocks:ISSUE) keeps
-it from being ready until ISSUE is done: closed or deleted. Another type, such
-as related:ISSUE or discovered-from:ISSUE, records a link that blocks nothing.
+--deps names the issues the new one depends on. ISSUE (or blocks:ISSUE) keeps it
+from being ready until ISSUE is done: closed or deleted. Another type, such as
+related:ISSUE or discovered-from:ISSUE, records a link that blocks nothing.
 exit 0
 
 $ bead update --help
-usage: bead update [-h] [--title TITLE] [-d DESCRIPTION]
-                   [--description-file FILE] [--acceptance-criteria TEXT]
-                   [--notes NOTES] [--design DESIGN] [-p PRIORITY] [-t TYPE]
-                   [--status STATUS] [--assignee ASSIGNEE]
-                   [--estimate MINUTES] [--external-ref EXTERNAL_REF]
-                   [--parent PARENT] [--claim] [--force] [--add-label LABEL]
-                   [--remove-label LABEL] [--set-labels LABELS] [--offline]
-                   [--remote REMOTE]
-                   ID [ID ...]
-
 change fields, labels or parent; --claim or --status in_progress claims
 
-positional arguments:
-  ID                    issue ids, in full or without the prefix
+Usage: bead update [OPTIONS] <ID>...
 
-options:
-  -h, --help            show this help message and exit
-  --title TITLE         the new title
-  -d, --description DESCRIPTION
-                        the body
-  --description-file FILE
-                        the body, read from FILE (- for standard input)
-  --acceptance-criteria, --acceptance TEXT
-                        what done means (`bead lint` lists work without it)
-  --notes NOTES         working notes
-  --design DESIGN       design notes
-  -p, --priority PRIORITY
-                        0 (most urgent) to 4
-  -t, --type TYPE       task, bug, feature, epic, chore, or a word of your own
-  --status, -s STATUS   open, blocked, deferred or closed; in_progress is
-                        reached by claiming
-  --assignee ASSIGNEE   who it is assigned to
-  --estimate MINUTES    estimated minutes
-  --external-ref EXTERNAL_REF
-                        a reference elsewhere: gh-12, a URL
-  --parent PARENT       the issue it is a child of
-  --claim               claim it too: the claim and the edits land together
-  --force               change the status of an issue someone else has claimed
-  --add-label LABEL     a label to add (repeat it or use commas)
-  --remove-label LABEL  a label to remove (repeat it or use commas)
-  --set-labels LABELS   replace every label with these, comma-separated
-  --offline             do not contact the remote; a claim made this way is
-                        provisional
-  --remote REMOTE       coordination remote (name or URL) for this call
+Arguments:
+  <ID>...  issue ids, in full or without the prefix
+
+Options:
+      --title <TITLE>
+          the new title
+  -d, --description <DESCRIPTION>
+          the body
+      --description-file <FILE>
+          the body, read from FILE (- for standard input)
+      --acceptance-criteria <TEXT>
+          what done means (`bead lint` lists work without it) [alias:
+          --acceptance]
+      --notes <NOTES>
+          working notes
+      --design <DESIGN>
+          design notes
+  -p, --priority <PRIORITY>
+          0 (most urgent) to 4
+  -t, --type <TYPE>
+          task, bug, feature, epic, chore, or a word of your own
+  -s, --status <STATUS>
+          open, blocked, deferred or closed; in_progress is reached by claiming
+      --assignee <ASSIGNEE>
+          who it is assigned to
+      --estimate <MINUTES>
+          estimated minutes
+      --external-ref <EXTERNAL_REF>
+          a reference elsewhere: gh-12, a URL
+      --parent <PARENT>
+          the issue it is a child of
+      --claim
+          claim it too: the claim and the edits land together
+      --force
+          change the status of an issue someone else has claimed
+      --add-label <LABEL>
+          a label to add (repeat it or use commas)
+      --remove-label <LABEL>
+          a label to remove (repeat it or use commas)
+      --set-labels <LABELS>
+          replace every label with these, comma-separated
+      --offline
+          do not contact the remote; a claim made this way is provisional
+      --remote <REMOTE>
+          coordination remote (name or URL) for this call
+  -h, --help
+          Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help update
-usage: bead update [-h] [--title TITLE] [-d DESCRIPTION]
-                   [--description-file FILE] [--acceptance-criteria TEXT]
-                   [--notes NOTES] [--design DESIGN] [-p PRIORITY] [-t TYPE]
-                   [--status STATUS] [--assignee ASSIGNEE]
-                   [--estimate MINUTES] [--external-ref EXTERNAL_REF]
-                   [--parent PARENT] [--claim] [--force] [--add-label LABEL]
-                   [--remove-label LABEL] [--set-labels LABELS] [--offline]
-                   [--remote REMOTE]
-                   ID [ID ...]
-
 change fields, labels or parent; --claim or --status in_progress claims
 
-positional arguments:
-  ID                    issue ids, in full or without the prefix
+Usage: bead update [OPTIONS] <ID>...
 
-options:
-  -h, --help            show this help message and exit
-  --title TITLE         the new title
-  -d, --description DESCRIPTION
-                        the body
-  --description-file FILE
-                        the body, read from FILE (- for standard input)
-  --acceptance-criteria, --acceptance TEXT
-                        what done means (`bead lint` lists work without it)
-  --notes NOTES         working notes
-  --design DESIGN       design notes
-  -p, --priority PRIORITY
-                        0 (most urgent) to 4
-  -t, --type TYPE       task, bug, feature, epic, chore, or a word of your own
-  --status, -s STATUS   open, blocked, deferred or closed; in_progress is
-                        reached by claiming
-  --assignee ASSIGNEE   who it is assigned to
-  --estimate MINUTES    estimated minutes
-  --external-ref EXTERNAL_REF
-                        a reference elsewhere: gh-12, a URL
-  --parent PARENT       the issue it is a child of
-  --claim               claim it too: the claim and the edits land together
-  --force               change the status of an issue someone else has claimed
-  --add-label LABEL     a label to add (repeat it or use commas)
-  --remove-label LABEL  a label to remove (repeat it or use commas)
-  --set-labels LABELS   replace every label with these, comma-separated
-  --offline             do not contact the remote; a claim made this way is
-                        provisional
-  --remote REMOTE       coordination remote (name or URL) for this call
+Arguments:
+  <ID>...  issue ids, in full or without the prefix
+
+Options:
+      --title <TITLE>
+          the new title
+  -d, --description <DESCRIPTION>
+          the body
+      --description-file <FILE>
+          the body, read from FILE (- for standard input)
+      --acceptance-criteria <TEXT>
+          what done means (`bead lint` lists work without it) [alias:
+          --acceptance]
+      --notes <NOTES>
+          working notes
+      --design <DESIGN>
+          design notes
+  -p, --priority <PRIORITY>
+          0 (most urgent) to 4
+  -t, --type <TYPE>
+          task, bug, feature, epic, chore, or a word of your own
+  -s, --status <STATUS>
+          open, blocked, deferred or closed; in_progress is reached by claiming
+      --assignee <ASSIGNEE>
+          who it is assigned to
+      --estimate <MINUTES>
+          estimated minutes
+      --external-ref <EXTERNAL_REF>
+          a reference elsewhere: gh-12, a URL
+      --parent <PARENT>
+          the issue it is a child of
+      --claim
+          claim it too: the claim and the edits land together
+      --force
+          change the status of an issue someone else has claimed
+      --add-label <LABEL>
+          a label to add (repeat it or use commas)
+      --remove-label <LABEL>
+          a label to remove (repeat it or use commas)
+      --set-labels <LABELS>
+          replace every label with these, comma-separated
+      --offline
+          do not contact the remote; a claim made this way is provisional
+      --remote <REMOTE>
+          coordination remote (name or URL) for this call
+  -h, --help
+          Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead claim --help
-usage: bead claim [-h] [--offline] [--remote REMOTE] ID [ID ...]
-
 take ownership; it lasts until release, close or takeover
 
-positional arguments:
-  ID               issue ids, in full or without the prefix
+Usage: bead claim [OPTIONS] <ID>...
 
-options:
-  -h, --help       show this help message and exit
-  --offline        do not contact the remote; a claim made this way is
-                   provisional
-  --remote REMOTE  coordination remote (name or URL) for this call
+Arguments:
+  <ID>...  issue ids, in full or without the prefix
+
+Options:
+      --offline          do not contact the remote; a claim made this way is
+                         provisional
+      --remote <REMOTE>  coordination remote (name or URL) for this call
+  -h, --help             Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help claim
-usage: bead claim [-h] [--offline] [--remote REMOTE] ID [ID ...]
-
 take ownership; it lasts until release, close or takeover
 
-positional arguments:
-  ID               issue ids, in full or without the prefix
+Usage: bead claim [OPTIONS] <ID>...
 
-options:
-  -h, --help       show this help message and exit
-  --offline        do not contact the remote; a claim made this way is
-                   provisional
-  --remote REMOTE  coordination remote (name or URL) for this call
+Arguments:
+  <ID>...  issue ids, in full or without the prefix
+
+Options:
+      --offline          do not contact the remote; a claim made this way is
+                         provisional
+      --remote <REMOTE>  coordination remote (name or URL) for this call
+  -h, --help             Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead release --help
-usage: bead release [-h] [-r REASON] [--offline] [--remote REMOTE] ID [ID ...]
-
 give up your claim
 
-positional arguments:
-  ID                   issue ids, in full or without the prefix
+Usage: bead release [OPTIONS] <ID>...
 
-options:
-  -h, --help           show this help message and exit
-  -r, --reason REASON  why, for whoever takes it next
-  --offline            do not contact the remote; a claim made this way is
-                       provisional
-  --remote REMOTE      coordination remote (name or URL) for this call
+Arguments:
+  <ID>...  issue ids, in full or without the prefix
+
+Options:
+  -r, --reason <REASON>  why, for whoever takes it next
+      --offline          do not contact the remote; a claim made this way is
+                         provisional
+      --remote <REMOTE>  coordination remote (name or URL) for this call
+  -h, --help             Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help release
-usage: bead release [-h] [-r REASON] [--offline] [--remote REMOTE] ID [ID ...]
-
 give up your claim
 
-positional arguments:
-  ID                   issue ids, in full or without the prefix
+Usage: bead release [OPTIONS] <ID>...
 
-options:
-  -h, --help           show this help message and exit
-  -r, --reason REASON  why, for whoever takes it next
-  --offline            do not contact the remote; a claim made this way is
-                       provisional
-  --remote REMOTE      coordination remote (name or URL) for this call
+Arguments:
+  <ID>...  issue ids, in full or without the prefix
+
+Options:
+  -r, --reason <REASON>  why, for whoever takes it next
+      --offline          do not contact the remote; a claim made this way is
+                         provisional
+      --remote <REMOTE>  coordination remote (name or URL) for this call
+  -h, --help             Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead takeover --help
-usage: bead takeover [-h] [-r REASON] [--offline] [--remote REMOTE]
-                     ID [ID ...]
-
 replace the current owner after investigating; needs --reason
 
-positional arguments:
-  ID                   issue ids, in full or without the prefix
+Usage: bead takeover [OPTIONS] <ID>...
 
-options:
-  -h, --help           show this help message and exit
-  -r, --reason REASON  required: why, and what you checked first
-  --offline            do not contact the remote; a claim made this way is
-                       provisional
-  --remote REMOTE      coordination remote (name or URL) for this call
+Arguments:
+  <ID>...  issue ids, in full or without the prefix
+
+Options:
+  -r, --reason <REASON>  required: why, and what you checked first
+      --offline          do not contact the remote; a claim made this way is
+                         provisional
+      --remote <REMOTE>  coordination remote (name or URL) for this call
+  -h, --help             Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help takeover
-usage: bead takeover [-h] [-r REASON] [--offline] [--remote REMOTE]
-                     ID [ID ...]
-
 replace the current owner after investigating; needs --reason
 
-positional arguments:
-  ID                   issue ids, in full or without the prefix
+Usage: bead takeover [OPTIONS] <ID>...
 
-options:
-  -h, --help           show this help message and exit
-  -r, --reason REASON  required: why, and what you checked first
-  --offline            do not contact the remote; a claim made this way is
-                       provisional
-  --remote REMOTE      coordination remote (name or URL) for this call
+Arguments:
+  <ID>...  issue ids, in full or without the prefix
+
+Options:
+  -r, --reason <REASON>  required: why, and what you checked first
+      --offline          do not contact the remote; a claim made this way is
+                         provisional
+      --remote <REMOTE>  coordination remote (name or URL) for this call
+  -h, --help             Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead claims --help
-usage: bead claims [-h]
-
 who holds what, and when each owner was last active
 
-options:
-  -h, --help  show this help message and exit
+Usage: bead claims [OPTIONS]
+
+Options:
+  -h, --help  Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help claims
-usage: bead claims [-h]
-
 who holds what, and when each owner was last active
 
-options:
-  -h, --help  show this help message and exit
+Usage: bead claims [OPTIONS]
+
+Options:
+  -h, --help  Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead close --help
-usage: bead close [-h] [-r REASON] [--force] [--offline] [--remote REMOTE]
-                  ID [ID ...]
-
 close issues
 
-positional arguments:
-  ID                   issue ids, in full or without the prefix
+Usage: bead close [OPTIONS] <ID>...
 
-options:
-  -h, --help           show this help message and exit
-  -r, --reason REASON  recorded with it: what was done, or why
-  --force              act on an issue someone else has claimed
-  --offline            do not contact the remote; a claim made this way is
-                       provisional
-  --remote REMOTE      coordination remote (name or URL) for this call
+Arguments:
+  <ID>...  issue ids, in full or without the prefix
+
+Options:
+  -r, --reason <REASON>  recorded with it: what was done, or why
+      --force            act on an issue someone else has claimed
+      --offline          do not contact the remote; a claim made this way is
+                         provisional
+      --remote <REMOTE>  coordination remote (name or URL) for this call
+  -h, --help             Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help close
-usage: bead close [-h] [-r REASON] [--force] [--offline] [--remote REMOTE]
-                  ID [ID ...]
-
 close issues
 
-positional arguments:
-  ID                   issue ids, in full or without the prefix
+Usage: bead close [OPTIONS] <ID>...
 
-options:
-  -h, --help           show this help message and exit
-  -r, --reason REASON  recorded with it: what was done, or why
-  --force              act on an issue someone else has claimed
-  --offline            do not contact the remote; a claim made this way is
-                       provisional
-  --remote REMOTE      coordination remote (name or URL) for this call
+Arguments:
+  <ID>...  issue ids, in full or without the prefix
+
+Options:
+  -r, --reason <REASON>  recorded with it: what was done, or why
+      --force            act on an issue someone else has claimed
+      --offline          do not contact the remote; a claim made this way is
+                         provisional
+      --remote <REMOTE>  coordination remote (name or URL) for this call
+  -h, --help             Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead reopen --help
-usage: bead reopen [-h] [-r REASON] [--force] [--offline] [--remote REMOTE]
-                   ID [ID ...]
-
 reopen issues
 
-positional arguments:
-  ID                   issue ids, in full or without the prefix
+Usage: bead reopen [OPTIONS] <ID>...
 
-options:
-  -h, --help           show this help message and exit
-  -r, --reason REASON  recorded with it: what was done, or why
-  --force              act on an issue someone else has claimed
-  --offline            do not contact the remote; a claim made this way is
-                       provisional
-  --remote REMOTE      coordination remote (name or URL) for this call
+Arguments:
+  <ID>...  issue ids, in full or without the prefix
+
+Options:
+  -r, --reason <REASON>  recorded with it: what was done, or why
+      --force            act on an issue someone else has claimed
+      --offline          do not contact the remote; a claim made this way is
+                         provisional
+      --remote <REMOTE>  coordination remote (name or URL) for this call
+  -h, --help             Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help reopen
-usage: bead reopen [-h] [-r REASON] [--force] [--offline] [--remote REMOTE]
-                   ID [ID ...]
-
 reopen issues
 
-positional arguments:
-  ID                   issue ids, in full or without the prefix
+Usage: bead reopen [OPTIONS] <ID>...
 
-options:
-  -h, --help           show this help message and exit
-  -r, --reason REASON  recorded with it: what was done, or why
-  --force              act on an issue someone else has claimed
-  --offline            do not contact the remote; a claim made this way is
-                       provisional
-  --remote REMOTE      coordination remote (name or URL) for this call
+Arguments:
+  <ID>...  issue ids, in full or without the prefix
+
+Options:
+  -r, --reason <REASON>  recorded with it: what was done, or why
+      --force            act on an issue someone else has claimed
+      --offline          do not contact the remote; a claim made this way is
+                         provisional
+      --remote <REMOTE>  coordination remote (name or URL) for this call
+  -h, --help             Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead delete --help
-usage: bead delete [-h] [-r REASON] [--force] [--offline] [--remote REMOTE]
-                   ID [ID ...]
-
 delete issues
 
-positional arguments:
-  ID                   issue ids, in full or without the prefix
+Usage: bead delete [OPTIONS] <ID>...
 
-options:
-  -h, --help           show this help message and exit
-  -r, --reason REASON  recorded with it: what was done, or why
-  --force              act on an issue someone else has claimed
-  --offline            do not contact the remote; a claim made this way is
-                       provisional
-  --remote REMOTE      coordination remote (name or URL) for this call
+Arguments:
+  <ID>...  issue ids, in full or without the prefix
+
+Options:
+  -r, --reason <REASON>  recorded with it: what was done, or why
+      --force            act on an issue someone else has claimed
+      --offline          do not contact the remote; a claim made this way is
+                         provisional
+      --remote <REMOTE>  coordination remote (name or URL) for this call
+  -h, --help             Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help delete
-usage: bead delete [-h] [-r REASON] [--force] [--offline] [--remote REMOTE]
-                   ID [ID ...]
-
 delete issues
 
-positional arguments:
-  ID                   issue ids, in full or without the prefix
+Usage: bead delete [OPTIONS] <ID>...
 
-options:
-  -h, --help           show this help message and exit
-  -r, --reason REASON  recorded with it: what was done, or why
-  --force              act on an issue someone else has claimed
-  --offline            do not contact the remote; a claim made this way is
-                       provisional
-  --remote REMOTE      coordination remote (name or URL) for this call
+Arguments:
+  <ID>...  issue ids, in full or without the prefix
+
+Options:
+  -r, --reason <REASON>  recorded with it: what was done, or why
+      --force            act on an issue someone else has claimed
+      --offline          do not contact the remote; a claim made this way is
+                         provisional
+      --remote <REMOTE>  coordination remote (name or URL) for this call
+  -h, --help             Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead show --help
-usage: bead show [-h] ID [ID ...]
-
 full detail for one or more issues
 
-positional arguments:
-  ID          issue ids, in full or without the prefix
+Usage: bead show [OPTIONS] <ID>...
 
-options:
-  -h, --help  show this help message and exit
+Arguments:
+  <ID>...  issue ids, in full or without the prefix
+
+Options:
+  -h, --help  Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help show
-usage: bead show [-h] ID [ID ...]
-
 full detail for one or more issues
 
-positional arguments:
-  ID          issue ids, in full or without the prefix
+Usage: bead show [OPTIONS] <ID>...
 
-options:
-  -h, --help  show this help message and exit
+Arguments:
+  <ID>...  issue ids, in full or without the prefix
+
+Options:
+  -h, --help  Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead list --help
-usage: bead list [-h] [-s STATUS] [-a] [--deferred] [--title-contains TEXT]
-                 [--id ID] [--parent ID] [-t TYPE] [-l LABEL] [-p PRIORITY]
-                 [--assignee ASSIGNEE] [--limit N]
-
 list issues (open ones by default)
 
-options:
-  -h, --help            show this help message and exit
-  -s, --status STATUS   only these statuses (repeat it or use commas); all:
-                        any
-  -a, --all             every status, closed and deleted included
-  --deferred            deferred issues too
-  --title-contains TEXT
-                        only titles containing TEXT, in any case
-  --id ID               only these ids (repeat it or use commas)
-  --parent ID           only ID's direct children
-  -t, --type TYPE       only these types (repeat it or use commas)
-  -l, --label LABEL     only issues with all these labels (repeat it or use
-                        commas)
-  -p, --priority PRIORITY
-                        only this priority, 0 to 4
-  --assignee ASSIGNEE   only issues assigned to ASSIGNEE
-  --limit N             at most N issues (default 50; 0 lists all)
+Usage: bead list [OPTIONS]
+
+Options:
+  -s, --status <STATUS>        only these statuses (repeat it or use commas);
+                               all: any
+  -a, --all                    every status, closed and deleted included
+      --deferred               deferred issues too
+      --title-contains <TEXT>  only titles containing TEXT, in any case
+      --id <ID>                only these ids (repeat it or use commas)
+      --parent <ID>            only ID's direct children
+  -t, --type <TYPE>            only these types (repeat it or use commas)
+  -l, --label <LABEL>          only issues with all these labels (repeat it or
+                               use commas)
+  -p, --priority <PRIORITY>    only this priority, 0 to 4
+      --assignee <ASSIGNEE>    only issues assigned to ASSIGNEE
+      --limit <N>              at most N issues (default 50; 0 lists all)
+  -h, --help                   Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help list
-usage: bead list [-h] [-s STATUS] [-a] [--deferred] [--title-contains TEXT]
-                 [--id ID] [--parent ID] [-t TYPE] [-l LABEL] [-p PRIORITY]
-                 [--assignee ASSIGNEE] [--limit N]
-
 list issues (open ones by default)
 
-options:
-  -h, --help            show this help message and exit
-  -s, --status STATUS   only these statuses (repeat it or use commas); all:
-                        any
-  -a, --all             every status, closed and deleted included
-  --deferred            deferred issues too
-  --title-contains TEXT
-                        only titles containing TEXT, in any case
-  --id ID               only these ids (repeat it or use commas)
-  --parent ID           only ID's direct children
-  -t, --type TYPE       only these types (repeat it or use commas)
-  -l, --label LABEL     only issues with all these labels (repeat it or use
-                        commas)
-  -p, --priority PRIORITY
-                        only this priority, 0 to 4
-  --assignee ASSIGNEE   only issues assigned to ASSIGNEE
-  --limit N             at most N issues (default 50; 0 lists all)
+Usage: bead list [OPTIONS]
+
+Options:
+  -s, --status <STATUS>        only these statuses (repeat it or use commas);
+                               all: any
+  -a, --all                    every status, closed and deleted included
+      --deferred               deferred issues too
+      --title-contains <TEXT>  only titles containing TEXT, in any case
+      --id <ID>                only these ids (repeat it or use commas)
+      --parent <ID>            only ID's direct children
+  -t, --type <TYPE>            only these types (repeat it or use commas)
+  -l, --label <LABEL>          only issues with all these labels (repeat it or
+                               use commas)
+  -p, --priority <PRIORITY>    only this priority, 0 to 4
+      --assignee <ASSIGNEE>    only issues assigned to ASSIGNEE
+      --limit <N>              at most N issues (default 50; 0 lists all)
+  -h, --help                   Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead ready --help
-usage: bead ready [-h] [-t TYPE] [-l LABEL] [-p PRIORITY]
-                  [--assignee ASSIGNEE] [--limit N]
-                  [--epic ID | --parent ID | ID]
-
 open issues with nothing blocking them
 
-positional arguments:
-  ID                    only issues in ID's subtree: its children, theirs, and
-                        so on
+Usage: bead ready [OPTIONS] [ID]
 
-options:
-  -h, --help            show this help message and exit
-  --epic ID             the same as ID, as in br
-  --parent ID           only ID's direct children
-  -t, --type TYPE       only these types (repeat it or use commas)
-  -l, --label LABEL     only issues with all these labels (repeat it or use
-                        commas)
-  -p, --priority PRIORITY
-                        only this priority, 0 to 4
-  --assignee ASSIGNEE   only issues assigned to ASSIGNEE
-  --limit N             at most N issues (default: all)
+Arguments:
+  [ID]  only issues in ID's subtree: its children, theirs, and so on
+
+Options:
+      --epic <ID>            the same as ID, as in br
+      --parent <ID>          only ID's direct children
+  -t, --type <TYPE>          only these types (repeat it or use commas)
+  -l, --label <LABEL>        only issues with all these labels (repeat it or use
+                             commas)
+  -p, --priority <PRIORITY>  only this priority, 0 to 4
+      --assignee <ASSIGNEE>  only issues assigned to ASSIGNEE
+      --limit <N>            at most N issues (default: all)
+  -h, --help                 Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help ready
-usage: bead ready [-h] [-t TYPE] [-l LABEL] [-p PRIORITY]
-                  [--assignee ASSIGNEE] [--limit N]
-                  [--epic ID | --parent ID | ID]
-
 open issues with nothing blocking them
 
-positional arguments:
-  ID                    only issues in ID's subtree: its children, theirs, and
-                        so on
+Usage: bead ready [OPTIONS] [ID]
 
-options:
-  -h, --help            show this help message and exit
-  --epic ID             the same as ID, as in br
-  --parent ID           only ID's direct children
-  -t, --type TYPE       only these types (repeat it or use commas)
-  -l, --label LABEL     only issues with all these labels (repeat it or use
-                        commas)
-  -p, --priority PRIORITY
-                        only this priority, 0 to 4
-  --assignee ASSIGNEE   only issues assigned to ASSIGNEE
-  --limit N             at most N issues (default: all)
+Arguments:
+  [ID]  only issues in ID's subtree: its children, theirs, and so on
+
+Options:
+      --epic <ID>            the same as ID, as in br
+      --parent <ID>          only ID's direct children
+  -t, --type <TYPE>          only these types (repeat it or use commas)
+  -l, --label <LABEL>        only issues with all these labels (repeat it or use
+                             commas)
+  -p, --priority <PRIORITY>  only this priority, 0 to 4
+      --assignee <ASSIGNEE>  only issues assigned to ASSIGNEE
+      --limit <N>            at most N issues (default: all)
+  -h, --help                 Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead blocked --help
-usage: bead blocked [-h]
-
 issues waiting on something
 
-options:
-  -h, --help  show this help message and exit
+Usage: bead blocked [OPTIONS]
+
+Options:
+  -h, --help  Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help blocked
-usage: bead blocked [-h]
-
 issues waiting on something
 
-options:
-  -h, --help  show this help message and exit
+Usage: bead blocked [OPTIONS]
+
+Options:
+  -h, --help  Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead search --help
-usage: bead search [-h] [-a] TEXT
-
 text search over ids, titles, bodies and comments
 
-positional arguments:
-  TEXT        text to find, in any case
+Usage: bead search [OPTIONS] <TEXT>
 
-options:
-  -h, --help  show this help message and exit
+Arguments:
+  <TEXT>  text to find, in any case
+
+Options:
   -a, --all   closed and deleted issues too
+  -h, --help  Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help search
-usage: bead search [-h] [-a] TEXT
-
 text search over ids, titles, bodies and comments
 
-positional arguments:
-  TEXT        text to find, in any case
+Usage: bead search [OPTIONS] <TEXT>
 
-options:
-  -h, --help  show this help message and exit
+Arguments:
+  <TEXT>  text to find, in any case
+
+Options:
   -a, --all   closed and deleted issues too
+  -h, --help  Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead dep --help
-usage: bead dep [-h] [--type TYPE] [--blocking-only] [--offline] [ARGS ...]
-
 dependencies between issues: add, remove, list, tree, cycles
 
-positional arguments:
-  ARGS             a form and its issues (below)
+Usage: bead dep [OPTIONS] [ARGS]...
 
-options:
-  -h, --help       show this help message and exit
-  --type TYPE      the dependency's type, for add and remove (below)
-  --blocking-only  cycles: blocks dependencies only
-  --offline        record locally only; the next sync or online command
-                   publishes it
+Arguments:
+  [ARGS]...  a form and its issues (below)
+
+Options:
+      --type <TYPE>    the dependency's type, for add and remove (below)
+      --blocking-only  cycles: blocks dependencies only
+      --offline        record locally only; the next sync or online command
+                       publishes it
+  -h, --help           Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 
 forms:  dep add A B     A depends on B; --type TYPE, blocks by default
         dep remove A B  take that back; with --type, only that type
@@ -1013,24 +1264,31 @@ forms:  dep add A B     A depends on B; --type TYPE, blocks by default
         dep cycles      dependency cycles; --blocking-only: blocks only
 
 types: blocks keeps A from being ready until B is done (closed or deleted);
-parent-child makes A a child of B: what holds B holds A, and an epic B waits
-for A; any other word, such as related, records a link that blocks nothing.
+parent-child makes A a child of B: what holds B holds A, and an epic B waits for
+A; any other word, such as related, records a link that blocks nothing.
 exit 0
 
 $ bead help dep
-usage: bead dep [-h] [--type TYPE] [--blocking-only] [--offline] [ARGS ...]
-
 dependencies between issues: add, remove, list, tree, cycles
 
-positional arguments:
-  ARGS             a form and its issues (below)
+Usage: bead dep [OPTIONS] [ARGS]...
 
-options:
-  -h, --help       show this help message and exit
-  --type TYPE      the dependency's type, for add and remove (below)
-  --blocking-only  cycles: blocks dependencies only
-  --offline        record locally only; the next sync or online command
-                   publishes it
+Arguments:
+  [ARGS]...  a form and its issues (below)
+
+Options:
+      --type <TYPE>    the dependency's type, for add and remove (below)
+      --blocking-only  cycles: blocks dependencies only
+      --offline        record locally only; the next sync or online command
+                       publishes it
+  -h, --help           Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 
 forms:  dep add A B     A depends on B; --type TYPE, blocks by default
         dep remove A B  take that back; with --type, only that type
@@ -1039,440 +1297,558 @@ forms:  dep add A B     A depends on B; --type TYPE, blocks by default
         dep cycles      dependency cycles; --blocking-only: blocks only
 
 types: blocks keeps A from being ready until B is done (closed or deleted);
-parent-child makes A a child of B: what holds B holds A, and an epic B waits
-for A; any other word, such as related, records a link that blocks nothing.
+parent-child makes A a child of B: what holds B holds A, and an epic B waits for
+A; any other word, such as related, records a link that blocks nothing.
 exit 0
 
 $ bead comments --help
-usage: bead comments [-h] [-m TEXT] [-f FILE] [--author AUTHOR] [--offline]
-                     [ARGS ...]
-
 read an issue's comments, or `comments add ID TEXT` to record one
 
-positional arguments:
-  ARGS                [add] ISSUE [TEXT ...] (below)
+Usage: bead comments [OPTIONS] [ARGS]...
 
-options:
-  -h, --help          show this help message and exit
-  -m, --message TEXT  the comment's text
-  -f, --file FILE     the comment's text, read from FILE (- for standard
-                      input)
-  --author AUTHOR     the author recorded, when it is not you
-  --offline           record locally only; the next sync or online command
-                      publishes it
+Arguments:
+  [ARGS]...  [add] ISSUE [TEXT ...] (below)
+
+Options:
+  -m, --message <TEXT>   the comment's text
+  -f, --file <FILE>      the comment's text, read from FILE (- for standard
+                         input)
+      --author <AUTHOR>  the author recorded, when it is not you
+      --offline          record locally only; the next sync or online command
+                         publishes it
+  -h, --help             Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 
 forms:  comments [list] ISSUE        its comments
         comments add ISSUE TEXT ...  record one; or its text from -m or -f
 exit 0
 
 $ bead help comments
-usage: bead comments [-h] [-m TEXT] [-f FILE] [--author AUTHOR] [--offline]
-                     [ARGS ...]
-
 read an issue's comments, or `comments add ID TEXT` to record one
 
-positional arguments:
-  ARGS                [add] ISSUE [TEXT ...] (below)
+Usage: bead comments [OPTIONS] [ARGS]...
 
-options:
-  -h, --help          show this help message and exit
-  -m, --message TEXT  the comment's text
-  -f, --file FILE     the comment's text, read from FILE (- for standard
-                      input)
-  --author AUTHOR     the author recorded, when it is not you
-  --offline           record locally only; the next sync or online command
-                      publishes it
+Arguments:
+  [ARGS]...  [add] ISSUE [TEXT ...] (below)
+
+Options:
+  -m, --message <TEXT>   the comment's text
+  -f, --file <FILE>      the comment's text, read from FILE (- for standard
+                         input)
+      --author <AUTHOR>  the author recorded, when it is not you
+      --offline          record locally only; the next sync or online command
+                         publishes it
+  -h, --help             Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 
 forms:  comments [list] ISSUE        its comments
         comments add ISSUE TEXT ...  record one; or its text from -m or -f
 exit 0
 
 $ bead lint --help
-usage: bead lint [-h]
-
 open work items without acceptance criteria
 
-options:
-  -h, --help  show this help message and exit
+Usage: bead lint [OPTIONS]
+
+Options:
+  -h, --help  Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help lint
-usage: bead lint [-h]
-
 open work items without acceptance criteria
 
-options:
-  -h, --help  show this help message and exit
+Usage: bead lint [OPTIONS]
+
+Options:
+  -h, --help  Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead sync --help
-usage: bead sync [-h] [--remote REMOTE]
-
 exchange the journal with other machines through the coordination ref
 
-options:
-  -h, --help       show this help message and exit
-  --remote REMOTE  coordination remote (name or URL) for this sync
+Usage: bead sync [OPTIONS]
+
+Options:
+      --remote <REMOTE>  coordination remote (name or URL) for this sync
+  -h, --help             Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help sync
-usage: bead sync [-h] [--remote REMOTE]
-
 exchange the journal with other machines through the coordination ref
 
-options:
-  -h, --help       show this help message and exit
-  --remote REMOTE  coordination remote (name or URL) for this sync
+Usage: bead sync [OPTIONS]
+
+Options:
+      --remote <REMOTE>  coordination remote (name or URL) for this sync
+  -h, --help             Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead log --help
-usage: bead log [-h] [--limit N] [ID]
+who did what: time, machine, actor (its name, else agent and thread), operation
 
-who did what: time, machine, actor (its name, else agent and thread),
-operation
+Usage: bead log [OPTIONS] [ID]
 
-positional arguments:
-  ID          only this issue's events
+Arguments:
+  [ID]  only this issue's events
 
-options:
-  -h, --help  show this help message and exit
-  --limit N   the last N events (default 30; 0: all; -N: all but the first N)
+Options:
+      --limit <N>  the last N events (default 30; 0: all; -N: all but the first
+                   N)
+  -h, --help       Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help log
-usage: bead log [-h] [--limit N] [ID]
+who did what: time, machine, actor (its name, else agent and thread), operation
 
-who did what: time, machine, actor (its name, else agent and thread),
-operation
+Usage: bead log [OPTIONS] [ID]
 
-positional arguments:
-  ID          only this issue's events
+Arguments:
+  [ID]  only this issue's events
 
-options:
-  -h, --help  show this help message and exit
-  --limit N   the last N events (default 30; 0: all; -N: all but the first N)
+Options:
+      --limit <N>  the last N events (default 30; 0: all; -N: all but the first
+                   N)
+  -h, --help       Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead info --help
-usage: bead info [-h]
-
 where the tracker lives and who you are
 
-options:
-  -h, --help  show this help message and exit
+Usage: bead info [OPTIONS]
+
+Options:
+  -h, --help  Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help info
-usage: bead info [-h]
-
 where the tracker lives and who you are
 
-options:
-  -h, --help  show this help message and exit
+Usage: bead info [OPTIONS]
+
+Options:
+  -h, --help  Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead machines --help
-usage: bead machines [-h] [--name ID=ALIAS]
-
 machines seen in the journal
 
-options:
-  -h, --help       show this help message and exit
-  --name ID=ALIAS  give a machine a local display name
+Usage: bead machines [OPTIONS]
+
+Options:
+      --name <ID=ALIAS>  give a machine a local display name
+  -h, --help             Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help machines
-usage: bead machines [-h] [--name ID=ALIAS]
-
 machines seen in the journal
 
-options:
-  -h, --help       show this help message and exit
-  --name ID=ALIAS  give a machine a local display name
+Usage: bead machines [OPTIONS]
+
+Options:
+      --name <ID=ALIAS>  give a machine a local display name
+  -h, --help             Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help --help
-usage: bead help [-h] [COMMAND]
-
 this overview, or `help COMMAND` for one command's usage
 
-positional arguments:
-  COMMAND     the command to explain
+Usage: bead help [OPTIONS] [COMMAND]
 
-options:
-  -h, --help  show this help message and exit
+Arguments:
+  [COMMAND]  the command to explain
+
+Options:
+  -h, --help  Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help help
-usage: bead help [-h] [COMMAND]
-
 this overview, or `help COMMAND` for one command's usage
 
-positional arguments:
-  COMMAND     the command to explain
+Usage: bead help [OPTIONS] [COMMAND]
 
-options:
-  -h, --help  show this help message and exit
+Arguments:
+  [COMMAND]  the command to explain
+
+Options:
+  -h, --help  Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead prime --help
-usage: bead prime [-h]
-
 the workflow an agent should load at the start of a session
 
-options:
-  -h, --help  show this help message and exit
+Usage: bead prime [OPTIONS]
+
+Options:
+  -h, --help  Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help prime
-usage: bead prime [-h]
-
 the workflow an agent should load at the start of a session
 
-options:
-  -h, --help  show this help message and exit
+Usage: bead prime [OPTIONS]
+
+Options:
+  -h, --help  Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead onboard --help
-usage: bead onboard [-h]
-
 a snippet for CLAUDE.md / AGENTS.md
 
-options:
-  -h, --help  show this help message and exit
+Usage: bead onboard [OPTIONS]
+
+Options:
+  -h, --help  Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead help onboard
-usage: bead onboard [-h]
-
 a snippet for CLAUDE.md / AGENTS.md
 
-options:
-  -h, --help  show this help message and exit
+Usage: bead onboard [OPTIONS]
+
+Options:
+  -h, --help  Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
 exit 0
 
 $ bead create --help
-usage: bead create [-h]
-                   [--title TITLE]
-                   [-d DESCRIPTION]
-                   [--description-file FILE]
-                   [--acceptance-criteria TEXT]
-                   [--notes NOTES]
-                   [--design DESIGN]
-                   [-p PRIORITY]
-                   [-t TYPE]
-                   [--status STATUS]
-                   [--assignee ASSIGNEE]
-                   [--estimate MINUTES]
-                   [--external-ref EXTERNAL_REF]
-                   [--parent PARENT]
-                   [-l LABEL]
-                   [--deps [TYPE:]ISSUE]
-                   [--silent]
-                   [--offline]
-                   [TITLE]
-
 create an issue
 
-positional arguments:
-  TITLE           the issue's title
+Usage: bead create [OPTIONS] [TITLE]
 
-options:
-  -h, --help      show this help
-                  message and exit
-  --title TITLE   the title, given as
-                  an option instead
-  -d, --description DESCRIPTION
-                  the body
-  --description-file FILE
-                  the body, read from
-                  FILE (- for standard
-                  input)
-  --acceptance-criteria, --acceptance TEXT
-                  what done means
-                  (`bead lint` lists
-                  work without it)
-  --notes NOTES   working notes
-  --design DESIGN
-                  design notes
-  -p, --priority PRIORITY
-                  0 (most urgent) to 4
-  -t, --type TYPE
-                  task, bug, feature,
-                  epic, chore, or a
-                  word of your own
-  --status, -s STATUS
-                  open, blocked,
-                  deferred or closed;
-                  in_progress is
-                  reached by claiming
-  --assignee ASSIGNEE
-                  who it is assigned
-                  to
-  --estimate MINUTES
-                  estimated minutes
-  --external-ref EXTERNAL_REF
-                  a reference
-                  elsewhere: gh-12, a
-                  URL
-  --parent PARENT
-                  the issue it is a
-                  child of
-  -l, --labels, --label LABEL
-                  a label (repeat it
-                  or use commas)
-  --deps [TYPE:]ISSUE
-                  issues it depends
-                  on, comma-separated
-                  (below)
-  --silent        print only the new
-                  id
-  --offline       record locally only;
-                  the next sync or
-                  online command
-                  publishes it
+Arguments:
+  [TITLE]  the issue's title
 
-A new issue is an open task at
-priority 2 unless -s, -t or -p say
-otherwise.
+Options:
+      --title <TITLE>
+          the title, given as an option
+          instead
+  -d, --description <DESCRIPTION>
+          the body
+      --description-file <FILE>
+          the body, read from FILE (-
+          for standard input)
+      --acceptance-criteria <TEXT>
+          what done means (`bead lint`
+          lists work without it) [alias:
+          --acceptance]
+      --notes <NOTES>
+          working notes
+      --design <DESIGN>
+          design notes
+  -p, --priority <PRIORITY>
+          0 (most urgent) to 4
+  -t, --type <TYPE>
+          task, bug, feature, epic,
+          chore, or a word of your own
+  -s, --status <STATUS>
+          open, blocked, deferred or
+          closed; in_progress is reached
+          by claiming
+      --assignee <ASSIGNEE>
+          who it is assigned to
+      --estimate <MINUTES>
+          estimated minutes
+      --external-ref <EXTERNAL_REF>
+          a reference elsewhere: gh-12,
+          a URL
+      --parent <PARENT>
+          the issue it is a child of
+  -l, --labels <LABEL>
+          a label (repeat it or use
+          commas) [alias: --label]
+      --deps <[TYPE:]ISSUE>
+          issues it depends on,
+          comma-separated (below)
+      --silent
+          print only the new id
+      --offline
+          record locally only; the next
+          sync or online command
+          publishes it
+  -h, --help
+          Print help
+
+Global options:
+      --json
+          machine output: one JSON
+          document; an error as
+          {"error": {"code", "message"}}
+          on stderr
+      --actor <NAME>
+          the name to record and hold
+          claims as
+      --color <WHEN>
+          auto (the default: on a
+          terminal, unless NO_COLOR),
+          always or never
+
+A new issue is an open task at priority
+2 unless -s, -t or -p say otherwise.
 
 --deps names the issues the new one
 depends on. ISSUE (or blocks:ISSUE)
-keeps it from being ready until ISSUE
-is done: closed or deleted. Another
-type, such as related:ISSUE or
+keeps it from being ready until ISSUE is
+done: closed or deleted. Another type,
+such as related:ISSUE or
 discovered-from:ISSUE, records a link
 that blocks nothing.
 exit 0
 
 $ bead ready --help
-usage: bead ready [-h] [-t TYPE]
-                  [-l LABEL]
-                  [-p PRIORITY]
-                  [--assignee ASSIGNEE]
-                  [--limit N]
-                  [--epic ID |
-                  --parent ID | ID]
-
 open issues with nothing blocking them
 
-positional arguments:
-  ID              only issues in ID's
-                  subtree: its
-                  children, theirs,
-                  and so on
+Usage: bead ready [OPTIONS] [ID]
 
-options:
-  -h, --help      show this help
-                  message and exit
-  --epic ID       the same as ID, as
-                  in br
-  --parent ID     only ID's direct
-                  children
-  -t, --type TYPE
-                  only these types
-                  (repeat it or use
-                  commas)
-  -l, --label LABEL
-                  only issues with all
-                  these labels (repeat
-                  it or use commas)
-  -p, --priority PRIORITY
-                  only this priority,
-                  0 to 4
-  --assignee ASSIGNEE
-                  only issues assigned
-                  to ASSIGNEE
-  --limit N       at most N issues
-                  (default: all)
+Arguments:
+  [ID]  only issues in ID's subtree: its
+        children, theirs, and so on
+
+Options:
+      --epic <ID>
+          the same as ID, as in br
+      --parent <ID>
+          only ID's direct children
+  -t, --type <TYPE>
+          only these types (repeat it or
+          use commas)
+  -l, --label <LABEL>
+          only issues with all these
+          labels (repeat it or use
+          commas)
+  -p, --priority <PRIORITY>
+          only this priority, 0 to 4
+      --assignee <ASSIGNEE>
+          only issues assigned to
+          ASSIGNEE
+      --limit <N>
+          at most N issues (default:
+          all)
+  -h, --help
+          Print help
+
+Global options:
+      --json
+          machine output: one JSON
+          document; an error as
+          {"error": {"code", "message"}}
+          on stderr
+      --actor <NAME>
+          the name to record and hold
+          claims as
+      --color <WHEN>
+          auto (the default: on a
+          terminal, unless NO_COLOR),
+          always or never
 exit 0
 
 $ bead -h x
-usage: bead [-h]
-            {init,import,export,create,update,claim,release,takeover,claims,close,reopen,delete,show,list,ready,blocked,search,dep,comments,lint,sync,log,info,machines,help,prime,onboard} ...
+Usage: bead [--json] [--actor NAME]
+[--color WHEN] COMMAND [ARGS...]
 
 bead: a Beads-compatible issue tracker
-for agent crews working across
-worktrees and machines. `bead help`
-gives the overview, `bead help
-COMMAND` one command's page.
+for agent crews working across worktrees
+and machines. State lives outside the
+checkout, sync goes through a git ref,
+and a claim is exclusive once the remote
+accepts it. Every event records machine,
+agent, thread, branch and commit.
 
-positional arguments:
-  {init,import,export,create,update,claim,release,takeover,claims,close,reopen,delete,show,list,ready,blocked,search,dep,comments,lint,sync,log,info,machines,help,prime,onboard}
-    init          create the tracker
-                  for this repository
-    import        import a Beads JSONL
-                  export
-    export        write Beads-
-                  compatible JSONL
-    create        create an issue
-    update        change fields,
-                  labels or parent;
-                  --claim or --status
-                  in_progress claims
-    claim         take ownership; it
-                  lasts until release,
-                  close or takeover
-    release       give up your claim
-    takeover      replace the current
-                  owner after
-                  investigating; needs
-                  --reason
-    claims        who holds what, and
-                  when each owner was
-                  last active
-    close         close issues
-    reopen        reopen issues
-    delete        delete issues
-    show          full detail for one
-                  or more issues
-    list          list issues (open
-                  ones by default)
-    ready         open issues with
-                  nothing blocking
-                  them
-    blocked       issues waiting on
-                  something
-    search        text search over
-                  ids, titles, bodies
-                  and comments
-    dep           dependencies between
-                  issues: add, remove,
-                  list, tree, cycles
-    comments      read an issue's
-                  comments, or
-                  `comments add ID
-                  TEXT` to record one
-    lint          open work items
-                  without acceptance
-                  criteria
-    sync          exchange the journal
-                  with other machines
-                  through the
-                  coordination ref
-    log           who did what: time,
-                  machine, actor (its
-                  name, else agent and
-                  thread), operation
-    info          where the tracker
-                  lives and who you
-                  are
-    machines      machines seen in the
-                  journal
-    help          this overview, or
-                  `help COMMAND` for
-                  one command's usage
-    prime         the workflow an
-                  agent should load at
-                  the start of a
-                  session
-    onboard       a snippet for
-                  CLAUDE.md /
-                  AGENTS.md
+Find work
+  ready [ID]
+    unblocked open issues nobody holds;
+    ID: only its subtree
+  list [-s STATUS] [-a]
+    issues (open ones by default);
+    --parent, -l, -t, -p filters
+  show ID...
+    full detail: body, acceptance
+    criteria, deps, comments, claim
+  search TEXT   blocked   dep tree ID
+    dep cycles
+Do work
+  claim ID...
+    take ownership (or: update ID
+    --status in_progress)
+  comments add ID TEXT
+    record progress and decisions
+  update ID [--title T] [--notes N]
+    [--add-label L] [--parent P]
+    [--status S]
+  close ID -r REASON
+    finish: ends your claim and
+    publishes at once
+  release ID   takeover ID -r REASON
+    reopen ID   delete ID -r REASON
+Shape work
+  create TITLE [-t TYPE] [-p 0-4]
+    [--parent P] [--deps blocks:ID]
+    [-l LABEL]
+  dep add A B
+    [--type blocks|parent-child]
+    dep remove A B   lint
+Coordinate
+  sync
+    exchange journals with the other
+    machines
+  claims
+    who holds what, on which branch,
+    since when
+  log ID   info   machines
+Agents
+  prime
+    the workflow to load at the start of
+    a session
+  onboard
+    a snippet for CLAUDE.md / AGENTS.md
+Data
+  init [--prefix P] [--tracked]
+    [--import FILE]   import FILE
+    export [-o FILE]
 
-options:
-  -h, --help      show this help
-                  message and exit
+Flags
+  --json
+    anywhere, for machine output; errors
+    are {"error":{"code","message"}} on
+    stderr
+  --actor NAME
+    to name yourself
+  --color WHEN
+    auto (the default: on a terminal,
+    unless NO_COLOR), always or never
+  --offline
+    record locally only; a claim made so
+    is provisional
+  --
+    ends options
+Help
+  help COMMAND
+    one command's page, as bead COMMAND
+    --help shows it
+  --version
+    this bead's version
 exit 0
 
 $ bead help nonsense

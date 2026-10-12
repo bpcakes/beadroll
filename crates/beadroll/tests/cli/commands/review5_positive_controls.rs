@@ -28,7 +28,7 @@ fn v02_help_needs_no_repository_and_creates_no_state() {
         };
         assert_eq!(result.returncode(), 0, "{args:?}: {}", result.stderr);
         assert!(
-            result.stdout.contains("usage:"),
+            result.stdout.to_lowercase().contains("usage:"),
             "{args:?}: {}",
             result.stdout
         );

@@ -8,7 +8,7 @@ use beadroll_core::text::str_of;
 use beadroll_core::time::event_time;
 use beadroll_store::{machine_aliases, view_outline};
 
-use super::{Context, Failure, Outcome, need_tracker};
+use super::{Context, Failure, Line, Outcome, Tone, need_tracker};
 
 /// Every claim, by issue key: confirmed owners with machine, thread, generation, branch and time
 /// since their thread last wrote; offline claims; and this machine's attempts awaiting the
@@ -79,15 +79,18 @@ pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
         }
     }
     let synced = ctx.ws.meta(false)?.get("last_sync").cloned();
-    let mut lines: Vec<String> = rows.iter().map(line).collect();
+    let mut lines: Vec<Line> = rows.iter().map(line).collect();
     if lines.is_empty() {
-        lines.push("Nothing is claimed".to_owned());
+        lines.push("Nothing is claimed".into());
     }
     let shown = synced
         .as_ref()
         .filter(|v| v.truthy())
         .map_or_else(|| "never".to_owned(), str_of);
-    lines.push(format!("(as of this machine's last sync: {shown})"));
+    lines.push(Line::toned(
+        Tone::Dim,
+        format!("(as of this machine's last sync: {shown})"),
+    ));
     let mut result = Object::new();
     result.insert(
         "claims".into(),
@@ -99,25 +102,34 @@ pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
 
 /// A claim's line: key, state, owner and since; for a confirmed claim its generation and last
 /// activity; its branch when it has one.
-fn line(row: &Object) -> String {
+fn line(row: &Object) -> Line {
     let field = |key: &str| row.get(key).map(str_of).unwrap_or_default();
     let head = |key: &str| field(key).chars().take(16).collect::<String>();
-    let mut out = format!(
-        "{}  {:<11} {}  since {}",
-        field("id"),
-        field("state"),
-        field("owner"),
-        head("since")
-    );
+    let state = field("state");
+    let tone = if state == "confirmed" {
+        Tone::Done
+    } else {
+        Tone::Warning
+    };
+    let mut out = Line::new()
+        .with(Tone::Id, field("id"))
+        .with(Tone::Plain, "  ")
+        .with(tone, format!("{state:<11}"))
+        .with(Tone::Plain, " ")
+        .with(Tone::Who, field("owner"))
+        .with(Tone::Plain, format!("  since {}", head("since")));
     if row.contains_key("generation") {
-        out.push_str(&format!(
-            "  gen {}  last activity {}",
-            field("generation"),
-            head("last_activity")
-        ));
+        out.push(
+            Tone::Plain,
+            format!(
+                "  gen {}  last activity {}",
+                field("generation"),
+                head("last_activity")
+            ),
+        );
     }
     if row.get("branch").is_some_and(Value::truthy) {
-        out.push_str(&format!("  on {}", field("branch")));
+        out.push(Tone::Dim, format!("  on {}", field("branch")));
     }
     out
 }

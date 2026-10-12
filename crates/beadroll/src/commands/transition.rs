@@ -13,7 +13,7 @@ use beadroll_core::text::str_of;
 use beadroll_store::view_outline;
 use beadroll_sync::{publish_soon, writing};
 
-use super::{Context, Failure, Outcome, ended_by, need_tracker, resolve_arg, text};
+use super::{Context, Failure, Line, Outcome, Tone, ended_by, need_tracker, resolve_arg, text};
 
 /// The arguments `close`, `reopen` and `delete` take.
 pub(crate) struct TransitionArgs {
@@ -137,7 +137,7 @@ fn answer(
     (verb, said): (&str, &str),
     reason_given: bool,
     mut notes: Vec<String>,
-) -> Vec<String> {
+) -> Vec<Line> {
     for (item, _) in result.iter_mut().zip(unchanged).filter(|(_, u)| **u) {
         item.insert("unchanged".into(), Value::from(format!("already {said}")));
         if reason_given {
@@ -147,7 +147,7 @@ fn answer(
             ));
         }
     }
-    let mut lines: Vec<String> = result
+    let mut lines: Vec<Line> = result
         .iter()
         .map(|item| {
             let field = |name: &str| item.get(name).map(str_of).unwrap_or_default();
@@ -155,10 +155,14 @@ fn answer(
                 Some(_) => format!("Already {said}"),
                 None => verb.to_owned(),
             };
-            format!("✓ {done} {}: {}", field("id"), field("title"))
+            Line::from(format!("✓ {done} {}: {}", field("id"), field("title")))
         })
         .collect();
-    lines.extend(notes);
+    lines.extend(
+        notes
+            .into_iter()
+            .map(|note| Line::toned(Tone::Warning, note)),
+    );
     lines
 }
 

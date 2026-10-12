@@ -17,8 +17,8 @@ use beadroll_sync::{Mode, Tx, coordinated, publish_soon, writing};
 
 use super::ownership::{ClaimStep, command_signature, still_held};
 use super::{
-    ContentArgs, Context, Failure, Outcome, Payload, arg_texts, encodable, ended_by, field_args,
-    need_tracker, remove_edge, resolve_arg, split_args, view_of,
+    ContentArgs, Context, Failure, Line, Outcome, Payload, Tone, arg_texts, encodable, ended_by,
+    field_args, need_tracker, remove_edge, resolve_arg, split_args, view_of,
 };
 
 /// `update`'s arguments.
@@ -108,8 +108,21 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
         .iter()
         .map(|key| Ok(st.detail(resolve_arg(&st, key)?)))
         .collect::<Result<Vec<Object>, Failure>>()?;
+    let lines = answer(&mut result, asked_nothing, notes, warning);
+    let result = Value::Array(result.into_iter().map(Value::from).collect());
+    Ok(Outcome::new(result, lines))
+}
+
+/// The answer's lines, `Updated` (or `Unchanged` when nothing was asked) for each issue, then
+/// `notes` and `warning`, which `result` carries too, as warnings.
+fn answer(
+    result: &mut [Object],
+    asked_nothing: bool,
+    mut notes: Vec<String>,
+    warning: Option<String>,
+) -> Vec<Line> {
     if asked_nothing {
-        for item in &mut result {
+        for item in result.iter_mut() {
             item.insert(
                 "unchanged".into(),
                 Value::from("nothing to update was given"),
@@ -126,23 +139,26 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
     } else {
         "Updated"
     };
-    let mut lines: Vec<String> = result
+    let mut lines: Vec<Line> = result
         .iter()
         .map(|item| {
             let field = |name: &str| item.get(name).map(str_of).unwrap_or_default();
-            format!("{done} {}: {}", field("id"), field("title"))
+            Line::from(format!("{done} {}: {}", field("id"), field("title")))
         })
         .collect();
-    lines.extend(notes);
+    lines.extend(
+        notes
+            .into_iter()
+            .map(|note| Line::toned(Tone::Warning, note)),
+    );
     if let Some(warning) = warning {
-        for item in &mut result {
+        for item in result.iter_mut() {
             // --json is told too: the other machines do not know yet
             item.insert("unpublished".into(), Value::from(warning.as_str()));
         }
-        lines.push(warning);
+        lines.push(Line::toned(Tone::Warning, warning));
     }
-    let result = Value::Array(result.into_iter().map(Value::from).collect());
-    Ok(Outcome::new(result, lines))
+    lines
 }
 
 /// Validates every target first, then emits; nothing is written if any part is wrong. The keys of

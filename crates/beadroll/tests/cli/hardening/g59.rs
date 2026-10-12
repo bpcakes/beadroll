@@ -1,5 +1,6 @@
-//! G59: help stays plain text on terminals, under `FORCE_COLOR=1` and in JSON output. No raw or
-//! escaped ESC byte may reach the help, and its usage line must say `usage: bead create`.
+//! G59: help never shows a colour code as text. It is plain wherever nobody sees colour: through a
+//! pipe, `FORCE_COLOR=1` included, in JSON, and on a terminal with `NO_COLOR`; on a terminal
+//! otherwise it is coloured (roll-dih8.23). Its usage line says `Usage: bead create`.
 
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
@@ -21,10 +22,18 @@ use rustix::pty::{OpenptFlags, grantpt, openpt, ptsname, unlockpt};
 const LIMIT: Duration = Duration::from_secs(30);
 
 /// `_g59_env`: `bead ARGS` from `machine`, its environment without the variables that turn colour
-/// on or off (`NO_COLOR`, `FORCE_COLOR`, `PYTHON_COLORS`, `TERM`), then `name=value`.
+/// on or off (`NO_COLOR`, `FORCE_COLOR`, `CLICOLOR`, `CLICOLOR_FORCE`, `PYTHON_COLORS`, `TERM`),
+/// then `name=value`.
 fn command(machine: &Machine, args: &[&str], (name, value): (&str, &str)) -> Command {
     let mut command = machine.cmd(args).command();
-    for colour in ["NO_COLOR", "FORCE_COLOR", "PYTHON_COLORS", "TERM"] {
+    for colour in [
+        "NO_COLOR",
+        "FORCE_COLOR",
+        "CLICOLOR",
+        "CLICOLOR_FORCE",
+        "PYTHON_COLORS",
+        "TERM",
+    ] {
         command.env_remove(colour);
     }
     command.env(name, value);
@@ -140,42 +149,60 @@ mod g59_help_is_plain_text {
         Machine::new(sandbox, "help")
     }
 
-    /// G59: `bead help create` on a terminal shows `usage: bead create` without raw or escaped
-    /// colour codes.
-    #[test]
-    fn help_command_on_a_terminal_shows_no_colour_codes() {
-        let sandbox = crate::sandbox();
-        let machine = set_up(&sandbox);
-        let help = command(&machine, &["help", "create"], ("TERM", "xterm-256color"));
-        let (status, out) = run_on_terminal(help);
-        assert_eq!(status, 0, "{out}");
-        assert!(
-            !out.contains("\\x1b["),
-            "help on a terminal shows escaped colour codes: {:?}",
-            start(&out)
-        );
-        assert!(!out.contains('\u{1b}'), "{:?}", start(&out));
-        assert!(out.contains("usage: bead create"), "{out}");
+    /// `text` without its colour codes (`ESC [ … m`).
+    fn uncoloured(text: &str) -> String {
+        let mut out = String::new();
+        let mut rest = text;
+        while let Some(at) = rest.find("\u{1b}[") {
+            out.push_str(&rest[..at]);
+            let after = &rest[at + 2..];
+            let end = after
+                .find(|c: char| !(c.is_ascii_digit() || c == ';'))
+                .unwrap_or(after.len());
+            assert!(
+                after[end..].starts_with('m'),
+                "not a colour code: {:?}",
+                start(rest)
+            );
+            rest = &after[end + 1..];
+        }
+        out.push_str(rest);
+        out
     }
 
-    /// G59: `bead create --help` on a terminal writes no escape sequence.
+    /// G59: `bead help create` and `bead create --help` on a terminal are coloured with codes the
+    /// terminal reads, never shown as text; with `NO_COLOR` they are plain.
     #[test]
-    fn command_dash_help_on_a_terminal_writes_no_escape_sequences() {
+    fn help_on_a_terminal_is_coloured_unless_no_color_and_never_shows_a_code() {
         let sandbox = crate::sandbox();
         let machine = set_up(&sandbox);
-        let help = command(&machine, &["create", "--help"], ("TERM", "xterm-256color"));
-        let (status, out) = run_on_terminal(help);
-        assert_eq!(status, 0, "{out}");
-        assert!(
-            !out.contains('\u{1b}'),
-            "create --help on a terminal wrote escape sequences: {:?}",
-            start(&out)
-        );
-        assert!(out.contains("usage: bead create"), "{out}");
+        for args in [&["help", "create"][..], &["create", "--help"]] {
+            let help = command(&machine, args, ("TERM", "xterm-256color"));
+            let (status, out) = run_on_terminal(help);
+            assert_eq!(status, 0, "{out}");
+            assert!(
+                !out.contains("\\x1b["),
+                "{args:?} shows a code: {:?}",
+                start(&out)
+            );
+            assert!(
+                out.contains('\u{1b}'),
+                "{args:?} is not coloured: {:?}",
+                start(&out)
+            );
+            assert!(uncoloured(&out).contains("Usage: bead create"), "{out}");
+            let mut plain = command(&machine, args, ("TERM", "xterm-256color"));
+            plain.env("NO_COLOR", "1");
+            let (status, out) = run_on_terminal(plain);
+            assert_eq!(status, 0, "{out}");
+            assert!(!out.contains('\u{1b}'), "{args:?}: {:?}", start(&out));
+            assert!(out.contains("Usage: bead create"), "{out}");
+        }
     }
 
-    /// G59: with `FORCE_COLOR=1` (common in CI), `help create` through a pipe shows no colour
-    /// codes, escaped or raw, and `--json help create` embeds none in its help string.
+    /// G59: with `FORCE_COLOR=1` (common in CI, and set by some agent harnesses), `help create`
+    /// through a pipe shows no colour codes, escaped or raw, and `--json help create` embeds none
+    /// in its help string: bead follows `CLICOLOR_FORCE` and `--color`, not `FORCE_COLOR`.
     #[test]
     fn forced_colour_reaches_neither_help_text_nor_json() {
         let sandbox = crate::sandbox();
@@ -190,7 +217,7 @@ mod g59_help_is_plain_text {
             start(stdout)
         );
         assert!(!stdout.contains('\u{1b}'), "{:?}", start(stdout));
-        assert!(stdout.contains("usage: bead create"), "{stdout}");
+        assert!(stdout.contains("Usage: bead create"), "{stdout}");
         let as_json = run_through_pipes(command(&machine, &["--json", "help", "create"], forced));
         assert_eq!(as_json.returncode(), 0, "{}", as_json.stderr);
         let document = parse_json(&as_json.stdout).unwrap();
@@ -201,6 +228,6 @@ mod g59_help_is_plain_text {
             "--json help carries ANSI codes: {:?}",
             start(page)
         );
-        assert!(page.contains("usage: bead create"), "{page}");
+        assert!(page.contains("Usage: bead create"), "{page}");
     }
 }

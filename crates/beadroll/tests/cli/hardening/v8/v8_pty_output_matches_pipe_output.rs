@@ -2,7 +2,7 @@
 //! raw.
 
 use std::collections::BTreeMap;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::fs::{File, OpenOptions};
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::os::unix::process::ExitStatusExt as _;
@@ -268,15 +268,29 @@ fn pty_output_matches_pipe_output_and_escapes_hostile_text() {
         words(&["show", "ex-nope\x1b[31m"]),
         words(&["bogus\x1b]0;x\x07"]),
     ];
-    for (index, args) in commands.iter().enumerate() {
-        let label = format!("{:?}", &args[..args.len().min(2)]);
-        let env = a.env(None, "codex");
+    // with colour off a terminal shows what a pipe does, byte for byte; with it on, the same once
+    // bead's own colour codes are taken out, and nothing else raw (roll-dih8.23)
+    let runs = commands
+        .iter()
+        .enumerate()
+        .flat_map(|(index, args)| [(index, args, false), (index, args, true)]);
+    for (index, args, coloured) in runs {
+        let label = format!("{:?} coloured={coloured}", &args[..args.len().min(2)]);
+        let env = environment(&a, coloured);
         let (pipe_status, pipe_stdout, pipe_stderr) = piped(&a, args, &env);
         let terminals = [
-            sandbox.root().join(format!("stdout-{index}.tty")),
-            sandbox.root().join(format!("stderr-{index}.tty")),
+            sandbox
+                .root()
+                .join(format!("stdout-{index}-{coloured}.tty")),
+            sandbox
+                .root()
+                .join(format!("stderr-{index}-{coloured}.tty")),
         ];
         let (status, out, err) = on_terminals(&a, args, &env, &terminals);
+        if coloured && args[0] == "list" {
+            assert!(out.contains(&0x1b), "{label}: not coloured on a terminal");
+        }
+        let (out, err) = (uncoloured(&out), uncoloured(&err));
         let shown = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();
         assert_eq!(returncode(status), returncode(pipe_status), "{label}");
         assert!(
@@ -314,4 +328,38 @@ fn pty_output_matches_pipe_output_and_escapes_hostile_text() {
         };
         assert!(!run.crashed(), "{label}: {}", run.stderr);
     }
+}
+
+/// `machine`'s environment on a colour terminal, with colour on or turned off (`NO_COLOR`).
+fn environment(machine: &Machine, coloured: bool) -> BTreeMap<OsString, OsString> {
+    let mut env = machine.env(None, "codex");
+    for colour in ["NO_COLOR", "CLICOLOR", "CLICOLOR_FORCE", "TERM"] {
+        env.remove(OsStr::new(colour));
+    }
+    env.insert("TERM".into(), "xterm-256color".into());
+    if !coloured {
+        env.insert("NO_COLOR".into(), "1".into());
+    }
+    env
+}
+
+/// `bytes` without bead's colour codes (`ESC [`, digits and semicolons, `m`).
+fn uncoloured(bytes: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut at = 0;
+    while at < bytes.len() {
+        if bytes[at] == 0x1b && bytes.get(at + 1) == Some(&b'[') {
+            let end = bytes[at + 2..]
+                .iter()
+                .position(|b| !(b.is_ascii_digit() || *b == b';'))
+                .map(|n| at + 2 + n);
+            if let Some(end) = end.filter(|end| bytes[*end] == b'm') {
+                at = end + 1;
+                continue;
+            }
+        }
+        out.push(bytes[at]);
+        at += 1;
+    }
+    out
 }

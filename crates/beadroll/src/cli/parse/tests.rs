@@ -1,7 +1,9 @@
-//! Expected parser results and errors for command-line arguments.
+//! What clap makes of command lines: the values commands read, their defaults, and the errors.
+
+use std::os::unix::ffi::OsStringExt as _;
 
 use super::*;
-use crate::cli::spec::{COMMANDS, Kind};
+use crate::cli::spec::COMMANDS;
 
 fn args(list: &[&str]) -> Vec<OsString> {
     list.iter().map(OsString::from).collect()
@@ -16,7 +18,7 @@ fn parsed(list: &[&str]) -> Namespace {
 
 fn usage(list: &[&str]) -> String {
     match parse(&args(list)) {
-        Parsed::Usage(message) => String::from_utf8(message).unwrap(),
+        Parsed::Usage(usage) => String::from_utf8_lossy(&usage.message).into_owned(),
         other => panic!("{list:?}: {other:?}"),
     }
 }
@@ -36,12 +38,11 @@ fn texts(namespace: &Namespace, dest: &str) -> Vec<String> {
 }
 
 #[test]
-fn every_parser_has_one_positional_at_most() {
-    // consume_positionals matches one positional's pattern at a time
-    for command in &COMMANDS {
-        let positionals = command.args.iter().filter(|a| a.is_positional()).count();
-        assert!(positionals <= 1, "{}", command.name);
-        for arg in command.args {
+fn the_table_builds_a_command_line_clap_accepts() {
+    command(None).debug_assert();
+    command(Some(40)).debug_assert();
+    for spec in &COMMANDS {
+        for arg in spec.args {
             let list = matches!(arg.nargs, Nargs::ZeroOrMore | Nargs::OneOrMore)
                 || arg.action == Action::Append;
             assert!(!list || arg.kind == Kind::Text, "{}", arg.dest);
@@ -50,7 +51,7 @@ fn every_parser_has_one_positional_at_most() {
 }
 
 #[test]
-fn prefixes_are_options_when_they_name_one_and_errors_when_they_name_several() {
+fn an_unambiguous_prefix_names_its_option() {
     let ns = parsed(&[
         "create",
         "--description=",
@@ -65,111 +66,14 @@ fn prefixes_are_options_when_they_name_one_and_errors_when_they_name_several() {
     assert_eq!(text(&ns, "title_pos"), Some("x".into()));
     assert_eq!(text(&ns, "acceptance_criteria"), Some("a".into()));
     assert_eq!(
-        usage(&["create", "--desc", "x"]),
-        "ambiguous option: --desc could match --description, --description-file"
+        texts(&parsed(&["list", "--stat", "closed"]), "status"),
+        ["closed"]
     );
-    assert_eq!(
-        usage(&["create", "--acc=x", "t"]),
-        "ambiguous option: --acc=x could match --acceptance-criteria, --acceptance"
-    );
-    assert_eq!(
-        usage(&["create", "-l", "a", "--lab", "e", "t"]),
-        "ambiguous option: --lab could match --labels, --label"
-    );
+    assert!(usage(&["create", "--desc", "x"]).contains("--desc"));
     assert_eq!(
         text(&parsed(&["create", "--", "--desc"]), "title_pos"),
         Some("--desc".into())
     );
-}
-
-#[test]
-fn positionals_are_taken_before_the_first_option_after_them() {
-    assert_eq!(
-        usage(&["update", "A", "--status", "open", "B"]),
-        "unrecognized arguments: B"
-    );
-    assert_eq!(usage(&["create", "a", "b"]), "unrecognized arguments: b");
-    assert_eq!(
-        usage(&["create", "x", "--", "y"]),
-        "unrecognized arguments: y"
-    );
-    assert_eq!(
-        usage(&["dep", "add", "--type", "blocks", "A", "B"]),
-        "unrecognized arguments: A B"
-    );
-    let ns = parsed(&["dep", "add", "A", "B", "--type", "blocks"]);
-    assert_eq!(texts(&ns, "words"), ["add", "A", "B"]);
-    let ns = parsed(&["comments", "--", "add", "X", "-m"]);
-    assert_eq!(texts(&ns, "words"), ["add", "X", "-m"]);
-    assert!(parsed(&["dep"]).texts("words").is_empty());
-}
-
-#[test]
-fn dash_prefixed_values_follow_the_argument_grammar() {
-    assert_eq!(
-        text(&parsed(&["create", "- dash title"]), "title_pos"),
-        Some("- dash title".into())
-    );
-    assert_eq!(
-        text(
-            &parsed(&["comments", "add", "X", "-m", "- item"]),
-            "message"
-        ),
-        Some("- item".into())
-    );
-    assert_eq!(
-        text(&parsed(&["create", "-p", "-1", "t"]), "priority"),
-        Some("-1".into())
-    );
-    assert_eq!(
-        text(&parsed(&["create", "-1x"]), "title_pos"),
-        Some("-1x".into())
-    );
-    assert_eq!(
-        text(&parsed(&["create", "-"]), "title_pos"),
-        Some("-".into())
-    );
-    assert_eq!(
-        text(&parsed(&["create", "-pfoo", "t"]), "priority"),
-        Some("foo".into())
-    );
-    assert_eq!(
-        text(&parsed(&["create", "-p=foo", "t"]), "priority"),
-        Some("foo".into())
-    );
-    assert_eq!(
-        text(&parsed(&["create", "--title=", "x"]), "title"),
-        Some(String::new())
-    );
-    assert_eq!(
-        usage(&["create", "--title", "--notes", "x"]),
-        "argument --title: expected one argument"
-    );
-    assert_eq!(
-        usage(&["list", "-s"]),
-        "argument -s/--status: expected one argument"
-    );
-}
-
-#[test]
-fn flags_take_no_value_and_short_ones_combine() {
-    assert_eq!(
-        usage(&["create", "--silent=yes", "t"]),
-        "argument --silent: ignored explicit argument 'yes'"
-    );
-    assert_eq!(
-        usage(&["list", "-a=1"]),
-        "argument -a/--all: ignored explicit argument '1'"
-    );
-    assert_eq!(
-        usage(&["list", "--all=1"]),
-        "argument -a/--all: ignored explicit argument '1'"
-    );
-    assert_eq!(usage(&["list", "-aX"]), "unrecognized arguments: -X");
-    let ns = parsed(&["list", "-as", "open"]);
-    assert!(ns.flag("all"));
-    assert_eq!(texts(&ns, "status"), ["open"]);
-    assert!(parsed(&["list", "-asopen"]).flag("all"));
 }
 
 #[test]
@@ -191,27 +95,71 @@ fn the_last_value_wins_lists_keep_every_value_and_a_scope_is_given_once() {
     assert!(parsed(&["create", "x"]).texts("labels").is_empty());
     assert_eq!(
         usage(&["list", "--parent", "a", "--parent", "b"]),
-        "argument --parent: given more than once"
+        "the argument '--parent <ID>' cannot be used multiple times"
     );
-    assert_eq!(
-        usage(&["ready", "--par", "a", "--parent", "b"]),
-        "argument --parent: given more than once"
-    );
-    assert_eq!(
-        usage(&["ready", "x", "--epic", "y"]),
-        "argument --epic: not allowed with argument ID"
-    );
-    assert_eq!(
-        usage(&["ready", "--epic", "y", "x"]),
-        "argument ID: not allowed with argument --epic"
-    );
-    assert_eq!(
-        usage(&["ready", "--epic", "a", "--parent", "b"]),
-        "argument --parent: not allowed with argument --epic"
-    );
+    assert!(usage(&["ready", "x", "--epic", "y"]).contains("cannot be used with"));
+    assert!(usage(&["ready", "--epic", "a", "--parent", "b"]).contains("cannot be used with"));
     let ns = parsed(&["ready", "--epic", "a"]);
     assert_eq!(text(&ns, "epic"), Some("a".into()));
     assert_eq!(ns.text("root"), None);
+}
+
+#[test]
+fn positionals_and_options_mix() {
+    assert_eq!(
+        texts(&parsed(&["update", "A", "--status", "open", "B"]), "ids"),
+        ["A", "B"]
+    );
+    assert!(usage(&["create", "a", "b"]).contains("'b'"));
+    let ns = parsed(&["dep", "add", "--type", "blocks", "A", "B"]);
+    assert_eq!(texts(&ns, "words"), ["add", "A", "B"]);
+    assert_eq!(text(&ns, "type"), Some("blocks".into()));
+    let ns = parsed(&["comments", "--", "add", "X", "-m"]);
+    assert_eq!(texts(&ns, "words"), ["add", "X", "-m"]);
+    assert!(parsed(&["dep"]).texts("words").is_empty());
+}
+
+#[test]
+fn an_options_value_may_start_with_a_dash_and_a_positionals_after_a_double_dash() {
+    assert_eq!(
+        text(&parsed(&["create", "--", "- dash title"]), "title_pos"),
+        Some("- dash title".into())
+    );
+    assert!(usage(&["create", "- dash title"]).contains("'--"));
+    let ns = parsed(&["comments", "add", "X", "-m", "- note", "--offline"]);
+    assert_eq!(texts(&ns, "words"), ["add", "X"]);
+    assert_eq!(text(&ns, "message"), Some("- note".into()));
+    assert!(ns.flag("offline"));
+    assert_eq!(
+        text(&parsed(&["create", "-p", "-1", "t"]), "priority"),
+        Some("-1".into())
+    );
+    assert_eq!(
+        text(&parsed(&["create", "-pfoo", "t"]), "priority"),
+        Some("foo".into())
+    );
+    assert_eq!(
+        text(&parsed(&["create", "--title", "--notes", "x"]), "title"),
+        Some("--notes".into())
+    );
+    assert_eq!(
+        parsed(&["log", "--limit", "-2"]).int("limit"),
+        Some(&Int::from(-2))
+    );
+    // an issue id is not free text: a mistyped option is an error, with a suggestion
+    let mistyped = usage(&["update", "A", "--stauts", "open"]);
+    assert!(mistyped.contains("'--status'"), "{mistyped}");
+}
+
+#[test]
+fn flags_take_no_value_and_short_ones_combine() {
+    assert!(usage(&["create", "--silent=yes", "t"]).contains("'yes'"));
+    let ns = parsed(&["list", "-as", "open"]);
+    assert!(ns.flag("all"));
+    assert_eq!(texts(&ns, "status"), ["open"]);
+    assert!(parsed(&["list", "-asopen"]).flag("all"));
+    assert!(parsed(&["init", "--tracked"]).flag("tracked"));
+    assert!(!parsed(&["init"]).flag("tracked"));
 }
 
 #[test]
@@ -222,61 +170,37 @@ fn numbers_are_read_as_int_reads_them_and_defaults_apply() {
     assert_eq!(parsed(&["ready"]).int("limit"), Some(&Int::from(0)));
     assert_eq!(parsed(&["log"]).int("limit"), Some(&Int::from(30)));
     assert_eq!(parsed(&["create", "t"]).int("estimate"), None);
-    assert_eq!(
-        usage(&["list", "-a", "--limit", "x"]),
-        "argument --limit: invalid int value: 'x'"
-    );
+    assert!(usage(&["list", "-a", "--limit", "x"]).contains("not a whole number"));
     let many = "1".repeat(4301);
-    assert_eq!(
-        usage(&["create", "--estimate", &many]),
-        format!("argument --estimate: invalid int value: '{many}'")
-    );
-    assert!(parsed(&["init", "--tracked"]).flag("tracked"));
-    assert!(!parsed(&["init"]).flag("tracked"));
+    assert!(usage(&["create", "--estimate", &many]).contains("not a whole number"));
 }
 
 #[test]
-fn errors_come_in_the_order_argparse_meets_them() {
-    assert_eq!(usage(&["show"]), "the following arguments are required: ID");
-    assert_eq!(
-        usage(&["search"]),
-        "the following arguments are required: TEXT"
+fn errors_name_what_is_missing_or_unknown_and_suggest() {
+    assert!(usage(&["show"]).contains("<ID>"));
+    assert!(usage(&["search"]).contains("<TEXT>"));
+    let unknown = usage(&["lis"]);
+    assert!(
+        unknown.contains("'lis'") && unknown.contains("'list'"),
+        "{unknown}"
     );
-    assert_eq!(
-        usage(&["--bogus"]),
-        "the following arguments are required: command"
-    );
-    assert_eq!(
-        usage(&["--bogus", "create"]),
-        "unrecognized arguments: --bogus"
-    );
-    assert_eq!(
-        usage(&["--bogus", "show"]),
-        "the following arguments are required: ID"
-    );
-    assert_eq!(
-        usage(&["create", "--estimate", "x", "--help"]),
-        "argument --estimate: invalid int value: 'x'"
-    );
-    assert!(usage(&["nonsense"]).starts_with(
-        "argument command: invalid choice: 'nonsense' (choose from 'init', 'import', 'export', "
-    ));
-    assert!(usage(&["-=x"]).starts_with("ambiguous option: -=x could match -h, --help"));
+    let flag = usage(&["list", "--stauts", "open"]);
+    assert!(flag.contains("'--status'"), "{flag}");
+    assert!(!usage(&["--bogus"]).is_empty());
 }
 
 #[test]
-fn help_is_answered_when_it_is_reached() {
+fn help_is_answered_for_the_command_it_follows() {
     let page = |list: &[&str]| match parse(&args(list)) {
         Parsed::Help(Page::Command(spec)) => spec.name.to_owned(),
         Parsed::Help(Page::Top) => "bead".to_owned(),
         other => panic!("{list:?}: {other:?}"),
     };
-    assert_eq!(page(&["create", "--bogus", "--help"]), "create");
+    assert_eq!(page(&["create", "--help"]), "create");
     assert_eq!(page(&["show", "--he"]), "show");
-    assert_eq!(page(&["list", "-hx"]), "list");
+    assert_eq!(page(&["list", "-h"]), "list");
     assert_eq!(page(&["-h", "create"]), "bead");
     assert_eq!(page(&["--he", "create"]), "bead");
-    assert_eq!(page(&["--", "help", "-h"]), "help");
 }
 
 #[test]
@@ -290,22 +214,21 @@ fn bytes_that_are_not_utf8_stay_as_given() {
         ns.text("title_pos").map(OsStr::as_bytes),
         Some(raw.as_bytes())
     );
-    let message = |argv: Vec<OsString>| match parse(&argv) {
-        Parsed::Usage(message) => message,
-        other => panic!("{other:?}"),
-    };
-    let limit = message(vec!["list".into(), "--limit".into(), raw.clone()]);
-    assert_eq!(limit, b"argument --limit: invalid int value: 'x\\udcff'");
-    // Keep the original bytes: human output substitutes `?`, while JSON escapes them.
-    let extra = message(vec!["create".into(), "t".into(), raw]);
-    assert_eq!(extra, b"unrecognized arguments: x\xff");
-    let ambiguous = message(vec![
-        "create".into(),
-        OsString::from_vec(b"--de=\xff".to_vec()),
-    ]);
+    assert!(matches!(
+        parse(&["list".into(), "--limit".into(), raw]),
+        Parsed::Usage(_)
+    ));
+}
+
+#[test]
+fn a_receipt_signs_every_destination_with_its_value_or_default() {
     assert_eq!(
-        ambiguous,
-        b"ambiguous option: --de=\xff could match --description, --description-file, --design, \
-          --deps"
+        parsed(&["claim", "A", "B"]).asked(),
+        "{\"command\": \"claim\", \"ids\": [\"A\", \"B\"], \"offline\": false, \"remote\": null}"
+    );
+    assert_eq!(
+        parsed(&["close", "A", "-r", "done", "--force"]).asked(),
+        "{\"command\": \"close\", \"force\": true, \"ids\": [\"A\"], \"offline\": false, \
+         \"reason\": \"done\", \"remote\": null}"
     );
 }

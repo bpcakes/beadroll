@@ -1,20 +1,45 @@
-//! Command-line parsing (`docs/RUST-PORT.md` §2.3h, §5 row 13). An unambiguous prefix of a long
-//! option names that option; `-1` and arguments containing spaces are values. Positionals are
-//! taken greedily before each option, so `update A --status open B` leaves `B` unrecognised. The
-//! last value of an option wins, a scope given twice is refused, and errors use `USAGE` with the
-//! established diagnostic messages. Arguments retain their OS bytes until a command
-//! reads them.
+//! Command-line parsing with clap, built from the argument table (`cli/spec.rs`; `docs/RUST-PORT.md`
+//! §2.3h as revised by roll-dih8.23). A command reads what argparse gave it before, and a receipt
+//! signs the same namespace: every destination with its value or default. An unambiguous prefix
+//! of a long option names that option, the last value of an option wins, a scope (`--parent`,
+//! `--epic`) is given once, and an option's value may start with `-`. Errors are clap's, with its
+//! suggestions, as `USAGE`. Arguments keep their OS bytes until a command reads them.
 
-use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
-use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
+use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_core::json::Int;
-use beadroll_core::text::{json_ascii_bytes, repr_bytes};
+use beadroll_core::text::{json_ascii_bytes, parse_integer};
+use clap::builder::TypedValueParser;
+use clap::builder::styling::{AnsiColor, Styles};
+use clap::error::ErrorKind;
+use clap::parser::ValueSource;
+use clap::{Arg, ArgAction, ArgGroup, ArgMatches, Command};
 
-use super::spec::{Action, ArgSpec, COMMAND, CommandSpec, HELP_FLAG, Nargs, find};
-use classify::{Candidate, parse_optional};
-use values::{default, json_of, option_count, positional_count, values_of};
+use super::layout::lay_out_lines;
+use super::paint::render_all;
+use super::spec::{Action, ArgSpec, COMMANDS, CommandSpec, DESCRIPTION, Kind, Nargs, find};
+
+/// The options every command takes, which bead reads before clap does (`read_request`): clap
+/// shows them on every page, and refuses them when they reach it, abbreviated.
+const GLOBAL: [(&str, Option<&str>, &str); 3] = [
+    (
+        "json",
+        None,
+        "machine output: one JSON document; an error as {\"error\": {\"code\", \"message\"}} on \
+         stderr",
+    ),
+    (
+        "actor",
+        Some("NAME"),
+        "the name to record and hold claims as",
+    ),
+    (
+        "color",
+        Some("WHEN"),
+        "auto (the default: on a terminal, unless NO_COLOR), always or never",
+    ),
+];
 
 /// A parsed command-line value.
 #[derive(Clone, Debug, PartialEq)]
@@ -28,7 +53,7 @@ pub(crate) enum Value {
     List(Vec<OsString>),
 }
 
-/// A help page: `bead`'s own (`bead -h COMMAND`), or a command's.
+/// A help page: `bead`'s own overview, or a command's.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Page {
     Top,
@@ -42,8 +67,16 @@ pub(crate) enum Parsed {
     Command(Namespace),
     /// Show a help page, and do nothing else.
     Help(Page),
-    /// A USAGE diagnostic retaining original argument bytes.
-    Usage(Vec<u8>),
+    /// A usage error.
+    Usage(Usage),
+}
+
+/// A usage error as clap words it: what is wrong, with its tips, as the bytes of the arguments it
+/// quotes; and the usage and pointer to help a human reads after it.
+#[derive(Debug)]
+pub(crate) struct Usage {
+    pub(crate) message: Vec<u8>,
+    pub(crate) usage: String,
 }
 
 /// A parsed command and its arguments, indexed by destination.
@@ -110,372 +143,318 @@ impl Namespace {
     }
 }
 
-/// Parses `args`, the command line once `--json`, `--actor` and their values are taken out.
-pub(crate) fn parse(args: &[OsString]) -> Parsed {
-    let top = Parser::top();
-    let mut run = Run::new(&top, args);
-    if let Err(stop) = run.parse_known() {
-        return match stop {
-            Stop::Usage(message) => Parsed::Usage(message),
-            Stop::Help(page) => Parsed::Help(page),
-        };
-    }
-    // Report parser-level extra arguments before command-level extras.
-    let mut extras = run.extras;
-    extras.extend(run.unrecognized);
-    if !extras.is_empty() {
-        let mut message = b"unrecognized arguments: ".to_vec();
-        message.extend(
-            extras
+/// A namespace value as ASCII-escaped JSON. Bytes that are not UTF-8 become lone surrogate
+/// escapes.
+fn json_of(value: &Value) -> String {
+    match value {
+        Value::None => "null".to_owned(),
+        Value::Bool(true) => "true".to_owned(),
+        Value::Bool(false) => "false".to_owned(),
+        Value::Int(int) => int.to_string(),
+        Value::Text(text) => json_ascii_bytes(text.as_bytes()),
+        Value::List(items) => {
+            let items: Vec<String> = items
                 .iter()
-                .map(|a| a.as_bytes())
-                .collect::<Vec<_>>()
-                .join(&b' '),
-        );
-        return Parsed::Usage(message);
-    }
-    match run.command {
-        Some((spec, values)) => Parsed::Command(Namespace { spec, values }),
-        None => Parsed::Usage(b"the following arguments are required: command".to_vec()),
-    }
-}
-
-/// One parser: `bead`'s, whose one positional is the command, or a command's. Either has
-/// `-h`/`--help` first.
-struct Parser {
-    page: Page,
-    actions: Vec<&'static ArgSpec>,
-}
-
-impl Parser {
-    fn top() -> Parser {
-        Parser {
-            page: Page::Top,
-            actions: vec![&HELP_FLAG, &COMMAND],
+                .map(|i| json_ascii_bytes(i.as_bytes()))
+                .collect();
+            format!("[{}]", items.join(", "))
         }
     }
+}
 
-    fn command(spec: &'static CommandSpec) -> Parser {
-        Parser {
-            page: Page::Command(spec),
-            actions: std::iter::once(&HELP_FLAG).chain(spec.args).collect(),
+/// The styles of help pages and usage errors, cargo's: green headings, cyan literals.
+pub(crate) fn styles() -> Styles {
+    Styles::styled()
+        .header(AnsiColor::Green.on_default().bold())
+        .usage(AnsiColor::Green.on_default().bold())
+        .literal(AnsiColor::Cyan.on_default().bold())
+        .placeholder(AnsiColor::Cyan.on_default())
+        .error(AnsiColor::Red.on_default().bold())
+        .valid(AnsiColor::Cyan.on_default().bold())
+        .invalid(AnsiColor::Yellow.on_default().bold())
+}
+
+/// bead's command line as clap reads it, its help laid out `width` wide (none: unwrapped): a
+/// subcommand for every command in the table.
+pub(crate) fn command(width: Option<usize>) -> Command {
+    let subcommands = COMMANDS.iter().map(|spec| subcommand(spec, width));
+    let globals = GLOBAL.iter().map(|(name, value, help)| {
+        let arg = Arg::new(*name)
+            .long(*name)
+            .help(*help)
+            .global(true)
+            .help_heading("Global options");
+        match value {
+            Some(value) => arg.value_name(*value).action(ArgAction::Set),
+            None => arg.action(ArgAction::SetTrue),
         }
+    });
+    settings(Command::new("bead"), width)
+        .about(DESCRIPTION)
+        .args(globals)
+        .disable_help_subcommand(true)
+        .disable_version_flag(true)
+        .subcommand_required(true)
+        .subcommand_value_name("COMMAND")
+        .subcommands(subcommands)
+}
+
+/// What every command keeps of argparse: prefixes of long options, the last value winning; and
+/// how its help looks.
+fn settings(command: Command, width: Option<usize>) -> Command {
+    command
+        .infer_long_args(true)
+        .args_override_self(true)
+        .styles(styles())
+        .term_width(width.unwrap_or(0))
+}
+
+/// One command, its arguments as the table declares them.
+fn subcommand(spec: &'static CommandSpec, width: Option<usize>) -> Command {
+    let mut command = settings(Command::new(spec.name), width)
+        .about(spec.help)
+        .args(spec.args.iter().map(argument));
+    let scope: Vec<&str> = spec
+        .args
+        .iter()
+        .filter(|arg| arg.exclusive)
+        .map(|arg| arg.dest)
+        .collect();
+    if !scope.is_empty() {
+        command = command.group(ArgGroup::new("scope").args(scope).multiple(false));
     }
-
-    /// Every option string and action in declaration order.
-    fn options(&self) -> impl Iterator<Item = (&'static str, usize)> + '_ {
-        self.actions
-            .iter()
-            .enumerate()
-            .flat_map(|(index, action)| action.flags.iter().map(move |flag| (*flag, index)))
+    if let Some(epilog) = spec.epilog {
+        // clap wraps nothing it is given at the width it was laid out for, and shows its colour
+        // only on a page it paints
+        command = command.after_help(render_all(&lay_out_lines(epilog, width), true));
     }
+    command
+}
 
-    /// The option `name` is, exactly.
-    fn option(&self, name: &[u8]) -> Option<(&'static str, usize)> {
-        self.options().find(|(flag, _)| flag.as_bytes() == name)
+/// One argument as clap takes it: its option strings, value name, help, how many values and of
+/// what type.
+fn argument(spec: &ArgSpec) -> Arg {
+    let positional = spec.is_positional();
+    let mut arg = Arg::new(spec.dest);
+    let longs: Vec<&str> = spec
+        .flags
+        .iter()
+        .filter_map(|flag| flag.strip_prefix("--"))
+        .collect();
+    let shorts: Vec<char> = spec
+        .flags
+        .iter()
+        .filter(|flag| !flag.starts_with("--"))
+        .filter_map(|flag| flag.strip_prefix('-')?.chars().next())
+        .collect();
+    if let Some((first, others)) = longs.split_first() {
+        arg = arg.long(*first).visible_aliases(others.to_vec());
+    }
+    if let Some((first, others)) = shorts.split_first() {
+        arg = arg.short(*first).visible_short_aliases(others.to_vec());
+    }
+    if let Some(help) = spec.help {
+        arg = arg.help(help);
+    }
+    let name = spec
+        .metavar
+        .map_or_else(|| spec.dest.to_ascii_uppercase(), str::to_owned);
+    if spec.nargs != Nargs::Zero {
+        arg = arg.value_name(name);
+    }
+    arg = match (spec.action, spec.nargs) {
+        (Action::StoreTrue, _) => arg.action(ArgAction::SetTrue),
+        (_, Nargs::ZeroOrMore) => arg.action(ArgAction::Append).num_args(0..),
+        (_, Nargs::OneOrMore) => arg.action(ArgAction::Append).num_args(1..).required(true),
+        // a scope given twice is refused, after the parse
+        (Action::Append | Action::Once, _) => arg.action(ArgAction::Append),
+        (_, Nargs::One) if positional => arg.action(ArgAction::Set).required(true),
+        _ => arg.action(ArgAction::Set),
+    };
+    if !positional && spec.nargs != Nargs::Zero {
+        // an option's value is the next argument, whatever it starts with; a positional's starts
+        // with `-` only after `--`, so that a mistyped option is never taken for a value
+        arg = arg.allow_hyphen_values(true);
+    }
+    match (spec.nargs, spec.kind) {
+        (Nargs::Zero, _) => arg,
+        (_, Kind::Int) => arg.value_parser(Integer),
+        (_, Kind::Text) => arg.value_parser(clap::value_parser!(OsString)),
     }
 }
 
-/// Why parsing stopped early.
-enum Stop {
-    Usage(Vec<u8>),
-    Help(Page),
-}
+/// A number as Python's `int()` reads it (`" +5 "`, `5_000`); anything else, bytes that are not
+/// UTF-8 included, is refused naming the option and the value.
+#[derive(Clone, Copy, Debug)]
+struct Integer;
 
-impl Stop {
-    fn usage(message: impl Into<String>) -> Stop {
-        Stop::Usage(message.into().into_bytes())
+impl TypedValueParser for Integer {
+    type Value = Int;
+
+    fn parse_ref(
+        &self,
+        command: &Command,
+        arg: Option<&Arg>,
+        value: &OsStr,
+    ) -> Result<Int, clap::Error> {
+        value.to_str().and_then(parse_integer).ok_or_else(|| {
+            let name = arg.map_or_else(String::new, ToString::to_string);
+            let message = format!(
+                "invalid value '{}' for '{name}': not a whole number",
+                value.to_string_lossy()
+            );
+            command.clone().error(ErrorKind::ValueValidation, message)
+        })
     }
 }
 
-/// An argument error prefixed with the name of the affected argument.
-fn argument_error(action: &ArgSpec, message: impl std::fmt::Display) -> Stop {
-    Stop::usage(format!("argument {}: {message}", action.name()))
+/// An argument's value before anything is given: its default, `false` for a flag.
+fn default(spec: &ArgSpec) -> Value {
+    match (spec.action, spec.kind, spec.default) {
+        (Action::StoreTrue, _, _) => Value::Bool(false),
+        (_, Kind::Int, Some(number)) => parse_integer(number).map_or(Value::None, Value::Int),
+        (_, _, Some(text)) => Value::Text(OsString::from(text)),
+        _ => Value::None,
+    }
 }
 
-/// One parse of one parser's arguments (`_parse_known_args`).
-struct Run<'a> {
-    parser: &'a Parser,
-    args: &'a [OsString],
-    /// `O` for an option, `A` for anything else, `-` for the first `--`.
-    pattern: Vec<u8>,
-    found: BTreeMap<usize, Vec<Candidate>>,
-    values: Vec<(&'static str, Value)>,
-    seen: Vec<bool>,
-    seen_non_default: Vec<bool>,
-    positionals: Vec<usize>,
-    extras: Vec<OsString>,
-    /// The command the subparsers action ran, with its namespace.
-    command: Option<(&'static CommandSpec, Vec<(&'static str, Value)>)>,
-    /// What the command did not recognise.
-    unrecognized: Vec<OsString>,
-}
-
-impl<'a> Run<'a> {
-    fn new(parser: &'a Parser, args: &'a [OsString]) -> Run<'a> {
-        let values = parser
-            .actions
-            .iter()
-            .filter(|action| action.action != Action::Help)
-            .map(|action| (action.dest, default(action)))
-            .collect();
-        Run {
-            parser,
+/// Parses `args`, the command line once `--json`, `--actor`, `--color` and their values are
+/// taken out.
+pub(crate) fn parse(args: &[OsString]) -> Parsed {
+    let mut root = command(None);
+    let argv = std::iter::once(OsString::from("bead")).chain(args.iter().cloned());
+    let matches = match root.try_get_matches_from_mut(argv) {
+        Ok(matches) => matches,
+        Err(error) if error.kind() == ErrorKind::DisplayHelp => return Parsed::Help(page(args)),
+        Err(error) => return Parsed::Usage(usage(&error, args)),
+    };
+    // `--json`, `--actor` and `--color` reach clap only abbreviated
+    if let Some((name, _, _)) = GLOBAL.iter().find(|(name, _, _)| {
+        matches
+            .subcommand()
+            .map_or(&matches, |(_, sub)| sub)
+            .value_source(name)
+            == Some(ValueSource::CommandLine)
+    }) {
+        let message = format!("write --{name} in full");
+        return Parsed::Usage(usage(
+            &root.error(ErrorKind::UnknownArgument, message),
             args,
-            pattern: Vec::with_capacity(args.len()),
-            found: BTreeMap::new(),
-            values,
-            seen: vec![false; parser.actions.len()],
-            seen_non_default: vec![false; parser.actions.len()],
-            positionals: (0..parser.actions.len())
-                .filter(|index| parser.actions[*index].is_positional())
-                .collect(),
-            extras: Vec::new(),
-            command: None,
-            unrecognized: Vec::new(),
-        }
+        ));
     }
-
-    fn parse_known(&mut self) -> Result<(), Stop> {
-        let mut rest = false;
-        for (index, arg) in self.args.iter().enumerate() {
-            if rest {
-                self.pattern.push(b'A');
-            } else if arg.as_bytes() == b"--" {
-                // everything after `--` is a value
-                self.pattern.push(b'-');
-                rest = true;
-            } else if let Some(candidates) = parse_optional(self.parser, arg.as_bytes()) {
-                self.found.insert(index, candidates);
-                self.pattern.push(b'O');
-            } else {
-                self.pattern.push(b'A');
-            }
-        }
-        // positionals and options alternately, up to the last option
-        let mut start = 0;
-        if let Some(&last) = self.found.keys().next_back() {
-            while start <= last {
-                let next = (start..=last)
-                    .find(|index| self.found.contains_key(index))
-                    .unwrap_or(last + 1);
-                if start != next {
-                    let end = self.consume_positionals(start)?;
-                    if end > start {
-                        start = end;
-                        continue;
-                    }
-                }
-                if !self.found.contains_key(&start) {
-                    self.extras.extend_from_slice(&self.args[start..next]);
-                    start = next;
-                }
-                start = self.consume_optional(start)?;
-            }
-        }
-        let stop = self.consume_positionals(start)?;
-        self.extras.extend_from_slice(&self.args[stop..]);
-        let missing: Vec<String> = self
-            .parser
-            .actions
-            .iter()
-            .enumerate()
-            .filter(|(index, action)| !self.seen[*index] && action.is_required())
-            .map(|(_, action)| action.name())
-            .collect();
-        if !missing.is_empty() {
-            return Err(Stop::usage(format!(
-                "the following arguments are required: {}",
-                missing.join(", ")
-            )));
-        }
-        Ok(())
-    }
-
-    /// Takes the option at `start` and its values; the index after them (`consume_optional`).
-    fn consume_optional(&mut self, start: usize) -> Result<usize, Stop> {
-        let candidates = self.found.get(&start).cloned().unwrap_or_default();
-        if candidates.len() > 1 {
-            let options: Vec<&str> = candidates.iter().map(|c| c.option).collect();
-            let mut message = b"ambiguous option: ".to_vec();
-            message.extend_from_slice(self.args[start].as_bytes());
-            message.extend_from_slice(format!(" could match {}", options.join(", ")).as_bytes());
-            return Err(Stop::Usage(message));
-        }
-        let Some(Candidate {
-            mut action,
-            mut option,
-            mut eq,
-            mut explicit,
-        }) = candidates.into_iter().next()
-        else {
-            return Ok(start + 1);
-        };
-        let mut taken: Vec<(usize, Vec<OsString>, &'static str)> = Vec::new();
-        let stop = loop {
-            let Some(index) = action else {
-                self.extras.push(self.args[start].clone());
-                return Ok(start + 1);
-            };
-            let spec = self.parser.actions[index];
-            let Some(value) = explicit.take() else {
-                let first = start + 1;
-                let count = option_count(spec, &self.pattern[first..])?;
-                taken.push((index, self.args[first..first + count].to_vec(), option));
-                break first + count;
-            };
-            let count = option_count(spec, b"A")?;
-            if count == 0 && option.as_bytes().get(1) != Some(&b'-') && !value.is_empty() {
-                // `-ab`: a flag, then another short option in the same argument
-                if eq || value[0] == b'-' {
-                    let message = format!("ignored explicit argument {}", repr_bytes(&value));
-                    return Err(argument_error(spec, message));
-                }
-                taken.push((index, Vec::new(), option));
-                match self.parser.option(&[b'-', value[0]]) {
-                    Some((next_option, next)) => {
-                        (action, option) = (Some(next), next_option);
-                        let rest = &value[1..];
-                        (eq, explicit) = match rest.first() {
-                            None => (false, None),
-                            Some(b'=') => (true, Some(rest[1..].to_vec())),
-                            Some(_) => (false, Some(rest.to_vec())),
-                        };
-                    }
-                    None => {
-                        let mut unknown = vec![b'-'];
-                        unknown.extend_from_slice(&value);
-                        self.extras.push(OsString::from_vec(unknown));
-                        break start + 1;
-                    }
-                }
-            } else if count == 1 {
-                taken.push((index, vec![OsString::from_vec(value)], option));
-                break start + 1;
-            } else {
-                let message = format!("ignored explicit argument {}", repr_bytes(&value));
-                return Err(argument_error(spec, message));
-            }
-        };
-        for (index, values, option) in taken {
-            self.take_action(index, values, Some(option))?;
-        }
-        Ok(stop)
-    }
-
-    /// Takes the next positional's values from `start` on, as many as its `nargs` matches; the
-    /// index after them (`consume_positionals`). Each of bead's parsers has one positional at most.
-    fn consume_positionals(&mut self, start: usize) -> Result<usize, Stop> {
-        let Some(&index) = self.positionals.first() else {
-            return Ok(start);
-        };
-        let pattern = &self.pattern[start..];
-        let Some(count) = positional_count(self.parser.actions[index].nargs, pattern) else {
-            return Ok(start);
-        };
-        // one that matched nothing just before an option waits for what follows it
-        if count == 0 && pattern.first() == Some(&b'O') {
-            return Ok(start);
-        }
-        let mut values = self.args[start..start + count].to_vec();
-        if self.parser.actions[index].nargs == Nargs::Parser {
-            if pattern.first() == Some(&b'-') {
-                values.remove(0);
-            }
-        } else if pattern[..count].contains(&b'-')
-            && let Some(at) = values.iter().position(|v| v.as_bytes() == b"--")
-        {
-            values.remove(at);
-        }
-        self.positionals.remove(0);
-        self.take_action(index, values, None)?;
-        Ok(start + count)
-    }
-
-    /// Converts the values, checks the one-scope rule, and acts (`take_action`).
-    fn take_action(
-        &mut self,
-        index: usize,
-        strings: Vec<OsString>,
-        option: Option<&'static str>,
-    ) -> Result<(), Stop> {
-        let spec = self.parser.actions[index];
-        self.seen[index] = true;
-        let value = values_of(spec, &strings)?;
-        if !spec.flags.is_empty() || !strings.is_empty() {
-            self.seen_non_default[index] = true;
-            if spec.exclusive {
-                let conflict = self.parser.actions.iter().enumerate().find(|(other, a)| {
-                    *other != index && a.exclusive && self.seen_non_default[*other]
-                });
-                if let Some((_, other)) = conflict {
-                    let message = format!("not allowed with argument {}", other.name());
-                    return Err(argument_error(spec, message));
-                }
-            }
-        }
-        match spec.action {
-            Action::Help => Err(Stop::Help(self.parser.page)),
-            Action::Store => {
-                self.set(spec.dest, value);
-                Ok(())
-            }
-            Action::StoreTrue => {
-                self.set(spec.dest, Value::Bool(true));
-                Ok(())
-            }
-            Action::Append => {
-                let mut items = match self.value(spec.dest) {
-                    Value::List(items) => items.clone(),
-                    _ => Vec::new(),
+    // clap requires a command, and knows only the table's
+    let Some((spec, matches)) = matches
+        .subcommand()
+        .and_then(|(name, matches)| Some((find(name)?, matches)))
+    else {
+        return Parsed::Usage(usage(
+            &root.error(ErrorKind::MissingSubcommand, "no command"),
+            args,
+        ));
+    };
+    let mut values = Vec::with_capacity(spec.args.len());
+    for arg in spec.args {
+        match value(arg, matches) {
+            Ok(value) => values.push((arg.dest, value)),
+            Err(message) => {
+                let error = match root.find_subcommand_mut(spec.name) {
+                    Some(sub) => sub.error(ErrorKind::ArgumentConflict, message),
+                    None => root.error(ErrorKind::ArgumentConflict, message),
                 };
-                if let Value::Text(text) = value {
-                    items.push(text);
-                }
-                self.set(spec.dest, Value::List(items));
-                Ok(())
-            }
-            Action::Once => {
-                if *self.value(spec.dest) != Value::None {
-                    let shown = option.unwrap_or(spec.dest);
-                    return Err(Stop::usage(format!(
-                        "argument {shown}: given more than once"
-                    )));
-                }
-                self.set(spec.dest, value);
-                Ok(())
-            }
-            Action::Commands => {
-                let Some(spec) = strings.first().and_then(|n| n.to_str()).and_then(find) else {
-                    return Ok(());
-                };
-                let parser = Parser::command(spec);
-                let mut run = Run::new(&parser, &strings[1..]);
-                run.parse_known()?;
-                self.command = Some((spec, run.values));
-                self.unrecognized = run.extras;
-                Ok(())
+                return Parsed::Usage(usage(&error, args));
             }
         }
     }
+    Parsed::Command(Namespace { spec, values })
+}
 
-    fn value(&self, dest: &str) -> &Value {
-        self.values
-            .iter()
-            .find(|(name, _)| *name == dest)
-            .map_or(&Value::None, |(_, value)| value)
+/// What `arg` holds after the parse, as argparse held it: its default when not given (an empty
+/// list for a positional that takes any number), else its value or values. A scope given more than
+/// once is refused.
+fn value(arg: &ArgSpec, matches: &ArgMatches) -> Result<Value, String> {
+    if arg.action == Action::StoreTrue {
+        return Ok(Value::Bool(matches.get_flag(arg.dest)));
     }
-
-    fn set(&mut self, dest: &'static str, value: Value) {
-        match self.values.iter_mut().find(|(name, _)| *name == dest) {
-            Some(slot) => slot.1 = value,
-            None => self.values.push((dest, value)),
-        }
+    if matches.value_source(arg.dest) != Some(ValueSource::CommandLine) {
+        return Ok(match arg.nargs {
+            Nargs::ZeroOrMore => Value::List(Vec::new()),
+            _ => default(arg),
+        });
+    }
+    if arg.kind == Kind::Int {
+        return Ok(matches
+            .get_one::<Int>(arg.dest)
+            .cloned()
+            .map_or(Value::None, Value::Int));
+    }
+    let given: Vec<OsString> = matches
+        .get_many::<OsString>(arg.dest)
+        .map(|values| values.cloned().collect())
+        .unwrap_or_default();
+    match (arg.action, arg.nargs) {
+        (Action::Once, _) if given.len() > 1 => Err(format!(
+            "the argument '{} <{}>' cannot be used multiple times",
+            arg.flags.last().copied().unwrap_or(arg.dest),
+            arg.metavar.unwrap_or(arg.dest)
+        )),
+        (Action::Append, _) | (_, Nargs::ZeroOrMore | Nargs::OneOrMore) => Ok(Value::List(given)),
+        _ => Ok(given.into_iter().last().map_or(Value::None, Value::Text)),
     }
 }
 
-mod classify;
-mod values;
+/// The page help was asked for: `bead`'s when `-h` or `--help` came before the command (the only
+/// options `bead` itself has), else the command's.
+fn page(args: &[OsString]) -> Page {
+    match args.first() {
+        Some(first) if !first.as_bytes().starts_with(b"-") => first
+            .to_str()
+            .and_then(find)
+            .map_or(Page::Top, Page::Command),
+        _ => Page::Top,
+    }
+}
+
+/// A clap error as bead reports it: the message and its tips (`message`), and what follows them
+/// (`usage`), both plain. Where the message quotes one of `args` that is not UTF-8, which clap
+/// shows with U+FFFD, it holds that argument's own bytes, so that a human reads `?` for each byte
+/// and JSON `\udcXX`, as every other message shows them.
+fn usage(error: &clap::Error, args: &[OsString]) -> Usage {
+    let rendered = error.render().to_string();
+    let rendered = rendered.trim_end();
+    let body = rendered.strip_prefix("error: ").unwrap_or(rendered);
+    let (said, after) = match body.find("\n\nUsage:") {
+        Some(at) => (&body[..at], body[at + 2..].trim_end()),
+        None => (body, ""),
+    };
+    let said = said
+        .split('\n')
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("; ");
+    let mut message = said.into_bytes();
+    for arg in args.iter().filter(|arg| arg.to_str().is_none()) {
+        let shown = String::from_utf8_lossy(arg.as_bytes());
+        message = replaced(&message, shown.as_bytes(), arg.as_bytes());
+    }
+    Usage {
+        message,
+        usage: after.to_owned(),
+    }
+}
+
+/// `bytes` with every `from` in it replaced by `to`.
+fn replaced(bytes: &[u8], from: &[u8], to: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut rest = bytes;
+    while let Some(at) = rest.windows(from.len()).position(|window| window == from) {
+        out.extend_from_slice(&rest[..at]);
+        out.extend_from_slice(to);
+        rest = &rest[at + from.len()..];
+    }
+    out.extend_from_slice(rest);
+    out
+}
 
 #[cfg(test)]
 mod tests;

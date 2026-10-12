@@ -15,7 +15,8 @@ use beadroll_store::view_outline;
 use beadroll_sync::writing;
 
 use super::{
-    Context, Failure, Outcome, arg_text, encodable, need_tracker, remove_edge, resolve_arg,
+    Context, Failure, Line, Outcome, Tone, arg_text, encodable, need_tracker, remove_edge,
+    resolve_arg, row,
 };
 
 /// Runs `dep ACTION ...`; without a known action word, `list`.
@@ -76,7 +77,7 @@ pub(crate) fn dep(
         let mut result = Object::new();
         result.insert(
             "tree".into(),
-            Value::Array(lines.iter().map(|l| Value::from(l.as_str())).collect()),
+            Value::Array(lines.iter().map(|l| Value::from(l.text())).collect()),
         );
         return Ok(Outcome::new(result, lines));
     }
@@ -122,12 +123,12 @@ pub(crate) fn dep(
 
 /// The tree beneath `issue`: each issue it depends on, indented under it, depth first in the
 /// order of its edges; an issue met again is listed but not opened again.
-fn tree(st: &State, issue: &Issue) -> Vec<String> {
+fn tree(st: &State, issue: &Issue) -> Vec<Line> {
     let mut lines = Vec::new();
     let mut seen: BTreeSet<EventId> = BTreeSet::new();
     let mut work: Vec<(&Issue, usize)> = vec![(issue, 0)];
     while let Some((node, depth)) = work.pop() {
-        lines.push(format!("{}{}", "  ".repeat(depth), st.line(node)));
+        lines.push(Line::toned(Tone::Plain, "  ".repeat(depth)).then(row(st, node)));
         if !seen.insert(node.uid()) {
             continue;
         }

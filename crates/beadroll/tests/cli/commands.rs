@@ -1,6 +1,7 @@
 //! Command behavior and compatibility tests.
 
 mod bp_test;
+mod colour;
 mod commands_and_compatibility_review4;
 mod compat_audit_cli;
 mod compat_audit_identity;

@@ -9,9 +9,9 @@ use std::process::{Command, ExitStatus, Stdio};
 
 use crate::{Json, Sandbox};
 
-/// Environment prefixes removed so the developer's harness, store and repository settings cannot
-/// reach the binary under test.
-const SCRUBBED: [&str; 4] = ["CLAUDE", "CODEX", "BEAD_", "GIT_"];
+/// Environment prefixes removed so the developer's harness, store, repository and colour settings
+/// cannot reach the binary under test.
+const SCRUBBED: [&str; 6] = ["CLAUDE", "CODEX", "BEAD_", "GIT_", "NO_COLOR", "CLICOLOR"];
 
 /// One simulated developer machine with its own BEAD_HOME, clone and identity.
 pub struct Machine {
@@ -70,7 +70,8 @@ impl Machine {
         &self.bead
     }
 
-    /// The inherited environment without CLAUDE*, CODEX*, BEAD_* or GIT_* variables, followed by
+    /// The inherited environment without CLAUDE*, CODEX*, BEAD_*, GIT_*, NO_COLOR or CLICOLOR*
+    /// variables (whether bead colours its output is each test's to say), followed by
     /// this machine's home and identity and then Machine::extra. The default thread is
     /// NAME-thread-0001.
     pub fn env(&self, thread: Option<&str>, agent: &str) -> BTreeMap<OsString, OsString> {

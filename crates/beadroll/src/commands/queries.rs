@@ -8,7 +8,7 @@ use beadroll_core::state::Issue;
 use beadroll_core::text::str_of;
 use beadroll_store::{view, view_outline};
 
-use super::{Context, Failure, Outcome, need_tracker};
+use super::{Context, Failure, Line, Outcome, Tone, need_tracker, row};
 
 /// Open issues something holds back, by key, each with the issues blocking it.
 pub(crate) fn blocked(ctx: &Context<'_>) -> Result<Outcome, Failure> {
@@ -20,14 +20,18 @@ pub(crate) fn blocked(ctx: &Context<'_>) -> Result<Outcome, Failure> {
         .collect();
     items.sort_by(|a, b| a.key().cmp(b.key()));
     let mut result = Vec::new();
-    let mut lines = Vec::new();
+    let mut lines: Vec<Line> = Vec::new();
     for issue in items {
         let blockers: Vec<String> = st
             .open_blockers(issue)
             .iter()
             .map(|b| b.key().to_owned())
             .collect();
-        lines.push(format!("{}  ⟵ {}", st.line(issue), blockers.join(", ")));
+        lines.push(
+            row(&st, issue)
+                .with(Tone::Plain, "  ⟵ ")
+                .with(Tone::Id, blockers.join(", ")),
+        );
         let mut item = st.brief(issue);
         item.insert(
             "blocked_by".into(),
@@ -36,7 +40,7 @@ pub(crate) fn blocked(ctx: &Context<'_>) -> Result<Outcome, Failure> {
         result.push(Value::from(item));
     }
     if lines.is_empty() {
-        lines.push("Nothing is blocked".to_owned());
+        lines.push("Nothing is blocked".into());
     }
     Ok(Outcome::new(Value::Array(result), lines))
 }
@@ -86,9 +90,9 @@ pub(crate) fn search(ctx: &Context<'_>, query: &OsStr, all: bool) -> Result<Outc
             .then_with(|| a.key().cmp(b.key()))
     });
     let result = Value::Array(hits.iter().map(|i| Value::from(st.brief(i))).collect());
-    let mut lines: Vec<String> = hits.iter().map(|i| st.line(i)).collect();
+    let mut lines: Vec<Line> = hits.iter().map(|i| row(&st, i)).collect();
     if lines.is_empty() {
-        lines.push("No matches".to_owned());
+        lines.push("No matches".into());
     }
     Ok(Outcome::new(result, lines))
 }

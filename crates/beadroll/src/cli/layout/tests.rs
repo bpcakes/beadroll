@@ -2,6 +2,11 @@
 
 use super::*;
 
+/// The lines' texts.
+fn texts(lines: Vec<Line>) -> Vec<String> {
+    lines.iter().map(Line::text).collect()
+}
+
 const ROWS: &[Row] = &[
     row(
         "Find",
@@ -77,7 +82,7 @@ fn a_long_term_has_its_line_and_brackets_and_hyphens_hold() {
         ),
     ];
     assert_eq!(
-        table(rows, Some(40)),
+        texts(table(rows, Some(40))),
         [
             "short  fits",
             "create TITLE [--parent P]",
@@ -95,7 +100,7 @@ fn a_long_term_has_its_line_and_brackets_and_hyphens_hold() {
 #[test]
 fn wide_characters_take_two_columns() {
     let rows = &[row("", "寛寛", "x"), row("", "ab", "y")];
-    assert_eq!(table(rows, None), ["寛寛  x", "ab    y"]);
+    assert_eq!(texts(table(rows, None)), ["寛寛  x", "ab    y"]);
     assert_eq!(paragraph("寛寛 寛寛", Some(6)), "寛寛\n寛寛");
 }
 
@@ -103,4 +108,26 @@ fn wide_characters_take_two_columns() {
 fn the_width_is_columns_at_most_a_hundred() {
     assert_eq!(width(Some(OsStr::new("72"))), Some(72));
     assert_eq!(width(Some(OsStr::new("300"))), Some(READABLE));
+}
+
+#[test]
+fn headings_and_terms_say_what_they_are() {
+    let lines = lay_out_lines(&[Block::Rows(ROWS)], Some(50));
+    assert_eq!(
+        lines[0].parts()[..3],
+        [
+            (Tone::Heading, "Find".to_owned()),
+            (Tone::Plain, "   ".to_owned()),
+            (Tone::Term, "ready [ID]".to_owned()),
+        ]
+    );
+    let stacked = lay_out_lines(&[Block::Rows(ROWS)], Some(30));
+    assert_eq!(stacked[0].parts(), [(Tone::Heading, "Find".to_owned())]);
+    assert_eq!(
+        stacked[1].parts(),
+        [
+            (Tone::Plain, "  ".to_owned()),
+            (Tone::Term, "ready [ID]".to_owned())
+        ]
+    );
 }

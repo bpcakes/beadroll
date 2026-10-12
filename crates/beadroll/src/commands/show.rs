@@ -7,7 +7,7 @@ use beadroll_core::text::{repr, str_of};
 use beadroll_core::view::icon;
 use beadroll_store::merged_into_default;
 
-use super::{Context, Failure, Outcome, need_tracker, resolve_arg, view_of};
+use super::{Context, Failure, Line, Outcome, Tone, need_tracker, resolve_arg, view_of};
 
 /// The issues `ids` name in full, each with whether the commit that closed it is on the default
 /// branch.
@@ -35,7 +35,7 @@ pub(crate) fn show(ctx: &Context<'_>, ids: &[OsString]) -> Result<Outcome, Failu
         }
         result.push(detail);
     }
-    let lines = result.iter().flat_map(lines_of).collect();
+    let lines: Vec<Line> = result.iter().flat_map(lines_of).collect();
     let result = Value::Array(result.into_iter().map(Value::from).collect());
     Ok(Outcome::new(result, lines))
 }
@@ -63,25 +63,31 @@ fn or(value: Option<&Value>, default: &str) -> String {
 }
 
 /// An issue's lines, as `show` prints it for a human.
-fn lines_of(item: &Object) -> Vec<String> {
-    let mut lines = summary(item);
-    lines.extend(relations(item));
+fn lines_of(item: &Object) -> Vec<Line> {
+    let (first, rest) = summary(item);
+    let mut lines = vec![first];
+    lines.extend(rest.into_iter().map(Line::from));
+    lines.extend(relations(item).into_iter().map(Line::from));
     lines
 }
 
 /// The issue's first lines: what it is, where it was worked on and closed, who holds it, and its
 /// texts.
-fn summary(item: &Object) -> Vec<String> {
+fn summary(item: &Object) -> (Line, Vec<String>) {
     let mut lines = Vec::new();
     let status = field(item, "status");
-    lines.push(format!(
-        "{} {} · {}   [P{} · {}]",
-        icon(&status),
-        field(item, "id"),
-        field(item, "title"),
-        field(item, "priority"),
-        status.to_uppercase()
-    ));
+    let priority = field(item, "priority");
+    let first = Line::new()
+        .with(Tone::of_status(&status), icon(&status))
+        .with(Tone::Plain, " ")
+        .with(Tone::Id, field(item, "id"))
+        .with(Tone::Plain, " · ")
+        .with(Tone::Strong, field(item, "title"))
+        .with(Tone::Plain, "   [")
+        .with(Tone::of_priority(&priority), format!("P{priority}"))
+        .with(Tone::Plain, " · ")
+        .with(Tone::of_status(&status), status.to_uppercase())
+        .with(Tone::Plain, "]");
     let place = item.get("where");
     if let Some(branch) = member(place, "branch").filter(|b| b.truthy()) {
         let commit = member(place, "commit").map(str_of).unwrap_or_default();
@@ -155,7 +161,7 @@ fn summary(item: &Object) -> Vec<String> {
         let labels: Vec<String> = labels.iter().map(str_of).collect();
         lines.push(format!("  labels: {}", labels.join(", ")));
     }
-    lines
+    (first, lines)
 }
 
 /// The issue's other lines: dependencies both ways, comments, conflicts, and the claims and ends

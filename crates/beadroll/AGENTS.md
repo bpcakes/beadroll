@@ -15,18 +15,19 @@ storage, protocol behavior and fault recovery.
   audited unsafe spots: a constructor that records whether standard input was open at exec, before
   the runtime reopens it on `/dev/null`; SIGXFSZ ignored; and inherited descriptors kept from
   child processes.
-- `src/cli.rs`: the flow of one run (`--json`, `--actor` and `--` read first, settings, the
-  parse, the workspace, the command, publishing what it wrote, the unpublished count, rendering,
-  errors). Its parts:
+- `src/cli.rs`: the flow of one run (`--json`, `--actor`, `--color` and `--` read first, settings,
+  the parse, the workspace, the command, publishing what it wrote, the unpublished count,
+  rendering, errors). Its parts:
   - `src/cli/spec.rs`, `spec/args.rs`: every command's arguments; the one table the parser, help
     pages and receipt signature read.
-  - `src/cli/parse.rs`, `parse/classify.rs`, `parse/values.rs`: argument parsing (§2.3h): option
-    classification, value counts, namespaces and diagnostics.
-  - `src/cli/help.rs`, `src/cli/wrap.rs`: argparse's help pages and its wrapping, to the selected
-    width.
+  - `src/cli/parse.rs`: clap's command line, built from the table, its matches turned into the
+    namespace commands read and receipts sign (roll-dih8.23).
+  - `src/cli/help.rs`: a command's help page as clap renders it; `src/cli/paint.rs`: whether a
+    stream shows colour, and each part of a line escaped, then painted.
   - `src/cli/free.rs`: `help`, `prime` and `onboard`, which work outside a repository;
     `src/cli/texts.rs`: the overview, `PRIME` and the help pages' epilogs as paragraphs and rows,
     and `ONBOARD` verbatim; `src/cli/layout.rs`: laying those out for the reader's width.
+  - `src/commands/line.rs`: a line of human output as parts that say what they are (`Tone`).
   - `src/cli/output.rs`: the EPIPE-safe writes and `visible`; `src/cli/tempdir.rs`: writable
     temporary-directory selection with environment overrides and fallbacks.
 - `src/commands.rs`: `Failure` (with the raw bytes of a message that holds some not UTF-8),
