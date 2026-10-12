@@ -21,3 +21,7 @@ Full review comments:
 ## roll-lqjj.1, round 2: `e0f380f6d5eb76301ea5c25537982a9cffc4550a..b1b1e7b35d0c7688979eb084da87d6cbca6fc329`
 
 Reviewed only e0f380f6d5eb76301ea5c25537982a9cffc4550a..b1b1e7b35d0c7688979eb084da87d6cbca6fc329. No actionable defects found. Tests remain unverified: ./check.sh could not start because the read-only sandbox denied access to Cargo’s build lock.
+
+## roll-dih8.11, round 1: `cfe278a93d326abdcd1ddebee287871c30a94c6b..ef7fec6efdccca4ed0a4fb84889d1f68fd7c312e`
+
+Reviewed cfe278a93d326abdcd1ddebee287871c30a94c6b..ef7fec6efdccca4ed0a4fb84889d1f68fd7c312e (HEAD); no actionable defects found. Prebuilt binaries passed 117 core tests and five targeted xtask tests. A fresh build and full baseline were not run because the sandbox is read-only.
