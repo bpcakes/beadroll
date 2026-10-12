@@ -80,7 +80,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn signals_read_as_python_names_them() {
+    fn signals_use_symbolic_names_and_report_unknown_numbers() {
         assert_eq!(signal_name(libc::SIGKILL), "SIGKILL");
         assert_eq!(signal_name(libc::SIGXFSZ), "SIGXFSZ");
         assert_eq!(signal_name(libc::SIGABRT), "SIGABRT");

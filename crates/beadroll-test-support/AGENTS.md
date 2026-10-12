@@ -2,12 +2,11 @@
 
 ## Purpose
 
-`crates/beadroll-test-support` is the Rust port of the Python suite's `tests/support.py`
-(`docs/RUST-PORT.md` §4.4): a `Sandbox` (a temporary root with a bare `origin.git` whose `main` has
-one commit) and `Machine`s (each with its own home, clone and identity) that run a `bead` binary,
-for the black-box tests of every crate. Later phases added the fixtures the ported tests need:
-hooks, fake `ssh`, `ps` and `git`, PTYs and failpoint handshakes. For beadroll-core's integration
-tests it builds events.
+`crates/beadroll-test-support` supplies isolated test environments (`docs/RUST-PORT.md` §4.4):
+a `Sandbox` (a temporary root with a bare `origin.git` whose `main` has one commit) and `Machine`s
+(each with its own home, clone and identity) that run a `bead` binary for every crate's black-box
+tests. Fixtures include hooks, fake `ssh`, `ps` and `git`, PTYs and failpoint handshakes. For
+beadroll-core's integration tests it builds events.
 
 ## Key entrypoints
 
@@ -25,9 +24,9 @@ tests it builds events.
 
 ## Edit here for X
 
-- Something every test needs from its world: here, as `tests/support.py` had it (`python-0.1.0`)
-  or as the test module's own helpers grew it.
-- How a machine's environment is built: `Machine::env`, which mirrors `Machine.env`.
+- Shared fixtures for isolated test environments: here; subject-specific helpers stay beside
+  their tests.
+- How a machine's environment is built: `Machine::env`.
 
 ## Invariants
 

@@ -100,7 +100,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn controls_print_as_python_escapes_them() {
+    fn controls_print_as_visible_escapes() {
         assert_eq!(
             visible("a\tb\u{1b}[31m\u{9b}\u{202e}é"),
             "a\\x09b\\x1b[31m\\x9b\\u202eé"

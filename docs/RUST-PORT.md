@@ -739,6 +739,17 @@ each count means.
 
 ### 4.2 How we prove that nothing regressed
 
+Current fixture provenance (roll-dih8.17): source comments and test names describe the contracts
+they check; implementation history lives here. The golden output files and receipt signatures
+were captured from `python-0.1.0` under CPython 3.14. JSON diagnostic fixtures use CPython 3.14
+as their reference. The non-printable table in `crates/beadroll-core/src/text/printable.rs` was
+generated with CPython 3.14.7's `str.isprintable()`, using Unicode 16.0.0, by
+`xtask/python/printable_table.py`; changing the generator's header does not change the table.
+`crates/beadroll/tests/cli/stress/seeded_random.rs` follows CPython 3.11–3.14's
+`Modules/_randommodule.c` and `Lib/random.py`: MT19937, integer seeding, `getrandbits`, `random`,
+`randrange`, `choice` and weighted `choices`. Its recorded stream and draw fixtures came from
+that implementation, so old stress seeds still reproduce the same scenarios.
+
 1. **The Python suite is the oracle.** `cargo xtask oracle` runs the Python modules with
    `BEAD_UNDER_TEST=target/debug/bead`. It skips, from a checked-in list derived from the
    catalogues (`xtask/oracle-skip.txt`):

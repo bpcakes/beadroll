@@ -422,7 +422,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lines_split_as_python_splits_decoded_text() {
+    fn lines_split_at_unicode_boundaries() {
         assert_eq!(
             split_lines(b"a b\r\nc\xc2\x85d\xffe\n"),
             [&b"a b"[..], b"c", b"d\xffe"]

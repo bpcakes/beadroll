@@ -215,7 +215,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn truth_follows_python() {
+    fn truth_distinguishes_empty_and_zero_values() {
         let falsy = [
             Value::Null,
             Value::Bool(false),

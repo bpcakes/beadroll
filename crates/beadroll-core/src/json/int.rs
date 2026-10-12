@@ -318,7 +318,7 @@ mod tests {
     }
 
     #[test]
-    fn integers_read_as_python_reads_them() {
+    fn integers_parse_exact_values_and_enforce_the_digit_limit() {
         assert_eq!(int("-0"), Int::from(0));
         assert_eq!(int("-0").to_string(), "0");
         assert_eq!(int("9223372036854775807").as_i64(), Some(i64::MAX));

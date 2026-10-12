@@ -304,7 +304,7 @@ mod tests {
     }
 
     #[test]
-    fn numeric_settings_read_as_python_reads_them_and_refuse_the_rest() {
+    fn numeric_settings_accept_supported_syntax_and_refuse_the_rest() {
         let s = settings(&[
             ("BEAD_ROTATE_BYTES", " 1_0 "),
             ("BEAD_NET_TIMEOUT", "0.25"),
@@ -327,7 +327,7 @@ mod tests {
     }
 
     #[test]
-    fn paths_are_spelled_as_pathlib_spells_them() {
+    fn paths_normalize_separators_and_current_directory_components() {
         assert_eq!(normalize_path(OsStr::new("//a/./b//")), Path::new("//a/b"));
         assert_eq!(normalize_path(OsStr::new("///a")), Path::new("/a"));
         assert_eq!(

@@ -105,7 +105,7 @@ fn positionals_are_taken_before_the_first_option_after_them() {
 }
 
 #[test]
-fn values_with_a_dash_are_values_when_python_reads_them_so() {
+fn dash_prefixed_values_follow_the_argument_grammar() {
     assert_eq!(
         text(&parsed(&["create", "- dash title"]), "title_pos"),
         Some("- dash title".into())

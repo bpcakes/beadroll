@@ -52,13 +52,13 @@ fn meets_roll_k2wy_18(machine: &Machine) -> bool {
     let meets = script && !cfg!(target_vendor = "apple");
     if meets {
         eprintln!(
-            "skipped: Python's bead hands git the ref in the locale's codeset (roll-k2wy.18)"
+            "skipped: the legacy launcher hands git the ref in the locale's codeset (roll-k2wy.18)"
         );
     }
     meets
 }
 
-/// Runs `invocation` with `LC_ALL` and `LANG` set to `locale`. Disable CPython's locale coercion
+/// Runs `invocation` with `LC_ALL` and `LANG` set to `locale`. Disable interpreter locale coercion
 /// and UTF-8 mode when an alternate launcher is under test (PEP 538 and PEP 540).
 fn under<'m>(invocation: Invocation<'m>, locale: &str) -> Invocation<'m> {
     invocation

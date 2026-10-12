@@ -11,7 +11,7 @@ mod compat_custom_statuses {
 
     /// Spaced, ASCII-escaped JSON.
     fn dumps(value: &Json) -> String {
-        write(value, Format::ASCII).expect("a record Python can write")
+        write(value, Format::ASCII).expect("a serializable record")
     }
 
     /// `{"id": id, "title": title, "status": status, **fields}`.
@@ -280,7 +280,7 @@ mod compat_audit_real_compatibility {
 
     /// `value` as JSON text, for a failure's message.
     fn shown(value: &Json) -> String {
-        write(value, Format::ASCII).expect("a value Python can write")
+        write(value, Format::ASCII).expect("a serializable value")
     }
 
     /// What the test needs and this machine lacks: `br`, `bv`, or any real export.

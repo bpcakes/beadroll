@@ -247,7 +247,7 @@ fn metadata_excludes_local_machine_identifiers() {
     let (sandbox, a, x, _) = set_up();
     a.bead(["comments", "add", &x, "synthetic comment"]);
     let forbidden = [
-        python_home(),
+        user_home(),
         sandbox.root().to_str().unwrap().to_owned(),
         hostname(),
         format!("{}@", user()),
@@ -287,7 +287,7 @@ fn journal_events(store: &Path) -> Vec<Json> {
 }
 
 /// The user's home from `HOME`, else the password database, without a trailing slash.
-fn python_home() -> String {
+fn user_home() -> String {
     let home = std::env::var("HOME").unwrap_or_else(|_| {
         let user = nix::unistd::User::from_uid(nix::unistd::Uid::current());
         user.unwrap().unwrap().dir.to_str().unwrap().to_owned()

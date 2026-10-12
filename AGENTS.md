@@ -4,8 +4,8 @@ beadroll is a Beads-compatible issue tracker for coding agents working across gi
 machines. The implementation is a Cargo workspace (Rust 1.99, pinned by `rust-toolchain.toml`):
 `cargo build --package beadroll` builds the working copy as `target/debug/bead`, and `cargo install
 --locked --force --path crates/beadroll --root ~/.local`, run from the checkout's root, installs it
-as the `bead` command. Until 0.2.0 it was a Python package (the tag `python-0.1.0`);
-`docs/RUST-PORT.md` is the plan the port followed. `README.md` says what it does and why.
+as the `bead` command. `docs/RUST-PORT.md` records the implementation history and compatibility
+contracts. `README.md` says what it does and why.
 `docs/REVIEWING.md` is the map of the design, the decisions that are not findings, and the rules
 reviewers work under. `docs/FINDINGS.md` is the ledger of every review finding and how it was
 closed; `docs/reviews/` holds the reports verbatim.
@@ -23,11 +23,10 @@ closed; `docs/reviews/` holds the reports verbatim.
   black-box tests run `bead` on. Each has its own `AGENTS.md`. `Cargo.toml`, `Cargo.lock`,
   `rust-toolchain.toml`, `clippy.toml`, `deny.toml` and `.config/nextest.toml` are at the root.
 - Tests — each crate's unit tests beside its code, and one integration-test binary per crate,
-  `crates/<crate>/tests/<name>/main.rs`, by subject as the Python suite they port had them:
+  `crates/<crate>/tests/<name>/main.rs`, organized by subject:
   `replay`, `storage`, `compat`, `commands`, `protocol`, `hardening`, and the slow `stress` and
-  `sweep`. `crates/beadroll/tests/golden/` holds what Python's bead printed, which the golden
-  tests compare with, and `crates/beadroll/tests/cli/parity/` what the mixed Python and Rust fleets
-  checked.
+  `sweep`. `crates/beadroll/tests/golden/` holds fixed reference outputs, and
+  `crates/beadroll/tests/cli/parity/` checks compatibility across machines and versions.
 - `xtask/` — `cargo xtask`: `check` runs the baseline, `timing` records how long a command took,
   `bead` runs bead in a process that counts its heap; its tests keep the repository's hygiene and
   the CI matrix.

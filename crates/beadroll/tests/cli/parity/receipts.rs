@@ -1,7 +1,7 @@
 //! Receipt signatures are a byte-level format contract (`docs/RUST-PORT.md` §2.3j, §5 row 21).
 //! Equivalent command spellings produce identical receipts; an owner's close and delete leave
-//! none. Fixtures were captured from `python-0.1.0` under CPython 3.14 and pin compatibility
-//! across versions. Helpers also serve `parity::retries`.
+//! none. Fixed reference fixtures pin compatibility across versions; their provenance is
+//! documented in `docs/RUST-PORT.md` §4.2. Helpers also serve `parity::retries`.
 
 use std::collections::BTreeSet;
 use std::io::Write as _;
@@ -211,7 +211,7 @@ const CASES: [Case; 12] = [
 ];
 
 /// Expected receipt for each case, identical for `given` and `respelt`, using machine m's actor.
-const PYTHONS: [Option<&str>; 12] = [
+const EXPECTED_RECEIPTS: [Option<&str>; 12] = [
     // ["claim", "ex-a"]
     Some(
         r#"{"actor": {"agent": "codex", "thread": "m-thread-0001"}, "args": {"command": "claim", "ids": ["ex-a"], "offline": false, "remote": null}, "request": null}"#,
@@ -296,15 +296,15 @@ fn run_cases(spelling: fn(&Case) -> &'static [&'static str]) -> Vec<Option<Strin
 }
 
 #[test]
-fn receipts_are_pythons_byte_for_byte_however_the_command_is_spelt() {
+fn receipts_match_recorded_bytes_for_equivalent_command_spellings() {
     let spellings: [fn(&Case) -> &'static [&'static str]; 2] =
         [|case| case.given, |case| case.respelt];
     for spelling in spellings {
         let written = run_cases(spelling);
-        for ((case, receipt), python) in CASES.iter().zip(&written).zip(PYTHONS) {
+        for ((case, receipt), expected) in CASES.iter().zip(&written).zip(EXPECTED_RECEIPTS) {
             let args = spelling(case);
-            assert_eq!(python.is_some(), case.coordinated, "{args:?}");
-            assert_eq!(receipt.as_deref(), python, "{args:?}");
+            assert_eq!(expected.is_some(), case.coordinated, "{args:?}");
+            assert_eq!(receipt.as_deref(), expected, "{args:?}");
         }
     }
 }

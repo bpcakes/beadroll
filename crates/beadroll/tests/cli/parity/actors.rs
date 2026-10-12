@@ -118,7 +118,7 @@ const REFUSED: [(&[&str], Said, Said); 9] = [
 ];
 
 #[test]
-fn an_actor_that_is_not_utf8_holds_nothing_as_python_did() {
+fn an_actor_that_is_not_utf8_holds_nothing() {
     let sandbox = crate::sandbox();
     let m = Machine::new(&sandbox, "who");
     json(&m, &["init", "--prefix", "ex"]);

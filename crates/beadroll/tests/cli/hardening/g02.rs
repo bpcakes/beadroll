@@ -10,7 +10,7 @@ use sha2::{Digest as _, Sha256};
 
 /// Spaced, ASCII-escaped JSON.
 fn dumps(value: &Json) -> String {
-    write(value, Format::ASCII).expect("a value Python can write")
+    write(value, Format::ASCII).expect("a serializable value")
 }
 
 /// `_g02_seed_repo`: a clone of `origin` carrying a committed .beadroll.json, pushed to its origin.

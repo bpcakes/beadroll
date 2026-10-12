@@ -184,7 +184,7 @@ fn published_three(machine: &Machine) -> (std::path::PathBuf, String, String, St
 /// Hand-edited published counts in `meta.json` must be interpreted consistently and produce the
 /// expected unpublished warning in both output modes.
 #[test]
-fn unpublished_counts_read_meta_json_as_python_did() {
+fn unpublished_counts_handle_metadata_json_shapes() {
     let sandbox = crate::sandbox();
     let r = Machine::new(&sandbox, "r");
     let (meta, original, segment, published) = published_three(&r);

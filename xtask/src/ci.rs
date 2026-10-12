@@ -3,7 +3,7 @@
 //! environments.
 
 /// Supported platform and git-version coverage.
-mod v8_python312 {
+mod v8_supported_environments {
     use regex_lite::Regex;
 
     use crate::workspace;

@@ -269,7 +269,7 @@ mod tests {
     use crate::json::parse;
 
     #[test]
-    fn repr_quotes_and_escapes_as_python() {
+    fn repr_quotes_strings_and_escapes_non_printable_characters() {
         assert_eq!(repr_str("a'b"), "\"a'b\"");
         assert_eq!(repr_str("a\"b"), "'a\"b'");
         assert_eq!(repr_str("a'\"b"), "'a\\'\"b'");
@@ -307,7 +307,7 @@ mod tests {
     }
 
     #[test]
-    fn strips_follow_python() {
+    fn strips_use_unicode_whitespace_for_text_and_ascii_for_bytes() {
         assert_eq!(strip("\u{1c}\u{a0} x \u{3000}"), "x");
         assert_eq!(strip_bytes(b"\x0b\x0c x\t\n"), b"x");
         assert_eq!(strip_bytes(b" \xa0 "), b"\xa0");
@@ -315,7 +315,7 @@ mod tests {
     }
 
     #[test]
-    fn shell_quote_matches_python() {
+    fn shell_quote_preserves_each_argument_as_one_word() {
         // Shell quoting must preserve each argument as one word.
         assert_eq!(shell_quote("git@host:o/r.git"), "git@host:o/r.git");
         assert_eq!(shell_quote(""), "''");
@@ -325,7 +325,7 @@ mod tests {
     }
 
     #[test]
-    fn b36_matches_python() {
+    fn b36_encodes_bytes_with_least_significant_digit_first() {
         // Zero and empty bytes both have an empty digest; 00ff10 gives sde1.
         assert_eq!(b36(&[0x00, 0xff, 0x10]), "sde1");
         assert_eq!(b36(&[]), "");

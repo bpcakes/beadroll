@@ -245,7 +245,7 @@ mod tests {
     }
 
     #[test]
-    fn head_and_branch_answer_as_pythons_two_calls_each_time_they_are_asked() {
+    fn head_and_branch_match_separate_git_calls_and_refresh_each_time() {
         let root = tempfile::tempdir().unwrap();
         for (name, env) in checkouts(root.path()) {
             let head = env.git(["rev-parse", "HEAD"]).run().unwrap();
@@ -254,8 +254,8 @@ mod tests {
                     .run()
                     .unwrap()
             });
-            let python = HeadAnswers { head, branch };
-            assert_eq!(head_and_branch(&env).unwrap(), python, "{name}");
+            let expected = HeadAnswers { head, branch };
+            assert_eq!(head_and_branch(&env).unwrap(), expected, "{name}");
             // one rev-parse answers both wherever its two lines are certain
             let combined = answer_lines(env.git(HEAD_ARGS).run()).is_some_and(|l| l.len() == 2);
             let certain = matches!(name, "committed" | "detached" | "sha256");
@@ -270,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn origin_and_transport_settings_are_pythons_calls_asked_each_time() {
+    fn origin_and_transport_settings_match_git_and_refresh_each_time() {
         let root = tempfile::tempdir().unwrap();
         let home = root.path();
         let dir = home.join("w");
@@ -308,7 +308,7 @@ mod tests {
     }
 
     #[test]
-    fn each_fact_asks_what_python_asks() {
+    fn each_fact_uses_its_expected_git_arguments() {
         let args: Vec<&[&str]> = Fact::ALL.iter().map(|f| f.args()).collect();
         assert_eq!(
             args,

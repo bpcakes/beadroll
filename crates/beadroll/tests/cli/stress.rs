@@ -9,10 +9,10 @@
 //! workers. Independent checkpoint reads run one thread per machine ([`each`]).
 
 mod concurrent_reaudit;
-mod python_random;
 mod root_audit_stress;
+mod seeded_random;
 
-pub(crate) use python_random::Rng;
+pub(crate) use seeded_random::Rng;
 
 use std::collections::BTreeSet;
 use std::ffi::OsStr;

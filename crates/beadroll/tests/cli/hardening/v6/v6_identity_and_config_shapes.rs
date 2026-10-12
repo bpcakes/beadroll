@@ -8,7 +8,7 @@ use super::{error_code, replica_id};
 
 /// Spaced, ASCII-escaped JSON.
 fn dumps(body: &Json) -> String {
-    write(body, Format::ASCII).expect("JSON Python can write")
+    write(body, Format::ASCII).expect("serializable JSON")
 }
 
 /// Verified (V6): replica.json and .beadroll.json shapes are validated. The review measured

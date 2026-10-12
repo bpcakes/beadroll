@@ -335,7 +335,7 @@ mod tests {
     }
 
     #[test]
-    fn floats_print_as_python_repr() {
+    fn floats_keep_shortest_roundtrip_digits_and_exponent_spelling() {
         for (value, repr) in [
             (1e16, "1e+16"),
             (1e15, "1000000000000000.0"),
@@ -363,7 +363,7 @@ mod tests {
     }
 
     #[test]
-    fn strings_escape_as_python_does_in_each_mode() {
+    fn strings_escape_controls_and_follow_the_selected_unicode_mode() {
         let text = "\u{7f}\u{0}\u{2028}é😀\"\\/\u{8}\u{c}\n\r\t";
         let mut ascii = String::new();
         write_str(&mut ascii, text, true);

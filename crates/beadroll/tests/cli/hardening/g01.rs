@@ -7,7 +7,7 @@ mod g01_tracked_remote_is_never_a_git_option {
 
     /// Spaced, ASCII-escaped JSON.
     fn dumps(value: &Json) -> String {
-        write(value, Format::ASCII).expect("a value Python can write")
+        write(value, Format::ASCII).expect("a serializable value")
     }
 
     /// The id of the issue a `bead create --json` made: `result["id"]`.

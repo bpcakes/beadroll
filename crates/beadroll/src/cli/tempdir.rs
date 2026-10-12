@@ -121,7 +121,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn paths_are_made_absolute_as_python_makes_them() {
+    fn absolute_paths_normalize_dot_components_and_separators() {
         let cwd = Some(Path::new("/w/x"));
         assert_eq!(
             abspath(OsStr::new("t/../u//v/."), cwd),

@@ -213,7 +213,7 @@ fn ask(machine: &Machine, dir: Option<&Path>, key: &str, case: &Case) {
 /// Errors show `?` for each invalid byte in human output and `\udcXX` in JSON. Nothing is
 /// written.
 #[test]
-fn arguments_that_are_not_utf8_answer_as_python_did() {
+fn arguments_that_are_not_utf8_keep_established_diagnostics() {
     let sandbox = crate::sandbox();
     let m = Machine::new(&sandbox, "bytes");
     // A missing tracker is reported before an unwritable title, with sync as the first recovery
@@ -261,7 +261,7 @@ const ALIASES: &str = r#"{
 /// `machines --name` preserves invalid bytes as lone surrogates along with any already in
 /// `aliases.json`. Human output substitutes `?` for each.
 #[test]
-fn aliases_keep_bytes_that_are_not_utf8_as_python_did() {
+fn aliases_preserve_bytes_that_are_not_utf8() {
     let seeded = r#"{"zz": "kept", "a\udcff": "lone \udcfe", "n": {"x": [1, 2.50, "\u00e9"]}, "dup": 1, "dup": "last"}"#;
     let sandbox = crate::sandbox();
     let m = Machine::new(&sandbox, "names");
@@ -328,7 +328,7 @@ const PATHS: [Case; 3] = [
 /// Command-line paths are normalised (`dump.jsonl/.` becomes `dump.jsonl`). Errors use the
 /// normalised path or original argument according to the operation, in both output modes.
 #[test]
-fn paths_are_read_and_written_where_pythons_pathlib_put_them() {
+fn paths_are_normalized_consistently_for_reads_and_writes() {
     let sandbox = crate::sandbox();
     let m = Machine::new(&sandbox, "paths");
     json(&m, &["init", "--prefix", "ex"]);
@@ -373,7 +373,7 @@ fn paths_are_read_and_written_where_pythons_pathlib_put_them() {
 
 /// An unavailable TMPDIR falls back to `/tmp` for git's captured output.
 #[test]
-fn a_tmpdir_that_does_not_exist_falls_back_as_python_did() {
+fn a_tmpdir_that_does_not_exist_uses_a_writable_fallback() {
     let sandbox = crate::sandbox();
     let m = Machine::new(&sandbox, "tmp");
     let missing = sandbox.root().join("no-such-tmp");

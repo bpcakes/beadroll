@@ -87,7 +87,7 @@ mod tests {
     }
 
     #[test]
-    fn times_print_as_python_event_time() {
+    fn times_use_utc_with_milliseconds() {
         assert_eq!(event_time(0), "1970-01-01T00:00:00.000Z");
         assert_eq!(event_time(951_782_400_007), "2000-02-29T00:00:00.007Z");
         assert_eq!(event_time(1_791_558_245_123), "2026-10-09T15:04:05.123Z");

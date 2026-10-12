@@ -92,7 +92,7 @@ fn u02_ids_and_deps_with_a_trailing_newline_are_not_uuids() {
 
 /// U03: readers accept at most 512 nesting levels; brackets inside strings do not count.
 #[test]
-fn u03_nesting_deeper_than_512_levels_is_unreadable_on_every_python() {
+fn u03_nesting_deeper_than_512_levels_is_unreadable() {
     let nested = |depth: usize| format!("{}{}", "[".repeat(depth), "]".repeat(depth));
     assert_eq!(MAX_DEPTH, 512);
     let value = parse(nested(512).as_bytes()).unwrap().value;

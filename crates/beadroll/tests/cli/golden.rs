@@ -1,9 +1,8 @@
 //! Golden outputs pin complete help pages, human-readable `show` and other reading commands over
 //! a scripted tracker, and `info` keys. Variable ids, times and paths are normalised in
-//! `golden/normal.rs`. Expected files in `tests/golden/` were captured from version
-//! `python-0.1.0` under CPython 3.14 (`docs/RUST-PORT.md` §4.2). They must not be regenerated to
-//! hide a failure: an intentional output change edits the expected file by hand in the same
-//! change.
+//! `golden/normal.rs`. Expected files in `tests/golden/` are fixed reference outputs (provenance
+//! in `docs/RUST-PORT.md` §4.2). Never regenerate them to hide a failure: an intentional output
+//! change edits the expected file by hand in the same change.
 
 mod normal;
 
@@ -84,7 +83,7 @@ impl Transcript {
                     .join("\n")
             };
             panic!(
-                "{} differs from Python's at line {}:\n--- golden (Python)\n{}\n--- this bead\n{}",
+                "{} differs from the reference at line {}:\n--- golden\n{}\n--- this bead\n{}",
                 path.display(),
                 first + 1,
                 show(&expected),

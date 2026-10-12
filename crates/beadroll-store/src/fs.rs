@@ -318,7 +318,7 @@ mod tests {
     }
 
     #[test]
-    fn decode_errors_read_as_python_words_them() {
+    fn decode_errors_report_bytes_positions_and_reasons() {
         let message = |data: &[u8]| utf8_error(data, &std::str::from_utf8(data).unwrap_err());
         assert_eq!(
             message(b"ab\xff"),
@@ -372,7 +372,7 @@ mod tests {
     }
 
     #[test]
-    fn suffixes_and_globs_follow_pathlib() {
+    fn suffixes_and_globs_handle_hidden_names() {
         assert!(has_suffix(Path::new("/x/000001.jsonl"), ".jsonl"));
         assert!(!has_suffix(Path::new("/x/.jsonl"), ".jsonl"));
         assert!(has_suffix(Path::new("/x/.b.json"), ".json"));

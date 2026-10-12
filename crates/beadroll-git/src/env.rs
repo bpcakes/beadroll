@@ -376,7 +376,7 @@ mod tests {
     }
 
     #[test]
-    fn a_count_that_is_not_a_number_is_an_error_and_spaces_are_read_as_python_reads_them() {
+    fn counts_reject_invalid_numbers_and_accept_surrounding_whitespace() {
         let env = sync_env(
             &checkout(&[("GIT_CONFIG_COUNT", " 2 ")]),
             Path::new("/s"),

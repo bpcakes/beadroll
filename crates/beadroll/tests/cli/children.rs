@@ -148,7 +148,7 @@ fn a_command_starts_the_consolidated_gits_and_no_others() {
 /// a separate git invocation. Deleting immediately in one transaction can race another fetch
 /// still listing refs (G16). A wrapper records each `update-ref` invocation.
 #[test]
-fn the_refs_a_fetch_leaves_are_set_by_pythons_two_update_refs() {
+fn the_refs_a_fetch_leaves_are_set_by_two_separate_update_refs() {
     let sandbox = crate::sandbox();
     let m = Machine::new(&sandbox, "refs");
     m.bead(["init", "--prefix", "ex"]);
@@ -234,7 +234,7 @@ fn a_publish_goes_by_the_transport_settings_of_when_its_link_is_made() {
 /// immediately ends every git whose standard input is a pipe. Machine a writes, claims and syncs
 /// through the fallback; machine b must see the same state.
 #[test]
-fn with_no_kept_git_every_question_goes_to_pythons_git() {
+fn with_no_kept_git_every_question_uses_a_separate_git_call() {
     let sandbox = crate::sandbox();
     let a = crate::rust_only(&sandbox, "a");
     let b = crate::rust_only(&sandbox, "b");
