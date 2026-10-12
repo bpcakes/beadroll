@@ -76,3 +76,7 @@ Review comment:
 ## roll-lqjj.6, round 2: `000dcec0b91f79369ad9d5c51095a0943418abb4..8f74e62904a58eea9d03b7ff66784505ffa51da1`
 
 Reviewed only 000dcec0b91f79369ad9d5c51095a0943418abb4..8f74e62904a58eea9d03b7ff66784505ffa51da1 (HEAD); no actionable defects found. Prebuilt binaries passed 56 core tests and five timing-history tests, and git diff --check passed. The full baseline was blocked by the read-only sandbox.
+
+## roll-lqjj.7, round 1: `7942c353fc2d8ade230d63d06ad0e9a86f17896d..014731228568cdc4eb920076ac73419af836a0c9`
+
+Reviewed 7942c353fc2d8ade230d63d06ad0e9a86f17896d..014731228568cdc4eb920076ac73419af836a0c9 (HEAD); no actionable defects found. Six timing unit tests passed using an existing test binary. The full baseline and contention measurements were not run because the sandbox is read-only.
