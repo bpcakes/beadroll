@@ -110,26 +110,26 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - No compaction beyond segment rotation. A persisted projection, a cache and never a source
   (roll-lqjj.2, step 3 of epic roll-lqjj, whose plan replaced the "no persisted projection" of
   earlier): `<store>/projection` keeps the state the journal replays into, with what it was made
-  from (the build of bead that made it, `Settings::build`, the version and the executable's
-  identity on disk; every journal file's identity as it was read, compared as the memo compares
-  files: an in-place rewrite that keeps length, times, inode and device is not seen, as git's index
-  does not see it; and a sum of each segment's bytes). A command whose files are the ones it was
-  made from reads it, a reading command its state alone. A segment that grew is caught up only
-  when it is its machine's last and still begins with the bytes summed (it is read whole: at most
-  what bead rotates at), and
-  records appended since are applied after the projection when replay would apply them so: each new event has the whole frontier in its past, which a local write's always do and
-  a merge's do when one writer worked at a time; it then applies them with replay's own steps, and
-  keeps of what every event had seen only the events the state names (the projection's state also
-  keeps who wrote them, which conflicts show). Anything else replays the journal, as every command
-  did: a file replaced, rewritten, cut or gone, a takeover (which can turn an earlier end of its
-  claim stale), a record not its machine's own or not new, a new machine's journal, a cause behind
-  the frontier, or a journal with anything replay reports. The answers are replay's: a
-  differential test checks every batch a store takes in against replay, on histories of machines
-  that write, sync and race. It is written back atomically, never into a store that is not there,
-  only when the files held still while they were read and every segment ended with a whole line;
-  a projection missing, cut, damaged (a 128-bit sum of each part) or another build's is never
-  read, and a failed write is no failure. A state read from it knows, of its events, those it
-  names: `State::saw`, `holds` and `events`, which no command reads, answer for those alone.
+  from: the build of bead that made it (`Settings::build`, the version and the executable's
+  identity on disk), every journal file's identity as its bytes were read (compared as the memo
+  compares files: an in-place rewrite that keeps length, times, inode and device is not seen, as
+  git's index does not see it), and a sum of each segment's bytes. A command whose files are the
+  ones it was made from reads it, a reading command its state alone. A machine's last segment that
+  grew, and still begins with the bytes summed, is read whole (at most what bead rotates at), and
+  its new records and new attempt files' are applied after the projection when replay would apply
+  them so: each new event has the whole frontier in its past, which a local write's always do and
+  a merge's do when one writer worked at a time; they are then placed and applied with replay's
+  own steps, and of what every event had seen the projection keeps only the events the state names
+  (its state also keeps who wrote them, which conflicts show). Anything else replays the journal,
+  as every command did: a file replaced, rewritten, cut or gone, an earlier segment grown, a
+  takeover (which can turn an earlier end of its claim stale), a record not its machine's own or
+  not new, a new machine's journal, a cause behind the frontier, or a journal with anything replay
+  reports. The answers are replay's: a differential test checks every batch a store takes in
+  against replay, on histories of machines that write, sync and race. It is written back
+  atomically when every segment ended with a whole line, never into a store that is not there; a
+  projection missing, cut, damaged (a 128-bit sum of each part) or another build's is never read,
+  and a failed write is no failure. A state read from it knows, of its events, those it names:
+  `State::saw`, `holds` and `events`, which no command reads, answer for those alone.
 - What each event had seen is one clock per event over chains, the reachability index of
   `state/seen.rs` (`RUST-PORT.md` §2.3c): every machine's journal is a chain, and each event of an
   attempt file joins a chain whose last event is among its ancestors, or starts one, so there are
