@@ -1,6 +1,8 @@
 # Review 11: roll-lqjj follow-ups
 
-Independent Claude and Codex reports for `000dcec..08292dd`, preserved below.
+Independent Claude and Codex reports for `000dcec..08292dd`, preserved below with local links normalized.
+Machine-specific checkout links use relative paths; temporary baseline links are omitted.
+The original reports and baseline log remain in the external review handoff.
 Claude used the selected custom profile and completed on retry; its first invocation exited 1.
 Both captures matched; no paths were excluded. The parent baseline passed: 783 tests
 (2 leaky), 3 skipped, no doctest failures, and 14 infrastructure-driver tests.
@@ -56,7 +58,7 @@ I found no substantive defects in the changed behaviour. There is one stale-docu
 - The wait schedule (finding 2).
 - No hostile test checks that a delete on an issue whose texts are not read in is declined. The randomised extension test probably covers it indirectly, since it compares texts read back after extending.
 
-## Codex report (verbatim)
+## Codex report (local links normalized)
 
 No actionable defects found in the pinned committed branch diff.
 
@@ -65,11 +67,11 @@ Both scope captures were complete and matched fingerprint `9b52749580d28a78d9d22
 | Requirement | Assessment and evidence |
 |---|---|
 | R1: Preserve replay, conflicts, ownership and import/export | Satisfied by inspected implementation and available coverage. Text loading precedes affected event application; unreadable or unavailable texts cause replay. Register ordering and causal tags survive encoding. Transaction events remain validated before append; consuming pending events preserves their order. Differential projection tests and CLI compatibility tests cover these paths. |
-| R2: Disposable projection caches | Satisfied. [projection.rs](/Users/aa/Documents/beadroll/crates/beadroll-store/src/projection.rs:142) falls back to authoritative journals; [texts.rs](/Users/aa/Documents/beadroll/crates/beadroll-store/src/projection/texts.rs:37) checks generation and text blocks; [view_of](/Users/aa/Documents/beadroll/crates/beadroll/src/commands.rs:238) recovers failed selective loads through a full view. Added tests cover damaged, truncated, missing and foreign text data, compaction, and interruption after appending texts. |
-| R3: Ownership and publication retries | Satisfied for reviewed changes. Retry tuning changes the round limit and delay without changing accepted, rejected or uncertain publication handling. [ownership.rs](/Users/aa/Documents/beadroll/crates/beadroll-sync/src/ownership.rs:226) consumes sequential events only after the command body finishes and retains ownership events for settlement. Exhaustion coverage verifies retained edits and absence of partial claims. |
+| R2: Disposable projection caches | Satisfied. [projection.rs](../../crates/beadroll-store/src/projection.rs:142) falls back to authoritative journals; [texts.rs](../../crates/beadroll-store/src/projection/texts.rs:37) checks generation and text blocks; [view_of](../../crates/beadroll/src/commands.rs:238) recovers failed selective loads through a full view. Added tests cover damaged, truncated, missing and foreign text data, compaction, and interruption after appending texts. |
+| R3: Ownership and publication retries | Satisfied for reviewed changes. Retry tuning changes the round limit and delay without changing accepted, rejected or uncertain publication handling. [ownership.rs](../../crates/beadroll-sync/src/ownership.rs:226) consumes sequential events only after the command body finishes and retains ownership events for settlement. Exhaustion coverage verifies retained edits and absence of partial claims. |
 | R4: Accurate timing and heap measurements | Implementation matches advertised workloads on inspection. Import heap measurement runs bead in a fresh counted process; subprocess failures propagate. Contention records unpublished writes and convergence; concurrent merge measurements create an independent local write before merging. Generator validity and deterministic output have tests. Published performance figures were not independently reproduced. |
 
-Validation: the parent reported `./check.sh` exit 0: **783 tests passed, 3 skipped**, zero doctest failures, and **14 infra tests passed**. Complete baseline log: [baseline.txt](/var/folders/hh/crd7tqlj5gn7n_gcvnnxc0040000gn/T/beadroll-comprehensive-review-q6fe5t1n/baseline.txt). I did not duplicate that run.
+Validation: the parent reported `./check.sh` exit 0: **783 tests passed, 3 skipped**, zero doctest failures, and **14 infra tests passed**. Complete baseline log: baseline.txt (external review handoff). I did not duplicate that run.
 
 Open questions: none requiring a change.
 
