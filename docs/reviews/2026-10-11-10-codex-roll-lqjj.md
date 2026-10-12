@@ -80,3 +80,7 @@ Reviewed only 000dcec0b91f79369ad9d5c51095a0943418abb4..8f74e62904a58eea9d03b7ff
 ## roll-lqjj.7, round 1: `7942c353fc2d8ade230d63d06ad0e9a86f17896d..014731228568cdc4eb920076ac73419af836a0c9`
 
 Reviewed 7942c353fc2d8ade230d63d06ad0e9a86f17896d..014731228568cdc4eb920076ac73419af836a0c9 (HEAD); no actionable defects found. Six timing unit tests passed using an existing test binary. The full baseline and contention measurements were not run because the sandbox is read-only.
+
+## roll-lqjj.8, round 1: `47a1c76909ca9a990482f9b9557ef3a239c18651..c6e1593f141138f678a9b6e7bdb83731aa9666d5`
+
+Reviewed 47a1c76909ca9a990482f9b9557ef3a239c18651..c6e1593f141138f678a9b6e7bdb83731aa9666d5 (HEAD); no actionable defects found. Twelve relevant tests passed using the existing xtask test binary; the full baseline and benchmarks were not run because the sandbox is read-only.
