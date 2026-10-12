@@ -29,10 +29,18 @@ pub fn pause(attempt: u32, failpoints: &Failpoints) {
     if failpoints.hit("backoff") == Some(Fired::Skip) {
         return;
     }
-    let doubled = f64::from(1u32 << attempt.saturating_sub(1).min(8));
-    let seconds = fastrand::f64() * (0.1 * doubled).min(LONGEST_PAUSE);
+    let seconds = fastrand::f64() * longest_pause(attempt);
     std::thread::sleep(Duration::from_secs_f64(seconds));
 }
+
+/// The bound is separate from sampling and sleeping so its schedule can be checked without waits.
+fn longest_pause(attempt: u32) -> f64 {
+    let doubled = f64::from(1u32 << attempt.saturating_sub(1).min(8));
+    (0.1 * doubled).min(LONGEST_PAUSE)
+}
+
+#[cfg(test)]
+mod tests;
 
 /// What the remote last answered, when it was not the plain race the message names.
 pub fn conflict_detail(link: &Link<'_>) -> String {

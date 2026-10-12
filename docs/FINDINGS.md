@@ -14,6 +14,17 @@ tests was ported to Rust, and at the cutover the inventory that mapped each to i
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Review 11: Claude and Codex review of the roll-lqjj follow-ups (`reviews/2026-10-12-11-claude-codex-follow-ups.md`, ids B)
+
+Neither reviewer found a runtime defect. Claude reported these two supporting obligations;
+Codex reported no actionable findings. The historical retry description in `RUST-PORT.md`
+already records the later change and needed no correction.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| B01 | Low | The sync crate's instructions still required twelve rounds and linear jitter after roll-lqjj.7 changed both | fixed | Both passages now describe up to 24 rounds and the uniformly sampled, capped doubling wait | Documentation checked against `ROUNDS` and `longest_pause`; no runtime change |
+| B02 | Low | Retry exhaustion tests skip the wait calculation, leaving its doubling and two-second cap without deterministic coverage | fixed | The unchanged bound is calculated by a private pure helper used by `pause`; tests cover its early rounds, cap transition, remaining rounds, zero and extreme inputs without sleeping | `beadroll-sync`: `synchronise::tests::pause_bound_doubles_then_stays_capped`, `synchronise::tests::pause_bound_handles_zero_and_extreme_attempts` |
+
 ## Review 10: Codex reviews of epic roll-lqjj (`reviews/2026-10-11-10-codex-roll-lqjj.md`, ids L)
 
 Each task of epic `roll-lqjj`, which keeps routine cost in proportion to the current state and the
