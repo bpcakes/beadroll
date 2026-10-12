@@ -36,7 +36,11 @@ pub(crate) fn import_records(tx: &mut Tx<'_>, path: &OsStr) -> Result<usize, Fai
             Failure::bytes(error.code(), message)
         })?,
     };
+    // each form of the export let go of once the next is made: the text once read, the records
+    // once planned (roll-lqjj.9)
+    drop(content);
     let plan = plan_import(tx.state()?, &records)?;
+    drop(records);
     let mut created: Vec<String> = Vec::new();
     for step in plan.steps {
         match step {

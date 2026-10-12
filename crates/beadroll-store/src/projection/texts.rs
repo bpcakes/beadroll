@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use beadroll_core::id::EventId;
 use beadroll_core::state::{State, TextPlace};
 
-use crate::fs::{fsync, write_atomic};
+use crate::fs::{fsync, write_atomic_parts};
 use crate::workspace::Workspace;
 
 /// The first bytes of a text file.
@@ -61,11 +61,9 @@ pub(super) fn read_in(file: &File, state: &mut State, wanted: &[(EventId, TextPl
 /// Starts the text file again, of `generation`, holding `texts` after its header: whole and durable,
 /// in place of the one there, or not at all.
 pub(super) fn start(ws: &Workspace, generation: [u8; 16], texts: &[u8]) -> bool {
-    let mut bytes = Vec::with_capacity(START as usize + texts.len());
-    bytes.extend_from_slice(MAGIC);
-    bytes.extend_from_slice(&generation);
-    bytes.extend_from_slice(texts);
-    write_atomic(&texts_path(ws), &bytes, true, &ws.settings.failpoints).is_ok()
+    // the texts written as they are, not first copied behind the header (roll-lqjj.9)
+    let parts: [&[u8]; 3] = [MAGIC, &generation, texts];
+    write_atomic_parts(&texts_path(ws), &parts, true, &ws.settings.failpoints).is_ok()
 }
 
 /// Appends `texts` to `file`, `at` its length, durably.

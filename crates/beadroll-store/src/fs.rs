@@ -60,6 +60,17 @@ pub fn write_atomic(
     private: bool,
     failpoints: &Failpoints,
 ) -> Result<(), Error> {
+    write_atomic_parts(path, &[data], private, failpoints)
+}
+
+/// [`write_atomic`] of `parts`, one after the other, as one file: a large file made of a few parts
+/// is written without first being joined in memory.
+pub(crate) fn write_atomic_parts(
+    path: &Path,
+    parts: &[&[u8]],
+    private: bool,
+    failpoints: &Failpoints,
+) -> Result<(), Error> {
     let parent = path.parent().unwrap_or(Path::new("."));
     if private {
         private_dirs(parent)?;
@@ -75,8 +86,8 @@ pub fn write_atomic(
         .mode(mode)
         .open(&tmp)
         .map_err(|e| Error::Io(IoError::at(&e, &tmp)))?;
-    let written = file
-        .write_all(data)
+    let written = (parts.iter())
+        .try_for_each(|part| file.write_all(part))
         .map_err(|e| IoError::bare(&e))
         .and_then(|()| fsync(&file))
         .and_then(|()| match failpoints.hit_path("atomic-write", path) {
@@ -350,6 +361,19 @@ mod tests {
         std::fs::write(&blocked, "").unwrap();
         let error = write_atomic(&blocked.join("x"), b"", true, &Failpoints::none()).unwrap_err();
         assert_eq!(error.code().as_str(), "IO");
+    }
+
+    /// A file written from parts holds their bytes one after the other, an empty one among them,
+    /// as the write of them joined would (roll-lqjj.9: the text file, its header and its texts).
+    #[test]
+    fn a_file_written_from_parts_is_their_bytes_in_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("texts");
+        let parts: [&[u8]; 3] = [b"head", b"", b"texts\n"];
+        write_atomic_parts(&target, &parts, true, &Failpoints::none()).unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"headtexts\n");
+        let names: Vec<_> = dir_entries(dir.path()).unwrap();
+        assert_eq!(names, std::slice::from_ref(&target));
     }
 
     #[test]

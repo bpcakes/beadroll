@@ -2,6 +2,7 @@
 //! `model.py`): this machine's own append-only segments, the attempt files every machine reads,
 //! this machine's pending attempts, and the state they replay into.
 
+use std::borrow::Borrow;
 use std::fs::OpenOptions;
 use std::io::{Read as _, Seek as _, SeekFrom, Write as _};
 use std::os::unix::fs::OpenOptionsExt as _;
@@ -73,12 +74,15 @@ pub fn attempt_path(ws: &Workspace, events: &[Value]) -> PathBuf {
         .join(format!("{}.json", member("id")))
 }
 
-/// Events as journal lines: compact JSON, raw UTF-8, one per line.
-pub fn encode_events(events: &[Value]) -> Result<Vec<u8>, Error> {
+/// Events as journal lines: compact JSON, raw UTF-8, one per line. Events given by value are let go
+/// of as each is encoded, so that their lines and they are not all held at once (roll-lqjj.9).
+pub fn encode_events(
+    events: impl IntoIterator<Item = impl Borrow<Value>>,
+) -> Result<Vec<u8>, Error> {
     let mut out = Vec::new();
     for event in events {
-        let line =
-            json::write(event, Format::COMPACT).map_err(|e| Error::Validation(e.to_string()))?;
+        let line = json::write(event.borrow(), Format::COMPACT)
+            .map_err(|e| Error::Validation(e.to_string()))?;
         out.extend_from_slice(line.as_bytes());
         out.push(b'\n');
     }
@@ -179,7 +183,11 @@ pub fn active_segment(ws: &Workspace, replica: &str) -> Result<PathBuf, Error> {
 /// Appends sequential events to this machine's journal, after repairing any torn tail. Called with
 /// the store lock held. With the `append.mid` failpoint set, the first half of the line is written
 /// and flushed before it is passed (`torn-sigkill` fsyncs that half and dies there).
-pub fn append_events(ws: &Workspace, replica: &str, events: &[Value]) -> Result<(), Error> {
+pub fn append_events(
+    ws: &Workspace,
+    replica: &str,
+    events: impl IntoIterator<Item = impl Borrow<Value>>,
+) -> Result<(), Error> {
     let folder = ws.events_dir.join(replica);
     for segment in glob_ending(&folder, ".jsonl") {
         repair_tail(ws, &segment)?;
@@ -420,6 +428,26 @@ fn pending_listed(ws: &Workspace, mut state: State) -> Result<State, ViewError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use beadroll_core::json::Object;
+
+    /// Events given by value, to be let go of as they are encoded (roll-lqjj.9), make the lines
+    /// the same events given by reference make.
+    #[test]
+    fn events_encode_alike_given_by_value_or_by_reference() {
+        let events: Vec<Value> = (1..=3)
+            .map(|n| {
+                let mut event = Object::new();
+                event.insert("v".into(), Value::from(1));
+                event.insert("op".into(), Value::from("comment"));
+                event.insert("text".into(), Value::from(format!("line {n}: \u{e9}\n")));
+                Value::from(event)
+            })
+            .collect();
+        let by_reference = encode_events(&events).unwrap();
+        assert_eq!(by_reference.iter().filter(|b| **b == b'\n').count(), 3);
+        assert_eq!(encode_events(events).unwrap(), by_reference);
+    }
 
     /// A segment is whole when it is empty or ends with a newline, which its last byte says; any
     /// other file is read whole, a directory included, and one that is not there is the IO error

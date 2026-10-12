@@ -347,11 +347,13 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
             data.insert("name".into(), Value::from(name.unwrap_or(prefix)));
             tx.emit("init", None, data, None)?;
         }
+        // read before the import, which never changes it: the state then never takes in what an
+        // import emits, which would hold every imported text beside the events (roll-lqjj.9)
+        let prefix = tx.state()?.prefix().cloned().unwrap_or(Value::Null);
         let imported = match args.import_path.as_ref().filter(|p| !p.is_empty()) {
             Some(path) => import_records(tx, path)?,
             None => 0,
         };
-        let prefix = tx.state()?.prefix().cloned().unwrap_or(Value::Null);
         Ok((prefix, imported))
     })?;
     // `init --tracked --remote` is the deliberate switch: record it, so the tracked remote is the
