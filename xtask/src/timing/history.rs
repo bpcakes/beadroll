@@ -22,6 +22,10 @@ pub(crate) enum Shape {
     /// taken off, so that the state stays the size it is whatever the number of events: what the
     /// projection's cost follows (roll-lqjj.2).
     Churn,
+    /// Heavy in text, as real trackers are (roll-lqjj.6): the plain history's operations, but a
+    /// create describes its issue in 1.2-2.4 KB, an edit rewrites the description or the notes in
+    /// 0.6-1.8 KB and a comment says 0.3-1.5 KB, so that texts are most of the state.
+    Text,
 }
 
 impl Shape {
@@ -31,6 +35,7 @@ impl Shape {
             Shape::Plain => "plain",
             Shape::Ownership => "ownership",
             Shape::Churn => "churn",
+            Shape::Text => "text",
         }
     }
 
@@ -40,6 +45,7 @@ impl Shape {
             Shape::Plain => "events",
             Shape::Ownership => "ownership-heavy events",
             Shape::Churn => "events on a thousand issues",
+            Shape::Text => "text-heavy events",
         }
     }
 }
@@ -81,9 +87,10 @@ pub(crate) fn segments(journal: &[u8], rotate: usize) -> Vec<&[u8]> {
 pub(crate) fn history(count: usize, shape: Shape) -> Vec<Files> {
     let mut writer = Writer::new();
     match shape {
-        Shape::Plain => plain(&mut writer, count),
+        Shape::Plain => plain(&mut writer, count, false),
         Shape::Ownership => ownership(&mut writer, count),
         Shape::Churn => churn(&mut writer, count),
+        Shape::Text => plain(&mut writer, count, true),
     }
     writer.files
 }
@@ -205,8 +212,9 @@ impl Writer {
     }
 }
 
-/// The history `timing --replay` has always measured, draw for draw.
-fn plain(w: &mut Writer, count: usize) {
+/// The history `timing --replay` has always measured, draw for draw; with `texts`, the same
+/// operations carrying prose (`Shape::Text`), which takes draws of its own.
+fn plain(w: &mut Writer, count: usize, texts: bool) {
     let mut issues: Vec<String> = Vec::new();
     let mut claims: Vec<(String, String)> = Vec::new();
     for n in 0..count {
@@ -220,12 +228,28 @@ fn plain(w: &mut Writer, count: usize) {
             continue;
         }
         if issues.is_empty() || w.next(10) == 0 {
-            issues.push(w.append(m, "create", None, create(n)));
+            let mut data = create(n);
+            if texts {
+                let description = prose(w, 1200);
+                described(&mut data, "description", description);
+            }
+            issues.push(w.append(m, "create", None, data));
             continue;
         }
         let issue = issues[w.next(issues.len())].clone();
         let (op, data) = match w.next(10) {
+            0..=2 if texts => {
+                let field = if w.next(2) == 0 {
+                    "description"
+                } else {
+                    "notes"
+                };
+                let mut data = edit(n);
+                described(&mut data, field, prose(w, 600));
+                ("set", data)
+            }
             0..=2 => ("set", edit(n)),
+            3 | 4 if texts => ("comment", obj(&[("text", prose(w, 300).into())])),
             3 | 4 => ("comment", obj(&[("text", format!("note {n}").into())])),
             5 => (
                 "label_add",
@@ -388,6 +412,33 @@ fn edit(n: usize) -> Value {
     obj(&[("fields", obj(&[("title", format!("edit {n}").into())]))])
 }
 
+/// Prose of `at_least` bytes and up to twice that, in words drawn from a fixed vocabulary.
+fn prose(w: &mut Writer, at_least: usize) -> String {
+    const WORDS: [&str; 32] = [
+        "the", "replay", "of", "a", "journal", "keeps", "every", "event", "and", "its", "causes",
+        "so", "that", "each", "machine", "agrees", "on", "what", "an", "issue", "says", "when",
+        "work", "merges", "after", "days", "offline", "with", "tests", "that", "pin", "it",
+    ];
+    let target = at_least + w.next(at_least + 1);
+    let mut text = String::with_capacity(target + 16);
+    while text.len() < target {
+        if !text.is_empty() {
+            text.push(if w.next(12) == 0 { '\n' } else { ' ' });
+        }
+        text.push_str(WORDS[w.next(WORDS.len())]);
+    }
+    text
+}
+
+/// Sets `field` to `text` among the fields of a create's or an edit's `data`.
+fn described(data: &mut Value, field: &str, text: String) {
+    if let Value::Object(members) = data
+        && let Some(Value::Object(fields)) = members.get_mut("fields")
+    {
+        fields.insert(field.to_owned(), Value::from(text));
+    }
+}
+
 fn obj(members: &[(&str, Value)]) -> Value {
     let members: Object = members
         .iter()
@@ -397,106 +448,4 @@ fn obj(members: &[(&str, Value)]) -> Value {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    use beadroll_core::journal::{Journal, read_attempt, read_segment};
-    use beadroll_core::replay::replay;
-
-    fn journal(files: &[Files]) -> Journal {
-        let mut journal = Journal::new();
-        for machine in files {
-            for event in read_segment(&machine.segment, "segment", Some(&mut journal.invalid)) {
-                journal.add(event, &machine.replica, "segment", true);
-            }
-        }
-        for machine in files {
-            for (name, data) in &machine.attempts {
-                for event in read_attempt(data, name, Some(&mut journal.invalid)) {
-                    journal.add(event, &machine.replica, name, false);
-                }
-            }
-        }
-        journal.settle();
-        journal
-    }
-
-    #[test]
-    fn every_event_of_every_shape_applies() {
-        for shape in [Shape::Plain, Shape::Ownership, Shape::Churn] {
-            let files = history(3000, shape);
-            let journal = journal(&files);
-            assert_eq!(journal.events().len(), 3000, "{shape:?}");
-            let st = replay(journal).unwrap();
-            assert!(st.integrity().is_empty(), "{shape:?}: {:?}", st.integrity());
-            assert!(st.pending().is_empty(), "{shape:?}");
-            assert!(st.chain_breaks().is_empty(), "{shape:?}");
-        }
-    }
-
-    #[test]
-    fn the_ownership_shape_is_heavy_in_attempts() {
-        let files = history(3000, Shape::Ownership);
-        let attempted: usize = files
-            .iter()
-            .flat_map(|machine| &machine.attempts)
-            .map(|(_, data)| data.iter().filter(|b| **b == b'\n').count())
-            .sum();
-        assert!(
-            attempted > 1200,
-            "{attempted} of 3000 events in attempt files"
-        );
-        let st = replay(journal(&files)).unwrap();
-        let taken_over = st
-            .issues()
-            .flat_map(|issue| issue.claim_history())
-            .filter(|ended| ended.how == "takeover")
-            .count();
-        assert!(taken_over > 50, "{taken_over} takeovers");
-        assert!(
-            st.issues()
-                .any(|issue| !issue.provisional_claims().is_empty())
-        );
-    }
-
-    #[test]
-    fn the_churn_shape_keeps_its_state_the_size_it_is() {
-        let tags = |count: usize| {
-            let st = replay(journal(&history(count, Shape::Churn))).unwrap();
-            assert_eq!(st.issues().count(), CHURN_ISSUES);
-            (st.issues())
-                .map(|issue| {
-                    issue
-                        .registers()
-                        .values()
-                        .map(|tags| tags.len())
-                        .sum::<usize>()
-                })
-                .sum::<usize>()
-        };
-        let (fewer, more) = (tags(3000), tags(12_000));
-        assert!(more < fewer * 2, "{fewer} register values, then {more}");
-    }
-
-    /// The plain history is the one measured before the ownership shape was added, byte for byte
-    /// (its digest is pinned), so earlier records stay comparable.
-    #[test]
-    fn the_plain_history_is_the_one_always_measured() {
-        use sha2::{Digest as _, Sha256};
-        let mut digest = Sha256::new();
-        for machine in history(2000, Shape::Plain) {
-            digest.update(machine.replica.as_bytes());
-            digest.update(&machine.segment);
-            assert!(machine.attempts.is_empty());
-        }
-        let hex: String = digest
-            .finalize()
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect();
-        assert_eq!(
-            hex,
-            "de17de630f0a4b6dfcd50a0797a6a56a93ada20b0f175a1f885ba1549c8dcbfe"
-        );
-    }
-}
+mod tests;

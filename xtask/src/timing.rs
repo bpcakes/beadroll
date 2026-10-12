@@ -84,6 +84,7 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
             "--rotate" => options.rotate = Some(number(&value("--rotate")?, "--rotate", "bytes")?),
             "--ownership" => options.shape = history::Shape::Ownership,
             "--churn" => options.shape = history::Shape::Churn,
+            "--text" => options.shape = history::Shape::Text,
             "--load" => options.load = Some(PathBuf::from(value("--load")?)),
             "--no-replay" => options.no_replay = true,
             "--" => {
@@ -111,7 +112,7 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
     }
     if options.shape != history::Shape::Plain && measured == 0 {
         return Err(Failure::Usage(
-            "--ownership and --churn shape the history of a measurement".into(),
+            "--ownership, --churn and --text shape the history of a measurement".into(),
         ));
     }
     if options.batch == Some(0) || options.batch.is_some() && options.merge.is_none() {
