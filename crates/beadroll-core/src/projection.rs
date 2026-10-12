@@ -161,6 +161,10 @@ impl Projection {
             return Err(Unreadable("the frontier"));
         }
         let ids = r.ids()?;
+        // looked up by halves: in order, each once
+        if !ids.windows(2).all(|pair| matches!(pair, [a, b] if a < b)) {
+            return Err(Unreadable("the ids"));
+        }
         let mut lengths = HashMap::new();
         for _ in 0..r.count()? {
             let machine = r.text()?;
