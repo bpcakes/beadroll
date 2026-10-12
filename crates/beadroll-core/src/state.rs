@@ -5,6 +5,7 @@ mod claim;
 mod issue;
 mod seen;
 mod small;
+mod texts;
 
 use indexmap::IndexMap;
 
@@ -19,6 +20,7 @@ pub(crate) use issue::Origin;
 pub use issue::{Comment, Deps, DepsIter, Issue};
 pub(crate) use seen::{Knowledge, Place, raise, reached};
 pub use small::{IdMap, IdSet, VecMap};
+pub use texts::{Stored, TEXT_FIELDS, TextPlace, Texts, is_text};
 
 /// A problem replay reports: an unusable record, or an event it could not apply.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -105,6 +107,9 @@ pub struct State {
     /// the order created. Only a create gives an issue such dependencies, so a new key need look
     /// at these alone, not at every issue.
     pub(crate) awaiting: Vec<EventId>,
+    /// The text file its issues' texts are placed in, as the store that read it names it
+    /// (roll-lqjj.6); `None` for a state replayed.
+    pub(crate) texts_file: Option<[u8; 16]>,
 }
 
 impl State {
@@ -123,7 +128,19 @@ impl State {
             last_by_thread: IndexMap::new(),
             children: std::collections::HashMap::new(),
             awaiting: Vec::new(),
+            texts_file: None,
         }
+    }
+
+    /// The text file its issues' texts are placed in, as the store names it; `None` for a state
+    /// replayed, whose texts are all in it.
+    pub fn texts_file(&self) -> Option<[u8; 16]> {
+        self.texts_file
+    }
+
+    /// Names the text file its issues' texts are placed in.
+    pub fn set_texts_file(&mut self, file: Option<[u8; 16]>) {
+        self.texts_file = file;
     }
 
     /// Whether `event` was among the events it was replayed from.

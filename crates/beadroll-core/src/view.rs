@@ -34,10 +34,8 @@ fn branch(place: Option<&Value>) -> Option<&Value> {
 
 /// The names of the disputed fields, sorted.
 fn disputed(st: &State, issue: &Issue) -> Vec<String> {
-    let mut names: Vec<String> = st
-        .conflicts(issue)
-        .into_iter()
-        .map(|(field, _)| field.name().to_owned())
+    let mut names: Vec<String> = (st.disputed_fields(issue).into_iter())
+        .map(|field| field.name().to_owned())
         .collect();
     names.sort();
     names

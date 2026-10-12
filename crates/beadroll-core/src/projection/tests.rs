@@ -382,15 +382,42 @@ impl World {
     }
 }
 
-/// The projection read back from its bytes, as the next command reads it.
-fn read_back(projection: &Projection) -> Projection {
-    let encoded = projection.encode();
+/// What a store's text file holds: the texts every projection read back placed, appended.
+type TextFile = Vec<u8>;
+
+/// Reads into `state` the texts it has there of `uids`, or of every issue, from `file`, as a store
+/// reads them in.
+fn read_in(state: &mut State, file: &[u8], uids: Option<Vec<EventId>>) {
+    let wanted = match uids {
+        Some(uids) => state.wanted_texts(uids),
+        None => state.all_wanted_texts(),
+    };
+    for (uid, place) in wanted {
+        let at = usize::try_from(place.at).unwrap();
+        let bytes = &file[at..at + place.len as usize];
+        state.read_texts(uid, place, bytes).unwrap();
+    }
+}
+
+/// `projection` with every text it has there read in from `file`.
+fn whole(projection: &Projection, file: &[u8]) -> Projection {
+    let mut whole = projection.clone();
+    read_in(whole.state_mut(), file, None);
+    whole
+}
+
+/// The projection read back from its bytes, as the next command reads it, its new texts appended
+/// to `file` and every issue's texts there.
+fn read_back(projection: &Projection, file: &mut TextFile) -> Projection {
+    let (encoded, _) = projection.encode(file.len() as u64);
+    file.extend_from_slice(&encoded.texts);
     let decoded = Projection::decode(&encoded).unwrap();
-    assert!(same(decoded.state(), projection.state()));
-    assert!(same(
-        &decode_state(&encoded.state).unwrap(),
-        projection.state()
-    ));
+    assert!(decoded.state().issues().all(|issue| !issue.texts().here()));
+    let original = whole(projection, file);
+    assert!(same(whole(&decoded, file).state(), original.state()));
+    let mut state = decode_state(&encoded.state).unwrap();
+    read_in(&mut state, file, None);
+    assert!(same(&state, original.state()));
     decoded
 }
 
@@ -414,18 +441,26 @@ fn every_extension_is_replays_answer_or_declined() {
         world.write(0, "init", None, data);
         let mut held: Vec<usize> = vec![0];
         let mut projection = project(load(&world, &held)).unwrap();
+        let mut file = TextFile::new();
         for _ in 0..60 {
             let batch = world.next_batch();
             if world.rng.chance(50) {
-                projection = read_back(&projection);
+                projection = read_back(&projection, &mut file);
             }
             held.extend(&batch);
             let full = project(load(&world, &held)).unwrap();
             assert!(same(full.state(), &replay(load(&world, &held)).unwrap()));
             let local = batch.iter().all(|at| world.events[*at].machine == 0);
-            projection = match projection.extend(records(&world, &batch)).unwrap() {
+            let records = records(&world, &batch);
+            // as a store does: the texts of the issues the batch is about read in first
+            let about = (records.iter())
+                .filter_map(|record| record.value.get("issue").and_then(Value::as_str))
+                .filter_map(EventId::parse)
+                .collect();
+            read_in(projection.state_mut(), &file, Some(about));
+            projection = match projection.extend(records).unwrap() {
                 Extended::Applied(extended) => {
-                    assert!(equal(&extended, &full), "seed {seed}");
+                    assert!(equal(&whole(&extended, &file), &full), "seed {seed}");
                     merged += usize::from(!local);
                     *extended
                 }

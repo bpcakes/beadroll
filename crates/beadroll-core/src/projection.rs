@@ -8,37 +8,65 @@
 //! asks about nothing else (`saw_at`, `saw` and `who` in `replay/apply.rs`). [`Projection::extend`]
 //! applies records appended to that journal when replay would apply them after every event it
 //! holds, and as it would; when it cannot know that, it declines, and the caller replays.
+//!
+//! Each issue's texts are kept apart (roll-lqjj.6): [`Projection::encode`] gives the bytes of the
+//! texts written nowhere yet, placed after `texts_at` bytes of a store's text file, and a state read
+//! back has every issue's texts there, until the store reads in those a command needs
+//! ([`State::wanted_texts`], [`State::read_texts`]).
 
 pub(crate) mod codec;
 mod extend;
 mod state_codec;
+mod text_codec;
 
 use std::collections::{HashMap, HashSet};
+use std::hash::{DefaultHasher, Hasher as _};
 
 use crate::id::EventId;
 use crate::journal::Journal;
 use crate::json::Value;
 use crate::replay::replayed;
-use crate::state::{KeySpace, Knowledge, State};
+use crate::state::{KeySpace, Knowledge, State, TextPlace, Texts};
 
 use codec::{Reader, Writer};
 use state_codec::{read_state, write_state};
+use text_codec::{read_texts, write_texts};
 
 pub use codec::Unreadable;
 pub use extend::Extended;
 
 /// The version of the bytes [`Projection::encode`] writes. Bytes of another are not read.
-pub const ENCODING: u32 = 1;
+pub const ENCODING: u32 = 2;
 
-/// A projection's bytes: its state, which a command that only reads needs alone, and its index,
-/// what applying more events needs.
+/// A projection's bytes: its state, which a command that only reads needs alone, its index, what
+/// applying more events needs, and the texts it has that are written nowhere yet.
 #[derive(Clone, Debug)]
 pub struct Encoded {
-    /// The state.
+    /// The state, each issue with where its texts are.
     pub state: Vec<u8>,
     /// What every event the state names had seen, the frontier, every event id, each machine's
     /// journal length, the claims takeovers superseded, and whether events can be applied after.
     pub index: Vec<u8>,
+    /// The texts written nowhere yet, each issue's at the place the state gives it: to append to
+    /// the text file the state's places are in.
+    pub texts: Vec<u8>,
+}
+
+/// A 128-bit sum of `bytes`: SipHash-1-3 twice, each started apart. It finds damage and change,
+/// not forgery: the store is private.
+pub fn sum(bytes: &[u8]) -> [u8; 16] {
+    let half = |start: u8| {
+        let mut hasher = DefaultHasher::new();
+        hasher.write_u8(start);
+        hasher.write(bytes);
+        hasher.finish()
+    };
+    let mut out = [0; 16];
+    let halves = (half(0).to_le_bytes().into_iter()).chain(half(1).to_le_bytes());
+    for (slot, byte) in out.iter_mut().zip(halves) {
+        *slot = byte;
+    }
+    out
 }
 
 /// A record of a journal's files, to apply: an event as it was read, the machine whose folder held
@@ -120,14 +148,37 @@ impl Projection {
         self.open
     }
 
-    /// The projection as bytes. Of what every event had seen it keeps the events the state still
-    /// names, and the frontier.
-    pub fn encode(&self) -> Encoded {
+    /// The state, to read texts into.
+    pub fn state_mut(&mut self) -> &mut State {
+        &mut self.state
+    }
+
+    /// The projection as bytes, the texts written nowhere yet placed from `texts_at`, the length of
+    /// the text file they are to be appended to, and the places it gave them: once both are written,
+    /// [`Projection::placed`] has the issues know. Of what every event had seen it keeps the events
+    /// the state still names, and the frontier.
+    pub fn encode(&self, texts_at: u64) -> (Encoded, Vec<(EventId, TextPlace)>) {
+        let (mut texts, mut places) = (Vec::new(), Vec::new());
+        for issue in self.state.issues.values() {
+            if matches!(issue.texts, Texts::Here) {
+                let bytes = write_texts(issue);
+                places.push((
+                    issue.uid,
+                    TextPlace {
+                        at: texts_at.saturating_add(texts.len() as u64),
+                        len: u32::try_from(bytes.len()).unwrap_or(u32::MAX),
+                        sum: sum(&bytes),
+                    },
+                ));
+                texts.extend_from_slice(&bytes);
+            }
+        }
         let mut named = named(&self.state);
         named.extend(self.heads.iter().copied());
         let kept = self.state.knowledge.kept(&named);
         let mut w = Writer::default();
-        write_state(&mut w, &self.state);
+        let given: HashMap<EventId, TextPlace> = places.iter().copied().collect();
+        write_state(&mut w, &self.state, &given);
         kept.write_events(&mut w);
         let state = w.finish();
         let mut w = Writer::default();
@@ -145,9 +196,22 @@ impl Projection {
         superseded.sort_unstable();
         w.ids(&superseded);
         w.flag(self.open);
-        Encoded {
+        let encoded = Encoded {
             state,
             index: w.finish(),
+            texts,
+        };
+        (encoded, places)
+    }
+
+    /// The texts [`Projection::encode`] placed, written where it placed them.
+    pub fn placed(&mut self, places: &[(EventId, TextPlace)]) {
+        for (uid, place) in places {
+            if let Some(issue) = self.state.issues.get_mut(uid)
+                && matches!(issue.texts, Texts::Here)
+            {
+                issue.texts = Texts::Read(*place);
+            }
         }
     }
 
@@ -195,6 +259,69 @@ pub fn decode_state(bytes: &[u8]) -> Result<State, Unreadable> {
     Ok(state)
 }
 
+impl State {
+    /// Where the texts of the issues among `uids` that have them only in a text file are.
+    pub fn wanted_texts(
+        &self,
+        uids: impl IntoIterator<Item = EventId>,
+    ) -> Vec<(EventId, TextPlace)> {
+        (uids.into_iter())
+            .filter_map(|uid| match &self.issues.get(&uid)?.texts {
+                Texts::There(stored) => Some((uid, stored.place)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Where the texts of every issue that has them only in a text file are, in the order they
+    /// were written.
+    pub fn all_wanted_texts(&self) -> Vec<(EventId, TextPlace)> {
+        let mut out = self.wanted_texts(self.issues.keys().copied());
+        out.sort_by_key(|(_, place)| place.at);
+        out
+    }
+
+    /// How many bytes of a text file the texts of its issues take where they are placed: what of it
+    /// is still read.
+    pub fn placed_text_bytes(&self) -> u64 {
+        (self.issues.values())
+            .map(|issue| match &issue.texts {
+                Texts::Read(place) => u64::from(place.len),
+                Texts::There(stored) => u64::from(stored.place.len),
+                Texts::Here => 0,
+            })
+            .sum()
+    }
+
+    /// Has every issue's texts written anew, as one written nowhere yet: `false`, and nothing
+    /// changed, when one has them only in a text file.
+    pub fn write_texts_anew(&mut self) -> bool {
+        if !self.issues.values().all(|issue| issue.texts.here()) {
+            return false;
+        }
+        for issue in self.issues.values_mut() {
+            issue.texts = Texts::Here;
+        }
+        true
+    }
+
+    /// Reads in the texts of issue `uid` from `bytes`, read at `place` of the text file: they must
+    /// be the ones written there (their length and sum) and the issue's. Nothing changes when they
+    /// are not.
+    pub fn read_texts(
+        &mut self,
+        uid: EventId,
+        place: TextPlace,
+        bytes: &[u8],
+    ) -> Result<(), Unreadable> {
+        if u32::try_from(bytes.len()).ok() != Some(place.len) || sum(bytes) != place.sum {
+            return Err(Unreadable("damaged texts"));
+        }
+        let issue = self.issues.get_mut(&uid).ok_or(Unreadable("an issue"))?;
+        read_texts(issue, bytes, place)
+    }
+}
+
 /// Every event `state` still names, which applying an event after all of them can ask about: each
 /// issue's create, the events behind its registers and its label and dependency tags, its removals,
 /// and its claim and offline claims.
@@ -204,6 +331,9 @@ fn named(state: &State) -> HashSet<EventId> {
         out.insert(issue.uid);
         for tags in issue.reg.values() {
             out.extend(tags.iter().map(|(id, _)| *id));
+        }
+        if let Texts::There(stored) = &issue.texts {
+            out.extend(stored.tags.iter().flat_map(|(_, ids)| ids.iter().copied()));
         }
         for tags in issue.label_tags.values() {
             out.extend(tags.iter().copied());

@@ -196,7 +196,7 @@ fn a_journal_with_anything_replay_reports_takes_nothing_after_it() {
 
 #[test]
 fn damaged_bytes_never_read_as_a_projection() {
-    let encoded = project(journal(&base())).unwrap().encode();
+    let (encoded, _) = project(journal(&base())).unwrap().encode(0);
     for (section, bytes) in [("state", &encoded.state), ("index", &encoded.index)] {
         for cut in 0..bytes.len() {
             let mut damaged = encoded.clone();
@@ -227,4 +227,118 @@ fn damaged_bytes_never_read_as_a_projection() {
             }
         }
     }
+}
+
+/// `base()` with a description on issue 2 and a second issue, 5, created after it: a projection of
+/// it read back from its bytes, every issue's texts there, and the bytes its texts are in.
+fn with_texts() -> (Projection, Vec<u8>) {
+    let mut described = Object::new();
+    described.insert(
+        "description".into(),
+        Value::from("why it matters, at length"),
+    );
+    let mut data = Object::new();
+    data.insert("fields".into(), Value::from(described));
+    let mut create = fields("other");
+    create.insert("key".into(), Value::from("pr-b2"));
+    let mut records = base();
+    records.push(record(event(4, HERE, &[3], "set", 2, data), HERE, true));
+    records.push(record(
+        event(5, HERE, &[4], "create", 5, create),
+        HERE,
+        true,
+    ));
+    let (encoded, _) = project(journal(&records)).unwrap().encode(0);
+    (Projection::decode(&encoded).unwrap(), encoded.texts)
+}
+
+/// The bytes of `file` at `place`.
+fn at(file: &[u8], place: crate::state::TextPlace) -> Vec<u8> {
+    let start = usize::try_from(place.at).unwrap();
+    file[start..start + place.len as usize].to_vec()
+}
+
+#[test]
+fn a_change_to_texts_not_read_in_is_declined_until_they_are() {
+    let comment = || {
+        let mut data = Object::new();
+        data.insert("text".into(), Value::from("noted"));
+        vec![record(event(6, HERE, &[5], "comment", 2, data), HERE, true)]
+    };
+    let (projection, file) = with_texts();
+    assert!(matches!(
+        projection.clone().extend(comment()).unwrap(),
+        Extended::Replay
+    ));
+    // a title set needs no texts: taken with them there
+    let retitle = vec![record(
+        event(6, HERE, &[5], "set", 2, fields("t")),
+        HERE,
+        true,
+    )];
+    assert!(matches!(
+        projection.clone().extend(retitle).unwrap(),
+        Extended::Applied(_)
+    ));
+    let mut read = projection;
+    let uid = EventId::parse(&id(2)).unwrap();
+    let wanted = read.state().wanted_texts([uid]);
+    for (uid, place) in wanted {
+        read.state_mut()
+            .read_texts(uid, place, &at(&file, place))
+            .unwrap();
+    }
+    let Extended::Applied(extended) = read.extend(comment()).unwrap() else {
+        panic!("the texts were read in");
+    };
+    let issue = extended.state().issue(uid).unwrap();
+    assert_eq!(issue.comments().len(), 1);
+    assert_eq!(
+        issue.get(crate::event::Field::Description),
+        Some(&Value::from("why it matters, at length"))
+    );
+}
+
+#[test]
+fn damaged_texts_are_never_read_in() {
+    let (projection, file) = with_texts();
+    for (uid, place) in projection.state().all_wanted_texts() {
+        let bytes = at(&file, place);
+        for cut in 0..bytes.len() {
+            let mut state = projection.state().clone();
+            assert!(state.read_texts(uid, place, &bytes[..cut]).is_err());
+            assert!(!state.issue(uid).unwrap().texts().here(), "nothing read in");
+        }
+        for at in 0..bytes.len() {
+            let mut damaged = bytes.clone();
+            damaged[at] ^= 0x01;
+            let mut state = projection.state().clone();
+            assert!(state.read_texts(uid, place, &damaged).is_err(), "byte {at}");
+        }
+        let mut state = projection.state().clone();
+        state.read_texts(uid, place, &bytes).unwrap();
+        assert!(state.issue(uid).unwrap().texts().here());
+    }
+}
+
+#[test]
+fn one_issues_texts_are_never_read_in_as_anothers() {
+    let (projection, file) = with_texts();
+    let wanted = projection.state().all_wanted_texts();
+    let [(first, first_at), (second, second_at)] = wanted[..] else {
+        panic!("two issues' texts: {wanted:?}");
+    };
+    let mut state = projection.state().clone();
+    // another place, its own sum: refused as another place's
+    assert!(
+        state
+            .read_texts(first, second_at, &at(&file, second_at))
+            .is_err()
+    );
+    assert!(
+        state
+            .read_texts(second, first_at, &at(&file, first_at))
+            .is_err()
+    );
+    assert!(!state.issue(first).unwrap().texts().here());
 }

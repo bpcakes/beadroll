@@ -14,7 +14,7 @@ use beadroll_core::state::State;
 use beadroll_git::IoError;
 use beadroll_store::{
     Actor, Workspace, append_events, attempt_path, capture_where, encode_events, glob_ending,
-    json_text, load_journal, private_dir, private_dirs, projection, replica_id, uuid7,
+    json_text, load_journal, private_dir, private_dirs, projection, read_texts, replica_id, uuid7,
     write_attempt_file,
 };
 
@@ -84,10 +84,12 @@ impl<'a> Tx<'a> {
         })
     }
 
-    /// The state the journal replays into, with every event emitted so far.
+    /// The state the journal replays into, with every event emitted so far. Of its issues' texts,
+    /// those of the issues the events emitted are about are in it (roll-lqjj.6); a command reads
+    /// in any other it prints.
     pub fn state(&mut self) -> Result<&State, Error> {
         if self.applied < self.emitted.len()
-            && let Some(projection) = self.projection.take()
+            && let Some(mut projection) = self.projection.take()
         {
             let records = self
                 .emitted
@@ -95,7 +97,13 @@ impl<'a> Tx<'a> {
                 .unwrap_or_default()
                 .to_vec();
             self.applied = self.emitted.len();
-            if let Extended::Applied(projection) = projection.extend(records)? {
+            let about = (records.iter())
+                .filter_map(|record| record.value.get("issue").and_then(Value::as_str))
+                .filter_map(EventId::parse);
+            // texts that cannot be read in have the journal replayed
+            if read_texts(self.ws, projection.state_mut(), about)
+                && let Extended::Applied(projection) = projection.extend(records)?
+            {
                 self.projection = Some(*projection);
             }
         }

@@ -4,7 +4,6 @@
 
 use std::ffi::OsStr;
 use std::fs::{DirBuilder, File, OpenOptions};
-use std::hash::{DefaultHasher, Hasher as _};
 use std::io::{self, Read as _, Write as _};
 use std::os::unix::ffi::OsStrExt as _;
 use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _, PermissionsExt as _};
@@ -179,24 +178,10 @@ pub(crate) fn read_keyed(path: &Path) -> Result<(Vec<u8>, Option<FileKey>), IoEr
     Ok((data, key))
 }
 
-/// A 128-bit sum of `bytes`: SipHash-1-3 twice, each started apart. It finds damage and change,
-/// not forgery: the store is private.
+/// A 128-bit sum of `bytes`, the projection's ([`beadroll_core::projection::sum`]): it finds damage
+/// and change, not forgery; the store is private.
 pub(crate) fn content_sum(bytes: &[u8]) -> [u8; 16] {
-    let half = |start: u8| {
-        let mut hasher = DefaultHasher::new();
-        hasher.write_u8(start);
-        hasher.write(bytes);
-        hasher.finish()
-    };
-    let mut out = [0; 16];
-    let halves = half(0)
-        .to_le_bytes()
-        .into_iter()
-        .chain(half(1).to_le_bytes());
-    for (slot, byte) in out.iter_mut().zip(halves) {
-        *slot = byte;
-    }
-    out
+    beadroll_core::projection::sum(bytes)
 }
 
 /// Why a file meant to hold JSON text could not be read as such, worded as Python's `str()` of

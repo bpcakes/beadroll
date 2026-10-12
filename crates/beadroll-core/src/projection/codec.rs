@@ -66,6 +66,11 @@ impl Writer {
         self.out.extend_from_slice(&id.as_u128().to_be_bytes());
     }
 
+    /// Sixteen bytes as they are: a sum.
+    pub(crate) fn sixteen(&mut self, bytes: &[u8; 16]) {
+        self.out.extend_from_slice(bytes);
+    }
+
     pub(crate) fn ids(&mut self, ids: &[EventId]) {
         self.count(ids.len());
         for id in ids {
@@ -263,6 +268,12 @@ impl<'a> Reader<'a> {
     pub(crate) fn id(&mut self) -> Result<EventId, Unreadable> {
         let bytes: [u8; 16] = self.take(16)?.try_into().map_err(|_| Unreadable("an id"))?;
         Ok(EventId::from_u128(u128::from_be_bytes(bytes)))
+    }
+
+    /// Sixteen bytes as [`Writer::sixteen`] wrote them.
+    pub(crate) fn sixteen(&mut self) -> Result<[u8; 16], Unreadable> {
+        let bytes = self.take(16)?;
+        <[u8; 16]>::try_from(bytes).map_err(|_| Unreadable("a sum"))
     }
 
     pub(crate) fn ids(&mut self) -> Result<Vec<EventId>, Unreadable> {

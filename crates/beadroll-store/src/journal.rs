@@ -395,7 +395,19 @@ pub enum ViewError {
 /// Current state as this machine should see it: confirmed events, with this machine's own
 /// unconfirmed ownership attempts listed on their issues but counting for nothing.
 pub fn view(ws: &Workspace) -> Result<State, ViewError> {
-    let mut state = crate::projection::state(ws)?;
+    let state = crate::projection::state(ws)?;
+    pending_listed(ws, state)
+}
+
+/// [`view`], its issues' texts there (roll-lqjj.6): for a command that prints none of them, or
+/// reads in those it does (`read_texts`).
+pub fn view_outline(ws: &Workspace) -> Result<State, ViewError> {
+    let state = crate::projection::outline(ws)?;
+    pending_listed(ws, state)
+}
+
+/// `state` with this machine's own unconfirmed ownership attempts listed on their issues.
+fn pending_listed(ws: &Workspace, mut state: State) -> Result<State, ViewError> {
     ws.settings.failpoints.hit("view.before-load-pending");
     for attempt in load_pending(ws)? {
         for event in &attempt {
