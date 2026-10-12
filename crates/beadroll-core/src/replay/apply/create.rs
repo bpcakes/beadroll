@@ -86,7 +86,6 @@ fn new_issue(event: &Doing<'_>, create: &Create, key: String, who: &str, when: &
             .collect(),
         dep_tags: VecMap::default(),
         labels: BTreeSet::new(),
-        deps: VecMap::default(),
         comments: create.comments.iter().map(imported_comment).collect(),
         extra: (!create.extra.is_empty()).then(|| Box::new(create.extra.clone())),
         dangling: create.dangling.clone(),

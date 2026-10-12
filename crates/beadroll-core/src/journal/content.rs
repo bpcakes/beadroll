@@ -3,10 +3,10 @@
 //! apart: object members in any order, floats by their bits (`-0.0` is not `0.0`), the rest
 //! exactly. A content is encoded so that no two contents encode alike: each value's kind named,
 //! every string and list given its length, an integer its digits and an end, each object's members
-//! taken in the order of their keys, without recursion, so that a value of any depth has one. The encoding is then hashed twice with
-//! SipHash-1-3 under keys drawn for the journal, 128 bits that nobody without the keys can make two
-//! contents share; the keys never leave the process, and only contents one journal holds are
-//! compared.
+//! taken in the order of their keys, without recursion, so that a value of any depth has one. The
+//! encoding is then hashed twice with SipHash-1-3 under keys drawn for the journal, 128 bits that
+//! nobody without the keys can make two contents share; the keys never leave the process, and only
+//! contents one journal holds are compared.
 
 use std::hash::{BuildHasher as _, RandomState};
 use std::io::Write as _;

@@ -20,9 +20,15 @@ cutover removed both (`python-0.1.0` has them).
 - `src/event.rs`: `event_problem`, `payload_problem`, `write_problem`, `Field`; `src/op.rs`: `Op`,
   an event's operation with its typed payload, and `PyInt`.
 - `src/journal.rs` (`journal/read.rs`): `read_segment`, `read_attempt`, `Journal`;
-  `src/order.rs`: `causal_order`, and `Order`, the same by event index.
-- `src/replay.rs` (`replay/apply.rs`, with `apply/claims.rs` and `apply/create.rs`): `replay`;
-  `src/state.rs` (`state/issue.rs`, `state/seen.rs`): `State`, `Issue`, claims, `saw`.
+  `journal/event.rs`: `Event`, what replay reads of a record (its id, causes, writer, actor, place
+  and typed operation) and the digest of its content, with the texts and values events repeat held
+  once (`Shared`); `journal/content.rs`: the digest. `src/order.rs`: `causal_order`, and `Order`,
+  the same by event index.
+- `src/replay.rs` (`replay/apply.rs`, with `apply/claims.rs` and `apply/create.rs`): `replay`,
+  which takes what each event does from its journal; `src/state.rs` (`state/issue.rs`,
+  `state/claim.rs`, `state/seen.rs`): `State`, `Issue`, claims, `saw`; `state/small.rs`:
+  `VecMap`, `IdMap`, `IdSet`, the vectors an issue keeps its registers and tags in, grown one
+  entry at a time while short.
 - `state/seen.rs`: what every event had seen, as one clock per event over chains (each machine's
   journal, and chains of the unsequenced events of attempt files): the ancestry index behind
   `saw`, in place of Python's per-event `seen` and `own_anc` bitsets.
@@ -55,7 +61,10 @@ cutover removed both (`python-0.1.0` has them).
   diff`, §4.2); a departure is a decided row in §5, never a drift.
 - `saw` answers what Python's bitsets answer: `state/seen/tests.rs` checks every pair against
   them on hostile histories. Replay's speed and memory are measured by
-  `cargo run --release --package xtask -- timing --replay N [--ownership]`.
+  `cargo run --release --package xtask -- timing --replay N [--ownership]`: at 200,000 events its
+  heap peak is within the 150 MB of `docs/RUST-PORT.md` Appendix A (roll-dih8.11). Replay keeps
+  no event's parsed JSON: a record is read into an `Event` once, and the state keeps what `saw`
+  and `who` read of each event, not the journal.
 
 ## Common commands
 

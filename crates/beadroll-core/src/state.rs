@@ -1,6 +1,7 @@
 //! What replay builds (Python's `State` and its issue dicts): the issues in replay order, with every
 //! register, tag and claim record Python keeps, and what every event had seen.
 
+mod claim;
 mod issue;
 mod seen;
 mod small;
@@ -13,8 +14,9 @@ use crate::json::Value;
 use crate::key;
 use crate::text::str_of;
 
+pub use claim::{Claim, EndedClaim, LostClaim, Provisional, Stale};
 pub(crate) use issue::Origin;
-pub use issue::{Claim, Comment, EndedClaim, Issue, LostClaim, Provisional, Stale};
+pub use issue::{Comment, Deps, DepsIter, Issue};
 pub(crate) use seen::{Knowledge, Place, raise, reached};
 pub use small::{IdMap, IdSet, VecMap};
 
@@ -316,7 +318,7 @@ impl State {
         let mut children: std::collections::HashMap<String, Vec<EventId>> =
             std::collections::HashMap::new();
         for child in self.issues.values() {
-            for (to, kind) in child.deps.keys() {
+            for (to, kind) in child.deps().keys() {
                 if kind == "parent-child" {
                     children.entry(to.clone()).or_default().push(child.uid);
                 }
@@ -332,7 +334,7 @@ impl State {
             return Vec::new();
         };
         let mut found: std::collections::BTreeSet<EventId> = issue
-            .deps
+            .deps()
             .keys()
             .filter(|(_, kind)| crate::query::blocking(kind))
             .filter_map(|(to, _)| EventId::parse(to).filter(|to| self.issues.contains_key(to)))

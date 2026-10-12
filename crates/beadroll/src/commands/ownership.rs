@@ -90,7 +90,7 @@ impl ClaimStep<'_> {
                         issue.key(),
                         held.owner,
                         held.generation,
-                        held.since
+                        held.since()
                     ),
                 ));
             }

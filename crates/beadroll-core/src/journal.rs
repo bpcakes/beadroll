@@ -60,7 +60,6 @@ pub struct Journal {
     unplaced: HashSet<EventId>,
     counter: u64,
     settled: bool,
-    referenced: HashSet<EventId>,
     /// The texts and values events repeat, held once.
     shared: Shared,
     /// Where the last record was found: the next ones from its file share it.
@@ -95,7 +94,6 @@ impl Journal {
             unplaced: HashSet::new(),
             counter: 0,
             settled: true,
-            referenced: HashSet::new(),
             shared: Shared::default(),
             last_source: None,
         }
@@ -160,7 +158,6 @@ impl Journal {
                 }
             }
         }
-        self.referenced.extend(event.deps().iter().copied());
         self.events.insert(id, event);
     }
 
@@ -174,7 +171,6 @@ impl Journal {
         self.events.clear();
         self.order.clear();
         self.quarantined.clear();
-        self.referenced.clear();
         self.unplaced.clear();
         self.invalid.retain(|entry| entry.event.is_none()); // unreadable lines and files stay reported
         let raw = std::mem::take(&mut self.raw);
@@ -267,11 +263,23 @@ impl Journal {
 
     /// The frontier of a settled journal (what [`Journal::heads`] answers once it has settled).
     pub fn frontier(&self) -> Vec<EventId> {
-        let mut heads: Vec<EventId> = self
-            .events
-            .keys()
-            .filter(|id| !self.referenced.contains(id))
-            .copied()
+        // The events another one builds on, by index: worked out when asked, since a write asks
+        // once, where a set kept as events arrive would hold every id again.
+        let mut referenced = vec![false; self.events.len()];
+        for event in self.events.values() {
+            for at in event
+                .deps()
+                .iter()
+                .filter_map(|dep| self.events.get_index_of(dep))
+            {
+                if let Some(flag) = referenced.get_mut(at) {
+                    *flag = true;
+                }
+            }
+        }
+        let mut heads: Vec<EventId> = (self.events.keys().zip(referenced))
+            .filter(|(_, referenced)| !referenced)
+            .map(|(id, _)| *id)
             .collect();
         heads.sort_unstable();
         heads

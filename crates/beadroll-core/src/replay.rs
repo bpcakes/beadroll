@@ -9,7 +9,7 @@
 
 mod apply;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::id::EventId;
 use crate::journal::{Journal, Parts, Rest};
@@ -75,24 +75,20 @@ pub fn replay(mut journal: Journal) -> Result<State, KeySpace> {
             .filter(|(_, tags)| !tags.is_empty())
             .map(|(label, _)| label.clone())
             .collect();
-        issue.deps = issue
-            .dep_tags
-            .iter()
-            .filter_map(|(edge, tags)| tags.first().map(|(_, meta)| (edge.clone(), meta.clone())))
-            .collect();
     }
     st.index_children();
     Ok(st)
 }
 
 /// Phase 1: what every event had seen, and which events cannot be applied at all, each with the
-/// integrity text it is reported with (empty: reported when it was loaded), by event index.
+/// integrity text it is reported with (empty: reported when it was loaded), by event index; they
+/// are few, so only they are held.
 fn observe(
     k: &mut Knowledge,
     order: &Order,
     applying: &[Option<Box<Rest>>],
     quarantined: &HashSet<EventId>,
-) -> Vec<Option<String>> {
+) -> HashMap<usize, String> {
     let Knowledge {
         events,
         replicas,
@@ -112,7 +108,7 @@ fn observe(
             .and_then(|before| positions.get(before))
             .map_or(-1, |position| i64::from(*position))
     };
-    let mut inert = vec![None; events.len()];
+    let mut inert = HashMap::new();
     let (mut clock, mut spare) = (Vec::new(), Vec::new());
     for &at in &order.ordered {
         let Some((&id, event)) = events.get_index(at) else {
@@ -129,10 +125,8 @@ fn observe(
                 // and do not pretend it saw what came before (a copied machine identity looks like
                 // this). A placeholder that fails this must not lend its position to what follows.
                 let name = replicas.get(replica as usize).cloned().unwrap_or_default();
-                if !placeholder(what.op.name())
-                    && let Some(slot) = inert.get_mut(at)
-                {
-                    *slot = Some(format!(
+                if !placeholder(what.op.name()) {
+                    inert.insert(at, format!(
                         "journal chain broken at position {number} of machine {name} (copied machine identity?)"
                     ));
                 }
@@ -151,8 +145,8 @@ fn observe(
             // its format or its payload, found when it was read
             what.flaw().map(str::to_owned)
         };
-        if let Some(slot) = inert.get_mut(at) {
-            *slot = reason;
+        if let Some(reason) = reason {
+            inert.insert(at, reason);
         }
     }
     inert
@@ -165,7 +159,7 @@ fn settle_takeovers(
     k: &Knowledge,
     ordered: &[usize],
     applying: &[Option<Box<Rest>>],
-    inert: &mut [Option<String>],
+    inert: &mut HashMap<usize, String>,
 ) -> HashSet<EventId> {
     let what = |at: usize| applying.get(at).and_then(Option::as_deref);
     let mut superseded = HashSet::new();
@@ -173,7 +167,7 @@ fn settle_takeovers(
         let Some(event) = what(at) else {
             continue;
         };
-        if inert.get(at).is_some_and(Option::is_some) {
+        if inert.contains_key(&at) {
             continue;
         }
         let Op::Claim(claiming) = &event.op else {
@@ -193,9 +187,7 @@ fn settle_takeovers(
                 if !k.saw_at(at, previous) {
                     Some("takeover of a claim its writer had not seen")
                 } else {
-                    if claiming.mode.as_deref() != Some("offline")
-                        && inert.get(before).is_none_or(Option::is_none)
-                    {
+                    if claiming.mode.as_deref() != Some("offline") && !inert.contains_key(&before) {
                         superseded.insert(previous);
                     }
                     None
@@ -203,10 +195,8 @@ fn settle_takeovers(
             }
             _ => Some("takeover names a claim that is not a claim on this issue"),
         };
-        if let Some(reason) = refused
-            && let Some(slot) = inert.get_mut(at)
-        {
-            *slot = Some(reason.to_owned());
+        if let Some(reason) = refused {
+            inert.insert(at, reason.to_owned());
         }
     }
     superseded
@@ -218,9 +208,10 @@ fn apply_all(
     k: &Knowledge,
     ordered: &[usize],
     applying: &mut [Option<Box<Rest>>],
-    inert: &[Option<String>],
+    inert: &HashMap<usize, String>,
     superseded: &HashSet<EventId>,
 ) -> Result<(), KeySpace> {
+    let names = apply::Names::default();
     for &at in ordered {
         let Some((&id, trace)) = k.events.get_index(at) else {
             continue;
@@ -230,7 +221,7 @@ fn apply_all(
             continue;
         };
         let uid = event.issue.as_deref();
-        if let Some(reason) = inert.get(at).and_then(Option::as_ref) {
+        if let Some(reason) = inert.get(&at) {
             if !reason.is_empty() {
                 let issue = uid.map(|uid| st.key_of(uid).to_owned());
                 st.integrity.push(Integrity {
@@ -256,7 +247,7 @@ fn apply_all(
             trace,
             what: &event,
         };
-        let applied = apply::apply_event(st, k, &doing, &who, &when, superseded)?;
+        let applied = apply::apply_event(st, k, &doing, &names, &who, &when, superseded)?;
         let target = uid.and_then(EventId::parse);
         if let Some(issue) = target
             .filter(|_| applied)

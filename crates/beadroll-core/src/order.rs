@@ -61,15 +61,21 @@ pub(crate) struct Order {
     causes: Lists,
 }
 
-/// A list of event indices for every event, kept flat.
+/// A list of event indices for every event, kept flat. A journal holds fewer than 2³² events (each
+/// takes hundreds of bytes in memory), so an index is a `u32`.
 struct Lists {
     /// Where each event's list begins in `items`; the last entry closes the last list.
     starts: Vec<usize>,
-    items: Vec<usize>,
+    items: Vec<u32>,
+}
+
+/// The index `at` as a list holds it.
+fn small(at: usize) -> u32 {
+    u32::try_from(at).unwrap_or(u32::MAX)
 }
 
 impl Lists {
-    fn get(&self, at: usize) -> &[usize] {
+    fn get(&self, at: usize) -> &[u32] {
         let start = self.starts.get(at).copied().unwrap_or(0);
         let end = self.starts.get(at + 1).copied().unwrap_or(start);
         self.items.get(start..end).unwrap_or_default()
@@ -81,7 +87,7 @@ impl Lists {
         let count = self.starts.len().saturating_sub(1);
         let mut starts = vec![0usize; count + 1];
         for item in &self.items {
-            if let Some(slot) = starts.get_mut(item + 1) {
+            if let Some(slot) = starts.get_mut(*item as usize + 1) {
                 *slot += 1;
             }
         }
@@ -91,14 +97,14 @@ impl Lists {
                 *slot += before;
             }
         }
-        let mut items = vec![0usize; self.items.len()];
+        let mut items = vec![0u32; self.items.len()];
         let mut filled = starts.clone();
         for at in 0..count {
             for item in self.get(at) {
-                if let Some(slot) = filled.get_mut(*item)
+                if let Some(slot) = filled.get_mut(*item as usize)
                     && let Some(entry) = items.get_mut(*slot)
                 {
-                    *entry = at;
+                    *entry = small(at);
                     *slot += 1;
                 }
             }
@@ -119,7 +125,7 @@ impl Order {
 
     /// The effective causes of the event at `at` that the journal holds, by index, as listed
     /// (a cause named twice is here twice).
-    pub(crate) fn causes(&self, at: usize) -> &[usize] {
+    pub(crate) fn causes(&self, at: usize) -> &[u32] {
         self.causes.get(at)
     }
 
@@ -149,7 +155,7 @@ impl Order {
                 *count = i64::try_from(deps.len()).unwrap_or(i64::MAX);
             }
             let held = deps.iter().filter_map(|dep| events.get_index_of(dep));
-            causes.items.extend(held);
+            causes.items.extend(held.map(small));
             if deps.is_empty() {
                 ready.push(Reverse((event.id(), index)));
             }
@@ -165,6 +171,7 @@ impl Order {
                     *flag = true;
                 }
                 for &child in dependents.get(index) {
+                    let child = child as usize;
                     let Some(count) = waiting.get_mut(child) else {
                         continue;
                     };
