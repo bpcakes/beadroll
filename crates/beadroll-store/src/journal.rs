@@ -15,7 +15,11 @@ use beadroll_git::IoError;
 
 use crate::error::Error;
 use crate::failpoint::{Failpoints, Fired, kill_self};
-use crate::fs::{dir_entries, fsync, glob_ending, has_suffix, private_dirs, read, write_atomic};
+use crate::fs::{
+    content_sum, dir_entries, fsync, glob_ending, has_suffix, private_dirs, read, read_keyed,
+    write_atomic,
+};
+use crate::memo::FileKey;
 use crate::workspace::Workspace;
 
 /// Every segment of every journal in the store, journal by journal, in name order.
@@ -239,10 +243,20 @@ pub fn write_attempt_file(
 /// The events of the attempt file at `path`, as replay reads them: an unreadable file, or any bad
 /// line, empties it, reported in `problems`.
 pub fn read_attempt(path: &Path, problems: Option<&mut Vec<Problem>>) -> Vec<Value> {
+    attempt_events(path, std::fs::read(path).ok().as_deref(), problems)
+}
+
+/// The events of the attempt file at `path` whose bytes are `data` (`None`: it could not be read),
+/// as [`read_attempt`] reads them.
+pub(crate) fn attempt_events(
+    path: &Path,
+    data: Option<&[u8]>,
+    problems: Option<&mut Vec<Problem>>,
+) -> Vec<Value> {
     let origin = path.display().to_string();
-    match std::fs::read(path) {
-        Ok(data) => journal::read_attempt(&data, &origin, problems),
-        Err(_) => {
+    match data {
+        Some(data) => journal::read_attempt(data, &origin, problems),
+        None => {
             if let Some(problems) = problems {
                 problems.push(Problem {
                     event: None,
@@ -259,27 +273,37 @@ pub fn read_attempt(path: &Path, problems: Option<&mut Vec<Problem>>) -> Vec<Val
 pub fn load_journal(ws: &Workspace) -> Result<Journal, Error> {
     let segments = segment_files(ws)?;
     ws.settings.failpoints.hit("journal.after-enumerate");
-    Ok(load_listed(ws, &segments)?.journal)
+    Ok(load_listed(ws, &segments, false)?.journal)
 }
 
 /// What [`load_listed`] read.
 pub(crate) struct Loaded {
     /// The journal, settled.
     pub(crate) journal: Journal,
-    /// The accepted attempt files, listed once the segments were read.
-    pub(crate) attempts: Vec<PathBuf>,
     /// Whether every segment ended with a whole line.
     pub(crate) whole: bool,
+    /// Each segment's identity as it was read, and the sum of its bytes when they were summed.
+    pub(crate) segments: Vec<(Option<FileKey>, Option<[u8; 16]>)>,
+    /// The accepted attempt files, listed once the segments were read, each with its identity as
+    /// it was read (`None` when it could not be).
+    pub(crate) attempts: Vec<(PathBuf, Option<FileKey>)>,
 }
 
 /// The journal of `segments`, then of the accepted attempt files, listed once the segments are
-/// read: an attempt file is in place before any record built on it is appended.
-pub(crate) fn load_listed(ws: &Workspace, segments: &[PathBuf]) -> Result<Loaded, Error> {
+/// read: an attempt file is in place before any record built on it is appended. Each file's
+/// identity is the one it had as it was read; with `summed`, so is the sum of each segment's bytes.
+pub(crate) fn load_listed(
+    ws: &Workspace,
+    segments: &[PathBuf],
+    summed: bool,
+) -> Result<Loaded, Error> {
     let mut journal = Journal::new();
     let mut whole = true;
+    let mut held = Vec::with_capacity(segments.len());
     for path in segments {
-        let data = read(path)?;
+        let (data, key) = read_keyed(path)?;
         whole &= data.last().is_none_or(|last| *last == b'\n');
+        held.push((key, summed.then(|| content_sum(&data))));
         let origin = path.display().to_string();
         let replica = folder_name(path, 1);
         let events = journal::read_segment(&data, &origin, Some(&mut journal.invalid));
@@ -287,20 +311,23 @@ pub(crate) fn load_listed(ws: &Workspace, segments: &[PathBuf]) -> Result<Loaded
             journal.add(event, &replica, &origin, true);
         }
     }
-    let attempts = claim_files(ws)?;
-    for path in &attempts {
+    let mut attempts = Vec::new();
+    for path in claim_files(ws)? {
         let origin = path.display().to_string();
-        let replica = folder_name(path, 2);
-        let events = read_attempt(path, Some(&mut journal.invalid));
-        for event in events {
+        let replica = folder_name(&path, 2);
+        let read = read_keyed(&path).ok();
+        let data = read.as_ref().map(|(data, _)| data.as_slice());
+        for event in attempt_events(&path, data, Some(&mut journal.invalid)) {
             journal.add(event, &replica, &origin, false);
         }
+        attempts.push((path, read.and_then(|(_, key)| key)));
     }
     journal.settle();
     Ok(Loaded {
         journal,
-        attempts,
         whole,
+        segments: held,
+        attempts,
     })
 }
 

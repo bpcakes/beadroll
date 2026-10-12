@@ -5,12 +5,12 @@
 //! reads reads the first two parts alone.
 
 use std::fs::File;
-use std::hash::{DefaultHasher, Hasher as _};
 use std::io::{Read as _, Seek as _, SeekFrom};
 use std::path::Path;
 
 use beadroll_core::projection::{ENCODING, Encoded};
 
+use crate::fs::content_sum as sum;
 use crate::memo::FileKey;
 
 /// The first bytes of a projection.
@@ -23,12 +23,14 @@ const LAYOUT: u32 = 1;
 const HEADER: usize = 16 + 4 + 4 + 3 * 8 + 3 * 16;
 
 /// A journal file a projection was made from: its path under the store's `events`, its identity
-/// up to what was read of it, and whether it is a segment (else an attempt file).
+/// up to what was read of it, whether it is a segment (else an attempt file), and for a segment
+/// the sum of its bytes, which a segment that grew since must still begin with.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Held {
     pub(super) path: String,
     pub(super) key: FileKey,
     pub(super) segment: bool,
+    pub(super) sum: Option<[u8; 16]>,
 }
 
 /// What a projection was made from: the build of bead that made it, and the journal's files.
@@ -121,26 +123,6 @@ pub(super) fn bytes(made: &Made, encoded: &Encoded) -> Vec<u8> {
     out
 }
 
-/// A 128-bit sum of `bytes`: SipHash-1-3 twice, each started apart. It finds damage, not forgery:
-/// the store is private.
-fn sum(bytes: &[u8]) -> [u8; 16] {
-    let half = |start: u8| {
-        let mut hasher = DefaultHasher::new();
-        hasher.write_u8(start);
-        hasher.write(bytes);
-        hasher.finish()
-    };
-    let mut out = [0; 16];
-    let halves = half(0)
-        .to_le_bytes()
-        .into_iter()
-        .chain(half(1).to_le_bytes());
-    for (slot, byte) in out.iter_mut().zip(halves) {
-        *slot = byte;
-    }
-    out
-}
-
 fn made_bytes(made: &Made) -> Vec<u8> {
     let mut out = Vec::new();
     let text = |out: &mut Vec<u8>, text: &str| {
@@ -152,6 +134,13 @@ fn made_bytes(made: &Made) -> Vec<u8> {
     for held in &made.files {
         text(&mut out, &held.path);
         out.push(u8::from(held.segment));
+        match held.sum {
+            Some(sum) => {
+                out.push(1);
+                out.extend_from_slice(&sum);
+            }
+            None => out.push(0),
+        }
         let (len, modified, changed, inode, device) = held.key.parts();
         out.extend_from_slice(&len.to_le_bytes());
         out.extend_from_slice(&modified.to_le_bytes());
@@ -174,12 +163,22 @@ fn unmade(bytes: &[u8]) -> Option<Made> {
             [1] => true,
             _ => return None,
         };
+        let sum = match at.take::<1>()? {
+            [0] => None,
+            [1] => Some(at.take::<16>()?),
+            _ => return None,
+        };
         let len = at.number()?;
         let modified = i128::from_le_bytes(at.take()?);
         let changed = i128::from_le_bytes(at.take()?);
         let (inode, device) = (at.number()?, at.number()?);
         let key = FileKey::from_parts((len, modified, changed, inode, device));
-        files.push(Held { path, key, segment });
+        files.push(Held {
+            path,
+            key,
+            segment,
+            sum,
+        });
     }
     (at.1 == bytes.len()).then_some(Made { build, files })
 }

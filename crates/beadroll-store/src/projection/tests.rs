@@ -260,3 +260,17 @@ fn a_projection_that_cannot_be_written_leaves_the_last_one() {
     assert!(replays(&ws));
     assert_ne!(std::fs::read(projection_path(&ws)).unwrap(), before);
 }
+
+#[test]
+fn a_segment_rewritten_and_then_appended_to_is_replayed() {
+    let home = tempfile::tempdir().unwrap();
+    let ws = store(home.path(), Some("this build"));
+    begun(&ws);
+    assert!(replays(&ws));
+    // the second title rewritten where it is, its length kept, then a record appended: the same
+    // file, longer, but not what the projection was made from followed by more
+    let data = std::fs::read_to_string(segment(&ws)).unwrap();
+    std::fs::write(segment(&ws), data.replace("renamed", "RENAMED")).unwrap();
+    append_events(&ws, HERE, &[title(5, &[4], 2, "later")]).unwrap();
+    assert!(replays(&ws));
+}
