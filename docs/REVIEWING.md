@@ -115,7 +115,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   files: an in-place rewrite that keeps length, times, inode and device is not seen, as git's index
   does not see it; and a sum of each segment's bytes). A command whose files are the ones it was
   made from reads it, a reading command its state alone. A segment that grew is caught up only
-  when it still begins with the bytes summed (it is read whole: at most what bead rotates at), and
+  when it is its machine's last and still begins with the bytes summed (it is read whole: at most
+  what bead rotates at), and
   records appended since are applied after the projection when replay would apply them so: each new event has the whole frontier in its past, which a local write's always do and
   a merge's do when one writer worked at a time; it then applies them with replay's own steps, and
   keeps of what every event had seen only the events the state names (the projection's state also

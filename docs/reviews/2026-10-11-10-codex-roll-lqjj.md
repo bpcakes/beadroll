@@ -40,3 +40,12 @@ Full review comments:
 
 - [P2] Capture attempt identities from the files actually replayed — /Users/<name>/Documents/beadroll/crates/beadroll-store/src/projection.rs:107-112
   If a lock-free cold read overlaps `Link::merge` replacing a differing accepted attempt, `load_listed` can read the old contents while this later `held` call captures the replacement's identity. The segment checks still pass, and the reader can overwrite the corrected projection with stale claim state or integrity reports tagged as current. Subsequent commands trust it until another journal change. Validate attempt identities across their reads, or obtain them from the opened descriptors, before saving, as required by the [cache invariant](crates/beadroll-store/AGENTS.md#L60-L62).
+
+## roll-lqjj.2, round 2: `1527ea8ff4dc47e7d3d51954c2d1bef892b5d468..3860f0a60090c96bbe94170cd2acf8bfbd16bffb`
+
+Reviewed only 1527ea8ff4dc47e7d3d51954c2d1bef892b5d468..3860f0a60090c96bbe94170cd2acf8bfbd16bffb (HEAD). Growth of an older segment can persist cached answers that differ from replay. All 52 prebuilt core unit tests passed; ./check.sh was blocked by the read-only Cargo build lock.
+
+Review comment:
+
+- [P2] Replay when a non-final cached segment grows — /Users/<name>/Documents/beadroll/crates/beadroll-store/src/projection.rs:190-195
+  If an earlier segment grows while a later segment already contains cached events, this accepts an insertion into the machine's journal as an append. For example, cache create A in `000001.jsonl` and retitle B in `000002.jsonl`, then append label event C depending on B to `000001.jsonl`. `Projection::extend` places C after B and accepts it; full replay places C before B in the journal and rejects B for a chain break. The cache consequently preserves a title replay rejects and can hide `JOURNAL_FORK` from `Link::merge`. Fall back when a non-final cached segment grows, preserving the [replay-equivalence invariant](crates/beadroll-store/AGENTS.md#L60-L62).
