@@ -2,7 +2,10 @@
 //! after everything a store of N events holds (`--batch M` of them, ten by default), against a
 //! local bare remote: with the store's projection in place (`seconds`), where the merged events are
 //! applied after it, and removed before each sync (`cold_seconds`), where the journal is replayed,
-//! as every sync did before roll-lqjj.2. Evidence, never a gate.
+//! as every sync did before roll-lqjj.2. With `--concurrent` the store writes a comment of its own
+//! before each merge, so that the events merged were written concurrently with its own: the
+//! projection then declines them and the journal is replayed, and the sync also publishes the
+//! store's write (roll-lqjj.8). Evidence, never a gate.
 
 use super::history::{ROTATE_BYTES, Shape, history};
 use super::world::{RUNS, World, bead, profile, write_store};
@@ -16,6 +19,7 @@ pub(crate) fn measure(
     count: usize,
     shape: Shape,
     batch: usize,
+    concurrent: bool,
     label: Option<&str>,
 ) -> Result<String, Failure> {
     let bead = bead()?;
@@ -45,6 +49,9 @@ pub(crate) fn measure(
                 ])?;
             }
             other.bead(&["sync"])?;
+            if concurrent {
+                here.write(&format!("here {run}"))?;
+            }
             if cold {
                 here.forget("projection")?;
             }
@@ -54,13 +61,21 @@ pub(crate) fn measure(
     let [warm, cold] = best;
     std::fs::remove_dir_all(&dir).map_err(|error| Failure::io("cannot remove", &dir, &error))?;
     let label = label.map_or_else(
-        || format!("merges of {batch} into {count} {}", shape.events()),
+        || {
+            let how = if concurrent {
+                "concurrent merges"
+            } else {
+                "merges"
+            };
+            format!("{how} of {batch} into {count} {}", shape.events())
+        },
         str::to_owned,
     );
     Ok(format!(
         "{{\"label\": {}, \"shape\": {}, \"events\": {count}, \"batch\": {batch}, \
-         \"segments\": {}, \"attempt_files\": {}, \"journal_bytes\": {}, \"profile\": {}, \
-         \"runs\": {RUNS}, \"seconds\": {warm:.4}, \"cold_seconds\": {cold:.4}, ",
+         \"concurrent\": {concurrent}, \"segments\": {}, \"attempt_files\": {}, \
+         \"journal_bytes\": {}, \"profile\": {}, \"runs\": {RUNS}, \"seconds\": {warm:.4}, \
+         \"cold_seconds\": {cold:.4}, ",
         json_string(&label),
         json_string(shape.name()),
         layout.segments,

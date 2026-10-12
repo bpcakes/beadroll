@@ -42,6 +42,9 @@ struct Options {
     merge: Option<usize>,
     /// How many events each `--merge` brings.
     batch: Option<usize>,
+    /// With `--merge`, the store writes too before each merge, so that what it merges was
+    /// written concurrently with its own.
+    concurrent: bool,
     /// Time this many machines writing one tracker at once instead of a command.
     contend: Option<usize>,
     /// How many writes each `--contend` machine makes.
@@ -69,6 +72,7 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
         read: None,
         merge: None,
         batch: None,
+        concurrent: false,
         contend: None,
         writes: None,
         latency: None,
@@ -92,6 +96,7 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
             "--read" => options.read = Some(number(&value("--read")?, "--read", "events")?),
             "--merge" => options.merge = Some(number(&value("--merge")?, "--merge", "events")?),
             "--batch" => options.batch = Some(number(&value("--batch")?, "--batch", "events")?),
+            "--concurrent" => options.concurrent = true,
             "--contend" => {
                 options.contend = Some(number(&value("--contend")?, "--contend", "machines")?);
             }
@@ -141,6 +146,9 @@ fn check(options: &Options) -> Result<(), Failure> {
         return Err(Failure::Usage(
             "one of --replay N, --sync N, --read N, --merge N and --contend M".into(),
         ));
+    }
+    if options.concurrent && options.merge.is_none() {
+        return Err(Failure::Usage("--concurrent goes with --merge N".into()));
     }
     if options.contend == Some(0)
         || (options.writes.is_some() || options.latency.is_some()) && options.contend.is_none()
@@ -194,7 +202,14 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
         Some(read::measure(count, options.shape, label)?)
     } else if let Some(count) = options.merge {
         let batch = options.batch.unwrap_or(merge::BATCH);
-        Some(merge::measure(count, options.shape, batch, label)?)
+        let concurrent = options.concurrent;
+        Some(merge::measure(
+            count,
+            options.shape,
+            batch,
+            concurrent,
+            label,
+        )?)
     } else if let Some(machines) = options.contend {
         let writes = options.writes.unwrap_or(contend::WRITES);
         let latency = options.latency.map_or(contend::LATENCY, |ms| ms as u64);
@@ -433,6 +448,14 @@ mod tests {
                 "{wrong:?}"
             );
         }
+    }
+
+    #[test]
+    fn concurrent_goes_with_merge() {
+        let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
+        let options = parse(args(&["--merge", "500", "--concurrent", "--text"])).unwrap();
+        assert!(options.concurrent);
+        assert!(parse(args(&["--read", "500", "--concurrent"])).is_err());
     }
 
     #[test]
