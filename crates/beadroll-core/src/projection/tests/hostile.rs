@@ -342,3 +342,23 @@ fn one_issues_texts_are_never_read_in_as_anothers() {
     );
     assert!(!state.issue(first).unwrap().texts().here());
 }
+
+#[test]
+fn an_issue_many_records_are_about_has_its_texts_read_once() {
+    let (projection, file) = with_texts();
+    let (two, five) = (
+        EventId::parse(&id(2)).unwrap(),
+        EventId::parse(&id(5)).unwrap(),
+    );
+    let wanted = projection.state().wanted_texts([five, two, two, five, two]);
+    assert_eq!(wanted.len(), 2, "{wanted:?}");
+    assert!(wanted.windows(2).all(|pair| pair[0].1.at < pair[1].1.at));
+    let mut state = projection.state().clone();
+    for (uid, place) in &wanted {
+        state.read_texts(*uid, *place, &at(&file, *place)).unwrap();
+    }
+    assert!(state.wanted_texts([two, five]).is_empty());
+    // texts read in already are not read again: no bytes are asked of them
+    let (_, place) = wanted[0];
+    assert!(state.read_texts(two, place, &[]).is_ok());
+}

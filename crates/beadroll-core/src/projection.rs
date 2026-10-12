@@ -260,25 +260,28 @@ pub fn decode_state(bytes: &[u8]) -> Result<State, Unreadable> {
 }
 
 impl State {
-    /// Where the texts of the issues among `uids` that have them only in a text file are.
+    /// Where the texts of the issues among `uids` that have them only in a text file are: each
+    /// issue once, however many times `uids` names it, in the order of their places.
     pub fn wanted_texts(
         &self,
         uids: impl IntoIterator<Item = EventId>,
     ) -> Vec<(EventId, TextPlace)> {
-        (uids.into_iter())
+        let mut named = HashSet::new();
+        let mut out: Vec<(EventId, TextPlace)> = (uids.into_iter())
+            .filter(|uid| named.insert(*uid))
             .filter_map(|uid| match &self.issues.get(&uid)?.texts {
                 Texts::There(stored) => Some((uid, stored.place)),
                 _ => None,
             })
-            .collect()
+            .collect();
+        out.sort_by_key(|(_, place)| place.at);
+        out
     }
 
     /// Where the texts of every issue that has them only in a text file are, in the order they
     /// were written.
     pub fn all_wanted_texts(&self) -> Vec<(EventId, TextPlace)> {
-        let mut out = self.wanted_texts(self.issues.keys().copied());
-        out.sort_by_key(|(_, place)| place.at);
-        out
+        self.wanted_texts(self.issues.keys().copied())
     }
 
     /// How many bytes of a text file the texts of its issues take where they are placed: what of it
@@ -314,10 +317,13 @@ impl State {
         place: TextPlace,
         bytes: &[u8],
     ) -> Result<(), Unreadable> {
+        let issue = self.issues.get_mut(&uid).ok_or(Unreadable("an issue"))?;
+        if issue.texts.here() {
+            return Ok(()); // read in already
+        }
         if u32::try_from(bytes.len()).ok() != Some(place.len) || sum(bytes) != place.sum {
             return Err(Unreadable("damaged texts"));
         }
-        let issue = self.issues.get_mut(&uid).ok_or(Unreadable("an issue"))?;
         read_texts(issue, bytes, place)
     }
 }
