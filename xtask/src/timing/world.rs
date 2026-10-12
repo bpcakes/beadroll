@@ -116,13 +116,28 @@ impl World {
     /// `bead ARGS` in the checkout, on the scratch store ([`isolated`]); a failure fails the
     /// timing.
     pub(super) fn bead(&self, args: &[&str]) -> Result<(), Failure> {
-        let output = isolated(&self.bead)
+        self.output(args, None).map(drop)
+    }
+
+    /// What `bead ARGS` printed, run as [`World::bead`] runs it, with `failpoints` as its
+    /// `BEAD_FAILPOINTS` when given.
+    pub(super) fn output(
+        &self,
+        args: &[&str],
+        failpoints: Option<&str>,
+    ) -> Result<String, Failure> {
+        let mut command = isolated(&self.bead);
+        command
             .args(args)
             .current_dir(&self.checkout)
             .env("BEAD_HOME", &self.home)
             .env("BEAD_WORKSPACE", WORKSPACE)
             .env("BEAD_ROTATE_BYTES", self.rotate.to_string())
-            .stdin(Stdio::null())
+            .stdin(Stdio::null());
+        if let Some(failpoints) = failpoints {
+            command.env("BEAD_FAILPOINTS", failpoints);
+        }
+        let output = command
             .output()
             .map_err(|error| Failure::Failed(format!("cannot run bead: {error}")))?;
         if !output.status.success() {
@@ -132,7 +147,7 @@ impl World {
                 String::from_utf8_lossy(&output.stderr).trim()
             )));
         }
-        Ok(())
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     }
 
     /// A local write, not published: a comment on the history's first issue.

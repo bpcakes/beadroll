@@ -44,6 +44,7 @@ usage: cargo xtask <command>
   timing --sync N [--ownership|--churn|--text] [--rotate BYTES] [--label NAME] [--out FILE]
   timing --read N [--ownership|--churn|--text] [--label NAME] [--out FILE]
   timing --merge N [--batch M] [--ownership|--churn|--text] [--label NAME] [--out FILE]
+  timing --contend M [--writes W] [--latency MS] [--label NAME] [--out FILE]
   timing --load DIR [--no-replay]
       Run COMMAND and append what it took, one JSON line, to FILE (default
       target/timing.jsonl); or replay a parsed journal of N valid events in-process, the best of
@@ -60,7 +61,9 @@ usage: cargo xtask <command>
       local write each, with the store's memo of its journal files and its projection, without
       its projection, and without either. --read N times bead list, show and ready there, and a
       local write (bead comments add --offline), with the projection and without it; --merge N, a bead sync that merges M events (ten by default)
-      another machine wrote after everything the store holds, with the projection and without it.
+      another machine wrote after everything the store holds, with the projection and without it;
+      --contend M, M machines writing one tracker at once (W writes each, 25 by default), every
+      write published, each fetch and push made MS milliseconds slower (300 by default).
       Timings are evidence, never a gate (docs/RUST-PORT.md §4.7).
 ";
 
