@@ -161,7 +161,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   closed issues changes what `show`, `log` and `export` return and breaks the Beads round trip for
   them, so it would be a policy a tracker sets explicitly, with a command that lists what it forgot
   and the archive keeping it; step 5 leaves room for it by keeping the index and the archive apart
-  from the state. Closed issues hold 27–83% of the largest public trackers' bytes, and keeping
+  from the state. Closed issues hold 27–100% of the largest public trackers' bytes, and keeping
   texts out of what every command decodes (roll-lqjj.6) may make retention unnecessary for speed.
 - What each event had seen is one clock per event over chains, the reachability index of
   `state/seen.rs` (`RUST-PORT.md` §2.3c): every machine's journal is a chain, and each event of an

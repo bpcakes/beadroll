@@ -486,13 +486,13 @@ the record of it before any test data is written), their tests beside them, and 
 - A command reads the store's projection while it is current, and replays the
   journal when it is not (after another build of bead, a change it could not
   apply, or the projection removed). At 200,000 events (the largest public
-  Beads tracker imports as 29,000), a read takes 73–87 ms with it and 1.06 s
-  without; a sync that merges ten events another machine wrote, 0.31 s and
+  Beads trackers import as at most 29,000), a read takes 73–87 ms with it and
+  1.06 s without; a sync that merges ten events another machine wrote, 0.31 s and
   1.31 s; a publishing sync, 0.38 s and 1.34 s (`docs/RUST-PORT.md`, Appendix
   A). With it, a read costs what the state does: 18 ms for a thousand issues,
   whether 50,000 events made them or 200,000. But a real tracker's state is
   mostly its texts, which every read decodes and every write rewrites: on the
-  largest public Beads trackers (21–47 MB, up to 13,394 issues) a read takes
+  largest public Beads trackers (21–49 MB, up to 13,394 issues) a read takes
   0.06–0.14 s and a published write 0.34–0.65 s, and importing the largest
   held 0.95 GB (roll-lqjj.6, roll-lqjj.9). A merge that brings events another
   machine wrote concurrently replays the journal, as about one merge in ten
@@ -513,6 +513,11 @@ the record of it before any test data is written), their tests beside them, and 
   into a commit message before the sync now names the other issue.
 - A repository with neither a remote nor a `.beadroll.json` gets a machine-local
   tracker that cannot sync.
+- A Beads export that holds memory records (`{"_type": "memory", ...}`, which
+  recent Beads versions keep in `issues.jsonl` beside the issues) is refused
+  whole by `import`, at the first of them (roll-dih8.16). Export writes every
+  dependency with br's six members, so one written without `thread_id` comes
+  back with `"thread_id": ""`.
 - Not implemented: `stats`, `count`, `epic status`, `graph`, saved queries,
   templates, external-project dependencies, `bv`-style ranking.
 
