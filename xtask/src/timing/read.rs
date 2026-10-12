@@ -1,7 +1,8 @@
-//! `timing --read N`: how long the reading commands take on a store of N events (`bead list`,
-//! `bead show` of an issue, `bead ready`): with the store's projection in place (`*_seconds`), and
-//! with it removed before each (`cold_*_seconds`), so that each replays the journal, as every
-//! command did before roll-lqjj.2, and writes the projection back. Evidence, never a gate.
+//! `timing --read N`: how long the reading commands take on a store of N events, published once
+//! to a local bare remote as a store in use is (`bead list`, `bead show` of an issue, `bead
+//! ready`): with the store's projection in place (`*_seconds`), and with it removed before each
+//! (`cold_*_seconds`), so that each replays the journal, as every command did before roll-lqjj.2,
+//! and writes the projection back. Evidence, never a gate.
 
 use super::history::{ROTATE_BYTES, Shape, history};
 use super::world::{RUNS, World, bead, profile, write_store};
@@ -26,6 +27,8 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
     let world = World::new(&dir, bead, ROTATE_BYTES)?;
     let layout = write_store(&world.store(), &files, ROTATE_BYTES)?;
     drop(files);
+    world.bead(&["sync"])?;
+    world.forget("projection")?;
     let first = world.timed(&["list", "--json"])?;
     let projection = world.store().join("projection");
     let bytes = std::fs::metadata(&projection)
