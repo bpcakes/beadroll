@@ -24,6 +24,10 @@ mod workspace;
 
 use std::process::ExitCode;
 
+/// The system allocator, counted: `timing --load` reports the most its process held on its heap.
+#[global_allocator]
+static HEAP: timing::heap::Counting = timing::heap::Counting;
+
 const USAGE: &str = "\
 usage: cargo xtask <command>
 

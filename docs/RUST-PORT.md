@@ -255,9 +255,11 @@ beadroll-test-support (dev-dependency of every crate's tests)      xtask (dev to
   fires on them. Each `tests/<name>/main.rs` starts with `#![cfg(test)]`, so that clippy treats its
   helpers as test code, and helpers shared between test modules are `pub(crate)`
   (`unreachable_pub`).
-- **Unsafe code** is denied workspace-wide, with two documented exceptions and a `// SAFETY:` on
+- **Unsafe code** is denied workspace-wide, with three documented exceptions and a `// SAFETY:` on
   each block: `beadroll::sys` (a pre-`main` stdio probe and ignoring SIGXFSZ) and
-  `beadroll_git::runner` (detaching the child session and resetting SIGXFSZ before exec).
+  `beadroll_git::runner` (detaching the child session and resetting SIGXFSZ before exec), the two
+  in bead; and xtask's `timing::heap`, the system allocator with a count of what it hands out, for
+  the heap peak `timing` reports (`GlobalAlloc` is an unsafe trait; roll-dih8.11).
 - **House layout.**
   - No `mod.rs` files (`clippy::mod_module_files`).
   - Files warn above 500 lines and fail above 800 (jig's file budget, which studio and batter
@@ -591,7 +593,7 @@ thiserror = "2"
 uuid = { version = "1", features = ["v4", "v7"] }
 
 [workspace.lints.rust]
-unsafe_code = "deny"                        # two documented exceptions, §2.2
+unsafe_code = "deny"                        # three documented exceptions, §2.2
 missing_docs = "warn"
 unreachable_pub = "warn"
 rust_2018_idioms = { level = "warn", priority = -1 }

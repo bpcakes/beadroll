@@ -24,8 +24,9 @@ Python implementation, so they went with it; `python-0.1.0` has them.
   store's memo of its journal files and without it (roll-lqjj.1); `timing/history.rs`:
   the histories it replays (`--ownership`: heavy in claims, takeovers and releases in attempt
   files); `timing/memory.rs`: the journal written under `target/timing/` while it is measured,
-  `timing --load DIR` (the process that loads and replays it), and peak memory as
-  `/usr/bin/time` reports it.
+  `timing --load DIR` (the process that loads and replays it), and its peaks: the resident set as
+  `/usr/bin/time` reports it, and the heap as `timing/heap.rs` counts it, xtask's global allocator
+  (the system's, counted; its one unsafe spot, `docs/RUST-PORT.md` §2.2).
 - `src/hygiene.rs`: `test_hygiene` ported, the repository lint (a test only).
 - `src/ci.rs`: `V8_Python312` rewritten, the CI matrix the workflows keep (a test only).
 - `src/workspace.rs`: paths, failures and JSON strings for all of them.

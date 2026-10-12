@@ -5,6 +5,7 @@
 //! N`, a publishing `bead sync` on a store of N events ([`sync`]). A timing never decides whether
 //! anything passes.
 
+pub(crate) mod heap;
 mod history;
 mod memory;
 mod replay;

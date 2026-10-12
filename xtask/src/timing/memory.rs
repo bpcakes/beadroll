@@ -9,6 +9,7 @@ use std::process::{Command, ExitCode, Stdio};
 use beadroll_core::journal::{Journal, read_attempt, read_segment};
 use beadroll_core::replay::replay;
 
+use super::heap;
 use super::history::{Files, ROTATE_BYTES, segments};
 use crate::workspace::Failure;
 
@@ -93,7 +94,8 @@ fn sorted(dir: &Path) -> Result<Vec<std::path::PathBuf>, Failure> {
 }
 
 /// `timing --load DIR [--no-replay]`: loads the journal in `dir` and replays it once, or with
-/// `--no-replay` only loads it, and says how many events and issues there were.
+/// `--no-replay` only loads it, and says how many events and issues there were, and the most the
+/// process held on its heap at once ([`heap::peak`]).
 pub(crate) fn main(dir: &Path, replaying: bool) -> Result<ExitCode, Failure> {
     let journal = load(dir)?;
     let events = journal.events().len();
@@ -104,25 +106,46 @@ pub(crate) fn main(dir: &Path, replaying: bool) -> Result<ExitCode, Failure> {
     } else {
         println!("{events} events");
     }
+    println!("{HEAP_PEAK} {}", heap::peak());
     Ok(ExitCode::SUCCESS)
 }
 
-/// The peak resident set of `program ARGS` in bytes, as `/usr/bin/time` reports it when the
-/// program exits; `None` where there is no such report.
-pub(crate) fn peak(program: &Path, args: &[&std::ffi::OsStr]) -> Result<Option<u64>, Failure> {
+/// How `--load` says its heap peak.
+const HEAP_PEAK: &str = "heap peak:";
+
+/// What a `--load` run held at its peak, in bytes: its resident set, as `/usr/bin/time` reports
+/// it, and its heap, as it reported it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Peaks {
+    pub(crate) resident: Option<u64>,
+    pub(crate) heap: Option<u64>,
+}
+
+/// The peaks of `program ARGS`, a `--load` run: its resident set, as `/usr/bin/time` reports it when
+/// the program exits (`None` where there is no such report), and its heap, as the program says.
+pub(crate) fn peaks(program: &Path, args: &[&std::ffi::OsStr]) -> Result<Peaks, Failure> {
     let flag = if cfg!(target_os = "macos") {
         "-l"
     } else {
         "-v"
     };
-    let output = Command::new("/usr/bin/time")
+    let timed = Command::new("/usr/bin/time")
         .arg(flag)
         .arg(program)
         .args(args)
         .stdin(Stdio::null())
         .output();
-    let Ok(output) = output else {
-        return Ok(None); // no /usr/bin/time here
+    let (output, timed) = match timed {
+        Ok(output) => (output, true),
+        // no /usr/bin/time here: the heap is still the program's to say
+        Err(_) => {
+            let output = Command::new(program)
+                .args(args)
+                .stdin(Stdio::null())
+                .output()
+                .map_err(|error| Failure::io("cannot run", program, &error))?;
+            (output, false)
+        }
     };
     if !output.status.success() {
         return Err(Failure::Failed(format!(
@@ -131,7 +154,18 @@ pub(crate) fn peak(program: &Path, args: &[&std::ffi::OsStr]) -> Result<Option<u
             String::from_utf8_lossy(&output.stderr).trim()
         )));
     }
-    Ok(peak_of(&String::from_utf8_lossy(&output.stderr)))
+    Ok(Peaks {
+        resident: timed
+            .then(|| peak_of(&String::from_utf8_lossy(&output.stderr)))
+            .flatten(),
+        heap: heap_of(&String::from_utf8_lossy(&output.stdout)),
+    })
+}
+
+/// The heap peak a `--load` run said it reached.
+fn heap_of(said: &str) -> Option<u64> {
+    said.lines()
+        .find_map(|line| line.strip_prefix(HEAP_PEAK)?.trim().parse().ok())
 }
 
 /// The peak in `/usr/bin/time`'s report: macOS prints bytes, GNU time kilobytes.
@@ -160,6 +194,8 @@ mod tests {
         let gnu = "\tCommand being timed: \"true\"\n\tMaximum resident set size (kbytes): 1876\n";
         assert_eq!(peak_of(gnu), Some(1876 * 1024));
         assert_eq!(peak_of("sh: /usr/bin/time: not found"), None);
+        assert_eq!(heap_of("200 events\nheap peak: 4096\n"), Some(4096));
+        assert_eq!(heap_of("200 events\n"), None);
     }
 
     #[test]
