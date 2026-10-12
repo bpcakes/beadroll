@@ -111,11 +111,12 @@ These were decided deliberately. Report problems *with* them, not their existenc
   (roll-lqjj.2, step 3 of epic roll-lqjj, whose plan replaced the "no persisted projection" of
   earlier): `<store>/projection` keeps the state the journal replays into, with what it was made
   from (the build of bead that made it, `Settings::build`, the version and the executable's
-  identity on disk; and every journal file's identity, compared as the memo compares files: an
-  in-place rewrite that keeps length, times, inode and device is not seen, as git's index does not
-  see it). A command whose files are the ones it was made from reads it, a reading command its
-  state alone. Records appended since are read alone and applied after it when replay would apply
-  them so: each new event has the whole frontier in its past, which a local write's always do and
+  identity on disk; every journal file's identity as it was read, compared as the memo compares
+  files: an in-place rewrite that keeps length, times, inode and device is not seen, as git's index
+  does not see it; and a sum of each segment's bytes). A command whose files are the ones it was
+  made from reads it, a reading command its state alone. A segment that grew is caught up only
+  when it still begins with the bytes summed (it is read whole: at most what bead rotates at), and
+  records appended since are applied after the projection when replay would apply them so: each new event has the whole frontier in its past, which a local write's always do and
   a merge's do when one writer worked at a time; it then applies them with replay's own steps, and
   keeps of what every event had seen only the events the state names (the projection's state also
   keeps who wrote them, which conflicts show). Anything else replays the journal, as every command

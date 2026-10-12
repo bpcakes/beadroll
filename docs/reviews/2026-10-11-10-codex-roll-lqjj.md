@@ -25,3 +25,18 @@ Reviewed only e0f380f6d5eb76301ea5c25537982a9cffc4550a..b1b1e7b35d0c7688979eb084
 ## roll-dih8.11, round 1: `cfe278a93d326abdcd1ddebee287871c30a94c6b..ef7fec6efdccca4ed0a4fb84889d1f68fd7c312e`
 
 Reviewed cfe278a93d326abdcd1ddebee287871c30a94c6b..ef7fec6efdccca4ed0a4fb84889d1f68fd7c312e (HEAD); no actionable defects found. Prebuilt binaries passed 117 core tests and five targeted xtask tests. A fresh build and full baseline were not run because the sandbox is read-only.
+
+## roll-lqjj.2, round 1: `1527ea8ff4dc47e7d3d51954c2d1bef892b5d468..01e4c2ebf31392a2bfb1661918bfb4e01aeda880`
+
+Reviewed exactly 1527ea8ff4dc47e7d3d51954c2d1bef892b5d468..01e4c2ebf31392a2bfb1661918bfb4e01aeda880 (HEAD). Source tracing identifies three ways cached results can diverge from replay. All 52 prebuilt core unit tests passed; the full baseline and new reproductions were not run in the read-only sandbox.
+
+Full review comments:
+
+- [P2] Register batch positions before processing events causally — /Users/<name>/Documents/beadroll/crates/beadroll-core/src/state/seen/compact.rs:46-48
+  When appended records from one machine are `[B, A]`, both depend on the cached frontier, and `A.id < B.id`, causal processing visits A first. Its predecessor B has not entered `applicable` yet, so A passes validation; B subsequently passes too. Full replay pre-registers both positions and rejects A for not observing B. The projection therefore applies an event replay rejects and hides the chain break from `Link::merge`. Populate all batch positions before observation, or decline this ordering, preserving the [projection/replay invariant](crates/beadroll-core/AGENTS.md#L69-L70).
+
+- [P2] Verify that growth preserves the cached file prefix — /Users/<name>/Documents/beadroll/crates/beadroll-store/src/projection.rs:174-177
+  An in-place edit to an existing line followed by an append passes this check despite changing the cached prefix. For example, change one issue's title without changing its byte count, then append a frontier-based event for another issue. Catch-up reads only the appended bytes, retains the old title, and saves that incorrect state under the file's new identity. Deleting the projection then changes the answer. Verify the prefix or invalidate unverified growth; inode identity and increased length alone do not satisfy the [replay-equivalence requirement](crates/beadroll-store/AGENTS.md#L60-L62).
+
+- [P2] Capture attempt identities from the files actually replayed — /Users/<name>/Documents/beadroll/crates/beadroll-store/src/projection.rs:107-112
+  If a lock-free cold read overlaps `Link::merge` replacing a differing accepted attempt, `load_listed` can read the old contents while this later `held` call captures the replacement's identity. The segment checks still pass, and the reader can overwrite the corrected projection with stale claim state or integrity reports tagged as current. Subsequent commands trust it until another journal change. Validate attempt identities across their reads, or obtain them from the opened descriptors, before saving, as required by the [cache invariant](crates/beadroll-store/AGENTS.md#L60-L62).
