@@ -123,13 +123,15 @@ impl Projection {
     /// The projection as bytes. Of what every event had seen it keeps the events the state still
     /// names, and the frontier.
     pub fn encode(&self) -> Encoded {
+        let mut named = named(&self.state);
+        named.extend(self.heads.iter().copied());
+        let kept = self.state.knowledge.kept(&named);
         let mut w = Writer::default();
         write_state(&mut w, &self.state);
+        kept.write_events(&mut w);
         let state = w.finish();
         let mut w = Writer::default();
-        let mut kept = named(&self.state);
-        kept.extend(self.heads.iter().copied());
-        self.state.knowledge.kept(&kept).write_to(&mut w);
+        kept.write_index(&mut w);
         w.ids(&self.heads);
         w.ids(&self.ids);
         let mut lengths: Vec<(&String, &u32)> = self.lengths.iter().collect();
@@ -153,7 +155,7 @@ impl Projection {
     pub fn decode(encoded: &Encoded) -> Result<Projection, Unreadable> {
         let mut state = decode_state(&encoded.state)?;
         let mut r = Reader::new(&encoded.index);
-        state.knowledge = Knowledge::read_from(&mut r)?;
+        state.knowledge.read_index(&mut r)?;
         let heads = r.ids()?;
         if !(heads.iter()).all(|head| state.knowledge.events.contains_key(head)) {
             return Err(Unreadable("the frontier"));
@@ -179,10 +181,12 @@ impl Projection {
 }
 
 /// The state [`Projection::encode`] wrote as `bytes` ([`Encoded::state`]): all a command that only
-/// reads needs. It knows nothing of what any event had seen.
+/// reads needs. Of its events it knows the machine and actor of those it names, not what each had
+/// seen.
 pub fn decode_state(bytes: &[u8]) -> Result<State, Unreadable> {
     let mut r = Reader::new(bytes);
-    let state = read_state(&mut r)?;
+    let mut state = read_state(&mut r)?;
+    state.knowledge = Knowledge::read_events(&mut r)?;
     r.done()?;
     Ok(state)
 }

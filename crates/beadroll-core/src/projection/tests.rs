@@ -322,9 +322,17 @@ fn load(world: &World, held: &[usize]) -> Journal {
     journal
 }
 
-/// Whether two states answer alike: everything replay builds but what every event had seen.
+/// Whether two states answer alike: everything replay builds, and what a state answers with of its
+/// events (who wrote what a register holds, where machines' journals broke).
 fn same(a: &State, b: &State) -> bool {
-    a.prefix == b.prefix
+    let conflicts = |st: &State| -> Vec<String> {
+        (st.issues.values())
+            .map(|issue| format!("{:?}", st.conflicts(issue)))
+            .collect()
+    };
+    conflicts(a) == conflicts(b)
+        && a.chain_breaks() == b.chain_breaks()
+        && a.prefix == b.prefix
         && a.name == b.name
         && a.issues.iter().eq(b.issues.iter())
         && a.by_key.iter().eq(b.by_key.iter())

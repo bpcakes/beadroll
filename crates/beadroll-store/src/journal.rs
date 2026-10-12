@@ -9,7 +9,6 @@ use std::path::{Path, PathBuf};
 
 use beadroll_core::journal::{self, Journal, Problem};
 use beadroll_core::json::{self, Format, Value};
-use beadroll_core::replay::replay;
 use beadroll_core::state::{KeySpace, State};
 use beadroll_core::text::py_int;
 use beadroll_git::IoError;
@@ -242,32 +241,55 @@ pub fn read_attempt(path: &Path, problems: Option<&mut Vec<Problem>>) -> Vec<Val
 
 /// Every event the store holds: the segments, then the accepted attempt files, settled.
 pub fn load_journal(ws: &Workspace) -> Result<Journal, Error> {
-    let mut journal = Journal::new();
     let segments = segment_files(ws)?;
     ws.settings.failpoints.hit("journal.after-enumerate");
+    Ok(load_listed(ws, &segments)?.journal)
+}
+
+/// What [`load_listed`] read.
+pub(crate) struct Loaded {
+    /// The journal, settled.
+    pub(crate) journal: Journal,
+    /// The accepted attempt files, listed once the segments were read.
+    pub(crate) attempts: Vec<PathBuf>,
+    /// Whether every segment ended with a whole line.
+    pub(crate) whole: bool,
+}
+
+/// The journal of `segments`, then of the accepted attempt files, listed once the segments are
+/// read: an attempt file is in place before any record built on it is appended.
+pub(crate) fn load_listed(ws: &Workspace, segments: &[PathBuf]) -> Result<Loaded, Error> {
+    let mut journal = Journal::new();
+    let mut whole = true;
     for path in segments {
-        let data = read(&path)?;
+        let data = read(path)?;
+        whole &= data.last().is_none_or(|last| *last == b'\n');
         let origin = path.display().to_string();
-        let replica = folder_name(&path, 1);
+        let replica = folder_name(path, 1);
         let events = journal::read_segment(&data, &origin, Some(&mut journal.invalid));
         for event in events {
             journal.add(event, &replica, &origin, true);
         }
     }
-    for path in claim_files(ws)? {
+    let attempts = claim_files(ws)?;
+    for path in &attempts {
         let origin = path.display().to_string();
-        let replica = folder_name(&path, 2);
-        let events = read_attempt(&path, Some(&mut journal.invalid));
+        let replica = folder_name(path, 2);
+        let events = read_attempt(path, Some(&mut journal.invalid));
         for event in events {
             journal.add(event, &replica, &origin, false);
         }
     }
     journal.settle();
-    Ok(journal)
+    Ok(Loaded {
+        journal,
+        attempts,
+        whole,
+    })
 }
 
 /// The name of `path`'s ancestor `up` levels above it (1: its folder).
-fn folder_name(path: &Path, up: usize) -> String {
+pub(crate) fn folder_name(path: &Path, up: usize) -> String {
     let mut at = path;
     for _ in 0..up {
         at = at.parent().unwrap_or(at);
@@ -330,7 +352,7 @@ pub enum ViewError {
 /// Current state as this machine should see it: confirmed events, with this machine's own
 /// unconfirmed ownership attempts listed on their issues but counting for nothing.
 pub fn view(ws: &Workspace) -> Result<State, ViewError> {
-    let mut state = replay(load_journal(ws)?)?;
+    let mut state = crate::projection::state(ws)?;
     ws.settings.failpoints.hit("view.before-load-pending");
     for attempt in load_pending(ws)? {
         for event in &attempt {

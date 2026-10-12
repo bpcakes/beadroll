@@ -16,6 +16,7 @@ mod identity;
 mod journal;
 mod memo;
 mod place;
+mod projection;
 mod settings;
 mod workspace;
 
@@ -38,6 +39,7 @@ pub use journal::{
 };
 pub use memo::{FileKey, Memo, memo_path};
 pub use place::{capture_where, merged_into_default, object_format};
+pub use projection::{projection, projection_path};
 pub use settings::{
     Clock, NET_TIMEOUT, REPACK_LOOSE, REPACK_PACKS, ROTATE_BYTES, Settings, pathlib, pathlib_join,
 };

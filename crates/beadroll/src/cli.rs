@@ -80,13 +80,27 @@ fn settings() -> Result<Settings, Failure> {
         None => std::env::home_dir().map(OsString::from).unwrap_or_default(),
     };
     let cwd = std::env::current_dir().ok();
-    Ok(Settings::from_process(
-        vars,
-        cwd,
-        user_home,
-        std::env::temp_dir(),
-        &home_of,
-    )?)
+    let mut settings =
+        Settings::from_process(vars, cwd, user_home, std::env::temp_dir(), &home_of)?;
+    settings.build = build();
+    Ok(settings)
+}
+
+/// Which build of bead this is: its version and its executable's identity on disk, which every
+/// build and every install changes. `None` when the executable cannot be found: bead then keeps
+/// no projection.
+fn build() -> Option<String> {
+    use std::os::unix::fs::MetadataExt as _;
+    let meta = std::fs::metadata(std::env::current_exe().ok()?).ok()?;
+    Some(format!(
+        "{} {}:{} {} {}.{:09}",
+        env!("CARGO_PKG_VERSION"),
+        meta.dev(),
+        meta.ino(),
+        meta.len(),
+        meta.mtime(),
+        meta.mtime_nsec()
+    ))
 }
 
 /// The home directory of the user `name`, from the password database (Python's `pwd.getpwnam`),

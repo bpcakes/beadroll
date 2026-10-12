@@ -10,7 +10,9 @@ ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `settle_
 
 ## Key entrypoints
 
-- `src/tx.rs`: `Tx` (`emit`, `state`), `locked`, `writing`, `forget_receipts`, `drop_pending`.
+- `src/tx.rs`: `Tx` (`emit`, `state`), `locked`, `writing`, `forget_receipts`, `drop_pending`. A
+  `Tx` starts from the store's projection and applies each event it emits to it; one the
+  projection cannot take (a takeover) has the journal replayed instead.
 - `src/link.rs`: `Link` (`unpublished`, `maintain`, `rebuild`) and the gits it keeps in
   `sync.git` (`docs/RUST-PORT.md` Appendix B); `src/link/fetch.rs`: `Link::fetch`, which tries
   again a fetch that lost to another process's fetch of the store; `src/link/asked.rs`: `Link::publishes`, the

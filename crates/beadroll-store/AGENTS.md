@@ -35,6 +35,10 @@ remote resolution, actor detection, and `view`. Slice 2a (`roll-k2wy.3`) built i
 - `src/journal.rs`: segment, attempt and pending files, `append_events`, `repair_tail` (a segment
   that ends with a newline is whole, and only its last byte is read), `load_journal`,
   `load_pending`, `view`; `src/place.rs`: `capture_where`, `merged_into_default`.
+- `src/projection.rs`: `projection` and the state `view` reads (roll-lqjj.2): the store's
+  projection, `<store>/projection`, read when the journal's files are the ones it was made from,
+  caught up when records were only appended to them, else the journal replayed, and written back
+  when the files held still; `src/projection/file.rs`: its header, sums and what it was made from.
 - `src/memo.rs`: `Memo`, what the store remembers of each journal file between commands (its
   identity on disk, `FileKey`, its lines and its blob in `sync.git`), kept as
   `sync.git/journal-memo` (`memo_path`) by the holder of the store lock (roll-lqjj.1).
@@ -52,7 +56,10 @@ remote resolution, actor detection, and `view`. Slice 2a (`roll-k2wy.3`) built i
 
 - The bytes on disk are format 1's, exactly as Python writes them (§1.1); format 1 is frozen.
   The memo is no part of it: a cache in `sync.git` that goes with it, and a memo that is
-  missing, cannot be read or names a file whose identity changed counts for nothing.
+  missing, cannot be read or names a file whose identity changed counts for nothing. Nor is the
+  projection: a cache that one build of bead (`Settings::build`) reads and writes, whole or not
+  at all, never into a store that is not there; a damaged, cut, foreign or stale one is replayed
+  past, and the answers are replay's either way.
 - Directories 0700 and files 0600 throughout the store, whatever the umask; files written into a
   checkout follow the umask.
 - Atomic writes use Python's temporary names and `fsync(2)` through `rustix`, not `sync_all`

@@ -44,7 +44,11 @@ pub struct FileKey {
 impl FileKey {
     /// The identity of the regular file at `path`; `None` when there is none, or it cannot be had.
     pub fn of(path: &Path) -> Option<FileKey> {
-        let meta = std::fs::metadata(path).ok()?;
+        FileKey::of_meta(&std::fs::metadata(path).ok()?)
+    }
+
+    /// The identity of the regular file `meta` describes (an open file's, say).
+    pub fn of_meta(meta: &std::fs::Metadata) -> Option<FileKey> {
         let nanos = |secs: i64, nsecs: i64| i128::from(secs) * 1_000_000_000 + i128::from(nsecs);
         meta.is_file().then(|| FileKey {
             len: meta.len(),
@@ -53,6 +57,51 @@ impl FileKey {
             inode: meta.ino(),
             device: meta.dev(),
         })
+    }
+
+    /// Its length.
+    pub fn len(&self) -> u64 {
+        self.len
+    }
+
+    /// Whether it is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Whether `other` is the same file: the same inode on the same device, whatever was written.
+    pub fn same_file(&self, other: &FileKey) -> bool {
+        self.inode == other.inode && self.device == other.device
+    }
+
+    /// This identity with the length `len`: a file read up to there.
+    pub fn up_to(self, len: u64) -> FileKey {
+        FileKey { len, ..self }
+    }
+
+    /// Its parts, as a projection keeps them: length, modification and change times, inode,
+    /// device.
+    pub fn parts(&self) -> (u64, i128, i128, u64, u64) {
+        (
+            self.len,
+            self.modified,
+            self.changed,
+            self.inode,
+            self.device,
+        )
+    }
+
+    /// The identity of these parts ([`FileKey::parts`]).
+    pub fn from_parts(
+        (len, modified, changed, inode, device): (u64, i128, i128, u64, u64),
+    ) -> FileKey {
+        FileKey {
+            len,
+            modified,
+            changed,
+            inode,
+            device,
+        }
     }
 }
 

@@ -3,10 +3,9 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
-use beadroll_core::replay::replay;
 use beadroll_store::{
-    Memo, complete_prefix, load_journal, pending_files, read, read_attempt, repair_tail,
-    replica_id, segment_files, write_atomic,
+    Memo, complete_prefix, pending_files, projection, read, read_attempt, repair_tail, replica_id,
+    segment_files, write_atomic,
 };
 
 use super::{Link, newlines};
@@ -113,9 +112,10 @@ impl Link<'_> {
             }
         }
         self.save_memo();
-        let state = replay(load_journal(self.ws)?)?;
+        // the store's projection, the records merged applied to it, or the journal replayed
+        let merged = projection(self.ws)?;
         if let Some(own) = &own
-            && state.chain_breaks().contains_key(own)
+            && merged.state().chain_breaks().contains_key(own)
         {
             return Err(Error::JournalFork(OWN_CHAIN.to_owned()));
         }

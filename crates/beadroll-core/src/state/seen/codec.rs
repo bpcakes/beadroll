@@ -1,5 +1,8 @@
-//! What a projection keeps of what every event had seen, as bytes ([`crate::projection`]): the
-//! events, each with its causes, machine and actor; the chains; each event's place and clock.
+//! What a projection keeps of what every event had seen, as bytes ([`crate::projection`]), in two
+//! parts: the events, each with its causes, machine and actor, the machines and where their
+//! journals broke, which a state answers with ([`crate::state::State::who`], its conflicts' writers);
+//! and each machine's applicable positions and each event's place and clock, which applying more
+//! events needs.
 
 use std::collections::HashMap;
 
@@ -11,7 +14,8 @@ use crate::projection::codec::{Reader, Unreadable, Writer};
 use super::{Ancestry, Clock, Knowledge, Place, UNOBSERVED};
 
 impl Knowledge {
-    pub(crate) fn write_to(&self, w: &mut Writer) {
+    /// What a state answers with: the events, the machines, where their journals broke.
+    pub(crate) fn write_events(&self, w: &mut Writer) {
         w.count(self.events.len());
         for (id, event) in &self.events {
             w.id(*id);
@@ -23,14 +27,6 @@ impl Knowledge {
         for replica in &self.replicas {
             w.text(replica);
         }
-        w.count(self.applicable.len());
-        for positions in &self.applicable {
-            w.count(positions.len());
-            for position in positions {
-                w.number(u64::from(*position));
-            }
-        }
-        self.ancestry.write_to(w);
         w.count(self.chain_breaks.len());
         for (replica, positions) in &self.chain_breaks {
             w.text(replica);
@@ -41,7 +37,8 @@ impl Knowledge {
         }
     }
 
-    pub(crate) fn read_from(r: &mut Reader<'_>) -> Result<Knowledge, Unreadable> {
+    /// What [`Knowledge::write_events`] wrote: a knowledge that has placed no event yet.
+    pub(crate) fn read_events(r: &mut Reader<'_>) -> Result<Knowledge, Unreadable> {
         let n = r.count()?;
         let mut events = IndexMap::with_capacity(n);
         for _ in 0..n {
@@ -53,17 +50,6 @@ impl Knowledge {
         let replicas = (0..r.count()?)
             .map(|_| r.text())
             .collect::<Result<_, _>>()?;
-        let mut applicable = Vec::new();
-        for _ in 0..r.count()? {
-            let positions = (0..r.count()?)
-                .map(|_| r.small())
-                .collect::<Result<_, _>>()?;
-            applicable.push(positions);
-        }
-        let ancestry = Ancestry::read_from(r)?;
-        if ancestry.places.len() != events.len() || ancestry.clocks.len() != events.len() {
-            return Err(Unreadable("places"));
-        }
         let mut chain_breaks = IndexMap::new();
         for _ in 0..r.count()? {
             let replica = r.text()?;
@@ -75,10 +61,42 @@ impl Knowledge {
         Ok(Knowledge {
             events,
             replicas,
-            applicable,
-            ancestry,
+            applicable: Vec::new(),
+            ancestry: Ancestry::default(),
             chain_breaks,
         })
+    }
+
+    /// What applying more events needs: each machine's applicable positions, each event's place
+    /// and clock.
+    pub(crate) fn write_index(&self, w: &mut Writer) {
+        w.count(self.applicable.len());
+        for positions in &self.applicable {
+            w.count(positions.len());
+            for position in positions {
+                w.number(u64::from(*position));
+            }
+        }
+        self.ancestry.write_to(w);
+    }
+
+    /// What [`Knowledge::write_index`] wrote, for the events [`Knowledge::read_events`] read.
+    pub(crate) fn read_index(&mut self, r: &mut Reader<'_>) -> Result<(), Unreadable> {
+        let mut applicable = Vec::new();
+        for _ in 0..r.count()? {
+            let positions = (0..r.count()?)
+                .map(|_| r.small())
+                .collect::<Result<_, _>>()?;
+            applicable.push(positions);
+        }
+        let ancestry = Ancestry::read_from(r)?;
+        let n = self.events.len();
+        if ancestry.places.len() != n || ancestry.clocks.len() != n {
+            return Err(Unreadable("places"));
+        }
+        self.applicable = applicable;
+        self.ancestry = ancestry;
+        Ok(())
     }
 }
 
