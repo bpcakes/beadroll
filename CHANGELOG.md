@@ -84,6 +84,23 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   longer holds the journal.
 - `cargo xtask timing --replay N` records the heap peak beside the resident one
   (`heap_peak_bytes`, `journal_heap_peak_bytes`): xtask's allocator is the system's, with a count.
+- Every command reads the store's projection, `<store>/projection`, instead of replaying the
+  whole journal (roll-lqjj.2): the state the journal replays into, kept with the build of bead that
+  made it and the identity of every journal file it was made from. Records appended since are
+  read alone and applied after it, as replay would apply them; anything else (a file changed
+  another way, events written concurrently with the store's, a takeover) has the journal replayed,
+  and the projection written again. At 200,000 events a read takes 73–87 ms where it took 1.06 s,
+  a sync that merges ten events another machine wrote 0.31 s where it took 1.31 s, and a
+  publishing sync 0.38 s where it took 1.34 s; on a thousand issues that 50,000 or 200,000 events
+  made, a read takes 18 ms either way. The projection is a cache: deleting it is always safe, and
+  one another build wrote, or a damaged one, is never read.
+- A merge appends what another machine's segment lacks instead of writing the segment again whole:
+  the bytes are the same, and the projection takes in the merged lines alone.
+- The unpublished count every command reports reads only the segments appended to since the
+  store's memo saw them, where it read every segment whole.
+- `cargo xtask timing --read N` times the reading commands with the projection and without it,
+  `--merge N [--batch M]` a sync that merges another machine's events, and `--churn` shapes a
+  history whose state stays its size; `--sync N` also records a sync without the projection.
 
 ## [0.2.0] — 2026-10-11
 

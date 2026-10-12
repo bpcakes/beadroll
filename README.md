@@ -261,6 +261,14 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   bead remembers of each file is a cache, `sync.git/journal-memo`: a file that
   changed in any way is hashed again, and deleting the memo, or `sync.git`
   itself, is always safe.
+- A command reads the store's projection, `<store>/projection`, instead of
+  replaying the whole journal: the state the journal replays into, kept with
+  the identity of every journal file it was made from. Records appended since
+  are applied after it, as replay would apply them; anything else (a file
+  changed another way, events written concurrently, a takeover) has the
+  journal replayed, and the projection written again. It is a cache, never a
+  source: deleting it is always safe, and a damaged one, or one another build
+  of bead wrote, is never read.
 - When the publish of an owner's close could not go out, the `--json` answer
   says so (`"unpublished": "recorded locally, not yet published (…)"`) and a
   retry of the close publishes as the first run would have.
@@ -470,12 +478,18 @@ the record of it before any test data is written), their tests beside them, and 
   (`docs/RUST-PORT.md`, Appendix A; Python's bitsets took 11.8 s and 1.7 GB).
 - The branch recorded on an event is whatever `HEAD` was in the directory the
   command ran in. It is a trace, not a lock: a claim does not pin a branch.
-- With no persisted projection, every command replays the journal: 7 ms and a
-  14 MB peak for 10k events, 39 ms / 50 MB at 50k and 0.21 s / 187 MB at 200k,
-  at most 107 MB of it on the heap (`docs/RUST-PORT.md`, Appendix A; events the
-  size of this repository's own take more than three times the heap), far
-  beyond the trackers measured so far (the largest real one is 280 issues). A
-  persisted projection is the obvious next step if that ever matters.
+- A command reads the store's projection while it is current, and replays the
+  journal when it is not (after another build of bead, a change it could not
+  apply, or the projection removed). At 200,000 events, far beyond the trackers
+  measured so far (the largest real one is 280 issues), a read takes 73–87 ms
+  with it and 1.06 s without; a sync that merges ten events another machine
+  wrote, 0.31 s and 1.31 s; a publishing sync, 0.38 s and 1.34 s
+  (`docs/RUST-PORT.md`, Appendix A). With it, a read costs what the state
+  does: 18 ms for a thousand issues, whether 50,000 events made them or
+  200,000. A replay holds at most 107 MB on the heap at 200,000 events (events
+  the size of this repository's own take more than three times that). A store
+  heavy in claims pays for listing its attempt files on every command: a read
+  takes 0.56 s at 92,000 of them, which only a checkpoint would change.
   A fetch or push that gets no answer fails after `BEAD_NET_TIMEOUT` seconds
   (default 45) instead of hanging.
 - Publishing is serialised on one ref. Under heavy contention (four machines

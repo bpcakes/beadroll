@@ -67,6 +67,7 @@ asserted by tests today or is read by another machine, `br`/`bv`, or studio.
 | `<ws>/meta.json` | `indent=1`, ASCII-escaped. Keys: `remote` (the remote as it was chosen: a configured remote's name, as Python's `init --remote NAME` saved one too, or a URL), `name`, `last_sync`, `published` | origin is never stored |
 | `<ws>/events/<replica>/NNNNNN.jsonl` | One event per line: `,`/`:` separators, raw UTF-8, keys in the order `v, id, replica, deps, actor, op, issue, data[, where]`. Opened with `O_APPEND`, fsynced; a new segment starts at `BEAD_ROTATE_BYTES` | A torn tail is repaired before the next write and kept as `*.torn-<ns>` |
 | `<ws>/events/<replica>/claims/<event-id>.json` | The attempt's events, compact lines, written atomically | Immutable. On mismatch the local copy is kept as `*.fork-<ns>` |
+| `<ws>/projection` | A cache of one build of bead (roll-lqjj.2): a header (`bead projection\n`, the encoding's and the layout's versions, three lengths and a 128-bit sum of each part), then what it was made from (the build, every journal file's path and identity on disk), the state the journal replays into, and the index that applying more events needs. Written atomically | No part of format 1: `python-0.1.0` never reads it, another build never reads it, and deleting it is always safe |
 | `<ws>/pending/<id>.json`, `<id>.command` | The pending attempt and its receipt | Python-compatible receipt signatures throughout the port and rollback period (§2.3j) |
 | `<ws>/sync.git` | `git init --bare --template= --shared=0600 --object-format=<project's>`. Maintenance is off via the environment (`gc.auto=0` and the rest of `SYNC_REPO_CONFIG`) | Rebuilt as `sync.git.damaged-<ns>` when damaged |
 | Temporary files | `.<name>.<pid>.tmp` beside the target | Readers and sync ignore them, along with every non-`.json`/`.jsonl` name |
@@ -1666,6 +1667,48 @@ decision 7 open. The five decisions stand.
     state both hold them. Meeting 150 MB there would mean not holding events once they are
     applied, only the state and the ancestry index; the local projection (roll-lqjj.2) makes a
     whole-journal replay the exception instead.
+
+- **roll-lqjj.2: commands with the projection, measured (this Mac, 2026-10-12).**
+  - How: `cargo run --release --package xtask -- timing --read N`, `--merge N [--batch M]` and
+    `--sync N`, each with `--ownership` or `--churn` to shape the history, every figure the best of
+    five. A read is `bead list`, `bead show` of an issue or `bead ready` on a store published once;
+    a merge, a `bead sync` that merges what another machine wrote after everything the store
+    holds; a publishing sync, one after a local write. Without the projection, it is removed
+    before each command, which then replays the journal and writes it back. The churn history is
+    a thousand issues changed over and over: its state stays its size however many events made
+    it.
+
+    | Events | History | `list` / `show` / `ready` | Without the projection | Projection |
+    |---|---|---|---|---|
+    | 50k | plain | 30 / 31 / 32 ms | 0.26 s | 4.9 MB |
+    | 200k | plain | 73 / 73 / 87 ms | 1.06–1.07 s | 20 MB |
+    | 50k | churn | 18 / 17 / 18 ms | 0.22 s | 1.3 MB |
+    | 200k | churn | 18 / 19 / 20 ms | 0.85 s | 3.7 MB |
+    | 200k | ownership-heavy (91,952 attempt files) | 0.56 / 0.58 / 0.59 s | 3.46–3.53 s | 30 MB |
+
+    | Events | History | A merge of ten (without the projection) | A publishing sync (without the projection; without it or the memo) |
+    |---|---|---|---|
+    | 50k | plain | 0.13 s (0.36 s) | |
+    | 200k | plain | 0.31 s (1.31 s) | 0.38 s (1.34 s; 1.45 s) |
+    | 50k | churn | 0.09 s (0.31 s) | |
+    | 200k | churn | 0.11 s (0.96 s); of a hundred, 0.12 s (1.01 s) | |
+    | 200k | ownership-heavy | 3.26 s (6.20 s) | 3.63 s (6.38 s; 9.34 s) |
+
+  - **A read costs what the state does, a merge what the state and the events merged do.** On
+    the churn history a read takes 18 ms at 50,000 events and at 200,000, where replaying the
+    journal takes 0.22 and 0.85 s; a merge takes 90 and 109 ms, and 118 ms for a hundred events
+    where ten took 109. On the plain history the state grows with the events, and so do both.
+  - What still grows with the events: the projection keeps every event's id (16 bytes each),
+    so that a record it holds is never taken for a new one, and a merge reads and writes them
+    (19 ms more at 200,000 events than at 50,000, on the churn history); every command stats
+    every journal file, and a store heavy in claims has a hundred thousand: there a read takes
+    0.56 s and a sync 3.6 s, most of it listing the attempt files, which only a checkpoint
+    (roll-lqjj.4) changes. A merge appends what another machine's segment lacks rather than
+    writing the segment whole, or the projection could not take the merged lines in alone.
+  - A merge that brings events written concurrently with the store's is applied by replaying the
+    journal. On this repository's tracker none has: on 2026-10-12 it held 299 events, all written
+    on one machine, no two of them concurrent (each in the other's past), so no merge had brought
+    another machine's events at all.
 
 ## Appendix B. git invocations, and their consolidation
 

@@ -107,8 +107,27 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - One event with two different payloads is quarantined alone; nothing waits on it.
 - The store lock is held while a sync or claim pushes (about a second against GitHub).
 - Publishing is serialised on one ref; under heavy contention claims take seconds.
-- No compaction beyond segment rotation. No persisted projection: every command replays the
-  journal, 7 ms for 10,000 events and 0.21 s for 200,000 (`RUST-PORT.md` Appendix A).
+- No compaction beyond segment rotation. A persisted projection, a cache and never a source
+  (roll-lqjj.2, step 3 of epic roll-lqjj, whose plan replaced the "no persisted projection" of
+  earlier): `<store>/projection` keeps the state the journal replays into, with what it was made
+  from (the build of bead that made it, `Settings::build`, the version and the executable's
+  identity on disk; and every journal file's identity, compared as the memo compares files: an
+  in-place rewrite that keeps length, times, inode and device is not seen, as git's index does not
+  see it). A command whose files are the ones it was made from reads it, a reading command its
+  state alone. Records appended since are read alone and applied after it when replay would apply
+  them so: each new event has the whole frontier in its past, which a local write's always do and
+  a merge's do when one writer worked at a time; it then applies them with replay's own steps, and
+  keeps of what every event had seen only the events the state names (the projection's state also
+  keeps who wrote them, which conflicts show). Anything else replays the journal, as every command
+  did: a file replaced, rewritten, cut or gone, a takeover (which can turn an earlier end of its
+  claim stale), a record not its machine's own or not new, a new machine's journal, a cause behind
+  the frontier, or a journal with anything replay reports. The answers are replay's: a
+  differential test checks every batch a store takes in against replay, on histories of machines
+  that write, sync and race. It is written back atomically, never into a store that is not there,
+  only when the files held still while they were read and every segment ended with a whole line;
+  a projection missing, cut, damaged (a 128-bit sum of each part) or another build's is never
+  read, and a failed write is no failure. A state read from it knows, of its events, those it
+  names: `State::saw`, `holds` and `events`, which no command reads, answer for those alone.
 - What each event had seen is one clock per event over chains, the reachability index of
   `state/seen.rs` (`RUST-PORT.md` §2.3c): every machine's journal is a chain, and each event of an
   attempt file joins a chain whose last event is among its ancestors, or starts one, so there are
@@ -326,6 +345,14 @@ These were decided deliberately. Report problems *with* them, not their existenc
   words). Chosen over `transfer.hideRefs=refs/beads/fetch`, which keeps those refs out of the
   check only where git's fetch honours hidden refs (2.55 does, 2.40, the oldest supported, does
   not) and leaves the lock form as it is.
+- A merge extends another machine's segment by appending the lines ours lacks, fsynced, as bead
+  appends its own records (roll-lqjj.2), not by writing the published copy whole under a new name
+  as Python did: the segment stays the file the projection was made from, which then takes in
+  those lines alone, where a rewrite had the journal replayed after every such merge. The bytes are
+  the same either way. A reader that comes upon the append skips a last line not yet whole, as it
+  does for bead's own segments, and a merge cuts one an interrupted append left before it reads
+  (`repair_tail`). A new segment, or one replaced because neither copy is a prefix of the other, is
+  still written whole.
 - A journal keeps what replay reads of each event, not its parsed JSON (roll-dih8.11): its id,
   causes, writer, actor, place and typed operation, each text and value events repeat held once,
   and a digest of its content, by which it tells two records of one id apart. The digest is two
