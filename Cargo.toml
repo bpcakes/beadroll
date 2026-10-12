@@ -16,6 +16,7 @@ beadroll-core  = { path = "crates/beadroll-core" }    # one version for every cr
 beadroll-git   = { path = "crates/beadroll-git" }
 beadroll-store = { path = "crates/beadroll-store" }
 beadroll-sync  = { path = "crates/beadroll-sync" }
+beadroll       = { path = "crates/beadroll" }         # xtask runs bead to count its heap
 beadroll-test-support = { path = "crates/beadroll-test-support" }
 fastrand = "2"
 indexmap = "2"

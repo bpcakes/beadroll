@@ -468,6 +468,7 @@ dependencies = [
 name = "xtask"
 version = "0.2.0"
 dependencies = [
+ "beadroll",
  "beadroll-core",
  "regex-lite",
  "sha2",
