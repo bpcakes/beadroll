@@ -309,6 +309,30 @@ struct Given {
     names_origin: bool,
 }
 
+/// Publishes to the chosen endpoint and reports either its destination or the existing warning.
+fn publication_note(ws: &Workspace, live: Option<&Endpoint>) -> Result<Option<String>, Failure> {
+    let warning = match live {
+        Some(remote) => publish_soon_to(ws, remote),
+        None => publish_soon(ws, false, None),
+    };
+    if warning.is_some() {
+        return Ok(warning);
+    }
+    let remote = match live {
+        Some(remote) => Some(remote.clone()),
+        None => ws.endpoint(None)?,
+    };
+    // No warning also means there was no remote: only acknowledge a real publication.
+    let Some(remote) = remote.filter(|remote| !remote.url.is_empty()) else {
+        return Ok(None);
+    };
+    Ok(Some(format!(
+        "Published to {} ({})",
+        remote.url.to_string_lossy(),
+        ws.ref_name()?
+    )))
+}
+
 /// Creates the tracker here: the `init` event (once), an optional import, the remote recorded,
 /// and publishes at once unless `--offline`. A tracker the remote already publishes is joined
 /// instead of a second one started ([`join_published`]).
@@ -368,11 +392,7 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
     ws.save_meta(&values)?;
     if ws.wrote() && !args.offline {
         // the tracker exists for the other machines now, not at a later sync
-        let warning = match &live {
-            Some(remote) => publish_soon_to(ws, remote),
-            None => publish_soon(ws, args.offline, None),
-        };
-        notes.extend(warning);
+        notes.extend(publication_note(ws, live.as_ref())?);
     }
     let mut result = Object::new();
     result.insert("workspace".into(), Value::from(ws.id.as_str()));

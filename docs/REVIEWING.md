@@ -255,6 +255,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
   warn while `.beadroll.json` would not reach the other checkouts, comparing it with its commit as
   JSON, so line endings git converts are no change; where the tree lacks it and HEAD's copy is in
   use, that copy is checked against origin's default branch.
+- `init` acknowledges a successful publication in human output with the remote URL and the
+  coordination ref (roll-dih8.18). The acknowledgment follows a write and a successful publish
+  to a nonempty remote; an offline run, a missing remote, a failed publish or simply joining or
+  reusing a tracker does not claim a push. JSON output keeps its existing fields. The tracker
+  golden's added line is an intentional output change.
 - A remote is kept as it was chosen (G22; the maintainer's course correction of 2026-10-11,
   roll-dih8.13: rounds of findings came from resolving the choice to a URL at once and using that
   string for transport, memory, comparison and advice, which made bead re-implement git's remote

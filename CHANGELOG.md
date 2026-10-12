@@ -6,6 +6,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in the README)
 
 ## [Unreleased]
 
+- `bead init` now acknowledges successful publication in human output, naming the remote and
+  coordination ref. Offline runs, runs without a remote, failed publishes, and runs that only
+  join or reuse a tracker do not claim a push; JSON output is unchanged (roll-dih8.18).
+
 - Rust APIs now describe their behavior: `op::PyInt` is `op::IntegerField`, and `py_*` text
   helpers use parsing, trimming and casing names. `pathlib` and `pathlib_join` become
   `normalize_path` and `join_path`. Source comments describe current contracts

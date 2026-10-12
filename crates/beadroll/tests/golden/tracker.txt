@@ -1,5 +1,6 @@
 $ bead init --prefix ex --import <ROOT>/epic.jsonl
 Tracker 'ex' at <ROOT>/home-gold-a/<WORKSPACE1> (1 issues imported)
+Published to <ROOT>/origin.git (refs/beads/journal)
 exit 0
 
 $ bead import <ROOT>/issues.jsonl

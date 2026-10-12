@@ -12,6 +12,7 @@ use beadroll_test_support::{Json, Machine, Sandbox, code, git, parse_json};
 use crate::hardening::gate::{Gate, beside};
 
 mod chosen;
+mod publication;
 mod remotes;
 mod rewrites;
 mod warnings;

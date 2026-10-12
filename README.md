@@ -86,7 +86,8 @@ bead info                           # where the store is, who you are, what the 
 ```
 
 Set a repository up once, from any checkout: `bead init`, with `--import` when
-it comes from Beads. Nothing is committed: the tracker is found from the origin
+it comes from Beads. After publishing, `init` prints `Published to <remote> (<ref>)`
+so you can see where the tracker went. Nothing is committed: the tracker is found from the origin
 URL, so every worktree, clone and machine of the repository shares it. On
 another machine or in another clone, install `bead` and run `bead sync` there;
 an `init` there joins the tracker the remote already publishes and never starts
