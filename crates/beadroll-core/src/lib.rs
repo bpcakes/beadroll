@@ -8,7 +8,8 @@
 //! - [`event`]: what an event must look like, with Python's validation messages; [`op`]: what it
 //!   asks, its operation with a typed payload, and [`op::PyInt`], an integer as Python holds one.
 //! - [`journal`] and [`order`]: journal lines read and settled, and the causal order of events.
-//! - [`replay`] and [`state`]: the events folded into issues, with every register, tag and claim.
+//! - [`replay`] and [`state`]: the events folded into issues, with every register, tag and claim;
+//!   [`projection`]: a replayed state that the events after it can be applied to.
 //! - [`query`] and [`view`]: conflicts, readiness, blockers, cycles, and how an issue is shown.
 //! - [`export`] and [`import`]: Beads JSONL out, and the plan that brings it in.
 //! - [`published`]: a published journal, its manifest checked.
@@ -24,6 +25,7 @@ pub mod json;
 pub mod key;
 pub mod op;
 pub mod order;
+pub mod projection;
 pub mod published;
 pub mod query;
 pub mod replay;

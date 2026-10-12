@@ -29,6 +29,11 @@ cutover removed both (`python-0.1.0` has them).
   `state/claim.rs`, `state/seen.rs`): `State`, `Issue`, claims, `saw`; `state/small.rs`:
   `VecMap`, `IdMap`, `IdSet`, the vectors an issue keeps its registers and tags in, grown one
   entry at a time while short.
+- `src/projection.rs`: `project`, `Projection` (roll-lqjj.2), a replayed state kept to have events
+  applied after it: what every event had seen cut to the events the state still names
+  (`state/seen/compact.rs`); `projection/extend.rs`: `Projection::extend`, which applies records
+  appended to its journal when replay would apply them after all of it, and declines otherwise;
+  `projection/codec.rs`, `projection/state_codec.rs`, `state/seen/codec.rs`: its bytes.
 - `state/seen.rs`: what every event had seen, as one clock per event over chains (each machine's
   journal, and chains of the unsequenced events of attempt files): the ancestry index behind
   `saw`, in place of Python's per-event `seen` and `own_anc` bitsets.
@@ -44,6 +49,8 @@ cutover removed both (`python-0.1.0` has them).
   is additive, so that a bead that predates it, `python-0.1.0`'s included, sets the new thing
   aside rather than misreads it.
 - Replay, state, readiness, cycles, views, import planning and export: the module of that name.
+  A change to what replay keeps in a `State` or an `Issue` changes a projection's bytes: write and
+  read it in `projection/state_codec.rs`, and bump `projection::ENCODING`.
   Until the cutover every change was checked against Python's `model.py`, `queries.py` and
   `commands.py` by `cargo xtask diff`; the tests in `tests/core/` and the black-box tests of the
   `beadroll` crate are what holds it now.
@@ -59,6 +66,8 @@ cutover removed both (`python-0.1.0` has them).
 - No `HashMap` or `HashSet` iteration order reaches an output; issues keep replay order.
 - Its answers are Python's, proven differentially against CPython until the cutover (`xtask
   diff`, §4.2); a departure is a decided row in §5, never a drift.
+- A projection extended is replay: `projection/tests.rs` checks every batch a store takes in on
+  histories of machines that write, sync and race, and each batch it must decline.
 - `saw` answers what Python's bitsets answer: `state/seen/tests.rs` checks every pair against
   them on hostile histories. Replay's speed and memory are measured by
   `cargo run --release --package xtask -- timing --replay N [--ownership]`: at 200,000 events its

@@ -70,6 +70,11 @@ impl<K: PartialEq, V> VecMap<K, V> {
 }
 
 impl<K, V> VecMap<K, V> {
+    /// The map of `entries`, whose keys are distinct, in their order.
+    pub(crate) fn from_distinct(entries: Vec<(K, V)>) -> VecMap<K, V> {
+        VecMap(entries)
+    }
+
     /// How many entries it has.
     pub fn len(&self) -> usize {
         self.0.len()
@@ -132,6 +137,14 @@ impl<V> Default for IdMap<V> {
 }
 
 impl<V> IdMap<V> {
+    /// The map of `entries`, when their ids ascend.
+    pub(crate) fn from_ascending(entries: Vec<(EventId, V)>) -> Option<IdMap<V>> {
+        let ascend = entries
+            .windows(2)
+            .all(|pair| matches!(pair, [a, b] if a.0 < b.0));
+        ascend.then_some(IdMap(entries))
+    }
+
     /// The map of `value` under `id` alone.
     pub(crate) fn of(id: EventId, value: V) -> IdMap<V> {
         IdMap(vec![(id, value)])
@@ -225,6 +238,12 @@ impl<'a, V> IntoIterator for &'a IdMap<V> {
 pub struct IdSet(Vec<EventId>);
 
 impl IdSet {
+    /// The set of `ids`, when they ascend.
+    pub(crate) fn from_ascending(ids: Vec<EventId>) -> Option<IdSet> {
+        let ascend = ids.windows(2).all(|pair| matches!(pair, [a, b] if a < b));
+        ascend.then_some(IdSet(ids))
+    }
+
     /// The set of `id` alone.
     pub(crate) fn of(id: EventId) -> IdSet {
         IdSet(vec![id])

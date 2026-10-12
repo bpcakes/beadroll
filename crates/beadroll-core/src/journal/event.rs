@@ -164,6 +164,23 @@ impl Event {
         }))
     }
 
+    /// An event replay has applied, as a replayed state keeps it (its id, causes, machine and
+    /// actor), read back from a projection.
+    pub(crate) fn applied(
+        id: EventId,
+        deps: Box<[EventId]>,
+        replica: Arc<str>,
+        actor: Option<Arc<Value>>,
+    ) -> Event {
+        Event(Arc::new(Read {
+            id,
+            deps,
+            replica,
+            actor,
+            rest: None,
+        }))
+    }
+
     /// The stand-in for an id that cannot be used, found as `placement` was: it keeps the id's
     /// place in that journal and the causes `deps`, names the issue `issue`, and applies nothing.
     pub(crate) fn stand_in(

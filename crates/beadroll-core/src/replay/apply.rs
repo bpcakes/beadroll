@@ -31,7 +31,7 @@ pub(super) struct Doing<'a> {
 /// The names that claims and comments repeat (owners, machines, agents, threads, modes), held once
 /// while replay applies events: the records it makes share them.
 #[derive(Debug, Default)]
-pub(super) struct Names(RefCell<HashSet<Arc<str>>>);
+pub(crate) struct Names(RefCell<HashSet<Arc<str>>>);
 
 impl Names {
     /// `name`, held once.

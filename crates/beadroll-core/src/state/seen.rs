@@ -46,7 +46,7 @@ pub(crate) enum Place {
 
 /// A clock as recorded: the number of the set of chains it has seen into, and where its positions
 /// in them begin in the arena.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct Clock {
     set: u32,
     start: usize,
@@ -432,6 +432,9 @@ impl Knowledge {
         Some(actor_label(event.actor(), event.replica()))
     }
 }
+
+mod codec;
+mod compact;
 
 #[cfg(test)]
 mod tests;

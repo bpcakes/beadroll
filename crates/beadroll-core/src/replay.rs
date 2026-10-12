@@ -9,6 +9,8 @@
 
 mod apply;
 
+pub(crate) use apply::Names;
+
 use std::collections::{HashMap, HashSet};
 
 use crate::id::EventId;
@@ -21,7 +23,13 @@ use crate::time::event_time;
 
 /// Folds `journal` into current state. Fails only as Python's replay does, when a renamed copy can
 /// find no free key (`KEY_SPACE`).
-pub fn replay(mut journal: Journal) -> Result<State, KeySpace> {
+pub fn replay(journal: Journal) -> Result<State, KeySpace> {
+    Ok(replayed(journal)?.0)
+}
+
+/// [`replay`], with the claims takeovers superseded: a projection applies the events that come
+/// after with them.
+pub(crate) fn replayed(mut journal: Journal) -> Result<(State, HashSet<EventId>), KeySpace> {
     journal.settle();
     let mut order = Order::of(&journal);
     let Parts {
@@ -68,16 +76,8 @@ pub fn replay(mut journal: Journal) -> Result<State, KeySpace> {
     );
     st.knowledge = knowledge;
     applied?;
-    for issue in st.issues.values_mut() {
-        issue.labels = issue
-            .label_tags
-            .iter()
-            .filter(|(_, tags)| !tags.is_empty())
-            .map(|(label, _)| label.clone())
-            .collect();
-    }
-    st.index_children();
-    Ok(st)
+    finish(&mut st);
+    Ok((st, superseded))
 }
 
 /// Phase 1: what every event had seen, and which events cannot be applied at all, each with the
@@ -89,6 +89,41 @@ fn observe(
     applying: &[Option<Box<Rest>>],
     quarantined: &HashSet<EventId>,
 ) -> HashMap<usize, String> {
+    let mut inert = HashMap::new();
+    let mut room = Room::default();
+    for &at in &order.ordered {
+        let Some(id) = k.events.get_index(at).map(|(id, _)| *id) else {
+            continue;
+        };
+        let Some(what) = applying.get(at).and_then(Option::as_deref) else {
+            continue;
+        };
+        let doubled = quarantined.contains(&id);
+        if let Some(reason) = observe_one(k, at, order.causes(at), what, doubled, &mut room) {
+            inert.insert(at, reason);
+        }
+    }
+    inert
+}
+
+/// Room to merge clocks in, kept from one event to the next.
+#[derive(Default)]
+pub(crate) struct Room {
+    clock: Vec<(u32, u32)>,
+    spare: Vec<(u32, u32)>,
+}
+
+/// What the event at `at` had seen, from its `causes`, recorded; and whether it cannot be applied
+/// at all, with the integrity text it is reported with (empty: reported when it was loaded).
+/// `doubled`: its id was found with several contents.
+pub(crate) fn observe_one(
+    k: &mut Knowledge,
+    at: usize,
+    causes: &[u32],
+    what: &Rest,
+    doubled: bool,
+    room: &mut Room,
+) -> Option<String> {
     let Knowledge {
         events,
         replicas,
@@ -96,60 +131,46 @@ fn observe(
         ancestry,
         chain_breaks,
     } = k;
-    let placeholder = |op: &str| matches!(op, "quarantined" | "invalid");
-    // The last position before `number` in a machine's journal that holds an applicable event.
-    let predecessor = |replica: u32, number: u32| -> i64 {
+    let replica = events.get_index(at).map(|(_, event)| event.replica())?;
+    let Room { clock, spare } = room;
+    ancestry.gather(causes, clock, spare);
+    if let Place::Sequenced(chain, number) = ancestry.place(at) {
+        // The last position before this one in the machine's journal that holds an applicable event.
         let positions = applicable
-            .get(replica as usize)
+            .get(chain as usize)
             .map(Vec::as_slice)
             .unwrap_or_default();
-        let at = positions.partition_point(|position| *position < number);
-        at.checked_sub(1)
+        let before = positions.partition_point(|position| *position < number);
+        let predecessor = (before.checked_sub(1))
             .and_then(|before| positions.get(before))
-            .map_or(-1, |position| i64::from(*position))
-    };
-    let mut inert = HashMap::new();
-    let (mut clock, mut spare) = (Vec::new(), Vec::new());
-    for &at in &order.ordered {
-        let Some((&id, event)) = events.get_index(at) else {
-            continue;
-        };
-        let Some(what) = applying.get(at).and_then(Option::as_deref) else {
-            continue;
-        };
-        let causes = order.causes(at);
-        ancestry.gather(causes, &mut clock, &mut spare);
-        if let Place::Sequenced(replica, number) = ancestry.place(at) {
-            if reached(&clock, replica).map_or(-1, i64::from) < predecessor(replica, number) {
-                // Not a single writer's log: the event does not build on its predecessor. Report it
-                // and do not pretend it saw what came before (a copied machine identity looks like
-                // this). A placeholder that fails this must not lend its position to what follows.
-                let name = replicas.get(replica as usize).cloned().unwrap_or_default();
-                if !placeholder(what.op.name()) {
-                    inert.insert(at, format!(
-                        "journal chain broken at position {number} of machine {name} (copied machine identity?)"
-                    ));
-                }
-                chain_breaks.entry(name).or_default().push(number as usize);
-                ancestry.record(at, &clock, causes, event.replica());
-                continue;
-            }
-            raise(&mut clock, replica, number);
+            .map_or(-1, |position| i64::from(*position));
+        if reached(clock, chain).map_or(-1, i64::from) < predecessor {
+            // Not a single writer's log: the event does not build on its predecessor. Report it
+            // and do not pretend it saw what came before (a copied machine identity looks like
+            // this). A placeholder that fails this must not lend its position to what follows.
+            let name = replicas.get(chain as usize).cloned().unwrap_or_default();
+            chain_breaks
+                .entry(name.clone())
+                .or_default()
+                .push(number as usize);
+            ancestry.record(at, clock, causes, replica);
+            return (!matches!(what.op, Op::Quarantined | Op::Invalid)).then(|| {
+                format!(
+                    "journal chain broken at position {number} of machine {name} (copied machine identity?)"
+                )
+            });
         }
-        ancestry.record(at, &clock, causes, event.replica());
-        let reason = if quarantined.contains(&id) {
-            Some("one event id with different contents".to_owned())
-        } else if what.op.name() == "invalid" {
-            Some(String::new())
-        } else {
-            // its format or its payload, found when it was read
-            what.flaw().map(str::to_owned)
-        };
-        if let Some(reason) = reason {
-            inert.insert(at, reason);
-        }
+        raise(clock, chain, number);
     }
-    inert
+    ancestry.record(at, clock, causes, replica);
+    if doubled {
+        Some("one event id with different contents".to_owned())
+    } else if matches!(what.op, Op::Invalid) {
+        Some(String::new())
+    } else {
+        // its format or its payload, found when it was read
+        what.flaw().map(str::to_owned)
+    }
 }
 
 /// Phase 2: ownership bookkeeping, over applicable events only. A takeover is settled online, so it
@@ -211,58 +232,87 @@ fn apply_all(
     inert: &HashMap<usize, String>,
     superseded: &HashSet<EventId>,
 ) -> Result<(), KeySpace> {
-    let names = apply::Names::default();
+    let names = Names::default();
     for &at in ordered {
-        let Some((&id, trace)) = k.events.get_index(at) else {
-            continue;
-        };
         // applied once: what it does goes with this turn of the loop
         let Some(event) = applying.get_mut(at).and_then(Option::take) else {
             continue;
         };
-        let uid = event.issue.as_deref();
-        if let Some(reason) = inert.get(&at) {
-            if !reason.is_empty() {
-                let issue = uid.map(|uid| st.key_of(uid).to_owned());
-                st.integrity.push(Integrity {
-                    event: Some(id.to_string()),
-                    issue,
-                    problem: reason.clone(),
-                    origin: None,
-                });
-            }
-            continue;
+        apply_one(st, k, at, &event, inert.get(&at), superseded, &names)?;
+    }
+    Ok(())
+}
+
+/// The event at `at`, doing `event`, applied; or reported, when it cannot apply (`inert`, with its
+/// integrity text: empty when it was reported as it was loaded).
+pub(crate) fn apply_one(
+    st: &mut State,
+    k: &Knowledge,
+    at: usize,
+    event: &Rest,
+    inert: Option<&String>,
+    superseded: &HashSet<EventId>,
+    names: &Names,
+) -> Result<(), KeySpace> {
+    let Some((&id, trace)) = k.events.get_index(at) else {
+        return Ok(());
+    };
+    let uid = event.issue.as_deref();
+    if let Some(reason) = inert {
+        if !reason.is_empty() {
+            let issue = uid.map(|uid| st.key_of(uid).to_owned());
+            st.integrity.push(Integrity {
+                event: Some(id.to_string()),
+                issue,
+                problem: reason.clone(),
+                origin: None,
+            });
         }
-        let actor = trace.actor().filter(|actor| actor.truthy());
-        let who = actor_label(actor, trace.replica());
-        let when = event_time(id.millis());
-        let thread = actor
-            .and_then(|actor| actor.get("thread"))
-            .and_then(Value::as_str);
-        st.last_by_thread
-            .insert((trace.replica().to_owned(), thread.map(str::to_owned)), id);
-        let doing = apply::Doing {
-            at,
-            id,
-            trace,
-            what: &event,
-        };
-        let applied = apply::apply_event(st, k, &doing, &names, &who, &when, superseded)?;
-        let target = uid.and_then(EventId::parse);
-        if let Some(issue) = target
-            .filter(|_| applied)
-            .and_then(|uid| st.issues.get_mut(&uid))
-        {
-            if !event.imported {
-                issue.set(
-                    crate::event::Field::UpdatedAt,
-                    Some(Value::from(when.as_str())),
-                );
-            }
-            if let Some(place) = event.place.as_ref().filter(|place| place.truthy()) {
-                issue.where_ = Some(std::sync::Arc::clone(place));
-            }
+        return Ok(());
+    }
+    let actor = trace.actor().filter(|actor| actor.truthy());
+    let who = actor_label(actor, trace.replica());
+    let when = event_time(id.millis());
+    let thread = actor
+        .and_then(|actor| actor.get("thread"))
+        .and_then(Value::as_str);
+    st.last_by_thread
+        .insert((trace.replica().to_owned(), thread.map(str::to_owned)), id);
+    let doing = apply::Doing {
+        at,
+        id,
+        trace,
+        what: event,
+    };
+    let applied = apply::apply_event(st, k, &doing, names, &who, &when, superseded)?;
+    let target = uid.and_then(EventId::parse);
+    if let Some(issue) = target
+        .filter(|_| applied)
+        .and_then(|uid| st.issues.get_mut(&uid))
+    {
+        if !event.imported {
+            issue.set(
+                crate::event::Field::UpdatedAt,
+                Some(Value::from(when.as_str())),
+            );
+        }
+        if let Some(place) = event.place.as_ref().filter(|place| place.truthy()) {
+            issue.where_ = Some(std::sync::Arc::clone(place));
         }
     }
     Ok(())
+}
+
+/// What replay finishes with once every event has applied: each issue's labels, the labels whose
+/// tags remain, and the parent-child index.
+pub(crate) fn finish(st: &mut State) {
+    for issue in st.issues.values_mut() {
+        issue.labels = issue
+            .label_tags
+            .iter()
+            .filter(|(_, tags)| !tags.is_empty())
+            .map(|(label, _)| label.clone())
+            .collect();
+    }
+    st.index_children();
 }
