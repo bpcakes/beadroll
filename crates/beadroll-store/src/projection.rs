@@ -168,10 +168,11 @@ struct Tail {
 }
 
 /// What of the segments grew since the projection was made, when that is all that happened to
-/// them: each it was made from is the same file, as long as it was or longer, and a new one comes
-/// after a machine's others. `None` otherwise: a file was replaced, rewritten in place, cut or
-/// removed, or a machine's journal began. Whether a grown segment kept its bytes is for its sum to
-/// say, once it is read ([`appended`]).
+/// them: each it was made from is the same file, as long as it was or longer, only a machine's
+/// last one longer (records appended to an earlier one come before the later ones' in its
+/// journal), and a new one comes after a machine's others. `None` otherwise: a file was replaced,
+/// rewritten in place, cut or removed, an earlier segment grew, or a machine's journal began.
+/// Whether a grown segment kept its bytes is for its sum to say, once it is read ([`appended`]).
 fn grown(made: &Made, segments: &[Held]) -> Option<Vec<Tail>> {
     let before: HashMap<&str, &Held> = (made.files.iter())
         .filter(|held| held.segment)
@@ -187,7 +188,11 @@ fn grown(made: &Made, segments: &[Held]) -> Option<Vec<Tail>> {
     for now in segments {
         match before.get(now.path.as_str()) {
             Some(was) if now.key == was.key => {}
-            Some(was) if now.key.same_file(&was.key) && now.key.len() > was.key.len() => {
+            Some(was)
+                if now.key.same_file(&was.key)
+                    && now.key.len() > was.key.len()
+                    && last.get(machine(&now.path)) == Some(&now.path.as_str()) =>
+            {
                 tails.push(Tail {
                     path: now.path.clone(),
                     from: was.key.len(),

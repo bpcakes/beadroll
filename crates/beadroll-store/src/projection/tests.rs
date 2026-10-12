@@ -274,3 +274,39 @@ fn a_segment_rewritten_and_then_appended_to_is_replayed() {
     append_events(&ws, HERE, &[title(5, &[4], 2, "later")]).unwrap();
     assert!(replays(&ws));
 }
+
+#[test]
+fn an_earlier_segment_that_grows_is_replayed() {
+    let home = tempfile::tempdir().unwrap();
+    let ws = store(home.path(), Some("this build"));
+    let line = |value: &Value| {
+        let mut line = beadroll_core::json::write(value, beadroll_core::json::Format::COMPACT)
+            .unwrap()
+            .into_bytes();
+        line.push(b'\n');
+        line
+    };
+    let mut init = Object::new();
+    init.insert("prefix".into(), Value::from("pr"));
+    let first = [event(1, &[], "init", 1, init), create(2, &[1], "pr-a1")];
+    std::fs::write(
+        segment(&ws),
+        first.iter().flat_map(line).collect::<Vec<u8>>(),
+    )
+    .unwrap();
+    let second = ws.events_dir.join(HERE).join("000002.jsonl");
+    std::fs::write(&second, line(&title(3, &[2], 2, "second"))).unwrap();
+    assert!(replays(&ws));
+    // a record put in the first segment, behind the second's: in the journal it comes before it,
+    // and the second no longer builds on its predecessor
+    let mut labels = Object::new();
+    labels.insert("labels".into(), Value::Array(vec![Value::from("ops")]));
+    let late = line(&event(4, &[3], "label_add", 2, labels));
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(segment(&ws))
+        .unwrap();
+    std::io::Write::write_all(&mut file, &late).unwrap();
+    drop(file);
+    assert!(replays(&ws));
+}
