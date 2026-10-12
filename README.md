@@ -511,9 +511,10 @@ the record of it before any test data is written), their tests beside them, and 
 - Publishing is serialised on one ref. Under heavy contention (four machines
   syncing continuously) claims took 9 s median and 27 s at p90, and 3 of 841
   commands gave up after eight attempts. Writes wait too: four machines each
-  publishing every write continuously, 14 of 200 writes took over a second,
-  the worst 23 s, and one stayed unpublished until a later command carried it
-  (roll-lqjj.7).
+  publishing every write continuously against a remote taking 0.3 s a fetch
+  or a push, a write took 1.5 s at the median and 23 s at the longest, and
+  every machine converged with nothing left unpublished (roll-lqjj.7: a sync
+  makes 24 rounds before it gives up, its waits doubling to at most 2 s).
 - A renumbered child key changes under the machine that created it. Events
   refer to issues by an immutable id, so nothing is lost, but a key written
   into a commit message before the sync now names the other issue.

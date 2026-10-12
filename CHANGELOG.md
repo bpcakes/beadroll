@@ -114,6 +114,13 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   projection, the text file is a cache, and deleting it is always safe.
 - `cargo xtask timing --text` shapes a history whose texts are most of its state, and `--read N`
   also times a local write.
+- A sync, and every ownership command, makes 24 rounds against a moving remote before it gives up,
+  twice as many as before, and waits between them any time up to `0.1 × 2^(attempt − 1)` seconds,
+  at most two, where it waited `U(0.1, 0.4) × attempt` (roll-lqjj.7). With four machines each
+  publishing every write at once, against a remote taking 0.3 s a fetch or a push, a write that
+  lost race after race was left unpublished one time in a hundred; it now gets through, every
+  machine converging, and the longest waits are shorter. `cargo xtask timing --contend M
+  [--writes W] [--latency MS]` measures it.
 
 ## [0.2.0] — 2026-10-11
 

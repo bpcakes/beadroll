@@ -150,7 +150,8 @@ Every decision in `REVIEWING.md` §2 stands as written. The protocol constants c
 
 - **Retries.** Sync and each ownership command make exactly 12 rounds, with
   `pause(U(0.1, 0.4) × attempt)` after every failed round. The sleep happens outside the store
-  lock.
+  lock. (Changed after the port, roll-lqjj.7: 24 rounds, the pause any time up to
+  `0.1 × 2^(attempt − 1)` seconds, at most two.)
 - **Timeouts.** On a fetch timeout bead kills git's whole process group; on a push timeout it kills
   only the client, so the outcome stays uncertain.
 - **Push outcomes.** The outcome comes from git's porcelain status line for our ref, never from
@@ -903,7 +904,8 @@ Specs are `point=action` (first hit), `point@nth(k)=action` (one hit, `k >= 1`),
 `point@always=action` (every hit in that process). Hit counters are per point in the invocation's
 registry. Invalid selectors and duplicate specs for one point are `CONFIG` errors.
 `backoff@always=skip` removes every retry wait; `backoff=skip` removes only the first. The registry
-tests cover first/nth/always dispatch and the exhaustion tests still assert exactly 12 rounds.
+tests cover first/nth/always dispatch and the exhaustion tests still assert exactly `ROUNDS`
+rounds.
 
 As Slice 2c built it (`crates/beadroll-store/src/failpoint.rs`):
 - **Which point takes which action.** Every point but `clock` can `exit`, `sigkill`, `sleep` and
@@ -1101,7 +1103,7 @@ chased.
 | 16 | `json.dumps` dialects | Everywhere | `json::Format` | keep |
 | 17 | CPython ignores SIGXFSZ; children get the default | File-size limits | §2.3f | keep |
 | 18 | Closed fds at exec give `None` streams; `-` with no stdin is an error | stdio | §2.3f | keep |
-| 19 | 12 rounds; `U(0.1, 0.4) × attempt` | sync and ownership | Same | keep |
+| 19 | 12 rounds; `U(0.1, 0.4) × attempt` | sync and ownership | Same | keep (changed after the port, roll-lqjj.7: 24 rounds, `U(0, min(0.1 × 2^(attempt − 1), 2))`) |
 | 20 | Names: `refs/beads/fetch/<pid>-<hex8>`, `.NAME.PID.tmp`, `*.torn-<ns>`, `*.fork-<ns>`, `sync.git.damaged-<ns>` | Store, `sync.git` | Same | keep |
 | 21 | `command_signature` serialises actor, normalised argparse args and resolved request; accepted receipts survive sync | `pending/*.command` | Preserve Python signature bytes and lifecycle, including same-store upgrade and rollback (§2.3j); do not delete receipts to migrate | keep |
 | 22 | JSON read from bytes: `json.loads` detects a UTF-8 BOM, UTF-16 and UTF-32 from the leading bytes, then decodes with `surrogatepass`; read from text, a BOM is an error. A journal line in UTF-16 is a valid event today | Journal and attempt lines, the torn-tail check, the manifest | Python decodes the bytes as UTF-8 (`surrogatepass`) before parsing, as Rust does (U04) | reject (decided) |
@@ -1810,6 +1812,34 @@ decision 7 open. The five decisions stand.
     take what the texts do; and a fresh machine's first sync still fetches and replays the whole
     history (1.7 s for the 47 MB tracker from a local remote), which only a checkpoint
     (roll-lqjj.4) would change.
+
+- **roll-lqjj.7: several machines writing at once, measured (this Mac, 2026-10-12).**
+  - How: `cargo run --release --package xtask -- timing --contend M --writes W --latency MS`: M
+    machines on one local bare remote, a tracker of 1,000 events, each machine writing W comments
+    as fast as it can, each one published as bead publishes a write; every fetch and every push
+    waits MS milliseconds (the `fetch.result` and `push.before` failpoints), 300 being about what
+    GitHub takes. Before is today's retries (12 rounds, `U(0.1, 0.4) × attempt` between them),
+    after is 24 rounds with any wait up to `0.1 × 2^(attempt − 1)`, at most 2 s. One run each.
+
+    | Machines × writes, latency | Median | p90 | p99 | Longest | Over 1 s | Unpublished | Converged |
+    |---|---|---|---|---|---|---|---|
+    | 4 × 25, 300 ms: before | 0.76 s | 5.7 s | 9.8 s | 31.2 s | 42 | 1 | yes |
+    | 4 × 25, 300 ms: after | 1.51 s | 3.3 s | 12.8 s | 13.9 s | 79 | 0 | yes |
+    | 4 × 100, 300 ms: before | 1.68 s | 4.6 s | 15.9 s | 28.0 s | 234 | 1 | yes |
+    | 4 × 100, 300 ms: after | 1.53 s | 3.4 s | 12.5 s | 23.3 s | 320 | 0 | yes |
+    | 2 × 25, 300 ms: before | 0.74 s | 2.7 s | 4.7 s | 4.7 s | 15 | 0 | yes |
+    | 2 × 25, 300 ms: after | 0.76 s | 3.3 s | 7.6 s | 7.6 s | 11 | 0 | yes |
+    | 4 × 25, 0 ms: before | 0.13 s | 0.58 s | 7.5 s | 8.1 s | 7 | 0 | yes |
+    | 4 × 25, 0 ms: after | 0.14 s | 0.83 s | 4.4 s | 5.2 s | 10 | 0 | yes |
+
+  - Every machine converged in every run. A write is slow when it loses the race: another machine
+    pushed between its fetch and its push, so it fetches, merges and pushes again; with machines
+    writing as fast as they can, that is most rounds, whatever the waits, and the medians moved no
+    more than one run's noise. What the retries change is what correctness asks of them (the
+    maintainer's direction: a write over a second is no defect): a write that loses race after
+    race used to be left unpublished after twelve rounds (2 of 650 writes) and now gets through
+    (none of 650), and the longest waits are bounded by the doubling's cap rather than growing
+    with every round.
 
 ## Appendix B. git invocations, and their consolidation
 

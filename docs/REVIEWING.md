@@ -106,7 +106,17 @@ These were decided deliberately. Report problems *with* them, not their existenc
   under the machine that created it; events refer to issues by immutable id.
 - One event with two different payloads is quarantined alone; nothing waits on it.
 - The store lock is held while a sync or claim pushes (about a second against GitHub).
-- Publishing is serialised on one ref; under heavy contention claims take seconds.
+- Publishing is serialised on one ref; under heavy contention claims take seconds, and so do
+  writes (roll-lqjj.7, the maintainer's decision of 2026-10-12: tune today's protocol rather than
+  give each machine a ref of its own, correctness before speed; a write taking over a second is no
+  defect). Four machines each publishing every write at once, against a remote taking 0.3 s a
+  fetch or a push (`cargo xtask timing --contend 4`), converge every time; what the retries were
+  tuned for is that a write losing race after race still gets through: a sync or an ownership
+  command makes 24 rounds, twice Python's twelve, waiting between them any time up to
+  `0.1 × 2^(attempt − 1)` seconds, at most two, where Python's linear wait would have reached two
+  minutes over 24 rounds. Before, one write in a hundred, and one in four hundred, was left
+  unpublished until a later command carried it; after, none in 650. Medians did not move beyond
+  the runs' noise; the longest waits shrank (31 s to 14 s, 28 s to 23 s).
 - No compaction beyond segment rotation. A persisted projection, a cache and never a source
   (roll-lqjj.2, step 3 of epic roll-lqjj, whose plan replaced the "no persisted projection" of
   earlier): `<store>/projection` keeps the state the journal replays into, with what it was made
