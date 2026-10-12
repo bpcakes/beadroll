@@ -161,9 +161,11 @@ fn grown(made: &Made, segments: &[Held]) -> Option<Vec<Tail>> {
         .filter(|held| held.segment)
         .map(|held| (held.path.as_str(), &held.key))
         .collect();
+    // each machine's last segment, by name
     let mut last: HashMap<&str, &str> = HashMap::new();
     for held in made.files.iter().filter(|held| held.segment) {
-        last.insert(machine(&held.path), &held.path);
+        let was = last.entry(machine(&held.path)).or_insert(&held.path);
+        *was = (*was).max(held.path.as_str());
     }
     let mut tails = Vec::new();
     for held in segments {
