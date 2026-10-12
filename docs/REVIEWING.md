@@ -312,6 +312,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
   git child runs in a separate session without the controlling terminal. A timed-out fetch is
   killed with its process group; a timed-out push kills only the client so its uncertain result
   can be settled by the protocol.
+  The runner's timeout starts after process creation. Its hygiene test checks timeout errors,
+  descriptor and zombie cleanup, and surviving push helpers; aggregate process-startup speed is
+  not a correctness assertion. Git's server-side ref-race diagnostics can say either
+  `incorrect old value provided` or `failed to update ref`; the locale test accepts both while
+  still requiring the ref-lock error, rejection status and bead's rejection classification.
 - A command receipt survives a *failed* later command by the same actor and is dropped only when
   a later command by that actor goes through: the remote accepted it, or it was a local write that
   was appended. A recognised retry still reports the claim as it is now.

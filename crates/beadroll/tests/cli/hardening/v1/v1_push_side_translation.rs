@@ -197,7 +197,9 @@ impl Tokens {
         assert!(contains(&raced.stderr, locked), "{name}: {said}");
         let rejected = contains(&raced.stderr, b"[remote rejected]");
         assert!(rejected, "{name}: {said}");
-        let stale = contains(&raced.stderr, b"(incorrect old value provided)");
+        // Supported git versions use either reason for the same server-side ref race.
+        let stale = contains(&raced.stderr, b"(incorrect old value provided)")
+            || contains(&raced.stderr, b"(failed to update ref)");
         assert!(stale, "{name}: {said}");
         assert!(bead_reads_rejected(&raced.stderr), "{name}: {said}");
     }
