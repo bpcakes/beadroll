@@ -1841,6 +1841,25 @@ decision 7 open. The five decisions stand.
     (none of 650), and the longest waits are bounded by the doubling's cap rather than growing
     with every round.
 
+- **roll-lqjj.8: merges of concurrent events, measured (this Mac, 2026-10-12).**
+  - How: `cargo run --release --package xtask -- timing --merge N [--concurrent]`, the best of
+    five, as for roll-lqjj.2: a sync that merges ten events another machine wrote. With
+    `--concurrent` the store writes a comment of its own before each sync, so that the events
+    merged were written concurrently with its own: the projection declines them, the journal is
+    replayed, and the sync also publishes the store's comment.
+
+    | History | A merge after everything | A concurrent merge | Without the projection (after everything; concurrent) |
+    |---|---|---|---|
+    | plain, 50k | 0.13 s | 0.45 s | 0.38 s; 0.68 s |
+    | plain, 200k | 0.40 s | 1.49 s | 1.42 s; 2.40 s |
+    | text-heavy, 200k | 0.35 s | 1.99 s | 1.89 s; 3.60 s |
+    | churn, 200k | 0.10 s | 1.02 s | 0.95 s; 1.84 s |
+
+  - A concurrent merge costs a replay: the merge without the projection, and the store's own
+    write's publish. It comes in about a merge in ten where two machines write (roll-lqjj.3), and
+    stays a replay by the maintainer's direction (correctness before speed): taking such events in
+    without replaying would mean reproducing replay's order-dependent outcomes.
+
 ## Appendix B. git invocations, and their consolidation
 
 **Checkout side** (the user's cwd and environment):

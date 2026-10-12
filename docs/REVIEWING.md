@@ -153,7 +153,14 @@ These were decided deliberately. Report problems *with* them, not their existenc
   written again. Texts are only appended, under the text file's own lock, the projection written
   after them, so that a bead killed between the two leaves the last projection; a projection made
   whole, or whose file holds more texts no longer read than read (beyond a mebibyte), starts the
-  file again, under the generation its texts give, so that the same texts make the same file.
+  file again, under the generation its texts give, so that the same texts make the same file. A
+  merge that brings events written concurrently with the store's replays the journal, and stays so
+  (roll-lqjj.8, by the maintainer's direction of 2026-10-12: correctness before speed): it costs
+  what a replay does, 0.45 s at 50,000 events and 1.0–2.0 s at 200,000 (`cargo xtask timing
+  --merge N --concurrent`), and comes in about a merge in ten where two machines write. Taking
+  such events in without replaying would mean reproducing what replay settles by the order it
+  applies events in (the key two concurrent creates minted, the order of comments, claim history
+  and issue order), the question a checkpoint's continuation faces too (roll-lqjj.4).
 - No history boundary (roll-lqjj.3, step 4 of epic roll-lqjj; the maintainer's decision of
   2026-10-12, on the evidence in `RUST-PORT.md` Appendix A, "roll-lqjj.3"): a machine's work
   merges by itself however old it is, as every merge has so far. The alternatives were a supported

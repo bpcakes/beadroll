@@ -502,7 +502,8 @@ the record of it before any test data is written), their tests beside them, and 
   `lint` take what the texts do, and importing the largest held 0.87 GB
   (roll-lqjj.9). A merge that brings events another
   machine wrote concurrently replays the journal, as about one merge in ten
-  does where two machines write (roll-lqjj.8). A replay holds at most 107 MB
+  does where two machines write: 0.45 s at 50,000 events, 1–2 s at 200,000,
+  kept so for correctness (roll-lqjj.8). A replay holds at most 107 MB
   on the heap at 200,000 events (events the size of this repository's own take
   more than three times that). A store heavy in claims pays for listing its
   attempt files on every command: a read takes 0.56 s at 92,000 of them, which

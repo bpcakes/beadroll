@@ -121,6 +121,8 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   lost race after race was left unpublished one time in a hundred; it now gets through, every
   machine converging, and the longest waits are shorter. `cargo xtask timing --contend M
   [--writes W] [--latency MS]` measures it.
+- `cargo xtask timing --merge N --concurrent` times a merge of events written concurrently with the
+  store's own, which replays the journal (roll-lqjj.8).
 
 ## [0.2.0] — 2026-10-11
 
