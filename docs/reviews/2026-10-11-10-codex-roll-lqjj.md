@@ -63,3 +63,12 @@ Reviewed 9ca05470f280f1dbacc305041b8a8f5b66d43abf..a43694b7c99ce86a50d1ffba5cfeb
 The task was reopened when the census of public trackers, finished after its close, found two larger ones; this round reviews the correction alone.
 
 Reviewed dc608a8597f1269b46554686b224a0b844eea2fb..2cd9ed847c4770a1f923a8b8fea84a94d4143fb9. No actionable defects found in this documentation-only range. Tests were not run in the read-only sandbox.
+
+## roll-lqjj.6, round 1: `000dcec0b91f79369ad9d5c51095a0943418abb4..ecc113bd894e6109fc91e4741cdc7bf23f30cd7a`
+
+Reviewed 000dcec0b91f79369ad9d5c51095a0943418abb4..ecc113bd894e6109fc91e4741cdc7bf23f30cd7a (HEAD). Batch catch-up introduces redundant full-text reads proportional to repeated events. The existing prebuilt binaries passed 55 core tests and 5 timing-history tests; the full baseline was not run in the read-only sandbox.
+
+Review comment:
+
+- [P2] Deduplicate issues before loading a batch's text blobs — /Users/<name>/Documents/beadroll/crates/beadroll-core/src/projection.rs:268-273
+  When catching up multiple events for the same existing issue, `current()` and `Tx::state()` pass one UID per record. This collects every occurrence before loading anything, so `texts::read_in()` rereads the entire blob and `State::read_texts()` rehashes it for each occurrence, even after its texts are loaded. For example, 1,000 small edits to an issue with 1 MiB of accumulated text cause roughly 1 GiB of reads and hashing instead of one blob load. Deduplicate the requested UIDs, or skip already-loaded issues before performing the read.
