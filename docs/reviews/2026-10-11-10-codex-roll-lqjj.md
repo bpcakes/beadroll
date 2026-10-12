@@ -72,3 +72,7 @@ Review comment:
 
 - [P2] Deduplicate issues before loading a batch's text blobs — /Users/<name>/Documents/beadroll/crates/beadroll-core/src/projection.rs:268-273
   When catching up multiple events for the same existing issue, `current()` and `Tx::state()` pass one UID per record. This collects every occurrence before loading anything, so `texts::read_in()` rereads the entire blob and `State::read_texts()` rehashes it for each occurrence, even after its texts are loaded. For example, 1,000 small edits to an issue with 1 MiB of accumulated text cause roughly 1 GiB of reads and hashing instead of one blob load. Deduplicate the requested UIDs, or skip already-loaded issues before performing the read.
+
+## roll-lqjj.6, round 2: `000dcec0b91f79369ad9d5c51095a0943418abb4..8f74e62904a58eea9d03b7ff66784505ffa51da1`
+
+Reviewed only 000dcec0b91f79369ad9d5c51095a0943418abb4..8f74e62904a58eea9d03b7ff66784505ffa51da1 (HEAD); no actionable defects found. Prebuilt binaries passed 56 core tests and five timing-history tests, and git diff --check passed. The full baseline was blocked by the read-only sandbox.
