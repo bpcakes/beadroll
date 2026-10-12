@@ -16,16 +16,24 @@ use crate::error::Error;
 use crate::link::Link;
 use crate::tx::{drop_pending, locked};
 
-/// Rounds a sync or an ownership command makes before it gives up.
-pub const ROUNDS: u32 = 12;
+/// Rounds a sync or an ownership command makes before it gives up: twice Python's twelve
+/// (roll-lqjj.7), so that a machine that keeps losing the race to others writing at once still
+/// gets its write through.
+pub const ROUNDS: u32 = 24;
 
-/// The wait between attempts against a moving remote: `U(0.1, 0.4) × attempt` seconds, outside
-/// the store lock. The `backoff` failpoint passes here (`skip` waits not at all).
+/// The longest wait between two rounds, in seconds.
+const LONGEST_PAUSE: f64 = 2.0;
+
+/// The wait between attempts against a moving remote, outside the store lock: any time up to
+/// `0.1 × 2^(attempt - 1)` seconds, at most [`LONGEST_PAUSE`] (roll-lqjj.7; Python's was
+/// `U(0.1, 0.4) × attempt`), so that machines that lost a race to each other spread out rather
+/// than meet again. The `backoff` failpoint passes here (`skip` waits not at all).
 pub fn pause(attempt: u32, failpoints: &Failpoints) {
     if failpoints.hit("backoff") == Some(Fired::Skip) {
         return;
     }
-    let seconds = (0.1 + fastrand::f64() * 0.3) * f64::from(attempt);
+    let doubled = f64::from(1u32 << attempt.saturating_sub(1).min(8));
+    let seconds = fastrand::f64() * (0.1 * doubled).min(LONGEST_PAUSE);
     std::thread::sleep(Duration::from_secs_f64(seconds));
 }
 
