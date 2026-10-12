@@ -69,6 +69,21 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
 - `cargo xtask timing --sync N [--ownership] [--rotate BYTES]` times a publishing `bead sync` on a
   scratch store of N events against a local bare remote, with the store's memo of its journal files
   and without it; `docs/RUST-PORT.md` Appendix A has the figures at 200,000 events.
+- Replay holds a fraction of the memory it did (roll-dih8.11): 200,000 events peak at 107 MB on
+  the heap, and at 133 MB when about half of them are claims, takeovers and releases in attempt
+  files; their resident peaks fell from 921 and 958 MB to 187 and 215 MB, and the replay itself
+  from 0.26 and 0.33 s to 0.21 and 0.29 s. A journal keeps what replay reads of each event and a
+  digest of its content, not its parsed JSON, and each text and value events repeat once; replay
+  takes each event's operation from the journal as it applies it, and the state keeps who wrote
+  each event and what each had seen, not the journal; an issue keeps its registers, tags and
+  claims in vectors sized to them. Events the size of this repository's own take more: its
+  journal repeated to 200,000 events peaks at 364 MB on the heap (`docs/RUST-PORT.md`, Appendix
+  A). In `beadroll-core`, `Value::Object` holds a boxed `Object`, `Issue::deps` is a view of the
+  dependency tags (`Deps`), claim records share their names and give their times by method
+  (`Claim::since`, `EndedClaim::ended`, `Provisional::since`, `LostClaim::at`), and `State` no
+  longer holds the journal.
+- `cargo xtask timing --replay N` records the heap peak beside the resident one
+  (`heap_peak_bytes`, `journal_heap_peak_bytes`): xtask's allocator is the system's, with a count.
 
 ## [0.2.0] — 2026-10-11
 

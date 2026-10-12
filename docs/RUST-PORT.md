@@ -312,14 +312,17 @@ So core has a small strict parser and writer:
 **b. Events and state are typed. Raw JSON survives only where Python keeps arbitrary data.**
 - **Events.**
   - A journal line parses to `Value`.
-  - Settling validates it into `Event`: an `EventId(u128)` whose ordering equals Python's string
-    ordering, `deps`, and an `Op` enum with typed payloads (`Create`, `Set`, `Claim`, …,
-    `Unknown(String)`), read once. The payload is read leniently, because an event
+  - Reading it makes an `Event`: an `EventId(u128)` whose ordering equals Python's string
+    ordering, `deps`, its writer, and an `Op` enum with typed payloads (`Create`, `Set`, `Claim`,
+    …, `Unknown(String)`), read once. The payload is read leniently, because an event
     `payload_problem` refuses is never applied. `actor` and `where`, which Python keeps whole on
-    issues, claims and comments, and `v`, read once for its check, come from the kept `Value`.
+    issues, claims and comments, are kept as values shared by every event that repeats them; `v`
+    is read once for its check.
   - The validation messages are the Python ones (`event_problem`, `payload_problem`,
     `write_problem`).
-  - The raw `Value` is kept for canonical comparison and `log`.
+  - The parsed `Value` is not kept (roll-dih8.11): two records of one id are told apart by a
+    digest of their content, as Python's `canonical` tells them apart, and replay takes each
+    event's operation from the journal as it applies it.
 - **Integers.** Fields that Python types as `int` use `PyInt` (`Bool | Int`, an `Int` being
   `Small(i64) | Big(digits)`), because replay accepts `true` where an int is due. The looser replay
   rule exists for histories written before `write_problem`, and those histories must mean the same
@@ -1531,7 +1534,8 @@ decision 7 open. The five decisions stand.
     (`cargo run --release --package xtask -- timing --replay 10000`, a valid history on six
     machines, parsed and settled outside the clock, best of seven): 20 ms; Python's replay of the
     same journal took 73 ms.
-  - 200k events: ≤ 0.5 s and ≤ 150 MB. Python takes 14 s and 412 MB.
+  - 200k events: ≤ 0.5 s and ≤ 150 MB. Python takes 14 s and 412 MB. The memory is met on the
+    heap since roll-dih8.11 (below).
 - **fsync on APFS:** `File::sync_all` 5.26 ms, `sync_data` 5.64 ms (both `F_FULLFSYNC`), Python
   `os.fsync` 0.03 ms.
 - **Locking:** a Rust `File::lock` holder blocks Python's `fcntl.flock(LOCK_EX | LOCK_NB)`.
@@ -1621,6 +1625,47 @@ decision 7 open. The five decisions stand.
     journal three times (`view` before and after, and the merge's check for chain breaks), which
     the local projection (roll-lqjj.2) takes on; and it lists, stats and names in its tree every
     attempt file, which only a checkpoint (roll-lqjj.4) would change.
+
+- **roll-dih8.11: replay's memory, measured (this Mac, 2026-10-12).**
+  - How: `cargo run --release --package xtask -- timing --replay N [--ownership]`, as in Phase 4,
+    the journal written in segments rotated at 256 KiB as a store holds them. Beside the resident
+    peak `/usr/bin/time` reports for the process that loads the journal and replays it (`timing
+    --load`), xtask records its heap peak: the most that process held on its heap at once, counted
+    by xtask's allocator (the system's, with a count). The counting makes the replay it times
+    about 5% slower: at 200,000 ownership-heavy events, 0.27–0.29 s against 0.25–0.28 s for the
+    same build without it, three runs each.
+
+    | Events | Replay | Heap peak (the journal alone) | Resident peak (the journal alone) | Phase 4: replay, resident peak |
+    |---|---|---|---|---|
+    | 10k | 6.6 ms | 5.8 MB (5.8 MB) | 14 MB (10 MB) | 7.9 ms, 52 MB |
+    | 10k, ownership-heavy | 9.3 ms | 6.7 MB (6.0 MB) | 15 MB (11 MB) | 10.6 ms, 52 MB |
+    | 50k | 39 ms | 27 MB (24 MB) | 50 MB (30 MB) | 53 ms, 236 MB |
+    | 50k, ownership-heavy | 57 ms | 33 MB (29 MB) | 59 MB (38 MB) | 66 ms, 245 MB |
+    | 200k | 0.21 s | 107 MB (92 MB) | 187 MB (108 MB) | 0.26 s, 921 MB |
+    | 200k, ownership-heavy | 0.29 s | 133 MB (116 MB) | 215 MB (143 MB) | 0.33 s, 958 MB |
+
+  - **The 150 MB budget is met on the heap**, which is the budget (the maintainer's decision of
+    2026-10-12). Where the memory went:
+    - a journal keeps what replay reads of each event (its id, causes, writer, actor, place and
+      typed operation) and a 16-byte digest of its content, not its parsed JSON; each text and
+      value events repeat is held once, and a JSON object is boxed, so that a value is 32 bytes;
+    - replay takes each event's operation from the journal as it applies it, and the state keeps
+      the rest (who wrote each event, what it had seen), not the journal;
+    - an issue keeps its registers, tags and claims in vectors sized to them, its dependencies as
+      a view of their tags, and its claim records with their names shared and their times taken
+      from event ids; a clock of the ancestry index is positions alone, naming the set of chains
+      it saw into (§2.3c); a write works out the frontier when it asks for it.
+  - **The resident peak is not met.** It is about the journal at load plus everything replay
+    allocates, since the system allocator keeps most of what replay frees for sizes the state
+    never asks for again: roll-dih8.15.
+  - **Events the size of a real tracker's take more.** This repository's tracker on 2026-10-12
+    (292 events averaging 1,078 bytes of JSON: creates 1.6 KB, sets 2.1 KB, comments 1.3 KB),
+    repeated to 200,120 events, each copy with ids and keys of its own and building on the one
+    before (36,882 issues, 206 MB of segments), peaks at 364 MB on the heap, 245 MB of it the
+    loaded journal, and about 470 MB resident. The texts are most of it, and the journal and the
+    state both hold them. Meeting 150 MB there would mean not holding events once they are
+    applied, only the state and the ancestry index; the local projection (roll-lqjj.2) makes a
+    whole-journal replay the exception instead.
 
 ## Appendix B. git invocations, and their consolidation
 

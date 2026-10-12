@@ -465,17 +465,17 @@ the record of it before any test data is written), their tests beside them, and 
   writes them. A clock holds the furthest position seen on each chain, so
   whether one event saw another is one comparison, and memory grows with events
   × chains rather than with events × ownership events. Replaying 200,000
-  events, about 55% of them in attempt files, takes 0.33 s and peaks at 958 MB,
-  747 MB of it the loaded journal (`docs/RUST-PORT.md`, Appendix A; Python's
-  bitsets took 11.8 s and 1.7 GB).
+  events, about 55% of them in attempt files, takes 0.29 s and holds at most
+  133 MB on the heap (a 215 MB resident peak), 116 MB of it the loaded journal
+  (`docs/RUST-PORT.md`, Appendix A; Python's bitsets took 11.8 s and 1.7 GB).
 - The branch recorded on an event is whatever `HEAD` was in the directory the
   command ran in. It is a trace, not a lock: a claim does not pin a branch.
-- With no persisted projection, every command replays the journal: 8 ms and a
-  52 MB peak for 10k events, 53 ms / 236 MB at 50k and 0.26 s / 921 MB at
-  200k (`docs/RUST-PORT.md`, Appendix A; most of the memory is the loaded
-  journal, roll-dih8.11), far beyond the trackers measured so far (the largest
-  real one is 280 issues). A persisted projection is the obvious next step if
-  that ever matters.
+- With no persisted projection, every command replays the journal: 7 ms and a
+  14 MB peak for 10k events, 39 ms / 50 MB at 50k and 0.21 s / 187 MB at 200k,
+  at most 107 MB of it on the heap (`docs/RUST-PORT.md`, Appendix A; events the
+  size of this repository's own take more than three times the heap), far
+  beyond the trackers measured so far (the largest real one is 280 issues). A
+  persisted projection is the obvious next step if that ever matters.
   A fetch or push that gets no answer fails after `BEAD_NET_TIMEOUT` seconds
   (default 45) instead of hanging.
 - Publishing is serialised on one ref. Under heavy contention (four machines

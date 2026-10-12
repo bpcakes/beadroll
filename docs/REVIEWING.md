@@ -108,15 +108,16 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - The store lock is held while a sync or claim pushes (about a second against GitHub).
 - Publishing is serialised on one ref; under heavy contention claims take seconds.
 - No compaction beyond segment rotation. No persisted projection: every command replays the
-  journal, 8 ms for 10,000 events and 0.26 s for 200,000 (`RUST-PORT.md` Appendix A).
+  journal, 7 ms for 10,000 events and 0.21 s for 200,000 (`RUST-PORT.md` Appendix A).
 - What each event had seen is one clock per event over chains, the reachability index of
   `state/seen.rs` (`RUST-PORT.md` §2.3c): every machine's journal is a chain, and each event of an
   attempt file joins a chain whose last event is among its ancestors, or starts one, so there are
   about as many chains as machines that write attempts. A clock holds the furthest position the
   event saw on each chain, and `saw` is `clock[chain] >= position`. Memory grows with events ×
   chains, not with events × ownership events as Python's bitsets did: 200,000 events, 55% of them
-  in attempt files, replay in 0.33 s with a 958 MB peak, 747 MB of it the loaded journal itself
-  (roll-dih8.11).
+  in attempt files, replay in 0.29 s holding at most 133 MB on the heap, 116 MB of it the loaded
+  journal (roll-dih8.11). The clocks live in one arena of positions alone: a clock names the set
+  of chains it has seen into, and each set is kept once.
 - Exported comment ids for comments made here come from a 48-bit hash range; a collision is a
   one-in-10^14 event and is then resolved by the ids alone.
 - `dep cycles` stops after 200 cycles.
@@ -325,6 +326,30 @@ These were decided deliberately. Report problems *with* them, not their existenc
   words). Chosen over `transfer.hideRefs=refs/beads/fetch`, which keeps those refs out of the
   check only where git's fetch honours hidden refs (2.55 does, 2.40, the oldest supported, does
   not) and leaves the lock form as it is.
+- A journal keeps what replay reads of each event, not its parsed JSON (roll-dih8.11): its id,
+  causes, writer, actor, place and typed operation, each text and value events repeat held once,
+  and a digest of its content, by which it tells two records of one id apart. The digest is two
+  SipHash-1-3 hashes under keys drawn at random for each journal, over an encoding in which no two
+  contents are alike (members in key order, lengths before texts and lists, integers by their
+  digits, floats by their bits, as Python's `canonical` compares them). It is not a cryptographic
+  hash and need not be: the keys never leave the process, so nobody can aim at a collision, and
+  two contents share 128 bits by chance once in 2¹²⁸; a collision would apply the first of two
+  contents of one id where both should be quarantined. Replay takes each event's operation from
+  the journal as it applies it, and the state it builds keeps the rest (who wrote each event, what
+  it had seen), not the journal: `State` has no `journal()`.
+- The 150 MB budget for replaying 200,000 events (`RUST-PORT.md` Appendix A) is a heap budget
+  (the maintainer's decision of 2026-10-12, roll-dih8.11): `cargo xtask timing --replay N` counts
+  the most a fresh process that loads the journal and replays it holds on its heap at once, and
+  records the resident peak beside it. The resident peak is higher, about the journal at load plus
+  everything replay allocates, because the system allocator keeps most of what replay frees for
+  sizes the state never asks for again; closing that gap is roll-dih8.15. Events the size of this
+  repository's own take more than xtask's: memory grows with the bytes of the events, which the
+  journal and the state both hold (Appendix A).
+- xtask's global allocator is the system's with a count of what it hands out
+  (`xtask/src/timing/heap.rs`), for the heap peak `timing --load` reports: the one unsafe code
+  outside bead's two audited spots (`RUST-PORT.md` §2.2), since `GlobalAlloc` is an unsafe trait.
+  Every call goes to the system allocator unchanged. Its counts are atomic, so the peak is exact
+  in any process; counting makes a replay timed in xtask about 5% slower (Appendix A).
 - `BEAD_HOME` must be absolute; the store's modes are 0700/0600 whatever the umask.
 - Only directories bead creates get private modes; a user-supplied `BEAD_HOME` is chmodded 0700
   on first write (reviewer observation, kept).
