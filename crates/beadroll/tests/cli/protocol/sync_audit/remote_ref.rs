@@ -7,6 +7,7 @@ use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 
+use beadroll_sync::ROUNDS;
 use beadroll_test_support::{Machine, Sandbox, code};
 
 use super::{quoted, real_git, remote_git, setup, setup_with, two_with};
@@ -92,14 +93,14 @@ fn manifest_missing_and_foreign_workspace_are_refused() {
     assert_eq!(code(&elsewhere.run()), "WORKSPACE_MISMATCH");
 }
 
-/// The remote moves on before every push: a claim, then a sync, each give up after exactly twelve
-/// rounds with SYNC_CONFLICT and leave the tracker as it was, the edit made offline kept and no
-/// claim, nothing partial. Once the remote holds still, a sync publishes everything and nothing is
-/// left waiting.
+/// The remote moves on before every push: a claim, then a sync, each give up after exactly
+/// [`ROUNDS`] rounds (twelve, as Python's, until roll-lqjj.7) with SYNC_CONFLICT and leave the
+/// tracker as it was, the edit made offline kept and no claim, nothing partial. Once the remote
+/// holds still, a sync publishes everything and nothing is left waiting.
 ///
 /// Python's driver replaces `time.sleep` for the whole run so that no round waits for the next;
 /// here the Rust `bead` (`rust_only`) skips every wait between rounds, `backoff@always=skip`, and
-/// the pushes the hostile `git` counts, twelve a command, show that every round ran.
+/// the pushes the hostile `git` counts, [`ROUNDS`] a command, show that every round ran.
 #[test]
 fn retry_exhaustion_retains_local_edits_and_no_partial_claim() {
     let sandbox = crate::sandbox();
@@ -126,7 +127,8 @@ fn retry_exhaustion_retains_local_edits_and_no_partial_claim() {
             result.stderr
         );
         let moved = std::fs::read_to_string(&counter).unwrap();
-        assert_eq!(moved.lines().count(), 12 * index, "{command}");
+        let rounds = usize::try_from(ROUNDS).unwrap();
+        assert_eq!(moved.lines().count(), rounds * index, "{command}");
         assert_eq!(a.export(), before, "{command}");
         let issue = a.show(&key);
         assert!(issue.get("claim").is_none(), "{command}: {issue:?}");

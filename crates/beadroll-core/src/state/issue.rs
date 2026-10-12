@@ -12,6 +12,7 @@ use crate::time::event_time;
 
 use super::claim::{Claim, EndedClaim, LostClaim, Provisional, Stale};
 use super::small::{IdMap, IdSet, VecMap};
+use super::texts::Texts;
 
 /// An issue.
 #[derive(Clone, Debug, PartialEq)]
@@ -40,6 +41,9 @@ pub struct Issue {
     pub(crate) origin: Origin,
     pub(crate) where_: Option<Arc<Value>>,
     pub(crate) closed_on: Option<Arc<Value>>,
+    /// Where its long fields, their registers' values, its comments and its extras are
+    /// (roll-lqjj.6): in it, or only in a projection's text file.
+    pub(crate) texts: Texts,
 }
 
 /// An issue's dependencies ([`Issue::deps`]), read from the additions behind them, which hold the
@@ -294,6 +298,12 @@ impl Issue {
     /// Where it was closed, until reopened.
     pub fn closed_on(&self) -> Option<&Value> {
         self.closed_on.as_deref()
+    }
+
+    /// Where its texts are: in it, or in a projection's text file, not read; its long fields,
+    /// their registers, its comments and its extras are empty until they are read in.
+    pub fn texts(&self) -> &Texts {
+        &self.texts
     }
 }
 

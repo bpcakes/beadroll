@@ -12,6 +12,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+beadroll.workspace = true
 beadroll-core.workspace = true
 
 [dev-dependencies]

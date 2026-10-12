@@ -75,6 +75,11 @@ impl<K, V> VecMap<K, V> {
         VecMap(entries)
     }
 
+    /// Its entries, in their order.
+    pub(crate) fn into_entries(self) -> Vec<(K, V)> {
+        self.0
+    }
+
     /// How many entries it has.
     pub fn len(&self) -> usize {
         self.0.len()

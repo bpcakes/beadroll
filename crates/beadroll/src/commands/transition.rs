@@ -7,7 +7,7 @@ use beadroll_core::code::Code;
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::text::str_of;
-use beadroll_store::view;
+use beadroll_store::view_outline;
 use beadroll_sync::{publish_soon, writing};
 
 use super::{Context, Failure, Outcome, ended_by, need_tracker, resolve_arg, text};
@@ -125,7 +125,7 @@ fn superseded(
     result: &mut Vec<Object>,
     notes: &mut Vec<String>,
 ) -> Result<(), Failure> {
-    let st = view(ctx.ws)?;
+    let st = view_outline(ctx.ws)?;
     let lost: Vec<EventId> = named
         .iter()
         .filter(|(uid, claim)| {

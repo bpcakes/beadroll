@@ -7,7 +7,7 @@ use std::hash::Hash;
 use crate::event::{DONE, Field};
 use crate::id::EventId;
 use crate::json::{self, Format, Object, Value};
-use crate::state::{Issue, State};
+use crate::state::{IdMap, Issue, State, Texts};
 use crate::time::event_time;
 
 /// At most this many cycles are reported.
@@ -67,25 +67,11 @@ impl State {
     pub fn conflicts(&self, issue: &Issue) -> Vec<(Field, Vec<Alternative>)> {
         let mut out = Vec::new();
         for (field, register) in issue.registers() {
-            if register.len() < 2 {
-                continue;
-            }
-            let shown = |value: &Value| -> Value {
-                if *field == Field::Status {
-                    value.get("status").cloned().unwrap_or(Value::Null)
-                } else {
-                    value.clone()
-                }
-            };
-            let distinct: HashSet<String> = register
-                .values()
-                .map(|value| dumps(&shown(value)))
-                .collect();
-            if distinct.len() > 1 {
+            if split(*field, register) {
                 let alternatives = register
                     .iter()
                     .map(|(event, value)| Alternative {
-                        value: shown(value),
+                        value: shown(*field, value),
                         by: self.who(*event),
                         at: event_time(event.millis()),
                         event: *event,
@@ -97,11 +83,23 @@ impl State {
         out
     }
 
+    /// The fields of `issue` two writers set differently ([`State::conflicts`]), in the order its
+    /// registers were made; for an issue whose texts were not read, its long fields as its texts
+    /// were when written, after the others (roll-lqjj.6).
+    pub fn disputed_fields(&self, issue: &Issue) -> Vec<Field> {
+        let mut out: Vec<Field> = (issue.registers().iter())
+            .filter(|(field, register)| split(**field, register))
+            .map(|(field, _)| *field)
+            .collect();
+        if let Texts::There(stored) = issue.texts() {
+            out.extend(stored.disputed.iter().copied());
+        }
+        out
+    }
+
     /// Whether a field of `issue` is disputed.
     pub fn disputed(&self, issue: &Issue, field: Field) -> bool {
-        self.conflicts(issue)
-            .iter()
-            .any(|(disputed, _)| *disputed == field)
+        self.disputed_fields(issue).contains(&field)
     }
 
     /// Finished for the purposes of unblocking others. A disputed status does not count.
@@ -283,6 +281,26 @@ pub fn sort_for_listing(items: &mut [&Issue]) {
             .then_with(|| created(a).cmp(&created(b)))
             .then_with(|| a.key().cmp(b.key()))
     });
+}
+
+/// What a register of `field` shows of `value`: a status register's status, any other's value.
+fn shown(field: Field, value: &Value) -> Value {
+    if field == Field::Status {
+        value.get("status").cloned().unwrap_or(Value::Null)
+    } else {
+        value.clone()
+    }
+}
+
+/// Whether `register`, of `field`, holds values two writers left different, as conflicts compare
+/// them: what a projection keeps of a long field whose texts it has not read (roll-lqjj.6).
+pub(crate) fn split(field: Field, register: &IdMap<Value>) -> bool {
+    register.len() > 1 && {
+        let distinct: HashSet<String> = (register.values())
+            .map(|value| dumps(&shown(field, value)))
+            .collect();
+        distinct.len() > 1
+    }
 }
 
 /// A value as `json.dumps(value, sort_keys=True)` prints it: conflicts compare values so.

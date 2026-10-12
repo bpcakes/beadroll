@@ -1,8 +1,9 @@
 //! `<store>/projection` on disk: a fixed header, then what the projection was made from (the build
-//! of bead that made it and every journal file's identity), its state and its index. The header
-//! gives each part's length and a 128-bit sum of its bytes, so that a part is read only when it is
-//! whole and as written: a damaged or truncated file is no projection, and a command that only
-//! reads reads the first two parts alone.
+//! of bead that made it, every journal file's identity, and the generation of the text file its
+//! issues' texts are placed in), its state and its index. The header gives each part's length and a
+//! 128-bit sum of its bytes, so that a part is read only when it is whole and as written: a damaged
+//! or truncated file is no projection, and a command that only reads reads the first two parts
+//! alone.
 
 use std::fs::File;
 use std::io::{Read as _, Seek as _, SeekFrom};
@@ -10,14 +11,15 @@ use std::path::Path;
 
 use beadroll_core::projection::{ENCODING, Encoded};
 
-use crate::fs::content_sum as sum;
+use beadroll_core::projection::sum;
+
 use crate::memo::FileKey;
 
 /// The first bytes of a projection.
 const MAGIC: &[u8; 16] = b"bead projection\n";
 
 /// The version of this layout.
-const LAYOUT: u32 = 1;
+const LAYOUT: u32 = 2;
 
 /// The header's length: the magic, the two versions, three lengths and three sums.
 const HEADER: usize = 16 + 4 + 4 + 3 * 8 + 3 * 16;
@@ -33,11 +35,13 @@ pub(super) struct Held {
     pub(super) sum: Option<[u8; 16]>,
 }
 
-/// What a projection was made from: the build of bead that made it, and the journal's files.
+/// What a projection was made from: the build of bead that made it, the journal's files, and the
+/// generation of the text file its issues' texts are placed in (roll-lqjj.6).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Made {
     pub(super) build: String,
     pub(super) files: Vec<Held>,
+    pub(super) texts: [u8; 16],
 }
 
 /// A projection file read as far as its state: what it was made from, its state, and where its
@@ -60,6 +64,7 @@ impl Stored {
         (sum(&index) == self.index_sum).then_some(Encoded {
             state: self.state,
             index,
+            texts: Vec::new(),
         })
     }
 }
@@ -148,6 +153,7 @@ fn made_bytes(made: &Made) -> Vec<u8> {
         out.extend_from_slice(&inode.to_le_bytes());
         out.extend_from_slice(&device.to_le_bytes());
     }
+    out.extend_from_slice(&made.texts);
     out
 }
 
@@ -180,7 +186,12 @@ fn unmade(bytes: &[u8]) -> Option<Made> {
             sum,
         });
     }
-    (at.1 == bytes.len()).then_some(Made { build, files })
+    let texts = at.take::<16>()?;
+    (at.1 == bytes.len()).then_some(Made {
+        build,
+        files,
+        texts,
+    })
 }
 
 /// Fixed-width fields read from bytes, from an offset.

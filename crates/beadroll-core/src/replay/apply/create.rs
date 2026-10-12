@@ -100,6 +100,7 @@ fn new_issue(event: &Doing<'_>, create: &Create, key: String, who: &str, when: &
         origin,
         where_: place,
         closed_on: None,
+        texts: crate::state::Texts::Here,
     };
     let defaults = [
         (Field::Title, Value::from("")),

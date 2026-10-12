@@ -5,14 +5,14 @@ use std::ffi::OsString;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::text::{repr, str_of};
 use beadroll_core::view::icon;
-use beadroll_store::{merged_into_default, view};
+use beadroll_store::merged_into_default;
 
-use super::{Context, Failure, Outcome, need_tracker, resolve_arg};
+use super::{Context, Failure, Outcome, need_tracker, resolve_arg, view_of};
 
 /// The issues `ids` name in full, each with whether the commit that closed it is on the default
 /// branch.
 pub(crate) fn show(ctx: &Context<'_>, ids: &[OsString]) -> Result<Outcome, Failure> {
-    let st = view(ctx.ws)?;
+    let st = view_of(ctx.ws, ids)?;
     need_tracker(&st)?;
     let mut result = Vec::new();
     for key in ids {

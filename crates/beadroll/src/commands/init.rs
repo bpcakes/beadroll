@@ -10,7 +10,8 @@ use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::text::repr;
 use beadroll_git::{Fact, is_local_path, realpath, without_password};
 use beadroll_store::{
-    Endpoint, Workspace, derived_shaped, find_workspace, remembered, uuid7, view, write_atomic,
+    Endpoint, Workspace, derived_shaped, find_workspace, remembered, uuid7, view_outline,
+    write_atomic,
 };
 use beadroll_sync::{
     Error as SyncError, Link, publish_soon, publish_soon_to, synchronise, writing,
@@ -137,7 +138,7 @@ fn join_published(
     remote: Option<&Endpoint>,
     offline: bool,
 ) -> Result<Published, Failure> {
-    if offline || view(ws)?.prefix().is_some() {
+    if offline || view_outline(ws)?.prefix().is_some() {
         return Ok(Published::Nothing);
     }
     let remote = match remote {
@@ -232,7 +233,7 @@ fn workspace_for(
     let base = ws.as_ref().unwrap_or(ctx.ws);
     // the tracker this checkout has, joined just now or here already (an earlier init may have
     // adopted it): the file names it, since a new id would start a second tracker beside it
-    let has_tracker = joined.is_some() || view(base)?.prefix().is_some();
+    let has_tracker = joined.is_some() || view_outline(base)?.prefix().is_some();
     // a URL-derived id named in a tracked file would stop matching when the URL changed, and the
     // file would then be refused as another repository's id: such a tracker stays URL-derived
     if has_tracker && derived_shaped(&base.id) {
@@ -346,11 +347,13 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
             data.insert("name".into(), Value::from(name.unwrap_or(prefix)));
             tx.emit("init", None, data, None)?;
         }
+        // read before the import, which never changes it: the state then never takes in what an
+        // import emits, which would hold every imported text beside the events (roll-lqjj.9)
+        let prefix = tx.state()?.prefix().cloned().unwrap_or(Value::Null);
         let imported = match args.import_path.as_ref().filter(|p| !p.is_empty()) {
             Some(path) => import_records(tx, path)?,
             None => 0,
         };
-        let prefix = tx.state()?.prefix().cloned().unwrap_or(Value::Null);
         Ok((prefix, imported))
     })?;
     // `init --tracked --remote` is the deliberate switch: record it, so the tracked remote is the

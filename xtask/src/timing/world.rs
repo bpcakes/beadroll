@@ -8,6 +8,7 @@ use std::process::{Command, Stdio};
 use std::time::Instant;
 
 use super::history::{Files, segments};
+use super::memory::{self, Peaks};
 use crate::workspace::{self, Failure};
 
 /// How many runs each figure is the best of.
@@ -116,13 +117,28 @@ impl World {
     /// `bead ARGS` in the checkout, on the scratch store ([`isolated`]); a failure fails the
     /// timing.
     pub(super) fn bead(&self, args: &[&str]) -> Result<(), Failure> {
-        let output = isolated(&self.bead)
+        self.output(args, None).map(drop)
+    }
+
+    /// What `bead ARGS` printed, run as [`World::bead`] runs it, with `failpoints` as its
+    /// `BEAD_FAILPOINTS` when given.
+    pub(super) fn output(
+        &self,
+        args: &[&str],
+        failpoints: Option<&str>,
+    ) -> Result<String, Failure> {
+        let mut command = isolated(&self.bead);
+        command
             .args(args)
             .current_dir(&self.checkout)
             .env("BEAD_HOME", &self.home)
             .env("BEAD_WORKSPACE", WORKSPACE)
             .env("BEAD_ROTATE_BYTES", self.rotate.to_string())
-            .stdin(Stdio::null())
+            .stdin(Stdio::null());
+        if let Some(failpoints) = failpoints {
+            command.env("BEAD_FAILPOINTS", failpoints);
+        }
+        let output = command
             .output()
             .map_err(|error| Failure::Failed(format!("cannot run bead: {error}")))?;
         if !output.status.success() {
@@ -132,7 +148,68 @@ impl World {
                 String::from_utf8_lossy(&output.stderr).trim()
             )));
         }
-        Ok(())
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
+
+    /// How long `bead ARGS` took, in seconds, and what it held at its peak: its resident set, as
+    /// `/usr/bin/time` reports it when it exits (`None` where there is no such report), and its
+    /// heap when `counted` is xtask's own executable, which runs it as `cargo xtask bead` does
+    /// ([`memory::bead`]).
+    pub(super) fn peaks(
+        &self,
+        args: &[&str],
+        counted: Option<&Path>,
+    ) -> Result<(f64, Peaks), Failure> {
+        let flag = if cfg!(target_os = "macos") {
+            "-l"
+        } else {
+            "-v"
+        };
+        let program = counted.unwrap_or(&self.bead);
+        let run = |timed: bool| {
+            let mut command = isolated(if timed {
+                Path::new("/usr/bin/time")
+            } else {
+                program
+            });
+            if timed {
+                command.arg(flag).arg(program);
+            }
+            if counted.is_some() {
+                command.arg("bead");
+            }
+            command
+                .args(args)
+                .current_dir(&self.checkout)
+                .env("BEAD_HOME", &self.home)
+                .env("BEAD_WORKSPACE", WORKSPACE)
+                .env("BEAD_ROTATE_BYTES", self.rotate.to_string())
+                .stdin(Stdio::null())
+                .output()
+        };
+        let clock = Instant::now();
+        // no /usr/bin/time here: the heap is still xtask's to say
+        let (output, timed) = match run(true) {
+            Ok(output) => (output, true),
+            Err(_) => (
+                run(false).map_err(|error| Failure::Failed(format!("cannot run bead: {error}")))?,
+                false,
+            ),
+        };
+        let seconds = clock.elapsed().as_secs_f64();
+        if !output.status.success() {
+            return Err(Failure::Failed(format!(
+                "bead {} failed: {}",
+                args.join(" "),
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        let report = String::from_utf8_lossy(&output.stderr);
+        let peaks = Peaks {
+            resident: timed.then(|| memory::peak_of(&report)).flatten(),
+            heap: counted.and_then(|_| memory::heap_of(&report)),
+        };
+        Ok((seconds, peaks))
     }
 
     /// A local write, not published: a comment on the history's first issue.

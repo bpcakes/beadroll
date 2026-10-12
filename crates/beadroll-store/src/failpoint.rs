@@ -18,7 +18,7 @@ use beadroll_core::code::Code;
 use crate::error::Error;
 
 /// The points bead has, besides `atomic-write:<path part>` and `atomic-written:<path part>`.
-pub const POINTS: [&str; 18] = [
+pub const POINTS: [&str; 19] = [
     "ownership.before-publish",
     "ownership.after-publish-ok",
     "ownership.after-confirm",
@@ -34,6 +34,7 @@ pub const POINTS: [&str; 18] = [
     "claim.before-push",
     "pending.after-list",
     "journal.after-enumerate",
+    "projection.texts-appended",
     "view.before-load-pending",
     "identity.before-link",
     "clock",

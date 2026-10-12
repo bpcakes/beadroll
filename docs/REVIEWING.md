@@ -4,9 +4,10 @@ A brief for an independent reviewer: an agent or a person who did not write this
 to find out whether the design holds, to break it if they can, and to report with
 reproductions. Reviewers do not extend the tool.
 
-Ten reviews have run; reviews 8 and 9 audit the Rust port plan, and review 10 is Codex's, task by
-task, of epic `roll-lqjj`. Their reports are kept verbatim in `reviews/`; every finding and what
-became of it is in `FINDINGS.md`. Start from what they did not cover.
+Eleven reviews have run; reviews 8 and 9 audit the Rust port plan, review 10 is Codex's, task by
+task, of epic `roll-lqjj`, and review 11 is Claude and Codex's review of its follow-up branch.
+Their reports are kept verbatim in `reviews/`; every finding and what became of it is in
+`FINDINGS.md`. Start from what they did not cover.
 
 ## 1. What this is
 
@@ -106,7 +107,17 @@ These were decided deliberately. Report problems *with* them, not their existenc
   under the machine that created it; events refer to issues by immutable id.
 - One event with two different payloads is quarantined alone; nothing waits on it.
 - The store lock is held while a sync or claim pushes (about a second against GitHub).
-- Publishing is serialised on one ref; under heavy contention claims take seconds.
+- Publishing is serialised on one ref; under heavy contention claims take seconds, and so do
+  writes (roll-lqjj.7, the maintainer's decision of 2026-10-12: tune today's protocol rather than
+  give each machine a ref of its own, correctness before speed; a write taking over a second is no
+  defect). Four machines each publishing every write at once, against a remote taking 0.3 s a
+  fetch or a push (`cargo xtask timing --contend 4`), converge every time; what the retries were
+  tuned for is that a write losing race after race still gets through: a sync or an ownership
+  command makes 24 rounds, twice Python's twelve, waiting between them any time up to
+  `0.1 × 2^(attempt − 1)` seconds, at most two, where Python's linear wait would have reached two
+  minutes over 24 rounds. Before, one write in a hundred, and one in four hundred, was left
+  unpublished until a later command carried it; after, none in 650. Medians did not move beyond
+  the runs' noise; the longest waits shrank (31 s to 14 s, 28 s to 23 s).
 - No compaction beyond segment rotation. A persisted projection, a cache and never a source
   (roll-lqjj.2, step 3 of epic roll-lqjj, whose plan replaced the "no persisted projection" of
   earlier): `<store>/projection` keeps the state the journal replays into, with what it was made
@@ -129,7 +140,28 @@ These were decided deliberately. Report problems *with* them, not their existenc
   atomically when every segment ended with a whole line, never into a store that is not there; a
   projection missing, cut, damaged (a 128-bit sum of each part) or another build's is never read,
   and a failed write is no failure. A state read from it knows, of its events, those it names:
-  `State::saw`, `holds` and `events`, which no command reads, answer for those alone.
+  `State::saw`, `holds` and `events`, which no command reads, answer for those alone. Each issue's
+  texts (its long fields, their registers' values, its comments and its extras) are kept apart
+  (roll-lqjj.6), in `<store>/projection-texts`, each issue's as bytes of their own the state places
+  and sums, the state keeping what a list and a later event need of them unread (the events behind
+  each long field's register, which of those fields two writers set differently). A command that
+  prints no texts (`list`, `ready`, `blocked`, `claims`, `dep`, `info`, a transition's or a
+  release's answer) never reads them; one that prints issues whole (`show`, `comments`, `update`,
+  `claim`, `takeover`) reads in only theirs; `export`, `search` and `lint` read every text; and
+  records applied after the projection have the texts of the issues they are about read in first,
+  a change to texts not read in declining. Texts that cannot be read as written (a sum, a length, a
+  generation, the events behind a register that differ) have the journal replayed and both files
+  written again. Texts are only appended, under the text file's own lock, the projection written
+  after them, so that a bead killed between the two leaves the last projection; a projection made
+  whole, or whose file holds more texts no longer read than read (beyond a mebibyte), starts the
+  file again, under the generation its texts give, so that the same texts make the same file. A
+  merge that brings events written concurrently with the store's replays the journal, and stays so
+  (roll-lqjj.8, by the maintainer's direction of 2026-10-12: correctness before speed): it costs
+  what a replay does, 0.45 s at 50,000 events and 1.0–2.0 s at 200,000 (`cargo xtask timing
+  --merge N --concurrent`), and comes in about a merge in ten where two machines write. Taking
+  such events in without replaying would mean reproducing what replay settles by the order it
+  applies events in (the key two concurrent creates minted, the order of comments, claim history
+  and issue order), the question a checkpoint's continuation faces too (roll-lqjj.4).
 - No history boundary (roll-lqjj.3, step 4 of epic roll-lqjj; the maintainer's decision of
   2026-10-12, on the evidence in `RUST-PORT.md` Appendix A, "roll-lqjj.3"): a machine's work
   merges by itself however old it is, as every merge has so far. The alternatives were a supported
@@ -161,8 +193,25 @@ These were decided deliberately. Report problems *with* them, not their existenc
   closed issues changes what `show`, `log` and `export` return and breaks the Beads round trip for
   them, so it would be a policy a tracker sets explicitly, with a command that lists what it forgot
   and the archive keeping it; step 5 leaves room for it by keeping the index and the archive apart
-  from the state. Closed issues hold 27–100% of the largest public trackers' bytes, and keeping
-  texts out of what every command decodes (roll-lqjj.6) may make retention unnecessary for speed.
+  from the state. Closed issues hold 27–100% of the largest public trackers' bytes; with texts kept
+  out of what most commands read (roll-lqjj.6), what retention would still save is disk, a fresh
+  machine's fetch, and the commands that read every text (`export`, `search`, `lint`).
+- An import holds no more than a cold start does (roll-lqjj.9; the maintainer's budget of
+  2026-10-12): its heap peak stays within what making the projection of the imported journal
+  takes, which a published import does in its own publish, an offline one in the first command
+  after it, and every new machine in its first sync of the tracker. A generated 49 MB export
+  (14,000 records) peaks at 165 MB offline and at 245 MB published, the projection's making, where
+  it peaked at 473 MB (`cargo xtask timing --import`; `RUST-PORT.md` Appendix A). Each form of the
+  export is let go of once the next is made, the transaction keeps each event once and lets go of
+  it as it is encoded, `init` reads the prefix before it imports, so that its state never takes
+  the imported events in, and a text file is written from its parts. A tighter budget was not
+  chosen, nor its work: the planner still copies the records into its plan, and the transaction
+  holds each event as a JSON value until it is appended. An import's events reach the journal in
+  one write, once every record is checked and every event emitted, never as they are made: a torn
+  append keeps every whole line it holds, so events written as they were made would let a crash
+  keep part of an import. bead's heap is counted by running bead in xtask (`cargo xtask bead`,
+  with xtask's counting allocator, `RUST-PORT.md` §2.2), the reason xtask depends on the `beadroll`
+  library.
 - What each event had seen is one clock per event over chains, the reachability index of
   `state/seen.rs` (`RUST-PORT.md` §2.3c): every machine's journal is a chain, and each event of an
   attempt file joins a chain whose last event is among its ancestors, or starts one, so there are

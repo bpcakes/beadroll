@@ -13,6 +13,10 @@
 //! its machine's own, or unreadable; a new machine's journal, since chains are numbered by machine;
 //! a cause that is neither new nor on the frontier. An event that cannot apply, which replay
 //! reports in an order of its own, is found as it is observed: the projection is then dropped.
+//!
+//! An event that changes an issue's texts (a long field set, a comment, a delete's record) needs
+//! them in the issue: a store reads them in before it extends (roll-lqjj.6), and when one is not,
+//! the projection declines too. Texts read in that change are written again.
 
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
@@ -20,10 +24,10 @@ use std::collections::{BinaryHeap, HashMap};
 use indexmap::IndexMap;
 
 use crate::id::EventId;
-use crate::journal::{Event, Journal, Parts};
+use crate::journal::{Event, Journal, Parts, Rest};
 use crate::op::Op;
 use crate::replay::{Names, Room, apply_one, finish, observe_one};
-use crate::state::KeySpace;
+use crate::state::{KeySpace, Texts, is_text};
 
 use super::{Projection, Record, small};
 
@@ -91,6 +95,9 @@ impl Projection {
             }
             doing.push(what);
         }
+        if !self.texts_in(&doing) {
+            return Ok(Extended::Replay);
+        }
         let Some(ordered) = self.after_all(&events) else {
             return Ok(Extended::Replay);
         };
@@ -133,6 +140,29 @@ impl Projection {
         finish(&mut self.state);
         self.advance(&events, &order);
         Ok(Extended::Applied(Box::new(self)))
+    }
+
+    /// Whether every issue whose texts `doing` changes has them in it, read in by the store first
+    /// (roll-lqjj.6): those read in are then to be written again.
+    fn texts_in(&mut self, doing: &[Box<Rest>]) -> bool {
+        for what in doing {
+            let texts = match &what.op {
+                Op::Set(fields) => fields.iter().any(|(field, _)| is_text(*field)),
+                Op::Comment { .. } | Op::Delete(_) => true,
+                _ => false,
+            };
+            let issue = (what.issue.as_deref())
+                .and_then(EventId::parse)
+                .and_then(|uid| self.state.issues.get_mut(&uid));
+            if let Some(issue) = issue.filter(|_| texts) {
+                match issue.texts {
+                    Texts::There(_) => return false,
+                    Texts::Read(_) => issue.texts = Texts::Here,
+                    Texts::Here => {}
+                }
+            }
+        }
+        true
     }
 
     /// The new `events` in the order replay applies them after the projection's, when every one

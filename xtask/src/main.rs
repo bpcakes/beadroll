@@ -24,7 +24,8 @@ mod workspace;
 
 use std::process::ExitCode;
 
-/// The system allocator, counted: `timing --load` reports the most its process held on its heap.
+/// The system allocator, counted: `timing --load` and `bead` report the most their process held on
+/// its heap.
 #[global_allocator]
 static HEAP: timing::heap::Counting = timing::heap::Counting;
 
@@ -40,27 +41,40 @@ usage: cargo xtask <command>
       output is kept in target/check/. ./check.sh runs this.
 
   timing [--label NAME] [--out FILE] -- COMMAND [ARG...]
-  timing --replay N [--ownership|--churn] [--label NAME] [--out FILE]
-  timing --sync N [--ownership|--churn] [--rotate BYTES] [--label NAME] [--out FILE]
-  timing --read N [--ownership|--churn] [--label NAME] [--out FILE]
-  timing --merge N [--batch M] [--ownership|--churn] [--label NAME] [--out FILE]
+  timing --replay N [--ownership|--churn|--text] [--label NAME] [--out FILE]
+  timing --sync N [--ownership|--churn|--text] [--rotate BYTES] [--label NAME] [--out FILE]
+  timing --read N [--ownership|--churn|--text] [--label NAME] [--out FILE]
+  timing --merge N [--batch M] [--concurrent] [--ownership|--churn|--text] [--label NAME]
+         [--out FILE]
+  timing --contend M [--writes W] [--latency MS] [--label NAME] [--out FILE]
+  timing --import N [--label NAME] [--out FILE]
   timing --load DIR [--no-replay]
       Run COMMAND and append what it took, one JSON line, to FILE (default
       target/timing.jsonl); or replay a parsed journal of N valid events in-process, the best of
       seven runs (run it from a release build: cargo run --release --package xtask -- timing
       --replay 10000). --ownership makes about half the events claims, takeovers and releases in
       attempt files; --churn keeps a thousand issues, every later event retitling one or putting
-      a label on or off it. The journal is written under target/timing/ while it is measured, and
+      a label on or off it; --text gives the plain history's operations texts the size of real
+      trackers' (descriptions, notes and comments of a few hundred bytes to a few KB). The journal is written under target/timing/ while it is measured, and
       the record also holds the peak memory (as /usr/bin/time reports it) of a process that loads it
       from disk and replays it, and of one that only loads it: --load DIR is that process.
       --sync N times a publishing bead sync (BEAD_UNDER_TEST, else the bead Cargo builds in
       xtask's profile) on a scratch store of those N events, its journals rotated at BYTES (bead's
       default, 262144), against a local bare remote: the first sync, then the best of five after a
       local write each, with the store's memo of its journal files and its projection, without
-      its projection, and without either. --read N times bead list, show and ready there, with
-      the projection and without it; --merge N, a bead sync that merges M events (ten by default)
-      another machine wrote after everything the store holds, with the projection and without it.
+      its projection, and without either. --read N times bead list, show and ready there, and a
+      local write (bead comments add --offline), with the projection and without it; --merge N, a bead sync that merges M events (ten by default)
+      another machine wrote after everything the store holds, with the projection and without it
+      (--concurrent: the store writes too, so that the merge brings concurrent events);
+      --contend M, M machines writing one tracker at once (W writes each, 25 by default), every
+      write published, each fetch and push made MS milliseconds slower (300 by default); --import
+      N, the time, peak resident set and heap peak of bead init --import of a generated export of
+      N records, shaped as real trackers' are, offline and then the first sync, and published.
       Timings are evidence, never a gate (docs/RUST-PORT.md §4.7).
+
+  bead ARG...
+      Run bead with ARGs in this process, whose heap is counted, and say on standard error the
+      most it held at once (heap peak: N) once it is done: how timing --import counts bead's heap.
 ";
 
 fn main() -> ExitCode {
@@ -70,12 +84,13 @@ fn main() -> ExitCode {
     let outcome = match command.as_ref().and_then(|c| c.to_str()) {
         Some("check") => check::main(rest),
         Some("timing") => timing::main(rest),
+        Some("bead") => return timing::memory::bead(rest),
         Some("help" | "-h" | "--help") => {
             print!("{USAGE}");
             return ExitCode::SUCCESS;
         }
         _ => Err(workspace::Failure::Usage(
-            "expected a command: check or timing".into(),
+            "expected a command: check, timing or bead".into(),
         )),
     };
     match outcome {

@@ -6,13 +6,13 @@ use beadroll_core::event::{DONE, Field};
 use beadroll_core::json::{Object, Value};
 use beadroll_core::state::Issue;
 use beadroll_core::text::str_of;
-use beadroll_store::view;
+use beadroll_store::{view, view_outline};
 
 use super::{Context, Failure, Outcome, need_tracker};
 
 /// Open issues something holds back, by key, each with the issues blocking it.
 pub(crate) fn blocked(ctx: &Context<'_>) -> Result<Outcome, Failure> {
-    let st = view(ctx.ws)?;
+    let st = view_outline(ctx.ws)?;
     need_tracker(&st)?;
     let mut items: Vec<&Issue> = st
         .issues()

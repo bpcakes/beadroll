@@ -10,13 +10,13 @@ use std::sync::Arc;
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::replay::replay;
-use beadroll_core::state::State;
+use beadroll_core::state::{Issue, State};
 
 use crate::journal::{append_events, load_journal, view, write_attempt_file};
 use crate::settings::Settings;
 use crate::workspace::Workspace;
 
-use super::{file, projection, projection_path};
+use super::{file, projection, projection_path, read_texts};
 
 const HERE: &str = "0000aa01";
 
@@ -97,10 +97,15 @@ fn answers(state: &State) -> String {
     format!("{issues:?} {:?} {:?}", state.integrity(), state.renames())
 }
 
-/// Whether `ws` answers as its journal replayed, through its projection and through `view`.
+/// Whether `ws` answers as its journal replayed, through its projection, its texts read in, and
+/// through `view`.
 fn replays(ws: &Workspace) -> bool {
     let replayed = answers(&replay(load_journal(ws).unwrap()).unwrap());
-    answers(&view(ws).unwrap()) == replayed && answers(projection(ws).unwrap().state()) == replayed
+    let mut projected = projection(ws).unwrap().into_state();
+    let uids: Vec<EventId> = projected.issues().map(Issue::uid).collect();
+    read_texts(ws, &mut projected, uids)
+        && answers(&view(ws).unwrap()) == replayed
+        && answers(&projected) == replayed
 }
 
 /// What the stored projection was made from, by path: each file's length.
@@ -310,3 +315,5 @@ fn an_earlier_segment_that_grows_is_replayed() {
     drop(file);
     assert!(replays(&ws));
 }
+
+mod texts;

@@ -27,7 +27,7 @@ ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `settle_
   memo while the segment is unchanged.
 - `src/synchronise.rs`: `synchronise` and `Synced`, `adopt_published`, `publish_soon`,
   `unpublished_count`, `pause`, `ROUNDS`.
-- `src/ownership.rs`: `coordinated` (the twelve rounds of a claim, takeover, release or claiming
+- `src/ownership.rs`: `coordinated` (up to 24 rounds of a claim, takeover, release or claiming
   update), `settle_commands` (receipts), `settle_pending` (fences), `forget`, `Mode`, `Settled`.
 - `src/error.rs`: `Error`, each variant with its code.
 - `tests/sync/`: the Python suite's in-crate protocol tests, ported under the naming rule of
@@ -43,8 +43,9 @@ ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `settle_
 
 ## Invariants
 
-- Exactly 12 rounds per command, `pause(U(0.1, 0.4) × attempt)` after a failed one, outside the
-  store lock (§1.3).
+- Up to 24 rounds per command, with a uniformly sampled pause from zero up to
+  `min(0.1 × 2^(attempt − 1), 2)` seconds after a failed round, outside the store lock
+  (roll-lqjj.7; `docs/REVIEWING.md` §2).
 - The protocol depends on fetch, read-tree and push, never on `sync.git`'s internals (§2.3i); a
   `Remote` trait waits for its second implementation.
 - A link asks `sync.git` what Python asks, in the same order and with the same classification of

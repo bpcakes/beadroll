@@ -9,25 +9,41 @@ use beadroll_core::text::{py_int, shell_quote};
 use beadroll_git::PushOutcome;
 use beadroll_store::{
     Endpoint, Failpoints, Fired, Memo, Workspace, claim_files, load_pending, moved_workspaces,
-    pending_files, relative, segment_files, view, workspaces_named, write_atomic,
+    pending_files, relative, segment_files, view_outline, workspaces_named, write_atomic,
 };
 
 use crate::error::Error;
 use crate::link::Link;
 use crate::tx::{drop_pending, locked};
 
-/// Rounds a sync or an ownership command makes before it gives up.
-pub const ROUNDS: u32 = 12;
+/// Rounds a sync or an ownership command makes before it gives up: twice Python's twelve
+/// (roll-lqjj.7), so that a machine that keeps losing the race to others writing at once still
+/// gets its write through.
+pub const ROUNDS: u32 = 24;
 
-/// The wait between attempts against a moving remote: `U(0.1, 0.4) × attempt` seconds, outside
-/// the store lock. The `backoff` failpoint passes here (`skip` waits not at all).
+/// The longest wait between two rounds, in seconds.
+const LONGEST_PAUSE: f64 = 2.0;
+
+/// The wait between attempts against a moving remote, outside the store lock: any time up to
+/// `0.1 × 2^(attempt - 1)` seconds, at most [`LONGEST_PAUSE`] (roll-lqjj.7; Python's was
+/// `U(0.1, 0.4) × attempt`), so that machines that lost a race to each other spread out rather
+/// than meet again. The `backoff` failpoint passes here (`skip` waits not at all).
 pub fn pause(attempt: u32, failpoints: &Failpoints) {
     if failpoints.hit("backoff") == Some(Fired::Skip) {
         return;
     }
-    let seconds = (0.1 + fastrand::f64() * 0.3) * f64::from(attempt);
+    let seconds = fastrand::f64() * longest_pause(attempt);
     std::thread::sleep(Duration::from_secs_f64(seconds));
 }
+
+/// The bound is separate from sampling and sleeping so its schedule can be checked without waits.
+fn longest_pause(attempt: u32) -> f64 {
+    let doubled = f64::from(1u32 << attempt.saturating_sub(1).min(8));
+    (0.1 * doubled).min(LONGEST_PAUSE)
+}
+
+#[cfg(test)]
+mod tests;
 
 /// What the remote last answered, when it was not the plain race the message names.
 pub fn conflict_detail(link: &Link<'_>) -> String {
@@ -119,7 +135,8 @@ impl Synced {
 /// this checkout's origin holding a tracker under another id adopts it (`moved.json`).
 pub fn synchronise(ws: &Workspace, remote: &Endpoint) -> Result<Synced, Error> {
     let mut link = Link::new(ws, remote)?;
-    let known_renames = view(ws)?.renames().len();
+    // counts alone: no issue's texts are read in (roll-lqjj.6)
+    let known_renames = view_outline(ws)?.renames().len();
     let (mut pulled, mut pushed) = (0i64, 0i64);
     let mut repacked = false;
     let mut settled = None;
@@ -155,7 +172,7 @@ pub fn synchronise(ws: &Workspace, remote: &Endpoint) -> Result<Synced, Error> {
             conflict_detail(&link)
         )));
     };
-    let state = view(ws)?;
+    let state = view_outline(ws)?;
     let mut values = Vec::new();
     if let Some(name) = &ws.name {
         values.push(("name", Value::from(name.to_string_lossy().into_owned())));

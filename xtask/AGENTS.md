@@ -5,7 +5,8 @@
 `xtask` is the workspace's own tooling, run as `cargo xtask` (`docs/RUST-PORT.md` §4): `check` runs
 the workspace's baseline, its tests, its doctests and the `infra/` drivers' tests, with `--stress`
 the stress models and with `--real` the real-export checks, and `./check.sh` runs it; `timing`
-records how long a command (or a replay) took. Its tests also keep two of the Python suite's
+records how long a command (or a replay) took; `bead` runs bead in xtask's process, whose
+allocator counts its heap. Its tests also keep two of the Python suite's
 properties that are about the repository rather than bead: the hygiene scan and the CI matrix.
 
 Until the cutover it also ran the Python test suite against any `bead` (`oracle`), mapped every
@@ -24,11 +25,14 @@ Python implementation, so they went with it; `python-0.1.0` has them.
   store's memo of its journal files and its projection, without its projection, and without
   either (roll-lqjj.1, roll-lqjj.2); `timing/read.rs`: `timing --read N`, the reading commands
   there with the projection and without it; `timing/merge.rs`: `timing --merge N`, a sync that
-  merges what another machine wrote after the store's frontier; `timing/world.rs`: the scratch
+  merges what another machine wrote after the store's frontier; `timing/contend.rs`: `timing
+  --contend M`, machines writing one tracker at once (roll-lqjj.7); `timing/import.rs`: `timing
+  --import N`, importing a generated Beads export (roll-lqjj.9); `timing/world.rs`: the scratch
   store, checkout and remote they run `bead` on; `timing/history.rs`: the histories it replays
   (`--ownership`: heavy in claims, takeovers and releases in attempt files; `--churn`: a thousand
   issues changed over and over, a state that stays its size); `timing/memory.rs`: the journal written under `target/timing/` while it is measured,
-  `timing --load DIR` (the process that loads and replays it), and its peaks: the resident set as
+  `timing --load DIR` (the process that loads and replays it), `bead` (bead's own code run in
+  xtask, for its heap), and their peaks: the resident set as
   `/usr/bin/time` reports it, and the heap as `timing/heap.rs` counts it, xtask's global allocator
   (the system's, counted; its one unsafe spot, `docs/RUST-PORT.md` §2.2).
 - `src/hygiene.rs`: `test_hygiene` ported, the repository lint (a test only).
@@ -55,9 +59,9 @@ Python implementation, so they went with it; `python-0.1.0` has them.
 - `timing --sync` runs `bead` and git on a scratch store, checkout and remote under
   `target/timing/`, which it removes after, as workspace `timing`, never the real store or another
   repository: none of them inherits the shell's `BEAD_*` and `GIT_*` variables.
-- Its dependency is beadroll-core, and for its tests regex-lite (the hygiene patterns, as Python
-  wrote them), sha2 (the plain history's digest) and tempfile; it may print (its crate root
-  allows it).
+- Its dependencies are beadroll-core and the `beadroll` library (for `bead`, which runs bead's code
+  in xtask's process), and for its tests regex-lite (the hygiene patterns, as Python wrote them),
+  sha2 (the plain history's digest) and tempfile; it may print (its crate root allows it).
 
 ## Common commands
 
@@ -67,6 +71,8 @@ Python implementation, so they went with it; `python-0.1.0` has them.
 - `cargo run --release --package xtask -- timing --replay 10000`, and with `--ownership`
 - `cargo run --release --package xtask -- timing --sync 200000`, and with `--ownership` or
   `--rotate BYTES`
+- `cargo run --release --package xtask -- timing --import 14000`: a generated 49 MB export,
+  offline, its first sync, and published
 - `cargo test -p xtask`
 - `python3 xtask/python/printable_table.py > crates/beadroll-core/src/text/printable.rs`, with
   the Python whose Unicode tables bead is to follow

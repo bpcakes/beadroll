@@ -1,26 +1,45 @@
 //! A state's issues, and what replay keeps beside them, as bytes ([`super::codec`]). What replay
 //! derives once it has applied every event (each issue's labels, the parent-child index) is not
 //! written: it is derived again as the state is read.
+//!
+//! An issue's texts (its long fields, the values their registers hold, its comments and its
+//! extras) are written apart, each issue's as bytes of their own ([`super::text_codec`]), which a
+//! projection keeps in its text file (roll-lqjj.6); the issue is written with where they are and
+//! what a list and a later event need of them unread ([`Stored`]). An issue read back has its
+//! texts there until they are read in.
+
+use std::collections::HashMap;
 
 use crate::event::Field;
+use crate::id::EventId;
 use crate::json::{Int, Value};
 use crate::replay::finish;
 use crate::state::{
-    Claim, Comment, EndedClaim, IdMap, IdSet, Integrity, Issue, Knowledge, LostClaim, Origin,
-    Provisional, Rename, Stale, State, VecMap,
+    Claim, EndedClaim, IdMap, IdSet, Integrity, Issue, Knowledge, LostClaim, Origin, Provisional,
+    Rename, Stale, State, Stored, TextPlace, Texts, VecMap, is_text,
 };
 
 use super::codec::{Reader, Unreadable, Writer};
+use super::text_codec::summary;
+
+/// The place of texts written nowhere: no texts' sum, so never read as an issue's.
+const NOWHERE: TextPlace = TextPlace {
+    at: 0,
+    len: 0,
+    sum: [0; 16],
+};
 
 /// How a claim can end, as [`EndedClaim::how`] names it.
 const ENDINGS: [&str; 5] = ["takeover", "release", "close", "reopen", "delete"];
 
-pub(crate) fn write_state(w: &mut Writer, st: &State) {
+/// The state, each issue with where its texts are: where they were read from or are, or for texts
+/// written nowhere yet, the place `given` gives them.
+pub(crate) fn write_state(w: &mut Writer, st: &State, given: &HashMap<EventId, TextPlace>) {
     w.optional_value(st.prefix.as_ref());
     w.optional_value(st.name.as_ref());
     w.count(st.issues.len());
     for issue in st.issues.values() {
-        write_issue(w, issue);
+        write_issue(w, issue, given.get(&issue.uid).copied().unwrap_or(NOWHERE));
     }
     w.count(st.by_key.len());
     for (key, uid) in &st.by_key {
@@ -94,14 +113,19 @@ pub(crate) fn read_state(r: &mut Reader<'_>) -> Result<State, Unreadable> {
     Ok(st)
 }
 
-fn write_issue(w: &mut Writer, issue: &Issue) {
+/// An issue without its texts, and where they are (`place`, for texts written nowhere yet).
+fn write_issue(w: &mut Writer, issue: &Issue, place: TextPlace) {
     w.id(issue.uid);
     w.text(&issue.key);
-    for field in &issue.fields {
-        w.optional_value(field.as_ref());
+    for (at, value) in issue.fields.iter().enumerate() {
+        let text = Field::ALL.get(at).is_some_and(|field| is_text(*field));
+        w.optional_value(value.as_ref().filter(|_| !text));
     }
-    w.count(issue.reg.len());
-    for (field, tags) in &issue.reg {
+    let registers: Vec<_> = (issue.reg.iter())
+        .filter(|(field, _)| !is_text(**field))
+        .collect();
+    w.count(registers.len());
+    for (field, tags) in registers {
         w.count(field.index());
         write_tags(w, tags);
     }
@@ -115,33 +139,6 @@ fn write_issue(w: &mut Writer, issue: &Issue) {
         w.text(to);
         w.text(kind);
         write_tags(w, tags);
-    }
-    w.count(issue.comments.len());
-    for comment in &issue.comments {
-        match comment {
-            Comment::Native {
-                uid,
-                seq,
-                author,
-                text,
-                where_,
-            } => {
-                w.byte(0);
-                w.id(*uid);
-                w.number(*seq);
-                w.name(author);
-                w.text(text);
-                w.optional_shared(where_.as_ref());
-            }
-            Comment::Imported(members) => {
-                w.byte(1);
-                w.object(members);
-            }
-        }
-    }
-    w.flag(issue.extra.is_some());
-    if let Some(extra) = &issue.extra {
-        w.object(extra);
     }
     write_values(w, &issue.dangling);
     w.count(issue.retracted.len());
@@ -157,6 +154,23 @@ fn write_issue(w: &mut Writer, issue: &Issue) {
     w.optional_shared(issue.origin.place.as_ref());
     w.optional_shared(issue.where_.as_ref());
     w.optional_shared(issue.closed_on.as_ref());
+    let stored = match &issue.texts {
+        Texts::There(stored) => (**stored).clone(),
+        Texts::Read(place) => summary(issue, *place),
+        Texts::Here => summary(issue, place),
+    };
+    w.number(stored.place.at);
+    w.number(u64::from(stored.place.len));
+    w.sixteen(&stored.place.sum);
+    w.count(stored.tags.len());
+    for (field, ids) in &stored.tags {
+        w.count(field.index());
+        w.ids(ids);
+    }
+    w.count(stored.disputed.len());
+    for field in &stored.disputed {
+        w.count(field.index());
+    }
 }
 
 fn read_issue(r: &mut Reader<'_>) -> Result<Issue, Unreadable> {
@@ -180,21 +194,6 @@ fn read_issue(r: &mut Reader<'_>) -> Result<Issue, Unreadable> {
         let edge = (r.text()?, r.text()?);
         dep_tags.push((edge, read_tags(r)?));
     }
-    let mut comments = Vec::new();
-    for _ in 0..r.count()? {
-        comments.push(match r.byte()? {
-            0 => Comment::Native {
-                uid: r.id()?,
-                seq: r.number()?,
-                author: r.name()?,
-                text: r.text()?,
-                where_: r.optional_shared()?,
-            },
-            1 => Comment::Imported(r.object()?),
-            _ => return Err(Unreadable("a comment")),
-        });
-    }
-    let extra = r.flag()?.then(|| r.object()).transpose()?.map(Box::new);
     let dangling = read_values(r)?;
     let mut retracted = std::collections::BTreeMap::new();
     for _ in 0..r.count()? {
@@ -208,6 +207,23 @@ fn read_issue(r: &mut Reader<'_>) -> Result<Issue, Unreadable> {
         actor: r.optional_shared()?,
         place: r.optional_shared()?,
     };
+    let where_ = r.optional_shared()?;
+    let closed_on = r.optional_shared()?;
+    let place = TextPlace {
+        at: r.number()?,
+        len: r.small()?,
+        sum: r.sixteen()?,
+    };
+    let mut tags = Vec::new();
+    for _ in 0..r.count()? {
+        let field = Field::ALL.get(r.index()?).copied();
+        tags.push((field.ok_or(Unreadable("a long field"))?, r.ids()?));
+    }
+    let mut disputed = Vec::new();
+    for _ in 0..r.count()? {
+        let field = Field::ALL.get(r.index()?).copied();
+        disputed.push(field.ok_or(Unreadable("a long field"))?);
+    }
     Ok(Issue {
         uid,
         key,
@@ -216,8 +232,8 @@ fn read_issue(r: &mut Reader<'_>) -> Result<Issue, Unreadable> {
         label_tags: VecMap::from_distinct(label_tags),
         dep_tags: VecMap::from_distinct(dep_tags),
         labels: std::collections::BTreeSet::new(),
-        comments,
-        extra,
+        comments: Vec::new(),
+        extra: None,
         dangling,
         retracted,
         claim: held.claim,
@@ -228,8 +244,13 @@ fn read_issue(r: &mut Reader<'_>) -> Result<Issue, Unreadable> {
         stale: held.stale,
         unconfirmed,
         origin,
-        where_: r.optional_shared()?,
-        closed_on: r.optional_shared()?,
+        where_,
+        closed_on,
+        texts: Texts::There(Box::new(Stored {
+            place,
+            tags,
+            disputed,
+        })),
     })
 }
 
@@ -361,7 +382,7 @@ fn read_int(r: &mut Reader<'_>) -> Result<Int, Unreadable> {
     }
 }
 
-fn write_tags(w: &mut Writer, tags: &IdMap<Value>) {
+pub(super) fn write_tags(w: &mut Writer, tags: &IdMap<Value>) {
     w.count(tags.len());
     for (id, value) in tags {
         w.id(*id);
@@ -369,7 +390,7 @@ fn write_tags(w: &mut Writer, tags: &IdMap<Value>) {
     }
 }
 
-fn read_tags(r: &mut Reader<'_>) -> Result<IdMap<Value>, Unreadable> {
+pub(super) fn read_tags(r: &mut Reader<'_>) -> Result<IdMap<Value>, Unreadable> {
     let n = r.count()?;
     let mut tags = Vec::with_capacity(n);
     for _ in 0..n {

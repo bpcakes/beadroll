@@ -14,7 +14,7 @@ use beadroll_core::state::State;
 use beadroll_git::IoError;
 use beadroll_store::{
     Actor, Workspace, append_events, attempt_path, capture_where, encode_events, glob_ending,
-    json_text, load_journal, private_dir, private_dirs, projection, replica_id, uuid7,
+    json_text, load_journal, private_dir, private_dirs, projection, read_texts, replica_id, uuid7,
     write_attempt_file,
 };
 
@@ -44,12 +44,10 @@ pub struct Tx<'a> {
     /// Every event emitted so far, as a journal records it.
     emitted: Vec<Record>,
     /// How many of them the projection has: the rest are applied when the state is asked for,
-    /// together, as an import emits many before it asks.
+    /// together, as a command that emits many before it asks would have them.
     applied: usize,
     /// The checkout's branch and commit, recorded on each event.
     pub place: Option<Value>,
-    /// Sequential events emitted, to append.
-    pub pending: Vec<Value>,
     /// The attempt's events emitted, to settle with the remote.
     pub ownership: Vec<Value>,
     /// Whether later events belong to the attempt.
@@ -76,7 +74,6 @@ impl<'a> Tx<'a> {
             emitted: Vec::new(),
             applied: 0,
             place,
-            pending: Vec::new(),
             ownership: Vec::new(),
             conditional: false,
             writable: actor.writable,
@@ -84,10 +81,27 @@ impl<'a> Tx<'a> {
         })
     }
 
-    /// The state the journal replays into, with every event emitted so far.
+    /// The sequential events emitted, taken out of the transaction to be appended: the journal's
+    /// records among those emitted, kept once and each let go of once encoded, so that a write of
+    /// many (an import emits one or more for each of its export's records) never holds them twice
+    /// (roll-lqjj.9). The transaction is done with once they are taken.
+    pub(crate) fn take_pending(&mut self) -> impl Iterator<Item = Value> + use<> {
+        (std::mem::take(&mut self.emitted).into_iter())
+            .filter(|record| record.sequenced)
+            .map(|record| record.value)
+    }
+
+    /// Whether any sequential event was emitted.
+    pub fn has_pending(&self) -> bool {
+        self.emitted.iter().any(|record| record.sequenced)
+    }
+
+    /// The state the journal replays into, with every event emitted so far. Of its issues' texts,
+    /// those of the issues the events emitted are about are in it (roll-lqjj.6); a command reads
+    /// in any other it prints.
     pub fn state(&mut self) -> Result<&State, Error> {
         if self.applied < self.emitted.len()
-            && let Some(projection) = self.projection.take()
+            && let Some(mut projection) = self.projection.take()
         {
             let records = self
                 .emitted
@@ -95,7 +109,13 @@ impl<'a> Tx<'a> {
                 .unwrap_or_default()
                 .to_vec();
             self.applied = self.emitted.len();
-            if let Extended::Applied(projection) = projection.extend(records)? {
+            let about = (records.iter())
+                .filter_map(|record| record.value.get("issue").and_then(Value::as_str))
+                .filter_map(EventId::parse);
+            // texts that cannot be read in have the journal replayed
+            if read_texts(self.ws, projection.state_mut(), about)
+                && let Extended::Applied(projection) = projection.extend(records)?
+            {
                 self.projection = Some(*projection);
             }
         }
@@ -168,9 +188,7 @@ impl<'a> Tx<'a> {
             return Err(Error::Validation("text is not valid UTF-8".to_owned()));
         }
         let sequenced = !(OWNERSHIP.contains(&op) || self.conditional);
-        if sequenced {
-            self.pending.push(event.clone());
-        } else {
+        if !sequenced {
             self.ownership.push(event.clone());
         }
         // later emits build on it
@@ -246,14 +264,16 @@ pub fn writing<T, E: From<Error>>(
             .into());
         }
         let result = body(&mut tx)?;
+        let sequenced = tx.has_pending();
+        let pending = tx.take_pending();
         let finish = || -> Result<(), Error> {
-            if !tx.pending.is_empty() {
-                append_events(ws, &tx.replica, &tx.pending)?;
+            if sequenced {
+                append_events(ws, &tx.replica, pending)?;
             }
             if !tx.ownership.is_empty() {
                 confirm_ownership(ws, &tx.ownership)?;
             }
-            if !tx.pending.is_empty() || !tx.ownership.is_empty() {
+            if sequenced || !tx.ownership.is_empty() {
                 forget_receipts(ws, &actor.value)?;
                 ws.set_wrote(true);
             }

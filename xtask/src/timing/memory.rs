@@ -1,8 +1,10 @@
 //! The memory replay needs: the peak resident set of a process that does nothing but load a journal
 //! written to disk and replay it (`timing --load DIR`), so that neither the generator nor xtask's
 //! own copies count. The kernel keeps every process's peak; `/usr/bin/time` reports it when the
-//! process exits (`-l` on macOS, `-v` with GNU time on Linux).
+//! process exits (`-l` on macOS, `-v` with GNU time on Linux). `cargo xtask bead` is such a
+//! process for a bead command: bead's own code, run in xtask, whose heap is counted.
 
+use std::ffi::OsString;
 use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};
 
@@ -110,7 +112,16 @@ pub(crate) fn main(dir: &Path, replaying: bool) -> Result<ExitCode, Failure> {
     Ok(ExitCode::SUCCESS)
 }
 
-/// How `--load` says its heap peak.
+/// `cargo xtask bead ARG...`: bead run with ARGs in this process, its exit status passed on, and
+/// once it is done the most the process held on its heap at once ([`heap::peak`]) said on standard
+/// error, after whatever bead wrote there (roll-lqjj.9).
+pub(crate) fn bead(args: Vec<OsString>) -> ExitCode {
+    let code = beadroll::run_with(args);
+    eprintln!("{HEAP_PEAK} {}", heap::peak());
+    code
+}
+
+/// How `--load` and `cargo xtask bead` say their heap peak.
 const HEAP_PEAK: &str = "heap peak:";
 
 /// What a `--load` run held at its peak, in bytes: its resident set, as `/usr/bin/time` reports
@@ -163,14 +174,14 @@ pub(crate) fn peaks(program: &Path, args: &[&std::ffi::OsStr]) -> Result<Peaks, 
     })
 }
 
-/// The heap peak a `--load` run said it reached.
-fn heap_of(said: &str) -> Option<u64> {
+/// The heap peak a `--load` or `cargo xtask bead` run said it reached.
+pub(super) fn heap_of(said: &str) -> Option<u64> {
     said.lines()
         .find_map(|line| line.strip_prefix(HEAP_PEAK)?.trim().parse().ok())
 }
 
 /// The peak in `/usr/bin/time`'s report: macOS prints bytes, GNU time kilobytes.
-fn peak_of(report: &str) -> Option<u64> {
+pub(super) fn peak_of(report: &str) -> Option<u64> {
     report.lines().find_map(|line| {
         let line = line.trim();
         if let Some(bytes) = line.strip_suffix("maximum resident set size") {

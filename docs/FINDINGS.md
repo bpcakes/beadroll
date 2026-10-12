@@ -14,6 +14,17 @@ tests was ported to Rust, and at the cutover the inventory that mapped each to i
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Review 11: Claude and Codex review of the roll-lqjj follow-ups (`reviews/2026-10-12-11-claude-codex-follow-ups.md`, ids B)
+
+Neither reviewer found a runtime defect. Claude reported these two supporting obligations;
+Codex reported no actionable findings. The historical retry description in `RUST-PORT.md`
+already records the later change and needed no correction.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| B01 | Low | The sync crate's instructions still required twelve rounds and linear jitter after roll-lqjj.7 changed both | fixed | Both passages now describe up to 24 rounds and the uniformly sampled, capped doubling wait | Documentation checked against `ROUNDS` and `longest_pause`; no runtime change |
+| B02 | Low | Retry exhaustion tests skip the wait calculation, leaving its doubling and two-second cap without deterministic coverage | fixed | The unchanged bound is calculated by a private pure helper used by `pause`; tests cover its early rounds, cap transition, remaining rounds, zero and extreme inputs without sleeping | `beadroll-sync`: `synchronise::tests::pause_bound_doubles_then_stays_capped`, `synchronise::tests::pause_bound_handles_zero_and_extreme_attempts` |
+
 ## Review 10: Codex reviews of epic roll-lqjj (`reviews/2026-10-11-10-codex-roll-lqjj.md`, ids L)
 
 Each task of epic `roll-lqjj`, which keeps routine cost in proportion to the current state and the
@@ -28,6 +39,7 @@ reviewed again.
 | L04 | Medium | A projection took a segment that was the same file, longer, for one appended to: an edit in place followed by an append kept the projection's old answer under the segment's new identity | fixed | The projection keeps a sum of each segment's bytes, and catches a grown segment up only when it still begins with them | `beadroll-store`: `projection::tests::a_segment_rewritten_and_then_appended_to_is_replayed` |
 | L05 | Medium | A replay that read an attempt file which a merge then replaced kept the replacement's identity with the old contents in the projection it wrote, and the next command trusted it | fixed | The identity kept of each file is the open file's, as its bytes were read | `beadroll-store`: `fs::tests::a_file_read_is_known_by_the_file_its_bytes_came_from` |
 | L06 | Medium | A projection caught up any segment it was made from that grew, and applied the new records after all it held; records appended to a machine's earlier segment come before its later segments' in the journal, where replay can report a later record's chain broken | fixed | Only a machine's last segment may grow; growth of an earlier one has the journal replayed | `beadroll-store`: `projection::tests::an_earlier_segment_that_grows_is_replayed` |
+| L07 | Medium | A batch of records caught up after the projection, or a write's transaction, asked for the texts of the issue each record is about, one per record, and every one was read and summed: an issue many records were about had its texts read once for each, a thousand small edits to an issue of a mebibyte of texts reading a gibibyte | fixed | The texts wanted are each issue's once, in the order of their places, and texts read in already are not read or summed again | `beadroll-core`: `projection::tests::hostile::an_issue_many_records_are_about_has_its_texts_read_once` |
 
 ## Phase 1 of the Rust port (`roll-k2wy.2`, ids U)
 

@@ -6,7 +6,7 @@ use beadroll_core::json::{Int, Object, Value};
 use beadroll_core::state::Issue;
 use beadroll_core::text::str_of;
 use beadroll_core::time::event_time;
-use beadroll_store::{machine_aliases, view};
+use beadroll_store::{machine_aliases, view_outline};
 
 use super::{Context, Failure, Outcome, need_tracker};
 
@@ -14,7 +14,7 @@ use super::{Context, Failure, Outcome, need_tracker};
 /// and how long since their thread last wrote), offline claims and this machine's attempts that
 /// await the remote. `now` is the time in seconds (Python's `time.time()`).
 pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
-    let st = view(ctx.ws)?;
+    let st = view_outline(ctx.ws)?;
     need_tracker(&st)?;
     let aliases = machine_aliases(&ctx.ws.settings);
     let mut issues: Vec<&Issue> = st.issues().collect();

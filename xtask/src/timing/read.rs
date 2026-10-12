@@ -1,6 +1,7 @@
 //! `timing --read N`: how long the reading commands take on a store of N events, published once
 //! to a local bare remote as a store in use is (`bead list`, `bead show` of an issue, `bead
-//! ready`): with the store's projection in place (`*_seconds`), and with it removed before each
+//! ready`), and a local write (`bead comments add --offline`, so that only what the store does is
+//! timed): with the store's projection in place (`*_seconds`), and with it removed before each
 //! (`cold_*_seconds`), so that each replays the journal, as every command did before roll-lqjj.2,
 //! and writes the projection back. Evidence, never a gate.
 
@@ -48,6 +49,19 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
             "\"{name}_seconds\": {warm:.4}, \"cold_{name}_seconds\": {cold:.4}, "
         ));
     }
+    let (mut warm, mut cold) = (f64::INFINITY, f64::INFINITY);
+    for run in 0..RUNS {
+        let text = format!("write {run}");
+        warm = warm.min(world.timed(&["comments", "add", "ex-1", &text, "--offline"])?);
+    }
+    for run in 0..RUNS {
+        world.forget("projection")?;
+        let text = format!("cold write {run}");
+        cold = cold.min(world.timed(&["comments", "add", "ex-1", &text, "--offline"])?);
+    }
+    fields.push(format!(
+        "\"write_seconds\": {warm:.4}, \"cold_write_seconds\": {cold:.4}, "
+    ));
     // An ownership-heavy store is a hundred thousand files: nothing to leave lying about.
     std::fs::remove_dir_all(&dir).map_err(|error| Failure::io("cannot remove", &dir, &error))?;
     let label = label.map_or_else(

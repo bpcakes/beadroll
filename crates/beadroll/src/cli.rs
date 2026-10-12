@@ -34,7 +34,11 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Runs `bead` with the process's arguments; the exit status is 0, 1 for an error, 2 for a usage
 /// error.
 pub(crate) fn main() -> ExitCode {
-    let argv: Vec<OsString> = std::env::args_os().skip(1).collect();
+    main_with(std::env::args_os().skip(1).collect())
+}
+
+/// Runs `bead` with `argv`, the arguments after the program's name, as [`main`] runs it.
+pub(crate) fn main_with(argv: Vec<OsString>) -> ExitCode {
     ExitCode::from(run(argv))
 }
 

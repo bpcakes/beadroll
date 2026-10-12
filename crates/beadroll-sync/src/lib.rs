@@ -4,8 +4,9 @@
 //! `publish_soon`, the unpublished counts, and the ownership protocol (`coordinated`, its
 //! receipts and fences).
 //!
-//! The protocol constants are Python's: [`ROUNDS`] rounds, `U(0.1, 0.4) × attempt` seconds between
-//! them, outside the store lock.
+//! The protocol constants were Python's until roll-lqjj.7: now [`ROUNDS`] rounds, twice its twelve,
+//! and between them any time up to `0.1 × 2^(attempt − 1)` seconds, at most two, outside the store
+//! lock.
 
 mod error;
 mod link;

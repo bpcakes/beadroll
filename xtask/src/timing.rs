@@ -4,11 +4,15 @@
 //! of a process that loads them from disk and replays them ([`memory`], `--load DIR`); with `--sync
 //! N`, a publishing `bead sync` on a store of N events ([`sync`]); with `--read N`, the reading
 //! commands there ([`read`]); with `--merge N`, a sync that merges what another machine wrote
-//! after it ([`merge`]). A timing never decides whether anything passes.
+//! after it ([`merge`]); with `--contend M`, M machines writing at once ([`contend`]); with
+//! `--import N`, importing a generated export of N records ([`import`]). A timing never decides
+//! whether anything passes.
 
+mod contend;
 pub(crate) mod heap;
 mod history;
-mod memory;
+mod import;
+pub(crate) mod memory;
 mod merge;
 mod read;
 mod replay;
@@ -40,6 +44,17 @@ struct Options {
     merge: Option<usize>,
     /// How many events each `--merge` brings.
     batch: Option<usize>,
+    /// With `--merge`, the store writes too before each merge, so that what it merges was
+    /// written concurrently with its own.
+    concurrent: bool,
+    /// Time this many machines writing one tracker at once instead of a command.
+    contend: Option<usize>,
+    /// Time importing a generated export of this many records instead of a command.
+    import: Option<usize>,
+    /// How many writes each `--contend` machine makes.
+    writes: Option<usize>,
+    /// How many milliseconds each fetch and push of `--contend` waits.
+    latency: Option<usize>,
     /// Where `--sync` rotates the journals it writes.
     rotate: Option<usize>,
     /// Which history `--replay` or `--sync` generates.
@@ -61,6 +76,11 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
         read: None,
         merge: None,
         batch: None,
+        concurrent: false,
+        contend: None,
+        import: None,
+        writes: None,
+        latency: None,
         rotate: None,
         shape: history::Shape::Plain,
         load: None,
@@ -81,9 +101,21 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
             "--read" => options.read = Some(number(&value("--read")?, "--read", "events")?),
             "--merge" => options.merge = Some(number(&value("--merge")?, "--merge", "events")?),
             "--batch" => options.batch = Some(number(&value("--batch")?, "--batch", "events")?),
+            "--concurrent" => options.concurrent = true,
+            "--import" => {
+                options.import = Some(number(&value("--import")?, "--import", "records")?)
+            }
+            "--contend" => {
+                options.contend = Some(number(&value("--contend")?, "--contend", "machines")?);
+            }
+            "--writes" => options.writes = Some(number(&value("--writes")?, "--writes", "writes")?),
+            "--latency" => {
+                options.latency = Some(number(&value("--latency")?, "--latency", "milliseconds")?);
+            }
             "--rotate" => options.rotate = Some(number(&value("--rotate")?, "--rotate", "bytes")?),
             "--ownership" => options.shape = history::Shape::Ownership,
             "--churn" => options.shape = history::Shape::Churn,
+            "--text" => options.shape = history::Shape::Text,
             "--load" => options.load = Some(PathBuf::from(value("--load")?)),
             "--no-replay" => options.no_replay = true,
             "--" => {
@@ -97,21 +129,46 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
             }
         }
     }
-    let modes = [options.replay, options.sync, options.read, options.merge];
+    check(&options)?;
+    Ok(options)
+}
+
+/// Why `options` do not go together, if they do not.
+fn check(options: &Options) -> Result<(), Failure> {
+    let modes = [
+        options.replay,
+        options.sync,
+        options.read,
+        options.merge,
+        options.contend,
+        options.import,
+    ];
     let measured = modes.iter().flatten().count();
     if options.command.is_empty() && measured == 0 && options.load.is_none() {
         return Err(Failure::Usage(
-            "timing needs --replay N, --sync N, --read N, --merge N, or a command after --".into(),
+            "timing needs --replay N, --sync N, --read N, --merge N, --contend M, --import N, or \
+             a command after --"
+                .into(),
         ));
     }
     if measured > 1 {
         return Err(Failure::Usage(
-            "one of --replay N, --sync N, --read N and --merge N".into(),
+            "one of --replay N, --sync N, --read N, --merge N, --contend M and --import N".into(),
+        ));
+    }
+    if options.concurrent && options.merge.is_none() {
+        return Err(Failure::Usage("--concurrent goes with --merge N".into()));
+    }
+    if options.contend == Some(0)
+        || (options.writes.is_some() || options.latency.is_some()) && options.contend.is_none()
+    {
+        return Err(Failure::Usage(
+            "--writes W and --latency MS go with --contend M, of one machine or more".into(),
         ));
     }
     if options.shape != history::Shape::Plain && measured == 0 {
         return Err(Failure::Usage(
-            "--ownership and --churn shape the history of a measurement".into(),
+            "--ownership, --churn and --text shape the history of a measurement".into(),
         ));
     }
     if options.batch == Some(0) || options.batch.is_some() && options.merge.is_none() {
@@ -127,7 +184,7 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
     if options.no_replay && options.load.is_none() {
         return Err(Failure::Usage("--no-replay goes with --load DIR".into()));
     }
-    Ok(options)
+    Ok(())
 }
 
 pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
@@ -154,7 +211,20 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
         Some(read::measure(count, options.shape, label)?)
     } else if let Some(count) = options.merge {
         let batch = options.batch.unwrap_or(merge::BATCH);
-        Some(merge::measure(count, options.shape, batch, label)?)
+        let concurrent = options.concurrent;
+        Some(merge::measure(
+            count,
+            options.shape,
+            batch,
+            concurrent,
+            label,
+        )?)
+    } else if let Some(machines) = options.contend {
+        let writes = options.writes.unwrap_or(contend::WRITES);
+        let latency = options.latency.map_or(contend::LATENCY, |ms| ms as u64);
+        Some(contend::measure(machines, writes, latency, label)?)
+    } else if let Some(records) = options.import {
+        Some(import::measure(records, label)?)
     } else {
         None
     };
@@ -389,6 +459,39 @@ mod tests {
                 "{wrong:?}"
             );
         }
+    }
+
+    #[test]
+    fn concurrent_goes_with_merge() {
+        let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
+        let options = parse(args(&["--merge", "500", "--concurrent", "--text"])).unwrap();
+        assert!(options.concurrent);
+        assert!(parse(args(&["--read", "500", "--concurrent"])).is_err());
+    }
+
+    #[test]
+    fn contend_takes_machines_writes_and_a_latency() {
+        let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
+        let options = parse(args(&[
+            "--contend",
+            "4",
+            "--writes",
+            "50",
+            "--latency",
+            "0",
+        ]))
+        .unwrap();
+        assert_eq!(options.contend, Some(4));
+        assert_eq!(options.writes, Some(50));
+        assert_eq!(options.latency, Some(0));
+        for alone in [
+            &["--writes", "5"][..],
+            &["--latency", "100"],
+            &["--contend", "0"],
+        ] {
+            assert!(parse(args(alone)).is_err(), "{alone:?}");
+        }
+        assert!(parse(args(&["--contend", "2", "--read", "10"])).is_err());
     }
 
     #[test]

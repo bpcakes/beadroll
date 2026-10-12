@@ -13,13 +13,25 @@
 //! written by another build of bead: the journal is replayed. A projection made is written back,
 //! whole or not at all, with the identity each file had as it was read, when every segment ended
 //! with a whole line, never into a store that is not there. Deleting it is safe at any moment.
+//!
+//! Each issue's texts are kept apart, in `<store>/projection-texts` (roll-lqjj.6, [`texts`]): a
+//! state read from the projection has them there, and a command reads in those it prints. A
+//! command that prints none (`list`, `ready`) reads the state alone ([`outline`]); one that may
+//! print any, every text ([`state`]); and records applied after the projection have the texts of
+//! the issues they are about read in first. Texts that cannot be read as written have the journal
+//! replayed, as a projection that cannot be does. Texts written nowhere yet are appended to the
+//! text file, and a projection made whole, or whose text file holds more texts no longer read than
+//! read, writes them all to a new one.
 
 mod file;
+mod texts;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use beadroll_core::id::EventId;
 use beadroll_core::journal::{self, Problem};
+use beadroll_core::json::Value;
 use beadroll_core::projection::{Extended, Projection, Record, decode_state, project};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
@@ -33,28 +45,85 @@ use crate::workspace::Workspace;
 
 use file::{Held, Made};
 
+pub use texts::texts_path;
+
+/// How many bytes of texts no longer read a text file may hold beyond as many as are read, before
+/// a projection writes its texts to a new one.
+const SLACK: u64 = 1 << 20;
+
 /// Where a store keeps its projection.
 pub fn projection_path(ws: &Workspace) -> PathBuf {
     ws.dir.join("projection")
 }
 
 /// The projection of the store's journal as it is now: the stored one, the records appended since
-/// applied after it, or the journal replayed.
+/// applied after it, or the journal replayed. Its issues' texts are there but for those the records
+/// applied are about; [`read_texts`] reads in more.
 pub fn projection(ws: &Workspace) -> Result<Projection, ViewError> {
-    match current(ws, false)? {
+    match current(ws, Want::Projection)? {
         Now::Projection(projection) => Ok(*projection),
-        // a state is read alone only when it is asked for alone
         Now::State(_) => Ok(project(load_journal(ws)?)?),
     }
 }
 
-/// The state of the store's journal as it is now: what [`projection`] holds, read alone when the
-/// stored projection is the journal's.
+/// The state of the store's journal as it is now, every issue's texts in it: what [`projection`]
+/// holds, read alone when the stored projection is the journal's.
 pub(crate) fn state(ws: &Workspace) -> Result<State, ViewError> {
-    Ok(match current(ws, true)? {
+    Ok(match current(ws, Want::Texts)? {
         Now::State(state) => *state,
         Now::Projection(projection) => projection.into_state(),
     })
+}
+
+/// The state of the store's journal as it is now, its issues' texts there, for a command that
+/// prints none of them or reads in those it does ([`read_texts`]).
+pub(crate) fn outline(ws: &Workspace) -> Result<State, ViewError> {
+    Ok(match current(ws, Want::Outline)? {
+        Now::State(state) => *state,
+        Now::Projection(projection) => projection.into_state(),
+    })
+}
+
+/// Reads into `state` the texts of the issues `uids` names that it has there: `false` when they
+/// cannot be read as written, its text file gone or changed, and nothing then read.
+pub fn read_texts(
+    ws: &Workspace,
+    state: &mut State,
+    uids: impl IntoIterator<Item = EventId>,
+) -> bool {
+    let wanted = state.wanted_texts(uids);
+    read_wanted(ws, state, &wanted)
+}
+
+/// Reads into `state` the texts of every issue it has there.
+fn read_all(ws: &Workspace, state: &mut State) -> bool {
+    let wanted = state.all_wanted_texts();
+    read_wanted(ws, state, &wanted)
+}
+
+fn read_wanted(
+    ws: &Workspace,
+    state: &mut State,
+    wanted: &[(EventId, beadroll_core::state::TextPlace)],
+) -> bool {
+    if wanted.is_empty() {
+        return true;
+    }
+    let file = state
+        .texts_file()
+        .and_then(|generation| texts::open(ws, generation, false));
+    file.is_some_and(|file| texts::read_in(&file, state, wanted))
+}
+
+/// What a command wants of the store.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Want {
+    /// A projection, to apply events to.
+    Projection,
+    /// A state, every text in it.
+    Texts,
+    /// A state, its texts there.
+    Outline,
 }
 
 /// What a command takes from the store: a state alone, or a projection.
@@ -63,45 +132,69 @@ enum Now {
     Projection(Box<Projection>),
 }
 
-fn current(ws: &Workspace, alone: bool) -> Result<Now, ViewError> {
+/// The issues `records` are about.
+fn about(records: &[Record]) -> Vec<EventId> {
+    (records.iter())
+        .filter_map(|record| record.value.get("issue").and_then(Value::as_str))
+        .filter_map(EventId::parse)
+        .collect()
+}
+
+fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
     let segments = segment_files(ws)?;
     ws.settings.failpoints.hit("journal.after-enumerate");
     let Some(build) = ws.settings.build.as_deref() else {
         let journal = load_listed(ws, &segments, false)?.journal;
-        return Ok(if alone {
-            Now::State(Box::new(replay(journal)?))
-        } else {
+        return Ok(if want == Want::Projection {
             Now::Projection(Box::new(project(journal)?))
+        } else {
+            Now::State(Box::new(replay(journal)?))
         });
     };
     let stored = file::read(&projection_path(ws)).filter(|stored| stored.made.build == build);
     if let (Some(stored), Some(seen)) = (stored, held(ws, &segments, true)) {
         let attempts = claim_files(ws)?;
         let listed = held(ws, &attempts, false);
+        let file = Some(stored.made.texts);
         if listed
             .as_ref()
             .is_some_and(|listed| same(&stored.made, &seen, listed))
         {
-            if alone && let Ok(state) = decode_state(&stored.state) {
-                return Ok(Now::State(Box::new(state)));
-            }
-            if let Some(projection) = stored.encoded().and_then(|e| Projection::decode(&e).ok()) {
+            if want != Want::Projection
+                && let Ok(mut state) = decode_state(&stored.state)
+            {
+                state.set_texts_file(file);
+                // texts that cannot be read have the journal replayed
+                if want == Want::Outline || read_all(ws, &mut state) {
+                    return Ok(Now::State(Box::new(state)));
+                }
+            } else if let Some(mut projection) =
+                stored.encoded().and_then(|e| Projection::decode(&e).ok())
+            {
+                projection.state_mut().set_texts_file(file);
                 return Ok(Now::Projection(Box::new(projection)));
             }
         } else if let Some(tails) = grown(&stored.made, &seen) {
             let made = stored.made.clone();
             let decoded = stored.encoded().and_then(|e| Projection::decode(&e).ok());
-            if let Some(projection) = decoded
+            if let Some(mut projection) = decoded
                 && let Some((records, now)) = appended(ws, &made, &tails, build)?
-                && let Extended::Applied(projection) = projection.extend(records)?
             {
-                save(ws, &now, &projection);
-                return Ok(Now::Projection(projection));
+                projection.state_mut().set_texts_file(file);
+                let uids = about(&records);
+                if read_texts(ws, projection.state_mut(), uids)
+                    && let Extended::Applied(mut projection) = projection.extend(records)?
+                {
+                    save(ws, now, &mut projection);
+                    if want != Want::Texts || read_all(ws, projection.state_mut()) {
+                        return Ok(Now::Projection(projection));
+                    }
+                }
             }
         }
     }
     let loaded = load_listed(ws, &segments, true)?;
-    let projection = project(loaded.journal)?;
+    let mut projection = project(loaded.journal)?;
     // each file as it was read: the projection is theirs
     let read = (segments.iter().zip(loaded.segments))
         .map(|(path, (key, sum))| kept(ws, path, key, true, sum))
@@ -114,7 +207,16 @@ fn current(ws: &Workspace, alone: bool) -> Result<Now, ViewError> {
         .collect::<Option<Vec<Held>>>();
     if let Some(files) = read.filter(|_| loaded.whole) {
         let build = build.to_owned();
-        save(ws, &Made { build, files }, &projection);
+        let texts = [0; 16];
+        save(
+            ws,
+            Made {
+                build,
+                files,
+                texts,
+            },
+            &mut projection,
+        );
     }
     Ok(Now::Projection(Box::new(projection)))
 }
@@ -326,18 +428,68 @@ fn appended(
         Made {
             build,
             files: segments,
+            texts: made.texts,
         },
     )))
 }
 
 /// Writes `projection` back as made from `made`, when the store is there; a cache that cannot be
-/// written is no failure.
-fn save(ws: &Workspace, made: &Made, projection: &Projection) {
+/// written is no failure. Its texts written nowhere yet go to the end of the text file its others
+/// are placed in, under that file's lock, and the projection after them; when there is no such
+/// file, or more of it is no longer read than is, every text goes to a new one, when the
+/// projection has them all.
+fn save(ws: &Workspace, mut made: Made, projection: &mut Projection) {
     if made.files.is_empty() || !ws.events_dir.is_dir() {
         return;
     }
-    let bytes = file::bytes(made, &projection.encode());
-    let _ = write_atomic(&projection_path(ws), &bytes, true, &ws.settings.failpoints);
+    let generation = projection.state().texts_file();
+    if let Some(generation) = generation
+        && let Some(file) = texts::open(ws, generation, true)
+        && file.lock().is_ok()
+        && let Ok(len) = file.metadata().map(|meta| meta.len())
+    {
+        let read = projection.state().placed_text_bytes();
+        // more of the file no longer read than read: every text read in, to write them all again
+        let anew = len > texts::START + 2 * read + SLACK && {
+            let wanted = projection.state().all_wanted_texts();
+            texts::read_in(&file, projection.state_mut(), &wanted)
+                && projection.state_mut().write_texts_anew()
+        };
+        if !anew {
+            let (encoded, places) = projection.encode(len);
+            made.texts = generation;
+            if texts::append(ws, &file, len, &encoded.texts)
+                && write_atomic(
+                    &projection_path(ws),
+                    &file::bytes(&made, &encoded),
+                    true,
+                    &ws.settings.failpoints,
+                )
+                .is_ok()
+            {
+                projection.placed(&places);
+            }
+            return;
+        }
+    }
+    if !projection.state_mut().write_texts_anew() {
+        return; // texts placed in a text file no longer there, and not read in
+    }
+    let (encoded, places) = projection.encode(texts::START);
+    let generation = texts::generation(&encoded.texts);
+    made.texts = generation;
+    if texts::start(ws, generation, &encoded.texts)
+        && write_atomic(
+            &projection_path(ws),
+            &file::bytes(&made, &encoded),
+            true,
+            &ws.settings.failpoints,
+        )
+        .is_ok()
+    {
+        projection.placed(&places);
+        projection.state_mut().set_texts_file(Some(generation));
+    }
 }
 
 #[cfg(test)]

@@ -269,6 +269,11 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   journal replayed, and the projection written again. It is a cache, never a
   source: deleting it is always safe, and a damaged one, or one another build
   of bead wrote, is never read.
+- Each issue's texts (descriptions, designs, acceptance criteria, notes and
+  comments) are kept beside the projection, in `<store>/projection-texts`:
+  `list`, `ready`, a write and a sync never read them, `show` reads only its
+  issue's, and `export`, `search` and `lint` read them all. It is a cache too:
+  texts that cannot be read as written have the journal replayed.
 - There is no history boundary: work written offline merges on the next sync
   however long ago it was written, after days or months away, and nothing is
   refused for its age. Should bead one day publish checkpoints, so that a new
@@ -490,13 +495,17 @@ the record of it before any test data is written), their tests beside them, and 
   1.06 s without; a sync that merges ten events another machine wrote, 0.31 s and
   1.31 s; a publishing sync, 0.38 s and 1.34 s (`docs/RUST-PORT.md`, Appendix
   A). With it, a read costs what the state does: 18 ms for a thousand issues,
-  whether 50,000 events made them or 200,000. But a real tracker's state is
-  mostly its texts, which every read decodes and every write rewrites: on the
-  largest public Beads trackers (21–49 MB, up to 13,394 issues) a read takes
-  0.06–0.14 s and a published write 0.34–0.65 s, and importing the largest
-  held 0.95 GB (roll-lqjj.6, roll-lqjj.9). A merge that brings events another
+  whether 50,000 events made them or 200,000. A real tracker's state is mostly
+  its texts, which only the commands that print them read: on three of the
+  largest public Beads trackers (21–47 MB, up to 13,394 issues) a `list` takes
+  36–75 ms and a published write 0.21–0.35 s, while `export`, `search` and
+  `lint` take what the texts do. Importing the largest holds 172 MB on the
+  heap offline (341 MB resident); published, it peaks at 235 MB (563 MB
+  resident) as its publish makes the projection, which a new machine's first
+  sync of the tracker takes too (roll-lqjj.9). A merge that brings events another
   machine wrote concurrently replays the journal, as about one merge in ten
-  does where two machines write (roll-lqjj.8). A replay holds at most 107 MB
+  does where two machines write: 0.45 s at 50,000 events, 1–2 s at 200,000,
+  kept so for correctness (roll-lqjj.8). A replay holds at most 107 MB
   on the heap at 200,000 events (events the size of this repository's own take
   more than three times that). A store heavy in claims pays for listing its
   attempt files on every command: a read takes 0.56 s at 92,000 of them, which
@@ -505,9 +514,10 @@ the record of it before any test data is written), their tests beside them, and 
 - Publishing is serialised on one ref. Under heavy contention (four machines
   syncing continuously) claims took 9 s median and 27 s at p90, and 3 of 841
   commands gave up after eight attempts. Writes wait too: four machines each
-  publishing every write continuously, 14 of 200 writes took over a second,
-  the worst 23 s, and one stayed unpublished until a later command carried it
-  (roll-lqjj.7).
+  publishing every write continuously against a remote taking 0.3 s a fetch
+  or a push, a write took 1.5 s at the median and 23 s at the longest, and
+  every machine converged with nothing left unpublished (roll-lqjj.7: a sync
+  makes 24 rounds before it gives up, its waits doubling to at most 2 s).
 - A renumbered child key changes under the machine that created it. Events
   refer to issues by an immutable id, so nothing is lost, but a key written
   into a commit message before the sync now names the other issue.

@@ -101,6 +101,40 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
 - `cargo xtask timing --read N` times the reading commands with the projection and without it,
   `--merge N [--batch M]` a sync that merges another machine's events, and `--churn` shapes a
   history whose state stays its size; `--sync N` also records a sync without the projection.
+- Each issue's texts (its long fields, their registers' values, its comments and its extras) are
+  kept beside the projection, in `<store>/projection-texts`, apart from its state (roll-lqjj.6):
+  `list`, `ready`, `blocked`, `claims`, `dep`, a write and a sync never read them, `show`, `comments`,
+  `update`, `claim` and `takeover` read only those of the issues they print, and `export`,
+  `search` and `lint` read them all. On a history whose texts are most of its state, at 200,000
+  events a read takes 72–82 ms where it took 144–159 ms, a local write 92 ms where it took 188 ms,
+  and the projection is 20 MB where it was 107 MB: what a history without texts takes. On the
+  largest public Beads tracker (47 MB) a `list` takes 75 ms where it took 138 ms, holding 98 MB
+  where it held 274 MB, and a published comment 0.35 s where it took 0.65 s. Texts that
+  cannot be read as written have the journal replayed and both files written again; like the
+  projection, the text file is a cache, and deleting it is always safe.
+- `cargo xtask timing --text` shapes a history whose texts are most of its state, and `--read N`
+  also times a local write.
+- A sync, and every ownership command, makes 24 rounds against a moving remote before it gives up,
+  twice as many as before, and waits between them any time up to `0.1 × 2^(attempt − 1)` seconds,
+  at most two, where it waited `U(0.1, 0.4) × attempt` (roll-lqjj.7). With four machines each
+  publishing every write at once, against a remote taking 0.3 s a fetch or a push, a write that
+  lost race after race was left unpublished one time in a hundred; it now gets through, every
+  machine converging, and the longest waits are shorter. `cargo xtask timing --contend M
+  [--writes W] [--latency MS]` measures it.
+- `cargo xtask timing --merge N --concurrent` times a merge of events written concurrently with the
+  store's own, which replays the journal (roll-lqjj.8).
+- `bead import` and `bead init --import` hold each form of an export once (roll-lqjj.9): the
+  export's text until its records are read, the records until they are planned, and each event
+  once, let go of as it is encoded into the journal's lines; `init` reads the tracker's prefix
+  before it imports, so its state no longer takes in every imported event. Importing a generated
+  49 MB export peaks at 165 MB on the heap where it peaked at 473 MB, and published at 245 MB: the
+  projection its publish makes of the journal, what the first sync after an offline import and a
+  new machine's first sync of the tracker take. A text file started again is written from its
+  header and its texts as they are, not from a copy of them joined: the first sync after such an
+  import holds 245 MB where it held 309 MB. An import stays all or nothing.
+- `cargo xtask timing --import N` times importing a generated Beads export of N records, shaped as
+  real trackers' are, and records the heap peak beside the resident one: `cargo xtask bead ARG...`
+  runs bead in xtask's process, whose allocator counts.
 
 ## [0.2.0] — 2026-10-11
 

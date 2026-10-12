@@ -223,8 +223,9 @@ pub fn coordinated<E: From<Error>>(
             receipt = None;
             let mut tx = Tx::new(ws, actor)?;
             let answer = build(&mut tx, Mode::Online).map_err(Round::Build)?;
-            if !tx.pending.is_empty() {
-                append_events(ws, &tx.replica, &tx.pending).map_err(Error::from)?;
+            if tx.has_pending() {
+                let pending = tx.take_pending();
+                append_events(ws, &tx.replica, pending).map_err(Error::from)?;
             }
             if tx.ownership.is_empty() {
                 forget(&stale)?; // nothing to settle: this command went through

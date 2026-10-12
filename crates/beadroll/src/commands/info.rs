@@ -8,7 +8,7 @@ use beadroll_core::state::State;
 use beadroll_core::text::{printed_text, str_of};
 use beadroll_store::{
     Workspace, dir_entries, load_journal, load_pending, replica_id, segment_files,
-    tracked_config_warning, view,
+    tracked_config_warning, view_outline,
 };
 
 use super::{Context, Failure, Outcome};
@@ -22,7 +22,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub(crate) fn info(ctx: &Context<'_>) -> Result<Outcome, Failure> {
     let ws = ctx.ws;
     let mut journal = load_journal(ws)?;
-    let st = view(ws)?;
+    let st = view_outline(ws)?;
     let replica = replica_id(&ws.settings, false)?;
     let remote = match ws.remote(None) {
         Ok(Some(remote)) => Value::from(printed_text(remote.as_bytes())),

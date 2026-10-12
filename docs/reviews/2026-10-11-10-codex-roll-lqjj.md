@@ -63,3 +63,28 @@ Reviewed 9ca05470f280f1dbacc305041b8a8f5b66d43abf..a43694b7c99ce86a50d1ffba5cfeb
 The task was reopened when the census of public trackers, finished after its close, found two larger ones; this round reviews the correction alone.
 
 Reviewed dc608a8597f1269b46554686b224a0b844eea2fb..2cd9ed847c4770a1f923a8b8fea84a94d4143fb9. No actionable defects found in this documentation-only range. Tests were not run in the read-only sandbox.
+
+## roll-lqjj.6, round 1: `000dcec0b91f79369ad9d5c51095a0943418abb4..ecc113bd894e6109fc91e4741cdc7bf23f30cd7a`
+
+Reviewed 000dcec0b91f79369ad9d5c51095a0943418abb4..ecc113bd894e6109fc91e4741cdc7bf23f30cd7a (HEAD). Batch catch-up introduces redundant full-text reads proportional to repeated events. The existing prebuilt binaries passed 55 core tests and 5 timing-history tests; the full baseline was not run in the read-only sandbox.
+
+Review comment:
+
+- [P2] Deduplicate issues before loading a batch's text blobs — /Users/<name>/Documents/beadroll/crates/beadroll-core/src/projection.rs:268-273
+  When catching up multiple events for the same existing issue, `current()` and `Tx::state()` pass one UID per record. This collects every occurrence before loading anything, so `texts::read_in()` rereads the entire blob and `State::read_texts()` rehashes it for each occurrence, even after its texts are loaded. For example, 1,000 small edits to an issue with 1 MiB of accumulated text cause roughly 1 GiB of reads and hashing instead of one blob load. Deduplicate the requested UIDs, or skip already-loaded issues before performing the read.
+
+## roll-lqjj.6, round 2: `000dcec0b91f79369ad9d5c51095a0943418abb4..8f74e62904a58eea9d03b7ff66784505ffa51da1`
+
+Reviewed only 000dcec0b91f79369ad9d5c51095a0943418abb4..8f74e62904a58eea9d03b7ff66784505ffa51da1 (HEAD); no actionable defects found. Prebuilt binaries passed 56 core tests and five timing-history tests, and git diff --check passed. The full baseline was blocked by the read-only sandbox.
+
+## roll-lqjj.7, round 1: `7942c353fc2d8ade230d63d06ad0e9a86f17896d..014731228568cdc4eb920076ac73419af836a0c9`
+
+Reviewed 7942c353fc2d8ade230d63d06ad0e9a86f17896d..014731228568cdc4eb920076ac73419af836a0c9 (HEAD); no actionable defects found. Six timing unit tests passed using an existing test binary. The full baseline and contention measurements were not run because the sandbox is read-only.
+
+## roll-lqjj.8, round 1: `47a1c76909ca9a990482f9b9557ef3a239c18651..c6e1593f141138f678a9b6e7bdb83731aa9666d5`
+
+Reviewed 47a1c76909ca9a990482f9b9557ef3a239c18651..c6e1593f141138f678a9b6e7bdb83731aa9666d5 (HEAD); no actionable defects found. Twelve relevant tests passed using the existing xtask test binary; the full baseline and benchmarks were not run because the sandbox is read-only.
+
+## roll-lqjj.9, round 1: `d630024d0d98e06f1f402fd6f884f25a9385bbf9..7c86d705d82729c145079a7a2732059968980475`
+
+Reviewed d630024d0d98e06f1f402fd6f884f25a9385bbf9..7c86d705d82729c145079a7a2732059968980475 (HEAD) using the requested cumulative diff and log. No actionable defects were found. Baseline tests were not run because the sandbox is read-only.
