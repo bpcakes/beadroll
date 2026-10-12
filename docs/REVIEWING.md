@@ -129,7 +129,21 @@ These were decided deliberately. Report problems *with* them, not their existenc
   atomically when every segment ended with a whole line, never into a store that is not there; a
   projection missing, cut, damaged (a 128-bit sum of each part) or another build's is never read,
   and a failed write is no failure. A state read from it knows, of its events, those it names:
-  `State::saw`, `holds` and `events`, which no command reads, answer for those alone.
+  `State::saw`, `holds` and `events`, which no command reads, answer for those alone. Each issue's
+  texts (its long fields, their registers' values, its comments and its extras) are kept apart
+  (roll-lqjj.6), in `<store>/projection-texts`, each issue's as bytes of their own the state places
+  and sums, the state keeping what a list and a later event need of them unread (the events behind
+  each long field's register, which of those fields two writers set differently). A command that
+  prints no texts (`list`, `ready`, `blocked`, `claims`, `dep`, `info`, a transition's or a
+  release's answer) never reads them; one that prints issues whole (`show`, `comments`, `update`,
+  `claim`, `takeover`) reads in only theirs; `export`, `search` and `lint` read every text; and
+  records applied after the projection have the texts of the issues they are about read in first,
+  a change to texts not read in declining. Texts that cannot be read as written (a sum, a length, a
+  generation, the events behind a register that differ) have the journal replayed and both files
+  written again. Texts are only appended, under the text file's own lock, the projection written
+  after them, so that a bead killed between the two leaves the last projection; a projection made
+  whole, or whose file holds more texts no longer read than read (beyond a mebibyte), starts the
+  file again, under the generation its texts give, so that the same texts make the same file.
 - No history boundary (roll-lqjj.3, step 4 of epic roll-lqjj; the maintainer's decision of
   2026-10-12, on the evidence in `RUST-PORT.md` Appendix A, "roll-lqjj.3"): a machine's work
   merges by itself however old it is, as every merge has so far. The alternatives were a supported
@@ -161,8 +175,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   closed issues changes what `show`, `log` and `export` return and breaks the Beads round trip for
   them, so it would be a policy a tracker sets explicitly, with a command that lists what it forgot
   and the archive keeping it; step 5 leaves room for it by keeping the index and the archive apart
-  from the state. Closed issues hold 27–100% of the largest public trackers' bytes, and keeping
-  texts out of what every command decodes (roll-lqjj.6) may make retention unnecessary for speed.
+  from the state. Closed issues hold 27–100% of the largest public trackers' bytes; with texts kept
+  out of what most commands read (roll-lqjj.6), what retention would still save is disk, a fresh
+  machine's fetch, and the commands that read every text (`export`, `search`, `lint`).
 - What each event had seen is one clock per event over chains, the reachability index of
   `state/seen.rs` (`RUST-PORT.md` §2.3c): every machine's journal is a chain, and each event of an
   attempt file joins a chain whose last event is among its ancestors, or starts one, so there are

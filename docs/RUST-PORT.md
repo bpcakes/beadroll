@@ -67,7 +67,8 @@ asserted by tests today or is read by another machine, `br`/`bv`, or studio.
 | `<ws>/meta.json` | `indent=1`, ASCII-escaped. Keys: `remote` (the remote as it was chosen: a configured remote's name, as Python's `init --remote NAME` saved one too, or a URL), `name`, `last_sync`, `published` | origin is never stored |
 | `<ws>/events/<replica>/NNNNNN.jsonl` | One event per line: `,`/`:` separators, raw UTF-8, keys in the order `v, id, replica, deps, actor, op, issue, data[, where]`. Opened with `O_APPEND`, fsynced; a new segment starts at `BEAD_ROTATE_BYTES` | A torn tail is repaired before the next write and kept as `*.torn-<ns>` |
 | `<ws>/events/<replica>/claims/<event-id>.json` | The attempt's events, compact lines, written atomically | Immutable. On mismatch the local copy is kept as `*.fork-<ns>` |
-| `<ws>/projection` | A cache of one build of bead (roll-lqjj.2): a header (`bead projection\n`, the encoding's and the layout's versions, three lengths and a 128-bit sum of each part), then what it was made from (the build, every journal file's path and identity on disk as it was read, a sum of each segment's bytes), the state the journal replays into, and the index that applying more events needs. Written atomically | No part of format 1: `python-0.1.0` never reads it, another build never reads it, and deleting it is always safe |
+| `<ws>/projection` | A cache of one build of bead (roll-lqjj.2): a header (`bead projection\n`, the encoding's and the layout's versions, three lengths and a 128-bit sum of each part), then what it was made from (the build, every journal file's path and identity on disk as it was read, a sum of each segment's bytes, and the generation of the text file its issues' texts are placed in), the state the journal replays into, each issue with where its texts are, and the index that applying more events needs. Written atomically | No part of format 1: `python-0.1.0` never reads it, another build never reads it, and deleting it is always safe |
+| `<ws>/projection-texts` | The projection's issues' texts (roll-lqjj.6): a header (`bead texts 1\n` and the file's generation, the sum of the texts it was started with), then each issue's long fields, their registers' values, its comments and its extras, as bytes the projection places and sums. Only appended to, under a lock of its own; started again, atomically, when the projection is made whole or holds more texts no longer read than read | As the projection: a cache, never read for texts that are not as written, and deleting it is always safe |
 | `<ws>/pending/<id>.json`, `<id>.command` | The pending attempt and its receipt | Python-compatible receipt signatures throughout the port and rollback period (§2.3j) |
 | `<ws>/sync.git` | `git init --bare --template= --shared=0600 --object-format=<project's>`. Maintenance is off via the environment (`gc.auto=0` and the rest of `SYNC_REPO_CONFIG`) | Rebuilt as `sync.git.damaged-<ns>` when damaged |
 | Temporary files | `.<name>.<pid>.tmp` beside the target | Readers and sync ignore them, along with every non-`.json`/`.jsonl` name |
@@ -933,6 +934,7 @@ As Slice 2c built it (`crates/beadroll-store/src/failpoint.rs`):
 | `claim.before-push` | Between fetch and push of a claim | G09's competing publish |
 | `pending.after-list` | Between listing and reading `pending/` | G28 t2 |
 | `journal.after-enumerate`, `view.before-load-pending`, `identity.before-link`, `publish.before` | Reader/writer races | test_storage drivers |
+| `projection.texts-appended` | Saving a projection, after its new texts are appended to the text file and fsynced, before the projection that places them is written | Added after the port (roll-lqjj.6): a bead killed between the two leaves the last projection, and what it appended belongs to none |
 | `clock` | The UUIDv7 clock and torn/fork stamps | Drivers patching `time.time_ns` (f14 ≈ 2110, −48 h, −1 day); G47 t3: two torn fragments within one second stay apart, their names in nanoseconds (equal stamps would share one, in Python as in Rust) |
 
 Two seams need no failpoint. The process-tree walk of `detect_actor` is driven by a fake `ps` on
@@ -1773,7 +1775,41 @@ decision 7 open. The five decisions stand.
     hold 27–100% of the bytes. At 30 times the maintainer's busiest tracker (6,810 issues, 60 MB
     of journal) a write takes 0.68 s and a read 0.11 s holding 304 MB, where they take 0.15 s and
     21 ms at its size; a cold replay takes 0.45 s, so a merge that replays instead of
-    extending costs little more than one that extends.
+    extending costs little more than one that extends. roll-lqjj.6 then kept texts apart: below.
+
+- **roll-lqjj.6: texts kept apart, measured (this Mac, 2026-10-12).**
+  - How: `cargo run --release --package xtask -- timing --read N --text`, the best of five, on
+    the history `--text` shapes (the plain history's operations, a create describing its issue in
+    1.2–2.4 KB, an edit rewriting the description or the notes in 0.6–1.8 KB, a comment of
+    0.3–1.5 KB); a write is `bead comments add --offline`. Before is the build of b60b680, after
+    the build of 9728e72. The public trackers are three of roll-lqjj.3's, imported and measured
+    as there.
+
+    | Events | Projection | `list` / `show` / `ready` | A local write | Without the projection |
+    |---|---|---|---|---|
+    | 50k, before | 26 MB | 49 / 47 / 49 ms | 62 ms | 0.37–0.40 s |
+    | 50k, after | 4.9 MB | 30 / 29 / 31 ms | 40 ms | 0.38–0.39 s |
+    | 200k, before | 107 MB | 146 / 144 / 159 ms | 188 ms | 1.53–1.57 s |
+    | 200k, after | 20 MB | 74 / 72 / 82 ms | 92 ms | 1.58–1.62 s |
+
+    | Public tracker | `list` | Resident, a read | A published comment | A sync with nothing to do |
+    |---|---|---|---|---|
+    | 47 MB, 13,394 issues: before, after | 138 → 75 ms | 274 → 98 MB | 0.65 → 0.35 s | 0.37 → 0.20 s |
+    | 35 MB, 4,841 issues: before, after | 83 → 43 ms | 174 → 50 MB | 0.46 → 0.31 s | 0.26 → 0.21 s |
+    | 21 MB, 4,211 issues: before, after | 61 → 36 ms | 109 → 36 MB | 0.34 → 0.21 s | 0.18 → 0.11 s |
+
+  - **What a command costs no longer follows the texts.** At 200,000 text-heavy events a read
+    and a write take what the plain history takes at that size (73–87 ms), and the projection is
+    the plain history's 20 MB: what remains is every event's id and what the state names, which
+    grow with the events, not with what issues say. Each issue's texts are in the text file, read
+    in only by a command that prints them (`show` and `comments` its issue's, `update`, `claim`
+    and `takeover` theirs) and by `export`, `search` and `lint`, which read them all; a sync
+    counts from the state alone (the 35 MB tracker's comment and sync were measured before it
+    did). `show` and `ready` fell as `list` did: 64 and 66 ms on the 47 MB tracker.
+  - What it does not change: a cold read still replays the journal; `export`, `search` and `lint`
+    take what the texts do; and a fresh machine's first sync still fetches and replays the whole
+    history (1.7 s for the 47 MB tracker from a local remote), which only a checkpoint
+    (roll-lqjj.4) would change.
 
 ## Appendix B. git invocations, and their consolidation
 

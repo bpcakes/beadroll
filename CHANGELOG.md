@@ -101,6 +101,19 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
 - `cargo xtask timing --read N` times the reading commands with the projection and without it,
   `--merge N [--batch M]` a sync that merges another machine's events, and `--churn` shapes a
   history whose state stays its size; `--sync N` also records a sync without the projection.
+- Each issue's texts (its long fields, their registers' values, its comments and its extras) are
+  kept beside the projection, in `<store>/projection-texts`, apart from its state (roll-lqjj.6):
+  `list`, `ready`, `blocked`, `claims`, `dep`, a write and a sync never read them, `show`, `comments`,
+  `update`, `claim` and `takeover` read only those of the issues they print, and `export`,
+  `search` and `lint` read them all. On a history whose texts are most of its state, at 200,000
+  events a read takes 72–82 ms where it took 144–159 ms, a local write 92 ms where it took 188 ms,
+  and the projection is 20 MB where it was 107 MB: what a history without texts takes. On the
+  largest public Beads tracker (47 MB) a `list` takes 75 ms where it took 138 ms, holding 98 MB
+  where it held 274 MB, and a published comment 0.35 s where it took 0.65 s. Texts that
+  cannot be read as written have the journal replayed and both files written again; like the
+  projection, the text file is a cache, and deleting it is always safe.
+- `cargo xtask timing --text` shapes a history whose texts are most of its state, and `--read N`
+  also times a local write.
 
 ## [0.2.0] — 2026-10-11
 
