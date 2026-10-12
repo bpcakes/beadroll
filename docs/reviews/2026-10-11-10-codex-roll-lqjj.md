@@ -84,3 +84,7 @@ Reviewed 7942c353fc2d8ade230d63d06ad0e9a86f17896d..014731228568cdc4eb920076ac734
 ## roll-lqjj.8, round 1: `47a1c76909ca9a990482f9b9557ef3a239c18651..c6e1593f141138f678a9b6e7bdb83731aa9666d5`
 
 Reviewed 47a1c76909ca9a990482f9b9557ef3a239c18651..c6e1593f141138f678a9b6e7bdb83731aa9666d5 (HEAD); no actionable defects found. Twelve relevant tests passed using the existing xtask test binary; the full baseline and benchmarks were not run because the sandbox is read-only.
+
+## roll-lqjj.9, round 1: `d630024d0d98e06f1f402fd6f884f25a9385bbf9..7c86d705d82729c145079a7a2732059968980475`
+
+Reviewed d630024d0d98e06f1f402fd6f884f25a9385bbf9..7c86d705d82729c145079a7a2732059968980475 (HEAD) using the requested cumulative diff and log. No actionable defects were found. Baseline tests were not run because the sandbox is read-only.
