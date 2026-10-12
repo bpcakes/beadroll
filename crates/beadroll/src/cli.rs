@@ -4,6 +4,7 @@
 
 mod free;
 mod help;
+mod layout;
 mod output;
 mod parse;
 mod spec;
@@ -149,11 +150,15 @@ fn execute(request: &Request) -> Result<Option<String>, Failure> {
     }
     if args.is_empty() || (args.len() == 1 && (args[0] == "-h" || args[0] == "--help")) {
         return Ok(Some(if request.as_json {
+            // laid out for no width: the reader wraps it
             let mut out = Object::new();
-            out.insert("help".into(), Value::from(texts::OVERVIEW));
+            let overview = layout::lay_out(texts::OVERVIEW, None);
+            out.insert("help".into(), Value::from(overview));
             write(&Value::from(out), Format::ASCII)?
         } else {
-            texts::OVERVIEW.trim_end_matches('\n').to_owned()
+            let width = layout::width(settings.var("COLUMNS"));
+            let overview = layout::lay_out(texts::OVERVIEW, width);
+            overview.trim_end_matches('\n').to_owned()
         }));
     }
     let ns = match parse::parse(args) {

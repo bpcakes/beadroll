@@ -260,6 +260,43 @@ These were decided deliberately. Report problems *with* them, not their existenc
   to a nonempty remote; an offline run, a missing remote, a failed publish or simply joining or
   reusing a tracker does not claim a push. JSON output keeps its existing fields. The tracker
   golden's added line is an intentional output change.
+- `log` names an event's actor as claims and `actor_label` do: the name `--actor` or
+  `BEAD_ACTOR` gave it, else agent and thread, never the agent and thread alone when a name was
+  given; `log --json` rows carry `name`, null without one. A `set` row's operation names the
+  fields it set (`set notes,priority`), the JSON `op` staying the event's (roll-dih8.19).
+- A `close`, `reopen` or `delete` writes no event when another would change nothing: the issue
+  already has the status it gives (`closed`, `open`, `tombstone`), holds no claim or provisional
+  claim for the event to end, and its status register is undisputed. It answers `unchanged`
+  ("already closed"), exit 0, and the reason the issue has stays; a reason given then is reported
+  as not recorded. The repeat is judged on this machine's view, as every write is: a status
+  another machine changed unseen is not written over, so no conflict is made, and a disputed
+  status still takes the repeat, which is the write that settles it. A repeat of an own close
+  still publishes when that close ended a claim (`ended_by`), as before. `update` that names no
+  field, status, label, parent or claim writes nothing and answers `unchanged`. Setting a field to
+  the value it shows is still written: such a write settles a conflict, and comparing values
+  would hide one (roll-dih8.20).
+- Help pages keep argparse's layout and formatter (§5 row 13) but no longer its empty texts: a
+  command's page takes its line from the command list as its description, every argument has a
+  help text, and `create`, `dep` and `comments` end with an epilog whose paragraphs wrap as the
+  description does and whose indented lists of forms are kept line for line, as
+  `RawDescriptionHelpFormatter` keeps them. Placeholders say what they take (`ID`, `FILE`,
+  `TEXT`, `N`, `LABEL`), so argparse's errors name them too (`the following arguments are
+  required: ID`); receipt signatures use destinations, which did not change. `bead -h` describes
+  bead, where Python's module docstring had leaked in. The help golden's changes are intentional
+  (roll-dih8.21).
+- bead's own texts are laid out when printed, not stored wrapped (roll-dih8.22): the overview,
+  `prime` and the help pages' epilogs are paragraphs and rows of heading, term and description
+  (`cli/texts.rs`), laid out by `cli/layout.rs` with `textwrap`, by display width, breaking only
+  at spaces: never inside a word, after a hyphen, inside brackets, or inside one of a list of terms
+  that fits a line. A table's term column fits its longest described term up to 30 columns and
+  half the room, a longer term taking its line; with fewer than 20 columns left for descriptions
+  the rows stack. The width is `COLUMNS`, else the terminal's on standard output, at most 100 for
+  reading; with neither (a pipe, an agent) nothing wraps, and `--json` always carries the
+  unwrapped text, so what an agent reads does not depend on a width. That makes these texts
+  differ between a terminal and a pipe, as argparse's pages already did; the V8 contract that a
+  terminal and a pipe print alike holds for the data commands. Argparse's pages keep their own
+  formatter (§5 row 13); an epilog is laid out at their width. `ONBOARD` stays verbatim: it is
+  `AGENTS.md`'s text, kept equal by a test.
 - A remote is kept as it was chosen (G22; the maintainer's course correction of 2026-10-11,
   roll-dih8.13: rounds of findings came from resolving the choice to a URL at once and using that
   string for transport, memory, comparison and advice, which made bead re-implement git's remote

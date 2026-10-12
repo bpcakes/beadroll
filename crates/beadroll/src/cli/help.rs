@@ -6,6 +6,7 @@ use std::ffi::OsStr;
 
 use beadroll_core::text::parse_integer;
 
+use super::layout::lay_out;
 use super::parse::Page;
 use super::spec::{Action, ArgSpec, COMMAND, COMMANDS, DESCRIPTION, HELP_FLAG, Nargs};
 use super::wrap::{collapsed, wrap};
@@ -26,18 +27,22 @@ pub(crate) fn columns(variable: Option<&OsStr>) -> i64 {
     }
 }
 
-/// The page for `page`, formatted for a terminal `columns` wide (`format_help`).
+/// The page for `page`, formatted for a terminal `columns` wide (`format_help`): a command's page
+/// is described by its line in the list, and ends with its epilog, laid out as bead's own texts
+/// are ([`lay_out`]) at the page's width.
 pub(crate) fn render(page: Page, columns: i64) -> String {
-    let (prog, actions, description) = match page {
+    let (prog, actions, description, epilog) = match page {
         Page::Top => (
             "bead".to_owned(),
             vec![&HELP_FLAG, &COMMAND],
             Some(DESCRIPTION),
+            None,
         ),
         Page::Command(spec) => (
             format!("bead {}", spec.name),
             std::iter::once(&HELP_FLAG).chain(spec.args).collect(),
-            None,
+            Some(spec.help),
+            spec.epilog,
         ),
     };
     let width = columns - 2;
@@ -89,6 +94,9 @@ pub(crate) fn render(page: Page, columns: i64) -> String {
             }
         }
         out.push('\n');
+    }
+    if let Some(blocks) = epilog {
+        out.push_str(&lay_out(blocks, usize::try_from(width.max(11)).ok()));
     }
     // `format_help`: no run of more than one blank line, no blank line at either end
     while out.contains("\n\n\n") {

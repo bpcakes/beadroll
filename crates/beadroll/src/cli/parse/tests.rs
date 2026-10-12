@@ -237,13 +237,10 @@ fn numbers_are_read_as_int_reads_them_and_defaults_apply() {
 
 #[test]
 fn errors_come_in_the_order_argparse_meets_them() {
-    assert_eq!(
-        usage(&["show"]),
-        "the following arguments are required: ids"
-    );
+    assert_eq!(usage(&["show"]), "the following arguments are required: ID");
     assert_eq!(
         usage(&["search"]),
-        "the following arguments are required: query"
+        "the following arguments are required: TEXT"
     );
     assert_eq!(
         usage(&["--bogus"]),
@@ -255,7 +252,7 @@ fn errors_come_in_the_order_argparse_meets_them() {
     );
     assert_eq!(
         usage(&["--bogus", "show"]),
-        "the following arguments are required: ids"
+        "the following arguments are required: ID"
     );
     assert_eq!(
         usage(&["create", "--estimate", "x", "--help"]),

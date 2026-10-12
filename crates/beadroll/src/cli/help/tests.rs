@@ -30,8 +30,10 @@ fn columns_come_from_columns_when_it_is_a_positive_number() {
 #[allow(clippy::unwrap_used, reason = "the table has the command")]
 fn ready_at_80() {
     let expected = r#"usage: bead ready [-h] [-t TYPE] [-l LABEL] [-p PRIORITY]
-                  [--assignee ASSIGNEE] [--limit LIMIT]
+                  [--assignee ASSIGNEE] [--limit N]
                   [--epic ID | --parent ID | ID]
+
+open issues with nothing blocking them
 
 positional arguments:
   ID                    only issues in ID's subtree: its children, theirs, and
@@ -41,11 +43,13 @@ options:
   -h, --help            show this help message and exit
   --epic ID             the same as ID, as in br
   --parent ID           only ID's direct children
-  -t, --type TYPE
-  -l, --label LABEL
+  -t, --type TYPE       only these types (repeat it or use commas)
+  -l, --label LABEL     only issues with all these labels (repeat it or use
+                        commas)
   -p, --priority PRIORITY
-  --assignee ASSIGNEE
-  --limit LIMIT
+                        only this priority, 0 to 4
+  --assignee ASSIGNEE   only issues assigned to ASSIGNEE
+  --limit N             at most N issues (default: all)
 "#;
     assert_eq!(render(Page::Command(find("ready").unwrap()), 80), expected);
 }
@@ -54,6 +58,8 @@ options:
 #[allow(clippy::unwrap_used, reason = "the table has the command")]
 fn claims_at_80() {
     let expected = r#"usage: bead claims [-h]
+
+who holds what, and when each owner was last active
 
 options:
   -h, --help  show this help message and exit
@@ -67,8 +73,10 @@ fn top_at_52() {
     let expected = r#"usage: bead [-h]
             {init,import,export,create,update,claim,release,takeover,claims,close,reopen,delete,show,list,ready,blocked,search,dep,comments,lint,sync,log,info,machines,help,prime,onboard} ...
 
-The command line: parser, dispatch, the texts an
-agent reads.
+bead: a Beads-compatible issue tracker for agent
+crews working across worktrees and machines. `bead
+help` gives the overview, `bead help COMMAND` one
+command's page.
 
 positional arguments:
   {init,import,export,create,update,claim,release,takeover,claims,close,reopen,delete,show,list,ready,blocked,search,dep,comments,lint,sync,log,info,machines,help,prime,onboard}
@@ -106,11 +114,9 @@ positional arguments:
     search              text search over ids,
                         titles, bodies and
                         comments
-    dep                 dependencies: dep add A B
-                        [--type blocks|parent-
-                        child], dep remove A B,
-                        dep list ID, dep tree ID,
-                        dep cycles
+    dep                 dependencies between
+                        issues: add, remove, list,
+                        tree, cycles
     comments            read an issue's comments,
                         or `comments add ID TEXT`
                         to record one
@@ -119,8 +125,10 @@ positional arguments:
     sync                exchange the journal with
                         other machines through the
                         coordination ref
-    log                 who did what: machine,
-                        agent, thread
+    log                 who did what: time,
+                        machine, actor (its name,
+                        else agent and thread),
+                        operation
     info                where the tracker lives
                         and who you are
     machines            machines seen in the
@@ -147,10 +155,19 @@ fn search_at_12() {
     let expected = r#"usage: bead search
        [-h]
        [-a]
-       query
+       TEXT
+
+text search
+over ids,
+titles,
+bodies and
+comments
 
 positional arguments:
-  query
+  TEXT
+    text to
+    find, in
+    any case
 
 options:
   -h, --help
@@ -159,6 +176,9 @@ options:
     message and
     exit
   -a, --all
+    closed and
+    deleted
+    issues too
 "#;
     assert_eq!(render(Page::Command(find("search").unwrap()), 12), expected);
 }

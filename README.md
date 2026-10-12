@@ -80,7 +80,7 @@ bead claim <id>                     # or: bead update <id> --status in_progress
 bead comments add <id> "started"
 bead close <id> --reason "done"
 bead claims                         # who holds what, on which branch, and when each was last active
-bead log <id>                       # who did what: machine, agent, thread, branch
+bead log <id>                       # who did what: machine, actor, operation, branch
 bead export -o /tmp/x/.beads/issues.jsonl   # for bv or any Beads reader
 bead info                           # where the store is, who you are, what the remote still lacks
 ```
@@ -101,7 +101,14 @@ Commands: `create`, `show`, `update`, `list`, `ready`, `blocked`, `close`,
 `search`, `lint`, plus `init`, `import`, `export`, `sync`, `claim`, `release`,
 `takeover`, `claims`, `log`, `info`, `machines`, and for agents `help`, `prime`,
 `onboard`. `--json` works anywhere on the command line; `bead` alone prints the
-overview.
+overview, and `bead help COMMAND` one command's page: what each option takes and,
+for `create`, `dep` and `comments`, their forms and what a dependency type does.
+A command that would change nothing says so instead of writing: a `close`,
+`reopen` or `delete` of an issue already in that state answers `Already closed`
+(and so on; `unchanged` in JSON) and keeps the reason it has, and an `update`
+that names nothing to change answers `Unchanged`. `bead log` names who wrote
+each event as claims do: the `--actor` or `BEAD_ACTOR` name when one was given,
+else the agent and its thread; a `set` row names the fields it changed.
 
 `bead ready` is the frontier: open issues that nothing blocks and nobody
 holds, by br's rule. `bead ready ID`, or `--epic ID` as in br, keeps to ID's
@@ -203,6 +210,10 @@ edits are never held up.
 | add dependencies that form a loop | kept, reported by `dep cycles`, never `ready` |
 
 An edit made after seeing another is never a conflict, whatever the clocks say.
+A `close`, `reopen` or `delete` is judged on what this machine has seen: repeated
+on an issue already in that status, with no claim to end and its status
+undisputed, it writes nothing, so a change another machine made meanwhile stands;
+a disputed status still takes the repeat that settles it.
 
 ## What the journals tolerate
 

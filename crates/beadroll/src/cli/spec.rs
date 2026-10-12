@@ -2,6 +2,15 @@
 //! count, action, value type and help text. The parser, help pages and receipt signatures all use
 //! this table.
 
+use super::layout::Block;
+use super::texts;
+use args::{
+    CLAIM, COMMENTS, CREATE, DEP, EXPORT, HELP, IMPORT, INIT, LIST, LOG, MACHINES, READY, RELEASE,
+    SEARCH, SHOW, SYNC, TAKEOVER, TRANSITION, UPDATE,
+};
+
+mod args;
+
 /// The number of values an argument takes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Nargs {
@@ -64,7 +73,8 @@ pub(crate) struct ArgSpec {
     pub(crate) exclusive: bool,
 }
 
-/// One command: its name, its line in `bead -h`'s list and its arguments, in declaration order.
+/// One command: its name, its line in `bead -h`'s list (its page's description too), its
+/// arguments, in declaration order, and what its page says after them.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CommandSpec {
     pub(crate) name: &'static str,
@@ -72,6 +82,8 @@ pub(crate) struct CommandSpec {
     pub(crate) args: &'static [ArgSpec],
     /// Help, prime and onboard work outside a repository.
     pub(crate) workspace_free: bool,
+    /// The forms and rules its options do not tell, after them.
+    pub(crate) epilog: Option<&'static [Block]>,
 }
 
 const fn opt(flags: &'static [&'static str], dest: &'static str) -> ArgSpec {
@@ -170,202 +182,9 @@ pub(crate) const COMMAND: ArgSpec = ArgSpec {
 };
 
 /// The description shown by `bead -h`.
-pub(crate) const DESCRIPTION: &str =
-    "The command line: parser, dispatch, the texts an agent reads.";
-
-const OFFLINE_LOCAL: ArgSpec = flag(&["--offline"], "offline")
-    .help("record locally only; the next sync or online command publishes it");
-const OFFLINE_COORDINATED: ArgSpec = flag(&["--offline"], "offline")
-    .help("do not contact the remote; a claim made this way is provisional");
-const REMOTE_COORDINATED: ArgSpec =
-    opt(&["--remote"], "remote").help("coordination remote (name or URL) for this call");
-const IDS: ArgSpec = positional("ids", Nargs::OneOrMore);
-const REASON: ArgSpec = opt(&["-r", "--reason"], "reason");
-
-/// `content_flags`: the fields `create` and `update` set.
-macro_rules! content_flags {
-    () => {
-        [
-            opt(&["-d", "--description"], "description"),
-            opt(&["--description-file"], "description_file"),
-            opt(
-                &["--acceptance-criteria", "--acceptance"],
-                "acceptance_criteria",
-            ),
-            opt(&["--notes"], "notes"),
-            opt(&["--design"], "design"),
-            opt(&["-p", "--priority"], "priority"),
-            opt(&["-t", "--type"], "type"),
-            opt(&["--status", "-s"], "status"),
-            opt(&["--assignee"], "assignee"),
-            opt(&["--estimate"], "estimate").int(None),
-            opt(&["--external-ref"], "external_ref"),
-            opt(&["--parent"], "parent"),
-        ]
-    };
-}
-
-const CONTENT: [ArgSpec; 12] = content_flags!();
-
-/// `filters`: what `list` and `ready` share, `--limit`'s default being the command's.
-const fn filters(limit: &'static str) -> [ArgSpec; 5] {
-    [
-        opt(&["-t", "--type"], "type").append(),
-        opt(&["-l", "--label"], "label").append(),
-        opt(&["-p", "--priority"], "priority"),
-        opt(&["--assignee"], "assignee"),
-        opt(&["--limit"], "limit").int(Some(limit)),
-    ]
-}
-
-const LIST_FILTERS: [ArgSpec; 5] = filters("50");
-const READY_FILTERS: [ArgSpec; 5] = filters("0");
-
-const INIT: &[ArgSpec] = &[
-    opt(&["--prefix"], "prefix"),
-    opt(&["--import"], "import_path").metavar("BEADS_JSONL"),
-    flag(&["--tracked"], "tracked")
-        .help("write .beadroll.json naming this tracker, to commit: only for a remote other than origin, or \"where\": false"),
-    opt(&["--remote"], "remote").help("coordination remote (name or URL) if it is not origin"),
-    OFFLINE_LOCAL,
-];
-
-const IMPORT: &[ArgSpec] = &[positional("path", Nargs::One), OFFLINE_LOCAL];
-
-const EXPORT: &[ArgSpec] = &[opt(&["-o", "--output"], "output")];
-
-const CREATE: &[ArgSpec] = &[
-    positional("title_pos", Nargs::Optional).metavar("TITLE"),
-    opt(&["--title"], "title"),
-    CONTENT[0],
-    CONTENT[1],
-    CONTENT[2],
-    CONTENT[3],
-    CONTENT[4],
-    CONTENT[5],
-    CONTENT[6],
-    CONTENT[7],
-    CONTENT[8],
-    CONTENT[9],
-    CONTENT[10],
-    CONTENT[11],
-    opt(&["-l", "--labels", "--label"], "labels").append(),
-    opt(&["--deps"], "deps")
-        .append()
-        .help("comma list of [type:]ISSUE"),
-    flag(&["--silent"], "silent").help("print only the new id"),
-    OFFLINE_LOCAL,
-];
-
-const UPDATE: &[ArgSpec] = &[
-    IDS,
-    opt(&["--title"], "title"),
-    CONTENT[0],
-    CONTENT[1],
-    CONTENT[2],
-    CONTENT[3],
-    CONTENT[4],
-    CONTENT[5],
-    CONTENT[6],
-    CONTENT[7],
-    CONTENT[8],
-    CONTENT[9],
-    CONTENT[10],
-    CONTENT[11],
-    flag(&["--claim"], "claim"),
-    flag(&["--force"], "force").help("change the status of an issue someone else has claimed"),
-    opt(&["--add-label"], "add_label").append(),
-    opt(&["--remove-label"], "remove_label").append(),
-    opt(&["--set-labels"], "set_labels"),
-    OFFLINE_COORDINATED,
-    REMOTE_COORDINATED,
-];
-
-const CLAIM: &[ArgSpec] = &[IDS, OFFLINE_COORDINATED, REMOTE_COORDINATED];
-
-const RELEASE: &[ArgSpec] = &[IDS, REASON, OFFLINE_COORDINATED, REMOTE_COORDINATED];
-
-const TRANSITION: &[ArgSpec] = &[
-    IDS,
-    REASON,
-    flag(&["--force"], "force").help("act on an issue someone else has claimed"),
-    OFFLINE_COORDINATED,
-    REMOTE_COORDINATED,
-];
-
-const SHOW: &[ArgSpec] = &[IDS];
-
-const LIST: &[ArgSpec] = &[
-    opt(&["-s", "--status"], "status").append(),
-    flag(&["-a", "--all"], "all"),
-    flag(&["--deferred"], "deferred"),
-    opt(&["--title-contains"], "title_contains"),
-    opt(&["--id"], "id").append(),
-    opt(&["--parent"], "parent")
-        .once()
-        .metavar("ID")
-        .help("only ID's direct children"),
-    LIST_FILTERS[0],
-    LIST_FILTERS[1],
-    LIST_FILTERS[2],
-    LIST_FILTERS[3],
-    LIST_FILTERS[4],
-];
-
-const READY: &[ArgSpec] = &[
-    positional("root", Nargs::Optional)
-        .metavar("ID")
-        .help("only issues in ID's subtree: its children, theirs, and so on")
-        .exclusive(),
-    opt(&["--epic"], "epic")
-        .once()
-        .metavar("ID")
-        .help("the same as ID, as in br")
-        .exclusive(),
-    opt(&["--parent"], "parent")
-        .once()
-        .metavar("ID")
-        .help("only ID's direct children")
-        .exclusive(),
-    READY_FILTERS[0],
-    READY_FILTERS[1],
-    READY_FILTERS[2],
-    READY_FILTERS[3],
-    READY_FILTERS[4],
-];
-
-const SEARCH: &[ArgSpec] = &[
-    positional("query", Nargs::One),
-    flag(&["-a", "--all"], "all"),
-];
-
-const DEP: &[ArgSpec] = &[
-    positional("words", Nargs::ZeroOrMore),
-    opt(&["--type"], "type"),
-    flag(&["--blocking-only"], "blocking_only"),
-    OFFLINE_LOCAL,
-];
-
-const COMMENTS: &[ArgSpec] = &[
-    positional("words", Nargs::ZeroOrMore),
-    opt(&["-m", "--message"], "message"),
-    opt(&["-f", "--file"], "file"),
-    opt(&["--author"], "author"),
-    OFFLINE_LOCAL,
-];
-
-const SYNC: &[ArgSpec] = &[opt(&["--remote"], "remote")];
-
-const LOG: &[ArgSpec] = &[
-    positional("key", Nargs::Optional),
-    opt(&["--limit"], "limit").int(Some("30")),
-];
-
-const MACHINES: &[ArgSpec] = &[opt(&["--name"], "name")
-    .metavar("ID=ALIAS")
-    .help("give a machine a local display name")];
-
-const HELP: &[ArgSpec] = &[positional("command_name", Nargs::Optional).metavar("COMMAND")];
+pub(crate) const DESCRIPTION: &str = "bead: a Beads-compatible issue tracker for agent crews \
+     working across worktrees and machines. `bead help` gives the overview, `bead help COMMAND` \
+     one command's page.";
 
 const fn command(name: &'static str, help: &'static str, args: &'static [ArgSpec]) -> CommandSpec {
     CommandSpec {
@@ -373,15 +192,21 @@ const fn command(name: &'static str, help: &'static str, args: &'static [ArgSpec
         help,
         args,
         workspace_free: false,
+        epilog: None,
     }
 }
 
 const fn free(name: &'static str, help: &'static str, args: &'static [ArgSpec]) -> CommandSpec {
     CommandSpec {
-        name,
-        help,
-        args,
         workspace_free: true,
+        ..command(name, help, args)
+    }
+}
+
+impl CommandSpec {
+    const fn epilog(mut self, text: &'static [Block]) -> CommandSpec {
+        self.epilog = Some(text);
+        self
     }
 }
 
@@ -390,7 +215,7 @@ pub(crate) const COMMANDS: [CommandSpec; 27] = [
     command("init", "create the tracker for this repository", INIT),
     command("import", "import a Beads JSONL export", IMPORT),
     command("export", "write Beads-compatible JSONL", EXPORT),
-    command("create", "create an issue", CREATE),
+    command("create", "create an issue", CREATE).epilog(texts::CREATE_EPILOG),
     command(
         "update",
         "change fields, labels or parent; --claim or --status in_progress claims",
@@ -405,7 +230,7 @@ pub(crate) const COMMANDS: [CommandSpec; 27] = [
     command(
         "takeover",
         "replace the current owner after investigating; needs --reason",
-        RELEASE,
+        TAKEOVER,
     ),
     command(
         "claims",
@@ -426,22 +251,27 @@ pub(crate) const COMMANDS: [CommandSpec; 27] = [
     ),
     command(
         "dep",
-        "dependencies: dep add A B [--type blocks|parent-child], dep remove A B, dep list ID, \
-         dep tree ID, dep cycles",
+        "dependencies between issues: add, remove, list, tree, cycles",
         DEP,
-    ),
+    )
+    .epilog(texts::DEP_EPILOG),
     command(
         "comments",
         "read an issue's comments, or `comments add ID TEXT` to record one",
         COMMENTS,
-    ),
+    )
+    .epilog(texts::COMMENTS_EPILOG),
     command("lint", "open work items without acceptance criteria", &[]),
     command(
         "sync",
         "exchange the journal with other machines through the coordination ref",
         SYNC,
     ),
-    command("log", "who did what: machine, agent, thread", LOG),
+    command(
+        "log",
+        "who did what: time, machine, actor (its name, else agent and thread), operation",
+        LOG,
+    ),
     command("info", "where the tracker lives and who you are", &[]),
     command("machines", "machines seen in the journal", MACHINES),
     free(
@@ -463,30 +293,4 @@ pub(crate) fn find(name: &str) -> Option<&'static CommandSpec> {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::collections::BTreeSet;
-    use std::ffi::OsString;
-
-    use super::{COMMANDS, find};
-    use crate::cli::help::render;
-    use crate::cli::parse::{Page, Parsed, parse};
-
-    /// `HelpAndPrime.test_every_command_has_help` over the table (`docs/RUST-PORT.md` §4.6): more
-    /// than 20 commands, each under a name of its own, which `help NAME` finds; `NAME --help`
-    /// shows that command's page, which starts `usage: bead NAME`.
-    #[test]
-    fn every_command_has_help() {
-        let names: BTreeSet<&str> = COMMANDS.iter().map(|command| command.name).collect();
-        assert_eq!(names.len(), COMMANDS.len(), "two commands share a name");
-        assert!(names.len() > 20, "{names:?}");
-        for name in names {
-            assert!(find(name).is_some(), "help {name} finds no command");
-            let page = match parse(&[OsString::from(name), OsString::from("--help")]) {
-                Parsed::Help(page @ Page::Command(spec)) if spec.name == name => page,
-                other => panic!("{name} --help: {other:?}"),
-            };
-            let text = render(page, 80);
-            assert!(text.starts_with(&format!("usage: bead {name}")), "{text}");
-        }
-    }
-}
+mod tests;

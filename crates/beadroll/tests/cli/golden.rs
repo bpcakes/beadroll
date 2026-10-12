@@ -130,6 +130,12 @@ fn help_pages() {
     let mut t = Transcript::new("help", &sandbox);
     let wide = [("COLUMNS", "80")];
     t.record_with(&a, &[], &wide);
+    // bead's own texts follow the width: stacked when narrow, unwrapped when standard output is
+    // not a terminal and COLUMNS says nothing
+    t.record_with(&a, &[], &[("COLUMNS", "40")]);
+    t.record_with(&a, &[], &[("COLUMNS", "")]);
+    t.record_with(&a, &["prime"], &wide);
+    t.record_with(&a, &["prime"], &[("COLUMNS", "")]);
     t.record_with(&a, &["help"], &wide);
     t.record_with(&a, &["-h", "x"], &wide);
     for name in [

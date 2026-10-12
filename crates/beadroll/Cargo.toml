@@ -20,6 +20,7 @@ beadroll-sync.workspace = true
 libc.workspace = true
 nix.workspace = true
 rustix.workspace = true
+textwrap.workspace = true
 
 [dev-dependencies]
 beadroll-test-support.workspace = true

@@ -11,9 +11,10 @@ use beadroll_store::{
 };
 
 use super::help;
+use super::layout::{self, lay_out, paragraph};
 use super::parse::{Namespace, Page};
 use super::spec::find;
-use super::texts::{ONBOARD, OVERVIEW, PRIME};
+use super::texts::{ONBOARD, OVERVIEW, PRIME, PRIME_TITLE};
 use crate::commands::{Failure, Outcome, need_tracker};
 
 /// Runs `help`, `prime` or `onboard`; `ws` is the workspace when there is one.
@@ -32,9 +33,15 @@ pub(crate) fn run(
 
 /// The text as `{name: text}`, and as its lines.
 fn text_outcome(name: &str, text: &str) -> Outcome {
+    laid_out(name, text, text)
+}
+
+/// `{name: text}`, `text` laid out for no width so that the reader wraps it, and `shown`, laid
+/// out for this terminal, as its lines.
+fn laid_out(name: &str, text: &str, shown: &str) -> Outcome {
     let mut result = Object::new();
     result.insert(name.into(), Value::from(text));
-    let lines = text
+    let lines = shown
         .trim_end_matches('\n')
         .split('\n')
         .map(str::to_owned)
@@ -45,7 +52,12 @@ fn text_outcome(name: &str, text: &str) -> Outcome {
 /// The overview, or one command's help page.
 fn help_page(name: Option<&OsStr>, settings: &Settings) -> Result<Outcome, Failure> {
     let Some(name) = name.filter(|n| !n.is_empty()) else {
-        return Ok(text_outcome("help", OVERVIEW));
+        let width = layout::width(settings.var("COLUMNS"));
+        return Ok(laid_out(
+            "help",
+            &lay_out(OVERVIEW, None),
+            &lay_out(OVERVIEW, width),
+        ));
     };
     let Some(spec) = name.to_str().and_then(find) else {
         return Err(Failure::new(
@@ -91,8 +103,15 @@ fn prime(ws: Option<&Workspace>, actor: &Actor, settings: &Settings) -> Result<O
     if let Some(warning) = warning {
         context.insert(0, format!("Warning: {warning}."));
     }
-    let text = PRIME.replacen("{context}", &format!("{}\n", context.join("\n")), 1);
-    let mut outcome = text_outcome("prime", &text);
+    let text = |width| {
+        let head: Vec<String> = std::iter::once(PRIME_TITLE)
+            .chain(context.iter().map(String::as_str))
+            .map(|line| paragraph(line, width))
+            .collect();
+        format!("{}\n\n{}", head.join("\n"), lay_out(PRIME, width))
+    };
+    let width = layout::width(settings.var("COLUMNS"));
+    let mut outcome = laid_out("prime", &text(None), &text(width));
     if let Some(Value::Object(result)) = &mut outcome.result {
         result.insert("actor".into(), Value::from(me.shown()));
     }

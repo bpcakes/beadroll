@@ -26,6 +26,7 @@ regex-lite = "0.1"                          # git message classifiers
 rustix = { version = "1", features = ["fs", "process", "system", "termios"] }  # termios: the terminal width help pages wrap at
 sha2 = "0.10"                               # the version studio already builds
 tempfile = "3"
+textwrap = { version = "0.16", default-features = false, features = ["unicode-width"] }  # bead's own texts, wrapped by display width
 thiserror = "2"
 uuid = { version = "1", features = ["v4", "v7"] }
 

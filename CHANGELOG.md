@@ -6,6 +6,31 @@ versioned separately (format 1, frozen; see *Format and upgrades* in the README)
 
 ## [Unreleased]
 
+- `bead log` names who wrote each event as claims do: an event written with `--actor NAME` or
+  `BEAD_ACTOR` shows that name, where it showed the agent and thread as if they had written it;
+  `log --json` rows gain `name` (null without one). A `set` row names the fields it changed
+  (`set title,priority`); the JSON `op` stays `set` (roll-dih8.19).
+- A repeated `close`, `reopen` or `delete` writes nothing when the issue already has the status it
+  gives, no claim or provisional claim is left for it to end, and that status is undisputed: it
+  answers `✓ Already closed KEY: TITLE` (`unchanged` in JSON), exit 0, and keeps the reason the
+  issue has, saying a reason given then is not recorded. Before, it wrote another event, replaced
+  the reason and reported a fresh close. `update` with nothing to change writes nothing and
+  answers `Unchanged`, where it said `Updated` (roll-dih8.20).
+- Every command's help page describes: its line from the command list as its description, a help
+  text for each argument, placeholders that say what they take (`ID`, `FILE`, `TEXT`, `N`, so
+  argparse's errors name them too: `the following arguments are required: ID`), and for
+  `create`, `dep` and `comments` their forms and what each dependency type does (`--deps
+  blocks:X`: the new issue waits on X). `bead -h` describes bead instead of printing the Python
+  module's docstring (roll-dih8.21).
+- `bead`, `bead help` and `bead prime` are laid out for the terminal instead of printed as text
+  wrapped at 100 to 120 columns, which a narrower terminal broke mid-word: paragraphs wrap at
+  spaces; commands and their descriptions keep two columns, each description wrapping under its
+  own, and stack one above the other when the terminal is too narrow for both. The width is
+  `COLUMNS`, else the terminal's, at most 100; into a pipe, or with `--json`, nothing wraps, so an
+  agent reads each line whole. The forms lists of the `create`, `dep` and `comments` pages wrap
+  the same way at the page's width. Wrapping measures display width (`textwrap`), so a wide
+  character counts twice (roll-dih8.22).
+
 - `bead init` now acknowledges successful publication in human output, naming the remote and
   coordination ref. Offline runs, runs without a remote, failed publishes, and runs that only
   join or reuse a tracker do not claim a push; JSON output is unchanged (roll-dih8.18).

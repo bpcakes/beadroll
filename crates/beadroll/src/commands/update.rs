@@ -1,9 +1,10 @@
 //! `bead update`: fields, labels and parent, checked for every issue before anything is written.
 //! Changing the status of an issue someone else holds needs `--force`; closing your own claim this
 //! way ends it and is published at once. A claim (`--claim`, `--status in_progress`) and the edits
-//! made with it are one attempt, coordinated with the remote: both land, or neither.
+//! made with it are one attempt, coordinated with the remote: both land, or neither. An update
+//! that asks for nothing writes nothing and says so.
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 
 use beadroll_core::code::Code;
 use beadroll_core::event::DONE;
@@ -49,6 +50,13 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
     // in_progress is reached only through a claim
     let wants_claim = args.claim || status.as_deref() == Some("in_progress");
     let status = status.filter(|status| status != "in_progress");
+    let asked_nothing = fields.values.is_empty()
+        && status.is_none()
+        && !wants_claim
+        && args.add_label.is_empty()
+        && args.remove_label.is_empty()
+        && args.set_labels.is_none()
+        && args.fields.parent.as_deref().is_none_or(OsStr::is_empty);
     let mut notes = Vec::new();
     let ended = if wants_claim {
         let step = ClaimStep {
@@ -100,11 +108,29 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
         .iter()
         .map(|key| Ok(st.detail(resolve_arg(&st, key)?)))
         .collect::<Result<Vec<Object>, Failure>>()?;
+    if asked_nothing {
+        for item in &mut result {
+            item.insert(
+                "unchanged".into(),
+                Value::from("nothing to update was given"),
+            );
+        }
+        notes.push(
+            "nothing to update was given: name a field, --status, a label or --parent \
+             (bead update --help)"
+                .to_owned(),
+        );
+    }
+    let done = if asked_nothing {
+        "Unchanged"
+    } else {
+        "Updated"
+    };
     let mut lines: Vec<String> = result
         .iter()
         .map(|item| {
             let field = |name: &str| item.get(name).map(str_of).unwrap_or_default();
-            format!("Updated {}: {}", field("id"), field("title"))
+            format!("{done} {}: {}", field("id"), field("title"))
         })
         .collect();
     lines.extend(notes);

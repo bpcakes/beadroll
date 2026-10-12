@@ -5,6 +5,7 @@ use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_core::code::Code;
 use beadroll_core::json::{self, Format, Int, Object, Surrogates, Value};
+use beadroll_core::op::Op;
 use beadroll_core::order::causal_order;
 use beadroll_core::replay::replay;
 use beadroll_core::text::{printed_text, str_of, surrogateescaped};
@@ -17,8 +18,9 @@ use beadroll_store::{
 use super::{Context, Failure, Outcome, resolve_arg};
 
 /// The tracker's events in causal order, excluding `init`, or one issue's events: time, machine,
-/// agent, thread, operation and issue. A positive `limit` keeps the last that many; a negative
-/// limit leaves that many off the start.
+/// who (the actor's name when it was given one, as its claims are labelled, else its agent and
+/// thread), operation (with the fields a `set` changed) and issue. A positive `limit` keeps the
+/// last that many; a negative limit leaves that many off the start.
 pub(crate) fn log(
     ctx: &Context<'_>,
     key: Option<&OsStr>,
@@ -78,6 +80,7 @@ pub(crate) fn log(
         row.insert("machine".into(), Value::from(machine));
         row.insert("agent".into(), actor("agent"));
         row.insert("thread".into(), actor("thread"));
+        row.insert("name".into(), actor("name"));
         row.insert("op".into(), Value::from(event.op_name()));
         row.insert("issue".into(), issue.clone());
         row.insert("event".into(), Value::from(event.id().to_string()));
@@ -89,14 +92,23 @@ pub(crate) fn log(
                 default.to_owned()
             }
         };
-        let thread: String = or(actor("thread"), "-").chars().take(8).collect();
+        let who = if actor("name").truthy() {
+            str_of(&actor("name"))
+        } else {
+            let thread: String = or(actor("thread"), "-").chars().take(8).collect();
+            format!("{:<6} {thread:<8}", or(actor("agent"), "?"))
+        };
+        let op = match event.op() {
+            Op::Set(fields) if !fields.is_empty() => {
+                let names: Vec<&str> = fields.iter().map(|(field, _)| field.name()).collect();
+                format!("set {}", names.join(","))
+            }
+            op => op.name().to_owned(),
+        };
         let mut line = format!(
-            "{}  {:<10} {:<6} {:<8}  {:<12} {}",
+            "{}  {:<10} {who:<15}  {op:<12} {}",
             at.chars().take(19).collect::<String>(),
             machine,
-            or(actor("agent"), "?"),
-            thread,
-            event.op_name(),
             str_of(&issue)
         );
         if branch.truthy() {

@@ -18,13 +18,15 @@ storage, protocol behavior and fault recovery.
 - `src/cli.rs`: the flow of one run (`--json`, `--actor` and `--` read first, settings, the
   parse, the workspace, the command, publishing what it wrote, the unpublished count, rendering,
   errors). Its parts:
-  - `src/cli/spec.rs`: every command's arguments; the one table the parser, help pages and
-    receipt signature read.
+  - `src/cli/spec.rs`, `spec/args.rs`: every command's arguments; the one table the parser, help
+    pages and receipt signature read.
   - `src/cli/parse.rs`, `parse/classify.rs`, `parse/values.rs`: argument parsing (§2.3h): option
     classification, value counts, namespaces and diagnostics.
-  - `src/cli/help.rs`, `src/cli/wrap.rs`: help formatting and wrapping to the selected width.
+  - `src/cli/help.rs`, `src/cli/wrap.rs`: argparse's help pages and its wrapping, to the selected
+    width.
   - `src/cli/free.rs`: `help`, `prime` and `onboard`, which work outside a repository;
-    `src/cli/texts.rs`: the overview, `PRIME` and `ONBOARD`, verbatim.
+    `src/cli/texts.rs`: the overview, `PRIME` and the help pages' epilogs as paragraphs and rows,
+    and `ONBOARD` verbatim; `src/cli/layout.rs`: laying those out for the reader's width.
   - `src/cli/output.rs`: the EPIPE-safe writes and `visible`; `src/cli/tempdir.rs`: writable
     temporary-directory selection with environment overrides and fallbacks.
 - `src/commands.rs`: `Failure` (with the raw bytes of a message that holds some not UTF-8),

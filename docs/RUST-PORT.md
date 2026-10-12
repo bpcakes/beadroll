@@ -666,7 +666,10 @@ duplicate versions warn; crates.io only.
 | anyhow | Every error carries a code |
 | `wait-timeout` and `ctrlc` | A waiter thread is enough, and Python installs no signal handlers bead relies on |
 
-`fastrand` exists only for backoff jitter.
+`fastrand` exists only for backoff jitter. `textwrap` (no default features but `unicode-width`)
+lays out bead's own texts, the overview, `prime` and the help pages' epilogs, by display width
+(roll-dih8.22); argparse's pages keep `cli/wrap.rs`, the port of Python's `textwrap` they were
+made with.
 
 **Recent Rust the design uses** (each compiled and checked on 1.99.0, edition 2024):
 - let chains for the many validation ladders;
