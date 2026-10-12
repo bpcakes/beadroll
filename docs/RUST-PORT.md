@@ -750,6 +750,10 @@ generated with CPython 3.14.7's `str.isprintable()`, using Unicode 16.0.0, by
 `randrange`, `choice` and weighted `choices`. Its recorded stream and draw fixtures came from
 that implementation, so old stress seeds still reproduce the same scenarios.
 
+The actor and input fixtures in `crates/beadroll/tests/cli/parity/actors.rs` and `inputs.rs`
+were captured from the Python bead under Python 3.14 before cutover. The unpublished-count
+`COUNTS` fixture in `parity/pending.rs` was also captured from the Python bead before cutover.
+
 1. **The Python suite is the oracle.** `cargo xtask oracle` runs the Python modules with
    `BEAD_UNDER_TEST=target/debug/bead`. It skips, from a checked-in list derived from the
    catalogues (`xtask/oracle-skip.txt`):

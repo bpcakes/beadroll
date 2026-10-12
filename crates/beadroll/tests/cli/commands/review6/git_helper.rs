@@ -9,7 +9,7 @@ use rustix::process::{Pid, Signal, kill_process, test_kill_process};
 
 use super::machine;
 
-/// Whether process `pid` is there to signal: `os.kill(pid, 0)` does not raise.
+/// Whether process `pid` can be signalled, checked without sending a signal.
 fn alive(pid: i32) -> bool {
     Pid::from_raw(pid).is_some_and(|pid| test_kill_process(pid).is_ok())
 }

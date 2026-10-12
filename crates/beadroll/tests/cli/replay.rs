@@ -40,9 +40,8 @@ mod replay_reaudit {
 
     /// From the second independent audit: a makes y the parent of x while b makes x the parent of
     /// y; once both edits have merged, `dep cycles` finds the one cycle, and both issues are ready,
-    /// as `br` 0.5.7 has it for issues that are not epics. The class's `setUp` points the
-    /// in-process package at a scratch home, which the machines never see: their environment drops
-    /// every `BEAD_*` variable.
+    /// as `br` 0.5.7 has it for issues that are not epics. Each machine uses a scratch home and
+    /// drops inherited `BEAD_*` variables.
     #[test]
     fn merged_parent_cycle_matches_br_readiness() {
         let sandbox = crate::sandbox();

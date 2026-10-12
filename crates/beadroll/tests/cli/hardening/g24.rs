@@ -20,7 +20,7 @@ mod g24_renamed_repository_loses_its_tracker {
         result["id"].as_str().expect("an id").to_owned()
     }
 
-    /// The class's `setUp` up to the move: machine a publishes its tracker (prefix `rn`), which
+    /// Before the move, machine a publishes its tracker (prefix `rn`), which
     /// holds one issue, `one`; the issue's key.
     fn set_up(sandbox: &Sandbox) -> (Machine, String) {
         let a = Machine::new(sandbox, "a");
@@ -30,7 +30,7 @@ mod g24_renamed_repository_loses_its_tracker {
         (a, issue)
     }
 
-    /// The rest of `setUp`: the repository moves, `origin.git` to `renamed.git`, and new clones use
+    /// The repository moves, `origin.git` to `renamed.git`, and new clones use
     /// the new URL, which this returns.
     fn move_repository(sandbox: &Sandbox) -> PathBuf {
         let renamed = sandbox.root().join("renamed.git");

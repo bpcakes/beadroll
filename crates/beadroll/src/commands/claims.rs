@@ -47,7 +47,7 @@ pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
                 .and_then(|place| place.get("branch"))
                 .cloned()
                 .unwrap_or(Value::Null);
-            // int((now - millis / 1000) / 60): int() truncates the float towards zero
+            // Elapsed minutes, truncating the floating-point result towards zero.
             let idle = ((now - millis as f64 / 1000.0) / 60.0).trunc();
             let mut entry = Object::new();
             entry.insert("id".into(), Value::from(issue.key()));

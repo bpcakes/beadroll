@@ -20,7 +20,7 @@ esac
 exit 2
 "#;
 
-/// `_g58_kill_helpers`, the class's cleanup: SIGKILL to every helper the file of pids names, when
+/// Sends SIGKILL to every helper named in the pid file, when
 /// the guard drops, before the sandbox goes.
 struct Helpers(PathBuf);
 

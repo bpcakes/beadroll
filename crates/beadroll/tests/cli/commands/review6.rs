@@ -15,7 +15,7 @@ mod receipts;
 mod remotes;
 mod store;
 
-/// `self.machine(name)`: a machine `name` whose tracker is initialised, prefix `ex`.
+/// A machine `name` whose tracker is initialised, prefix `ex`.
 fn machine(sandbox: &Sandbox, name: &str) -> Machine {
     let machine = Machine::new(sandbox, name);
     machine.bead(["init", "--prefix", "ex"]);
@@ -43,8 +43,8 @@ fn count(ops: &[String], op: &str) -> usize {
     ops.iter().filter(|each| *each == op).count()
 }
 
-/// The entries of `dir` whose names end with `suffix`, in directory order, as
-/// `Path.glob("*SUFFIX")` lists them: none when `dir` is not there.
+/// The entries of `dir` whose names end with `suffix`, in directory order:
+/// none when `dir` is not there.
 fn glob(dir: &Path, suffix: &str) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -58,8 +58,7 @@ fn glob(dir: &Path, suffix: &str) -> Vec<PathBuf> {
         .collect()
 }
 
-/// The `meta.json` of each store in `machine`'s home, in directory order:
-/// `machine.home.glob("*/meta.json")`.
+/// The `meta.json` of each store in `machine`'s home, in directory order.
 fn metas(machine: &Machine) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(machine.home()) else {
         return Vec::new();

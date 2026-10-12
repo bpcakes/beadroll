@@ -10,7 +10,7 @@ use std::process::{Command, Stdio};
 use beadroll_core::json::{Format, write};
 use beadroll_test_support::{Json, Machine, Sandbox, code, json};
 
-/// `setUp`: machine `u05-a` has a tracker, prefix `ex`, whose one issue it has published.
+/// Machine `u05-a` has a tracker, prefix `ex`, whose one issue it has published.
 fn set_up(sandbox: &Sandbox) -> Machine {
     let a = Machine::new(sandbox, "u05-a");
     a.bead(["init", "--prefix", "ex"]);
@@ -19,7 +19,7 @@ fn set_up(sandbox: &Sandbox) -> Machine {
     a
 }
 
-/// `self.remote(*args, data=...)`: `git ARGS` on the sandbox's remote (`GIT_DIR`), as author and
+/// `git ARGS` on the sandbox's remote (`GIT_DIR`), as author and
 /// committer `t` and with no other `GIT_*` variable, `data` on its standard input; what it printed,
 /// stripped. A failure panics.
 fn remote(sandbox: &Sandbox, args: &[&str], data: Option<&[u8]>) -> String {

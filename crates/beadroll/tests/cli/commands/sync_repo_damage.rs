@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use beadroll_test_support::{Json, Machine, Sandbox, git, parse_json};
 
-/// `setUp`: machine a's tracker holds issue x and is published; machine b has synced it. Also x's
+/// Machine a's tracker holds issue x and is published; machine b has synced it. Also x's
 /// key.
 fn set_up(sandbox: &Sandbox) -> (Machine, Machine, String) {
     let a = Machine::new(sandbox, "a");

@@ -154,7 +154,7 @@ pub fn sync_env(
     }
     let count_var = OsStr::new("GIT_CONFIG_COUNT");
     let refused = |value: &OsStr| Error::ConfigCount(value.to_string_lossy().into_owned());
-    // `int(count) if count.isdigit() else 0`
+    // Only an all-digit count is parsed; missing or non-digit counts mean zero.
     let count: Decimal = match env.get(count_var) {
         Some(value) => match value.to_str().filter(|text| (rules.is_digit)(text)) {
             Some(text) => Decimal::read(&(rules.int)(text).ok_or_else(|| refused(value))?),
@@ -177,7 +177,7 @@ pub fn sync_env(
     {
         env.insert("GIT_SSH_COMMAND".into(), DEFAULT_SSH_COMMAND.into());
     }
-    // `int(env.get("GIT_CONFIG_COUNT") or 0)`.
+    // A missing or empty count means zero; other values must parse as integers.
     let count: Decimal = match env.get(count_var) {
         None => Decimal::zero(),
         Some(value) if value.is_empty() => Decimal::zero(),
@@ -212,7 +212,7 @@ impl Decimal {
         }
     }
 
-    /// `text` as `str(int(...))` gives it: an optional minus, then digits.
+    /// `text` as a canonical decimal integer: an optional minus, then digits.
     fn read(text: &str) -> Decimal {
         let (negative, digits) = match text.strip_prefix('-') {
             Some(rest) => (true, rest),

@@ -48,8 +48,8 @@ fn remote_blob(remote: &Path, revision_path: &str) -> Vec<u8> {
     output.stdout
 }
 
-/// The entries of `dir` whose names end with `suffix`, in directory order, as `Path.glob("*SUFFIX")`
-/// lists them: none when `dir` is not a directory.
+/// The entries of `dir` whose names end with `suffix`, in directory order:
+/// none when `dir` is not a directory.
 fn glob(dir: &Path, suffix: &str) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -73,7 +73,7 @@ fn replicas(machine: &Machine) -> Vec<PathBuf> {
         .collect()
 }
 
-/// The attempt files in `machine`'s store, in directory order: `events.glob("*/claims/*.json")`.
+/// The attempt files in `machine`'s store, in directory order, under `events/*/claims/`.
 fn attempts(machine: &Machine) -> Vec<PathBuf> {
     let replicas = replicas(machine).into_iter();
     replicas
@@ -81,7 +81,7 @@ fn attempts(machine: &Machine) -> Vec<PathBuf> {
         .collect()
 }
 
-/// The journal segments in `machine`'s store, in directory order: `events.glob("*/*.jsonl")`.
+/// The journal segments in `machine`'s store, in directory order, under `events/*/`.
 fn segments(machine: &Machine) -> Vec<PathBuf> {
     let replicas = replicas(machine).into_iter();
     replicas
@@ -89,7 +89,7 @@ fn segments(machine: &Machine) -> Vec<PathBuf> {
         .collect()
 }
 
-/// `path.read_text()`: the file's text, which must be UTF-8.
+/// The file's text, which must be UTF-8.
 fn read_text(path: &Path) -> String {
     std::fs::read_to_string(path)
         .unwrap_or_else(|error| panic!("cannot read {}: {error}", path.display()))
@@ -214,7 +214,7 @@ fn q01_malformed_attempt_is_inert_as_a_whole() {
         .join("corrupt")
         .join("claims")
         .join(format!("{claim_id}.json"));
-    // `path.parent.mkdir(parents=True)`: the parents as needed, the folder itself new
+    // Create parents as needed; the folder itself must be new.
     let folder = path.parent().expect("the attempt's folder");
     std::fs::create_dir_all(folder.parent().expect("the replica's folder")).unwrap();
     std::fs::create_dir(folder).unwrap();

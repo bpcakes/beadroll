@@ -63,7 +63,7 @@ fn drain(mut pipe: impl Read + Send + 'static) -> JoinHandle<Vec<u8>> {
     })
 }
 
-/// What a reader thread read, decoded as `bytes.decode(errors="replace")` decodes it; nothing for a
+/// What a reader thread read, decoded as UTF-8 with invalid sequences replaced; nothing for a
 /// stream that was not piped.
 fn decoded(reader: Option<JoinHandle<Vec<u8>>>) -> String {
     let bytes = reader.map(|thread| thread.join().expect("a reader"));
@@ -72,7 +72,7 @@ fn decoded(reader: Option<JoinHandle<Vec<u8>>>) -> String {
 }
 
 /// `command` run to the end with nothing on its standard input, its piped output read on threads
-/// of their own. As `subprocess.run(..., timeout=30)` raises, a command that runs longer than
+/// of their own. A command that runs longer than
 /// `limit` is killed and fails the test.
 fn run_within(mut command: Command, limit: Duration) -> Run {
     let mut child = command.stdin(Stdio::null()).spawn().expect("bead starts");
@@ -105,7 +105,7 @@ mod g36_hung_up_terminal_and_closed_descriptors {
 
     use super::{hung_up_terminal, noise, run_within};
 
-    /// The class's `setUp`: machine `tty`, its tracker initialised with the prefix `ex`.
+    /// Machine `tty`, its tracker initialised with the prefix `ex`.
     fn setup(sandbox: &Sandbox) -> Machine {
         let machine = Machine::new(sandbox, "tty");
         machine.bead(["init", "--prefix", "ex"]);

@@ -9,7 +9,7 @@ use beadroll_core::text::{decimal_value, json_ascii_bytes, parse_integer, repr_b
 use super::super::spec::{Action, ArgSpec, COMMANDS, Kind, Nargs, find};
 use super::{Stop, Value, argument_error};
 
-/// An action's value before anything is given: its default, `False` for a flag.
+/// An action's value before anything is given: its default, `false` for a flag.
 pub(super) fn default(action: &ArgSpec) -> Value {
     match (action.action, action.kind, action.default) {
         (Action::StoreTrue, _, _) => Value::Bool(false),
@@ -41,7 +41,7 @@ pub(super) fn values_of(action: &ArgSpec, strings: &[OsString]) -> Result<Value,
     }
 }
 
-/// One value converted to the action's type (`_get_value`): `int()` for a number.
+/// One value converted to the action's type, parsing numbers as integers.
 pub(super) fn converted(action: &ArgSpec, string: &OsStr) -> Result<Value, Stop> {
     match action.kind {
         Kind::Text => Ok(Value::Text(string.to_owned())),

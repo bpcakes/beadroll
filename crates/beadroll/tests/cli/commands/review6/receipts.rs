@@ -12,7 +12,7 @@ fn crashing_after_push<'m>(machine: &'m Machine, args: &[&str]) -> Invocation<'m
     machine.cmd(args).env("BEAD_TEST_CRASH_AFTER_PUSH", "1")
 }
 
-/// How many receipts `machine`'s store keeps: `(store / "pending").glob("*.command")`.
+/// How many `.command` receipts `machine`'s store keeps in `pending/`.
 fn receipts(machine: &Machine) -> usize {
     glob(&machine.store().join("pending"), ".command").len()
 }

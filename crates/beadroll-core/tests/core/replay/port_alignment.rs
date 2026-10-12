@@ -13,7 +13,7 @@ use beadroll_test_support::{Json, json};
 
 mod lines;
 
-/// Event `number` of the class: id `019a5555-5555-7000-8000-<number>`, about `issue` (itself when
+/// Event `number`: id `019a5555-5555-7000-8000-<number>`, about `issue` (itself when
 /// `None`).
 fn event(
     number: u64,

@@ -26,7 +26,7 @@ mod v8_sync_under_a_controlling_terminal_cannot_prompt;
 /// The claims a machine lists, as (id, owner, state), sorted.
 type Claims = Vec<(String, String, String)>;
 
-/// The claims `machine` lists: `sorted((c["id"], c["owner"], c["state"]) for c in claims)`.
+/// The claims `machine` lists, as sorted tuples of id, owner and state.
 fn claims_of(machine: &Machine) -> Claims {
     let listed = machine
         .bead(["claims"])

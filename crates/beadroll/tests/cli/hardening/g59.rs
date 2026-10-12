@@ -52,8 +52,8 @@ fn text(reader: Option<JoinHandle<Vec<u8>>>) -> String {
 }
 
 /// `command` run to its end, its piped output read on threads of their own; one still running after
-/// [`LIMIT`] is killed and fails the test, as `timeout=30` raises. Once it has started, the copies
-/// of its standard streams that `command` holds close, as `os.close(slave)` closes the terminal's:
+/// [`LIMIT`] is killed and fails the test. Once it has started, the copies
+/// of its standard streams that `command` holds close:
 /// a terminal reaches its end with bead.
 fn finished(mut command: Command) -> Run {
     let mut child = command
@@ -78,8 +78,7 @@ fn finished(mut command: Command) -> Run {
     }
 }
 
-/// `subprocess.run(..., capture_output=True, text=True, timeout=30)`: `command` with nothing on
-/// standard input and its output piped.
+/// Runs `command` with nothing on standard input and its output piped, within [`LIMIT`].
 fn run_through_pipes(mut command: Command) -> Run {
     command
         .stdin(Stdio::null())
@@ -88,8 +87,8 @@ fn run_through_pipes(mut command: Command) -> Run {
     finished(command)
 }
 
-/// `_g59_run_on_terminal`: `command` with standard input, output and error on a fresh
-/// pseudo-terminal, made as `os.openpty()` makes one: no process's controlling terminal, and its
+/// `command` with standard input, output and error on a fresh
+/// pseudo-terminal: no process's controlling terminal, and its
 /// master not inherited. How it exited, and what it wrote there, decoded with replacement and with
 /// CRLF read as LF.
 fn run_on_terminal(mut command: Command) -> (i32, String) {
@@ -136,7 +135,7 @@ mod g59_help_is_plain_text {
 
     use super::{command, run_on_terminal, run_through_pipes, start};
 
-    /// The class's `setUp`: machine `help`.
+    /// Machine `help`.
     fn set_up(sandbox: &Sandbox) -> Machine {
         Machine::new(sandbox, "help")
     }

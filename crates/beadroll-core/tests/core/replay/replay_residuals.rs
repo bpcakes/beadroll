@@ -21,7 +21,7 @@ enum Target<'a> {
     Omitted,
 }
 
-/// The class's events: fixed UUIDv7s, numbered in the order they are made.
+/// Events with fixed UUIDv7s, numbered in the order they are made.
 struct Fixture {
     serial: u64,
 }

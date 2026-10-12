@@ -1,7 +1,7 @@
 //! G52: a store directory bead cannot read, or a store path that is not a directory, is an `IO`
 //! error. Reading it as "no journal here" made readers say `NOT_INITIALIZED` ("run bead init"),
-//! `info` exit 0 with no issues, and an unreadable `claims/` turn a claimed issue ready. The class
-//! is skipped as root, whom directory modes do not stop; these tests then return at once.
+//! `info` exit 0 with no issues, and an unreadable `claims/` turn a claimed issue ready. These tests
+//! skip as root, whom directory modes do not stop, by returning at once.
 
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use beadroll_test_support::{Json, Machine, Run, parse_json};
 
-/// `@unittest.skipIf(os.geteuid() == 0, ...)`: whether the test runs as root, who ignores
+/// Whether the test runs as root, who ignores
 /// directory modes.
 fn skipped_as_root() -> bool {
     let root = rustix::process::geteuid().is_root();
@@ -53,8 +53,8 @@ fn id(result: Option<Json>) -> String {
     result["id"].as_str().expect("an id").to_owned()
 }
 
-/// `unreadable`: `path` holds `mode` until the guard drops, then its old mode again, as the class's
-/// `addCleanup(path.chmod, old)` restores it before the sandbox goes.
+/// Gives `path` the requested mode until the guard drops, then restores its old mode before
+/// the sandbox is removed.
 struct Unreadable {
     path: PathBuf,
     old: u32,

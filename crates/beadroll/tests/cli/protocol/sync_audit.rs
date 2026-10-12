@@ -1,9 +1,8 @@
 //! `SyncAudit`: the first independent audit (AUDIT, 2026-10-06) of the journal and its sync: an
 //! append cut short, a journal forked by a rewritten or a copied history, rotation under parallel
 //! writers, a remote that lost its history, lost acknowledgements, and git stalled in a push or a
-//! fetch. Its tests are grouped by subject in the modules below; the helpers they share, the
-//! class's own (`setUp`, `two`, `own_segment`, `remote_blob`, `wait_marker`, `git_wrapper`) among
-//! them, are here. The kill in the middle of an append and the exhaustion of a command's retries
+//! fetch. Its tests are grouped by subject in the modules below; their shared helpers are here.
+//! The kill in the middle of an append and the exhaustion of a command's retries
 //! are `rust_only`: they stop the Rust `bead` at its `append.mid` failpoint, and skip its waits
 //! between rounds at `backoff`.
 
@@ -30,13 +29,13 @@ mod stalls;
 /// fault through a failpoint.
 type Make = fn(&Sandbox, &str) -> Machine;
 
-/// The class's `setUp`: machine a, its tracker initialised with the prefix `audit`, and the key of
+/// Machine a, its tracker initialised with the prefix `audit`, and the key of
 /// the one issue it holds, `Original issue`.
 fn setup(sandbox: &Sandbox) -> (Machine, String) {
     setup_with(sandbox, Machine::new)
 }
 
-/// `setUp` with machine a made by `make`.
+/// Sets up machine a using `make`.
 fn setup_with(sandbox: &Sandbox, make: Make) -> (Machine, String) {
     let a = make(sandbox, "a");
     a.bead(["init", "--prefix", "audit"]);
@@ -68,8 +67,7 @@ fn own_segment(machine: &Machine) -> PathBuf {
     found.pop().expect("a segment of the machine's own journal")
 }
 
-/// The entries of `dir` whose names end with `.jsonl`, in directory order, as
-/// `Path.glob("*.jsonl")` lists them.
+/// The entries of `dir` whose names end with `.jsonl`, in directory order.
 fn jsonl(dir: &Path) -> Vec<PathBuf> {
     let entries = std::fs::read_dir(dir).expect("a journal's folder");
     entries
@@ -133,7 +131,7 @@ fn git_wrapper(sandbox: &Sandbox, action: &str, marker: &Path, after: bool) -> O
     path
 }
 
-/// The git the test's `PATH` finds, as `shutil.which("git")` finds it: the one the wrapper runs.
+/// The git executable on the test's `PATH`: the one the wrapper runs.
 fn real_git() -> PathBuf {
     let path = std::env::var_os("PATH").unwrap_or_default();
     let executable = |file: &Path| {
@@ -190,7 +188,7 @@ impl Worker {
         self.child.try_wait().expect("the worker's status")
     }
 
-    /// SIGKILL to its process group when it was started alone (`os.killpg`), else to it (`kill()`).
+    /// Sends SIGKILL to its process group when started alone, or to the process otherwise.
     fn kill(&self) -> rustix::io::Result<()> {
         let pid = Pid::from_child(&self.child);
         if self.alone {

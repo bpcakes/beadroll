@@ -74,8 +74,7 @@ mod g04_tracked_init_keeps_hand_set_config {
         config.extend(*members);
     }
 
-    /// The journal segments in `machine`'s store, in order of their paths:
-    /// `sorted(store.glob("events/*/*.jsonl"))`.
+    /// The journal segments in `machine`'s store, sorted by path.
     fn segments(machine: &Machine) -> Vec<PathBuf> {
         let replicas = std::fs::read_dir(machine.store().join("events")).unwrap();
         let mut found: Vec<PathBuf> = replicas

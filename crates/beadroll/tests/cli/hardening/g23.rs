@@ -26,7 +26,7 @@ mod g23_tracked_config_read_from_working_tree_only {
         workspace.unwrap_or_else(|| panic!("no workspace in {info:?}"))
     }
 
-    /// The class's `setUp`: machine a, whose clone cuts the branch `release-1` and pushes it.
+    /// Machine a, whose clone cuts the branch `release-1` and pushes it.
     fn set_up(sandbox: &Sandbox) -> Machine {
         let a = Machine::new(sandbox, "a");
         // cut before bead was tracked

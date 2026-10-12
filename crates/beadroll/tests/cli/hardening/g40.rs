@@ -6,7 +6,7 @@ mod g40_at_sign_after_the_authority {
 
     use beadroll_test_support::{Json, Machine, git, parse_json};
 
-    /// `next(machine.home.glob("*/meta.json"))`: the `meta.json` of the first store in `machine`'s
+    /// The `meta.json` of the first store in `machine`'s
     /// home, in directory order.
     fn meta(machine: &Machine) -> PathBuf {
         let entries = std::fs::read_dir(machine.home()).expect("the machine's home");

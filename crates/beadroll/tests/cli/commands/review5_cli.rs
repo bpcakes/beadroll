@@ -114,7 +114,7 @@ fn e03_takeover_fences_an_owners_concurrent_offline_delete() {
 
     let shown = successor.show(&key);
     assert_eq!(shown["status"].as_str(), Some("in_progress"), "{shown:?}");
-    // `shown.get("conflicts", {})`: no conflicts at all, or none about the status
+    // No conflicts at all, or none about the status.
     let conflicts = shown
         .get("conflicts")
         .map(|c| c.as_object().expect("conflicts by field"));

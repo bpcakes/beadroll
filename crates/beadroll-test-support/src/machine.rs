@@ -110,7 +110,7 @@ impl Machine {
         self.cmd(args).run()
     }
 
-    /// Runs `bead ARGS --json` as `Machine.bead` does: the parsed document, or `None` when the
+    /// Runs `bead ARGS --json`: the parsed document, or `None` when the
     /// output is empty; a failure panics with bead's standard error.
     pub fn bead<I, S>(&self, args: I) -> Option<Json>
     where
@@ -252,7 +252,7 @@ impl Invocation<'_> {
         }
     }
 
-    /// Runs it with `--json` as `Machine.bead` does: the parsed document, or `None` when the output
+    /// Runs it with `--json`: the parsed document, or `None` when the output
     /// is empty; a failure panics with bead's standard error.
     pub fn json(mut self) -> Option<Json> {
         let shown = self
@@ -274,7 +274,7 @@ impl Invocation<'_> {
     }
 }
 
-/// Output decoded as `subprocess.run(..., text=True)` decodes it: UTF-8, or the test fails.
+/// Output decoded as UTF-8, or the test fails.
 fn text(bytes: Vec<u8>, stream: &str) -> String {
     String::from_utf8(bytes).unwrap_or_else(|error| panic!("bead's {stream} is not UTF-8: {error}"))
 }

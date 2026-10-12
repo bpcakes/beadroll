@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use beadroll_test_support::{Invocation, Json, parse_json};
 
-/// How long a run may take before it counts as hung (`subprocess.run(..., timeout=180)`).
+/// How long a run may take before it counts as hung.
 const HANG_AFTER: Duration = Duration::from_secs(180);
 
 /// The exit code, negated signal number, or `HANG`.

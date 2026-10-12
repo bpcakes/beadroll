@@ -26,7 +26,7 @@ impl Stream {
         (z >> 11) as f64 / (1u64 << 53) as f64
     }
 
-    /// `int(random() * n)`.
+    /// An index below `n`, from a random fraction scaled by `n` and truncated.
     fn index(&mut self, n: usize) -> usize {
         (self.random() * n as f64) as usize
     }

@@ -22,7 +22,7 @@ mod g35_store_never_lands_in_the_checkout {
 
     use super::untracked;
 
-    /// The class's `setUp`: machine g35, whose checkout has a subdirectory `src`.
+    /// Machine g35, whose checkout has a subdirectory `src`.
     fn setup(sandbox: &Sandbox) -> Machine {
         let m = Machine::new(sandbox, "g35");
         std::fs::create_dir(m.checkout().join("src")).unwrap();

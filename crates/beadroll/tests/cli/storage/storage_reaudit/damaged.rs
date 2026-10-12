@@ -12,7 +12,7 @@ use beadroll_test_support::{Json, Machine, Sandbox, code, git, json, parse_json}
 
 use super::{member, segments, set_up, two};
 
-/// The class's `segment`: the last segment of the machine's own journal.
+/// The last segment of the machine's own journal.
 fn segment(machine: &Machine) -> PathBuf {
     let last = segments(machine).pop();
     last.expect("a segment of the machine's own journal")
@@ -35,15 +35,14 @@ fn bytes(path: &Path) -> Vec<u8> {
     std::fs::read(path).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
 }
 
-/// `bytes` appended to the file at `path`, as `path.open("ab")` appends them.
+/// Appends `bytes` to the file at `path`.
 fn append(path: &Path, bytes: &[u8]) {
     let file = OpenOptions::new().append(true).create(true).open(path);
     let mut file = file.unwrap_or_else(|error| panic!("{}: {error}", path.display()));
     file.write_all(bytes).expect("the appended bytes");
 }
 
-/// The entries of `folder` whose names hold `infix`, as `folder.glob(f"*{infix}*")` lists them:
-/// the infix `.torn-` for `folder.glob("*.torn-*")`.
+/// The entries of `folder` whose names contain `infix`, such as `.torn-` for quarantined files.
 fn named(folder: &Path, infix: &str) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(folder) else {
         return Vec::new();
@@ -82,8 +81,8 @@ fn retitle(event: &mut Json, title: &str) {
     }
 }
 
-/// `shutil.copytree(source, target)`: `target`, which must not exist yet, made a copy of the tree
-/// under `source`, symlinks followed. Each file is copied as `copy2` copies it, with its mode and
+/// Copies the tree under `source` to `target`, which must not exist yet, following symlinks.
+/// Each file is copied with its mode and
 /// times, and each directory takes its source's times and mode once its contents are in.
 fn copytree(source: &Path, target: &Path) {
     std::fs::create_dir(target).unwrap_or_else(|error| panic!("{}: {error}", target.display()));
@@ -101,7 +100,7 @@ fn copytree(source: &Path, target: &Path) {
     copystat(source, target);
 }
 
-/// `shutil.copystat(source, target)`: `target` given the access and modification times of
+/// Gives `target` the access and modification times of
 /// `source`, then its mode.
 fn copystat(source: &Path, target: &Path) {
     let metadata = std::fs::metadata(source).expect("the source's metadata");

@@ -28,7 +28,7 @@ mod g28_only_the_lock_holder_sweeps_pending {
         result["id"].as_str().expect("an id").to_owned()
     }
 
-    /// The class's `setUp`: machine a (made by `make`) publishes its tracker (prefix `gp`), which
+    /// Machine a (made by `make`) publishes its tracker (prefix `gp`), which
     /// holds the issue `x`; its key.
     fn set_up(sandbox: &Sandbox, make: fn(&Sandbox, &str) -> Machine) -> (Machine, String) {
         let a = make(sandbox, "a");
@@ -38,8 +38,8 @@ mod g28_only_the_lock_holder_sweeps_pending {
         (a, key)
     }
 
-    /// The entries of `dir` whose names end with `suffix`, in directory order, as
-    /// `Path.glob("*SUFFIX")` lists them: none when `dir` is not there.
+    /// The entries of `dir` whose names end with `suffix`, in directory order:
+    /// none when `dir` is not there.
     fn glob(dir: &Path, suffix: &str) -> Vec<PathBuf> {
         let Ok(entries) = std::fs::read_dir(dir) else {
             return Vec::new();

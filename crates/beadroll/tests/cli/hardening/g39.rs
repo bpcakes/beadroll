@@ -77,7 +77,7 @@ mod g39_password_in_a_transport_url {
         format!("https::{PLAIN}")
     }
 
-    /// The class's `setUp`: the sandbox, and an empty global git config, so that no credential
+    /// The sandbox, and an empty global git config, so that no credential
     /// helper or askpass comes from the developer's own config.
     struct Fixture {
         sandbox: Sandbox,
@@ -122,7 +122,7 @@ mod g39_password_in_a_transport_url {
         remote.expect("a remote, as text").to_owned()
     }
 
-    /// The first `meta.json` in `machine`'s home: `next(machine.home.glob("*/meta.json"))`.
+    /// The first `meta.json` in `machine`'s home.
     fn meta(machine: &Machine) -> Json {
         let entries = std::fs::read_dir(machine.home()).unwrap();
         let path = entries

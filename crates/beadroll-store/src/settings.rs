@@ -73,7 +73,7 @@ impl Clock {
 /// inherit, the working directory, and the clock.
 #[derive(Clone, Debug)]
 pub struct Settings {
-    /// `BEAD_HOME` as set, and as `os.path.expanduser` expands it.
+    /// `BEAD_HOME` as set, and with a leading home-directory shorthand expanded.
     bead_home: Option<(OsString, OsString)>,
     user_home: OsString,
     /// `BEAD_ROTATE_BYTES`: the size from which this machine starts a new segment.
@@ -190,7 +190,7 @@ impl Settings {
     }
 }
 
-/// `os.path.expanduser(path)`: `~` is the user's home directory, `~NAME` that of the user `NAME`
+/// Expands a leading `~` to the user's home directory, or `~NAME` to that of the user `NAME`
 /// as `home_of` finds it (unchanged when there is no such user); the home directory without its
 /// trailing slashes, then the rest; `/` when that leaves nothing.
 fn expand_user(

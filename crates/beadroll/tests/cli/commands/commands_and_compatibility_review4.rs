@@ -23,7 +23,7 @@ fn dumps(value: &Json) -> String {
     write(value, Format::ASCII).unwrap()
 }
 
-/// The entries of `dir` whose names end in `suffix`, as `dir.glob("*SUFFIX")` lists them: none when
+/// The entries of `dir` whose names end in `suffix`: none when
 /// `dir` is not a directory.
 fn glob(dir: &Path, suffix: &str) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {

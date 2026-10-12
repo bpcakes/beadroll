@@ -227,7 +227,7 @@ pub fn strip_bytes(data: &[u8]) -> &[u8] {
     data.get(start..end).unwrap_or_default()
 }
 
-/// `shlex.quote(text)`: `text` as one word to a POSIX shell, as it is when every character is safe
+/// `text` as one word to a POSIX shell, as it is when every character is safe
 /// there (ASCII letters, digits and `_@%+=:,./-`), else in single quotes, each one inside closed,
 /// quoted and reopened.
 pub fn shell_quote(text: &str) -> String {

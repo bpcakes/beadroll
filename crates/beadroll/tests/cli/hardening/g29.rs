@@ -13,7 +13,7 @@ mod g29_failure_after_acceptance_is_not_nothing_half_done {
     /// The failpoint path part of the workspace's `meta.json` (the driver's `G29_FULL=meta`).
     const META: &str = "/meta.json";
 
-    /// The class's `setUp`: machine a, which initialised the tracker (prefix `gf`), and machine
+    /// Machine a, which initialised the tracker (prefix `gf`), and machine
     /// `obs`, which observes the remote.
     fn set_up(sandbox: &Sandbox) -> (Machine, Machine) {
         let (a, obs) = (

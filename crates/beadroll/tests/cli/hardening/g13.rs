@@ -83,7 +83,7 @@ fn coordination_refs(sandbox: &Sandbox) -> Vec<String> {
     refs.split_whitespace().map(str::to_owned).collect()
 }
 
-/// The class's `setUp`: machines `g13-a` and `g13-b`, whose clones hold the same `.beadroll.json`
+/// Machines `g13-a` and `g13-b`, whose clones hold the same `.beadroll.json`
 /// bytes (a workspace id and [`REF`], in UTF-8); the tracker made on `a` with one issue, and both
 /// synced. The issue's id.
 fn set_up(sandbox: &Sandbox) -> (Machine, Machine, String) {

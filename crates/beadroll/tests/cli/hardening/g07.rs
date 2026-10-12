@@ -32,7 +32,7 @@ mod g07_receipt_survives_later_local_writes {
         created["id"].as_str().expect("an id").to_owned()
     }
 
-    /// `issue.get("claim")`: the claim `show` reports, `None` when there is none or it is `null`.
+    /// The claim `show` reports, `None` when there is none or it is `null`.
     fn claim(issue: &Json) -> Option<&Json> {
         issue.get("claim").filter(|claim| **claim != Json::Null)
     }

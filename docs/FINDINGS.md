@@ -14,6 +14,21 @@ tests was ported to Rust, and at the cutover the inventory that mapped each to i
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Review 12: Claude and Codex review of the Rust naming cleanup (ids D)
+
+Reports: `reviews/2026-10-12-12-claude-rust-names.md` and
+`reviews/2026-10-12-12-codex-rust-names.md`. No runtime defect was found. These are documentation
+corrections; executable behavior and fixture values remain unchanged. Claude's suggestion to
+standardize historical timing labels was excluded as optional editorial work.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| D01 | Low | Rust item and test comments still specified behavior through obsolete implementation APIs | fixed | Describe current contracts and fixture setup directly throughout the Rust sources | Comment diff inspection; one wrapping test renamed, assertions unchanged |
+| D02 | Low | Relocated provenance omitted parity actor, input and unpublished-count fixtures | fixed | `RUST-PORT.md` §4.2 records their pre-cutover capture, including Python 3.14 for actor/input fixtures | Checked against the original fixture headers; values unchanged |
+| D03 | Low | Printable-table regeneration instructions referenced removed differential tooling | fixed | Generator docstring names CPython 3.14.7 and Unicode 16.0.0, matching §4.2 | Generator body and table unchanged |
+| D04 | Low | Timestamp ceiling documentation mentioned rendering but omitted validation | fixed | Document both envelope rejection and rendering clamping | Checked against `event_problem` and `event_time` |
+| D05 | Low | Descriptor-limit comment repeated 10 | fixed | List the five distinct limits in the array | Checked against `LIMITS` |
+
 ## Review 11: Claude and Codex review of the roll-lqjj follow-ups (`reviews/2026-10-12-11-claude-codex-follow-ups.md`, ids B)
 
 Neither reviewer found a runtime defect. Claude reported these two supporting obligations;

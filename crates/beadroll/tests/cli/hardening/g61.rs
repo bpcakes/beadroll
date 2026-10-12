@@ -11,7 +11,7 @@ mod g61_merged_check_sees_origin_main {
     use beadroll_test_support::{Json, Machine, Sandbox};
     use rustix::process::{Pid, Signal, kill_process};
 
-    /// `self.genv`: a scratch global git configuration, and no system one.
+    /// A scratch global git configuration, and no system one.
     fn genv(sandbox: &Sandbox) -> [(OsString, OsString); 2] {
         let config = sandbox.root().join("global.gitconfig");
         [
@@ -20,7 +20,7 @@ mod g61_merged_check_sees_origin_main {
         ]
     }
 
-    /// `setUp`: machine `a`, under the scratch git configuration, with a tracker (prefix `mg`).
+    /// Machine `a`, under the scratch git configuration, with a tracker (prefix `mg`).
     fn set_up(sandbox: &Sandbox) -> Machine {
         std::fs::write(sandbox.root().join("global.gitconfig"), "").unwrap();
         let mut a = Machine::new(sandbox, "a");
@@ -29,7 +29,7 @@ mod g61_merged_check_sees_origin_main {
         a
     }
 
-    /// `self.git(*args, cwd=...)`: `git ARGS` in `cwd` as author and committer `t`, with the test's
+    /// `git ARGS` in `cwd` as author and committer `t`, with the test's
     /// environment less every `GIT_*` variable, plus the scratch configuration; what it printed,
     /// stripped. A failure fails the test, and so does git still running after 30 seconds.
     fn git(sandbox: &Sandbox, args: &[&str], cwd: &Path) -> String {

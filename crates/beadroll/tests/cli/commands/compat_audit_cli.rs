@@ -8,7 +8,7 @@ use beadroll_core::json::{Format, write};
 use beadroll_core::text::is_space;
 use beadroll_test_support::{Json, Machine, Sandbox, code, json, parse_json};
 
-/// `setUp`: a sandbox and machine `compat`, whose tracker (prefix `ex`) holds issues X and Y.
+/// A sandbox and machine `compat`, whose tracker (prefix `ex`) holds issues X and Y.
 fn set_up() -> (Sandbox, Machine, String, String) {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "compat");
@@ -298,13 +298,13 @@ fn user_home() -> String {
     }
 }
 
-/// The machine's name, as `socket.gethostname()` gives it.
+/// The machine's hostname.
 fn hostname() -> String {
     let name = rustix::system::uname();
     name.nodename().to_string_lossy().into_owned()
 }
 
-/// The user's login name, as `getpass.getuser()` finds it: the first of `LOGNAME`, `USER`, `LNAME`
+/// The user's login name: the first of `LOGNAME`, `USER`, `LNAME`
 /// and `USERNAME` that is set, else the password database's.
 fn user() -> String {
     ["LOGNAME", "USER", "LNAME", "USERNAME"]

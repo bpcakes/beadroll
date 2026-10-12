@@ -7,7 +7,7 @@
 mod g37_json_says_when_the_end_of_a_claim_was_not_published {
     use beadroll_test_support::{Json, Machine, Run, Sandbox, parse_json};
 
-    /// The class's `setUp`: machine a's tracker (prefix `gj`) with five issues, published, each
+    /// Machine a's tracker (prefix `gj`) with five issues, published, each
     /// claimed by a; their keys in the order `closed`, `deleted`, `updated`, `control`, `text`.
     fn setup(sandbox: &Sandbox) -> (Machine, Vec<String>) {
         let a = Machine::new(sandbox, "a");

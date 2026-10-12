@@ -14,7 +14,7 @@ mod v7_origins_with_a_user_or_scheme_are_one_workspace {
 
     use beadroll_test_support::{Json, Machine, git, parse_json};
 
-    /// An environment, as `subprocess.run(env=...)` takes one.
+    /// Environment variables for a child process.
     type Env = BTreeMap<OsString, OsString>;
 
     /// `_v7_git_env`: git with no user, system or global config, no proxies and no prompts: it sees

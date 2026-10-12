@@ -5,7 +5,7 @@ mod g63_settle_keeps_line_level_integrity_reports {
 
     use beadroll_test_support::{Json, Machine};
 
-    /// The segments of a journal, `*.jsonl` in `dir`, by name: `sorted(dir.glob("*.jsonl"))`.
+    /// The segments of a journal, `*.jsonl` in `dir`, sorted by name.
     fn segments(dir: &Path) -> Vec<PathBuf> {
         let entries = std::fs::read_dir(dir).expect("a journal's folder");
         let mut found: Vec<PathBuf> = entries

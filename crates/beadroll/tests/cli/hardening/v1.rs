@@ -15,7 +15,7 @@ use beadroll_test_support::Json;
 mod v1_push_side_translation;
 mod v1_stalled_receive_timeouts;
 
-/// An environment, as `subprocess.run(env=...)` takes one.
+/// Environment variables for a child process.
 type Env = BTreeMap<OsString, OsString>;
 
 /// A locale setting: the variables it sets, a later one winning over an earlier one of its name.

@@ -7,7 +7,7 @@ use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 use std::path::{Path, PathBuf};
 
-/// `os.path.exists(path)`: whether `path` (relative to `cwd`) names something, symlinks followed.
+/// Whether `path` (relative to `cwd`) names something, symlinks followed.
 /// The empty path, a path with a NUL byte and one the system cannot look at all answer no.
 pub fn exists(path: &OsStr, cwd: &Path) -> bool {
     !path.is_empty() && std::fs::metadata(cwd.join(path)).is_ok()

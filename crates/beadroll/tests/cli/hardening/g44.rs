@@ -55,7 +55,7 @@ mod g44_materialised_dependency_exports_null_meta {
         }
     }
 
-    /// `str(self.box.root / "NAME.jsonl")`: the path of one of the files `setup` wrote.
+    /// The path of one of the files `setup` wrote, as text.
     fn file(sandbox: &Sandbox, name: &str) -> String {
         let path = path(sandbox, name);
         path.to_str().expect("a UTF-8 path").to_owned()

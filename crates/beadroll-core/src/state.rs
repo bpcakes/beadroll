@@ -152,7 +152,7 @@ impl State {
         self.knowledge.events.keys().copied()
     }
 
-    /// The tracker's prefix, as its first `init` set it: any JSON value, read with `str()` where a
+    /// The tracker's prefix, as its first `init` set it: any JSON value, rendered with `str_of` where a
     /// key is made of it.
     pub fn prefix(&self) -> Option<&Value> {
         self.prefix.as_ref()
@@ -370,7 +370,7 @@ pub fn actor_label(actor: Option<&Value>, replica: &str) -> String {
     if let Some(name) = member("name").filter(|name| name.truthy()) {
         return str_of(name);
     }
-    // Replay names the writer of every event it applies: built in place, `str()` only for what
+    // Replay names the writer of every event it applies: built in place, `str_of` only for what
     // is not text already.
     let push = |label: &mut String, value: &Value| match value {
         Value::Str(text) => label.push_str(text),

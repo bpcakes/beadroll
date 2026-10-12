@@ -113,7 +113,7 @@ mod g30_deep_json_is_bounded_and_scoped {
         printed.trim().to_owned()
     }
 
-    /// The class's `setUp`: machine `g30`'s tracker (prefix `ex`) holds `ordinary work`.
+    /// Machine `g30`'s tracker (prefix `ex`) holds `ordinary work`.
     fn set_up(sandbox: &Sandbox) -> Machine {
         let m = Machine::new(sandbox, "g30");
         m.bead(["init", "--prefix", "ex"]);

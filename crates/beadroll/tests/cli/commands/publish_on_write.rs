@@ -6,7 +6,7 @@
 use beadroll_core::json::{Format, write};
 use beadroll_test_support::{Json, Machine, Sandbox, json, parse_json};
 
-/// `setUp`: machine a has initialised tracker `ex`; machine b has synced it.
+/// Machine a has initialised tracker `ex`; machine b has synced it.
 fn set_up(sandbox: &Sandbox) -> (Machine, Machine) {
     let a = Machine::new(sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
@@ -113,7 +113,7 @@ fn an_unreachable_remote_never_fails_a_write() {
 #[test]
 fn init_with_an_import_publishes_the_tracker_at_once() {
     let sandbox = crate::sandbox();
-    // setUp runs for this test too, though the test works in a sandbox of its own
+    // Initialize the shared fixture too, though the test works in a sandbox of its own.
     set_up(&sandbox);
     let fresh = crate::sandbox();
     let source = fresh.root().join("issues.jsonl");

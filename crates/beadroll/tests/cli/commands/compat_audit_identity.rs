@@ -1,6 +1,6 @@
 //! `CompatAuditIdentity`, from the first independent audit: who the caller is when an agent was
 //! started from inside another agent's session, so that both a Claude and a Codex session are in
-//! the environment. The class's tests of `detect_actor` as a function of the environment are the
+//! the environment. Tests of `detect_actor` as a function of the environment are the
 //! store's (`crates/beadroll-store/tests/store/commands.rs`).
 
 use std::collections::BTreeMap;
@@ -39,7 +39,7 @@ fn python() -> Option<PathBuf> {
     Some(PathBuf::from(OsString::from_vec(executable)))
 }
 
-/// The executable `name` on the test's own PATH, as `shutil.which` finds it.
+/// The executable `name` on the test's own PATH.
 fn which(name: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     std::env::split_paths(&path)

@@ -256,7 +256,7 @@ fn id_of(record: &Value) -> &str {
     record.get("id").and_then(Value::as_str).unwrap_or_default()
 }
 
-/// A record's dependencies: `rec.get("dependencies") or []`.
+/// A record's dependency array, or an empty slice when no array is present.
 fn dependencies(record: &Value) -> &[Value] {
     record
         .get("dependencies")
@@ -271,7 +271,7 @@ fn target(dep: &Value) -> String {
         .to_owned()
 }
 
-/// A dependency's type: `d.get("type") or "blocks"`.
+/// A dependency's nonempty type string, defaulting to `blocks`.
 fn kind(dep: &Value) -> String {
     dep.get("type")
         .filter(|kind| kind.truthy())

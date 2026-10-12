@@ -135,7 +135,7 @@ pub struct Ending {
 pub enum Op {
     /// The tracker's prefix and name; the first `init` in causal order sets them.
     Init {
-        /// The prefix: any JSON value, read with `str()` where a key is made of it.
+        /// The prefix: any JSON value, rendered with `str_of` where a key is made of it.
         prefix: Option<Box<Value>>,
         /// The name.
         name: Option<Box<Value>>,
@@ -198,7 +198,7 @@ fn text(data: &Object, key: &str) -> Option<String> {
     data.get(key).and_then(Value::as_str).map(str::to_owned)
 }
 
-/// `data.get(key) or []`, as strings.
+/// The string members of the array at `key`, or none when no array is present.
 fn strings(data: &Object, key: &str) -> Vec<String> {
     let items = data.get(key).and_then(Value::as_array).unwrap_or_default();
     items
@@ -208,7 +208,7 @@ fn strings(data: &Object, key: &str) -> Vec<String> {
         .collect()
 }
 
-/// `(data.get("fields") or {}).items()`, as fields.
+/// The recognized fields in the `fields` object, or none when no object is present.
 fn fields(data: &Object) -> Vec<(Field, Value)> {
     let members = data
         .get("fields")

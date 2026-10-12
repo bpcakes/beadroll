@@ -9,7 +9,7 @@ mod g48_failed_atomic_write_leaves_nothing_behind {
 
     use beadroll_test_support::{Machine, Run, Sandbox, parse_json};
 
-    /// The class's `setUp`: machine g48, its tracker initialised with the prefix `ex`, and the keys
+    /// Machine g48, its tracker initialised with the prefix `ex`, and the keys
     /// of the six issues it creates, each titled with a hundred `x`.
     fn setup(sandbox: &Sandbox) -> (Machine, Vec<String>) {
         let m = Machine::new(sandbox, "g48");

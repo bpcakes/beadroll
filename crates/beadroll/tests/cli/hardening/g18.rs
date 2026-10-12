@@ -42,7 +42,7 @@ mod g18_definite_refusal_is_neither_a_race_nor_no_answer {
 
     use super::{READ_ONLY_SSH, error, text};
 
-    /// The class's `setUp`: an empty git config in the sandbox, `g18-empty.gitconfig`, which the
+    /// An empty git config in the sandbox, `g18-empty.gitconfig`, which the
     /// machines read as their global one.
     fn set_up(sandbox: &Sandbox) -> PathBuf {
         let config = sandbox.root().join("g18-empty.gitconfig");

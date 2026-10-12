@@ -1,7 +1,7 @@
 //! `ProtocolReaudit`, black-box: an ownership attempt whose push the remote took while bead heard
 //! nothing back (the acknowledgement lost, the client killed at its timeout, or git exiting 1
 //! after the push) settles one way or the other, whole, and no journal forks (the second
-//! independent audit, 2026-10-06). The class's in-process tests are in `beadroll-sync`
+//! independent audit, 2026-10-06). Related in-process tests are in `beadroll-sync`
 //! (`tests/sync/protocol/protocol_reaudit.rs`).
 
 use std::ffi::OsStr;
@@ -15,8 +15,7 @@ use beadroll_test_support::{Json, Machine, Sandbox, code, git, parse_json};
 /// The hook that stops a command after the remote took its push, before bead hears back.
 const CRASH_AFTER_PUSH: &str = "BEAD_TEST_CRASH_AFTER_PUSH";
 
-/// Machine a's tracker with one issue, "ownership target", synced to machine b: the class's
-/// `setUp`, less the in-process store its other tests open.
+/// Machine a's tracker with one issue, "ownership target", synced to machine b.
 struct Reaudit {
     sandbox: Sandbox,
     a: Machine,

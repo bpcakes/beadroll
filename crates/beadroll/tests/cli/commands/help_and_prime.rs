@@ -5,7 +5,7 @@ use std::path::Path;
 
 use beadroll_test_support::{Machine, Sandbox, code, parse_json};
 
-/// `setUp`: a sandbox and one machine, `help-a`.
+/// A sandbox and one machine, `help-a`.
 fn set_up() -> (Sandbox, Machine) {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "help-a");

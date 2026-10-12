@@ -29,7 +29,7 @@ fn finished(output: Output) -> Run {
 /// text comparison.
 fn communicate(mut command: Command) -> Run {
     let child = command.stdin(Stdio::null()).spawn().unwrap();
-    // Our copy of the pipe's write end goes with the command, as the test's `os.close(write)`.
+    // Our copy of the pipe's write end goes with the command.
     drop(command);
     let output = child.wait_with_output().unwrap();
     Run {

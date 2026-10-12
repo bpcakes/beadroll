@@ -1,4 +1,4 @@
-//! `bead` running beside the test, as the class's `start`, `wait` and `stop` handle it, and the
+//! Starting, waiting for and stopping `bead` beside the test, and the
 //! `pause-until` gates the test stops it at.
 
 use std::io::Read;
@@ -43,11 +43,9 @@ impl Gate {
     }
 }
 
-/// A `bead` started beside the test, as the class's `start` starts one: nothing on its standard
-/// input, its output read to the end by threads of their own, and in a process group of its own,
-/// which a kill takes whole (`start_new_session=True` for `os.killpg`, without the new session,
-/// which only code between fork and exec could ask for). One still running when dropped is killed
-/// and reaped: the class's `stop`.
+/// A `bead` started beside the test: nothing on its standard input, its output drained by
+/// separate threads, and its own process group so a kill reaches its children too.
+/// One still running when dropped is killed and reaped.
 pub(super) struct Started {
     child: Child,
     output: Option<(Drained, Drained)>,
@@ -79,7 +77,7 @@ impl Started {
         self.child.try_wait().expect("the process's status")
     }
 
-    /// `os.killpg(pid, SIGKILL)`.
+    /// Sends SIGKILL to the child's process group.
     pub(super) fn kill(&self) {
         let group = Pid::from_child(&self.child);
         kill_process_group(group, Signal::KILL).expect("its process group");
@@ -140,7 +138,7 @@ fn received(receiver: &Drained, stream: &str) -> String {
     String::from_utf8(bytes).unwrap_or_else(|error| panic!("bead's {stream} is not UTF-8: {error}"))
 }
 
-/// The class's `wait`: waits up to ten seconds for `marker`. The process quitting first fails the
+/// Waits up to ten seconds for `marker`. The process quitting first fails the
 /// test with what it printed, and so does a marker that never comes.
 pub(super) fn wait(marker: &Path, process: &mut Started) {
     let deadline = Instant::now() + Duration::from_secs(10);

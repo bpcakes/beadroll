@@ -16,7 +16,7 @@ const DUMPS_COMPACT: Format = Format {
     sorted: false,
 };
 
-/// `shutil.copytree(from, to)`: `to`, which must not exist yet, becomes a copy of the directory
+/// `to`, which must not exist yet, becomes a copy of the directory
 /// `from`, its files' modes and times kept.
 fn copytree(from: &Path, to: &Path) {
     assert!(!to.exists(), "{} exists", to.display());
@@ -131,7 +131,7 @@ fn bug_segment_boundary_fork_must_not_erase_concurrent_title() {
         return;
     }
     let shown = twin.show(&key);
-    // `"title" in shown.get("conflicts", {})`: conflicts are an object, by field
+    // Conflicts are an object keyed by field; the title must be disputed.
     let conflicts = shown.get("conflicts").and_then(Json::as_object);
     assert!(
         conflicts.is_some_and(|conflicts| conflicts.contains_key("title")),

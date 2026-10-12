@@ -7,11 +7,10 @@ mod g06_https_token_in_the_user_position {
 
     use beadroll_test_support::{Json, Machine, git, parse_json};
 
-    /// The class's `TOKEN`: a token in the shape of a GitHub one.
+    /// A token in the shape of a GitHub one.
     const TOKEN: &str = "ghp_G06TESTTOKEN0123";
 
-    /// The `meta.json` of each store in `machine`'s home, in directory order: what
-    /// `home.glob("*/meta.json")` lists.
+    /// The `meta.json` of each store in `machine`'s home, in directory order.
     fn metas(machine: &Machine) -> Vec<PathBuf> {
         let Ok(entries) = std::fs::read_dir(machine.home()) else {
             return Vec::new();

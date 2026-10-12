@@ -29,7 +29,7 @@ pub(super) fn claim(c: &Ctx<'_>, issue: &mut Issue, claiming: &Claiming) -> bool
         }
     } else if c.claim.is_none() || takes_over(c.claim, claiming) {
         end_claim(c, issue, "takeover", claiming.reason.as_deref());
-        // `max(generation + 1, data.get("generation") or 0)`: of two equal, the first.
+        // Choose the greater of the incremented and proposed generations, keeping the first on ties.
         let next = issue.claim_generation.plus_one();
         let given = claiming
             .generation

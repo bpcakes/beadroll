@@ -20,7 +20,7 @@ mod started;
 /// `crate::rust_only` for a test that stops bead at a failpoint.
 type Make = fn(&Sandbox, &str) -> Machine;
 
-/// The class's `setUp`: machine `storage-a`, made by `make`, has initialised the tracker `ex` and
+/// Machine `storage-a`, made by `make`, has initialised the tracker `ex` and
 /// created the issue the tests work on, `storage survivor`. Returns the machine and the issue's id.
 fn set_up(sandbox: &Sandbox, make: Make) -> (Machine, String) {
     let a = make(sandbox, "storage-a");
@@ -47,15 +47,13 @@ fn two(sandbox: &Sandbox, a: &Machine, make: Make) -> Machine {
     b
 }
 
-/// The segments of the machine's own journal, in order:
-/// `sorted((store / "events" / own).glob("*.jsonl"))`.
+/// The segments of the machine's own journal, sorted by path.
 fn segments(machine: &Machine) -> Vec<PathBuf> {
     let folder = machine.store().join("events").join(own(machine));
     glob_ending(&folder, ".jsonl")
 }
 
-/// The machine's own journal, each segment's bytes by its path:
-/// `{p: p.read_bytes() for p in (store / "events" / own).glob("*.jsonl")}`.
+/// The machine's own journal, each segment's bytes by its path.
 fn journal(machine: &Machine) -> BTreeMap<PathBuf, Vec<u8>> {
     segments(machine)
         .into_iter()
@@ -66,7 +64,7 @@ fn journal(machine: &Machine) -> BTreeMap<PathBuf, Vec<u8>> {
         .collect()
 }
 
-/// The machine's pending attempts: `sorted((store / "pending").glob("*.json"))`.
+/// The machine's pending attempt files, sorted by path.
 fn pending(machine: &Machine) -> Vec<PathBuf> {
     glob_ending(&machine.store().join("pending"), ".json")
 }
@@ -85,7 +83,7 @@ fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
         .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
 }
 
-/// The claim `machine` takes on `key`: `machine.bead("claim", key)[0]["claim"]`.
+/// The claim returned when `machine` claims `key`.
 fn claim(machine: &Machine, key: &str) -> Json {
     let claimed = machine.bead(["claim", key]).expect("the claimed issue");
     member(&claimed[0], "claim").clone()
@@ -98,8 +96,7 @@ fn shown(run: &Run) -> Json {
     printed[0].clone()
 }
 
-/// The temporary files an identity is written to before it is linked into place:
-/// `home.glob(".replica.*.tmp")`.
+/// The `.replica.*.tmp` files an identity is written to before it is linked into place.
 fn identity_temporaries(home: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(home) else {
         return Vec::new();

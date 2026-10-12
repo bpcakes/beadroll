@@ -15,7 +15,7 @@ pub(super) struct Candidate {
     pub(super) explicit: Option<Vec<u8>>,
 }
 
-/// The options `arg` may be, or `None` when it is a value (`_parse_optional`).
+/// The options `arg` may be, or `None` when it is a value.
 pub(super) fn parse_optional(parser: &Parser, arg: &[u8]) -> Option<Vec<Candidate>> {
     if arg.first() != Some(&b'-') {
         return None;

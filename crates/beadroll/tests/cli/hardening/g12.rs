@@ -21,7 +21,7 @@ mod g12_retried_end_of_claim_is_published {
         key: String,
     }
 
-    /// The class's `setUp`: machine a publishes its tracker (prefix `gc`) with the issue `work`,
+    /// Machine a publishes its tracker (prefix `gc`) with the issue `work`,
     /// which it claims once machine b has synced; b syncs again and sees the claim.
     fn set_up() -> SetUp {
         let sandbox = crate::sandbox();

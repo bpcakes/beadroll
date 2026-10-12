@@ -115,7 +115,7 @@ mod g26_object_format {
     /// sync.git in SHA-256.
     fn poison(machine: &Machine, plain: &Env) {
         let path = machine.store().join("sync.git");
-        // shutil.rmtree(path, ignore_errors=True)
+        // Cleanup is best effort: the assertions above are the test's result.
         let _ = std::fs::remove_dir_all(&path);
         let args = [
             "init",

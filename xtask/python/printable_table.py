@@ -1,6 +1,6 @@
 """Write crates/beadroll-core/src/text/printable.rs: the code points CPython's str.isprintable() refuses,
-which repr() escapes (docs/RUST-PORT.md §5 row 11). Run from the repository root with the Python the
-differential tests use:
+which repr() escapes (docs/RUST-PORT.md §5 row 11). Run from the repository root with CPython 3.14.7
+and Unicode 16.0.0, the reference versions recorded in docs/RUST-PORT.md §4.2:
 
     python3 xtask/python/printable_table.py > crates/beadroll-core/src/text/printable.rs
 

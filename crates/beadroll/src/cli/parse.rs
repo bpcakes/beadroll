@@ -2,7 +2,7 @@
 //! option names that option; `-1` and arguments containing spaces are values. Positionals are
 //! taken greedily before each option, so `update A --status open B` leaves `B` unrecognised. The
 //! last value of an option wins, a scope given twice is refused, and errors use `USAGE` with the
-//! established argparse-compatible messages. Arguments retain their OS bytes until a command
+//! established diagnostic messages. Arguments retain their OS bytes until a command
 //! reads them.
 
 use std::collections::BTreeMap;
@@ -82,7 +82,7 @@ impl Namespace {
         matches!(self.get(dest), Value::Bool(true))
     }
 
-    /// A whole number (`type=int`), or `None`.
+    /// A whole number, or `None`.
     pub(crate) fn int(&self, dest: &str) -> Option<&Int> {
         match self.get(dest) {
             Value::Int(int) => Some(int),

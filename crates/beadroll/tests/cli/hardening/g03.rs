@@ -26,7 +26,7 @@ mod g03_damaged_meta_moves_coordination_to_origin {
 
     use super::origin_refs;
 
-    /// The class's fixture, as `setUp` builds it: machine a's tracker coordinates through
+    /// Machine a's tracker coordinates through
     /// `coord.git`, not origin, and holds two issues; machine b synced it naming `coord.git`, which
     /// its store's `meta.json` remembers.
     struct Fixture {
@@ -63,13 +63,13 @@ mod g03_damaged_meta_moves_coordination_to_origin {
         parse_json(&read).unwrap_or_else(|error| panic!("{} ({error}): {read}", path.display()))
     }
 
-    /// `str(path.resolve())`, as the remote the store remembers.
+    /// The canonical absolute path as text, as the remote the store remembers.
     fn resolved(path: &Path) -> Json {
         Json::from(text(&path.canonicalize().unwrap()))
     }
 
     impl Fixture {
-        /// `setUp`.
+        /// Builds the coordination fixture.
         fn new() -> Fixture {
             let sandbox = crate::sandbox();
             let coord = sandbox.bare("coord.git");

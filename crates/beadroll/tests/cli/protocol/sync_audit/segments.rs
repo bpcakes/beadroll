@@ -16,7 +16,7 @@ use super::{Worker, jsonl, own_segment, setup, setup_with, wait_marker};
 /// The unterminated fragment an append interrupted mid-line leaves at the end of a segment.
 const TORN: &[u8] = br#"{"v":1,"id":"interrupted"#;
 
-/// Appends `bytes` to the file `path`, as `path.open("ab").write(bytes)` does.
+/// Appends `bytes` to the file `path`.
 fn append(path: &Path, bytes: &[u8]) {
     let mut file = OpenOptions::new().append(true).open(path).unwrap();
     file.write_all(bytes).unwrap();
@@ -27,7 +27,7 @@ fn size(path: &Path) -> u64 {
     std::fs::metadata(path).unwrap().len()
 }
 
-/// `sorted((store / "events").glob("*/*.jsonl"))`: every segment of every journal in `store`, in
+/// Every segment of every journal in `store`, in
 /// order of their paths.
 fn segments(store: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();

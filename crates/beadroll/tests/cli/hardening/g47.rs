@@ -84,7 +84,7 @@ mod g47_store_is_private_by_its_own_modes {
             .collect()
     }
 
-    /// `sorted(dir.glob("*.jsonl"))[-1]`: the last segment of the journal in `dir`.
+    /// The last segment of the journal in `dir`, ordered by path.
     fn last_segment(dir: &Path) -> PathBuf {
         let mut segments: Vec<PathBuf> = names(dir)
             .into_iter()
@@ -95,7 +95,7 @@ mod g47_store_is_private_by_its_own_modes {
         segments.pop().expect("a segment")
     }
 
-    /// `store.glob("events/*/*MARK*")`: the files beside every journal's segments whose names hold
+    /// The files beside every journal's segments whose names hold
     /// `mark`.
     fn beside_segments(store: &Path, mark: &str) -> Vec<PathBuf> {
         let mut found = Vec::new();

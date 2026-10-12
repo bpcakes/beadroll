@@ -26,7 +26,7 @@ mod g31_export_with_unicode_line_separators_imports_again {
     }
 
     /// G31: `export` writes U+2028/U+2029/U+0085 raw inside JSON strings (valid JSONL), but `import`
-    /// splits the file with `str.splitlines()`, so bead cannot import its own export.
+    /// splits the file at Unicode line boundaries, so bead cannot import its own export.
     #[test]
     fn own_export_with_unicode_line_separators_imports_again() {
         let sandbox = crate::sandbox();

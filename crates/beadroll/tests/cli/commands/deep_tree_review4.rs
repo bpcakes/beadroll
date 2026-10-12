@@ -18,8 +18,8 @@ struct Chain {
 }
 
 impl Chain {
-    /// The next event id: a UUIDv7 whose time and random bits both count the events, spelt as
-    /// `str(uuid.UUID(int=value))` spells it.
+    /// The next event id: a UUIDv7 whose time and random bits both count the events, rendered
+    /// as lowercase hexadecimal with the standard UUID hyphens.
     fn next_id(&mut self) -> String {
         self.serial += 1;
         let value = ((1_790_000_000_000 + self.serial) << 80) | (7 << 76) | (2 << 62) | self.serial;

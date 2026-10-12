@@ -2,8 +2,8 @@
 //! structured code and never a crash. An unusable path given on the command line is `IO` and writes
 //! nothing, damage to the local store is `IO` or a code of git's, the file-size limit is `IO` (or
 //! git's death by SIGXFSZ) with the next write and sync clean, running out of descriptors never
-//! drops a pending attempt, and the shapes of `replica.json` and `.beadroll.json` are checked. Each
-//! class is a module of its own; the helpers they share are here.
+//! drops a pending attempt, and the shapes of `replica.json` and `.beadroll.json` are checked.
+//! Scenarios are grouped in modules; their shared helpers are here.
 
 use std::io::Read;
 use std::process::{Command, Stdio};

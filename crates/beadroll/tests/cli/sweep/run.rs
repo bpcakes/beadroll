@@ -71,7 +71,7 @@ fn hook(sandbox: &Sandbox, name: &str, script: &str) {
     std::fs::set_permissions(&path, Permissions::from_mode(0o755)).expect("an executable hook");
 }
 
-/// `path` quoted for the shell, as `shlex.quote` quotes it: as it is when every character is safe.
+/// `path` quoted for the shell, left unchanged when every character is safe.
 fn shell_quoted(path: &Path) -> String {
     let text = path.to_str().expect("a UTF-8 sandbox path");
     let safe = |c: char| c.is_ascii_alphanumeric() || "_@%+=:,./-".contains(c);

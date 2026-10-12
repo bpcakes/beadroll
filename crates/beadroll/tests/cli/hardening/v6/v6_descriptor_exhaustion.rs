@@ -6,11 +6,10 @@ use beadroll_test_support::Machine;
 use super::{error_code, id, limited, with_sh};
 
 /// Descriptor limits spanning failure before reading, failure during coordination and sufficient
-/// capacity: 8, 10, 11, 10, 12 and 13.
+/// capacity: 8, 10, 11, 12 and 13.
 const LIMITS: [u32; 5] = [8, 10, 11, 12, 13];
 
-/// The suffixes of the files in `machine`'s `pending/`, sorted: `sorted(p.suffix for p in
-/// (store / "pending").iterdir())`.
+/// The suffixes of the files in `machine`'s `pending/`, sorted.
 fn pending_suffixes(machine: &Machine) -> Vec<String> {
     let entries = std::fs::read_dir(machine.store().join("pending")).unwrap();
     let mut suffixes: Vec<String> = entries

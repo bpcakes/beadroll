@@ -13,7 +13,7 @@ use beadroll_core::replay::replay;
 use beadroll_test_support::events::Event;
 use beadroll_test_support::{Json, json};
 
-/// Event `number` of the class: id `019a4444-4444-7000-8000-<number>`, about `issue` (itself when
+/// Event `number`: id `019a4444-4444-7000-8000-<number>`, about `issue` (itself when
 /// `None`).
 fn event(
     number: u64,

@@ -154,8 +154,8 @@ fn raw(c: char) -> bool {
     )
 }
 
-/// `bead ARGS` from `machine` with `env`, its output piped, as `subprocess.run(...,
-/// capture_output=True, stdin=DEVNULL, timeout=60)` runs it: how it ended and what it printed.
+/// Runs `bead ARGS` from `machine` with `env`, null input, piped output and a 60-second timeout:
+/// returns how it ended and what it printed.
 fn piped(
     machine: &Machine,
     args: &[String],

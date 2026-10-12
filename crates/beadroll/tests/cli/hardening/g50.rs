@@ -21,7 +21,7 @@ mod g50_machines_name_keeps_aliases_it_could_not_read {
         write(&others(), Format::INDENTED).expect("the names") + "\n"
     }
 
-    /// The class's `setUp`: machine g50, its tracker initialised with the prefix `ex`, and the path
+    /// Machine g50, its tracker initialised with the prefix `ex`, and the path
     /// of its `aliases.json`. Should a test fail with the file unreadable, the sandbox's drop makes
     /// it writable again, which is all its removal needs.
     fn setup(sandbox: &Sandbox) -> (Machine, PathBuf) {
@@ -107,7 +107,7 @@ mod g50_machines_name_keeps_aliases_it_could_not_read {
         check_kept(&machine, &aliases, "list", text, 0o600);
     }
 
-    /// G50: an aliases.json bead cannot read (EACCES) is replaced, since os.replace needs only the
+    /// G50: an aliases.json bead cannot read (EACCES) is replaced, since renaming needs only the
     /// directory to be writable. Skipped as root, who reads files of mode 0.
     #[test]
     fn g50_unreadable_file_is_not_overwritten() {

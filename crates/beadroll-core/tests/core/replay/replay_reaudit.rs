@@ -13,7 +13,7 @@ use beadroll_test_support::Json;
 use beadroll_test_support::events::{Event, journal};
 use beadroll_test_support::json;
 
-/// The class's events: fixed UUIDv7s, so every order assertion is independent of the clock.
+/// Events with fixed UUIDv7s, so every order assertion is independent of the clock.
 pub(crate) struct Fixture {
     serial: u64,
 }

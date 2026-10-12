@@ -71,7 +71,7 @@ pub(crate) fn sorted(value: &Json) -> String {
     write(value, Format::SORTED_ASCII).expect("bead's JSON writes back")
 }
 
-/// `"status" in issue.get("conflicts", {})`: whether the issue's status is disputed.
+/// Whether the issue's status is disputed.
 pub(crate) fn status_disputed(issue: &Json) -> bool {
     issue
         .get("conflicts")

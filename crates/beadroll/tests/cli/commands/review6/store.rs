@@ -10,7 +10,7 @@ use beadroll_test_support::{Machine, Run, Sandbox, code, git, parse_json};
 
 use super::{glob, id, machine};
 
-/// The attempt files in `machine`'s store, in directory order: `events.glob("*/claims/*.json")`.
+/// The attempt files in `machine`'s store, in directory order, under `events/*/claims/`.
 fn attempts(machine: &Machine) -> Vec<PathBuf> {
     let Ok(replicas) = std::fs::read_dir(machine.store().join("events")) else {
         return Vec::new();

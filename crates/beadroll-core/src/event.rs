@@ -216,7 +216,7 @@ fn str_or_none(value: Option<&Value>) -> bool {
     matches!(value, None | Some(Value::Null | Value::Str(_)))
 }
 
-/// Whether `value` (absent counts as `None`) is an object or `None`.
+/// Whether `value` is absent, null or an object.
 fn object_or_none(value: Option<&Value>) -> bool {
     matches!(value, None | Some(Value::Null | Value::Object(_)))
 }
@@ -333,8 +333,7 @@ pub fn status_shaped(status: &str) -> bool {
         && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
 }
 
-/// The `data` object of a valid event: `None` and an absent one read as empty, as
-/// `event.get("data") or {}` does.
+/// The `data` object of a valid event; null or absent data yields `None` and is treated as empty.
 pub fn data_of(event: &Value) -> Option<&Object> {
     event.get("data").and_then(Value::as_object)
 }

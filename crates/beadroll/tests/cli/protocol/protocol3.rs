@@ -2,7 +2,7 @@
 //! settle stays pending and counts for nothing until one lands; and a claiming update killed while
 //! it confirms the attempt the remote accepted leaves all of it or none, never part (the third
 //! independent review, 2026-10-06). The kill is the Rust `bead`'s `atomic-write:claims/`
-//! failpoint. The class's in-process tests are in `beadroll-sync`
+//! failpoint. Related in-process tests are in `beadroll-sync`
 //! (`tests/sync/protocol/protocol3.rs`).
 
 use std::os::unix::fs::PermissionsExt as _;
@@ -10,8 +10,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use beadroll_store::{glob_ending, read_attempt};
 use beadroll_test_support::{Json, Machine, Sandbox, code};
 
-/// Machine a's tracker with one issue, "before", synced to machine b: the class's `setUp`, less
-/// the in-process store its other tests open.
+/// Machine a's tracker with one issue, "before", synced to machine b.
 struct Protocol3 {
     sandbox: Sandbox,
     a: Machine,
@@ -23,7 +22,7 @@ fn setup() -> Protocol3 {
     setup_with(Machine::new)
 }
 
-/// `setUp` with machines made by `make`: `Machine::new`, or `crate::rust_only` for a test that
+/// Sets up machines made by `make`: `Machine::new`, or `crate::rust_only` for a test that
 /// injects its fault through a failpoint.
 fn setup_with(make: fn(&Sandbox, &str) -> Machine) -> Protocol3 {
     let sandbox = crate::sandbox();
@@ -48,7 +47,7 @@ fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
 }
 
 /// What a reader sees of a claiming update on `issue`: whether it is claimed, its title and its
-/// labels (none when it has none), `("claim" in issue, issue["title"], issue.get("labels", []))`.
+/// labels (an empty vector when it has none).
 fn seen(issue: &Json) -> (bool, String, Vec<String>) {
     let title = member(issue, "title").as_str().expect("a title");
     let labels = issue.get("labels").and_then(Json::as_array);

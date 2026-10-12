@@ -44,7 +44,7 @@ pub use settings::{
 };
 pub use workspace::{DEFAULT_REF, Endpoint, REMOTE_REF, Workspace, relative, remembered, stamp};
 
-/// `data.strip()` on bytes: without the ASCII whitespace at either end.
+/// The bytes without the ASCII whitespace at either end.
 pub(crate) fn strip_ascii(data: &[u8]) -> &[u8] {
     beadroll_core::text::strip_bytes(data)
 }

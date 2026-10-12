@@ -80,8 +80,8 @@ fn usable(dir: &Path) -> bool {
     false
 }
 
-/// `os.path.abspath(path)`: absolute from `cwd`, `.` and `..` resolved and repeated slashes folded,
-/// lexically (two leading slashes stay two, as in `posixpath.normpath`).
+/// Makes `path` absolute from `cwd`, resolving `.` and `..` and folding repeated slashes
+/// lexically. Two leading slashes stay two.
 fn abspath(path: &OsStr, cwd: Option<&Path>) -> PathBuf {
     let bytes = path.as_bytes();
     let joined: Vec<u8> = if bytes.starts_with(b"/") {

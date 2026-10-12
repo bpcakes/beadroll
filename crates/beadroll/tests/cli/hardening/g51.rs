@@ -24,7 +24,7 @@ mod g51_unusable_tracked_config_is_an_error {
 
     use super::{g51_code, head};
 
-    /// `setUp`: machine `g51`, whose checkout tracks `{"workspace": "w-tracked"}` in
+    /// Machine `g51`, whose checkout tracks `{"workspace": "w-tracked"}` in
     /// `.beadroll.json`, with a tracker (prefix `ex`) holding one issue; the config's path.
     fn set_up(sandbox: &Sandbox) -> (Machine, PathBuf) {
         let a = Machine::new(sandbox, "g51");

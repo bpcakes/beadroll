@@ -15,7 +15,7 @@ const BEHIND: &str = "clock@always=offset(-48h)";
 /// passes between two edits of the clock-skew test.
 const NEARLY_48_HOURS: i64 = 47 * 3600 * 1000;
 
-/// `self.machine(name)` for a `rust_only` test: a machine `name` that runs the Rust `bead`, its
+/// A machine `name` that runs the Rust `bead`, its
 /// tracker initialised with the prefix `ex`.
 fn machine(sandbox: &Sandbox, name: &str) -> Machine {
     let machine = crate::rust_only(sandbox, name);

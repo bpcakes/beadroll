@@ -29,7 +29,7 @@ pub(crate) struct InitArgs {
     pub(crate) offline: bool,
 }
 
-/// `os.path.relpath(path, start)`: `path` from `start`, both absolute.
+/// The relative path to `path` from `start`, both absolute.
 fn relpath(path: &Path, start: &Path) -> PathBuf {
     let parts = |p: &Path| -> Vec<Vec<u8>> {
         p.as_os_str()

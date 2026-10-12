@@ -44,7 +44,7 @@ mod g19_client_hooks_on_private_pushes {
 
     use super::git;
 
-    /// The class's fixture: a sandbox, the log every hook writes to (`hook.log`), a scratch global
+    /// A sandbox, the log every hook writes to (`hook.log`), a scratch global
     /// git config (`global.gitconfig`, never the developer's), and machine a, which reads it as
     /// its global config and reads no system one.
     struct Hooks {
@@ -55,7 +55,7 @@ mod g19_client_hooks_on_private_pushes {
     }
 
     impl Hooks {
-        /// The class's `setUp`.
+        /// Builds the test fixture.
         fn set_up() -> Hooks {
             let sandbox = crate::sandbox();
             let log = sandbox.root().join("hook.log");

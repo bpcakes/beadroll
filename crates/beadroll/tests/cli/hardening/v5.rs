@@ -10,14 +10,14 @@ use std::path::{Path, PathBuf};
 
 use beadroll_test_support::{Json, Machine, Sandbox, parse_json};
 
-/// `_v5_mode`: the permission bits of `path` itself, a symlink not followed (`os.lstat`).
+/// The permission bits of `path` itself, without following symlinks.
 fn mode(path: &Path) -> u32 {
     let meta = std::fs::symlink_metadata(path)
         .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
     meta.permissions().mode() & 0o7777
 }
 
-/// `_v5_modes`: each of `paths` with its mode, in octal as `oct()` writes it.
+/// Each of `paths` with its mode, in octal with a `0o` prefix.
 fn modes(paths: &[PathBuf]) -> Vec<(String, String)> {
     paths
         .iter()
@@ -25,7 +25,7 @@ fn modes(paths: &[PathBuf]) -> Vec<(String, String)> {
         .collect()
 }
 
-/// `set(_v5_modes(paths).values())`: the modes `paths` have between them.
+/// The distinct modes of `paths`.
 fn distinct_modes(paths: &[PathBuf]) -> BTreeSet<u32> {
     paths.iter().map(|path| mode(path)).collect()
 }
@@ -55,7 +55,7 @@ fn executable(path: &Path, script: &str) {
     std::fs::set_permissions(path, Permissions::from_mode(0o755)).unwrap();
 }
 
-/// The sandbox's remote, `str(self.box.origin)`, as bead's `--remote` takes it.
+/// The sandbox's remote as a UTF-8 path for bead's `--remote`.
 fn origin(sandbox: &Sandbox) -> &str {
     sandbox.origin().to_str().expect("a UTF-8 path")
 }
@@ -83,7 +83,7 @@ mod v5_data_file_modes {
         path
     }
 
-    /// The entries of `dir`, sorted: `sorted(dir.iterdir())`.
+    /// The entries of `dir`, sorted by path.
     fn entries(dir: &Path) -> Vec<PathBuf> {
         let listed = std::fs::read_dir(dir).unwrap_or_else(|error| panic!("{dir:?}: {error}"));
         let mut paths: Vec<PathBuf> = listed.map(|entry| entry.unwrap().path()).collect();

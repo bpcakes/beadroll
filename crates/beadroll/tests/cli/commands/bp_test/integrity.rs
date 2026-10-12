@@ -25,7 +25,7 @@ fn uuid_version(text: &str) -> Option<u128> {
     rfc_4122.then_some((value >> 76) & 0xf)
 }
 
-/// `shutil.copytree(from, to)`: `to`, which must not exist yet, becomes a copy of the directory
+/// `to`, which must not exist yet, becomes a copy of the directory
 /// `from`, its files' modes and times kept.
 fn copytree(from: &Path, to: &Path) {
     assert!(!to.exists(), "{} exists", to.display());

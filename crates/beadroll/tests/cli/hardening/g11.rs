@@ -56,7 +56,7 @@ mod g11_server_hook_text_does_not_decide_the_push_outcome {
     use super::{install_post_receive, remote_head};
     use crate::hardening::gate::{Gate, beside};
 
-    /// The class's `setUp`: machine `g11` (made by `make`) has initialised tracker `ex`, created
+    /// Machine `g11` (made by `make`) has initialised tracker `ex`, created
     /// the issue `one` and synced. Returns the machine and the issue's key.
     fn set_up(sandbox: &Sandbox, make: fn(&Sandbox, &str) -> Machine) -> (Machine, String) {
         let a = make(sandbox, "g11");

@@ -7,7 +7,7 @@
 use beadroll_core::json::{Format, write};
 use beadroll_test_support::{Json, Machine, Sandbox, code, json, parse_json};
 
-/// `setUp`: machine `root2-a` has initialised tracker `re`, created the issue every test works on
+/// Machine `root2-a` has initialised tracker `re`, created the issue every test works on
 /// and synced. Returns the machine and the issue's id.
 fn set_up(sandbox: &Sandbox) -> (Machine, String) {
     let a = Machine::new(sandbox, "root2-a");

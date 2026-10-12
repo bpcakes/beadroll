@@ -17,7 +17,7 @@ mod g45_unresolved_imported_dependency_invisible {
     #[test]
     fn show_and_dep_list_report_an_unresolved_imported_dependency() {
         let sandbox = crate::sandbox();
-        // The class's `setUp`: ex-a, depending twice on the key ex-b, the second time without a
+        // ex-a, depending twice on the key ex-b, the second time without a
         // type, imported on a new machine.
         let rec = json!({
             "id": "ex-a",

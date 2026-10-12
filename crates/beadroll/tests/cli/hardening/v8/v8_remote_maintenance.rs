@@ -12,7 +12,7 @@ use beadroll_test_support::{Machine, Sandbox, git};
 
 use super::{Outcome, converge_and_compare, mixed_ops};
 
-/// The class's `setUp`: machines a, b and c, a's tracker initialised (prefix `gc`) and published
+/// Machines a, b and c, a's tracker initialised (prefix `gc`) and published
 /// with five issues, and every machine synced; with the issues' keys.
 fn setup(sandbox: &Sandbox) -> ([Machine; 3], Vec<String>) {
     let machines = ["a", "b", "c"].map(|name| Machine::new(sandbox, name));
@@ -31,7 +31,7 @@ fn setup(sandbox: &Sandbox) -> ([Machine; 3], Vec<String>) {
     (machines, keys)
 }
 
-/// The class's `check`: nothing unexpected failed, the machines converge, and the confirmed claims
+/// Checks that nothing unexpected failed, the machines converge, and the confirmed claims
 /// a lists are the owner model's.
 fn check(machines: &[Machine; 3], origin: &Path, (owner, unexpected): Outcome) {
     assert!(unexpected.is_empty(), "{unexpected:?}");

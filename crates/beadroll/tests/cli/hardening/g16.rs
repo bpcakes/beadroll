@@ -12,7 +12,7 @@ mod g16_concurrent_processes_share_no_fetch_destination {
 
     use crate::hardening::gate::{Gate, beside};
 
-    /// A `bead` started beside others, as `subprocess.Popen` starts one: nothing on its standard
+    /// A `bead` started beside others: nothing on its standard
     /// input, its output piped and read to the end by a thread of its own, which hands it over
     /// once the process has ended.
     struct Started(Receiver<std::io::Result<Output>>);

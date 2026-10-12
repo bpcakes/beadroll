@@ -20,7 +20,7 @@ fn is_space(byte: &u8) -> bool {
     b" \t\n\r\x0b\x0c".contains(byte)
 }
 
-/// `data` without the ASCII whitespace at either end, as `bytes.strip()` leaves it.
+/// `data` without the ASCII whitespace at either end.
 fn strip(data: &[u8]) -> &[u8] {
     let start = data.iter().position(|byte| !is_space(byte));
     let start = start.unwrap_or(data.len());

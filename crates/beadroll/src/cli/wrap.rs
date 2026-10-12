@@ -23,8 +23,8 @@ pub(crate) fn collapsed(text: &str) -> String {
     strip(&out).to_owned()
 }
 
-/// `textwrap.wrap(text, width, initial_indent=indent, subsequent_indent=indent)` for a text
-/// [`collapsed`] made: lines no longer than `width`, the indent included.
+/// Wraps text made by [`collapsed`] into lines no longer than `width`, including the indent
+/// prepended to every line.
 pub(crate) fn wrap(text: &str, width: i64, indent: &str) -> Vec<String> {
     let chars: Vec<char> = text.chars().collect();
     let mut chunks = split(&chars);
@@ -63,7 +63,7 @@ fn length(count: usize) -> i64 {
     i64::try_from(count).unwrap_or(i64::MAX)
 }
 
-/// Whether a chunk is whitespace (`chunk.strip() == ''`).
+/// Whether a chunk consists entirely of whitespace.
 fn blank(chunk: &[char]) -> bool {
     let text: String = chunk.iter().collect();
     strip(&text).is_empty()
@@ -92,7 +92,7 @@ fn long_word(chunks: &mut [Vec<char>], line: &mut Vec<Vec<char>>, used: i64, wid
     }
 }
 
-/// textwrap's whitespace: ASCII's.
+/// ASCII whitespace used to split wrapping chunks.
 fn is_space(c: char) -> bool {
     matches!(c, '\t' | '\n' | '\u{0b}' | '\u{0c}' | '\r' | ' ')
 }
@@ -112,7 +112,7 @@ fn is_word_punct(c: char) -> bool {
     is_word(c) || "!\"'&.,?".contains(c)
 }
 
-/// The text cut as `TextWrapper.wordsep_re` splits it.
+/// Splits text into whitespace, word and hyphen chunks at the wrapping boundaries.
 fn split(text: &[char]) -> Vec<Vec<char>> {
     let mut out = Vec::new();
     let mut at = 0;
@@ -187,8 +187,8 @@ mod tests {
     }
 
     #[test]
-    fn text_splits_as_textwrap_splits_it() {
-        // textwrap's own example
+    fn wrapping_splits_words_hyphens_and_flags() {
+        // Spaces, doubled hyphens, compound words and flags have distinct split points.
         assert_eq!(
             chunks("Hello there -- you goof-ball, use the -b option!"),
             [

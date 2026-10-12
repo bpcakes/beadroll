@@ -292,7 +292,7 @@ impl Workspace {
     }
 }
 
-/// `os.path.join(base, value)`: `value` after `base` and a slash.
+/// Appends `value` to `base`, inserting a slash if needed.
 fn joined(mut base: Vec<u8>, value: &OsStr) -> OsString {
     if !base.is_empty() && !base.ends_with(b"/") {
         base.push(b'/');

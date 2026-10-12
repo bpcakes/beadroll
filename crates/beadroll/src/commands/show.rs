@@ -45,7 +45,7 @@ fn field(item: &Object, key: &str) -> String {
     item.get(key).map(str_of).unwrap_or_default()
 }
 
-/// The member `key` of a value, as an object member would be got with `.get(key)`.
+/// The member `key` of an object value.
 fn member<'v>(value: Option<&'v Value>, key: &str) -> Option<&'v Value> {
     value.and_then(|v| v.get(key))
 }
@@ -237,7 +237,7 @@ fn list<'i>(item: &'i Object, key: &str) -> &'i [Value] {
     item.get(key).and_then(Value::as_array).unwrap_or_default()
 }
 
-/// A member of a value as text (`str()`), the empty string when it is not there.
+/// A member of a value rendered as text, or the empty string when absent.
 fn text_of(value: &Value, key: &str) -> String {
     value.get(key).map(str_of).unwrap_or_default()
 }

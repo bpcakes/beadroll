@@ -202,7 +202,7 @@ fn set(c: &Ctx<'_>, issue: &mut Issue, fields: &[(Field, Value)]) -> bool {
     true
 }
 
-/// A comment, by `author` when it names one (`data.get("author") or who`).
+/// A comment, by its nonempty `author` or otherwise by the event's writer.
 fn comment(c: &Ctx<'_>, issue: &mut Issue, seq: u64, text: &str, author: Option<&str>) -> bool {
     let author = author.filter(|a| !a.is_empty()).unwrap_or(c.who);
     issue.comments.push(Comment::Native {
@@ -308,7 +308,7 @@ fn label(c: &Ctx<'_>, issue: &mut Issue, labels: &[String], how: Labels) -> bool
     true
 }
 
-/// A dangling dependency's type: `d.get("type") or "blocks"`.
+/// A dangling dependency's type, defaulting to `blocks` when absent or falsy.
 fn dangling_type(dep: &Value) -> String {
     dep.get("type")
         .filter(|kind| kind.truthy())

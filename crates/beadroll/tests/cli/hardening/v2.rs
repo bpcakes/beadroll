@@ -122,7 +122,7 @@ mod v2_in_flight_attempt_across_actors {
     use super::*;
     use crate::hardening::gate::{Gate, beside};
 
-    /// `path` quoted for the shell, as `shlex.quote` quotes it.
+    /// `path` quoted as one shell word.
     fn quoted(path: &Path) -> String {
         let text = path.to_str().expect("a UTF-8 path");
         format!("'{}'", text.replace('\'', r"'\''"))
