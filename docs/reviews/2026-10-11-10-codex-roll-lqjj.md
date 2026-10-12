@@ -57,3 +57,9 @@ Reviewed only 1527ea8ff4dc47e7d3d51954c2d1bef892b5d468..a9503113fd2c80fa26a36299
 ## roll-lqjj.3, round 1: `9ca05470f280f1dbacc305041b8a8f5b66d43abf..a43694b7c99ce86a50d1ffba5cfeb04d9dc53e79`
 
 Reviewed 9ca05470f280f1dbacc305041b8a8f5b66d43abf..a43694b7c99ce86a50d1ffba5cfeb04d9dc53e79 (HEAD): no actionable defects found in the documentation-only changes. git diff --check passed; the baseline could not run because the read-only sandbox blocked Cargo’s build lock.
+
+## roll-lqjj.3, round 2, after a correction: `dc608a8597f1269b46554686b224a0b844eea2fb..2cd9ed847c4770a1f923a8b8fea84a94d4143fb9`
+
+The task was reopened when the census of public trackers, finished after its close, found two larger ones; this round reviews the correction alone.
+
+Reviewed dc608a8597f1269b46554686b224a0b844eea2fb..2cd9ed847c4770a1f923a8b8fea84a94d4143fb9. No actionable defects found in this documentation-only range. Tests were not run in the read-only sandbox.
