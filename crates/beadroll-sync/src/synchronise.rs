@@ -9,7 +9,7 @@ use beadroll_core::text::{py_int, shell_quote};
 use beadroll_git::PushOutcome;
 use beadroll_store::{
     Endpoint, Failpoints, Fired, Memo, Workspace, claim_files, load_pending, moved_workspaces,
-    pending_files, relative, segment_files, view, workspaces_named, write_atomic,
+    pending_files, relative, segment_files, view_outline, workspaces_named, write_atomic,
 };
 
 use crate::error::Error;
@@ -119,7 +119,8 @@ impl Synced {
 /// this checkout's origin holding a tracker under another id adopts it (`moved.json`).
 pub fn synchronise(ws: &Workspace, remote: &Endpoint) -> Result<Synced, Error> {
     let mut link = Link::new(ws, remote)?;
-    let known_renames = view(ws)?.renames().len();
+    // counts alone: no issue's texts are read in (roll-lqjj.6)
+    let known_renames = view_outline(ws)?.renames().len();
     let (mut pulled, mut pushed) = (0i64, 0i64);
     let mut repacked = false;
     let mut settled = None;
@@ -155,7 +156,7 @@ pub fn synchronise(ws: &Workspace, remote: &Endpoint) -> Result<Synced, Error> {
             conflict_detail(&link)
         )));
     };
-    let state = view(ws)?;
+    let state = view_outline(ws)?;
     let mut values = Vec::new();
     if let Some(name) = &ws.name {
         values.push(("name", Value::from(name.to_string_lossy().into_owned())));
