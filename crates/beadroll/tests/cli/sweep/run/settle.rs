@@ -1,5 +1,4 @@
-//! Settling (Python's `settle`): every machine synced twice, then compared with the others, and
-//! nothing of the sandbox left running.
+//! Syncs each machine twice, compares their states and stops every remaining sandbox process.
 
 use std::collections::BTreeMap;
 use std::process::Command;

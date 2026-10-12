@@ -24,9 +24,8 @@ fn scrubbed() -> BTreeMap<OsString, OsString> {
         .collect()
 }
 
-/// The interpreter Python's launcher starts with (`#!/usr/bin/env python3`), as its
-/// `sys.executable` names it; `None` without a `python3` on the test's PATH. The Rust bead needs
-/// none, but the suite may be pointed at `python-0.1.0`'s launcher during the rollback window.
+/// The executable path of `python3` on the test's PATH, or `None` if unavailable. An alternate
+/// `BEAD_UNDER_TEST` may use an interpreter launcher.
 fn python() -> Option<PathBuf> {
     let output = Command::new("python3")
         .args(["-I", "-c", "import sys; print(sys.executable)"])
@@ -74,10 +73,8 @@ fn nested_info(sandbox: &Sandbox, root: &Path, path: &OsStr) -> Run {
     }
 }
 
-/// The process-tree walk settles nested harnesses: the nearest harness among bead's ancestors is
-/// the caller, and its session the thread. The Python test replaced `subprocess.run` in-process;
-/// here a fake `ps` first on PATH, which bead runs from there, answers every lookup with the
-/// harness as a child of init.
+/// The process-tree walk selects the nearest ancestor harness and its session. A fake `ps` first
+/// on PATH answers each lookup with that harness as a child of init.
 #[test]
 fn nearest_harness_mocked_process_tree() {
     let sandbox = crate::sandbox();

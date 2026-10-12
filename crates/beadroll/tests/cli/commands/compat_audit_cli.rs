@@ -27,7 +27,7 @@ fn ids(issues: &Json) -> Vec<String> {
     issues.as_array().unwrap().iter().map(id).collect()
 }
 
-/// `value` as `json.dumps(value)` writes it.
+/// Spaced, ASCII-escaped JSON.
 fn dumps(value: &Json) -> String {
     write(value, Format::ASCII).unwrap()
 }
@@ -286,8 +286,7 @@ fn journal_events(store: &Path) -> Vec<Json> {
     events
 }
 
-/// The user's home as Python's `Path.home()` names it: `HOME`, else the password database's,
-/// without a trailing slash.
+/// The user's home from `HOME`, else the password database, without a trailing slash.
 fn python_home() -> String {
     let home = std::env::var("HOME").unwrap_or_else(|_| {
         let user = nix::unistd::User::from_uid(nix::unistd::Uid::current());

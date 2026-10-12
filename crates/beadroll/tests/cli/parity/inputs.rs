@@ -1,7 +1,5 @@
-//! What bead is given, read as Python's bead read it: arguments that are not UTF-8, which Python
-//! held as `surrogateescape` strings, names in `aliases.json`, paths as `pathlib` spells them, and a
-//! `TMPDIR` that does not exist. Python's answers are pinned as captured from Python 3.14's bead
-//! before the cutover; `{key}` in them is the issue the test made.
+//! Expected handling of arguments and aliases that are not UTF-8, normalised paths and an
+//! unavailable TMPDIR. Fixed outputs substitute `{key}` for the issue created by the test.
 
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
@@ -35,7 +33,7 @@ fn keyed(bytes: &[u8], key: &str) -> Vec<u8> {
     text.replace("{key}", key).into_bytes()
 }
 
-/// What Python answered: its status, standard output and standard error, `{key}` replaced.
+/// Expected status, stdout and stderr, with `{key}` substituted.
 fn said(status: i32, stdout: &str, stderr: &str, key: &str) -> Answer {
     let line = |text: &str| {
         if text.is_empty() {
@@ -47,15 +45,15 @@ fn said(status: i32, stdout: &str, stderr: &str, key: &str) -> Answer {
     (status, line(stdout), line(stderr))
 }
 
-/// A command line, then what Python answered it as given and with `--json`: status, standard
-/// output and standard error, each line without its newline.
+/// A command line and its expected human and JSON status, stdout and stderr, with line endings
+/// omitted.
 type Case = (
     &'static [&'static [u8]],
     (i32, &'static str, &'static str),
     (i32, &'static str, &'static str),
 );
 
-/// `text is not valid UTF-8`, as Python's bead said it in both output modes.
+/// The invalid-UTF-8 error in both output modes.
 const NOT_UTF8: (i32, &str, &str) = (1, "", "Error: text is not valid UTF-8");
 const NOT_UTF8_JSON: (i32, &str, &str) = (
     1,
@@ -193,8 +191,8 @@ const ARGUMENTS: [Case; 14] = [
     ),
 ];
 
-/// Asks `case` of `machine` as given and with `--json`, run in `dir` or else its checkout, and
-/// compares the answers with Python's.
+/// Runs `case` on `machine` in human and JSON modes, in `dir` or the checkout, and compares with
+/// the expected results.
 fn ask(machine: &Machine, dir: Option<&Path>, key: &str, case: &Case) {
     let (args, human, json) = case;
     for ((status, stdout, stderr), json_mode) in [(human, false), (json, true)] {
@@ -211,15 +209,15 @@ fn ask(machine: &Machine, dir: Option<&Path>, key: &str, case: &Case) {
     }
 }
 
-/// Arguments that are not UTF-8 behave as Python's `surrogateescape` strings did: they match no
-/// key, fail only where they would be written (after every other check), and an error that quotes
-/// them prints `?` for each such byte, or `\udcXX` in JSON. Nothing is written.
+/// Invalid UTF-8 arguments match no key and fail only when written, after other validation.
+/// Errors show `?` for each invalid byte in human output and `\udcXX` in JSON. Nothing is
+/// written.
 #[test]
 fn arguments_that_are_not_utf8_answer_as_python_did() {
     let sandbox = crate::sandbox();
     let m = Machine::new(&sandbox, "bytes");
-    // before the tracker exists, a title that cannot be written is not the first problem (the
-    // message is bead's own since roll-dih8.13 made `sync` the first advice; Python's named `init`)
+    // A missing tracker is reported before an unwritable title, with sync as the first recovery
+    // step.
     let uninitialised: Case = (
         &[b"create", b"t\xff"],
         (
@@ -243,9 +241,8 @@ fn arguments_that_are_not_utf8_answer_as_python_did() {
     assert_eq!(m.export(), before, "nothing was written");
 }
 
-/// What `aliases.json` holds after the renames below, as Python's `json.dumps` wrote it, its own
-/// machine's id as `<replica>`: names whose bytes are not UTF-8 kept as lone surrogates, beside the
-/// members the file already held, as they were.
+/// Expected `aliases.json` after renaming, with `<replica>` for this machine. Invalid bytes
+/// remain lone surrogate escapes, and existing members are preserved.
 const ALIASES: &str = r#"{
  "zz": "new",
  "a\udcff": "again",
@@ -261,9 +258,8 @@ const ALIASES: &str = r#"{
  "<replica>": "host\udcff"
 }"#;
 
-/// `machines --name` rewrites `aliases.json` as Python's bead rewrote it: bytes of a name that are
-/// not UTF-8 are kept as lone surrogates, and so are those the file already held; such a name is
-/// shown with a `?` for each.
+/// `machines --name` preserves invalid bytes as lone surrogates along with any already in
+/// `aliases.json`. Human output substitutes `?` for each.
 #[test]
 fn aliases_keep_bytes_that_are_not_utf8_as_python_did() {
     let seeded = r#"{"zz": "kept", "a\udcff": "lone \udcfe", "n": {"x": [1, 2.50, "\u00e9"]}, "dup": 1, "dup": "last"}"#;
@@ -293,8 +289,7 @@ fn aliases_keep_bytes_that_are_not_utf8_as_python_did() {
     assert_eq!(shown, "<replica>  host?               1 ");
 }
 
-/// Paths named in errors, as Python's bead named them; `bad\xff.jsonl` comes after them, since
-/// only some systems let the test make it.
+/// Paths named in errors. Test `bad\xff.jsonl` separately because some systems cannot create it.
 const PATHS: [Case; 3] = [
     (
         &[b"create", b"t", b"--description-file", b"missing//x/."],
@@ -330,9 +325,8 @@ const PATHS: [Case; 3] = [
     ),
 ];
 
-/// A path given on the command line is used as Python's `Path()` spells it (`dump.jsonl/.` is
-/// `dump.jsonl`), and named in errors as `Path()` spells it, or as given where Python named the
-/// argument itself, in both output modes.
+/// Command-line paths are normalised (`dump.jsonl/.` becomes `dump.jsonl`). Errors use the
+/// normalised path or original argument according to the operation, in both output modes.
 #[test]
 fn paths_are_read_and_written_where_pythons_pathlib_put_them() {
     let sandbox = crate::sandbox();
@@ -358,7 +352,7 @@ fn paths_are_read_and_written_where_pythons_pathlib_put_them() {
     }
     let imported = answer(&m, None, &key, &[b"import", b"bad\xff.jsonl", b"--json"]);
     if made {
-        // Python's answer here was not captured: a system that takes the name reads the file
+        // On systems accepting this filename, the file must be readable.
         assert_eq!(imported.0, 1, "{imported:?}");
         assert!(imported.2.contains("is not valid JSONL"), "{imported:?}");
     } else {
@@ -377,8 +371,7 @@ fn paths_are_read_and_written_where_pythons_pathlib_put_them() {
     assert_eq!(comments.as_array().unwrap().len(), 1, "{comments:?}");
 }
 
-/// git's output goes to a temporary directory found as Python's `tempfile` found one: a `TMPDIR`
-/// that does not exist falls back to `/tmp`.
+/// An unavailable TMPDIR falls back to `/tmp` for git's captured output.
 #[test]
 fn a_tmpdir_that_does_not_exist_falls_back_as_python_did() {
     let sandbox = crate::sandbox();

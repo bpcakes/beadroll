@@ -1,15 +1,8 @@
-//! `StorageReaudit`: the second independent audit (REAUDIT, 2026-10-06) of the store: segments and
-//! their torn tails, rotation, readers racing writers, and this machine's identity on first use
-//! (`docs/FINDINGS.md`). Ported here are the four tests whose Python drivers stop bead at a point:
-//! a claim before it publishes, a reader between enumerating the journal's segments and reading
-//! them or before it loads this machine's pending attempts, and the first use of the machine's
-//! identity before it is linked into place. They are `rust_only`: the Rust `bead` stops at the
-//! failpoints that replace those drivers (`BEAD_FAILPOINTS`, `docs/RUST-PORT.md` §4.5), with the
-//! `pause-until(PATH)` handshake: bead touches `PATH.ready` and waits for `PATH.go`, which the test
-//! watches and opens while bead runs beside it (`started`). A driver that waits at every call for
-//! the whole run is `point@always`; one that waits at its first call only is the plain `point`.
-//! The class's five black-box tests, which damage the store by hand and run the bead under test,
-//! are in `damaged`.
+//! Storage audit regressions for segments, torn tails, rotation, reader/writer races and initial
+//! machine identity. Build-specific failpoints stop claims before publication, readers around
+//! journal and pending reads, and identity creation before linking. The `pause-until` handshake
+//! exposes each boundary; `@always` pauses every hit. Direct damage tests using the selected
+//! binary are in `damaged`.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -85,7 +78,7 @@ fn events(path: &Path) -> Vec<Json> {
     lines.collect()
 }
 
-/// `value[key]` as Python indexes a dict: the member, or the test fails.
+/// The member `key` of `value`; absence fails the test.
 fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
     value
         .get(key)
@@ -119,14 +112,9 @@ fn identity_temporaries(home: &Path) -> Vec<PathBuf> {
     paths.filter(|path| named(path)).collect()
 }
 
-/// Two actual processes race; a real show is paused after it enumerates files. The edits of a
-/// claiming update travel with the claim, so a refusal removes pending files only: the journal is
-/// byte-identical before, during and after, and the reader sees no half state.
-///
-/// Python's drivers patch `Link.publish` to wait at its first call, and `segment_files` in
-/// `load_journal` to wait after every call; here the claiming update stops at the first
-/// `publish.before`, at the start of `Link::publish`, and the reader at every
-/// `journal.after-enumerate`, between enumerating the segments and reading them.
+/// A refused claiming update leaves the journal byte-identical before, during and after the
+/// attempt; a reader must see no partial state. Pause the update at its first `publish.before`
+/// and the reader at each `journal.after-enumerate`, between listing and reading segments.
 #[test]
 fn refused_claiming_update_leaves_the_journal_untouched_under_a_reader() {
     let sandbox = crate::sandbox();
@@ -195,12 +183,9 @@ fn refused_claiming_update_leaves_the_journal_untouched_under_a_reader() {
     assert_eq!(a.show(&key)["title"].as_str(), Some("storage survivor"));
 }
 
-/// An unlocked journal/marker snapshot must not promote a refused claim.
-///
-/// Python's drivers patch `Link.publish` to wait at its first call, and `load_pending` in `view` to
-/// wait before every call; here the claim stops at the first `publish.before`, and the reader at
-/// every `view.before-load-pending`, once it has replayed the journal and before it loads this
-/// machine's pending attempts.
+/// An unlocked journal/pending snapshot must not promote a refused claim. Pause the claim at its
+/// first `publish.before` and the reader at every `view.before-load-pending`, after replay and
+/// before pending attempts are loaded.
 #[test]
 fn reader_never_confirms_a_claim_whose_push_was_rejected() {
     let sandbox = crate::sandbox();
@@ -237,12 +222,9 @@ fn reader_never_confirms_a_claim_whose_push_was_rejected() {
     );
 }
 
-/// Two workspaces have separate locks but share the newly-created replica.json. The identity is
-/// written whole to a temporary file and linked into place; pause right before the link.
-///
-/// Python's driver patches `os.link` to wait before every link to `replica.json`; here the first
-/// process stops at every `identity.before-link`, its identity written whole to its temporary file
-/// and not yet linked into place. The second is a plain `bead`.
+/// Separate workspace locks share one newly created replica identity. Pause the first process at
+/// every `identity.before-link`, after writing the temporary identity but before linking it into
+/// place, then run a second bead normally.
 #[test]
 fn machine_identity_first_use_is_atomic_across_workspaces() {
     let sandbox = crate::sandbox();
@@ -295,12 +277,8 @@ fn machine_identity_first_use_is_atomic_across_workspaces() {
     );
 }
 
-/// SIGKILL at the write boundary must not permanently disable all writes: the identity file is
-/// either absent or complete, never half written.
-///
-/// Python's driver patches `os.link` to sleep before every link to `replica.json`, where the test
-/// kills it with its process group; here bead stops at every `identity.before-link`, and the test
-/// kills it the same way, which ends it by SIGKILL (-9).
+/// SIGKILL before linking the identity must leave it absent or complete and allow later writes.
+/// Pause at each `identity.before-link` and kill the process group there.
 #[test]
 fn machine_identity_can_recover_from_first_use_crash() {
     let sandbox = crate::sandbox();

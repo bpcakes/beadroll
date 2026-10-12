@@ -1,8 +1,6 @@
-//! `tests/test_hygiene.py`, ported (`docs/RUST-PORT.md` §4.3): the repository carries no trace of
-//! any maintainer's environment, no home directories, LAN or tailnet hostnames, or ssh targets. The
-//! patterns are Python's, shapes rather than names, so this file leaks nothing itself; they run over
-//! every file `git ls-files` names, as there. Their `\b` is ASCII here and Unicode in Python, so
-//! these find everything Python's find and, beside a non-ASCII letter, a little more.
+//! Repository hygiene: tracked files must not expose maintainer home directories, LAN or tailnet
+//! hostnames, or SSH targets. Patterns describe shapes rather than private names. ASCII word
+//! boundaries deliberately also catch matches beside non-ASCII letters.
 
 /// `RepositoryHygiene`.
 mod repository_hygiene {
@@ -36,10 +34,9 @@ mod repository_hygiene {
         "<hostname>.local",
     ];
 
-    /// What [`SHAPES`] find in the files `names` under `root`, the placeholders aside: one
-    /// `NAME:LINE: WHAT: TEXT` each. Images and JSONL logs are not read, nor is a file that is
-    /// not UTF-8 text, which Python's `read_text` refuses; a file that cannot be read at all is
-    /// an error, as it is in Python.
+    /// Findings from SHAPES in named files under root, excluding placeholders, as
+    /// NAME:LINE:WHAT:TEXT. Skip images, JSONL logs and non-UTF-8 files; unreadable files are
+    /// errors.
     fn findings<'n>(
         root: &Path,
         names: impl IntoIterator<Item = &'n str>,

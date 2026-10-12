@@ -1,5 +1,5 @@
-//! `bead close`, `bead reopen` and `bead delete` (Python's `transition`): someone else's claim needs
-//! `--force`; closing or deleting your own claim ends exactly that claim, and is published at once.
+//! `bead close`, `bead reopen` and `bead delete`: another owner's claim requires `--force`;
+//! closing or deleting your own claim ends exactly that claim and publishes immediately.
 
 use std::ffi::OsString;
 

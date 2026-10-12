@@ -1,4 +1,4 @@
-//! `tests/test_commands.py`: the halves of its tests that check beadroll-git alone.
+//! Command-related contracts owned by beadroll-git.
 
 mod sync_repo_damage {
     use beadroll_git::local_damage;

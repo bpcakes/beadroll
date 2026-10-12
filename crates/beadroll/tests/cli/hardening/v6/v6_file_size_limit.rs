@@ -1,7 +1,6 @@
-//! `V6_FileSizeLimit`: a write past the file-size limit is `IO` (or, when git meets the limit
-//! first, `GIT_ERROR` naming the SIGXFSZ that killed it), and the next write and sync are clean.
-//! The limit is the Python test's own, `ulimit -f 200` in `/bin/sh`, in whatever blocks that shell
-//! counts; without a `/bin/sh` the class skips, as the Python one does.
+//! V6: exceeding the file-size limit returns IO, or GIT_ERROR naming SIGXFSZ if git hits it
+//! first. The next write and sync must be clean. Apply `ulimit -f 200` in `/bin/sh` using the
+//! shell's native block units; skip without the shell.
 
 use std::collections::BTreeSet;
 

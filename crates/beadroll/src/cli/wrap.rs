@@ -1,7 +1,6 @@
-//! Python's `textwrap.wrap` with its defaults, which argparse wraps help texts with: the text cut
-//! into chunks (runs of spaces, words, a hyphenated word's parts, em-dashes), as many chunks on a
-//! line as fit, spaces dropped at the ends of lines, and a word longer than a line broken, after
-//! its last hyphen when there is one.
+//! Wrapping help text: split into chunks of spaces, words, hyphenated word parts and em-dashes,
+//! then fit as many chunks as possible on each line. Drop spaces at line ends and break an
+//! overlong word after its last hyphen when possible.
 
 use beadroll_core::text::{decimal_value, strip};
 
@@ -98,7 +97,7 @@ fn is_space(c: char) -> bool {
     matches!(c, '\t' | '\n' | '\u{0b}' | '\u{0c}' | '\r' | ' ')
 }
 
-/// `\w`: alphanumerics and `_` (bead's help texts are ASCII, where Unicode and Python agree).
+/// Word characters: alphanumerics and `_`. Help text is ASCII.
 fn is_word(c: char) -> bool {
     c == '_' || c.is_alphanumeric()
 }

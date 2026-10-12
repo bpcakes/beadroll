@@ -1,8 +1,6 @@
-//! An actor whose text is not UTF-8 (`docs/REVIEWING.md` §2; V3 in `test_hardening`): Python held
-//! its bytes as lone surrogates, so it prints as `?` for each but is no owner's, not even one whose
-//! name is a literal `?`, and an error that names it keeps the bytes (`\udcXX` in JSON). Python's
-//! answers are pinned as captured from Python 3.14's bead before the cutover: `{held}` and `{free}`
-//! are the issues the test made, and the time a claim began is `<TIME>`.
+//! Actor text that is not UTF-8 prints `?` for each invalid byte, matches no owner (including a
+//! literal `?` name), and retains its bytes as `\udcXX` in JSON errors. Fixed expected outputs
+//! use `{held}` and `{free}` for issue keys and `<TIME>` for the claim time.
 
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
@@ -25,12 +23,10 @@ fn untimed(text: &str) -> String {
     out
 }
 
-/// What Python's bead answered a command with: its status and standard error, standard output
-/// being empty.
+/// Expected status and stderr for a command with empty stdout.
 type Said = (i32, &'static str);
 
-/// The commands the actor `\xff` runs, and what Python answered each with as given and with
-/// `--json`.
+/// Commands run by actor `\xff`, with expected human and JSON results.
 const REFUSED: [(&[&str], Said, Said); 9] = [
     (
         &["claim", "{held}"],

@@ -19,9 +19,8 @@ fn skipped_as_root() -> bool {
     root
 }
 
-/// `_g52_error`: the code and message of a failed `--json` call, or `None` and the standard output
-/// when it succeeded; `TRACEBACK` (bead crashed: a Python traceback, a Rust panic or a fatal
-/// signal) or `UNSTRUCTURED` and the standard error when it failed without a structured error.
+/// A failed JSON call's code and message; success returns `None` and stdout. A crash returns
+/// `TRACEBACK`; an unstructured failure returns `UNSTRUCTURED`, both with stderr.
 fn g52_error(run: &Run) -> (Option<String>, String) {
     if run.returncode() == 0 {
         return (None, run.stdout.clone());
@@ -86,8 +85,8 @@ mod g52_unreadable_store_is_io {
 
     use super::{Unreadable, g52_error, id, own_journal, skipped_as_root};
 
-    /// G52: with this machine's journal directory unreadable, `show` answers `IO` naming the
-    /// directory, not "no tracker yet: run bead init" (which every Python version said).
+    /// G52: an unreadable journal directory makes `show` report IO naming the directory, not a
+    /// missing tracker.
     #[test]
     fn g52_unlistable_own_journal_is_io_not_no_tracker() {
         if skipped_as_root() {
@@ -186,11 +185,9 @@ mod g52_unreadable_store_is_io {
         }
     }
 
-    /// G52: with `chmod 0` on the workspace store, `show` and `info` answer `IO`, not
-    /// `NOT_INITIALIZED` for `show` and exit 0 with no issues for `info`, as Python 3.14 answered
-    /// before the fix, its `Path.is_dir()` returning `False` on EACCES. D-class
-    /// (`docs/RUST-PORT.md` §4.6): the Python test ran only on Python 3.14 and later; this one runs
-    /// whichever bead is under test, skipped only as root, as the whole class is.
+    /// G52: an inaccessible workspace store makes both `show` and `info` report IO. Neither may
+    /// treat EACCES as an absent tracker. Skip under root, where chmod does not enforce this
+    /// denial.
     #[test]
     fn g52_unenterable_store_is_io_not_no_tracker() {
         if skipped_as_root() {

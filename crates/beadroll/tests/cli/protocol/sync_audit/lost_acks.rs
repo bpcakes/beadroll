@@ -8,15 +8,13 @@ use beadroll_test_support::{Json, code, parse_json};
 
 use super::{Worker, git_wrapper, setup, two, wait_marker};
 
-/// The claim on `issue`, `issue["claim"]`: an issue without one fails the test, as the Python
-/// test's lookup raises.
+/// The claim on `issue`; absence fails the test.
 fn claim(issue: &Json) -> Json {
     let claim = issue.get("claim").cloned();
     claim.unwrap_or_else(|| panic!("no claim in {issue:?}"))
 }
 
-/// The operation of every row of `bead log`, `[r["op"] for r in rows]`: a row without one fails
-/// the test, as the Python test's lookup raises.
+/// The operation from each log row; a missing operation fails the test.
 fn ops(rows: &Json) -> Vec<&str> {
     let rows = rows
         .as_array()

@@ -11,9 +11,8 @@ use std::time::{Duration, Instant};
 use beadroll_test_support::{Invocation, Run, Sandbox};
 use rustix::process::{Pid, Signal, kill_process_group};
 
-/// The handshake of a `pause-until(PATH)` failpoint at `PATH`, in the sandbox: bead touches
-/// `PATH.ready` once it has stopped there, and goes on once `PATH.go` exists. The Python drivers
-/// name their two files themselves (`publish-ready`, `publish-go`).
+/// The sandbox handshake for `pause-until(PATH)`: bead creates PATH.ready at the boundary and
+/// resumes when PATH.go exists.
 pub(super) struct Gate(PathBuf);
 
 impl Gate {
@@ -86,8 +85,7 @@ impl Started {
         kill_process_group(group, Signal::KILL).expect("its process group");
     }
 
-    /// `communicate(timeout)`: how it ended and what it printed, or `None` while it has not ended
-    /// within `timeout` (Python's `TimeoutExpired`).
+    /// The process status and output, or `None` if it has not finished within `timeout`.
     pub(super) fn within(&mut self, timeout: Duration) -> Option<Run> {
         let until = Instant::now() + timeout;
         let status = loop {
@@ -107,8 +105,7 @@ impl Started {
         })
     }
 
-    /// `communicate(timeout)`: how it ended and what it printed; not ended within `timeout`, the
-    /// test fails, as `TimeoutExpired` fails the Python test.
+    /// The process status and output; exceeding `timeout` fails the test.
     pub(super) fn communicate(&mut self, timeout: Duration) -> Run {
         let run = self.within(timeout);
         run.unwrap_or_else(|| panic!("bead had not ended after {timeout:?}"))

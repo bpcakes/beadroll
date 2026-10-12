@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use beadroll_core::text::{py_float, py_int, repr_str};
+use beadroll_core::text::{parse_float, parse_integer, repr_str};
 use beadroll_git::{Checkout, Env, Fact, Output};
 
 use crate::error::Error;
@@ -24,8 +24,8 @@ pub const REPACK_LOOSE: i128 = 1000;
 /// `BEAD_REPACK_PACKS` is unset.
 pub const REPACK_PACKS: i128 = 40;
 
-/// The clock event ids and stamps are read from (Python's `time.time_ns`): the system's, shifted by
-/// an offset, and as the `clock` failpoint has it at each reading (`offset(±DUR)`, `at(TIME)`).
+/// The event-id and timestamp clock: system nanoseconds plus a configured offset, with the clock
+/// failpoint applied at each reading (`offset(±DUR)` or `at(TIME)`).
 #[derive(Clone, Debug, Default)]
 pub struct Clock {
     offset_ns: i128,
@@ -54,7 +54,7 @@ impl Clock {
         }
     }
 
-    /// Nanoseconds since the epoch (Python's `time.time_ns()`).
+    /// Nanoseconds since the epoch.
     pub fn now_ns(&self) -> i128 {
         let real = match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(since) => since.as_nanos() as i128,
@@ -103,13 +103,10 @@ pub struct Settings {
 }
 
 impl Settings {
-    /// Settings from the process's variables (`vars`, which git children also inherit), its
-    /// working directory (`cwd`, `None` when it cannot be read: git then starts in the process's
-    /// own), the user's home directory (`HOME`, else the password database's), the directory for
-    /// temporary files, and how to find another user's home directory (`home_of`, the password
-    /// database's, for `~NAME` in `BEAD_HOME`). A numeric setting Python's `int()` or `float()`
-    /// cannot read is a `CONFIG` error here, where Python dies with a traceback
-    /// (`docs/RUST-PORT.md` §5 row 26).
+    /// Explicit process settings: inherited variables, working directory, home, temporary
+    /// directory and a lookup for named users' homes. With no cwd, git inherits the process
+    /// directory. HOME falls back to the password database; `home_of` supports ~NAME in
+    /// BEAD_HOME. Invalid numeric settings return CONFIG.
     pub fn from_process(
         vars: BTreeMap<OsString, OsString>,
         cwd: Option<PathBuf>,
@@ -120,7 +117,7 @@ impl Settings {
         let get = |name: &str| vars.get(OsStr::new(name)).filter(|v| !v.is_empty());
         let int = |name: &str, default: i128| -> Result<i128, Error> {
             get(name).map_or(Ok(default), |value| {
-                let read = value.to_str().and_then(py_int);
+                let read = value.to_str().and_then(parse_integer);
                 read.map(|n| n.saturating_i128()).ok_or_else(|| {
                     Error::Config(format!(
                         "{name} must be a whole number, not {}",
@@ -130,7 +127,7 @@ impl Settings {
             })
         };
         let net_timeout = get("BEAD_NET_TIMEOUT").map_or(Ok(NET_TIMEOUT), |value| {
-            value.to_str().and_then(py_float).ok_or_else(|| {
+            value.to_str().and_then(parse_float).ok_or_else(|| {
                 Error::Config(format!(
                     "BEAD_NET_TIMEOUT must be a number of seconds, not {}",
                     repr_str(&value.to_string_lossy())
@@ -161,8 +158,7 @@ impl Settings {
         })
     }
 
-    /// The variable `name` of the process, when it is set and not empty (Python's
-    /// `os.environ.get(name)` read for its truth).
+    /// A supplied environment variable, if set and nonempty.
     pub fn var(&self, name: &str) -> Option<&OsStr> {
         self.git.var(name).filter(|value| !value.is_empty())
     }
@@ -177,13 +173,13 @@ impl Settings {
     pub fn home(&self) -> Result<PathBuf, Error> {
         let Some((value, expanded)) = &self.bead_home else {
             return Ok(
-                pathlib(&expand_user(OsStr::new("~"), &self.user_home, &|_| None))
+                normalize_path(&expand_user(OsStr::new("~"), &self.user_home, &|_| None))
                     .join(".local")
                     .join("state")
                     .join("beadroll"),
             );
         };
-        let path = pathlib(expanded);
+        let path = normalize_path(expanded);
         if !path.is_absolute() {
             return Err(Error::Config(format!(
                 "BEAD_HOME must be an absolute path, not {}: the store never lives in a checkout",
@@ -233,9 +229,9 @@ fn expand_user(
     OsString::from_vec(expanded)
 }
 
-/// A path as Python's `pathlib.Path` spells it: no empty or `.` components and no trailing slash;
-/// two leading slashes stay two, three or more become one.
-pub fn pathlib(path: &OsStr) -> PathBuf {
+/// Normalises a path by removing empty and dot components and trailing slashes. Exactly two
+/// leading slashes remain; three or more become one.
+pub fn normalize_path(path: &OsStr) -> PathBuf {
     let bytes = path.as_bytes();
     let root: &[u8] = if bytes.starts_with(b"//") && !bytes.starts_with(b"///") {
         b"//"
@@ -256,13 +252,13 @@ pub fn pathlib(path: &OsStr) -> PathBuf {
     PathBuf::from(OsString::from_vec(out))
 }
 
-/// `Path(base) / rest` as pathlib spells the result: `rest` itself when it is absolute.
-pub fn pathlib_join(base: &Path, rest: &OsStr) -> PathBuf {
+/// Joins base and rest, normalising the result. An absolute rest replaces base.
+pub fn join_path(base: &Path, rest: &OsStr) -> PathBuf {
     if rest.as_bytes().starts_with(b"/") {
-        return pathlib(rest);
+        return normalize_path(rest);
     }
     let joined = [base.as_os_str().as_bytes(), b"/", rest.as_bytes()].concat();
-    pathlib(OsStr::from_bytes(&joined))
+    normalize_path(OsStr::from_bytes(&joined))
 }
 
 #[cfg(test)]
@@ -332,14 +328,14 @@ mod tests {
 
     #[test]
     fn paths_are_spelled_as_pathlib_spells_them() {
-        assert_eq!(pathlib(OsStr::new("//a/./b//")), Path::new("//a/b"));
-        assert_eq!(pathlib(OsStr::new("///a")), Path::new("/a"));
+        assert_eq!(normalize_path(OsStr::new("//a/./b//")), Path::new("//a/b"));
+        assert_eq!(normalize_path(OsStr::new("///a")), Path::new("/a"));
         assert_eq!(
-            pathlib_join(Path::new("/r"), OsStr::new("./x/")),
+            join_path(Path::new("/r"), OsStr::new("./x/")),
             Path::new("/r/x")
         );
         assert_eq!(
-            pathlib_join(Path::new("/r"), OsStr::new("/abs")),
+            join_path(Path::new("/r"), OsStr::new("/abs")),
             Path::new("/abs")
         );
         assert_eq!(expand_user(OsStr::new("~"), OsStr::new(""), &|_| None), "/");

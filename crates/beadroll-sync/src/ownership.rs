@@ -1,12 +1,8 @@
-//! The ownership protocol (Python's `coordinated`, `settle_commands` and `settle_pending`): a
-//! claim, a takeover or a release is decided against the remote's head as it is now and published
-//! as one conditional update. The attempt (its ownership events, and any edits made with them) is
-//! written as pending files first, with a receipt naming the command, and counts for nothing until
-//! the remote has it. A push the remote definitely refused is dropped; one whose outcome is unknown
-//! stays pending, and the next round (or the next `sync`) finds it on the remote, which confirms
-//! it, or fences it off with a commit on the same head and drops it. A retry of the same command by
-//! the same actor after a lost acknowledgement is recognised by its receipt and not applied again.
-//! Nothing sleeps while the store lock is held.
+//! Ownership changes are conditional updates against the current remote head. Write a receipt and
+//! pending attempt first; they count only after remote acceptance. Drop definitely refused
+//! pushes. Retain unknown outcomes until a later fetch confirms them or a fence on that head
+//! prevents them from landing. Receipts recognise accepted retries by the same actor without
+//! applying twice. Backoff never holds the store lock.
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -36,7 +32,7 @@ pub enum Mode {
 }
 
 impl Mode {
-    /// As Python names it: `online`, `offline` or `local`.
+    /// The mode name: online, offline or local.
     pub fn as_str(self) -> &'static str {
         match self {
             Mode::Online => "online",
@@ -46,7 +42,7 @@ impl Mode {
     }
 }
 
-/// What settling this machine's unsettled attempts came to (Python's `settle_pending`).
+/// The result of settling this machine's pending attempts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Settled {
     /// None is left: each was confirmed, or fenced off and dropped.
@@ -57,11 +53,10 @@ pub enum Settled {
     Unresolved,
 }
 
-/// This actor's earlier receipts (Python's `settle_commands`): whether one whose attempt the remote
-/// accepted asked for exactly this command (`signature`), so that the command is already done; and
-/// the other settled receipts of this actor, which are stale once this command goes through. A
-/// receipt whose attempt is still pending stays; one older than an accepted attempt of this actor
-/// is dropped now; one that is not a receipt bead wrote is dropped. Lock held.
+/// Examines the actor's receipts under the lock. A matching accepted signature means this request
+/// is already done. Other settled receipts become stale when the new command succeeds. Keep
+/// pending receipts; drop malformed receipts and those older than an accepted attempt by this
+/// actor.
 pub fn settle_commands(
     ws: &Workspace,
     replica: &str,
@@ -76,7 +71,7 @@ pub fn settle_commands(
             remove(&receipt)?;
             continue;
         };
-        // an actor whose text Python holds as lone surrogates wrote no receipt
+        // An actor containing invalid UTF-8 cannot have written a receipt.
         if !actor.writable || recorded.get("actor") != Some(&actor.value) {
             continue;
         }
@@ -117,10 +112,9 @@ fn attempt_name(receipt: &Path) -> PathBuf {
     )
 }
 
-/// Settles this machine's ownership attempts whose outcome is unknown, after a merge against
-/// `tip` has confirmed any the remote holds (Python's `settle_pending`): whatever is still pending
-/// was absent at `tip`, so a fence commit on that head makes sure an attempt still in flight can no
-/// longer land, and only then are they dropped. Lock held.
+/// Settles unknown local attempts after merging tip has confirmed accepted ones. Fence remaining
+/// attempts, which were absent at tip, with a commit on that head before dropping them, so an
+/// in-flight push cannot land later. Requires the store lock.
 pub fn settle_pending(
     ws: &Workspace,
     link: &mut Link<'_>,
@@ -147,16 +141,14 @@ pub fn forget(receipts: &[PathBuf]) -> Result<(), Error> {
     receipts.iter().try_for_each(|receipt| remove(receipt))
 }
 
-/// Runs an ownership change (`build`, which emits it into a transaction and answers how it was
-/// made) against the remote's head as it is now, and publishes it as one conditional update
-/// (Python's `coordinated`). `--offline` (`offline`), or a tracker with no remote, makes it a local
-/// write instead. `signature` is the command's receipt (Python's `command_signature`): a retry of
-/// an accepted command by the same actor is recognised by it and answered without running again.
+/// Builds and conditionally publishes an ownership change against the current remote head.
+/// Offline mode or no remote makes it a local write. A matching accepted receipt signature
+/// returns the previous result without executing again.
 ///
-/// Failpoints: `ownership.before-publish` once the receipt and the attempt are written,
-/// `claim.before-push` right before the push, `ownership.after-publish-ok` when the remote took
-/// it, `ownership.after-confirm` once it counts here (`error(CODE)` fails the command there, its
-/// pending twin left in place), and `backoff` between rounds.
+/// Failpoints mark the persisted receipt and attempt (`ownership.before-publish`), impending push
+/// (`claim.before-push`), acceptance (`ownership.after-publish-ok`), local confirmation
+/// (`ownership.after-confirm`) and backoff. An error after confirmation leaves the pending twin
+/// in place.
 pub fn coordinated<E: From<Error>>(
     ws: &Workspace,
     actor: &Actor,

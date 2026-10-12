@@ -1,5 +1,4 @@
-//! Who is calling (Python's `detect_actor` and `nearest_harness`): an agent type and a thread from
-//! the harness environment, overrides from `BEAD_*` and `--actor`.
+//! Caller identity from harness environment, with BEAD_* and --actor overrides.
 
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
@@ -30,8 +29,7 @@ pub fn nearest_harness(parent: u32, ps: &Ps<'_>) -> Option<&'static str> {
             .split(beadroll_core::text::is_space)
             .filter(|w| !w.is_empty())
             .collect();
-        // A row that names no command ends the walk, where Python fails reading its first word
-        // (`docs/REVIEWING.md` §2).
+        // A row without a command ends the process-tree walk (`docs/REVIEWING.md` §2).
         let first = words.first().copied()?;
         let command = first.rsplit('/').next().unwrap_or_default();
         if command.starts_with("codex") || first.contains("/codex") {
@@ -52,10 +50,9 @@ pub fn nearest_harness(parent: u32, ps: &Ps<'_>) -> Option<&'static str> {
     None
 }
 
-/// The caller, as events record it: the actor object, and whether all of its text came as valid
-/// UTF-8. Python keeps bytes that are not (in `--actor` or the environment) as lone surrogates, so
-/// none of its writes can be encoded; the actor still reads as itself, a `?` for each such byte, no
-/// receipt is ever its, and it holds no claim, for no owner a journal names holds a lone surrogate.
+/// The recorded actor and validity of its text. Invalid UTF-8 bytes prevent writes from being
+/// encoded and match no receipt or claim owner. Human-readable labels replace each invalid byte
+/// with `?`; the original identity remains distinct from a literal question mark.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Actor {
     /// `{"agent", "thread"?, "name"?}`, as bead prints it.
@@ -84,9 +81,8 @@ impl Actor {
         }
     }
 
-    /// The owner this actor's claims are held by on `replica` (Python's `actor_label`): its name,
-    /// else `agent:thread@replica`, or `agent@replica` without a thread; kept as the bytes it was
-    /// given.
+    /// The actor's owner label on `replica`: explicit name, else agent:thread@replica or
+    /// agent@replica. Retains the original bytes.
     pub fn label(&self, replica: &str) -> Label {
         let Some(given) = &self.given else {
             return Label(actor_label(Some(&self.value), replica).into_bytes());
@@ -106,14 +102,13 @@ impl Actor {
     }
 }
 
-/// An actor's label (Python's `actor_label`), as the bytes it was given.
+/// An actor label as its original bytes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Label(Vec<u8>);
 
 impl Label {
-    /// Whether `owner`, as a journal names it, is this label. An owner is always UTF-8, so a label
-    /// whose bytes are not is no one's: the string Python holds them as, with its lone surrogates,
-    /// equals no text a journal holds.
+    /// Whether the journal's UTF-8 owner matches this label. A label containing invalid UTF-8
+    /// matches no owner.
     pub fn is(&self, owner: &str) -> bool {
         self.0 == owner.as_bytes()
     }
@@ -123,7 +118,7 @@ impl Label {
         printed_text(&self.0)
     }
 
-    /// Its bytes, for a message that keeps them (`\udcXX` in JSON, as Python escapes them).
+    /// Original label bytes for messages, escaping invalid bytes as `\udcXX` in JSON.
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }

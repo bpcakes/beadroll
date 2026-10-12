@@ -105,8 +105,8 @@ impl Error {
         Error::Injected { code, point }
     }
 
-    /// Whether this came from the operating system rather than from bead (Python's `OSError`, as
-    /// opposed to a `BeadError`), and what the system said: `publish_soon` words the two apart.
+    /// Whether the error originated in the operating system, and its diagnostic. publish_soon
+    /// formats operating-system and bead errors differently.
     pub fn os_error(&self) -> Option<&str> {
         let io = match self {
             Error::Store(beadroll_store::Error::Io(io))

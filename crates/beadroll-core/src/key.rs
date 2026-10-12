@@ -17,16 +17,15 @@ pub fn split_number(key: &str) -> Option<(&str, &str)> {
     numbered.then_some((stem, digits))
 }
 
-/// Whether a key's number is too long for a renamed copy to count up from: Python prints at most
-/// [`MAX_DIGITS`] digits, and counting up from that many nines needs one more. A create naming
-/// such a key is refused (`docs/RUST-PORT.md` §5 row 25).
+/// Whether a key's number leaves no room to increment within [`MAX_DIGITS`]. A key with that many
+/// nines is refused at creation so a duplicate can still be renamed (`docs/RUST-PORT.md` §5 row
+/// 25).
 pub fn number_too_long(key: &str) -> bool {
     split_number(key).is_some_and(|(_, digits)| digits.len() >= MAX_DIGITS)
 }
 
-/// The key a copy keeps when `key` is taken (Python's `State.free_key`): a numbered key counts on
-/// from its number to the first free one; any other gets the shortest prefix of its create's
-/// base-36 digest that makes it free. `None` if every prefix is taken.
+/// A free key for a duplicate: numbered keys count upward; others take the shortest free prefix
+/// of the create's base-36 digest. Returns `None` if every prefix is taken.
 pub fn free_key(key: &str, uid: &str, taken: &dyn Fn(&str) -> bool) -> Option<String> {
     if let Some((stem, digits)) = split_number(key) {
         let mut number = Int::parse(digits)?;
@@ -45,22 +44,20 @@ pub fn free_key(key: &str, uid: &str, taken: &dyn Fn(&str) -> bool) -> Option<St
     })
 }
 
-/// Why a key cannot be minted (Python's `mint_key` raises).
+/// Why a key cannot be minted.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum MintError {
     /// Every digest prefix is taken: `KEY_SPACE`.
     #[error("cannot mint a key")]
     KeySpace,
-    /// A sibling's number is too long to read: `VALIDATION` where Python raises
-    /// (`docs/RUST-PORT.md` §5 row 26).
+    /// A sibling number exceeds the readable limit: VALIDATION.
     #[error("a key under {0} ends in a number of more than {MAX_DIGITS} digits")]
     NumberTooLong(String),
 }
 
-/// A key no issue has and no imported dependency waits for (Python's `mint_key`): under a parent,
-/// the parent's key and one more than the highest number among its children's keys; otherwise the
-/// prefix and the shortest prefix (four characters at least) of the seed's base-36 digest that is
-/// free.
+/// A key held by neither an issue nor an imported dependency. Under a parent, use one more than
+/// its highest numbered child. Otherwise use the prefix and shortest free digest prefix of at
+/// least four characters.
 pub fn mint_key(
     prefix: &str,
     seed: &str,

@@ -1,6 +1,6 @@
-//! `PortAlignment`: U01-U04 and U06-U10 (`docs/FINDINGS.md`; `docs/RUST-PORT.md` §5 rows 3, 6, 7,
-//! 22, 24, 25 and 27-29). What a journal line means no longer depends on the Python reading it, and
-//! nothing a create carries breaks a query, so Python and Rust beads agree.
+//! Validation regressions U01–U04 and U06–U10 (`docs/FINDINGS.md`, `docs/RUST-PORT.md` §5).
+//! Journal interpretation must be deterministic, and no accepted create payload may break a
+//! query.
 
 use beadroll_core::event::payload_problem;
 use beadroll_core::id::EventId;
@@ -120,8 +120,8 @@ fn u06_key_numbers_are_ascii_digits() {
     assert_eq!(state.mint_key("seed", Some(parent)).unwrap(), "ex-p.1");
 }
 
-/// U07: three payloads raised inside replay, which then stored Python's exception text (different on
-/// every Python version); they are refused when validated, with the same text everywhere.
+/// U07: three malformed payloads must fail validation with stable diagnostics rather than fail
+/// during replay.
 #[test]
 fn u07_payloads_that_reached_the_last_resort_are_refused_by_name() {
     let init = event(1, "init", "seed", &[], None, json!({"prefix": "ex"}));

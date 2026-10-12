@@ -49,7 +49,7 @@ fn run_schedule(schedule: Schedule, variant: Variant) -> Report {
     }
 }
 
-/// A driver error, as Python records `driver error: {error!r}`: what the driver's panic said.
+/// The panic diagnostic recorded for a driver error.
 fn driver_error(panic: &(dyn Any + Send)) -> String {
     let said = panic
         .downcast_ref::<String>()

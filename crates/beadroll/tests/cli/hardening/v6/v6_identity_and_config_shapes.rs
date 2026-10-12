@@ -6,7 +6,7 @@ use beadroll_test_support::{Json, Machine, json};
 
 use super::{error_code, replica_id};
 
-/// `body` as `json.dumps(body)` writes it.
+/// Spaced, ASCII-escaped JSON.
 fn dumps(body: &Json) -> String {
     write(body, Format::ASCII).expect("JSON Python can write")
 }

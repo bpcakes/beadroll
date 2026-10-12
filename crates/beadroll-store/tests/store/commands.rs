@@ -1,4 +1,4 @@
-//! `tests/test_commands.py`, the tests of actor detection.
+//! Actor detection tests.
 
 mod compat_audit_identity {
     use beadroll_store::detect_actor;

@@ -1,7 +1,6 @@
-//! `ReplayReaudit`, from the second independent audit (REAUDIT), 2026-10-06: damage stays scoped
-//! to the event that carries it, and the projection does not depend on the order journals arrive
-//! in. The CLI test of this class (`test_merged_parent_cycle_matches_br_readiness`) is ported with
-//! the black-box tests.
+//! Storage damage stays scoped to the offending event, and replayed state does not depend on
+//! journal delivery order. The merged-parent-cycle command test is in the CLI suite
+//! (`docs/FINDINGS.md`, REAUDIT).
 
 mod scale;
 
@@ -68,7 +67,7 @@ fn replayed(events: &[Json]) -> State {
     replay(journal(events)).unwrap()
 }
 
-/// An integrity row as Python's dict holds it.
+/// An integrity row as a JSON object.
 pub(crate) fn row(row: &Integrity) -> Json {
     let mut members = json!({
         "event": (row.event.clone()),
@@ -81,8 +80,7 @@ pub(crate) fn row(row: &Integrity) -> Json {
     members
 }
 
-/// Everything a reader sees, as one text: the export, every issue's detail, the integrity rows and
-/// the pending events, sorted where Python sorts them.
+/// A deterministic text snapshot of export, issue details, integrity rows and pending events.
 pub(crate) fn projection(journal: Journal) -> String {
     let st = replay(journal).unwrap();
     let canonical = |value: &Json| write(value, Format::CANONICAL).unwrap();
@@ -215,7 +213,7 @@ fn malformed_set_is_atomic_and_cannot_overwrite_internal_state() {
     let st = replayed(&[init, create.clone(), invalid]);
     let survivor = issue(&st, &create);
     assert_eq!(survivor.title(), "survivor");
-    // Python checks `reg` is still a dict; here it is still the create's registers, untouched.
+    // The create's registers remain unchanged.
     assert_eq!(
         survivor
             .registers()

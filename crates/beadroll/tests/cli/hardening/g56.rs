@@ -10,10 +10,9 @@ mod g56_closed_stdin_is_a_structured_error {
         format!("'{}'", arg.replace('\'', r"'\''"))
     }
 
-    /// G56: `-` names standard input; with descriptor 0 closed (Python's `sys.stdin is None`),
-    /// `comments add -f -`, `update`/`create --description-file -` and `import -` answer with a
-    /// structured error and write nothing, as they do when it is open but unreadable; an open
-    /// standard input still works.
+    /// G56: `-` names standard input. When descriptor 0 is closed, file-based comments,
+    /// descriptions and import must return a structured error and write nothing. Open standard
+    /// input must still work.
     #[test]
     fn closed_stdin_for_every_dash_reader_is_a_structured_error() {
         let sandbox = crate::sandbox();

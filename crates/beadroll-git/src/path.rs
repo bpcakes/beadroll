@@ -1,6 +1,6 @@
-//! Paths as Python's `os.path` reads them where bead depends on it (`docs/RUST-PORT.md` §5 row 10):
-//! `exists` and the lenient, pure-Python `realpath`, ported from CPython 3.14 rather than taken
-//! from libc, whose `realpath` fails on a missing component instead of keeping it.
+//! Path existence and lenient canonicalization (`docs/RUST-PORT.md` §5 row 10). Missing or
+//! inaccessible components remain in the result, unlike libc realpath, which fails on missing
+//! components.
 
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
@@ -13,10 +13,9 @@ pub fn exists(path: &OsStr, cwd: &Path) -> bool {
     !path.is_empty() && std::fs::metadata(cwd.join(path)).is_ok()
 }
 
-/// `os.path.realpath(path)` (CPython 3.14, not strict): `path` made absolute from `cwd` with every
-/// symbolic link resolved, component by component. A component that cannot be looked at, or that
-/// is missing, is kept as it is, and so are the ones after it; a symlink loop is left unresolved.
-/// `cwd` must be absolute and free of symlinks, as `getcwd()` is.
+/// Makes `path` absolute from `cwd` and resolves symbolic links component by component. Missing
+/// or inaccessible components and their remaining suffix are retained; loops remain unresolved.
+/// `cwd` must be absolute and free of symlinks.
 pub fn realpath(path: &OsStr, cwd: &Path) -> PathBuf {
     let filename = path.as_bytes();
     // The stack of unresolved parts, last part first. `None` marks a symlink whose target has been
@@ -105,7 +104,7 @@ mod tests {
         std::fs::create_dir(root.join("real")).unwrap();
         std::os::unix::fs::symlink(root.join("real"), root.join("link")).unwrap();
         std::os::unix::fs::symlink("loop", root.join("loop")).unwrap();
-        // Python: `missing` is kept, `..` takes it away again, `x` is kept.
+        // Keep missing components, but still apply `..`: missing is removed again and x remains.
         assert_eq!(
             realpath(OsStr::new("link/missing/../x"), &root),
             root.join("real/x")

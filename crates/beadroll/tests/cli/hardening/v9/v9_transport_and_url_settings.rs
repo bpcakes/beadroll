@@ -10,7 +10,7 @@ use beadroll_test_support::{Machine, git, parse_json};
 
 use super::{Env, git_env, has_ref, scratch_git_config, sh};
 
-/// `path` written for a script, between single quotes as the Python test writes it.
+/// The path quoted for use in a shell script.
 fn quoted(path: &Path) -> String {
     format!("'{}'", path.display())
 }

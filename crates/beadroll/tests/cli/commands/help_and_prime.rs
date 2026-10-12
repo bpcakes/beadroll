@@ -48,15 +48,14 @@ fn help_command_shows_one_commands_usage() {
     assert_eq!(code(&a.run(["help", "nonsense", "--json"])), "USAGE");
 }
 
-/// The 27 commands, in Python's declaration order.
+/// The 27 commands, in help display order.
 const COMMANDS: [&str; 27] = [
     "init", "import", "export", "create", "update", "claim", "release", "takeover", "claims",
     "close", "reopen", "delete", "show", "list", "ready", "blocked", "search", "dep", "comments",
     "lint", "sync", "log", "info", "machines", "help", "prime", "onboard",
 ];
 
-/// The commands the bead under test offers, as its parser lists them when it refuses one it does
-/// not have: argparse's `invalid choice: ... (choose from 'init', 'import', ...)`.
+/// The available commands, parsed from the invalid-choice diagnostic's list of choices.
 fn offered(a: &Machine) -> Vec<String> {
     let refused = a.run(["no-such-command", "--json"]);
     assert_eq!(code(&refused), "USAGE", "{}", refused.stderr);
@@ -66,15 +65,13 @@ fn offered(a: &Machine) -> Vec<String> {
         .split_once("(choose from ")
         .and_then(|(_, rest)| rest.strip_suffix(')'))
         .unwrap_or_else(|| panic!("no choices in {message:?}"));
-    // quoted as Python 3.14 quotes them; unquoted would do as well
+    // Quoted command names; unquoted names would also be accepted here.
     let names = choices.split(", ").map(|name| name.trim_matches('\''));
     names.map(str::to_owned).collect()
 }
 
-/// D-class (`docs/RUST-PORT.md` §4.6): the Python test read the commands from argparse in
-/// process, as the unit test in `src/cli/spec.rs` reads the command table. Here the bead under
-/// test offers the 27 commands, and each answers both `NAME --help` and `help NAME` with its
-/// usage.
+/// Each of the 27 commands must answer both `NAME --help` and `help NAME` with its usage. The
+/// unit test in `src/cli/spec.rs` checks the command table itself.
 #[test]
 fn every_command_has_help() {
     let (_sandbox, a) = set_up();

@@ -6,8 +6,7 @@ use beadroll_test_support::{Machine, Sandbox, git};
 
 use super::converge_and_compare;
 
-/// `support.git("--git-dir", origin, ARGS)`: what git ARGS printed on the sandbox's remote,
-/// stripped.
+/// Runs git against the sandbox remote and returns trimmed stdout.
 fn remote_git(sandbox: &Sandbox, args: &[&str]) -> String {
     let words = [OsStr::new("--git-dir"), sandbox.origin().as_os_str()];
     let printed = git(words.into_iter().chain(args.iter().map(OsStr::new)), None);

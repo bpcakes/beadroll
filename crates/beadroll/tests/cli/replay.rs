@@ -1,8 +1,6 @@
-//! `tests/test_replay.py`'s two command-line tests, ported: a claim belongs to its thread's whole
-//! id, not to the eight characters bead shows of it, and a parent cycle that two machines' edits
-//! make once they merge is reported, with both issues ready, as `br` 0.5.7 has it. The module's
-//! other tests check replay in-process and are beadroll-core's
-//! (`crates/beadroll-core/tests/core/replay.rs`).
+//! Command-level replay checks: claims use the full thread id, and concurrent parent edits
+//! forming a cycle report it while both issues remain ready, matching Beads behavior. In-process
+//! replay checks live in beadroll-core's `tests/core/replay.rs`.
 
 mod replay_audit_thread_ownership {
     use beadroll_test_support::{Machine, code};

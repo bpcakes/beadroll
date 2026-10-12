@@ -1,11 +1,11 @@
-//! What an event must look like: the envelope every event shares (`event_problem`), the payload of
-//! each operation (`payload_problem`), and the stricter rules for events this bead writes
-//! (`write_problem`). Each answers with Python's message, or `None`.
+//! Event validation: the shared envelope (`event_problem`), each operation's payload
+//! (`payload_problem`) and stricter rules for new writes (`write_problem`). Each returns a
+//! diagnostic or `None`.
 
 use crate::id::EventId;
 use crate::json::{Int, Object, Value, member};
 use crate::key::number_too_long;
-use crate::op::PyInt;
+use crate::op::IntegerField;
 use crate::text::repr_str;
 use crate::time::MAX_MILLIS;
 
@@ -43,7 +43,7 @@ pub const STATUSES: [&str; 6] = [
 /// Statuses that count as finished.
 pub const DONE: [&str; 2] = ["closed", "tombstone"];
 
-/// Arrays and objects one event may nest when this bead writes it (Python's `MAX_NESTING`).
+/// The maximum nesting of arrays and objects in an event this bead writes.
 pub const MAX_NESTING: usize = 100;
 
 /// The type an issue field holds.
@@ -51,11 +51,11 @@ pub const MAX_NESTING: usize = 100;
 pub enum FieldType {
     /// A string.
     Str,
-    /// An integer (a boolean is one, to Python).
+    /// An integer, including legacy boolean values during replay.
     Int,
 }
 
-/// An issue field an event may set: Python's `FIELD_TYPES`, in its order.
+/// An editable issue field, in validation and display order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Field {
     /// `title`.
@@ -181,7 +181,7 @@ pub const REGISTERS: [Field; 10] = [
     Field::ExternalRef,
 ];
 
-/// The fields of a Beads record, in the order br writes them (Python's `EXPORT_FIELDS`).
+/// The fields of a Beads record, in the order br writes them.
 pub const EXPORT_FIELDS: [Field; 16] = [
     Field::Title,
     Field::Description,
@@ -201,17 +201,17 @@ pub const EXPORT_FIELDS: [Field; 16] = [
     Field::ExternalRef,
 ];
 
-/// Python's `isinstance(value, int)`: an integer, or a boolean.
+/// Whether the value is an integer or a legacy boolean integer field.
 pub fn is_int(value: &Value) -> bool {
     matches!(value, Value::Int(_) | Value::Bool(_))
 }
 
-/// An integer field's number as Python compares it (`True` is 1), if it holds an integer.
+/// An integer field's numeric value, mapping true to 1 and false to 0.
 fn number(value: &Value) -> Option<Int> {
-    PyInt::read(value).map(|value| value.number())
+    IntegerField::read(value).map(|value| value.number())
 }
 
-/// Python's `isinstance(value, (str, type(None)))`, where `None` also stands for an absent key.
+/// Whether the member is absent, null or a string.
 fn str_or_none(value: Option<&Value>) -> bool {
     matches!(value, None | Some(Value::Null | Value::Str(_)))
 }
@@ -221,7 +221,7 @@ fn object_or_none(value: Option<&Value>) -> bool {
     matches!(value, None | Some(Value::Null | Value::Object(_)))
 }
 
-/// Why an event's envelope cannot be used, or `None` (Python's `event_problem`).
+/// Why an event's envelope cannot be used, or `None`.
 pub fn event_problem(event: &Value) -> Option<String> {
     let Value::Object(event) = event else {
         return Some("event is not an object".into());
@@ -283,8 +283,8 @@ pub fn event_problem(event: &Value) -> Option<String> {
     None
 }
 
-/// Why `fields` cannot be written, or `None` (Python's `fields_problem`); `bookkeeping` allows
-/// `created_at`, `updated_at` and `created_by`, as a create may carry them.
+/// Why `fields` cannot be written, or `None`. `bookkeeping` permits `created_at`, `updated_at`
+/// and `created_by` on a create.
 pub fn fields_problem(fields: &Value, bookkeeping: bool) -> Option<String> {
     let Value::Object(fields) = fields else {
         return Some("fields is not an object".into());
@@ -339,8 +339,7 @@ pub fn data_of(event: &Value) -> Option<&Object> {
     event.get("data").and_then(Value::as_object)
 }
 
-/// Why an event's content cannot be applied, or `None` (Python's `payload_problem`). Called only on
-/// an event whose envelope is valid.
+/// Why an event's content cannot be applied, or `None`. Called only after envelope validation.
 pub fn payload_problem(event: &Value) -> Option<String> {
     let op = event.get("op").and_then(Value::as_str).unwrap_or_default();
     let data = data_of(event);
@@ -462,9 +461,8 @@ fn create_problem(
     None
 }
 
-/// Why this bead must not write an event, beyond what replay accepts (Python's `write_problem`):
-/// Beads readers take priority and estimated_minutes as non-negative 32-bit integers, and a boolean
-/// is not one.
+/// Stricter validation for new writes: priority and estimated_minutes must be non-negative 32-bit
+/// integers for Beads readers; booleans are refused even though legacy replay accepts them.
 pub fn write_problem(event: &Value) -> Option<String> {
     let op = event.get("op").and_then(Value::as_str).unwrap_or_default();
     if !matches!(op, "create" | "set") {

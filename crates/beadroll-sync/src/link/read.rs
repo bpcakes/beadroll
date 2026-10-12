@@ -1,9 +1,7 @@
-//! Reading the remote's journal out of `sync.git` through the link's `cat-file`
-//! (`docs/RUST-PORT.md` Appendix B). Each question is the one a git of Python's answers: `rev-parse`
-//! of the fetch ref, `cat-file blob TIP:manifest.json`, `ls-tree -r -z TIP`, `cat-file blob SHA`
-//! and `rev-parse TIP^{tree}`. Whenever the kept `cat-file` has no certain answer
-//! ([`beadroll_git::NoAnswer`]: missing, damaged, unusual, or no git), that git is run instead, and
-//! its answer or its failure, classified as Python classifies it, is the one given.
+//! Reads the remote journal through the link's persistent cat-file (`docs/RUST-PORT.md` Appendix
+//! B). Resolves the fetch ref, manifest, file listing, blobs and commit tree with the same
+//! results as the corresponding git commands. Missing, damaged or unusual answers return NoAnswer
+//! and fall back to standalone git with the same error classification.
 
 use std::ffi::OsStr;
 
@@ -13,8 +11,7 @@ use super::Link;
 use crate::error::Error;
 
 impl Link<'_> {
-    /// The commit the fetch ref `mine` names (Python's `rev-parse <fetch ref>`, whose failure may
-    /// be damage).
+    /// The commit named by fetch ref `mine`. A failed rev-parse may indicate local damage.
     pub(super) fn fetched_tip(&mut self, mine: &str) -> Result<String, Error> {
         match self.objects.name(mine) {
             Ok(tip) => Ok(tip),
@@ -22,8 +19,7 @@ impl Link<'_> {
         }
     }
 
-    /// The bytes of `manifest.json` at `tip`, or `None` when git cannot give them (Python's
-    /// `cat-file blob TIP:manifest.json`, whatever made it fail).
+    /// The manifest.json bytes at `tip`, or `None` if git cannot read them.
     pub(super) fn manifest(&mut self, tip: &str) -> Result<Option<Vec<u8>>, Error> {
         let name = format!("{tip}:manifest.json");
         if let Ok(object) = self.objects.get(&name)
@@ -35,8 +31,8 @@ impl Link<'_> {
         Ok(manifest.success().then_some(manifest.stdout))
     }
 
-    /// Every file of the tree at `tip` that is not a tree, as its path and its object's name, in
-    /// git's order (Python's `ls-tree -r -z TIP`, a failure of which is `GIT_ERROR`).
+    /// Nontree entries under `tip`, with path and object name in git's ls-tree order. Failure
+    /// returns GIT_ERROR.
     pub(super) fn listing(&mut self, tip: &str) -> Result<Vec<(Vec<u8>, String)>, Error> {
         if let Ok(commit) = self.objects.get(tip)
             && let Ok(rows) = list_tree(&mut self.objects, &commit)
@@ -60,7 +56,7 @@ impl Link<'_> {
         Ok(rows)
     }
 
-    /// The blob `sha` (Python's `cat-file blob SHA`, a failure of which is `GIT_ERROR`).
+    /// The blob named by `sha`; failure returns GIT_ERROR.
     pub(super) fn blob(&mut self, sha: &str) -> Result<Vec<u8>, Error> {
         if let Ok(object) = self.objects.get(sha)
             && object.kind == "blob"
@@ -71,7 +67,7 @@ impl Link<'_> {
         Ok(self.check(&args)?.stdout)
     }
 
-    /// The tree of commit `tip` (Python's `rev-parse TIP^{tree}`, whose failure may be damage).
+    /// The tree of commit `tip`. A failed lookup may indicate local damage.
     pub(super) fn tip_tree(&mut self, tip: &str) -> Result<String, Error> {
         if let Ok(commit) = self.objects.get(tip)
             && let Ok(tree) = root_tree(&mut self.objects, &commit)

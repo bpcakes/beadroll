@@ -1,4 +1,4 @@
-//! Help pages as Python's argparse formats them, captured from `./bead` at the widths named.
+//! Expected help pages at the specified terminal widths.
 
 use super::*;
 use crate::cli::spec::find;

@@ -1,6 +1,5 @@
-//! The record of who held an issue (Python's `claim`, `claim_history`, `provisional_claims`,
-//! `lost_claims` and `stale`): its confirmed owner, the claims that ended, offline claims, claims
-//! that lost to the owner of the time, and ends of claims that were no longer current.
+//! An issue's ownership records: confirmed owner, ended claims, provisional claims, claims that
+//! lost to a current owner and stale claim endings.
 
 use std::sync::Arc;
 
@@ -36,7 +35,7 @@ impl Claim {
         event_time(self.id.millis())
     }
 
-    /// As Python's dict holds it, in its key order.
+    /// As a JSON object, in field order.
     pub fn to_value(&self) -> Object {
         let mut out = Object::new();
         out.insert("id".into(), Value::from(self.id.to_string()));
@@ -75,7 +74,7 @@ impl EndedClaim {
         event_time(self.ending.millis())
     }
 
-    /// As Python's dict holds it, in its key order.
+    /// As a JSON object, in field order.
     pub fn to_value(&self) -> Object {
         let mut out = self.claim.to_value();
         out.insert("ended".into(), Value::from(self.ended()));
@@ -105,7 +104,7 @@ impl Provisional {
         event_time(self.id.millis())
     }
 
-    /// As Python's dict holds it, in its key order.
+    /// As a JSON object, in field order.
     pub fn to_value(&self) -> Object {
         let mut out = Object::new();
         out.insert("id".into(), Value::from(self.id.to_string()));
@@ -135,7 +134,7 @@ impl LostClaim {
         event_time(self.event.millis())
     }
 
-    /// As Python's dict holds it, in its key order.
+    /// As a JSON object, in field order.
     pub fn to_value(&self) -> Object {
         let mut out = Object::new();
         out.insert("by".into(), Value::from(&*self.by));
@@ -160,7 +159,7 @@ pub struct Stale {
 }
 
 impl Stale {
-    /// As Python's dict holds it, in its key order.
+    /// As a JSON object, in field order.
     pub fn to_value(&self) -> Object {
         let mut out = Object::new();
         out.insert("op".into(), Value::from(self.op.as_str()));

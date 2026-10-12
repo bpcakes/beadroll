@@ -18,7 +18,7 @@ fn lossy(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
-/// Python's bytes `\s`: ASCII whitespace, vertical tab included.
+/// ASCII whitespace, including vertical tab.
 fn space(byte: u8) -> bool {
     byte.is_ascii_whitespace() || byte == 0x0b
 }

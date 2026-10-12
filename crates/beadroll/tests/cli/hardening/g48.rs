@@ -97,11 +97,9 @@ mod g48_failed_atomic_write_leaves_nothing_behind {
         block
     }
 
-    /// `_g48_limited`: `bead ARGS --json` from `machine` under a file-size limit of `kib` KiB
-    /// (EFBIG part-way through a write, as on a full volume). bead ignores SIGXFSZ, as Python does,
-    /// so the write fails with an error instead of killing the process. The shell that sets the
-    /// limit counts it in blocks of its own size, measured in `dir` first: the Python test's
-    /// `ulimit -f KIB` counts KiB only where that block is 1024 bytes, as in macOS's `/bin/sh`.
+    /// Runs `bead ARGS --json` under a file-size limit of `kib` KiB. SIGXFSZ is ignored so a
+    /// partial write fails with EFBIG instead of killing bead. Measure the shell's block size in
+    /// `dir` before translating the limit, since `ulimit -f` units vary by platform.
     fn limited(machine: &Machine, dir: &Path, kib: u64, args: &[&str]) -> Run {
         let blocks = kib * 1024 / ulimit_block(dir);
         let output = Command::new("/bin/sh")

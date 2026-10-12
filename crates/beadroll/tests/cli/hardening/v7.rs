@@ -1,7 +1,5 @@
-//! V7, verified by the seventh review on the command line: an origin with a user part or a scheme
-//! gives one exact workspace id wherever bead runs, and an scp-like origin with a user syncs over
-//! ssh. `V7_PasswordShapesFollowGit` and `V7_NormalizeRemote`, tests of the URL rules, are ported
-//! in beadroll-git.
+//! V7: origins with user parts or schemes yield stable workspace ids, and scp-like origins with
+//! users sync over SSH. Password-shape and normalization checks are in beadroll-git.
 
 mod v7_origins_with_a_user_or_scheme_are_one_workspace {
     use std::collections::{BTreeMap, BTreeSet};
@@ -91,7 +89,7 @@ mod v7_origins_with_a_user_or_scheme_are_one_workspace {
         format!("'{}'", text.replace('\'', r"'\''"))
     }
 
-    /// `value[key]` as Python indexes a dict: the member, or the test fails.
+    /// The member `key` of `value`; absence fails the test.
     fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
         value
             .get(key)
@@ -109,9 +107,8 @@ mod v7_origins_with_a_user_or_scheme_are_one_workspace {
         receiver
     }
 
-    /// `subprocess.run(..., capture_output=True, text=True, timeout=...)`: `command` run to its end
-    /// with nothing on its standard input; its status and its standard error. When it has not ended
-    /// within `timeout`, it is killed and the test fails, as `TimeoutExpired` fails the Python test.
+    /// Runs a command with empty standard input and returns its status and stderr. Kill it and
+    /// fail the test if it exceeds `timeout`.
     fn run_within(mut command: Command, timeout: Duration) -> (ExitStatus, String) {
         let deadline = Instant::now() + timeout;
         command

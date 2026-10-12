@@ -48,7 +48,7 @@ mod g04_tracked_init_keeps_hand_set_config {
         path.to_str().expect("a UTF-8 path")
     }
 
-    /// The JSON object the file `path` holds: `json.loads(path.read_text())`.
+    /// The JSON object held by path.
     fn read_object(path: &Path) -> Object {
         let read = std::fs::read_to_string(path).unwrap();
         match parse_json(&read) {
@@ -60,7 +60,7 @@ mod g04_tracked_init_keeps_hand_set_config {
         }
     }
 
-    /// Writes `config` to `path` as `json.dumps(config, indent=1) + "\n"` does.
+    /// Writes config as ASCII-escaped JSON with one-space indentation and a final newline.
     fn write_indented(path: &Path, config: Object) {
         let written = write(&Json::from(config), Format::INDENTED).expect("a config");
         std::fs::write(path, written + "\n").unwrap();
@@ -174,7 +174,7 @@ mod g04_tracked_init_keeps_hand_set_config {
                     .run()
             })
             .collect();
-        // Built before the comparison, as Python builds the message it passes.
+        // Build the diagnostic before comparing the values.
         let outcomes: Vec<String> = claims.iter().map(outcome).collect();
         let mut codes: Vec<i32> = claims.iter().map(|run| run.returncode()).collect();
         codes.sort_unstable();

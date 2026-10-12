@@ -1,7 +1,6 @@
-//! G14: a key-based retraction of an imported dependency survives a concurrent create of the key
-//! with an earlier id; the clock does not decide (`docs/FINDINGS.md`). The class's replay test runs
-//! no bead, and is ported in beadroll-core
-//! (`tests/core/hardening/g14_key_retraction_lost_to_concurrent_target.rs`).
+//! G14: retracting an imported dependency by key survives a concurrent create with an earlier id.
+//! The clock does not decide the result. The replay-only test is in beadroll-core's
+//! `tests/core/hardening/g14_key_retraction_lost_to_concurrent_target.rs`.
 
 use beadroll_core::json::{Format, write};
 use beadroll_test_support::{Json, Machine, Sandbox, json};
@@ -32,8 +31,8 @@ fn record(key: &str, depends_on: &[&str]) -> Json {
     record
 }
 
-/// `_g14_write`: `records` written to `NAME.jsonl` in the sandbox, each line as Python's
-/// `json.dumps(record) + "\n"` writes it; the file's path.
+/// Writes `records` as spaced, ASCII-escaped JSON lines to `NAME.jsonl` in the sandbox and
+/// returns its path.
 fn jsonl_file(sandbox: &Sandbox, name: &str, records: &[Json]) -> String {
     let path = sandbox.root().join(format!("{name}.jsonl"));
     let text: String = records

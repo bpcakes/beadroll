@@ -1,8 +1,6 @@
-//! G12 (`docs/FINDINGS.md`): an owner's close, delete or `update --status closed` that died before
-//! its publish was retried, answered success, and never published the end of its claim. The Python
-//! tests run bead under a driver whose `run_git` exits 98 at the first `push`, a crash before
-//! *any* push, the one `publish_soon` makes included; here that is the `push.before=exit(98)`
-//! failpoint, which only the Rust binary has: `rust_only` tests.
+//! G12: retrying an owner's close, delete or `update --status closed` after a crash before
+//! publication must publish the claim's end. These `rust_only` tests inject
+//! `push.before=exit(98)`, which stops before the first push, including one from `publish_soon`.
 
 /// G12: the owner's close/delete records the end of its claim locally, then publishes it at once
 /// (publish_soon). If the process dies before that push, the retry finds no claim held any more,
@@ -11,8 +9,7 @@
 mod g12_retried_end_of_claim_is_published {
     use beadroll_test_support::{Machine, Sandbox};
 
-    /// The failpoint that stops bead right before its first push, as the Python driver's patched
-    /// `run_git` does: exit status 98, the command's writes recorded locally and nothing published.
+    /// Stops before the first push with exit status 98, leaving the writes local and unpublished.
     const BEFORE_ANY_PUSH: &str = "push.before=exit(98)";
 
     /// One test's world: machines a and b, and the issue a holds.
@@ -102,35 +99,24 @@ mod g12_retried_end_of_claim_is_published {
         (status.to_owned(), None)
     }
 
-    /// G12: the owner's close died before its publish; the retry answers success, so it must
-    /// publish.
-    ///
-    /// Replaces `G12_RetriedEndOfClaimIsPublished`'s
-    /// `test_g12_retried_close_publishes_the_end_of_the_claim`, whose driver exits before the
-    /// first push, as [`BEFORE_ANY_PUSH`] does here.
+    /// G12: retry an owner's close interrupted by BEFORE_ANY_PUSH. Success must publish the
+    /// claim's end.
     #[test]
     fn g12_retried_close_publishes_the_end_of_the_claim() {
         let seen = crash_then_retry("close", &["--reason", "done"]);
         assert_eq!(seen, ended("closed"), "{}", unpublished("close", &seen));
     }
 
-    /// G12: the owner's delete died before its publish; the retry answers success, so it must
-    /// publish.
-    ///
-    /// Replaces `G12_RetriedEndOfClaimIsPublished`'s
-    /// `test_g12_retried_delete_publishes_the_end_of_the_claim`, whose driver exits before the
-    /// first push, as [`BEFORE_ANY_PUSH`] does here.
+    /// G12: retry an owner's delete interrupted by BEFORE_ANY_PUSH. Success must publish the
+    /// claim's end.
     #[test]
     fn g12_retried_delete_publishes_the_end_of_the_claim() {
         let seen = crash_then_retry("delete", &["--reason", "gone"]);
         assert_eq!(seen, ended("tombstone"), "{}", unpublished("delete", &seen));
     }
 
-    /// G12: the same for `update --status closed`, which makes the transition `close` makes.
-    ///
-    /// Replaces `G12_RetriedEndOfClaimIsPublished`'s
-    /// `test_g12_retried_update_status_closed_publishes_the_end_of_the_claim`, whose driver exits
-    /// before the first push, as [`BEFORE_ANY_PUSH`] does here.
+    /// G12: retry `update --status closed` interrupted by BEFORE_ANY_PUSH, with the same
+    /// publication requirement as close.
     #[test]
     fn g12_retried_update_status_closed_publishes_the_end_of_the_claim() {
         let seen = crash_then_retry("update", &["--status", "closed"]);

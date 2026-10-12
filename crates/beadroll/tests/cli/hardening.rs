@@ -1,8 +1,6 @@
-//! `tests/test_hardening.py`'s black-box tests, ported under the naming rule of
-//! `docs/RUST-PORT.md` §4.2, which keeps `docs/FINDINGS.md`'s class references valid. The
-//! tests whose Python originals patch bead in process inject the same fault through a failpoint
-//! instead, on machines that run the Rust binary (`crate::rust_only`); `gate` meets a bead
-//! stopped at a `pause-until` failpoint.
+//! Black-box hardening tests. Module and test names retain the references used by
+//! `docs/FINDINGS.md`. Fault injection uses failpoints on this build's binary
+//! (`crate::rust_only`); `gate` coordinates a test with a paused process.
 
 mod g01;
 mod g02;

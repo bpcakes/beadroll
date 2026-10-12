@@ -8,7 +8,7 @@ use beadroll_core::json::{Format, write};
 use beadroll_test_support::{Json, Sandbox, git};
 use sha2::{Digest as _, Sha256};
 
-/// `json.dumps(value)`: Python's default dialect, spaced and ASCII-escaped.
+/// Spaced, ASCII-escaped JSON.
 fn dumps(value: &Json) -> String {
     write(value, Format::ASCII).expect("a value Python can write")
 }
@@ -40,8 +40,7 @@ fn journal_refs(bare: &Path) -> String {
     String::from_utf8(output.stdout).expect("git's output is UTF-8")
 }
 
-/// SHA-256 of `data` in lower-case hex, as `hashlib.sha256(data).hexdigest()` gives it: the test
-/// computes the id bead derives itself, as the Python test does with `hashlib`.
+/// SHA-256 of `data` as lowercase hexadecimal, independently computing the workspace id.
 fn sha256_hex(data: &[u8]) -> String {
     Sha256::digest(data)
         .iter()
@@ -63,21 +62,20 @@ mod g02_tracked_config_cannot_adopt_another_repositorys_store {
         created["id"].as_str().expect("an id").to_owned()
     }
 
-    /// `value[key]`, which must be there: Python's `value[key]` raises when it is not.
+    /// The member `key` of `value`; absence fails the test.
     fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
         value
             .get(key)
             .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
     }
 
-    /// `(run.returncode, support.code(run) if run.returncode else None)`: how a run ended, with
-    /// the error code a failed one reported.
+    /// The exit status and, for a failure, the reported error code.
     fn outcome(run: &Run) -> (i32, Option<String>) {
         let status = run.returncode();
         (status, (status != 0).then(|| code(run)))
     }
 
-    /// The first `count` characters of `text`: Python's `text[:count]`.
+    /// The first `count` Unicode scalar values of `text`.
     fn head(text: &str, count: usize) -> String {
         text.chars().take(count).collect()
     }

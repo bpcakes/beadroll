@@ -18,7 +18,7 @@ cutover removed both (`python-0.1.0` has them).
   `printed_text` and `json_ascii_bytes` for bytes `surrogateescape` decodes (command lines,
   paths).
 - `src/event.rs`: `event_problem`, `payload_problem`, `write_problem`, `Field`; `src/op.rs`: `Op`,
-  an event's operation with its typed payload, and `PyInt`.
+  an event's operation with its typed payload, and `IntegerField`.
 - `src/journal.rs` (`journal/read.rs`): `read_segment`, `read_attempt`, `Journal`;
   `journal/event.rs`: `Event`, what replay reads of a record (its id, causes, writer, actor, place
   and typed operation) and the digest of its content, with the texts and values events repeat held

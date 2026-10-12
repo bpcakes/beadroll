@@ -20,8 +20,7 @@ fn attempts(machine: &Machine) -> Vec<PathBuf> {
         .collect()
 }
 
-/// `bytes` split into lines as Python's `bytes.splitlines()` splits them: at `\n`, `\r\n` or `\r`,
-/// without a last empty line.
+/// Splits bytes at `\n`, `\r\n` or `\r`, without a final empty line.
 fn splitlines(bytes: &[u8]) -> Vec<&[u8]> {
     let mut lines = Vec::new();
     let (mut start, mut at) = (0, 0);
@@ -69,7 +68,7 @@ fn chmod(mode: &str, path: &Path) {
     assert!(status.success(), "chmod -R {mode} {}", path.display());
 }
 
-/// Python's `strict_json(run.stdout)` succeeds: what `info --json` printed is strict JSON.
+/// `info --json` must print strict JSON.
 fn assert_strict_json(info: &Run) {
     if let Err(error) = parse_json(&info.stdout) {
         let start: String = info.stdout.chars().take(240).collect();

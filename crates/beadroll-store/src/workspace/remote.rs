@@ -384,13 +384,13 @@ pub(crate) fn listed_url<'a>(listed: &'a [u8], name: &[u8], key: &[u8]) -> Optio
             Some(at) => (&line[..at], &line[at + 1..]),
             None => (line, &b""[..]),
         };
-        let url = beadroll_git::py_strip(url);
+        let url = beadroll_git::strip_text_bytes(url);
         (listed_key == wanted.as_slice() && !url.is_empty()).then_some(url)
     })
 }
 
-/// Python's `str.splitlines()` over text decoded with `surrogateescape`: the line boundaries are
-/// ASCII or multi-byte characters that never appear inside another character's encoding.
+/// Splits OS bytes at text line boundaries. ASCII separators and multibyte separator encodings
+/// cannot occur inside another valid character, so invalid bytes can remain untouched.
 fn split_lines(data: &[u8]) -> Vec<&[u8]> {
     let mut lines = Vec::new();
     let mut start = 0;

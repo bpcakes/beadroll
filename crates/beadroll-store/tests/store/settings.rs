@@ -1,5 +1,4 @@
-//! Settings name the checkout git runs in: the Rust crates' own contract (`docs/RUST-PORT.md`
-//! §2.2), not a ported Python test.
+//! Settings explicitly select the checkout in which git runs (`docs/RUST-PORT.md` §2.2).
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -7,9 +6,8 @@ use std::sync::Arc;
 
 use beadroll_store::{Settings, find_workspace};
 
-/// A library caller that names a checkout other than the process's working directory finds
-/// that checkout's tracker: git runs where the settings say, not where the process happens to
-/// be (not a Python test: the Rust crates' own contract, `docs/RUST-PORT.md` §2.2).
+/// A caller selecting a different checkout resolves that checkout's tracker. Git uses the
+/// directory in settings, independent of the process's current directory.
 #[test]
 fn discovery_runs_git_in_the_checkout_the_settings_name() {
     let root = tempfile::tempdir().unwrap();

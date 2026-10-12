@@ -1,19 +1,13 @@
-//! `RootAuditStress`: the first independent audit's reference model
-//! (`docs/reviews/2026-10-06-1-audit.md`). Six machines run 2,400 seeded commands, one at a time,
-//! while a model records the claims the remote accepted, as the commands that made them reported
-//! them. Every 300 commands the fleet settles and is checked whole: every machine converges on the
-//! same export, details and ready set; every current claim is the model's, at the model's
-//! generation; readiness follows status, blockers and disputes; and no accepted claim is missing
-//! from any machine's journal, current claims or claim history.
+//! A six-machine reference model running 2,400 seeded commands sequentially
+//! (`docs/reviews/2026-10-06-1-audit.md`). Record accepted claims from command results. Every 300
+//! commands, settle the fleet and compare exports, details, readiness, owners and generations,
+//! checking that no accepted claim disappears from journals or claim history.
 //!
-//! Partitions are soft, as in Python: every 160 commands a machine drawn at random is cut off until
-//! 40 to 99 commands later, and meanwhile claims `--offline`, runs `info` for `sync` and `show` for
-//! a release or a takeover. Closes are always `--offline`, and only of issues the model has no
-//! owner for. The seed is Python's, 20261006, drawn from in Python's order by [`Rng`], CPython's
-//! generator: which commands run depends only on the draws and on how many issues there are, so
-//! these are Python's 2,400 commands (see `stress.rs`). Its six machines run the Rust `bead`, as
-//! Python's model ran six of its own. Until the cutover the same model also ran on a mixed fleet,
-//! the machines alternating Python's `bead` and the Rust one (`docs/RUST-PORT.md` §4.2, item 4).
+//! Every 160 commands, select a machine for a soft partition lasting 40–99 commands: use offline
+//! claims and substitute reads for sync, release and takeover. Closes are offline and limited to
+//! unowned issues. Seed 20261006 reproduces the command sequence; draws depend only on the random
+//! stream and number of issues. All machines use this build's binary because checks read stores
+//! in-process.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
@@ -43,7 +37,7 @@ enum Action {
     Sync,
 }
 
-/// Python's `actions` and their `weights`.
+/// Actions and their selection weights.
 const ACTIONS: [(Action, usize); 12] = [
     (Action::Show, 32),
     (Action::Update, 12),
@@ -73,7 +67,7 @@ const ALLOWED: [&str; 7] = [
 /// The claims the remote accepted, as the commands that made them reported them.
 #[derive(Default)]
 struct Model {
-    /// Each claimed issue's current claim (Python's `model`).
+    /// The expected current claim for each owned issue.
     holder: BTreeMap<String, String>,
     /// The machine that made it (`model_owner`).
     owner: BTreeMap<String, usize>,
@@ -115,7 +109,7 @@ struct Seen {
     events: i64,
 }
 
-/// A full check's summary, Python's `check`, and when it passed.
+/// A full-check summary and when it passed.
 struct Check {
     step: usize,
     issues: usize,
@@ -219,7 +213,7 @@ impl Soak {
         }
     }
 
-    /// The command of a step: `action` on a key drawn at random, as Python's model builds it.
+    /// The action applied to a randomly selected key at this step.
     fn command(&self, rng: &mut Rng, step: usize, mi: usize, offline: bool) -> Vec<String> {
         let action = rng.weighted(&ACTIONS);
         let key = rng.choice(&self.keys).as_str();

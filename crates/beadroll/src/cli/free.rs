@@ -1,5 +1,4 @@
-//! The commands that work anywhere, in a repository or not (Python's `cmd_help`, `cmd_prime` and
-//! `cmd_onboard` in `cli.py`).
+//! Commands that work anywhere, with or without a repository: help, prime and onboard.
 
 use std::ffi::OsStr;
 

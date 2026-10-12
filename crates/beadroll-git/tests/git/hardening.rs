@@ -1,4 +1,4 @@
-//! `tests/test_hardening.py`, the tests of the runner and the URL rules.
+//! Runner and URL hardening tests.
 
 mod u06_url_schemes_are_ascii;
 mod v1_run_git_timeout_hygiene;

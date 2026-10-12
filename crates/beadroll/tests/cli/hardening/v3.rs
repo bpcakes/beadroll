@@ -190,7 +190,7 @@ mod v3_foreign_folder_default_quote_path {
         output.stdout
     }
 
-    /// `bytes` without the whitespace around it: Python's `bytes.strip()`.
+    /// Bytes without surrounding ASCII whitespace.
     fn strip(bytes: &[u8]) -> Vec<u8> {
         bytes.trim_ascii().to_vec()
     }

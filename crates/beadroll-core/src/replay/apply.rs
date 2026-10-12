@@ -1,6 +1,5 @@
-//! One event applied to the state (Python's `apply_event`, `write_register` and `write_status`),
-//! branch for branch, on the event's typed operation: ownership in [`claims`], a create and the
-//! imported dependencies it brings in [`create`].
+//! Applies one typed event operation to state. Ownership is handled in [`claims`]; creates and
+//! imported dependencies in [`create`].
 
 mod claims;
 mod create;
@@ -119,8 +118,8 @@ pub(super) fn apply_event(
         Op::LabelAdd(labels) => label(&c, issue, labels, Labels::Add),
         Op::LabelRemove(labels) => label(&c, issue, labels, Labels::Remove),
         Op::LabelSet(labels) => label(&c, issue, labels, Labels::Set),
-        // Anything else that reaches here applies nothing, but touches the issue: a placeholder
-        // whose position broke its journal's chain is not inert (Python's replay).
+        // Other operations change no fields but still touch the issue: a placeholder that broke
+        // its journal chain is not inert.
         Op::Init { .. } | Op::Create(_) | Op::Quarantined | Op::Invalid | Op::Unknown(_) => true,
     };
     Ok(applied)
@@ -216,7 +215,8 @@ fn comment(c: &Ctx<'_>, issue: &mut Issue, seq: u64, text: &str, author: Option<
     true
 }
 
-/// A dependency on `to` of type `kind` (`blocks` when none), stamped like Python's, `meta` over it.
+/// A dependency on `to` with `kind` defaulting to blocks, event stamps and overriding metadata
+/// from `meta`.
 fn dep_add(c: &Ctx<'_>, issue: &mut Issue, to: &str, kind: Option<&str>, meta: &Object) -> bool {
     let kind = kind
         .filter(|kind| !kind.is_empty())

@@ -1,11 +1,9 @@
-//! The command line read as Python's argparse 3.14 reads it (`docs/RUST-PORT.md` §2.3h, §5 row
-//! 13): `_parse_known_args` and the subparsers action, ported for the actions `build_parser` uses.
-//! Every argument is first classed as an option or not, the way argparse classes it (an
-//! unambiguous prefix of a long option is that option; `-1` and anything with a space in it are
-//! values); positionals are then taken greedily before each option, so `update A --status open B`
-//! leaves `B` unrecognised as it does in Python; the last value of an option wins, a scope given
-//! twice is refused, and every error is `USAGE` with argparse's own text. The arguments stay the
-//! bytes the OS gave until a command reads them.
+//! Command-line parsing (`docs/RUST-PORT.md` §2.3h, §5 row 13). An unambiguous prefix of a long
+//! option names that option; `-1` and arguments containing spaces are values. Positionals are
+//! taken greedily before each option, so `update A --status open B` leaves `B` unrecognised. The
+//! last value of an option wins, a scope given twice is refused, and errors use `USAGE` with the
+//! established argparse-compatible messages. Arguments retain their OS bytes until a command
+//! reads them.
 
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
@@ -18,10 +16,10 @@ use super::spec::{Action, ArgSpec, COMMAND, CommandSpec, HELP_FLAG, Nargs, find}
 use classify::{Candidate, parse_optional};
 use values::{default, json_of, option_count, positional_count, values_of};
 
-/// A value in the namespace argparse builds.
+/// A parsed command-line value.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Value {
-    /// Python's `None`: not given, and no default.
+    /// Not given, with no default.
     None,
     Bool(bool),
     Text(OsString),
@@ -44,11 +42,11 @@ pub(crate) enum Parsed {
     Command(Namespace),
     /// Show a help page, and do nothing else.
     Help(Page),
-    /// The command line is wrong (`USAGE`): argparse's message, with the arguments' bytes in it.
+    /// A USAGE diagnostic retaining original argument bytes.
     Usage(Vec<u8>),
 }
 
-/// A command and its arguments as parsed: argparse's namespace, read by destination.
+/// A parsed command and its arguments, indexed by destination.
 #[derive(Debug)]
 pub(crate) struct Namespace {
     pub(crate) spec: &'static CommandSpec,
@@ -92,9 +90,9 @@ impl Namespace {
         }
     }
 
-    /// The namespace as Python's `command_signature` writes it, `json.dumps(asked,
-    /// sort_keys=True)`: `command` and every destination with its value or default, sorted,
-    /// ASCII-escaped (bytes that are not UTF-8 as the lone surrogates Python holds them as).
+    /// The namespace used in a receipt signature: `command` and every destination with its value
+    /// or default, sorted by key and written as spaced, ASCII-escaped JSON. Bytes that are not
+    /// UTF-8 become lone surrogate escapes.
     pub(crate) fn asked(&self) -> String {
         let mut entries: Vec<(&str, String)> =
             vec![("command", json_ascii_bytes(self.spec.name.as_bytes()))];
@@ -122,7 +120,7 @@ pub(crate) fn parse(args: &[OsString]) -> Parsed {
             Stop::Help(page) => Parsed::Help(page),
         };
     }
-    // argparse's own extras first, then the command's (`parse_args`)
+    // Report parser-level extra arguments before command-level extras.
     let mut extras = run.extras;
     extras.extend(run.unrecognized);
     if !extras.is_empty() {
@@ -164,7 +162,7 @@ impl Parser {
         }
     }
 
-    /// Every option string with its action, in the order argparse registered them.
+    /// Every option string and action in declaration order.
     fn options(&self) -> impl Iterator<Item = (&'static str, usize)> + '_ {
         self.actions
             .iter()
@@ -190,7 +188,7 @@ impl Stop {
     }
 }
 
-/// argparse's `ArgumentError`: the message, prefixed with the argument it is about.
+/// An argument error prefixed with the name of the affected argument.
 fn argument_error(action: &ArgSpec, message: impl std::fmt::Display) -> Stop {
     Stop::usage(format!("argument {}: {message}", action.name()))
 }

@@ -17,7 +17,7 @@ pub enum TreeError {
     /// A manifest that is not a JSON object bead reads.
     #[error("the published journal has an unreadable manifest")]
     UnreadableManifest,
-    /// Another workspace's journal: the workspace it names, as Python prints it.
+    /// A journal belonging to another workspace, with the reported workspace name.
     #[error("the published journal belongs to workspace {found}, not {expected}")]
     WorkspaceMismatch {
         /// The workspace the manifest names.
@@ -113,8 +113,8 @@ impl Tree {
         if !matches!(&format, Value::Int(n) if n.as_i64() == Some(FORMAT)) {
             return Err(TreeError::Format(repr(&format)));
         }
-        // Each machine's segments in order, then the attempt files, as `load_journal` reads a store:
-        // by machine, then by name (component by component, as Python sorts paths).
+        // Read each machine's segments followed by its attempt files, ordered by machine and then
+        // path components.
         files.sort_by(|a, b| (a.2, &a.1, &a.0).cmp(&(b.2, &b.1, &b.0)));
         Ok(Tree {
             workspace: expected.to_owned(),
@@ -185,7 +185,7 @@ mod tests {
             refusal(entries("{\"format\": 1}")).code(),
             Code::WorkspaceMismatch
         );
-        // Only the integer 1 is format 1 (§5 row 23); the refusal shows the format as Python's repr.
+        // Only integer 1 denotes format 1. The refusal renders the supplied format with `repr`.
         for (format, shown) in [
             ("true", "True"),
             ("1.0", "1.0"),

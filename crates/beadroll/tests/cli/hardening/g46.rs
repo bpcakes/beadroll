@@ -33,7 +33,7 @@ mod g46_import_accepts_self_dependency {
         record
     }
 
-    /// `json.dumps(record)`: Python's default dialect, spaced and ASCII-escaped.
+    /// Spaced, ASCII-escaped JSON.
     fn dumps(record: &Json) -> String {
         write(record, Format::ASCII).expect("a record bead can read")
     }

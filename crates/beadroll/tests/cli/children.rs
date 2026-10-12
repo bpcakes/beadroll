@@ -1,7 +1,6 @@
-//! The processes bead starts get standard input, output and error and nothing else, whatever bead
-//! was started with: Python starts them through `subprocess` with `close_fds=True`. And since
-//! Phase 4 (`docs/RUST-PORT.md` Appendix B): which gits bead starts, what it asks them and when,
-//! and what it reads from git's files instead, each answered as Python's git answers it.
+//! Child processes inherit only standard input, output and error. These tests also pin which git
+//! processes bead starts, their arguments and timing, and the equivalence of in-process object
+//! reads to git's answers (`docs/RUST-PORT.md` Appendix B).
 
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::PathBuf;
@@ -71,14 +70,11 @@ fn git_inherits_no_descriptor_beyond_the_standard_three() {
     assert!(seen.iter().all(|s| *s == "closed"), "{seen:?}");
 }
 
-/// The gits of Phase 4 (`docs/RUST-PORT.md` Appendix B), on the Rust binary: a read asks the
-/// checkout one `rev-parse`, origin's `config` and the committed configuration's `cat-file`; a
-/// sync with nothing new adds the transport settings' `config` its link asks, the fetch, Python's
-/// two `update-ref`s after it and the `cat-file`, `hash-object` and `mktree` a link keeps; a
-/// publishing write, a claim included, adds the transaction's own `rev-parse` of HEAD and its
-/// branch, `commit-tree`, the push and the link's `update-ref` for the ref after it, and nothing
-/// else. A git first on PATH notes each one bead starts. Every other test would still pass if the
-/// in-process answers always fell back to Python's one git per question; this one would not.
+/// Pins the number and arguments of git invocations. A read asks for checkout facts, origin
+/// configuration and committed configuration. Sync adds transport settings, fetch, two subsequent
+/// ref updates and persistent object readers and writers. Publishing adds the transaction's HEAD
+/// lookup, commit, push and ref update. A git wrapper records each invocation, catching
+/// accidental fallback to one process per question.
 #[test]
 fn a_command_starts_the_consolidated_gits_and_no_others() {
     let sandbox = crate::sandbox();
@@ -148,12 +144,9 @@ fn a_command_starts_the_consolidated_gits_and_no_others() {
     assert_eq!(started(&["claim", &key, "--json"]), write);
 }
 
-/// The two refs a fetch leaves are set as Python sets them, each by a git of its own and in its
-/// order: `refs/beads/remote` at the tip fetched, then the fetch's own ref deleted. One
-/// transaction ready the moment the fetch ends would delete that ref while the fetches other bead
-/// processes of the store started with this one still list every ref, and git fails a fetch that
-/// finds a listed ref gone (G16). A git first on PATH notes the arguments of each `update-ref` a
-/// sync starts.
+/// After fetch, update `refs/beads/remote` to the fetched tip, then delete the fetch ref through
+/// a separate git invocation. Deleting immediately in one transaction can race another fetch
+/// still listing refs (G16). A wrapper records each `update-ref` invocation.
 #[test]
 fn the_refs_a_fetch_leaves_are_set_by_pythons_two_update_refs() {
     let sandbox = crate::sandbox();
@@ -190,12 +183,9 @@ fn the_refs_a_fetch_leaves_are_set_by_pythons_two_update_refs() {
     assert!(fetched[2].starts_with("refs/beads/fetch/"), "{logged}");
 }
 
-/// The transport settings a publish goes by are the checkout's when its link is made, where
-/// Python's `Link` asks for them, not when bead found its workspace: a write's link is made for its
-/// publish, after its transaction, and a setting made in between is the one the push uses. Machine
-/// a writes to its remote under a name that only `url.<base>.insteadOf` resolves, and a git first
-/// on PATH adds that setting to a's checkout when the transaction asks for HEAD: after the
-/// workspace is found, before the publish. Machine b then sees what a wrote.
+/// Transport settings are read when a link is made, after a write's transaction. A git wrapper
+/// adds an `insteadOf` rule when the transaction asks for HEAD, after workspace discovery but
+/// before publication. The subsequent push must use it, and another machine must see the write.
 #[test]
 fn a_publish_goes_by_the_transport_settings_of_when_its_link_is_made() {
     let sandbox = crate::sandbox();
@@ -240,10 +230,9 @@ fn a_publish_goes_by_the_transport_settings_of_when_its_link_is_made() {
     );
 }
 
-/// When none of the gits a link keeps can answer, every question goes to the git Python runs for
-/// it, and the commands come to what they come to with them: here a git first on PATH ends at once
-/// any git whose standard input is a pipe, which only a kept git's is. Machine a writes, claims and
-/// syncs that way; b, without it, sees exactly what a has, and a's gits were Python's.
+/// If persistent git processes cannot answer, fall back to individual git invocations. A wrapper
+/// immediately ends every git whose standard input is a pipe. Machine a writes, claims and syncs
+/// through the fallback; machine b must see the same state.
 #[test]
 fn with_no_kept_git_every_question_goes_to_pythons_git() {
     let sandbox = crate::sandbox();
@@ -293,12 +282,10 @@ fn with_no_kept_git_every_question_goes_to_pythons_git() {
     }
 }
 
-/// The branch an event records is asked of git when its transaction starts, as Python's `Tx` asks
-/// it once the store lock is taken, and again in each round of an ownership command: a branch
-/// switched after bead found its workspace, before its transaction began, is the one recorded. A
-/// `pause-until` failpoint stops bead at the first journal it loads, after discovery and before the
-/// transaction reads HEAD; the checkout moves to a new branch there, and bead goes on. A create,
-/// then a claim, each moved to a branch of its own.
+/// Read the event's branch when its transaction starts under the store lock, and again for each
+/// ownership round. A failpoint pauses after discovery but before the transaction reads HEAD; the
+/// test switches branches there. Both create and claim must record the branch selected after
+/// discovery.
 #[test]
 fn the_branch_an_event_records_is_read_when_its_transaction_starts() {
     let sandbox = crate::sandbox();
@@ -328,13 +315,10 @@ fn the_branch_an_event_records_is_read_when_its_transaction_starts() {
     assert_eq!(branches(&key).last(), Some(&Json::from("during-claim")));
 }
 
-/// sync.git's object format is the one git reads, which its config alone does not say: git reads
-/// a config without `core.repositoryformatversion` without its extensions, so a SHA-256 sync.git
-/// whose config lost that line is SHA-1 to git. Python's `rev-parse --show-object-format` before
-/// a fetch then finds it made in another format than the project's, and makes it again. A SHA-256
-/// project's machine whose sync.git config lost the line syncs as before, its sync.git SHA-256
-/// again. The project is made by `git init`, not cloned from its empty origin as G26's is: this
-/// runs under git 2.40 too.
+/// Git ignores extensions when `core.repositoryformatversion` is absent, so a SHA-256 sync
+/// repository missing that setting is read as SHA-1 and must be rebuilt. The test removes it and
+/// verifies sync restores a SHA-256 repository. The project is created with `git init` so this
+/// also runs under git 2.40.
 #[test]
 fn a_sync_git_whose_config_lost_its_format_version_is_made_again() {
     let sandbox = crate::sandbox();

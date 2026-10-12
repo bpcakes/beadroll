@@ -43,7 +43,8 @@ the calls.
   ones, as `-c` gives them), `REPO_LOCATION_ENV`, `SYNC_REPO_CONFIG`, `CountRules` (how
   `GIT_CONFIG_COUNT` is read).
 - `src/classify.rs`: `local_damage`, `remote_lacks_objects`, `push_outcome` and `PushOutcome`.
-- `src/url.rs`: `without_password`, `normalize_remote`, `is_local_path`, `py_strip`, `py_lower`.
+- `src/url.rs`: `without_password`, `normalize_remote`, `is_local_path`, `strip_text_bytes`,
+  `lowercase_text_bytes`.
 - `src/path.rs`: `exists`, `realpath` (CPython 3.14's, not libc's).
 - `src/error.rs`: `Error`, `IoError` (Python's `OSError` text), `strerror`; `src/signal.rs`:
   signal names; `src/text.rs`: Python's `strip()` and `splitlines()` where git's output is read.

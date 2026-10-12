@@ -1,7 +1,5 @@
-//! G54 (`docs/FINDINGS.md`): the stale-twin rule also deleted the accepted attempt's receipt. The
-//! Python test stops a release in process between confirming its accepted attempt and cleaning up,
-//! by patching `drop_pending` to raise; here the `ownership.after-confirm=exit(97)` failpoint stops
-//! it at the same moment, which only the Rust binary can: a `rust_only` test.
+//! G54: cleaning up a stale twin must retain the accepted attempt's receipt. This `rust_only`
+//! test injects `ownership.after-confirm=exit(97)` between confirmation and cleanup.
 
 /// Link.merge's stale-twin rule (F11) calls drop_pending, which also deletes the receipt of the
 /// attempt the remote accepted; the retry of that accepted command is then not recognised. Needs a
@@ -12,13 +10,9 @@ mod g54_stale_twin_rule_drops_the_receipt {
 
     use beadroll_store::glob_ending;
 
-    /// G54: after a crash between confirming an accepted release and cleaning up, with the pending
-    /// twin damaged, the retried `release X` is recognised (exit 0), not NOT_OWNER.
-    ///
-    /// Replaces `G54_StaleTwinRuleDropsTheReceipt`'s
-    /// `test_damaged_twin_of_an_accepted_release_keeps_its_receipt`: where its patched
-    /// `drop_pending` raises "crash after local confirm", the failpoint ends the release with exit
-    /// status 97, its attempt confirmed and its pending twin and receipt in place.
+    /// G54: stop release with ownership.after-confirm=exit(97), retaining its confirmed attempt,
+    /// pending twin and receipt. Damage the twin and retry: release must be recognised and return
+    /// success.
     #[test]
     fn damaged_twin_of_an_accepted_release_keeps_its_receipt() {
         let sandbox = crate::sandbox();

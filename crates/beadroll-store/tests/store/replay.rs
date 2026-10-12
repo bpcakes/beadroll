@@ -1,4 +1,4 @@
-//! `tests/test_replay.py`, the tests of the store.
+//! Store replay and isolation tests.
 
 mod unit_test {
     use beadroll_core::json::Object;

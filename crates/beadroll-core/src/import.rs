@@ -1,5 +1,5 @@
-//! Planning a Beads JSONL import (Python's `import_records`): the records read and checked, and the
-//! events that bring them in, in the order Python emits them. The caller writes them, all or none.
+//! Plans a Beads JSONL import: validates records and produces ordered events. The caller writes
+//! all events or none.
 
 use crate::event::{EXPORT_FIELDS, MAX_NESTING, event_problem, payload_problem, write_problem};
 use crate::id::EventId;
@@ -10,7 +10,7 @@ use crate::text::{repr_str, strip};
 /// The id a would-be create is checked under before it is minted.
 pub const PROBE_ID: &str = "00000000-0000-7000-8000-000000000000";
 
-/// Why an import fails, whole (`VALIDATION`). `Display` is Python's message.
+/// Why the whole import fails, reported as VALIDATION.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct ImportError(pub String);

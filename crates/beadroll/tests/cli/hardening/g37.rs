@@ -26,7 +26,7 @@ mod g37_json_says_when_the_end_of_a_claim_was_not_published {
         (a, keys)
     }
 
-    /// The one issue of a `--json` answer: `json.loads(stdout)[0]`, which must be there.
+    /// The first issue in a JSON answer, which must exist.
     fn first(answer: &Json) -> &Json {
         let issues = answer.as_array().expect("the answer is a list");
         issues.first().expect("the answer holds an issue")

@@ -1,10 +1,8 @@
-//! `test_hardening.V8_Python312`, rewritten as the property it stands for (`docs/RUST-PORT.md`
-//! §4.6): the suite runs wherever bead is supported. The Python test ran a module with bead itself
-//! on the oldest Python it supported; the Rust bead needs no Python, so what varies is the system
-//! and git. Every push runs the tests on Linux and macOS, and every night under the oldest git the
-//! README supports, built from source. This test keeps the workflows saying so.
+//! CI coverage: every push tests Linux and macOS, and nightly runs include the oldest supported
+//! git built from source. These checks keep the workflow matrix aligned with supported
+//! environments.
 
-/// `V8_Python312`.
+/// Supported platform and git-version coverage.
 mod v8_python312 {
     use regex_lite::Regex;
 

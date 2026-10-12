@@ -51,7 +51,7 @@ mod g33_duplicate_ids_in_one_import_fail_whole {
         m
     }
 
-    /// `write`: `records` in the sandbox's file `name`, each line as `json.dumps(record) + "\n"`.
+    /// Writes records as spaced, ASCII-escaped JSON lines to the sandbox file name.
     fn write_records(sandbox: &Sandbox, name: &str, records: &[Json]) -> PathBuf {
         let path = sandbox.root().join(name);
         let lines: String = records

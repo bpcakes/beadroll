@@ -15,7 +15,7 @@ fn tail(text: &str) -> &str {
     lines.rfind(|line| !line.trim().is_empty()).unwrap_or("")
 }
 
-/// Whether `byte` is ASCII whitespace as Python's `bytes.strip()` and `bytes.split()` take it.
+/// Whether `byte` is ASCII whitespace, including vertical tab and form feed.
 fn is_space(byte: &u8) -> bool {
     b" \t\n\r\x0b\x0c".contains(byte)
 }

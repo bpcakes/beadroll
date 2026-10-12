@@ -1,9 +1,6 @@
-//! `StorageReaudit`'s five black-box tests: the store damaged by hand, and what bead makes of it. A
-//! line of a machine's own journal that is no event, a last record without its newline, a torn tail
-//! and a rewritten event in the copy another machine keeps of that journal, and a home copied whole
-//! to a second machine, whose twin identity then diverges from the first across a rotation. As in
-//! Python, the test reads and writes the store's files itself; the machines run the bead under
-//! test.
+//! Storage damage tests directly edit journal files: invalid events, missing final newlines, torn
+//! tails, rewritten remote copies and copied machine identities that diverge across rotation.
+//! Commands run through the selected bead binary.
 
 use std::ffi::OsStr;
 use std::fs::{File, FileTimes, OpenOptions};
@@ -59,12 +56,12 @@ fn named(folder: &Path, infix: &str) -> Vec<PathBuf> {
     paths.filter(|path| holds(path)).collect()
 }
 
-/// `value` as `json.dumps(value)` writes it.
+/// Spaced, ASCII-escaped JSON.
 fn dumps(value: &Json) -> String {
     write(value, Format::ASCII).expect("a value Python can write")
 }
 
-/// The member `key` of the object `value`, to assign through, as Python's `value[key]` is.
+/// The mutable member `key` of object `value`.
 fn member_mut<'v>(value: &'v mut Json, key: &str) -> &'v mut Json {
     match value {
         Json::Object(members) => {

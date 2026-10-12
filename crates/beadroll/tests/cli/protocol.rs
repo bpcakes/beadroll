@@ -1,4 +1,4 @@
-//! `tests/test_protocol.py`, ported.
+//! Sync and ownership protocol tests.
 
 mod actual_transport_review;
 mod port_alignment;

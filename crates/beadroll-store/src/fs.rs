@@ -1,6 +1,5 @@
-//! The store's file rules (Python's `private_dirs`, `private_dir`, `write_atomic`, `dir_entries`):
-//! private modes whatever the umask, whole-file writes that never leave anything half done, and
-//! listings that tell an absent directory from one that cannot be read.
+//! Store filesystem rules: private permissions regardless of umask, atomic whole-file writes and
+//! directory listings that distinguish absence from unreadability.
 
 use std::ffi::OsStr;
 use std::fs::{DirBuilder, File, OpenOptions};
@@ -116,7 +115,7 @@ fn temporary(path: &Path) -> PathBuf {
     path.with_file_name(OsStr::from_bytes(&raw))
 }
 
-/// `fsync(2)`, as Python's `os.fsync`: never `F_FULLFSYNC` (`docs/RUST-PORT.md` §2.3e).
+/// Uses fsync(2), never F_FULLFSYNC (`docs/RUST-PORT.md` §2.3e).
 pub fn fsync(file: &File) -> Result<(), IoError> {
     rustix::fs::fsync(file).map_err(|e| IoError::bare(&io::Error::from(e)))
 }
@@ -138,9 +137,8 @@ pub fn dir_entries(folder: &Path) -> Result<Vec<PathBuf>, Error> {
     Ok(paths)
 }
 
-/// The entries of `folder` whose names end in `ending` (pathlib's `glob("*" + ending)`, which takes
-/// hidden names and directories too), sorted; nothing when `folder` is not a directory or cannot
-/// be read.
+/// Sorted entries of folder whose names end with ending, including hidden names and directories.
+/// Return empty if folder is not a directory or cannot be read.
 pub fn glob_ending(folder: &Path, ending: &str) -> Vec<PathBuf> {
     if !folder.is_dir() {
         return Vec::new();
@@ -160,8 +158,7 @@ pub fn glob_ending(folder: &Path, ending: &str) -> Vec<PathBuf> {
     paths
 }
 
-/// Whether `path`'s suffix (pathlib's: from the last dot, which must not begin the name) is
-/// `suffix`.
+/// Whether the path suffix equals suffix, taking the last dot unless it begins the filename.
 pub fn has_suffix(path: &Path, suffix: &str) -> bool {
     let Some(name) = path.file_name() else {
         return false;
@@ -195,19 +192,17 @@ pub(crate) fn content_sum(bytes: &[u8]) -> [u8; 16] {
     beadroll_core::projection::sum(bytes)
 }
 
-/// Why a file meant to hold JSON text could not be read as such, worded as Python's `str()` of
-/// the error: the `OSError`, the `UnicodeDecodeError` of `read_text(encoding="utf-8")`, or the
-/// parser's message.
+/// A file-read, UTF-8 decode or JSON parse failure, formatted with the established diagnostic for
+/// that operation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Unreadable {
     /// The file is not there.
     Missing,
-    /// It could not be read, or holds no JSON: Python's message.
+    /// The diagnostic for an unreadable file or invalid JSON.
     Other(String),
 }
 
-/// A file's JSON, read as Python reads `loads_strict(path.read_text(encoding="utf-8"))`: strict
-/// UTF-8 (a lone surrogate's bytes are not text), then JSON.
+/// Reads a JSON file as strict UTF-8, rejecting raw encoded surrogates, then parses its JSON.
 pub fn read_json_text(path: &Path) -> Result<Value, Unreadable> {
     let data = match std::fs::read(path) {
         Ok(data) => data,
@@ -217,10 +212,9 @@ pub fn read_json_text(path: &Path) -> Result<Value, Unreadable> {
     json_text(&data).map_err(Unreadable::Other)
 }
 
-/// A file's JSON as Python reads one it may write back whole, `loads_strict(path.read_text())`,
-/// each lone surrogate standing as a character the file does not otherwise hold ([`Surrogates`]):
-/// one for each code unit there or in `units`, none a character in `avoid`. What is not JSON gets
-/// Python's message, from the file as it is.
+/// Reads JSON for a whole-file rewrite, preserving lone surrogates with [`Surrogates`]. Allocate
+/// a distinct stand-in for each code unit in the text or `units`, avoiding characters in `avoid`.
+/// Malformed JSON reports a diagnostic against the original text.
 pub fn read_json_keeping_surrogates(
     path: &Path,
     units: &[u16],
@@ -233,7 +227,8 @@ pub fn read_json_keeping_surrogates(
     };
     let parsed = json_text(&data).map_err(Unreadable::Other)?;
     let text = std::str::from_utf8(&data).unwrap_or_default();
-    // more distinct stand-ins than the private-use area holds: a file no bead or Python writes
+    // There are more required stand-ins than available private-use characters; bead cannot
+    // produce such a file.
     let Some((stood, surrogates)) = Surrogates::stand_in(text, units, avoid) else {
         return Err(Unreadable::Other(
             "it holds more lone surrogates and private-use characters than bead can keep apart"
@@ -249,7 +244,7 @@ pub fn read_json_keeping_surrogates(
     Ok((value, surrogates))
 }
 
-/// `loads_strict(data.decode("utf-8"))`: the value, or Python's message for why not.
+/// Decodes strict UTF-8 and parses JSON, returning the value or its diagnostic.
 pub fn json_text(data: &[u8]) -> Result<Value, String> {
     if let Err(error) = std::str::from_utf8(data) {
         return Err(utf8_error(data, &error));
@@ -259,7 +254,7 @@ pub fn json_text(data: &[u8]) -> Result<Value, String> {
         .map_err(|error| error.to_string())
 }
 
-/// Python's `str(OSError)` for an error about `path`: `[Errno N] strerror: 'path'`.
+/// An operating-system error about `path`, formatted as `[Errno N] strerror: 'path'`.
 pub fn os_error_str(error: &io::Error, path: &Path) -> String {
     let strerror = beadroll_git::strerror(error);
     match error.raw_os_error() {
@@ -271,7 +266,7 @@ pub fn os_error_str(error: &io::Error, path: &Path) -> String {
     }
 }
 
-/// Python's message for bytes that are not UTF-8 (`UnicodeDecodeError`).
+/// The established diagnostic for invalid UTF-8 bytes.
 pub fn utf8_error(data: &[u8], error: &std::str::Utf8Error) -> String {
     let start = error.valid_up_to();
     let (end, reason) = match error.error_len() {

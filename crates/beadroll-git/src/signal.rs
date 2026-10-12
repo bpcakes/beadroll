@@ -1,13 +1,12 @@
-//! Signal names as Python's `signal.Signals(n).name` gives them on this platform, for the `killed by
-//! SIGNAME` git errors bead reports.
+//! Platform signal names used in `killed by SIGNAME` git errors.
 
-/// The name Python gives signal `number` here, or `signal N` for one it has no name for.
+/// The platform name for a signal, or `signal N` if unknown.
 pub fn signal_name(number: i32) -> String {
     named(number).map_or_else(|| format!("signal {number}"), str::to_owned)
 }
 
-/// Python's `Signals` members, the first name by value then name where a number has several
-/// (`SIGABRT` before `SIGIOT`, `SIGIO` before `SIGPOLL`, `SIGCHLD` before `SIGCLD`).
+/// Canonical signal aliases, ordered by value then name: SIGABRT before SIGIOT, SIGIO before
+/// SIGPOLL, and SIGCHLD before SIGCLD.
 fn named(number: i32) -> Option<&'static str> {
     let common = [
         (libc::SIGHUP, "SIGHUP"),

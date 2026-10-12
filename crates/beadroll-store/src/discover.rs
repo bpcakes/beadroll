@@ -1,5 +1,4 @@
-//! Which tracker a checkout belongs to (Python's `find_workspace`): from the repository, never from
-//! the checkout's path.
+//! Resolves a checkout's tracker from its repository identity, independent of the checkout path.
 
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
@@ -13,7 +12,7 @@ use sha2::{Digest as _, Sha256};
 
 use crate::error::Error;
 use crate::fs::{Unreadable, json_text, read_json_text};
-use crate::settings::{Settings, pathlib, pathlib_join};
+use crate::settings::{Settings, join_path, normalize_path};
 use crate::workspace::{Workspace, configured_url, listed_url};
 
 /// The tracked configuration's keys bead reads, and the JSON type each must have.
@@ -115,7 +114,7 @@ pub fn tracked_config_warning(ws: &Workspace) -> Result<Option<String>, Error> {
     if !top.success() {
         return Ok(None);
     }
-    let root = pathlib(OsStr::from_bytes(crate::strip_ascii(&top.stdout)));
+    let root = normalize_path(OsStr::from_bytes(crate::strip_ascii(&top.stdout)));
     let here = std::fs::read(root.join(".beadroll.json")).ok();
     if here.is_none() && ws.config.is_empty() {
         return Ok(None);
@@ -283,7 +282,7 @@ fn origin(asked: Result<Output, beadroll_git::Error>) -> Result<(OsString, bool)
 fn anchored(origin: &OsStr, root: Option<&Path>) -> OsString {
     match root {
         Some(root) if is_local_path(origin) && !origin.as_bytes().starts_with(b"/") => {
-            pathlib_join(root, origin).into_os_string()
+            join_path(root, origin).into_os_string()
         }
         _ => origin.to_owned(),
     }
@@ -293,13 +292,13 @@ fn anchored(origin: &OsStr, root: Option<&Path>) -> OsString {
 /// `.beadroll.json` names the workspace explicitly; without one, the id is derived from the origin
 /// URL, so every worktree and clone agrees; without an origin, it is local to the repository.
 pub fn find_workspace(settings: &Arc<Settings>) -> Result<Workspace, Error> {
-    // origin's URLs, asked each time as Python asks them; the first time, beside the top of the
-    // checkout, which does not wait for them (their answer, or failure, is read where Python asks)
+    // Query origin URLs at each discovery. On the first call, run that query beside checkout
+    // discovery and consume its result when needed.
     let origin_urls = settings.checkout.origin_urls(&settings.git);
     let top = settings.fact(Fact::Toplevel)?;
     let root: Option<PathBuf> = top.success().then(|| {
         let raw = crate::strip_ascii(&top.stdout);
-        pathlib(OsStr::from_bytes(raw))
+        normalize_path(OsStr::from_bytes(raw))
     });
     let tracked_file = root.as_ref().map(|root| root.join(".beadroll.json"));
     if let Some(file) = &tracked_file

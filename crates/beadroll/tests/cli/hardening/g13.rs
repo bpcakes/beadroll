@@ -1,16 +1,8 @@
-//! G13: the committed `.beadroll.json` is UTF-8 whatever the locale, so the same bytes name one
-//! coordination ref everywhere. Read in the locale's encoding, its `refs/beads/équipe` became
-//! another ref under ISO-8859-1, a second tracker on which two agents could both hold a claim, and
-//! "not valid JSON" under US-ASCII.
-//!
-//! D-class (`docs/RUST-PORT.md` §4.6): the Python tests asked `python3` which encoding it would
-//! read text in, and skipped unless it was the locale's. These ask the system which locales it has
-//! (`locale -a`) and run under ISO-8859-1, US-ASCII and C whichever bead is under test; where the
-//! system lacks the locale, the test says so on standard error and returns.
-//!
-//! Pointed at Python's launcher (`python-0.1.0`'s, during the rollback window), whose bead outside
-//! macOS hands git the committed ref in the locale's codeset (roll-k2wy.18), the cases that pass the
-//! ref to git say so and return. They run whole against the Rust bead everywhere.
+//! G13: committed `.beadroll.json` is UTF-8 under every locale, so its bytes always name the same
+//! coordination ref. Run under ISO-8859-1, US-ASCII and C when available, reporting absent
+//! locales as skips. An alternate interpreter launcher that encodes git arguments using the
+//! locale's codeset skips affected cases outside macOS (roll-k2wy.18). Native bead runs every
+//! available case.
 
 use std::process::{Command, Stdio};
 
@@ -49,10 +41,9 @@ fn installed(wanted: &str) -> Option<String> {
     found.map(str::to_owned)
 }
 
-/// Whether `machine` runs a Python launcher outside macOS, where CPython encodes the arguments it
-/// hands git in the locale's codeset (macOS's filesystem encoding is UTF-8 whatever the locale): a
-/// case that passes the committed ref to git then meets roll-k2wy.18, says so and returns. The Rust
-/// bead is a native executable; Python's launcher, `python-0.1.0`'s, is a script.
+/// Whether the alternate bead is an interpreter launcher on a platform where git arguments use
+/// the locale's codeset. Such cases meet roll-k2wy.18 and skip; macOS always uses UTF-8. Native
+/// bead is an executable, while the supported legacy launcher is a script.
 fn meets_roll_k2wy_18(machine: &Machine) -> bool {
     let mut head = [0u8; 2];
     let script = std::fs::File::open(machine.executable())
@@ -67,9 +58,8 @@ fn meets_roll_k2wy_18(machine: &Machine) -> bool {
     meets
 }
 
-/// `_g13_locale`: `invocation` under `locale`, in `LC_ALL` and `LANG`. As in the Python test,
-/// CPython's own switches are off, so that it reads text in the locale's codeset instead of
-/// coercing C to C.UTF-8 (PEP 538) or reading UTF-8 whatever the locale (PEP 540).
+/// Runs `invocation` with `LC_ALL` and `LANG` set to `locale`. Disable CPython's locale coercion
+/// and UTF-8 mode when an alternate launcher is under test (PEP 538 and PEP 540).
 fn under<'m>(invocation: Invocation<'m>, locale: &str) -> Invocation<'m> {
     invocation
         .env("LC_ALL", locale)
@@ -78,9 +68,8 @@ fn under<'m>(invocation: Invocation<'m>, locale: &str) -> Invocation<'m> {
         .env("PYTHONCOERCECLOCALE", "0")
 }
 
-/// The refs under `refs/beads` on the sandbox's remote, as `support.git("for-each-ref", ...)`
-/// lists them, but read with replacement: a ref named in the locale's bytes rather than UTF-8 is the
-/// second tracker the claim test looks for, and is shown, not a failure to decode.
+/// Lists refs under refs/beads on the remote, decoding invalid UTF-8 with replacement so a
+/// locale-encoded second tracker remains visible to the test.
 fn coordination_refs(sandbox: &Sandbox) -> Vec<String> {
     let listed = Command::new("git")
         .args(["for-each-ref", "--format=%(refname)", "refs/beads"])

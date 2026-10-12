@@ -1,7 +1,6 @@
-//! `V6_StoreDamage`: damage to the local store (its lock or a segment made a folder or unreadable,
-//! `pending` made a file, the claims folder made read-only) is answered with a structured code,
-//! never a crash. As root, `chmod 0` denies nothing, so the class skips there, as the Python one
-//! does.
+//! V6: malformed or inaccessible store paths produce structured errors, never crashes. Cases
+//! include a lock or segment replaced by a directory, pending replaced by a file and read-only
+//! claims. Skip under root, where chmod cannot enforce denial.
 
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;

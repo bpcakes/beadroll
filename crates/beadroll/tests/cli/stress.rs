@@ -1,26 +1,12 @@
-//! `tests/test_stress.py`, ported: two randomised models in which six machines share one remote
-//! and run thousands of commands, checked as they go against a reference model or invariants.
-//! They are slow, so they are ignored by default; `cargo nextest run -p beadroll --run-ignored only
-//! -E 'test(/^stress::/)'` runs them.
+//! Two slow six-machine stress models run thousands of commands against one remote and check
+//! reference state or invariants. Run them with `cargo nextest run -p beadroll --run-ignored only
+//! -E 'test(/^stress::/)'`.
 //!
-//! How the Python mechanisms are ported:
-//! - Partitions. Python patches nothing in bead: a partitioned machine withholds sync, running
-//!   `info` instead of `sync` and `show` instead of a command that needs the remote (in the
-//!   reference model, `claim --offline` instead of `claim`), and so do these ports. They need no
-//!   failpoint, and nothing waits less than in Python: the backoff between rounds is bead's own.
-//! - The in-process reads. Python read a machine's store with its own `load_journal`, `replay` and
-//!   `view`, `BEAD_HOME` swapped for the machine's; these ports read it with beadroll-store's and
-//!   beadroll-core's ([`replayed`], [`viewed`]), as `docs/RUST-PORT.md` §4.8 has it. Their machines
-//!   run the Rust `bead` whatever `BEAD_UNDER_TEST` says ([`crate::rust_only`]), so that, as in
-//!   Python, the implementation that reads a store in-process is the one that wrote it.
-//! - Randomness. Python drew its choices from `random.Random(seed)`; these ports draw them, in the
-//!   same order, from a port of it ([`Rng`], CPython's Mersenne Twister), so a seed makes the
-//!   choices Python's made. Nothing a command answers changes the reference model's draws but
-//!   the issues it creates, so the model runs Python's very commands; a wave's workers make
-//!   Python's draws too, in an interleaving of their own.
-//! - Concurrency. Where Python ran commands at once (a wave's six workers), these ports do too;
-//!   where it ran them one after another, so do they, except that the per-machine reads of a
-//!   checkpoint, which touch only the machine's own store, run a thread per machine ([`each`]).
+//! Soft partitions replace selected remote operations with reads or offline claims. Backoff
+//! remains the protocol's own. Checks use [`replayed`] and [`viewed`] to read each machine's
+//! store, so machines run [`crate::rust_only`]. [`Rng`] preserves established seeded command
+//! sequences. The reference model is sequential; each wave of the concurrency model has six
+//! workers. Independent checkpoint reads run one thread per machine ([`each`]).
 
 mod concurrent_reaudit;
 mod python_random;
@@ -80,7 +66,7 @@ pub(crate) fn id(value: &Json) -> String {
         .to_owned()
 }
 
-/// `json.dumps(value, sort_keys=True)`: what two machines' answers are compared by.
+/// Sorted-key JSON used to compare machine results.
 pub(crate) fn sorted(value: &Json) -> String {
     write(value, Format::SORTED_ASCII).expect("bead's JSON writes back")
 }
@@ -124,8 +110,7 @@ pub(crate) fn joined<R>(thread: std::thread::ScopedJoinHandle<'_, R>) -> R {
         .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
 }
 
-/// The workspace `machine`'s store holds, opened in-process as Python's models opened it:
-/// `Workspace(m.store().name, None, None, {})` with `BEAD_HOME` set to the machine's.
+/// Opens the machine's workspace in-process with that machine's home and store id.
 fn workspace(machine: &Machine) -> Workspace {
     let settings = Settings::from_process(
         machine.env(None, "codex"),
@@ -141,14 +126,13 @@ fn workspace(machine: &Machine) -> Workspace {
     Workspace::new(Arc::new(settings), wid, None, None, Object::new()).expect("the workspace")
 }
 
-/// Python's `replay(load_journal(ws))` over `machine`'s store: the confirmed state.
+/// The confirmed state from replaying the machine's journal.
 pub(crate) fn replayed(machine: &Machine) -> State {
     let journal = load_journal(&workspace(machine)).expect("the machine's journal");
     replay(journal).expect("the machine's journal replays")
 }
 
-/// Python's `view(ws)` over `machine`'s store: the confirmed state, with the machine's own
-/// unconfirmed attempts listed on their issues.
+/// The confirmed state with the machine's unconfirmed attempts listed on their issues.
 pub(crate) fn viewed(machine: &Machine) -> State {
     view(&workspace(machine)).expect("the machine's view")
 }

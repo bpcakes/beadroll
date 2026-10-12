@@ -1,13 +1,10 @@
-//! The only code in `bead` that starts git (`docs/RUST-PORT.md` §2.1, §2.3d, §2.3f): the runner
-//! (its own session, a timeout that kills the process group or only the client, output captured to
-//! unlinked files, signal names), the long-lived gits Phase 4 keeps (`cat-file --batch-command`
-//! with git's own tree and commit reading mirrored in-process, `hash-object --stdin-paths`, `mktree
-//! --batch`, `update-ref --stdin`), the checkout's facts asked once, the environment `sync.git`'s
-//! git runs in, the push-outcome and local-damage classifiers, the remote URL rules, and the path
-//! rules they share with the store (Python's lenient `realpath`).
+//! The only crate that starts git (`docs/RUST-PORT.md` §2.1, §2.3d, §2.3f). It owns process
+//! sessions, timeout handling, output files, persistent object readers and writers, checkout
+//! facts, transport environments, push and damage classification, URL normalization and lenient
+//! path resolution.
 //!
-//! Nothing here reads the process environment, the working directory or the clock: every git runs
-//! in an [`Env`] its caller built.
+//! Every process runs in an explicit [`Env`]; this crate reads no ambient environment, working
+//! directory or clock.
 
 mod alongside;
 mod checkout;
@@ -43,5 +40,7 @@ pub use runner::{Env, Git, Output};
 pub use session::NoAnswer;
 pub use signal::signal_name;
 pub use text::path_arg;
-pub use url::{is_local_path, normalize_remote, py_lower, py_strip, without_password};
+pub use url::{
+    is_local_path, lowercase_text_bytes, normalize_remote, strip_text_bytes, without_password,
+};
 pub use writers::{Hasher, Refs, Trees};

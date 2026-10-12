@@ -1,5 +1,5 @@
-//! Where the files that take git's output are made: Python's `tempfile.gettempdir()`, which
-//! `run_git`'s `TemporaryFile` uses, found by the same search the first time git is about to run.
+//! The temporary directory for files that capture git's output, selected before the first git
+//! invocation.
 
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
@@ -14,13 +14,12 @@ use beadroll_core::text::repr_str;
 
 use crate::commands::Failure;
 
-/// How many names Python tries in one directory before it gives up on it (`os.TMP_MAX`, at least).
+/// The number of candidate filenames tried before giving up on a directory.
 const NAMES: usize = 10_000;
 
-/// The first usable temporary directory, as Python's `_get_default_tempdir` finds it: `TMPDIR`,
-/// `TEMP` and `TMP` when set, then `/tmp`, `/var/tmp` and `/usr/tmp`, then the working directory;
-/// usable when a new file can be created, written and removed there. None usable is Python's
-/// `FileNotFoundError`.
+/// The first usable temporary directory: `TMPDIR`, `TEMP` and `TMP` when set, then `/tmp`,
+/// `/var/tmp` and `/usr/tmp`, then the working directory. A directory is usable when a new file
+/// can be created, written and removed there. Returns an error if no candidate is usable.
 pub(crate) fn temporary_directory(
     vars: &BTreeMap<OsString, OsString>,
     cwd: Option<&Path>,

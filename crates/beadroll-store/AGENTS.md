@@ -12,7 +12,8 @@ remote resolution, actor detection, and `view`. Slice 2a (`roll-k2wy.3`) built i
 
 - `src/settings.rs`: `Settings` (the variables, the environment git inherits, the working directory,
   the clock; `home()` with the `BEAD_HOME` rules; `checkout` and `fact`: what checkout-side git says
-  of the repository, asked once, `docs/RUST-PORT.md` Appendix B), `Clock`, `pathlib`.
+  of the repository, asked once, `docs/RUST-PORT.md` Appendix B), `Clock`, `normalize_path`,
+  `join_path`.
 - `src/fs.rs`: `private_dirs`, `private_dir`, `write_atomic`, `fsync`, `dir_entries`, `glob_ending`,
   `read_json_text`, `read_json_keeping_surrogates` (a file Python rewrites whole, or whose names
   print as Python prints them) and Python's error texts (`os_error_str`, `utf8_error`).

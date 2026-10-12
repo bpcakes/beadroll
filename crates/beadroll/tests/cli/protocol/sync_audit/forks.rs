@@ -9,7 +9,7 @@ use beadroll_test_support::{Json, Machine, Run, Sandbox, code, parse_json};
 
 use super::{own_segment, remote_blob, setup, two};
 
-/// `json.dumps(row, separators=(",", ":"))`: compact, ASCII-escaped, members in their order.
+/// Compact, ASCII-escaped JSON with members in insertion order.
 const DUMPS_COMPACT: Format = Format {
     style: Style::Compact,
     ascii: true,
@@ -88,8 +88,7 @@ fn bug_foreign_fork_report_must_not_replace_published_journal() {
     assert_eq!(a.run(["sync", "--json"]).returncode(), 0);
 }
 
-/// `row["data"]["fields"]["title"] = title`: a row without them fails the test, as the Python
-/// test's lookup raises.
+/// Assigns `row.data.fields.title`; missing members fail the test.
 fn retitle(row: &mut Json, title: &str) {
     let fields = match row {
         Json::Object(row) => match row.get_mut("data") {

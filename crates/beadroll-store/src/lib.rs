@@ -1,11 +1,9 @@
-//! This machine's side of `bead` (`docs/RUST-PORT.md` §2.1): the settings the CLI hands down, the
-//! store under `BEAD_HOME` with its files and modes, atomic writes, journal segments and torn
-//! tails, attempt and pending files, what the store remembers of its journal files between commands
-//! (`Memo`), this machine's identity and aliases, workspace discovery and remote resolution, actor
-//! detection, and `view`, the state a command reads.
+//! The machine-local store (`docs/RUST-PORT.md` §2.1): explicit settings, BEAD_HOME files and
+//! permissions, atomic writes, journals and pending attempts, journal memo, identity, aliases,
+//! workspace discovery, remote resolution, actors and command views.
 //!
-//! Nothing here reads the process environment, the working directory or the clock offset: they
-//! arrive in [`Settings`]. The bytes on disk are format 1's, exactly as Python writes them (§1.1).
+//! Ambient environment, directory and clock values arrive through [`Settings`]. Persistent
+//! tracker bytes obey format 1; memo and projection files are disposable caches.
 
 mod actor;
 mod discover;
@@ -41,7 +39,8 @@ pub use memo::{FileKey, Memo, memo_path};
 pub use place::{capture_where, merged_into_default, object_format};
 pub use projection::{projection, projection_path, read_texts, texts_path};
 pub use settings::{
-    Clock, NET_TIMEOUT, REPACK_LOOSE, REPACK_PACKS, ROTATE_BYTES, Settings, pathlib, pathlib_join,
+    Clock, NET_TIMEOUT, REPACK_LOOSE, REPACK_PACKS, ROTATE_BYTES, Settings, join_path,
+    normalize_path,
 };
 pub use workspace::{DEFAULT_REF, Endpoint, REMOTE_REF, Workspace, relative, remembered, stamp};
 

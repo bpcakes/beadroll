@@ -92,7 +92,7 @@ pub(crate) fn column(rows: &Json, key: &str) -> Vec<Json> {
     rows.iter().map(|row| row[key].clone()).collect()
 }
 
-/// How many items the list `list` holds, as Python's `len` counts them.
+/// The number of items in `list`.
 pub(crate) fn length(list: &Json) -> usize {
     let items = list
         .as_array()

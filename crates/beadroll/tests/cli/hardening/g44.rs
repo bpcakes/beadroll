@@ -42,8 +42,8 @@ mod g44_materialised_dependency_exports_null_meta {
         sandbox.root().join(format!("{name}.jsonl"))
     }
 
-    /// The class's `setUp`: `a.jsonl` holds ex-a, which depends on ex-b; `b.jsonl` holds ex-b;
-    /// `ab.jsonl` holds both; one line per record, as `json.dumps(record) + "\n"` writes it.
+    /// Fixtures: a.jsonl holds ex-a depending on ex-b; b.jsonl holds ex-b; ab.jsonl holds both.
+    /// One spaced, ASCII-escaped JSON record per line.
     fn setup(sandbox: &Sandbox) {
         let (a, b) = (record("ex-a", &["ex-b"]), record("ex-b", &[]));
         for (name, records) in [("a", vec![&a]), ("b", vec![&b]), ("ab", vec![&a, &b])] {
@@ -63,7 +63,7 @@ mod g44_materialised_dependency_exports_null_meta {
 
     /// `_g44_dependency`: the first dependency of the record `key` in `machine`'s export.
     fn dependency(machine: &Machine, key: &str) -> Json {
-        // `splitlines()`: the records are ASCII, with none of the other breaks Python splits at
+        // The records are ASCII and have no line separator other than newline.
         let export = machine.export();
         let record = export
             .lines()

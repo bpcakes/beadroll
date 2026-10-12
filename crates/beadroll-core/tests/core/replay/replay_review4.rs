@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use beadroll_core::event::Field;
 use beadroll_core::id::EventId;
 use beadroll_core::journal::Journal;
-use beadroll_core::op::PyInt;
+use beadroll_core::op::IntegerField;
 use beadroll_core::query::find_cycles;
 use beadroll_core::replay::replay;
 use beadroll_test_support::events::Event;
@@ -94,7 +94,7 @@ fn q07_invalid_placeholder_cannot_bridge_a_broken_machine_chain() {
     assert!(!state.saw(uid(&later), uid(&first)));
     assert_eq!(
         state.issue(uid(&create)).unwrap().priority(),
-        PyInt::from(1)
+        IntegerField::from(1)
     );
     assert!(state.chain_breaks().contains_key("a"));
 }

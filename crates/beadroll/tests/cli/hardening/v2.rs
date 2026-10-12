@@ -58,7 +58,7 @@ fn id(result: Option<Json>) -> String {
     result["id"].as_str().expect("an id").to_owned()
 }
 
-/// `value[key]` as Python indexes a dict: the member, or the test fails.
+/// The member `key` of `value`; absence fails the test.
 fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
     value
         .get(key)
@@ -155,14 +155,10 @@ mod v2_in_flight_attempt_across_actors {
         notes.map(str::to_owned).collect()
     }
 
-    /// `_in_flight`: actor A's `release X` stalls in the remote's hook past its one-second
-    /// timeout, and actor B on the same machine runs `claim Y` while A waits between rounds; with
-    /// `lands_first`, A's push is let through and lands before B's command. The names in `pending/`
-    /// B's command left.
-    ///
-    /// The Python test patches `time.sleep` for the whole `release`, its first call running B;
-    /// here `backoff@always=pause-until(...)` stops every wait between rounds at a gate, the first
-    /// until B has run, any later one passing it open.
+    /// Actor A's release stalls in a remote hook beyond its one-second timeout. Actor B on the
+    /// same machine claims Y while A waits between rounds. With `lands_first`, A's push lands
+    /// before B's command. Pause every backoff at a gate: the first waits for B, later waits pass
+    /// through it. Returns the pending filenames left by B.
     fn in_flight(lands_first: bool) -> Vec<String> {
         let sandbox = crate::sandbox();
         let n = u8::from(lands_first);
@@ -242,32 +238,19 @@ mod v2_in_flight_attempt_across_actors {
         pending_after_b
     }
 
-    /// Verified (V2): during A's unlocked sleep between rounds, with A's `release X` still in
-    /// flight (stalled receive hook, BEAD_NET_TIMEOUT=1), actor B on the same machine fences and
-    /// drops A's attempt and receipt; A's next round rebuilds and releases exactly once. The review
-    /// measured 5/5 subprocess runs and 1/1 deterministic run: A rc 0, B's `claim Y` rc 0, X open
-    /// with no claim and exactly 1 release event on machine m and on a fresh peer, Y claimed by
-    /// actor-b, no pending files; remote history claim, fence, claim, claim (the stalled first
-    /// push's ref update failed after the fence).
-    ///
-    /// Replaces `V2_InFlightAttemptAcrossActors`'s
-    /// `test_another_actor_fences_an_in_flight_release_during_the_unlocked_sleep`, its patched
-    /// `time.sleep` a `backoff` gate ([`in_flight`]).
+    /// V2: while A waits outside the lock after a timed-out release, B fences and drops A's
+    /// pending attempt and receipt. A then rebuilds and releases exactly once. The backoff gate
+    /// in in_flight makes the ordering deterministic; both local and fresh-peer views must agree,
+    /// with no pending files.
     #[test]
     fn another_actor_fences_an_in_flight_release_during_the_unlocked_sleep() {
         // B dropped A's attempt and its receipt
         assert_eq!(in_flight(false), Vec::<String>::new());
     }
 
-    /// Verified (V2): when A's in-flight `release X` push lands before B's command, B's merge
-    /// confirms A's attempt and keeps A's receipt (B's settle_commands skips another actor's
-    /// receipts), and A's next round returns its result. The review measured 1/1 run (plus 1 repro
-    /// run): pending after B = [<id>.command], A rc 0, X open, 1 release event on m and on the
-    /// peer, Y claimed by actor-b, remote history without a fence (claim, claim, claim).
-    ///
-    /// Replaces `V2_InFlightAttemptAcrossActors`'s
-    /// `test_in_flight_release_lands_before_another_actors_command`, its patched `time.sleep` a
-    /// `backoff` gate ([`in_flight`]).
+    /// V2: if A's release lands before B's command, B confirms it while retaining A's receipt.
+    /// A's next round recognises that result, with one release and no fence. The backoff gate in
+    /// in_flight controls the interleaving.
     #[test]
     fn in_flight_release_lands_before_another_actors_command() {
         let pending_after_b = in_flight(true);
@@ -282,16 +265,9 @@ mod v2_in_flight_attempt_across_actors {
 mod v2_confirmed_twin_keeps_the_retry_recognised {
     use super::*;
 
-    /// Verified (V2): the Q03 shape still recognises the retry. A `release X` that crashed after
-    /// local confirmation, before its pending files were dropped, leaves a pending twin identical
-    /// to the confirmed file plus its receipt; the retry confirms the twin normally, keeps the
-    /// receipt long enough to be recognised, and does not release twice. The review measured
-    /// (repro_d control, undamaged twin) retry `release X` rc 0 and pending empty afterwards (1/1).
-    ///
-    /// Replaces `V2_ConfirmedTwinKeepsTheRetryRecognised`'s
-    /// `test_identical_pending_twin_confirms_and_the_retry_is_recognised`: where its patched
-    /// `drop_pending` raises "crash after local confirm", the `ownership.after-confirm=exit(97)`
-    /// failpoint ends the release with exit status 97 at the same moment, a `rust_only` test.
+    /// V2: after ownership.after-confirm=exit(97), an identical pending twin must retain the
+    /// receipt long enough to recognise a retry. Retrying release succeeds without a second
+    /// release and leaves no pending files.
     #[test]
     fn identical_pending_twin_confirms_and_the_retry_is_recognised() {
         let sandbox = crate::sandbox();

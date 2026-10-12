@@ -1,11 +1,5 @@
-//! G59: help is plain text. Python 3.14's argparse colours help on a terminal and under
-//! `FORCE_COLOR`: `bead help create` showed its colour codes escaped (`\x1b[1;34m`), `bead create
-//! --help` wrote raw SGR sequences, and `--json help create` carried them in its string.
-//!
-//! D-class (`docs/RUST-PORT.md` §4.6): the Python tests ran only where the `python3` that runs bead
-//! has argparse's colour. These run whichever bead is under test: no ESC byte, raw or escaped,
-//! reaches help on a terminal, with `FORCE_COLOR=1` or under `--json`, and the help says
-//! `usage: bead create`.
+//! G59: help stays plain text on terminals, under `FORCE_COLOR=1` and in JSON output. No raw or
+//! escaped ESC byte may reach the help, and its usage line must say `usage: bead create`.
 
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
@@ -23,7 +17,7 @@ use beadroll_test_support::{Machine, Run};
 use rustix::io::{FdFlags, fcntl_setfd};
 use rustix::pty::{OpenptFlags, grantpt, openpt, ptsname, unlockpt};
 
-/// How long one run of bead may take, as the Python tests' `timeout=30`.
+/// The maximum duration of one bead invocation.
 const LIMIT: Duration = Duration::from_secs(30);
 
 /// `_g59_env`: `bead ARGS` from `machine`, its environment without the variables that turn colour
@@ -37,7 +31,7 @@ fn command(machine: &Machine, args: &[&str], (name, value): (&str, &str)) -> Com
     command
 }
 
-/// The first 100 characters of `text`, which a failure quotes as the Python messages do.
+/// The first 100 Unicode scalar values of `text`, for failure diagnostics.
 fn start(text: &str) -> String {
     text.chars().take(100).collect()
 }
@@ -111,7 +105,7 @@ fn run_on_terminal(mut command: Command) -> (i32, String) {
         .custom_flags(libc::O_NOCTTY)
         .open(path)
         .unwrap_or_else(|error| panic!("cannot open the terminal {}: {error}", path.display()));
-    // read from before bead starts, as the Python test's drain thread is
+    // Start draining before bead starts so a full terminal buffer cannot block it.
     let written = drained(master);
     let input = terminal.try_clone().expect("the terminal, again");
     let output = terminal.try_clone().expect("the terminal, again");
@@ -147,9 +141,8 @@ mod g59_help_is_plain_text {
         Machine::new(sandbox, "help")
     }
 
-    /// G59: `bead help create` on a terminal shows no colour codes, neither as the text
-    /// `\x1b[1;34m` (Python 3.14's argparse colours, escaped by `visible()`) nor raw, and says
-    /// `usage: bead create`.
+    /// G59: `bead help create` on a terminal shows `usage: bead create` without raw or escaped
+    /// colour codes.
     #[test]
     fn help_command_on_a_terminal_shows_no_colour_codes() {
         let sandbox = crate::sandbox();
@@ -166,8 +159,7 @@ mod g59_help_is_plain_text {
         assert!(out.contains("usage: bead create"), "{out}");
     }
 
-    /// G59: `bead create --help` on a terminal writes no escape sequence, where Python 3.14's
-    /// argparse wrote raw SGR sequences, unlike every other bead output.
+    /// G59: `bead create --help` on a terminal writes no escape sequence.
     #[test]
     fn command_dash_help_on_a_terminal_writes_no_escape_sequences() {
         let sandbox = crate::sandbox();

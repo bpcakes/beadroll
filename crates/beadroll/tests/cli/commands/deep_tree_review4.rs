@@ -49,13 +49,11 @@ impl Chain {
     }
 }
 
-/// Q08: dep tree over a valid 1,100-node chain must not recurse into a crash.
+/// Q08: a dependency tree over a valid 1,100-node chain must not crash through recursion.
 ///
-/// As in Python, the journal is written in-process, by the store's `append_events`, and bead runs
-/// on the store `BEAD_WORKSPACE` names in a `BEAD_HOME` of the test's own. It runs in the sandbox,
-/// outside any repository, with the environment a machine's runs have (the developer's harness,
-/// store and repository variables left out), so that nothing of the checkout the tests run from
-/// reaches it.
+/// Write the journal through the store's `append_events`, then run bead against the test's own
+/// `BEAD_HOME` and `BEAD_WORKSPACE`, outside any repository. The sandbox removes the developer's
+/// harness, store and repository variables.
 #[test]
 fn q08_deep_valid_dependency_tree_does_not_overflow() {
     let sandbox = crate::sandbox();

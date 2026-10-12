@@ -16,7 +16,7 @@ mod g26_object_format {
     /// Variables set for a run, over the environment it starts from.
     type Env = BTreeMap<OsString, OsString>;
 
-    /// `path` as the text git and bead are given, as Python's `str(path)` gives it.
+    /// The path as text passed to git and bead.
     fn text(path: &Path) -> &str {
         path.to_str().expect("a UTF-8 path")
     }

@@ -22,7 +22,7 @@ mod g06_https_token_in_the_user_position {
             .collect()
     }
 
-    /// `value[key]`, which must be there: Python's `value[key]` raises when it is not.
+    /// The member `key` of `value`; absence fails the test.
     fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
         value
             .get(key)

@@ -45,8 +45,8 @@ fn sync_under_a_controlling_terminal_cannot_prompt() {
     path.push(":");
     path.push(std::env::var_os("PATH").unwrap_or_default());
     env.insert("PATH".into(), path);
-    // bead is the session leader on the terminal, which is its controlling terminal and its
-    // standard input, output and error, as `os.login_tty` makes it in the Python test
+    // bead is session leader; the terminal is its controlling terminal and standard input, output
+    // and error.
     let line = format!(
         "exec {} sync --remote ssh://nowhere.invalid/x.git",
         quoted(a.executable().as_os_str())

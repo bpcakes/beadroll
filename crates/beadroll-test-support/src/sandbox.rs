@@ -6,12 +6,11 @@ use std::process::{Command, Stdio};
 
 use tempfile::TempDir;
 
-/// The variable that names the `bead` under test, as in `tests/support.py`.
+/// The environment variable selecting the binary under test.
 pub const UNDER_TEST: &str = "BEAD_UNDER_TEST";
 
-/// The `bead` a sandbox's machines run: `under_test` (the value of `BEAD_UNDER_TEST`) when it is
-/// set and not empty, as `support.py` reads it, else `default`. Both must be absolute paths,
-/// because the tests run `bead` from many directories; anything else panics.
+/// Selects a nonempty under_test value, otherwise default. Both must be absolute paths because
+/// commands run from multiple directories; relative paths panic during setup.
 pub fn select_bead(under_test: Option<&OsStr>, default: &Path) -> PathBuf {
     let (path, source) = match under_test.filter(|value| !value.is_empty()) {
         Some(value) => (PathBuf::from(value), UNDER_TEST),
@@ -41,9 +40,8 @@ pub fn built_bead() -> PathBuf {
     profile.join("bead")
 }
 
-/// One test's world, as `support.Sandbox` builds it: a temporary root holding `origin.git`, a bare
-/// remote whose `main` has one commit. Dropping it removes the root, after making everything in it
-/// writable again, since tests make stores read-only.
+/// A temporary sandbox with a bare origin.git whose main has one commit. Dropping restores write
+/// permissions and removes the root, including stores made read-only by tests.
 pub struct Sandbox {
     root: PathBuf,
     origin: PathBuf,
@@ -77,8 +75,8 @@ impl Sandbox {
             .prefix("bead-test-")
             .tempdir()
             .expect("a temporary directory for the sandbox");
-        // Resolved, as `Path.resolve()` resolves it in Python: on macOS the temporary directory is
-        // reached through a symlink, and the tests compare paths that bead prints.
+        // Resolve symlinks so paths match bead's output; macOS temporary directories are reached
+        // through a symlink.
         let root = dir.path().canonicalize().expect("the sandbox's own path");
         let sandbox = Sandbox {
             origin: root.join("origin.git"),
@@ -166,8 +164,8 @@ impl Drop for Sandbox {
     }
 }
 
-/// Runs `git ARGS` in `cwd` (the test's own directory when `None`) with the test's environment and
-/// returns its standard output, as `support.git` does; a failure panics with git's standard error.
+/// Runs git in cwd, or the inherited directory when absent, with the test environment and returns
+/// stdout. Failure panics with git's stderr.
 pub fn git<I, S>(args: I, cwd: Option<&Path>) -> String
 where
     I: IntoIterator<Item = S>,

@@ -24,7 +24,7 @@ pub(crate) struct OwnershipArgs {
     pub(crate) asked: String,
 }
 
-/// What a claim says of how it was made (Python's `CLAIM_NOTE`).
+/// The note describing how a claim was made.
 fn claim_note(mode: Mode) -> &'static str {
     match mode {
         Mode::Online => "confirmed",
@@ -33,9 +33,9 @@ fn claim_note(mode: Mode) -> &'static str {
     }
 }
 
-/// The receipt of a coordinated command (Python's `command_signature`): `json.dumps({"actor": ...,
-/// "args": ..., "request": ...}, sort_keys=True, default=str)`, byte for byte, so that either
-/// implementation recognises the other's retry.
+/// A coordinated command's receipt signature: actor, args and request as spaced JSON with sorted
+/// keys. The exact bytes are a compatibility contract so a retry recognises a receipt written by
+/// another version.
 pub(crate) fn command_signature(actor: &Actor, asked: &str, request: Option<&Value>) -> String {
     let json = |value: &Value| write(value, Format::SORTED_ASCII).unwrap_or_default();
     let request = request.map_or_else(|| "null".to_owned(), json);
@@ -45,9 +45,9 @@ pub(crate) fn command_signature(actor: &Actor, asked: &str, request: Option<&Val
     )
 }
 
-/// The claim step of a coordinated transaction (Python's `claim_builder`): each issue `keys` names
-/// claimed for the actor, generation one more than its last; with `takeover`, from its owner. A
-/// done issue, a disputed status, or (without `takeover`) someone else's claim refuses all of it.
+/// Claims each issue in `keys` for the actor, with generation one greater than its last;
+/// `takeover` replaces the owner. A done issue, disputed status or another owner's claim without
+/// `takeover` refuses the entire transaction.
 pub(crate) struct ClaimStep<'a> {
     pub(crate) actor: &'a Actor,
     pub(crate) keys: &'a [OsString],
@@ -114,9 +114,8 @@ impl ClaimStep<'_> {
     }
 }
 
-/// A retry recognised from its receipt answers for a claim accepted earlier, which may have moved
-/// on since (Python's `still_held`): it says so rather than report a claim the actor no longer
-/// holds.
+/// A retry recognised from its receipt may refer to a claim that has since changed hands. Report
+/// that change rather than reporting a claim the actor no longer holds.
 pub(crate) fn still_held(ctx: &Context<'_>, st: &State, keys: &[OsString]) -> Result<(), Failure> {
     let replica = replica_id(&ctx.ws.settings, true)?.unwrap_or_default();
     let me = ctx.actor.label(&replica);
@@ -270,7 +269,7 @@ pub(crate) fn release(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome
                 } else if issue.provisional_claims().iter().any(|p| me.is(&p.owner)) {
                     tx.emit("release", Some(&uid), Object::new(), None)?;
                 } else {
-                    // the label as it was given: Python's message holds its lone surrogates
+                    // Keep the label's original bytes for the error message.
                     let mut message = format!("{} is not claimed by ", issue.key()).into_bytes();
                     message.extend_from_slice(me.as_bytes());
                     if let Some(held) = held {

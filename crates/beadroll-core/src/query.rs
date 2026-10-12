@@ -1,5 +1,4 @@
-//! Reading the state (Python's `queries` and the readiness rule of `bead ready`): conflicts,
-//! blockers, descendants, readiness, and the cycles of the waits-for graph.
+//! Queries over state: conflicts, blockers, descendants, readiness and waits-for cycles.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
@@ -13,7 +12,7 @@ use crate::time::event_time;
 /// At most this many cycles are reported.
 pub const MAX_CYCLES: usize = 200;
 
-/// Whether a dependency type holds its issue until the target is done (Python's `BLOCKING`).
+/// Whether this dependency type blocks its issue until the target is done.
 pub fn blocking(kind: &str) -> bool {
     kind == "blocks"
 }
@@ -32,7 +31,7 @@ pub struct Alternative {
 }
 
 impl Alternative {
-    /// As Python's dict holds it, in its key order.
+    /// As a JSON object, in field order.
     pub fn to_value(&self) -> Object {
         let mut out = Object::new();
         out.insert("value".into(), self.value.clone());
@@ -303,7 +302,7 @@ pub(crate) fn split(field: Field, register: &IdMap<Value>) -> bool {
     }
 }
 
-/// A value as `json.dumps(value, sort_keys=True)` prints it: conflicts compare values so.
+/// Sorted-key JSON used to compare conflicting values.
 fn dumps(value: &Value) -> String {
     json::write(value, Format::SORTED_ASCII).unwrap_or_else(|_| format!("{value:?}"))
 }
@@ -373,8 +372,8 @@ where
     out
 }
 
-/// Every elementary cycle of the graph over `nodes` (Johnson's algorithm, without recursion), each
-/// written from its smallest member, at most [`MAX_CYCLES`] of them, in Python's order.
+/// Enumerates elementary cycles using iterative Johnson's algorithm. Each begins at its smallest
+/// member; return at most [`MAX_CYCLES`] in deterministic traversal order.
 pub fn find_cycles<N, F>(nodes: &[N], edges: &F) -> Vec<Vec<N>>
 where
     N: Clone + Ord + Hash,

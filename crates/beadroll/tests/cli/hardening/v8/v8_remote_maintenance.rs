@@ -73,8 +73,8 @@ impl Drop for RemoteGc {
 /// A failed maintenance command: its arguments and what it printed on standard error.
 type Failure = (Vec<&'static str>, String);
 
-/// `repack -adf`, `prune-packed` and `gc --auto` looping on the remote on a thread of their own
-/// until stopped, which dropping the loop does too: the Python test's `finally`.
+/// Loops remote `repack -adf`, `prune-packed` and `gc --auto` in a separate thread until stopped
+/// or dropped.
 struct Maintenance {
     stop: Arc<AtomicBool>,
     failures: Arc<Mutex<Vec<Failure>>>,

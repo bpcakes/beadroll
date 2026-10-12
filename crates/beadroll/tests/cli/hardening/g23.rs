@@ -8,7 +8,7 @@ mod g23_tracked_config_read_from_working_tree_only {
 
     use beadroll_test_support::{Json, Machine, Sandbox, git, parse_json};
 
-    /// `path` as the text git and bead are given, as Python's `str(path)` gives it.
+    /// The path as text passed to git and bead.
     fn text(path: &Path) -> &str {
         path.to_str().expect("a UTF-8 path")
     }

@@ -1,17 +1,13 @@
-//! The Rust `tests/support.py`: a [`Sandbox`] (one local bare remote, `origin.git`, whose `main`
-//! holds one commit) and [`Machine`]s (each with its own home, clone and identity) for black-box
-//! tests of `bead`, plus [`git`] and [`code`]. Nothing outside the sandbox is read or written.
+//! Black-box test fixtures: a [`Sandbox`] with a local bare remote and [`Machine`]s with
+//! independent homes, clones and identities. Tracker writes stay within the sandbox.
 //!
-//! Which `bead` a machine runs is always explicit (`docs/RUST-PORT.md` §4.4): the machine's own
-//! override ([`Machine::with_bead`]), else `BEAD_UNDER_TEST`, else the default the consuming test
-//! binary hands to [`Sandbox::new`]. In `crates/beadroll/tests/cli/main.rs` that default is
-//! `env!("CARGO_BIN_EXE_bead")`; this crate never expands the macro, because Cargo defines it only
-//! for the integration tests of the package that builds `bead`. The tests of the other crates hand
-//! it [`built_bead`], the `bead` Cargo built beside them. A sandbox whose `bead` does not exist
-//! fails its test at once and says how to build it.
+//! Binary selection is explicit: machine override ([`Machine::with_bead`]), then BEAD_UNDER_TEST,
+//! then the test binary's default supplied to [`Sandbox::new`]. CLI tests pass
+//! CARGO_BIN_EXE_bead; other crates use [`built_bead`]. A missing executable fails setup
+//! immediately.
 //!
-//! [`Json`] is beadroll-core's Python-compatible JSON, which reads what `bead --json` prints; the
-//! [`json!`] macro and [`events`] build the events core's integration tests replay.
+//! [`Json`] reads bead's JSON output; [`json!`] and [`events`] build records for core integration
+//! tests.
 #![allow(clippy::unwrap_used, reason = "a failed fixture is a failed test")]
 #![allow(clippy::expect_used, reason = "a failed fixture is a failed test")]
 #![allow(clippy::panic, reason = "a failed fixture is a failed test")]
@@ -25,7 +21,7 @@ pub use beadroll_core::json::Value as Json;
 pub use machine::{Invocation, Machine, Run, code};
 pub use sandbox::{Sandbox, UNDER_TEST, built_bead, git, select_bead};
 
-/// `text` read as a JSON document, as `json.loads` reads bead's output.
+/// Reads bead's output as a JSON document.
 pub fn parse_json(text: &str) -> Result<Json, String> {
     beadroll_core::json::from_text(text).map_err(|error| error.to_string())
 }

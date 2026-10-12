@@ -1,5 +1,5 @@
-//! Bringing a Beads JSONL export in (Python's `cmd_import` and `import_records`): ids, timestamps, relationships and
-//! unknown fields kept; one invalid record fails the whole import, before anything is written.
+//! Importing a Beads JSONL export, preserving ids, timestamps, relationships and unknown fields.
+//! One invalid record fails the whole import before anything is written.
 
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;

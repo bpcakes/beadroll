@@ -1,6 +1,5 @@
-//! G47: everything under BEAD_HOME is owner-only whatever the umask, the files bead writes beside
-//! a store's segments included. The third test, two torn fragments within one second, needs the
-//! `clock` failpoint, and is ported with it.
+//! G47: everything under BEAD_HOME, including files beside segments, is owner-only regardless of
+//! umask. The torn-fragment collision test uses the `clock` failpoint.
 
 /// G47: the store is not 'private by its own modes (0700/0600)': events/, events/<m>/, claims/,
 /// pending/, lock, *.torn-*, *.fork-* and all of sync.git (FETCH_HEAD with the remote URL, the
@@ -20,10 +19,8 @@ mod g47_store_is_private_by_its_own_modes {
         format!("'{}'", text.replace('\'', r"'\''"))
     }
 
-    /// A machine `name` whose every bead runs under umask 022, as the class's `setUp` has it. The
-    /// Python test sets its own process's umask, which every bead it starts inherits; a Rust test
-    /// may share its process with the tests running beside it, so here bead starts through a shell
-    /// that sets the umask and then becomes the sandbox's bead.
+    /// A machine whose bead commands run under umask 022. Set it in a shell that execs bead,
+    /// avoiding changes to the test process's shared umask.
     fn machine(sandbox: &Sandbox, name: &str) -> Machine {
         let wrapper = sandbox.root().join("bead-umask-022");
         if !wrapper.exists() {
@@ -167,16 +164,10 @@ mod g47_store_is_private_by_its_own_modes {
         assert_eq!(loose(m.home()), Vec::<String>::new());
     }
 
-    /// G47: (secondary) torn and fork copies are named by whole seconds, so a second fragment of
-    /// the same segment within one second overwrites the first one.
-    ///
-    /// Replaces `G47_StoreIsPrivateByItsOwnModes`'s
-    /// `test_g47_two_torn_fragments_in_one_second_are_both_kept`, which calls `repair_tail` twice
-    /// in process with `time.time` fixed at 1791394588.25. Rust has one clock, the `clock`
-    /// failpoint's, set for a whole run (`clock@always=at(NS)`): each fragment here is cut off by
-    /// a `sync` whose clock reads a moment of that second, the second one nanosecond after the
-    /// first, both 1791394588.25 to `time.time()`'s float. A `rust_only` test; the class's umask
-    /// has nothing to do with names, and is not set here.
+    /// G47: two torn fragments within one second must both survive. Run two syncs with
+    /// clock@always=at(NS), one nanosecond apart within second 1791394588.25. Both map to the
+    /// same floating-point second, exposing filename collisions. This build-specific clock test
+    /// does not depend on umask.
     #[test]
     fn g47_two_torn_fragments_in_one_second_are_both_kept() {
         let sandbox = crate::sandbox();

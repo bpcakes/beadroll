@@ -40,7 +40,7 @@ pub(crate) fn show(ctx: &Context<'_>, ids: &[OsString]) -> Result<Outcome, Failu
     Ok(Outcome::new(result, lines))
 }
 
-/// `value[key]` as Python's f-string prints it, or the empty string when it is not there.
+/// The member `key` rendered as text, or an empty string when absent.
 fn field(item: &Object, key: &str) -> String {
     item.get(key).map(str_of).unwrap_or_default()
 }
@@ -50,12 +50,12 @@ fn member<'v>(value: Option<&'v Value>, key: &str) -> Option<&'v Value> {
     value.and_then(|v| v.get(key))
 }
 
-/// Python's `text[:n]`: the first `n` characters.
+/// The first `n` Unicode scalar values of `text`.
 fn head(text: &str, n: usize) -> String {
     text.chars().take(n).collect()
 }
 
-/// Python's `value or default`, as text.
+/// The value as text, substituting `default` when it is falsy.
 fn or(value: Option<&Value>, default: &str) -> String {
     value
         .filter(|v| v.truthy())

@@ -1,5 +1,4 @@
-//! Local transactions (Python's `Tx`, `locked` and `writing`): one locked read-modify-append on
-//! this machine's own journal.
+//! Local transactions: one locked read-modify-append over this machine's journal.
 
 use std::fs::OpenOptions;
 use std::os::unix::fs::OpenOptionsExt as _;
@@ -138,9 +137,8 @@ impl<'a> Tx<'a> {
         }
     }
 
-    /// Emits one event: `op` on `issue` (the event itself when `None`) with `data`, under
-    /// `event_id` or a fresh one. It is checked by the rules replay applies, before it is minted,
-    /// and must nest at most [`MAX_NESTING`] levels so that every supported Python can read it back.
+    /// Emits op on issue, defaulting issue to the event itself, with data and a supplied or fresh
+    /// id. Validate before minting, including the [`MAX_NESTING`] write limit.
     pub fn emit(
         &mut self,
         op: &str,
@@ -183,8 +181,7 @@ impl<'a> Tx<'a> {
         }
         encode_events(std::slice::from_ref(&event))?;
         if !self.writable {
-            // the actor's text is not UTF-8: Python holds it as lone surrogates, which no event
-            // can be encoded with
+            // Invalid UTF-8 actor text cannot be encoded in an event.
             return Err(Error::Validation("text is not valid UTF-8".to_owned()));
         }
         let sequenced = !(OWNERSHIP.contains(&op) || self.conditional);
@@ -318,7 +315,7 @@ pub fn drop_pending(ws: &Workspace, attempts: &[Vec<Value>]) -> Result<(), Error
     Ok(())
 }
 
-/// Removes `path`; already gone is fine (Python's `unlink(missing_ok=True)`).
+/// Removes path, succeeding if already absent.
 pub fn remove(path: &Path) -> Result<(), Error> {
     match std::fs::remove_file(path) {
         Ok(()) => Ok(()),

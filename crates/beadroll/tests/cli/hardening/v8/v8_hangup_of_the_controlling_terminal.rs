@@ -1,16 +1,9 @@
-//! A controlling terminal that hangs up in the middle of bead's output ends bead by SIGHUP,
-//! quietly.
-//!
-//! The Python test holds the terminal's master itself: it reads at least 1 KiB, closes the master
-//! while bead is blocked writing the rest, and reads bead's status. A test without `unsafe` gets
-//! the terminal from a tool, and that tool must close the master while bead's status can still be
-//! read, before bead has written all its 61 KB. `script(1)` alone cannot: it closes the master only
-//! by exiting, which leaves bead to init, and it copies the terminal into a pipe that holds all of
-//! bead's output. On macOS the terminal comes from `expect`, which macOS ships: it reads the master
-//! itself, closes it and then waits for bead. Linux may not have `expect`; there `script` holds
-//! the terminal and copies it into a pipe the test has filled but for one page, so that it and bead
-//! block behind it, and the test, a subreaper, kills `script` once a KiB of bead's output has come
-//! through: the master closes, and bead falls to the test.
+//! A controlling-terminal hangup during output must end bead quietly by SIGHUP. Read at least 1
+//! KiB, then close the master while bead is still writing its 61 KB and collect its status. On
+//! macOS, `expect` owns and closes the master. On Linux, `script` copies output into a pipe
+//! filled except for one page, keeping bead blocked; the test acts as a subreaper, kills `script`
+//! to close the master and adopts bead to collect its status. This avoids unsafe terminal setup
+//! in the test process.
 
 use beadroll_test_support::{Machine, Sandbox};
 
@@ -38,10 +31,9 @@ fn hangup_of_the_controlling_terminal_ends_bead_quietly() {
     );
 }
 
-/// `expect`'s part: bead spawned as the session leader on a new terminal, every signal at its
-/// default as `spawn` leaves them (SIGHUP included: the Python test's preexec), its output read
-/// until at least 1024 bytes came or 30 seconds passed (or bead ended), the bytes written to the
-/// file `argv[0]`, the master closed, and bead's end printed as `wait` reports it.
+/// The `expect` driver starts bead as session leader with default signals, reads until 1024
+/// bytes, 30 seconds or process exit, writes captured bytes to `argv[0]`, closes the master and
+/// reports bead's status from `wait`.
 #[cfg(not(target_os = "linux"))]
 const EXPECT: &str = r#"log_user 0
 set got_file [lindex $argv 0]
@@ -118,14 +110,10 @@ fn hang_up(sandbox: &Sandbox, machine: &Machine, args: &[&str]) -> (Vec<u8>, Str
     (got, ended)
 }
 
-/// bead ARGS from `machine` on a terminal that hangs up after its first KiB: what the terminal
-/// showed until then, and how bead ended ("killed by SIGNAME" or "exited with N"). `script` holds
-/// the terminal, with bead as its session leader and SIGHUP at its default for it (`env
-/// --default-signal`, the Python test's preexec), and copies it into a pipe that the test filled
-/// beforehand but for one page: the pipe takes at most a page of bead's output, `script` then
-/// blocks and the terminal fills, so bead is still writing when the test, having seen a KiB of it
-/// arrive, kills `script` and with it the master. bead, whose parent is gone, falls to the test,
-/// a subreaper, which reads its status.
+/// Runs bead on a terminal that hangs up after the first KiB, returning captured text and exit
+/// status. `script` owns the master; bead is session leader with default SIGHUP. A pipe filled
+/// except for one page blocks output before completion. After observing a KiB, the test kills
+/// `script`, closing the master, then adopts and reaps bead as a subreaper.
 #[cfg(target_os = "linux")]
 fn hang_up(sandbox: &Sandbox, machine: &Machine, args: &[&str]) -> (Vec<u8>, String) {
     use std::ffi::OsStr;

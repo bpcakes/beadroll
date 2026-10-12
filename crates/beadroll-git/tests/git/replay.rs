@@ -1,4 +1,4 @@
-//! `tests/test_replay.py`, the tests of the URL rules.
+//! URL normalization tests.
 
 mod unit_test {
     use std::ffi::OsStr;

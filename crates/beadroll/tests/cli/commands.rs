@@ -1,4 +1,4 @@
-//! `tests/test_commands.py`, ported.
+//! Command behavior and compatibility tests.
 
 mod bp_test;
 mod commands_and_compatibility_review4;

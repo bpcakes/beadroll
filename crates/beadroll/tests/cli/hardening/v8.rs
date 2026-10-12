@@ -1,13 +1,10 @@
-//! V8: bead on a terminal, and bead against git maintenance. On a pseudo-terminal its output is
-//! the output a pipe gets, a transport cannot prompt on it, and its hang-up ends bead quietly;
-//! maintenance of the remote or of the private sync.git, and the repair of a remote that lost its
-//! tip, leave every machine converged. The helpers the classes share are here, one module per class
-//! below. `V8_Python312` becomes the CI matrix (`docs/RUST-PORT.md` §4.6).
+//! V8: terminal output matches pipe output, transport cannot prompt, and hangup ends bead
+//! quietly. Remote and local git maintenance, including repair of a lost remote tip, must
+//! preserve convergence.
 //!
-//! Rust test code has no `unsafe`, so the terminals come from external tools rather than from
-//! `openpty` and a `pre_exec`: `script(1)` makes a terminal whose session leader is the command it
-//! runs, as `os.login_tty` makes bead in the Python tests, and copies what is written to it to its
-//! own standard output. The hang-up needs more than that, and its module says what it uses.
+//! External tools create terminals without unsafe test code. `script` makes its child session
+//! leader and copies terminal output to stdout; the hangup tests document the additional setup
+//! they need. Platform coverage is checked by xtask's CI tests.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{OsStr, OsString};
@@ -107,7 +104,7 @@ impl Rng {
     }
 }
 
-/// The last `count` characters of `text`: Python's `text[-count:]`.
+/// The last `count` Unicode scalar values of `text`.
 fn tail(text: &str, count: usize) -> String {
     let chars: Vec<char> = text.chars().collect();
     chars[chars.len().saturating_sub(count)..].iter().collect()

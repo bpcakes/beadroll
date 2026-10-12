@@ -83,6 +83,12 @@ Read `README.md`, then each crate's `AGENTS.md` and code in the order above, the
 
 These were decided deliberately. Report problems *with* them, not their existence.
 
+- Rust APIs describe their role rather than the implementation language bead replaced
+  (roll-dih8.17): `op::IntegerField` retains the boolean or integer representation of a format-1
+  field, and text and path helpers name their parsing, trimming, casing and normalization
+  operations. These names do not relax the format or command-line contracts: old boolean integer
+  fields, exact integers, Unicode text rules and receipt bytes still have their established
+  meaning. Compatibility provenance remains in the port plan and tests.
 - Claims never expire; a missing owner needs a human `takeover`. No heartbeats.
 - The owner of a claim is the agent thread; a later session must `takeover` to continue.
 - `update --status in_progress` is a claim, and `create --status in_progress` is refused;

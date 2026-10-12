@@ -8,8 +8,7 @@ use beadroll_test_support::{Json, json};
 
 use super::{Fixture, id_of, journal, uid};
 
-/// SplitMix64: the deterministic stream the ancestry test draws from (Python's draws from
-/// `random.Random(71029)`; the property, not the stream, is what is checked).
+/// A deterministic SplitMix64 stream for ancestry property checks.
 struct Rng(u64);
 
 impl Rng {

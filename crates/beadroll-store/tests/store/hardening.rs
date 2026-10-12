@@ -1,4 +1,4 @@
-//! `tests/test_hardening.py`, the tests of the store.
+//! Store hardening tests.
 
 mod g25_first_sync_remote_is_frozen {
     use std::ffi::OsString;

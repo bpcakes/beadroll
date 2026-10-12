@@ -195,9 +195,8 @@ mod g19_client_hooks_on_private_pushes {
         h.assert_claim_and_sync_work(&issue);
     }
 
-    /// G19: the same for a git >= 2.54 config-based hook (`[hook "x"] event = pre-push`), which
-    /// core.hooksPath does not govern. Skipped, as the Python test is, where `git hook list` does
-    /// not list such a hook.
+    /// G19: config-based pre-push hooks in git >= 2.54 are not governed by `core.hooksPath`. Skip
+    /// if `git hook list` does not support such a hook.
     #[test]
     fn config_based_global_hook_does_not_block_claims() {
         let h = Hooks::set_up();

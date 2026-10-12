@@ -18,9 +18,7 @@ fn set_up(sandbox: &Sandbox) -> (Machine, String) {
     (a, key)
 }
 
-/// The id of the first comment of `key`'s record in `export`, the Beads JSONL bead exports: what
-/// `next(r for r in map(json.loads, export.splitlines()) if r['id'] == key)['comments'][0]['id']`
-/// reads.
+/// The first comment id in the exported record for key.
 fn first_comment_id(export: &str, key: &str) -> Json {
     let record = export
         .lines()

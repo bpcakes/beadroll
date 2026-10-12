@@ -10,10 +10,9 @@ use std::sync::{Arc, Mutex};
 /// that carried none.
 type Seen = Arc<Mutex<Vec<Option<String>>>>;
 
-/// `_g39_recording_server`: a local HTTP server that answers 401 until it is sent credentials, then
-/// 404. Returns its port and the list of Authorization headers it has seen. Like Python's
-/// `http.server` with a handler for GET alone, it speaks HTTP/1.0, closes each connection after its
-/// answer, and answers any other method 501 without recording it.
+/// A local HTTP/1.0 server that answers GET with 401 until credentials arrive, then 404. Returns
+/// its port and recorded Authorization headers. Each response closes the connection; other
+/// methods return 501 without being recorded.
 fn recording_server() -> (u16, Seen) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();

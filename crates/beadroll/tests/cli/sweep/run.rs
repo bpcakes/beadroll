@@ -1,6 +1,5 @@
-//! One schedule, as Python's `Run` drives it: a sandbox, three machines and an observer that only
-//! reads the remote; the tracker they share, the commands of the schedule, and every violation
-//! found on the way.
+//! One schedule: a sandbox, three machines, a read-only remote observer, their shared tracker,
+//! the commands and all violations found.
 
 use std::collections::BTreeMap;
 use std::fs::Permissions;
@@ -219,7 +218,7 @@ impl Run {
         for (machine, thread) in self.machines() {
             self.ok(machine, &["sync"], thread);
         }
-        // A machine that has written nothing yet has no identity: Python's None.
+        // A machine that has not written yet has no identity.
         let replica = [m1, m2, m3].map(|machine| {
             let info = self
                 .ok(machine, &["info"], A1)

@@ -7,7 +7,7 @@ mod g45_unresolved_imported_dependency_invisible {
     use beadroll_core::json::{Format, write};
     use beadroll_test_support::{Json, Machine, json};
 
-    /// `json.dumps(value)`: Python's default dialect, spaced and ASCII-escaped.
+    /// Spaced, ASCII-escaped JSON.
     fn dumps(value: &Json) -> String {
         write(value, Format::ASCII).expect("a value bead printed")
     }

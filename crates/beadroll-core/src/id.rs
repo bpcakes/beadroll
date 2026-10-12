@@ -1,5 +1,5 @@
-//! Event ids: UUIDv7 strings (`8-4-4-4-12` lowercase hex), held as numbers. Fixed width and
-//! lowercase, the strings order as the numbers do, so sorting and heaps agree with Python's.
+//! Event ids: fixed-width lowercase UUIDv7 strings (`8-4-4-4-12` hex), held as numbers. Numeric
+//! and lexical ordering agree.
 
 use std::fmt;
 
@@ -11,7 +11,7 @@ pub struct EventId(u128);
 const GROUPS: [usize; 5] = [8, 4, 4, 4, 12];
 
 impl EventId {
-    /// The id `text` spells, if it has the UUID shape exactly: Python's `UUID_RE`.
+    /// The event id spelled by `text`, if it matches the UUID shape exactly.
     pub fn parse(text: &str) -> Option<EventId> {
         let bytes = text.as_bytes();
         if bytes.len() != 36 {
@@ -49,7 +49,7 @@ impl EventId {
         self.0
     }
 
-    /// The milliseconds of its timestamp: the first 48 bits, as Python's `event_millis` reads them.
+    /// The timestamp in milliseconds, from the first 48 bits.
     pub fn millis(self) -> u64 {
         (self.0 >> 80) as u64
     }

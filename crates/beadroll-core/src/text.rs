@@ -1,17 +1,16 @@
-//! Python's text semantics where bead's messages and keys depend on them (`docs/RUST-PORT.md` §5):
-//! `repr()` and `str()` of the values `json.loads` produces, `isprintable()`, the two `strip()`s,
-//! the base-36 digests keys are made of, and `int()` and `float()` of a string.
+//! Text contracts used by bead's messages and keys (`docs/RUST-PORT.md` §5): value
+//! representations, escaping, whitespace trimming, base-36 digests and numeric parsing.
 
 mod number;
 mod printable;
 
-pub use number::{decimal_value, py_float, py_int, py_isdigit};
+pub use number::{decimal_value, is_digits, parse_float, parse_integer};
 
 use std::fmt::Write as _;
 
 use crate::json::{Value, float_repr};
 
-/// Whether CPython's `str.isprintable()` holds for `c`: `repr()` shows it as it is.
+/// Whether `c` can be shown unescaped by `repr`, according to the pinned printability table.
 pub fn is_printable(c: char) -> bool {
     let code = u32::from(c);
     printable::NON_PRINTABLE
@@ -27,16 +26,15 @@ pub fn is_printable(c: char) -> bool {
         .is_err()
 }
 
-/// A string as Python's `repr()` shows it: in single quotes unless it holds a single quote and no
-/// double quote, the quote and backslash escaped, and anything not printable as `\t`, `\n`, `\r`,
-/// `\xhh`, `\uhhhh` or `\Uhhhhhhhh`.
+/// A quoted string: use single quotes unless it contains single but no double quotes. Escape the
+/// delimiter, backslashes and nonprintable characters with short control escapes or `\xhh`,
+/// `\uhhhh` and `\Uhhhhhhhh`.
 pub fn repr_str(text: &str) -> String {
     repr_units(text.chars().map(Ok))
 }
 
-/// Bytes as the string `surrogateescape` decodes them to, as Python decodes a command line or a
-/// path: each character of the UTF-8 in them, and each byte that is not part of it, which Python
-/// keeps as the lone surrogate `U+DC00 + byte`.
+/// Decoded OS bytes: each valid UTF-8 character, or each invalid byte separately. The latter can
+/// be represented by surrogateescape as U+DC00 plus the byte.
 pub fn surrogateescaped(data: &[u8]) -> Vec<Result<char, u8>> {
     let mut units = Vec::with_capacity(data.len());
     let mut rest = data;
@@ -63,15 +61,13 @@ pub fn surrogateescaped(data: &[u8]) -> Vec<Result<char, u8>> {
     units
 }
 
-/// Bytes as Python's `repr()` shows the string `surrogateescape` decodes them to: UTF-8 as
-/// [`repr_str`] shows it, and each byte that is not part of it as the lone surrogate it becomes,
-/// `\udcXX`.
+/// A quoted representation of OS bytes. UTF-8 uses [`repr_str`] escaping; each invalid byte
+/// becomes a `\udcXX` escape.
 pub fn repr_bytes(data: &[u8]) -> String {
     repr_units(surrogateescaped(data).into_iter())
 }
 
-/// Bytes as Python prints the string `surrogateescape` decodes them to on a stream that replaces
-/// what it cannot encode, as bead's are: UTF-8 as it is, and a `?` for each byte that is not.
+/// OS bytes for human output: valid UTF-8 unchanged, each invalid byte replaced by `?`.
 pub fn printed_text(data: &[u8]) -> String {
     surrogateescaped(data)
         .into_iter()
@@ -79,10 +75,9 @@ pub fn printed_text(data: &[u8]) -> String {
         .collect()
 }
 
-/// Bytes as `json.dumps(text)` writes the string `surrogateescape` decodes them to, ASCII-escaped
-/// (`ensure_ascii`), quotes included: `\"`, `\\`, `\n` and the like, `\uXXXX` for everything
-/// outside printable ASCII (a surrogate pair beyond the BMP), and `\udcXX` for each byte that is
-/// not UTF-8.
+/// OS bytes as an ASCII-escaped JSON string, including quotes. Escape controls and characters
+/// outside printable ASCII, use surrogate pairs beyond the BMP and represent invalid UTF-8 bytes
+/// as `\udcXX`.
 pub fn json_ascii_bytes(data: &[u8]) -> String {
     let mut out = String::with_capacity(data.len() + 2);
     out.push('"');
@@ -157,8 +152,8 @@ fn repr_units(units: impl Iterator<Item = Result<char, u8>> + Clone) -> String {
     out
 }
 
-/// A value as Python's `repr()` shows the object `json.loads` made of it: `None`, `True`, `1.5`,
-/// `'text'`, `[1, 'a']`, `{'k': None}`.
+/// The established human-readable value representation: `None`, `True`, `1.5`, `'text'`, `[1,
+/// 'a']`, `{'k': None}`.
 pub fn repr(value: &Value) -> String {
     let mut out = String::new();
     write_repr(&mut out, value);
@@ -202,7 +197,7 @@ fn write_repr(out: &mut String, value: &Value) {
     }
 }
 
-/// A value as Python's `str()` shows it: a string as it is, anything else as `repr()`.
+/// A string unchanged, or any other value formatted with `repr`.
 pub fn str_of(value: &Value) -> String {
     match value {
         Value::Str(text) => text.clone(),
@@ -210,19 +205,18 @@ pub fn str_of(value: &Value) -> String {
     }
 }
 
-/// Whether `c` is whitespace to Python's `str.isspace()` and `str.strip()`: Unicode's, and the
-/// separators U+001C to U+001F too.
+/// Whether `c` is Unicode whitespace or a separator from U+001C through U+001F.
 pub fn is_space(c: char) -> bool {
     c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c)
 }
 
-/// `text.strip()`: without the whitespace Python's `str` sees at either end.
+/// Text without surrounding whitespace, using [`is_space`].
 pub fn strip(text: &str) -> &str {
     text.trim_matches(is_space)
 }
 
-/// `data.strip()` on bytes: without the ASCII whitespace Python's `bytes` sees at either end
-/// (space, `\t`, `\n`, `\r`, `\x0b`, `\x0c`).
+/// Bytes without surrounding ASCII space, tab, newline, carriage return, vertical tab or form
+/// feed.
 pub fn strip_bytes(data: &[u8]) -> &[u8] {
     let space = |b: &u8| matches!(b, b' ' | b'\t' | b'\n' | b'\r' | 0x0B | 0x0C);
     let start = data.iter().position(|b| !space(b)).unwrap_or(data.len());
@@ -247,8 +241,8 @@ pub fn shell_quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', "'\"'\"'"))
 }
 
-/// Bead's base-36 digest of `bytes`, read as one big-endian number: least significant digit first,
-/// as Python's `b36` builds it.
+/// A base-36 digest treating `bytes` as a big-endian integer and writing its least significant
+/// digit first.
 pub fn b36(bytes: &[u8]) -> String {
     const DIGITS: &[u8; 36] = b"0123456789abcdefghijklmnopqrstuvwxyz";
     let mut number: Vec<u8> = bytes.iter().copied().skip_while(|b| *b == 0).collect();
@@ -289,10 +283,10 @@ mod tests {
 
     #[test]
     fn bytes_that_are_not_utf8_read_as_surrogateescape_makes_them() {
-        // Python: repr(b"a\xe2\x82b'".decode("utf-8", "surrogateescape"))
+        // Invalid bytes remain separate surrogate escapes beside valid text and quotes.
         assert_eq!(repr_bytes(b"a\xe2\x82b'"), "\"a\\udce2\\udc82b'\"");
         assert_eq!(printed_text(b"a\xffb\xe2\x82"), "a?b??");
-        // Python: json.dumps(b'"\\\n\x7f\xc3\xa9\xf0\x9f\x98\x80\xff\x08\x0c\x01'.decode(...))
+        // ASCII JSON escapes cover controls, Unicode and invalid OS bytes.
         assert_eq!(
             json_ascii_bytes(b"\"\\\n\x7f\xc3\xa9\xf0\x9f\x98\x80\xff\x08\x0c\x01"),
             r#""\"\\\n\u007f\u00e9\ud83d\ude00\udcff\b\f\u0001""#
@@ -322,7 +316,7 @@ mod tests {
 
     #[test]
     fn shell_quote_matches_python() {
-        // Python: shlex.quote(text) for each
+        // Shell quoting must preserve each argument as one word.
         assert_eq!(shell_quote("git@host:o/r.git"), "git@host:o/r.git");
         assert_eq!(shell_quote(""), "''");
         assert_eq!(shell_quote("a b"), "'a b'");
@@ -332,7 +326,7 @@ mod tests {
 
     #[test]
     fn b36_matches_python() {
-        // Python: b36(bytes.fromhex("00ff10")) == "sde1", b36(b"") == "", b36(b"\x00") == ""
+        // Zero and empty bytes both have an empty digest; 00ff10 gives sde1.
         assert_eq!(b36(&[0x00, 0xff, 0x10]), "sde1");
         assert_eq!(b36(&[]), "");
         assert_eq!(b36(&[0]), "");

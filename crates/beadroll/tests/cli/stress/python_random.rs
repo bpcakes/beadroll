@@ -1,7 +1,7 @@
-//! CPython's `random.Random`, as far as the models draw from it: the Mersenne Twister (MT19937) of
-//! `Modules/_randommodule.c`, seeded from an integer as `random.seed` seeds it, and `randrange`,
-//! `choice` and weighted `choices` built on it as `Lib/random.py` builds them (unchanged from
-//! Python 3.11 to 3.14). A seed therefore makes the very choices Python's model made with it.
+//! A deterministic generator matching CPython's `random.Random`: MT19937 with integer seeding,
+//! `randrange`, `choice` and weighted `choices`. The algorithm matches `Modules/_randommodule.c`
+//! and `Lib/random.py` in Python 3.11–3.14 so recorded seeds reproduce the established stress
+//! scenarios.
 
 /// The words of the generator's state, and the offset of its second tap.
 const N: usize = 624;
@@ -154,8 +154,8 @@ impl Rng {
     }
 }
 
-/// The 32-bit words of a seed's stream, as `getrandbits(32)` gives them in CPython, for a seed of
-/// one word, of none (0) and of two.
+/// Expected 32-bit stream words for one-word, zero and two-word seeds, captured with CPython's
+/// `getrandbits(32)`.
 #[test]
 fn words_are_cpythons() {
     let words = |seed, n| {
@@ -178,7 +178,7 @@ fn words_are_cpythons() {
     );
 }
 
-/// `random()`, `getrandbits` past 32 bits and `randrange` past them, as CPython draws them.
+/// Expected floats and wide integer draws, captured with CPython's random API.
 #[test]
 fn floats_and_wide_draws_are_cpythons() {
     let mut rng = Rng::new(0);
@@ -192,8 +192,8 @@ fn floats_and_wide_draws_are_cpythons() {
     assert_eq!(rng.below(1_000_000_000_000), 317_471_819_536);
 }
 
-/// The draws the models make, in turn, as CPython makes them from a worker's seed: a weighted
-/// action, a choice among 36, `randrange(5)`, `randrange(40, 100)` and a choice among one.
+/// Expected model draws from a worker seed: weighted action, choice among 36, ranges 5 and
+/// 40–100, and choice among one.
 #[test]
 fn model_draws_are_cpythons() {
     let weights = [28, 8, 6, 14, 6, 5, 5, 5, 8, 5, 4, 6];

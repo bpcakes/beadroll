@@ -1,5 +1,5 @@
-//! The parser against what CPython 3.14's `loads_strict` answers (each expectation was read from
-//! it); until the cutover `cargo xtask diff json` checked the rest at volume.
+//! Fixed JSON parsing expectations, including error messages and positions, captured from the
+//! CPython 3.14 reference (`docs/RUST-PORT.md` §5).
 
 use super::*;
 use crate::json::{Format, write};

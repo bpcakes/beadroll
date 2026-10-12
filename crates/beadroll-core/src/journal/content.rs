@@ -1,12 +1,9 @@
-//! What a record holds, as one digest (roll-dih8.11): two records hold the same content exactly
-//! when their digests are equal, as Python's `canonical` (sorted keys, compact) tells contents
-//! apart: object members in any order, floats by their bits (`-0.0` is not `0.0`), the rest
-//! exactly. A content is encoded so that no two contents encode alike: each value's kind named,
-//! every string and list given its length, an integer its digits and an end, each object's members
-//! taken in the order of their keys, without recursion, so that a value of any depth has one. The
-//! encoding is then hashed twice with SipHash-1-3 under keys drawn for the journal, 128 bits that
-//! nobody without the keys can make two contents share; the keys never leave the process, and only
-//! contents one journal holds are compared.
+//! A record's content digest (roll-dih8.11). Comparison ignores object member order,
+//! distinguishes floats by their bits (including signed zero) and otherwise preserves values
+//! exactly. The unambiguous encoding includes value kinds and lengths, integer digits and sorted
+//! object keys; traversal is iterative. Hash it twice with SipHash-1-3 under per-journal random
+//! keys to obtain 128 bits. Keys stay in-process, and only contents within the same journal are
+//! compared.
 
 use std::hash::{BuildHasher as _, RandomState};
 use std::io::Write as _;
@@ -123,7 +120,7 @@ mod tests {
             digest(r#"{"a": 1, "b": {"x": [1, 2], "y": null}}"#),
             digest(r#"{"b":{"y":null,"x":[1,2]},"a":1}"#)
         );
-        // a repeated key keeps its last value at its first key's place, as Python reads it
+        // A repeated key keeps its last value at the first key's position.
         assert_eq!(digest(r#"{"a": 1, "a": 2}"#), digest(r#"{"a": 2}"#));
     }
 

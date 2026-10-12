@@ -10,7 +10,7 @@ use std::sync::{Arc, LazyLock};
 use crate::event::{FORMAT, event_problem, payload_problem};
 use crate::id::EventId;
 use crate::json::{self, Format, Object, Value};
-use crate::op::{Op, PyInt};
+use crate::op::{IntegerField, Op};
 use crate::text::str_of;
 
 use super::content::{Digest, Digester};
@@ -90,9 +90,9 @@ static TAKEN: LazyLock<Rest> = LazyLock::new(|| Rest {
     counter: 0,
 });
 
-/// Python's `value != n` for an integer field: `true` equals 1.
+/// Whether an integer field equals `n`, mapping true to 1 and false to 0.
 fn same_int(value: &Value, n: i64) -> bool {
-    PyInt::read(value).is_some_and(|value| value == PyInt::from(n))
+    IntegerField::read(value).is_some_and(|value| value == IntegerField::from(n))
 }
 
 impl Rest {
@@ -274,7 +274,7 @@ impl Event {
         self.rest().place.as_deref()
     }
 
-    /// Whether its payload says it came from an import: Python's `data.get("imported")`.
+    /// Whether the payload's `imported` member is truthy.
     pub fn imported(&self) -> bool {
         self.rest().imported
     }

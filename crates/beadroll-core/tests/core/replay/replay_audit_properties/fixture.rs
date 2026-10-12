@@ -91,7 +91,7 @@ impl Fixture {
             .to_owned()
     }
 
-    /// Changes the recorded event `eid` in place, as the Python tests edit their dicts.
+    /// Modifies the recorded event `eid` in place.
     pub(crate) fn edit(&mut self, eid: &str, change: impl FnOnce(&mut Object)) {
         let event = self
             .events

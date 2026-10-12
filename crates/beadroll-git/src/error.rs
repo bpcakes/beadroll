@@ -1,19 +1,18 @@
-//! What can go wrong when git runs, and how an operating-system error reads (Python's `OSError`).
+//! Git execution failures and operating-system error formatting.
 
 use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// An operating-system error as bead reports it (code `IO`): `"{strerror}: {path}"` when it concerns
-/// a path, as Python's command line formats an `OSError` with a filename, else Python's
-/// `str(OSError)`, `"[Errno N] {strerror}"`. Never Rust's `" (os error N)"`.
+/// An IO error formatted as `{strerror}: {path}` when a path is present, otherwise `[Errno N]
+/// {strerror}`. Omits the standard library's `(os error N)` suffix.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IoError {
     /// The error number, when the error came from the operating system.
     pub errno: Option<i32>,
     /// The system's text for it (`strerror`), or the whole message of an error with no number.
     pub strerror: String,
-    /// The path it concerns: for a rename, its target, as Python's `filename2`.
+    /// The affected path; for rename errors, the destination.
     pub path: Option<PathBuf>,
 }
 
@@ -53,8 +52,7 @@ impl fmt::Display for IoError {
 
 impl std::error::Error for IoError {}
 
-/// The system's text for an error, as C's `strerror` (and Python's `OSError.strerror`) give it:
-/// Rust's message without its `" (os error N)"` suffix.
+/// The system's strerror text without the standard library's `(os error N)` suffix.
 pub fn strerror(error: &io::Error) -> String {
     let text = error.to_string();
     match error.raw_os_error() {
@@ -74,7 +72,7 @@ pub enum Error {
     Timeout {
         /// git's first argument (`fetch`, `push`).
         command: String,
-        /// The time allowed, as Python's `{timeout:.0f}` prints it.
+        /// The allowed duration rounded to zero decimal places.
         seconds: String,
     },
     /// git failed (code `GIT_ERROR`): `"git {the first two arguments}: {what git said}"`, or
@@ -89,8 +87,8 @@ pub enum Error {
     /// git could not be started, or its output could not be kept (code `IO`).
     #[error("{0}")]
     Io(IoError),
-    /// The caller's `GIT_CONFIG_COUNT` is not a number, so settings cannot be added after its own
-    /// (code `CONFIG`): Python dies with a traceback there (`docs/RUST-PORT.md` §5 row 26).
+    /// The caller's GIT_CONFIG_COUNT cannot be parsed, so extra settings cannot safely be
+    /// appended; reported as CONFIG.
     #[error("GIT_CONFIG_COUNT is {0:?}, not a number of configuration settings")]
     ConfigCount(String),
 }

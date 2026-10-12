@@ -6,9 +6,9 @@ use std::sync::LazyLock;
 
 use regex_lite::Regex;
 
-use crate::text::{py_splitlines, py_strip};
+use crate::text::{split_lines, strip};
 
-/// git's own read errors about objects of the repository it runs in (Python's `LOCAL_DAMAGE`).
+/// Git's own read errors about local repository objects.
 static LOCAL_DAMAGE: LazyLock<Option<Regex>> = LazyLock::new(|| {
     Regex::new(concat!(
         r"object file .* is empty|corrupt or missing|cannot read existing object info|",
@@ -20,7 +20,7 @@ static LOCAL_DAMAGE: LazyLock<Option<Regex>> = LazyLock::new(|| {
     .ok()
 });
 
-/// What a remote says when it names objects it no longer has (Python's test in `Link.fetch`).
+/// Remote errors reporting objects missing from the remote's repository.
 static REMOTE_LACKS: LazyLock<Option<Regex>> = LazyLock::new(|| {
     Regex::new(concat!(
         r"not our ref|bad (?:tree |blob |commit )?object|unable to read [0-9a-f]{40}|",
@@ -53,10 +53,10 @@ fn relayed(line: &str) -> bool {
     line.starts_with("remote:") || line.contains("upload-pack:")
 }
 
-/// Whether git's complaint is about the local repository's own objects: its own read errors,
-/// never a line the remote relayed (those are the remote's objects). Python's `local_damage`.
+/// Whether git reports damage to local objects. Relayed remote lines concern remote objects and
+/// are excluded.
 pub fn local_damage(said: &str) -> bool {
-    let local: Vec<&str> = py_splitlines(said)
+    let local: Vec<&str> = split_lines(said)
         .into_iter()
         .filter(|line| !relayed(line))
         .collect();
@@ -65,7 +65,7 @@ pub fn local_damage(said: &str) -> bool {
 
 /// Whether a failed fetch's relayed lines say the remote lacks objects its ref names.
 pub fn remote_lacks_objects(said: &str) -> bool {
-    let relayed: Vec<&str> = py_splitlines(said)
+    let relayed: Vec<&str> = split_lines(said)
         .into_iter()
         .filter(|line| relayed(line))
         .collect();
@@ -82,7 +82,7 @@ pub fn lost_to_other_fetch(said: &str, namespace: &str) -> bool {
         format!("bad object {namespace}"),
         format!("cannot lock ref '{namespace}"),
     );
-    py_splitlines(said)
+    split_lines(said)
         .into_iter()
         .filter(|line| !relayed(line))
         .any(|line| line.contains(&listed) || line.contains(&locked))
@@ -114,7 +114,7 @@ pub fn push_outcome(
     refspec: &str,
 ) -> (PushOutcome, String) {
     let stdout = String::from_utf8_lossy(stdout);
-    let status: Option<Vec<&str>> = py_splitlines(&stdout)
+    let status: Option<Vec<&str>> = split_lines(&stdout)
         .into_iter()
         .map(|line| line.split('\t').collect::<Vec<&str>>())
         .find(|fields| fields.get(1) == Some(&refspec));
@@ -129,14 +129,14 @@ pub fn push_outcome(
         .copied()
         .unwrap_or_default();
     let mut parts = vec![summary.to_owned()];
-    for line in py_splitlines(&said) {
-        let trimmed = py_strip(line);
+    for line in split_lines(&said) {
+        let trimmed = strip(line);
         if !trimmed.is_empty() && !line.starts_with("To ") && !line.starts_with("hint:") {
             parts.push(trimmed.to_owned());
         }
     }
     let joined = parts.join(" ");
-    let mut error = py_strip(&joined).to_owned();
+    let mut error = strip(&joined).to_owned();
     if error.is_empty() {
         error = format!("git push exited {returncode}");
     }

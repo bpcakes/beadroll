@@ -10,9 +10,9 @@ use beadroll_store::{machine_aliases, view_outline};
 
 use super::{Context, Failure, Outcome, need_tracker};
 
-/// Every claim, by issue key: the confirmed owners (with their machine, thread, generation, branch
-/// and how long since their thread last wrote), offline claims and this machine's attempts that
-/// await the remote. `now` is the time in seconds (Python's `time.time()`).
+/// Every claim, by issue key: confirmed owners with machine, thread, generation, branch and time
+/// since their thread last wrote; offline claims; and this machine's attempts awaiting the
+/// remote. `now` is seconds since the epoch.
 pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
     let st = view_outline(ctx.ws)?;
     need_tracker(&st)?;

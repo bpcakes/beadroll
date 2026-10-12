@@ -6,9 +6,8 @@
 
 use beadroll_test_support::{Run, parse_json};
 
-/// `_g53_error`: the code and message of a failed `--json` call; `TRACEBACK` and the standard
-/// error when bead crashed (a Python traceback, a Rust panic or a fatal signal), and `None` and
-/// the standard error when it holds no structured error.
+/// A failed JSON call's code and message; a crash returns `TRACEBACK` with stderr, and no
+/// structured error returns `None` with stderr.
 fn g53_error(run: &Run) -> (Option<String>, String) {
     if run.crashed() {
         return (Some("TRACEBACK".to_owned()), run.stderr.clone());

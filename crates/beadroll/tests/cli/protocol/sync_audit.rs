@@ -81,7 +81,7 @@ fn jsonl(dir: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// `support.git("--git-dir", origin, ARGS)`: what git ARGS printed, run on the sandbox's remote.
+/// Runs git against the sandbox remote and returns stdout.
 fn remote_git(sandbox: &Sandbox, args: &[&str]) -> String {
     let words = [OsStr::new("--git-dir"), sandbox.origin().as_os_str()];
     git(words.into_iter().chain(args.iter().map(OsStr::new)), None)
@@ -106,13 +106,10 @@ fn wait_marker(marker: &Path, worker: &mut Worker) {
     assert!(marker.exists(), "instrumented fault point was not reached");
 }
 
-/// `git_wrapper`: a `PATH` whose first `git` holds up the transport operation `action` (`push` or
-/// `fetch`) for 20 seconds, and runs every other git command unchanged. With `after`, it performs
-/// the operation first, then leaves `marker` and waits before it answers with git's status: the
-/// remote has the push, bead has not heard. Without, it leaves `marker` and waits first. The
-/// Python wrapper is a Python script that sleeps in its own process; this one is a shell script
-/// whose `sleep` is a child, left to run out its 20 seconds when bead kills git's client alone, as
-/// it does when a push times out.
+/// A git wrapper delays push or fetch for 20 seconds. With `after`, run the operation before
+/// creating `marker` and waiting, simulating a lost acknowledgement; otherwise mark and wait
+/// first. Other git calls pass through. The shell's sleep child can outlive the client killed on
+/// push timeout and finishes after its 20 seconds.
 fn git_wrapper(sandbox: &Sandbox, action: &str, marker: &Path, after: bool) -> OsString {
     let folder = sandbox.root().join(format!("wrapper-{action}"));
     std::fs::create_dir_all(&folder).unwrap();
@@ -155,12 +152,9 @@ fn quoted(path: &Path) -> String {
     format!("'{}'", text.replace('\'', r"'\''"))
 }
 
-/// A `bead` running beside the test, as `subprocess.Popen` starts one: nothing on its standard
-/// input, its output piped and read to the end on threads of their own, so that it never waits for
-/// the test to read. One started `alone` leads a process group of its own, which a kill takes
-/// whole: what `start_new_session=True` gives the Python test for `os.killpg`, without the new
-/// session, which only code between fork and exec could ask for. A worker dropped while it runs is
-/// killed and reaped: the Python tests' `finally` blocks.
+/// A bead process with empty stdin and output drained concurrently. When `alone`, it leads a
+/// separate process group so a kill reaches the whole group. Dropping a running worker kills and
+/// reaps it.
 struct Worker {
     child: Child,
     alone: bool,
@@ -206,9 +200,8 @@ impl Worker {
         }
     }
 
-    /// `communicate(timeout)`: waits for it to end and for the end of its output, and returns what
-    /// it printed. Not done within `timeout`, the test fails, as `TimeoutExpired` fails the Python
-    /// test; without one, it waits as long as that takes.
+    /// Waits for process and output completion, returning captured output. Exceeding `timeout`
+    /// fails the test; without a timeout, waits indefinitely.
     fn communicate(&mut self, timeout: Option<Duration>) -> Run {
         let until = timeout.map(|timeout| Instant::now() + timeout);
         let status = loop {

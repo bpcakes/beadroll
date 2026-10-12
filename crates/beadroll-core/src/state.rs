@@ -1,5 +1,4 @@
-//! What replay builds (Python's `State` and its issue dicts): the issues in replay order, with every
-//! register, tag and claim record Python keeps, and what every event had seen.
+//! Replayed state: issues in replay order, their registers, tags and claims, and event ancestry.
 
 mod claim;
 mod issue;
@@ -50,8 +49,8 @@ pub struct Rename {
 }
 
 impl Integrity {
-    /// The row as Python holds it: `event`, `issue`, `problem`, and `origin` for a record a reader
-    /// could not use.
+    /// An integrity row with event, issue and problem, plus origin for a record the reader could
+    /// not use.
     pub fn to_value(&self) -> crate::json::Object {
         let mut members = crate::json::Object::new();
         members.insert("event".into(), self.event.clone().into());
@@ -65,7 +64,7 @@ impl Integrity {
 }
 
 impl Rename {
-    /// The rename as Python holds it: `from`, `to`, `replica`, `uid`.
+    /// The rename as an object with from, to, replica and uid.
     pub fn to_value(&self) -> crate::json::Object {
         let mut members = crate::json::Object::new();
         members.insert("from".into(), Value::from(self.from.as_str()));
@@ -76,8 +75,8 @@ impl Rename {
     }
 }
 
-/// Why replay cannot finish: every free key a renamed copy could take is taken. Python raises it
-/// out of replay, so every command on such a tracker fails with `KEY_SPACE`.
+/// Replay cannot finish when all candidate keys for a duplicate are taken. Commands on that
+/// tracker return KEY_SPACE.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("cannot derive a free key from {key}")]
 pub struct KeySpace {
@@ -226,12 +225,12 @@ impl State {
         &self.knowledge.chain_breaks
     }
 
-    /// Whether the writer of `event` had already seen `other` (Python's `State.saw`).
+    /// Whether the writer of `event` had already seen `other`.
     pub fn saw(&self, event: EventId, other: EventId) -> bool {
         self.knowledge.saw(event, other)
     }
 
-    /// The issue a key or a bare suffix names (Python's `State.resolve`).
+    /// The issue named by a full key or bare suffix.
     pub fn resolve(&self, key: &str) -> Option<&Issue> {
         let uid = self.by_key.get(key).or_else(|| {
             let prefix = self
@@ -243,13 +242,12 @@ impl State {
         self.issue(*uid)
     }
 
-    /// The key of the issue `uid` names, or `uid` itself when that is not an issue
-    /// (Python's `State.key`).
+    /// The key of issue `uid`, or `uid` itself if it names no issue.
     pub fn key_of<'a>(&'a self, uid: &'a str) -> &'a str {
         self.issue_named(uid).map_or(uid, Issue::key)
     }
 
-    /// Who wrote `event`, as bead names an actor (Python's `State.who`).
+    /// The actor who wrote `event`, formatted as an actor label.
     pub fn who(&self, event: EventId) -> String {
         self.knowledge.who(event).unwrap_or_default()
     }
@@ -270,7 +268,7 @@ impl State {
         taken
     }
 
-    /// The key a copy of `key` (issue `uid`) keeps when `key` is taken (Python's `State.free_key`).
+    /// The key assigned to duplicate issue `uid` when `key` is taken.
     pub fn free_key(&self, key: &str, uid: EventId) -> Result<String, KeySpace> {
         let taken = self.claimed_keys();
         key::free_key(key, &uid.to_string(), &|candidate| {
@@ -281,8 +279,8 @@ impl State {
         })
     }
 
-    /// A key no issue has and no imported dependency waits for (Python's `mint_key`): a child of
-    /// `parent` counts on from its siblings; anything else is the prefix and a digest of `seed`.
+    /// A key held by neither an issue nor an imported dependency. Children count upward from
+    /// siblings; other keys use the prefix and seed digest.
     pub fn mint_key(&self, seed: &str, parent: Option<&Issue>) -> Result<String, key::MintError> {
         let taken = self.claimed_keys();
         let taken: Vec<&str> = taken.into_iter().collect();
@@ -301,8 +299,8 @@ impl State {
             .unwrap_or_default()
     }
 
-    /// Lists one of this machine's unconfirmed ownership attempts on its issue, counting for
-    /// nothing (what Python's `view` adds to a replay). `false` when it names no issue.
+    /// Lists a local unconfirmed ownership attempt without making it count as ownership. Returns
+    /// false if it names no issue.
     pub fn add_unconfirmed(&mut self, event: &Value) -> bool {
         let uid = event
             .get("issue")
@@ -361,13 +359,12 @@ impl State {
     }
 }
 
-/// How bead names the actor of an event (Python's `actor_label`): its name, or `agent:thread@machine`,
-/// or `agent@machine`.
+/// An event's actor label: its explicit name, else agent:thread@machine or agent@machine.
 pub fn actor_of(event: &Event) -> String {
     actor_label(event.actor(), event.replica())
 }
 
-/// Python's `actor_label(event.get("actor") or {}, replica)`.
+/// The event's actor label, using an empty actor when absent or falsy.
 pub fn actor_label(actor: Option<&Value>, replica: &str) -> String {
     let member = |key: &str| actor.and_then(|actor| actor.get(key));
     if let Some(name) = member("name").filter(|name| name.truthy()) {

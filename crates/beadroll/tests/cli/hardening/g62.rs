@@ -5,10 +5,9 @@ use std::process::{Command, Stdio};
 
 use beadroll_test_support::{Machine, Sandbox};
 
-/// `_g62_refused_checkout`: a sandbox and its machine `a`, whose checkout git refuses for dubious
-/// ownership under `locale`. git's own knob `GIT_TEST_ASSUME_DIFFERENT_OWNER` runs the real
-/// ownership check as if another user owned it. `None` when this git does not honour the knob, as
-/// git itself answers in the C locale: the Python test skips.
+/// A sandbox whose checkout git refuses for dubious ownership under `locale`.
+/// `GIT_TEST_ASSUME_DIFFERENT_OWNER` invokes the real ownership check. Return `None` when git
+/// does not honour it, as determined under the C locale.
 fn refused_checkout(locale: &str) -> Option<(Sandbox, Machine)> {
     let sandbox = crate::sandbox();
     let mut a = Machine::new(&sandbox, "a");
@@ -76,7 +75,7 @@ mod g62_dubious_ownership {
 
     use super::{refused_checkout, translates};
 
-    /// `json.loads(proc.stderr)["error"]`'s code and message, which must be there.
+    /// The error code and message from JSON stderr, both required.
     fn error(run: &Run) -> (String, String) {
         let document = parse_json(&run.stderr).unwrap();
         let error = document.get("error").expect("an error");

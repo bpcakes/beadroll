@@ -99,8 +99,7 @@ fn reads_work_when_the_store_is_read_only() {
         .status()
         .unwrap();
     assert!(status.success(), "chmod -R a-w {}", a.home().display());
-    // The sandbox gives write access back when it drops, as the Python test's `finally` does,
-    // however the reads went.
+    // The sandbox restores write access when dropped, even if a read fails.
     assert_eq!(a.show(&key)["title"].as_str(), Some("readable"));
     assert_eq!(a.bead(["list"]).unwrap()["total"].as_i64(), Some(1));
     assert_eq!(length(&a.bead(["ready"]).unwrap()), 1);

@@ -1,5 +1,4 @@
-//! A create applied (Python's `apply_event` for `create`, and `materialise_dangling`): the issue it
-//! makes, and the imported dependencies on keys that become edges once the key exists.
+//! Applies a create and turns imported dependencies on its key into edges once the key exists.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -148,7 +147,7 @@ fn new_issue(event: &Doing<'_>, create: &Create, key: String, who: &str, when: &
     issue
 }
 
-/// A comment an imported record carried, as Python keeps it: `{"uid": None, **comment}`.
+/// An imported comment with uid defaulting to null, followed by the imported fields.
 fn imported_comment(comment: &Object) -> Comment {
     let mut members = Object::new();
     members.insert("uid".into(), Value::Null);

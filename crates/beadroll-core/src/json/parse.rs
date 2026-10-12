@@ -1,14 +1,12 @@
-//! Reading JSON as Python bead's `loads_strict` reads bytes: decoded as UTF-8 with lone surrogates
-//! kept, refused when nested deeper than [`MAX_DEPTH`], then parsed as CPython's `json` scanner
-//! parses (its error messages and positions included), with `NaN`, `Infinity` and non-finite numbers
-//! refused and integers limited to [`MAX_DIGITS`] digits.
+//! Strict JSON reading with surrogate-aware UTF-8 decoding and nesting limited to [`MAX_DEPTH`].
+//! Reject NaN, Infinity and non-finite numbers; limit integers to [`MAX_DIGITS`] digits. Error
+//! messages and character positions follow the established JSON contract.
 
 use indexmap::IndexMap;
 
 use super::{Int, MAX_DIGITS, Object, Value};
 
-/// The deepest arrays and objects nest in a text bead reads: every supported Python reads this far
-/// (`docs/RUST-PORT.md` §5 row 7, decided 2026-10-09).
+/// Maximum array and object nesting accepted by readers (`docs/RUST-PORT.md` §5 row 7).
 pub const MAX_DEPTH: usize = 512;
 
 /// A text read as JSON.
@@ -21,7 +19,7 @@ pub struct Parsed {
     pub lone_surrogates: bool,
 }
 
-/// Why a text is not JSON bead reads. `Display` is Python's message.
+/// Why a text cannot be read as JSON.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum ParseError {
     /// Not UTF-8, even allowing lone surrogates.
@@ -39,10 +37,10 @@ pub enum ParseError {
          use sys.set_int_max_str_digits() to increase the limit"
     )]
     IntDigits(usize),
-    /// Not JSON: CPython's message, then where, in characters.
+    /// A JSON syntax diagnostic and its position in characters.
     #[error("{message}: line {line} column {column} (char {position})")]
     Syntax {
-        /// What CPython's scanner says.
+        /// The syntax diagnostic.
         message: &'static str,
         /// The line, from 1.
         line: usize,
@@ -75,8 +73,8 @@ pub fn parse(bytes: &[u8]) -> Result<Parsed, ParseError> {
     })
 }
 
-/// How deeply `bytes` nest arrays and objects, read as Python's `nesting` reads them: a string is one
-/// token whatever brackets it holds, and nothing is checked.
+/// Counts array and object nesting in bytes without validating syntax. A quoted string is one
+/// token regardless of brackets inside it.
 pub fn nesting(bytes: &[u8]) -> usize {
     let (mut depth, mut deepest, mut at) = (0isize, 0isize, 0);
     while let Some(&byte) = bytes.get(at) {
@@ -116,8 +114,8 @@ fn string_token_end(bytes: &[u8], mut at: usize) -> usize {
     bytes.len()
 }
 
-/// UTF-8 as Python decodes it with `surrogatepass`: an encoded surrogate (`ED A0 80` to `ED BF BF`)
-/// passes, anything else invalid does not.
+/// UTF-8 decoding that permits encoded surrogates (`ED A0 80` through `ED BF BF`) but rejects
+/// other invalid sequences.
 fn check_utf8(bytes: &[u8]) -> Result<(), ParseError> {
     let mut rest = bytes;
     loop {
@@ -136,16 +134,15 @@ fn check_utf8(bytes: &[u8]) -> Result<(), ParseError> {
     }
 }
 
-/// An open container, while its contents are read. Every value carries whether it holds a lone
-/// surrogate: Python reports one only if it survives in what is read, not in a value a repeated key
-/// replaced.
+/// An open container during parsing. Each value tracks lone surrogates so only those surviving
+/// duplicate-key replacement are reported.
 enum Frame {
     Array { items: Vec<Value>, surrogate: bool },
     Object { members: Members, key: Key },
 }
 
-/// A key read from the text, kept as its bytes when it holds a lone surrogate: Python merges repeated
-/// keys first as written, and only then as read with U+FFFD.
+/// A parsed key, retaining raw bytes if it contains a lone surrogate. Merge repeated keys first
+/// by original spelling, then by decoded spelling with U+FFFD.
 #[derive(Default)]
 struct Key {
     text: String,
@@ -200,7 +197,7 @@ impl Parser<'_> {
         at
     }
 
-    /// A syntax error at byte `at`, with CPython's line, column and character position.
+    /// A syntax error at byte `at`, reported with line, column and character position.
     fn syntax(&self, message: &'static str, at: usize) -> ParseError {
         let before = self.bytes.get(..at).unwrap_or(self.bytes);
         let position = before.iter().filter(|b| (**b & 0xC0) != 0x80).count();
@@ -483,8 +480,8 @@ impl Parser<'_> {
             }
             let hex = escape + 1;
             let mut end = hex + 4;
-            // CPython 3.14 refuses an escape that runs past the end; one that ends there is read,
-            // and the string is then unterminated.
+            // An escape extending past the end is invalid. One ending there is read, then the
+            // string is reported as unterminated.
             if end > self.char_end_limit() {
                 return Err(self.syntax("Invalid \\uXXXX escape", escape));
             }
@@ -512,8 +509,8 @@ impl Parser<'_> {
         }
     }
 
-    /// The bound CPython compares an escape's end with: the text's length. In bytes it is the same
-    /// bound wherever an escape is ASCII, which is the only place it is used.
+    /// The text length used to bound an escape. Byte and character bounds agree for ASCII
+    /// escapes, the only case using this helper.
     fn char_end_limit(&self) -> usize {
         self.bytes.len()
     }

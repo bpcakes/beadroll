@@ -54,14 +54,14 @@ fn settle(machines: &[&Machine], key: &str) -> Json {
     expected
 }
 
-/// `value[key]` as Python indexes a dict: the member, or the test fails.
+/// The member `key` of `value`; absence fails the test.
 fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
     value
         .get(key)
         .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
 }
 
-/// The claim a successful `bead ... --json` printed: `json.loads(run.stdout)[0]["claim"]`.
+/// The claim in the first issue returned by a successful JSON command.
 fn claim_of(run: &Run) -> Json {
     let printed = parse_json(&run.stdout)
         .unwrap_or_else(|error| panic!("bead printed no JSON ({error}): {}", run.stdout));
@@ -289,13 +289,9 @@ fn set_stamps(machine: &Machine, key: &str) -> Vec<i64> {
     .collect()
 }
 
-/// The clock moves a day back between two edits of one register: the later edit, which has seen
-/// the earlier, settles it, with no conflict, although it is stamped earlier.
-///
-/// Python's driver loads bead with `time.time_ns` a day behind for the whole run; here the Rust
-/// `bead` (`rust_only`) makes the second edit with `clock@always=offset(-1d)`, every reading of its
-/// clock shifted. Since causality would decide the register the same way with the clock right, the
-/// port also shows that it was not: the second edit is stamped more than 23 hours before the first.
+/// A later edit that has seen the earlier one must settle it despite a clock moving backward.
+/// Inject `clock@always=offset(-1d)` for the second edit and verify its timestamp is over 23
+/// hours earlier, proving both the clock shift and causal resolution.
 #[test]
 fn clock_moves_back_but_later_observed_edit_settles_register() {
     let sandbox = crate::sandbox();

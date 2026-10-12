@@ -48,7 +48,7 @@ mod g63_settle_keeps_line_level_integrity_reports {
             .next()
             .expect("a segment of the machine's own journal");
         let text = std::fs::read_to_string(&segment).unwrap();
-        // `splitlines()`: the events here are ASCII, with none of the other breaks Python splits at
+        // The events are ASCII and have no line separator other than newline.
         let first_event = text.lines().next().expect("an event");
         let foreign = a.store().join("events/fffffff0/000001.jsonl");
         std::fs::create_dir(foreign.parent().unwrap()).unwrap();

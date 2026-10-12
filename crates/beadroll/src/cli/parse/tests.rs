@@ -1,4 +1,4 @@
-//! What Python's parser answers for each command line, as `./bead` printed it.
+//! Expected parser results and errors for command-line arguments.
 
 use super::*;
 use crate::cli::spec::{COMMANDS, Kind};
@@ -299,7 +299,7 @@ fn bytes_that_are_not_utf8_stay_as_given() {
     };
     let limit = message(vec!["list".into(), "--limit".into(), raw.clone()]);
     assert_eq!(limit, b"argument --limit: invalid int value: 'x\\udcff'");
-    // the bytes as they came: Python prints `?` for them, and JSON escapes them
+    // Keep the original bytes: human output substitutes `?`, while JSON escapes them.
     let extra = message(vec!["create".into(), "t".into(), raw]);
     assert_eq!(extra, b"unrecognized arguments: x\xff");
     let ambiguous = message(vec![

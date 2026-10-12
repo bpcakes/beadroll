@@ -6,8 +6,8 @@ use std::path::Path;
 use beadroll_core::json::{Format, write};
 use beadroll_test_support::{Json, Machine, json};
 
-/// `_g15_record`: one Beads record, as Python's `json.dumps` writes it: `key`, titled `title`, of
-/// type `kind`, with a dependency of each `(key, type)` in `deps`.
+/// A Beads JSON record with `key`, `title`, `kind` and a dependency for each `(key, type)` in
+/// `deps`.
 fn record(key: &str, title: &str, deps: &[(&str, &str)], kind: &str) -> String {
     let dependencies: Vec<Json> = deps
         .iter()

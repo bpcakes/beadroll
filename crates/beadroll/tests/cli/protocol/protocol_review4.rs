@@ -17,7 +17,7 @@ use beadroll_test_support::{Json, Machine, git, json, parse_json};
 /// back: the lost acknowledgement.
 const CRASH_AFTER_PUSH: &str = "BEAD_TEST_CRASH_AFTER_PUSH";
 
-/// `json.dumps(value, separators=(",", ":"))`: compact, ASCII-escaped.
+/// Compact, ASCII-escaped JSON.
 const COMPACT_ASCII: Format = Format {
     style: Style::Compact,
     ascii: true,
@@ -95,8 +95,8 @@ fn read_text(path: &Path) -> String {
         .unwrap_or_else(|error| panic!("cannot read {}: {error}", path.display()))
 }
 
-/// `text` split into lines as Python's `str.splitlines()` splits it: at `\n`, `\r\n`, `\r`, `\v`,
-/// `\f`, `\x1c`, `\x1d`, `\x1e`, `\x85`, U+2028 or U+2029, without a last empty line.
+/// Splits text at newline, CRLF, carriage return, vertical tab, form feed, U+001C–U+001E, U+0085,
+/// U+2028 and U+2029, without a final empty line.
 fn splitlines(text: &str) -> Vec<&str> {
     let mut lines = Vec::new();
     let mut start = 0;
@@ -335,7 +335,7 @@ fn q04_future_manifest_is_refused_without_remote_rewrite() {
         at,
     );
     let origin = sandbox.origin().to_str().expect("a UTF-8 path");
-    // `support.git("--git-dir", str(self.box.origin), *args)`
+    // Runs git against the sandbox's bare remote.
     let at_origin = |args: &[&str]| git(["--git-dir", origin].iter().chain(args), None);
     let future_tip = at_origin(&["rev-parse", "refs/beads/journal"]);
     let future_tip = future_tip.trim();

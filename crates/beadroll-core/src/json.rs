@@ -1,15 +1,11 @@
-//! JSON as bead's Python implementation reads and writes it (`docs/RUST-PORT.md` §2.3a), so that a
-//! Rust and a Python machine sharing a tracker never read a line differently or write bytes the
-//! other would rewrite.
+//! JSON contracts for stored data and output (`docs/RUST-PORT.md` §2.3a).
 //!
-//! - [`parse()`] reads bytes as `loads_strict` does: UTF-8 with lone surrogates kept (each reads as one
-//!   U+FFFD and is reported), no deeper than [`MAX_DEPTH`], with `NaN`, `Infinity` and numbers too
-//!   large for a float refused, integers exact within [`MAX_DIGITS`] digits, and a repeated key
-//!   keeping its last value in its first place.
-//! - [`write()`] prints a value in one of Python's `json.dumps` dialects ([`Format`]), floats as
-//!   `repr()` prints them.
-//! - [`Surrogates`] keeps the lone surrogates Python reads a file's escapes as, through a parse and
-//!   a write, for the files bead must hand back as Python would.
+//! [`parse()`] reads UTF-8, replacing and reporting each lone surrogate as one U+FFFD. Nesting is
+//! bounded by [`MAX_DEPTH`]; non-finite numbers are refused; integers are exact within
+//! [`MAX_DIGITS`]. A repeated key keeps its last value in its first position.
+//!
+//! [`write()`] uses the selected [`Format`] and shortest round-tripping float representations.
+//! [`Surrogates`] preserves lone surrogate escapes across whole-file updates.
 
 mod int;
 mod parse;
@@ -23,13 +19,13 @@ pub use parse::{MAX_DEPTH, ParseError, Parsed, nesting, parse};
 pub use surrogates::{Surrogates, lone_surrogate_escapes};
 pub use write::{Format, Style, WriteError, float_repr, write};
 
-/// A JSON object: its members in the order Python's dict keeps them.
+/// A JSON object with members in insertion order.
 pub type Object = IndexMap<String, Value>;
 
-/// A JSON value as Python holds one after `json.loads`.
+/// A JSON value.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
-    /// `null`, Python's `None`.
+    /// JSON null.
     Null,
     /// `true` or `false`.
     Bool(bool),
@@ -64,7 +60,7 @@ pub(crate) fn member<'a>(members: &'a Object, key: &str) -> Option<&'a Value> {
 }
 
 impl Value {
-    /// The member `key`, if this is an object that has it: Python's `value.get(key)` on a dict.
+    /// The member `key`, if this is an object containing it.
     pub fn get(&self, key: &str) -> Option<&Value> {
         match self {
             Value::Object(members) => member(members, key),
@@ -112,7 +108,8 @@ impl Value {
         }
     }
 
-    /// Python's truth value: `None`, `False`, zero, and empty strings, arrays and objects are false.
+    /// Null, false, zero and empty strings, arrays and objects are falsy; all other values are
+    /// truthy.
     pub fn truthy(&self) -> bool {
         match self {
             Value::Null => false,
@@ -125,7 +122,7 @@ impl Value {
         }
     }
 
-    /// Whether arrays and objects nest more than `limit` deep: Python's `too_deep`, without recursion.
+    /// Whether arrays and objects nest more than `limit` deep, checked without recursion.
     pub fn deeper_than(&self, limit: usize) -> bool {
         let mut stack = vec![(self, 1usize)];
         while let Some((value, depth)) = stack.pop() {
@@ -166,7 +163,7 @@ impl std::ops::Index<usize> for Value {
     }
 }
 
-/// `text` read as JSON, as `json.loads` reads a string (a lone surrogate reads as U+FFFD).
+/// Reads text as JSON, replacing lone surrogates with U+FFFD.
 pub fn from_text(text: &str) -> Result<Value, ParseError> {
     parse(text.as_bytes()).map(|parsed| parsed.value)
 }

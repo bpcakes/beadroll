@@ -1,11 +1,7 @@
-//! `test_check.SweepFailureReporting`, ported (`docs/RUST-PORT.md` §4.6): the sweep fails when a
-//! schedule fails, in the slice and in the full sweep alike, and passes when none does; and its
-//! slice keeps retrying the owner's close and delete interrupted before publishing (G12). A
-//! schedule whose fault never fired fails, and the slice stops a sync at its push
-//! (roll-dih8.10). Where
-//! Python patched `schedules`, `SLICE` and `run_schedule`, a synthetic report stands in for the run
-//! of a sweep whose every list is that one schedule. These tests live beside the sweep they check,
-//! whose runner is test code of this binary that xtask cannot reach.
+//! Sweep reporting must fail if any schedule fails, in the default slice or full sweep. The slice
+//! includes retries of interrupted owner close/delete and a sync interrupted at push. A schedule
+//! whose fault never fires also fails. Synthetic reports exercise reporting without running the
+//! protocol. These tests live beside the sweep runner, which is test code inaccessible to xtask.
 
 use super::call::Rc;
 use super::sweep::{Report, selected, verdict};

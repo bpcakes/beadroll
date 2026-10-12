@@ -16,7 +16,7 @@ mod g50_machines_name_keeps_aliases_it_could_not_read {
         json!({"abcd0001": "desktop", "abcd0002": "ci"})
     }
 
-    /// `json.dumps(OTHERS, indent=1) + "\n"`: the names as a well-formed `aliases.json`.
+    /// The aliases as one-space-indented JSON with a final newline.
     fn well_formed() -> String {
         write(&others(), Format::INDENTED).expect("the names") + "\n"
     }

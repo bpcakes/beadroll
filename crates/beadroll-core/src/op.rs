@@ -1,7 +1,6 @@
-//! What an event asks replay to do (`docs/RUST-PORT.md` §2.3b): its operation, each with a typed
-//! payload, read the way Python's `apply_event` reads `data` once `payload_problem` has passed it
-//! (`data.get(key) or default`). An event that fails validation is never applied, so its payload is
-//! read leniently: a member of the wrong type reads as absent.
+//! An event's typed operation (`docs/RUST-PORT.md` §2.3b). Payloads are read only after
+//! validation; invalid events are never applied. A member of the wrong type therefore reads as
+//! absent, and missing or falsy members use operation-specific defaults.
 
 use std::cmp::Ordering;
 use std::fmt;
@@ -9,23 +8,24 @@ use std::fmt;
 use crate::event::Field;
 use crate::json::{Int, Object, Value};
 
-/// An integer field as Python holds it: `True` and `False` are integers too, so replay accepts
-/// them where an integer is due (`docs/RUST-PORT.md` §5 row 1). It compares and sorts by its number
-/// (`True` equals 1) and prints as Python's `str()` does (`[PTrue]`).
+/// An integer field read from a format-1 event, retaining a legacy boolean representation.
+/// Replay accepts booleans in integer fields of old histories (`docs/RUST-PORT.md` §5 row 1).
+/// Comparison uses their numeric values (`true` equals 1, `false` equals 0), while JSON keeps
+/// the original type and display keeps the established `True`/`False` spelling (`[PTrue]`).
 #[derive(Clone, Debug)]
-pub enum PyInt {
+pub enum IntegerField {
     /// `true` or `false`.
     Bool(bool),
     /// An integer.
     Int(Int),
 }
 
-impl PyInt {
+impl IntegerField {
     /// The integer `value` holds, if it holds one (a boolean is one).
-    pub fn read(value: &Value) -> Option<PyInt> {
+    pub fn read(value: &Value) -> Option<IntegerField> {
         match value {
-            Value::Bool(flag) => Some(PyInt::Bool(*flag)),
-            Value::Int(int) => Some(PyInt::Int(int.clone())),
+            Value::Bool(flag) => Some(IntegerField::Bool(*flag)),
+            Value::Int(int) => Some(IntegerField::Int(int.clone())),
             _ => None,
         }
     }
@@ -33,57 +33,57 @@ impl PyInt {
     /// Its number: `True` is 1.
     pub fn number(&self) -> Int {
         match self {
-            PyInt::Bool(flag) => Int::from(i64::from(*flag)),
-            PyInt::Int(int) => int.clone(),
+            IntegerField::Bool(flag) => Int::from(i64::from(*flag)),
+            IntegerField::Int(int) => int.clone(),
         }
     }
 
     /// As JSON.
     pub fn to_value(&self) -> Value {
         match self {
-            PyInt::Bool(flag) => Value::Bool(*flag),
-            PyInt::Int(int) => Value::Int(int.clone()),
+            IntegerField::Bool(flag) => Value::Bool(*flag),
+            IntegerField::Int(int) => Value::Int(int.clone()),
         }
     }
 
-    /// Whether it is zero (or `False`): Python's falsiness.
+    /// Whether it is zero or `false`.
     pub fn is_zero(&self) -> bool {
         self.number() == Int::from(0)
     }
 }
 
-impl From<i64> for PyInt {
-    fn from(value: i64) -> PyInt {
-        PyInt::Int(Int::from(value))
+impl From<i64> for IntegerField {
+    fn from(value: i64) -> IntegerField {
+        IntegerField::Int(Int::from(value))
     }
 }
 
-impl PartialEq for PyInt {
-    fn eq(&self, other: &PyInt) -> bool {
+impl PartialEq for IntegerField {
+    fn eq(&self, other: &IntegerField) -> bool {
         self.number() == other.number()
     }
 }
 
-impl Eq for PyInt {}
+impl Eq for IntegerField {}
 
-impl PartialOrd for PyInt {
-    fn partial_cmp(&self, other: &PyInt) -> Option<Ordering> {
+impl PartialOrd for IntegerField {
+    fn partial_cmp(&self, other: &IntegerField) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for PyInt {
-    fn cmp(&self, other: &PyInt) -> Ordering {
+impl Ord for IntegerField {
+    fn cmp(&self, other: &IntegerField) -> Ordering {
         self.number().cmp(&other.number())
     }
 }
 
-impl fmt::Display for PyInt {
+impl fmt::Display for IntegerField {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PyInt::Bool(true) => f.write_str("True"),
-            PyInt::Bool(false) => f.write_str("False"),
-            PyInt::Int(int) => write!(f, "{int}"),
+            IntegerField::Bool(true) => f.write_str("True"),
+            IntegerField::Bool(false) => f.write_str("False"),
+            IntegerField::Int(int) => write!(f, "{int}"),
         }
     }
 }
@@ -117,7 +117,7 @@ pub struct Claiming {
     /// Why, for a takeover.
     pub reason: Option<String>,
     /// The generation its writer saw.
-    pub generation: Option<PyInt>,
+    pub generation: Option<IntegerField>,
 }
 
 /// What a release, close or delete carries.
@@ -291,7 +291,7 @@ impl Op {
                 mode: text(data, "mode"),
                 takeover: text(data, "takeover"),
                 reason: text(data, "reason"),
-                generation: data.get("generation").and_then(PyInt::read),
+                generation: data.get("generation").and_then(IntegerField::read),
             })),
             "release" => Op::Release(ending(data)),
             "close" => Op::Close(ending(data)),

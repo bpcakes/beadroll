@@ -6,7 +6,7 @@ mod g64_writes_on_a_broken_own_chain {
     use beadroll_core::json::{Format, Style, write};
     use beadroll_test_support::{Json, Machine, code, parse_json};
 
-    /// `json.dumps(value, separators=(",", ":"))`: compact, ASCII-escaped.
+    /// Compact, ASCII-escaped JSON.
     const COMPACT_ASCII: Format = Format {
         style: Style::Compact,
         ascii: true,
@@ -27,7 +27,7 @@ mod g64_writes_on_a_broken_own_chain {
         found
     }
 
-    /// The last `count` characters of `text`: Python's `text[-count:]`.
+    /// The last `count` Unicode scalar values of `text`.
     fn tail(text: &str, count: usize) -> String {
         let skip = text.chars().count().saturating_sub(count);
         text.chars().skip(skip).collect()
@@ -72,7 +72,7 @@ mod g64_writes_on_a_broken_own_chain {
             .next()
             .expect("a segment of the machine's own journal");
         let text = std::fs::read_to_string(&segment).unwrap();
-        // `splitlines()`: the events here are ASCII, with none of the other breaks Python splits at
+        // The events are ASCII and have no line separator other than newline.
         let mut lines: Vec<String> = text.lines().map(str::to_owned).collect();
         let mut bad = parse_json(lines.last().expect("an event")).unwrap();
         forked(&mut bad);

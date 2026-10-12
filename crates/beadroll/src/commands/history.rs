@@ -16,9 +16,9 @@ use beadroll_store::{
 
 use super::{Context, Failure, Outcome, resolve_arg};
 
-/// The tracker's events in causal order (`init` left out), or one issue's: when, which machine,
-/// agent and thread, the operation and the issue. A `limit` keeps the last that many; a negative
-/// one leaves that many off the start, as Python's `rows[-limit:]` does.
+/// The tracker's events in causal order, excluding `init`, or one issue's events: time, machine,
+/// agent, thread, operation and issue. A positive `limit` keeps the last that many; a negative
+/// limit leaves that many off the start.
 pub(crate) fn log(
     ctx: &Context<'_>,
     key: Option<&OsStr>,
@@ -148,10 +148,9 @@ pub(crate) fn machines(ctx: &Context<'_>, name: Option<&OsStr>) -> Result<Outcom
     Ok(Outcome::new(Value::Array(rows), lines))
 }
 
-/// Records `ID=ALIAS` in `aliases.json`, keeping every name already there; a file that cannot
-/// be read is never replaced. Bytes of the name that are not UTF-8 are kept as Python keeps them,
-/// lone surrogates, and so is any lone surrogate the file holds: the file is rewritten as Python's
-/// `json.dumps` writes it.
+/// Records `ID=ALIAS` in `aliases.json`, retaining existing names. An unreadable file is never
+/// replaced. Invalid UTF-8 bytes in the name become lone surrogate escapes, and existing lone
+/// surrogates survive the JSON rewrite.
 fn record_alias(ctx: &Context<'_>, name: &OsStr) -> Result<(), Failure> {
     let bytes = name.as_bytes();
     let (ident, alias) = match bytes.iter().position(|b| *b == b'=') {
