@@ -35,15 +35,17 @@ pub struct Tx<'a> {
     pub actor: Value,
     /// This machine's id.
     pub replica: String,
-    /// The store's projection, every event emitted so far applied to it; `None` once one was
-    /// emitted that it could not take, as replay would apply it (a takeover, a machine's first
+    /// The store's projection, the events emitted applied to it up to `applied`; `None` once one
+    /// was emitted that it could not take as replay would apply it (a takeover, a machine's first
     /// record): the state is then the journal replayed with them.
     projection: Option<Projection>,
     /// The frontier, with the events emitted so far: what a new event builds on.
     heads: Vec<EventId>,
-    /// Every event emitted so far, and whether it is a record of this machine's journal (else of
-    /// the attempt).
-    emitted: Vec<(Value, bool)>,
+    /// Every event emitted so far, as a journal records it.
+    emitted: Vec<Record>,
+    /// How many of them the projection has: the rest are applied when the state is asked for,
+    /// together, as an import emits many before it asks.
+    applied: usize,
     /// The checkout's branch and commit, recorded on each event.
     pub place: Option<Value>,
     /// Sequential events emitted, to append.
@@ -72,6 +74,7 @@ impl<'a> Tx<'a> {
             heads: projection.heads().to_vec(),
             projection: Some(projection),
             emitted: Vec::new(),
+            applied: 0,
             place,
             pending: Vec::new(),
             ownership: Vec::new(),
@@ -83,13 +86,29 @@ impl<'a> Tx<'a> {
 
     /// The state the journal replays into, with every event emitted so far.
     pub fn state(&mut self) -> Result<&State, Error> {
+        if self.applied < self.emitted.len()
+            && let Some(projection) = self.projection.take()
+        {
+            let records = self
+                .emitted
+                .get(self.applied..)
+                .unwrap_or_default()
+                .to_vec();
+            self.applied = self.emitted.len();
+            if let Extended::Applied(projection) = projection.extend(records)? {
+                self.projection = Some(*projection);
+            }
+        }
         if let Some(projection) = &self.projection {
             return Ok(projection.state());
         }
         if self.state.is_none() {
             let mut journal = load_journal(self.ws)?;
-            for (event, sequenced) in &self.emitted {
-                journal.add(event.clone(), &self.replica, "", *sequenced);
+            for record in &self.emitted {
+                let Record {
+                    value, sequenced, ..
+                } = record;
+                journal.add(value.clone(), &self.replica, "", *sequenced);
             }
             self.state = Some(replay(journal)?);
         }
@@ -156,19 +175,13 @@ impl<'a> Tx<'a> {
         }
         // later emits build on it
         self.heads = EventId::parse(&id).into_iter().collect();
-        self.emitted.push((event.clone(), sequenced));
+        self.emitted.push(Record {
+            value: event.clone(),
+            replica: self.replica.clone(),
+            origin: String::new(),
+            sequenced,
+        });
         self.state = None;
-        if let Some(projection) = self.projection.take() {
-            let record = Record {
-                value: event.clone(),
-                replica: self.replica.clone(),
-                origin: String::new(),
-                sequenced,
-            };
-            if let Extended::Applied(projection) = projection.extend(vec![record])? {
-                self.projection = Some(*projection);
-            }
-        }
         Ok(event)
     }
 }
