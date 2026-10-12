@@ -95,12 +95,21 @@ impl Projection {
             return Ok(Extended::Replay);
         };
         let mut knowledge = std::mem::take(&mut self.state.knowledge);
-        let (mut room, names) = (Room::default(), Names::default());
-        for at in ordered {
-            let (Some((id, event)), Some(what)) = (events.get_index(at), doing.get(at)) else {
+        // Every new record in its place first, as replay places every record before it observes
+        // any: whether one builds on its predecessor is asked of the predecessor in the journal,
+        // which may come later in the order they apply in.
+        let mut placed = Vec::with_capacity(events.len());
+        for (id, event) in &events {
+            let Some(at) = knowledge.push(event.clone(), numbers.get(id).copied()) else {
                 return Ok(Extended::Replay);
             };
-            let Some(placed) = knowledge.push(event.clone(), numbers.get(id).copied()) else {
+            placed.push(at);
+        }
+        let (mut room, names) = (Room::default(), Names::default());
+        for at in ordered {
+            let (Some((_, event)), Some(what), Some(&placed)) =
+                (events.get_index(at), doing.get(at), placed.get(at))
+            else {
                 return Ok(Extended::Replay);
             };
             let causes: Vec<u32> = (event.deps().iter())

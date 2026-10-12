@@ -160,6 +160,13 @@ fn every_batch_replay_applies_otherwise_is_declined() {
                 record(set(5, &[3]), HERE, true),
             ],
         ),
+        (
+            "a record that does not build on its predecessor, which sorts after it",
+            vec![
+                record(set(5, &[3]), HERE, true),
+                record(set(4, &[3]), HERE, true),
+            ],
+        ),
     ];
     for (case, batch) in cases {
         assert!(declines(batch), "{case}");
