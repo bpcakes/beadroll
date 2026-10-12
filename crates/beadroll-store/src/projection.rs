@@ -11,7 +11,8 @@
 //! replay would apply otherwise) and a projection that is missing, unreadable, damaged or written
 //! by another build of bead: the journal is replayed. A projection made is written back, whole or
 //! not at all, when the files it was made from held still while they were read and every segment
-//! ended with a whole line, never into a store that is not there. Deleting it is safe at any moment.
+//! ended with a whole line, never into a store that is not there. Deleting it is safe at any
+//! moment.
 
 mod file;
 
@@ -292,8 +293,8 @@ fn appended(
     Ok(Some((records, now)))
 }
 
-/// The bytes of the file at `path` from `from` up to its length when it was opened, and its identity
-/// up to there; `None` when it is not there.
+/// The bytes of the file at `path` from `from` up to its length when it was opened, and its
+/// identity up to there; `None` when it is not there.
 fn read_from(path: &Path, from: u64) -> Result<Option<(Vec<u8>, FileKey)>, ViewError> {
     let mut file = match File::open(path) {
         Ok(file) => file,

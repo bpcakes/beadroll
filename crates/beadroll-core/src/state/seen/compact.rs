@@ -38,7 +38,8 @@ impl Knowledge {
 
     /// Takes `event` after every event here, at position `number` of its machine's journal when it
     /// is one of its records (`None` for an attempt's), and says where it is. Its machine must have
-    /// a journal here already when it is: chains are numbered by machine. `None` when that is not so.
+    /// a journal here already when it is: chains are numbered by machine. `None` when that is not
+    /// so.
     pub(crate) fn push(&mut self, event: Event, number: Option<u32>) -> Option<usize> {
         let place = match number {
             Some(number) => {

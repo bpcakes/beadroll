@@ -1,8 +1,8 @@
 //! What a projection keeps of what every event had seen, as bytes ([`crate::projection`]), in two
 //! parts: the events, each with its causes, machine and actor, the machines and where their
-//! journals broke, which a state answers with ([`crate::state::State::who`], its conflicts' writers);
-//! and each machine's applicable positions and each event's place and clock, which applying more
-//! events needs.
+//! journals broke, which a state answers with ([`crate::state::State::who`], its conflicts'
+//! writers); and each machine's applicable positions and each event's place and clock, which
+//! applying more events needs.
 
 use std::collections::HashMap;
 

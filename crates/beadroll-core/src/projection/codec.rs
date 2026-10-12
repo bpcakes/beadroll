@@ -2,9 +2,9 @@
 //! as their 16 bytes, JSON values with their kind first; a name or a value events share written the
 //! first time and referred to after, so that the state read back shares them as replay's did.
 //!
-//! Nothing read is trusted further than the bytes there are: a count is at most the bytes left, and
-//! values nest little deeper than JSON bead reads ([`NESTING`]). A store checks a projection's bytes
-//! as a whole before it reads them; this is what keeps a damaged one from being more than
+//! Nothing read is trusted further than the bytes there are: a count is at most the bytes left,
+//! and values nest little deeper than JSON bead reads ([`NESTING`]). A store checks a projection's
+//! bytes as a whole before it reads them; this is what keeps a damaged one from being more than
 //! unreadable.
 
 use std::collections::HashMap;
@@ -13,8 +13,8 @@ use std::sync::Arc;
 use crate::id::EventId;
 use crate::json::{Int, MAX_DEPTH, Object, Value};
 
-/// How deeply a value read back may nest arrays and objects: as deep as JSON bead reads, and the few
-/// levels replay wraps an event's values in (a dependency's metadata, an imported comment).
+/// How deeply a value read back may nest arrays and objects: as deep as JSON bead reads, and the
+/// few levels replay wraps an event's values in (a dependency's metadata, an imported comment).
 const NESTING: usize = MAX_DEPTH + 8;
 
 /// Why bytes are no projection: what was being read when they ran out or did not fit.
