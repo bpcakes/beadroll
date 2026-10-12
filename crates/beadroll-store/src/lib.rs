@@ -1,7 +1,8 @@
 //! This machine's side of `bead` (`docs/RUST-PORT.md` §2.1): the settings the CLI hands down, the
 //! store under `BEAD_HOME` with its files and modes, atomic writes, journal segments and torn
-//! tails, attempt and pending files, this machine's identity and aliases, workspace discovery and
-//! remote resolution, actor detection, and `view`, the state a command reads.
+//! tails, attempt and pending files, what the store remembers of its journal files between commands
+//! (`Memo`), this machine's identity and aliases, workspace discovery and remote resolution, actor
+//! detection, and `view`, the state a command reads.
 //!
 //! Nothing here reads the process environment, the working directory or the clock offset: they
 //! arrive in [`Settings`]. The bytes on disk are format 1's, exactly as Python writes them (§1.1).
@@ -13,7 +14,9 @@ mod failpoint;
 mod fs;
 mod identity;
 mod journal;
+mod memo;
 mod place;
+mod projection;
 mod settings;
 mod workspace;
 
@@ -31,10 +34,12 @@ pub use fs::{
 pub use identity::{hex_token, machine_aliases, replica_id, uuid7};
 pub use journal::{
     ViewError, active_segment, append_events, attempt_path, claim_files, complete_prefix,
-    encode_events, load_journal, load_pending, pending_files, read_attempt, remove, repair_tail,
-    segment_files, view, write_attempt_file,
+    encode_events, extend_segment, load_journal, load_pending, pending_files, read_attempt, remove,
+    repair_tail, segment_files, view, write_attempt_file,
 };
+pub use memo::{FileKey, Memo, memo_path};
 pub use place::{capture_where, merged_into_default, object_format};
+pub use projection::{projection, projection_path};
 pub use settings::{
     Clock, NET_TIMEOUT, REPACK_LOOSE, REPACK_PACKS, ROTATE_BYTES, Settings, pathlib, pathlib_join,
 };

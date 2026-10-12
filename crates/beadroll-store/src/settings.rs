@@ -96,6 +96,10 @@ pub struct Settings {
     pub clock: Clock,
     /// The failpoints of this invocation (`BEAD_FAILPOINTS` and the crash hooks).
     pub failpoints: Arc<Failpoints>,
+    /// Which build of bead runs, as the CLI knows it: a store's projection is read only by the
+    /// build that wrote it, since another may replay otherwise (roll-lqjj.2). `None`: the store
+    /// keeps no projection, and every command replays its journal.
+    pub build: Option<String>,
 }
 
 impl Settings {
@@ -153,6 +157,7 @@ impl Settings {
             user_home,
             clock: Clock::with_failpoints(Arc::clone(&failpoints)),
             failpoints,
+            build: None,
         })
     }
 

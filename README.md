@@ -256,6 +256,24 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   checked whole before anything is written: one bad record fails it.
 - Several bead processes on one machine (agents in different worktrees) never
   collide inside the private `sync.git`: each fetch lands in a ref of its own.
+- A publish hashes only the journal files that changed since the last one: the
+  segment being appended to and new claim files, not the whole history. What
+  bead remembers of each file is a cache, `sync.git/journal-memo`: a file that
+  changed in any way is hashed again, and deleting the memo, or `sync.git`
+  itself, is always safe.
+- A command reads the store's projection, `<store>/projection`, instead of
+  replaying the whole journal: the state the journal replays into, kept with
+  the identity of every journal file it was made from. Records appended since
+  are applied after it, as replay would apply them; anything else (a file
+  changed another way, events written concurrently, a takeover) has the
+  journal replayed, and the projection written again. It is a cache, never a
+  source: deleting it is always safe, and a damaged one, or one another build
+  of bead wrote, is never read.
+- There is no history boundary: work written offline merges on the next sync
+  however long ago it was written, after days or months away, and nothing is
+  refused for its age. Should bead one day publish checkpoints, so that a new
+  machine fetches less history, they will keep what such work needs to merge
+  (`docs/REVIEWING.md` §2).
 - When the publish of an owner's close could not go out, the `--json` answer
   says so (`"unpublished": "recorded locally, not yet published (…)"`) and a
   retry of the close publishes as the first run would have.
@@ -460,27 +478,46 @@ the record of it before any test data is written), their tests beside them, and 
   writes them. A clock holds the furthest position seen on each chain, so
   whether one event saw another is one comparison, and memory grows with events
   × chains rather than with events × ownership events. Replaying 200,000
-  events, about 55% of them in attempt files, takes 0.33 s and peaks at 958 MB,
-  747 MB of it the loaded journal (`docs/RUST-PORT.md`, Appendix A; Python's
-  bitsets took 11.8 s and 1.7 GB).
+  events, about 55% of them in attempt files, takes 0.29 s and holds at most
+  133 MB on the heap (a 215 MB resident peak), 116 MB of it the loaded journal
+  (`docs/RUST-PORT.md`, Appendix A; Python's bitsets took 11.8 s and 1.7 GB).
 - The branch recorded on an event is whatever `HEAD` was in the directory the
   command ran in. It is a trace, not a lock: a claim does not pin a branch.
-- With no persisted projection, every command replays the journal: 8 ms and a
-  52 MB peak for 10k events, 53 ms / 236 MB at 50k and 0.26 s / 921 MB at
-  200k (`docs/RUST-PORT.md`, Appendix A; most of the memory is the loaded
-  journal, roll-dih8.11), far beyond the trackers measured so far (the largest
-  real one is 280 issues). A persisted projection is the obvious next step if
-  that ever matters.
-  A fetch or push that gets no answer fails after `BEAD_NET_TIMEOUT` seconds
-  (default 45) instead of hanging.
+- A command reads the store's projection while it is current, and replays the
+  journal when it is not (after another build of bead, a change it could not
+  apply, or the projection removed). At 200,000 events (the largest public
+  Beads trackers import as at most 29,000), a read takes 73–87 ms with it and
+  1.06 s without; a sync that merges ten events another machine wrote, 0.31 s and
+  1.31 s; a publishing sync, 0.38 s and 1.34 s (`docs/RUST-PORT.md`, Appendix
+  A). With it, a read costs what the state does: 18 ms for a thousand issues,
+  whether 50,000 events made them or 200,000. But a real tracker's state is
+  mostly its texts, which every read decodes and every write rewrites: on the
+  largest public Beads trackers (21–49 MB, up to 13,394 issues) a read takes
+  0.06–0.14 s and a published write 0.34–0.65 s, and importing the largest
+  held 0.95 GB (roll-lqjj.6, roll-lqjj.9). A merge that brings events another
+  machine wrote concurrently replays the journal, as about one merge in ten
+  does where two machines write (roll-lqjj.8). A replay holds at most 107 MB
+  on the heap at 200,000 events (events the size of this repository's own take
+  more than three times that). A store heavy in claims pays for listing its
+  attempt files on every command: a read takes 0.56 s at 92,000 of them, which
+  only a checkpoint would change. A fetch or push that gets no answer fails
+  after `BEAD_NET_TIMEOUT` seconds (default 45) instead of hanging.
 - Publishing is serialised on one ref. Under heavy contention (four machines
   syncing continuously) claims took 9 s median and 27 s at p90, and 3 of 841
-  commands gave up after eight attempts.
+  commands gave up after eight attempts. Writes wait too: four machines each
+  publishing every write continuously, 14 of 200 writes took over a second,
+  the worst 23 s, and one stayed unpublished until a later command carried it
+  (roll-lqjj.7).
 - A renumbered child key changes under the machine that created it. Events
   refer to issues by an immutable id, so nothing is lost, but a key written
   into a commit message before the sync now names the other issue.
 - A repository with neither a remote nor a `.beadroll.json` gets a machine-local
   tracker that cannot sync.
+- A Beads export that holds memory records (`{"_type": "memory", ...}`, which
+  recent Beads versions keep in `issues.jsonl` beside the issues) is refused
+  whole by `import`, at the first of them (roll-dih8.16). Export writes every
+  dependency with br's six members, so one written without `thread_id` comes
+  back with `"thread_id": ""`.
 - Not implemented: `stats`, `count`, `epic status`, `graph`, saved queries,
   templates, external-project dependencies, `bv`-style ranking.
 

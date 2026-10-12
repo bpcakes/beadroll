@@ -11,6 +11,7 @@ use beadroll_core::replay::replay;
 
 use super::history::{Shape, history};
 use super::memory;
+use super::world::profile;
 use crate::workspace::{self, Failure, json_string};
 
 /// How many times the journal is replayed; the fastest run counts.
@@ -42,31 +43,26 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
     let exe = std::env::current_exe()
         .map_err(|error| Failure::Failed(format!("cannot find xtask's own executable: {error}")))?;
     let load = [OsStr::new("timing"), OsStr::new("--load"), dir.as_os_str()];
-    let peak = memory::peak(&exe, &load)?;
+    let peak = memory::peaks(&exe, &load)?;
     let no_replay = [load[0], load[1], load[2], OsStr::new("--no-replay")];
-    let journal_peak = memory::peak(&exe, &no_replay)?;
+    let journal_peak = memory::peaks(&exe, &no_replay)?;
     // An ownership-heavy journal is a hundred thousand files: nothing to leave lying about.
     std::fs::remove_dir_all(&dir).map_err(|error| Failure::io("cannot remove", &dir, &error))?;
-    let profile = if cfg!(debug_assertions) {
-        "debug"
-    } else {
-        "release"
-    };
     let label = label.map_or_else(
-        || match shape {
-            Shape::Plain => format!("replay of {count} events"),
-            Shape::Ownership => format!("replay of {count} ownership-heavy events"),
-        },
+        || format!("replay of {count} {}", shape.events()),
         str::to_owned,
     );
     Ok(format!(
         "{{\"label\": {}, \"shape\": {}, \"events\": {events}, \"attempted\": {attempted}, \
          \"issues\": {issues}, \"profile\": {}, \"runs\": {RUNS}, \"seconds\": {best:.4}, \
-         \"peak_bytes\": {}, \"journal_peak_bytes\": {}, ",
+         \"peak_bytes\": {}, \"journal_peak_bytes\": {}, \"heap_peak_bytes\": {}, \
+         \"journal_heap_peak_bytes\": {}, ",
         json_string(&label),
         json_string(shape.name()),
-        json_string(profile),
-        bytes(peak),
-        bytes(journal_peak),
+        json_string(profile()),
+        bytes(peak.resident),
+        bytes(journal_peak.resident),
+        bytes(peak.heap),
+        bytes(journal_peak.heap),
     ))
 }

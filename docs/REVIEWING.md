@@ -4,9 +4,9 @@ A brief for an independent reviewer: an agent or a person who did not write this
 to find out whether the design holds, to break it if they can, and to report with
 reproductions. Reviewers do not extend the tool.
 
-Nine reviews have run; the latest two audit the Rust port plan. Their reports are kept verbatim in
-`reviews/`; every finding and what became of it is in `FINDINGS.md`. Start from what they did
-not cover.
+Ten reviews have run; reviews 8 and 9 audit the Rust port plan, and review 10 is Codex's, task by
+task, of epic `roll-lqjj`. Their reports are kept verbatim in `reviews/`; every finding and what
+became of it is in `FINDINGS.md`. Start from what they did not cover.
 
 ## 1. What this is
 
@@ -107,16 +107,71 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - One event with two different payloads is quarantined alone; nothing waits on it.
 - The store lock is held while a sync or claim pushes (about a second against GitHub).
 - Publishing is serialised on one ref; under heavy contention claims take seconds.
-- No compaction beyond segment rotation. No persisted projection: every command replays the
-  journal, 8 ms for 10,000 events and 0.26 s for 200,000 (`RUST-PORT.md` Appendix A).
+- No compaction beyond segment rotation. A persisted projection, a cache and never a source
+  (roll-lqjj.2, step 3 of epic roll-lqjj, whose plan replaced the "no persisted projection" of
+  earlier): `<store>/projection` keeps the state the journal replays into, with what it was made
+  from: the build of bead that made it (`Settings::build`, the version and the executable's
+  identity on disk), every journal file's identity as its bytes were read (compared as the memo
+  compares files: an in-place rewrite that keeps length, times, inode and device is not seen, as
+  git's index does not see it), and a sum of each segment's bytes. A command whose files are the
+  ones it was made from reads it, a reading command its state alone. A machine's last segment that
+  grew, and still begins with the bytes summed, is read whole (at most what bead rotates at), and
+  its new records and new attempt files' are applied after the projection when replay would apply
+  them so: each new event has the whole frontier in its past, which a local write's always do and
+  a merge's do when one writer worked at a time; they are then placed and applied with replay's
+  own steps, and of what every event had seen the projection keeps only the events the state names
+  (its state also keeps who wrote them, which conflicts show). Anything else replays the journal,
+  as every command did: a file replaced, rewritten, cut or gone, an earlier segment grown, a
+  takeover (which can turn an earlier end of its claim stale), a record not its machine's own or
+  not new, a new machine's journal, a cause behind the frontier, or a journal with anything replay
+  reports. The answers are replay's: a differential test checks every batch a store takes in
+  against replay, on histories of machines that write, sync and race. It is written back
+  atomically when every segment ended with a whole line, never into a store that is not there; a
+  projection missing, cut, damaged (a 128-bit sum of each part) or another build's is never read,
+  and a failed write is no failure. A state read from it knows, of its events, those it names:
+  `State::saw`, `holds` and `events`, which no command reads, answer for those alone.
+- No history boundary (roll-lqjj.3, step 4 of epic roll-lqjj; the maintainer's decision of
+  2026-10-12, on the evidence in `RUST-PORT.md` Appendix A, "roll-lqjj.3"): a machine's work
+  merges by itself however old it is, as every merge has so far. The alternatives were a supported
+  window (in events, segments or days) behind which a machine refreshes and reconciles by hand, its
+  pending work kept but not merged, as Microsoft's Sync Framework treats a replica behind what it
+  has forgotten; and leaving the question to the checkpoints of step 5. Work that old is real: bead
+  published a tracker's first events 45 h after they were written, and in Beads trackers kept in
+  git a branch's tracker changes waited up to 24 days on the maintainer's and up to 258 days in
+  public repositories; a window short enough to save anything would send such work down the manual
+  path, and pruning causal history without one (CouchDB's revision limit, Riak's clock pruning)
+  turns it into spurious conflicts. What a window would save is small: answering whether a late
+  event saw an old one takes an index of every event's id and place, 22–30 bytes an event in the
+  projection on real histories (1–2% of their journals; 5 MB at 200,000 events). What it fixes for
+  step 5: a checkpoint carries that index over all history and the accepted attempt ids (a retry
+  is recognised by its file in `claims/`), and an archive keeps every raw record for the fork,
+  quarantine and chain-break checks. A tracker rolled over to checkpoints is format 2, which ends
+  the python-0.1.0 rollback for it (`RUST-PORT.md` §2.3j), boundary or not. Continuation from a
+  checkpoint then becomes the reference for late concurrent events, not full replay: the key two
+  concurrent creates minted
+  (`same_child_number_on_two_machines_is_renumbered_identically` pins the rename today), the order
+  of comments, claim history and issue order follow the order events are applied in. So step 5
+  tests that every machine continuing from one checkpoint agrees, and that continuation equals
+  replay on every history without late concurrent events. Those are common where several machines
+  write (a merge in ten on a tracker two machines write) and conflicting edits of one field rare
+  (status and comments). Until then nothing changes, and the stress models' partitioned machines
+  (`six_machine_2400_operation_reference_model`,
+  `six_machine_3000_concurrent_commands_with_partitions`) and the protocol sweep keep pinning that
+  every machine converges whatever it missed. Retention (step 6) is a separate question: forgetting
+  closed issues changes what `show`, `log` and `export` return and breaks the Beads round trip for
+  them, so it would be a policy a tracker sets explicitly, with a command that lists what it forgot
+  and the archive keeping it; step 5 leaves room for it by keeping the index and the archive apart
+  from the state. Closed issues hold 27–100% of the largest public trackers' bytes, and keeping
+  texts out of what every command decodes (roll-lqjj.6) may make retention unnecessary for speed.
 - What each event had seen is one clock per event over chains, the reachability index of
   `state/seen.rs` (`RUST-PORT.md` §2.3c): every machine's journal is a chain, and each event of an
   attempt file joins a chain whose last event is among its ancestors, or starts one, so there are
   about as many chains as machines that write attempts. A clock holds the furthest position the
   event saw on each chain, and `saw` is `clock[chain] >= position`. Memory grows with events ×
   chains, not with events × ownership events as Python's bitsets did: 200,000 events, 55% of them
-  in attempt files, replay in 0.33 s with a 958 MB peak, 747 MB of it the loaded journal itself
-  (roll-dih8.11).
+  in attempt files, replay in 0.29 s holding at most 133 MB on the heap, 116 MB of it the loaded
+  journal (roll-dih8.11). The clocks live in one arena of positions alone: a clock names the set
+  of chains it has seen into, and each set is kept once.
 - Exported comment ids for comments made here come from a 48-bit hash range; a collision is a
   one-in-10^14 event and is then resolved by the ids alone.
 - `dep cycles` stops after 200 cycles.
@@ -299,6 +354,21 @@ These were decided deliberately. Report problems *with* them, not their existenc
   the first `rev-parse`, so also in discovery's early-error paths where Python stops before asking
   for origin; and a SIGKILL while a blob is hashed can leave a file in the temporary directory (the
   attempt's or the manifest's content, never in the store).
+- A publish hashes only the journal files it cannot vouch for (roll-lqjj.1, step 2 of epic
+  roll-lqjj): the store remembers, in `sync.git/journal-memo`, each segment's and attempt file's
+  identity on disk when it was hashed (length, modification and change times, inode, device: what
+  git's index compares), its lines and its blob. A file that keeps that identity is not hashed: a
+  merge compares the remembered blob with the published one as it is, and a publish names it in a
+  tree only when it is sure to be in `sync.git`, because this command's link made it or the tree of
+  the tip it merged holds it at that path; otherwise the file is hashed. A gc drops a blob no ref
+  reaches (`prune_now_on_the_private_sync_repo_during_syncs_is_transient`), and one named in a
+  tree would fail every `mktree` after. Keyed by more than the path and length the issue named,
+  since a fork the published copy replaces, or a file rewritten in place, can keep its length. The
+  memo is a cache, never a source: missing, unreadable or stale, it counts for nothing; one that
+  cannot be written is left as it was; it goes with `sync.git`; and a publish whose tree cannot be
+  made from remembered blobs, short of damage (an object lost while the published tree names it),
+  hashes every file once more, as every publish did before (L02). The merge still asks git what
+  Python asks, in the same order: fewer files to `hash-object`, then the published tree.
 - A fetch that loses to another process's fetch of the store is tried again (roll-dih8.12): git's
   checks of a fetch read every ref, and every process fetches into a ref of its own under
   `refs/beads/fetch/` that it deletes after, so git can find such a ref gone between listing it
@@ -310,6 +380,38 @@ These were decided deliberately. Report problems *with* them, not their existenc
   words). Chosen over `transfer.hideRefs=refs/beads/fetch`, which keeps those refs out of the
   check only where git's fetch honours hidden refs (2.55 does, 2.40, the oldest supported, does
   not) and leaves the lock form as it is.
+- A merge extends another machine's segment by appending the lines ours lacks, fsynced, as bead
+  appends its own records (roll-lqjj.2), not by writing the published copy whole under a new name
+  as Python did: the segment stays the file the projection was made from, which then takes in
+  those lines alone, where a rewrite had the journal replayed after every such merge. The bytes are
+  the same either way. A reader that comes upon the append skips a last line not yet whole, as it
+  does for bead's own segments, and a merge cuts one an interrupted append left before it reads
+  (`repair_tail`). A new segment, or one replaced because neither copy is a prefix of the other, is
+  still written whole.
+- A journal keeps what replay reads of each event, not its parsed JSON (roll-dih8.11): its id,
+  causes, writer, actor, place and typed operation, each text and value events repeat held once,
+  and a digest of its content, by which it tells two records of one id apart. The digest is two
+  SipHash-1-3 hashes under keys drawn at random for each journal, over an encoding in which no two
+  contents are alike (members in key order, lengths before texts and lists, integers by their
+  digits, floats by their bits, as Python's `canonical` compares them). It is not a cryptographic
+  hash and need not be: the keys never leave the process, so nobody can aim at a collision, and
+  two contents share 128 bits by chance once in 2¹²⁸; a collision would apply the first of two
+  contents of one id where both should be quarantined. Replay takes each event's operation from
+  the journal as it applies it, and the state it builds keeps the rest (who wrote each event, what
+  it had seen), not the journal: `State` has no `journal()`.
+- The 150 MB budget for replaying 200,000 events (`RUST-PORT.md` Appendix A) is a heap budget
+  (the maintainer's decision of 2026-10-12, roll-dih8.11): `cargo xtask timing --replay N` counts
+  the most a fresh process that loads the journal and replays it holds on its heap at once, and
+  records the resident peak beside it. The resident peak is higher, about the journal at load plus
+  everything replay allocates, because the system allocator keeps most of what replay frees for
+  sizes the state never asks for again; closing that gap is roll-dih8.15. Events the size of this
+  repository's own take more than xtask's: memory grows with the bytes of the events, which the
+  journal and the state both hold (Appendix A).
+- xtask's global allocator is the system's with a count of what it hands out
+  (`xtask/src/timing/heap.rs`), for the heap peak `timing --load` reports: the one unsafe code
+  outside bead's two audited spots (`RUST-PORT.md` §2.2), since `GlobalAlloc` is an unsafe trait.
+  Every call goes to the system allocator unchanged. Its counts are atomic, so the peak is exact
+  in any process; counting makes a replay timed in xtask about 5% slower (Appendix A).
 - `BEAD_HOME` must be absolute; the store's modes are 0700/0600 whatever the umask.
 - Only directories bead creates get private modes; a user-supplied `BEAD_HOME` is chmodded 0700
   on first write (reviewer observation, kept).

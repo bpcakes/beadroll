@@ -5,33 +5,62 @@
 mod claims;
 mod create;
 
+use std::cell::RefCell;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use indexmap::IndexMap;
 
 use crate::event::{DONE, Field};
 use crate::id::EventId;
-use crate::journal::Event;
+use crate::journal::{Event, Rest};
 use crate::json::{Object, Value};
 use crate::op::Op;
-use crate::state::{Comment, Issue, KeySpace, Knowledge, Stale, State};
+use crate::state::{Comment, IdMap, IdSet, Issue, KeySpace, Knowledge, Stale, State};
 use crate::text::str_of;
 
-/// Applies one event, the journal's event at `at`. `Ok(true)` when it touched an existing issue.
+/// The event replay is applying: its index in the journal, its id, what replay keeps of it, and
+/// what it does.
+pub(super) struct Doing<'a> {
+    pub(super) at: usize,
+    pub(super) id: EventId,
+    pub(super) trace: &'a Event,
+    pub(super) what: &'a Rest,
+}
+
+/// The names that claims and comments repeat (owners, machines, agents, threads, modes), held once
+/// while replay applies events: the records it makes share them.
+#[derive(Debug, Default)]
+pub(crate) struct Names(RefCell<HashSet<Arc<str>>>);
+
+impl Names {
+    /// `name`, held once.
+    fn of(&self, name: &str) -> Arc<str> {
+        let mut held = self.0.borrow_mut();
+        if let Some(name) = held.get(name) {
+            return Arc::clone(name);
+        }
+        let name: Arc<str> = Arc::from(name);
+        held.insert(Arc::clone(&name));
+        name
+    }
+}
+
+/// Applies one event. `Ok(true)` when it touched an existing issue.
 pub(super) fn apply_event(
     st: &mut State,
     k: &Knowledge,
-    at: usize,
-    event: &Event,
+    event: &Doing<'_>,
+    names: &Names,
     who: &str,
     when: &str,
     superseded: &HashSet<EventId>,
 ) -> Result<bool, KeySpace> {
-    let op = match event.op() {
+    let op = match &event.what.op {
         Op::Init { prefix, name } => {
             if st.prefix.is_none() {
-                st.prefix.clone_from(prefix);
-                st.name.clone_from(name);
+                st.prefix = prefix.as_deref().cloned();
+                st.name = name.as_deref().cloned();
             }
             return Ok(false);
         }
@@ -41,8 +70,7 @@ pub(super) fn apply_event(
         }
         other => other,
     };
-    let Some(uid) = event
-        .issue()
+    let Some(uid) = (event.what.issue.as_deref())
         .and_then(EventId::parse)
         .filter(|uid| st.issues.contains_key(uid))
     else {
@@ -54,16 +82,17 @@ pub(super) fn apply_event(
     };
     let c = Ctx {
         k,
+        names,
         event,
-        at,
-        eid: event.id(),
+        at: event.at,
+        eid: event.id,
         uid,
         who,
         when,
-        place: event.get("where").filter(|place| place.truthy()),
+        place: event.what.place.as_ref().filter(|place| place.truthy()),
         claim: issue.claim.as_ref().map(|held| Held {
             id: held.id,
-            mine: held.owner == who,
+            mine: *held.owner == *who,
         }),
         superseded,
     };
@@ -100,15 +129,16 @@ pub(super) fn apply_event(
 /// What every operation reads: the event, its writer and time, and the issue's claim before it.
 struct Ctx<'a> {
     k: &'a Knowledge,
-    event: &'a Event,
+    names: &'a Names,
+    event: &'a Doing<'a>,
     /// The event's index in the journal.
     at: usize,
     eid: EventId,
     uid: EventId,
     who: &'a str,
     when: &'a str,
-    /// The event's `where`, when it names a place.
-    place: Option<&'a Value>,
+    /// The event's `where`, when it names a place, shared with the events written alike.
+    place: Option<&'a Arc<Value>>,
     claim: Option<Held>,
     superseded: &'a HashSet<EventId>,
 }
@@ -123,11 +153,16 @@ struct Held {
 }
 
 impl Ctx<'_> {
+    /// `name`, shared with the records that name the same.
+    fn name(&self, name: &str) -> Arc<str> {
+        self.names.of(name)
+    }
+
     /// Records an end of a claim that was no longer current; it applies nothing.
     fn stale(&self, issue: &mut Issue, named: Option<&str>) -> bool {
         issue.stale.push(Stale {
-            op: self.event.op_name().to_owned(),
-            by: self.who.to_owned(),
+            op: self.event.what.op.name().to_owned(),
+            by: self.name(self.who),
             at: self.when.to_owned(),
             claim: named.map(str::to_owned),
         });
@@ -170,13 +205,12 @@ fn set(c: &Ctx<'_>, issue: &mut Issue, fields: &[(Field, Value)]) -> bool {
 
 /// A comment, by `author` when it names one (`data.get("author") or who`).
 fn comment(c: &Ctx<'_>, issue: &mut Issue, seq: u64, text: &str, author: Option<&str>) -> bool {
-    let author = author.filter(|a| !a.is_empty()).unwrap_or(c.who).to_owned();
+    let author = author.filter(|a| !a.is_empty()).unwrap_or(c.who);
     issue.comments.push(Comment::Native {
         uid: c.eid,
         seq,
-        author,
+        author: c.name(author),
         text: text.to_owned(),
-        created_at: c.when.to_owned(),
         where_: c.place.cloned(),
     });
     true
@@ -197,9 +231,8 @@ fn dep_add(c: &Ctx<'_>, issue: &mut Issue, to: &str, kind: Option<&str>, meta: &
     );
     issue
         .dep_tags
-        .entry((to.to_owned(), kind))
-        .or_default()
-        .insert(c.eid, Value::Object(stamp));
+        .get_or_insert_with((to.to_owned(), kind), IdMap::default)
+        .insert(c.eid, Value::from(stamp));
     true
 }
 
@@ -222,7 +255,7 @@ fn dep_remove(
         // A concurrent create of the key that sorted first bound it already.
         if let Some(bound) = by_key.get(key).filter(|_| c.k.saw_at(c.at, c.uid)) {
             let bound = bound.to_string();
-            for ((to, kind), tags) in &mut issue.dep_tags {
+            for ((to, kind), tags) in issue.dep_tags.iter_mut() {
                 if *to == bound && matches(kind) {
                     tags.remove(&c.uid); // the import's own tag only: an explicit `dep add` keeps its edge
                 }
@@ -230,7 +263,7 @@ fn dep_remove(
         }
     } else {
         let to = to.unwrap_or_default();
-        for ((edge_to, kind), tags) in &mut issue.dep_tags {
+        for ((edge_to, kind), tags) in issue.dep_tags.iter_mut() {
             if edge_to == to && matches(kind) {
                 tags.retain(|tag, _| !c.k.saw_at(c.at, *tag));
             }
@@ -268,8 +301,7 @@ fn label(c: &Ctx<'_>, issue: &mut Issue, labels: &[String], how: Labels) -> bool
         for label in labels {
             issue
                 .label_tags
-                .entry(label.clone())
-                .or_default()
+                .get_or_insert_with(label.clone(), IdSet::default)
                 .insert(c.eid);
         }
     }
@@ -293,12 +325,12 @@ fn write_register(
     value: Value,
     supersede: &[EventId],
 ) {
-    let register = issue.reg.entry(field).or_default();
+    let register = issue.reg.get_or_insert_with(field, IdMap::default);
     register.retain(|old, _| !(supersede.contains(old) || k.saw_at(at, *old)));
     register.insert(eid, value);
     // Deterministic display; alternatives stay visible as a conflict. Only what is shown is
     // copied out of the register.
-    let shown = register.last_key_value().map(|(_, shown)| shown);
+    let shown = register.last().map(|(_, shown)| shown);
     if field == Field::Status {
         let member = |name: &str| shown.and_then(|shown| shown.get(name)).cloned();
         let shown = [
@@ -338,7 +370,7 @@ fn write_status(
         issue,
         Field::Status,
         (at, eid),
-        Value::Object(value),
+        Value::from(value),
         supersede,
     );
 }

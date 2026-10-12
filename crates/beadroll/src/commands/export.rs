@@ -16,7 +16,7 @@ pub(crate) fn export(ctx: &Context<'_>, output: Option<&OsStr>) -> Result<Outcom
     let st = view(ctx.ws)?;
     let mut text = String::new();
     for record in st.export_records() {
-        let line = json::write(&Value::Object(record), Format::COMPACT)
+        let line = json::write(&Value::from(record), Format::COMPACT)
             .map_err(|e| Failure::new(Code::Validation, e.to_string()))?;
         text.push_str(&line);
         text.push('\n');

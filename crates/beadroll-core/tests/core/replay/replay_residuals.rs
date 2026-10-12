@@ -145,7 +145,7 @@ fn identical_misplaced_duplicate_does_not_change_broken_chain_result() {
             .map(|(field, alternatives)| {
                 let alternatives = alternatives
                     .iter()
-                    .map(|a| Json::Object(a.to_value()))
+                    .map(|a| Json::from(a.to_value()))
                     .collect::<Vec<_>>();
                 (field.name().to_owned(), Json::Array(alternatives))
             });
@@ -158,9 +158,9 @@ fn identical_misplaced_duplicate_does_not_change_broken_chain_result() {
         });
         json!({
             "title": (issue.title()),
-            "conflicts": (Json::Object(conflicts.collect())),
+            "conflicts": (Json::Object(Box::new(conflicts.collect()))),
             "integrity": (Json::Array(state.integrity().iter().map(row).collect())),
-            "chain_breaks": (Json::Object(breaks.collect()))
+            "chain_breaks": (Json::Object(Box::new(breaks.collect())))
         })
     };
     assert_eq!(projection(true), projection(false));

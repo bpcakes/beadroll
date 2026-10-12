@@ -36,7 +36,7 @@ pub(crate) fn show(ctx: &Context<'_>, ids: &[OsString]) -> Result<Outcome, Failu
         result.push(detail);
     }
     let lines = result.iter().flat_map(lines_of).collect();
-    let result = Value::Array(result.into_iter().map(Value::Object).collect());
+    let result = Value::Array(result.into_iter().map(Value::from).collect());
     Ok(Outcome::new(result, lines))
 }
 
@@ -196,7 +196,7 @@ fn relations(item: &Object) -> Vec<String> {
         ));
     }
     if let Some(Value::Object(conflicts)) = item.get("conflicts") {
-        for (name, options) in conflicts {
+        for (name, options) in conflicts.iter() {
             let options: Vec<String> = options
                 .as_array()
                 .unwrap_or_default()

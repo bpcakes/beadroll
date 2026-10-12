@@ -134,7 +134,7 @@ fn q06_incremental_import_resolves_late_dependency_target() {
     });
     let mut issue_a = q06_issue("ex-a", "A");
     issue_a.insert("dependencies".into(), json!([dep]));
-    let (issue_a, issue_b) = (Json::Object(issue_a), Json::Object(q06_issue("ex-b", "B")));
+    let (issue_a, issue_b) = (Json::from(issue_a), Json::from(q06_issue("ex-b", "B")));
     let root = sandbox.root();
     let (a_path, b_path, all_path) = (
         root.join("q06-a.jsonl"),

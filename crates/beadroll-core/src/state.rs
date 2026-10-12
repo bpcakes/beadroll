@@ -1,8 +1,10 @@
 //! What replay builds (Python's `State` and its issue dicts): the issues in replay order, with every
 //! register, tag and claim record Python keeps, and what every event had seen.
 
+mod claim;
 mod issue;
 mod seen;
+mod small;
 
 use indexmap::IndexMap;
 
@@ -12,8 +14,11 @@ use crate::json::Value;
 use crate::key;
 use crate::text::str_of;
 
-pub use issue::{Claim, Comment, EndedClaim, Issue, LostClaim, Provisional, Stale};
+pub use claim::{Claim, EndedClaim, LostClaim, Provisional, Stale};
+pub(crate) use issue::Origin;
+pub use issue::{Comment, Deps, DepsIter, Issue};
 pub(crate) use seen::{Knowledge, Place, raise, reached};
+pub use small::{IdMap, IdSet, VecMap};
 
 /// A problem replay reports: an unusable record, or an event it could not apply.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -84,7 +89,8 @@ pub struct State {
     pub(crate) knowledge: Knowledge,
     pub(crate) prefix: Option<Value>,
     pub(crate) name: Option<Value>,
-    pub(crate) issues: IndexMap<EventId, Issue>,
+    /// Boxed, so that what a map of them keeps spare as it grows is a pointer a place, not an issue.
+    pub(crate) issues: IndexMap<EventId, Box<Issue>>,
     pub(crate) by_key: IndexMap<String, EventId>,
     pub(crate) renames: Vec<Rename>,
     pub(crate) integrity: Vec<Integrity>,
@@ -102,9 +108,9 @@ pub struct State {
 }
 
 impl State {
-    pub(crate) fn new(journal: Journal) -> State {
+    pub(crate) fn new(knowledge: Knowledge) -> State {
         State {
-            knowledge: Knowledge::new(journal),
+            knowledge,
             prefix: None,
             name: None,
             issues: IndexMap::new(),
@@ -120,9 +126,14 @@ impl State {
         }
     }
 
-    /// The journal it was replayed from.
-    pub fn journal(&self) -> &Journal {
-        &self.knowledge.journal
+    /// Whether `event` was among the events it was replayed from.
+    pub fn holds(&self, event: EventId) -> bool {
+        self.knowledge.events.contains_key(&event)
+    }
+
+    /// The events it was replayed from, by id, in their journal's order.
+    pub fn events(&self) -> impl Iterator<Item = EventId> {
+        self.knowledge.events.keys().copied()
     }
 
     /// The tracker's prefix, as its first `init` set it: any JSON value, read with `str()` where a
@@ -138,22 +149,22 @@ impl State {
 
     /// The issues, in the order replay created them.
     pub fn issues(&self) -> impl Iterator<Item = &Issue> {
-        self.issues.values()
+        self.issues.values().map(|issue| &**issue)
     }
 
     /// The issue `uid`, if there is one.
     pub fn issue(&self, uid: EventId) -> Option<&Issue> {
-        self.issues.get(&uid)
+        self.issues.get(&uid).map(|issue| &**issue)
     }
 
     /// The issue whose uid is the text `uid`, if there is one: a dependency names its target so.
     pub fn issue_named(&self, uid: &str) -> Option<&Issue> {
-        EventId::parse(uid).and_then(|uid| self.issues.get(&uid))
+        EventId::parse(uid).and_then(|uid| self.issue(uid))
     }
 
     /// The issues, in bytewise key order.
     pub fn issues_by_key(&self) -> Vec<&Issue> {
-        let mut issues: Vec<&Issue> = self.issues.values().collect();
+        let mut issues: Vec<&Issue> = self.issues().collect();
         issues.sort_by(|a, b| a.key().cmp(b.key()));
         issues
     }
@@ -212,7 +223,7 @@ impl State {
                 .map_or_else(|| "None".to_owned(), str_of);
             self.by_key.get(&format!("{prefix}-{key}"))
         })?;
-        self.issues.get(uid)
+        self.issue(*uid)
     }
 
     /// The key of the issue `uid` names, or `uid` itself when that is not an issue
@@ -223,9 +234,7 @@ impl State {
 
     /// Who wrote `event`, as bead names an actor (Python's `State.who`).
     pub fn who(&self, event: EventId) -> String {
-        self.journal()
-            .event(event)
-            .map_or_else(String::new, actor_of)
+        self.knowledge.who(event).unwrap_or_default()
     }
 
     /// Keys a new or renamed issue must not take: every issue's, and every key an imported dependency
@@ -300,7 +309,7 @@ impl State {
         if let Some(place) = event.get("where").filter(|place| place.truthy()) {
             entry.insert("where".into(), place.clone());
         }
-        issue.unconfirmed.push(Value::Object(entry));
+        issue.unconfirmed.push(Value::from(entry));
         true
     }
 
@@ -309,7 +318,7 @@ impl State {
         let mut children: std::collections::HashMap<String, Vec<EventId>> =
             std::collections::HashMap::new();
         for child in self.issues.values() {
-            for (to, kind) in child.deps.keys() {
+            for (to, kind) in child.deps().keys() {
                 if kind == "parent-child" {
                     children.entry(to.clone()).or_default().push(child.uid);
                 }
@@ -325,7 +334,7 @@ impl State {
             return Vec::new();
         };
         let mut found: std::collections::BTreeSet<EventId> = issue
-            .deps
+            .deps()
             .keys()
             .filter(|(_, kind)| crate::query::blocking(kind))
             .filter_map(|(to, _)| EventId::parse(to).filter(|to| self.issues.contains_key(to)))
@@ -338,7 +347,7 @@ impl State {
 /// How bead names the actor of an event (Python's `actor_label`): its name, or `agent:thread@machine`,
 /// or `agent@machine`.
 pub fn actor_of(event: &Event) -> String {
-    actor_label(event.get("actor"), event.replica())
+    actor_label(event.actor(), event.replica())
 }
 
 /// Python's `actor_label(event.get("actor") or {}, replica)`.

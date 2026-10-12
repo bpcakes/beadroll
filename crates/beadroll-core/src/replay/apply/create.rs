@@ -5,12 +5,14 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use indexmap::IndexMap;
 
+use super::Doing;
 use crate::event::{Field, REGISTERS};
 use crate::id::EventId;
-use crate::journal::Event;
 use crate::json::{Int, Object, Value};
 use crate::op::Create;
-use crate::state::{Comment, Issue, KeySpace, Knowledge, Rename, State};
+use crate::state::{
+    Comment, IdMap, IdSet, Issue, KeySpace, Knowledge, Origin, Rename, State, VecMap,
+};
 use crate::time::event_time;
 
 use super::dangling_type;
@@ -19,12 +21,12 @@ use super::dangling_type;
 pub(super) fn create(
     st: &mut State,
     k: &Knowledge,
-    event: &Event,
+    event: &Doing<'_>,
     create: &Create,
     who: &str,
     when: &str,
 ) -> Result<(), KeySpace> {
-    let eid = event.id();
+    let eid = event.id;
     let mut key = create.key.clone();
     if st.by_key.contains_key(&key) {
         // Two machines minted the same key before they synced.
@@ -32,7 +34,7 @@ pub(super) fn create(
         st.renames.push(Rename {
             from: std::mem::replace(&mut key, free.clone()),
             to: free,
-            replica: event.replica().to_owned(),
+            replica: event.trace.replica().to_owned(),
             uid: eid,
         });
     }
@@ -40,7 +42,7 @@ pub(super) fn create(
     st.by_key.insert(key, eid);
     materialise_dangling(k, &st.by_key, &mut issue);
     let waits = !issue.dangling.is_empty();
-    st.issues.insert(eid, issue);
+    st.issues.insert(eid, Box::new(issue));
     // An import may have named this key before it existed. Each issue's materialising touches that
     // issue alone, so the issues still waiting are all there is to visit, in any order.
     let (by_key, issues) = (&st.by_key, &mut st.issues);
@@ -62,37 +64,30 @@ pub(super) fn create(
 
 /// The issue a create makes, under `key`: its defaults, then the fields it carries, with a register
 /// for each, and what an import brings (labels, extras, comments, dependencies on keys).
-fn new_issue(event: &Event, create: &Create, key: String, who: &str, when: &str) -> Issue {
-    let eid = event.id();
-    let place = event.get("where").filter(|place| place.truthy()).cloned();
-    let mut origin = Object::new();
-    origin.insert("machine".into(), Value::from(event.replica()));
-    for (name, value) in event
-        .get("actor")
-        .and_then(Value::as_object)
-        .into_iter()
-        .flatten()
-    {
-        origin.insert(name.clone(), value.clone());
-    }
-    if let Some(place) = &place {
-        origin.insert("where".into(), place.clone());
-    }
+fn new_issue(event: &Doing<'_>, create: &Create, key: String, who: &str, when: &str) -> Issue {
+    let eid = event.id;
+    let place = (event.what.place.as_ref())
+        .filter(|place| place.truthy())
+        .cloned();
+    let origin = Origin {
+        machine: std::sync::Arc::clone(event.trace.shared_replica()),
+        actor: event.trace.shared_actor().cloned(),
+        place: place.clone(),
+    };
     let mut issue = Issue {
         uid: eid,
         key,
         fields: Default::default(),
-        reg: IndexMap::new(),
+        reg: VecMap::default(),
         label_tags: create
             .labels
             .iter()
-            .map(|label| (label.clone(), BTreeSet::from([eid])))
+            .map(|label| (label.clone(), IdSet::of(eid)))
             .collect(),
-        dep_tags: IndexMap::new(),
+        dep_tags: VecMap::default(),
         labels: BTreeSet::new(),
-        deps: IndexMap::new(),
         comments: create.comments.iter().map(imported_comment).collect(),
-        extra: create.extra.clone(),
+        extra: (!create.extra.is_empty()).then(|| Box::new(create.extra.clone())),
         dangling: create.dangling.clone(),
         retracted: BTreeMap::new(),
         claim: None,
@@ -133,9 +128,7 @@ fn new_issue(event: &Event, create: &Create, key: String, who: &str, when: &str)
     }
     for field in REGISTERS {
         if let Some(value) = given(field) {
-            issue
-                .reg
-                .insert(field, BTreeMap::from([(eid, value.clone())]));
+            issue.reg.insert(field, IdMap::of(eid, value.clone()));
         }
     }
     let mut status = Object::new();
@@ -148,10 +141,9 @@ fn new_issue(event: &Event, create: &Create, key: String, who: &str, when: &str)
             status.insert(field.name().into(), value.clone());
         }
     }
-    issue.reg.insert(
-        Field::Status,
-        BTreeMap::from([(eid, Value::Object(status))]),
-    );
+    issue
+        .reg
+        .insert(Field::Status, IdMap::of(eid, Value::from(status)));
     issue
 }
 
@@ -194,10 +186,7 @@ fn materialise_dangling(k: &Knowledge, by_key: &IndexMap<String, EventId>, issue
         }
         let mut meta = Object::new(); // as dep_add stamps it
         meta.insert("created_at".into(), Value::from(event_time(uid.millis())));
-        let creator = k
-            .journal
-            .event(uid)
-            .map_or_else(String::new, crate::state::actor_of);
+        let creator = k.who(uid).unwrap_or_default();
         meta.insert("created_by".into(), Value::from(creator));
         for name in ["created_at", "created_by", "metadata", "thread_id"] {
             if let Some(value) = dep.get(name) {
@@ -206,10 +195,8 @@ fn materialise_dangling(k: &Knowledge, by_key: &IndexMap<String, EventId>, issue
         }
         issue
             .dep_tags
-            .entry((target, kind))
-            .or_default()
-            .entry(uid)
-            .or_insert(Value::Object(meta));
+            .get_or_insert_with((target, kind), IdMap::default)
+            .insert_if_absent(uid, Value::from(meta));
     }
     issue.dangling = kept;
 }

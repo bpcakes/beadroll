@@ -69,7 +69,7 @@ pub(crate) fn list(ctx: &Context<'_>, args: &ListArgs) -> Result<Outcome, Failur
     let mut result = Object::new();
     result.insert(
         "issues".into(),
-        Value::Array(shown.iter().map(|i| Value::Object(st.brief(i))).collect()),
+        Value::Array(shown.iter().map(|i| Value::from(st.brief(i))).collect()),
     );
     result.insert("total".into(), Value::from(total as i64));
     result.insert("limit".into(), Value::Int(limit.clone()));
@@ -114,7 +114,7 @@ pub(crate) fn ready(ctx: &Context<'_>, args: &ReadyArgs) -> Result<Outcome, Fail
     if args.filters.limit != Int::from(0) {
         items = first(items, &args.filters.limit);
     }
-    let result = Value::Array(items.iter().map(|i| Value::Object(st.brief(i))).collect());
+    let result = Value::Array(items.iter().map(|i| Value::from(st.brief(i))).collect());
     let mut lines: Vec<String> = items.iter().map(|i| st.line(i)).collect();
     if lines.is_empty() {
         lines.push("Nothing is ready".to_owned());

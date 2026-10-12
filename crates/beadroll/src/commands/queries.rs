@@ -33,7 +33,7 @@ pub(crate) fn blocked(ctx: &Context<'_>) -> Result<Outcome, Failure> {
             "blocked_by".into(),
             Value::Array(blockers.into_iter().map(Value::from).collect()),
         );
-        result.push(Value::Object(item));
+        result.push(Value::from(item));
     }
     if lines.is_empty() {
         lines.push("Nothing is blocked".to_owned());
@@ -86,7 +86,7 @@ pub(crate) fn search(ctx: &Context<'_>, query: &OsStr, all: bool) -> Result<Outc
             .cmp(&b.priority())
             .then_with(|| a.key().cmp(b.key()))
     });
-    let result = Value::Array(hits.iter().map(|i| Value::Object(st.brief(i))).collect());
+    let result = Value::Array(hits.iter().map(|i| Value::from(st.brief(i))).collect());
     let mut lines: Vec<String> = hits.iter().map(|i| st.line(i)).collect();
     if lines.is_empty() {
         lines.push("No matches".to_owned());
@@ -118,7 +118,7 @@ pub(crate) fn lint(ctx: &Context<'_>) -> Result<Outcome, Failure> {
                 issue.get(Field::Title).cloned().unwrap_or(Value::Null),
             );
             item.insert("problem".into(), Value::from(problem));
-            Value::Object(item)
+            Value::from(item)
         })
         .collect();
     let mut lines: Vec<String> = missing

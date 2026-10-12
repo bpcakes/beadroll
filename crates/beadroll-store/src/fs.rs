@@ -4,7 +4,8 @@
 
 use std::ffi::OsStr;
 use std::fs::{DirBuilder, File, OpenOptions};
-use std::io::{self, Write as _};
+use std::hash::{DefaultHasher, Hasher as _};
+use std::io::{self, Read as _, Write as _};
 use std::os::unix::ffi::OsStrExt as _;
 use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _, PermissionsExt as _};
 use std::path::{Path, PathBuf};
@@ -14,6 +15,7 @@ use beadroll_git::IoError;
 
 use crate::error::Error;
 use crate::failpoint::{Failpoints, Fired};
+use crate::memo::FileKey;
 
 /// `path` and any missing parents made as 0700 (less the umask, as `mkdir` gives it); a race loser
 /// is fine, a file in the way is an error.
@@ -163,6 +165,40 @@ pub fn read(path: &Path) -> Result<Vec<u8>, IoError> {
     std::fs::read(path).map_err(|e| IoError::at(&e, path))
 }
 
+/// The bytes of `path` up to its length when it was opened, and the identity of what was read:
+/// the open file's, up to those bytes, so that a file replaced or appended to while it was read
+/// is never taken for what was read (roll-lqjj.2).
+pub(crate) fn read_keyed(path: &Path) -> Result<(Vec<u8>, Option<FileKey>), IoError> {
+    let file = File::open(path).map_err(|e| IoError::at(&e, path))?;
+    let meta = file.metadata().map_err(|e| IoError::at(&e, path))?;
+    let mut data = Vec::new();
+    file.take(meta.len())
+        .read_to_end(&mut data)
+        .map_err(|e| IoError::at(&e, path))?;
+    let key = FileKey::of_meta(&meta).map(|key| key.up_to(data.len() as u64));
+    Ok((data, key))
+}
+
+/// A 128-bit sum of `bytes`: SipHash-1-3 twice, each started apart. It finds damage and change,
+/// not forgery: the store is private.
+pub(crate) fn content_sum(bytes: &[u8]) -> [u8; 16] {
+    let half = |start: u8| {
+        let mut hasher = DefaultHasher::new();
+        hasher.write_u8(start);
+        hasher.write(bytes);
+        hasher.finish()
+    };
+    let mut out = [0; 16];
+    let halves = half(0)
+        .to_le_bytes()
+        .into_iter()
+        .chain(half(1).to_le_bytes());
+    for (slot, byte) in out.iter_mut().zip(halves) {
+        *slot = byte;
+    }
+    out
+}
+
 /// Why a file meant to hold JSON text could not be read as such, worded as Python's `str()` of
 /// the error: the `OSError`, the `UnicodeDecodeError` of `read_text(encoding="utf-8")`, or the
 /// parser's message.
@@ -269,6 +305,26 @@ pub fn utf8_error(data: &[u8], error: &std::str::Utf8Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What a file read is taken to be is what was read: the file opened, up to the bytes read,
+    /// whatever its path names by the time anyone looks again (roll-lqjj.2, P03).
+    #[test]
+    fn a_file_read_is_known_by_the_file_its_bytes_came_from() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("attempt.json");
+        std::fs::write(&path, b"first\n").unwrap();
+        let (data, key) = read_keyed(&path).unwrap();
+        let key = key.unwrap();
+        assert_eq!(data, b"first\n");
+        assert_eq!(Some(key), FileKey::of(&path));
+        // replaced whole, as a merge replaces an attempt file that differs
+        let other = dir.path().join(".attempt.json.tmp");
+        std::fs::write(&other, b"second\n").unwrap();
+        std::fs::rename(&other, &path).unwrap();
+        let now = FileKey::of(&path).unwrap();
+        assert!(!now.same_file(&key), "the replacement is another file");
+        assert_eq!(read_keyed(&path).unwrap().1, Some(now));
+    }
 
     #[test]
     fn decode_errors_read_as_python_words_them() {

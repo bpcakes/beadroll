@@ -54,7 +54,7 @@ pub(crate) fn log(
     for event in rows {
         let actor = |key: &str| {
             event
-                .get("actor")
+                .actor()
                 .filter(|a| a.truthy())
                 .and_then(|a| a.get(key))
                 .cloned()
@@ -68,7 +68,7 @@ pub(crate) fn log(
             None => Value::Null,
         };
         let branch = event
-            .get("where")
+            .place()
             .filter(|w| w.truthy())
             .and_then(|w| w.get("branch"))
             .cloned()
@@ -103,7 +103,7 @@ pub(crate) fn log(
             line.push_str(&format!("  ({})", str_of(&branch)));
         }
         lines.push(line);
-        result.push(Value::Object(row));
+        result.push(Value::from(row));
     }
     if lines.is_empty() {
         lines.push("No events".to_owned());
@@ -140,7 +140,7 @@ pub(crate) fn machines(ctx: &Context<'_>, name: Option<&OsStr>) -> Result<Outcom
             ids.len(),
             last.chars().take(19).collect::<String>()
         ));
-        rows.push(Value::Object(row));
+        rows.push(Value::from(row));
     }
     if lines.is_empty() {
         lines.push("No machines yet".to_owned());
@@ -172,7 +172,7 @@ fn record_alias(ctx: &Context<'_>, name: &OsStr) -> Result<(), Failure> {
         )
     };
     let (aliases, surrogates) = match read_json_keeping_surrogates(&path, &units, &avoid) {
-        Ok((Value::Object(aliases), surrogates)) => (aliases, surrogates),
+        Ok((Value::Object(aliases), surrogates)) => (*aliases, surrogates),
         Ok(_) => {
             return Err(Failure::new(
                 Code::Io,
@@ -200,7 +200,7 @@ fn record_alias(ctx: &Context<'_>, name: &OsStr) -> Result<(), Failure> {
     };
     let mut aliases = aliases;
     aliases.insert(text(ident), Value::from(text(alias)));
-    let written = json::write(&Value::Object(aliases), Format::INDENTED)
+    let written = json::write(&Value::from(aliases), Format::INDENTED)
         .map_err(|e| Failure::new(Code::Validation, e.to_string()))?;
     write_atomic(
         &path,

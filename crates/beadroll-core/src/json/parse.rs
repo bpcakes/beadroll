@@ -240,7 +240,7 @@ impl Parser<'_> {
                 Some(b'{') => {
                     let inside = self.skip_space(at + 1);
                     if self.at(inside) == Some(b'}') {
-                        (Value::Object(Object::new()), false, inside + 1)
+                        (Value::from(Object::new()), false, inside + 1)
                     } else {
                         let (key, next) = self.key(inside)?;
                         stack.push(Frame::Object {
@@ -307,8 +307,7 @@ impl Parser<'_> {
                             Some(b'}') => match stack.pop() {
                                 Some(Frame::Object { members, .. }) => {
                                     let (object, any) = members.finish();
-                                    (value, surrogate, end) =
-                                        (Value::Object(object), any, after + 1);
+                                    (value, surrogate, end) = (Value::from(object), any, after + 1);
                                 }
                                 _ => return Err(self.syntax("Expecting value", after)),
                             },

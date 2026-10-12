@@ -51,9 +51,9 @@ fn record(head: Json, tail: Json) -> String {
             panic!("members, not {part:?}");
         };
         // as a dict display: a member already there keeps its place and takes the new value
-        members.extend(part);
+        members.extend(*part);
     }
-    write(&Json::Object(members), Format::ASCII).expect("a record")
+    write(&Json::from(members), Format::ASCII).expect("a record")
 }
 
 /// The private-use character a record holds where Python's holds a lone surrogate, which no Rust

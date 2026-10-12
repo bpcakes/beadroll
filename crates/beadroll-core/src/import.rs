@@ -144,8 +144,8 @@ pub fn plan_import(state: &State, records: &[Value]) -> Result<Plan, ImportError
         probe.insert("deps".into(), Value::Array(Vec::new()));
         probe.insert("op".into(), Value::from("create"));
         probe.insert("issue".into(), Value::from(PROBE_ID));
-        probe.insert("data".into(), Value::Object(data.clone()));
-        let probe = Value::Object(probe);
+        probe.insert("data".into(), Value::from(data.clone()));
+        let probe = Value::from(probe);
         let problem = event_problem(&probe)
             .or_else(|| payload_problem(&probe))
             .or_else(|| write_problem(&probe));
@@ -172,7 +172,7 @@ pub fn plan_import(state: &State, records: &[Value]) -> Result<Plan, ImportError
                 .collect();
             let data = members([
                 ("type", Value::from(kind(dep))),
-                ("meta", Value::Object(meta)),
+                ("meta", Value::from(meta)),
                 ("imported", Value::Bool(true)),
             ]);
             steps.push(Step::DepAdd {
@@ -306,7 +306,7 @@ fn create_data(record: &Value, taken: &dyn Fn(&str) -> bool) -> Object {
                 .cloned()
                 .unwrap_or(Value::from("blocks"));
             dep.insert("type".into(), kind);
-            Value::Object(dep)
+            Value::from(dep)
         })
         .collect();
     let comments: Vec<Value> = record
@@ -316,7 +316,7 @@ fn create_data(record: &Value, taken: &dyn Fn(&str) -> bool) -> Object {
         .iter()
         .map(|comment| {
             let get = |name: &str| comment.get(name).cloned().unwrap_or(Value::Null);
-            Value::Object(members([
+            Value::from(members([
                 ("legacy_id", get("id")),
                 ("author", get("author")),
                 (
@@ -341,10 +341,10 @@ fn create_data(record: &Value, taken: &dyn Fn(&str) -> bool) -> Object {
         .unwrap_or(Value::Array(Vec::new()));
     let mut data = members([
         ("key", Value::from(id_of(record))),
-        ("fields", Value::Object(fields)),
+        ("fields", Value::from(fields)),
         ("labels", labels),
         ("comments", Value::Array(comments)),
-        ("extra", Value::Object(extra)),
+        ("extra", Value::from(extra)),
         ("imported", Value::Bool(true)),
     ]);
     if !dangling.is_empty() {

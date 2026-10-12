@@ -24,13 +24,55 @@ impl Link<'_> {
         for path in segment_files(self.ws)? {
             repair_tail(self.ws, &path)?;
         }
-        let mut blobs = self.local_blobs()?;
+        let (blobs, remembered) = self.blobs(pending)?;
+        let events = match self.events_tree(&mut trees, &blobs) {
+            // A remembered blob `sync.git` no longer holds: its object was lost while the published
+            // tree still names it, which git does not report as damage. Every file is hashed
+            // again, which makes it again, as every publish did before the memo.
+            Err(error) if remembered && !matches!(error, Error::SyncRepoDamaged(_)) => {
+                self.forget_blobs();
+                let (blobs, _) = self.blobs(pending)?;
+                if trees.is_none() {
+                    trees = Trees::start(&self.env).ok();
+                }
+                self.events_tree(&mut trees, &blobs)?
+            }
+            built => built?,
+        };
+        let mut manifest = Object::new();
+        manifest.insert("format".into(), Value::from(FORMAT));
+        manifest.insert("workspace".into(), Value::from(self.ws.id.as_str()));
+        let mut manifest = json::write(&Value::from(manifest), Format::SORTED_ASCII)
+            .map_err(|e| Error::Validation(e.to_string()))?;
+        manifest.push('\n');
+        let manifest_sha = self.blob_of(manifest.into_bytes())?;
+        let top =
+            format!("040000 tree {events}\tevents\n100644 blob {manifest_sha}\tmanifest.json\n");
+        self.make_tree(&mut trees, top)
+    }
+
+    /// Every journal file's blob, by its path in the store, with `pending`'s attempt at the place
+    /// it will live if accepted; and whether any was remembered rather than hashed now.
+    fn blobs(&mut self, pending: &[Value]) -> Result<(BTreeMap<String, String>, bool), Error> {
+        let hashed = self.hashed.len();
+        let mut blobs = self.local_blobs(true)?;
+        self.save_memo();
+        let remembered = self.hashed.len() - hashed < blobs.len();
         if !pending.is_empty() {
             let place = relative(self.ws, &attempt_path(self.ws, pending));
             blobs.insert(place, self.blob_of(encode_events(pending)?)?);
         }
+        Ok((blobs, remembered))
+    }
+
+    /// The tree of `events/` that `blobs` make, by path in the store.
+    fn events_tree(
+        &self,
+        trees: &mut Option<Trees>,
+        blobs: &BTreeMap<String, String>,
+    ) -> Result<String, Error> {
         let mut folders: BTreeMap<String, BTreeMap<String, Vec<String>>> = BTreeMap::new();
-        for (path, sha) in &blobs {
+        for (path, sha) in blobs {
             let parts: Vec<&str> = path.split('/').collect();
             let group = if parts.len() == 4 { parts[2] } else { "" };
             folders
@@ -47,23 +89,13 @@ impl Link<'_> {
         for (replica, groups) in &folders {
             let mut entries = groups.get("").cloned().unwrap_or_default().concat();
             if let Some(claims) = groups.get("claims") {
-                let tree = self.make_tree(&mut trees, claims.concat())?;
+                let tree = self.make_tree(trees, claims.concat())?;
                 entries.push_str(&format!("040000 tree {tree}\tclaims\n"));
             }
-            let tree = self.make_tree(&mut trees, entries)?;
+            let tree = self.make_tree(trees, entries)?;
             rows.push_str(&format!("040000 tree {tree}\t{replica}\n"));
         }
-        let events = self.make_tree(&mut trees, rows)?;
-        let mut manifest = Object::new();
-        manifest.insert("format".into(), Value::from(FORMAT));
-        manifest.insert("workspace".into(), Value::from(self.ws.id.as_str()));
-        let mut manifest = json::write(&Value::Object(manifest), Format::SORTED_ASCII)
-            .map_err(|e| Error::Validation(e.to_string()))?;
-        manifest.push('\n');
-        let manifest_sha = self.blob_of(manifest.into_bytes())?;
-        let top =
-            format!("040000 tree {events}\tevents\n100644 blob {manifest_sha}\tmanifest.json\n");
-        self.make_tree(&mut trees, top)
+        self.make_tree(trees, rows)
     }
 
     /// A conditional update: the new commit's parent is the head fetched, and the push is a plain

@@ -120,7 +120,7 @@ impl Workspace {
         let problem = match read_json_text(&path) {
             Err(Unreadable::Missing) => return Ok(Object::new()),
             Ok(Value::Object(meta)) if matches!(meta.get("remote"), None | Some(Value::Str(_))) => {
-                return Ok(meta);
+                return Ok(*meta);
             }
             Ok(_) => "not an object with a string remote".to_owned(),
             Err(Unreadable::Other(problem)) => problem,
@@ -162,7 +162,7 @@ impl Workspace {
         {
             meta.shift_remove("remote");
         }
-        let text = json::write(&Value::Object(meta), Format::INDENTED)
+        let text = json::write(&Value::from(meta), Format::INDENTED)
             .map_err(|e| Error::io_message(e.to_string()))?;
         write_atomic(
             &self.dir.join("meta.json"),

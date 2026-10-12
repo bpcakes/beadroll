@@ -120,10 +120,10 @@ impl State {
         let comments = issue
             .comments()
             .iter()
-            .map(|comment| Value::Object(shown_comment(comment)));
+            .map(|comment| Value::from(shown_comment(comment)));
         out.insert("comments".into(), comments.collect::<Vec<_>>().into());
         out.insert("blocked".into(), Value::from(self.is_blocked(issue)));
-        out.insert("origin".into(), Value::Object(issue.origin().clone()));
+        out.insert("origin".into(), Value::from(issue.origin()));
         if let Some(place) = issue.where_().filter(|place| place.truthy()) {
             out.insert("where".into(), place.clone());
         }
@@ -131,9 +131,9 @@ impl State {
             out.insert("closed_on".into(), place.clone());
         }
         if let Some(claim) = issue.claim() {
-            out.insert("claim".into(), Value::Object(claim.to_value()));
+            out.insert("claim".into(), Value::from(claim.to_value()));
         }
-        let objects = |items: Vec<Object>| items.into_iter().map(Value::Object).collect::<Vec<_>>();
+        let objects = |items: Vec<Object>| items.into_iter().map(Value::from).collect::<Vec<_>>();
         let lists = [
             (
                 "provisional_claims",
@@ -167,7 +167,10 @@ impl State {
                     objects(alternatives.iter().map(Alternative::to_value).collect());
                 (field.name().to_owned(), Value::from(alternatives))
             });
-            out.insert("conflicts".into(), Value::Object(conflicts.collect()));
+            out.insert(
+                "conflicts".into(),
+                Value::from(conflicts.collect::<Object>()),
+            );
         }
         out
     }
@@ -187,7 +190,7 @@ impl State {
                 Value::from(target.map_or("unknown", Issue::status)),
             );
             dep.insert("dependency_type".into(), Value::from(kind.as_str()));
-            Value::Object(dep)
+            Value::from(dep)
         });
         dependencies.collect::<Vec<_>>().into()
     }
@@ -205,7 +208,7 @@ impl State {
                 dep.insert("title".into(), field(other, Field::Title));
                 dep.insert("status".into(), field(other, Field::Status));
                 dep.insert("dependency_type".into(), Value::from(kind.as_str()));
-                dependents.push(Value::Object(dep));
+                dependents.push(Value::from(dep));
             }
         }
         dependents.into()
@@ -262,7 +265,7 @@ fn unresolved(issue: &Issue) -> Value {
         let mut dep = Object::new();
         dep.insert("id".into(), Value::from(key));
         dep.insert("dependency_type".into(), Value::from(kind));
-        Value::Object(dep)
+        Value::from(dep)
     });
     unresolved.collect::<Vec<_>>().into()
 }

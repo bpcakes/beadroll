@@ -1,12 +1,11 @@
 //! Bringing the remote's journals in (Python's `Link.merge`).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
-use beadroll_core::replay::replay;
 use beadroll_store::{
-    complete_prefix, load_journal, pending_files, read, read_attempt, repair_tail, replica_id,
-    segment_files, write_atomic,
+    Memo, complete_prefix, extend_segment, pending_files, projection, read, read_attempt,
+    repair_tail, replica_id, segment_files, write_atomic,
 };
 
 use super::{Link, newlines};
@@ -73,11 +72,18 @@ impl Link<'_> {
     /// means this machine's identity is in use somewhere else. Attempt files are immutable: a remote
     /// one we lack is copied, and one of our own pending attempts found on the remote is thereby
     /// confirmed. Returns how many events came in. Called with the store lock held.
+    ///
+    /// A file whose identity is the one the memo remembers is not hashed, and not read when its
+    /// remembered blob is the published one. The published tree's blobs are kept for the publish
+    /// that follows ([`Link::local_blobs`]).
     pub fn merge(&mut self, tip: Option<&str>) -> Result<i64, Error> {
         self.remote_counts.clear();
         self.forks.clear();
         self.confirmed.clear();
         self.confirmed_events.clear();
+        // the memo as it is now: another bead process may have written it since this link last did
+        self.memo = Some(Memo::load(self.ws));
+        self.listed.clear();
         let mut pulled: i64 = 0;
         for path in segment_files(self.ws)? {
             repair_tail(self.ws, &path)?;
@@ -88,11 +94,12 @@ impl Link<'_> {
             .map(|path| (stem(&path), path))
             .collect();
         if let Some(tip) = tip {
-            let local = self.local_blobs()?;
+            let local = self.local_blobs(false)?;
             for (path, sha) in self.listing(tip)? {
                 let Ok(path) = String::from_utf8(path) else {
                     continue; // a name no bead writes
                 };
+                self.listed.insert(path.clone(), sha.clone());
                 if attempt_shaped(&path) {
                     if self.merge_attempt(&path, &sha, &local, &pending)? {
                         pulled += 1;
@@ -104,9 +111,11 @@ impl Link<'_> {
                 }
             }
         }
-        let state = replay(load_journal(self.ws)?)?;
+        self.save_memo();
+        // the store's projection, the records merged applied to it, or the journal replayed
+        let merged = projection(self.ws)?;
         if let Some(own) = &own
-            && state.chain_breaks().contains_key(own)
+            && merged.state().chain_breaks().contains_key(own)
         {
             return Err(Error::JournalFork(OWN_CHAIN.to_owned()));
         }
@@ -119,7 +128,7 @@ impl Link<'_> {
         &mut self,
         path: &str,
         sha: &str,
-        local: &std::collections::BTreeMap<String, String>,
+        local: &BTreeMap<String, String>,
         pending: &HashMap<String, PathBuf>,
     ) -> Result<bool, Error> {
         self.remote_counts.insert(path.to_owned(), 1);
@@ -145,6 +154,7 @@ impl Link<'_> {
             }
             if local.get(path).map(String::as_str) != Some(sha) {
                 write_atomic(&target, &theirs, true, &self.ws.settings.failpoints)?;
+                self.memo().wrote(path, &target, &theirs, Some(sha));
             }
             crate::tx::remove(pending_path)?;
             self.confirmed.push(attempt_id);
@@ -165,30 +175,37 @@ impl Link<'_> {
             true
         };
         write_atomic(&target, &theirs, true, &self.ws.settings.failpoints)?;
+        self.memo().wrote(path, &target, &theirs, Some(sha));
         Ok(new)
     }
 
-    /// One remote segment: ours extended to it, or, when neither is a prefix of the other, a
-    /// foreign one replaced (ours kept beside it); our own is a fork. How many events came in.
+    /// One remote segment: ours extended to it (what it lacks appended), or, when neither is a
+    /// prefix of the other, a foreign one replaced (ours kept beside it); our own is a fork. How
+    /// many events came in. A segment whose published blob is ours is not read: its lines are the
+    /// remembered ones.
     fn merge_segment(
         &mut self,
         path: &str,
         sha: &str,
-        local: &std::collections::BTreeMap<String, String>,
+        local: &BTreeMap<String, String>,
         own: Option<&str>,
     ) -> Result<i64, Error> {
         let replica = path.split('/').nth(1).unwrap_or_default();
         let target = self.ws.dir.join(path);
+        if local.get(path).map(String::as_str) == Some(sha) {
+            let lines = self.memo().lines(path, &target)?;
+            self.remote_counts.insert(path.to_owned(), lines);
+            return Ok(0);
+        }
         let ours = if target.exists() {
             read(&target)?
         } else {
             Vec::new()
         };
-        let theirs = if local.get(path).map(String::as_str) == Some(sha) {
-            ours.clone()
-        } else {
-            complete_prefix(&self.blob(sha)?)
-        };
+        let blob = self.blob(sha)?;
+        let theirs = complete_prefix(&blob);
+        // what is written is the published blob itself unless an interrupted line was cut from it
+        let written = (theirs == blob).then_some(sha);
         self.remote_counts
             .insert(path.to_owned(), newlines(&theirs));
         if theirs == ours || ours.starts_with(&theirs) {
@@ -196,7 +213,12 @@ impl Link<'_> {
         }
         if theirs.starts_with(&ours) {
             let pulled = newlines(&theirs) as i64 - newlines(&ours) as i64;
-            write_atomic(&target, &theirs, true, &self.ws.settings.failpoints)?;
+            match theirs.get(ours.len()..).filter(|_| !ours.is_empty()) {
+                // what ours lacks, appended: the segment stays the file it was (roll-lqjj.2)
+                Some(more) => extend_segment(&target, more)?,
+                None => write_atomic(&target, &theirs, true, &self.ws.settings.failpoints)?,
+            }
+            self.memo().wrote(path, &target, &theirs, written);
             return Ok(pulled);
         }
         if Some(replica) == own {
@@ -209,6 +231,7 @@ impl Link<'_> {
             &self.ws.settings.failpoints,
         )?;
         write_atomic(&target, &theirs, true, &self.ws.settings.failpoints)?;
+        self.memo().wrote(path, &target, &theirs, written);
         self.forks.push(path.to_owned());
         Ok(0)
     }

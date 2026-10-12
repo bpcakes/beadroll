@@ -24,6 +24,10 @@ mod workspace;
 
 use std::process::ExitCode;
 
+/// The system allocator, counted: `timing --load` reports the most its process held on its heap.
+#[global_allocator]
+static HEAP: timing::heap::Counting = timing::heap::Counting;
+
 const USAGE: &str = "\
 usage: cargo xtask <command>
 
@@ -36,15 +40,26 @@ usage: cargo xtask <command>
       output is kept in target/check/. ./check.sh runs this.
 
   timing [--label NAME] [--out FILE] -- COMMAND [ARG...]
-  timing --replay N [--ownership] [--label NAME] [--out FILE]
+  timing --replay N [--ownership|--churn] [--label NAME] [--out FILE]
+  timing --sync N [--ownership|--churn] [--rotate BYTES] [--label NAME] [--out FILE]
+  timing --read N [--ownership|--churn] [--label NAME] [--out FILE]
+  timing --merge N [--batch M] [--ownership|--churn] [--label NAME] [--out FILE]
   timing --load DIR [--no-replay]
       Run COMMAND and append what it took, one JSON line, to FILE (default
       target/timing.jsonl); or replay a parsed journal of N valid events in-process, the best of
       seven runs (run it from a release build: cargo run --release --package xtask -- timing
       --replay 10000). --ownership makes about half the events claims, takeovers and releases in
-      attempt files. The journal is written under target/timing/ while it is measured, and the
-      record also holds the peak memory (as /usr/bin/time reports it) of a process that loads it
+      attempt files; --churn keeps a thousand issues, every later event retitling one or putting
+      a label on or off it. The journal is written under target/timing/ while it is measured, and
+      the record also holds the peak memory (as /usr/bin/time reports it) of a process that loads it
       from disk and replays it, and of one that only loads it: --load DIR is that process.
+      --sync N times a publishing bead sync (BEAD_UNDER_TEST, else the bead Cargo builds in
+      xtask's profile) on a scratch store of those N events, its journals rotated at BYTES (bead's
+      default, 262144), against a local bare remote: the first sync, then the best of five after a
+      local write each, with the store's memo of its journal files and its projection, without
+      its projection, and without either. --read N times bead list, show and ready there, with
+      the projection and without it; --merge N, a bead sync that merges M events (ten by default)
+      another machine wrote after everything the store holds, with the projection and without it.
       Timings are evidence, never a gate (docs/RUST-PORT.md §4.7).
 ";
 

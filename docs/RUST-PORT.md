@@ -67,6 +67,7 @@ asserted by tests today or is read by another machine, `br`/`bv`, or studio.
 | `<ws>/meta.json` | `indent=1`, ASCII-escaped. Keys: `remote` (the remote as it was chosen: a configured remote's name, as Python's `init --remote NAME` saved one too, or a URL), `name`, `last_sync`, `published` | origin is never stored |
 | `<ws>/events/<replica>/NNNNNN.jsonl` | One event per line: `,`/`:` separators, raw UTF-8, keys in the order `v, id, replica, deps, actor, op, issue, data[, where]`. Opened with `O_APPEND`, fsynced; a new segment starts at `BEAD_ROTATE_BYTES` | A torn tail is repaired before the next write and kept as `*.torn-<ns>` |
 | `<ws>/events/<replica>/claims/<event-id>.json` | The attempt's events, compact lines, written atomically | Immutable. On mismatch the local copy is kept as `*.fork-<ns>` |
+| `<ws>/projection` | A cache of one build of bead (roll-lqjj.2): a header (`bead projection\n`, the encoding's and the layout's versions, three lengths and a 128-bit sum of each part), then what it was made from (the build, every journal file's path and identity on disk as it was read, a sum of each segment's bytes), the state the journal replays into, and the index that applying more events needs. Written atomically | No part of format 1: `python-0.1.0` never reads it, another build never reads it, and deleting it is always safe |
 | `<ws>/pending/<id>.json`, `<id>.command` | The pending attempt and its receipt | Python-compatible receipt signatures throughout the port and rollback period (§2.3j) |
 | `<ws>/sync.git` | `git init --bare --template= --shared=0600 --object-format=<project's>`. Maintenance is off via the environment (`gc.auto=0` and the rest of `SYNC_REPO_CONFIG`) | Rebuilt as `sync.git.damaged-<ns>` when damaged |
 | Temporary files | `.<name>.<pid>.tmp` beside the target | Readers and sync ignore them, along with every non-`.json`/`.jsonl` name |
@@ -255,9 +256,11 @@ beadroll-test-support (dev-dependency of every crate's tests)      xtask (dev to
   fires on them. Each `tests/<name>/main.rs` starts with `#![cfg(test)]`, so that clippy treats its
   helpers as test code, and helpers shared between test modules are `pub(crate)`
   (`unreachable_pub`).
-- **Unsafe code** is denied workspace-wide, with two documented exceptions and a `// SAFETY:` on
+- **Unsafe code** is denied workspace-wide, with three documented exceptions and a `// SAFETY:` on
   each block: `beadroll::sys` (a pre-`main` stdio probe and ignoring SIGXFSZ) and
-  `beadroll_git::runner` (detaching the child session and resetting SIGXFSZ before exec).
+  `beadroll_git::runner` (detaching the child session and resetting SIGXFSZ before exec), the two
+  in bead; and xtask's `timing::heap`, the system allocator with a count of what it hands out, for
+  the heap peak `timing` reports (`GlobalAlloc` is an unsafe trait; roll-dih8.11).
 - **House layout.**
   - No `mod.rs` files (`clippy::mod_module_files`).
   - Files warn above 500 lines and fail above 800 (jig's file budget, which studio and batter
@@ -310,14 +313,17 @@ So core has a small strict parser and writer:
 **b. Events and state are typed. Raw JSON survives only where Python keeps arbitrary data.**
 - **Events.**
   - A journal line parses to `Value`.
-  - Settling validates it into `Event`: an `EventId(u128)` whose ordering equals Python's string
-    ordering, `deps`, and an `Op` enum with typed payloads (`Create`, `Set`, `Claim`, …,
-    `Unknown(String)`), read once. The payload is read leniently, because an event
+  - Reading it makes an `Event`: an `EventId(u128)` whose ordering equals Python's string
+    ordering, `deps`, its writer, and an `Op` enum with typed payloads (`Create`, `Set`, `Claim`,
+    …, `Unknown(String)`), read once. The payload is read leniently, because an event
     `payload_problem` refuses is never applied. `actor` and `where`, which Python keeps whole on
-    issues, claims and comments, and `v`, read once for its check, come from the kept `Value`.
+    issues, claims and comments, are kept as values shared by every event that repeats them; `v`
+    is read once for its check.
   - The validation messages are the Python ones (`event_problem`, `payload_problem`,
     `write_problem`).
-  - The raw `Value` is kept for canonical comparison and `log`.
+  - The parsed `Value` is not kept (roll-dih8.11): two records of one id are told apart by a
+    digest of their content, as Python's `canonical` tells them apart, and replay takes each
+    event's operation from the journal as it applies it.
 - **Integers.** Fields that Python types as `int` use `PyInt` (`Bool | Int`, an `Int` being
   `Small(i64) | Big(digits)`), because replay accepts `true` where an int is due. The looser replay
   rule exists for histories written before `write_problem`, and those histories must mean the same
@@ -591,7 +597,7 @@ thiserror = "2"
 uuid = { version = "1", features = ["v4", "v7"] }
 
 [workspace.lints.rust]
-unsafe_code = "deny"                        # two documented exceptions, §2.2
+unsafe_code = "deny"                        # three documented exceptions, §2.2
 missing_docs = "warn"
 unreachable_pub = "warn"
 rust_2018_idioms = { level = "warn", priority = -1 }
@@ -1529,7 +1535,8 @@ decision 7 open. The five decisions stand.
     (`cargo run --release --package xtask -- timing --replay 10000`, a valid history on six
     machines, parsed and settled outside the clock, best of seven): 20 ms; Python's replay of the
     same journal took 73 ms.
-  - 200k events: ≤ 0.5 s and ≤ 150 MB. Python takes 14 s and 412 MB.
+  - 200k events: ≤ 0.5 s and ≤ 150 MB. Python takes 14 s and 412 MB. The memory is met on the
+    heap since roll-dih8.11 (below).
 - **fsync on APFS:** `File::sync_all` 5.26 ms, `sync_data` 5.64 ms (both `F_FULLFSYNC`), Python
   `os.fsync` 0.03 ms.
 - **Locking:** a Rust `File::lock` holder blocks Python's `fcntl.flock(LOCK_EX | LOCK_NB)`.
@@ -1596,6 +1603,177 @@ decision 7 open. The five decisions stand.
     the first two start while the round reads: not justified (§2.3d). The two `update-ref`s after a
     fetch could go back into one transaction only once concurrent fetches no longer fail on a
     fetch ref that disappears while they list refs, in both implementations.
+- **roll-lqjj.1: a publishing sync, measured (this Mac, 2026-10-11).**
+  - How: `cargo run --release --package xtask -- timing --sync N [--ownership] [--rotate BYTES]`.
+    The history `--replay` generates is written as a store holds it (each machine's journal in
+    segments rotated at BYTES, 256 KiB by default as bead rotates, and its attempt files),
+    published once to a local bare remote, and then synced after a local write each time, the best
+    of five: with the store's memo of its journal files, and with the memo removed before each
+    sync, so that every file is hashed and read as before roll-lqjj.1.
+
+    | Events | Segments | Attempt files | Journal | Sync | Without the memo |
+    |---|---|---|---|---|---|
+    | 50k | 54 | 0 | 13 MB | 0.89 s | 0.97 s |
+    | 200k | 207 | 0 | 54 MB | 3.43 s | 3.49 s |
+    | 200k, rotated at 4 MiB | 18 | 0 | 54 MB | 3.37 s | 3.40 s |
+    | 200k, ownership-heavy | 96 | 91,952 | 73 MB | 11.2 s | 14.2 s |
+
+  - The sync figure at 200,000 events is the same with 18 full segments as with 207: it does not
+    grow with them. Hashing was a small part of it on the plain history (git hashes 54 MB in about
+    30 ms, and a publish hashed it twice); on the ownership-heavy one, 92,000 attempt files hashed
+    twice cost 3 s a sync, which the memo removes. What still grows is the rest, in proportion to
+    the events (3.9 times the time for 4 times the events): each sync loads and replays the whole
+    journal three times (`view` before and after, and the merge's check for chain breaks), which
+    the local projection (roll-lqjj.2) takes on; and it lists, stats and names in its tree every
+    attempt file, which only a checkpoint (roll-lqjj.4) would change.
+
+- **roll-dih8.11: replay's memory, measured (this Mac, 2026-10-12).**
+  - How: `cargo run --release --package xtask -- timing --replay N [--ownership]`, as in Phase 4,
+    the journal written in segments rotated at 256 KiB as a store holds them. Beside the resident
+    peak `/usr/bin/time` reports for the process that loads the journal and replays it (`timing
+    --load`), xtask records its heap peak: the most that process held on its heap at once, counted
+    by xtask's allocator (the system's, with a count). The counting makes the replay it times
+    about 5% slower: at 200,000 ownership-heavy events, 0.27–0.29 s against 0.25–0.28 s for the
+    same build without it, three runs each.
+
+    | Events | Replay | Heap peak (the journal alone) | Resident peak (the journal alone) | Phase 4: replay, resident peak |
+    |---|---|---|---|---|
+    | 10k | 6.6 ms | 5.8 MB (5.8 MB) | 14 MB (10 MB) | 7.9 ms, 52 MB |
+    | 10k, ownership-heavy | 9.3 ms | 6.7 MB (6.0 MB) | 15 MB (11 MB) | 10.6 ms, 52 MB |
+    | 50k | 39 ms | 27 MB (24 MB) | 50 MB (30 MB) | 53 ms, 236 MB |
+    | 50k, ownership-heavy | 57 ms | 33 MB (29 MB) | 59 MB (38 MB) | 66 ms, 245 MB |
+    | 200k | 0.21 s | 107 MB (92 MB) | 187 MB (108 MB) | 0.26 s, 921 MB |
+    | 200k, ownership-heavy | 0.29 s | 133 MB (116 MB) | 215 MB (143 MB) | 0.33 s, 958 MB |
+
+  - **The 150 MB budget is met on the heap**, which is the budget (the maintainer's decision of
+    2026-10-12). Where the memory went:
+    - a journal keeps what replay reads of each event (its id, causes, writer, actor, place and
+      typed operation) and a 16-byte digest of its content, not its parsed JSON; each text and
+      value events repeat is held once, and a JSON object is boxed, so that a value is 32 bytes;
+    - replay takes each event's operation from the journal as it applies it, and the state keeps
+      the rest (who wrote each event, what it had seen), not the journal;
+    - an issue keeps its registers, tags and claims in vectors sized to them, its dependencies as
+      a view of their tags, and its claim records with their names shared and their times taken
+      from event ids; a clock of the ancestry index is positions alone, naming the set of chains
+      it saw into (§2.3c); a write works out the frontier when it asks for it.
+  - **The resident peak is not met.** It is about the journal at load plus everything replay
+    allocates, since the system allocator keeps most of what replay frees for sizes the state
+    never asks for again: roll-dih8.15.
+  - **Events the size of a real tracker's take more.** This repository's tracker on 2026-10-12
+    (292 events averaging 1,078 bytes of JSON: creates 1.6 KB, sets 2.1 KB, comments 1.3 KB),
+    repeated to 200,120 events, each copy with ids and keys of its own and building on the one
+    before (36,882 issues, 206 MB of segments), peaks at 364 MB on the heap, 245 MB of it the
+    loaded journal, and about 470 MB resident. The texts are most of it, and the journal and the
+    state both hold them. Meeting 150 MB there would mean not holding events once they are
+    applied, only the state and the ancestry index; the local projection (roll-lqjj.2) makes a
+    whole-journal replay the exception instead.
+
+- **roll-lqjj.2: commands with the projection, measured (this Mac, 2026-10-12).**
+  - How: `cargo run --release --package xtask -- timing --read N`, `--merge N [--batch M]` and
+    `--sync N`, each with `--ownership` or `--churn` to shape the history, every figure the best of
+    five. A read is `bead list`, `bead show` of an issue or `bead ready` on a store published once;
+    a merge, a `bead sync` that merges what another machine wrote after everything the store
+    holds; a publishing sync, one after a local write. Without the projection, it is removed
+    before each command, which then replays the journal and writes it back. The churn history is
+    a thousand issues changed over and over: its state stays its size however many events made
+    it.
+
+    | Events | History | `list` / `show` / `ready` | Without the projection | Projection |
+    |---|---|---|---|---|
+    | 50k | plain | 30 / 31 / 32 ms | 0.26 s | 4.9 MB |
+    | 200k | plain | 73 / 73 / 87 ms | 1.06–1.07 s | 20 MB |
+    | 50k | churn | 18 / 17 / 18 ms | 0.22 s | 1.3 MB |
+    | 200k | churn | 18 / 19 / 20 ms | 0.85 s | 3.7 MB |
+    | 200k | ownership-heavy (91,952 attempt files) | 0.56 / 0.58 / 0.59 s | 3.46–3.53 s | 30 MB |
+
+    | Events | History | A merge of ten (without the projection) | A publishing sync (without the projection; without it or the memo) |
+    |---|---|---|---|
+    | 50k | plain | 0.13 s (0.36 s) | |
+    | 200k | plain | 0.31 s (1.31 s) | 0.38 s (1.34 s; 1.45 s) |
+    | 50k | churn | 0.09 s (0.31 s) | |
+    | 200k | churn | 0.11 s (0.96 s); of a hundred, 0.12 s (1.01 s) | |
+    | 200k | ownership-heavy | 3.26 s (6.20 s) | 3.63 s (6.38 s; 9.34 s) |
+
+  - **A read costs what the state does, a merge what the state and the events merged do.** On
+    the churn history a read takes 18 ms at 50,000 events and at 200,000, where replaying the
+    journal takes 0.22 and 0.85 s; a merge takes 90 and 109 ms, and 118 ms for a hundred events
+    where ten took 109. On the plain history the state grows with the events, and so do both.
+  - What still grows with the events: the projection keeps every event's id (16 bytes each),
+    so that a record it holds is never taken for a new one, and a merge reads and writes them
+    (19 ms more at 200,000 events than at 50,000, on the churn history); every command stats
+    every journal file, and a store heavy in claims has a hundred thousand: there a read takes
+    0.56 s and a sync 3.6 s, most of it listing the attempt files, which only a checkpoint
+    (roll-lqjj.4) changes. A merge appends what another machine's segment lacks rather than
+    writing the segment whole, or the projection could not take the merged lines in alone.
+  - A merge that brings events written concurrently with the store's is applied by replaying the
+    journal. On this repository's tracker none has: on 2026-10-12 it held 299 events, all written
+    on one machine, no two of them concurrent (each in the other's past), so no merge had brought
+    another machine's events at all. Where two machines write, one merge in ten does (roll-lqjj.3,
+    below).
+
+- **roll-lqjj.3: real trackers, migrated (this Mac, 2026-10-12).** The evidence the history
+  boundary was decided on (`docs/REVIEWING.md` §2).
+  - How: the release build of 9ca0547. Every Beads tracker the maintainer keeps (22, in 19
+    repositories) and the eight largest public ones on GitHub were imported into scratch stores
+    with `bead init --import`, published to a local bare remote, and joined by a second machine
+    with `bead sync`; reads are the best of five. For 18 of the maintainer's, every commit of
+    `.beads/issues.jsonl` on the default branch's first-parent chain was replayed as the commands
+    that would have made it (an import of its new records, an update, a close or reopen, a
+    comment, a dependency added or removed, a delete), each one publishing. GitHub's code search
+    finds 3,312 public trackers (`filename:issues.jsonl path:.beads`) but indexes files under
+    384 KB only; the larger ones came from `.beads/metadata.json` and `config.yaml` (3,463
+    repositories) and the sizes the contents API gives: of the 2,048 that code search had not
+    shown, 390 keep a tracker there, 185 of them over 1 MB (from 122 owners) and 20 over 10 MB.
+    Public trackers' git histories were read from blobless clones: 849 repositories, every one
+    with a tracker over 100 KB that code search shows and 200 smaller ones drawn at random. The
+    bead stores in use gave concurrency and publish lag: when each event reached the remote, from
+    the remote ref's commits, against the time in its id.
+
+    | Trackers | Issues | Beads JSONL | Events imported | Read, warm / cold | A published write | First sync of a new machine |
+    |---|---|---|---|---|---|---|
+    | The maintainer's 22 | 2–280 | 9 KB–1.9 MB | 3–846 | 15–21 / 16–31 ms | 0.12–0.16 s | 77–151 ms |
+    | The eight largest public | 1,300–13,394 | 21–49 MB | 4,355–29,046 | 58–138 / 176–574 ms | 0.34–0.65 s | 0.87–1.86 s |
+
+  - Every record came back from `bead export` as it went in (2,449 of 2,449, and 39,456 of the
+    public 39,457), but for what export writes as br does: an empty `comments` list is left out
+    (one record), and a dependency written without `thread_id` comes back with `"thread_id": ""`
+    (4,495 records of the two trackers bd wrote). The second machine agreed with the first on every
+    tracker. The largest public tracker (48.5 MB) could not be imported as it is: beside its 3,578
+    issues it holds 1,111 Beads memory records (`{"_type": "memory", ...}`, no `id`), and the
+    import refuses the file at the first (roll-dih8.16); it was measured with them set aside.
+    Importing the 47 MB one held 951 MB resident, and reading it, 274 MB.
+  - **History as bead would have recorded it** (the 18 replays; a lower bound, since a commit
+    folds every edit made between commits): 7,826 events, 17 MB of journal and 3,147 publishes,
+    the busiest tracker 1,432 events in 24 days. The journal is 1.1–2.9 times the state it
+    replays into (median 1.4), at 1.2–3.7 KB an event, and the projection's index (ids, positions,
+    lengths) 22–30 bytes an event. Where bead is in use, the busiest tracker takes 99 events a day
+    (36,000 and 81 MB a year), and the busiest public tracker's own timestamps show 138 creates,
+    closes and comments a day, 1,565 on its busiest (50,000 a year before any update, dependency
+    or claim).
+  - **Concurrency is common where several machines write.** On the one bead tracker two machines
+    write, 31 of its 303 publishes (10%) brought events concurrent with what the remote held, and
+    146 of 807 events were concurrent with another; none were on one issue, and no two creates
+    were. Four machines writing one tracker at once in the sandbox, each publishing every write:
+    21 of their 250 publishes brought concurrent events (two machines: 6 of 151), since a machine
+    that publishes at once rarely writes on a stale view; every view converged, and a write took
+    161 ms at the median, but 14 of 200 took over a second, the worst 22.7 s, and one was left
+    unpublished after twelve rounds (two machines: 5 of 100, the worst 6.2 s). In Beads trackers
+    kept in git, where both sides of a merge changed one issue, a field was set differently in 18
+    of the busiest tracker's 163 merges and in 8 of 123 public ones: status and comments most
+    often.
+  - **Old work is real.** bead published a tracker's first events up to 45 h after they were
+    written, and everything since in a median 1.2 s (p90 5 s); on the two-machine tracker, at most
+    10 minutes after. In Beads trackers kept in git a branch's tracker changes wait for its merge:
+    up to 24 days on the maintainer's (and one branch's, 14 days old, still waits), and in the 51
+    public repositories whose merges bring tracker changes the longest wait is a median 17 h, over
+    7 days in 8 of them, over 30 days in 4, and 258 days at most.
+  - **What a command costs grows with the text.** A read decodes the projection and a write
+    rewrites it, both in proportion to the state, and a real tracker's state is mostly its texts
+    (descriptions, designs, notes and comments), and on the largest public trackers closed issues
+    hold 27–100% of the bytes. At 30 times the maintainer's busiest tracker (6,810 issues, 60 MB
+    of journal) a write takes 0.68 s and a read 0.11 s holding 304 MB, where they take 0.15 s and
+    21 ms at its size; a cold replay takes 0.45 s, so a merge that replays instead of
+    extending costs little more than one that extends.
 
 ## Appendix B. git invocations, and their consolidation
 

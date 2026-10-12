@@ -1,6 +1,8 @@
 //! Ownership applied (Python's `apply_event` for `claim`, `release`, `close`, `reopen` and
 //! `delete`, and `end_claim`): who holds an issue, and the claims that end, lose or come too late.
 
+use std::sync::Arc;
+
 use crate::event::Field;
 use crate::id::EventId;
 use crate::journal::Event;
@@ -15,11 +17,10 @@ pub(super) fn claim(c: &Ctx<'_>, issue: &mut Issue, claiming: &Claiming) -> bool
     if claiming.mode.as_deref() == Some("offline") {
         // Provisional: never displaces a confirmed owner.
         if !c.claim.is_some_and(|held| held.mine) {
-            issue.provisional_claims.retain(|p| p.owner != who);
+            issue.provisional_claims.retain(|p| *p.owner != *who);
             issue.provisional_claims.push(Provisional {
                 id: c.eid,
-                owner: who.to_owned(),
-                since: c.when.to_owned(),
+                owner: c.name(who),
                 where_: c.place.cloned(),
             });
             if c.claim.is_none() {
@@ -27,7 +28,7 @@ pub(super) fn claim(c: &Ctx<'_>, issue: &mut Issue, claiming: &Claiming) -> bool
             }
         }
     } else if c.claim.is_none() || takes_over(c.claim, claiming) {
-        end_claim(issue, "takeover", who, c.when, claiming.reason.as_deref());
+        end_claim(c, issue, "takeover", claiming.reason.as_deref());
         // `max(generation + 1, data.get("generation") or 0)`: of two equal, the first.
         let next = issue.claim_generation.plus_one();
         let given = claiming
@@ -36,35 +37,28 @@ pub(super) fn claim(c: &Ctx<'_>, issue: &mut Issue, claiming: &Claiming) -> bool
             .filter(|g| !g.is_zero())
             .map(PyInt::number);
         issue.claim_generation = given.filter(|given| *given > next).unwrap_or(next);
-        issue.claim = Some(Claim {
+        let mode = (claiming.mode.as_deref())
+            .filter(|m| !m.is_empty())
+            .unwrap_or("online");
+        issue.claim = Some(Box::new(Claim {
             id: c.eid,
-            owner: who.to_owned(),
-            machine: c.event.replica().to_owned(),
-            agent: actor_text(c.event, "agent"),
-            thread: actor_text(c.event, "thread"),
+            owner: c.name(who),
+            machine: Arc::clone(c.event.trace.shared_replica()),
+            agent: actor_text(c.event.trace, "agent").map(|agent| c.name(agent)),
+            thread: actor_text(c.event.trace, "thread").map(|thread| c.name(thread)),
             generation: issue.claim_generation.clone(),
-            since: c.when.to_owned(),
-            mode: claiming
-                .mode
-                .as_deref()
-                .filter(|m| !m.is_empty())
-                .unwrap_or("online")
-                .to_owned(),
+            mode: c.name(mode),
             where_: c.place.cloned(),
-        });
-        issue.provisional_claims.retain(|p| p.owner != who);
+        }));
+        issue.provisional_claims.retain(|p| *p.owner != *who);
         c.write_status(issue, "in_progress", None, &[]);
         c.write(issue, Field::Assignee, Value::from(who), &[]);
     } else if c.claim.is_some_and(|held| !held.mine) {
         // Nothing has changed the issue's claim: it is still the one held before this event.
-        let held_by = issue
-            .claim
-            .as_ref()
-            .map(|held| held.owner.clone())
-            .unwrap_or_default();
+        let held_by =
+            (issue.claim.as_ref()).map_or_else(|| c.name(""), |held| Arc::clone(&held.owner));
         issue.lost_claims.push(LostClaim {
-            by: who.to_owned(),
-            at: c.when.to_owned(),
+            by: c.name(who),
             held_by,
             event: c.eid,
         });
@@ -80,11 +74,11 @@ pub(super) fn release(c: &Ctx<'_>, issue: &mut Issue, ending: &Ending) -> bool {
         return c.stale(issue, named);
     }
     if let Some(held) = c.claim.filter(|held| Some(held.id) == named_id) {
-        end_claim(issue, "release", c.who, c.when, ending.reason.as_deref());
+        end_claim(c, issue, "release", ending.reason.as_deref());
         c.write_status(issue, "open", None, &[held.id]);
         c.write(issue, Field::Assignee, Value::Null, &[held.id]);
-    } else if issue.provisional_claims.iter().any(|p| p.owner == c.who) {
-        issue.provisional_claims.retain(|p| p.owner != c.who);
+    } else if issue.provisional_claims.iter().any(|p| *p.owner == *c.who) {
+        issue.provisional_claims.retain(|p| *p.owner != *c.who);
         if c.claim.is_none() && issue.provisional_claims.is_empty() {
             c.write_status(issue, "open", None, &[]);
         }
@@ -113,9 +107,10 @@ pub(super) fn close(c: &Ctx<'_>, issue: &mut Issue, ending: &Ending, closing: bo
         &supersede,
     );
     if !closing {
-        issue.extra.insert("deleted_at".into(), Value::from(c.when));
-        issue.extra.insert("deleted_by".into(), Value::from(c.who));
-        issue.extra.insert(
+        let extra = issue.extra_mut();
+        extra.insert("deleted_at".into(), Value::from(c.when));
+        extra.insert("deleted_by".into(), Value::from(c.who));
+        extra.insert(
             "delete_reason".into(),
             Value::from(reason.unwrap_or_default()),
         );
@@ -127,18 +122,12 @@ pub(super) fn close(c: &Ctx<'_>, issue: &mut Issue, ending: &Ending, closing: bo
             let assignee = issue.get(Field::Assignee).cloned().unwrap_or(Value::Null);
             c.write(issue, Field::Assignee, assignee, &supersede);
         }
-        end_claim(
-            issue,
-            if closing { "close" } else { "delete" },
-            c.who,
-            c.when,
-            None,
-        );
+        end_claim(c, issue, if closing { "close" } else { "delete" }, None);
     }
     if closing {
         issue.provisional_claims.retain(|p| !c.k.saw_at(c.at, p.id));
         if let Some(place) = c.place {
-            issue.closed_on = Some(place.clone());
+            issue.closed_on = Some(std::sync::Arc::clone(place));
         }
     }
     true
@@ -148,7 +137,7 @@ pub(super) fn reopen(c: &Ctx<'_>, issue: &mut Issue) -> bool {
     c.write_status(issue, "open", None, &[]);
     issue.closed_on = None;
     if c.claim.is_some_and(|held| c.k.saw_at(c.at, held.id)) {
-        end_claim(issue, "reopen", c.who, c.when, None);
+        end_claim(c, issue, "reopen", None);
     }
     true
 }
@@ -164,20 +153,19 @@ fn takes_over(claim: Option<Held>, claiming: &Claiming) -> bool {
 }
 
 /// A member of the event's actor, as the claim records it.
-fn actor_text(event: &Event, key: &str) -> Option<String> {
-    event
-        .get("actor")
+fn actor_text<'a>(trace: &'a Event, key: &str) -> Option<&'a str> {
+    (trace.actor())
         .and_then(|actor| actor.get(key))
         .and_then(Value::as_str)
-        .map(str::to_owned)
 }
 
-fn end_claim(issue: &mut Issue, how: &'static str, who: &str, when: &str, reason: Option<&str>) {
+/// The issue's claim ended by this event, `how`, for `reason`.
+fn end_claim(c: &Ctx<'_>, issue: &mut Issue, how: &'static str, reason: Option<&str>) {
     if let Some(claim) = issue.claim.take() {
         issue.claim_history.push(EndedClaim {
-            claim,
-            ended: when.to_owned(),
-            ended_by: who.to_owned(),
+            claim: *claim,
+            ending: c.eid,
+            ended_by: c.name(c.who),
             how,
             reason: reason
                 .filter(|reason| !reason.is_empty())

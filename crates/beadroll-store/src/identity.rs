@@ -86,7 +86,7 @@ fn mint(path: &Path, settings: &Settings) -> Result<(), Error> {
     let mut body = Object::new();
     body.insert("id".into(), Value::from(hex_token(8)));
     body.insert("alias".into(), Value::from(short_hostname()));
-    let text = json::write(&Value::Object(body), Format::ASCII)
+    let text = json::write(&Value::from(body), Format::ASCII)
         .map_err(|e| Error::io_message(e.to_string()))?;
     let written = OpenOptions::new()
         .write(true)
@@ -146,7 +146,7 @@ pub fn machine_aliases(settings: &Settings) -> BTreeMap<String, String> {
         out.insert(id.clone(), alias);
     }
     if let Ok((Value::Object(aliases), surrogates)) = read("aliases.json") {
-        for (id, alias) in aliases {
+        for (id, alias) in *aliases {
             if let Value::Str(alias) = alias
                 && !held(&id, &surrogates)
             {

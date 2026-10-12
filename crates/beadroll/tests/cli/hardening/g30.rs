@@ -41,9 +41,9 @@ mod g30_deep_json_is_bounded_and_scoped {
         members.insert("id".into(), Json::from(key));
         members.insert("title".into(), Json::from(title));
         if let Json::Object(common) = common() {
-            members.extend(common);
+            members.extend(*common);
         }
-        let mut written = write(&Json::Object(members), Format::ASCII).expect("a record");
+        let mut written = write(&Json::from(members), Format::ASCII).expect("a record");
         written.pop(); // its closing brace
         written
     }

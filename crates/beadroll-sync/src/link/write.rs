@@ -1,50 +1,93 @@
 //! Writing into `sync.git` through the link's long-lived gits (`docs/RUST-PORT.md` Appendix B):
-//! blobs through one `hash-object` between fetches, the trees of a publish through one `mktree
-//! --batch`, `refs/beads/remote` after a push through an `update-ref --stdin` transaction. Each
-//! writes what the one-shot command Python runs writes; whenever a kept git has no answer
-//! ([`beadroll_git::NoAnswer`]), that command is run instead, and its answer or failure is the one
-//! given. The refs after a fetch are Python's own two calls ([`Link::keep_fetched`]).
+//! blobs through one `hash-object` between fetches, of the journal files the memo cannot vouch
+//! for; the trees of a publish through one `mktree --batch`; `refs/beads/remote` after a push
+//! through an `update-ref --stdin` transaction. Each writes what the one-shot command Python runs
+//! writes; whenever a kept git has no answer ([`beadroll_git::NoAnswer`]), that command is run
+//! instead, and its answer or failure is the one given. The refs after a fetch are Python's own two
+//! calls ([`Link::keep_fetched`]).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use beadroll_git::{Hasher, NoAnswer, Refs, Trees};
-use beadroll_store::{REMOTE_REF, claim_files, relative, segment_files};
+use beadroll_store::{FileKey, Memo, REMOTE_REF, claim_files, relative, segment_files};
 
 use super::Link;
 use crate::error::Error;
 
 impl Link<'_> {
-    /// Every local journal file in `sync.git` as a blob, by its path in the store (Python's
-    /// `hash-object -w --no-filters --stdin-paths`, whose failure may be damage).
-    pub(super) fn local_blobs(&mut self) -> Result<BTreeMap<String, String>, Error> {
-        let mut files = segment_files(self.ws)?;
-        files.extend(claim_files(self.ws)?);
-        if files.is_empty() {
-            return Ok(BTreeMap::new());
+    /// Every local journal file as a blob, by its path in the store. A file keeps the blob the memo
+    /// remembers for it while it has the identity it was hashed at; for a tree (`for_tree`), only
+    /// when the blob is also sure to be in `sync.git`: this link made it, or the last merged tip
+    /// holds it at that path, where a blob no ref reaches may have gone with a gc. A merge only
+    /// compares the blob with the published one, which no other blob equals. Every other file is
+    /// hashed (Python's `hash-object -w --no-filters --stdin-paths`, whose failure may be damage)
+    /// and remembered. Lock held.
+    pub(super) fn local_blobs(
+        &mut self,
+        for_tree: bool,
+    ) -> Result<BTreeMap<String, String>, Error> {
+        let ws = self.ws;
+        let mut files = segment_files(ws)?;
+        files.extend(claim_files(ws)?);
+        let names: Vec<String> = files.iter().map(|file| relative(ws, file)).collect();
+        let present: BTreeSet<&str> = names.iter().map(String::as_str).collect();
+        let memo = self.memo.get_or_insert_with(|| Memo::load(ws));
+        memo.retain(|name| present.contains(name));
+        let mut blobs = BTreeMap::new();
+        let mut unknown = Vec::new();
+        for (file, name) in files.iter().zip(&names) {
+            let key = FileKey::of(file);
+            let remembered = key
+                .as_ref()
+                .and_then(|key| memo.blob(name, key))
+                .filter(|blob| {
+                    !for_tree
+                        || self.made.contains(*blob)
+                        || self.listed.get(name).is_some_and(|listed| listed == blob)
+                });
+            match remembered {
+                Some(blob) => {
+                    blobs.insert(name.clone(), blob.to_owned());
+                }
+                None => unknown.push((file.as_path(), name, key)),
+            }
         }
-        let paths: Vec<&Path> = files.iter().map(PathBuf::as_path).collect();
-        let shas = match self.hasher().and_then(|hasher| hasher.hash(&paths)) {
-            Ok(shas) => shas,
+        if unknown.is_empty() {
+            return Ok(blobs);
+        }
+        let paths: Vec<&Path> = unknown.iter().map(|(file, ..)| *file).collect();
+        let shas = self.hash_files(&paths)?;
+        for ((_, name, key), sha) in unknown.into_iter().zip(shas) {
+            self.hashed.push(name.clone());
+            if let Some(key) = key {
+                self.memo().hashed(name, key, &sha);
+            }
+            self.made.insert(sha.clone());
+            blobs.insert(name.clone(), sha);
+        }
+        Ok(blobs)
+    }
+
+    /// The files at `paths` as blobs in `sync.git`, in order: through the link's `hash-object`,
+    /// else Python's, whose failure may be damage.
+    fn hash_files(&mut self, paths: &[&Path]) -> Result<Vec<String>, Error> {
+        match self.hasher().and_then(|hasher| hasher.hash(paths)) {
+            Ok(shas) => Ok(shas),
             Err(NoAnswer) => {
                 self.hasher = None;
                 let mut input = Vec::new();
-                for file in &files {
-                    input.extend_from_slice(file.as_os_str().as_bytes());
+                for path in paths {
+                    input.extend_from_slice(path.as_os_str().as_bytes());
                     input.push(b'\n');
                 }
                 let args = ["hash-object", "-w", "--no-filters", "--stdin-paths"].map(OsStr::new);
                 let printed = self.git(&args, Some(input))?;
-                printed.split_whitespace().map(str::to_owned).collect()
+                Ok(printed.split_whitespace().map(str::to_owned).collect())
             }
-        };
-        Ok(files
-            .iter()
-            .zip(shas)
-            .map(|(file, sha)| (relative(self.ws, file), sha))
-            .collect())
+        }
     }
 
     /// `data` as a blob in `sync.git` (Python's `hash-object -w --stdin`, whose failure may be

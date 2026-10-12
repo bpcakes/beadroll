@@ -22,7 +22,7 @@ mod compat_custom_statuses {
         members.insert("title".to_owned(), Json::from(title));
         members.insert("status".to_owned(), Json::from(status));
         members.extend(fields.clone());
-        Json::Object(members)
+        Json::from(members)
     }
 
     /// Each issue's status in a Beads export, by id:

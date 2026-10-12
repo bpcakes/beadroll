@@ -6,14 +6,16 @@ use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::Path;
 
 use beadroll_core::event::{FORMAT, MAX_NESTING, event_problem, payload_problem, write_problem};
-use beadroll_core::journal::Journal;
+use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
+use beadroll_core::projection::{Extended, Projection, Record};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
 use beadroll_git::IoError;
 use beadroll_store::{
     Actor, Workspace, append_events, attempt_path, capture_where, encode_events, glob_ending,
-    json_text, load_journal, private_dir, private_dirs, replica_id, uuid7, write_attempt_file,
+    json_text, load_journal, private_dir, private_dirs, projection, replica_id, uuid7,
+    write_attempt_file,
 };
 
 use crate::error::Error;
@@ -33,8 +35,17 @@ pub struct Tx<'a> {
     pub actor: Value,
     /// This machine's id.
     pub replica: String,
-    /// Every event the store holds, and those emitted so far.
-    pub journal: Journal,
+    /// The store's projection, the events emitted applied to it up to `applied`; `None` once one
+    /// was emitted that it could not take as replay would apply it (a takeover, a machine's first
+    /// record): the state is then the journal replayed with them.
+    projection: Option<Projection>,
+    /// The frontier, with the events emitted so far: what a new event builds on.
+    heads: Vec<EventId>,
+    /// Every event emitted so far, as a journal records it.
+    emitted: Vec<Record>,
+    /// How many of them the projection has: the rest are applied when the state is asked for,
+    /// together, as an import emits many before it asks.
+    applied: usize,
     /// The checkout's branch and commit, recorded on each event.
     pub place: Option<Value>,
     /// Sequential events emitted, to append.
@@ -45,6 +56,7 @@ pub struct Tx<'a> {
     pub conditional: bool,
     /// Whether the actor's text can be written ([`Actor::writable`]).
     writable: bool,
+    /// The state replayed, once the projection is gone.
     state: Option<State>,
 }
 
@@ -53,13 +65,16 @@ impl<'a> Tx<'a> {
     /// journal, and where the caller works.
     pub fn new(ws: &'a Workspace, actor: &Actor) -> Result<Tx<'a>, Error> {
         let replica = replica_id(&ws.settings, true)?.unwrap_or_default();
-        let journal = load_journal(ws)?;
+        let projection = projection(ws)?;
         let place = capture_where(ws)?;
         Ok(Tx {
             ws,
             actor: actor.value.clone(),
             replica,
-            journal,
+            heads: projection.heads().to_vec(),
+            projection: Some(projection),
+            emitted: Vec::new(),
+            applied: 0,
             place,
             pending: Vec::new(),
             ownership: Vec::new(),
@@ -71,8 +86,31 @@ impl<'a> Tx<'a> {
 
     /// The state the journal replays into, with every event emitted so far.
     pub fn state(&mut self) -> Result<&State, Error> {
+        if self.applied < self.emitted.len()
+            && let Some(projection) = self.projection.take()
+        {
+            let records = self
+                .emitted
+                .get(self.applied..)
+                .unwrap_or_default()
+                .to_vec();
+            self.applied = self.emitted.len();
+            if let Extended::Applied(projection) = projection.extend(records)? {
+                self.projection = Some(*projection);
+            }
+        }
+        if let Some(projection) = &self.projection {
+            return Ok(projection.state());
+        }
         if self.state.is_none() {
-            self.state = Some(replay(self.journal.clone())?);
+            let mut journal = load_journal(self.ws)?;
+            for record in &self.emitted {
+                let Record {
+                    value, sequenced, ..
+                } = record;
+                journal.add(value.clone(), &self.replica, "", *sequenced);
+            }
+            self.state = Some(replay(journal)?);
         }
         match &self.state {
             Some(state) => Ok(state),
@@ -91,10 +129,7 @@ impl<'a> Tx<'a> {
         event_id: Option<String>,
     ) -> Result<Value, Error> {
         let id = event_id.unwrap_or_else(|| uuid7(&self.ws.settings.clock));
-        let deps: Vec<Value> = self
-            .journal
-            .heads()
-            .into_iter()
+        let deps: Vec<Value> = (self.heads.iter())
             .map(|dep| Value::from(dep.to_string()))
             .collect();
         let mut event = Object::new();
@@ -106,11 +141,11 @@ impl<'a> Tx<'a> {
         event.insert("op".into(), Value::from(op));
         let issue = issue.filter(|issue| !issue.is_empty()).unwrap_or(&id);
         event.insert("issue".into(), Value::from(issue));
-        event.insert("data".into(), Value::Object(data));
+        event.insert("data".into(), Value::from(data));
         if let Some(place) = &self.place {
             event.insert("where".into(), place.clone());
         }
-        let event = Value::Object(event);
+        let event = Value::from(event);
         let problem = event_problem(&event)
             .or_else(|| payload_problem(&event))
             .or_else(|| write_problem(&event));
@@ -132,14 +167,20 @@ impl<'a> Tx<'a> {
             // can be encoded with
             return Err(Error::Validation("text is not valid UTF-8".to_owned()));
         }
-        if OWNERSHIP.contains(&op) || self.conditional {
-            self.ownership.push(event.clone());
-            // later emits build on it
-            self.journal.add(event.clone(), &self.replica, "", false);
-        } else {
-            self.journal.add(event.clone(), &self.replica, "", true);
+        let sequenced = !(OWNERSHIP.contains(&op) || self.conditional);
+        if sequenced {
             self.pending.push(event.clone());
+        } else {
+            self.ownership.push(event.clone());
         }
+        // later emits build on it
+        self.heads = EventId::parse(&id).into_iter().collect();
+        self.emitted.push(Record {
+            value: event.clone(),
+            replica: self.replica.clone(),
+            origin: String::new(),
+            sequenced,
+        });
         self.state = None;
         Ok(event)
     }

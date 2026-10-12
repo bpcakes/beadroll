@@ -57,7 +57,7 @@ fn import_export_round_trips_beads_records() {
             "source_repo_path".into(),
             Json::from("/private/machine/path"),
         );
-        text += &write(&Json::Object(line), Format::ASCII).unwrap();
+        text += &write(&Json::from(line), Format::ASCII).unwrap();
         text += "\n";
     }
     std::fs::write(&source, text).unwrap();

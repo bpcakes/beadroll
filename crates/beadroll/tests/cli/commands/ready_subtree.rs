@@ -79,7 +79,7 @@ impl Record {
         if !deps.is_empty() {
             fields.insert("dependencies".into(), Json::Array(deps));
         }
-        Json::Object(fields)
+        Json::from(fields)
     }
 }
 

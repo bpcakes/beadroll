@@ -409,7 +409,7 @@ mod tests {
         let mut members = Object::new();
         members.insert("x".into(), Value::Float(f64::INFINITY));
         assert_eq!(
-            write(&Value::Object(members), Format::COMPACT),
+            write(&Value::from(members), Format::COMPACT),
             Err(WriteError::NotFinite("inf"))
         );
         let widest = Int::parse(&"9".repeat(MAX_DIGITS)).unwrap();

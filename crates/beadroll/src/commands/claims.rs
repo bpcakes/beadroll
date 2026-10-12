@@ -31,10 +31,15 @@ pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
             row
         };
         if let Some(held) = issue.claim() {
-            let thread = (held.machine.clone(), held.thread.clone());
+            let thread = (
+                held.machine.to_string(),
+                held.thread.as_deref().map(str::to_owned),
+            );
             let last: EventId = st.last_by_thread().get(&thread).copied().unwrap_or(held.id);
             let millis = last.millis();
-            let machine = aliases.get(&held.machine).unwrap_or(&held.machine);
+            let machine = aliases
+                .get(&*held.machine)
+                .map_or(&*held.machine, String::as_str);
             let branch = held
                 .where_
                 .as_ref()
@@ -47,12 +52,12 @@ pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
             let mut entry = Object::new();
             entry.insert("id".into(), Value::from(issue.key()));
             entry.insert("title".into(), title.clone());
-            entry.insert("owner".into(), Value::from(held.owner.as_str()));
-            entry.insert("machine".into(), Value::from(machine.as_str()));
-            entry.insert("agent".into(), Value::from(held.agent.clone()));
-            entry.insert("thread".into(), Value::from(held.thread.clone()));
+            entry.insert("owner".into(), Value::from(&*held.owner));
+            entry.insert("machine".into(), Value::from(machine));
+            entry.insert("agent".into(), Value::from(held.agent.as_deref()));
+            entry.insert("thread".into(), Value::from(held.thread.as_deref()));
             entry.insert("generation".into(), Value::Int(held.generation.clone()));
-            entry.insert("since".into(), Value::from(held.since.as_str()));
+            entry.insert("since".into(), Value::from(held.since()));
             entry.insert("branch".into(), branch);
             entry.insert("state".into(), Value::from("confirmed"));
             entry.insert("last_activity".into(), Value::from(event_time(millis)));
@@ -61,10 +66,7 @@ pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
             rows.push(entry);
         }
         for attempt in issue.provisional_claims() {
-            let mut entry = row(
-                Value::from(attempt.owner.as_str()),
-                Value::from(attempt.since.as_str()),
-            );
+            let mut entry = row(Value::from(&*attempt.owner), Value::from(attempt.since()));
             entry.insert("state".into(), Value::from("provisional"));
             rows.push(entry);
         }
@@ -89,7 +91,7 @@ pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
     let mut result = Object::new();
     result.insert(
         "claims".into(),
-        Value::Array(rows.into_iter().map(Value::Object).collect()),
+        Value::Array(rows.into_iter().map(Value::from).collect()),
     );
     result.insert("last_sync".into(), synced.unwrap_or(Value::Null));
     Ok(Outcome::new(result, lines))

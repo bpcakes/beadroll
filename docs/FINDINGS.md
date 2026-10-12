@@ -14,6 +14,21 @@ tests was ported to Rust, and at the cutover the inventory that mapped each to i
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Review 10: Codex reviews of epic roll-lqjj (`reviews/2026-10-11-10-codex-roll-lqjj.md`, ids L)
+
+Each task of epic `roll-lqjj`, which keeps routine cost in proportion to the current state and the
+recent changes, was reviewed by Codex before it closed, its findings fixed or answered and the task
+reviewed again.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| L01 | Medium | `cargo xtask timing --sync` started the gits that set up its scratch checkout with the shell's `GIT_*` variables, so an exported `GIT_DIR` sent `init`, `remote add` and an empty commit to the caller's repository | fixed | Every git and bead the timing runs starts without the shell's `BEAD_*` and `GIT_*` variables | `xtask`: `timing::world::tests::the_scratch_gits_and_beads_inherit_no_repository_or_store` |
+| L02 | Medium | A remembered blob that the published tree names but `sync.git` had lost (its loose object deleted) was named in every later tree, and `mktree` failed each publish with `GIT_ERROR`, which is not local damage; hashing every file had made it again | fixed | A publish whose tree cannot be made from remembered blobs, short of damage, forgets them and hashes every file once more | `beadroll-sync`: `memo::a_published_blob_sync_git_lost_is_made_again` |
+| L03 | Medium | A projection placed each new record as it came to it in causal order: of two new records of one machine that did not build on each other, the second in the journal but the first by id was observed before its predecessor had a place, and applied where replay reports the journal's chain broken | fixed | Every new record is placed before any is observed, as replay places them | `beadroll-core`: `projection::tests::hostile::every_batch_replay_applies_otherwise_is_declined` (the pair reversed) |
+| L04 | Medium | A projection took a segment that was the same file, longer, for one appended to: an edit in place followed by an append kept the projection's old answer under the segment's new identity | fixed | The projection keeps a sum of each segment's bytes, and catches a grown segment up only when it still begins with them | `beadroll-store`: `projection::tests::a_segment_rewritten_and_then_appended_to_is_replayed` |
+| L05 | Medium | A replay that read an attempt file which a merge then replaced kept the replacement's identity with the old contents in the projection it wrote, and the next command trusted it | fixed | The identity kept of each file is the open file's, as its bytes were read | `beadroll-store`: `fs::tests::a_file_read_is_known_by_the_file_its_bytes_came_from` |
+| L06 | Medium | A projection caught up any segment it was made from that grew, and applied the new records after all it held; records appended to a machine's earlier segment come before its later segments' in the journal, where replay can report a later record's chain broken | fixed | Only a machine's last segment may grow; growth of an earlier one has the journal replayed | `beadroll-store`: `projection::tests::an_earlier_segment_that_grows_is_replayed` |
+
 ## Phase 1 of the Rust port (`roll-k2wy.2`, ids U)
 
 Places where what a journal line, manifest or import meant depended on the Python reading it, or

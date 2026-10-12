@@ -289,7 +289,7 @@ pub fn fields_problem(fields: &Value, bookkeeping: bool) -> Option<String> {
     let Value::Object(fields) = fields else {
         return Some("fields is not an object".into());
     };
-    for (name, value) in fields {
+    for (name, value) in fields.iter() {
         let Some(field) =
             Field::from_name(name).filter(|field| bookkeeping || !field.bookkeeping())
         else {

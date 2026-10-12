@@ -58,6 +58,49 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   boundary (exit 98 or 99, a SIGKILL, or the remote's stalled push). The sync schedules record
   their local work offline, so the 48 at the push and timeout boundaries now push, where they
   passed with nothing to publish, and the default slice stops a sync at its push (roll-dih8.10).
+- A publishing write (a sync, a claim, a published local write) hashes only the journal files that
+  changed since bead last hashed them, once: the active segment, new attempt files and files whose
+  length or identity changed, where it hashed every segment and attempt file of the store twice
+  (roll-lqjj.1). It no longer reads every segment to count its lines or to compare it with the
+  published copy, and checks a segment for a torn tail by its last byte. What it remembers of each
+  file (its identity on disk, its lines, its blob) is a cache, `sync.git/journal-memo`: a file
+  that keeps its identity is not hashed again, and its remembered blob goes into a tree only when
+  it is sure to be in `sync.git`; the tree published is the one hashing every file makes.
+- `cargo xtask timing --sync N [--ownership] [--rotate BYTES]` times a publishing `bead sync` on a
+  scratch store of N events against a local bare remote, with the store's memo of its journal files
+  and without it; `docs/RUST-PORT.md` Appendix A has the figures at 200,000 events.
+- Replay holds a fraction of the memory it did (roll-dih8.11): 200,000 events peak at 107 MB on
+  the heap, and at 133 MB when about half of them are claims, takeovers and releases in attempt
+  files; their resident peaks fell from 921 and 958 MB to 187 and 215 MB, and the replay itself
+  from 0.26 and 0.33 s to 0.21 and 0.29 s. A journal keeps what replay reads of each event and a
+  digest of its content, not its parsed JSON, and each text and value events repeat once; replay
+  takes each event's operation from the journal as it applies it, and the state keeps who wrote
+  each event and what each had seen, not the journal; an issue keeps its registers, tags and
+  claims in vectors sized to them. Events the size of this repository's own take more: its
+  journal repeated to 200,000 events peaks at 364 MB on the heap (`docs/RUST-PORT.md`, Appendix
+  A). In `beadroll-core`, `Value::Object` holds a boxed `Object`, `Issue::deps` is a view of the
+  dependency tags (`Deps`), claim records share their names and give their times by method
+  (`Claim::since`, `EndedClaim::ended`, `Provisional::since`, `LostClaim::at`), and `State` no
+  longer holds the journal.
+- `cargo xtask timing --replay N` records the heap peak beside the resident one
+  (`heap_peak_bytes`, `journal_heap_peak_bytes`): xtask's allocator is the system's, with a count.
+- Every command reads the store's projection, `<store>/projection`, instead of replaying the
+  whole journal (roll-lqjj.2): the state the journal replays into, kept with the build of bead that
+  made it and the identity of every journal file it was made from. Records appended since are
+  read alone and applied after it, as replay would apply them; anything else (a file changed
+  another way, events written concurrently with the store's, a takeover) has the journal replayed,
+  and the projection written again. At 200,000 events a read takes 73–87 ms where it took 1.06 s,
+  a sync that merges ten events another machine wrote 0.31 s where it took 1.31 s, and a
+  publishing sync 0.38 s where it took 1.34 s; on a thousand issues that 50,000 or 200,000 events
+  made, a read takes 18 ms either way. The projection is a cache: deleting it is always safe, and
+  one another build wrote, or a damaged one, is never read.
+- A merge appends what another machine's segment lacks instead of writing the segment again whole:
+  the bytes are the same, and the projection takes in the merged lines alone.
+- The unpublished count every command reports reads only the segments appended to since the
+  store's memo saw them, where it read every segment whole.
+- `cargo xtask timing --read N` times the reading commands with the projection and without it,
+  `--merge N [--batch M]` a sync that merges another machine's events, and `--churn` shapes a
+  history whose state stays its size; `--sync N` also records a sync without the projection.
 
 ## [0.2.0] — 2026-10-11
 

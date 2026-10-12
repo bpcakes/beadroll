@@ -5,7 +5,8 @@
 //! Where Python patched a function to inject a fault, a failpoint does it, and the registry reaches
 //! the API through `Settings`, never through the process environment (§4.5). Beside them, `link`
 //! checks what Python has no counterpart of: the long-lived gits a link keeps (Appendix B) end with
-//! it.
+//! it; and `memo`, that a publish hashes only the journal files the store's memo cannot vouch for
+//! (roll-lqjj.1).
 //!
 //! The machines run `BEAD_UNDER_TEST` when it is set, else the `bead` Cargo built in the profile
 //! directory above this test binary (`beadroll_test_support::built_bead`): Cargo names the `bead`
@@ -16,5 +17,6 @@
 
 mod failpoints;
 mod link;
+mod memo;
 mod protocol;
 mod support;

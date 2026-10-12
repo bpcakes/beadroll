@@ -115,7 +115,7 @@ fn claim_rows(listed: Option<&Json>) -> Vec<Json> {
             .iter()
             .filter(|(key, _)| !matches!(key.as_str(), "idle_minutes" | "machine"))
             .map(|(key, value)| (key.clone(), value.clone()));
-        Json::Object(kept.collect())
+        Json::Object(Box::new(kept.collect()))
     })
     .collect()
 }

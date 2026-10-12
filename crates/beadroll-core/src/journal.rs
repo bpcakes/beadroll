@@ -1,7 +1,10 @@
 //! Journals as bead reads them (Python's `read_segment`, `read_attempt`, `loads_line` and `Journal`):
 //! lines parsed into events, and the events of every file settled together, so that a duplicated or
-//! malformed record is judged the same way whatever order the files were read in.
+//! malformed record is judged the same way whatever order the files were read in. A journal keeps
+//! what replay reads of each record, not the record (roll-dih8.11, [`Event`]).
 
+mod content;
+mod event;
 mod read;
 
 use std::collections::HashSet;
@@ -9,12 +12,15 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 
-use crate::event::event_problem;
 use crate::id::EventId;
-use crate::json::{self, Format, Object, Value};
+use crate::json::{self, Format, Value};
 use crate::op::Op;
 
+pub use event::Event;
+pub(crate) use event::Rest;
 pub use read::{loads_line, read_attempt, read_segment};
+
+use event::{Shared, Source};
 
 /// Something a reader could not use: an unreadable line or file, an event that fails validation, a
 /// copy in the wrong journal. Replay reports each as an integrity row.
@@ -38,144 +44,36 @@ impl Problem {
     }
 }
 
-/// An event as replay sees it: a valid event, or the stand-in for an id that cannot be used
-/// (`op` `quarantined` or `invalid`). Its object is kept whole, shared with the record it came from,
-/// for comparison and `log`; its operation is read from it once, typed.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Event {
-    id: EventId,
-    value: Arc<Value>,
-    deps: Vec<EventId>,
-    op: Arc<Op>,
-}
-
-impl Event {
-    fn new(id: EventId, value: Arc<Value>) -> Event {
-        let deps = value
-            .get("deps")
-            .and_then(Value::as_array)
-            .unwrap_or_default()
-            .iter()
-            .filter_map(|dep| dep.as_str().and_then(EventId::parse))
-            .collect();
-        let name = value.get("op").and_then(Value::as_str).unwrap_or_default();
-        let empty = Object::new();
-        let data = value
-            .get("data")
-            .and_then(Value::as_object)
-            .unwrap_or(&empty);
-        let op = Arc::new(Op::read(name, data));
-        Event {
-            id,
-            value,
-            deps,
-            op,
-        }
-    }
-
-    /// Its id.
-    pub fn id(&self) -> EventId {
-        self.id
-    }
-
-    /// The whole event.
-    pub fn value(&self) -> &Value {
-        &self.value
-    }
-
-    /// The events it names as causes, as listed (`deps`).
-    pub fn deps(&self) -> &[EventId] {
-        &self.deps
-    }
-
-    /// Its operation, with its payload read as replay reads it.
-    pub fn op(&self) -> &Op {
-        &self.op
-    }
-
-    /// The name of its operation, as written (`quarantined` and `invalid` for a stand-in).
-    pub fn op_name(&self) -> &str {
-        self.value
-            .get("op")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-    }
-
-    /// The machine that wrote it.
-    pub fn replica(&self) -> &str {
-        self.value
-            .get("replica")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-    }
-
-    /// The issue it is about, if it names one.
-    pub fn issue(&self) -> Option<&str> {
-        self.value.get("issue").and_then(Value::as_str)
-    }
-
-    /// Its member `key`: Python's `event.get(key)`.
-    pub fn get(&self, key: &str) -> Option<&Value> {
-        self.value.get(key)
-    }
-
-    /// Its payload, empty when it has none: Python's `event.get("data") or {}`.
-    pub fn data(&self) -> &Object {
-        static EMPTY: std::sync::LazyLock<Object> = std::sync::LazyLock::new(Object::new);
-        self.value
-            .get("data")
-            .and_then(Value::as_object)
-            .unwrap_or(&EMPTY)
-    }
-}
-
-/// One record of an id as it was added: the event, the journal it was found in, where, whether it
-/// has a place in that journal's order, and when it was added. The records of one file share its
-/// names.
-#[derive(Clone, Debug)]
-struct Record {
-    event: Arc<Value>,
-    replica: Arc<str>,
-    origin: Arc<str>,
-    sequenced: bool,
-    counter: u64,
-}
-
-impl Record {
-    /// Whether it is a valid event found in its own machine's journal.
-    fn own(&self) -> bool {
-        event_problem(&self.event).is_none()
-            && self.event.get("replica").and_then(Value::as_str) == Some(&*self.replica)
-    }
-}
-
-/// `name` shared with `last`, the name the record before gave, when it is the same.
-fn shared(last: &mut Option<Arc<str>>, name: &str) -> Arc<str> {
-    match last {
-        Some(same) if **same == *name => Arc::clone(same),
-        _ => {
-            let name: Arc<str> = Arc::from(name);
-            *last = Some(Arc::clone(&name));
-            name
-        }
-    }
-}
-
 /// Every event a machine holds, with each machine's own append order (Python's `Journal`). Raw
 /// records are collected first and settled together.
 #[derive(Clone, Debug)]
 pub struct Journal {
     events: IndexMap<EventId, Event>,
     order: IndexMap<String, Vec<EventId>>,
-    quarantined: IndexMap<EventId, Vec<Value>>,
+    quarantined: IndexMap<EventId, Vec<Event>>,
     /// What could not be used, in the order found; replay reports each.
     pub invalid: Vec<Problem>,
-    raw: IndexMap<EventId, Vec<Record>>,
+    /// Every record with a readable id, in the order added.
+    raw: Vec<Event>,
+    /// Ids that have records but no event: every record of them was found in another machine's
+    /// journal. Every other id with a record has its event, once settled.
+    unplaced: HashSet<EventId>,
     counter: u64,
     settled: bool,
-    referenced: HashSet<EventId>,
-    /// The machine and the origin the last record named: the next ones from its file share them.
-    last_names: (Option<Arc<str>>, Option<Arc<str>>),
+    /// The texts and values events repeat, held once.
+    shared: Shared,
+    /// Where the last record was found: the next ones from its file share it.
+    last_source: Option<Arc<Source>>,
+}
+
+/// A settled journal taken apart for replay (roll-dih8.11): its events by id, in the order
+/// installed, each machine's append order, the ids found with several contents, and what could not
+/// be used. Its raw records go with the rest: replay reads each event once.
+pub(crate) struct Parts {
+    pub(crate) events: IndexMap<EventId, Event>,
+    pub(crate) order: IndexMap<String, Vec<EventId>>,
+    pub(crate) quarantined: HashSet<EventId>,
+    pub(crate) invalid: Vec<Problem>,
 }
 
 impl Default for Journal {
@@ -192,11 +90,12 @@ impl Journal {
             order: IndexMap::new(),
             quarantined: IndexMap::new(),
             invalid: Vec::new(),
-            raw: IndexMap::new(),
+            raw: Vec::new(),
+            unplaced: HashSet::new(),
             counter: 0,
             settled: true,
-            referenced: HashSet::new(),
-            last_names: (None, None),
+            shared: Shared::default(),
+            last_source: None,
         }
     }
 
@@ -209,42 +108,56 @@ impl Journal {
             .and_then(Value::as_str)
             .and_then(EventId::parse);
         let Some(id) = id else {
-            let problem = event_problem(&event).unwrap_or_else(|| "id is not a UUID".to_owned());
+            let problem = crate::event::event_problem(&event)
+                .unwrap_or_else(|| "id is not a UUID".to_owned());
             self.invalid
                 .push(Problem::new(None, origin.to_owned(), problem));
             return;
         };
         self.counter += 1;
-        let event = Arc::new(event);
-        let record = Record {
-            event: Arc::clone(&event),
-            replica: shared(&mut self.last_names.0, replica),
-            origin: shared(&mut self.last_names.1, origin),
-            sequenced,
-            counter: self.counter,
-        };
-        // Nearly every id has one record: room for that one alone.
-        let records = self.raw.entry(id).or_insert_with(|| Vec::with_capacity(1));
-        let fresh = records.is_empty() && record.own();
-        records.push(record);
-        if self.settled && !self.events.contains_key(&id) && fresh {
-            self.install(id, event, replica, sequenced); // the common case: a fresh, valid event
+        let source = self.source(replica, origin, sequenced);
+        let record = Event::read(id, &event, &source, self.counter, &mut self.shared);
+        // The first record of an id is the common case: a fresh, valid event, installed at once.
+        let first = !self.events.contains_key(&id) && !self.unplaced.contains(&id);
+        let fresh = first && record.own();
+        self.raw.push(record.clone());
+        if self.settled && fresh {
+            self.install(record);
         } else {
             self.settled = false;
         }
     }
 
-    fn install(&mut self, id: EventId, event: Arc<Value>, replica: &str, sequenced: bool) {
-        let event = Event::new(id, event);
-        if sequenced {
-            match self.order.get_mut(replica) {
+    /// Where a record of `replica`'s journal at `origin` was found, shared with the records before
+    /// it from the same file.
+    fn source(&mut self, replica: &str, origin: &str, sequenced: bool) -> Arc<Source> {
+        if let Some(last) = &self.last_source
+            && *last.replica == *replica
+            && *last.origin == *origin
+            && last.sequenced == sequenced
+        {
+            return Arc::clone(last);
+        }
+        let source = Arc::new(Source {
+            replica: self.shared.text(replica),
+            origin: self.shared.text(origin),
+            sequenced,
+        });
+        self.last_source = Some(Arc::clone(&source));
+        source
+    }
+
+    fn install(&mut self, event: Event) {
+        let id = event.id();
+        let source = Arc::clone(event.source());
+        if source.sequenced {
+            match self.order.get_mut(&*source.replica) {
                 Some(ids) => ids.push(id),
                 None => {
-                    self.order.insert(replica.to_owned(), vec![id]);
+                    self.order.insert(source.replica.to_string(), vec![id]);
                 }
             }
         }
-        self.referenced.extend(event.deps.iter().copied());
         self.events.insert(id, event);
     }
 
@@ -258,65 +171,61 @@ impl Journal {
         self.events.clear();
         self.order.clear();
         self.quarantined.clear();
-        self.referenced.clear();
+        self.unplaced.clear();
         self.invalid.retain(|entry| entry.event.is_none()); // unreadable lines and files stay reported
         let raw = std::mem::take(&mut self.raw);
-        let mut placed: Vec<(EventId, &Vec<Record>, bool, &Record)> = Vec::new();
-        for (id, records) in &raw {
-            let own = records.iter().find(|record| record.own());
-            let placement = own.or_else(|| records.first());
+        // Each id's records, ids in the order first found, records in the order added.
+        let mut by_id: IndexMap<EventId, Vec<&Event>> = IndexMap::new();
+        for record in &raw {
+            by_id.entry(record.id()).or_default().push(record);
+        }
+        let mut placed: Vec<(&Vec<&Event>, bool, &Event)> = Vec::new();
+        for records in by_id.values() {
+            let own = records.iter().find(|record| record.own()).copied();
+            let placement = own.or_else(|| records.first().copied());
             if let Some(placement) = placement {
-                placed.push((*id, records, own.is_some(), placement));
+                placed.push((records, own.is_some(), placement));
             }
         }
-        placed.sort_by_key(|(_, _, _, placement)| placement.counter); // each journal keeps its own order
-        for (id, records, own, placement) in placed {
+        placed.sort_by_key(|(_, _, placement)| placement.counter()); // each journal keeps its own order
+        for (records, own, placement) in placed {
+            let id = placement.id();
             // Each content once, in the order found: what Python's `canonical` tells apart.
-            let mut distinct: Vec<&Arc<Value>> = Vec::new();
+            let mut distinct: Vec<&Event> = Vec::new();
             for record in records {
-                if !distinct
-                    .iter()
-                    .any(|seen| same_content(seen, &record.event))
-                {
-                    distinct.push(&record.event);
+                if !distinct.iter().any(|seen| seen.digest() == record.digest()) {
+                    distinct.push(record);
                 }
             }
-            let (event, replica) = (&placement.event, &*placement.replica);
-            let (origin, sequenced) = (&placement.origin, placement.sequenced);
+            let origin = &placement.source().origin;
             if distinct.len() > 1 {
                 self.quarantined
-                    .insert(id, distinct.iter().map(|v| Value::clone(v)).collect());
-                let trusted = if own { listed_ids(event) } else { Vec::new() };
+                    .insert(id, distinct.into_iter().cloned().collect());
+                let trusted = if own {
+                    placement.deps().into()
+                } else {
+                    Box::default()
+                };
                 // A copy that is not valid may name anything: only a string is an issue (§5 row 29).
-                let issue = event
-                    .get("issue")
-                    .and_then(Value::as_str)
-                    .map_or(Value::Null, Value::from);
-                let stand_in = placeholder(id, "quarantined", replica, trusted, ("issue", issue));
-                self.install(id, Arc::new(stand_in), replica, sequenced);
+                let issue = placement.issue().map(|issue| self.shared.text(issue));
+                let stand_in = Event::stand_in(placement, Op::Quarantined, trusted, issue);
+                self.install(stand_in);
                 continue;
             }
-            if let Some(problem) = event_problem(event) {
+            if let Some(problem) = placement.problem() {
                 self.invalid.push(Problem::new(
                     Some(id.to_string()),
                     origin.to_string(),
-                    problem.clone(),
+                    problem,
                 ));
-                let stand_in = placeholder(
-                    id,
-                    "invalid",
-                    replica,
-                    listed_ids(event),
-                    ("problem", problem.into()),
-                );
-                self.install(id, Arc::new(stand_in), replica, sequenced);
+                let stand_in =
+                    Event::stand_in(placement, Op::Invalid, placement.deps().into(), None);
+                self.install(stand_in);
                 continue;
             }
             if !own {
-                let writer = event
-                    .get("replica")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
+                let writer = placement.replica();
+                let replica = &placement.source().replica;
                 let problem = format!(
                     "written by machine {writer} but found only in machine {replica}'s journal"
                 );
@@ -325,12 +234,25 @@ impl Journal {
                     origin.to_string(),
                     problem,
                 ));
+                self.unplaced.insert(id);
                 continue;
             }
-            self.install(id, Arc::clone(event), replica, sequenced);
+            self.install(placement.clone());
         }
+        drop(by_id);
         self.raw = raw;
         self.settled = true;
+    }
+
+    /// The journal taken apart for replay, settled first.
+    pub(crate) fn into_parts(mut self) -> Parts {
+        self.settle();
+        Parts {
+            events: self.events,
+            order: self.order,
+            quarantined: self.quarantined.into_keys().collect(),
+            invalid: self.invalid,
+        }
     }
 
     /// The frontier: events nothing else here has built on yet, in order.
@@ -341,11 +263,23 @@ impl Journal {
 
     /// The frontier of a settled journal (what [`Journal::heads`] answers once it has settled).
     pub fn frontier(&self) -> Vec<EventId> {
-        let mut heads: Vec<EventId> = self
-            .events
-            .keys()
-            .filter(|id| !self.referenced.contains(id))
-            .copied()
+        // The events another one builds on, by index: worked out when asked, since a write asks
+        // once, where a set kept as events arrive would hold every id again.
+        let mut referenced = vec![false; self.events.len()];
+        for event in self.events.values() {
+            for at in event
+                .deps()
+                .iter()
+                .filter_map(|dep| self.events.get_index_of(dep))
+            {
+                if let Some(flag) = referenced.get_mut(at) {
+                    *flag = true;
+                }
+            }
+        }
+        let mut heads: Vec<EventId> = (self.events.keys().zip(referenced))
+            .filter(|(_, referenced)| !referenced)
+            .map(|(id, _)| *id)
             .collect();
         heads.sort_unstable();
         heads
@@ -366,8 +300,8 @@ impl Journal {
         &self.order
     }
 
-    /// Ids found with several contents, each content once, in the order found.
-    pub fn quarantined(&self) -> &IndexMap<EventId, Vec<Value>> {
+    /// Ids found with several contents: a record of each content, in the order found.
+    pub fn quarantined(&self) -> &IndexMap<EventId, Vec<Event>> {
         &self.quarantined
     }
 
@@ -375,63 +309,6 @@ impl Journal {
     pub fn is_settled(&self) -> bool {
         self.settled
     }
-}
-
-/// The ids an event lists as causes that have the UUID shape, when its `deps` is a list.
-fn listed_ids(event: &Value) -> Vec<Value> {
-    event
-        .get("deps")
-        .and_then(Value::as_array)
-        .unwrap_or_default()
-        .iter()
-        .filter(|dep| dep.as_str().and_then(EventId::parse).is_some())
-        .cloned()
-        .collect()
-}
-
-/// The stand-in for an id that cannot be used: it keeps the id's place and causes, and applies
-/// nothing.
-fn placeholder(
-    id: EventId,
-    op: &str,
-    replica: &str,
-    deps: Vec<Value>,
-    last: (&str, Value),
-) -> Value {
-    let mut members = Object::new();
-    members.insert("id".into(), Value::from(id.to_string()));
-    members.insert("op".into(), Value::from(op));
-    members.insert("replica".into(), Value::from(replica));
-    members.insert("deps".into(), Value::Array(deps));
-    members.insert("data".into(), Value::Object(Object::new()));
-    members.insert(last.0.into(), last.1);
-    Value::Object(members)
-}
-
-/// Whether two records hold the same content, as Python's `canonical` (sorted keys, compact) tells
-/// them apart: object members in any order, floats by their bits (`-0.0` is not `0.0`), the rest
-/// exactly. Written without recursion, so a value of any depth is compared.
-fn same_content(a: &Value, b: &Value) -> bool {
-    let mut stack = vec![(a, b)];
-    while let Some((a, b)) = stack.pop() {
-        match (a, b) {
-            (Value::Float(x), Value::Float(y)) if x.to_bits() == y.to_bits() => {}
-            (Value::Array(x), Value::Array(y)) if x.len() == y.len() => {
-                stack.extend(x.iter().zip(y))
-            }
-            (Value::Object(x), Value::Object(y)) if x.len() == y.len() => {
-                for (key, value) in x {
-                    let Some(other) = y.get(key) else {
-                        return false;
-                    };
-                    stack.push((value, other));
-                }
-            }
-            (Value::Null | Value::Bool(_) | Value::Int(_) | Value::Str(_), _) if a == b => {}
-            _ => return false,
-        }
-    }
-    true
 }
 
 /// An event's content as quarantine compares it (Python's `canonical`): sorted keys, compact.
