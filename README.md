@@ -499,8 +499,10 @@ the record of it before any test data is written), their tests beside them, and 
   its texts, which only the commands that print them read: on three of the
   largest public Beads trackers (21–47 MB, up to 13,394 issues) a `list` takes
   36–75 ms and a published write 0.21–0.35 s, while `export`, `search` and
-  `lint` take what the texts do, and importing the largest held 0.87 GB
-  (roll-lqjj.9). A merge that brings events another
+  `lint` take what the texts do. Importing the largest holds 172 MB on the
+  heap offline (341 MB resident); published, it peaks at 235 MB (563 MB
+  resident) as its publish makes the projection, which a new machine's first
+  sync of the tracker takes too (roll-lqjj.9). A merge that brings events another
   machine wrote concurrently replays the journal, as about one merge in ten
   does where two machines write: 0.45 s at 50,000 events, 1–2 s at 200,000,
   kept so for correctness (roll-lqjj.8). A replay holds at most 107 MB

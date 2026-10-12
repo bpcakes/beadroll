@@ -28,8 +28,9 @@ closed; `docs/reviews/` holds the reports verbatim.
   `sweep`. `crates/beadroll/tests/golden/` holds what Python's bead printed, which the golden
   tests compare with, and `crates/beadroll/tests/cli/parity/` what the mixed Python and Rust fleets
   checked.
-- `xtask/` — `cargo xtask`: `check` runs the baseline, `timing` records how long a command took;
-  its tests keep the repository's hygiene and the CI matrix.
+- `xtask/` — `cargo xtask`: `check` runs the baseline, `timing` records how long a command took,
+  `bead` runs bead in a process that counts its heap; its tests keep the repository's hygiene and
+  the CI matrix.
 - `infra/` — drives against real machines and a throwaway GitHub repository, in stdlib Python;
   each script's docstring says what it needs. `selected.py` chooses the bead a driver runs here
   and records it before any test data is written; `test_roundtrip.py` and `test_drive.py` test the

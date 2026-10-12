@@ -123,6 +123,18 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   [--writes W] [--latency MS]` measures it.
 - `cargo xtask timing --merge N --concurrent` times a merge of events written concurrently with the
   store's own, which replays the journal (roll-lqjj.8).
+- `bead import` and `bead init --import` hold each form of an export once (roll-lqjj.9): the
+  export's text until its records are read, the records until they are planned, and each event
+  once, let go of as it is encoded into the journal's lines; `init` reads the tracker's prefix
+  before it imports, so its state no longer takes in every imported event. Importing a generated
+  49 MB export peaks at 165 MB on the heap where it peaked at 473 MB, and published at 245 MB: the
+  projection its publish makes of the journal, what the first sync after an offline import and a
+  new machine's first sync of the tracker take. A text file started again is written from its
+  header and its texts as they are, not from a copy of them joined: the first sync after such an
+  import holds 245 MB where it held 309 MB. An import stays all or nothing.
+- `cargo xtask timing --import N` times importing a generated Beads export of N records, shaped as
+  real trackers' are, and records the heap peak beside the resident one: `cargo xtask bead ARG...`
+  runs bead in xtask's process, whose allocator counts.
 
 ## [0.2.0] — 2026-10-11
 

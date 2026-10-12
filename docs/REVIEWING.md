@@ -195,6 +195,22 @@ These were decided deliberately. Report problems *with* them, not their existenc
   from the state. Closed issues hold 27–100% of the largest public trackers' bytes; with texts kept
   out of what most commands read (roll-lqjj.6), what retention would still save is disk, a fresh
   machine's fetch, and the commands that read every text (`export`, `search`, `lint`).
+- An import holds no more than a cold start does (roll-lqjj.9; the maintainer's budget of
+  2026-10-12): its heap peak stays within what making the projection of the imported journal
+  takes, which a published import does in its own publish, an offline one in the first command
+  after it, and every new machine in its first sync of the tracker. A generated 49 MB export
+  (14,000 records) peaks at 165 MB offline and at 245 MB published, the projection's making, where
+  it peaked at 473 MB (`cargo xtask timing --import`; `RUST-PORT.md` Appendix A). Each form of the
+  export is let go of once the next is made, the transaction keeps each event once and lets go of
+  it as it is encoded, `init` reads the prefix before it imports, so that its state never takes
+  the imported events in, and a text file is written from its parts. A tighter budget was not
+  chosen, nor its work: the planner still copies the records into its plan, and the transaction
+  holds each event as a JSON value until it is appended. An import's events reach the journal in
+  one write, once every record is checked and every event emitted, never as they are made: a torn
+  append keeps every whole line it holds, so events written as they were made would let a crash
+  keep part of an import. bead's heap is counted by running bead in xtask (`cargo xtask bead`,
+  with xtask's counting allocator, `RUST-PORT.md` §2.2), the reason xtask depends on the `beadroll`
+  library.
 - What each event had seen is one clock per event over chains, the reachability index of
   `state/seen.rs` (`RUST-PORT.md` §2.3c): every machine's journal is a chain, and each event of an
   attempt file joins a chain whose last event is among its ancestors, or starts one, so there are

@@ -196,7 +196,7 @@ beadroll-test-support (dev-dependency of every crate's tests)      xtask (dev to
 | `beadroll-sync` | `sync.py` | Transactions (`Tx`, `writing`); `Link` (fetch, merge, tree, publish, maintain, rebuild); `synchronise`; the ownership protocol (`coordinated`, receipts, fences, settling); `publish_soon`; unpublished counts | core, git, store, `uuid`, `fastrand`, `thiserror` | `beadroll` |
 | `beadroll` | `commands.py`, `cli.py` | The `bead` binary. `commands/` maps typed requests to typed outcomes; `cli/` handles parsing, rendering, output streams and exit codes; `sys` holds the two audited unsafe spots (§2.3f). `main.rs` is one line. | all of the above, `rustix` (with `termios`, for the width help pages wrap at), `libc`, `nix` (the password database, for `~NAME` in `BEAD_HOME`, without unsafe code) | the development machines (`cargo install --path crates/beadroll`, §8) |
 | `beadroll-test-support` | `tests/support.py` | `Sandbox`, `Machine`, git and hook fixtures, fake ssh/ps/git writers, failpoint and handshake helpers, event builders | core, `tempfile` | tests (`publish = false`) |
-| `xtask` | `check.sh` and glue | `check`, `oracle`, `diff`, `inventory`, `timing`, `golden` (§4) | — | maintainers, CI (`publish = false`) |
+| `xtask` | `check.sh` and glue | `check`, `oracle`, `diff`, `inventory`, `timing`, `golden` (§4); `bead`, bead run in xtask's process, whose allocator counts its heap (roll-lqjj.9) | core; `beadroll`, for `bead` | maintainers, CI (`publish = false`) |
 
 **Why this split and not finer or coarser.**
 - Each boundary is either a consumer boundary or an ownership rule this codebase already has:
@@ -1745,7 +1745,8 @@ decision 7 open. The five decisions stand.
     tracker. The largest public tracker (48.5 MB) could not be imported as it is: beside its 3,578
     issues it holds 1,111 Beads memory records (`{"_type": "memory", ...}`, no `id`), and the
     import refuses the file at the first (roll-dih8.16); it was measured with them set aside.
-    Importing the 47 MB one held 951 MB resident, and reading it, 274 MB.
+    Importing the 47 MB one held 951 MB resident, and reading it, 274 MB (roll-lqjj.6 and
+    roll-lqjj.9 brought both down: below).
   - **History as bead would have recorded it** (the 18 replays; a lower bound, since a commit
     folds every edit made between commits): 7,826 events, 17 MB of journal and 3,147 publishes,
     the busiest tracker 1,432 events in 24 days. The journal is 1.1–2.9 times the state it
@@ -1859,6 +1860,55 @@ decision 7 open. The five decisions stand.
     write's publish. It comes in about a merge in ten where two machines write (roll-lqjj.3), and
     stays a replay by the maintainer's direction (correctness before speed): taking such events in
     without replaying would mean reproducing replay's order-dependent outcomes.
+
+- **roll-lqjj.9: import memory, measured (this Mac, 2026-10-12).**
+  - How: `cargo run --release --package xtask -- timing --import 14000`: a generated Beads export
+    of 14,000 records, 49.4 MB, shaped as the largest public trackers are (a description of
+    1.2–2.4 KB, notes on half the issues, up to three comments, a parent or a blocker among the
+    earlier issues, eight issues in ten closed), imported with `bead init --import --offline`, then
+    the first `bead sync` after it, and imported with `bead init --import` published to a local
+    bare remote. The heap is what bead's allocator held at its peak, counted by `cargo xtask bead`,
+    which runs bead's own code in xtask's process, whose allocator counts: the same on every run,
+    where the resident set (`/usr/bin/time`'s) moved by up to 20 MB. Before is the build of
+    0c7e8bd, the measuring tool alone; after, that of 20560a0. The public trackers are three of
+    roll-lqjj.3's, imported the same way through `cargo xtask bead`. Where the heap went was found
+    by noting it between the import's steps in a scratch build.
+
+    | Export | Offline import | First sync after it | Published import |
+    |---|---|---|---|
+    | generated, 49 MB, 14,000 records: before | 1.07 s; 473 MB heap, 651 MB resident | 2.96 s; 309 MB, 487 MB | 4.09 s; 473 MB, 802 MB |
+    | after | 0.79 s; 165 MB, 300 MB | 2.99 s; 245 MB, 392–411 MB | 3.73–3.81 s; 245 MB, 549 MB |
+    | public, 47 MB, 13,394 issues: before | 1.17 s; 526 MB, 681 MB | 2.75 s; 274 MB, 419 MB | 3.91 s; 526 MB, 767 MB |
+    | after | 0.86 s; 172 MB, 341 MB | 2.69 s; 235 MB, 363 MB | 3.59 s; 235 MB, 563 MB |
+    | public, 35 MB, 4,841 issues: before | 0.64 s; 310 MB, 394 MB | 2.12 s; 195 MB, 242 MB | 2.70 s; 310 MB, 439 MB |
+    | after | 0.48 s; 108 MB, 207 MB | 2.06 s; 165 MB, 205 MB | 2.52 s; 165 MB, 338 MB |
+    | public, 21 MB, 4,211 issues: before | 0.44 s; 195 MB, 270 MB | 1.29 s; 118 MB, 163 MB | 1.76 s; 195 MB, 298 MB |
+    | after | 0.33 s; 72 MB, 144 MB | 1.31 s; 101 MB, 165 MB | 1.63 s; 101 MB, 230 MB |
+
+  - **Where it went.** On the generated export, before: the export's text (49 MB) and the records
+    read from it (79 MB) were held until every event was emitted, beside the plan made from copies
+    of the records (85 MB); every event was held twice, as the transaction's record and as a copy
+    to append (143 MB each, as JSON values); `init` then asked for the tracker's prefix, so its
+    state took in every imported event, texts and all (131 MB); and the journal's lines (58 MB)
+    were encoded beside the rest: 473 MB at the append. In the sync after it, a text file started
+    again copied its texts behind its header (75 MB). After: each form of the export is let go of
+    once the next is made, the events are kept once and let go of as they are encoded, `init` reads
+    the prefix before it imports, and the text file is written from its parts. The import now
+    peaks as it plans (the records and the plan, 165 MB), then holds its events (143 MB), whose
+    lines take their place as they are appended.
+  - **The budget: no worse than a cold start** (the maintainer's, 2026-10-12): an import's heap
+    peak stays within what making the projection of the imported journal takes. That making is the
+    245 MB: the journal read (58 MB), replayed into a state with every text (132 MB), and the state
+    encoded for the projection's two files; a published import does it in its own publish, an
+    offline one in the first command after it, and a new machine in its first sync of the tracker.
+    Every export above meets it: 165 MB against 245 MB, and on the public trackers 72–172 MB against
+    101–235 MB. The import stays all or nothing: every record is checked before anything is
+    written, and its events reach the journal in one write.
+  - What it leaves: the planner copies the records into its plan, and the transaction holds each
+    event as a JSON value until it is appended; moving the records' fields into the plan and
+    keeping each event as its journal line would, by estimate, about halve the import's own peak,
+    but change every write's transaction. The projection's making, about five times the export on the heap,
+    is the projection's cost, the same for every machine that joins.
 
 ## Appendix B. git invocations, and their consolidation
 
