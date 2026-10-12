@@ -7,7 +7,9 @@ use beadroll_core::code::Code;
 use beadroll_core::event::Field;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::text::{repr, repr_bytes, str_of};
-use beadroll_store::{Actor, Label, Settings, Workspace, replica_id, tracked_config_warning, view};
+use beadroll_store::{
+    Actor, Label, Settings, Workspace, replica_id, tracked_config_warning, view_outline,
+};
 
 use super::help;
 use super::parse::{Namespace, Page};
@@ -101,7 +103,7 @@ fn prime(ws: Option<&Workspace>, actor: &Actor, settings: &Settings) -> Result<O
 /// The tracker's line in `prime`: how many issues are ready, which `me` holds, how many of this
 /// machine's attempts await the remote, and the last sync.
 fn standing(ws: &Workspace, me: &Label) -> Result<String, Failure> {
-    let st = view(ws)?;
+    let st = view_outline(ws)?;
     need_tracker(&st)?;
     let held: Vec<&str> = st
         .issues()

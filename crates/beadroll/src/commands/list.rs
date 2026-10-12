@@ -4,7 +4,7 @@ use std::ffi::OsString;
 
 use beadroll_core::event::Field;
 use beadroll_core::json::{Int, Object, Value};
-use beadroll_store::view;
+use beadroll_store::view_outline;
 
 use super::{
     Context, Failure, Filters, Outcome, first, need_tracker, resolve, select, text, texts,
@@ -44,7 +44,7 @@ fn optional(value: Option<&OsString>) -> Result<Option<String>, Failure> {
 
 /// Issues (open ones by default), by priority, creation time and key; `--limit 0` lists them all.
 pub(crate) fn list(ctx: &Context<'_>, args: &ListArgs) -> Result<Outcome, Failure> {
-    let st = view(ctx.ws)?;
+    let st = view_outline(ctx.ws)?;
     need_tracker(&st)?;
     let filters = Filters {
         status: texts(&args.status)?,
@@ -87,7 +87,7 @@ pub(crate) fn list(ctx: &Context<'_>, args: &ListArgs) -> Result<Outcome, Failur
 /// so a blocker outside it (on the root, an ancestor or a second parent) still holds an issue
 /// inside it.
 pub(crate) fn ready(ctx: &Context<'_>, args: &ReadyArgs) -> Result<Outcome, Failure> {
-    let st = view(ctx.ws)?;
+    let st = view_outline(ctx.ws)?;
     need_tracker(&st)?;
     let root = match &args.root {
         Some(root) => Some(text(root)?),

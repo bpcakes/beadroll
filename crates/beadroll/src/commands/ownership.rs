@@ -9,10 +9,10 @@ use beadroll_core::event::Field;
 use beadroll_core::json::{Format, Object, Value, write};
 use beadroll_core::state::State;
 use beadroll_core::text::str_of;
-use beadroll_store::{Actor, replica_id, view};
+use beadroll_store::{Actor, replica_id, view_outline};
 use beadroll_sync::{Mode, Tx, coordinated};
 
-use super::{Context, Failure, Outcome, arg_text, encodable, need_tracker, resolve_arg};
+use super::{Context, Failure, Outcome, arg_text, encodable, need_tracker, resolve_arg, view_of};
 
 /// The arguments the coordinated commands share.
 pub(crate) struct OwnershipArgs {
@@ -172,7 +172,7 @@ pub(crate) fn claim(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome, 
         &signature,
         |tx, mode| step.run(tx, mode),
     )?;
-    let st = view(ctx.ws)?;
+    let st = view_of(ctx.ws, &args.ids)?;
     if mode != Mode::Offline {
         still_held(ctx, &st, &args.ids)?;
     }
@@ -219,7 +219,7 @@ pub(crate) fn takeover(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcom
         &signature,
         |tx, mode| step.run(tx, mode),
     )?;
-    let st = view(ctx.ws)?;
+    let st = view_of(ctx.ws, &args.ids)?;
     still_held(ctx, &st, &args.ids)?;
     let result = details(&st, &args.ids)?;
     let reason = beadroll_core::text::printed_text(std::os::unix::ffi::OsStrExt::as_bytes(reason));
@@ -284,7 +284,7 @@ pub(crate) fn release(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome
             Ok(mode)
         },
     )?;
-    let st = view(ctx.ws)?;
+    let st = view_outline(ctx.ws)?;
     let result: Vec<Object> = args
         .ids
         .iter()

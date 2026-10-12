@@ -28,7 +28,7 @@ use beadroll_core::json::{Int, Object, Value};
 use beadroll_core::op::PyInt;
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::{printed_text, repr_str, strip};
-use beadroll_store::{Actor, Label, ViewError, Workspace, pathlib};
+use beadroll_store::{Actor, Label, ViewError, Workspace, pathlib, read_texts, view, view_outline};
 use beadroll_sync::{Tx, unpublished_count};
 
 pub(crate) use args::{
@@ -229,6 +229,20 @@ pub(crate) fn text(value: &OsStr) -> Result<String, Failure> {
 /// Each argument as text.
 pub(crate) fn texts(values: &[OsString]) -> Result<Vec<String>, Failure> {
     values.iter().map(|v| text(v)).collect()
+}
+
+/// The state as `view` gives it, with the texts of the issues `keys` name read in: what a command
+/// that prints those issues whole needs, where its others' texts would only be read in vain
+/// (roll-lqjj.6). Every text, when theirs cannot be read.
+pub(crate) fn view_of(ws: &Workspace, keys: &[impl AsRef<OsStr>]) -> Result<State, Failure> {
+    let mut st = view_outline(ws)?;
+    let uids: Vec<_> = (keys.iter())
+        .filter_map(|key| resolve_arg(&st, key.as_ref()).ok().map(Issue::uid))
+        .collect();
+    if read_texts(ws, &mut st, uids) {
+        return Ok(st);
+    }
+    Ok(view(ws)?)
 }
 
 /// There must be a tracker here.

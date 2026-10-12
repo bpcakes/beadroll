@@ -11,13 +11,13 @@ use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::str_of;
-use beadroll_store::{Actor, Label, view};
+use beadroll_store::{Actor, Label, view_outline};
 use beadroll_sync::{Mode, Tx, coordinated, publish_soon, writing};
 
 use super::ownership::{ClaimStep, command_signature, still_held};
 use super::{
     ContentArgs, Context, Failure, Outcome, Payload, arg_texts, encodable, ended_by, field_args,
-    need_tracker, remove_edge, resolve_arg, split_args,
+    need_tracker, remove_edge, resolve_arg, split_args, view_of,
 };
 
 /// `update`'s arguments.
@@ -80,7 +80,7 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
             notes.push("claim is PROVISIONAL: not exclusive until claimed online".to_owned());
         } else if status.as_deref() != Some("closed") {
             // a claiming close ends the claim on purpose
-            still_held(ctx, &view(ctx.ws)?, &args.ids)?;
+            still_held(ctx, &view_outline(ctx.ws)?, &args.ids)?;
         }
         ended
     } else {
@@ -94,7 +94,7 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
     } else {
         publish_soon(ctx.ws, args.offline, args.remote.as_deref())
     };
-    let st = view(ctx.ws)?;
+    let st = view_of(ctx.ws, &args.ids)?;
     let mut result = args
         .ids
         .iter()

@@ -11,7 +11,7 @@ use beadroll_core::json::{Object, Value};
 use beadroll_core::query::{Edges, blocking};
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::str_of;
-use beadroll_store::view;
+use beadroll_store::view_outline;
 use beadroll_sync::writing;
 
 use super::{
@@ -35,7 +35,7 @@ pub(crate) fn dep(
     if matches!(action.as_str(), "add" | "remove" | "rm") {
         return change(ctx, &action, words, kind);
     }
-    let st = view(ctx.ws)?;
+    let st = view_outline(ctx.ws)?;
     need_tracker(&st)?;
     if action == "cycles" {
         let cycles = st.cycles(if blocking_only {

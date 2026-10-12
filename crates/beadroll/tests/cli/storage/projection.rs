@@ -1,6 +1,6 @@
 //! The store's projection (roll-lqjj.2), from outside: bead answers alike with it, without it and
-//! with a damaged one, across machines that sync, and a bead killed as it writes one leaves the
-//! last one in place. Every machine here runs the `bead` this package builds (`rust_only`): the
+//! with a damaged one, its texts kept apart or not (roll-lqjj.6), across machines that sync, and a
+//! bead killed as it writes one, or the texts it adds, leaves the last one in place. Every machine here runs the `bead` this package builds (`rust_only`): the
 //! projection is this build's.
 
 use std::os::unix::fs::MetadataExt as _;
@@ -19,6 +19,10 @@ const READS: [&[&str]; 5] = [
 
 fn projection(machine: &Machine) -> PathBuf {
     machine.store().join("projection")
+}
+
+fn texts(machine: &Machine) -> PathBuf {
+    machine.store().join("projection-texts")
 }
 
 /// What `machine` answers to the reading commands and to `show` of each of `keys`; with
@@ -159,4 +163,62 @@ fn a_merge_appends_what_another_machines_segment_lacks() {
     assert!(after.len() > before.len());
     let kept = answers(&a, &keys, false);
     assert_eq!(answers(&a, &keys, true), kept);
+}
+
+#[test]
+fn bead_answers_alike_with_its_texts_cut_damaged_or_gone() {
+    let sandbox = crate::sandbox();
+    let a = crate::rust_only(&sandbox, "kept-a");
+    let keys = tracker(&a);
+    a.bead([
+        "update",
+        &keys[0],
+        "--description",
+        "why it matters, at length",
+        "--notes",
+        "and what was tried",
+    ]);
+    let kept = answers(&a, &keys, false);
+    assert!(texts(&a).is_file(), "a read keeps the texts apart");
+    let good = std::fs::read(texts(&a)).unwrap();
+    let mut flipped = good.clone();
+    let last = flipped.len() - 1;
+    flipped[last] ^= 0x01;
+    // a list needs none of them; a show or an export replays, and writes them again, the same
+    // texts as the same bytes
+    let mut rebuilt = None;
+    for damage in [Some(good[..good.len() / 2].to_vec()), Some(flipped), None] {
+        match damage {
+            Some(bytes) => std::fs::write(texts(&a), bytes).unwrap(),
+            None => std::fs::remove_file(texts(&a)).unwrap(),
+        }
+        assert_eq!(answers(&a, &keys, false), kept);
+        let now = std::fs::read(texts(&a)).unwrap();
+        assert_eq!(rebuilt.get_or_insert_with(|| now.clone()), &now);
+    }
+    // a write about texts that cannot be read in replays
+    std::fs::write(texts(&a), &good[..40]).unwrap();
+    a.bead(["comments", "add", &keys[0], "after the damage"]);
+    let kept = answers(&a, &keys, false);
+    assert_eq!(answers(&a, &keys, true), kept);
+}
+
+#[test]
+fn a_bead_killed_as_it_adds_texts_leaves_the_last_projection() {
+    let sandbox = crate::sandbox();
+    let a = crate::rust_only(&sandbox, "kept-a");
+    let keys = tracker(&a);
+    let _ = answers(&a, &keys, false);
+    let last = std::fs::read(projection(&a)).unwrap();
+    a.bead(["comments", "add", &keys[0], "written offline", "--offline"]);
+    // the next read takes it in, adds its texts, and is killed before the projection is written
+    let killed = (a.cmd(["list", "--json"]))
+        .env("BEAD_FAILPOINTS", "projection.texts-appended=sigkill")
+        .run();
+    assert_eq!(killed.returncode(), -9, "{}", killed.stderr);
+    assert_eq!(std::fs::read(projection(&a)).unwrap(), last);
+    // what it added belongs to no projection: the next read takes the record in again
+    let shown = a.run(["show", &keys[0], "--json"]);
+    assert!(shown.stdout.contains("written offline"), "{}", shown.stdout);
+    assert_eq!(answers(&a, &keys, false), answers(&a, &keys, true));
 }

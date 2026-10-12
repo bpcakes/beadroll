@@ -6,10 +6,11 @@ use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 use beadroll_core::code::Code;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::text::{str_of, strip};
-use beadroll_store::view;
 use beadroll_sync::writing;
 
-use super::{Context, Failure, Outcome, arg_text, encodable, need_tracker, read_utf8, resolve_arg};
+use super::{
+    Context, Failure, Outcome, arg_text, encodable, need_tracker, read_utf8, resolve_arg, view_of,
+};
 
 /// `comments`' arguments.
 pub(crate) struct CommentArgs {
@@ -37,7 +38,7 @@ pub(crate) fn comments(ctx: &Context<'_>, args: &CommentArgs) -> Result<Outcome,
     if action == b"add" {
         return add(ctx, args, key, &words[1..]);
     }
-    let st = view(ctx.ws)?;
+    let st = view_of(ctx.ws, &[key])?;
     need_tracker(&st)?;
     let detail = st.detail(resolve_arg(&st, key)?);
     let comments = match detail.get("comments") {
