@@ -18,6 +18,10 @@ pub(crate) enum Shape {
     /// `update --claim` makes beside it), decided against everything the machines have published;
     /// owners edit, comment and close naming their claim in between.
     Ownership,
+    /// Heavy in churn: [`CHURN_ISSUES`] issues, then only titles changed and a label put on and
+    /// taken off, so that the state stays the size it is whatever the number of events: what the
+    /// projection's cost follows (roll-lqjj.2).
+    Churn,
 }
 
 impl Shape {
@@ -26,9 +30,22 @@ impl Shape {
         match self {
             Shape::Plain => "plain",
             Shape::Ownership => "ownership",
+            Shape::Churn => "churn",
+        }
+    }
+
+    /// Its events, as a label names them.
+    pub(crate) fn events(self) -> &'static str {
+        match self {
+            Shape::Plain => "events",
+            Shape::Ownership => "ownership-heavy events",
+            Shape::Churn => "events on a thousand issues",
         }
     }
 }
+
+/// How many issues the churn history has.
+pub(crate) const CHURN_ISSUES: usize = 1000;
 
 /// One machine's files, as a store holds them.
 pub(crate) struct Files {
@@ -66,6 +83,7 @@ pub(crate) fn history(count: usize, shape: Shape) -> Vec<Files> {
     match shape {
         Shape::Plain => plain(&mut writer, count),
         Shape::Ownership => ownership(&mut writer, count),
+        Shape::Churn => churn(&mut writer, count),
     }
     writer.files
 }
@@ -234,6 +252,34 @@ fn plain(w: &mut Writer, count: usize) {
     }
 }
 
+/// A history heavy in churn (`Shape::Churn`).
+fn churn(w: &mut Writer, count: usize) {
+    let mut issues: Vec<String> = Vec::new();
+    for n in 0..count {
+        let m = if n == 0 { 0 } else { w.next(6) };
+        if n > 0 && w.next(10) == 0 {
+            let other = w.next(6);
+            w.sync(m, other);
+        }
+        if n == 0 {
+            w.append(m, "init", None, init());
+            continue;
+        }
+        if issues.len() < CHURN_ISSUES {
+            issues.push(w.append(m, "create", None, create(n)));
+            continue;
+        }
+        let issue = issues[w.next(issues.len())].clone();
+        let label = || obj(&[("labels", Value::Array(vec!["p1".into()]))]);
+        let (op, data) = match w.next(3) {
+            0 => ("set", edit(n)),
+            1 => ("label_add", label()),
+            _ => ("label_remove", label()),
+        };
+        w.append(m, op, Some(&issue), data);
+    }
+}
+
 /// An issue's claim as the machines agree on it.
 struct Held {
     claim: String,
@@ -376,8 +422,8 @@ mod tests {
     }
 
     #[test]
-    fn every_event_of_either_shape_applies() {
-        for shape in [Shape::Plain, Shape::Ownership] {
+    fn every_event_of_every_shape_applies() {
+        for shape in [Shape::Plain, Shape::Ownership, Shape::Churn] {
             let files = history(3000, shape);
             let journal = journal(&files);
             assert_eq!(journal.events().len(), 3000, "{shape:?}");
@@ -411,6 +457,25 @@ mod tests {
             st.issues()
                 .any(|issue| !issue.provisional_claims().is_empty())
         );
+    }
+
+    #[test]
+    fn the_churn_shape_keeps_its_state_the_size_it_is() {
+        let tags = |count: usize| {
+            let st = replay(journal(&history(count, Shape::Churn))).unwrap();
+            assert_eq!(st.issues().count(), CHURN_ISSUES);
+            (st.issues())
+                .map(|issue| {
+                    issue
+                        .registers()
+                        .values()
+                        .map(|tags| tags.len())
+                        .sum::<usize>()
+                })
+                .sum::<usize>()
+        };
+        let (fewer, more) = (tags(3000), tags(12_000));
+        assert!(more < fewer * 2, "{fewer} register values, then {more}");
     }
 
     /// The plain history is the one measured before the ownership shape was added, byte for byte

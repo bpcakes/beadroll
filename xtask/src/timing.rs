@@ -2,14 +2,18 @@
 //! the budgets of `docs/RUST-PORT.md` §4.7 and Appendix A. With `--replay N` it times
 //! beadroll-core's replay of N events in-process instead ([`replay`]), and measures the peak memory
 //! of a process that loads them from disk and replays them ([`memory`], `--load DIR`); with `--sync
-//! N`, a publishing `bead sync` on a store of N events ([`sync`]). A timing never decides whether
-//! anything passes.
+//! N`, a publishing `bead sync` on a store of N events ([`sync`]); with `--read N`, the reading
+//! commands there ([`read`]); with `--merge N`, a sync that merges what another machine wrote
+//! after it ([`merge`]). A timing never decides whether anything passes.
 
 pub(crate) mod heap;
 mod history;
 mod memory;
+mod merge;
+mod read;
 mod replay;
 mod sync;
+mod world;
 
 use std::ffi::OsString;
 use std::fs::OpenOptions;
@@ -29,6 +33,13 @@ struct Options {
     replay: Option<usize>,
     /// Time a publishing sync on a store of this many events instead of a command.
     sync: Option<usize>,
+    /// Time the reading commands on a store of this many events instead of a command.
+    read: Option<usize>,
+    /// Time a sync that merges another machine's events into a store of this many instead of a
+    /// command.
+    merge: Option<usize>,
+    /// How many events each `--merge` brings.
+    batch: Option<usize>,
     /// Where `--sync` rotates the journals it writes.
     rotate: Option<usize>,
     /// Which history `--replay` or `--sync` generates.
@@ -47,6 +58,9 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
         command: Vec::new(),
         replay: None,
         sync: None,
+        read: None,
+        merge: None,
+        batch: None,
         rotate: None,
         shape: history::Shape::Plain,
         load: None,
@@ -64,8 +78,12 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
             "--out" => options.out = Some(PathBuf::from(value("--out")?)),
             "--replay" => options.replay = Some(number(&value("--replay")?, "--replay", "events")?),
             "--sync" => options.sync = Some(number(&value("--sync")?, "--sync", "events")?),
+            "--read" => options.read = Some(number(&value("--read")?, "--read", "events")?),
+            "--merge" => options.merge = Some(number(&value("--merge")?, "--merge", "events")?),
+            "--batch" => options.batch = Some(number(&value("--batch")?, "--batch", "events")?),
             "--rotate" => options.rotate = Some(number(&value("--rotate")?, "--rotate", "bytes")?),
             "--ownership" => options.shape = history::Shape::Ownership,
+            "--churn" => options.shape = history::Shape::Churn,
             "--load" => options.load = Some(PathBuf::from(value("--load")?)),
             "--no-replay" => options.no_replay = true,
             "--" => {
@@ -79,18 +97,26 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
             }
         }
     }
-    let measured = options.replay.is_some() || options.sync.is_some();
-    if options.command.is_empty() && !measured && options.load.is_none() {
+    let modes = [options.replay, options.sync, options.read, options.merge];
+    let measured = modes.iter().flatten().count();
+    if options.command.is_empty() && measured == 0 && options.load.is_none() {
         return Err(Failure::Usage(
-            "timing needs --replay N, --sync N, or a command after --".into(),
+            "timing needs --replay N, --sync N, --read N, --merge N, or a command after --".into(),
         ));
     }
-    if options.replay.is_some() && options.sync.is_some() {
-        return Err(Failure::Usage("--replay N or --sync N, not both".into()));
-    }
-    if options.shape != history::Shape::Plain && !measured {
+    if measured > 1 {
         return Err(Failure::Usage(
-            "--ownership shapes the history of --replay N or --sync N".into(),
+            "one of --replay N, --sync N, --read N and --merge N".into(),
+        ));
+    }
+    if options.shape != history::Shape::Plain && measured == 0 {
+        return Err(Failure::Usage(
+            "--ownership and --churn shape the history of a measurement".into(),
+        ));
+    }
+    if options.batch == Some(0) || options.batch.is_some() && options.merge.is_none() {
+        return Err(Failure::Usage(
+            "--batch M, more than none, goes with --merge N".into(),
         ));
     }
     if options.rotate == Some(0) || options.rotate.is_some() && options.sync.is_none() {
@@ -117,6 +143,22 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
         let started = SystemTime::now();
         let rotate = options.rotate.unwrap_or(sync::ROTATE_BYTES);
         let measured = sync::measure(count, options.shape, rotate, options.label.as_deref())?;
+        let line = format!("{measured}{}", context(started));
+        append(&out, &line)?;
+        println!("timing: {line}\nrecorded in {}", out.display());
+        return Ok(ExitCode::SUCCESS);
+    }
+    let label = options.label.as_deref();
+    let started = SystemTime::now();
+    let measured = if let Some(count) = options.read {
+        Some(read::measure(count, options.shape, label)?)
+    } else if let Some(count) = options.merge {
+        let batch = options.batch.unwrap_or(merge::BATCH);
+        Some(merge::measure(count, options.shape, batch, label)?)
+    } else {
+        None
+    };
+    if let Some(measured) = measured {
         let line = format!("{measured}{}", context(started));
         append(&out, &line)?;
         println!("timing: {line}\nrecorded in {}", out.display());

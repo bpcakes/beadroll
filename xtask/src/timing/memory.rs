@@ -121,8 +121,9 @@ pub(crate) struct Peaks {
     pub(crate) heap: Option<u64>,
 }
 
-/// The peaks of `program ARGS`, a `--load` run: its resident set, as `/usr/bin/time` reports it when
-/// the program exits (`None` where there is no such report), and its heap, as the program says.
+/// The peaks of `program ARGS`, a `--load` run: its resident set, as `/usr/bin/time` reports it
+/// when the program exits (`None` where there is no such report), and its heap, as the program
+/// says.
 pub(crate) fn peaks(program: &Path, args: &[&std::ffi::OsStr]) -> Result<Peaks, Failure> {
     let flag = if cfg!(target_os = "macos") {
         "-l"

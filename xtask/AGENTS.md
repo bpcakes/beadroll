@@ -21,9 +21,13 @@ Python implementation, so they went with it; `python-0.1.0` has them.
   `test_check.CheckScript` ran `check.sh`; `check/tests.rs`: its options, summaries and build.
 - `src/timing.rs`, `src/timing/replay.rs`: `timing`, and `timing --replay N`; `timing/sync.rs`:
   `timing --sync N`, a publishing `bead sync` on a scratch store of the same history, with the
-  store's memo of its journal files and without it (roll-lqjj.1); `timing/history.rs`:
-  the histories it replays (`--ownership`: heavy in claims, takeovers and releases in attempt
-  files); `timing/memory.rs`: the journal written under `target/timing/` while it is measured,
+  store's memo of its journal files and its projection, without its projection, and without
+  either (roll-lqjj.1, roll-lqjj.2); `timing/read.rs`: `timing --read N`, the reading commands
+  there with the projection and without it; `timing/merge.rs`: `timing --merge N`, a sync that
+  merges what another machine wrote after the store's frontier; `timing/world.rs`: the scratch
+  store, checkout and remote they run `bead` on; `timing/history.rs`: the histories it replays
+  (`--ownership`: heavy in claims, takeovers and releases in attempt files; `--churn`: a thousand
+  issues changed over and over, a state that stays its size); `timing/memory.rs`: the journal written under `target/timing/` while it is measured,
   `timing --load DIR` (the process that loads and replays it), and its peaks: the resident set as
   `/usr/bin/time` reports it, and the heap as `timing/heap.rs` counts it, xtask's global allocator
   (the system's, counted; its one unsafe spot, `docs/RUST-PORT.md` §2.2).

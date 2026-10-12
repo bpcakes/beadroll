@@ -11,6 +11,7 @@ use beadroll_core::replay::replay;
 
 use super::history::{Shape, history};
 use super::memory;
+use super::world::profile;
 use crate::workspace::{self, Failure, json_string};
 
 /// How many times the journal is replayed; the fastest run counts.
@@ -47,16 +48,8 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
     let journal_peak = memory::peaks(&exe, &no_replay)?;
     // An ownership-heavy journal is a hundred thousand files: nothing to leave lying about.
     std::fs::remove_dir_all(&dir).map_err(|error| Failure::io("cannot remove", &dir, &error))?;
-    let profile = if cfg!(debug_assertions) {
-        "debug"
-    } else {
-        "release"
-    };
     let label = label.map_or_else(
-        || match shape {
-            Shape::Plain => format!("replay of {count} events"),
-            Shape::Ownership => format!("replay of {count} ownership-heavy events"),
-        },
+        || format!("replay of {count} {}", shape.events()),
         str::to_owned,
     );
     Ok(format!(
@@ -66,7 +59,7 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
          \"journal_heap_peak_bytes\": {}, ",
         json_string(&label),
         json_string(shape.name()),
-        json_string(profile),
+        json_string(profile()),
         bytes(peak.resident),
         bytes(journal_peak.resident),
         bytes(peak.heap),
