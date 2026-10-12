@@ -130,6 +130,39 @@ These were decided deliberately. Report problems *with* them, not their existenc
   projection missing, cut, damaged (a 128-bit sum of each part) or another build's is never read,
   and a failed write is no failure. A state read from it knows, of its events, those it names:
   `State::saw`, `holds` and `events`, which no command reads, answer for those alone.
+- No history boundary (roll-lqjj.3, step 4 of epic roll-lqjj; the maintainer's decision of
+  2026-10-12, on the evidence in `RUST-PORT.md` Appendix A, "roll-lqjj.3"): a machine's work
+  merges by itself however old it is, as every merge has so far. The alternatives were a supported
+  window (in events, segments or days) behind which a machine refreshes and reconciles by hand, its
+  pending work kept but not merged, as Microsoft's Sync Framework treats a replica behind what it
+  has forgotten; and leaving the question to the checkpoints of step 5. Work that old is real: bead
+  published a tracker's first events 45 h after they were written, and in Beads trackers kept in
+  git a branch's tracker changes waited up to 24 days on the maintainer's and up to 258 days in
+  public repositories; a window short enough to save anything would send such work down the manual
+  path, and pruning causal history without one (CouchDB's revision limit, Riak's clock pruning)
+  turns it into spurious conflicts. What a window would save is small: answering whether a late
+  event saw an old one takes an index of every event's id and place, 22–30 bytes an event in the
+  projection on real histories (1–2% of their journals; 5 MB at 200,000 events). What it fixes for
+  step 5: a checkpoint carries that index over all history and the accepted attempt ids (a retry
+  is recognised by its file in `claims/`), and an archive keeps every raw record for the fork,
+  quarantine and chain-break checks. A tracker rolled over to checkpoints is format 2, which ends
+  the python-0.1.0 rollback for it (`RUST-PORT.md` §2.3j), boundary or not. Continuation from a
+  checkpoint then becomes the reference for late concurrent events, not full replay: the key two
+  concurrent creates minted
+  (`same_child_number_on_two_machines_is_renumbered_identically` pins the rename today), the order
+  of comments, claim history and issue order follow the order events are applied in. So step 5
+  tests that every machine continuing from one checkpoint agrees, and that continuation equals
+  replay on every history without late concurrent events. Those are common where several machines
+  write (a merge in ten on a tracker two machines write) and conflicting edits of one field rare
+  (status and comments). Until then nothing changes, and the stress models' partitioned machines
+  (`six_machine_2400_operation_reference_model`,
+  `six_machine_3000_concurrent_commands_with_partitions`) and the protocol sweep keep pinning that
+  every machine converges whatever it missed. Retention (step 6) is a separate question: forgetting
+  closed issues changes what `show`, `log` and `export` return and breaks the Beads round trip for
+  them, so it would be a policy a tracker sets explicitly, with a command that lists what it forgot
+  and the archive keeping it; step 5 leaves room for it by keeping the index and the archive apart
+  from the state. Closed issues hold 27–83% of the largest public trackers' bytes, and keeping
+  texts out of what every command decodes (roll-lqjj.6) may make retention unnecessary for speed.
 - What each event had seen is one clock per event over chains, the reachability index of
   `state/seen.rs` (`RUST-PORT.md` §2.3c): every machine's journal is a chain, and each event of an
   attempt file joins a chain whose last event is among its ancestors, or starts one, so there are

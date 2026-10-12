@@ -1708,7 +1708,66 @@ decision 7 open. The five decisions stand.
   - A merge that brings events written concurrently with the store's is applied by replaying the
     journal. On this repository's tracker none has: on 2026-10-12 it held 299 events, all written
     on one machine, no two of them concurrent (each in the other's past), so no merge had brought
-    another machine's events at all.
+    another machine's events at all. Where two machines write, one merge in ten does (roll-lqjj.3,
+    below).
+
+- **roll-lqjj.3: real trackers, migrated (this Mac, 2026-10-12).** The evidence the history
+  boundary was decided on (`docs/REVIEWING.md` §2).
+  - How: the release build of 9ca0547. Every Beads tracker the maintainer keeps (22, in 19
+    repositories) and the six largest public ones on GitHub were imported into scratch stores with
+    `bead init --import`, published to a local bare remote, and joined by a second machine with
+    `bead sync`; reads are the best of five. For 18 of the maintainer's, every commit of
+    `.beads/issues.jsonl` on the default branch's first-parent chain was replayed as the commands
+    that would have made it (an import of its new records, an update, a close or reopen, a
+    comment, a dependency added or removed, a delete), each one publishing. GitHub's code search
+    finds 3,312 public trackers (`filename:issues.jsonl path:.beads`) but indexes files under
+    384 KB only; the larger ones came from `.beads/metadata.json` and `config.yaml` (3,463
+    repositories) and the sizes the contents API gives. Their git histories were read from
+    blobless clones: 849 repositories, every one with a tracker over 100 KB that code search shows
+    and 200 smaller ones drawn at random. The bead stores in use gave concurrency and publish lag:
+    when each event reached the remote, from the remote ref's commits, against the time in its id.
+
+    | Trackers | Issues | Beads JSONL | Events imported | Read, warm / cold | A published write | First sync of a new machine |
+    |---|---|---|---|---|---|---|
+    | The maintainer's 22 | 2–280 | 9 KB–1.9 MB | 3–846 | 15–21 / 16–31 ms | 0.12–0.16 s | 77–151 ms |
+    | The six largest public | 1,300–13,394 | 21–47 MB | 4,355–29,046 | 58–138 / 220–574 ms | 0.34–0.65 s | 0.87–1.83 s |
+
+  - Every record came back from `bead export` as it went in (2,449 of 2,449, and 33,148 of
+    33,149: an empty `comments` list, which export leaves out), and the second machine agreed with
+    the first on every tracker. Importing the 47 MB one held 951 MB resident, and reading it,
+    274 MB.
+  - **History as bead would have recorded it** (the 18 replays; a lower bound, since a commit
+    folds every edit made between commits): 7,826 events, 17 MB of journal and 3,147 publishes,
+    the busiest tracker 1,432 events in 24 days. The journal is 1.1–2.9 times the state it
+    replays into (median 1.4), at 1.2–3.7 KB an event, and the projection's index (ids, positions,
+    lengths) 22–30 bytes an event. Where bead is in use, the busiest tracker takes 99 events a day
+    (36,000 and 81 MB a year), and the largest public tracker's own timestamps show 138 creates,
+    closes and comments a day, 1,565 on its busiest (50,000 a year before any update, dependency
+    or claim).
+  - **Concurrency is common where several machines write.** On the one bead tracker two machines
+    write, 31 of its 303 publishes (10%) brought events concurrent with what the remote held, and
+    146 of 807 events were concurrent with another; none were on one issue, and no two creates
+    were. Four machines writing one tracker at once in the sandbox, each publishing every write:
+    21 of their 250 publishes brought concurrent events (two machines: 6 of 151), since a machine
+    that publishes at once rarely writes on a stale view; every view converged, and a write took
+    161 ms at the median, but 14 of 200 took over a second, the worst 22.7 s, and one was left
+    unpublished after twelve rounds (two machines: 5 of 100, the worst 6.2 s). In Beads trackers
+    kept in git, where both sides of a merge changed one issue, a field was set differently in 18
+    of the busiest tracker's 163 merges and in 8 of 123 public ones: status and comments most
+    often.
+  - **Old work is real.** bead published a tracker's first events up to 45 h after they were
+    written, and everything since in a median 1.2 s (p90 5 s); on the two-machine tracker, at most
+    10 minutes after. In Beads trackers kept in git a branch's tracker changes wait for its merge:
+    up to 24 days on the maintainer's (and one branch's, 14 days old, still waits), and in the 51
+    public repositories whose merges bring tracker changes the longest wait is a median 17 h, over
+    7 days in 8 of them, over 30 days in 4, and 258 days at most.
+  - **What a command costs grows with the text.** A read decodes the projection and a write
+    rewrites it, both in proportion to the state, and a real tracker's state is mostly its text
+    (descriptions and comments are 64–81% of it), and on the largest public trackers closed issues
+    hold 27–83% of the bytes. At 30 times the maintainer's busiest tracker (6,810 issues,
+    60 MB of journal) a write takes 0.68 s and a read 0.11 s holding 304 MB, where they take 0.15 s
+    and 21 ms at its size; a cold replay takes 0.45 s, so a merge that replays instead of
+    extending costs little more than one that extends.
 
 ## Appendix B. git invocations, and their consolidation
 
