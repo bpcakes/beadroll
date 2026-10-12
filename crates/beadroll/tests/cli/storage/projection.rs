@@ -3,6 +3,7 @@
 //! last one in place. Every machine here runs the `bead` this package builds (`rust_only`): the
 //! projection is this build's.
 
+use std::os::unix::fs::MetadataExt as _;
 use std::path::PathBuf;
 
 use beadroll_test_support::Machine;
@@ -134,4 +135,28 @@ fn a_bead_killed_as_it_writes_a_projection_leaves_the_last_one() {
     assert!(listed.stdout.contains("after"), "{}", listed.stdout);
     assert_ne!(std::fs::read(projection(&a)).unwrap(), last);
     assert_eq!(answers(&a, &keys, false), answers(&a, &keys, true));
+}
+
+#[test]
+fn a_merge_appends_what_another_machines_segment_lacks() {
+    let sandbox = crate::sandbox();
+    let a = crate::rust_only(&sandbox, "kept-a");
+    let keys = tracker(&a);
+    a.bead(["sync"]);
+    let b = crate::rust_only(&sandbox, "kept-b");
+    b.bead(["sync"]);
+    b.bead(["comments", "add", &keys[0], "from b"]);
+    a.bead(["sync"]);
+    let info = b.bead(["info"]).expect("bead info");
+    let machine = info["machine"].as_str().expect("b's machine").to_owned();
+    let theirs = a.store().join("events").join(machine).join("000001.jsonl");
+    let before = std::fs::metadata(&theirs).unwrap();
+    b.bead(["comments", "add", &keys[0], "more from b"]);
+    a.bead(["sync"]);
+    let after = std::fs::metadata(&theirs).unwrap();
+    // the same file, longer: the projection takes in the lines appended alone
+    assert_eq!((after.dev(), after.ino()), (before.dev(), before.ino()));
+    assert!(after.len() > before.len());
+    let kept = answers(&a, &keys, false);
+    assert_eq!(answers(&a, &keys, true), kept);
 }

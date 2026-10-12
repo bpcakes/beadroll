@@ -4,8 +4,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use beadroll_store::{
-    Memo, complete_prefix, pending_files, projection, read, read_attempt, repair_tail, replica_id,
-    segment_files, write_atomic,
+    Memo, complete_prefix, extend_segment, pending_files, projection, read, read_attempt,
+    repair_tail, replica_id, segment_files, write_atomic,
 };
 
 use super::{Link, newlines};
@@ -179,9 +179,10 @@ impl Link<'_> {
         Ok(new)
     }
 
-    /// One remote segment: ours extended to it, or, when neither is a prefix of the other, a
-    /// foreign one replaced (ours kept beside it); our own is a fork. How many events came in. A
-    /// segment whose published blob is ours is not read: its lines are the remembered ones.
+    /// One remote segment: ours extended to it (what it lacks appended), or, when neither is a
+    /// prefix of the other, a foreign one replaced (ours kept beside it); our own is a fork. How
+    /// many events came in. A segment whose published blob is ours is not read: its lines are the
+    /// remembered ones.
     fn merge_segment(
         &mut self,
         path: &str,
@@ -212,7 +213,11 @@ impl Link<'_> {
         }
         if theirs.starts_with(&ours) {
             let pulled = newlines(&theirs) as i64 - newlines(&ours) as i64;
-            write_atomic(&target, &theirs, true, &self.ws.settings.failpoints)?;
+            match theirs.get(ours.len()..).filter(|_| !ours.is_empty()) {
+                // what ours lacks, appended: the segment stays the file it was (roll-lqjj.2)
+                Some(more) => extend_segment(&target, more)?,
+                None => write_atomic(&target, &theirs, true, &self.ws.settings.failpoints)?,
+            }
             self.memo().wrote(path, &target, &theirs, written);
             return Ok(pulled);
         }

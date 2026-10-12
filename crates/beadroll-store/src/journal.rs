@@ -211,6 +211,22 @@ pub fn append_events(ws: &Workspace, replica: &str, events: &[Value]) -> Result<
     Ok(())
 }
 
+/// Appends `more` to the segment at `path`, which is there: what another machine's published copy
+/// has beyond ours, at a merge (roll-lqjj.2). Like bead's own records it is appended, never
+/// rewritten whole, so that the segment stays the file a projection was made from, and a
+/// projection takes in these lines alone. A reader of a segment skips a last line not yet whole,
+/// and a merge cuts one an interrupted append left before it reads ([`repair_tail`]).
+pub fn extend_segment(path: &Path, more: &[u8]) -> Result<(), Error> {
+    let mut file = OpenOptions::new()
+        .append(true)
+        .open(path)
+        .map_err(|e| IoError::at(&e, path))?;
+    file.seek(SeekFrom::End(0)).map_err(|e| IoError::bare(&e))?;
+    file.write_all(more).map_err(|e| IoError::bare(&e))?;
+    fsync(&file)?;
+    Ok(())
+}
+
 /// Writes an attempt whole: a reader sees all of it or none of it.
 pub fn write_attempt_file(
     path: &Path,
