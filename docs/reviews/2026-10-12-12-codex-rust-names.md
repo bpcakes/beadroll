@@ -17,7 +17,7 @@ Requirement coverage:
 | R3: Preserve behavior, parsing, fixtures and format 1 | Satisfied by static inspection; runtime validation limited | Function bodies preserve their logic through renames. `IntegerField` retains numeric comparison and boolean display/JSON behavior; parsing bodies and receipt fixture bytes are unchanged. No golden files or Cargo.lock changes. Full baseline and runtime suites were not run in this review. |
 | R4: Update active references and retain merged main fixes | Satisfied | FINDINGS.md updates the renamed U03 and receipt tests and CI module; the hardening catalog updates the active CI reference. The pinned base is HEAD's second parent, and the diff against that base preserves its runtime fixes. |
 
-Validation performed in `/srv/dev/home/dev/projects/beadroll`:
+Validation performed in `<checkout>` (local path redacted for repository hygiene):
 
 - `git diff --check 274d4ffb..8918f910`: exit 0.
 - `cargo fmt --all -- --check`: exit 0. Complete log: `/tmp/beadroll-review-_diye59x/codex-fmt.log`.
