@@ -49,3 +49,7 @@ Review comment:
 
 - [P2] Replay when a non-final cached segment grows — /Users/<name>/Documents/beadroll/crates/beadroll-store/src/projection.rs:190-195
   If an earlier segment grows while a later segment already contains cached events, this accepts an insertion into the machine's journal as an append. For example, cache create A in `000001.jsonl` and retitle B in `000002.jsonl`, then append label event C depending on B to `000001.jsonl`. `Projection::extend` places C after B and accepts it; full replay places C before B in the journal and rejects B for a chain break. The cache consequently preserves a title replay rejects and can hide `JOURNAL_FORK` from `Link::merge`. Fall back when a non-final cached segment grows, preserving the [replay-equivalence invariant](crates/beadroll-store/AGENTS.md#L60-L62).
+
+## roll-lqjj.2, round 3: `1527ea8ff4dc47e7d3d51954c2d1bef892b5d468..a9503113fd2c80fa26a3629948bfd417f3750e54`
+
+Reviewed only 1527ea8ff4dc47e7d3d51954c2d1bef892b5d468..a9503113fd2c80fa26a3629948bfd417f3750e54 (HEAD); no actionable defects found. All 52 prebuilt core unit tests passed. The full baseline was blocked by the read-only Cargo build lock; fresh-build and stress verification remain unperformed.
