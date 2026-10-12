@@ -8,12 +8,12 @@ use beadroll_core::json::{self, Format, Int, MAX_DIGITS, Object, Value};
 use beadroll_core::text::{py_int, shell_quote};
 use beadroll_git::PushOutcome;
 use beadroll_store::{
-    Endpoint, Failpoints, Fired, Workspace, claim_files, load_pending, moved_workspaces,
-    pending_files, read, relative, segment_files, view, workspaces_named, write_atomic,
+    Endpoint, Failpoints, Fired, Memo, Workspace, claim_files, load_pending, moved_workspaces,
+    pending_files, relative, segment_files, view, workspaces_named, write_atomic,
 };
 
 use crate::error::Error;
-use crate::link::{Link, newlines};
+use crate::link::Link;
 use crate::tx::{drop_pending, locked};
 
 /// Rounds a sync or an ownership command makes before it gives up.
@@ -322,7 +322,9 @@ pub fn adopt_published(
 /// `None` when there is no remote to publish to, or when the last publish kept no counts.
 /// Everything is unpublished before the first publish. The arithmetic is Python's, exact at any
 /// size. A count in `meta.json` that is not a number, or a total too long for Python to print, is
-/// an IO error, where Python dies with a traceback (`docs/RUST-PORT.md` §5 row 26).
+/// an IO error, where Python dies with a traceback (`docs/RUST-PORT.md` §5 row 26). A segment's
+/// lines are counted only when the memo does not know them, as a publish counts them: every
+/// command asks, and the segments it has not appended to since are not read (roll-lqjj.2).
 pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
     match ws.remote(None) {
         Ok(Some(remote)) if !remote.is_empty() => {}
@@ -342,8 +344,9 @@ pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
     };
     let zero = Int::from(0);
     let mut count = Int::from(0);
+    let mut memo = Memo::load(ws);
     for path in segment_files(ws)? {
-        let lines = Int::from(newlines(&read(&path)?) as i64);
+        let lines = Int::from(memo.lines(&relative(ws, &path), &path)? as i64);
         let known = match published.get(&relative(ws, &path)) {
             None => Int::from(0),
             Some(value) => count_of(value).ok_or_else(|| {
