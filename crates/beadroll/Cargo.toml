@@ -23,8 +23,8 @@ rustix.workspace = true
 
 [dev-dependencies]
 beadroll-test-support.workspace = true
-sha2.workspace = true                       # G02's port derives the workspace id as bead does
-rustix = { workspace = true, features = ["pty"] }  # G36's port opens a pseudo-terminal as os.openpty does
+sha2.workspace = true                       # G02 derives the workspace id as bead does
+rustix = { workspace = true, features = ["pty"] }  # G36 opens a pseudo-terminal
 
 [lints]
 workspace = true

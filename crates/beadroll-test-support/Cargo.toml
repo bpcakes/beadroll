@@ -1,6 +1,6 @@
 [package]
 name = "beadroll-test-support"
-description = "The Rust tests/support.py: sandboxes, machines and the bead under test, for black-box tests"
+description = "Isolated sandboxes, machines and the bead under test, for black-box tests"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

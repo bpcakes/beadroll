@@ -1,6 +1,6 @@
 [package]
 name = "beadroll-core"
-description = "The pure core of bead: Python-compatible JSON, events, replay, state and queries, with no I/O"
+description = "The pure core of bead: strict JSON, events, replay, state and queries, with no I/O"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
