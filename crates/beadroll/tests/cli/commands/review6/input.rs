@@ -17,8 +17,7 @@ use super::{id, jsonl, machine, record};
 fn f07_non_utf8_input_is_a_structured_error() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "f07");
-    // Python passes the title "bad\udcfftitle" through `os.fsencode`: the lone surrogate is the
-    // byte 0xFF.
+    // The invalid byte 0xFF appears within the supplied title.
     let title = OsStr::from_bytes(b"bad\xfftitle");
     let created = machine
         .cmd([OsStr::new("create"), title, OsStr::new("--json")])
@@ -26,8 +25,8 @@ fn f07_non_utf8_input_is_a_structured_error() {
     assert_ne!(created.returncode(), 0, "{}", created.stdout);
     assert!(!created.crashed(), "{}", created.stderr);
     assert_eq!(code(&created), "VALIDATION", "{}", created.stderr);
-    // No title holds U+DCFF. Python's `json.loads` would keep that lone surrogate in a title, where
-    // Rust's reads it as U+FFFD: so look for its escape in the listing as printed.
+    // No title holds U+DCFF. Check the printed listing for its escape, since decoding would
+    // replace a lone surrogate with U+FFFD.
     let listed = machine.run(["list", "--all", "--limit", "0", "--json"]);
     assert_eq!(listed.returncode(), 0, "{}", listed.stderr);
     let titles: Vec<_> = parse_json(&listed.stdout).unwrap()["issues"]

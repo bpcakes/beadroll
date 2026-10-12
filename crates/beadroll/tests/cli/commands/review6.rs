@@ -1,7 +1,6 @@
-//! `Review6`: the sixth independent review's findings (F01 to F16, `docs/FINDINGS.md`) and the
-//! properties it verified, one module per subject. F09's replay half is ported in beadroll-core
-//! (`tests/core/commands.rs`); F14 and the clock-skew test, in `clock.rs`, set the Rust `bead`'s
-//! clock with its `clock` failpoint.
+//! Regression tests for findings F01–F16 and verified properties (`docs/FINDINGS.md`), grouped by
+//! subject. F09's replay checks are in beadroll-core (`tests/core/commands.rs`); F14 and
+//! clock-skew checks use the `clock` failpoint.
 
 use std::path::{Path, PathBuf};
 
@@ -16,7 +15,7 @@ mod receipts;
 mod remotes;
 mod store;
 
-/// `self.machine(name)`: a machine `name` whose tracker is initialised, prefix `ex`.
+/// A machine `name` whose tracker is initialised, prefix `ex`.
 fn machine(sandbox: &Sandbox, name: &str) -> Machine {
     let machine = Machine::new(sandbox, name);
     machine.bead(["init", "--prefix", "ex"]);
@@ -39,13 +38,13 @@ fn ops(machine: &Machine, key: &str) -> Vec<String> {
         .collect()
 }
 
-/// How many times `op` is in `ops`: Python's `list.count`.
+/// The number of occurrences of `op` in `ops`.
 fn count(ops: &[String], op: &str) -> usize {
     ops.iter().filter(|each| *each == op).count()
 }
 
-/// The entries of `dir` whose names end with `suffix`, in directory order, as
-/// `Path.glob("*SUFFIX")` lists them: none when `dir` is not there.
+/// The entries of `dir` whose names end with `suffix`, in directory order:
+/// none when `dir` is not there.
 fn glob(dir: &Path, suffix: &str) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -59,8 +58,7 @@ fn glob(dir: &Path, suffix: &str) -> Vec<PathBuf> {
         .collect()
 }
 
-/// The `meta.json` of each store in `machine`'s home, in directory order:
-/// `machine.home.glob("*/meta.json")`.
+/// The `meta.json` of each store in `machine`'s home, in directory order.
 fn metas(machine: &Machine) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(machine.home()) else {
         return Vec::new();
@@ -97,7 +95,7 @@ fn record(key: &str, title: &str, more: Json) -> Json {
     Json::from(members)
 }
 
-/// `records` as a JSONL file's text, each line as Python's `json.dumps(record) + "\n"` writes it.
+/// Records as spaced, ASCII-escaped JSON, each followed by a newline.
 fn jsonl(records: &[Json]) -> String {
     records
         .iter()

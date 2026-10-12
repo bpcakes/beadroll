@@ -44,14 +44,14 @@ mod g33_duplicate_ids_in_one_import_fail_whole {
 
     use super::{record, tail};
 
-    /// The class's `setUp`: machine g33, its tracker initialised with the prefix `ex`.
+    /// Machine g33, its tracker initialised with the prefix `ex`.
     fn setup(sandbox: &Sandbox) -> Machine {
         let m = Machine::new(sandbox, "g33");
         m.bead(["init", "--prefix", "ex"]);
         m
     }
 
-    /// `write`: `records` in the sandbox's file `name`, each line as `json.dumps(record) + "\n"`.
+    /// Writes records as spaced, ASCII-escaped JSON lines to the sandbox file name.
     fn write_records(sandbox: &Sandbox, name: &str, records: &[Json]) -> PathBuf {
         let path = sandbox.root().join(name);
         let lines: String = records
@@ -62,7 +62,7 @@ mod g33_duplicate_ids_in_one_import_fail_whole {
         path
     }
 
-    /// The ids of every issue, sorted: `sorted(i["id"] for i in bead list --all --limit 0)`.
+    /// The ids of every issue returned by `bead list --all --limit 0`, sorted.
     fn sorted_ids(m: &Machine) -> Vec<String> {
         let listed = m.bead(["list", "--all", "--limit", "0"]).unwrap();
         let issues = listed["issues"].as_array().expect("the listed issues");

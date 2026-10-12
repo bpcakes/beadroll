@@ -1,13 +1,10 @@
-//! A repository's objects read through one long-lived `git cat-file --batch-command`
-//! (`docs/RUST-PORT.md` Appendix B: `--batch`'s answers, with `info` beside `contents`, so that a
-//! name is resolved without its object being read, as `rev-parse` resolves it), and what bead used
-//! to ask other gits to work out from them worked out here as those gits work it out: a commit's
-//! tree as `rev-parse COMMIT^{tree}` finds it, and a listing as `ls-tree -r -z COMMIT` gives it.
+//! Reads objects through a persistent `git cat-file --batch-command`, resolving names without
+//! loading content when possible. Commit-tree lookup and tree listing are computed in-process
+//! using git's format and validation rules.
 //!
-//! Anything git would refuse, and anything this code does not read exactly as git reads it, is
-//! [`NoAnswer`]: the caller then runs the git command Python runs, whose answer, or failure, is the
-//! one bead gives. So a damaged or hostile object never changes what bead says, only how many gits
-//! it took to find out.
+//! Anything that cannot be answered exactly as git would returns [`NoAnswer`], triggering a
+//! standalone git invocation. Damaged or unusual objects may require more processes but must not
+//! change the reported result.
 
 use std::collections::HashMap;
 

@@ -1,21 +1,19 @@
-//! What argparse makes of an argument's strings: its default, its value converted to its type,
-//! how many strings an option or a positional takes (`_match_argument`, `_get_nargs_pattern`),
-//! and whether a string is a negative number, which is a value; and a value as `json.dumps`
-//! writes it into a receipt.
+//! Argument defaults, type conversion, option and positional value counts, negative-number
+//! detection and receipt value serialization.
 
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStrExt as _;
 
-use beadroll_core::text::{decimal_value, json_ascii_bytes, py_int, repr_bytes, repr_str};
+use beadroll_core::text::{decimal_value, json_ascii_bytes, parse_integer, repr_bytes, repr_str};
 
 use super::super::spec::{Action, ArgSpec, COMMANDS, Kind, Nargs, find};
 use super::{Stop, Value, argument_error};
 
-/// An action's value before anything is given: its default, `False` for a flag.
+/// An action's value before anything is given: its default, `false` for a flag.
 pub(super) fn default(action: &ArgSpec) -> Value {
     match (action.action, action.kind, action.default) {
         (Action::StoreTrue, _, _) => Value::Bool(false),
-        (_, Kind::Int, Some(number)) => py_int(number).map_or(Value::None, Value::Int),
+        (_, Kind::Int, Some(number)) => parse_integer(number).map_or(Value::None, Value::Int),
         (_, _, Some(text)) => Value::Text(OsString::from(text)),
         _ => Value::None,
     }
@@ -43,13 +41,13 @@ pub(super) fn values_of(action: &ArgSpec, strings: &[OsString]) -> Result<Value,
     }
 }
 
-/// One value converted to the action's type (`_get_value`): `int()` for a number.
+/// One value converted to the action's type, parsing numbers as integers.
 pub(super) fn converted(action: &ArgSpec, string: &OsStr) -> Result<Value, Stop> {
     match action.kind {
         Kind::Text => Ok(Value::Text(string.to_owned())),
         Kind::Int => string
             .to_str()
-            .and_then(py_int)
+            .and_then(parse_integer)
             .map(Value::Int)
             .ok_or_else(|| {
                 let message = format!("invalid int value: {}", repr_bytes(string.as_bytes()));
@@ -58,8 +56,8 @@ pub(super) fn converted(action: &ArgSpec, string: &OsStr) -> Result<Value, Stop>
     }
 }
 
-/// How many of the arguments that follow an option it takes (`_match_argument`), or argparse's
-/// complaint. bead's options take one value or none.
+/// How many following values an option consumes, or a usage diagnostic. Options take zero or one
+/// value.
 pub(super) fn option_count(action: &ArgSpec, pattern: &[u8]) -> Result<usize, Stop> {
     let a_run = pattern.iter().take_while(|p| **p == b'A').count();
     let count = match action.nargs {
@@ -108,7 +106,8 @@ pub(super) fn positional_count(nargs: Nargs, pattern: &[u8]) -> Option<usize> {
     }
 }
 
-/// argparse's `-\.?\d` at the start: a negative number, which is a value.
+/// Whether the string begins with a minus sign, optional decimal point and digit, making it a
+/// numeric value.
 pub(super) fn looks_negative(arg: &[u8]) -> bool {
     let rest = arg.strip_prefix(b"-").unwrap_or_default();
     let rest = rest.strip_prefix(b".").unwrap_or(rest);
@@ -119,8 +118,8 @@ pub(super) fn looks_negative(arg: &[u8]) -> bool {
         .is_some_and(|c| decimal_value(c).is_some())
 }
 
-/// A namespace value as `json.dumps` writes it, ASCII-escaped: bytes that are not UTF-8 as the lone
-/// surrogates Python holds them as.
+/// A namespace value as ASCII-escaped JSON. Bytes that are not UTF-8 become lone surrogate
+/// escapes.
 pub(super) fn json_of(value: &Value) -> String {
     match value {
         Value::None => "null".to_owned(),

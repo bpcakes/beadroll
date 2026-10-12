@@ -1,5 +1,5 @@
-//! G57: a lone surrogate in a journal is scoped to the text that holds it. The attempt-file half
-//! reads `claims/*.json` in process and is ported in beadroll-store (`tests/store/hardening.rs`).
+//! G57: a lone surrogate in a journal is scoped to the text containing it. Attempt-file checks
+//! read `claims/*.json` in beadroll-store's `tests/store/hardening.rs`.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -29,15 +29,13 @@ fn create(n: u128, replica: &str, key: &str, title: &str) -> Json {
     })
 }
 
-/// The journal line `json.dumps(event)` writes, its `SURROGATE` spelled as Python escapes a lone
-/// surrogate: `\ud800`.
+/// The event as a JSON line with `SURROGATE` encoded as `\ud800`.
 fn escaped_line(event: &Json) -> Vec<u8> {
     let line = write(event, Format::ASCII).unwrap();
     line.replace(SURROGATE, r"\ud800").into_bytes()
 }
 
-/// The journal line `json.dumps(event, ensure_ascii=False).encode("utf-8", "surrogatepass")`
-/// writes, its `SURROGATE` as the raw bytes ED A0 80.
+/// A journal line containing the raw surrogate encoding ED A0 80.
 fn raw_line(event: &Json) -> Vec<u8> {
     let line = write(event, Format::SPACED).unwrap();
     let (before, after) = line.split_once(SURROGATE).expect("the stand-in");
@@ -90,9 +88,8 @@ mod g57_lone_surrogate_in_a_journal_is_scoped {
         // `{r["id"]: r["title"] for r in records}`, in order: a later id wins, as in a dict
         let mut titles: Vec<(Json, Json)> = Vec::new();
         for row in text.split('\n').filter(|row| !row.trim().is_empty()) {
-            // `json.loads(row)`, which keeps an escaped lone surrogate as itself where this parser
-            // reads U+FFFD: each stands as a private-use character the row holds nowhere else,
-            // as unlike U+FFFD as the surrogate is in Python.
+            // Preserve lone surrogates as distinct private-use characters absent elsewhere in the
+            // row, so the comparison cannot confuse them with U+FFFD.
             let (row, _) = Surrogates::stand_in(row, &[], "").expect("stand-ins for a row");
             let record = parse_json(&row).unwrap();
             let id = record.get("id").expect("a record's id").clone();

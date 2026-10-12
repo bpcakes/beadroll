@@ -1,7 +1,6 @@
-//! `ReplayAuditProperties`, from the first independent audit (AUDIT), 2026-10-06: replay does not
-//! depend on delivery order, registers keep concurrent writes, labels and dependencies are
-//! add-wins, and missing causes hold what follows them. The audit's fixture is [`fixture`]. The
-//! workspace-isolation test needs the store and lands with Phase 2a.
+//! Replay properties: delivery order does not affect state; registers retain concurrent writes;
+//! labels and dependencies are add-wins; missing causes hold their descendants. Shared fixtures
+//! are in fixture; workspace isolation belongs to store tests.
 
 pub(crate) mod fixture;
 
@@ -9,14 +8,14 @@ use std::collections::BTreeSet;
 
 use beadroll_core::event::{Field, REGISTERS, REQUIRED_FIELDS};
 use beadroll_core::journal::Journal;
-use beadroll_core::op::PyInt;
+use beadroll_core::op::IntegerField;
 use beadroll_core::query::Edges;
 use beadroll_core::state::State;
 use beadroll_test_support::{Json, json};
 
 use fixture::{Fixture, MISSING, conflict, fields, issue, snapshot};
 
-/// A seeded generator (SplitMix64): the Python test draws from `random.Random(6403)`.
+/// A seeded SplitMix64 generator for reproducible property checks.
 struct Rng(u64);
 
 impl Rng {
@@ -365,6 +364,6 @@ fn causal_write_wins_despite_backwards_clock() {
         drop(event.insert("id".into(), json!("01000000-0000-7000-8000-000000000001")))
     });
     let st = f.state();
-    assert_eq!(issue(&st, &uid).priority(), PyInt::from(4));
+    assert_eq!(issue(&st, &uid).priority(), IntegerField::from(4));
     assert!(conflict(&st, issue(&st, &uid), Field::Priority).is_none());
 }

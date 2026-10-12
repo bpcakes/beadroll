@@ -5,7 +5,7 @@ use beadroll_test_support::{Machine, git, parse_json};
 
 use super::metas;
 
-/// `next(machine.home.glob("*/meta.json")).read_text()`: the first store's `meta.json`.
+/// The contents of the first store's `meta.json`.
 fn meta(machine: &Machine) -> String {
     let first = metas(machine).into_iter().next();
     std::fs::read_to_string(first.expect("a store with a meta.json")).unwrap()

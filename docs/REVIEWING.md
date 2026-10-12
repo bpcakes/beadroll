@@ -84,6 +84,12 @@ Read `README.md`, then each crate's `AGENTS.md` and code in the order above, the
 
 These were decided deliberately. Report problems *with* them, not their existence.
 
+- Rust APIs describe their role rather than the implementation language bead replaced
+  (roll-dih8.17): `op::IntegerField` retains the boolean or integer representation of a format-1
+  field, and text and path helpers name their parsing, trimming, casing and normalization
+  operations. These names do not relax the format or command-line contracts: old boolean integer
+  fields, exact integers, Unicode text rules and receipt bytes still have their established
+  meaning. Compatibility provenance is recorded in the port plan; tests pin its reference values.
 - Claims never expire; a missing owner needs a human `takeover`. No heartbeats.
 - The owner of a claim is the agent thread; a later session must `takeover` to continue.
 - `update --status in_progress` is a claim, and `create --status in_progress` is refused;
@@ -306,6 +312,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
   git child runs in a separate session without the controlling terminal. A timed-out fetch is
   killed with its process group; a timed-out push kills only the client so its uncertain result
   can be settled by the protocol.
+  The runner's timeout starts after process creation. Its hygiene test checks timeout errors,
+  descriptor and zombie cleanup, and surviving push helpers; aggregate process-startup speed is
+  not a correctness assertion. Git's server-side ref-race diagnostics can say either
+  `incorrect old value provided` or `failed to update ref`; the locale test accepts both while
+  still requiring the ref-lock error, rejection status and bead's rejection classification.
 - A command receipt survives a *failed* later command by the same actor and is dropped only when
   a later command by that actor goes through: the remote accepted it, or it was a local write that
   was appended. A recognised retry still reports the claim as it is now.

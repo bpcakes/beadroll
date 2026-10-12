@@ -11,19 +11,19 @@ fn id(value: &Json) -> String {
     value["id"].as_str().unwrap().to_owned()
 }
 
-/// Member `key` of `value`, which must have it, as Python's `value[key]` reads a dict.
+/// Member `key` of `value`; absence fails the test.
 fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
     value
         .get(key)
         .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
 }
 
-/// `value` as `json.dumps(value)` writes it.
+/// Spaced, ASCII-escaped JSON.
 fn dumps(value: &Json) -> String {
     write(value, Format::ASCII).unwrap()
 }
 
-/// The entries of `dir` whose names end in `suffix`, as `dir.glob("*SUFFIX")` lists them: none when
+/// The entries of `dir` whose names end in `suffix`: none when
 /// `dir` is not a directory.
 fn glob(dir: &Path, suffix: &str) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {

@@ -1,12 +1,9 @@
-//! The sync protocol of `bead` (`docs/RUST-PORT.md` §2.1): local transactions (`Tx`, `writing`),
-//! the link to the coordination remote (fetch, merge, tree, publish with its four outcomes,
-//! maintenance and rebuild), `synchronise` with its settling of this machine's pending attempts,
-//! `publish_soon`, the unpublished counts, and the ownership protocol (`coordinated`, its
-//! receipts and fences).
+//! Sync and ownership protocols (`docs/RUST-PORT.md` §2.1): local transactions, remote
+//! fetch/merge/publish, maintenance, pending-attempt settlement, unpublished counts, receipts and
+//! fences.
 //!
-//! The protocol constants were Python's until roll-lqjj.7: now [`ROUNDS`] rounds, twice its twelve,
-//! and between them any time up to `0.1 × 2^(attempt − 1)` seconds, at most two, outside the store
-//! lock.
+//! Commands try up to [`ROUNDS`] rounds. Between rounds they wait outside the store lock for a
+//! random duration up to `0.1 × 2^(attempt − 1)` seconds, capped at two seconds.
 
 mod error;
 mod link;

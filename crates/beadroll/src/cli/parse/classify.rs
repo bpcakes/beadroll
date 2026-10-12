@@ -5,9 +5,8 @@
 use super::Parser;
 use super::values::looks_negative;
 
-/// An option an argument may be (argparse's option tuple): the action, unless no option of the
-/// parser matched, the option string it matched, and the value given with it (`--title=x`,
-/// `-tx`), `eq` when an `=` separated it.
+/// A possible option match: action if known, matched option string, attached value (`--title=x`
+/// or `-tx`) and whether an equals sign separated it.
 #[derive(Clone, Debug)]
 pub(super) struct Candidate {
     pub(super) action: Option<usize>,
@@ -16,7 +15,7 @@ pub(super) struct Candidate {
     pub(super) explicit: Option<Vec<u8>>,
 }
 
-/// The options `arg` may be, or `None` when it is a value (`_parse_optional`).
+/// The options `arg` may be, or `None` when it is a value.
 pub(super) fn parse_optional(parser: &Parser, arg: &[u8]) -> Option<Vec<Candidate>> {
     if arg.first() != Some(&b'-') {
         return None;

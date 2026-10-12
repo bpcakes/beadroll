@@ -37,8 +37,8 @@ mod v4_dangling_orders_that_hold {
         record
     }
 
-    /// `write`: `records` as the JSONL file `<name>.jsonl` in the sandbox, each line as Python's
-    /// `json.dumps` writes it; its path.
+    /// Writes records as spaced, ASCII-escaped JSON lines to `<name>.jsonl` in the sandbox and
+    /// returns its path.
     fn write_records(sandbox: &Sandbox, name: &str, records: &[Json]) -> String {
         let path = sandbox.root().join(format!("{name}.jsonl"));
         let text: String = records

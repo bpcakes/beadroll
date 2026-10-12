@@ -12,7 +12,7 @@ mod g16_concurrent_processes_share_no_fetch_destination {
 
     use crate::hardening::gate::{Gate, beside};
 
-    /// A `bead` started beside others, as `subprocess.Popen` starts one: nothing on its standard
+    /// A `bead` started beside others: nothing on its standard
     /// input, its output piped and read to the end by a thread of its own, which hands it over
     /// once the process has ended.
     struct Started(Receiver<std::io::Result<Output>>);
@@ -33,8 +33,7 @@ mod g16_concurrent_processes_share_no_fetch_destination {
             Started(receiver)
         }
 
-        /// `communicate(timeout)`: how it ended and what it printed. Not ended within `timeout`,
-        /// the test fails, as `TimeoutExpired` fails the Python test.
+        /// Waits for completion and captures output; exceeding `timeout` fails the test.
         fn communicate(self, timeout: Duration) -> Run {
             let output = self.0.recv_timeout(timeout);
             let output = output.unwrap_or_else(|_| panic!("bead had not ended after {timeout:?}"));
@@ -48,8 +47,7 @@ mod g16_concurrent_processes_share_no_fetch_destination {
         }
     }
 
-    /// The message of the error a failed `bead ... --json` reported: `json.loads(err)['error']
-    /// ['message']`.
+    /// The message in a failed JSON command's error object.
     fn message(run: &Run) -> String {
         let document = parse_json(&run.stderr)
             .unwrap_or_else(|error| panic!("bead's error is not JSON ({error}): {}", run.stderr));

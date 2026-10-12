@@ -7,7 +7,7 @@ mod g45_unresolved_imported_dependency_invisible {
     use beadroll_core::json::{Format, write};
     use beadroll_test_support::{Json, Machine, json};
 
-    /// `json.dumps(value)`: Python's default dialect, spaced and ASCII-escaped.
+    /// Spaced, ASCII-escaped JSON.
     fn dumps(value: &Json) -> String {
         write(value, Format::ASCII).expect("a value bead printed")
     }
@@ -17,7 +17,7 @@ mod g45_unresolved_imported_dependency_invisible {
     #[test]
     fn show_and_dep_list_report_an_unresolved_imported_dependency() {
         let sandbox = crate::sandbox();
-        // The class's `setUp`: ex-a, depending twice on the key ex-b, the second time without a
+        // ex-a, depending twice on the key ex-b, the second time without a
         // type, imported on a new machine.
         let rec = json!({
             "id": "ex-a",

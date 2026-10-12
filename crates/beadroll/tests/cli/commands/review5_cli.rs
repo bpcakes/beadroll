@@ -24,8 +24,8 @@ fn id(result: Option<Json>) -> String {
     result["id"].as_str().expect("an id").to_owned()
 }
 
-/// `strict_json`: `text` read as `json.loads` reads it with `NaN` and the infinities refused, or the
-/// test fails. beadroll-core's reader refuses them, and numbers too large for a float as well.
+/// Reads strict JSON or fails the test. NaN, infinity and numbers overflowing a float are
+/// refused.
 fn strict_json(text: &str) -> Json {
     parse_json(text).unwrap_or_else(|error| panic!("not strict JSON ({error}): {text:?}"))
 }
@@ -42,8 +42,8 @@ fn common() -> Json {
     })
 }
 
-/// `json.dumps({**head, **COMMON, **tail})`: the members in that order, a later value taking an
-/// earlier one's place, written as `json.dumps` writes them (spaced, ASCII-escaped).
+/// Merges head, COMMON and tail in order, replacing earlier values without moving keys, then
+/// writes spaced, ASCII-escaped JSON.
 fn record(head: Json, tail: Json) -> String {
     let mut members = Object::new();
     for part in [head, common(), tail] {
@@ -56,8 +56,7 @@ fn record(head: Json, tail: Json) -> String {
     write(&Json::from(members), Format::ASCII).expect("a record")
 }
 
-/// The private-use character a record holds where Python's holds a lone surrogate, which no Rust
-/// string can hold.
+/// A private-use stand-in for a lone surrogate, which a Rust string cannot hold.
 const STAND_IN: char = '\u{E000}';
 
 /// E01: untrusted fields must not execute terminal protocols or forge lines.
@@ -115,7 +114,7 @@ fn e03_takeover_fences_an_owners_concurrent_offline_delete() {
 
     let shown = successor.show(&key);
     assert_eq!(shown["status"].as_str(), Some("in_progress"), "{shown:?}");
-    // `shown.get("conflicts", {})`: no conflicts at all, or none about the status
+    // No conflicts at all, or none about the status.
     let conflicts = shown
         .get("conflicts")
         .map(|c| c.as_object().expect("conflicts by field"));
@@ -184,7 +183,7 @@ fn e06_export_never_emits_nonfinite_json_numbers() {
     }
     let exported = machine.run(["export"]);
     assert_eq!(exported.returncode(), 0, "{}", exported.stderr);
-    // `splitlines()`: the one record here is ASCII, with none of the other breaks Python splits at
+    // The record is ASCII and has no line separator other than newline.
     for line in exported.stdout.lines() {
         if let Err(error) = parse_json(line) {
             panic!("export emitted non-RFC-8259 JSON: {error}; line={line:?}");
@@ -192,7 +191,7 @@ fn e06_export_never_emits_nonfinite_json_numbers() {
     }
 }
 
-/// E07: an early pipeline consumer exit must not produce Python flush noise.
+/// E07: an early pipeline consumer exit must not produce flush errors.
 #[test]
 fn e07_closed_downstream_pipe_has_defined_quiet_exit() {
     let sandbox = crate::sandbox();
@@ -298,8 +297,8 @@ fn u11_an_escaped_lone_surrogate_fails_the_import_wherever_it_is() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "u11-surrogate");
     let good = record(json!({"id": "ex-fine", "title": "fine"}), json!({}));
-    // A Rust string cannot hold a lone surrogate: the record holds STAND_IN where Python's holds
-    // one, and the stand-in's escape becomes the surrogate's, as `json.dumps` escapes it.
+    // A Rust string cannot hold a lone surrogate. Write STAND_IN instead, then replace its JSON
+    // escape with the surrogate escape.
     let escape = |unit: u32| format!(r"\u{unit:04x}");
     let lone = |line: String, surrogate: u32| {
         let stand_in = escape(u32::from(STAND_IN));
@@ -334,7 +333,7 @@ fn u11_an_escaped_lone_surrogate_fails_the_import_wherever_it_is() {
     assert_eq!(machine.bead(["list"]).unwrap()["issues"], json!([]));
 }
 
-/// E09: malformed tracked config must not escape as Python tracebacks.
+/// E09: malformed tracked configuration must produce a structured error.
 #[test]
 fn e09_invalid_config_types_return_structured_config_errors() {
     let sandbox = crate::sandbox();

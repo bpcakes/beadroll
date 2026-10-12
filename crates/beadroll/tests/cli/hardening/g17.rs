@@ -40,11 +40,9 @@ mod g17_translated_git {
 
     use super::translated_locale;
 
-    /// G17: Link.fetch recognises a not-yet-published journal by git's English "couldn't find
-    /// remote ref"; under a translated git (LANG/LC_ALL=de_DE.UTF-8 or fr_FR.UTF-8) the first sync
-    /// of every new tracker fails with REMOTE_UNREACHABLE, and so does every claim, until some
-    /// other machine has published. Skipped, as the Python test is, where this git has no German
-    /// or French messages.
+    /// G17: fetch must recognise an unpublished journal even when checkout-side git uses German
+    /// or French messages. Otherwise the first sync and every claim fail until another machine
+    /// publishes. Skip where git has neither translation.
     #[test]
     fn first_sync_and_claim_work_under_a_translated_git() {
         let sandbox = crate::sandbox();

@@ -1,10 +1,11 @@
-//! Event times: what an event id's timestamp reads as, the way Python's `event_time` prints it.
+//! UTC timestamps derived from event ids.
 
-/// The year 2100 in milliseconds: a later timestamp is not a clock reading (Python's `MAX_MILLIS`).
+/// The year 2100 in milliseconds: event envelopes reject later timestamps, and timestamp
+/// rendering clamps to this ceiling.
 pub const MAX_MILLIS: u64 = 4_102_444_800_000;
 
-/// `millis` since 1970 in UTC, as `2026-10-09T15:04:05.123Z`; anything past [`MAX_MILLIS`] reads as
-/// that instant, as Python's `event_time` clamps it.
+/// Milliseconds since 1970 formatted in UTC as `2026-10-09T15:04:05.123Z`, clamped to
+/// [`MAX_MILLIS`].
 pub fn event_time(millis: u64) -> String {
     let millis = millis.min(MAX_MILLIS);
     let (seconds, fraction) = (millis / 1000, millis % 1000);
@@ -49,8 +50,7 @@ fn padded(out: &mut String, value: u64, width: usize) {
     }
 }
 
-/// A UTC time `seconds` after the epoch as `last_sync` records it (Python's
-/// `datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")`), with no ceiling.
+/// UTC seconds since the epoch formatted to whole seconds for last_sync, without a ceiling.
 pub fn utc_stamp(seconds: u64) -> String {
     let (days, rest) = (seconds / 86_400, seconds % 86_400);
     let (year, month, day) = civil(days);
@@ -81,14 +81,14 @@ mod tests {
 
     #[test]
     fn stamps_are_seconds_in_utc() {
-        // Python: datetime.fromtimestamp(1760047200, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        // The UTC representation of 1760047200 seconds since the epoch.
         assert_eq!(utc_stamp(1_760_047_200), "2025-10-09T22:00:00Z");
         assert_eq!(utc_stamp(0), "1970-01-01T00:00:00Z");
         assert_eq!(utc_stamp(4_102_444_801), "2100-01-01T00:00:01Z");
     }
 
     #[test]
-    fn times_print_as_python_event_time() {
+    fn times_use_utc_with_milliseconds() {
         assert_eq!(event_time(0), "1970-01-01T00:00:00.000Z");
         assert_eq!(event_time(951_782_400_007), "2000-02-29T00:00:00.007Z");
         assert_eq!(event_time(1_791_558_245_123), "2026-10-09T15:04:05.123Z");

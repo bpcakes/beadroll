@@ -1,23 +1,21 @@
-//! Help pages as Python's argparse 3.14 formats them (`HelpFormatter`), from the command table:
-//! the usage line wrapped as `_format_usage` wraps it, then the positional arguments and the
-//! options, each help text wrapped by `textwrap` at the terminal's width less two. `bead help
-//! COMMAND` and `bead COMMAND --help` print the same page, plain text, never coloured.
+//! Help pages built from the command table: wrapped usage, positional arguments and options. Help
+//! text wraps at the terminal width less two. `bead help COMMAND` and `bead COMMAND --help` print
+//! the same plain-text page, without colour.
 
 use std::ffi::OsStr;
 
-use beadroll_core::text::py_int;
+use beadroll_core::text::parse_integer;
 
 use super::parse::Page;
 use super::spec::{Action, ArgSpec, COMMAND, COMMANDS, DESCRIPTION, HELP_FLAG, Nargs};
 use super::wrap::{collapsed, wrap};
 
-/// The terminal width argparse formats for (`shutil.get_terminal_size().columns`): `COLUMNS`
-/// when Python's `int()` reads a positive number from it, else the width of the terminal on
-/// standard output, else 80.
+/// The help width: a positive integer from `COLUMNS`, else the width of the terminal on standard
+/// output, else 80.
 pub(crate) fn columns(variable: Option<&OsStr>) -> i64 {
     // any width beyond the longest line wraps nothing, so a larger number reads as this one
     const WIDE: i128 = 1 << 32;
-    if let Some(number) = variable.and_then(OsStr::to_str).and_then(py_int)
+    if let Some(number) = variable.and_then(OsStr::to_str).and_then(parse_integer)
         && number.saturating_i128() > 0
     {
         return i64::try_from(number.saturating_i128().min(WIDE)).unwrap_or(80);
@@ -99,7 +97,7 @@ pub(crate) fn render(page: Page, columns: i64) -> String {
     format!("{}\n", out.trim_matches('\n'))
 }
 
-/// A string's length as Python counts it, in characters.
+/// A string's length in Unicode scalar values.
 fn length(text: &str) -> i64 {
     i64::try_from(text.chars().count()).unwrap_or(i64::MAX)
 }
@@ -154,8 +152,8 @@ fn spaces(count: i64) -> String {
     " ".repeat(usize::try_from(count).unwrap_or(0))
 }
 
-/// The metavar argparse shows (`_metavar_formatter`): the given one, else the commands as
-/// `{init,import,...}` for the command, else the default.
+/// The argument placeholder: an explicit metavar, else the command names as `{init,import,...}`
+/// for command selection, else the default.
 fn metavar(action: &ArgSpec, default: &str) -> String {
     match action.metavar {
         Some(name) => name.to_owned(),

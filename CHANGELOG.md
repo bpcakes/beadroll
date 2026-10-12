@@ -6,6 +6,13 @@ versioned separately (format 1, frozen; see *Format and upgrades* in the README)
 
 ## [Unreleased]
 
+- Rust APIs now describe their behavior: `op::PyInt` is `op::IntegerField`, and `py_*` text
+  helpers use parsing, trimming and casing names. `pathlib` and `pathlib_join` become
+  `normalize_path` and `join_path`. Source comments describe current contracts
+  instead of port history. Library callers must use the new names; stored data, command-line
+  behavior and format-1 compatibility are unchanged. Test names and all `AGENTS.md` guides also
+  describe current contracts; fixture provenance lives in the port-history document (roll-dih8.17).
+
 One golden path for setting up a repository's tracker (roll-dih8.13): `bead init` once, from any
 checkout, nothing committed; `bead sync` on every other checkout and machine.
 

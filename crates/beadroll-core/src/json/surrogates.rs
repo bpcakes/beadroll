@@ -1,18 +1,14 @@
-//! Lone surrogates kept through a read and a write. Python's `json.loads` keeps a lone surrogate as
-//! a character of the string it reads (a `str` may hold one, as `surrogateescape` also makes them of
-//! bytes that are not UTF-8), and `json.dumps` spells it again as `\udXXX`; [`super::parse()`] reads
-//! one as U+FFFD, as bead's journal readers do. A file Python rewrites whole (`bead machines --name`
-//! rewrites `aliases.json`) is read here instead: each lone surrogate stands as a private-use
-//! character the text holds nowhere else, so parsing keeps the surrogates apart and a write can
-//! spell them back ([`Surrogates::restore`]).
+//! Preserves lone surrogates through a JSON read and write. Ordinary journal parsing replaces
+//! them with U+FFFD. Whole-file updates such as aliases.json must retain them: substitute unused
+//! private-use characters while parsing, then restore each original escape when writing
+//! ([`Surrogates::restore`]).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
-/// Each `\uXXXX` escape in the string literals of `text` that spells a lone surrogate, with its code
-/// unit: a high surrogate not followed by an escaped low one, or a low surrogate not preceded by a
-/// high one. An escaped pair is one character, as Python's `json` reads it. Text that is not JSON
-/// gives what its string literals hold so far; [`super::parse()`] says what is wrong with it.
+/// Finds lone-surrogate escapes in JSON string literals: an unpaired high or low surrogate.
+/// Escaped pairs form one character. For malformed JSON, returns escapes encountered so far;
+/// [`super::parse()`] reports syntax errors.
 pub fn lone_surrogate_escapes(text: &str) -> Vec<(Range<usize>, u16)> {
     let mut out = Vec::new();
     for_each_escape(text, |at, unit, lone| {
@@ -115,8 +111,8 @@ impl Surrogates {
         self.by_unit.values().any(|stand_in| *stand_in == c)
     }
 
-    /// JSON written ASCII-escaped by [`super::write()`] with each stand-in's escape spelled as its
-    /// surrogate's again, as Python's `json.dumps` spells one.
+    /// Restores each stand-in to its original surrogate escape in ASCII JSON produced by
+    /// [`super::write()`].
     pub fn restore(&self, json: &str) -> String {
         let by_char: BTreeMap<u16, u16> = self
             .by_unit

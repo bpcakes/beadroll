@@ -1,7 +1,6 @@
-//! The ancestry index answers exactly what the bitsets it replaced answered (Python's `seen` and
-//! `own_anc`), on histories shaped to defeat it: attempts that build on nothing, on other machines'
-//! attempts or on any older event, so that chains cannot follow machines; copied identities that
-//! break a journal's chain; quarantined ids; causes the journal does not hold.
+//! Checks the ancestry index against a bitset reference on hostile histories: attempts based on
+//! arbitrary earlier events, copied identities breaking journal chains, quarantined ids and
+//! missing causes.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 

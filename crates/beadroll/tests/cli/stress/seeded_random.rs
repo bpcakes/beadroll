@@ -1,7 +1,6 @@
-//! CPython's `random.Random`, as far as the models draw from it: the Mersenne Twister (MT19937) of
-//! `Modules/_randommodule.c`, seeded from an integer as `random.seed` seeds it, and `randrange`,
-//! `choice` and weighted `choices` built on it as `Lib/random.py` builds them (unchanged from
-//! Python 3.11 to 3.14). A seed therefore makes the very choices Python's model made with it.
+//! Deterministic MT19937 draws with integer seeding, ranges, choices and weighted choices.
+//! The stream and sampling rules preserve recorded stress scenarios. Reference implementation
+//! and fixture provenance are documented in `docs/RUST-PORT.md` §4.2.
 
 /// The words of the generator's state, and the offset of its second tap.
 const N: usize = 624;
@@ -14,7 +13,7 @@ pub(crate) struct Rng {
 }
 
 impl Rng {
-    /// `random.Random(seed)`: `init_by_array` over the seed's 32-bit words, least significant
+    /// Seeds `init_by_array` with the seed's 32-bit words, least significant
     /// first (`random_seed`).
     pub(crate) fn new(seed: u64) -> Rng {
         let (low, high) = ((seed & 0xffff_ffff) as u32, (seed >> 32) as u32);
@@ -154,10 +153,9 @@ impl Rng {
     }
 }
 
-/// The 32-bit words of a seed's stream, as `getrandbits(32)` gives them in CPython, for a seed of
-/// one word, of none (0) and of two.
+/// Recorded 32-bit stream words for one-word, zero and two-word seeds.
 #[test]
-fn words_are_cpythons() {
+fn words_match_recorded_seed_streams() {
     let words = |seed, n| {
         let mut rng = Rng::new(seed);
         (0..n).map(|_| rng.getrandbits(32)).collect::<Vec<_>>()
@@ -178,9 +176,9 @@ fn words_are_cpythons() {
     );
 }
 
-/// `random()`, `getrandbits` past 32 bits and `randrange` past them, as CPython draws them.
+/// Recorded floats and wide integer draws.
 #[test]
-fn floats_and_wide_draws_are_cpythons() {
+fn floats_and_wide_draws_match_recorded_values() {
     let mut rng = Rng::new(0);
     for _ in 0..3 {
         rng.next_u32();
@@ -192,10 +190,10 @@ fn floats_and_wide_draws_are_cpythons() {
     assert_eq!(rng.below(1_000_000_000_000), 317_471_819_536);
 }
 
-/// The draws the models make, in turn, as CPython makes them from a worker's seed: a weighted
-/// action, a choice among 36, `randrange(5)`, `randrange(40, 100)` and a choice among one.
+/// Expected model draws from a worker seed: weighted action, choice among 36, ranges 5 and
+/// 40–100, and choice among one.
 #[test]
-fn model_draws_are_cpythons() {
+fn model_draws_match_recorded_scenarios() {
     let weights = [28, 8, 6, 14, 6, 5, 5, 5, 8, 5, 4, 6];
     let actions: Vec<(usize, usize)> = weights.into_iter().enumerate().collect();
     let keys: Vec<usize> = (0..36).collect();
@@ -208,7 +206,7 @@ fn model_draws_are_cpythons() {
         let only = *rng.choice(&[0]);
         drawn.push((action, key, priority, until, only));
     }
-    let python = [
+    let expected = [
         (4, 8, 0, 40, 0),
         (0, 3, 3, 68, 0),
         (3, 32, 3, 91, 0),
@@ -216,7 +214,7 @@ fn model_draws_are_cpythons() {
         (8, 17, 2, 65, 0),
         (10, 5, 2, 78, 0),
     ];
-    assert_eq!(drawn, python);
+    assert_eq!(drawn, expected);
     assert_eq!(
         (rng.random(), rng.random()),
         (0.649_092_110_712_723_8, 0.583_485_413_549_663)

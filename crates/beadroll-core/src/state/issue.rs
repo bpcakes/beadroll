@@ -1,5 +1,4 @@
-//! One issue as replay keeps it (Python's issue dict): its fields, the registers and tag sets they
-//! come from, its comments, and the record of who held it.
+//! An issue's replayed fields, their registers and tag sets, comments and ownership history.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, LazyLock};
@@ -7,7 +6,7 @@ use std::sync::{Arc, LazyLock};
 use crate::event::Field;
 use crate::id::EventId;
 use crate::json::{Int, Object, Value};
-use crate::op::PyInt;
+use crate::op::IntegerField;
 use crate::time::event_time;
 
 use super::claim::{Claim, EndedClaim, LostClaim, Provisional, Stale};
@@ -19,8 +18,8 @@ use super::texts::Texts;
 pub struct Issue {
     pub(crate) uid: EventId,
     pub(crate) key: String,
-    /// Each field by [`Field::index`]: absent, or its value (`null` included, as Python keeps a
-    /// field a create cleared).
+    /// Fields addressed by [`Field::index`]: absent or carrying a value, including null for a
+    /// field cleared by create.
     pub(crate) fields: [Option<Value>; 16],
     pub(crate) reg: VecMap<Field, IdMap<Value>>,
     pub(crate) label_tags: VecMap<String, IdSet>,
@@ -140,7 +139,7 @@ impl Issue {
         self.fields.get(field.index()).and_then(Option::as_ref)
     }
 
-    /// A field's value, `None` when it is absent or `null`: Python's `issue.get(name)`.
+    /// A field's value, or `None` when absent or null.
     pub fn get(&self, field: Field) -> Option<&Value> {
         self.field(field).filter(|value| **value != Value::Null)
     }
@@ -174,10 +173,10 @@ impl Issue {
     /// Its priority: an integer, or a boolean an old history wrote (`[PTrue]`). Every issue replay
     /// makes has one (a create defaults it to 2, and validation refuses `null`); 2 stands in
     /// otherwise.
-    pub fn priority(&self) -> PyInt {
+    pub fn priority(&self) -> IntegerField {
         self.field(Field::Priority)
-            .and_then(PyInt::read)
-            .unwrap_or_else(|| PyInt::from(2))
+            .and_then(IntegerField::read)
+            .unwrap_or_else(|| IntegerField::from(2))
     }
 
     /// Every value of each register two writers may have set without seeing each other, the
@@ -323,12 +322,12 @@ pub enum Comment {
         /// The checkout it was written in.
         where_: Option<Arc<Value>>,
     },
-    /// A comment an imported record carried, as Python keeps it: `{"uid": null, ...}`.
+    /// An imported comment, with uid defaulting to null.
     Imported(Object),
 }
 
 impl Comment {
-    /// As Python's dict holds it, in its key order.
+    /// As a JSON object, in field order.
     pub fn to_value(&self) -> Object {
         match self {
             Comment::Native {
@@ -364,7 +363,7 @@ impl Comment {
         }
     }
 
-    /// Its member `key`, as Python's `comment.get(key)` reads it.
+    /// The member `key`, if present.
     pub fn get(&self, key: &str) -> Option<Value> {
         self.to_value().get(key).cloned()
     }

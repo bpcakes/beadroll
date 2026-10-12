@@ -1,7 +1,6 @@
-//! Journals as bead reads them (Python's `read_segment`, `read_attempt`, `loads_line` and `Journal`):
-//! lines parsed into events, and the events of every file settled together, so that a duplicated or
-//! malformed record is judged the same way whatever order the files were read in. A journal keeps
-//! what replay reads of each record, not the record (roll-dih8.11, [`Event`]).
+//! Parses and settles records from all journal files together, so duplicate and malformed records
+//! are judged independently of file-read order. Keeps only what replay needs from each record
+//! ([`Event`], roll-dih8.11).
 
 mod content;
 mod event;
@@ -30,7 +29,7 @@ pub struct Problem {
     pub event: Option<String>,
     /// Where it was found: a path, with `:LINE` for a line.
     pub origin: String,
-    /// What is wrong, in Python's words.
+    /// The diagnostic describing the problem.
     pub problem: String,
 }
 
@@ -44,8 +43,8 @@ impl Problem {
     }
 }
 
-/// Every event a machine holds, with each machine's own append order (Python's `Journal`). Raw
-/// records are collected first and settled together.
+/// All events held by a machine, retaining each writer's append order. Raw records are collected
+/// before settling.
 #[derive(Clone, Debug)]
 pub struct Journal {
     events: IndexMap<EventId, Event>,
@@ -190,7 +189,7 @@ impl Journal {
         placed.sort_by_key(|(_, _, placement)| placement.counter()); // each journal keeps its own order
         for (records, own, placement) in placed {
             let id = placement.id();
-            // Each content once, in the order found: what Python's `canonical` tells apart.
+            // Keep each distinct content once, in discovery order.
             let mut distinct: Vec<&Event> = Vec::new();
             for record in records {
                 if !distinct.iter().any(|seen| seen.digest() == record.digest()) {
@@ -311,7 +310,7 @@ impl Journal {
     }
 }
 
-/// An event's content as quarantine compares it (Python's `canonical`): sorted keys, compact.
+/// The canonical event content used by quarantine: compact JSON with sorted keys.
 pub fn canonical(event: &Value) -> String {
     // Only a value built in memory fails to print (an integer too long, nesting too deep); its
     // debug form still tells contents apart.

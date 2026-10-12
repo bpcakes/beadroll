@@ -1,24 +1,22 @@
-//! `V6_DescriptorExhaustion`: running out of file descriptors never drops a pending attempt, and
-//! fails without a crash. The limits are applied through `/bin/sh`'s `ulimit -n`, as in the Python
-//! test; without a `/bin/sh` the class skips, as the Python one does.
+//! V6: descriptor exhaustion must return an error without losing a pending attempt. Apply limits
+//! with `/bin/sh` and `ulimit -n`; skip if the shell is unavailable.
 
 use beadroll_test_support::Machine;
 
 use super::{error_code, id, limited, with_sh};
 
-/// The descriptor limits the test runs: the Python test's own, 8, 10 and 11, and the same three two
-/// descriptors higher for Rust's bead, 10, 12 and 13.
+/// Descriptor limits spanning failure before reading, failure during coordination and sufficient
+/// capacity: 8, 10, 11, 12 and 13.
 const LIMITS: [u32; 5] = [8, 10, 11, 12, 13];
 
-/// The suffixes of the files in `machine`'s `pending/`, sorted: `sorted(p.suffix for p in
-/// (store / "pending").iterdir())`.
+/// The suffixes of the files in `machine`'s `pending/`, sorted.
 fn pending_suffixes(machine: &Machine) -> Vec<String> {
     let entries = std::fs::read_dir(machine.store().join("pending")).unwrap();
     let mut suffixes: Vec<String> = entries
         .map(|entry| {
             let name = entry.unwrap().file_name();
             let name = name.to_string_lossy();
-            // pathlib's suffix: from the last dot, unless that dot begins the name
+            // The suffix starts at the last dot, unless that dot begins the name.
             match name.rfind('.') {
                 Some(dot) if dot > 0 => name[dot..].to_owned(),
                 _ => String::new(),
@@ -29,27 +27,11 @@ fn pending_suffixes(machine: &Machine) -> Vec<String> {
     suffixes
 }
 
-/// Verified (V6): running out of file descriptors never drops a pending attempt and fails
-/// without a traceback. The review measured, after a lost-ack `update --claim --status closed`
-/// (crash after push): under `ulimit -n` 8, 9, 10 and 11, `show X`, `claim Y` and `sync` leave the
-/// pending .json and .command both in place, and the retry exits 0. (At -n 6/8 everything is IO
-/// 'Too many open files'; at -n >= 12 commands succeed.) This test runs limits 8, 10 and 11.
-///
-/// Adapted on closing G58: git's output is captured through files rather than pipes, so `claim` and
-/// `sync` get by with fewer descriptors and may now succeed at -n 10/11, in which case they confirm
-/// the attempt (the remote holds it) rather than leave it pending; either way it is never dropped.
-/// Once a later command of the actor has gone through, the retry of the lost one is answered on its
-/// merits (x is closed).
-///
-/// Recalibrated for Rust's bead (`docs/RUST-PORT.md` §4.4), which needs more descriptors than
-/// Python's to reach the same paths. Measured once the port was whole (2026-10-10), on macOS and
-/// on Linux alike, after this test's lost-ack close: Python's bead reads the tracker (`show`) from
-/// -n 8 and gets `claim` and `sync` through from -n 10; Rust's reads it from -n 10 and gets them
-/// through from -n 11, and below 10 every command fails. So the test runs the Python test's
-/// limits, 8, 10 and 11, and the same limits two descriptors higher, 10, 12 and 13. Each binary
-/// meets its descriptors running out between the read and the coordinated commands (Python at 8,
-/// Rust at 10) and enough of them for everything (Python from 10, Rust from 11); at 8, Rust's also
-/// run out before anything is read, as Python's did at 8 when the review measured it.
+/// V6: after a lost acknowledgement, descriptor exhaustion must leave an attempt pending or
+/// confirm it if the remote holds it; never discard it. Exercise `show`, `claim` and `sync` at
+/// limits 8, 10, 11, 12 and 13. Measurements on Linux and macOS found reads possible from 10
+/// descriptors and coordination from 11; the lower limits cover earlier failures. After a later
+/// command succeeds, a retry is answered against the current state, where the issue is closed.
 #[test]
 fn descriptor_exhaustion_never_drops_a_pending_attempt() {
     if !with_sh() {

@@ -1,4 +1,4 @@
-//! The commands (Python's `commands.py`): typed arguments in, a result and its human lines out.
+//! Commands: typed arguments in, a result and its human-readable lines out.
 
 mod args;
 mod claims;
@@ -25,10 +25,12 @@ use std::os::unix::ffi::OsStrExt as _;
 use beadroll_core::code::Code;
 use beadroll_core::event::DONE;
 use beadroll_core::json::{Int, Object, Value};
-use beadroll_core::op::PyInt;
+use beadroll_core::op::IntegerField;
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::{printed_text, repr_str, strip};
-use beadroll_store::{Actor, Label, ViewError, Workspace, pathlib, read_texts, view, view_outline};
+use beadroll_store::{
+    Actor, Label, ViewError, Workspace, normalize_path, read_texts, view, view_outline,
+};
 use beadroll_sync::{Tx, unpublished_count};
 
 pub(crate) use args::{
@@ -52,14 +54,13 @@ pub(crate) use sync::sync;
 pub(crate) use transition::{TransitionArgs, transition};
 pub(crate) use update::{UpdateArgs, update};
 
-/// A command's failure: the code and message bead reports (Python's `BeadError`).
+/// A command failure: the code and message bead reports.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Failure {
     pub(crate) code: Code,
     pub(crate) message: String,
-    /// The message's bytes, when bytes of the command line or of a path in it are not UTF-8
-    /// (`message` shows each as U+FFFD): Python holds them as lone surrogates, which it prints as
-    /// `?` and escapes in JSON as `\udcXX`.
+    /// The original message bytes when a command-line argument or path is not UTF-8. `message`
+    /// substitutes U+FFFD; human output uses `?`, and JSON uses `\udcXX` escapes.
     pub(crate) raw: Option<Vec<u8>>,
 }
 
@@ -84,7 +85,7 @@ impl Failure {
         }
     }
 
-    /// The message as Python prints it: a byte that is not UTF-8 is a `?`.
+    /// The message for human output, replacing each byte that is not UTF-8 with `?`.
     pub(crate) fn printed(&self) -> String {
         match &self.raw {
             Some(raw) => printed_text(raw),
@@ -93,8 +94,8 @@ impl Failure {
     }
 }
 
-/// An operating-system error's message as Python's command line writes it, `{strerror}: {path}`,
-/// with the path's bytes as they are.
+/// An operating-system error formatted as `{strerror}: {path}`, retaining the path's original
+/// bytes.
 fn os_failure(error: &beadroll_git::IoError) -> Failure {
     match &error.path {
         Some(path) => {
@@ -286,9 +287,9 @@ pub(crate) fn split_list(values: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// A text argument from a file (`-` for standard input), decoded as UTF-8 whatever the locale says.
-/// The file is read as Python reads `Path(path)`, its spelling normalised as pathlib normalises it
-/// (`dir//name/.` is `dir/name`); `what` names it in the error, as it was given.
+/// A text argument from a file, or standard input for `-`, decoded as UTF-8 regardless of locale.
+/// The path is normalised (`dir//name/.` becomes `dir/name`); `what` names it in the error as
+/// given.
 pub(crate) fn read_utf8(path: &OsStr, what: &OsStr) -> Result<String, Failure> {
     if path == "-" && crate::sys::stdin_closed() {
         return Err(Failure::new(
@@ -303,7 +304,7 @@ pub(crate) fn read_utf8(path: &OsStr, what: &OsStr) -> Result<String, Failure> {
             .map_err(|e| Failure::from(beadroll_git::IoError::bare(&e)))?;
         raw
     } else {
-        let path = pathlib(path);
+        let path = normalize_path(path);
         std::fs::read(&path).map_err(|e| Failure::from(beadroll_git::IoError::at(&e, &path)))?
     };
     String::from_utf8(raw).map_err(|_| {
@@ -314,9 +315,8 @@ pub(crate) fn read_utf8(path: &OsStr, what: &OsStr) -> Result<String, Failure> {
     })
 }
 
-/// Whether `me` ended the issue's last claim by closing or deleting it (Python's `ended_by`). The
-/// run that did so may have died before it published that, so a retry of the command publishes
-/// as promptly as the first run.
+/// Whether `me` ended the issue's last claim by closing or deleting it. That run may have died
+/// before publishing, so a retry publishes as promptly as the first run.
 pub(crate) fn ended_by(issue: &Issue, me: &Label) -> bool {
     issue
         .claim_history()
@@ -324,10 +324,10 @@ pub(crate) fn ended_by(issue: &Issue, me: &Label) -> bool {
         .is_some_and(|last| me.is(&last.ended_by) && matches!(last.how, "close" | "delete"))
 }
 
-/// Takes back the edges of `issue` to `to` this writer sees (Python's `remove_edge`); `kind`
-/// `None` is every kind. When one of them is an imported dependency on a key (tagged with the
-/// issue's own create), the key is taken back as well: a concurrent import of the same key that
-/// sorts first keeps the key, and after the merge the imported dependency binds to that copy.
+/// Removes edges from `issue` to `to` that this writer has seen; `kind` set to `None` selects
+/// every kind. For an imported dependency tagged with the issue's create, its key is removed too:
+/// a concurrent import sorting first keeps that key, and the dependency binds to that copy after
+/// merging.
 pub(crate) fn remove_edge(
     tx: &mut Tx<'_>,
     st: &State,
@@ -353,7 +353,7 @@ pub(crate) fn remove_edge(
     Ok(())
 }
 
-/// The filters `list` and `ready` share (Python's `select`), as given.
+/// The filters shared by `list` and `ready`, as given.
 #[derive(Default)]
 pub(crate) struct Filters {
     pub(crate) status: Vec<String>,
@@ -399,7 +399,7 @@ pub(crate) fn select<'s>(st: &'s State, filters: &Filters) -> Result<Vec<&'s Iss
             continue;
         }
         if let Some(priority) = &filters.priority
-            && issue.priority() != PyInt::from(parse_priority(priority)?)
+            && issue.priority() != IntegerField::from(parse_priority(priority)?)
         {
             continue;
         }
@@ -433,7 +433,7 @@ pub(crate) fn select<'s>(st: &'s State, filters: &Filters) -> Result<Vec<&'s Iss
     Ok(items)
 }
 
-/// Python's `items[:limit]` for a list: a negative limit leaves that many off the end.
+/// The first `limit` items; a negative limit leaves that many off the end.
 pub(crate) fn first<T>(items: Vec<T>, limit: &Int) -> Vec<T> {
     let limit = limit.saturating_i128();
     let len = items.len() as i128;

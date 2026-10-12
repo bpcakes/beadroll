@@ -1,13 +1,9 @@
-//! Black-box tests of the `bead` binary: one test binary for the crate, its modules under
-//! `tests/cli/` (`docs/RUST-PORT.md` §4.3), most of them ported from the Python suite under the
-//! naming rule of §4.2 (`<module>::<class>::<method>`, the Python test's names in snake case).
+//! Black-box tests of bead, grouped under `tests/cli/`. Module and test names preserve
+//! findings-ledger references.
 //!
-//! Every test runs `bead` through `beadroll-test-support`: the binary this package builds, unless
-//! `BEAD_UNDER_TEST` or a machine names another. Until the cutover a ported test counted only once
-//! it also passed against Python's launcher; the goldens (`golden.rs`) and the pinned bytes of
-//! `parity` keep what Python answered. A `rust_only` test injects its faults through failpoints,
-//! which are this build's, and runs the binary this package builds whatever `BEAD_UNDER_TEST` says
-//! ([`rust_only`]).
+//! Tests use `beadroll-test-support` with the binary this package builds, unless BEAD_UNDER_TEST
+//! or a machine selects another. Goldens and parity fixtures pin output and stored bytes. Tests
+//! requiring this build's failpoints or in-process storage APIs select [`rust_only`].
 #![cfg(test)]
 
 mod children;
@@ -33,12 +29,9 @@ pub(crate) fn sandbox() -> Sandbox {
     Sandbox::new(env!("CARGO_BIN_EXE_bead"))
 }
 
-/// A machine of a `rust_only` test (`docs/RUST-PORT.md` §4.2): one that injects a fault through a
-/// failpoint (`BEAD_FAILPOINTS`, §4.5), reads its store in this process, or checks one of the Rust
-/// bead's own departures from Python (§5 row 26), so it runs the `bead` this package builds
-/// whatever `BEAD_UNDER_TEST` says: those are this build's, which another binary under test (an
-/// installed bead, or `python-0.1.0`'s launcher) need not share. A test that replaces a Python
-/// test names it, as the one it was reviewed against.
+/// Selects this package's binary for a test that uses failpoints, reads the store in-process or
+/// checks a build-specific contract. An arbitrary BEAD_UNDER_TEST need not share those interfaces
+/// (`docs/RUST-PORT.md` §4.2).
 pub(crate) fn rust_only(sandbox: &Sandbox, name: &str) -> Machine {
     Machine::new(sandbox, name).with_bead(env!("CARGO_BIN_EXE_bead"))
 }

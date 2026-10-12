@@ -9,8 +9,7 @@ use beadroll_test_support::{Machine, code};
 
 use super::converge_and_compare;
 
-/// `git gc --prune=now` looping on `sync_git` on a thread of its own until stopped, which dropping
-/// the loop does too: the Python test's `finally`.
+/// Loops `git gc --prune=now` on `sync_git` in a separate thread until stopped or dropped.
 struct Prune {
     stop: Arc<AtomicBool>,
     worker: Option<std::thread::JoinHandle<()>>,

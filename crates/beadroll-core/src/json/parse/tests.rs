@@ -1,5 +1,5 @@
-//! The parser against what CPython 3.14's `loads_strict` answers (each expectation was read from
-//! it); until the cutover `cargo xtask diff json` checked the rest at volume.
+//! Fixed JSON parsing expectations, including error messages and positions. Fixture provenance
+//! is recorded in `docs/RUST-PORT.md` §4.2, §5.
 
 use super::*;
 use crate::json::{Format, write};
@@ -11,7 +11,7 @@ fn message(text: &[u8]) -> String {
 }
 
 #[test]
-fn syntax_errors_read_as_cpython_reports_them() {
+fn syntax_errors_keep_established_diagnostics() {
     let cases: [(&[u8], &str); 14] = [
         (
             b"\"\\u001F",

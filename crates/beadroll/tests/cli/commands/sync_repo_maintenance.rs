@@ -10,7 +10,7 @@ use beadroll_store::{Endpoint, Settings, find_workspace};
 use beadroll_sync::Link;
 use beadroll_test_support::{Json, Machine, Sandbox, git, parse_json};
 
-/// `setUp`: machine a's tracker holds issue x (its key returned) and is published; machine b has
+/// Machine a's tracker holds issue x (its key returned) and is published; machine b has
 /// synced it.
 fn set_up(sandbox: &Sandbox) -> (Machine, String, Machine) {
     let a = Machine::new(sandbox, "a");

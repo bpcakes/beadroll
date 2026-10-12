@@ -1,14 +1,13 @@
 //! G53: `replica_id` mapped every failure to read `replica.json`, a permission error included, to
 //! `IDENTITY` "... is unreadable; restore it, or move it aside to mint a new machine identity".
 //! Following that advice for what is only a mode problem changes every actor label on the machine,
-//! so its agents can no longer close or release the claims they hold. The class is skipped as root,
+//! so its agents can no longer close or release the claims they hold. These tests skip as root,
 //! who reads a mode-0 file; its tests then return at once.
 
 use beadroll_test_support::{Run, parse_json};
 
-/// `_g53_error`: the code and message of a failed `--json` call; `TRACEBACK` and the standard
-/// error when bead crashed (a Python traceback, a Rust panic or a fatal signal), and `None` and
-/// the standard error when it holds no structured error.
+/// A failed JSON call's code and message; a crash returns `TRACEBACK` with stderr, and no
+/// structured error returns `None` with stderr.
 fn g53_error(run: &Run) -> (Option<String>, String) {
     if run.crashed() {
         return (Some("TRACEBACK".to_owned()), run.stderr.clone());
@@ -31,7 +30,7 @@ mod g53_unreadable_identity_is_io {
 
     use super::g53_error;
 
-    /// `setUp`'s skip: whether the test runs as root, who reads a mode-0 file.
+    /// Whether the test runs as root, who reads a mode-0 file and must skip this check.
     fn skipped_as_root() -> bool {
         let root = rustix::process::geteuid().is_root();
         if root {
@@ -40,7 +39,7 @@ mod g53_unreadable_identity_is_io {
         root
     }
 
-    /// `setUp`: machine `a` with a tracker (prefix `gi`) and one issue, which it has claimed; the
+    /// Machine `a` with a tracker (prefix `gi`) and one issue, which it has claimed; the
     /// issue's key and the path of the machine's `replica.json`.
     fn set_up(sandbox: &Sandbox) -> (Machine, String, PathBuf) {
         let a = Machine::new(sandbox, "a");

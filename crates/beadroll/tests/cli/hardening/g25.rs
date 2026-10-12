@@ -1,15 +1,13 @@
-//! G25 (`docs/FINDINGS.md`): synchronise and coordinated save every remote they used to
-//! meta.json, including origin itself, and Workspace.remote ranks that 'last used' value above
-//! origin. After `git remote set-url origin <new>` git follows the change and bead keeps using the
-//! old URL. The class's third test, `Workspace.remote` over an older spelling of origin, runs the
-//! store's API: it is ported in beadroll-store (`tests/store/hardening.rs`).
+//! G25: remembering origin's resolved URL must not pin an obsolete remote after `git remote
+//! set-url origin`. Both sync and ownership commands must follow the changed URL. Resolution of
+//! older stored spellings is checked in beadroll-store's `tests/store/hardening.rs`.
 
 mod g25_first_sync_remote_is_frozen {
     use std::path::Path;
 
     use beadroll_test_support::{Json, Machine, code, git};
 
-    /// `path` as the text git and bead are given, as Python's `str(path)` gives it.
+    /// The path as text passed to git and bead.
     fn text(path: &Path) -> &str {
         path.to_str().expect("a UTF-8 path")
     }
@@ -32,9 +30,7 @@ mod g25_first_sync_remote_is_frozen {
         git(["push", "-q", "origin", "HEAD:main"], Some(checkout));
     }
 
-    /// `machine`'s checkout made again as a fresh clone of `origin`, as `support.Machine` clones
-    /// it once `box.origin` names another repository: test support clones every checkout from
-    /// `origin.git`.
+    /// Reclones the machine's checkout from a different origin.
     fn fresh_clone(machine: &Machine, origin: &Path) {
         std::fs::remove_dir_all(machine.checkout()).expect("the machine's first clone");
         git(

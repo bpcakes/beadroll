@@ -1,17 +1,12 @@
-//! The object format a repository of bead's own stores, read in-process from its `config`
-//! (`extensions.objectformat`, `docs/RUST-PORT.md` Appendix B), where Python asks `git rev-parse
-//! --show-object-format`.
+//! Reads a private repository's object format from plain git-init configuration
+//! (`docs/RUST-PORT.md` Appendix B). Accept only standalone section headers and unquoted `key =
+//! value` lines without trailing comments or escapes. Interpret extensions only under repository
+//! format version 1; version 0 without an object format is SHA-1. Without
+//! core.repositoryformatversion, git ignores extensions.
 //!
-//! The reader follows only the plain form `git init` writes: section headers alone on their line,
-//! `key = value` lines without quotes, escapes or comments after the value. It names a format only
-//! where git's own reading of the config does: `extensions.objectformat`, or SHA-1 when there is
-//! none, in a repository of format version 1, and SHA-1 in one of version 0 that names no format.
-//! Without `core.repositoryformatversion` git reads the config without its extensions, so a SHA-256
-//! repository whose config lost that line is SHA-1 to git. Anything else is
-//! [`StoredFormat::Unsure`], and so is a format this reader finds different from the one wanted:
-//! the caller then asks git, whose answer decides as before. A config naming the wanted format is
-//! then enough to act on without git: if git disagreed it would be because it refuses the
-//! repository (an extension it does not know, say), and bead then leaves it alone just the same.
+//! Return [`StoredFormat::Unsure`] for unusual syntax or a format differing from the requested
+//! one, so the caller asks git. A matching format can be used directly: if git later refuses the
+//! repository for another reason, bead leaves it alone.
 
 use std::path::Path;
 

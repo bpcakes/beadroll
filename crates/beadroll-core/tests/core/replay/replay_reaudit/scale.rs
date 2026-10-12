@@ -1,6 +1,5 @@
-//! `ReplayReaudit`'s tests at scale: thousands of events across six machines, replayed in many
-//! delivery orders. Python draws them from `random.Random`; here a seeded generator draws them, and
-//! the assertions, which hold for any draw, are Python's.
+//! Replay at scale: thousands of seeded events across six machines, delivered in different
+//! orders. Assertions hold for every generated history.
 
 use std::collections::BTreeMap;
 

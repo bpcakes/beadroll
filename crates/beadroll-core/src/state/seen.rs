@@ -1,29 +1,16 @@
-//! What each event's writer had seen (Python's `State.seq`, `seen`, `own_anc` and `saw`), as one
-//! clock per event.
+//! Ancestry represented by one clock per event over chains. Each machine's journal is a chain;
+//! unsequenced attempt events join a chain whose last event is already an ancestor, preferring
+//! their machine's chain, or start a new chain. Every ancestor set within a chain is a prefix, so
+//! one position represents it. Writers build on all events they hold, keeping chain counts near
+//! the number of active writers.
 //!
-//! Python keeps two things per event: `seen`, the furthest position it had seen in each machine's
-//! journal, and `own_anc`, a bitset of the unsequenced events (an attempt file's, which have no
-//! position) in its past. The bitsets grow with the number of ownership events, so a long history
-//! of claims and releases costs memory in proportion to events × ownership events. Here both are
-//! positions in chains:
+//! Each event's clock merges its causes' furthest positions by chain, adds unsequenced causes and
+//! records its own journal position when sequenced. Clocks share an arena, and an unchanged clock
+//! reuses its cause's storage. Chain sets are interned separately, leaving only positions in the
+//! arena. This avoids per-event bitsets growing with all ownership events.
 //!
-//! - Each machine's journal is a chain, as in `seen`: chain `n` is the journal of `replicas[n]`.
-//! - The unsequenced events are put into chains of their own as they are observed: an event joins a
-//!   chain whose last event is already among its ancestors (its own machine's chain when it can), or
-//!   starts one. So every event of such a chain is an ancestor of the next, and the ancestors an
-//!   event has in a chain are always that chain's first few: one position says which (a chain
-//!   decomposition, the classic reachability index). Writers build on everything they hold, so
-//!   there are about as many chains as machines that write attempts.
-//!
-//! An event's clock holds, for every chain it has seen into, the furthest position it saw there,
-//! sorted by chain; it is the clocks of its causes merged, its unsequenced causes added, and for a
-//! sequenced event its own position, exactly as Python merges `seen` and ORs `own_anc`. Clocks live
-//! in one arena; an event whose clock is one of its causes' shares it. Nearly every clock of a long
-//! history has seen into every chain, so the arena holds positions alone: a clock names the set of
-//! chains it has seen into, and each set is kept once.
-//!
-//! A journal holds fewer than 2³² events (each takes hundreds of bytes in memory), so chains and
-//! positions are `u32`.
+//! A journal contains fewer than 2³² events, each costing hundreds of bytes in memory, so chain
+//! ids and positions use u32.
 
 use std::collections::HashMap;
 

@@ -1,10 +1,7 @@
-//! G29 (`docs/FINDINGS.md`): a failure to write after the remote accepted a command (`meta.json` on
-//! a full volume) failed the command as `IO`, "nothing half-done", with its receipt already gone.
-//! The Python tests run bead under a driver whose `write_atomic` raises ENOSPC for every write of
-//! one kind of target throughout the command (`meta.json`, or another machine's segment); here
-//! that is the failpoint `atomic-write:<part>@always=errno(ENOSPC)`, which only the Rust binary
-//! has: `rust_only` tests. The lost acknowledgement before a retry is the crash hook's
-//! (`BEAD_TEST_CRASH_AFTER_PUSH`, exit 99), as in Python.
+//! G29: an error saving local state after remote acceptance must retain the receipt needed to
+//! recognise a retry. These `rust_only` tests inject `atomic-write:<part>@always=errno(ENOSPC)`
+//! for metadata or another machine's segment. `BEAD_TEST_CRASH_AFTER_PUSH` (exit 99) supplies the
+//! lost acknowledgement before retry.
 
 /// G29: coordinated() drops the attempt and its receipt, then writes meta.json; publish_soon
 /// catches BeadError only. So an OSError (a full volume) after the remote accepted a command is
@@ -16,7 +13,7 @@ mod g29_failure_after_acceptance_is_not_nothing_half_done {
     /// The failpoint path part of the workspace's `meta.json` (the driver's `G29_FULL=meta`).
     const META: &str = "/meta.json";
 
-    /// The class's `setUp`: machine a, which initialised the tracker (prefix `gf`), and machine
+    /// Machine a, which initialised the tracker (prefix `gf`), and machine
     /// `obs`, which observes the remote.
     fn set_up(sandbox: &Sandbox) -> (Machine, Machine) {
         let (a, obs) = (
@@ -73,12 +70,8 @@ mod g29_failure_after_acceptance_is_not_nothing_half_done {
         identity["id"].as_str().expect("a replica id").to_owned()
     }
 
-    /// G29: the remote accepted a release / claiming close, then meta.json hit ENOSPC: not an IO
-    /// failure.
-    ///
-    /// Replaces `G29_FailureAfterAcceptanceIsNotNothingHalfDone`'s
-    /// `test_g29_accepted_command_is_not_reported_as_io_when_meta_cannot_be_written`, whose driver
-    /// (`G29_FULL=meta`) fails every write of `meta.json`, as the failpoint on [`META`] does here.
+    /// G29: failure to save metadata after remote acceptance must not report the accepted release
+    /// or claiming close as an IO failure. Inject ENOSPC on every META write.
     #[test]
     fn g29_accepted_command_is_not_reported_as_io_when_meta_cannot_be_written() {
         let sandbox = crate::sandbox();
@@ -118,12 +111,8 @@ mod g29_failure_after_acceptance_is_not_nothing_half_done {
         }
     }
 
-    /// G29: a retry recognises its accepted release (the receipt), then meta.json hits ENOSPC: not
-    /// IO.
-    ///
-    /// Replaces `G29_FailureAfterAcceptanceIsNotNothingHalfDone`'s
-    /// `test_g29_recognised_retry_is_not_reported_as_io_when_meta_cannot_be_written`, whose driver
-    /// (`G29_FULL=meta`) fails every write of `meta.json`, as the failpoint on [`META`] does here.
+    /// G29: a retry recognised from its receipt must still succeed if every subsequent META write
+    /// fails with ENOSPC.
     #[test]
     fn g29_recognised_retry_is_not_reported_as_io_when_meta_cannot_be_written() {
         let sandbox = crate::sandbox();
@@ -151,13 +140,9 @@ mod g29_failure_after_acceptance_is_not_nothing_half_done {
         assert!(kept, "a write of meta.json went through");
     }
 
-    /// G29: the owner's close is recorded; its publish hits ENOSPC pulling another machine's
-    /// segment: the answer is "recorded locally, not yet published", not exit 1 IO.
-    ///
-    /// Replaces `G29_FailureAfterAcceptanceIsNotNothingHalfDone`'s
-    /// `test_g29_owner_close_whose_publish_hits_a_full_volume_is_recorded_not_failed`, whose
-    /// driver (`G29_FULL=foreign`) fails every write of a segment outside a's own journal; machine
-    /// b's is the only other journal there is, so the failpoint here names b's folder.
+    /// G29: an owner's recorded close whose publication fails while pulling another machine's
+    /// segment reports recorded-but-unpublished rather than an IO command failure. Inject ENOSPC
+    /// for every write in machine b's journal folder.
     #[test]
     fn g29_owner_close_whose_publish_hits_a_full_volume_is_recorded_not_failed() {
         let sandbox = crate::sandbox();

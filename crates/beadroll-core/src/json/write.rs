@@ -1,5 +1,5 @@
-//! Writing JSON as Python's `json.dumps` writes it, in each dialect bead uses, floats as `repr()`
-//! prints them.
+//! JSON writing in bead's established dialects, with shortest round-tripping float
+//! representations.
 
 use std::fmt::Write as _;
 
@@ -10,13 +10,13 @@ use super::{MAX_DIGITS, Value};
 pub enum Style {
     /// `separators=(",", ":")`.
     Compact,
-    /// Python's default separators, `", "` and `": "`.
+    /// Spaced separators: `, ` and `: `.
     Spaced,
     /// `indent=1`: one item per line, one space of indent per level, `","` and `": "`.
     Indented,
 }
 
-/// A `json.dumps` dialect.
+/// A JSON output dialect.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Format {
     /// The separators and line layout.
@@ -66,13 +66,13 @@ impl Format {
     };
 }
 
-/// Why a value cannot be written. `Display` is Python's message.
+/// Why a value cannot be written as JSON.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum WriteError {
     /// A float that is not finite, built in memory: no reader would take it back.
     #[error("Out of range float values are not JSON compliant: {0}")]
     NotFinite(&'static str),
-    /// An integer with more than [`MAX_DIGITS`] digits, built in memory: Python would not read it.
+    /// An integer constructed in memory with more than [`MAX_DIGITS`] digits.
     #[error(
         "Exceeds the limit ({MAX_DIGITS} digits) for integer string conversion; \
          use sys.set_int_max_str_digits() to increase the limit"
@@ -87,7 +87,7 @@ pub enum WriteError {
 /// a few levels deeper is still written, and nothing built in memory recurses without bound.
 const WRITE_DEPTH: usize = 2 * super::MAX_DEPTH;
 
-/// `value` as `json.dumps` writes it in `format`.
+/// Serializes value using format.
 pub fn write(value: &Value, format: Format) -> Result<String, WriteError> {
     let mut out = String::new();
     write_value(&mut out, value, format, 0)?;
@@ -177,8 +177,8 @@ fn close(out: &mut String, style: Style, level: usize, bracket: char) {
     out.push(bracket);
 }
 
-/// A string as `json.dumps` quotes it: quote, backslash and control characters escaped, and with
-/// `ascii` everything outside `' '..='~'` too, astral characters as surrogate pairs.
+/// Quotes a JSON string, escaping delimiters, backslashes and control characters. ASCII mode also
+/// escapes all characters outside space through tilde, using surrogate pairs beyond the BMP.
 pub(crate) fn write_str(out: &mut String, text: &str, ascii: bool) {
     out.push('"');
     for c in text.chars() {
@@ -202,9 +202,8 @@ pub(crate) fn write_str(out: &mut String, text: &str, ascii: bool) {
     out.push('"');
 }
 
-/// A float as Python's `repr()` prints it: the shortest digits that read back as the same float, in
-/// positional notation from 1e-4 up to 1e16 (with `.0` if there is no fraction), otherwise as
-/// `d.ddde±XX`.
+/// Shortest digits that round-trip to the same float. Use positional notation from 1e-4 up to
+/// 1e16, adding `.0` without a fraction; otherwise use `d.ddde±XX`.
 pub fn float_repr(value: f64) -> Result<String, WriteError> {
     if value.is_nan() {
         return Err(WriteError::NotFinite("nan"));
@@ -265,10 +264,9 @@ pub fn float_repr(value: f64) -> Result<String, WriteError> {
     Ok(out)
 }
 
-/// The shortest digits that read back as `value` (positive, finite) and the exponent of the first,
-/// as Python's repr chooses them: of the shortest, the closest, and of two equally close the one
-/// whose last digit is even (David Gay's dtoa, mode 0). Rust's `{:e}` prints the shortest and
-/// closest too, but breaks that tie upwards.
+/// Shortest round-tripping digits for positive finite `value`, and the exponent of the first
+/// digit. Among shortest representations choose the closest, breaking equal-distance ties toward
+/// an even last digit (David Gay's dtoa, mode 0). Rust's `{:e}` breaks that tie upward instead.
 fn shortest_digits(value: f64) -> (String, i32) {
     let split = |text: &str| -> (String, i32) {
         let (mantissa, exponent) = text.split_once('e').unwrap_or((text, "0"));
@@ -337,7 +335,7 @@ mod tests {
     }
 
     #[test]
-    fn floats_print_as_python_repr() {
+    fn floats_keep_shortest_roundtrip_digits_and_exponent_spelling() {
         for (value, repr) in [
             (1e16, "1e+16"),
             (1e15, "1000000000000000.0"),
@@ -365,7 +363,7 @@ mod tests {
     }
 
     #[test]
-    fn strings_escape_as_python_does_in_each_mode() {
+    fn strings_escape_controls_and_follow_the_selected_unicode_mode() {
         let text = "\u{7f}\u{0}\u{2028}é😀\"\\/\u{8}\u{c}\n\r\t";
         let mut ascii = String::new();
         write_str(&mut ascii, text, true);

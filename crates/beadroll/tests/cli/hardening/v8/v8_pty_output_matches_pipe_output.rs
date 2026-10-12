@@ -15,12 +15,9 @@ use rustix::process::{Pid, Signal, kill_process};
 
 use super::{Drained, drain, quoted, script, wait_for};
 
-/// A pseudo-terminal that nobody controls, as `os.openpty()` gives the Python test one.
-/// `script(1)` holds its master, and a placeholder `sleep` is the session leader on it, so that
-/// bead, which the test starts on its slave, is neither that leader nor in that session.
-/// Everything written to the slave comes out on script's standard output, read to its end by a
-/// thread once the placeholder is gone. Script's standard input is a pipe kept open: at the end of
-/// its input script would type an end-of-file on the terminal, which the terminal echoes.
+/// A pseudo-terminal not controlled by bead. `script` owns the master and a placeholder sleep is
+/// session leader; bead runs on the slave outside that session. A thread drains script's stdout.
+/// Keep script's stdin pipe open to avoid an echoed end-of-file on the terminal.
 struct Terminal {
     script: Child,
     input: Option<ChildStdin>,
@@ -116,7 +113,7 @@ impl Drop for Terminal {
     }
 }
 
-/// How bead ended, as Python's `returncode` gives it: the exit code, or minus the signal.
+/// The exit code, or the negated signal number.
 fn returncode(status: ExitStatus) -> i32 {
     status
         .code()
@@ -157,8 +154,8 @@ fn raw(c: char) -> bool {
     )
 }
 
-/// `bead ARGS` from `machine` with `env`, its output piped, as `subprocess.run(...,
-/// capture_output=True, stdin=DEVNULL, timeout=60)` runs it: how it ended and what it printed.
+/// Runs `bead ARGS` from `machine` with `env`, null input, piped output and a 60-second timeout:
+/// returns how it ended and what it printed.
 fn piped(
     machine: &Machine,
     args: &[String],

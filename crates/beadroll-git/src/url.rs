@@ -1,10 +1,6 @@
-//! Remote URL rules (Python's `without_password`, `normalize_remote` and `is_local_path`).
-//!
-//! A remote string reaches bead from git's own configuration and from the command line as bytes, and
-//! Python holds it as text decoded with `surrogateescape`: every byte that is not part of valid
-//! UTF-8 kept as itself. These functions work on those bytes. The patterns that read them are ASCII
-//! (`docs/RUST-PORT.md` §5 row 24: a scheme is ASCII), so they read bytes directly; only stripping
-//! and lower-casing see the text's Unicode characters, and never touch the bytes that are not text.
+//! Remote URL rules over OS bytes. ASCII patterns identify schemes and other structural
+//! components. Trimming and lowercase mapping operate on Unicode text while retaining invalid
+//! UTF-8 bytes unchanged (`docs/RUST-PORT.md` §5 row 24).
 
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
@@ -107,14 +103,16 @@ fn rposition(bytes: &[u8], wanted: u8) -> Option<usize> {
     bytes.iter().rposition(|b| *b == wanted)
 }
 
-/// The spellings of one remote (ssh, scp-like, https, `.git`, a trailing slash, the case of the
-/// host) reduced to one string. A path that exists here is resolved (relative to `cwd`) and
-/// lower-cased. Text as in Python: stripped and lower-cased by its Unicode characters.
+/// Normalises equivalent remote spellings: SSH, scp-like and HTTPS forms, .git suffixes, trailing
+/// slashes and host case. Existing local paths resolve relative to cwd. Trimming and lowercase
+/// mapping use Unicode characters.
 pub fn normalize_remote(url: &OsStr, cwd: &Path) -> OsString {
-    let u = py_strip(url.as_bytes());
+    let u = strip_text_bytes(url.as_bytes());
     if exists(OsStr::from_bytes(u), cwd) {
         let real = realpath(OsStr::from_bytes(u), cwd);
-        return OsString::from_vec(py_lower(&without_dot_git(real.as_os_str().as_bytes())));
+        return OsString::from_vec(lowercase_text_bytes(&without_dot_git(
+            real.as_os_str().as_bytes(),
+        )));
     }
     let mut u: Vec<u8> = u.to_vec();
     // An ASCII scheme, as in without_password.
@@ -141,7 +139,7 @@ pub fn normalize_remote(url: &OsStr, cwd: &Path) -> OsString {
     while out.last() == Some(&b'/') {
         out.pop();
     }
-    OsString::from_vec(py_lower(&out))
+    OsString::from_vec(lowercase_text_bytes(&out))
 }
 
 /// `^[a-z][a-z0-9+.-]*://`, case-insensitive and ASCII: where it ends.
@@ -192,8 +190,7 @@ pub fn is_local_path(url: &OsStr) -> bool {
     }
 }
 
-/// One unit of text decoded as Python decodes OS bytes (`surrogateescape`): a character, or a byte
-/// that is not part of valid UTF-8, kept as itself.
+/// One decoded OS-text unit: valid UTF-8 text or an invalid byte retained unchanged.
 enum Unit<'a> {
     Text(&'a str),
     Byte(u8),
@@ -210,14 +207,14 @@ fn units(bytes: &[u8]) -> Vec<Unit<'_>> {
     out
 }
 
-/// Whether `c` is whitespace to Python's `str.strip()`.
+/// Whether `c` is Unicode whitespace or one of the separators U+001C to U+001F.
 fn is_space(c: char) -> bool {
     c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c)
 }
 
-/// `text.strip()` on decoded OS bytes: Unicode whitespace at either end goes; a byte that is not
-/// text is never whitespace.
-pub fn py_strip(bytes: &[u8]) -> &[u8] {
+/// OS bytes without Unicode whitespace or separators U+001C to U+001F at either end.
+/// A byte that is not UTF-8 is never whitespace.
+pub fn strip_text_bytes(bytes: &[u8]) -> &[u8] {
     let mut start = 0;
     for chunk in bytes.utf8_chunks() {
         let valid = chunk.valid();
@@ -245,9 +242,9 @@ pub fn py_strip(bytes: &[u8]) -> &[u8] {
     &rest[..end]
 }
 
-/// `text.lower()` on decoded OS bytes: each run of text lower-cased as Python lower-cases it (final
-/// sigma included); a byte that is not text stays as it is.
-pub fn py_lower(bytes: &[u8]) -> Vec<u8> {
+/// OS bytes with each run of UTF-8 lowercased (final sigma included).
+/// Bytes that are not UTF-8 stay as they are.
+pub fn lowercase_text_bytes(bytes: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(bytes.len());
     for unit in units(bytes) {
         match unit {
@@ -309,7 +306,7 @@ mod tests {
 
     #[test]
     fn bytes_that_are_not_text_survive_strip_and_lower() {
-        assert_eq!(py_strip(b" \xff A \xfe "), b"\xff A \xfe");
-        assert_eq!(py_lower(b"A\xffB\xce\xa3"), b"a\xffb\xcf\x82");
+        assert_eq!(strip_text_bytes(b" \xff A \xfe "), b"\xff A \xfe");
+        assert_eq!(lowercase_text_bytes(b"A\xffB\xce\xa3"), b"a\xffb\xcf\x82");
     }
 }

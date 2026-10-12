@@ -1,6 +1,5 @@
-//! Normalising a transcript: what differs from run to run (ids, keys, machines, commits, times,
-//! the sandbox's paths) becomes a placeholder, numbered by first appearance, so a run of Python's
-//! `bead` and a run of another give the same text when they print the same things.
+//! Normalises transcript ids, keys, machines, commits, times and sandbox paths into placeholders
+//! numbered by first appearance, so equivalent outputs compare equally across runs.
 
 use std::collections::BTreeMap;
 

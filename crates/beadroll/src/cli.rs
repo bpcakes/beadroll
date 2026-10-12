@@ -1,6 +1,6 @@
-//! The command line (Python's `cli.py`): the only code that reads the process's environment,
-//! working directory and arguments; it finds the workspace, runs a command, publishes what it
-//! wrote, and renders the result, as JSON with `--json` or as lines for a human.
+//! The command line: the only code that reads the process environment, working directory and
+//! arguments. It finds the workspace, runs a command, publishes what it wrote and renders the
+//! result as JSON with `--json` or as human-readable lines.
 
 mod free;
 mod help;
@@ -107,8 +107,7 @@ fn build() -> Option<String> {
     ))
 }
 
-/// The home directory of the user `name`, from the password database (Python's `pwd.getpwnam`),
-/// for `~NAME` in `BEAD_HOME`.
+/// The home directory of user `name` from the password database, for `~NAME` in `BEAD_HOME`.
 fn home_of(name: &std::ffi::OsStr) -> Option<OsString> {
     let name = name.to_str()?;
     let user = nix::unistd::User::from_name(name).ok()??;
@@ -170,8 +169,7 @@ fn execute(request: &Request) -> Result<Option<String>, Failure> {
         Parsed::Usage(message) => return Err(Failure::bytes(Code::Usage, message)),
     };
     let free = ns.spec.workspace_free;
-    // git is about to run for the first time: its output files need a directory (Python's
-    // gettempdir, found on the first TemporaryFile).
+    // Select a directory for output files before starting the first git process.
     let tmp = tempdir::temporary_directory(settings.git.vars(), Some(settings.cwd.as_path()))?;
     settings.git = settings.git.with_tmp(tmp);
     let settings = Arc::new(settings);
@@ -351,8 +349,8 @@ fn dispatch(
     Ok((outcome, offline, remote))
 }
 
-/// Python's `time.time()`: seconds since the epoch on the real clock, which the `clock` failpoint
-/// does not shift (it shifts `time.time_ns`, which event ids are made from).
+/// Seconds since the epoch on the real clock. The `clock` failpoint shifts only the nanosecond
+/// clock used for event ids, not this reading.
 fn real_time() -> f64 {
     match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
         Ok(since) => since.as_nanos() as f64 / 1e9,
@@ -394,7 +392,7 @@ fn owned(ns: &Namespace, dest: &str) -> Option<OsString> {
     ns.text(dest).map(OsStr::to_os_string)
 }
 
-/// The fields `create` and `update` both set (Python's `content_flags`).
+/// The fields `create` and `update` both set.
 fn content(ns: &Namespace) -> commands::ContentArgs {
     commands::ContentArgs {
         description: owned(ns, "description"),
@@ -442,7 +440,7 @@ fn write(value: &Value, format: Format) -> Result<String, Failure> {
 /// `Error: message`. The status is the command's (2 for `USAGE`, else 1), whatever stderr does.
 fn report(failure: &Failure, as_json: bool) -> u8 {
     let text = match (as_json, &failure.raw) {
-        // bytes that are not UTF-8 escaped as the lone surrogates Python holds them as
+        // Escape bytes that are not UTF-8 as lone surrogates.
         (true, Some(raw)) => format!(
             "{{\"error\": {{\"code\": {}, \"message\": {}}}}}",
             json_ascii_bytes(failure.code.as_str().as_bytes()),

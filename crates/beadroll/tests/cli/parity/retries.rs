@@ -1,9 +1,6 @@
-//! Retries of an accepted request (`docs/RUST-PORT.md` §2.3j, §4.2 item 4): a machine run again on
-//! the same home and actor recognises the receipt it left, so an accepted request is never applied
-//! twice, after a sync, a later failure, a takeover or a stop after confirmation; and a request
-//! whose content changed is a new one. Until the cutover the mixed fleet ran each scenario across a
-//! switch of binaries, Python to Rust and back; with the receipts pinned to Python's bytes
-//! (`parity::receipts`), the same retry by the same binary is what is left to check.
+//! An accepted request is never applied twice when retried by the same actor on the same home,
+//! including after sync, a later failure, takeover or a stop after confirmation. Changed request
+//! content is a new request. `parity::receipts` separately pins the signature bytes.
 
 use std::process::Output;
 
@@ -167,9 +164,8 @@ fn a_retry_answers_for_a_claim_that_moved_on() {
     assert!(receipts(&a).is_empty(), "{retired}");
 }
 
-/// The bead stops right after an accepted attempt counts here, before its pending twin is removed
-/// (the point no crash hook reaches, so a failpoint of this build: `rust_only`); run again as the
-/// same actor, it recognises the request. Until the cutover Python's bead was the one run again.
+/// Stop after confirmation but before pending-twin removal, then retry as the same actor. The
+/// request must be recognised. This requires a failpoint from the current build.
 #[test]
 fn a_request_confirmed_before_a_stop_is_recognised() {
     let sandbox = crate::sandbox();

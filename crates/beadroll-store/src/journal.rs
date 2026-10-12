@@ -1,6 +1,5 @@
-//! The journals on disk (Python's segment and attempt functions in `machine.py` and the loaders in
-//! `model.py`): this machine's own append-only segments, the attempt files every machine reads,
-//! this machine's pending attempts, and the state they replay into.
+//! On-disk journals: local append-only segments, shared attempt files, local pending attempts and
+//! the state they replay into.
 
 use std::borrow::Borrow;
 use std::fs::OpenOptions;
@@ -11,7 +10,7 @@ use std::path::{Path, PathBuf};
 use beadroll_core::journal::{self, Journal, Problem};
 use beadroll_core::json::{self, Format, Value};
 use beadroll_core::state::{KeySpace, State};
-use beadroll_core::text::py_int;
+use beadroll_core::text::parse_integer;
 use beadroll_git::IoError;
 
 use crate::error::Error;
@@ -149,9 +148,8 @@ fn ends_whole(path: &Path) -> Result<bool, Error> {
     Ok(last == *b"\n")
 }
 
-/// Where this machine appends next: the last segment, or a new one once that has reached the
-/// rotation size. A full segment is never touched again. A last segment whose name is not a number
-/// is an IO error, where Python dies with a traceback (`docs/RUST-PORT.md` §5 row 26).
+/// The next append target: the last segment, or a new segment once it reaches the rotation size.
+/// Full segments are never modified. A nonnumeric last-segment name returns IO.
 pub fn active_segment(ws: &Workspace, replica: &str) -> Result<PathBuf, Error> {
     let folder = ws.events_dir.join(replica);
     let segments = glob_ending(&folder, ".jsonl");
@@ -173,7 +171,7 @@ pub fn active_segment(ws: &Workspace, replica: &str) -> Result<PathBuf, Error> {
             folder.display()
         ))
     };
-    let next = py_int(stem).ok_or_else(unnumbered)?.plus_one();
+    let next = parse_integer(stem).ok_or_else(unnumbered)?.plus_one();
     if next.digit_count() > beadroll_core::json::MAX_DIGITS {
         return Err(unnumbered());
     }
@@ -203,8 +201,8 @@ pub fn append_events(
         .mode(0o600)
         .open(&path)
         .map_err(|e| IoError::at(&e, &path))?;
-    // at the end before the first write, where CPython's append mode puts it: a file-size limit is
-    // then checked against the end of the file, which Darwin reads from the descriptor's offset
+    // Seek to the end before writing so Darwin checks the file-size limit against the correct
+    // descriptor offset.
     file.seek(SeekFrom::End(0)).map_err(|e| IoError::bare(&e))?;
     let failpoints = &ws.settings.failpoints;
     let mut rest: &[u8] = &data;
@@ -378,8 +376,7 @@ pub fn load_pending(ws: &Workspace) -> Result<Vec<Vec<Value>>, Error> {
     Ok(out)
 }
 
-/// Removes `path`; already gone is fine (Python's `unlink(missing_ok=True)`), any other failure is
-/// an IO error naming it.
+/// Removes `path`; absence succeeds and any other failure returns IO naming the path.
 pub fn remove(path: &Path) -> Result<(), Error> {
     match std::fs::remove_file(path) {
         Ok(()) => Ok(()),

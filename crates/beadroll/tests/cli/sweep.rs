@@ -1,18 +1,13 @@
-//! `tests/test_sweep.py`, ported (`docs/RUST-PORT.md` §4.3, §4.8): the ownership protocol,
-//! enumerated (seventh independent review, 2026-10-07). Three machines, nine operations at seven
-//! fault boundaries, every ordered pair of four follow-ups; after each step at most one confirmed
-//! owner, generations monotonic, identical exports after settling, and every command's answer
-//! consistent with the remote. Every schedule shows that its fault fired ([`fault_fired`]): one
-//! whose operation never reached its boundary tests nothing, and fails. The default is a
-//! thirteen-schedule slice touching every operation and boundary, including retries of an owner's
-//! close/delete interrupted before publishing and a sync stopped at its push ([`SLICE`]). `BEAD_SWEEP=full` runs all 660; `BEAD_SWEEP_GC=1` and `BEAD_SWEEP_CONCURRENT=1`
-//! select the variants. Schedules run in parallel, each in its own sandbox.
+//! Enumerates the ownership protocol across three machines, nine operations, seven fault
+//! boundaries and ordered pairs of four follow-ups. Checks single ownership, monotonic
+//! generations, convergence after settling and agreement between command results and remote
+//! state. Each schedule must prove its fault fired ([`fault_fired`]).
 //!
-//! The Python sweep reached its boundaries inside one bead process through a `runpy` wrapper that
-//! patched bead's module globals. This port sets failpoints instead (`BEAD_FAILPOINTS`, §4.5),
-//! which only the Rust binary has, so it is `rust_only`: its machines run the `bead` Cargo built
-//! whatever `BEAD_UNDER_TEST` says ([`crate::rust_only`]). [`fault_env`] gives each boundary's
-//! failpoint.
+//! The default thirteen-schedule slice covers every operation and boundary, interrupted owner
+//! close/delete retries and a sync stopped at push ([`SLICE`]). `BEAD_SWEEP=full` runs all 660;
+//! `BEAD_SWEEP_GC=1` and `BEAD_SWEEP_CONCURRENT=1` select variants. Schedules run in parallel in
+//! separate sandboxes. Build-specific failpoints require [`crate::rust_only`]; [`fault_env`] maps
+//! boundaries to their controls.
 
 use std::collections::BTreeMap;
 
@@ -23,7 +18,7 @@ mod judge;
 mod run;
 #[allow(
     clippy::module_inception,
-    reason = "the porting rule names the port of Sweep.test_sweep sweep::sweep::sweep"
+    reason = "Keep sweep::sweep::sweep stable for test filters and findings references"
 )]
 mod sweep;
 mod sweep_failure_reporting;
@@ -60,7 +55,7 @@ fn words(words: &[&str]) -> Vec<String> {
     words.iter().map(|word| (*word).to_owned()).collect()
 }
 
-/// The nine operations, in the order Python's `OPS` lists them.
+/// The nine operations in schedule enumeration order.
 const OPS: [Op; 9] = [
     Op {
         name: "claim",
@@ -168,7 +163,7 @@ struct Schedule {
     pair: &'static str,
 }
 
-/// The 660 schedules, in Python's order.
+/// The 660 schedules in deterministic enumeration order.
 fn schedules() -> Vec<Schedule> {
     let mut all = Vec::new();
     for op in &OPS {
@@ -233,31 +228,19 @@ impl Keys {
     }
 }
 
-/// What injects `fault` into the run of `op`: a variable and its value. Each boundary the Python
-/// wrapper (or a crash hook) stopped bead at is the failpoint §4.5 gives, fired at the hit the
-/// wrapper fired at:
+/// The environment setting that injects `fault` into `op`. Coordinated operations stop before
+/// publication at `ownership.before-publish=exit(98)`; close, delete and sync stop at
+/// `push.before=exit(98)`. Lost acknowledgements use `ownership.after-publish-ok=exit(99)` or
+/// `push.after-ok=exit(99)`.
 ///
-/// - crash-before-push: a coordinated operation stops (exit 98) once its receipt and attempt are
-///   written, before they are published: `ownership.before-publish=exit(98)`, which is what
-///   `BEAD_TEST_CRASH_BEFORE_PUSH`, the hook Python's sweep set, turns on. close, delete and sync
-///   stop before their first `git push`: `push.before=exit(98)`.
-/// - crash-after-push: exit 99 once the remote accepted, the acknowledgement lost:
-///   `ownership.after-publish-ok=exit(99)` (`BEAD_TEST_CRASH_AFTER_PUSH`), or after the first push
-///   the remote accepted, `push.after-ok=exit(99)`.
-/// - kill-confirm: SIGKILL once the accepted attempt counts here, before its pending twin is
-///   dropped: `ownership.after-confirm=sigkill`.
-/// - kill-write-pending: SIGKILL while the attempt `pending/<id>.json` is written, its receipt
-///   `pending/<id>.command` already in place: `atomic-write:pending/@nth(2)=sigkill`, since the
-///   receipt is the first write under `pending/`, which the wrapper let through.
-/// - kill-write-confirm: SIGKILL during the first write of an attempt into `claims/`, the
-///   confirmation of the operation's own attempt or, for a sync, the copy of another machine's:
-///   `atomic-write:claims/=sigkill`.
-/// - timeout-fenced, timeout-landed: no failpoint; the remote's pre-receive hook stalls the first
-///   push past `BEAD_NET_TIMEOUT` (`Run::fault_args` installs it).
+/// Confirmation stops at `ownership.after-confirm=sigkill`, after acceptance counts but before
+/// pending-twin removal. Pending writes stop at `atomic-write:pending/@nth(2)=sigkill`: the
+/// receipt is the first write and the attempt the second. Confirmed writes stop at
+/// `atomic-write:claims/=sigkill`. Atomic-write failures occur after the temporary file is
+/// written and fsynced, before rename, leaving the target untouched and temporary file behind.
 ///
-/// The wrapper killed a write with half the bytes under the temporary name; `atomic-write` fires
-/// with all of them there, fsynced, before the rename. Either way the target is not written and
-/// the temporary is left behind.
+/// Timeout schedules use no failpoint: a pre-receive hook stalls the first push beyond
+/// BEAD_NET_TIMEOUT (`Run::fault_args`).
 fn fault_env(op: &str, fault: &str) -> (&'static str, &'static str) {
     let coordinated = COORDINATED.contains(&op);
     let spec = match (fault, coordinated) {

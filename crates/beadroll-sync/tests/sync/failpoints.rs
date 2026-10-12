@@ -1,5 +1,4 @@
-//! The failpoints the protocol tests stand on (`docs/RUST-PORT.md` §4.5), where their contract
-//! reaches beyond what a ported test exercises.
+//! Direct checks of failpoint contracts used by protocol tests (`docs/RUST-PORT.md` §4.5).
 
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::PathBuf;

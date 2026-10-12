@@ -26,7 +26,7 @@ mod g31_export_with_unicode_line_separators_imports_again {
     }
 
     /// G31: `export` writes U+2028/U+2029/U+0085 raw inside JSON strings (valid JSONL), but `import`
-    /// splits the file with `str.splitlines()`, so bead cannot import its own export.
+    /// splits the file at Unicode line boundaries, so bead cannot import its own export.
     #[test]
     fn own_export_with_unicode_line_separators_imports_again() {
         let sandbox = crate::sandbox();
@@ -99,7 +99,7 @@ mod g31_export_with_unicode_line_separators_imports_again {
         members.insert("id".into(), Json::from("bx-crlf"));
         members.insert("title".into(), Json::from("plain"));
         let path = sandbox.root().join("issues.jsonl");
-        // the first as `json.dumps(record, ensure_ascii=False)`, the second as `json.dumps(other)`
+        // Write the first record with raw Unicode and the second with ASCII escapes.
         let mut bytes = write(&record, Format::SPACED).unwrap().into_bytes();
         bytes.extend_from_slice(b"\r\n\n");
         bytes.extend(write(&other, Format::ASCII).unwrap().into_bytes());

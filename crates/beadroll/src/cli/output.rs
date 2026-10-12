@@ -21,7 +21,7 @@ pub(crate) enum Unwritten {
     Failed(io::Error),
 }
 
-/// Writes `text` and a newline to `stream` and flushes it (Python's `emit`); `None` only flushes.
+/// Writes `text` and a newline to `stream` and flushes it; `None` only flushes.
 pub(crate) fn emit(text: Option<&str>, stream: Stream) -> Result<(), Unwritten> {
     let written = match stream {
         Stream::Stdout => write_to(&mut io::stdout().lock(), text),
@@ -72,9 +72,9 @@ fn is_character_device(stream: Stream) -> bool {
     })
 }
 
-/// Control characters as escapes in human output (Python's `visible`): titles, comments and names
-/// come from journals and imports, and the terminal must never be asked to interpret them. C0,
-/// DEL, C1, U+061C, U+200E/F, U+202A-202E, U+2028/9 and U+2066-2069 become `\xNN` or `\uNNNN`.
+/// Escapes control characters in human output. Titles, comments and names come from journals and
+/// imports, and must never be interpreted by the terminal. C0, DEL, C1, U+061C, U+200E/F,
+/// U+202A-202E, U+2028/9 and U+2066-2069 become `\xNN` or `\uNNNN`.
 pub(crate) fn visible(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for c in text.chars() {
@@ -100,7 +100,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn controls_print_as_python_escapes_them() {
+    fn controls_print_as_visible_escapes() {
         assert_eq!(
             visible("a\tb\u{1b}[31m\u{9b}\u{202e}é"),
             "a\\x09b\\x1b[31m\\x9b\\u202eé"

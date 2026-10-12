@@ -25,12 +25,11 @@ fn finished(output: Output) -> Run {
     }
 }
 
-/// `command` run to the end as `subprocess.Popen(...).communicate()` runs it, its output kept as
-/// the bytes Python compares (lossily decoded) and its standard input empty, as every run of the
-/// test support has it.
+/// Runs `command` to completion with empty standard input and captures output bytes for lossy
+/// text comparison.
 fn communicate(mut command: Command) -> Run {
     let child = command.stdin(Stdio::null()).spawn().unwrap();
-    // Our copy of the pipe's write end goes with the command, as the test's `os.close(write)`.
+    // Our copy of the pipe's write end goes with the command.
     drop(command);
     let output = child.wait_with_output().unwrap();
     Run {

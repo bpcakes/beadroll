@@ -15,12 +15,12 @@ fn tail(text: &str) -> &str {
     lines.rfind(|line| !line.trim().is_empty()).unwrap_or("")
 }
 
-/// Whether `byte` is ASCII whitespace as Python's `bytes.strip()` and `bytes.split()` take it.
+/// Whether `byte` is ASCII whitespace, including vertical tab and form feed.
 fn is_space(byte: &u8) -> bool {
     b" \t\n\r\x0b\x0c".contains(byte)
 }
 
-/// `data` without the ASCII whitespace at either end, as `bytes.strip()` leaves it.
+/// `data` without the ASCII whitespace at either end.
 fn strip(data: &[u8]) -> &[u8] {
     let start = data.iter().position(|byte| !is_space(byte));
     let start = start.unwrap_or(data.len());

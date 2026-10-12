@@ -1,5 +1,5 @@
-//! Ownership applied (Python's `apply_event` for `claim`, `release`, `close`, `reopen` and
-//! `delete`, and `end_claim`): who holds an issue, and the claims that end, lose or come too late.
+//! Applies ownership events: current owners, ended and lost claims, and claim endings that arrive
+//! too late.
 
 use std::sync::Arc;
 
@@ -7,7 +7,7 @@ use crate::event::Field;
 use crate::id::EventId;
 use crate::journal::Event;
 use crate::json::Value;
-use crate::op::{Claiming, Ending, PyInt};
+use crate::op::{Claiming, Ending, IntegerField};
 use crate::state::{Claim, EndedClaim, Issue, LostClaim, Provisional};
 
 use super::{Ctx, Held};
@@ -29,13 +29,13 @@ pub(super) fn claim(c: &Ctx<'_>, issue: &mut Issue, claiming: &Claiming) -> bool
         }
     } else if c.claim.is_none() || takes_over(c.claim, claiming) {
         end_claim(c, issue, "takeover", claiming.reason.as_deref());
-        // `max(generation + 1, data.get("generation") or 0)`: of two equal, the first.
+        // Choose the greater of the incremented and proposed generations, keeping the first on ties.
         let next = issue.claim_generation.plus_one();
         let given = claiming
             .generation
             .as_ref()
             .filter(|g| !g.is_zero())
-            .map(PyInt::number);
+            .map(IntegerField::number);
         issue.claim_generation = given.filter(|given| *given > next).unwrap_or(next);
         let mode = (claiming.mode.as_deref())
             .filter(|m| !m.is_empty())

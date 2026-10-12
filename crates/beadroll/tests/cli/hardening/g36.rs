@@ -14,10 +14,9 @@ use std::time::{Duration, Instant};
 use beadroll_test_support::Run;
 use rustix::pty::{OpenptFlags, grantpt, openpt, ptsname, unlockpt};
 
-/// `_g36_hung_up_terminal`: the slave side of a pseudo-terminal whose master is already closed:
-/// every write to it fails with EIO, as when the terminal window or the ssh session that owned it
-/// went away. As Python's `os.openpty()` makes it: no process's controlling terminal, opened
-/// without becoming one, and its master closed.
+/// The slave side of a pseudo-terminal whose master is closed. Writes fail with EIO, as after a
+/// terminal window or SSH session disappears. It is opened without becoming a controlling
+/// terminal.
 fn hung_up_terminal() -> File {
     let master = openpt(OpenptFlags::RDWR | OpenptFlags::NOCTTY).expect("a pseudo-terminal");
     grantpt(&master).expect("grantpt");
@@ -64,7 +63,7 @@ fn drain(mut pipe: impl Read + Send + 'static) -> JoinHandle<Vec<u8>> {
     })
 }
 
-/// What a reader thread read, decoded as `bytes.decode(errors="replace")` decodes it; nothing for a
+/// What a reader thread read, decoded as UTF-8 with invalid sequences replaced; nothing for a
 /// stream that was not piped.
 fn decoded(reader: Option<JoinHandle<Vec<u8>>>) -> String {
     let bytes = reader.map(|thread| thread.join().expect("a reader"));
@@ -73,7 +72,7 @@ fn decoded(reader: Option<JoinHandle<Vec<u8>>>) -> String {
 }
 
 /// `command` run to the end with nothing on its standard input, its piped output read on threads
-/// of their own. As `subprocess.run(..., timeout=30)` raises, a command that runs longer than
+/// of their own. A command that runs longer than
 /// `limit` is killed and fails the test.
 fn run_within(mut command: Command, limit: Duration) -> Run {
     let mut child = command.stdin(Stdio::null()).spawn().expect("bead starts");
@@ -106,7 +105,7 @@ mod g36_hung_up_terminal_and_closed_descriptors {
 
     use super::{hung_up_terminal, noise, run_within};
 
-    /// The class's `setUp`: machine `tty`, its tracker initialised with the prefix `ex`.
+    /// Machine `tty`, its tracker initialised with the prefix `ex`.
     fn setup(sandbox: &Sandbox) -> Machine {
         let machine = Machine::new(sandbox, "tty");
         machine.bead(["init", "--prefix", "ex"]);
@@ -173,8 +172,8 @@ mod g36_hung_up_terminal_and_closed_descriptors {
         }
     }
 
-    /// G36: list, list --json, the overview, export and COMMAND --help exit 120 with Python noise
-    /// when the terminal hung up, instead of exiting 0 quietly as on a closed pipe.
+    /// G36: list, JSON list, overview, export and command help must exit quietly with status 0
+    /// when the terminal hangs up.
     #[test]
     fn read_commands_on_a_hung_up_terminal_exit_zero_quietly() {
         let sandbox = crate::sandbox();

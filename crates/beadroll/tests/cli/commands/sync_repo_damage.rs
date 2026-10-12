@@ -1,15 +1,14 @@
-//! `SyncRepoDamage`: linux-1's sync.git held empty loose objects after a drive; every sync then
-//! failed as `REMOTE_UNREACHABLE` though the remote was fine. sync.git is a cache of the remote and
-//! of `events/`, so bead sets a damaged one aside and makes it again, once per command, on the sync
-//! path and on the claim path alike. (`a_claim_rebuilds_too_…` is the claim half of its Python test;
-//! the classifier half is beadroll-git's `commands::sync_repo_damage`.)
+//! A sync repository containing empty loose objects must be rebuilt instead of reporting the
+//! healthy remote as unreachable. It is a cache of the remote and `events/`, so both sync and
+//! claim set it aside and rebuild once per command. The classifier checks are in beadroll-git's
+//! `commands::sync_repo_damage`.
 
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::PathBuf;
 
 use beadroll_test_support::{Json, Machine, Sandbox, git, parse_json};
 
-/// `setUp`: machine a's tracker holds issue x and is published; machine b has synced it. Also x's
+/// Machine a's tracker holds issue x and is published; machine b has synced it. Also x's
 /// key.
 fn set_up(sandbox: &Sandbox) -> (Machine, Machine, String) {
     let a = Machine::new(sandbox, "a");
@@ -92,8 +91,8 @@ fn sync_rebuilds_a_damaged_sync_repo_once_and_info_lists_the_copy() {
     assert!(again.get("sync_repo_rebuilt").is_none(), "{again:?}");
 }
 
-/// A claim sets a damaged sync.git aside and makes it again as a sync does, and claims through the
-/// new one; `info` lists the one copy kept (the CLI half of the Python test).
+/// A claim rebuilds a damaged sync repository and succeeds through the replacement; `info` lists
+/// the one copy set aside.
 #[test]
 fn a_claim_rebuilds_too_and_damage_twice_in_one_command_is_reported() {
     let sandbox = crate::sandbox();

@@ -1,5 +1,5 @@
-//! Where the files that take git's output are made: Python's `tempfile.gettempdir()`, which
-//! `run_git`'s `TemporaryFile` uses, found by the same search the first time git is about to run.
+//! The temporary directory for files that capture git's output, selected before the first git
+//! invocation.
 
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
@@ -14,13 +14,12 @@ use beadroll_core::text::repr_str;
 
 use crate::commands::Failure;
 
-/// How many names Python tries in one directory before it gives up on it (`os.TMP_MAX`, at least).
+/// The number of candidate filenames tried before giving up on a directory.
 const NAMES: usize = 10_000;
 
-/// The first usable temporary directory, as Python's `_get_default_tempdir` finds it: `TMPDIR`,
-/// `TEMP` and `TMP` when set, then `/tmp`, `/var/tmp` and `/usr/tmp`, then the working directory;
-/// usable when a new file can be created, written and removed there. None usable is Python's
-/// `FileNotFoundError`.
+/// The first usable temporary directory: `TMPDIR`, `TEMP` and `TMP` when set, then `/tmp`,
+/// `/var/tmp` and `/usr/tmp`, then the working directory. A directory is usable when a new file
+/// can be created, written and removed there. Returns an error if no candidate is usable.
 pub(crate) fn temporary_directory(
     vars: &BTreeMap<OsString, OsString>,
     cwd: Option<&Path>,
@@ -81,8 +80,8 @@ fn usable(dir: &Path) -> bool {
     false
 }
 
-/// `os.path.abspath(path)`: absolute from `cwd`, `.` and `..` resolved and repeated slashes folded,
-/// lexically (two leading slashes stay two, as in `posixpath.normpath`).
+/// Makes `path` absolute from `cwd`, resolving `.` and `..` and folding repeated slashes
+/// lexically. Two leading slashes stay two.
 fn abspath(path: &OsStr, cwd: Option<&Path>) -> PathBuf {
     let bytes = path.as_bytes();
     let joined: Vec<u8> = if bytes.starts_with(b"/") {
@@ -122,7 +121,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn paths_are_made_absolute_as_python_makes_them() {
+    fn absolute_paths_normalize_dot_components_and_separators() {
         let cwd = Some(Path::new("/w/x"));
         assert_eq!(
             abspath(OsStr::new("t/../u//v/."), cwd),

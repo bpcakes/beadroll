@@ -1,6 +1,5 @@
-//! What the protocol tests share: a machine's store opened in this process, the actor Python's tests
-//! act as there, the command bodies they run through `coordinated`, and the file handshake of the
-//! `pause-until` failpoint.
+//! Shared protocol fixtures: in-process stores and actors, coordinated command bodies and
+//! pause-until handshakes.
 
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
@@ -37,8 +36,7 @@ pub(crate) fn settings(machine: &Machine, vars: &[(&str, &str)]) -> Arc<Settings
     Arc::new(settings.expect("the machine's settings"))
 }
 
-/// `machine`'s store opened in this process, as Python's tests open it under the machine's
-/// environment (`Workspace(id, None, origin, {})`), with `vars` set besides.
+/// Opens the machine's store in-process with its environment plus vars.
 pub(crate) fn workspace(machine: &Machine, origin: &Path, vars: &[(&str, &str)]) -> Workspace {
     let store = machine.store();
     let id = store
@@ -49,7 +47,7 @@ pub(crate) fn workspace(machine: &Machine, origin: &Path, vars: &[(&str, &str)])
     Workspace::new(settings(machine, vars), id, None, origin, Object::new()).expect("the store")
 }
 
-/// The actor `bead` detects on `machine`, which Python's tests act as in process.
+/// The actor detected on the machine.
 pub(crate) fn actor(machine: &Machine) -> Actor {
     let thread = format!("{}-thread-0001", machine.name());
     Actor::writable(json!({"agent": "codex", "thread": thread}))
@@ -80,15 +78,13 @@ pub(crate) fn comments(issue: &Json) -> Vec<String> {
     comments.iter().map(|c| text(&c["text"])).collect()
 }
 
-/// The receipt `bead` writes for a command (Python's `command_signature`): `asked` is its whole
-/// parsed command line, as `bead` builds it.
+/// The receipt signature for the complete parsed command namespace in asked.
 fn signature(actor: &Actor, asked: Json, request: Json) -> String {
     let receipt = json!({"actor": (actor.value.clone()), "args": asked, "request": request});
     write(&receipt, Format::SORTED_ASCII).expect("a receipt")
 }
 
-/// Python's `claim_builder` for `key`, on the path the tests take: the claim, its generation one
-/// more than the issue's last.
+/// Builds a claim for key with generation one greater than the issue's last.
 pub(crate) fn claim(tx: &mut Tx<'_>, mode: Mode, key: &str) -> Result<Mode, Error> {
     let st = tx.state()?.clone();
     let issue = st
@@ -111,8 +107,8 @@ pub(crate) fn claim_command(ws: &Workspace, actor: &Actor, key: &str) -> Result<
     })
 }
 
-/// `bead update KEY --claim --title TITLE`, with `--add-label LABEL` when given, by `actor`
-/// (Python's `cmd_update` when it claims): the claim and the edits land together or not at all.
+/// A claiming title update, optionally adding a label. The actor's claim and edits land together
+/// or not at all.
 pub(crate) fn claiming_update(
     ws: &Workspace,
     actor: &Actor,

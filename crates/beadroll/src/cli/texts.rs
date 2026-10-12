@@ -1,7 +1,7 @@
-//! The texts bead prints verbatim, copied from Python's `cli.py`: the overview (`OVERVIEW`), shown
-//! for `bead`, `bead -h` and `bead --help`; the workflow `bead prime` prints (`PRIME`, its
-//! `{context}` filled in); and the snippet `bead onboard` prints for an agent instructions file
-//! (`ONBOARD`), which this repository's `AGENTS.md` holds.
+//! The texts bead prints verbatim: the overview (`OVERVIEW`) for `bead`, `bead -h` and `bead
+//! --help`; the workflow (`PRIME`, with `{context}` filled in) for `bead prime`; and the agent
+//! instructions snippet (`ONBOARD`) for `bead onboard`, also held in this repository's
+//! `AGENTS.md`.
 
 /// The overview of every command.
 pub(crate) const OVERVIEW: &str = "\

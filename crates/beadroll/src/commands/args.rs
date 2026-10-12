@@ -1,6 +1,6 @@
-//! Command-line text as Python holds it: `surrogateescape` keeps the bytes that are not UTF-8 as
-//! lone surrogates, which match no key, status or name, print as `?`, and fail only when an event
-//! carrying them is encoded. Here they stand as U+FFFD with a flag that fails where Python would.
+//! Command-line text with validity tracked separately. Bytes that are not UTF-8 match no key,
+//! status or name, print as `?`, and fail only when an event carrying them is encoded. They are
+//! represented here by U+FFFD and a flag, preserving that validation order.
 
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStrExt as _;
@@ -13,9 +13,8 @@ use beadroll_core::text::{is_space, repr_bytes};
 
 use super::{Failure, parse_priority, read_utf8, resolve};
 
-/// Command-line text as Python's `str` of it reads, and whether it is valid UTF-8. Python keeps
-/// bytes that are not as lone surrogates, which match no key, status or name and fail only when
-/// written; here they stand as U+FFFD, and `false` says to fail where Python would.
+/// Command-line text and its UTF-8 validity. Invalid bytes are represented by U+FFFD and a false
+/// flag; they match no key, status or name and cause a write to fail when encoded.
 pub(crate) fn arg_text(value: &OsStr) -> (String, bool) {
     match value.to_str() {
         Some(text) => (text.to_owned(), true),
@@ -37,8 +36,8 @@ pub(crate) fn arg_texts(values: &[OsString]) -> (Vec<String>, bool) {
     (texts, valid)
 }
 
-/// What an event will carry, and whether command-line text in it is not valid UTF-8: Python
-/// finds that out only when it encodes the event, after every other check ([`encodable`]).
+/// An event payload and whether it contains command-line text that is not valid UTF-8. Encoding
+/// checks validity after all other validation ([`encodable`]).
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Payload {
     pub(crate) values: Object,
@@ -61,9 +60,8 @@ impl Payload {
     }
 }
 
-/// Python's `encode_events` of an event just emitted: text from the command line that is not
-/// valid UTF-8 fails it, once every other check has passed. The transaction it fails writes
-/// nothing.
+/// Checks that an emitted event can be encoded: command-line text that is not valid UTF-8 fails
+/// after all other validation. A failed transaction writes nothing.
 pub(crate) fn encodable(valid: bool) -> Result<(), Failure> {
     if valid {
         return Ok(());
@@ -71,8 +69,8 @@ pub(crate) fn encodable(valid: bool) -> Result<(), Failure> {
     Err(Failure::new(Code::Validation, "text is not valid UTF-8"))
 }
 
-/// Python's `split_list` of command-line texts: each comma-separated item, stripped, empty ones
-/// dropped, with bytes that are not UTF-8 kept as they came.
+/// Comma-separated command-line items, trimmed, with empty items dropped and bytes that are not
+/// UTF-8 preserved.
 pub(crate) fn split_args(values: &[OsString]) -> Vec<OsString> {
     values
         .iter()
@@ -83,8 +81,8 @@ pub(crate) fn split_args(values: &[OsString]) -> Vec<OsString> {
         .collect()
 }
 
-/// `text.strip()` of command-line bytes: Python's whitespace off either end, a byte that is not
-/// UTF-8 being none.
+/// Command-line bytes without Unicode whitespace or separators U+001C to U+001F at either end.
+/// Bytes that are not UTF-8 are not whitespace.
 fn strip_arg(data: &[u8]) -> &[u8] {
     let mut units: Vec<(usize, usize, Option<char>)> = Vec::new();
     let mut at = 0;
@@ -130,8 +128,7 @@ pub(crate) fn rpartition(spec: &OsStr, sep: u8) -> (&OsStr, &OsStr) {
     }
 }
 
-/// The issue a command-line key names; one that is not UTF-8 names none, as its lone surrogates
-/// name none in Python.
+/// The issue a command-line key names; a key that is not UTF-8 names none.
 pub(crate) fn resolve_arg<'s>(st: &'s State, key: &OsStr) -> Result<&'s Issue, Failure> {
     match key.to_str() {
         Some(key) => resolve(st, key),
@@ -143,7 +140,7 @@ pub(crate) fn resolve_arg<'s>(st: &'s State, key: &OsStr) -> Result<&'s Issue, F
     }
 }
 
-/// A priority given on the command line (`parse_priority` of Python's `str` of it).
+/// A priority supplied on the command line.
 pub(crate) fn parse_priority_arg(value: &OsStr) -> Result<i64, Failure> {
     match value.to_str() {
         Some(value) => parse_priority(value),
@@ -154,7 +151,7 @@ pub(crate) fn parse_priority_arg(value: &OsStr) -> Result<i64, Failure> {
     }
 }
 
-/// The content flags `create` and `update` share (Python's `content_flags`), as given.
+/// The content flags shared by `create` and `update`, as given.
 #[derive(Default)]
 pub(crate) struct ContentArgs {
     pub(crate) description: Option<OsString>,
@@ -171,8 +168,8 @@ pub(crate) struct ContentArgs {
     pub(crate) parent: Option<OsString>,
 }
 
-/// The fields given (Python's `field_args`): texts first, then priority, type, estimate and status.
-/// A priority or status that cannot be is refused here; text that is not UTF-8 when the event is
+/// The supplied fields: texts first, then priority, type, estimate and status. An invalid
+/// priority or status is refused here; text that is not UTF-8 is refused when the event is
 /// written ([`Payload`]).
 pub(crate) fn field_args(title: Option<&OsStr>, flags: &ContentArgs) -> Result<Payload, Failure> {
     let mut fields = Payload::new();

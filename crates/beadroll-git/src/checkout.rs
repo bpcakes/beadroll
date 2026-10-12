@@ -1,20 +1,12 @@
-//! What the checkout's git says about where bead runs, asked as few times as it can be
-//! (`docs/RUST-PORT.md` Appendix B).
+//! Checkout facts with minimal git invocations (`docs/RUST-PORT.md` Appendix B). One combined
+//! rev-parse obtains the repository top, common directory and object format once per process.
+//! Split answers only when unambiguous, preserving each standalone call's output; otherwise ask
+//! each fact separately when needed. These immutable facts use the first query's environment.
 //!
-//! Python runs one `rev-parse` for each of the repository's top, its common directory and its
-//! object format. Here one `rev-parse` asks all three, once a process, and each answer is cut back
-//! to what the single call prints. When the combined `rev-parse` fails (a bare repository, none at
-//! all), or prints what cannot be cut apart with certainty, each fact is asked on its own when it
-//! is needed, as Python asks it, so every failure answers exactly as before. These answers are the
-//! environment's of the first question: a process asks in one, and none of them changes while it
-//! runs.
-//!
-//! What can change while bead runs is asked when Python asks it, by Python's own call, and never
-//! kept: origin's URLs each time the workspace is found ([`Checkout::origin_urls`], beside the
-//! combined `rev-parse` the first time), the transport settings each time a link is made
-//! ([`crate::transport_settings`]), and where the caller works, HEAD and its branch, each time a
-//! transaction starts ([`head_and_branch`]): a `git config` or a `git checkout` while bead waits
-//! for the store lock is what the command then goes by.
+//! Mutable configuration is never cached: read origin URLs whenever finding the workspace,
+//! transport settings whenever creating a link, and HEAD and branch whenever starting a
+//! transaction under the store lock. Configuration and checkout changes while waiting therefore
+//! affect the command.
 
 use std::sync::OnceLock;
 
@@ -24,11 +16,10 @@ use crate::runner::{Env, Output};
 /// The keys that hold origin's URLs (`git config --get-regexp`).
 pub const ORIGIN_KEYS: &str = r"^remote\.origin\.(push)?url$";
 
-/// Python's question for origin's URLs, without `--null`.
+/// The git configuration query for origin URLs, without `--null`.
 const ORIGIN_ARGS: [&str; 3] = ["config", "--get-regexp", ORIGIN_KEYS];
 
-/// One question about the checkout that does not change while bead runs, as Python asks it with
-/// `git rev-parse`.
+/// An immutable checkout fact queried through git rev-parse.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Fact {
     /// `--show-toplevel`: the top of the working tree.
@@ -43,7 +34,7 @@ impl Fact {
     /// Every fact, in the order the combined `rev-parse` prints them.
     const ALL: [Fact; 3] = [Fact::Toplevel, Fact::CommonDir, Fact::ObjectFormat];
 
-    /// The arguments Python gives git for this fact alone.
+    /// Arguments for querying this fact alone.
     pub fn args(self) -> &'static [&'static str] {
         match self {
             Fact::Toplevel => &["rev-parse", "--show-toplevel"],
@@ -67,9 +58,8 @@ pub struct Checkout {
 }
 
 impl Checkout {
-    /// What `git config --get-regexp` prints for [`ORIGIN_KEYS`] in `env`, asked now: Python asks
-    /// it each time it finds the workspace. The first time, the combined `rev-parse` runs beside
-    /// it: finding the workspace needs both, and neither waits for the other.
+    /// Queries ORIGIN_KEYS with git config whenever the workspace is found. The first query runs
+    /// beside the combined rev-parse; neither waits for the other.
     pub fn origin_urls(&self, env: &Env) -> Result<Output, Error> {
         let origin = env.git(ORIGIN_ARGS);
         if self.combined.get().is_some() {
@@ -139,8 +129,8 @@ fn answer_lines(answer: Result<Output, Error>) -> Option<Vec<Vec<u8>>> {
     Some(text.split(|b| *b == b'\n').map(<[u8]>::to_vec).collect())
 }
 
-/// What git answers when Python's `capture_where` asks where the caller works: `rev-parse HEAD`
-/// and, only when that succeeded, `rev-parse --abbrev-ref HEAD`, each as its own call prints it.
+/// HEAD and branch from `rev-parse HEAD` followed, only on success, by `rev-parse --abbrev-ref
+/// HEAD`, retaining each command's output.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HeadAnswers {
     /// `rev-parse HEAD`: the commit checked out.
@@ -150,16 +140,14 @@ pub struct HeadAnswers {
     pub branch: Option<Output>,
 }
 
-/// Python's two questions at once: HEAD's full name, then its branch.
+/// HEAD's full object name followed by its branch, queried together.
 const HEAD_ARGS: [&str; 4] = ["rev-parse", "HEAD", "--abbrev-ref", "HEAD"];
 
-/// Where the caller works, asked of the checkout's git in `env` now, never kept: Python asks it
-/// when each transaction starts, after the store lock is taken and again in each round of an
-/// ownership command, and a `git checkout` in between is what an event's `where` records. One
-/// `rev-parse HEAD --abbrev-ref HEAD` answers both when its two lines can only be what they stand
-/// for: HEAD's full name (40 or 64 lower-case hex digits), then a branch. Anything else (no commit
-/// yet, a branch name git finds ambiguous and prints nothing for, no repository) asks Python's two
-/// calls, in its order.
+/// Reads HEAD and branch afresh when a transaction starts under the store lock, including every
+/// ownership round. A combined `rev-parse HEAD --abbrev-ref HEAD` is used only when its lines are
+/// unambiguous: a 40- or 64-digit lowercase hex object name, then branch. Otherwise fall back to
+/// the separate queries in order, covering unborn HEAD, ambiguous branch names and absent
+/// repositories.
 pub fn head_and_branch(env: &Env) -> Result<HeadAnswers, Error> {
     if let Some([head, branch]) = answer_lines(env.git(HEAD_ARGS).run()).as_deref() {
         let full_name = matches!(head.len(), 40 | 64)
@@ -257,7 +245,7 @@ mod tests {
     }
 
     #[test]
-    fn head_and_branch_answer_as_pythons_two_calls_each_time_they_are_asked() {
+    fn head_and_branch_match_separate_git_calls_and_refresh_each_time() {
         let root = tempfile::tempdir().unwrap();
         for (name, env) in checkouts(root.path()) {
             let head = env.git(["rev-parse", "HEAD"]).run().unwrap();
@@ -266,8 +254,8 @@ mod tests {
                     .run()
                     .unwrap()
             });
-            let python = HeadAnswers { head, branch };
-            assert_eq!(head_and_branch(&env).unwrap(), python, "{name}");
+            let expected = HeadAnswers { head, branch };
+            assert_eq!(head_and_branch(&env).unwrap(), expected, "{name}");
             // one rev-parse answers both wherever its two lines are certain
             let combined = answer_lines(env.git(HEAD_ARGS).run()).is_some_and(|l| l.len() == 2);
             let certain = matches!(name, "committed" | "detached" | "sha256");
@@ -282,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn origin_and_transport_settings_are_pythons_calls_asked_each_time() {
+    fn origin_and_transport_settings_match_git_and_refresh_each_time() {
         let root = tempfile::tempdir().unwrap();
         let home = root.path();
         let dir = home.join("w");
@@ -320,7 +308,7 @@ mod tests {
     }
 
     #[test]
-    fn each_fact_asks_what_python_asks() {
+    fn each_fact_uses_its_expected_git_arguments() {
         let args: Vec<&[&str]> = Fact::ALL.iter().map(|f| f.args()).collect();
         assert_eq!(
             args,

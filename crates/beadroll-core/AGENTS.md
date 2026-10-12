@@ -2,12 +2,10 @@
 
 ## Purpose
 
-`crates/beadroll-core` is the pure core of bead (`docs/RUST-PORT.md` §2.1): Python-compatible JSON
-and text semantics, event ids and times, event validation, journal settling, causal order, replay
-into state, readiness and the other queries, issue views, Beads import planning and export, key
-minting, and reading a published tree. pancake-studio links this crate alone. Phase 1
-(`roll-k2wy.2`) built it, proven equal to Python's implementation by `cargo xtask diff` until the
-cutover removed both (`python-0.1.0` has them).
+`crates/beadroll-core` is the pure core of bead (`docs/RUST-PORT.md` §2.1): strict JSON and Unicode
+text semantics, event ids and times, event validation, journal settling, causal order, replay into
+state, readiness and the other queries, issue views, Beads import planning and export, key
+minting, and reading a published tree. pancake-studio links this crate alone.
 
 ## Key entrypoints
 
@@ -18,7 +16,7 @@ cutover removed both (`python-0.1.0` has them).
   `printed_text` and `json_ascii_bytes` for bytes `surrogateescape` decodes (command lines,
   paths).
 - `src/event.rs`: `event_problem`, `payload_problem`, `write_problem`, `Field`; `src/op.rs`: `Op`,
-  an event's operation with its typed payload, and `PyInt`.
+  an event's operation with its typed payload, and `IntegerField`.
 - `src/journal.rs` (`journal/read.rs`): `read_segment`, `read_attempt`, `Journal`;
   `journal/event.rs`: `Event`, what replay reads of a record (its id, causes, writer, actor, place
   and typed operation) and the digest of its content, with the texts and values events repeat held
@@ -36,24 +34,20 @@ cutover removed both (`python-0.1.0` has them).
   `projection/codec.rs`, `projection/state_codec.rs`, `state/seen/codec.rs`: its bytes.
 - `state/seen.rs`: what every event had seen, as one clock per event over chains (each machine's
   journal, and chains of the unsequenced events of attempt files): the ancestry index behind
-  `saw`, in place of Python's per-event `seen` and `own_anc` bitsets.
+  `saw`; its tests compare it with per-event ancestry bitsets.
 - `src/query.rs`, `src/view.rs`, `src/export.rs`, `src/import.rs`, `src/published.rs`: queries,
   `brief`/`detail`/`line`, `export_records`, `read_records`/`plan_import`, `Tree`.
-- `tests/core/`: the Python suite's tests of the core, ported under the naming rule of
-  `docs/RUST-PORT.md` §4.2.
+- `tests/core/`: integration tests of replay, storage compatibility and validation.
 
 ## Edit here for X
 
-- Reading or writing JSON the way Python does (§2.3a, §5): `src/json/`.
-- What an event may hold: `src/event.rs`, with its Python message. Format 1 is frozen: a change
-  is additive, so that a bead that predates it, `python-0.1.0`'s included, sets the new thing
-  aside rather than misreads it.
+- Reading or writing JSON with the established format and diagnostics (§2.3a, §5): `src/json/`.
+- What an event may hold: `src/event.rs`, including its validation message. Format 1 is frozen:
+  changes are additive, so older versions set unfamiliar records aside rather than misread them.
 - Replay, state, readiness, cycles, views, import planning and export: the module of that name.
   A change to what replay keeps in a `State` or an `Issue` changes a projection's bytes: write and
   read it in `projection/state_codec.rs`, and bump `projection::ENCODING`.
-  Until the cutover every change was checked against Python's `model.py`, `queries.py` and
-  `commands.py` by `cargo xtask diff`; the tests in `tests/core/` and the black-box tests of the
-  `beadroll` crate are what holds it now.
+  Tests in `tests/core/` and the black-box tests of the `beadroll` crate keep these contracts.
 - Anything that reads a file, starts a process, or asks the clock or the environment: not here,
   but `beadroll-store`, `beadroll-git`, or the CLI, which passes the value down.
 
@@ -64,12 +58,12 @@ cutover removed both (`python-0.1.0` has them).
 - No panics: `unwrap`, `expect`, `panic!`, `todo!` and `unimplemented!` are denied, and replay
   is total: every input is applied or reported.
 - No `HashMap` or `HashSet` iteration order reaches an output; issues keep replay order.
-- Its answers are Python's, proven differentially against CPython until the cutover (`xtask
-  diff`, §4.2); a departure is a decided row in §5, never a drift.
+- Parsing, rendering and replay preserve the compatibility contracts in §5; a departure requires
+  a documented decision and regression coverage.
 - A projection extended is replay: `projection/tests.rs` checks every batch a store takes in on
   histories of machines that write, sync and race, and each batch it must decline.
-- `saw` answers what Python's bitsets answer: `state/seen/tests.rs` checks every pair against
-  them on hostile histories. Replay's speed and memory are measured by
+- `saw` agrees with the reference ancestry bitsets: `state/seen/tests.rs` checks every pair
+  on hostile histories. Replay's speed and memory are measured by
   `cargo run --release --package xtask -- timing --replay N [--ownership]`: at 200,000 events its
   heap peak is within the 150 MB of `docs/RUST-PORT.md` Appendix A (roll-dih8.11). Replay keeps
   no event's parsed JSON: a record is read into an `Event` once, and the state keeps what `saw`

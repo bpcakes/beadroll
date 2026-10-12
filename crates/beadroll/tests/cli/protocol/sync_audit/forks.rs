@@ -9,14 +9,14 @@ use beadroll_test_support::{Json, Machine, Run, Sandbox, code, parse_json};
 
 use super::{own_segment, remote_blob, setup, two};
 
-/// `json.dumps(row, separators=(",", ":"))`: compact, ASCII-escaped, members in their order.
+/// Compact, ASCII-escaped JSON with members in insertion order.
 const DUMPS_COMPACT: Format = Format {
     style: Style::Compact,
     ascii: true,
     sorted: false,
 };
 
-/// `shutil.copytree(from, to)`: `to`, which must not exist yet, becomes a copy of the directory
+/// `to`, which must not exist yet, becomes a copy of the directory
 /// `from`, its files' modes and times kept.
 fn copytree(from: &Path, to: &Path) {
     assert!(!to.exists(), "{} exists", to.display());
@@ -88,8 +88,7 @@ fn bug_foreign_fork_report_must_not_replace_published_journal() {
     assert_eq!(a.run(["sync", "--json"]).returncode(), 0);
 }
 
-/// `row["data"]["fields"]["title"] = title`: a row without them fails the test, as the Python
-/// test's lookup raises.
+/// Assigns `row.data.fields.title`; missing members fail the test.
 fn retitle(row: &mut Json, title: &str) {
     let fields = match row {
         Json::Object(row) => match row.get_mut("data") {
@@ -132,7 +131,7 @@ fn bug_segment_boundary_fork_must_not_erase_concurrent_title() {
         return;
     }
     let shown = twin.show(&key);
-    // `"title" in shown.get("conflicts", {})`: conflicts are an object, by field
+    // Conflicts are an object keyed by field; the title must be disputed.
     let conflicts = shown.get("conflicts").and_then(Json::as_object);
     assert!(
         conflicts.is_some_and(|conflicts| conflicts.contains_key("title")),

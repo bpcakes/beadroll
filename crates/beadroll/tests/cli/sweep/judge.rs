@@ -1,6 +1,6 @@
-//! The judge (Python's `Run.judge`): a command's answer must match what the remote holds right
-//! after it. A refusal may also rest on the acting machine's own unpublished writes, which it
-//! legitimately sees; a follow-up run beside another may rest on the remote before both.
+//! Checks that each command's answer matches the remote state immediately afterward. Refusal may
+//! also reflect the acting machine's unpublished writes; a concurrent follow-up may use the
+//! remote state before either operation.
 
 use beadroll_test_support::Json;
 
@@ -29,8 +29,8 @@ struct Facts<'a> {
     held: Option<&'a Json>,
     /// The remote's status of it.
     status: Option<&'a str>,
-    /// The issue as the acting machine sees it, with what the remote held before a concurrent
-    /// follow-up (Python's `local`).
+    /// The issue as the acting machine sees it, including the remote state before a concurrent
+    /// follow-up.
     seen: Json,
 }
 
@@ -40,7 +40,7 @@ impl Facts<'_> {
         self.step.argv.iter().any(|arg| arg == word)
     }
 
-    /// The owner of the remote's claim, as Python prints `held and held['owner']`.
+    /// The owner of the remote claim, or its empty-state representation.
     fn holder(&self) -> String {
         self.held
             .map_or_else(|| "None".to_owned(), |held| text(&held["owner"]))
@@ -53,7 +53,7 @@ impl Facts<'_> {
     }
 }
 
-/// A member as Python's f-string prints it: the text of a string, `None` for nothing.
+/// A member rendered as text, using `None` for an absent value.
 fn text(value: &Json) -> String {
     match value {
         Json::Null => "None".to_owned(),

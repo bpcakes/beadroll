@@ -5,7 +5,7 @@ mod g63_settle_keeps_line_level_integrity_reports {
 
     use beadroll_test_support::{Json, Machine};
 
-    /// The segments of a journal, `*.jsonl` in `dir`, by name: `sorted(dir.glob("*.jsonl"))`.
+    /// The segments of a journal, `*.jsonl` in `dir`, sorted by name.
     fn segments(dir: &Path) -> Vec<PathBuf> {
         let entries = std::fs::read_dir(dir).expect("a journal's folder");
         let mut found: Vec<PathBuf> = entries
@@ -48,7 +48,7 @@ mod g63_settle_keeps_line_level_integrity_reports {
             .next()
             .expect("a segment of the machine's own journal");
         let text = std::fs::read_to_string(&segment).unwrap();
-        // `splitlines()`: the events here are ASCII, with none of the other breaks Python splits at
+        // The events are ASCII and have no line separator other than newline.
         let first_event = text.lines().next().expect("an event");
         let foreign = a.store().join("events/fffffff0/000001.jsonl");
         std::fs::create_dir(foreign.parent().unwrap()).unwrap();

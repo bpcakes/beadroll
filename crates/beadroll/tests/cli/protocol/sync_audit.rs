@@ -1,9 +1,8 @@
 //! `SyncAudit`: the first independent audit (AUDIT, 2026-10-06) of the journal and its sync: an
 //! append cut short, a journal forked by a rewritten or a copied history, rotation under parallel
 //! writers, a remote that lost its history, lost acknowledgements, and git stalled in a push or a
-//! fetch. Its tests are grouped by subject in the modules below; the helpers they share, the
-//! class's own (`setUp`, `two`, `own_segment`, `remote_blob`, `wait_marker`, `git_wrapper`) among
-//! them, are here. The kill in the middle of an append and the exhaustion of a command's retries
+//! fetch. Its tests are grouped by subject in the modules below; their shared helpers are here.
+//! The kill in the middle of an append and the exhaustion of a command's retries
 //! are `rust_only`: they stop the Rust `bead` at its `append.mid` failpoint, and skip its waits
 //! between rounds at `backoff`.
 
@@ -30,13 +29,13 @@ mod stalls;
 /// fault through a failpoint.
 type Make = fn(&Sandbox, &str) -> Machine;
 
-/// The class's `setUp`: machine a, its tracker initialised with the prefix `audit`, and the key of
+/// Machine a, its tracker initialised with the prefix `audit`, and the key of
 /// the one issue it holds, `Original issue`.
 fn setup(sandbox: &Sandbox) -> (Machine, String) {
     setup_with(sandbox, Machine::new)
 }
 
-/// `setUp` with machine a made by `make`.
+/// Sets up machine a using `make`.
 fn setup_with(sandbox: &Sandbox, make: Make) -> (Machine, String) {
     let a = make(sandbox, "a");
     a.bead(["init", "--prefix", "audit"]);
@@ -68,8 +67,7 @@ fn own_segment(machine: &Machine) -> PathBuf {
     found.pop().expect("a segment of the machine's own journal")
 }
 
-/// The entries of `dir` whose names end with `.jsonl`, in directory order, as
-/// `Path.glob("*.jsonl")` lists them.
+/// The entries of `dir` whose names end with `.jsonl`, in directory order.
 fn jsonl(dir: &Path) -> Vec<PathBuf> {
     let entries = std::fs::read_dir(dir).expect("a journal's folder");
     entries
@@ -81,7 +79,7 @@ fn jsonl(dir: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// `support.git("--git-dir", origin, ARGS)`: what git ARGS printed, run on the sandbox's remote.
+/// Runs git against the sandbox remote and returns stdout.
 fn remote_git(sandbox: &Sandbox, args: &[&str]) -> String {
     let words = [OsStr::new("--git-dir"), sandbox.origin().as_os_str()];
     git(words.into_iter().chain(args.iter().map(OsStr::new)), None)
@@ -106,13 +104,10 @@ fn wait_marker(marker: &Path, worker: &mut Worker) {
     assert!(marker.exists(), "instrumented fault point was not reached");
 }
 
-/// `git_wrapper`: a `PATH` whose first `git` holds up the transport operation `action` (`push` or
-/// `fetch`) for 20 seconds, and runs every other git command unchanged. With `after`, it performs
-/// the operation first, then leaves `marker` and waits before it answers with git's status: the
-/// remote has the push, bead has not heard. Without, it leaves `marker` and waits first. The
-/// Python wrapper is a Python script that sleeps in its own process; this one is a shell script
-/// whose `sleep` is a child, left to run out its 20 seconds when bead kills git's client alone, as
-/// it does when a push times out.
+/// A git wrapper delays push or fetch for 20 seconds. With `after`, run the operation before
+/// creating `marker` and waiting, simulating a lost acknowledgement; otherwise mark and wait
+/// first. Other git calls pass through. The shell's sleep child can outlive the client killed on
+/// push timeout and finishes after its 20 seconds.
 fn git_wrapper(sandbox: &Sandbox, action: &str, marker: &Path, after: bool) -> OsString {
     let folder = sandbox.root().join(format!("wrapper-{action}"));
     std::fs::create_dir_all(&folder).unwrap();
@@ -136,7 +131,7 @@ fn git_wrapper(sandbox: &Sandbox, action: &str, marker: &Path, after: bool) -> O
     path
 }
 
-/// The git the test's `PATH` finds, as `shutil.which("git")` finds it: the one the wrapper runs.
+/// The git executable on the test's `PATH`: the one the wrapper runs.
 fn real_git() -> PathBuf {
     let path = std::env::var_os("PATH").unwrap_or_default();
     let executable = |file: &Path| {
@@ -155,12 +150,9 @@ fn quoted(path: &Path) -> String {
     format!("'{}'", text.replace('\'', r"'\''"))
 }
 
-/// A `bead` running beside the test, as `subprocess.Popen` starts one: nothing on its standard
-/// input, its output piped and read to the end on threads of their own, so that it never waits for
-/// the test to read. One started `alone` leads a process group of its own, which a kill takes
-/// whole: what `start_new_session=True` gives the Python test for `os.killpg`, without the new
-/// session, which only code between fork and exec could ask for. A worker dropped while it runs is
-/// killed and reaped: the Python tests' `finally` blocks.
+/// A bead process with empty stdin and output drained concurrently. When `alone`, it leads a
+/// separate process group so a kill reaches the whole group. Dropping a running worker kills and
+/// reaps it.
 struct Worker {
     child: Child,
     alone: bool,
@@ -196,7 +188,7 @@ impl Worker {
         self.child.try_wait().expect("the worker's status")
     }
 
-    /// SIGKILL to its process group when it was started alone (`os.killpg`), else to it (`kill()`).
+    /// Sends SIGKILL to its process group when started alone, or to the process otherwise.
     fn kill(&self) -> rustix::io::Result<()> {
         let pid = Pid::from_child(&self.child);
         if self.alone {
@@ -206,9 +198,8 @@ impl Worker {
         }
     }
 
-    /// `communicate(timeout)`: waits for it to end and for the end of its output, and returns what
-    /// it printed. Not done within `timeout`, the test fails, as `TimeoutExpired` fails the Python
-    /// test; without one, it waits as long as that takes.
+    /// Waits for process and output completion, returning captured output. Exceeding `timeout`
+    /// fails the test; without a timeout, waits indefinitely.
     fn communicate(&mut self, timeout: Option<Duration>) -> Run {
         let until = timeout.map(|timeout| Instant::now() + timeout);
         let status = loop {

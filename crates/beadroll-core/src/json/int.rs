@@ -1,12 +1,11 @@
-//! Integers as Python holds them: exact at any size, within the 4,300 decimal digits Python 3.11 and
-//! later read and write by default (`docs/RUST-PORT.md` §2.3a, §5 row 2).
+//! Exact integers with a 4,300-digit decimal read/write limit (`docs/RUST-PORT.md` §2.3a, §5 row
+//! 2).
 
 use std::cmp::Ordering;
 use std::fmt;
 
-/// The most decimal digits an integer may have, a minus sign not counted: Python's default
-/// (`sys.int_info.default_max_str_digits`). A longer integer token is unreadable JSON, and a writer
-/// refuses one built in memory.
+/// Maximum decimal digits, excluding the minus sign. Longer JSON tokens are unreadable; writers
+/// also refuse oversized integers constructed in memory.
 pub const MAX_DIGITS: usize = 4300;
 
 /// An integer, exact whatever its size. Within `i64` it is a machine integer; beyond, its sign and
@@ -88,7 +87,7 @@ impl Int {
         }
     }
 
-    /// This integer plus one, as Python's `n + 1`.
+    /// This integer plus one, exactly.
     pub fn plus_one(&self) -> Int {
         if let Repr::Small(value) = &self.0
             && let Some(next) = value.checked_add(1)
@@ -103,7 +102,7 @@ impl Int {
         }
     }
 
-    /// This integer plus `other`, exactly (Python's `a + b`).
+    /// This integer plus `other`, exactly.
     pub fn add(&self, other: &Int) -> Int {
         if let (Repr::Small(a), Repr::Small(b)) = (&self.0, &other.0)
             && let Some(sum) = a.checked_add(*b)
@@ -124,14 +123,14 @@ impl Int {
         }
     }
 
-    /// This integer minus `other`, exactly (Python's `a - b`).
+    /// This integer minus `other`, exactly.
     pub fn sub(&self, other: &Int) -> Int {
         let (negative, digits) = other.sign_and_digits();
         self.add(&Int::from_parts(!negative, &digits))
     }
 
-    /// The integer part of `value`, toward zero, exactly (Python's `int(value)` of a float); `None`
-    /// for NaN or an infinity, which Python refuses.
+    /// The exact integer part of the finite float `value`, truncated toward zero. Returns `None`
+    /// for NaN or infinity.
     pub fn from_f64(value: f64) -> Option<Int> {
         if !value.is_finite() {
             return None;
@@ -168,8 +167,7 @@ impl Int {
         }
     }
 
-    /// Python's `format(n, "0{width}d")`: the digits zero-padded after the sign to `width`
-    /// characters.
+    /// Digits zero-padded after the sign to a total width of `width` characters.
     pub fn zero_padded(&self, width: usize) -> String {
         let (negative, digits) = self.sign_and_digits();
         let sign = if negative { "-" } else { "" };
@@ -320,7 +318,7 @@ mod tests {
     }
 
     #[test]
-    fn integers_read_as_python_reads_them() {
+    fn integers_parse_exact_values_and_enforce_the_digit_limit() {
         assert_eq!(int("-0"), Int::from(0));
         assert_eq!(int("-0").to_string(), "0");
         assert_eq!(int("9223372036854775807").as_i64(), Some(i64::MAX));
@@ -388,7 +386,7 @@ mod tests {
 
     #[test]
     fn floats_truncate_exactly() {
-        // Python: int(1e300), int(-1.5), int(2.0**70)
+        // Exact truncations of 1e300, -1.5 and 2 raised to the power 70.
         let big = "1000000000000000052504760255204420248704468581108159154915854115511802457988908195786371375080447864043704443832883878176942523235360430575644792184786706982848387200926575803737830233794788090059368953234970799945081119038967640880074652742780142494579258788820056842838115669472196386865459400540160";
         assert_eq!(Int::from_f64(1e300).unwrap().to_string(), big);
         assert_eq!(Int::from_f64(-1.5), Some(Int::from(-1)));

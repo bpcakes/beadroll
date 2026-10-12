@@ -1,7 +1,6 @@
-//! G11: the text a server hook prints, which git relays as `remote:` lines, never decides how a
-//! push came out; git's own status line for the ref does (`docs/FINDINGS.md`). The class's other
-//! test, a claiming edit rebuilt over a later observed edit, runs bead in-process with a pause
-//! between publish rounds, and is ported with that failpoint.
+//! G11: server hook output relayed as `remote:` lines must not determine the push outcome; git's
+//! status for the ref does. A second test pauses between publish rounds to check that an accepted
+//! claiming edit is not rebuilt over a later edit.
 
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
@@ -57,7 +56,7 @@ mod g11_server_hook_text_does_not_decide_the_push_outcome {
     use super::{install_post_receive, remote_head};
     use crate::hardening::gate::{Gate, beside};
 
-    /// The class's `setUp`: machine `g11` (made by `make`) has initialised tracker `ex`, created
+    /// Machine `g11` (made by `make`) has initialised tracker `ex`, created
     /// the issue `one` and synced. Returns the machine and the issue's key.
     fn set_up(sandbox: &Sandbox, make: fn(&Sandbox, &str) -> Machine) -> (Machine, String) {
         let a = make(sandbox, "g11");
@@ -100,8 +99,7 @@ mod g11_server_hook_text_does_not_decide_the_push_outcome {
         );
     }
 
-    /// Every event in the files under `dir` whose names hold `.json` (`rglob("*.json*")`), each
-    /// line of them read as JSON, as the Python test reads them.
+    /// Every JSON line in files under `dir` whose names contain `.json`.
     fn events_under(dir: &Path, found: &mut Vec<Json>) {
         for entry in std::fs::read_dir(dir).unwrap() {
             let path = entry.unwrap().path();
@@ -119,17 +117,10 @@ mod g11_server_hook_text_does_not_decide_the_push_outcome {
         }
     }
 
-    /// G11: the same misclassification loses an update. The accepted `update --claim --title` is
-    /// dropped as refused and rebuilt after the retry sleep; meanwhile another machine saw the
-    /// accepted title and changed it, and the rebuilt attempt sets the old title again on top of
-    /// that later edit.
-    ///
-    /// Replaces `G11_ServerHookTextDoesNotDecideThePushOutcome`'s
-    /// `test_applied_claiming_edit_is_not_rebuilt_over_a_later_observed_edit`, which runs
-    /// `cmd_update` in process with `time.sleep` patched for the whole command, its first call
-    /// running machine b; here `backoff@always=pause-until(...)` stops every wait between rounds
-    /// at a gate, the first until b has run, any later one passing it open. A push recognised as
-    /// accepted has no second round, and b never runs, as in Python.
+    /// G11: misclassifying an accepted `update --claim --title` as refused can replay it over a
+    /// later edit. Pause each retry wait with `backoff@always=pause-until(...)`; at the first
+    /// wait, machine b observes and changes the title. Later waits pass through the open gate.
+    /// Correctly recognising acceptance causes no second round, so b never runs.
     #[test]
     fn applied_claiming_edit_is_not_rebuilt_over_a_later_observed_edit() {
         let sandbox = crate::sandbox();

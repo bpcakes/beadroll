@@ -9,7 +9,7 @@ mod g24_renamed_repository_loses_its_tracker {
 
     use beadroll_test_support::{Json, Machine, Sandbox, code, git, parse_json};
 
-    /// `path` as the text git and bead are given, as Python's `str(path)` gives it.
+    /// The path as text passed to git and bead.
     fn text(path: &Path) -> &str {
         path.to_str().expect("a UTF-8 path")
     }
@@ -20,7 +20,7 @@ mod g24_renamed_repository_loses_its_tracker {
         result["id"].as_str().expect("an id").to_owned()
     }
 
-    /// The class's `setUp` up to the move: machine a publishes its tracker (prefix `rn`), which
+    /// Before the move, machine a publishes its tracker (prefix `rn`), which
     /// holds one issue, `one`; the issue's key.
     fn set_up(sandbox: &Sandbox) -> (Machine, String) {
         let a = Machine::new(sandbox, "a");
@@ -30,7 +30,7 @@ mod g24_renamed_repository_loses_its_tracker {
         (a, issue)
     }
 
-    /// The rest of `setUp`: the repository moves, `origin.git` to `renamed.git`, and new clones use
+    /// The repository moves, `origin.git` to `renamed.git`, and new clones use
     /// the new URL, which this returns.
     fn move_repository(sandbox: &Sandbox) -> PathBuf {
         let renamed = sandbox.root().join("renamed.git");
@@ -38,9 +38,8 @@ mod g24_renamed_repository_loses_its_tracker {
         renamed
     }
 
-    /// `machine`'s checkout made again as a fresh clone of `origin`, as `support.Machine` clones
-    /// it once `box.origin` names the moved repository. Test support clones every checkout from
-    /// `origin.git`, so the machine was made while that was still there.
+    /// Reclones the machine's checkout from the moved origin. The machine was initially created
+    /// while the sandbox's original remote still existed.
     fn fresh_clone(machine: &Machine, origin: &Path) {
         std::fs::remove_dir_all(machine.checkout()).expect("the machine's first clone");
         git(

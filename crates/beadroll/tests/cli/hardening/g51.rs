@@ -4,15 +4,15 @@
 
 use beadroll_test_support::{Run, parse_json};
 
-/// `_g51_code`: the error code a failed `--json` call reported; `TRACEBACK` when bead crashed
-/// instead (a Python traceback, a Rust panic or a fatal signal), and `None` when it did neither.
+/// A failed JSON call's error code; `TRACEBACK` for a crash (traceback, panic or fatal signal),
+/// or `None` for neither.
 fn g51_code(run: &Run) -> Option<String> {
     let document = parse_json(&run.stderr).ok();
     let code = document.and_then(|document| document["error"]["code"].as_str().map(str::to_owned));
     code.or_else(|| run.crashed().then(|| "TRACEBACK".to_owned()))
 }
 
-/// The first `count` characters of `text`: Python's `text[:count]`.
+/// The first `count` Unicode scalar values of `text`.
 fn head(text: &str, count: usize) -> String {
     text.chars().take(count).collect()
 }
@@ -24,7 +24,7 @@ mod g51_unusable_tracked_config_is_an_error {
 
     use super::{g51_code, head};
 
-    /// `setUp`: machine `g51`, whose checkout tracks `{"workspace": "w-tracked"}` in
+    /// Machine `g51`, whose checkout tracks `{"workspace": "w-tracked"}` in
     /// `.beadroll.json`, with a tracker (prefix `ex`) holding one issue; the config's path.
     fn set_up(sandbox: &Sandbox) -> (Machine, PathBuf) {
         let a = Machine::new(sandbox, "g51");

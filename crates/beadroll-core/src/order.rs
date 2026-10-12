@@ -1,5 +1,4 @@
-//! The order replay applies events in (Python's `effective_deps` and `causal_order`): every event
-//! after its causes, ties broken by id.
+//! Causal replay order: each event follows its causes, with ties broken by id.
 
 use std::cmp::Reverse;
 use std::collections::{BTreeSet, BinaryHeap};
@@ -129,12 +128,11 @@ impl Order {
         self.causes.get(at)
     }
 
-    /// Kahn's algorithm over the effective causes, the ready events in a heap by id, as Python's
-    /// `heapq` takes them.
+    /// Kahn's algorithm over effective causes, with ready events held in a heap ordered by id.
     pub(crate) fn of(journal: &Journal) -> Order {
         let events = journal.events();
         let count = events.len();
-        // Signed, as Python's counts are: a released id's causes may still count down past zero.
+        // Signed counts are needed because a released id's cause count can fall below zero.
         let mut waiting = vec![0i64; count];
         let mut causes = Lists {
             starts: Vec::with_capacity(count + 1),

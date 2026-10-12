@@ -18,7 +18,7 @@ fn lossy(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
-/// Python's bytes `\s`: ASCII whitespace, vertical tab included.
+/// ASCII whitespace, including vertical tab.
 fn space(byte: u8) -> bool {
     byte.is_ascii_whitespace() || byte == 0x0b
 }
@@ -64,7 +64,7 @@ fn git_in(env: &Env, git_dir: &Path, args: &[&str], data: Option<&[u8]>) -> Outp
     child.wait_with_output().unwrap()
 }
 
-/// What `git_in` printed, as `.stdout.decode().strip()` reads it.
+/// What `git_in` printed, decoded as UTF-8 and stripped of surrounding whitespace.
 fn printed(output: &Output) -> String {
     String::from_utf8(output.stdout.clone())
         .unwrap()
@@ -197,7 +197,9 @@ impl Tokens {
         assert!(contains(&raced.stderr, locked), "{name}: {said}");
         let rejected = contains(&raced.stderr, b"[remote rejected]");
         assert!(rejected, "{name}: {said}");
-        let stale = contains(&raced.stderr, b"(incorrect old value provided)");
+        // Supported git versions use either reason for the same server-side ref race.
+        let stale = contains(&raced.stderr, b"(incorrect old value provided)")
+            || contains(&raced.stderr, b"(failed to update ref)");
         assert!(stale, "{name}: {said}");
         assert!(bead_reads_rejected(&raced.stderr), "{name}: {said}");
     }

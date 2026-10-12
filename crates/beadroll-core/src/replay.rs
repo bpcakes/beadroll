@@ -1,11 +1,10 @@
-//! Replay: a journal folded into current state (Python's `replay`). Any machine holding the same
-//! events gets the same result. Three phases, as in Python: what every event had seen and which
-//! cannot apply at all; which claims a takeover supersedes; then each event applied in causal order.
-//! Events are taken by their index in the journal throughout, so that no phase looks an id up again.
+//! Folds a journal into deterministic state in three phases: establish ancestry and unusable
+//! events, identify claims superseded by takeovers, then apply events in causal order. Events are
+//! addressed by journal index to avoid repeated id lookups.
 //!
-//! Replay takes its journal apart (roll-dih8.11): the state keeps of each event only what `saw` and
-//! `who` read, its causes, machine and actor, and lets go of what an event applies once it has
-//! applied it, so that a journal and its state are not both held whole.
+//! Replay consumes the journal (roll-dih8.11), retaining only the ancestry, machine and actor
+//! data needed by `saw` and `who`. Applied payloads are released so the entire journal and state
+//! need not coexist.
 
 mod apply;
 
@@ -21,8 +20,7 @@ use crate::order::Order;
 use crate::state::{Integrity, KeySpace, Knowledge, Place, State, actor_label, raise, reached};
 use crate::time::event_time;
 
-/// Folds `journal` into current state. Fails only as Python's replay does, when a renamed copy can
-/// find no free key (`KEY_SPACE`).
+/// Folds `journal` into state. Returns KEY_SPACE only when a renamed duplicate has no free key.
 pub fn replay(journal: Journal) -> Result<State, KeySpace> {
     Ok(replayed(journal)?.0)
 }

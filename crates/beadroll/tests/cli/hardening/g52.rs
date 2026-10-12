@@ -1,7 +1,7 @@
 //! G52: a store directory bead cannot read, or a store path that is not a directory, is an `IO`
 //! error. Reading it as "no journal here" made readers say `NOT_INITIALIZED` ("run bead init"),
-//! `info` exit 0 with no issues, and an unreadable `claims/` turn a claimed issue ready. The class
-//! is skipped as root, whom directory modes do not stop; these tests then return at once.
+//! `info` exit 0 with no issues, and an unreadable `claims/` turn a claimed issue ready. These tests
+//! skip as root, whom directory modes do not stop, by returning at once.
 
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use beadroll_test_support::{Json, Machine, Run, parse_json};
 
-/// `@unittest.skipIf(os.geteuid() == 0, ...)`: whether the test runs as root, who ignores
+/// Whether the test runs as root, who ignores
 /// directory modes.
 fn skipped_as_root() -> bool {
     let root = rustix::process::geteuid().is_root();
@@ -19,9 +19,8 @@ fn skipped_as_root() -> bool {
     root
 }
 
-/// `_g52_error`: the code and message of a failed `--json` call, or `None` and the standard output
-/// when it succeeded; `TRACEBACK` (bead crashed: a Python traceback, a Rust panic or a fatal
-/// signal) or `UNSTRUCTURED` and the standard error when it failed without a structured error.
+/// A failed JSON call's code and message; success returns `None` and stdout. A crash returns
+/// `TRACEBACK`; an unstructured failure returns `UNSTRUCTURED`, both with stderr.
 fn g52_error(run: &Run) -> (Option<String>, String) {
     if run.returncode() == 0 {
         return (None, run.stdout.clone());
@@ -54,8 +53,8 @@ fn id(result: Option<Json>) -> String {
     result["id"].as_str().expect("an id").to_owned()
 }
 
-/// `unreadable`: `path` holds `mode` until the guard drops, then its old mode again, as the class's
-/// `addCleanup(path.chmod, old)` restores it before the sandbox goes.
+/// Gives `path` the requested mode until the guard drops, then restores its old mode before
+/// the sandbox is removed.
 struct Unreadable {
     path: PathBuf,
     old: u32,
@@ -86,8 +85,8 @@ mod g52_unreadable_store_is_io {
 
     use super::{Unreadable, g52_error, id, own_journal, skipped_as_root};
 
-    /// G52: with this machine's journal directory unreadable, `show` answers `IO` naming the
-    /// directory, not "no tracker yet: run bead init" (which every Python version said).
+    /// G52: an unreadable journal directory makes `show` report IO naming the directory, not a
+    /// missing tracker.
     #[test]
     fn g52_unlistable_own_journal_is_io_not_no_tracker() {
         if skipped_as_root() {
@@ -186,11 +185,9 @@ mod g52_unreadable_store_is_io {
         }
     }
 
-    /// G52: with `chmod 0` on the workspace store, `show` and `info` answer `IO`, not
-    /// `NOT_INITIALIZED` for `show` and exit 0 with no issues for `info`, as Python 3.14 answered
-    /// before the fix, its `Path.is_dir()` returning `False` on EACCES. D-class
-    /// (`docs/RUST-PORT.md` §4.6): the Python test ran only on Python 3.14 and later; this one runs
-    /// whichever bead is under test, skipped only as root, as the whole class is.
+    /// G52: an inaccessible workspace store makes both `show` and `info` report IO. Neither may
+    /// treat EACCES as an absent tracker. Skip under root, where chmod does not enforce this
+    /// denial.
     #[test]
     fn g52_unenterable_store_is_io_not_no_tracker() {
         if skipped_as_root() {

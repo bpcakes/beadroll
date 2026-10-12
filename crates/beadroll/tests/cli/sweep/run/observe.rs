@@ -1,5 +1,4 @@
-//! Observation (Python's `observe`, `remote` and `accepted_ids`): what every machine counts, against
-//! what the remote holds as a fresh reader sees it.
+//! Compares every machine's observations with the remote as seen by a fresh reader.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};

@@ -1,20 +1,14 @@
-//! The coordination ref on one remote, reached through a private bare repository (Python's `Link`).
-//! The pushed history holds the manifest and the journals and nothing else: no code commits are
-//! its ancestors and no code objects are reachable from it.
+//! A coordination ref reached through a private bare repository. Its history holds only manifest
+//! and journal objects, with no code commits or objects reachable.
 //!
-//! Python runs one git for each question it asks `sync.git`. A link keeps a few gits instead
-//! (`docs/RUST-PORT.md` Appendix B): a `cat-file` for every object it reads (`link/read.rs`), and
-//! a `hash-object`, a `mktree` and an `update-ref` for what it writes (`link/write.rs`). Each
-//! answer is the one the git Python runs gives, and that git is run whenever a kept one has no
-//! certain answer, so every failure reads as before. They end with the link, or when `sync.git` is
-//! set aside. The refs a fetch leaves are set by Python's own two calls, at its pace: other
-//! processes' fetches are still reading every ref then ([`Link::keep_fetched`]).
+//! A link owns persistent cat-file, hash-object, mktree and update-ref processes. Uncertain
+//! answers fall back to standalone git; processes end with the link or repository rebuild.
+//! Post-fetch refs are updated separately to reduce races with other fetches
+//! ([`Link::keep_fetched`]).
 //!
-//! A link hashes only the journal files it cannot vouch for (roll-lqjj.1): the store's memo
-//! (`beadroll_store::Memo`) remembers each file's blob for the identity the file had when it was
-//! hashed, and a publish uses a remembered blob while the file keeps that identity and the blob is
-//! sure to be in `sync.git`: this link made it, or the tree of the tip it last merged holds it at
-//! that path. The tree it publishes is the one hashing every file would make.
+//! The journal memo avoids hashing unchanged files (roll-lqjj.1). Publication reuses a remembered
+//! blob only while file identity matches and the blob is known present: this link created it or
+//! the last merged tree references it. The resulting tree is identical to hashing every file.
 
 mod asked;
 mod fetch;
@@ -103,9 +97,9 @@ pub struct Link<'a> {
 fn link_env(ws: &Workspace) -> Result<Env, Error> {
     let settings = &ws.settings;
     let carried = transport_config(&transport_settings(&settings.git)?);
-    let int = |text: &str| beadroll_core::text::py_int(text).map(|n| n.to_string());
+    let int = |text: &str| beadroll_core::text::parse_integer(text).map(|n| n.to_string());
     let rules = CountRules {
-        is_digit: &beadroll_core::text::py_isdigit,
+        is_digit: &beadroll_core::text::is_digits,
         int: &int,
     };
     let env = sync_env(&settings.git, &ws.dir.join("sync.git"), &carried, &rules)?;
@@ -140,9 +134,8 @@ pub(crate) fn defining_remote(env: &Env, name: &str, url: &OsStr, own_push_url: 
 }
 
 impl<'a> Link<'a> {
-    /// The link of `ws` to `remote`: its ref checked, its environment built from the checkout's
-    /// with the checkout's transport settings carried over, asked of git now, as Python asks them
-    /// each time it makes a link.
+    /// Builds a link to the remote after checking its ref, using checkout transport settings
+    /// queried afresh at link creation.
     pub fn new(ws: &'a Workspace, remote: &Endpoint) -> Result<Link<'a>, Error> {
         let ref_name = ws.ref_name()?;
         private_dir(&ws.dir)?;
@@ -335,10 +328,8 @@ impl<'a> Link<'a> {
         Ok(count)
     }
 
-    /// What the remote holds of this store the moment a publish went through: lines per journal
-    /// segment and one per attempt file, by path (Python's `published_counts`), a segment's lines
-    /// counted only when the memo does not know them. Kept in `meta.json` so that the unpublished
-    /// count needs no network.
+    /// Published counts by path: lines per segment and one per attempt. Use memoized line counts
+    /// where available and save counts in meta.json so unpublished state can be reported offline.
     pub fn published_counts(&mut self) -> Result<Object, Error> {
         let ws = self.ws;
         let mut counts = Object::new();
@@ -354,7 +345,7 @@ impl<'a> Link<'a> {
     }
 }
 
-/// How many lines `data` holds (Python's `data.count(b"\n")`).
+/// The number of newline bytes in `data`.
 pub(crate) fn newlines(data: &[u8]) -> usize {
     data.iter().filter(|b| **b == b'\n').count()
 }

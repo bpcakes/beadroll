@@ -1,7 +1,6 @@
-//! The handshake of the `pause-until(PATH)` failpoint (`docs/RUST-PORT.md` §4.5) with a `bead`
-//! that runs beside the test: bead touches `PATH.ready` when it reaches the point, then waits for
-//! `PATH.go`, which the test touches once it has done what that moment is for. It stands in for
-//! the Python tests' patched functions that ran another command in the middle of one in process.
+//! The `pause-until(PATH)` handshake (`docs/RUST-PORT.md` §4.5): bead touches `PATH.ready` on
+//! reaching the failpoint, then waits for the test to touch `PATH.go` after acting at that
+//! boundary.
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};

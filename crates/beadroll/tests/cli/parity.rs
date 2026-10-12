@@ -1,13 +1,7 @@
-//! What the mixed-fleet suite held the Rust bead to (`docs/RUST-PORT.md` §4.2, item 4), kept once
-//! the cutover removed the Python launcher it compared the Rust bead with. Until then Python and
-//! Rust machines shared one remote and one store, and every answer had to be Python's. Each test
-//! now runs the Rust bead alone and keeps what holds without Python: machines converge, the
-//! published tree is format 1's, sync settles pending attempts and keeps accepted receipts, a retry
-//! recognises its receipt, and hostile input never crashes bead or writes anything. Where the test
-//! was Python's answer itself, that answer is pinned here, as captured from Python 3.14's bead
-//! before the cutover (`python-0.1.0`): the receipts' bytes, the unpublished counts, and what
-//! bead says to arguments, actors and paths it reads as Python did. The help pages and the reading
-//! commands are the goldens' (`golden.rs`).
+//! Compatibility and convergence contracts: machines agree, published trees use format 1, sync
+//! settles pending attempts while keeping accepted receipts, retries recognise receipts, and
+//! hostile inputs produce errors without writes. Fixed fixtures pin receipt bytes, counts and
+//! input handling; golden tests pin help and reading commands (`docs/RUST-PORT.md` §4.2).
 
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
@@ -66,10 +60,8 @@ fn integrity(machine: &Machine) -> usize {
     st.integrity().len()
 }
 
-/// Two machines work on one tracker through one remote and converge: the same issues in full on
-/// both, the same ready set, and no integrity problem in either store, read by `bead info` or in
-/// this process. Until the cutover one machine ran Python's bead, and each implementation read the
-/// other's store as its own.
+/// Two machines sharing a remote converge on full issues, readiness and clean integrity checks,
+/// whether read through `bead info` or in-process.
 #[test]
 fn two_machines_converge() {
     let sandbox = crate::sandbox();
@@ -109,10 +101,8 @@ fn on_remote(remote: &std::path::Path, args: &[&str]) -> String {
     git(git_dir.into_iter().chain(args.iter().map(OsStr::new)), None)
 }
 
-/// The tree published on `refs/beads/journal` is the one format 1 names (§1.1), the one Python's
-/// bead published for the same store, as the mixed fleet checked byte for byte until the cutover:
-/// `manifest.json`, `{"format": 1, "workspace": ID}` with sorted keys, spaced separators and a
-/// newline, and a byte copy of each segment of each machine's journal.
+/// The format-1 published tree contains `manifest.json` with sorted keys, spaced separators and a
+/// final newline, plus byte-identical copies of every machine's journal segments.
 #[test]
 fn the_published_tree_is_format_1s() {
     let sandbox = crate::sandbox();
@@ -166,10 +156,8 @@ fn export(machine: &Machine) -> Vec<u8> {
     out.stdout
 }
 
-/// Every command that writes (imports, creates, updates, labels, dependencies added and taken
-/// back, comments, close, reopen, delete) on two machines: both export the tracker byte for byte
-/// the same, to standard output or to a file, and show the same issues. Until the cutover one
-/// machine ran Python's bead, and either implementation exported the other's store the same.
+/// Exercise every writing command across two machines. Both must show the same issues and export
+/// identical bytes to stdout or a file.
 #[test]
 fn every_write_exports_the_same_on_both_machines() {
     let sandbox = crate::sandbox();

@@ -16,7 +16,7 @@ mod g26_object_format {
     /// Variables set for a run, over the environment it starts from.
     type Env = BTreeMap<OsString, OsString>;
 
-    /// `path` as the text git and bead are given, as Python's `str(path)` gives it.
+    /// The path as text passed to git and bead.
     fn text(path: &Path) -> &str {
         path.to_str().expect("a UTF-8 path")
     }
@@ -115,7 +115,7 @@ mod g26_object_format {
     /// sync.git in SHA-256.
     fn poison(machine: &Machine, plain: &Env) {
         let path = machine.store().join("sync.git");
-        // shutil.rmtree(path, ignore_errors=True)
+        // Cleanup is best effort: the assertions above are the test's result.
         let _ = std::fs::remove_dir_all(&path);
         let args = [
             "init",

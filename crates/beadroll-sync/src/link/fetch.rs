@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Value};
-use beadroll_core::text::{repr, str_of};
+use beadroll_core::text::{repr, str_of, strip};
 use beadroll_git::{
     Hasher, IoError, Output, StoredFormat, Trees, local_damage, lost_to_other_fetch,
     remote_lacks_objects, stored_format,
@@ -98,9 +98,8 @@ impl Link<'_> {
             .run()?)
     }
 
-    /// Whether `sync.git` was made in another object format than `wanted` (Python's `rev-parse
-    /// --show-object-format` there, compared): its config's `extensions.objectformat` when that
-    /// names `wanted`, else git's own answer, a failing git meaning no.
+    /// Whether sync.git has an object format different from `wanted`. Trust a supported config
+    /// naming the wanted format; otherwise ask git. A failed query does not establish a mismatch.
     fn stored_format_differs(&self, wanted: &str) -> Result<bool, Error> {
         match stored_format(&self.git_dir) {
             StoredFormat::Absent => Ok(false),
@@ -160,7 +159,7 @@ impl Link<'_> {
         let created = self.env.git(&args).run()?;
         if !created.success() && !self.git_dir.join("HEAD").exists() {
             let said = String::from_utf8_lossy(&created.stderr);
-            return Err(Error::GitError(py_strip(&said).to_owned()));
+            return Err(Error::GitError(strip(&said).to_owned()));
         }
         Ok(())
     }
@@ -170,7 +169,7 @@ impl Link<'_> {
             return Ok(None);
         }
         let said = String::from_utf8_lossy(stderr);
-        let said = py_strip(&said);
+        let said = strip(&said);
         let (shown_ref, url) = (&self.ref_name, self.url_text());
         if remote_lacks_objects(said) {
             return Err(Error::RemoteDamaged(format!(
@@ -218,7 +217,7 @@ impl Link<'_> {
             });
         }
         let version = parsed.get("format").cloned().unwrap_or(Value::Null);
-        // true and 1.0 equal 1 in Python, but are not format 1
+        // Only integer 1 denotes format 1; boolean true and float 1.0 do not.
         if !matches!(&version, Value::Int(n) if n.as_i64() == Some(FORMAT)) {
             return Err(Error::FormatUnsupported(format!(
                 "{shown_ref} on {url} is in format {}; this version of bead reads format {FORMAT} \
@@ -244,9 +243,4 @@ fn wait_to_fetch_again(attempt: u32, failpoints: &Failpoints) {
 /// Whether a failed fetch found no coordination ref: nobody has published.
 fn found_nothing(stderr: &[u8]) -> bool {
     stderr.windows(15).any(|w| w == b"find remote ref")
-}
-
-/// Python's `str.strip()`.
-fn py_strip(text: &str) -> &str {
-    beadroll_core::text::strip(text)
 }

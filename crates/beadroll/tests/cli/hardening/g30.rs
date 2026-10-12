@@ -1,12 +1,6 @@
-//! G30 (`docs/FINDINGS.md`): JSON nested deeper than a reader parses is bounded and scoped. A
-//! journal line too deep is one integrity problem, never a crash that takes down every command; a
-//! tracked config or a published manifest too deep is a structured error; import refuses nesting
-//! that not every machine can read. The class's fourth test, a peer whose reader stops lower
-//! keeping up after a deep import elsewhere, ran bead under Python 3.12 or 3.13. It became a
-//! mixed-fleet case, Python 3.14 against Rust, whose reading ceilings differ (`docs/RUST-PORT.md`
-//! §4.6), until the cutover removed Python's launcher; what remains of it is the peer that keeps
-//! working beside a refused deep import, both machines on the one bead
-//! (`peer_keeps_working_after_a_deep_import_elsewhere`).
+//! G30: excessive JSON nesting has a bounded, scoped failure. An over-deep journal line produces
+//! one integrity problem; tracked configuration and manifests produce structured errors; import
+//! refuses records beyond the writing limit. A peer must keep working beside the refused import.
 
 mod g30_deep_json_is_bounded_and_scoped {
     use std::collections::BTreeSet;
@@ -17,7 +11,7 @@ mod g30_deep_json_is_bounded_and_scoped {
     use beadroll_core::json::{Format, Object, write};
     use beadroll_test_support::{Json, Machine, Run, Sandbox, code, json, parse_json};
 
-    /// `path` as the text bead is given, as Python's `str(path)` gives it.
+    /// The path as text passed to bead.
     fn text(path: &Path) -> &str {
         path.to_str().expect("a UTF-8 path")
     }
@@ -34,8 +28,7 @@ mod g30_deep_json_is_bounded_and_scoped {
         })
     }
 
-    /// `json.dumps({"id": KEY, "title": TITLE, **_g30_common()})[:-1]`: the record as Python
-    /// writes it, without its closing brace, for more members to follow.
+    /// The JSON record without its closing brace, so more members can be appended.
     fn head(key: &str, title: &str) -> String {
         let mut members = Object::new();
         members.insert("id".into(), Json::from(key));
@@ -53,7 +46,7 @@ mod g30_deep_json_is_bounded_and_scoped {
         format!("{}{}", "[".repeat(depth), "]".repeat(depth))
     }
 
-    /// `_g30_foreign`: nested deeper than any Python's json parser reaches.
+    /// A foreign record nested beyond the reader's limit.
     fn foreign() -> String {
         nested(1_000_000)
     }
@@ -70,7 +63,7 @@ mod g30_deep_json_is_bounded_and_scoped {
         lines.rfind(|line| !line.trim().is_empty()).unwrap_or("")
     }
 
-    /// The last `count` characters of `text`: Python's `text[-count:]`.
+    /// The last `count` Unicode scalar values of `text`.
     fn last_chars(text: &str, count: usize) -> String {
         let skip = text.chars().count().saturating_sub(count);
         text.chars().skip(skip).collect()
@@ -120,7 +113,7 @@ mod g30_deep_json_is_bounded_and_scoped {
         printed.trim().to_owned()
     }
 
-    /// The class's `setUp`: machine `g30`'s tracker (prefix `ex`) holds `ordinary work`.
+    /// Machine `g30`'s tracker (prefix `ex`) holds `ordinary work`.
     fn set_up(sandbox: &Sandbox) -> Machine {
         let m = Machine::new(sandbox, "g30");
         m.bead(["init", "--prefix", "ex"]);
@@ -212,9 +205,8 @@ mod g30_deep_json_is_bounded_and_scoped {
         assert_works(&help, "bead help beside a deep .beadroll.json");
     }
 
-    /// G30: import accepts a record nested 20,000 deep (Python 3.14 parses it, 3.12/3.13 cannot),
-    /// then every machine replays the event; a bounded depth must be refused whole with
-    /// VALIDATION.
+    /// G30: import must refuse a record nested 20,000 levels deep with VALIDATION before writing
+    /// any part of it.
     #[test]
     fn import_refuses_nesting_that_not_every_machine_can_read() {
         let sandbox = crate::sandbox();
@@ -272,11 +264,8 @@ mod g30_deep_json_is_bounded_and_scoped {
         issues.iter().map(id).collect()
     }
 
-    /// G30: after one machine tries to import a record 12,000 levels deep, refused whole, a peer
-    /// keeps working and sees what the first sees. In the Python test
-    /// (`test_peer_on_python_312_keeps_working_after_a_deep_import_elsewhere`) the peer's reader
-    /// stopped lower than the importer's, and until the cutover Python's bead and the Rust one
-    /// stood each way round.
+    /// G30: after one machine's 12,000-level import is refused, its peer keeps working and sees
+    /// the same state.
     #[test]
     fn peer_keeps_working_after_a_deep_import_elsewhere() {
         let sandbox = crate::sandbox();

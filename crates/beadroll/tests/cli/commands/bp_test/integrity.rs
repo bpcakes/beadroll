@@ -10,9 +10,8 @@ use beadroll_test_support::{Json, Machine, code, json, parse_json};
 
 use super::{column, id, length, segments, settle, two_machines};
 
-/// The version of the UUID `text`, as Python's `uuid.UUID(text).version` reads it: `None` unless
-/// it has the RFC 4122 variant. Text that is no UUID at all fails the test, as the constructor
-/// raises.
+/// The UUID version, or `None` without the RFC 4122 variant. Text that is not a UUID fails the
+/// test.
 fn uuid_version(text: &str) -> Option<u128> {
     let hex = text.replace("urn:", "").replace("uuid:", "");
     let hex = hex.trim_matches(['{', '}']).replace('-', "");
@@ -26,7 +25,7 @@ fn uuid_version(text: &str) -> Option<u128> {
     rfc_4122.then_some((value >> 76) & 0xf)
 }
 
-/// `shutil.copytree(from, to)`: `to`, which must not exist yet, becomes a copy of the directory
+/// `to`, which must not exist yet, becomes a copy of the directory
 /// `from`, its files' modes and times kept.
 fn copytree(from: &Path, to: &Path) {
     assert!(!to.exists(), "{} exists", to.display());
@@ -125,8 +124,7 @@ fn one_corrupt_event_does_not_stop_the_tracker() {
     assert_eq!(a.ready().len(), 2);
 }
 
-/// The title a `create` event gives its issue, `event["data"]["fields"]["title"]`; an event
-/// without one fails the test, as the Python test's lookup raises.
+/// The title a create event supplies at `data.fields.title`; absence fails the test.
 fn title(event: &Json) -> &Json {
     let fields = event.get("data").and_then(|data| data.get("fields"));
     let title = fields.and_then(|fields| fields.get("title"));

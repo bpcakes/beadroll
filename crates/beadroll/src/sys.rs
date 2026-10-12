@@ -1,10 +1,8 @@
-//! What bead needs from the operating system around `main`, where CPython supplied it (the first of
-//! the two audited unsafe spots, `docs/RUST-PORT.md` §2.2 and §2.3f): whether standard input was
-//! open when the process started, which Rust's runtime hides by reopening a closed descriptor on
-//! `/dev/null` before `main` runs; ignoring SIGXFSZ, so that a write past the file-size limit
-//! fails with `EFBIG` (an `IO` error) instead of killing bead (the git runner gives children the
-//! default action back); and keeping the descriptors bead was started with from the processes it
-//! starts, as Python's `subprocess` does with `close_fds=True`.
+//! Operating-system setup around `main` (`docs/RUST-PORT.md` §2.2 and §2.3f). Record whether
+//! standard input was open before the runtime can reopen a closed descriptor on `/dev/null`.
+//! Ignore SIGXFSZ so writes past the file-size limit fail with `EFBIG` instead of killing bead;
+//! the git runner restores its default action in children. Mark inherited descriptors
+//! close-on-exec so child processes receive only standard input, output and error.
 #![allow(
     unsafe_code,
     reason = "one of the two audited unsafe spots (docs/RUST-PORT.md §2.2): a constructor that runs before main, the signal disposition and descriptor flags"
@@ -12,7 +10,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-/// Whether descriptor 0 was closed when the process started (Python's `sys.stdin is None`).
+/// Whether descriptor 0 was closed when the process started.
 static STDIN_CLOSED: AtomicBool = AtomicBool::new(false);
 
 /// Records whether descriptor 0 is open. It runs as a constructor, before `main` and before the
@@ -44,8 +42,8 @@ pub(crate) fn stdin_closed() -> bool {
     STDIN_CLOSED.load(Ordering::Relaxed)
 }
 
-/// Ignores SIGXFSZ, as CPython does at start-up: a write past the file-size limit then fails with
-/// `EFBIG` instead of killing bead.
+/// Ignores SIGXFSZ so a write past the file-size limit fails with `EFBIG` instead of killing
+/// bead.
 pub(crate) fn ignore_file_size_signal() {
     // SAFETY: setting a signal's disposition to SIG_IGN installs no handler, so no code can run in
     // a signal context; it is called once, at start-up, before bead starts any thread.
@@ -54,10 +52,9 @@ pub(crate) fn ignore_file_size_signal() {
     }
 }
 
-/// Marks every descriptor bead was started with, beyond standard input, output and error,
-/// close-on-exec, so that no process bead starts inherits one: Python starts git and `ps` with
-/// `close_fds=True`, which leaves them only the standard three. Descriptors bead opens itself are
-/// close-on-exec already. Called once, at start-up, before bead starts any thread or process.
+/// Marks inherited descriptors beyond standard input, output and error close-on-exec. Descriptors
+/// bead opens itself already have that flag. Called once at startup, before any thread or process
+/// is started.
 pub(crate) fn keep_inherited_descriptors_from_children() {
     if mark_all_from_three() {
         return;
@@ -69,8 +66,8 @@ pub(crate) fn keep_inherited_descriptors_from_children() {
     mark(numbers);
 }
 
-/// Marks every descriptor from 3 up close-on-exec at once, where the kernel can (Linux 5.11 and
-/// later, as CPython's `close_range` closes them): whether it did.
+/// Marks all descriptors from 3 upward close-on-exec at once where the kernel supports it (Linux
+/// 5.11 and later). Returns whether it succeeded.
 fn mark_all_from_three() -> bool {
     cfg_select! {
         target_os = "linux" => {
@@ -98,9 +95,9 @@ fn listed(dirs: &[&str]) -> Option<Vec<i32>> {
     })
 }
 
-/// Every descriptor number from 3 below `limit`, the soft limit on open files (CPython's
-/// `sysconf(_SC_OPEN_MAX)`), when the open ones cannot be listed; with none, Linux's default
-/// ceiling on descriptors. No descriptor is numbered beyond the soft limit.
+/// Descriptor numbers from 3 up to the soft limit on open files, used when open descriptors
+/// cannot be listed. Without a limit, use Linux's default ceiling. No descriptor is numbered
+/// beyond the soft limit.
 fn every_number(limit: Option<u64>) -> std::ops::Range<i32> {
     let limit = limit.unwrap_or(1 << 20);
     3..i32::try_from(limit).unwrap_or(i32::MAX)

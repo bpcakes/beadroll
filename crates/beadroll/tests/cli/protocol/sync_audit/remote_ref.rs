@@ -12,11 +12,9 @@ use beadroll_test_support::{Machine, Sandbox, code};
 
 use super::{quoted, real_git, remote_git, setup, setup_with, two_with};
 
-/// A `PATH` whose first `git` moves the remote's journal on right before every push: a commit on
-/// the tip of the sandbox remote's `refs/beads/journal` with the same tree, written there directly
-/// under the identity `audit`, and a line in `counter`; then the real push runs, which the remote
-/// rejects as no fast-forward. Every other git command runs unchanged. Python's wrapper is a Python
-/// script; this one is a shell script that does the same.
+/// A git wrapper advances the remote journal before every push by adding a commit with the same
+/// tree under identity `audit`, recording each in `counter`. The real push then fails as
+/// non-fast-forward. Other git commands run unchanged.
 fn hostile_git(sandbox: &Sandbox, counter: &Path) -> OsString {
     let folder = sandbox.root().join("hostile-git");
     std::fs::create_dir(&folder).unwrap();
@@ -93,14 +91,10 @@ fn manifest_missing_and_foreign_workspace_are_refused() {
     assert_eq!(code(&elsewhere.run()), "WORKSPACE_MISMATCH");
 }
 
-/// The remote moves on before every push: a claim, then a sync, each give up after exactly
-/// [`ROUNDS`] rounds (twelve, as Python's, until roll-lqjj.7) with SYNC_CONFLICT and leave the
-/// tracker as it was, the edit made offline kept and no claim, nothing partial. Once the remote
-/// holds still, a sync publishes everything and nothing is left waiting.
-///
-/// Python's driver replaces `time.sleep` for the whole run so that no round waits for the next;
-/// here the Rust `bead` (`rust_only`) skips every wait between rounds, `backoff@always=skip`, and
-/// the pushes the hostile `git` counts, [`ROUNDS`] a command, show that every round ran.
+/// Advance the remote before every push. Claim and sync must each exhaust exactly ROUNDS attempts
+/// with SYNC_CONFLICT, preserving offline edits and leaving no partial claim. Skip backoff with
+/// `backoff@always=skip` and count pushes to prove each round ran. Once the remote stops
+/// changing, sync must publish all remaining work.
 #[test]
 fn retry_exhaustion_retains_local_edits_and_no_partial_claim() {
     let sandbox = crate::sandbox();

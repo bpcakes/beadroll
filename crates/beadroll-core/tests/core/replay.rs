@@ -1,5 +1,5 @@
-//! `tests/test_replay.py`: causality, registers, labels and dependencies, quarantine, validation
-//! and cycles, checked in-process on journals and the state they replay to.
+//! In-process replay checks for causality, registers, labels, dependencies, quarantine,
+//! validation and cycles.
 
 mod port_alignment;
 mod replay_audit_bugs;

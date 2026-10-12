@@ -1,11 +1,9 @@
-//! Fault injection (`docs/RUST-PORT.md` §2.3g, §4.5): failpoints compiled into every build and
-//! activated by `BEAD_FAILPOINTS`, parsed once when bead starts. A spec is `point=action`, which
-//! fires at the point's first hit, `point@nth(k)=action` at its hit `k`, or `point@always=action` at
-//! every hit in the process; specs are separated by `;`. A spec that cannot be read, a point bead
-//! does not have, an action the point cannot take or a second spec for one point is a `CONFIG`
-//! error, so that a test never passes because its fault silently failed to fire. The crash hooks
-//! Python has, `BEAD_TEST_CRASH_BEFORE_PUSH` and `BEAD_TEST_CRASH_AFTER_PUSH`, are
-//! `ownership.before-publish=exit(98)` and `ownership.after-publish-ok=exit(99)`.
+//! Fault injection compiled into every build and configured once through BEAD_FAILPOINTS
+//! (`docs/RUST-PORT.md` §4.5). Semicolon-separated specs are `point=action`,
+//! `point@nth(k)=action` or `point@always=action`. Malformed specs, unknown points, unsupported
+//! actions and duplicate points return CONFIG, preventing silent test passes. Crash hooks
+//! BEAD_TEST_CRASH_BEFORE_PUSH and BEAD_TEST_CRASH_AFTER_PUSH select
+//! ownership.before-publish=exit(98) and ownership.after-publish-ok=exit(99).
 
 use std::collections::BTreeMap;
 use std::ffi::OsStr;
@@ -57,7 +55,7 @@ pub enum Selector {
 /// What a failpoint does when it fires.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Action {
-    /// Exit with this status, as Python's `os._exit` does.
+    /// Exits immediately with this status, without unwinding.
     Exit(i32),
     /// A real `SIGKILL`.
     Sigkill,

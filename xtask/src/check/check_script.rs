@@ -1,8 +1,5 @@
-//! `test_check.CheckScript`, ported (`docs/RUST-PORT.md` §4.6): the check must fail when a selected
-//! step fails, shown with synthetic results only. A fake `cargo` and a fake `python3` stand in for
-//! the real ones, as the Python test put a fake `python3` on `PATH`: every test step exits with the
-//! module status, and the round trip prints its details and summary, and a diagnostic on standard
-//! error when it fails.
+//! The baseline fails if a selected step fails. Fake cargo and python3 executables produce
+//! synthetic statuses, round-trip details and summaries, and failure diagnostics on stderr.
 
 use std::os::unix::fs::PermissionsExt as _;
 

@@ -11,7 +11,7 @@ mod g27_unfinished_sync_git {
 
     use beadroll_test_support::{Machine, Sandbox};
 
-    /// The class's `setUp`: machines a and b, each run of theirs under a scratch global git config
+    /// Machines a and b, each run of theirs under a scratch global git config
     /// (never the developer's); a publishes its tracker (prefix `wd`) holding one issue, whose key
     /// this returns with them.
     fn set_up(sandbox: &Sandbox) -> (Machine, Machine, String) {

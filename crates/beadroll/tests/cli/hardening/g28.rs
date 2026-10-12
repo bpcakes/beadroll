@@ -1,12 +1,7 @@
-//! G28 (`docs/FINDINGS.md`): load_pending removes a pending attempt and its receipt whenever
-//! read_attempt returns [], which it also does for an OSError, and view()/info call it without the
-//! store lock. So a plain reader (show, list, ready, prime, export, info) deletes an accepted
-//! attempt it cannot read (EACCES), or one a locked sync confirmed between the reader's glob of
-//! pending/ and its read; the retry of the accepted command is then no longer recognised. On a
-//! read-only store, the same sweep makes every read fail with IO as soon as one junk pending file
-//! exists. A command the remote accepted and bead never heard back from is the crash hook's
-//! (`BEAD_TEST_CRASH_AFTER_PUSH`, exit 99), which both binaries have. The reader caught between
-//! listing pending/ and reading it needs the `pending.after-list` failpoint, and is ported with it.
+//! G28: reading pending attempts must not delete an accepted attempt or its receipt when the file
+//! is unreadable, nor race a locked sync that confirms it after listing. A read-only store with a
+//! junk pending file must remain readable. The lost acknowledgement uses
+//! `BEAD_TEST_CRASH_AFTER_PUSH` (exit 99); the listing race uses `pending.after-list`.
 
 mod g28_only_the_lock_holder_sweeps_pending {
     use std::fs::Permissions;
@@ -33,7 +28,7 @@ mod g28_only_the_lock_holder_sweeps_pending {
         result["id"].as_str().expect("an id").to_owned()
     }
 
-    /// The class's `setUp`: machine a (made by `make`) publishes its tracker (prefix `gp`), which
+    /// Machine a (made by `make`) publishes its tracker (prefix `gp`), which
     /// holds the issue `x`; its key.
     fn set_up(sandbox: &Sandbox, make: fn(&Sandbox, &str) -> Machine) -> (Machine, String) {
         let a = make(sandbox, "a");
@@ -43,8 +38,8 @@ mod g28_only_the_lock_holder_sweeps_pending {
         (a, key)
     }
 
-    /// The entries of `dir` whose names end with `suffix`, in directory order, as
-    /// `Path.glob("*SUFFIX")` lists them: none when `dir` is not there.
+    /// The entries of `dir` whose names end with `suffix`, in directory order:
+    /// none when `dir` is not there.
     fn glob(dir: &Path, suffix: &str) -> Vec<PathBuf> {
         let Ok(entries) = std::fs::read_dir(dir) else {
             return Vec::new();
@@ -104,7 +99,7 @@ mod g28_only_the_lock_holder_sweeps_pending {
     #[test]
     fn g28_reader_keeps_an_unreadable_accepted_attempt_and_its_receipt() {
         if !unprivileged() {
-            return; // root reads a mode-000 file: the Python test skips
+            return; // root can read a mode-000 file
         }
         let sandbox = crate::sandbox();
         let (a, key) = set_up(&sandbox, Machine::new);
@@ -135,15 +130,9 @@ mod g28_only_the_lock_holder_sweeps_pending {
         }
     }
 
-    /// G28: a reader between its glob of pending/ and its read, while a locked sync confirms the
-    /// attempt (removing the pending file, keeping the receipt), deletes that receipt.
-    ///
-    /// Replaces `G28_OnlyTheLockHolderSweepsPending`'s
-    /// `test_g28_reader_racing_a_sync_keeps_the_receipt_the_sync_kept`, which patches
-    /// `pending_files` so that the reader's first listing that finds an attempt runs the sync
-    /// before the reader reads it; here `pending.after-list=pause-until(...)` stops the reader (a
-    /// `show` on its own thread) at its first listing, which finds the attempt, while the sync
-    /// runs.
+    /// G28: a reader racing confirmation must retain the receipt kept by sync. Pause show at its
+    /// first pending.after-list, after listing the attempt but before reading it, while a locked
+    /// sync confirms it and removes the pending file.
     #[test]
     fn g28_reader_racing_a_sync_keeps_the_receipt_the_sync_kept() {
         let sandbox = crate::sandbox();
@@ -186,7 +175,7 @@ mod g28_only_the_lock_holder_sweeps_pending {
     #[test]
     fn g28_readers_work_on_a_read_only_store_with_a_junk_pending_file() {
         if !unprivileged() {
-            return; // root writes a read-only store: the Python test skips
+            return; // root can write a read-only store
         }
         let sandbox = crate::sandbox();
         let (a, key) = set_up(&sandbox, Machine::new);
@@ -220,7 +209,7 @@ mod g28_only_the_lock_holder_sweeps_pending {
     #[test]
     fn g28_locked_sweep_does_not_delete_an_unreadable_attempt() {
         if !unprivileged() {
-            return; // root reads a mode-000 file: the Python test skips
+            return; // root can read a mode-000 file
         }
         let sandbox = crate::sandbox();
         let (a, _) = set_up(&sandbox, Machine::new);

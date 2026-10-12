@@ -1,6 +1,5 @@
-//! `UnitTest`, from the author's suite (`test_poc.py`): payloads that cannot apply are scoped and
-//! reported, and an event in a format this bead does not read changes nothing. Its two tests of
-//! remote URLs and the coordination ref need git or the store and land with Phase 2a.
+//! Unusable payloads are scoped and reported; unknown event formats change nothing. Remote URL
+//! and coordination-ref checks live in git and store tests.
 
 use beadroll_core::event::Field;
 use beadroll_core::replay::replay;
@@ -11,8 +10,8 @@ use beadroll_test_support::{Json, json};
 /// the event itself).
 type Spec<'a> = (&'a str, &'a str, &'a [usize], Json, Option<usize>);
 
-/// The events of the specs, with ids in the order they are made (the Python helper's `uuid7()`,
-/// a few milliseconds apart), and the ids.
+/// Events built from the specs, with monotonically ordered ids a few milliseconds apart, and
+/// their ids.
 fn events(specs: Vec<Spec<'_>>) -> (Vec<Json>, Vec<String>) {
     let mut events = Vec::new();
     let mut ids: Vec<String> = Vec::new();
@@ -81,8 +80,7 @@ fn malformed_payloads_are_scoped_and_reported() {
 
 #[test]
 fn an_ignored_newer_format_event_cannot_change_ownership() {
-    // A takeover in a format this bead does not know. Python edits the journal's copies after
-    // adding them; here the events are written that way to begin with.
+    // A takeover encoded in a format this bead does not know.
     let claim = id(3);
     let (mut all, ids) = events(vec![
         ("init", "a", &[], json!({"prefix": "ex"}), None),

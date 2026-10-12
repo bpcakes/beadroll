@@ -1,5 +1,4 @@
-//! Where the caller works (Python's `capture_where`, `merged_into_default` and `object_format`):
-//! the checkout's branch and commit, and what its repository knows about them.
+//! The caller's checkout branch, commit and related repository facts.
 
 use beadroll_core::json::{Object, Value};
 use beadroll_git::{Fact, HeadAnswers, head_and_branch};
@@ -8,10 +7,9 @@ use crate::error::Error;
 use crate::settings::Settings;
 use crate::workspace::Workspace;
 
-/// The branch and commit the caller is working on (`{"branch", "commit"}`), when the command runs
-/// inside a checkout and the tracked configuration does not turn this off (`"where": false`). A
-/// detached HEAD, or a branch name that is not UTF-8, records no branch. Asked of git each time, as
-/// Python asks when each transaction starts: a branch switched meanwhile is the one recorded.
+/// Records branch and commit when inside a checkout unless tracked configuration sets `where` to
+/// false. Detached HEAD or a branch name that is not UTF-8 records no branch. Query git at every
+/// transaction start so intervening branch changes are observed.
 pub fn capture_where(ws: &Workspace) -> Result<Option<Value>, Error> {
     if ws.config.get("where") == Some(&Value::Bool(false)) {
         return Ok(None);

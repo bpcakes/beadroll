@@ -1,6 +1,5 @@
-//! What a store keeps between commands, read as Python's bead read it: pending attempts and their
-//! receipts, which a sync settles (`docs/RUST-PORT.md` §2.3j), a pending file that is not an
-//! attempt, and the published counts in `meta.json`.
+//! State retained between commands: pending attempts and receipts settled by sync, invalid
+//! pending files and published counts in `meta.json` (`docs/RUST-PORT.md` §2.3j).
 
 use std::os::unix::fs::PermissionsExt as _;
 
@@ -32,10 +31,8 @@ fn settled(machine: &Machine, key: &str) -> (usize, usize, bool) {
     )
 }
 
-/// A pending attempt and its receipt that a claim left when it stopped (accepted with its
-/// acknowledgement lost, or never pushed) are settled by the next sync: confirmed, or fenced and
-/// dropped. The pending file goes; an accepted attempt's receipt stays. Until the cutover Python's
-/// bead left them and either implementation settled them.
+/// Sync settles a stopped claim's pending attempt: confirm it if accepted, otherwise fence and
+/// drop it. The pending file is removed; an accepted attempt's receipt remains.
 #[test]
 fn pending_attempts_a_stopped_claim_left_are_settled_by_sync() {
     let cases = [
@@ -96,9 +93,8 @@ fn leave_pending(ws: &Workspace, actor: &Value, issue: &str, publish: bool) {
     .unwrap();
 }
 
-/// A pending attempt and receipt written in this process as the ownership protocol writes them
-/// (receipt, then attempt, then the push whose answer is lost, or no push) are settled by the
-/// binary's sync. Until the cutover Python's sync settled them the same way.
+/// Sync settles an attempt and receipt written through the in-process ownership APIs, both after
+/// a lost push acknowledgement and when no push occurred.
 #[test]
 fn pending_attempts_left_in_process_are_settled_by_sync() {
     for (publish, expected) in [(true, (0, 1, true)), (false, (0, 0, false))] {
@@ -148,11 +144,10 @@ fn an_unremovable_invalid_pending_file_is_an_io_error() {
     assert!(junk.exists(), "the file stays until it can be removed");
 }
 
-/// What Python's bead answered `list` with, captured before the cutover, when `meta.json` held
-/// each of these as the published count of the store's one segment, which holds three events: the
-/// unpublished count, absent when nothing is. Python reads a count as `int(value or 0)` and
-/// subtracts with its exact arithmetic, so a count far below zero leaves a huge unpublished count,
-/// and a float or a string is read as `int()` reads it.
+/// Expected unpublished counts for a three-event segment with unusual published counts. Falsy
+/// values read as zero; integer arithmetic is exact; floats truncate and strings parse as
+/// integers. A large negative published count therefore produces a large unpublished count. Omit
+/// the count when nothing is unpublished.
 const COUNTS: [(&str, Option<&str>); 10] = [
     ("-9223372036854775808", Some("9223372036854775811")),
     (
@@ -186,12 +181,10 @@ fn published_three(machine: &Machine) -> (std::path::PathBuf, String, String, St
     (meta, original, segment, published)
 }
 
-/// What `meta.json` records as published may be anything a hand left there: bead reads each count
-/// as Python's bead did and reports the unpublished count Python reported, in both output modes.
-/// The mixed fleet compared the two implementations here, but with the odd count written before
-/// the real one, whose last value won: the counts were never read.
+/// Hand-edited published counts in `meta.json` must be interpreted consistently and produce the
+/// expected unpublished warning in both output modes.
 #[test]
-fn unpublished_counts_read_meta_json_as_python_did() {
+fn unpublished_counts_handle_metadata_json_shapes() {
     let sandbox = crate::sandbox();
     let r = Machine::new(&sandbox, "r");
     let (meta, original, segment, published) = published_three(&r);
@@ -214,9 +207,8 @@ fn unpublished_counts_read_meta_json_as_python_did() {
     }
 }
 
-/// A published count that is not a number is an IO error naming it, where Python's bead died with
-/// a traceback (`docs/RUST-PORT.md` §5 row 26, `REVIEWING.md` §2): the Rust bead's own answer, so
-/// the machine runs the binary this package builds whatever `BEAD_UNDER_TEST` says.
+/// A nonnumeric published count returns IO naming the value. This build-specific error check uses
+/// the package's binary regardless of BEAD_UNDER_TEST.
 #[test]
 fn a_published_count_that_is_not_a_number_is_an_io_error() {
     let sandbox = crate::sandbox();

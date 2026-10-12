@@ -1,6 +1,5 @@
-//! The environment `sync.git`'s git runs in (Python's `Link.__init__`): the caller's environment
-//! without anything that locates the caller's repository, bead's own identity, the checkout's
-//! transport settings carried over, and `sync.git`'s own maintenance settings last.
+//! The sync repository's git environment: remove caller repository-location variables, set bead's
+//! identity, carry checkout transport settings and apply sync maintenance settings last.
 
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
@@ -72,20 +71,17 @@ pub fn with_settings(env: &Env, settings: &[(String, OsString)]) -> Env {
     env.with_vars(vars)
 }
 
-/// What `git config --null --get-regexp` prints for [`TRANSPORT_KEYS`] in the checkout that `env`
-/// runs git in, asked now: Python's `transport_config` asks it each time a link is made, so a
-/// setting changed while bead waited for the store lock is the one the link uses.
+/// Reads TRANSPORT_KEYS with git config when each link is created, so changes made while waiting
+/// for the store lock are observed.
 pub fn transport_settings(env: &Env) -> Result<Output, Error> {
     env.git(["config", "--null", "--get-regexp", TRANSPORT_KEYS])
         .run()
 }
 
-/// How git reaches remotes from the checkout (Python's `transport_config`), from what `git config
-/// --null --get-regexp` printed for [`TRANSPORT_KEYS`] there ([`transport_settings`]): the caller's
-/// repository configuration, its includeIf includes and the global ones, which `sync.git`
-/// (elsewhere, with no remotes) does not all see. Given at command-line precedence in this order,
-/// these make `sync.git`'s git reach the remote as the caller's does: lists that can be reset are
-/// emptied first, so nothing is sent twice. A key without a value means `true`.
+/// Checkout transport configuration, including repository, conditional-include and global
+/// settings. The private sync repository cannot see all of these itself. Apply them at
+/// command-line precedence in order, clearing resettable lists first to avoid duplicate
+/// transmission. A valueless key means true.
 pub fn transport_config(proc: &Output) -> Vec<(String, String)> {
     let mut rows = Vec::new();
     if proc.success() {
@@ -110,22 +106,22 @@ pub fn transport_config(proc: &Output) -> Vec<(String, String)> {
     resets
 }
 
-/// How `GIT_CONFIG_COUNT` is read, as Python reads it: `str.isdigit()` decides whether the caller
-/// has settings of its own, and `int()` reads their number.
+/// Rules for the caller's GIT_CONFIG_COUNT: a digit predicate determines whether settings are
+/// present, then exact integer parsing reads their count.
 pub struct CountRules<'a> {
-    /// Python's `value.isdigit()`.
+    /// Whether a string is nonempty and consists entirely of Unicode digits.
     pub is_digit: &'a dyn Fn(&str) -> bool,
-    /// Python's `str(int(value))`, exact, or `None` where `int()` raises.
+    /// The exact parsed integer as decimal text, or `None` when unreadable.
     pub int: &'a dyn Fn(&str) -> Option<String>,
 }
 
-/// The environment of `sync.git` at `git_dir`, from the checkout's: the repository-location
-/// variables gone; `GIT_DIR`, no terminal prompt, the C locale and bead's identity set; `carried`
-/// (the checkout's transport settings) after any `GIT_CONFIG_COUNT` settings the caller has; the
-/// default ssh command only when the caller names none; [`SYNC_REPO_CONFIG`] last, so it wins.
+/// Builds the sync environment from the checkout's: remove repository-location variables; set
+/// GIT_DIR, disabled prompting, C locale and bead identity; append carried transport settings
+/// after the caller's GIT_CONFIG_COUNT entries; set default SSH only when absent; apply
+/// SYNC_REPO_CONFIG last.
 ///
-/// A `GIT_CONFIG_COUNT` that `int()` cannot read, where Python reads it, fails here with
-/// [`Error::ConfigCount`], where Python dies with a traceback (`docs/RUST-PORT.md` §5 row 26).
+/// An unreadable count returns [`Error::ConfigCount`] rather than silently dropping caller
+/// settings.
 pub fn sync_env(
     checkout: &Env,
     git_dir: &Path,
@@ -158,7 +154,7 @@ pub fn sync_env(
     }
     let count_var = OsStr::new("GIT_CONFIG_COUNT");
     let refused = |value: &OsStr| Error::ConfigCount(value.to_string_lossy().into_owned());
-    // `int(count) if count.isdigit() else 0`
+    // Only an all-digit count is parsed; missing or non-digit counts mean zero.
     let count: Decimal = match env.get(count_var) {
         Some(value) => match value.to_str().filter(|text| (rules.is_digit)(text)) {
             Some(text) => Decimal::read(&(rules.int)(text).ok_or_else(|| refused(value))?),
@@ -181,7 +177,7 @@ pub fn sync_env(
     {
         env.insert("GIT_SSH_COMMAND".into(), DEFAULT_SSH_COMMAND.into());
     }
-    // `int(env.get("GIT_CONFIG_COUNT") or 0)`.
+    // A missing or empty count means zero; other values must parse as integers.
     let count: Decimal = match env.get(count_var) {
         None => Decimal::zero(),
         Some(value) if value.is_empty() => Decimal::zero(),
@@ -201,7 +197,7 @@ pub fn sync_env(
     Ok(checkout.with_vars(env))
 }
 
-/// A whole number as Python's `str(int)` writes it, to which `enumerate` adds the index exactly.
+/// An exact decimal count to which enumeration indices are added.
 struct Decimal {
     negative: bool,
     /// Decimal digits, no leading zeros (`0` alone for zero).
@@ -216,7 +212,7 @@ impl Decimal {
         }
     }
 
-    /// `text` as `str(int(...))` gives it: an optional minus, then digits.
+    /// `text` as a canonical decimal integer: an optional minus, then digits.
     fn read(text: &str) -> Decimal {
         let (negative, digits) = match text.strip_prefix('-') {
             Some(rest) => (true, rest),
@@ -308,7 +304,7 @@ fn trimmed(digits: Vec<u8>) -> String {
 mod tests {
     use super::*;
 
-    /// Python's rules, for ASCII text: enough for these cases.
+    /// ASCII numeric rules sufficient for these test cases.
     const RULES: CountRules<'static> = CountRules {
         is_digit: &|text| !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit()),
         int: &|text| text.trim().parse::<i128>().ok().map(|n| n.to_string()),
@@ -380,7 +376,7 @@ mod tests {
     }
 
     #[test]
-    fn a_count_that_is_not_a_number_is_an_error_and_spaces_are_read_as_python_reads_them() {
+    fn counts_reject_invalid_numbers_and_accept_surrounding_whitespace() {
         let env = sync_env(
             &checkout(&[("GIT_CONFIG_COUNT", " 2 ")]),
             Path::new("/s"),

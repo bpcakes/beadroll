@@ -42,8 +42,8 @@ mod g21_remote_resolved_against_the_cwd {
 
     use super::{beads_refs, nested_repository};
 
-    /// `json.dumps({"workspace": "named-ws", "remote": "upstream"}) + "\n"`: a tracked config
-    /// that names the remote `upstream`.
+    /// A tracked configuration naming workspace named-ws and remote upstream, as JSON with a
+    /// final newline.
     fn named_config() -> String {
         let config = json!({"workspace": "named-ws", "remote": "upstream"});
         write(&config, Format::ASCII).expect("a config") + "\n"
@@ -104,7 +104,7 @@ mod g21_remote_resolved_against_the_cwd {
     #[test]
     fn relative_remote_given_to_init_in_a_subdirectory_works_from_the_top() {
         let sandbox = crate::sandbox();
-        // Python's subtests, named as `str(tracked)` names them
+        // Separate cases for tracked and untracked workspaces.
         for (tracked, shown) in [(true, "True"), (false, "False")] {
             let tracker = sandbox.bare(&format!("tracker-{shown}.git"));
             let machine = Machine::new(&sandbox, &format!("typed-{shown}"));

@@ -8,7 +8,7 @@
 mod g49_local_state_shapes_traceback {
     use beadroll_test_support::{Machine, Run, Sandbox, parse_json};
 
-    /// The class's `setUp`: machine a, its tracker initialised with the prefix `ex` and published,
+    /// Machine a, its tracker initialised with the prefix `ex` and published,
     /// and the key of the one issue it holds.
     fn setup(sandbox: &Sandbox) -> (Machine, String) {
         let a = Machine::new(sandbox, "a");

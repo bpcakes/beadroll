@@ -16,7 +16,7 @@ use super::{Worker, jsonl, own_segment, setup, setup_with, wait_marker};
 /// The unterminated fragment an append interrupted mid-line leaves at the end of a segment.
 const TORN: &[u8] = br#"{"v":1,"id":"interrupted"#;
 
-/// Appends `bytes` to the file `path`, as `path.open("ab").write(bytes)` does.
+/// Appends `bytes` to the file `path`.
 fn append(path: &Path, bytes: &[u8]) {
     let mut file = OpenOptions::new().append(true).open(path).unwrap();
     file.write_all(bytes).unwrap();
@@ -27,7 +27,7 @@ fn size(path: &Path) -> u64 {
     std::fs::metadata(path).unwrap().len()
 }
 
-/// `sorted((store / "events").glob("*/*.jsonl"))`: every segment of every journal in `store`, in
+/// Every segment of every journal in `store`, in
 /// order of their paths.
 fn segments(store: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
@@ -136,13 +136,10 @@ fn bug_torn_tail_followed_by_successful_append_must_stay_readable() {
     assert_eq!(parse_json(&read.stdout).unwrap()["total"].as_i64(), Some(2));
 }
 
-/// A write the file-size limit (RLIMIT_FSIZE) cuts short fails, leaving a partial line that fills
-/// the segment exactly to the limit; the issue still reads as it was, and the next write and the
-/// reads after it are clean. The Python test sets the limit in `preexec_fn`, at the segment's size
-/// plus 100 bytes. Safe Rust cannot run code between fork and exec, so here the shell that then
-/// execs bead sets it with `ulimit -f`, which counts in blocks of the shell's size, measured
-/// first: the limit is the first whole number of blocks at least 100 bytes past the segment's end,
-/// still far short of the line the 100,000-byte description makes.
+/// A file-size limit cuts an append short, leaving a partial line while the previous issue
+/// remains readable. The next write repairs it and subsequent reads succeed. A shell sets `ulimit
+/// -f` before execing bead; measure its block units and choose the first whole-block limit at
+/// least 100 bytes past the segment, well below the 100,000-byte description.
 #[test]
 fn bug_file_size_limit_partial_append_must_not_poison_next_write() {
     let sandbox = crate::sandbox();
@@ -181,15 +178,10 @@ fn bug_file_size_limit_partial_append_must_not_poison_next_write() {
     );
 }
 
-/// A writer killed in the middle of an append, part of its line in the segment, leaves the journal
-/// readable: a reader meanwhile, and after the kill, sees the issue as it was; the next write
-/// succeeds, and so does the sync after it.
-///
-/// Python's driver writes the first 100 bytes of each append, flushes them and sleeps there until
-/// the test kills it with its process group. Here the Rust `bead` (`rust_only`) writes and flushes
-/// the first half of the line and stops at `append.mid` (`append.mid@always=pause-until(PATH)`,
-/// every append of the run, as the driver's), and the test kills it the same way, which ends it by
-/// SIGKILL (-9). Stopped there, it holds the store lock while the reader runs, as Python's does.
+/// Killing a writer during append must leave the journal readable and allow the next write and
+/// sync. Pause every append at `append.mid`, after half the line is written and flushed, then
+/// kill the process group. The paused writer still holds the store lock while a reader checks the
+/// prior issue state.
 #[test]
 fn bug_kill_mid_append_then_successful_write_must_stay_readable() {
     let sandbox = crate::sandbox();

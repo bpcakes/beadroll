@@ -190,7 +190,7 @@ mod v3_foreign_folder_default_quote_path {
         output.stdout
     }
 
-    /// `bytes` without the whitespace around it: Python's `bytes.strip()`.
+    /// Bytes without surrounding ASCII whitespace.
     fn strip(bytes: &[u8]) -> Vec<u8> {
         bytes.trim_ascii().to_vec()
     }
@@ -273,7 +273,7 @@ mod v3_foreign_folder_default_quote_path {
         git(bare, &[b"update-ref", reference, &commit], None);
     }
 
-    /// The names in `dir`, as bytes, sorted: `sorted(os.listdir(os.fsencode(dir)))`.
+    /// The names in `dir`, as bytes, sorted.
     fn listing(dir: &Path) -> Vec<Vec<u8>> {
         let mut names: Vec<Vec<u8>> = std::fs::read_dir(dir)
             .expect("the events folder")

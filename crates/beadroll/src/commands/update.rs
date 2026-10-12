@@ -202,7 +202,7 @@ fn check(
 /// Emits the changes to one issue: its fields, its status, its labels and its parent.
 #[allow(
     clippy::too_many_arguments,
-    reason = "Python's edits closure reads all of these from its scope"
+    reason = "The edit transaction needs the request, actor and field changes together"
 )]
 fn edit(
     tx: &mut Tx<'_>,

@@ -295,7 +295,7 @@ fn is_object_name(text: &str) -> bool {
     matches!(text.len(), 40 | 64) && text.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
-/// How many lines `data` holds (Python's `data.count(b"\n")`).
+/// The number of newline bytes in `data`.
 fn newlines(data: &[u8]) -> usize {
     data.iter().filter(|b| **b == b'\n').count()
 }

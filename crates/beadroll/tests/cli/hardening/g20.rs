@@ -60,11 +60,9 @@ fn utf8(path: &Path) -> &str {
     path.to_str().expect("a UTF-8 path")
 }
 
-/// `_g20_serve`: smart HTTP (`git http-backend`) for the repositories under a root on 127.0.0.1,
-/// served as Python's `ThreadingHTTPServer` serves it: HTTP/1.0, one request a connection, each on
-/// a thread of its own. Every request must carry the Authorization header `token` exactly once and
-/// the X-Guard header exactly once; otherwise 401. Dropping it stops it, as the Python test's
-/// cleanups shut its server down.
+/// Smart HTTP through `git http-backend` for repositories under a root on 127.0.0.1. Uses
+/// HTTP/1.0 with one request per connection and thread. Require the Authorization header `token`
+/// and X-Guard exactly once each, otherwise return 401. Dropping the server stops it.
 struct Server {
     address: SocketAddr,
     stop: Arc<AtomicBool>,
@@ -185,8 +183,8 @@ fn answer(stream: TcpStream, root: &Path, token: &str) -> io::Result<()> {
     writer.shutdown(Shutdown::Write)
 }
 
-/// The header lines of a request, up to the blank line, as Python's `http.client` parses them: the
-/// name as it came, the value without the blanks that lead it.
+/// Request headers up to the blank line, retaining each name and trimming leading whitespace from
+/// its value.
 fn read_headers(reader: &mut impl BufRead) -> io::Result<Vec<(String, String)>> {
     let mut headers = Vec::new();
     loop {
@@ -211,7 +209,7 @@ fn all<'h>(headers: &'h [(String, String)], name: &str) -> Vec<&'h str> {
     named.map(|(_, value)| value.as_str()).collect()
 }
 
-/// A body sent in chunks, read as the Python handler reads it.
+/// Reads a body sent with chunked transfer encoding.
 fn chunked(reader: &mut impl BufRead) -> io::Result<Vec<u8>> {
     let mut body = Vec::new();
     loop {
@@ -247,7 +245,7 @@ fn run_with_input(mut command: Command, input: Vec<u8>) -> io::Result<Vec<u8>> {
     Ok(output.stdout)
 }
 
-/// The reason phrase Python's `send_response` sends with `status`.
+/// The HTTP reason phrase for `status`.
 fn reason(status: u16) -> &'static str {
     match status {
         200 => "OK",

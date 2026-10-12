@@ -1,5 +1,4 @@
-//! A workspace: one tracker's store on this machine, the configuration a checkout gives it, and the
-//! coordination remote it uses (Python's `Workspace`).
+//! One tracker's store on this machine, its checkout configuration and coordination remote.
 
 use std::cell::Cell;
 use std::ffi::{OsStr, OsString};
@@ -227,8 +226,7 @@ fn opaque_token(id: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
 }
 
-/// Now, as `last_sync` records it: UTC to the second (Python's `stamp()`). The real clock, never a
-/// shifted one.
+/// The real current time in UTC to the second for last_sync, unaffected by event-clock shifts.
 pub fn stamp() -> String {
     let seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -236,7 +234,7 @@ pub fn stamp() -> String {
     beadroll_core::time::utc_stamp(seconds)
 }
 
-/// `<path>` relative to the workspace's directory, as Python's `str(p.relative_to(ws.dir))`.
+/// The path relative to the workspace directory.
 pub fn relative(ws: &Workspace, path: &Path) -> String {
     path.strip_prefix(&ws.dir)
         .unwrap_or(path)

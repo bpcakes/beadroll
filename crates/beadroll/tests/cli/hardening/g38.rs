@@ -55,7 +55,7 @@ fn with_comments(key: &str, title: &str, comments: Json) -> Json {
     record(key, title, Json::from(more))
 }
 
-/// `records` as a JSONL file's text, each line as `json.dumps(record) + "\n"` writes it.
+/// Records as spaced, ASCII-escaped JSON lines.
 fn jsonl(records: &[Json]) -> String {
     records
         .iter()

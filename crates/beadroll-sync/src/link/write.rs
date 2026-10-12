@@ -1,10 +1,7 @@
-//! Writing into `sync.git` through the link's long-lived gits (`docs/RUST-PORT.md` Appendix B):
-//! blobs through one `hash-object` between fetches, of the journal files the memo cannot vouch
-//! for; the trees of a publish through one `mktree --batch`; `refs/beads/remote` after a push
-//! through an `update-ref --stdin` transaction. Each writes what the one-shot command Python runs
-//! writes; whenever a kept git has no answer ([`beadroll_git::NoAnswer`]), that command is run
-//! instead, and its answer or failure is the one given. The refs after a fetch are Python's own two
-//! calls ([`Link::keep_fetched`]).
+//! Writes to sync.git through persistent git processes: hash-object between fetches for files the
+//! memo cannot validate, mktree per publication and update-ref transactions after pushes.
+//! Unusable answers fall back to standalone commands. Post-fetch refs use two separate updates
+//! ([`Link::keep_fetched`]).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
@@ -18,13 +15,11 @@ use super::Link;
 use crate::error::Error;
 
 impl Link<'_> {
-    /// Every local journal file as a blob, by its path in the store. A file keeps the blob the memo
-    /// remembers for it while it has the identity it was hashed at; for a tree (`for_tree`), only
-    /// when the blob is also sure to be in `sync.git`: this link made it, or the last merged tip
-    /// holds it at that path, where a blob no ref reaches may have gone with a gc. A merge only
-    /// compares the blob with the published one, which no other blob equals. Every other file is
-    /// hashed (Python's `hash-object -w --no-filters --stdin-paths`, whose failure may be damage)
-    /// and remembered. Lock held.
+    /// Local journal blobs by store path, under the lock. Reuse a memoized hash while the file
+    /// identity matches. A publication tree additionally requires the blob to exist in sync.git:
+    /// this link created it or the last merged tree references it at this path, protecting
+    /// against garbage collection. Merge comparisons need only the hash. Hash and remember other
+    /// files; failures may indicate local damage.
     pub(super) fn local_blobs(
         &mut self,
         for_tree: bool,
@@ -71,8 +66,8 @@ impl Link<'_> {
         Ok(blobs)
     }
 
-    /// The files at `paths` as blobs in `sync.git`, in order: through the link's `hash-object`,
-    /// else Python's, whose failure may be damage.
+    /// Blobs for `paths`, in order, through persistent hash-object or standalone fallback.
+    /// Failures may indicate local damage.
     fn hash_files(&mut self, paths: &[&Path]) -> Result<Vec<String>, Error> {
         match self.hasher().and_then(|hasher| hasher.hash(paths)) {
             Ok(shas) => Ok(shas),
@@ -90,8 +85,7 @@ impl Link<'_> {
         }
     }
 
-    /// `data` as a blob in `sync.git` (Python's `hash-object -w --stdin`, whose failure may be
-    /// damage).
+    /// Writes `data` as a blob using hash-object -w --stdin. Failure may indicate local damage.
     pub(super) fn blob_of(&mut self, data: Vec<u8>) -> Result<String, Error> {
         let tmp = self.env.tmp().to_path_buf();
         match self
@@ -115,8 +109,8 @@ impl Link<'_> {
         }
     }
 
-    /// The tree `entries` make (Python's `mktree`, whose failure may be damage): through
-    /// `trees`, this publish's `mktree --batch`, while it answers.
+    /// Creates the tree from `entries` through this publish's mktree batch process while
+    /// available. Failure may indicate local damage.
     pub(super) fn make_tree(
         &self,
         trees: &mut Option<Trees>,
@@ -131,16 +125,13 @@ impl Link<'_> {
         self.git(&[OsStr::new("mktree")], Some(entries.into_bytes()))
     }
 
-    /// After a fetch into `mine` of `tip`: `refs/beads/remote` at `tip`, keeping what was fetched
-    /// reachable, then `mine` gone, by Python's two `update-ref`s, whose failures it passes over.
+    /// After fetching `tip` into `mine`, update refs/beads/remote to keep the fetched objects
+    /// reachable, then delete `mine` in a separate git invocation. Ignore failures of these
+    /// bookkeeping calls.
     ///
-    /// Not as one transaction of the link's `update-ref`, which would delete `mine` within a
-    /// millisecond of the fetch. The fetches other bead processes of this store started with this
-    /// one are then still checking what they brought against every ref (`rev-list --not --all`),
-    /// and one that lists `mine` and finds it gone when it reads it fails: git takes a ref that
-    /// vanishes while it lists them for a broken one (`bad object refs/beads/fetch/...`), and their
-    /// command for REMOTE_UNREACHABLE. Python's two calls take long enough for those checks to be
-    /// over (G16).
+    /// An immediate single transaction can delete the fetch ref while another fetch is still
+    /// checking all refs, producing a bad-object race. Separate invocations preserve the
+    /// established sequencing (G16); fetch retry handles remaining transient races.
     pub(super) fn keep_fetched(&self, tip: &str, mine: &str) -> Result<(), Error> {
         self.run(&[OsStr::new("update-ref"), REMOTE_REF.as_ref(), tip.as_ref()])?;
         self.run(&[OsStr::new("update-ref"), "-d".as_ref(), mine.as_ref()])?;
@@ -155,8 +146,7 @@ impl Link<'_> {
         }
     }
 
-    /// `refs/beads/remote` at `commit`, which the remote has just taken (Python's `update-ref`,
-    /// whose failure may be damage).
+    /// Updates refs/beads/remote to the accepted commit. Failure may indicate local damage.
     pub(super) fn keep_published(&mut self, commit: &str) -> Result<(), Error> {
         if self
             .transaction(&[format!("update {REMOTE_REF} {commit}")])

@@ -1,6 +1,5 @@
-//! One event applied to the state (Python's `apply_event`, `write_register` and `write_status`),
-//! branch for branch, on the event's typed operation: ownership in [`claims`], a create and the
-//! imported dependencies it brings in [`create`].
+//! Applies one typed event operation to state. Ownership is handled in [`claims`]; creates and
+//! imported dependencies in [`create`].
 
 mod claims;
 mod create;
@@ -119,8 +118,8 @@ pub(super) fn apply_event(
         Op::LabelAdd(labels) => label(&c, issue, labels, Labels::Add),
         Op::LabelRemove(labels) => label(&c, issue, labels, Labels::Remove),
         Op::LabelSet(labels) => label(&c, issue, labels, Labels::Set),
-        // Anything else that reaches here applies nothing, but touches the issue: a placeholder
-        // whose position broke its journal's chain is not inert (Python's replay).
+        // Other operations change no fields but still touch the issue: a placeholder that broke
+        // its journal chain is not inert.
         Op::Init { .. } | Op::Create(_) | Op::Quarantined | Op::Invalid | Op::Unknown(_) => true,
     };
     Ok(applied)
@@ -203,7 +202,7 @@ fn set(c: &Ctx<'_>, issue: &mut Issue, fields: &[(Field, Value)]) -> bool {
     true
 }
 
-/// A comment, by `author` when it names one (`data.get("author") or who`).
+/// A comment, by its nonempty `author` or otherwise by the event's writer.
 fn comment(c: &Ctx<'_>, issue: &mut Issue, seq: u64, text: &str, author: Option<&str>) -> bool {
     let author = author.filter(|a| !a.is_empty()).unwrap_or(c.who);
     issue.comments.push(Comment::Native {
@@ -216,7 +215,8 @@ fn comment(c: &Ctx<'_>, issue: &mut Issue, seq: u64, text: &str, author: Option<
     true
 }
 
-/// A dependency on `to` of type `kind` (`blocks` when none), stamped like Python's, `meta` over it.
+/// A dependency on `to` with `kind` defaulting to blocks, event stamps and overriding metadata
+/// from `meta`.
 fn dep_add(c: &Ctx<'_>, issue: &mut Issue, to: &str, kind: Option<&str>, meta: &Object) -> bool {
     let kind = kind
         .filter(|kind| !kind.is_empty())
@@ -308,7 +308,7 @@ fn label(c: &Ctx<'_>, issue: &mut Issue, labels: &[String], how: Labels) -> bool
     true
 }
 
-/// A dangling dependency's type: `d.get("type") or "blocks"`.
+/// A dangling dependency's type, defaulting to `blocks` when absent or falsy.
 fn dangling_type(dep: &Value) -> String {
     dep.get("type")
         .filter(|kind| kind.truthy())

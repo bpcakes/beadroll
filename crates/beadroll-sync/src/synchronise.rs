@@ -1,11 +1,10 @@
-//! Exchanging journals with the coordination remote (Python's `synchronise`, `adopt_published`,
-//! `publish_soon` and the unpublished counts).
+//! Journal exchange, published-tracker adoption, immediate publication and unpublished counts.
 
 use std::ffi::{OsStr, OsString};
 use std::time::Duration;
 
 use beadroll_core::json::{self, Format, Int, MAX_DIGITS, Object, Value};
-use beadroll_core::text::{py_int, shell_quote};
+use beadroll_core::text::{parse_integer, shell_quote};
 use beadroll_git::PushOutcome;
 use beadroll_store::{
     Endpoint, Failpoints, Fired, Memo, Workspace, claim_files, load_pending, moved_workspaces,
@@ -16,18 +15,16 @@ use crate::error::Error;
 use crate::link::Link;
 use crate::tx::{drop_pending, locked};
 
-/// Rounds a sync or an ownership command makes before it gives up: twice Python's twelve
-/// (roll-lqjj.7), so that a machine that keeps losing the race to others writing at once still
-/// gets its write through.
+/// Maximum sync or ownership rounds before giving up, allowing retries under concurrent writers
+/// (roll-lqjj.7).
 pub const ROUNDS: u32 = 24;
 
 /// The longest wait between two rounds, in seconds.
 const LONGEST_PAUSE: f64 = 2.0;
 
-/// The wait between attempts against a moving remote, outside the store lock: any time up to
-/// `0.1 × 2^(attempt - 1)` seconds, at most [`LONGEST_PAUSE`] (roll-lqjj.7; Python's was
-/// `U(0.1, 0.4) × attempt`), so that machines that lost a race to each other spread out rather
-/// than meet again. The `backoff` failpoint passes here (`skip` waits not at all).
+/// Random backoff outside the store lock, from zero up to `0.1 × 2^(attempt - 1)` seconds, capped
+/// at [`LONGEST_PAUSE`]. Jitter separates competing writers. The backoff failpoint can skip the
+/// wait.
 pub fn pause(attempt: u32, failpoints: &Failpoints) {
     if failpoints.hit("backoff") == Some(Fired::Skip) {
         return;
@@ -335,13 +332,10 @@ pub fn adopt_published(
     Ok(Some(adopted))
 }
 
-/// Events of this store the remote does not have, as of the last publish that went through;
-/// `None` when there is no remote to publish to, or when the last publish kept no counts.
-/// Everything is unpublished before the first publish. The arithmetic is Python's, exact at any
-/// size. A count in `meta.json` that is not a number, or a total too long for Python to print, is
-/// an IO error, where Python dies with a traceback (`docs/RUST-PORT.md` §5 row 26). A segment's
-/// lines are counted only when the memo does not know them, as a publish counts them: every
-/// command asks, and the segments it has not appended to since are not read (roll-lqjj.2).
+/// Events not covered by the last successful publication. Returns None without a remote or
+/// without saved counts after publication; before the first publication, all events are
+/// unpublished. Arithmetic is exact. Nonnumeric counts or a total exceeding the decimal output
+/// limit return IO. Memoized line counts avoid rereading unchanged segments on each command.
 pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
     match ws.remote(None) {
         Ok(Some(remote)) if !remote.is_empty() => {}
@@ -389,8 +383,8 @@ pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
     Ok(Some(count))
 }
 
-/// Python's `int(value or 0)` of a published count: a falsy value is 0, an integer itself, a float
-/// truncated, a string read as `int()` reads it; anything else is not a number.
+/// Coerces a published count: falsy values become zero, integers stay exact, finite floats
+/// truncate toward zero and strings use integer parsing. Other values fail.
 fn count_of(value: &Value) -> Option<Int> {
     if !value.truthy() {
         return Some(Int::from(0));
@@ -399,7 +393,7 @@ fn count_of(value: &Value) -> Option<Int> {
         Value::Bool(true) => Some(Int::from(1)),
         Value::Int(n) => Some(n.clone()),
         Value::Float(f) => Int::from_f64(*f),
-        Value::Str(text) => py_int(text),
+        Value::Str(text) => parse_integer(text),
         _ => None,
     }
 }

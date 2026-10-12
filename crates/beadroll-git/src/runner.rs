@@ -1,12 +1,8 @@
-//! The git runner (Python's `run_git` and `git_text`): every git process bead starts.
-//!
-//! git's answer is its exit status, so the runner waits for git, not for the end of its output:
-//! that goes to unlinked temporary files, because a helper git started (a hook's or a transport's
-//! background job) may keep git's stderr open long after git has exited. Each git runs in a session
-//! of its own, away from the caller's controlling terminal. On a timeout, `reap` kills git together
-//! with the helpers it started (a fetch has nothing in flight worth keeping); a push passes
-//! `reap(false)`, so only the client dies and whatever the receiving side is doing finishes or
-//! fails on its own: that is the uncertain outcome the ownership protocol settles.
+//! Runs every git process bead starts. Capture output in unlinked files and wait for git's exit
+//! rather than output EOF: hooks and transports may leave background processes holding stderr
+//! open. Each git has its own session, away from the caller's terminal. On fetch timeout, kill
+//! the process group; a push uses `reap(false)` to kill only the client, allowing the receiver to
+//! finish. Ownership settling resolves that uncertain outcome.
 
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
@@ -22,12 +18,11 @@ use std::time::Duration;
 
 use crate::error::{Error, IoError};
 use crate::signal::signal_name;
-use crate::text::{py_strip, strip_ascii};
+use crate::text::{strip, strip_ascii};
 
-/// The world a git process starts in: its whole environment, the directory it starts in (`None`:
-/// the caller's own, as Python's `subprocess` leaves it), and the directory its output files are
-/// made in (Python's `tempfile.gettempdir()`, normally `TMPDIR`). The CLI builds the first one from
-/// the process; [`crate::sync_env`] derives `sync.git`'s from it.
+/// A git process's explicit environment, working directory (`None` inherits the caller's) and
+/// output-file directory. The CLI builds the initial environment; [`crate::sync_env`] derives the
+/// private repository's environment.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Env {
     vars: BTreeMap<OsString, OsString>,
@@ -130,8 +125,8 @@ impl Git<'_> {
         self
     }
 
-    /// git may run for `seconds` (Python's `timeout`); after that it is killed and the call fails
-    /// with [`Error::Timeout`]. A negative time is no time at all, as Python's `Thread.join` reads it.
+    /// Allows git to run for `seconds`, then kills it and returns [`Error::Timeout`]. A negative
+    /// duration permits no wait.
     pub fn timeout(mut self, seconds: f64) -> Self {
         self.timeout = Some(seconds);
         self
@@ -144,13 +139,13 @@ impl Git<'_> {
         self
     }
 
-    /// Runs git and returns what it did, whatever its exit status (Python's `check=False`).
+    /// Runs git and returns its result regardless of exit status.
     pub fn run(self) -> Result<Output, Error> {
         let (output, _) = self.execute()?;
         Ok(output)
     }
 
-    /// Runs git; a failure is [`Error::Failed`] (Python's `check=True`).
+    /// Runs git, returning [`Error::Failed`] on unsuccessful exit.
     pub fn check(self) -> Result<Output, Error> {
         let (output, args) = self.execute()?;
         if output.returncode == 0 {
@@ -159,8 +154,8 @@ impl Git<'_> {
         Err(failure(&args, &output))
     }
 
-    /// Runs git and returns its standard output without the ASCII whitespace at either end, as
-    /// Python's `git_text` does; a failure is [`Error::Failed`].
+    /// Runs git and returns stdout without surrounding ASCII whitespace. An unsuccessful exit
+    /// returns [`Error::Failed`].
     pub fn text(self) -> Result<OsString, Error> {
         let output = self.check()?;
         Ok(OsString::from_vec(strip_ascii(&output.stdout).to_vec()))
@@ -223,7 +218,7 @@ impl Git<'_> {
     }
 }
 
-/// What a git that ended with `status` did: its exit status as Python reports it, and its output.
+/// A completed git's status and captured output.
 pub(crate) fn finished(status: ExitStatus, out: &File, err: &File) -> Result<Output, Error> {
     let returncode = status
         .code()
@@ -235,8 +230,7 @@ pub(crate) fn finished(status: ExitStatus, out: &File, err: &File) -> Result<Out
     })
 }
 
-/// What a git process did: its exit status as Python reports it (the negated signal number when a
-/// signal killed it), and everything it wrote.
+/// A git result: exit code or negated terminating signal number, plus captured output.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Output {
     /// The exit status, or minus the signal that ended it.
@@ -253,8 +247,8 @@ impl Output {
         self.returncode == 0
     }
 
-    /// Standard output without the ASCII whitespace at either end, decoded as Python's `decode()`
-    /// with `errors="replace"`.
+    /// Stdout with surrounding ASCII whitespace removed, decoded with replacement for invalid
+    /// UTF-8.
     pub fn stdout_text(&self) -> String {
         String::from_utf8_lossy(strip_ascii(&self.stdout)).into_owned()
     }
@@ -270,11 +264,11 @@ impl Output {
     }
 }
 
-/// The error a failed git reports (Python's `check=True`): what git said, or the signal that killed
-/// it, after git's first two arguments.
+/// The error from a failed git: its first two arguments, followed by its diagnostic or
+/// terminating signal.
 fn failure(args: &[OsString], output: &Output) -> Error {
     let stderr = String::from_utf8_lossy(&output.stderr);
-    let mut said = py_strip(&stderr).to_owned();
+    let mut said = strip(&stderr).to_owned();
     if output.returncode < 0 {
         let name = signal_name(-output.returncode);
         said = if said.is_empty() {
@@ -371,13 +365,13 @@ pub(crate) fn kill(pid: u32, reap: bool) {
     };
 }
 
-/// Gives the child a session of its own and SIGXFSZ's default action back before it runs git.
+/// Gives the child a separate session and restores the default SIGXFSZ action before exec.
 ///
-/// `setsid` matches Python's `start_new_session=True`: git and its helpers leave the caller's
-/// process group and controlling terminal, so a transport can never prompt on the terminal, and the
-/// group a timed-out fetch kills is git's alone. No `process_group(0)` comes first: a process group
-/// leader cannot call `setsid`. bead ignores SIGXFSZ as CPython does, and ignored signals survive
-/// `exec`, so git would otherwise write on past a file-size limit instead of dying of it.
+/// setsid detaches git and helpers from the caller's process group and controlling terminal,
+/// prevents terminal prompts and confines fetch-timeout killing to git's group. Do not call
+/// process_group(0) first, because a group leader cannot call setsid. Bead ignores SIGXFSZ and
+/// that disposition survives exec, so restoring it ensures git dies when it exceeds the file-size
+/// limit.
 #[allow(
     unsafe_code,
     reason = "one of the two audited unsafe spots (docs/RUST-PORT.md §2.2): code that runs in the child between fork and exec"
@@ -398,8 +392,8 @@ pub(crate) fn detach(command: &mut Command) {
     }
 }
 
-/// Everything in `file`, read from its start without moving its offset, which git's children share:
-/// one still running writes on after it (Python's `os.pread`).
+/// Reads `file` from the start without changing the shared offset, allowing surviving git
+/// children to keep appending.
 fn read_whole(file: &File) -> Result<Vec<u8>, Error> {
     let io = |e: io::Error| Error::Io(IoError::bare(&e));
     let size = file.metadata().map_err(io)?.len();

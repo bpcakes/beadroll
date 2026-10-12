@@ -8,12 +8,9 @@ use beadroll_core::replay::replay;
 use beadroll_test_support::events::id_at;
 use beadroll_test_support::{Json, json};
 
-/// P01: ancestry over ownership events is a shared bitset per event, not a cumulative set.
-/// 3,000 alternating claim/release events replay in well under a second and keep at most one
-/// distinct bitset per event.
-///
-/// The bitsets themselves are private to the core (Python reads `st._shared`): what this checks is
-/// what they answer, `saw` in both directions across the whole history, and the time replay takes.
+/// P01: ancestry over 3,000 alternating claim/release events remains efficient. Check `saw` in
+/// both directions across the history and bound replay time; the ancestry representation is
+/// private to core.
 #[test]
 fn ownership_ancestry_stays_small_on_a_long_claim_release_history() {
     let mut events: Vec<Json> = Vec::new();

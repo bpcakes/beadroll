@@ -1,5 +1,4 @@
-//! This machine's identity (Python's `replica_id` and `machine_aliases`) and the random names bead
-//! mints: event ids (`uuid7`) and hex tokens.
+//! Machine identity and aliases, plus random event ids and hexadecimal tokens.
 
 use std::collections::BTreeMap;
 use std::fs::OpenOptions;
@@ -14,8 +13,8 @@ use crate::error::Error;
 use crate::fs::{fsync, json_text, private_dir};
 use crate::settings::{Clock, Settings};
 
-/// A time-ordered event id (UUIDv7, Python's `uuid7`): the clock's milliseconds, then random bits.
-/// The clock part orders displays only; causality comes from `deps`.
+/// A UUIDv7 event id: clock milliseconds followed by random bits. Clock order is for display;
+/// deps determine causality.
 pub fn uuid7(clock: &Clock) -> String {
     let millis = (clock.now_ns().div_euclid(1_000_000) as u128) & ((1 << 48) - 1);
     let random = uuid::Uuid::new_v4().as_u128();
@@ -27,7 +26,7 @@ pub fn uuid7(clock: &Clock) -> String {
     uuid::Uuid::from_u128(value).hyphenated().to_string()
 }
 
-/// `n` random lowercase hex digits (Python's `uuid.uuid4().hex[:n]`, `secrets.token_hex(n / 2)`).
+/// Exactly `n` random lowercase hexadecimal digits.
 pub fn hex_token(n: usize) -> String {
     let mut out = String::new();
     while out.len() < n {
@@ -107,22 +106,21 @@ fn mint(path: &Path, settings: &Settings) -> Result<(), Error> {
         Err(error) if error.kind() == io::ErrorKind::AlreadyExists => Ok(()), // another process won
         Err(error) => Err(IoError::at(&error, path)),
     };
-    // As Python's `finally: tmp.unlink(missing_ok=True)` around the link: a failure to remove it wins.
+    // Always remove the temporary file after linking; a cleanup failure takes precedence.
     crate::journal::remove(&tmp)?;
     linked.map_err(Error::Io)
 }
 
-/// The host's name up to its first dot (Python's `socket.gethostname().split(".")[0]`).
+/// The hostname up to its first dot.
 fn short_hostname() -> String {
     let uname = rustix::system::uname();
     let name = uname.nodename().to_string_lossy();
     name.split('.').next().unwrap_or_default().to_owned()
 }
 
-/// Local display names of machines: this machine's own alias from `replica.json`, then
-/// `aliases.json`. Anything unreadable or malformed is skipped. A lone surrogate Python keeps in
-/// either file (`machines --name` given bytes that are not UTF-8) prints as `?`, as Python's
-/// output prints it; a name holding one is no machine's id.
+/// Local machine display names, from this machine's replica.json alias then aliases.json. Skip
+/// unreadable or malformed files. Lone surrogates display as `?`; a name containing one cannot
+/// equal a machine id.
 pub fn machine_aliases(settings: &Settings) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     let Ok(home) = settings.home() else {

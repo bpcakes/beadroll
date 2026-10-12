@@ -1,18 +1,10 @@
-//! The Python suite's in-crate API tests of the sync protocol: the eleven C-api tests of
-//! `test_protocol` (`docs/RUST-PORT.md` §4.3), named by the naming rule of §4.2. Each drives this
-//! crate's API in this process (`Link`, `Tx`, `locked`, `coordinated`, `synchronise`) on one
-//! machine's store, while the machines around it run `bead`.
-//! Where Python patched a function to inject a fault, a failpoint does it, and the registry reaches
-//! the API through `Settings`, never through the process environment (§4.5). Beside them, `link`
-//! checks what Python has no counterpart of: the long-lived gits a link keeps (Appendix B) end with
-//! it; and `memo`, that a publish hashes only the journal files the store's memo cannot vouch for
-//! (roll-lqjj.1).
+//! In-process sync API tests using Link, Tx, locked, coordinated and synchronise around sandbox
+//! machines. Inject faults through Settings, never the process environment. Link tests check
+//! persistent git lifetimes; memo tests check that unchanged journal files are not rehashed.
 //!
-//! The machines run `BEAD_UNDER_TEST` when it is set, else the `bead` Cargo built in the profile
-//! directory above this test binary (`beadroll_test_support::built_bead`): Cargo names the `bead`
-//! it builds only to the `beadroll` package's own tests. `cargo nextest run --workspace` builds it;
-//! run on this package alone, the tests need it built first (`cargo build -p beadroll`), and a
-//! sandbox fails at once, saying so, when it is not there.
+//! Machines use BEAD_UNDER_TEST when set, else beadroll_test_support::built_bead. Workspace
+//! nextest builds bead; running only this package requires `cargo build -p beadroll` first. A
+//! missing binary fails sandbox setup with instructions.
 #![cfg(test)]
 
 mod failpoints;

@@ -1,5 +1,4 @@
-//! Beads JSONL records of the state (Python's `export_records`), so that `bv` and other Beads readers
-//! keep working.
+//! Beads JSONL records exported from state for bv and other Beads readers.
 
 use std::collections::{BTreeMap, HashSet};
 

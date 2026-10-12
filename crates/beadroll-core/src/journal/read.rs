@@ -1,5 +1,4 @@
-//! Lines read into events (Python's `loads_line`, `read_segment` and `read_attempt`): what a
-//! segment or an attempt file holds, and what could not be read, reported.
+//! Reads segment and attempt lines into events, reporting unreadable content.
 
 use crate::event::{event_problem, payload_problem};
 use crate::json::{self, ParseError, Value};
@@ -7,8 +6,8 @@ use crate::text::strip_bytes;
 
 use super::Problem;
 
-/// One journal or attempt line (Python's `loads_line`): the value, with a lone surrogate read as
-/// U+FFFD and reported, because such text can be neither printed nor exported.
+/// Reads one journal or attempt line. Lone surrogates become U+FFFD and are reported because they
+/// cannot be printed or exported as text.
 pub fn loads_line(
     line: &[u8],
     origin: &str,
@@ -34,8 +33,8 @@ pub fn loads_line(
     Ok(parsed.value)
 }
 
-/// The events of one segment (Python's `read_segment`). A torn tail (an unreadable last line, which
-/// another process may still be appending) is skipped; any other unreadable line is reported.
+/// Reads a segment. Skip an unreadable final line that may still be undergoing append; report any
+/// other unreadable line.
 pub fn read_segment(
     data: &[u8],
     origin: &str,
@@ -61,8 +60,7 @@ pub fn read_segment(
     events
 }
 
-/// The events of one attempt file (Python's `read_attempt` on bytes already read): an attempt counts
-/// whole or not at all, so any bad line empties it, reported.
+/// Reads an attempt as a whole: any bad line is reported and invalidates the entire attempt.
 pub fn read_attempt(
     data: &[u8],
     origin: &str,

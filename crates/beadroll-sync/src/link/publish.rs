@@ -1,5 +1,5 @@
-//! Publishing (Python's `Link.tree` and `Link.publish`): the tree of the manifest and the journals,
-//! a commit on the fetched head, and a push whose outcome is git's own status line.
+//! Publishes a manifest and journal tree in a commit parented by the fetched head. Git's ref
+//! status determines the push outcome.
 
 use std::collections::BTreeMap;
 use std::ffi::OsStr;

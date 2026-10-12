@@ -1,19 +1,13 @@
-//! `ConcurrentReaudit`: the second independent audit's concurrency model
-//! (`docs/reviews/2026-10-06-2-reaudit.md`). Six machines share a tracker of 24 editable issues,
-//! which take edits, comments, dependencies and status changes, and 12 owned ones, which are only
-//! claimed, taken over and released. In each of ten waves the six machines run fifty seeded
-//! commands each, all at once; two of them (`wave % 6` and `(wave + 2) % 6`) are partitioned, and
-//! show an owned issue instead of claiming, releasing or taking it over and run `info` instead of
-//! `sync`, their other writes publishing as usual.
+//! A six-machine concurrency model (`docs/reviews/2026-10-06-2-reaudit.md`) with 24 editable
+//! issues and 12 issues reserved for ownership operations. Ten waves run fifty commands per
+//! machine concurrently. Machines `wave % 6` and `(wave + 2) % 6` substitute reads for ownership
+//! and sync while their other writes publish normally.
 //!
-//! After each wave every machine syncs twice and the fleet is checked: every machine has the same
-//! export and details, with no event waiting and no integrity problem; each owned issue's claim is
-//! the one the receipts of successful claims, takeovers and releases lead to, one claim to a
-//! generation and generations that never go back; bead's blockers and ready sets agree with an
-//! oracle that reads only the details (`oracle`, with the other checks of a wave's end); and no
-//! accepted claim is missing from the first machine's view. The seeds are Python's,
-//! `20261007 + wave * 101 + machine * 907`, drawn from in Python's order by [`Rng`], CPython's
-//! generator: each worker makes Python's draws, in an interleaving of its own (see `stress.rs`).
+//! After each wave, sync twice and compare exports, details, pending state and integrity across
+//! the fleet. Successful command receipts determine expected owners and monotonic generations. An
+//! independent detail-based oracle checks blockers and readiness, and every accepted claim must
+//! remain visible. Worker seeds are `20261007 + wave * 101 + machine * 907`; each worker has its
+//! own deterministic random stream and command interleaving.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
@@ -45,7 +39,7 @@ enum Action {
     Sync,
 }
 
-/// The worker's actions and their weights, as Python's `choices` has them.
+/// The worker's actions and selection weights.
 const ACTIONS: [(Action, usize); 12] = [
     (Action::Show, 28),
     (Action::List, 8),
@@ -77,7 +71,7 @@ const ALLOWED: [&str; 9] = [
 
 /// The issues the workers draw from.
 struct Keys {
-    /// The editable issues, and every issue a worker created (Python's `editable`).
+    /// Editable issues, including every issue a worker creates.
     editable: Vec<String>,
     /// The issues only claimed, taken over and released (`owned`).
     owned: Vec<String>,
@@ -150,7 +144,7 @@ impl Receipt {
     }
 }
 
-/// What one worker did in one wave: Python's `rows, newkeys, receipts`.
+/// One worker's results, created keys and receipts for a wave.
 #[derive(Default)]
 struct Done {
     rows: Vec<Row>,
@@ -158,8 +152,8 @@ struct Done {
     receipts: Vec<Receipt>,
 }
 
-/// One machine's fifty commands of a wave: Python's `worker(mi, wave)`. `claims` is the machine's
-/// own receipts' claims by issue (`workerclaims[mi]`), which a release must find its claim in.
+/// One machine's fifty commands in a wave. `claims` maps issues to this worker's receipt claims;
+/// a release must find its claim there.
 fn work(
     machine: &Machine,
     (mi, wave, seed): (usize, usize, u64),
@@ -196,7 +190,7 @@ fn work(
     done
 }
 
-/// A worker's command at `step`, as Python's worker builds it.
+/// The worker's command at `step`.
 fn command(
     rng: &mut Rng,
     (mi, wave, step): (usize, usize, usize),
@@ -365,7 +359,7 @@ impl Fleet {
         }
     }
 
-    /// The checks after wave `wave`, as Python makes them.
+    /// Checks after wave `wave`.
     fn check(&mut self, wave: usize) {
         for machine in self.machines.iter().chain(&self.machines) {
             let r = machine.bead(["sync"]).expect("a sync report");

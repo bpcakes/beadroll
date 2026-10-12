@@ -50,7 +50,7 @@ mod g43_renamed_record_exports_foreign_issue_id {
         for machine in [&m1, &m2, &m1, &m2] {
             machine.bead(["sync"]);
         }
-        // `splitlines()`: the records are ASCII, with none of the other breaks Python splits at
+        // The records are ASCII and have no line separator other than newline.
         let records: Vec<Json> = m1
             .export()
             .lines()

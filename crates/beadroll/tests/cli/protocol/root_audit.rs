@@ -10,13 +10,13 @@ use std::sync::Barrier;
 
 use beadroll_test_support::{Json, Machine, Run, Sandbox, code, parse_json};
 
-/// `setUp`: machine `root-a` has initialised tracker `root`, created the issue every test works
+/// Machine `root-a` has initialised tracker `root`, created the issue every test works
 /// on and synced. Returns the machine and the issue's id.
 fn set_up(sandbox: &Sandbox) -> (Machine, String) {
     set_up_with(sandbox, Machine::new)
 }
 
-/// `setUp` with machine `root-a` made by `make`: `Machine::new`, or `crate::rust_only` for a test
+/// Sets up machine `root-a` using `make`: `Machine::new`, or `crate::rust_only` for a test
 /// that injects its fault through a failpoint.
 fn set_up_with(sandbox: &Sandbox, make: fn(&Sandbox, &str) -> Machine) -> (Machine, String) {
     let a = make(sandbox, "root-a");
@@ -27,14 +27,14 @@ fn set_up_with(sandbox: &Sandbox, make: fn(&Sandbox, &str) -> Machine) -> (Machi
     (a, key)
 }
 
-/// `self.machine(name)`: another machine, synced.
+/// Another machine, synced.
 fn machine(sandbox: &Sandbox, name: &str) -> Machine {
     let machine = Machine::new(sandbox, name);
     machine.bead(["sync"]);
     machine
 }
 
-/// `self.settle(machines)`: every machine syncs twice, each sync reporting no forked journal and no
+/// Every machine syncs twice, each sync reporting no forked journal and no
 /// event waiting for its causes; then every machine shows `key` as the first does, and that issue
 /// is returned.
 fn settle(machines: &[&Machine], key: &str) -> Json {
@@ -54,14 +54,14 @@ fn settle(machines: &[&Machine], key: &str) -> Json {
     expected
 }
 
-/// `value[key]` as Python indexes a dict: the member, or the test fails.
+/// The member `key` of `value`; absence fails the test.
 fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
     value
         .get(key)
         .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
 }
 
-/// The claim a successful `bead ... --json` printed: `json.loads(run.stdout)[0]["claim"]`.
+/// The claim in the first issue returned by a successful JSON command.
 fn claim_of(run: &Run) -> Json {
     let printed = parse_json(&run.stdout)
         .unwrap_or_else(|error| panic!("bead printed no JSON ({error}): {}", run.stdout));
@@ -289,13 +289,9 @@ fn set_stamps(machine: &Machine, key: &str) -> Vec<i64> {
     .collect()
 }
 
-/// The clock moves a day back between two edits of one register: the later edit, which has seen
-/// the earlier, settles it, with no conflict, although it is stamped earlier.
-///
-/// Python's driver loads bead with `time.time_ns` a day behind for the whole run; here the Rust
-/// `bead` (`rust_only`) makes the second edit with `clock@always=offset(-1d)`, every reading of its
-/// clock shifted. Since causality would decide the register the same way with the clock right, the
-/// port also shows that it was not: the second edit is stamped more than 23 hours before the first.
+/// A later edit that has seen the earlier one must settle it despite a clock moving backward.
+/// Inject `clock@always=offset(-1d)` for the second edit and verify its timestamp is over 23
+/// hours earlier, proving both the clock shift and causal resolution.
 #[test]
 fn clock_moves_back_but_later_observed_edit_settles_register() {
     let sandbox = crate::sandbox();

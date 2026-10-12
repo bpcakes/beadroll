@@ -1,7 +1,5 @@
-//! The Python suite's tests of what beadroll-store owns (`docs/RUST-PORT.md` §6, Phase 1's list of
-//! B-class tests that land with Phase 2a): the coordination ref's rules, two workspaces on one
-//! machine, actor detection, the remote a workspace remembers, and attempt files read back. Named by
-//! the naming rule of `docs/RUST-PORT.md` §4.2.
+//! Store API tests for coordination refs, shared machine homes, actor detection, remembered
+//! remotes and attempt reading. Names preserve findings-ledger references.
 #![cfg(test)]
 
 mod commands;

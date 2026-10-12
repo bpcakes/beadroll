@@ -10,10 +10,10 @@ use std::time::{Duration, Instant};
 
 use beadroll_test_support::{Invocation, Json, parse_json};
 
-/// How long a run may take before it counts as hung (`subprocess.run(..., timeout=180)`).
+/// How long a run may take before it counts as hung.
 const HANG_AFTER: Duration = Duration::from_secs(180);
 
-/// How a run ended: Python's `returncode` (minus the signal that ended it), or `"HANG"`.
+/// The exit code, negated signal number, or `HANG`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Rc {
     Exit(i32),
@@ -75,9 +75,8 @@ pub(super) struct Ran {
 }
 
 impl Ran {
-    /// Whether bead crashed instead of answering (`code`, the code it reported): a run that never
-    /// ended, a traceback, or the ported form of Python's traceback check (`docs/RUST-PORT.md`
-    /// §4.4), a Rust panic (`panicked at`, exit 101) or death by SIGABRT or SIGSEGV.
+    /// Whether bead crashed rather than returning a structured result: a hang, traceback, panic
+    /// (`panicked at` or exit 101), SIGABRT or SIGSEGV.
     pub(super) fn crashed(&self, code: Option<&str>) -> bool {
         self.rc == Rc::Hang
             || code == Some("TRACEBACK")
@@ -86,9 +85,8 @@ impl Ran {
     }
 }
 
-/// Runs `invocation` to its end, or for at most 180 seconds: a run that has not ended by then is
-/// killed and counts as hung, with nothing printed. Output that is not UTF-8 fails the schedule,
-/// as `text=True` fails the Python driver.
+/// Runs an invocation for at most 180 seconds. A timeout kills it and records a hang with no
+/// output. Output that is not UTF-8 fails the schedule.
 pub(super) fn exec(invocation: Invocation<'_>) -> Ran {
     let started = Instant::now();
     let mut command = invocation.command();
@@ -192,7 +190,7 @@ pub(super) fn answer(ran: &Ran) -> (Option<Json>, Option<String>) {
     (out, code)
 }
 
-/// The last `n` characters of `text`: Python's `text[-n:]`.
+/// The last `n` Unicode scalar values of `text`.
 pub(super) fn tail(text: &str, n: usize) -> &str {
     let skip = text.chars().count().saturating_sub(n);
     text.char_indices()

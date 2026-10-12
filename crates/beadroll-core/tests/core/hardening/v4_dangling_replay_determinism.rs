@@ -1,7 +1,6 @@
-//! V4: replay of histories with dangling imported dependencies does not depend on the order in
-//! which the machines' journals are delivered. The generator is Python's, word for word (the same
-//! splitmix64 stream and seeds), so these are the histories the Python test replays: 10,156 events
-//! with unique keys and 10,350 with twins, the same counts of each kind as Python's.
+//! V4: dangling imported dependencies replay independently of journal delivery order. Fixed
+//! splitmix64 streams generate 10,156 events with unique keys and 10,350 with duplicates, pinning
+//! the history shapes and counts.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -14,7 +13,7 @@ use beadroll_test_support::json;
 const SEEDS: u64 = 1000;
 const ORDERS: usize = 4;
 
-/// Python's `_v4_random` and friends: floats in [0, 1) from a splitmix64 stream.
+/// Floats in [0, 1) drawn from a splitmix64 stream.
 struct Stream(u64);
 
 impl Stream {
@@ -27,7 +26,7 @@ impl Stream {
         (z >> 11) as f64 / (1u64 << 53) as f64
     }
 
-    /// `int(random() * n)`.
+    /// An index below `n`, from a random fraction scaled by `n` and truncated.
     fn index(&mut self, n: usize) -> usize {
         (self.random() * n as f64) as usize
     }
@@ -98,7 +97,7 @@ fn projection(events: &[Value]) -> (Projection, usize, usize) {
     (issues, st.pending().len(), st.integrity().len())
 }
 
-/// A history being written on three replicas, as Python's `_v4_generate` writes it.
+/// A generated history across three replicas.
 struct History<'s> {
     stream: &'s mut Stream,
     events: Vec<Value>,
@@ -198,8 +197,8 @@ fn pool() -> Vec<String> {
     "abcdefgh".chars().map(|c| format!("ex-{c}")).collect()
 }
 
-/// One CLI-shaped history on three replicas, as Python's `_v4_generate` builds it: each replica acts
-/// on its own replay of what it knows. With twins, a key may be minted on two replicas.
+/// A CLI-shaped history on three replicas, each acting on its own replayed knowledge. With
+/// duplicates enabled, two replicas may mint the same key.
 fn generate(stream: &mut Stream, twins: bool) -> Vec<Value> {
     let known = REPLICAS.iter().map(|r| (*r, BTreeSet::new())).collect();
     let mut history = History {

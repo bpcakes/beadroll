@@ -1,6 +1,5 @@
-//! `V6_UserSuppliedPaths`: an operating system error on a path the user gave is `IO`, exit 1, and
-//! writes nothing; `export -o` creates the folders its path needs. As root, `chmod 0` denies
-//! nothing, so the class skips there, as the Python one does.
+//! V6: an operating-system error on a user path returns IO with exit 1 and writes nothing. Export
+//! creates missing parent directories. Skip permission-denial checks under root.
 
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
@@ -11,8 +10,8 @@ use rustix::fs::{Access, access};
 
 use super::{error_code, id, member, unprivileged};
 
-/// The lines of `text` as Python's `str.splitlines()` splits them: at `\n`, `\r\n`, `\r`, `\v`,
-/// `\f`, `\x1c`, `\x1d`, `\x1e`, `\x85`, U+2028 and U+2029, without a last empty line.
+/// Splits text at newline, CRLF, carriage return, vertical tab, form feed, U+001C–U+001E, U+0085,
+/// U+2028 and U+2029, without a final empty line.
 fn line_count(text: &str) -> usize {
     let breaks = [
         '\n', '\r', '\x0b', '\x0c', '\x1c', '\x1d', '\x1e', '\u{85}', '\u{2028}', '\u{2029}',
@@ -101,11 +100,9 @@ fn oserror_on_a_user_supplied_input_path_is_io_and_writes_nothing() {
     std::fs::set_permissions(&noread, Permissions::from_mode(0o600)).unwrap();
 }
 
-/// Verified (V6): `export -o` into an unusable path is IO, and missing parent directories are
-/// created. The review measured EISDIR, EACCES, ENAMETOOLONG and ENOTDIR all IO (ENOTDIR reported
-/// as 'File exists'), a path under missing parents exit 0, and `-o /dev/stdout` IO ('Operation not
-/// permitted: /dev/.stdout.PID.tmp'), a case the test runs only where the test cannot write `/dev`,
-/// as the Python one does.
+/// V6: unusable export paths report IO for EISDIR, EACCES, ENAMETOOLONG and ENOTDIR; missing
+/// parent directories are created. Check `/dev/stdout` only when the test cannot write `/dev`,
+/// since atomic replacement must fail there.
 #[test]
 fn export_output_path_errors_are_io_and_missing_parents_are_created() {
     if !unprivileged() {

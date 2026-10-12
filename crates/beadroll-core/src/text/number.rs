@@ -1,17 +1,15 @@
-//! Python's `int(text)` and `float(text)` on a string (`docs/RUST-PORT.md` §5 row 12): what
-//! `--limit` and `--estimate` accept, and how the `BEAD_*` numeric settings are read.
+//! Numeric text accepted by `--limit`, `--estimate` and the `BEAD_*` settings.
 //!
-//! CPython first rewrites a string that is not all ASCII: each non-ASCII whitespace character
-//! becomes a space and each decimal digit (Unicode category Nd) its ASCII digit; anything else
-//! non-ASCII makes the string unreadable. ASCII characters stay as they are, so `\x1c` is not
-//! whitespace here, although `str.isspace()` says it is. Then the ASCII whitespace at either end
-//! goes, and an underscore may stand only between two digits.
+//! Non-ASCII whitespace becomes a space and each decimal digit (Unicode category Nd) its ASCII
+//! digit; anything else non-ASCII makes the string unreadable. ASCII characters stay as they are,
+//! so `\x1c` is not whitespace here. Then the ASCII whitespace at either end goes, and an
+//! underscore may stand only between two digits. These rules preserve the original command-line
+//! grammar (`docs/RUST-PORT.md` §5 row 12).
 
 use crate::json::Int;
 use crate::text::is_space;
 
-/// The first code point of every run of ten decimal digits (zero to nine) in Unicode 16.0, the
-/// version CPython 3.14 uses; ASCII's run comes first.
+/// The first code point of each run of ten decimal digits in Unicode 16.0, starting with ASCII.
 const DECIMAL_RUNS: [u32; 76] = [
     0x30, 0x660, 0x6F0, 0x7C0, 0x966, 0x9E6, 0xA66, 0xAE6, 0xB66, 0xBE6, 0xC66, 0xCE6, 0xD66,
     0xDE6, 0xE50, 0xED0, 0xF20, 0x1040, 0x1090, 0x17E0, 0x1810, 0x1946, 0x19D0, 0x1A80, 0x1A90,
@@ -23,8 +21,8 @@ const DECIMAL_RUNS: [u32; 76] = [
 ];
 
 /// The characters that are digits but not decimal digits (Unicode `Numeric_Type=Digit`: the
-/// superscripts, circled and parenthesised digits and the like), as ranges: `str.isdigit()` takes
-/// them, `int()` does not.
+/// superscripts, circled and parenthesised digits and the like), as ranges: [`is_digits`] takes
+/// them, [`parse_integer`] does not.
 const DIGIT_ONLY: [(u32, u32); 20] = [
     (0xB2, 0xB3),
     (0xB9, 0xB9),
@@ -48,8 +46,9 @@ const DIGIT_ONLY: [(u32, u32); 20] = [
     (0x1F100, 0x1F10A),
 ];
 
-/// `text.isdigit()`: at least one character, each a digit (decimal or not).
-pub fn py_isdigit(text: &str) -> bool {
+/// Whether `text` has at least one character and every character is a Unicode digit (decimal or
+/// not). Non-decimal digits do not necessarily form a readable integer.
+pub fn is_digits(text: &str) -> bool {
     !text.is_empty()
         && text.chars().all(|c| {
             let code = u32::from(c);
@@ -60,7 +59,7 @@ pub fn py_isdigit(text: &str) -> bool {
         })
 }
 
-/// The value of `c` as a decimal digit, Python's `unicodedata.decimal(c)`.
+/// The value of `c` as a Unicode decimal digit.
 pub fn decimal_value(c: char) -> Option<u8> {
     let code = u32::from(c);
     let at = DECIMAL_RUNS.partition_point(|start| *start <= code);
@@ -68,8 +67,8 @@ pub fn decimal_value(c: char) -> Option<u8> {
     u8::try_from(code - start).ok().filter(|digit| *digit < 10)
 }
 
-/// CPython's `_PyUnicode_TransformDecimalAndSpaceToASCII`, then the ASCII whitespace at either end
-/// taken off: the ASCII text Python's number parsers read, or `None` for a character they cannot.
+/// Normalises decimal digits and non-ASCII whitespace, then trims ASCII whitespace at either end.
+/// Returns `None` for any other non-ASCII character.
 fn ascii_form(text: &str) -> Option<String> {
     let mut out = String::with_capacity(text.len());
     for c in text.chars() {
@@ -85,8 +84,7 @@ fn ascii_form(text: &str) -> Option<String> {
     Some(out.trim_matches(ascii_space).to_owned())
 }
 
-/// CPython's `_Py_string_to_number_with_underscores`: the text without its underscores, when
-/// each stands between two digits.
+/// The text without its underscores, when each stands between two digits.
 fn without_underscores(text: &str) -> Option<String> {
     let mut out = String::with_capacity(text.len());
     let mut previous = '\0';
@@ -106,10 +104,10 @@ fn without_underscores(text: &str) -> Option<String> {
     (previous != '_').then_some(out)
 }
 
-/// `int(text)`: an optional sign and decimal digits, underscores between them, whitespace around
-/// them; exact, and refused beyond Python's 4,300 digits (leading zeros counted, underscores not), as
-/// `int()` refuses a longer string.
-pub fn py_int(text: &str) -> Option<Int> {
+/// An exact decimal integer with an optional sign, Unicode decimal digits, underscores between
+/// them and whitespace around them. Refused beyond 4,300 digits (leading zeros counted,
+/// underscores not).
+pub fn parse_integer(text: &str) -> Option<Int> {
     let ascii = ascii_form(text)?;
     let (sign, digits) = match ascii.as_bytes().first() {
         Some(b'-') => ("-", &ascii[1..]),
@@ -124,9 +122,9 @@ pub fn py_int(text: &str) -> Option<Int> {
     Int::parse(&format!("{sign}{digits}"))
 }
 
-/// `float(text)`: a decimal number, `inf`, `infinity` or `nan` in any case, with an optional sign,
-/// underscores between digits and whitespace around it. Too large is infinite, as in Python.
-pub fn py_float(text: &str) -> Option<f64> {
+/// A decimal number, `inf`, `infinity` or `nan` in any case, with an optional sign, Unicode decimal
+/// digits, underscores between digits and whitespace around it. Overflow produces infinity.
+pub fn parse_float(text: &str) -> Option<f64> {
     let ascii = ascii_form(text)?;
     let plain = if ascii.contains('_') {
         without_underscores(&ascii)?
@@ -139,8 +137,7 @@ pub fn py_float(text: &str) -> Option<f64> {
     }
     let word = body.to_ascii_lowercase();
     if !matches!(word.as_str(), "inf" | "infinity" | "nan") {
-        // Digits, a point, an exponent: nothing Rust's parser would take that Python's would not
-        // (Rust reads `inf`, `infinity` and `nan` too, handled above).
+        // Only decimal syntax reaches the parser here; special values were handled above.
         let shaped = body
             .bytes()
             .all(|b| b.is_ascii_digit() || matches!(b, b'.' | b'e' | b'E' | b'+' | b'-'));
@@ -156,7 +153,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ints_read_as_python_reads_them() {
+    fn integers_accept_unicode_decimal_digits_and_separators() {
         let cases: [(&str, Option<i64>); 18] = [
             (" \u{663} ", Some(3)),
             ("1_000", Some(1000)),
@@ -178,20 +175,23 @@ mod tests {
             ("+-1", None),
         ];
         for (text, expected) in cases {
-            assert_eq!(py_int(text), expected.map(Int::from), "{text:?}");
+            assert_eq!(parse_integer(text), expected.map(Int::from), "{text:?}");
         }
-        assert_eq!(py_int(&"9".repeat(50)).unwrap().to_string(), "9".repeat(50));
-        // Python refuses a string of more than 4,300 digits, leading zeros counted, underscores not.
-        assert!(py_int(&"1".repeat(4300)).is_some());
-        assert!(py_int(&"1".repeat(4301)).is_none());
-        assert!(py_int(&format!("{}1", "0".repeat(4300))).is_none());
-        assert!(py_int(&format!("-{}", "1".repeat(4301))).is_none());
-        assert!(py_int(&format!("{}1", "1_".repeat(2150))).is_some());
-        assert!(py_int(&"\u{661}".repeat(4301)).is_none());
+        assert_eq!(
+            parse_integer(&"9".repeat(50)).unwrap().to_string(),
+            "9".repeat(50)
+        );
+        // The limit counts leading zeros, but not underscores.
+        assert!(parse_integer(&"1".repeat(4300)).is_some());
+        assert!(parse_integer(&"1".repeat(4301)).is_none());
+        assert!(parse_integer(&format!("{}1", "0".repeat(4300))).is_none());
+        assert!(parse_integer(&format!("-{}", "1".repeat(4301))).is_none());
+        assert!(parse_integer(&format!("{}1", "1_".repeat(2150))).is_some());
+        assert!(parse_integer(&"\u{661}".repeat(4301)).is_none());
     }
 
     #[test]
-    fn floats_read_as_python_reads_them() {
+    fn floats_accept_decimal_syntax_and_special_values() {
         let cases: [(&str, Option<f64>); 17] = [
             ("1_000.5", Some(1000.5)),
             (" inf ", Some(f64::INFINITY)),
@@ -212,18 +212,18 @@ mod tests {
             ("-", None),
         ];
         for (text, expected) in cases {
-            assert_eq!(py_float(text), expected, "{text:?}");
+            assert_eq!(parse_float(text), expected, "{text:?}");
         }
-        assert!(py_float("NaN ").is_some_and(f64::is_nan));
-        assert_eq!(py_float("\u{1c}1.5"), None);
-        assert_eq!(py_float("\u{a0}inf"), Some(f64::INFINITY));
+        assert!(parse_float("NaN ").is_some_and(f64::is_nan));
+        assert_eq!(parse_float("\u{1c}1.5"), None);
+        assert_eq!(parse_float("\u{a0}inf"), Some(f64::INFINITY));
     }
 
     #[test]
-    fn digits_are_what_isdigit_takes() {
-        assert!(py_isdigit("123") && py_isdigit("\u{663}") && py_isdigit("\u{b2}"));
-        assert!(!py_isdigit("") && !py_isdigit(" 1") && !py_isdigit("1.0"));
-        assert_eq!(py_int("\u{b2}"), None);
+    fn digits_include_non_decimal_unicode_digits() {
+        assert!(is_digits("123") && is_digits("\u{663}") && is_digits("\u{b2}"));
+        assert!(!is_digits("") && !is_digits(" 1") && !is_digits("1.0"));
+        assert_eq!(parse_integer("\u{b2}"), None);
     }
 
     #[test]

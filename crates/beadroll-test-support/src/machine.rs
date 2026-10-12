@@ -9,12 +9,11 @@ use std::process::{Command, ExitStatus, Stdio};
 
 use crate::{Json, Sandbox};
 
-/// The prefixes `Machine.env` strips from the inherited environment, so that nothing of the
-/// developer's own harness, store or repository reaches the `bead` under test.
+/// Environment prefixes removed so the developer's harness, store and repository settings cannot
+/// reach the binary under test.
 const SCRUBBED: [&str; 4] = ["CLAUDE", "CODEX", "BEAD_", "GIT_"];
 
-/// One developer machine, as `support.Machine` builds it: its own home (`BEAD_HOME`), its own clone
-/// of the sandbox's remote, and its own identity.
+/// One simulated developer machine with its own BEAD_HOME, clone and identity.
 pub struct Machine {
     name: String,
     home: PathBuf,
@@ -71,9 +70,9 @@ impl Machine {
         &self.bead
     }
 
-    /// The environment of a run, as `Machine.env` builds it: the test's own, less every `CLAUDE*`,
-    /// `CODEX*`, `BEAD_*` and `GIT_*` variable, then this machine's home and identity (the thread
-    /// defaults to `NAME-thread-0001`), then [`Machine::extra`].
+    /// The inherited environment without CLAUDE*, CODEX*, BEAD_* or GIT_* variables, followed by
+    /// this machine's home and identity and then Machine::extra. The default thread is
+    /// NAME-thread-0001.
     pub fn env(&self, thread: Option<&str>, agent: &str) -> BTreeMap<OsString, OsString> {
         let mut env = scrubbed(std::env::vars_os());
         let thread = thread.map_or_else(|| format!("{}-thread-0001", self.name), str::to_owned);
@@ -111,7 +110,7 @@ impl Machine {
         self.cmd(args).run()
     }
 
-    /// Runs `bead ARGS --json` as `Machine.bead` does: the parsed document, or `None` when the
+    /// Runs `bead ARGS --json`: the parsed document, or `None` when the
     /// output is empty; a failure panics with bead's standard error.
     pub fn bead<I, S>(&self, args: I) -> Option<Json>
     where
@@ -154,7 +153,7 @@ impl Machine {
     }
 }
 
-/// The inherited variables a run keeps: every one but those `Machine.env` strips.
+/// Inherited variables remaining after harness, tracker and git settings are removed.
 fn scrubbed(vars: impl Iterator<Item = (OsString, OsString)>) -> BTreeMap<OsString, OsString> {
     vars.filter(|(key, _)| {
         let key = key.as_encoded_bytes();
@@ -253,7 +252,7 @@ impl Invocation<'_> {
         }
     }
 
-    /// Runs it with `--json` as `Machine.bead` does: the parsed document, or `None` when the output
+    /// Runs it with `--json`: the parsed document, or `None` when the output
     /// is empty; a failure panics with bead's standard error.
     pub fn json(mut self) -> Option<Json> {
         let shown = self
@@ -275,7 +274,7 @@ impl Invocation<'_> {
     }
 }
 
-/// Output decoded as `subprocess.run(..., text=True)` decodes it: UTF-8, or the test fails.
+/// Output decoded as UTF-8, or the test fails.
 fn text(bytes: Vec<u8>, stream: &str) -> String {
     String::from_utf8(bytes).unwrap_or_else(|error| panic!("bead's {stream} is not UTF-8: {error}"))
 }
@@ -292,8 +291,7 @@ pub struct Run {
 }
 
 impl Run {
-    /// The exit status as Python's `returncode` gives it: the exit code, or minus the number of the
-    /// signal that ended the process.
+    /// The exit code, or the negated terminating signal number.
     pub fn returncode(&self) -> i32 {
         match (self.status.code(), self.status.signal()) {
             (Some(code), _) => code,
@@ -302,9 +300,8 @@ impl Run {
         }
     }
 
-    /// Whether bead crashed instead of answering, whichever implementation it is: a Python
-    /// traceback, a Rust panic (`panicked at`, exit status 101), or death by SIGABRT (6) or SIGSEGV
-    /// (11). The ported form of the Python tests' "no Traceback" checks (`docs/RUST-PORT.md` §4.4).
+    /// Whether bead crashed instead of answering: traceback, panic (`panicked at` or exit 101),
+    /// SIGABRT (6) or SIGSEGV (11). Applies to the default binary and alternate executables.
     pub fn crashed(&self) -> bool {
         self.stderr.contains("Traceback")
             || self.stderr.contains("panicked at")
@@ -312,8 +309,7 @@ impl Run {
     }
 }
 
-/// The error code a failed `bead ... --json` reported on standard error, as `support.code`
-/// reads it.
+/// The structured error code reported on stderr by a failed JSON command.
 pub fn code(run: &Run) -> String {
     let document = crate::parse_json(&run.stderr)
         .unwrap_or_else(|error| panic!("bead's error is not JSON ({error}): {}", run.stderr));

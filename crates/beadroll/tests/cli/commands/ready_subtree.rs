@@ -130,7 +130,7 @@ fn records(sandbox: &Sandbox, rows: &[Json]) -> PathBuf {
     path
 }
 
-/// `setUp`: machine a's tracker `ex`, made by importing the tree.
+/// Machine a's tracker `ex`, made by importing the tree.
 fn set_up() -> (Sandbox, Machine) {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");

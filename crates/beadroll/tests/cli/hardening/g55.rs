@@ -1,4 +1,4 @@
-//! G55: `settle_commands` called `recorded.get()` on whatever valid JSON a receipt holds; a
+//! G55: command settlement assumed every valid JSON receipt was an object; a
 //! receipt holding `[]` made every coordinated command of every actor using that store crash, and
 //! sync never swept it (`load_pending` sweeps `*.json` only).
 

@@ -90,10 +90,9 @@ fn u02_ids_and_deps_with_a_trailing_newline_are_not_uuids() {
     assert_eq!(problems(&state), ["id is not a UUID"]);
 }
 
-/// U03: Python 3.11 read about 950 levels, 3.12 and 3.13 about 10,000, 3.14 over 100,000; every bead
-/// now reads 512 and no deeper, counting brackets in strings for nothing.
+/// U03: readers accept at most 512 nesting levels; brackets inside strings do not count.
 #[test]
-fn u03_nesting_deeper_than_512_levels_is_unreadable_on_every_python() {
+fn u03_nesting_deeper_than_512_levels_is_unreadable() {
     let nested = |depth: usize| format!("{}{}", "[".repeat(depth), "]".repeat(depth));
     assert_eq!(MAX_DEPTH, 512);
     let value = parse(nested(512).as_bytes()).unwrap().value;
@@ -121,8 +120,7 @@ fn u03_nesting_deeper_than_512_levels_is_unreadable_on_every_python() {
     assert_eq!(problems, ["line is not valid JSON"]);
 }
 
-/// U04: json.loads on bytes guessed UTF-16 or UTF-32 from the first bytes and skipped a UTF-8 BOM, so
-/// such a line was an event; a journal line is UTF-8, and anything else is unreadable.
+/// U04: journal lines must be UTF-8; refuse UTF-16, UTF-32 and a UTF-8 byte-order mark.
 #[test]
 fn u04_journal_lines_are_utf8_whatever_their_first_bytes() {
     let text = line(1, json!({}));
@@ -137,7 +135,7 @@ fn u04_journal_lines_are_utf8_whatever_their_first_bytes() {
             })
             .collect()
     };
-    // Python's "utf-32" codec writes a byte-order mark, then little-endian units on this machine.
+    // UTF-32 with a byte-order mark followed by little-endian code units.
     let utf32: Vec<u8> = [0xff, 0xfe, 0, 0]
         .into_iter()
         .chain(text.chars().flat_map(|c| u32::from(c).to_le_bytes()))

@@ -26,7 +26,7 @@ mod g03_damaged_meta_moves_coordination_to_origin {
 
     use super::origin_refs;
 
-    /// The class's fixture, as `setUp` builds it: machine a's tracker coordinates through
+    /// Machine a's tracker coordinates through
     /// `coord.git`, not origin, and holds two issues; machine b synced it naming `coord.git`, which
     /// its store's `meta.json` remembers.
     struct Fixture {
@@ -45,7 +45,7 @@ mod g03_damaged_meta_moves_coordination_to_origin {
         created["id"].as_str().expect("an id").to_owned()
     }
 
-    /// `value[key]`, which must be there: Python's `value[key]` raises when it is not.
+    /// The member `key` of `value`; absence fails the test.
     fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
         value
             .get(key)
@@ -57,19 +57,19 @@ mod g03_damaged_meta_moves_coordination_to_origin {
         path.to_str().expect("a UTF-8 path")
     }
 
-    /// The document the file `path` holds: `json.loads(path.read_text())`.
+    /// The JSON document held by path.
     fn read_json(path: &Path) -> Json {
         let read = std::fs::read_to_string(path).unwrap();
         parse_json(&read).unwrap_or_else(|error| panic!("{} ({error}): {read}", path.display()))
     }
 
-    /// `str(path.resolve())`, as the remote the store remembers.
+    /// The canonical absolute path as text, as the remote the store remembers.
     fn resolved(path: &Path) -> Json {
         Json::from(text(&path.canonicalize().unwrap()))
     }
 
     impl Fixture {
-        /// `setUp`.
+        /// Builds the coordination fixture.
         fn new() -> Fixture {
             let sandbox = crate::sandbox();
             let coord = sandbox.bare("coord.git");

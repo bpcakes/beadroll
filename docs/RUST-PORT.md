@@ -326,10 +326,10 @@ So core has a small strict parser and writer:
   - The parsed `Value` is not kept (roll-dih8.11): two records of one id are told apart by a
     digest of their content, as Python's `canonical` tells them apart, and replay takes each
     event's operation from the journal as it applies it.
-- **Integers.** Fields that Python types as `int` use `PyInt` (`Bool | Int`, an `Int` being
+- **Integers.** Fields that Python types as `int` use `IntegerField` (`Bool | Int`, an `Int` being
   `Small(i64) | Big(digits)`), because replay accepts `true` where an int is due. The looser replay
   rule exists for histories written before `write_problem`, and those histories must mean the same
-  on every machine. `PyInt` compares, sorts and displays like Python (`[PTrue]`).
+  on every machine. `IntegerField` compares, sorts and displays like Python (`[PTrue]`).
 - **Open-ended data stays `Value`:** `extra`, dangling dependencies and dependency metadata.
 
 **c. The replay data layout favours speed, but the algorithm does not change.**
@@ -739,6 +739,21 @@ each count means.
 
 ### 4.2 How we prove that nothing regressed
 
+Current fixture provenance (roll-dih8.17): source comments and test names describe the contracts
+they check; implementation history lives here. The golden output files and receipt signatures
+were captured from `python-0.1.0` under CPython 3.14. JSON diagnostic fixtures use CPython 3.14
+as their reference. The non-printable table in `crates/beadroll-core/src/text/printable.rs` was
+generated with CPython 3.14.7's `str.isprintable()`, using Unicode 16.0.0, by
+`xtask/python/printable_table.py`; changing the generator's header does not change the table.
+`crates/beadroll/tests/cli/stress/seeded_random.rs` follows CPython 3.11–3.14's
+`Modules/_randommodule.c` and `Lib/random.py`: MT19937, integer seeding, `getrandbits`, `random`,
+`randrange`, `choice` and weighted `choices`. Its recorded stream and draw fixtures came from
+that implementation, so old stress seeds still reproduce the same scenarios.
+
+The actor and input fixtures in `crates/beadroll/tests/cli/parity/actors.rs` and `inputs.rs`
+were captured from the Python bead under Python 3.14 before cutover. The unpublished-count
+`COUNTS` fixture in `parity/pending.rs` was also captured from the Python bead before cutover.
+
 1. **The Python suite is the oracle.** `cargo xtask oracle` runs the Python modules with
    `BEAD_UNDER_TEST=target/debug/bead`. It skips, from a checked-in list derived from the
    catalogues (`xtask/oracle-skip.txt`):
@@ -1085,20 +1100,20 @@ chased.
 
 | # | Python behaviour | Where it shows | Rust | |
 |---|---|---|---|---|
-| 1 | `isinstance(True, int)`: replay accepts booleans as `priority`, `estimated_minutes` and `generation`, and `"v": true` equals 1 | Replay of histories that predate `write_problem` | `PyInt::Bool`; writes still refuse booleans | keep |
+| 1 | `isinstance(True, int)`: replay accepts booleans as `priority`, `estimated_minutes` and `generation`, and `"v": true` equals 1 | Replay of histories that predate `write_problem` | `IntegerField::Bool`; writes still refuse booleans | keep |
 | 2 | Arbitrary-precision integers; default decimal parsing/formatting limit is 4,300 digits in Python 3.11+ | Extras, imports, generations | Integers beyond `i64` kept as digit strings, with the same decimal limit on reading and writing; oracle pinned to that default | keep default contract |
 | 3 | Floats print as `repr()`; `1e400` parses to infinity, and export then raises `ValueError` (`allow_nan=False`) | Extras from imports | `repr`-compatible formatting; non-finite is "not a JSON number" | reject (decided) |
 | 4 | Lone surrogates, escaped or raw `ED A0 80`, read as one U+FFFD each, with an integrity row | Journal and attempt lines | In the parser | keep |
 | 5 | A duplicate key keeps its last value at the first key's position | All JSON | Same | keep |
 | 6 | `UUID_RE.match` with `$` accepts a trailing newline in ids and deps | Hostile events only | Reject: ids and deps must match the UUID shape exactly | reject (decided) |
 | 7 | Readable nesting depends on the interpreter and its C stack: 994 levels on 3.11, about 10,000 on 3.12 and 3.13, 116,199 on 3.14 on this Mac; replay has no depth check, so a readable deep event applies. Writes and imports are capped at 100 and 98 | Parsing | Iterative parser with a ceiling of 512 levels; deeper is an unreadable line; caps kept. Python counts a line deeper than 512 as unreadable too, checked before `json.loads` (U03) | decided: 512 in both (§10) |
-| 8 | `str.strip()`/`isspace()` use Python's Unicode set (U+001C–001F count as space); `bytes.strip()` uses ASCII | `split_list`, comment emptiness, blank JSONL lines | `text::py_strip` and friends | keep |
+| 8 | `str.strip()`/`isspace()` use Python's Unicode set (U+001C–001F count as space); `bytes.strip()` uses ASCII | `split_list`, comment emptiness, blank JSONL lines | `text::strip` and friends | keep |
 | 9 | `str.lower()` is full Unicode case mapping | `search`, `--title-contains`; `normalize_remote`, hence derived workspace ids; `init`'s default prefix | `to_lowercase`, confirmed by `diff` | keep |
 | 10 | `os.path.realpath` is lenient and pure Python, with no case folding | Remote resolution and comparison | Port the algorithm; never libc `realpath` | keep |
 | 11 | `repr()` of values in `show`'s conflict lines: quote choice, escapes, printability | Human output | Port of the `repr` rules; printability table generated from CPython | keep |
-| 12 | `int()` accepts `" +5 "`, `"5_000"` and non-ASCII digits | `--estimate`, `--limit` | `text::py_int` | keep |
+| 12 | `int()` accepts `" +5 "`, `"5_000"` and non-ASCII digits | `--estimate`, `--limit` | `text::parse_integer` | keep |
 | 13 | argparse: prefix abbreviations, last value wins, its own error texts and help layout | CLI | argparse's parser, help formatter and `textwrap` ported (§2.3h): behaviour and texts kept | keep behaviour |
-| 14 | `str(True)` is `True` in human lines (`[PTrue]`) | `list`, `ready`, `show` | `PyInt: Display` | keep |
+| 14 | `str(True)` is `True` in human lines (`[PTrue]`) | `list`, `ready`, `show` | `IntegerField: Display` | keep |
 | 15 | `OSError` reads `"{strerror}: {filename}"`, and a rename names its target | IO errors | Paths attached at every call; libc `strerror` text | keep |
 | 16 | `json.dumps` dialects | Everywhere | `json::Format` | keep |
 | 17 | CPython ignores SIGXFSZ; children get the default | File-size limits | §2.3f | keep |

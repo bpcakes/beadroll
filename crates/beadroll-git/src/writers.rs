@@ -1,11 +1,7 @@
-//! Objects and refs written through long-lived gits (`docs/RUST-PORT.md` Appendix B): one `git
-//! hash-object -w --no-filters --stdin-paths` for every blob, one `git mktree --batch` for every
-//! tree of a publish, one `git update-ref --stdin` whose transactions do the ref bookkeeping.
-//!
-//! Each writes exactly what the one-shot command Python runs writes. A question it cannot ask in
-//! the same words (a name holding a newline, which would end a line early) is [`NoAnswer`] before
-//! anything is sent, and so is any answer outside the protocol; the caller then runs the one-shot
-//! command, whose answer, or failure, is the one bead gives.
+//! Persistent git writers: hash-object for blobs, mktree for trees and update-ref transactions
+//! for ref bookkeeping. Results match standalone commands. An unrepresentable request, such as a
+//! newline in a line-based name, returns [`NoAnswer`] before sending anything; invalid responses
+//! do likewise, allowing the caller to use the standalone command.
 
 use std::io::Write as _;
 use std::os::unix::ffi::OsStrExt as _;

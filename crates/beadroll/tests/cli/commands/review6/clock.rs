@@ -1,7 +1,6 @@
-//! F14 and a verified property: bead's clock is wrong. The Python tests run bead through a driver
-//! that replaces `time.time_ns` for the whole run; these ports are `rust_only` and set the Rust
-//! `bead`'s clock with the `clock` failpoint instead (`docs/RUST-PORT.md` §4.5), at every reading
-//! (`clock@always`): `at(NS)` sets it to NS nanoseconds since the epoch, `offset(±DUR)` shifts it.
+//! F14 and a verified property: an incorrect clock. These `rust_only` tests set the `clock`
+//! failpoint at every reading (`clock@always`). `at(NS)` sets nanoseconds since the epoch;
+//! `offset(±DUR)` shifts the clock (`docs/RUST-PORT.md` §4.5).
 
 use std::collections::BTreeSet;
 
@@ -16,7 +15,7 @@ const BEHIND: &str = "clock@always=offset(-48h)";
 /// passes between two edits of the clock-skew test.
 const NEARLY_48_HOURS: i64 = 47 * 3600 * 1000;
 
-/// `self.machine(name)` for a `rust_only` test: a machine `name` that runs the Rust `bead`, its
+/// A machine `name` that runs the Rust `bead`, its
 /// tracker initialised with the prefix `ex`.
 fn machine(sandbox: &Sandbox, name: &str) -> Machine {
     let machine = crate::rust_only(sandbox, name);
@@ -37,10 +36,8 @@ fn set_stamps(machine: &Machine, key: &str) -> Vec<i64> {
     .collect()
 }
 
-/// F14: a clock past year 2100 does not turn create into a KeyError traceback.
-///
-/// Python's driver sets `time.time_ns` to 4,429,000,000,000,000,000 nanoseconds (the year 2110)
-/// for the whole run: `clock@always=at(4429000000000000000)`.
+/// F14: a clock past year 2100 must not crash create. Set every clock reading to the year 2110
+/// with `clock@always=at(4429000000000000000)`.
 #[test]
 fn f14_future_clock_create_is_a_structured_error() {
     let sandbox = crate::sandbox();
@@ -61,13 +58,10 @@ fn f14_future_clock_create_is_a_structured_error() {
     assert!(!titles.contains(&"future"), "{titles:?}");
 }
 
-/// Verified (no finding): a write that has seen another still settles when its clock is behind.
-///
-/// Python's driver runs bead with `time.time_ns` 48 hours behind for the whole run:
-/// `clock@always=offset(-48h)`, on the two updates machine `clock-future` makes through it. Since
-/// causality would decide both registers the same way with the clock right, the port also shows
-/// that it was not: each of those updates is stamped more than 47 hours before the edit it follows
-/// or races.
+/// A write that has seen another still settles it when its clock is behind. Set
+/// `clock@always=offset(-48h)` for two updates by `clock-future`. Check that each timestamp is
+/// more than 47 hours before the edit it follows or races, so the test proves the clock shifted
+/// as well as checking the resulting registers.
 #[test]
 fn clock_skew_does_not_override_causality() {
     let sandbox = crate::sandbox();

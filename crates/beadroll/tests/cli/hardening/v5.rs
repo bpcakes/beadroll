@@ -1,8 +1,7 @@
-//! V5, verified by the seventh review: the store's files and directories are private whatever the
-//! umask while the files bead writes into a checkout follow it, a write retightens a store whose
-//! modes were relaxed, a hook's `GIT_DIR` never moves the sync repository, the side files beside a
-//! journal are never read as journal, and global commit signing never reaches bead's commits.
-//! `V5_KillAtRename` needs the `atomic-write:` failpoint, and is ported with it.
+//! V5: store files remain private under any umask, checkout files follow the umask, and writes
+//! retighten relaxed store permissions. Hook GIT_DIR cannot move the sync repository, journal
+//! side files are ignored, and global signing does not affect internal commits. The rename crash
+//! test uses `atomic-write:` failpoints.
 
 use std::collections::BTreeSet;
 use std::fs::Permissions;
@@ -11,14 +10,14 @@ use std::path::{Path, PathBuf};
 
 use beadroll_test_support::{Json, Machine, Sandbox, parse_json};
 
-/// `_v5_mode`: the permission bits of `path` itself, a symlink not followed (`os.lstat`).
+/// The permission bits of `path` itself, without following symlinks.
 fn mode(path: &Path) -> u32 {
     let meta = std::fs::symlink_metadata(path)
         .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
     meta.permissions().mode() & 0o7777
 }
 
-/// `_v5_modes`: each of `paths` with its mode, in octal as `oct()` writes it.
+/// Each of `paths` with its mode, in octal with a `0o` prefix.
 fn modes(paths: &[PathBuf]) -> Vec<(String, String)> {
     paths
         .iter()
@@ -26,7 +25,7 @@ fn modes(paths: &[PathBuf]) -> Vec<(String, String)> {
         .collect()
 }
 
-/// `set(_v5_modes(paths).values())`: the modes `paths` have between them.
+/// The distinct modes of `paths`.
 fn distinct_modes(paths: &[PathBuf]) -> BTreeSet<u32> {
     paths.iter().map(|path| mode(path)).collect()
 }
@@ -37,7 +36,7 @@ fn id(result: Option<Json>) -> String {
     result["id"].as_str().expect("an id").to_owned()
 }
 
-/// `value[key]` as Python indexes a dict: the member, or the test fails.
+/// The member `key` of `value`; absence fails the test.
 fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
     value
         .get(key)
@@ -56,12 +55,12 @@ fn executable(path: &Path, script: &str) {
     std::fs::set_permissions(path, Permissions::from_mode(0o755)).unwrap();
 }
 
-/// The sandbox's remote, `str(self.box.origin)`, as bead's `--remote` takes it.
+/// The sandbox's remote as a UTF-8 path for bead's `--remote`.
 fn origin(sandbox: &Sandbox) -> &str {
     sandbox.origin().to_str().expect("a UTF-8 path")
 }
 
-/// The id `machine` has in its home's `replica.json`: `json.loads(replica.read_text())["id"]`.
+/// The machine id from replica.json.
 fn replica_id(machine: &Machine) -> String {
     let text = std::fs::read_to_string(machine.home().join("replica.json")).unwrap();
     let identity = parse_json(&text).unwrap();
@@ -72,10 +71,8 @@ fn replica_id(machine: &Machine) -> String {
 mod v5_data_file_modes {
     use super::*;
 
-    /// A `bead` that runs the sandbox's own under `umask`: a script that sets it, then execs that
-    /// bead. The Python test sets the umask on its own process (`os.umask`), which every bead it
-    /// starts inherits; a test binary's threads share one umask, so here each machine runs its
-    /// bead through the script instead ([`Machine::with_bead`]), every run of it under the umask.
+    /// A launcher that sets `umask` and execs the sandbox's bead. Each machine uses it through
+    /// [`Machine::with_bead`], avoiding changes to the shared test process's umask.
     fn under_umask(sandbox: &Sandbox, umask: u32) -> PathBuf {
         let path = sandbox.root().join(format!("bead-umask-{umask:03o}"));
         let script = format!(
@@ -86,7 +83,7 @@ mod v5_data_file_modes {
         path
     }
 
-    /// The entries of `dir`, sorted: `sorted(dir.iterdir())`.
+    /// The entries of `dir`, sorted by path.
     fn entries(dir: &Path) -> Vec<PathBuf> {
         let listed = std::fs::read_dir(dir).unwrap_or_else(|error| panic!("{dir:?}: {error}"));
         let mut paths: Vec<PathBuf> = listed.map(|entry| entry.unwrap().path()).collect();
@@ -94,8 +91,8 @@ mod v5_data_file_modes {
         paths
     }
 
-    /// The entries of the directories in `dir` whose names end with `suffix`, hidden ones
-    /// included: `dir.glob("*/*SUFFIX")`, as pathlib globs.
+    /// Matching entries one directory below dir, including hidden entries, whose names end with
+    /// suffix.
     fn below(dir: &Path, suffix: &str) -> Vec<PathBuf> {
         let mut found = Vec::new();
         for folder in entries(dir).into_iter().filter(|path| path.is_dir()) {
@@ -124,14 +121,11 @@ mod v5_data_file_modes {
         found
     }
 
-    /// Verified (V5): files bead writes into its own store are 0600 under umask 022, 002 and 077:
-    /// segments, claims/*.json, pending/*.json and *.command (after a crash before push and after a
-    /// lost ack), meta.json, replica.json, aliases.json; BEAD_HOME and <ws> are 0700 after a write.
-    /// Checkout files (.beadroll.json, export -o) follow the umask: 0644 / 0664 / 0600 (F04).
-    /// The review measured 3 umasks x 1 full sequence; per umask 5 own claim files, 2 segments,
-    /// 2 pending files in each crash snapshot, and meta/replica/aliases all -rw-------. Each
-    /// machine's bead runs under its umask through a script (`under_umask`), where the Python test
-    /// sets the umask of its own process.
+    /// V5: under umasks 022, 002 and 077, all store files are 0600 and BEAD_HOME and the
+    /// workspace directory are 0700 after a write. Includes claim, segment, pending, receipt,
+    /// metadata, identity and alias files, with snapshots before push and after a lost
+    /// acknowledgement. Checkout configuration and exports follow the umask: 0644, 0664 and 0600
+    /// respectively (F04).
     #[test]
     fn data_files_are_0600_and_checkout_files_follow_umask() {
         let sandbox = crate::sandbox();
@@ -362,18 +356,10 @@ mod v5_kill_at_rename {
             .collect()
     }
 
-    /// Verified (V5): a SIGKILL between the temp write and the rename never damages the target:
-    /// an export -o target keeps its old bytes, and a claim killed while writing its confirmed
-    /// attempt file is recognised on retry. The review measured export killed rc -9 with target
-    /// 'previous export' and a leftover .issues.jsonl.<pid>.tmp; claim killed rc -9 leaving
-    /// claims/.<id>.json.<pid>.tmp plus pending json and command; retry claim rc 0, owner
-    /// codex:<thread>@<machine>, integrity [], pending_ownership [].
-    ///
-    /// Replaces `V5_KillAtRename`'s `test_kill_at_rename_keeps_targets_whole`, which loads a
-    /// `sitecustomize` whose `os.replace` kills bead with SIGKILL when the target holds
-    /// `BEAD_KILL_AT_REPLACE`; here `atomic-write:<part>=sigkill` does the same at the first such
-    /// write, after its temporary file is written and fsynced and before the rename: a `rust_only`
-    /// test, without the Python test's probe of `python3`.
+    /// V5: SIGKILL after a temporary file is written and fsynced but before rename leaves the
+    /// target whole. An export retains its previous bytes; a claim killed while confirming its
+    /// attempt is recognised on retry. Inject `atomic-write:<part>=sigkill` at the first matching
+    /// write in this `rust_only` test.
     #[test]
     fn kill_at_rename_keeps_targets_whole() {
         let sandbox = crate::sandbox();
@@ -432,11 +418,9 @@ mod v5_kill_at_rename {
 mod v5_signing_config_is_inert {
     use super::*;
 
-    /// Verified (V5): a global commit.gpgsign=true does not reach bead's `git commit-tree`
-    /// (git 2.55): claims and syncs succeed and gpg is never called. The review measured, with a
-    /// gpg.program that logs and exits 2, claim rc 0 (0.8 s), sync rc 0, and the gpg log never
-    /// created. Like the Python test, it needs /bin/sh for the fake gpg program, and says it skipped
-    /// without one.
+    /// V5: global `commit.gpgsign=true` must not reach internal `git commit-tree` calls. A fake
+    /// gpg logs and fails if called; claims and sync must succeed without creating that log.
+    /// Requires `/bin/sh` for the fake executable.
     #[test]
     fn global_commit_signing_does_not_affect_claims() {
         if !Path::new("/bin/sh").exists() {

@@ -10,9 +10,9 @@ use beadroll_store::{machine_aliases, view_outline};
 
 use super::{Context, Failure, Outcome, need_tracker};
 
-/// Every claim, by issue key: the confirmed owners (with their machine, thread, generation, branch
-/// and how long since their thread last wrote), offline claims and this machine's attempts that
-/// await the remote. `now` is the time in seconds (Python's `time.time()`).
+/// Every claim, by issue key: confirmed owners with machine, thread, generation, branch and time
+/// since their thread last wrote; offline claims; and this machine's attempts awaiting the
+/// remote. `now` is seconds since the epoch.
 pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
     let st = view_outline(ctx.ws)?;
     need_tracker(&st)?;
@@ -47,7 +47,7 @@ pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
                 .and_then(|place| place.get("branch"))
                 .cloned()
                 .unwrap_or(Value::Null);
-            // int((now - millis / 1000) / 60): int() truncates the float towards zero
+            // Elapsed minutes, truncating the floating-point result towards zero.
             let idle = ((now - millis as f64 / 1000.0) / 60.0).trunc();
             let mut entry = Object::new();
             entry.insert("id".into(), Value::from(issue.key()));

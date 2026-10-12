@@ -9,7 +9,7 @@ use beadroll_test_support::{Json, Machine, Sandbox, code, parse_json};
 
 use super::{executable, id, member, quoted};
 
-/// The class's `setUp`: machine a, its tracker initialised with the prefix `ex`, the issue `one`
+/// Machine a, its tracker initialised with the prefix `ex`, the issue `one`
 /// created and synced. Returns the machine and the issue's key.
 fn set_up(sandbox: &Sandbox) -> (Machine, String) {
     let a = Machine::new(sandbox, "a");

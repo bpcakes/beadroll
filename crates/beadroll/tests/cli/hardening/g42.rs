@@ -31,7 +31,7 @@ mod g42_uid_retraction_misses_twin_of_imported_key {
         record
     }
 
-    /// `record` as one line of a JSONL file, as `json.dumps(record) + "\n"` writes it.
+    /// One record as spaced, ASCII-escaped JSON followed by a newline.
     fn line(record: &Json) -> String {
         write(record, Format::ASCII).expect("a record bead can read") + "\n"
     }

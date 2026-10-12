@@ -5,8 +5,8 @@
 use std::path::Path;
 use std::process::Command;
 
-/// `_g35_untracked`: what `git status --porcelain --untracked-files=all` lists in `checkout`, one
-/// entry a line; nothing when git fails, as the Python helper does not check its status.
+/// Lines listed by `git status --porcelain --untracked-files=all` in `checkout`. The helper does
+/// not check exit status and returns empty output if git fails silently.
 fn untracked(checkout: &Path) -> Vec<String> {
     let output = Command::new("git")
         .args(["status", "--porcelain", "--untracked-files=all"])
@@ -22,7 +22,7 @@ mod g35_store_never_lands_in_the_checkout {
 
     use super::untracked;
 
-    /// The class's `setUp`: machine g35, whose checkout has a subdirectory `src`.
+    /// Machine g35, whose checkout has a subdirectory `src`.
     fn setup(sandbox: &Sandbox) -> Machine {
         let m = Machine::new(sandbox, "g35");
         std::fs::create_dir(m.checkout().join("src")).unwrap();

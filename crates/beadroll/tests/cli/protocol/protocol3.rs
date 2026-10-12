@@ -2,7 +2,7 @@
 //! settle stays pending and counts for nothing until one lands; and a claiming update killed while
 //! it confirms the attempt the remote accepted leaves all of it or none, never part (the third
 //! independent review, 2026-10-06). The kill is the Rust `bead`'s `atomic-write:claims/`
-//! failpoint. The class's in-process tests are in `beadroll-sync`
+//! failpoint. Related in-process tests are in `beadroll-sync`
 //! (`tests/sync/protocol/protocol3.rs`).
 
 use std::os::unix::fs::PermissionsExt as _;
@@ -10,8 +10,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use beadroll_store::{glob_ending, read_attempt};
 use beadroll_test_support::{Json, Machine, Sandbox, code};
 
-/// Machine a's tracker with one issue, "before", synced to machine b: the class's `setUp`, less
-/// the in-process store its other tests open.
+/// Machine a's tracker with one issue, "before", synced to machine b.
 struct Protocol3 {
     sandbox: Sandbox,
     a: Machine,
@@ -23,7 +22,7 @@ fn setup() -> Protocol3 {
     setup_with(Machine::new)
 }
 
-/// `setUp` with machines made by `make`: `Machine::new`, or `crate::rust_only` for a test that
+/// Sets up machines made by `make`: `Machine::new`, or `crate::rust_only` for a test that
 /// injects its fault through a failpoint.
 fn setup_with(make: fn(&Sandbox, &str) -> Machine) -> Protocol3 {
     let sandbox = crate::sandbox();
@@ -40,7 +39,7 @@ fn setup_with(make: fn(&Sandbox, &str) -> Machine) -> Protocol3 {
     Protocol3 { sandbox, a, b, key }
 }
 
-/// `value[key]` as Python indexes a dict: the member, or the test fails.
+/// The member `key` of `value`; absence fails the test.
 fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
     value
         .get(key)
@@ -48,7 +47,7 @@ fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
 }
 
 /// What a reader sees of a claiming update on `issue`: whether it is claimed, its title and its
-/// labels (none when it has none), `("claim" in issue, issue["title"], issue.get("labels", []))`.
+/// labels (an empty vector when it has none).
 fn seen(issue: &Json) -> (bool, String, Vec<String>) {
     let title = member(issue, "title").as_str().expect("a title");
     let labels = issue.get("labels").and_then(Json::as_array);
@@ -91,8 +90,7 @@ fn rejected_fences_leave_attempt_pending_and_excluded() {
     let hook = s.sandbox.origin().join("hooks").join("pre-receive");
     std::fs::write(&hook, "#!/bin/sh\nexit 1\n").unwrap();
     std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
-    // Python synchronises in process here; the refusal ends the sync in its first round, so no
-    // wait between rounds is ever reached
+    // Refusal ends sync in its first round, before any backoff.
     let refused = s.a.run(["sync", "--json"]);
     assert_eq!(refused.returncode(), 1, "{}", refused.stdout);
     assert_eq!(code(&refused), "REMOTE_REFUSED");
@@ -105,14 +103,10 @@ fn rejected_fences_leave_attempt_pending_and_excluded() {
     assert!(s.a.show(&s.key).get("claim").is_none());
 }
 
-/// Remote accepts all files; SIGKILL stops local confirmation after its first file.
-///
-/// Python's driver stops in the atomic write of the attempt file into `claims/`, its bytes on disk
-/// under a temporary name and the rename into place not done, and the test kills it there. Here
-/// the Rust `bead` (`rust_only`) is killed by SIGKILL at that point, the `atomic-write` of every
-/// target in `claims/` before its rename (`atomic-write:claims/@always=sigkill`, as the driver
-/// stops every such rename); an end by SIGKILL (-9), which only the failpoint sends, shows that the
-/// confirmation was reached.
+/// The remote accepts all files; SIGKILL interrupts local confirmation. Inject
+/// `atomic-write:claims/@always=sigkill` after writing the temporary attempt file and before
+/// rename. Exit by SIGKILL proves confirmation was reached; retry must settle the remaining
+/// files.
 #[test]
 fn kill_during_local_confirmation_does_not_leave_partial_atomic_update() {
     let s = setup_with(crate::rust_only);

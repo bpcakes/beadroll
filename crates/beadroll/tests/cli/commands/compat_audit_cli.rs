@@ -8,7 +8,7 @@ use beadroll_core::json::{Format, write};
 use beadroll_core::text::is_space;
 use beadroll_test_support::{Json, Machine, Sandbox, code, json, parse_json};
 
-/// `setUp`: a sandbox and machine `compat`, whose tracker (prefix `ex`) holds issues X and Y.
+/// A sandbox and machine `compat`, whose tracker (prefix `ex`) holds issues X and Y.
 fn set_up() -> (Sandbox, Machine, String, String) {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "compat");
@@ -27,7 +27,7 @@ fn ids(issues: &Json) -> Vec<String> {
     issues.as_array().unwrap().iter().map(id).collect()
 }
 
-/// `value` as `json.dumps(value)` writes it.
+/// Spaced, ASCII-escaped JSON.
 fn dumps(value: &Json) -> String {
     write(value, Format::ASCII).unwrap()
 }
@@ -247,7 +247,7 @@ fn metadata_excludes_local_machine_identifiers() {
     let (sandbox, a, x, _) = set_up();
     a.bead(["comments", "add", &x, "synthetic comment"]);
     let forbidden = [
-        python_home(),
+        user_home(),
         sandbox.root().to_str().unwrap().to_owned(),
         hostname(),
         format!("{}@", user()),
@@ -286,9 +286,8 @@ fn journal_events(store: &Path) -> Vec<Json> {
     events
 }
 
-/// The user's home as Python's `Path.home()` names it: `HOME`, else the password database's,
-/// without a trailing slash.
-fn python_home() -> String {
+/// The user's home from `HOME`, else the password database, without a trailing slash.
+fn user_home() -> String {
     let home = std::env::var("HOME").unwrap_or_else(|_| {
         let user = nix::unistd::User::from_uid(nix::unistd::Uid::current());
         user.unwrap().unwrap().dir.to_str().unwrap().to_owned()
@@ -299,13 +298,13 @@ fn python_home() -> String {
     }
 }
 
-/// The machine's name, as `socket.gethostname()` gives it.
+/// The machine's hostname.
 fn hostname() -> String {
     let name = rustix::system::uname();
     name.nodename().to_string_lossy().into_owned()
 }
 
-/// The user's login name, as `getpass.getuser()` finds it: the first of `LOGNAME`, `USER`, `LNAME`
+/// The user's login name: the first of `LOGNAME`, `USER`, `LNAME`
 /// and `USERNAME` that is set, else the password database's.
 fn user() -> String {
     ["LOGNAME", "USER", "LNAME", "USERNAME"]

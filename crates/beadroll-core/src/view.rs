@@ -1,5 +1,4 @@
-//! How an issue is shown (Python's `brief`, `detail` and `line`): objects in Python's key order, and
-//! the one-line form `list` prints.
+//! Issue presentation: objects in stable field order and the one-line list format.
 
 use crate::event::{EXPORT_FIELDS, Field};
 use crate::json::{Object, Value};
@@ -20,7 +19,7 @@ pub fn icon(status: &str) -> &'static str {
     }
 }
 
-/// A field as Python's `issue[name]` reads it (`null` when absent).
+/// A field's value, or null when absent.
 fn field(issue: &Issue, name: Field) -> Value {
     issue.field(name).cloned().unwrap_or(Value::Null)
 }
@@ -42,7 +41,7 @@ fn disputed(st: &State, issue: &Issue) -> Vec<String> {
 }
 
 impl State {
-    /// An issue in a list (Python's `brief`).
+    /// An issue's list summary.
     pub fn brief(&self, issue: &Issue) -> Object {
         let mut out = Object::new();
         out.insert("id".into(), Value::from(issue.key()));
@@ -87,8 +86,7 @@ impl State {
         out
     }
 
-    /// An issue in full (Python's `detail` without the merge check, which needs git: the CLI adds
-    /// `merged` after `closed_on`).
+    /// Full issue details. The CLI adds the git-dependent `merged` field after `closed_on`.
     pub fn detail(&self, issue: &Issue) -> Object {
         let mut out = Object::new();
         out.insert("id".into(), Value::from(issue.key()));
@@ -212,7 +210,7 @@ impl State {
         dependents.into()
     }
 
-    /// An issue on one line, as `list` prints it before escaping (Python's `line`).
+    /// The one-line issue summary before output escaping.
     pub fn line(&self, issue: &Issue) -> String {
         let who = issue
             .get(Field::Assignee)

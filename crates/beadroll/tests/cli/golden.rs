@@ -1,12 +1,8 @@
-//! Golden outputs, for what other tests do not pin whole (`docs/RUST-PORT.md` §4.2 item 5): every
-//! help page, the whole human `show`, the human output of the other reading commands over one
-//! scripted tracker, and `info`'s keys, with ids, keys, machines, commits, times and paths
-//! normalised (`golden/normal.rs`). Each test compares the `bead` under test with its file in
-//! `tests/golden/`. The files were captured from Python's `./bead` under CPython 3.14, the reference
-//! interpreter (`docs/RUST-PORT.md` §5), and only from it, until the cutover removed the launcher
-//! (`python-0.1.0` has it, and `cargo xtask golden`, which captured them): they are what bead
-//! answered before the port, and regenerating one to make the Rust bead pass is never the fix. A
-//! deliberate change of what bead prints edits the file by hand, in the change that makes it.
+//! Golden outputs pin complete help pages, human-readable `show` and other reading commands over
+//! a scripted tracker, and `info` keys. Variable ids, times and paths are normalised in
+//! `golden/normal.rs`. Expected files in `tests/golden/` are fixed reference outputs (provenance
+//! in `docs/RUST-PORT.md` §4.2). Never regenerate them to hide a failure: an intentional output
+//! change edits the expected file by hand in the same change.
 
 mod normal;
 
@@ -87,7 +83,7 @@ impl Transcript {
                     .join("\n")
             };
             panic!(
-                "{} differs from Python's at line {}:\n--- golden (Python)\n{}\n--- this bead\n{}",
+                "{} differs from the reference at line {}:\n--- golden\n{}\n--- this bead\n{}",
                 path.display(),
                 first + 1,
                 show(&expected),

@@ -1,8 +1,6 @@
-//! `PortAlignment`, from the Rust port's Phase 1 (`roll-k2wy.2`): input CPython read by accident is
-//! refused by every bead. U05 (`docs/FINDINGS.md`; `docs/RUST-PORT.md` §5 row 23): the torn-tail
-//! repair and the published manifest were read with plain `json.loads`, where NaN parses and a
-//! format of true or 1.0 equals 1. U06 (§5 row 24): the merge took any Unicode digits for a
-//! segment's number. The tests write to the remote with git directly.
+//! U05/U06 validation regressions (`docs/FINDINGS.md`): torn-tail repair and manifests refuse
+//! non-finite JSON; manifest format must be integer 1 rather than true or 1.0; segment numbers
+//! require ASCII digits. These tests write remote content directly with git.
 
 use std::collections::BTreeSet;
 use std::io::Write as _;
@@ -12,7 +10,7 @@ use std::process::{Command, Stdio};
 use beadroll_core::json::{Format, write};
 use beadroll_test_support::{Json, Machine, Sandbox, code, json};
 
-/// `setUp`: machine `u05-a` has a tracker, prefix `ex`, whose one issue it has published.
+/// Machine `u05-a` has a tracker, prefix `ex`, whose one issue it has published.
 fn set_up(sandbox: &Sandbox) -> Machine {
     let a = Machine::new(sandbox, "u05-a");
     a.bead(["init", "--prefix", "ex"]);
@@ -21,7 +19,7 @@ fn set_up(sandbox: &Sandbox) -> Machine {
     a
 }
 
-/// `self.remote(*args, data=...)`: `git ARGS` on the sandbox's remote (`GIT_DIR`), as author and
+/// `git ARGS` on the sandbox's remote (`GIT_DIR`), as author and
 /// committer `t` and with no other `GIT_*` variable, `data` on its standard input; what it printed,
 /// stripped. A failure panics.
 fn remote(sandbox: &Sandbox, args: &[&str], data: Option<&[u8]>) -> String {

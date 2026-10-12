@@ -7,7 +7,7 @@
 use beadroll_core::json::{Format, write};
 use beadroll_test_support::{Json, Machine, Sandbox, code, json, parse_json};
 
-/// `setUp`: machine `root2-a` has initialised tracker `re`, created the issue every test works on
+/// Machine `root2-a` has initialised tracker `re`, created the issue every test works on
 /// and synced. Returns the machine and the issue's id.
 fn set_up(sandbox: &Sandbox) -> (Machine, String) {
     let a = Machine::new(sandbox, "root2-a");
@@ -18,9 +18,7 @@ fn set_up(sandbox: &Sandbox) -> (Machine, String) {
     (a, key)
 }
 
-/// The id of the first comment of `key`'s record in `export`, the Beads JSONL bead exports: what
-/// `next(r for r in map(json.loads, export.splitlines()) if r['id'] == key)['comments'][0]['id']`
-/// reads.
+/// The first comment id in the exported record for key.
 fn first_comment_id(export: &str, key: &str) -> Json {
     let record = export
         .lines()

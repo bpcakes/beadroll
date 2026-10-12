@@ -2,8 +2,8 @@
 //! structured code and never a crash. An unusable path given on the command line is `IO` and writes
 //! nothing, damage to the local store is `IO` or a code of git's, the file-size limit is `IO` (or
 //! git's death by SIGXFSZ) with the next write and sync clean, running out of descriptors never
-//! drops a pending attempt, and the shapes of `replica.json` and `.beadroll.json` are checked. Each
-//! class is a module of its own; the helpers they share are here.
+//! drops a pending attempt, and the shapes of `replica.json` and `.beadroll.json` are checked.
+//! Scenarios are grouped in modules; their shared helpers are here.
 
 use std::io::Read;
 use std::process::{Command, Stdio};
@@ -19,8 +19,8 @@ mod v6_identity_and_config_shapes;
 mod v6_store_damage;
 mod v6_user_supplied_paths;
 
-/// `_v6_code`: the error code a failed `bead ... --json` call reported, `TRACEBACK` for a crash
-/// (the Python test's traceback, or a Rust panic or fatal signal, `Run::crashed`), else `None`.
+/// The code reported by a failed JSON command, `TRACEBACK` for a crash detected by
+/// `Run::crashed`, or `None`.
 fn error_code(run: &Run) -> Option<String> {
     let reported = parse_json(&run.stderr)
         .ok()
@@ -44,10 +44,8 @@ fn limited(machine: &Machine, limit: &str, argv: &[&str]) -> Run {
     run_within(command, Duration::from_secs(120))
 }
 
-/// `subprocess.run(..., capture_output=True, text=True, timeout=...)`: `command` run to its end
-/// with nothing on its standard input, what it printed read to the end of its output. When that
-/// has not happened within `timeout`, it is killed and the test fails, as `TimeoutExpired` fails the
-/// Python test.
+/// Runs a command with empty standard input and reads output through completion. If either
+/// process or output exceeds `timeout`, kill it and fail the test.
 fn run_within(mut command: Command, timeout: Duration) -> Run {
     let deadline = Instant::now() + timeout;
     command
@@ -122,14 +120,14 @@ fn id(result: Option<Json>) -> String {
     result["id"].as_str().expect("an id").to_owned()
 }
 
-/// `value[key]` as Python indexes a dict: the member, or the test fails.
+/// The member `key` of `value`; absence fails the test.
 fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
     value
         .get(key)
         .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
 }
 
-/// The id `machine` has in its home's `replica.json`: `json.loads(replica.read_text())["id"]`.
+/// The machine id from replica.json.
 fn replica_id(machine: &Machine) -> Json {
     let text = std::fs::read_to_string(machine.home().join("replica.json")).unwrap();
     let identity = parse_json(&text).unwrap();

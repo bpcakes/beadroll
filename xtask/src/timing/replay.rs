@@ -1,8 +1,6 @@
-//! `timing --replay N`: how long beadroll-core takes to replay N events (a parsed journal to its
-//! State), against the budgets of Appendix A of `docs/RUST-PORT.md` (10,000 events in 20 ms,
-//! 200,000 in 0.5 s and 150 MB, release build), and the peak memory of a process that loads that
-//! journal from disk and replays it. Appendix A also holds what Python's replay took, measured
-//! beside it until the cutover removed the Python implementation. Evidence, never a gate.
+//! `timing --replay N` measures parsed-journal replay and peak memory while loading and replaying
+//! from disk. Appendix A of docs/RUST-PORT.md records release-build budgets: 10,000 events in 20
+//! ms, 200,000 in 0.5 s and 150 MB. Measurements are evidence, not test gates.
 
 use std::ffi::OsStr;
 use std::time::Instant;

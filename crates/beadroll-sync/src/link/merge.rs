@@ -1,4 +1,4 @@
-//! Bringing the remote's journals in (Python's `Link.merge`).
+//! Merges the remote journals into the local store.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -55,7 +55,7 @@ fn fork_path(link: &Link<'_>, target: &Path) -> PathBuf {
     target.with_file_name(format!("{name}.fork-{}", link.ws.settings.clock.now_ns()))
 }
 
-/// A file's stem: its name without the last suffix (pathlib's `stem`).
+/// The filename without its final suffix.
 fn stem(path: &Path) -> String {
     let name = path.file_name().unwrap_or_default().to_string_lossy();
     match name.rfind('.') {

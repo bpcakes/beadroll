@@ -1,5 +1,5 @@
-//! Planning a Beads JSONL import (Python's `import_records`): the records read and checked, and the
-//! events that bring them in, in the order Python emits them. The caller writes them, all or none.
+//! Plans a Beads JSONL import: validates records and produces ordered events. The caller writes
+//! all events or none.
 
 use crate::event::{EXPORT_FIELDS, MAX_NESTING, event_problem, payload_problem, write_problem};
 use crate::id::EventId;
@@ -10,7 +10,7 @@ use crate::text::{repr_str, strip};
 /// The id a would-be create is checked under before it is minted.
 pub const PROBE_ID: &str = "00000000-0000-7000-8000-000000000000";
 
-/// Why an import fails, whole (`VALIDATION`). `Display` is Python's message.
+/// Why the whole import fails, reported as VALIDATION.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct ImportError(pub String);
@@ -256,7 +256,7 @@ fn id_of(record: &Value) -> &str {
     record.get("id").and_then(Value::as_str).unwrap_or_default()
 }
 
-/// A record's dependencies: `rec.get("dependencies") or []`.
+/// A record's dependency array, or an empty slice when no array is present.
 fn dependencies(record: &Value) -> &[Value] {
     record
         .get("dependencies")
@@ -271,7 +271,7 @@ fn target(dep: &Value) -> String {
         .to_owned()
 }
 
-/// A dependency's type: `d.get("type") or "blocks"`.
+/// A dependency's nonempty type string, defaulting to `blocks`.
 fn kind(dep: &Value) -> String {
     dep.get("type")
         .filter(|kind| kind.truthy())

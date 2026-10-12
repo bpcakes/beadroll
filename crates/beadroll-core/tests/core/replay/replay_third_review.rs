@@ -18,7 +18,7 @@ use sha2::{Digest, Sha256};
 
 mod ancestry;
 
-/// The class's events: ids `019a1111-1111-7000-8000-<serial>`, numbered as they are made.
+/// Events with ids `019a1111-1111-7000-8000-<serial>`, numbered as they are made.
 struct Fixture {
     serial: u64,
 }

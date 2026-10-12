@@ -1,6 +1,6 @@
 //! V9: bead among the user's git: global settings, checkout hooks, the git environment a hook or an
 //! alias runs in, every shape of checkout, and the transport and URL settings git honours. The
-//! helpers the classes share are here, one module per class below.
+//! shared helpers are here, with test scenarios grouped in the modules below.
 
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};

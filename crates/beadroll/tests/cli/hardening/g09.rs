@@ -1,9 +1,6 @@
-//! G09 (`docs/FINDINGS.md`): `for receipt in stale:` rebound the in-flight receipt, so a claim
-//! whose push lost an ordinary race after a settled receipt crashed with `TypeError` instead of
-//! trying another round. The `TypeError` is Python's own; the property, another round, stays. The
-//! race needs another machine to publish between the claim's fetch and its push, which the Python
-//! test arranges by patching `Link.publish` in process: a `rust_only` test, whose `claim` stops at
-//! the `claim.before-push` failpoint while the other machine publishes.
+//! G09: after settling a receipt, a claim whose push loses a race must retry without corrupting
+//! the in-flight receipt. This `rust_only` test pauses at `claim.before-push` while another
+//! machine publishes (`docs/FINDINGS.md`).
 
 use beadroll_test_support::{Machine, Sandbox};
 
@@ -35,14 +32,9 @@ mod g09_receipt_loop_variable_shadows_the_in_flight_receipt {
         result["id"].as_str().expect("an id").to_owned()
     }
 
-    /// G09: with a settled receipt left by an earlier lost acknowledgement, a claim whose first
-    /// push loses an ordinary race retries and succeeds instead of crashing with TypeError.
-    ///
-    /// Replaces `G09_ReceiptLoopVariableShadowsTheInFlightReceipt`'s
-    /// `test_ordinary_contention_after_a_settled_receipt_retries_the_claim`, which patches
-    /// `Link.publish` so that the first publish of a claim first has machine B create an issue and
-    /// sync; here `claim.before-push=pause-until(...)` stops the claim at its first hit, between
-    /// the claim's fetch and its push, while B does the same.
+    /// G09: after an earlier lost acknowledgement leaves a settled receipt, a claim losing its
+    /// first push race must retry successfully. Pause at the first claim.before-push, between
+    /// fetch and push, while machine B creates an issue and syncs.
     #[test]
     fn ordinary_contention_after_a_settled_receipt_retries_the_claim() {
         let sandbox = crate::sandbox();

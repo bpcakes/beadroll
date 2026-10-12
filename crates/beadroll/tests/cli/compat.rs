@@ -1,8 +1,7 @@
-//! `tests/test_compat.py`'s two command-line tests, ported: statuses that bead does not know, which
-//! an import keeps and bead's own commands never set, and every real Beads export on this machine
-//! through bead and back, compared with what `br` and `bv` make of it. The module's other tests are
-//! the core's (comment ids in the export, `crates/beadroll-core/tests/core/compat.rs`) and the
-//! store's (the coordination ref's validation, `crates/beadroll-store/tests/store/compat.rs`).
+//! Import preserves unknown statuses that bead's commands cannot set. Real Beads exports are also
+//! round-tripped through bead and compared with `br` and `bv`. Exported comment ids are checked
+//! in beadroll-core's `tests/core/compat.rs`; coordination-ref validation is checked in
+//! beadroll-store's `tests/store/compat.rs`.
 
 mod compat_custom_statuses {
     use std::collections::{BTreeMap, BTreeSet};
@@ -10,9 +9,9 @@ mod compat_custom_statuses {
     use beadroll_core::json::{Format, Object, write};
     use beadroll_test_support::{Json, Machine, code, json, parse_json};
 
-    /// `value` as `json.dumps(value)` writes it.
+    /// Spaced, ASCII-escaped JSON.
     fn dumps(value: &Json) -> String {
-        write(value, Format::ASCII).expect("a record Python can write")
+        write(value, Format::ASCII).expect("a serializable record")
     }
 
     /// `{"id": id, "title": title, "status": status, **fields}`.
@@ -25,8 +24,7 @@ mod compat_custom_statuses {
         Json::from(members)
     }
 
-    /// Each issue's status in a Beads export, by id:
-    /// `{json.loads(l)["id"]: json.loads(l)["status"] for l in export.splitlines()}`.
+    /// The status of each exported issue, indexed by id.
     fn statuses(export: &str) -> BTreeMap<String, String> {
         let status = |line: &str| {
             let record = parse_json(line).expect("a record");
@@ -132,9 +130,8 @@ mod compat_audit_real_compatibility {
     use beadroll_test_support::{Json, Run, UNDER_TEST, json, parse_json};
     use rustix::fs::{Access, access};
 
-    /// The helper the test runs, `infra/compat_real.py`, in the source tree this test was built
-    /// from (`support.ROOT`), whichever bead is under test: in the nearest of the crate's directory
-    /// and its ancestors that holds one, never beside the binary.
+    /// Finds infra/compat_real.py in the source tree used to build the test, searching the crate
+    /// directory and its ancestors. Independent of the binary under test.
     fn helper() -> PathBuf {
         let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
         let mut candidates = crate_dir
@@ -144,9 +141,8 @@ mod compat_audit_real_compatibility {
         found.expect("infra/compat_real.py in the source tree")
     }
 
-    /// `os.path.expanduser("~/" + rest)`: the user's home (`HOME`, else the password database's),
-    /// less any trailing slash, then `/rest`; with neither, the path is left as it is, as Python
-    /// leaves it.
+    /// Expands `~/rest` using `HOME`, else the password database, removing a trailing slash from
+    /// the home before appending `/rest`. Without either home, leaves the path unchanged.
     fn expanded(rest: &str) -> PathBuf {
         let home = std::env::var_os("HOME").or_else(|| {
             let user = nix::unistd::User::from_uid(nix::unistd::Uid::current());
@@ -164,10 +160,8 @@ mod compat_audit_real_compatibility {
         PathBuf::from(OsString::from_vec(path))
     }
 
-    /// `shutil.which(name)`: the first `name` in the directories of the test's PATH that exists,
-    /// that the test may execute (`os.access(X_OK)`) and that is no directory. An empty PATH finds
-    /// nothing, as in Python, and so does an unset one, which Python would read as the system's
-    /// default (`CS_PATH`).
+    /// The first executable non-directory named `name` in the test's PATH. An empty or unset PATH
+    /// finds nothing.
     fn which(name: &str) -> Option<PathBuf> {
         let path = std::env::var_os("PATH").filter(|path| !path.is_empty())?;
         let mut candidates = std::env::split_paths(&path).map(|dir| dir.join(name));
@@ -181,10 +175,8 @@ mod compat_audit_real_compatibility {
         which(name).is_some() || expanded(&format!(".local/bin/{name}")).exists()
     }
 
-    /// The real Beads exports on this machine:
-    /// `sorted(Path(os.path.expanduser("~/Documents")).glob("*/.beads/issues.jsonl"))`. As
-    /// pathlib's glob does, `*` takes hidden directories and links to directories too, and an
-    /// export is any name that is there, a dangling link included.
+    /// Real exports under `~/Documents/*/.beads/issues.jsonl`, sorted. Include hidden
+    /// directories, directory symlinks and any matching filename, including dangling links.
     fn exports() -> Vec<PathBuf> {
         let Ok(entries) = std::fs::read_dir(expanded("Documents")) else {
             return Vec::new();
@@ -224,9 +216,8 @@ mod compat_audit_real_compatibility {
             .unwrap_or_else(|error| panic!("the helper's {stream} is not UTF-8: {error}"))
     }
 
-    /// `subprocess.run(command, capture_output=True, text=True, timeout=timeout)`: how the command
-    /// ended and what it printed. One that has not ended, its output included, within `timeout` is
-    /// killed, and the test fails, as `TimeoutExpired` fails the Python test.
+    /// Runs a command and captures its status and text output. If the process or its output
+    /// remains open after `timeout`, kill it and fail the test.
     fn run(mut command: Command, timeout: Duration) -> Run {
         let deadline = Instant::now() + timeout;
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -263,8 +254,7 @@ mod compat_audit_real_compatibility {
         if holds { Ok(()) } else { Err(what.to_owned()) }
     }
 
-    /// The first of the Python test's checks, in its order, that `row`, one tracker's results,
-    /// fails in its `subTest`; `Ok` when it passes them all.
+    /// The first check that one tracker's result row fails, or `Ok` if all checks pass.
     fn verdict(row: &Json) -> Result<(), String> {
         let zero = json!(0);
         check(field(row, "bp_import_rc")? == &zero, "bp_import_rc != 0")?;
@@ -290,7 +280,7 @@ mod compat_audit_real_compatibility {
 
     /// `value` as JSON text, for a failure's message.
     fn shown(value: &Json) -> String {
-        write(value, Format::ASCII).expect("a value Python can write")
+        write(value, Format::ASCII).expect("a serializable value")
     }
 
     /// What the test needs and this machine lacks: `br`, `bv`, or any real export.
@@ -302,13 +292,12 @@ mod compat_audit_real_compatibility {
         tools.chain(data).collect()
     }
 
-    /// Read only source .jsonl; helper copies into its own scratch repos with no remotes.
+    /// Reads source JSONL without modifying it; the helper copies data into scratch repositories
+    /// with no remotes.
     ///
-    /// The helper (`infra/compat_real.py`) runs under `python3` from PATH, as the `infra/` drivers
-    /// do, where the Python test ran it under its own interpreter. Without `br` or `bv`, on PATH or
-    /// in `~/.local/bin`, or without a real export, Python skipped; this test says so on standard
-    /// error and passes. Each tracker is judged on its own, as in the Python test's `subTest`: the
-    /// first check its row fails, and the test fails when any row does.
+    /// `infra/compat_real.py` runs under `python3` from PATH. Without `br` or `bv` on PATH or in
+    /// `~/.local/bin`, or without a real export, report a skip on standard error. Check each
+    /// tracker separately and fail the test if any row fails.
     #[test]
     #[ignore = "needs br, bv and real Beads exports"]
     fn all_available_real_exports_and_br_bv_consumers() {
@@ -330,7 +319,7 @@ mod compat_audit_real_compatibility {
         command.env(UNDER_TEST, sandbox.bead());
         let proc = run(command, Duration::from_secs(180));
         assert_eq!(proc.returncode(), 0, "{}", proc.stderr);
-        // The helper's last line counts what it covered; Python discards it, a manual run shows it.
+        // The helper's last line reports its coverage for manual runs.
         let summary = proc.stdout.lines().last().unwrap_or_default();
         let (script, bead) = (script.display(), sandbox.bead().display());
         eprintln!("{script} with {bead}: {summary}");

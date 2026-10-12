@@ -1,9 +1,8 @@
-//! Every command's arguments as Python's `build_parser` declares them: option strings in their
-//! order, destination, metavar, how many values, what giving one does, the value's type and the
-//! help text. The parser (`parse.rs`), the help pages (`help.rs`) and, from Phase 2c, the receipt
-//! signature, which is the argparse namespace, are all read from this one table.
+//! The command argument table: option strings in display order, destination, metavar, value
+//! count, action, value type and help text. The parser, help pages and receipt signatures all use
+//! this table.
 
-/// How many values an argument takes (argparse's `nargs`).
+/// The number of values an argument takes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Nargs {
     /// A flag: no value.
@@ -20,7 +19,7 @@ pub(crate) enum Nargs {
     Parser,
 }
 
-/// What giving an argument does (argparse's `action`).
+/// The action taken when an argument is supplied.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Action {
     /// `store`: the last value wins.
@@ -42,7 +41,7 @@ pub(crate) enum Action {
 pub(crate) enum Kind {
     /// Text, kept as the OS gave it until it is used.
     Text,
-    /// `type=int`: Python's `int()`.
+    /// An integer parsed by `beadroll_core::text::parse_integer`.
     Int,
 }
 
@@ -58,7 +57,7 @@ pub(crate) struct ArgSpec {
     pub(crate) nargs: Nargs,
     pub(crate) action: Action,
     pub(crate) kind: Kind,
-    /// Its default when not given: `None` is Python's `None` (or `False` for a flag).
+    /// The default when not given: `None` means no value, or false for a flag.
     pub(crate) default: Option<&'static str>,
     pub(crate) help: Option<&'static str>,
     /// Whether it belongs to the command's one mutually exclusive group (`ready`'s scope).
@@ -146,8 +145,8 @@ impl ArgSpec {
         self.is_positional() && matches!(self.nargs, Nargs::One | Nargs::OneOrMore | Nargs::Parser)
     }
 
-    /// The name an error message gives it (argparse's `_get_action_name`): its option strings
-    /// joined by `/`, else its metavar, else its destination.
+    /// The name used in diagnostics: option strings joined by `/`, else metavar, else
+    /// destination.
     pub(crate) fn name(&self) -> String {
         match (self.flags, self.metavar) {
             ([], Some(metavar)) => metavar.to_owned(),
@@ -170,7 +169,7 @@ pub(crate) const COMMAND: ArgSpec = ArgSpec {
     ..positional("command", Nargs::Parser)
 };
 
-/// `bead -h`'s description: the first paragraph of Python's `cli.py` docstring.
+/// The description shown by `bead -h`.
 pub(crate) const DESCRIPTION: &str =
     "The command line: parser, dispatch, the texts an agent reads.";
 
@@ -386,7 +385,7 @@ const fn free(name: &'static str, help: &'static str, args: &'static [ArgSpec]) 
     }
 }
 
-/// Every command, in Python's declaration order.
+/// Every command, in help display order.
 pub(crate) const COMMANDS: [CommandSpec; 27] = [
     command("init", "create the tracker for this repository", INIT),
     command("import", "import a Beads JSONL export", IMPORT),

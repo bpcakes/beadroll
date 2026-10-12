@@ -1,8 +1,7 @@
-//! V1, verified by the seventh review where bead runs git: the push-side tokens bead reads stay
-//! English under translated git, so a lost race is still recognised and retried, and a receive side
-//! that stalls never holds bead past `BEAD_NET_TIMEOUT`, its outcome settling later.
-//! `V1_RunGitTimeoutHygiene`, a test of the git runner, is ported in beadroll-git. Each class is a
-//! module of its own; the helpers they share, the module's `_v1_` ones among them, are here.
+//! V1: push-rejection tokens stay English under translated git, allowing races to be retried. A
+//! stalled receiver cannot exceed BEAD_NET_TIMEOUT, and an uncertain outcome settles later.
+//! Runner timeout hygiene is tested in beadroll-git; shared helpers for the command tests live
+//! here.
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -16,7 +15,7 @@ use beadroll_test_support::Json;
 mod v1_push_side_translation;
 mod v1_stalled_receive_timeouts;
 
-/// An environment, as `subprocess.run(env=...)` takes one.
+/// Environment variables for a child process.
 type Env = BTreeMap<OsString, OsString>;
 
 /// A locale setting: the variables it sets, a later one winning over an earlier one of its name.
@@ -124,7 +123,7 @@ fn id(result: Option<Json>) -> String {
     result["id"].as_str().expect("an id").to_owned()
 }
 
-/// `value[key]` as Python indexes a dict: the member, or the test fails.
+/// The member `key` of `value`; absence fails the test.
 fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
     value
         .get(key)

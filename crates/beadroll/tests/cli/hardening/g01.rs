@@ -5,9 +5,9 @@ mod g01_tracked_remote_is_never_a_git_option {
     use beadroll_core::json::{Format, write};
     use beadroll_test_support::{Json, Machine, git, json};
 
-    /// `json.dumps(value)`: Python's default dialect, spaced and ASCII-escaped.
+    /// Spaced, ASCII-escaped JSON.
     fn dumps(value: &Json) -> String {
-        write(value, Format::ASCII).expect("a value Python can write")
+        write(value, Format::ASCII).expect("a serializable value")
     }
 
     /// The id of the issue a `bead create --json` made: `result["id"]`.

@@ -1,4 +1,4 @@
-//! `tests/test_compat.py`, the test of the coordination ref's validation.
+//! Coordination-ref validation tests.
 
 mod compat_audit_ref_validation {
     use beadroll_core::json::{Object, Value};

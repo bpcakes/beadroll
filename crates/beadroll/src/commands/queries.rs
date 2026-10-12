@@ -41,9 +41,8 @@ pub(crate) fn blocked(ctx: &Context<'_>) -> Result<Outcome, Failure> {
     Ok(Outcome::new(Value::Array(result), lines))
 }
 
-/// Issues whose key, title, texts or comments contain `query`, whatever the case; open ones
-/// unless `all`. A query that is not UTF-8 is contained in nothing, as Python's lone surrogates
-/// are not.
+/// Issues whose key, title, texts or comments contain `query`, ignoring case; open issues unless
+/// `all` is set. A query that is not UTF-8 matches nothing.
 pub(crate) fn search(ctx: &Context<'_>, query: &OsStr, all: bool) -> Result<Outcome, Failure> {
     let st = view(ctx.ws)?;
     need_tracker(&st)?;
