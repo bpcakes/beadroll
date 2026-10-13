@@ -181,8 +181,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   earlier): `<store>/projection` keeps the state the journal replays into, with what it was made
   from: the build of bead that made it (`Settings::build`, the version and the executable's
   identity on disk), every journal file's identity as its bytes were read (compared as the memo
-  compares files: an in-place rewrite that keeps length, times, inode and device is not seen, as
-  git's index does not see it), and a sum of each segment's bytes. A command whose files are the
+  compares files, and only once the file was settled when the projection was written, since an
+  in-place rewrite that keeps length, times, inode and device is otherwise not seen, as git's
+  index does not see it: Y01 below), and a sum of each file's bytes. A command whose files are the
   ones it was made from reads it, a reading command its state alone. A machine's last segment that
   grew, and still begins with the bytes summed, is read whole (at most what bead rotates at), and
   its new records and new attempt files' are applied after the projection when replay would apply
@@ -610,7 +611,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   git's index compares), its lines and its blob. A file that keeps that identity is not hashed: a
   merge compares the remembered blob with the published one as it is, and a publish names it in a
   tree only when it is sure to be in `sync.git`, because this command's link made it or the tree of
-  the tip it merged holds it at that path; otherwise the file is hashed. A gc drops a blob no ref
+  the tip it merged holds it at that path; otherwise the file is hashed. The identity must also
+  have been settled when the memo was written (Y01 below), or nothing it says of the file counts. A gc drops a blob no ref
   reaches (`prune_now_on_the_private_sync_repo_during_syncs_is_transient`), and one named in a
   tree would fail every `mktree` after. Keyed by more than the path and length the issue named,
   since a fork the published copy replaces, or a file rewritten in place, can keep its length. The
@@ -619,10 +621,30 @@ These were decided deliberately. Report problems *with* them, not their existenc
   made from remembered blobs, short of damage (an object lost while the published tree names it),
   hashes every file once more, as every publish did before (L02). The merge still asks git what
   Python asks, in the same order: fewer files to `hash-object`, then the published tree.
+- A cache vouches for a file only once the file was settled when the cache itself was written
+  (`FileKey::settled_before`, Y01): both the file's modification and change times are older than
+  the cache file's own modification time. A kernel stamps an inode's times from a clock of its own
+  granularity, so a rewrite in place that keeps a file's length keeps every part of its identity
+  when it falls within one of that clock's ticks, and a command writes its memo and its projection
+  in the tick of the files it has just written. What a cache says of such a file is therefore not
+  trusted (git calls one racily clean): the memo forgets it and hashes or counts it again, and the
+  projection reads it against the sum kept of its bytes, which attempt files carry as segments
+  did, and replays the journal when nothing summed can answer. The cost is the files one command
+  wrote, read once more by the next, and nothing else: `cargo xtask timing --read 20000` moved
+  within its own noise (a `list` 0.030 s and a local write 0.069 s, against 0.028-0.044 s and
+  0.055-0.074 s before, on 2026-10-13, Rust 1.99.0, 16 cores). What a publish hashes stays
+  exactly measurable, with the memo's own time moved past its files first (`settled_round`). The
+  shared attempt listing answers the same hazard the way an in-process cache can: every attempt
+  bead writes forgets the names (`Workspace::forget_claims`), so what this process wrote is always
+  listed, while a file another process adds within one tick of our listing is simply not there
+  yet, which a listing taken a moment earlier would also have said. What remains is git's own
+  residue: a rewrite in place, at the same length, between bead reading a file and writing the
+  cache, inside one tick. Every later rewrite is seen.
 - Accepted attempt names are shared within a command's locked phase (roll-lqjj.12). Each
   claims directory is enumerated once while its length, device, inode, modification and change times,
   and mode stay the same. A changed directory is read again, including after a merge or an
-  attempt's confirmation; taking or releasing the store lock clears the listing, so a fetch
+  attempt's confirmation, which forgets the names outright rather than trusting the directory's
+  times (Y01); taking or releasing the store lock clears the listing, so a fetch
   outside the lock cannot carry old names into the next phase. Unlocked readers also validate
   each directory before reusing its names. Missing or unreadable directory metadata never
   authorizes reuse, and enumeration errors remain errors. This is an in-memory cache only;

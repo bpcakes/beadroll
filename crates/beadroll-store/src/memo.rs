@@ -4,6 +4,11 @@
 //! segment is never appended to again and an attempt file never changes, so a file whose identity
 //! is the remembered one need not be read or hashed again; any other file is.
 //!
+//! Only a file that was already settled when the memo was written is remembered: a file whose
+//! times fall in the memo's own timestamp tick could have been rewritten in place since, its
+//! length kept, with nothing to show for it, so the memo says nothing of it and it is read or
+//! hashed again (`FileKey::settled_before`).
+//!
 //! The memo is a cache kept in `sync.git`, and goes with it when `sync.git` is set aside or
 //! deleted. A memo that is missing, or cannot be read whole, counts as none; one that cannot be
 //! written is left as it was, since nothing depends on it. Only the holder of the store lock
@@ -31,7 +36,10 @@ pub fn memo_path(ws: &Workspace) -> PathBuf {
 /// A file's identity on disk, as git's index compares it to tell whether a file changed: its
 /// length, its modification and change times to the nanosecond, its inode and its device. Every
 /// write bead makes changes one of them: an append the length, a rewrite (to a new file renamed
-/// into place) the inode, and any write the times.
+/// into place) the inode. A write by anything else changes the times, except while they are the
+/// ones it already has: a kernel stamps an inode from a clock of its own granularity, so a
+/// same-length rewrite in place within one of its ticks keeps every part of the identity. A
+/// cache therefore trusts an identity only once it is settled ([`FileKey::settled_before`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FileKey {
     len: u64,
@@ -67,6 +75,19 @@ impl FileKey {
     /// Whether it is empty.
     pub fn is_empty(&self) -> bool {
         self.len == 0
+    }
+
+    /// When it was last written, as a cache file's own identity says when the cache was written.
+    pub fn written(&self) -> i128 {
+        self.modified
+    }
+
+    /// Whether this identity was already settled at `moment`: both its times are older, so that
+    /// every later write changes it. A cache may trust an identity only when it was settled
+    /// before the cache that holds it was written; one of the cache's own tick could have been
+    /// rewritten in place since, its length kept (git calls such a file racily clean).
+    pub fn settled_before(&self, moment: i128) -> bool {
+        self.modified < moment && self.changed < moment
     }
 
     /// Whether `other` is the same file: the same inode on the same device, whatever was written.
@@ -124,12 +145,15 @@ pub struct Memo {
 }
 
 impl Memo {
-    /// The memo of `ws` as it is on disk; none when it is missing or cannot be read whole.
+    /// The memo of `ws` as it is on disk, of the files that were settled when it was written;
+    /// none when it is missing, cannot be read whole, or its own identity cannot be had.
     pub fn load(ws: &Workspace) -> Memo {
-        let files = std::fs::read(memo_path(ws))
+        let path = memo_path(ws);
+        let mut files = std::fs::read(&path)
             .ok()
             .and_then(|data| parse(&data))
             .unwrap_or_default();
+        settled(&mut files, FileKey::of(&path).map(|memo| memo.written()));
         Memo {
             files,
             changed: false,
@@ -239,6 +263,15 @@ impl Memo {
             );
         }
         out
+    }
+}
+
+/// Keeps of `files` what a memo written at `written` may say: those settled by then
+/// ([`FileKey::settled_before`]). Without a time for the memo itself, nothing is remembered.
+fn settled(files: &mut BTreeMap<String, Remembered>, written: Option<i128>) {
+    match written {
+        Some(written) => files.retain(|_, file| file.key.settled_before(written)),
+        None => files.clear(),
     }
 }
 
@@ -364,6 +397,29 @@ mod tests {
         let mut invalid = written;
         invalid.insert(HEADER.len(), 0xff);
         assert_eq!(parse(&invalid), None);
+    }
+
+    #[test]
+    fn a_memo_says_nothing_of_a_file_it_was_not_written_after() {
+        let sha = "0123456789abcdef0123456789abcdef01234567";
+        let kept = |written| {
+            let mut files = BTreeMap::new();
+            files.insert("p".to_owned(), remembered(10, Some(2), Some(sha)));
+            settled(&mut files, written);
+            files.len()
+        };
+        let moment = key(10).modified;
+        assert_eq!(kept(Some(moment + 1)), 1, "settled before the memo");
+        assert_eq!(kept(Some(moment)), 0, "of the memo's own tick");
+        assert_eq!(kept(Some(moment - 1)), 0, "written before the file");
+        assert_eq!(kept(None), 0, "no time for the memo itself");
+        // both times must be older: a change time of that moment is as racy as a write time
+        let changed_since = FileKey {
+            changed: moment + 1,
+            ..key(10)
+        };
+        assert!(key(10).settled_before(moment + 1));
+        assert!(!changed_since.settled_before(moment + 1));
     }
 
     #[test]

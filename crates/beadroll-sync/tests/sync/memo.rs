@@ -1,11 +1,17 @@
 //! What a publish hashes (roll-lqjj.1): the journal files the store's memo cannot vouch for, each
 //! once, and nothing else, while the tree it publishes is the one hashing every file makes; a memo
-//! that is missing, stale or unreadable is never trusted.
+//! that is missing, stale, unreadable or not past the files it remembers is never trusted.
+//!
+//! A memo vouches only for a file settled before the memo itself was written, and a command writes
+//! the memo in the timestamp tick of the files it just wrote, which the clock an inode's times come
+//! from need not have left. A test that measures what a publish hashes therefore moves the memo's
+//! own time past every file first ([`settled_round`]), so that what is measured is change alone.
 
-use std::fs::OpenOptions;
+use std::fs::{FileTimes, OpenOptions};
 use std::io::Write as _;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::time::{Duration, SystemTime};
 
 use beadroll_core::json::{Object, Value};
 use beadroll_store::{
@@ -48,6 +54,30 @@ fn round(ws: &Workspace, origin: &Path) -> Round {
         tree: tree.trim().to_owned(),
         reused_trees: link.reused_trees.clone(),
     }
+}
+
+/// Sets the memo's own modification time `from_now` from now: a memo written after every file it
+/// remembers vouches for them all, one written before a file for none of what it says of that file.
+fn memo_time(ws: &Workspace, from_now: Duration, later: bool) {
+    let file = OpenOptions::new()
+        .write(true)
+        .open(memo_path(ws))
+        .expect("a memo to set the time of");
+    let now = SystemTime::now();
+    let moment = if later {
+        now + from_now
+    } else {
+        now - from_now
+    };
+    file.set_times(FileTimes::new().set_modified(moment))
+        .expect("the memo's time");
+}
+
+/// A round with the memo's own time moved past every file it remembers, so that it is trusted for
+/// each and what the round hashes is what changed ([`memo_time`]).
+fn settled_round(ws: &Workspace, origin: &Path) -> Round {
+    memo_time(ws, Duration::from_secs(60), true);
+    round(ws, origin)
 }
 
 /// Every journal file of the store, by its path there, in the order a link hashes them.
@@ -120,21 +150,21 @@ fn a_publish_hashes_only_what_changed_across_a_rotation_a_repaired_tail_and_a_cl
     let (a, ws, key, b) = set_up(&sandbox);
     let rotating = workspace(&a, origin, &[("BEAD_ROTATE_BYTES", "1")]);
     let (first, second) = (own_segment(&ws, 1), own_segment(&ws, 2));
-    assert_eq!(round(&ws, origin).hashed, Vec::<String>::new());
+    assert_eq!(settled_round(&ws, origin).hashed, Vec::<String>::new());
 
     b.bead(["create", "more from b"]);
-    let extended = round(&ws, origin);
+    let extended = settled_round(&ws, origin);
     assert_eq!(extended.hashed, Vec::<String>::new(), "b's segment came in");
     same_tree_without_memo(&ws, origin, &extended);
 
     comment(&ws, &a, &key, "one");
-    let appended = round(&ws, origin);
+    let appended = settled_round(&ws, origin);
     assert_eq!(appended.hashed, [first.as_str()]);
     same_tree_without_memo(&ws, origin, &appended);
 
     comment(&rotating, &a, &key, "two");
     assert!(ws.dir.join(&second).exists(), "the journal rotated");
-    let rotated = round(&ws, origin);
+    let rotated = settled_round(&ws, origin);
     assert_eq!(
         rotated.hashed,
         [second.as_str()],
@@ -142,7 +172,7 @@ fn a_publish_hashes_only_what_changed_across_a_rotation_a_repaired_tail_and_a_cl
     );
     same_tree_without_memo(&ws, origin, &rotated);
     comment(&ws, &a, &key, "three");
-    assert_eq!(round(&ws, origin).hashed, [second.as_str()]);
+    assert_eq!(settled_round(&ws, origin).hashed, [second.as_str()]);
 
     let full = ws.dir.join(&first);
     let mut torn = OpenOptions::new()
@@ -151,7 +181,7 @@ fn a_publish_hashes_only_what_changed_across_a_rotation_a_repaired_tail_and_a_cl
         .expect("the full segment");
     torn.write_all(b"{\"v\": 1, \"id").expect("a torn line");
     drop(torn);
-    let repaired = round(&ws, origin);
+    let repaired = settled_round(&ws, origin);
     assert_eq!(repaired.hashed, [first.as_str()]);
     same_tree_without_memo(&ws, origin, &repaired);
 
@@ -162,10 +192,10 @@ fn a_publish_hashes_only_what_changed_across_a_rotation_a_repaired_tail_and_a_cl
         .map(|file| relative(&ws, file))
         .collect();
     assert_eq!(attempts.len(), 1, "{attempts:?}");
-    let claimed = round(&ws, origin);
+    let claimed = settled_round(&ws, origin);
     assert_eq!(claimed.hashed, attempts);
     same_tree_without_memo(&ws, origin, &claimed);
-    assert_eq!(round(&ws, origin).hashed, Vec::<String>::new());
+    assert_eq!(settled_round(&ws, origin).hashed, Vec::<String>::new());
 }
 
 /// A memo that is missing or cannot be read is none: every file is hashed, and a publish goes
@@ -178,7 +208,7 @@ fn a_memo_that_is_missing_stale_or_unreadable_is_not_trusted() {
     let sandbox = sandbox();
     let origin = sandbox.origin();
     let (_a, ws, _, _b) = set_up(&sandbox);
-    let quiet = round(&ws, origin);
+    let quiet = settled_round(&ws, origin);
     assert_eq!(quiet.hashed, Vec::<String>::new());
     let all = journal_files(&ws);
     let memo = memo_path(&ws);
@@ -193,7 +223,7 @@ fn a_memo_that_is_missing_stale_or_unreadable_is_not_trusted() {
     std::fs::write(&memo, b"bead journal memo 1\nnot a record").expect("a memo");
     assert_eq!(round(&ws, origin).hashed, all, "an unreadable memo");
     assert_eq!(
-        round(&ws, origin).hashed,
+        settled_round(&ws, origin).hashed,
         Vec::<String>::new(),
         "written again"
     );
@@ -224,7 +254,7 @@ fn a_memo_that_is_missing_stale_or_unreadable_is_not_trusted() {
         .replace(&two, &one)
         .replace("-swap-", &two);
     std::fs::write(&memo, swapped).expect("a memo");
-    let exchanged = round(&ws, origin);
+    let exchanged = settled_round(&ws, origin);
     assert_eq!(exchanged.hashed, all[..2].to_vec());
     assert_eq!(exchanged.tree, quiet.tree);
 
@@ -239,10 +269,34 @@ fn a_memo_that_is_missing_stale_or_unreadable_is_not_trusted() {
     let at = bytes.iter().position(|b| *b == b'{').expect("a record");
     bytes[at] = b'[';
     std::fs::write(&file, &bytes).expect("damage");
-    let damaged = round(&ws, origin);
+    let damaged = settled_round(&ws, origin);
     assert_eq!(damaged.hashed, [foreign.as_str()]);
     assert_eq!(damaged.forks, [foreign.as_str()]);
     assert_eq!(damaged.tree, quiet.tree, "the published copy is back");
+}
+
+/// A memo vouches for a file only once the file was settled when the memo was written: a rewrite
+/// in place that keeps a file's length can keep every part of its identity, while the times it
+/// sets are the ones the file already has. A memo written before a file says nothing of it: the
+/// file is hashed again, and the tree published is the one hashing every file makes.
+#[test]
+fn a_memo_written_before_a_file_says_nothing_of_it() {
+    let sandbox = sandbox();
+    let origin = sandbox.origin();
+    let (_a, ws, _, _b) = set_up(&sandbox);
+    let all = journal_files(&ws);
+    let quiet = settled_round(&ws, origin);
+    assert_eq!(quiet.hashed, Vec::<String>::new(), "every file settled");
+
+    memo_time(&ws, Duration::from_secs(60), false);
+    let racy = round(&ws, origin);
+    assert_eq!(racy.hashed, all, "a memo older than the files it names");
+    assert_eq!(racy.tree, quiet.tree, "the tree hashing every file makes");
+    assert_eq!(
+        settled_round(&ws, origin).hashed,
+        Vec::<String>::new(),
+        "written again, after them"
+    );
 }
 
 /// This machine's identity.
@@ -262,6 +316,8 @@ fn a_remembered_blob_sync_git_lost_is_hashed_again() {
     let (a, ws, key, _b) = set_up(&sandbox);
     comment(&ws, &a, &key, "unpublished");
     let first = own_segment(&ws, 1);
+    // the memo trusted for every file but the one just appended to, which grew
+    memo_time(&ws, Duration::from_secs(60), true);
     let mut link = Link::new(&ws, &Endpoint::at(origin)).expect("a link");
     let tip = link.fetch().expect("a fetch");
     locked(&ws, || link.merge(tip.as_deref())).expect("a merge");
@@ -291,7 +347,7 @@ fn a_remembered_blob_sync_git_lost_is_hashed_again() {
         None,
     );
     assert!(!has(blob), "the gc dropped it");
-    let after = round(&ws, origin);
+    let after = settled_round(&ws, origin);
     assert_eq!(after.hashed, [first.as_str()]);
     assert!(has(blob));
 }
@@ -326,5 +382,5 @@ fn a_published_blob_sync_git_lost_is_made_again() {
     );
     assert_eq!(healed.tree, quiet.tree);
     assert!(loose.exists(), "made again");
-    assert_eq!(round(&ws, origin).hashed, Vec::<String>::new());
+    assert_eq!(settled_round(&ws, origin).hashed, Vec::<String>::new());
 }

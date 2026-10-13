@@ -235,7 +235,7 @@ fn take_lock(ws: &Workspace) -> Result<std::fs::File, Error> {
 /// The attempt counts: written, as one file, where every machine reads it.
 pub fn confirm_ownership(ws: &Workspace, events: &[Value]) -> Result<(), Error> {
     if !events.is_empty() {
-        write_attempt_file(&attempt_path(ws, events), events, &ws.settings.failpoints)?;
+        write_attempt_file(ws, &attempt_path(ws, events), events)?;
     }
     Ok(())
 }

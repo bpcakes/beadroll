@@ -25,8 +25,9 @@ const LAYOUT: u32 = 2;
 const HEADER: usize = 16 + 4 + 4 + 3 * 8 + 3 * 16;
 
 /// A journal file a projection was made from: its path under the store's `events`, its identity
-/// up to what was read of it, whether it is a segment (else an attempt file), and for a segment
-/// the sum of its bytes, which a segment that grew since must still begin with.
+/// up to what was read of it, whether it is a segment (else an attempt file), and the sum of the
+/// bytes that were read, which a segment that grew since must still begin with, and which says
+/// whether a file of the projection's own timestamp tick is the one it was made from.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Held {
     pub(super) path: String,
@@ -44,10 +45,13 @@ pub(super) struct Made {
     pub(super) texts: [u8; 16],
 }
 
-/// A projection file read as far as its state: what it was made from, its state, and where its
-/// index is in the file it was read from, which stays open, whatever replaces it on disk.
+/// A projection file read as far as its state: what it was made from, when it was written, its
+/// state, and where its index is in the file it was read from, which stays open, whatever
+/// replaces it on disk.
 pub(super) struct Stored {
     pub(super) made: Made,
+    /// When the projection itself was written: a file not settled by then is read again.
+    pub(super) written: i128,
     pub(super) state: Vec<u8>,
     file: File,
     index_at: u64,
@@ -73,7 +77,8 @@ impl Stored {
 /// encoding, and its parts are as written. `None` for anything else: no projection.
 pub(super) fn read(path: &Path) -> Option<Stored> {
     let mut file = File::open(path).ok()?;
-    let size = file.metadata().ok()?.len();
+    let meta = file.metadata().ok()?;
+    let (size, written) = (meta.len(), FileKey::of_meta(&meta)?.written());
     let mut header = [0u8; HEADER];
     file.read_exact(&mut header).ok()?;
     let mut at = Fields(&header, 0);
@@ -100,6 +105,7 @@ pub(super) fn read(path: &Path) -> Option<Stored> {
     }
     Some(Stored {
         made: unmade(&parts)?,
+        written,
         state,
         file,
         index_at,

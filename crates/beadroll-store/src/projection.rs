@@ -8,11 +8,14 @@
 //! projection names. All the same: the projection is read, a command that only reads reading its
 //! state alone. Records appended since (a segment grown whose bytes before are the ones summed, a
 //! segment or an attempt file added) are read alone and applied after it, when replay would apply
-//! them so ([`Projection::extend`]). Anything else (a file replaced, rewritten, cut or gone, a
-//! record replay would apply otherwise) and a projection that is missing, unreadable, damaged or
-//! written by another build of bead: the journal is replayed. A projection made is written back,
-//! whole or not at all, with the identity each file had as it was read, when every segment ended
-//! with a whole line, never into a store that is not there. Deleting it is safe at any moment.
+//! them so ([`Projection::extend`]). A file whose times are the projection's own, which could
+//! have been rewritten in place since with nothing to show for it, is read again and its bytes
+//! summed: the sum kept of it says whether it is the one the projection was made from. Anything
+//! else (a file replaced, rewritten, cut or gone, a record replay would apply otherwise) and a
+//! projection that is missing, unreadable, damaged or written by another build of bead: the
+//! journal is replayed. A projection made is written back, whole or not at all, with the identity
+//! each file had as it was read, when every segment ended with a whole line, never into a store
+//! that is not there. Deleting it is safe at any moment.
 //!
 //! Each issue's texts are kept apart, in `<store>/projection-texts` (roll-lqjj.6, [`texts`]): a
 //! state read from the projection has them there, and a command reads in those it prints. A
@@ -156,9 +159,10 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
         let attempts = claim_files(ws)?;
         let listed = held(ws, &attempts, false);
         let file = Some(stored.made.texts);
+        let settled = stored.written;
         if listed
             .as_ref()
-            .is_some_and(|listed| same(&stored.made, &seen, listed))
+            .is_some_and(|listed| same(&stored.made, &seen, listed, settled))
         {
             if want != Want::Projection
                 && let Ok(mut state) = decode_state(&stored.state)
@@ -174,11 +178,11 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
                 projection.state_mut().set_texts_file(file);
                 return Ok(Now::Projection(Box::new(projection)));
             }
-        } else if let Some(tails) = grown(&stored.made, &seen) {
+        } else if let Some(tails) = grown(&stored.made, &seen, settled) {
             let made = stored.made.clone();
             let decoded = stored.encoded().and_then(|e| Projection::decode(&e).ok());
             if let Some(mut projection) = decoded
-                && let Some((records, now)) = appended(ws, &made, &tails, build)?
+                && let Some((records, now)) = appended(ws, &made, &tails, build, settled)?
             {
                 projection.state_mut().set_texts_file(file);
                 let uids = about(&records);
@@ -202,7 +206,7 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
             loaded
                 .attempts
                 .iter()
-                .map(|(path, key)| kept(ws, path, *key, false, None)),
+                .map(|(path, key, sum)| kept(ws, path, *key, false, *sum)),
         )
         .collect::<Option<Vec<Held>>>();
     if let Some(files) = read.filter(|_| loaded.whole) {
@@ -249,15 +253,17 @@ fn kept(
 }
 
 /// Whether the projection was made from just these segments and attempt files, as they are: the
-/// same paths and identities.
-fn same(made: &Made, segments: &[Held], attempts: &[Held]) -> bool {
+/// same paths and identities, each settled when the projection was written (`settled`), since an
+/// identity of that moment's own tick cannot say a file was not rewritten in place since.
+fn same(made: &Made, segments: &[Held], attempts: &[Held], settled: i128) -> bool {
     let files: HashMap<&str, &Held> = (made.files.iter())
         .map(|held| (held.path.as_str(), held))
         .collect();
     files.len() == segments.len() + attempts.len()
         && (segments.iter().chain(attempts)).all(|now| {
-            (files.get(now.path.as_str()))
-                .is_some_and(|was| was.key == now.key && was.segment == now.segment)
+            (files.get(now.path.as_str())).is_some_and(|was| {
+                was.key == now.key && was.segment == now.segment && was.key.settled_before(settled)
+            })
         })
 }
 
@@ -272,10 +278,13 @@ struct Tail {
 /// What of the segments grew since the projection was made, when that is all that happened to
 /// them: each it was made from is the same file, as long as it was or longer, only a machine's
 /// last one longer (records appended to an earlier one come before the later ones' in its
-/// journal), and a new one comes after a machine's others. `None` otherwise: a file was replaced,
-/// rewritten in place, cut or removed, an earlier segment grew, or a machine's journal began.
-/// Whether a grown segment kept its bytes is for its sum to say, once it is read ([`appended`]).
-fn grown(made: &Made, segments: &[Held]) -> Option<Vec<Tail>> {
+/// journal). A file whose identity was not settled when the projection was written (`settled`)
+/// is read whole instead, however unchanged it looks, and the sum kept of it says whether it is
+/// the one the projection was made from. `None` otherwise: a file was replaced, rewritten in
+/// place, cut or removed, an earlier segment grew, a machine's journal began, or a file of the
+/// projection's own tick has no sum to be read against. Whether a grown segment kept its bytes is
+/// for its sum to say, once it is read ([`appended`]).
+fn grown(made: &Made, segments: &[Held], settled: i128) -> Option<Vec<Tail>> {
     let before: HashMap<&str, &Held> = (made.files.iter())
         .filter(|held| held.segment)
         .map(|held| (held.path.as_str(), held))
@@ -289,7 +298,13 @@ fn grown(made: &Made, segments: &[Held]) -> Option<Vec<Tail>> {
     let mut tails = Vec::new();
     for now in segments {
         match before.get(now.path.as_str()) {
-            Some(was) if now.key == was.key => {}
+            Some(was) if now.key == was.key && was.key.settled_before(settled) => {}
+            // Nothing was appended, but the identity cannot vouch for the bytes: they must.
+            Some(was) if now.key == was.key => tails.push(Tail {
+                path: now.path.clone(),
+                from: was.key.len(),
+                sum: Some(was.sum?),
+            }),
             Some(was)
                 if now.key.same_file(&was.key)
                     && now.key.len() > was.key.len()
@@ -322,6 +337,19 @@ fn grown(made: &Made, segments: &[Held]) -> Option<Vec<Tail>> {
         .then_some(tails)
 }
 
+/// What a projection keeps of the attempt file at `path`, whose identity `was` not settled when
+/// the projection was written, read against the sum kept of it: `None` when it cannot be read, is
+/// another file than `now`, or holds other bytes than the ones summed. An attempt file never
+/// changes but by being replaced, so there is nothing to apply after it either way.
+fn resummed(ws: &Workspace, path: &Path, was: &Held, now: &Held) -> Option<Held> {
+    let (data, key) = read_keyed(path).ok()?;
+    let key = key.filter(|key| *key == now.key)?;
+    if was.sum != Some(content_sum(&data)) {
+        return None;
+    }
+    kept(ws, path, Some(key), false, was.sum)
+}
+
 /// The machine whose folder holds the file at `path` (`<machine>/...`).
 fn machine(path: &str) -> &str {
     path.split('/').next().unwrap_or_default()
@@ -329,15 +357,18 @@ fn machine(path: &str) -> &str {
 
 /// The records appended since the projection was made: each grown segment's after where it was
 /// read up to, then each attempt file it was not made from, listed once the segments are read;
-/// and what a projection with them is made from, each file as it was read. `None` when what was
-/// appended cannot be read as a store reads it whole: a grown segment's bytes before are not the
-/// ones summed, a segment ends in a line not yet whole, a record is unreadable, an attempt file was
-/// replaced or removed.
+/// and what a projection with them is made from, each file as it was read. An attempt file whose
+/// identity was not settled when the projection was written (`settled`) is read and summed, as a
+/// segment of that moment's own tick is. `None` when what was appended cannot be read as a store
+/// reads it whole: a grown segment's bytes before are not the ones summed, a file of the
+/// projection's own tick is not the one it was made from or has no sum, a segment ends in a line
+/// not yet whole, a record is unreadable, an attempt file was replaced or removed.
 fn appended(
     ws: &Workspace,
     made: &Made,
     tails: &[Tail],
     build: &str,
+    settled: i128,
 ) -> Result<Option<(Vec<Record>, Made)>, ViewError> {
     let mut records = Vec::new();
     let mut problems: Vec<Problem> = Vec::new();
@@ -372,9 +403,9 @@ fn appended(
         };
         read.insert(&tail.path, held);
     }
-    let before: HashMap<&str, &FileKey> = (made.files.iter())
+    let before: HashMap<&str, &Held> = (made.files.iter())
         .filter(|held| !held.segment)
-        .map(|held| (held.path.as_str(), &held.key))
+        .map(|held| (held.path.as_str(), held))
         .collect();
     let attempts = claim_files(ws)?;
     let Some(listed) = held(ws, &attempts, false) else {
@@ -387,11 +418,20 @@ fn appended(
     let mut files: Vec<Held> = Vec::new();
     for (path, now) in attempts.iter().zip(listed) {
         match before.get(now.path.as_str()) {
-            Some(was) if **was == now.key => {
+            Some(was) if was.key == now.key && was.key.settled_before(settled) => {
                 files.push(now);
                 continue;
             }
-            Some(_) => return Ok(None),
+            Some(was) if was.key != now.key => return Ok(None),
+            // Of the projection's own tick: only its bytes can say it is the file it was made
+            // from, and an attempt file never changes but by being replaced.
+            Some(was) => match resummed(ws, path, was, &now) {
+                Some(held) => {
+                    files.push(held);
+                    continue;
+                }
+                None => return Ok(None),
+            },
             None => {}
         }
         let Ok((data, Some(key))) = read_keyed(path) else {
@@ -407,7 +447,7 @@ fn appended(
                 sequenced: false,
             });
         }
-        files.extend(kept(ws, path, Some(key), false, None));
+        files.extend(kept(ws, path, Some(key), false, Some(content_sum(&data))));
     }
     if !problems.is_empty() {
         return Ok(None);

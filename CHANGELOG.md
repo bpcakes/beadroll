@@ -6,6 +6,14 @@ versioned separately (format 1, frozen; see *Format and upgrades* in the README)
 
 ## [Unreleased]
 
+- The journal memo and the projection vouch for a file only once it was settled when they were
+  written (Y01): a rewrite in place that keeps a file's length keeps every part of its identity
+  when it falls in the same timestamp tick, which the clock an inode's times come from need not
+  have left. Such a file is hashed again, or read against the sum kept of its bytes, which attempt
+  files now carry as segments did. Writing an attempt file forgets the attempt names listed in
+  that phase for the same reason, so an attempt this process just wrote is never left out of a
+  publication tree.
+
 - Import planning and dry-run validation index dependency keys once per batch (roll-lqjj.15),
   avoiding repeated scans as the number of imported issues grows, and both resolve a key through
   the same lookup. A re-import indexes a record's listed dependencies only when the issue still

@@ -30,6 +30,16 @@ evidence that the work went away. Timing is never a test gate.
 |---|---|---|---|---|---|
 | Z01 | Medium | Import planning and dry-run validation scanned all new ids for each dependency; re-import scanned each listed dependency for each unresolved one | optimized | Index the batch's new keys by create number, in one function planning and the dry run share, and match unresolved dependencies against a set of listed `(key, type)` pairs, built only for a record that has any (roll-lqjj.15); output remains in record order | `beadroll-core`: `compat::import_plan` covers target resolution, metadata, dependency types, event order and diagnostic order; `cargo xtask timing --plan N` measures planning, dry-run validation and re-import (`xtask`: `timing::plan::tests`) |
 
+## Baseline failure found while closing Z01 (ids Y)
+
+Not reported by a review: a store test claimed that a rewrite in place always changes a file's
+identity, and failed whenever both writes fell in one tick of the clock an inode's times come from.
+The claim was the one two caches relied on.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| Y01 | Medium | The journal memo and the projection trusted a file identity that a same-length rewrite in place keeps when it falls in one timestamp tick, so a stale blob could be published and a stale state read; the shared attempt listing trusted a directory's identity the same way, so an attempt file this process had just written could be left out of a publication tree; the tests that said otherwise failed whenever two writes shared a tick | fixed | A cache vouches for a file only once it was settled when the cache was written (`FileKey::settled_before`): the memo forgets the rest, and the projection reads each against the sum kept of its bytes, which attempt files now carry too. Writing an attempt forgets the listed names (`Workspace::forget_claims`), as the merge's own writes do. The tests say what bead guarantees, and force the times they depend on | `beadroll-store`: `memo::tests::a_memo_says_nothing_of_a_file_it_was_not_written_after`, `projection::tests::an_identity_of_the_projections_own_tick_is_read_against_its_sum`, `projection::tests::an_attempt_written_here_is_listed_whatever_the_times_say`, `listing::tests::in_place_rewrites_reuse_names_and_a_file_key_never_vouches_for_bytes`, `listing::tests::names_are_shared_until_added_removed_or_replaced`; `beadroll-sync`: `memo::a_memo_written_before_a_file_says_nothing_of_it` |
+
 ## Review 12: Claude and Codex review of the Rust naming cleanup (ids D)
 
 Reports: `reviews/2026-10-12-12-claude-rust-names.md` and
