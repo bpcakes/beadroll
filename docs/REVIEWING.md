@@ -4,8 +4,9 @@ A brief for an independent reviewer: an agent or a person who did not write this
 to find out whether the design holds, to break it if they can, and to report with
 reproductions. Reviewers do not extend the tool.
 
-Eleven reviews have run; reviews 8 and 9 audit the Rust port plan, review 10 is Codex's, task by
-task, of epic `roll-lqjj`, and review 11 is Claude and Codex's review of its follow-up branch.
+Twelve reviews have run; reviews 8 and 9 audit the Rust port plan, review 10 is Codex's, task by
+task, of epic `roll-lqjj`, review 11 is Claude and Codex's review of its follow-up branch, and
+review 12 is their review of the Rust names (roll-dih8.17).
 Their reports are kept verbatim in `reviews/`; every finding and what became of it is in
 `FINDINGS.md`. Start from what they did not cover.
 
@@ -81,7 +82,8 @@ The design under test, in the order it is best read:
 - **Beads JSONL is an import/export format only** (`plan_import`, `export_records`,
   beadroll-core).
 
-Read `README.md`, then each crate's `AGENTS.md` and code in the order above, then
+Read `README.md` and `docs/GUARANTEES.md`, then each crate's `AGENTS.md` and code in the order
+above, then
 `beadroll-test-support` and one test module.
 
 **Format 1, byte for byte.** Format 1 is frozen (§2). These bytes are what every version of bead
@@ -708,6 +710,20 @@ These were decided deliberately. Report problems *with* them, not their existenc
   roll-k2wy.15), so none of its builds needs credentials. `infra/` stays stdlib Python driving any
   `bead`, until there is a reason to move it into xtask.
 
+Decisions that changed while building, each with its reason:
+
+| First design | Now | Why |
+|---|---|---|
+| Concurrent values need an explicit resolution operation | Flagged with every alternative; any later write that saw them settles it | Same information, no extra protocol for agents to learn |
+| Fallback display is the smallest event id | The newest event id | Matches what people expect to see |
+| Conditional push with `--force-with-lease` | Plain fast-forward push | Already conditional, and cannot truncate history |
+| A corrupt duplicate holds back its dependents | Only the event itself is set aside | With a project-wide frontier, everything later depends on it |
+| Heartbeat events | Last journal activity per owner | No extra traffic or permanent noise |
+| Structured acceptance items | One text field | Round-trips through Beads JSONL |
+| Checkpoints and pruning | Segment rotation only | The rest is not needed at this size |
+| Owner's close is a conditional transition | Local write, published at once | The stale-claim rule makes a late one harmless |
+| Ownership in the journal | Ownership files beside the journal, pending until the remote holds them | A refused or unanswered claim then needs no compensating record, and the journal stays append-only |
+
 ## 3. Baseline
 
 Do not take the baseline from a document; run it:
@@ -730,7 +746,7 @@ xtask's `check::check_script`, the sweep's `sweep_failure_reporting` and
 `infra/test_roundtrip.py` exercise these failure paths with synthetic results in the fast
 baseline. Record the baseline output in your report.
 The real-infrastructure scripts (four machines, a throwaway GitHub repository) are
-under `infra/`; their last results are summarised in `README.md`.
+under `infra/`; their last results are summarised in `README.md`, *Status*.
 
 ## 4. Rules
 
@@ -745,7 +761,8 @@ under `infra/`; their last results are summarised in `README.md`.
 - Local bare repositories are the default remote. The only real remote you may push to is the
   throwaway repository the maintainer provides in `$BEAD_TEST_REMOTE` (private, synthetic data).
   Do not create other repositories or refs anywhere, and do not push to `main` there.
-- Do not modify bead's code (`crates/`), `README.md`, `FINDINGS.md`, existing tests or earlier
+- Do not modify bead's code (`crates/`), `README.md`, `docs/GUARANTEES.md`, `FINDINGS.md`,
+  existing tests or earlier
   reports. Proposed fixes go in your report as unified diffs.
 - Do not change SSH, firewall, git or shell configuration on any machine. Do not run `br` or
   `bv` inside real repositories (`br where` writes lock files).
