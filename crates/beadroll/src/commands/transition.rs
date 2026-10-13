@@ -60,7 +60,9 @@ pub(crate) fn transition(
         let me = ctx.actor.label(&tx.replica);
         let mut plan = plan(tx.state()?, args)?;
         if args.recursive && !args.force {
-            refuse_claimed(tx.state()?, &plan.issues, &me)?;
+            // the issues left as they are too: one deleted without seeing a claim still holds it
+            let subtree: Vec<EventId> = plan.issues.iter().chain(&plan.left).copied().collect();
+            refuse_claimed(tx.state()?, &subtree, &me)?;
         }
         let mut ended = false;
         // the claim each issue's event names: it ends exactly that claim, never a successor's
@@ -190,8 +192,8 @@ fn plan(st: &State, args: &TransitionArgs) -> Result<Plan, Failure> {
     Ok(plan)
 }
 
-/// Refuses a recursive close of issues another owner has claimed, naming every one, so that a
-/// single `takeover` round or `--force` settles them all.
+/// Refuses a recursive close of a subtree in which another owner has claimed issues, naming every
+/// one, so that a single `takeover` round or `--force` settles them all.
 fn refuse_claimed(st: &State, issues: &[EventId], me: &Label) -> Result<(), Failure> {
     let claimed: Vec<String> = issues
         .iter()

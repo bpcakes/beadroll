@@ -336,7 +336,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   issue by name brings it back as closed, and the subtree must not. A repeat still publishes this
   actor's close that ended a claim beneath, as a plain repeat does. A named ID answers as a plain
   `close` does. Someone else's claim anywhere in it refuses the whole command, naming every such
-  issue, so that one look settles them; `--force` closes them as it closes one. Only `close`
+  issue, so that one look settles them, a deleted issue's too (a delete made without seeing a
+  claim leaves it); `--force` closes them as it closes one. Only `close`
   takes the flag: `delete` and `reopen` keep acting on what they name.
 - Help pages keep argparse's layout and formatter but no longer its empty texts: a
   command's page takes its line from the command list as its description, every argument has a

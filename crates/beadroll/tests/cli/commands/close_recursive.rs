@@ -190,6 +190,35 @@ fn another_owners_claim_beneath_refuses_all_and_names_each_until_forced() {
 }
 
 #[test]
+fn another_owners_claim_on_a_deleted_issue_beneath_refuses_too() {
+    let sandbox = crate::sandbox();
+    let (a, [e, child_a, _, g]) = tree(&sandbox);
+    let b = Machine::new(&sandbox, "b");
+    b.bead(["sync"]);
+    // b deletes g without having seen the claim other holds on it: merged, g is deleted and
+    // still claimed
+    ok(&a, &["claim", &g, "--actor", "other"]);
+    ok(&b, &["delete", &g, "--offline"]);
+    b.bead(["sync"]);
+    a.bead(["sync"]);
+    assert_eq!(status(&a, &g), "tombstone");
+    assert_ne!(a.show(&g)["claim"], Json::Null);
+    let refused = a.run(["close", "--recursive", &e, "--json"]);
+    assert_eq!(code(&refused), "CLAIMED_BY_OTHER", "{}", refused.stderr);
+    assert!(
+        refused.stderr.contains(&format!("{g} is claimed by other")),
+        "{}",
+        refused.stderr
+    );
+    assert_eq!(status(&a, &child_a), "open");
+    // forced, the rest is closed and the deleted one left as it is
+    let forced = a.bead(["close", "--recursive", &e, "--force"]).unwrap();
+    assert!(!ids(&forced).contains(&g), "{forced:?}");
+    assert_eq!(status(&a, &child_a), "closed");
+    assert_eq!(status(&a, &g), "tombstone");
+}
+
+#[test]
 fn this_actors_claim_beneath_ends_with_the_close() {
     let sandbox = crate::sandbox();
     let (a, [e, child_a, _, _]) = tree(&sandbox);
