@@ -4,12 +4,12 @@
 //! resident set `/usr/bin/time` reports holds more: memory freed but kept by the allocator for
 //! sizes the rest of the run never asks for again.
 //!
-//! The one unsafe spot outside bead's two (`docs/RUST-PORT.md` §2.2): an allocator is an unsafe
+//! The one unsafe spot outside bead's two (`CONTRIBUTING.md`): an allocator is an unsafe
 //! trait. Every call passes its arguments to the system allocator, whose contract is the trait's;
 //! the counting touches only atomics.
 #![allow(
     unsafe_code,
-    reason = "xtask's counting allocator (docs/RUST-PORT.md §2.2): GlobalAlloc is an unsafe trait"
+    reason = "xtask's counting allocator (CONTRIBUTING.md): GlobalAlloc is an unsafe trait"
 )]
 
 use std::alloc::{GlobalAlloc, Layout, System};

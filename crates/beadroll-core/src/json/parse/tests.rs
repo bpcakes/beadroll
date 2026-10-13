@@ -1,5 +1,5 @@
 //! Fixed JSON parsing expectations, including error messages and positions. Fixture provenance
-//! is recorded in `docs/RUST-PORT.md` §4.2, §5.
+//! is in `docs/REVIEWING.md` §2.
 
 use super::*;
 use crate::json::{Format, write};

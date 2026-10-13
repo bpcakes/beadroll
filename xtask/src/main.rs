@@ -1,10 +1,10 @@
-//! `cargo xtask`: the workspace's own tooling (`docs/RUST-PORT.md` §4).
+//! `cargo xtask`: the workspace's own tooling.
 //!
 //! - `check` runs the workspace's baseline: its tests, and with options the slow and real ones.
 //!   `./check.sh` is a thin wrapper around it.
 //! - `timing` runs a command and records how long it took, as evidence.
 //!
-//! It is a developer tool, so it prints; the product crates do not (§2.2).
+//! It is a developer tool, so it prints; the product crates do not (`CONTRIBUTING.md`).
 #![allow(
     clippy::print_stdout,
     reason = "a developer tool reports on its own terminal"
@@ -70,7 +70,7 @@ usage: cargo xtask <command>
       write published, each fetch and push made MS milliseconds slower (300 by default); --import
       N, the time, peak resident set and heap peak of bead init --import of a generated export of
       N records, shaped as real trackers' are, offline and then the first sync, and published.
-      Timings are evidence, never a gate (docs/RUST-PORT.md §4.7).
+      Timings are evidence, never a gate.
 
   bead ARG...
       Run bead with ARGs in this process, whose heap is counted, and say on standard error the

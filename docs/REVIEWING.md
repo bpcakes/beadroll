@@ -17,7 +17,7 @@ lives in a file tracked on code branches: dirty checkouts, tracker-only commits,
 state split between worktrees and machines.
 
 It is one binary, built from a Cargo workspace (Rust 1.99) whose crates each depend only on the
-ones before them, which the compiler enforces (`docs/RUST-PORT.md` §2.1):
+ones before them, which the compiler enforces:
 
 - `beadroll-core`: Python-compatible JSON and text, event validation, journals and their settling,
   causal order, replay into state, readiness and the other queries, issue views, Beads import
@@ -36,9 +36,13 @@ ones before them, which the compiler enforces (`docs/RUST-PORT.md` §2.1):
 `cargo build --package beadroll` builds the working copy as `target/debug/bead`; `README.md`'s
 *Install* has `cargo install`. Until 0.2.0 bead was a Python package of seven modules, which the
 Rust implementation ports with nothing changed in behaviour except where Python's failed: the
-structured errors below where Python died with a traceback (§5 row 26), and a coordination ref
-named by its UTF-8 bytes under any locale (`roll-k2wy.18`). The last of the Python package is the
-tag `python-0.1.0`, and its function names survive in the Rust ones below.
+structured errors below where Python died with a traceback, and a coordination ref named by its
+UTF-8 bytes under any locale (`roll-k2wy.18`). The last of the Python package is the tag
+`python-0.1.0`, and its function names survive in the Rust ones below. The plan the port followed,
+`docs/RUST-PORT.md`, was removed once nothing in it was in force that is not here, in
+`CONTRIBUTING.md` or in a crate's `AGENTS.md` (roll-dih8.24); its measurements (Appendix A), its
+ledger of CPython semantics (§5) and what reviews 8 and 9 corrected in it are in git:
+`git show 5a6ea8d:docs/RUST-PORT.md`.
 
 The design under test, in the order it is best read:
 
@@ -80,6 +84,54 @@ The design under test, in the order it is best read:
 Read `README.md`, then each crate's `AGENTS.md` and code in the order above, then
 `beadroll-test-support` and one test module.
 
+**Format 1, byte for byte.** Format 1 is frozen (§2). These bytes are what every version of bead
+reads, and the published tree is also read by `br`/`bv` through `bead export` and by studio:
+
+| What | Written as | Notes |
+|---|---|---|
+| `$BEAD_HOME/replica.json` | `{"id": "<8 hex>", "alias": "<host>"}`, `", "`/`": "` separators, ASCII-escaped; created whole as `.replica.<pid>.tmp`, then `link(2)` | The first writer wins; the hostname lives only here |
+| `aliases.json`, `moved.json` | `indent=1`, ASCII-escaped, no trailing newline | Unknown or invalid entries are ignored on read |
+| `<ws>/lock` | Empty, 0600, `flock(2)` exclusive | |
+| `<ws>/meta.json` | `indent=1`, ASCII-escaped; keys `remote` (the remote as it was chosen: a configured remote's name, or a URL), `name`, `last_sync`, `published` | origin is never stored |
+| `<ws>/events/<machine>/NNNNNN.jsonl` | One event per line: `,`/`:` separators, raw UTF-8, keys in the order `v, id, replica, deps, actor, op, issue, data[, where]`; appended with `O_APPEND` and fsynced; a new segment starts at `BEAD_ROTATE_BYTES` | A torn tail is repaired before the next write and kept as `*.torn-<ns>` |
+| `<ws>/events/<machine>/claims/<event-id>.json` | The attempt's events, compact lines, written atomically | Immutable; on a mismatch the local copy is kept as `*.fork-<ns>` |
+| `<ws>/pending/<id>.json`, `<id>.command` | The pending attempt and its receipt | The receipt's signature is below |
+| `<ws>/projection`, `<ws>/projection-texts` | A cache of one build of bead (§2) | No part of format 1: another build never reads them, and deleting them is always safe |
+| `<ws>/sync.git` | `git init --bare --template= --shared=0600 --object-format=<the checkout's>`; git's maintenance off through the environment | Set aside as `sync.git.damaged-<ns>` when damaged |
+| Temporary files | `.<name>.<pid>.tmp` beside the target | Readers and sync ignore them, and every name that is not `.json`/`.jsonl` |
+| Modes | 0700 directories and 0600 files throughout the store, whatever the umask | Files written into a checkout (`.beadroll.json`, `export -o`) follow the umask |
+| `.beadroll.json` | `indent=1` plus `"\n"`, ASCII-escaped; existing keys keep their order, new ones are appended | Committed in users' repositories, so a rewrite must not show a spurious diff |
+
+The published tree on `refs/beads/journal` (or the tracked `ref`) holds exactly `manifest.json`
+(`{"format": 1, "workspace": "<id>"}` and a newline: sorted keys, `", "` and `": "`), and byte
+copies of the segments `events/<machine>/NNNNNN.jsonl` and accepted attempts
+`events/<machine>/claims/<event-id>.json`. Commits are made with `commit-tree`, so no signing
+configuration applies: subject `bead <claim|fence|sync> <12 hex>`, author and committer `bead
+<bead@localhost>`, the fetched head as parent. They are pushed with `--porcelain --no-verify` as a
+plain fast-forward. Each process fetches into its own `refs/beads/fetch/<pid>-<8 hex>` and records
+the result in `refs/beads/remote`. The manifest's bytes matter beyond tidiness: a publish whose
+tree is unchanged pushes nothing, so two spellings of one manifest would have two machines push
+them in turn forever.
+
+A command receipt (`pending/<id>.command`) signs its request as an object of `actor`, `args` and
+`request`, written as Python's `json.dumps(..., sort_keys=True, default=str)` wrote it: sorted
+keys, ASCII escapes, spaced separators, no trailing newline. `args` is the subcommand's whole
+namespace, every destination with its value or default (`null`, `false`), `command` (the
+subcommand's name) included; `--json` and `--actor` never reach it. `request` is `null` except for
+`update`, where it is `{"fields": …, "status": …}` after normalisation, with file and stdin
+contents resolved. `bead claim p-1` by `{"agent": "codex", "thread": "t"}` signs `{"actor":
+{"agent": "codex", "thread": "t"}, "args": {"command": "claim", "ids": ["p-1"], "offline": false,
+"remote": null}, "request": null}`. Only the coordinated commands write one: `claim`, `takeover`,
+`release`, and `update` with `--claim` or `--status in_progress`; an owner's `close` and `delete`
+are local writes.
+
+The command line's contract: with `--json`, standard output holds exactly one JSON document
+(`", "`/`": "` separators, raw UTF-8, keys in a fixed order, conditional keys only when set). On an
+error standard output is empty and standard error holds `{"error": {"code": …, "message": …}}`
+(ASCII-escaped) or `Error: …`. The exit status is 0 on success and when standard output is closed,
+1 on an error, 2 for `USAGE`, and 98 and 99 for the crash hooks. Messages keep their texts, since
+agents and tests match parts of them; `bead prime` lists the codes.
+
 ## 2. Decisions you must not report as findings
 
 These were decided deliberately. Report problems *with* them, not their existence.
@@ -89,7 +141,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   field, and text and path helpers name their parsing, trimming, casing and normalization
   operations. These names do not relax the format or command-line contracts: old boolean integer
   fields, exact integers, Unicode text rules and receipt bytes still have their established
-  meaning. Compatibility provenance is recorded in the port plan; tests pin its reference values.
+  meaning. Tests pin the reference values; where their fixtures came from is below.
 - Claims never expire; a missing owner needs a human `takeover`. No heartbeats.
 - The owner of a claim is the agent thread; a later session must `takeover` to continue.
 - `update --status in_progress` is a claim, and `create --status in_progress` is refused;
@@ -101,7 +153,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - The Rust port preserves Python's receipt signature bytes and retirement rules while either
   implementation may use the store, including rollback. Sync settles attempts but can retain
   accepted `.command` receipts; an empty `pending_ownership` is not permission to discard them
-  (`RUST-PORT.md` §2.3j).
+  (the receipt's bytes are in §1).
 - The display value for a conflicted field is the newest event id; no resolution command.
 - Every local write (`create`, `update`, `comments add`, `dep`, `import`, `init`, and `close` by the
   owner) is published immediately, not as a conditional update; `--offline` keeps it local, and a
@@ -169,11 +221,12 @@ These were decided deliberately. Report problems *with* them, not their existenc
   applies events in (the key two concurrent creates minted, the order of comments, claim history
   and issue order), the question a checkpoint's continuation faces too (roll-lqjj.4).
 - No history boundary (roll-lqjj.3, step 4 of epic roll-lqjj; the maintainer's decision of
-  2026-10-12, on the evidence in `RUST-PORT.md` Appendix A, "roll-lqjj.3"): a machine's work
-  merges by itself however old it is, as every merge has so far. The alternatives were a supported
-  window (in events, segments or days) behind which a machine refreshes and reconciles by hand, its
-  pending work kept but not merged, as Microsoft's Sync Framework treats a replica behind what it
-  has forgotten; and leaving the question to the checkpoints of step 5. Work that old is real: bead
+  2026-10-12, on the evidence in the port plan's Appendix A, "roll-lqjj.3", which git keeps, §1): a
+  machine's work merges by itself however old it is, as every merge has so far. The alternatives
+  were a supported window (in events, segments or days) behind which a machine refreshes and
+  reconciles by hand, its pending work kept but not merged, as Microsoft's Sync Framework treats
+  a replica behind what it has forgotten; and leaving the question to the checkpoints of step 5.
+  Work that old is real: bead
   published a tracker's first events 45 h after they were written, and in Beads trackers kept in
   git a branch's tracker changes waited up to 24 days on the maintainer's and up to 258 days in
   public repositories; a window short enough to save anything would send such work down the manual
@@ -184,7 +237,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   step 5: a checkpoint carries that index over all history and the accepted attempt ids (a retry
   is recognised by its file in `claims/`), and an archive keeps every raw record for the fork,
   quarantine and chain-break checks. A tracker rolled over to checkpoints is format 2, which ends
-  the python-0.1.0 rollback for it (`RUST-PORT.md` §2.3j), boundary or not. Continuation from a
+  the python-0.1.0 rollback for it, boundary or not. Continuation from a
   checkpoint then becomes the reference for late concurrent events, not full replay: the key two
   concurrent creates minted
   (`same_child_number_on_two_machines_is_renumbered_identically` pins the rename today), the order
@@ -207,7 +260,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   takes, which a published import does in its own publish, an offline one in the first command
   after it, and every new machine in its first sync of the tracker. A generated 49 MB export
   (14,000 records) peaks at 165 MB offline and at 245 MB published, the projection's making, where
-  it peaked at 473 MB (`cargo xtask timing --import`; `RUST-PORT.md` Appendix A). Each form of the
+  it peaked at 473 MB (`cargo xtask timing --import`). Each form of the
   export is let go of once the next is made, the transaction keeps each event once and lets go of
   it as it is encoded, `init` reads the prefix before it imports, so that its state never takes
   the imported events in, and a text file is written from its parts. A tighter budget was not
@@ -216,10 +269,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
   one write, once every record is checked and every event emitted, never as they are made: a torn
   append keeps every whole line it holds, so events written as they were made would let a crash
   keep part of an import. bead's heap is counted by running bead in xtask (`cargo xtask bead`,
-  with xtask's counting allocator, `RUST-PORT.md` §2.2), the reason xtask depends on the `beadroll`
+  with xtask's counting allocator, below), the reason xtask depends on the `beadroll`
   library.
 - What each event had seen is one clock per event over chains, the reachability index of
-  `state/seen.rs` (`RUST-PORT.md` §2.3c): every machine's journal is a chain, and each event of an
+  `state/seen.rs`: every machine's journal is a chain, and each event of an
   attempt file joins a chain whose last event is among its ancestors, or starts one, so there are
   about as many chains as machines that write attempts. A clock holds the furthest position the
   event saw on each chain, and `saw` is `clock[chain] >= position`. Memory grows with events ×
@@ -275,7 +328,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   field, status, label, parent or claim writes nothing and answers `unchanged`. Setting a field to
   the value it shows is still written: such a write settles a conflict, and comparing values
   would hide one (roll-dih8.20).
-- Help pages keep argparse's layout and formatter (§5 row 13) but no longer its empty texts: a
+- Help pages keep argparse's layout and formatter but no longer its empty texts: a
   command's page takes its line from the command list as its description, every argument has a
   help text, and `create`, `dep` and `comments` end with an epilog whose paragraphs wrap as the
   description does and whose indented lists of forms are kept line for line, as
@@ -298,7 +351,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   (roll-dih8.23); an epilog is laid out at their width. `ONBOARD` stays verbatim: it is
   `AGENTS.md`'s text, kept equal by a test.
 - The command line is clap's (roll-dih8.23, the maintainer's decision of 2026-10-12): the argparse
-  port (`RUST-PORT.md` §2.3h, §5 row 13) bought byte parity with the Python bead while both ran,
+  port bought byte parity with the Python bead while both ran,
   and Python is retired. clap is built from the same table (`cli/spec.rs`), and its matches become
   the same namespace: every destination with its value or default, so commands read what they
   read and a receipt signs the same bytes (the parity receipts hold them). Kept from argparse: an
@@ -414,20 +467,20 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - Events nest at most 100 levels (`MAX_NESTING`); replay keeps looser type rules than writes
   (`write_problem`) so histories written before a rule mean the same on every machine.
 - Integers have any size up to Python 3.11+'s default 4,300-digit decimal conversion limit on JSON
-  input and output, not unlimited integer tokens (§5 row 2). The oracle pinned that default until
+  input and output, not unlimited integer tokens. The oracle pinned that default until
   the cutover; a machine whose Python ran with another limit had to resolve its store's
-  compatibility before it upgraded (`RUST-PORT.md` §8).
+  compatibility before it upgraded.
 - What a journal line, attempt file or manifest means does not depend on the Python reading it
-  (`RUST-PORT.md` §5 rows 3, 6, 7, 22 and 23): JSON is read from bytes as UTF-8 with surrogates
+  (U01–U05 in `FINDINGS.md`): JSON is read from bytes as UTF-8 with surrogates
   passed (no byte-order mark, UTF-16 or UTF-32 is guessed), at most 512 levels deep (counted before
   `json.loads`, below every interpreter's own limit), with NaN, Infinity and numbers beyond a float
   refused; ids and dependencies match the UUID shape whole; `complete_prefix` and the manifest read
   as strictly as everything else, and the manifest's format must be the integer 1.
-- Key numbers, segment names and URL schemes are ASCII (§5 row 24): `\d` and `(?i)[a-z]` are never
+- Key numbers, segment names and URL schemes are ASCII (U06): `\d` and `(?i)[a-z]` are never
   Unicode-aware there, so a renamed copy of `x.٣` keeps its own name and `httpſ://` is not
-  `https://`. This departs from the plan's recommendation (keep), on the maintainer's decision.
+  `https://`. This departs from the port plan's recommendation (keep), on the maintainer's decision.
 - Shapes bead never writes, which made Python's replay or a query fail, or answer by interpreter
-  version, are refused by validation (§5 rows 25 and 27 to 30): a `dep_add` meta that is not an
+  version, are refused by validation (U07–U11): a `dep_add` meta that is not an
   object, a `dep_remove` key that is not a string, a create key whose number has 4,300 digits or
   more, an imported comment with a `uid` or a `where`, a create clearing `created_at`; a
   quarantined id's stand-in names its issue only by a string; an import refuses an escaped lone
@@ -435,7 +488,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - A renamed copy that finds every free key taken fails replay with `KEY_SPACE`, as in Python,
   whose replay raised it: beadroll-core's `replay` returns it.
 - Where Python failed with a traceback, Rust answers with a structured error instead, each recorded
-  as it lands (§5 row 26). In beadroll-core: `mint_key` under a parent whose children's numbers have
+  as it lands. In beadroll-core: `mint_key` under a parent whose children's numbers have
   more than 4,300 digits, or would count on to 4,301, is `VALIDATION` (`MintError::NumberTooLong`).
   In the store, sync and command line (Phase 2a): a `BEAD_NET_TIMEOUT`, `BEAD_ROTATE_BYTES`,
   `BEAD_REPACK_LOOSE` or `BEAD_REPACK_PACKS` that Python's `float()` or `int()` cannot read is
@@ -446,8 +499,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   (it is not digits and nothing was carried over, or its digits are superscripts) is `CONFIG`; an
   answer standard output refuses (other than a closed pipe or a hung-up terminal) is an `IO` error
   on standard error, exit 1; a `ps` line that names no command ends the nearest-harness walk.
-- The Rust bead keeps CPython's semantics wherever Python's bead had them, as `RUST-PORT.md` §5
-  rows 1 to 21 record (the rows not stated above): replay takes a boolean where an integer is due
+- The Rust bead keeps CPython's semantics wherever Python's bead had them, as the port plan's
+  ledger of them decided (the rows not stated above): replay takes a boolean where an integer is due
   (`"v": true` is format 1; a `true` priority sorts as 1 and prints as `True`), as histories
   written before `write_problem` had it, while writes refuse one; a lone surrogate in a line,
   escaped or raw, reads as one U+FFFD
@@ -458,32 +511,44 @@ These were decided deliberately. Report problems *with* them, not their existenc
   conflict values print as `repr()` prints them, and `True` as `True`; an OS error reads
   `"{strerror}: {path}"`, a rename's naming its target; the JSON of each output and file is the
   `json.dumps` dialect Python wrote it in; the command line was argparse's, its errors and help
-  pages included (§2.3h), until clap replaced it (roll-dih8.23, above); SIGXFSZ is ignored, so a file-size limit is an `IO` error, and standard
+  pages included, until clap replaced it (roll-dih8.23, above); SIGXFSZ is ignored, so a file-size limit is an `IO` error, and standard
   input closed at exec is no stream, `-` then an `IO` error; a sync or ownership command makes 12
   rounds with `U(0.1, 0.4) × attempt` seconds between them; the names of fetch refs, temporary
   files and set-aside copies are Python's.
 - beadroll-core was proven equal to Python by `cargo xtask diff` until the cutover: replay reports
   and JSON, over the journals the Python tests built and generated histories, valid and hostile.
-  A difference was fixed in Rust or decided as a §5 row; the harness kept no list of expected
+  A difference was fixed in Rust or decided in that ledger; the harness kept no list of expected
   differences. Since the cutover the goldens (`crates/beadroll/tests/golden/`) and the answers
-  `parity` pins hold what Python's bead printed.
+  `parity` pins hold what Python's bead printed. Where the fixed fixtures came from: the golden
+  outputs and receipt signatures were captured from `python-0.1.0` under CPython 3.14, and so
+  were the actor and input fixtures (`parity/actors.rs`, `parity/inputs.rs`) and the unpublished
+  counts (`COUNTS` in `parity/pending.rs`); the JSON parser's diagnostic fixtures take CPython
+  3.14 as their reference; the non-printable table (`text/printable.rs`) was generated by
+  `xtask/python/printable_table.py` with CPython 3.14.7's `str.isprintable()` under Unicode
+  16.0.0; and the stress models' generator (`stress/seeded_random.rs`) follows CPython
+  3.11–3.14's `Modules/_randommodule.c` and `Lib/random.py` (MT19937, integer seeding,
+  `getrandbits`, `random`, `randrange`, `choice` and weighted `choices`), its recorded stream and
+  draws taken from that implementation, so old stress seeds reproduce the same scenarios.
 - The binary has failpoints in every build, activated only by `BEAD_FAILPOINTS` and the two
   crash hooks Python had (`BEAD_TEST_CRASH_BEFORE_PUSH`/`AFTER_PUSH`, which are aliases); a spec
-  that cannot fire as written is `CONFIG` (`RUST-PORT.md` §2.3g, §4.5; the maintainer's decision
-  of 2026-10-09). In-crate tests pass the registry in `Settings`; `error(CODE)` at
-  `ownership.after-confirm` is their in-process form of Q03's interruption.
-- The Rust binary starts fewer gits than Python (Phase 4, `RUST-PORT.md` Appendix B): one combined
-  `rev-parse` for the repository's top, common directory and format, and in `sync.git` a
-  long-lived `cat-file --batch-command`, `hash-object --stdin-paths` and `mktree --batch`, and an
-  `update-ref --stdin` for the ref after a push, with the listing and `TIP^{tree}` worked out
-  in-process as git works them out. Whatever is not certain goes to the git Python runs for it,
-  and its answer or failure is the one given; `sync.git` gets the same objects and refs. What can
+  that cannot fire as written is `CONFIG` (the points and their actions are listed in
+  `crates/beadroll-store/src/failpoint.rs`). The maintainer's decision of 2026-10-09: the binary
+  shipped is the binary tested, as Python's hooks lived in the product, for the cost of one
+  environment lookup; a cargo feature would have kept them out of release builds at the cost of a
+  second build for every test command. In-crate tests pass the registry in `Settings`;
+  `error(CODE)` at `ownership.after-confirm` is their in-process form of Q03's interruption.
+- The Rust binary starts fewer gits than Python (Phase 4; `crates/beadroll-git/AGENTS.md` lists
+  them): one combined `rev-parse` for the repository's top, common directory and format, and in
+  `sync.git` a long-lived `cat-file --batch-command`, `hash-object --stdin-paths` and `mktree
+  --batch`, and an `update-ref --stdin` for the ref after a push, with the listing and
+  `TIP^{tree}` worked out in-process as git works them out. Whatever is not certain goes to the
+  git Python runs for it, and its answer or failure is the one given; `sync.git` gets the same objects and refs. What can
   change while bead runs is asked by Python's own call where Python asks it: origin's URLs each
   time the workspace is found, the transport settings each time a link is made, HEAD and its
   branch (one `rev-parse` where its answer is certain) each time a transaction starts. The two
   refs after a fetch stay Python's two `update-ref`s, at Python's pace: as one transaction they
   deleted the fetch's own ref while concurrent fetches of the store still listed every ref, and git
-  failed those (G16; Appendix B). What still differs: which gits run (one more `rev-parse` where a
+  failed those (G16). What still differs: which gits run (one more `rev-parse` where a
   combined one cannot answer: a bare repository or none at discovery, no commit yet or a branch
   name git finds ambiguous when a transaction starts); origin's `config` runs, read-only, beside
   the first `rev-parse`, so also in discovery's early-error paths where Python stops before asking
@@ -534,19 +599,19 @@ These were decided deliberately. Report problems *with* them, not their existenc
   contents of one id where both should be quarantined. Replay takes each event's operation from
   the journal as it applies it, and the state it builds keeps the rest (who wrote each event, what
   it had seen), not the journal: `State` has no `journal()`.
-- The 150 MB budget for replaying 200,000 events (`RUST-PORT.md` Appendix A) is a heap budget
+- The 150 MB budget for replaying 200,000 events is a heap budget
   (the maintainer's decision of 2026-10-12, roll-dih8.11): `cargo xtask timing --replay N` counts
   the most a fresh process that loads the journal and replays it holds on its heap at once, and
   records the resident peak beside it. The resident peak is higher, about the journal at load plus
   everything replay allocates, because the system allocator keeps most of what replay frees for
   sizes the state never asks for again; closing that gap is roll-dih8.15. Events the size of this
   repository's own take more than xtask's: memory grows with the bytes of the events, which the
-  journal and the state both hold (Appendix A).
+  journal and the state both hold.
 - xtask's global allocator is the system's with a count of what it hands out
   (`xtask/src/timing/heap.rs`), for the heap peak `timing --load` reports: the one unsafe code
-  outside bead's two audited spots (`RUST-PORT.md` §2.2), since `GlobalAlloc` is an unsafe trait.
+  outside bead's two audited spots (`CONTRIBUTING.md`), since `GlobalAlloc` is an unsafe trait.
   Every call goes to the system allocator unchanged. Its counts are atomic, so the peak is exact
-  in any process; counting makes a replay timed in xtask about 5% slower (Appendix A).
+  in any process; counting makes a replay timed in xtask about 5% slower.
 - `BEAD_HOME` must be absolute; the store's modes are 0700/0600 whatever the umask.
 - Only directories bead creates get private modes; a user-supplied `BEAD_HOME` is chmodded 0700
   on first write (reviewer observation, kept).
@@ -558,6 +623,37 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - bead's pushes skip the user's client hooks (`--no-verify`); the remote's hooks still apply.
 - The remote string reaches git after `--`; a tracked workspace id shaped like a URL-derived id
   that is not this origin's is refused.
+- beadroll-core reads and writes JSON with a small parser and writer of its own, not serde_json:
+  journals need integers of any size within the 4,300-digit limit, objects in the order written,
+  a lone surrogate read as one U+FFFD (serde_json refuses the escape, and a lossy decode makes
+  three of the raw bytes), floats as Python's `repr()` printed them (`1e-05`, `1e+16`), and five
+  dialects: compact for journals, attempts and export; spaced for results and, sorted, the
+  manifest; spaced and ASCII-escaped for errors, `--version` and `replica.json`; `indent=1` and
+  ASCII-escaped for `meta.json`, `aliases.json`, `moved.json` and `.beadroll.json`; sorted and
+  compact to compare quarantined copies. serde_json's `arbitrary_precision` and `preserve_order`
+  are features every crate in a build shares, so turning them on would change studio's own
+  serde_json. The parser is iterative, so no depth overflows the stack.
+- git is the git binary, never gix or libgit2: bead's contract is "as git reads it" (`insteadOf`,
+  `includeIf`, credential helpers, `core.sshCommand`, translated messages, server hooks, SHA-256
+  repositories, reftable), which a reimplementation would have to match, and the hardening tests
+  would be the first to find where it did not; gix has no production push, and libgit2 brings a C
+  build and only experimental SHA-256. Writing blobs, trees and commits in-process would save
+  about three processes a publish and is not done: it needs zlib for git's loose objects, git's
+  date and signing rules, and git's existence checks against packs.
+- Durability is `fsync(2)`, never `F_FULLFSYNC`, which Rust's `File::sync_all` and `sync_data` are
+  on Apple platforms: 5.3 ms a call against 0.03 ms on APFS, about 40 ms a write. The remote is
+  the durable copy. Atomic writes are a temporary file, fsync and rename, cleaned up on failure;
+  appends are `O_APPEND` and fsync; the store lock is `File::lock`.
+- The remote seam waits for its second implementation (roll-k2wy.14.1): the protocol
+  (`synchronise`, `coordinated`, `settle_*`, `merge`) uses a link's fetch, tree reading and push,
+  never `sync.git`'s internals, and merge works on (path → blob) maps; a `Remote` trait comes with
+  the in-memory remote that will stand beside `Link`, never as a trait with one implementation.
+- Nothing is published: every crate is `publish = false`, there are no prebuilt binaries or
+  packages, and machines build from source (`README.md`, *Install*); public channels wait for the
+  open-source milestone (roll-ydfw). pancake-studio takes `beadroll-core` as a git dependency on
+  this public repository, pinned to a commit (the maintainer's decision of 2026-10-10,
+  roll-k2wy.15), so none of its builds needs credentials. `infra/` stays stdlib Python driving any
+  `bead`, until there is a reason to move it into xtask.
 
 ## 3. Baseline
 
@@ -602,8 +698,9 @@ under `infra/`; their last results are summarised in `README.md`.
   `bv` inside real repositories (`br where` writes lock files).
 - Starting Codex or Claude Code sessions from a test is for identity detection only: at most a
   couple, and say so in the report.
-- Inject faults with failpoints (`BEAD_FAILPOINTS`, `RUST-PORT.md` §4.5), never by patching bead
-  or the clock: `backoff@always=skip` skips bead's wait between attempts, never a shortened sleep;
+- Inject faults with failpoints (`BEAD_FAILPOINTS`, listed in
+  `crates/beadroll-store/src/failpoint.rs`), never by patching bead or the clock:
+  `backoff@always=skip` skips bead's wait between attempts, never a shortened sleep;
   `pause-until(PATH)` holds bead at a point until the test touches `PATH.go`; `exit(N)`,
   `sigkill`, `errno(...)` and `fail-reply` stop or fail it there; `clock`'s `offset` and `at` move
   its clock. A spec that cannot fire as written is `CONFIG`, so a fault never silently misses.

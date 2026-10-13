@@ -1,4 +1,4 @@
-# bead's checks on every push and pull request (docs/RUST-PORT.md §4.9), shaped and pinned like
+# bead's checks on every push and pull request, shaped and pinned like
 # jig-sh's rust-tests.yml: formatting, lints, the tests on Linux and macOS with their doctests,
 # cargo-deny, and the tests of the infra/ drivers on every Python they may meet. The oracle, the
 # differential checks against CPython and the mixed Python/Rust fleets ran here until the cutover
@@ -125,7 +125,7 @@ jobs:
       - name: Check advisories, bans, licences and sources
         run: cargo deny --locked check
 
-  # The infra/ drivers stay stdlib Python (docs/RUST-PORT.md §8) and run on the maintainer's
+  # The infra/ drivers stay stdlib Python (docs/REVIEWING.md §2) and run on the maintainer's
   # machines with whatever Python each has, so their tests run on the Pythons check.sh ran them on
   # before the cutover: 3.11 to 3.14 on Linux, the newest on macOS. They drive stand-ins, never a
   # bead.

@@ -1,9 +1,38 @@
-//! Fault injection compiled into every build and configured once through BEAD_FAILPOINTS
-//! (`docs/RUST-PORT.md` §4.5). Semicolon-separated specs are `point=action`,
-//! `point@nth(k)=action` or `point@always=action`. Malformed specs, unknown points, unsupported
-//! actions and duplicate points return CONFIG, preventing silent test passes. Crash hooks
-//! BEAD_TEST_CRASH_BEFORE_PUSH and BEAD_TEST_CRASH_AFTER_PUSH select
-//! ownership.before-publish=exit(98) and ownership.after-publish-ok=exit(99).
+//! Fault injection compiled into every build, so that the binary shipped is the binary tested
+//! (`docs/REVIEWING.md` §2), and configured once through BEAD_FAILPOINTS. Semicolon-separated
+//! specs are `point=action` (the first hit), `point@nth(k)=action` (the k-th, from one) or
+//! `point@always=action` (every hit in the process): `backoff@always=skip` removes every wait
+//! between rounds, `backoff=skip` only the first. Malformed specs, unknown points, actions a point
+//! cannot take and duplicate points return CONFIG, so a test never passes because its fault
+//! silently failed to fire. Crash hooks BEAD_TEST_CRASH_BEFORE_PUSH and
+//! BEAD_TEST_CRASH_AFTER_PUSH select ownership.before-publish=exit(98) and
+//! ownership.after-publish-ok=exit(99).
+//!
+//! Actions. Every point but `clock` takes `exit(N)`, `sigkill` (a real SIGKILL), `sleep(MS)` and
+//! `pause-until(PATH)`, which touches `PATH.ready` and waits up to 300 seconds for `PATH.go`.
+//! `torn-sigkill` (`append.mid`) writes half a line, fsyncs it and dies; `errno(NAME)`
+//! (`atomic-write:`) fails the write with ENOSPC, EFBIG, EIO, EACCES, EPERM, EROFS, EDQUOT,
+//! EMFILE, ENFILE, ENOENT or EINTR; `fail-reply` (`push.reply`) reports a push that succeeded as
+//! failed and drops git's status line with it, the lost acknowledgement; `error(CODE)` fails
+//! `publish.result` or `fetch.result` with that code, and the command at
+//! `ownership.after-confirm`, leaving its attempt confirmed and its pending twin in place; `skip`
+//! (`backoff`, `fetch.retry`) skips the wait; `offset(±DUR)` and `at(NS)` (`clock`) shift the
+//! clock by a duration in `ns`, `us`, `ms`, `s`, `m`, `h` or `d`, or set it in nanoseconds.
+//!
+//! Points. `ownership.before-publish` and `ownership.after-publish-ok`, around an ownership
+//! command's publish; `ownership.after-confirm`, after its confirmation and before its pending
+//! files are cleaned up; `publish.before` and `publish.result`, at the start of a publish;
+//! `push.before`, `push.reply` (after git push returns) and `push.after-ok`, around every push;
+//! `fetch.result`, at the start of a fetch; `fetch.retry`, before the wait to try again a fetch
+//! that lost to another process's; `append.mid`, inside a segment append after a partial line;
+//! `backoff`, the unlocked wait between rounds; `claim.before-push`, between a claim's fetch and
+//! push; `pending.after-list`, between listing and reading `pending/`; `journal.after-enumerate`,
+//! `view.before-load-pending` and `identity.before-link`, for readers racing writers;
+//! `projection.texts-appended`, after a projection's texts are appended and before the
+//! projection that places them is written; `clock`, every reading of the clock (event times,
+//! torn and fork stamps); and `atomic-write:<path part>` and `atomic-written:<path part>`, before
+//! and after the rename of an atomic write whose target contains that part. In-crate tests pass
+//! the registry in `Settings` and read [`Failpoints::hits`] to see that a fault was reached.
 
 use std::collections::BTreeMap;
 use std::ffi::OsStr;
@@ -313,7 +342,7 @@ fn known(point: &str) -> Result<(), String> {
 }
 
 /// Whether `point` can take `action`: every point can exit, be killed, sleep or pause; the rest
-/// belong to the points named in `docs/RUST-PORT.md` §4.5.
+/// belong to the points the module's docs name.
 fn allowed(point: &str, action: &Action) -> Result<(), String> {
     let fits = match action {
         Action::Exit(_) | Action::Sigkill | Action::Sleep(_) | Action::PauseUntil(_) => {

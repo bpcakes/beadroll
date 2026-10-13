@@ -1,11 +1,11 @@
-//! Operating-system setup around `main` (`docs/RUST-PORT.md` §2.2 and §2.3f). Record whether
+//! Operating-system setup around `main`, where CPython supplied defaults. Record whether
 //! standard input was open before the runtime can reopen a closed descriptor on `/dev/null`.
 //! Ignore SIGXFSZ so writes past the file-size limit fail with `EFBIG` instead of killing bead;
 //! the git runner restores its default action in children. Mark inherited descriptors
 //! close-on-exec so child processes receive only standard input, output and error.
 #![allow(
     unsafe_code,
-    reason = "one of the two audited unsafe spots (docs/RUST-PORT.md §2.2): a constructor that runs before main, the signal disposition and descriptor flags"
+    reason = "one of the two audited unsafe spots (CONTRIBUTING.md): a constructor that runs before main, the signal disposition and descriptor flags"
 )]
 
 use std::sync::atomic::{AtomicBool, Ordering};

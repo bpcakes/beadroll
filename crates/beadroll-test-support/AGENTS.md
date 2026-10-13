@@ -2,11 +2,11 @@
 
 ## Purpose
 
-`crates/beadroll-test-support` supplies isolated test environments (`docs/RUST-PORT.md` §4.4):
-a `Sandbox` (a temporary root with a bare `origin.git` whose `main` has one commit) and `Machine`s
-(each with its own home, clone and identity) that run a `bead` binary for every crate's black-box
-tests. Fixtures include hooks, fake `ssh`, `ps` and `git`, PTYs and failpoint handshakes. For
-beadroll-core's integration tests it builds events.
+`crates/beadroll-test-support` supplies isolated test environments: a `Sandbox` (a temporary
+root with a bare `origin.git` whose `main` has one commit) and `Machine`s (each with its own home,
+clone and identity) that run a `bead` binary for every crate's black-box tests. Fixtures include
+hooks, fake `ssh`, `ps` and `git`, PTYs and failpoint handshakes. For beadroll-core's integration
+tests it builds events.
 
 ## Key entrypoints
 
@@ -46,7 +46,7 @@ beadroll-core's integration tests it builds events.
   variable, then the machine's home and identity, then its extras.
 - Nothing outside the sandbox is written; dropping it removes it.
 - A failed fixture is a failed test: the crate root allows `unwrap`, `expect`, `panic!` and
-  `eprintln!` (§2.2).
+  `eprintln!` (`CONTRIBUTING.md`).
 
 ## Common commands
 

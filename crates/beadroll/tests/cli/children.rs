@@ -1,6 +1,6 @@
 //! Child processes inherit only standard input, output and error. These tests also pin which git
 //! processes bead starts, their arguments and timing, and the equivalence of in-process object
-//! reads to git's answers (`docs/RUST-PORT.md` Appendix B).
+//! reads to git's answers (`crates/beadroll-git/AGENTS.md`).
 
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::PathBuf;

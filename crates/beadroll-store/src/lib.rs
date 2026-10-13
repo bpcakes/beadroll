@@ -1,4 +1,4 @@
-//! The machine-local store (`docs/RUST-PORT.md` §2.1): explicit settings, BEAD_HOME files and
+//! The machine-local store: explicit settings, BEAD_HOME files and
 //! permissions, atomic writes, journals and pending attempts, journal memo, identity, aliases,
 //! workspace discovery, remote resolution, actors and command views.
 //!

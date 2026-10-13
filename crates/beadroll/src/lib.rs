@@ -1,4 +1,4 @@
-//! The `bead` command (`docs/RUST-PORT.md` §2.1): `commands` maps typed requests to typed outcomes;
+//! The `bead` command: `commands` maps typed requests to typed outcomes;
 //! `cli` parses arguments, renders results and owns the output streams and exit codes; `sys` is
 //! what it needs of the operating system around `main`. The library target exists for the binary,
 //! its tests, and `cargo xtask bead`, which runs it in a process that counts its heap.

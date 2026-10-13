@@ -1,4 +1,4 @@
-//! What a link keeps of git (`docs/RUST-PORT.md` Appendix B): the long-lived gits it asks end with
+//! What a link keeps of git (`crates/beadroll-git/AGENTS.md`): the long-lived gits it asks end with
 //! it, killed and reaped, on every path out, an error's included.
 
 use std::process::Command;

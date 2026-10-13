@@ -182,7 +182,7 @@ impl Workspace {
 
     /// The coordination ref: the tracked one, else `refs/beads/journal`. It must be a valid ref
     /// outside branches, tags and remote-tracking refs: `git check-ref-format` decides, except for
-    /// the default, which is one (`docs/RUST-PORT.md` Appendix B).
+    /// the default, which is one and needs no git to say so.
     pub fn ref_name(&self) -> Result<String, Error> {
         let name = match self.config.get("ref") {
             Some(value) if value.truthy() => beadroll_core::text::str_of(value),

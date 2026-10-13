@@ -7,7 +7,7 @@ use crate::json::{Int, MAX_DIGITS};
 use crate::text::b36;
 
 /// A key that ends in `.` and a number, as `(.+)\.([0-9]+)` matches it whole: what comes before the
-/// last dot (no newline in it), and the ASCII digits after it (`docs/RUST-PORT.md` §5 row 24).
+/// last dot (no newline in it), and the ASCII digits after it (U06 in `docs/FINDINGS.md`).
 pub fn split_number(key: &str) -> Option<(&str, &str)> {
     let (stem, digits) = key.rsplit_once('.')?;
     let numbered = !stem.is_empty()
@@ -18,8 +18,8 @@ pub fn split_number(key: &str) -> Option<(&str, &str)> {
 }
 
 /// Whether a key's number leaves no room to increment within [`MAX_DIGITS`]. A key with that many
-/// nines is refused at creation so a duplicate can still be renamed (`docs/RUST-PORT.md` §5 row
-/// 25).
+/// nines is refused at creation so a duplicate can still be renamed (U07 in
+/// `docs/FINDINGS.md`).
 pub fn number_too_long(key: &str) -> bool {
     split_number(key).is_some_and(|(_, digits)| digits.len() >= MAX_DIGITS)
 }

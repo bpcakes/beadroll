@@ -1,4 +1,5 @@
-//! Direct checks of failpoint contracts used by protocol tests (`docs/RUST-PORT.md` §4.5).
+//! Direct checks of failpoint contracts used by protocol tests
+//! (`crates/beadroll-store/src/failpoint.rs`).
 
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::PathBuf;

@@ -1,5 +1,5 @@
 //! The pure core of bead: tracker reading and derivation without filesystem access, processes,
-//! clock or environment (`docs/RUST-PORT.md` §2.1).
+//! clock or environment.
 //!
 //! - [`json`] and [`text`]: stored-data and output contracts.
 //! - [`id`], [`time`] and [`key`]: event ids, timestamps and issue keys.

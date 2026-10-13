@@ -30,8 +30,8 @@ pub(crate) fn sandbox() -> Sandbox {
 }
 
 /// Selects this package's binary for a test that uses failpoints, reads the store in-process or
-/// checks a build-specific contract. An arbitrary BEAD_UNDER_TEST need not share those interfaces
-/// (`docs/RUST-PORT.md` §4.2).
+/// checks a build-specific contract. An arbitrary BEAD_UNDER_TEST need not share those
+/// interfaces.
 pub(crate) fn rust_only(sandbox: &Sandbox, name: &str) -> Machine {
     Machine::new(sandbox, name).with_bead(env!("CARGO_BIN_EXE_bead"))
 }

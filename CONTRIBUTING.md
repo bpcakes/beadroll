@@ -2,8 +2,7 @@
 
 Thanks for looking. beadroll is small and deliberately boring: one binary, a
 few dependencies, git. The rules below are the ones that keep it that way. It
-was a Python package until 0.2.0 (the tag `python-0.1.0`); `docs/RUST-PORT.md`
-is the plan its port to Rust followed.
+was a Python package until 0.2.0 (the tag `python-0.1.0`).
 
 ## Setup
 
@@ -50,16 +49,15 @@ push test data anywhere but a throwaway remote of your own.
 ## Making a change
 
 1. Every behaviour change comes with a test in the module of its subject. A
-   fault is injected through a failpoint (`BEAD_FAILPOINTS`,
-   `docs/RUST-PORT.md` §4.5), never by patching: to skip the wait between sync
-   attempts, `backoff@always=skip`, never a shortened sleep. Black-box tests run
-   `bead` through `beadroll-test-support`'s `Sandbox` and `Machine`.
+   fault is injected through a failpoint (`BEAD_FAILPOINTS`; the points and
+   their actions are listed in `crates/beadroll-store/src/failpoint.rs`), never
+   by patching: to skip the wait between sync attempts, `backoff@always=skip`,
+   never a shortened sleep. Black-box tests run `bead` through
+   `beadroll-test-support`'s `Sandbox` and `Machine`.
 2. Match the surrounding style: comments in prose that say why; names that
    say what a function returns; errors carry a code a user or an agent can
    act on (`bead prime` lists them). Unknown input is reported, never guessed
-   at; nothing is ever half-written. `docs/RUST-PORT.md` §2.2 has the rules
-   every crate keeps (no panics outside tests, no `mod.rs` files, no output
-   but through the CLI's output module).
+   at; nothing is ever half-written. Keep the rules below.
 3. Format 1 is frozen: a change to what events or the published manifest
    contain must be additive, so that an older bead sets the new thing aside
    rather than misreads it (see *Format and upgrades* in the README).
@@ -71,6 +69,78 @@ push test data anywhere but a throwaway remote of your own.
    them). Run `./check.sh --stress` when you touched the sync protocol.
 6. Commit messages say what changed in behaviour, in prose; the subject line
    is the change, not the file.
+
+## Rules every crate keeps
+
+- **No ambient state in libraries.** Only the `beadroll` crate's `cli` reads
+  the process environment, the working directory and the clock. It builds
+  explicit values (`Settings`, the actor, the checkout path, the environment
+  git children inherit) and passes them down, which is what lets studio and
+  in-process tests use the crates; `std::env::set_var` is `unsafe` in edition
+  2024 besides, so tests set environments on child processes only. The actor's
+  one impure step, the walk up the process tree with `ps` when both a Claude
+  and a Codex session variable are set, goes through a function the CLI passes
+  in, so a fake `ps` on `PATH` drives its test.
+- **Errors.** Each crate has precise `thiserror` enums whose variants are only
+  those its operations can produce, and each error has a `code()`, one of the
+  closed set `bead prime` lists. An OS error is wrapped with its path where it
+  happens and reads `"{strerror}: {path}"`, without Rust's `(os error N)`; a
+  failed rename names its target.
+- **No panics outside tests.** Libraries deny `unwrap_used`, `expect_used`,
+  `panic`, `todo` and `unimplemented`; indexing that cannot be shown safe uses
+  `get`. Replay is total: every input is applied or reported, never an abort.
+- **Determinism.** No `HashMap` or `HashSet` iteration order reaches output, a
+  file or an event. Issues keep replay order, which `detail.dependents` and
+  other outputs depend on; objects keep the order they were written in, and
+  anything else is sorted explicitly.
+- **No `print!`, `println!` or `eprintln!` in the product crates**: they panic
+  on `EPIPE` and `EIO`. The CLI writes through one output module, which turns
+  a broken pipe or a hung-up terminal into a quiet exit 0. Tests may print;
+  xtask, a developer tool, allows it at its crate root.
+- **Exemptions are crate-level attributes with a reason.** Cargo refuses
+  `[lints]` entries beside `workspace = true` in a member. Crate-wide policy
+  uses `allow`, not `expect`, which fails once the lint stops firing.
+  `beadroll-test-support` is a library, so clippy's `allow-*-in-tests`
+  settings do not reach it: its root allows `unwrap_used`, `expect_used`,
+  `panic` and `print_stderr` ("a failed fixture is a failed test").
+- **Every crate root has `//!` docs**, binaries and test roots included
+  (`missing_docs` fires on them). Each `tests/<name>/main.rs` starts with
+  `#![cfg(test)]`, so that clippy treats its helpers as test code, and helpers
+  shared between test modules are `pub(crate)` (`unreachable_pub`). A root at
+  `tests/<name>.rs` would look for its modules beside it (E0583), hence
+  `main.rs`; one test binary per crate keeps linking short. Slow tests are
+  `#[ignore = "reason"]`.
+- **Unsafe code** is denied workspace-wide, with three exceptions, each block
+  with a `// SAFETY:` comment: `beadroll::sys` (a probe of standard input
+  before `main`, SIGXFSZ ignored, inherited descriptors marked close-on-exec)
+  and `beadroll_git::runner` (`setsid` and SIGXFSZ's default between fork and
+  exec), the two in bead; and xtask's `timing::heap`, the system allocator with
+  a count of what it hands out, since `GlobalAlloc` is an unsafe trait.
+- **Layout.** No `mod.rs` files (`clippy::mod_module_files`). A source file
+  warns above 500 lines; split it long before 800. Each crate's `AGENTS.md` has
+  the sections Purpose, Key entrypoints, Edit here for X, Invariants and Common
+  commands.
+- **Few dependencies, each for a reason.** No serde or serde_json in the
+  product (beadroll-core reads and writes JSON itself: `docs/REVIEWING.md`
+  §2); no tokio, since nothing is async (a consumer on tokio calls through
+  `spawn_blocking`); no chrono or jiff (event times are UUIDv7 milliseconds,
+  turned into dates by a small function); no `regex` (hand-written matchers,
+  and `regex-lite` for git's messages); no anyhow (every error carries a code);
+  no `wait-timeout` or `ctrlc` (a waiter thread is enough). `cargo deny`
+  checks licences, advisories and sources (`deny.toml`).
+
+## Variables the tests and drivers read
+
+bead's own variables are in the README's *Configuration*. These are read only
+by the tests, xtask or `infra/`:
+
+| Variable | Read by | Meaning |
+|---|---|---|
+| `BEAD_UNDER_TEST` | tests, `infra/` | The `bead` to run, by its absolute path, instead of the one Cargo built (tests) or the installed `~/.local/bin/bead` (`infra/`) |
+| `BEAD_FAILPOINTS` | bead | Faults to inject: `point=action`, `point@nth(k)=action` or `point@always=action`, separated by `;` (`crates/beadroll-store/src/failpoint.rs`) |
+| `BEAD_TEST_CRASH_BEFORE_PUSH`, `BEAD_TEST_CRASH_AFTER_PUSH` | bead | The crash hooks: exit 98 before, 99 after an ownership command's publish; aliases of two failpoints |
+| `BEAD_SWEEP`, `BEAD_SWEEP_GC`, `BEAD_SWEEP_CONCURRENT` | the sweep | `full` runs all 660 schedules; with `BEAD_SWEEP_GC=1` the remote collects garbage after every push it accepts; with `BEAD_SWEEP_CONCURRENT=1` each schedule's two follow-ups run at once |
+| `BEAD_TEST_REMOTE`, `BEAD_DRIVE_HOSTS`, `BEAD_DRIVE_BEADS`, `BEAD_EXPECT_VERSION`, `BEAD_TEST_LOCAL_REPO` | `infra/` | Each script's docstring says what it needs |
 
 ## Reporting a problem
 

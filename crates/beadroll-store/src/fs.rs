@@ -115,7 +115,7 @@ fn temporary(path: &Path) -> PathBuf {
     path.with_file_name(OsStr::from_bytes(&raw))
 }
 
-/// Uses fsync(2), never F_FULLFSYNC (`docs/RUST-PORT.md` §2.3e).
+/// Uses fsync(2), never F_FULLFSYNC (`docs/REVIEWING.md` §2).
 pub fn fsync(file: &File) -> Result<(), IoError> {
     rustix::fs::fsync(file).map_err(|e| IoError::bare(&io::Error::from(e)))
 }

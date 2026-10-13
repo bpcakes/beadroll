@@ -1,4 +1,5 @@
-//! JSON contracts for stored data and output (`docs/RUST-PORT.md` §2.3a).
+//! JSON contracts for stored data and output: bead's own reader and writer, not serde_json
+//! (`docs/REVIEWING.md` §2).
 //!
 //! [`parse()`] reads UTF-8, replacing and reporting each lone surrogate as one U+FFFD. Nesting is
 //! bounded by [`MAX_DEPTH`]; non-finite numbers are refused; integers are exact within

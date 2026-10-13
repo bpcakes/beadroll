@@ -1,4 +1,4 @@
-//! A persistent git process (`docs/RUST-PORT.md` Appendix B), started in an explicit Env with its
+//! A persistent git process (`crates/beadroll-git/AGENTS.md`), started in an explicit Env with its
 //! own session and default SIGXFSZ. Stdin and stdout are pipes; stderr is an unlinked file so it
 //! cannot fill an unread pipe. Local calls have no timeout and read only the protocol-announced
 //! answer. Dropping the session kills and reaps it and its helpers. If bead exits abruptly, pipe

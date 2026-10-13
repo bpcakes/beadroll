@@ -1,5 +1,5 @@
 //! `cargo xtask timing`: runs a command and records what it took as one JSON line, evidence for
-//! the budgets of `docs/RUST-PORT.md` §4.7 and Appendix A. With `--replay N` it times
+//! bead's budgets (`docs/REVIEWING.md` §2). With `--replay N` it times
 //! beadroll-core's replay of N events in-process instead ([`replay`]), and measures the peak memory
 //! of a process that loads them from disk and replays them ([`memory`], `--load DIR`); with `--sync
 //! N`, a publishing `bead sync` on a store of N events ([`sync`]); with `--read N`, the reading

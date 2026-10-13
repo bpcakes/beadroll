@@ -1,7 +1,7 @@
-//! Receipt signatures are a byte-level format contract (`docs/RUST-PORT.md` §2.3j, §5 row 21).
+//! Receipt signatures are a byte-level format contract (`docs/REVIEWING.md` §1).
 //! Equivalent command spellings produce identical receipts; an owner's close and delete leave
-//! none. Fixed reference fixtures pin compatibility across versions; their provenance is
-//! documented in `docs/RUST-PORT.md` §4.2. Helpers also serve `parity::retries`.
+//! none. Fixed reference fixtures pin compatibility across versions; their provenance is in
+//! `docs/REVIEWING.md` §2. Helpers also serve `parity::retries`.
 
 use std::collections::BTreeSet;
 use std::io::Write as _;

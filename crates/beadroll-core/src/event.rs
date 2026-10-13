@@ -296,7 +296,7 @@ pub fn fields_problem(fields: &Value, bookkeeping: bool) -> Option<String> {
             return Some(format!("field {} is not writable", repr_str(name)));
         };
         if *value == Value::Null {
-            // Lists sort by creation time, so a create cannot clear it either (§5 row 28).
+            // Lists sort by creation time, so a create cannot clear it either (U09).
             if REQUIRED_FIELDS.contains(&field) || field == Field::CreatedAt {
                 return Some(format!("field {} cannot be cleared", repr_str(name)));
             }
@@ -451,7 +451,7 @@ fn create_problem(
             comment.get("legacy_id"),
             None | Some(Value::Null | Value::Str(_) | Value::Int(_))
         );
-        // A comment made here has a uid and a where; an imported one has neither (§5 row 27).
+        // A comment made here has a uid and a where; an imported one has neither (U08).
         let imported = !comment.contains_key("uid") && !comment.contains_key("where");
         if !text_valid || !present || !legacy_valid || !imported {
             return Some("create event has a malformed comment".into());

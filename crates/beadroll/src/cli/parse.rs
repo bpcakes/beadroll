@@ -1,5 +1,5 @@
-//! Command-line parsing with clap, built from the argument table (`cli/spec.rs`; `docs/RUST-PORT.md`
-//! §2.3h as revised by roll-dih8.23). A command reads what argparse gave it before, and a receipt
+//! Command-line parsing with clap, built from the argument table (`cli/spec.rs`; roll-dih8.23,
+//! `docs/REVIEWING.md` §2). A command reads what argparse gave it before, and a receipt
 //! signs the same namespace: every destination with its value or default. An unambiguous prefix
 //! of a long option names that option, the last value of an option wins, a scope (`--parent`,
 //! `--epic`) is given once, and an option's value may start with `-`. Errors are clap's, with its

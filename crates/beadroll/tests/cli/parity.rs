@@ -1,7 +1,8 @@
 //! Compatibility and convergence contracts: machines agree, published trees use format 1, sync
 //! settles pending attempts while keeping accepted receipts, retries recognise receipts, and
 //! hostile inputs produce errors without writes. Fixed fixtures pin receipt bytes, counts and
-//! input handling; golden tests pin help and reading commands (`docs/RUST-PORT.md` §4.2).
+//! input handling; golden tests pin help and reading commands (provenance in
+//! `docs/REVIEWING.md` §2).
 
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};

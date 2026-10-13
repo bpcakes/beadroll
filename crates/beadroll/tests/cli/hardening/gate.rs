@@ -1,6 +1,6 @@
-//! The `pause-until(PATH)` handshake (`docs/RUST-PORT.md` §4.5): bead touches `PATH.ready` on
-//! reaching the failpoint, then waits for the test to touch `PATH.go` after acting at that
-//! boundary.
+//! The `pause-until(PATH)` handshake (`crates/beadroll-store/src/failpoint.rs`): bead touches
+//! `PATH.ready` on reaching the failpoint, then waits for the test to touch `PATH.go` after acting
+//! at that boundary.
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};

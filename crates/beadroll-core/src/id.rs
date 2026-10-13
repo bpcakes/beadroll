@@ -3,7 +3,7 @@
 
 use std::fmt;
 
-/// An event id: the UUID shape exactly, with no trailing newline (`docs/RUST-PORT.md` §5 row 6).
+/// An event id: the UUID shape exactly, with no trailing newline (U02 in `docs/FINDINGS.md`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EventId(u128);
 

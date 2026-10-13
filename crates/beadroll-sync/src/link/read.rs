@@ -1,7 +1,8 @@
-//! Reads the remote journal through the link's persistent cat-file (`docs/RUST-PORT.md` Appendix
-//! B). Resolves the fetch ref, manifest, file listing, blobs and commit tree with the same
-//! results as the corresponding git commands. Missing, damaged or unusual answers return NoAnswer
-//! and fall back to standalone git with the same error classification.
+//! Reads the remote journal through the link's persistent cat-file
+//! (`crates/beadroll-git/AGENTS.md`). Resolves the fetch ref, manifest, file listing, blobs and
+//! commit tree with the same results as the corresponding git commands. Missing, damaged or
+//! unusual answers return NoAnswer and fall back to standalone git with the same error
+//! classification.
 
 use std::ffi::OsStr;
 

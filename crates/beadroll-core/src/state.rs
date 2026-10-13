@@ -390,7 +390,8 @@ pub fn actor_label(actor: Option<&Value>, replica: &str) -> String {
     label
 }
 
-/// A state is immutable once replayed and shared between threads behind an `Arc` (§2.4).
+/// A state is immutable once replayed and shared between threads behind an `Arc`, as studio
+/// shares it.
 const _: () = {
     const fn shareable<T: Send + Sync>() {}
     shareable::<State>();

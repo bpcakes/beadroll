@@ -2,9 +2,9 @@
 
 ## Purpose
 
-`xtask` is the workspace's own tooling, run as `cargo xtask` (`docs/RUST-PORT.md` §4): `check` runs
-the workspace's baseline, its tests, its doctests and the `infra/` drivers' tests, with `--stress`
-the stress models and with `--real` the real-export checks, and `./check.sh` runs it; `timing`
+`xtask` is the workspace's own tooling, run as `cargo xtask`: `check` runs the workspace's
+baseline, its tests, its doctests and the `infra/` drivers' tests, with `--stress` the stress
+models and with `--real` the real-export checks, and `./check.sh` runs it; `timing`
 records how long a command (or a replay) took; `bead` runs bead in xtask's process, whose
 allocator counts its heap. Its tests also keep the repository hygiene rules and CI matrix.
 
@@ -28,12 +28,13 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   `timing --load DIR` (the process that loads and replays it), `bead` (bead's own code run in
   xtask, for its heap), and their peaks: the resident set as
   `/usr/bin/time` reports it, and the heap as `timing/heap.rs` counts it, xtask's global allocator
-  (the system's, counted; its one unsafe spot, `docs/RUST-PORT.md` §2.2).
+  (the system's, counted; its one unsafe spot, `CONTRIBUTING.md`).
 - `src/hygiene.rs`: the repository lint (a test only).
 - `src/ci.rs`: `v8_supported_environments`, the CI matrix the workflows keep (a test only).
 - `src/workspace.rs`: paths, failures and JSON strings for all of them.
 - `python/printable_table.py`: writes `crates/beadroll-core/src/text/printable.rs` with the Unicode
-  non-printable table that `repr()` uses; generator provenance is recorded in §4.2.
+  non-printable table that `repr()` uses, generated with CPython 3.14.7's `str.isprintable()`
+  under Unicode 16.0.0.
 
 ## Edit here for X
 
@@ -49,7 +50,7 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   shows only its summary, one that fails everything it printed.
 - Without `BEAD_UNDER_TEST`, `check --real` tests the executable Cargo reports building, never a
   path it works out: the target directory, a build target and the profile can each move it.
-- Timings are evidence and never gate anything (§4.7).
+- Timings are evidence and never gate anything.
 - `timing --sync` runs `bead` and git on a scratch store, checkout and remote under
   `target/timing/`, which it removes after, as workspace `timing`, never the real store or another
   repository: none of them inherits the shell's `BEAD_*` and `GIT_*` variables.
@@ -69,4 +70,5 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   offline, its first sync, and published
 - `cargo test -p xtask`
 - `python3 xtask/python/printable_table.py > crates/beadroll-core/src/text/printable.rs`, with
-  the interpreter version documented in §4.2; do not change the Unicode version implicitly
+  CPython 3.14.7 (Unicode 16.0.0), the versions the table was made with; do not change the
+  Unicode version implicitly

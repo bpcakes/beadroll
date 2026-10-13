@@ -1,5 +1,5 @@
 #!/bin/sh
-# The baseline: `cargo xtask check` with the options given (docs/RUST-PORT.md §4.9). It runs every
+# The baseline: `cargo xtask check` with the options given. It runs every
 # step with a scratch BEAD_HOME of its own, one line per step, and exits non-zero when any fails.
 #   ./check.sh            the workspace's tests through nextest (the sweep's slice among them), its
 #                         doctests, and the tests of the infra/ drivers

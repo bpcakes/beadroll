@@ -1,6 +1,6 @@
 //! `timing --replay N` measures parsed-journal replay and peak memory while loading and replaying
-//! from disk. Appendix A of docs/RUST-PORT.md records release-build budgets: 10,000 events in 20
-//! ms, 200,000 in 0.5 s and 150 MB. Measurements are evidence, not test gates.
+//! from disk. The release-build budgets: 10,000 events in 20 ms, 200,000 in 0.5 s and 150 MB on
+//! the heap. Measurements are evidence, not test gates.
 
 use std::ffi::OsStr;
 use std::time::Instant;

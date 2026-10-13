@@ -6,7 +6,8 @@ use indexmap::IndexMap;
 
 use super::{Int, MAX_DIGITS, Object, Value};
 
-/// Maximum array and object nesting accepted by readers (`docs/RUST-PORT.md` §5 row 7).
+/// Maximum array and object nesting accepted by readers, below every Python's own limit (U03 in
+/// `docs/FINDINGS.md`).
 pub const MAX_DEPTH: usize = 512;
 
 /// A text read as JSON.

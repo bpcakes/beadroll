@@ -2,10 +2,15 @@
 
 ## Purpose
 
-`crates/beadroll-core` is the pure core of bead (`docs/RUST-PORT.md` §2.1): strict JSON and Unicode
-text semantics, event ids and times, event validation, journal settling, causal order, replay into
-state, readiness and the other queries, issue views, Beads import planning and export, key
-minting, and reading a published tree. pancake-studio links this crate alone.
+`crates/beadroll-core` is the pure core of bead: strict JSON and Unicode text semantics, event ids
+and times, event validation, journal settling, causal order, replay into state, readiness and the
+other queries, issue views, Beads import planning and export, key minting, and reading a published
+tree. pancake-studio links this crate alone, as a git dependency pinned to a commit: it reads a
+coordination ref's tree with `published::Tree::read(entries, expected_workspace)`, which refuses
+a tree without a readable manifest, of another workspace or in another format, replays
+`tree.journal()` with `replay::replay`, and takes `State::export_records` for its Beads reader.
+A `State` is immutable and `Send + Sync`, to share behind an `Arc`; nothing is async, so a
+consumer on tokio calls through `spawn_blocking`.
 
 ## Key entrypoints
 
@@ -41,7 +46,8 @@ minting, and reading a published tree. pancake-studio links this crate alone.
 
 ## Edit here for X
 
-- Reading or writing JSON with the established format and diagnostics (§2.3a, §5): `src/json/`.
+- Reading or writing JSON with the established format and diagnostics (`docs/REVIEWING.md` §2):
+  `src/json/`.
 - What an event may hold: `src/event.rs`, including its validation message. Format 1 is frozen:
   changes are additive, so older versions set unfamiliar records aside rather than misread them.
 - Replay, state, readiness, cycles, views, import planning and export: the module of that name.
@@ -53,19 +59,19 @@ minting, and reading a published tree. pancake-studio links this crate alone.
 
 ## Invariants
 
-- No I/O: no filesystem, processes, clock or environment (§2.2).
+- No I/O: no filesystem, processes, clock or environment.
 - It depends on no other workspace crate; any of them may depend on it.
 - No panics: `unwrap`, `expect`, `panic!`, `todo!` and `unimplemented!` are denied, and replay
   is total: every input is applied or reported.
 - No `HashMap` or `HashSet` iteration order reaches an output; issues keep replay order.
-- Parsing, rendering and replay preserve the compatibility contracts in §5; a departure requires
-  a documented decision and regression coverage.
+- Parsing, rendering and replay preserve the compatibility contracts in `docs/REVIEWING.md` §2;
+  a departure requires a documented decision and regression coverage.
 - A projection extended is replay: `projection/tests.rs` checks every batch a store takes in on
   histories of machines that write, sync and race, and each batch it must decline.
 - `saw` agrees with the reference ancestry bitsets: `state/seen/tests.rs` checks every pair
   on hostile histories. Replay's speed and memory are measured by
   `cargo run --release --package xtask -- timing --replay N [--ownership]`: at 200,000 events its
-  heap peak is within the 150 MB of `docs/RUST-PORT.md` Appendix A (roll-dih8.11). Replay keeps
+  heap peak is within its 150 MB budget (`docs/REVIEWING.md` §2; roll-dih8.11). Replay keeps
   no event's parsed JSON: a record is read into an `Event` once, and the state keeps what `saw`
   and `who` read of each event, not the journal.
 

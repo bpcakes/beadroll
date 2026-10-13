@@ -1,4 +1,4 @@
-//! Checkout facts with minimal git invocations (`docs/RUST-PORT.md` Appendix B). One combined
+//! Checkout facts with minimal git invocations (`crates/beadroll-git/AGENTS.md`). One combined
 //! rev-parse obtains the repository top, common directory and object format once per process.
 //! Split answers only when unambiguous, preserving each standalone call's output; otherwise ask
 //! each fact separately when needed. These immutable facts use the first query's environment.

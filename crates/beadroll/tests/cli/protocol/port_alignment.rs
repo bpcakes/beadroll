@@ -118,7 +118,7 @@ fn u05_a_manifest_that_only_equals_format_1_is_refused() {
     }
 }
 
-/// U06 (`docs/RUST-PORT.md` §5 row 24): the merge took any Unicode digits for a segment's number,
+/// U06 (`docs/FINDINGS.md`): the merge took any Unicode digits for a segment's number,
 /// so a published `events/<machine>/٠٠٠٠٠١.jsonl` was copied in and read as a journal.
 #[test]
 fn u06_only_segments_numbered_in_ascii_digits_are_merged() {

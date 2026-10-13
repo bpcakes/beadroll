@@ -1,5 +1,5 @@
-//! Exact integers with a 4,300-digit decimal read/write limit (`docs/RUST-PORT.md` §2.3a, §5 row
-//! 2).
+//! Exact integers with a 4,300-digit decimal read/write limit, Python 3.11's default for
+//! `json.loads` and `json.dumps` (`docs/REVIEWING.md` §2).
 
 use std::cmp::Ordering;
 use std::fmt;

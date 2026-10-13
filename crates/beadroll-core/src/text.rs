@@ -1,4 +1,4 @@
-//! Text contracts used by bead's messages and keys (`docs/RUST-PORT.md` §5): value
+//! Text contracts used by bead's messages and keys (`docs/REVIEWING.md` §2): value
 //! representations, escaping, whitespace trimming, base-36 digests and numeric parsing.
 
 mod number;

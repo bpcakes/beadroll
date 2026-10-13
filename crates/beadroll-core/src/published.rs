@@ -1,4 +1,4 @@
-//! A published journal, as the coordination ref's tree holds it (`docs/RUST-PORT.md` §2.4):
+//! A published journal, as the coordination ref's tree holds it (`docs/REVIEWING.md` §1):
 //! `manifest.json`, then each machine's segments `events/MACHINE/N.jsonl` and attempt files
 //! `events/MACHINE/claims/ID.json`. The caller reads the entries from git; nothing here does.
 
@@ -25,7 +25,8 @@ pub enum TreeError {
         /// The workspace the caller expects.
         expected: String,
     },
-    /// A format other than the integer 1 (`true` and `1.0` are not format 1: §5 row 23).
+    /// A format other than the integer 1 (`true` and `1.0` are not format 1: U05 in
+    /// `docs/FINDINGS.md`).
     #[error(
         "the published journal is in format {0}; this version of bead reads format 1 only and will not rewrite it"
     )]

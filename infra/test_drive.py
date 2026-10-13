@@ -1,5 +1,5 @@
 """infra/drive.py and infra/selected.py choose each machine's bead explicitly and record it before any test
-data is written (docs/RUST-PORT.md §8): their own tests, beside them. drive.py runs with `--preflight`
+data is written: their own tests, beside them. drive.py runs with `--preflight`
 against stand-ins: an `ssh` first on PATH that runs the remote command here, and beads that log each run."""
 import json
 import os

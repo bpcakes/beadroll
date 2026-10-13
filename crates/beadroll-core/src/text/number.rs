@@ -4,7 +4,7 @@
 //! digit; anything else non-ASCII makes the string unreadable. ASCII characters stay as they are,
 //! so `\x1c` is not whitespace here. Then the ASCII whitespace at either end goes, and an
 //! underscore may stand only between two digits. These rules preserve the original command-line
-//! grammar (`docs/RUST-PORT.md` §5 row 12).
+//! grammar, which Python's `int()` read.
 
 use crate::json::Int;
 use crate::text::is_space;

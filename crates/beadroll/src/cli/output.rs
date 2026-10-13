@@ -1,4 +1,4 @@
-//! Every byte bead writes to its standard streams (`docs/RUST-PORT.md` §2.3f). A reader that went
+//! Every byte bead writes to its standard streams (`CONTRIBUTING.md`). A reader that went
 //! away (a closed pipe, `EPIPE`, or a terminal that hung up, `EIO` on a character device) is not
 //! an error: nobody is reading, so bead stops writing and keeps its exit status.
 

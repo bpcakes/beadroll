@@ -1,4 +1,4 @@
-//! Sync and ownership protocols (`docs/RUST-PORT.md` §2.1): local transactions, remote
+//! Sync and ownership protocols: local transactions, remote
 //! fetch/merge/publish, maintenance, pending-attempt settlement, unpublished counts, receipts and
 //! fences.
 //!

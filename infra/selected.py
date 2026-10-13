@@ -1,4 +1,4 @@
-"""Which bead an infra driver runs on this machine, and the record of it (docs/RUST-PORT.md §8).
+"""Which bead an infra driver runs on this machine, and the record of it.
 
 The bead is the one BEAD_UNDER_TEST names, which must be an absolute path (a build of this checkout, such as
 target/release/bead, or a staged one); else the installed ~/.local/bin/bead. Until the cutover this checkout's

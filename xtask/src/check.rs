@@ -1,5 +1,5 @@
-//! `cargo xtask check [--stress] [--real]`: the workspace's baseline before a commit
-//! (`docs/RUST-PORT.md` §4.9), which `./check.sh` runs. Every step runs with a scratch `BEAD_HOME`
+//! `cargo xtask check [--stress] [--real]`: the workspace's baseline before a commit, which
+//! `./check.sh` runs. Every step runs with a scratch `BEAD_HOME`
 //! and gets one line; a failed step fails the check, and the steps after it still run.
 //!
 //! - `tests`: the workspace's tests through nextest, the sweep's slice among them;

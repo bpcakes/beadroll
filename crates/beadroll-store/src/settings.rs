@@ -1,4 +1,4 @@
-//! The settings bead runs with, built once by the CLI from the process (`docs/RUST-PORT.md` §2.2):
+//! The settings bead runs with, built once by the CLI from the process (`CONTRIBUTING.md`):
 //! no library reads the environment, the working directory or the clock offset itself.
 
 use std::collections::BTreeMap;
@@ -88,7 +88,7 @@ pub struct Settings {
     /// derived from.
     pub git: Env,
     /// What checkout-side git says about the repository and its configuration, asked once in
-    /// [`Settings::git`] (`docs/RUST-PORT.md` Appendix B): set `git` before the first question.
+    /// [`Settings::git`] (`crates/beadroll-git/AGENTS.md`): set `git` before the first question.
     pub checkout: Checkout,
     /// The working directory relative paths are read from.
     pub cwd: PathBuf,

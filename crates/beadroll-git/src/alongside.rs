@@ -1,4 +1,4 @@
-//! Two local gits at once (`docs/RUST-PORT.md` Appendix B): finding the workspace asks the
+//! Two local gits at once: finding the workspace asks the
 //! combined `rev-parse` and origin's `config`, and neither waits for the other.
 //!
 //! Both are started from the calling thread, one after the other, so that neither can inherit a

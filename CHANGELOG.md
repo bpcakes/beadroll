@@ -6,6 +6,13 @@ versioned separately (format 1, frozen; see *Format and upgrades* in the README)
 
 ## [Unreleased]
 
+- `docs/RUST-PORT.md`, the plan the Rust port followed, is removed (roll-dih8.24), with its test
+  catalogues in `docs/rust-port/`. What of it was still in force moved: format 1 byte for byte and
+  the design decisions to `docs/REVIEWING.md`, the rules every crate keeps and the tests' variables
+  to `CONTRIBUTING.md`, the variables bead reads to the README's *Configuration*, the failpoints to
+  `crates/beadroll-store/src/failpoint.rs`, and the gits each command starts to
+  `crates/beadroll-git/AGENTS.md`. The plan and its measurements stay in git: `git show
+  5a6ea8d:docs/RUST-PORT.md`.
 - The command line is clap's (roll-dih8.23): the argparse port, kept for parity with the Python
   bead until its cutover, is gone. Commands read the same values and receipts sign the same bytes;
   a long option may still be shortened while unambiguous, and the last value of an option still
@@ -120,7 +127,7 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   it is sure to be in `sync.git`; the tree published is the one hashing every file makes.
 - `cargo xtask timing --sync N [--ownership] [--rotate BYTES]` times a publishing `bead sync` on a
   scratch store of N events against a local bare remote, with the store's memo of its journal files
-  and without it; `docs/RUST-PORT.md` Appendix A has the figures at 200,000 events.
+  and without it.
 - Replay holds a fraction of the memory it did (roll-dih8.11): 200,000 events peak at 107 MB on
   the heap, and at 133 MB when about half of them are claims, takeovers and releases in attempt
   files; their resident peaks fell from 921 and 958 MB to 187 and 215 MB, and the replay itself
@@ -129,8 +136,7 @@ checkout, nothing committed; `bead sync` on every other checkout and machine.
   takes each event's operation from the journal as it applies it, and the state keeps who wrote
   each event and what each had seen, not the journal; an issue keeps its registers, tags and
   claims in vectors sized to them. Events the size of this repository's own take more: its
-  journal repeated to 200,000 events peaks at 364 MB on the heap (`docs/RUST-PORT.md`, Appendix
-  A). In `beadroll-core`, `Value::Object` holds a boxed `Object`, `Issue::deps` is a view of the
+  journal repeated to 200,000 events peaks at 364 MB on the heap. In `beadroll-core`, `Value::Object` holds a boxed `Object`, `Issue::deps` is a view of the
   dependency tags (`Deps`), claim records share their names and give their times by method
   (`Claim::since`, `EndedClaim::ended`, `Provisional::since`, `LostClaim::at`), and `State` no
   longer holds the journal.

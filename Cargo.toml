@@ -1,4 +1,4 @@
-# Cargo.toml (workspace root; docs/RUST-PORT.md §3)
+# Cargo.toml (workspace root)
 [workspace]
 resolver = "3"
 members = ["crates/*", "xtask"]           # fuzz/ is its own workspace (cargo-fuzz)
@@ -9,7 +9,7 @@ edition = "2024"
 rust-version = "1.99"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/bpcakes/beadroll"
-publish = false                             # private repository: nothing goes to crates.io (§8)
+publish = false                             # nothing goes to crates.io: machines build from source
 
 [workspace.dependencies]
 beadroll-core  = { path = "crates/beadroll-core" }    # one version for every crate, above
@@ -32,7 +32,7 @@ thiserror = "2"
 uuid = { version = "1", features = ["v4", "v7"] }
 
 [workspace.lints.rust]
-unsafe_code = "deny"                        # three documented exceptions, §2.2
+unsafe_code = "deny"                        # three documented exceptions, CONTRIBUTING.md
 missing_docs = "warn"
 unreachable_pub = "warn"
 rust_2018_idioms = { level = "warn", priority = -1 }
@@ -51,7 +51,7 @@ panic = "deny"
 todo = "deny"
 unimplemented = "deny"
 dbg_macro = "deny"
-print_stdout = "deny"                       # EPIPE-safe output only, §2.2
+print_stdout = "deny"                       # EPIPE-safe output only, CONTRIBUTING.md
 print_stderr = "deny"
 allow_attributes_without_reason = "deny"
 undocumented_unsafe_blocks = "deny"

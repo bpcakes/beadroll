@@ -1,4 +1,4 @@
-//! U06 (`docs/RUST-PORT.md` §5 row 24): a scheme is ASCII.
+//! U06 (`docs/FINDINGS.md`): a scheme is ASCII.
 
 use std::ffi::OsStr;
 use std::path::Path;

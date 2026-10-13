@@ -1,6 +1,6 @@
-# bead's nightly checks (docs/RUST-PORT.md §4.9): the tests under the oldest git bead supports,
-# 2.40, built from source, beside the newer git every push already tests with (V8_Python312's
-# replacement, §4.6); and the slow suites, the stress models and the full ownership sweep (§4.8).
+# bead's nightly checks: the tests under the oldest git bead supports, 2.40, built from source,
+# beside the newer git every push already tests with (V8_Python312's replacement); and the slow
+# suites, the stress models and the full ownership sweep.
 # Until the cutover the tests also ran here against Python's launcher, and the first stress model
 # on a fleet that alternated the two implementations. Nothing here touches a real store or a real
 # remote: every test builds its own repositories and bare remotes in a temporary directory.

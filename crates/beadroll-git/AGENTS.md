@@ -2,10 +2,11 @@
 
 ## Purpose
 
-`crates/beadroll-git` is the only code in bead that starts git (`docs/RUST-PORT.md` §2.1, §2.3d,
-§2.3f): the runner (its own session, a timeout that kills the process group for a fetch and only
-the client for a push, output captured to unlinked files, signal names), the long-lived gits
-(Appendix B) with git's own tree and commit reading mirrored in-process, the checkout's facts
+`crates/beadroll-git` is the only code in bead that starts git, and it starts the git binary,
+never a library (`docs/REVIEWING.md` §2): the runner (its own session, a timeout that kills the
+process group for a fetch and only the client for a push, output captured to unlinked files,
+signal names), the long-lived gits (below) with git's own tree and commit reading mirrored
+in-process, the checkout's facts
 asked once and its configuration and HEAD asked afresh, the environment `sync.git`'s git
 runs in, push-outcome and local-damage classifiers, remote URL rules, and lenient path
 resolution shared with the store.
@@ -80,12 +81,34 @@ resolution shared with the store.
   other, so neither can inherit a descriptor whose close-on-exec flag the other's start had not
   set yet (on macOS, std makes a pipe and marks it in two steps).
 - The runner's `pre_exec` (a real `setsid`, SIGXFSZ back to default) is one of the two audited
-  `unsafe` spots, with a `// SAFETY:` comment (§2.2); never `process_group(0)` first.
+  `unsafe` spots, with a `// SAFETY:` comment (`CONTRIBUTING.md`); never `process_group(0)`
+  first: `setpgid` keeps the controlling terminal, and a group leader cannot `setsid`.
 - `sync.git`'s git runs with `LC_ALL=C`; checkout-side git keeps the caller's locale.
 - It depends on no other workspace crate (core and git build in parallel): text handling uses
   supplied rules (`CountRules`) or operates on ASCII.
 - No panics outside tests; nothing read from the process environment, the working directory or the
   clock: every git runs in an `Env` its caller built.
+
+## Which gits a command starts
+
+Checkout side, in the caller's directory and environment: the combined `rev-parse
+--show-toplevel --path-format=absolute --git-common-dir --show-object-format` when the workspace
+is first found, beside origin's `config --get-regexp ^remote\.origin\.(push)?url$`; `config
+--null --get-regexp` of the transport keys each time a link is made; `rev-parse HEAD
+--abbrev-ref HEAD` each time a transaction starts; `cat-file --batch` for a committed
+`.beadroll.json` only when the tree has none; `remote get-url NAME` for a remote given by name;
+`check-ref-format` for a tracked ref other than the default; and `symbolic-ref`, `rev-parse
+--verify` and `merge-base --is-ancestor` only for `show` of a closed issue. `sync.git` side: `init
+--bare` once; `fetch` into the process's own ref; one `cat-file --batch-command` for every object
+read; `update-ref` for `refs/beads/remote` and `update-ref -d` for the fetch's ref; one
+`hash-object -w --no-filters --stdin-paths` and one `mktree --batch` a round; `commit-tree`;
+`push --porcelain --no-verify`; an `update-ref --stdin` transaction after a push; and `repack -a
+-d -q` and `prune --expire=1.hour.ago` when maintenance is due. `rev-parse --show-object-format`
+only where `sync.git`'s config does not settle its format. That is 3 processes for a read and for
+`info`, 10 for a sync with nothing new, and 14 for a publishing write or a one-round claim (each
+further round of a claim starts its own fetch, two `update-ref`s, `hash-object`, `mktree`,
+`commit-tree`, push and `rev-parse` of HEAD; one fewer each with a tracked `.beadroll.json`),
+where Python started 3, 4, 20 and 26–27.
 
 ## Common commands
 

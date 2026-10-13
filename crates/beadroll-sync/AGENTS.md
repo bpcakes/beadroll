@@ -2,11 +2,10 @@
 
 ## Purpose
 
-`crates/beadroll-sync` is the sync protocol of bead (`docs/RUST-PORT.md` §2.1): transactions (`Tx`,
-`writing`), the link to the coordination remote (fetch, merge, tree, publish, maintenance,
-rebuild), `synchronise` with its settling of this machine's pending attempts, `publish_soon` and the
-unpublished counts, and the ownership protocol (`coordinated`, receipts, fences, `settle_commands`,
-`settle_pending`).
+`crates/beadroll-sync` is the sync protocol of bead: transactions (`Tx`, `writing`), the link to
+the coordination remote (fetch, merge, tree, publish, maintenance, rebuild), `synchronise` with
+its settling of this machine's pending attempts, `publish_soon` and the unpublished counts, and
+the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `settle_pending`).
 
 ## Key entrypoints
 
@@ -14,7 +13,7 @@ unpublished counts, and the ownership protocol (`coordinated`, receipts, fences,
   `Tx` starts from the store's projection and applies each event it emits to it; one the
   projection cannot take (a takeover) has the journal replayed instead.
 - `src/link.rs`: `Link` (`unpublished`, `maintain`, `rebuild`) and the gits it keeps in
-  `sync.git` (`docs/RUST-PORT.md` Appendix B); `src/link/fetch.rs`: `Link::fetch`, which tries
+  `sync.git` (`crates/beadroll-git/AGENTS.md`); `src/link/fetch.rs`: `Link::fetch`, which tries
   again a fetch that lost to another process's fetch of the store; `src/link/asked.rs`: `Link::publishes`, the
   `ls-remote` that `init` asks before it starts a tracker, as a link asks but from a bare
   repository made aside, writing nothing in the store; `src/link/merge.rs`: `Link::merge`;
@@ -38,14 +37,16 @@ unpublished counts, and the ownership protocol (`coordinated`, receipts, fences,
 ## Edit here for X
 
 - How a write, a sync or a claim reaches the remote, and what each outcome means: here.
-- Receipts and pending attempts: here, preserving the frozen format byte for byte (§2.3j).
+- Receipts and pending attempts: here, preserving the frozen format byte for byte
+  (`docs/REVIEWING.md` §1).
 
 ## Invariants
 
 - Up to 24 rounds per command, with a uniformly sampled pause from zero up to
   `min(0.1 × 2^(attempt − 1), 2)` seconds after a failed round, outside the store lock
   (roll-lqjj.7; `docs/REVIEWING.md` §2).
-- The protocol depends on fetch, read-tree and push, never on `sync.git`'s internals (§2.3i); a
+- The protocol depends on fetch, read-tree and push, never on `sync.git`'s internals
+  (`docs/REVIEWING.md` §2); a
   `Remote` trait waits for its second implementation.
 - A link preserves git operation order and failure classification (`Link::git` may find damage,
   `Link::check` never does). A kept git that has no answer (`beadroll_git::NoAnswer`) falls back
@@ -59,7 +60,8 @@ unpublished counts, and the ownership protocol (`coordinated`, receipts, fences,
 - The fetch's own ref (`refs/beads/fetch/<pid>-<hex>`) is deleted by a separate
   `update-ref -d` after `refs/beads/remote`'s, never in a transaction ready the moment the fetch
   ends: concurrent fetches of the store list every ref then, and git fails one that finds a listed
-  ref gone (G16, `docs/RUST-PORT.md` Appendix B).
+  ref gone (G16: one transaction failed G16's test in 8 of 120 runs, and seven processes fetching
+  at once lost 13 of 2,100 fetches with it, none of 7,000 with the two calls).
 - A transaction reads where the caller works (`capture_where`) when it starts, under the store
   lock, and an ownership command makes a new one each round: the `where` an
   event records is HEAD as it is then.
@@ -74,8 +76,8 @@ unpublished counts, and the ownership protocol (`coordinated`, receipts, fences,
   `init`'s `ls-remote`) is given it as a remote defined for the link under a name of its own
   (`defining_remote`, through `GIT_CONFIG_COUNT`), its own push URL as its `pushurl`: git never
   takes the URL for another remote's name, and pushes as `git push NAME` would.
-- Receipt signatures and retirement preserve compatibility across versions (§2.3j,
-  `REVIEWING.md` §2); sync keeps an accepted attempt's receipt.
+- Receipt signatures and retirement preserve compatibility across versions
+  (`docs/REVIEWING.md` §1 and §2); sync keeps an accepted attempt's receipt.
   `crates/beadroll/tests/cli/parity/receipts.rs` pins the format bytes.
 - It depends on `beadroll-core`, `beadroll-git` and `beadroll-store` only, of the workspace.
 - The machines of its tests run the `bead` the workspace builds, never a path worked out from the

@@ -374,7 +374,7 @@ pub(crate) fn kill(pid: u32, reap: bool) {
 /// limit.
 #[allow(
     unsafe_code,
-    reason = "one of the two audited unsafe spots (docs/RUST-PORT.md §2.2): code that runs in the child between fork and exec"
+    reason = "one of the two audited unsafe spots (CONTRIBUTING.md): code that runs in the child between fork and exec"
 )]
 pub(crate) fn detach(command: &mut Command) {
     // SAFETY: the closure runs in the forked child before exec, where only async-signal-safe calls

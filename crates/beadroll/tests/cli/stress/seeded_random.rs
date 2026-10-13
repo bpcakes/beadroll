@@ -1,6 +1,6 @@
 //! Deterministic MT19937 draws with integer seeding, ranges, choices and weighted choices.
 //! The stream and sampling rules preserve recorded stress scenarios. Reference implementation
-//! and fixture provenance are documented in `docs/RUST-PORT.md` §4.2.
+//! and fixture provenance are in `docs/REVIEWING.md` §2.
 
 /// The words of the generator's state, and the offset of its second tap.
 const N: usize = 624;

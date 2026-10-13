@@ -1,6 +1,6 @@
 //! F14 and a verified property: an incorrect clock. These `rust_only` tests set the `clock`
 //! failpoint at every reading (`clock@always`). `at(NS)` sets nanoseconds since the epoch;
-//! `offset(±DUR)` shifts the clock (`docs/RUST-PORT.md` §4.5).
+//! `offset(±DUR)` shifts the clock (`crates/beadroll-store/src/failpoint.rs`).
 
 use std::collections::BTreeSet;
 

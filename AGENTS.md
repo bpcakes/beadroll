@@ -4,11 +4,10 @@ beadroll is a Beads-compatible issue tracker for coding agents working across gi
 machines. The implementation is a Cargo workspace (Rust 1.99, pinned by `rust-toolchain.toml`):
 `cargo build --package beadroll` builds the working copy as `target/debug/bead`, and `cargo install
 --locked --force --path crates/beadroll --root ~/.local`, run from the checkout's root, installs it
-as the `bead` command. `docs/RUST-PORT.md` records the implementation history and compatibility
-contracts. `README.md` says what it does and why.
-`docs/REVIEWING.md` is the map of the design, the decisions that are not findings, and the rules
-reviewers work under. `docs/FINDINGS.md` is the ledger of every review finding and how it was
-closed; `docs/reviews/` holds the reports verbatim.
+as the `bead` command. `README.md` says what it does and why; `CONTRIBUTING.md` has the rules
+every crate keeps. `docs/REVIEWING.md` is the map of the design, format 1 byte for byte, the
+decisions that are not findings, and the rules reviewers work under. `docs/FINDINGS.md` is the
+ledger of every review finding and how it was closed; `docs/reviews/` holds the reports verbatim.
 
 ## Layout
 
@@ -58,20 +57,22 @@ closed; `docs/reviews/` holds the reports verbatim.
 
 ## Making a change
 
-- Rust code follows `docs/RUST-PORT.md` §2.2 and its crate's `AGENTS.md`. Crates depend only
-  downwards (`beadroll-core` and `beadroll-git` → `beadroll-store` → `beadroll-sync` →
-  `beadroll`); a helper two crates need moves down, never up, and only the `beadroll` crate's
-  `cli` reads the environment, the working directory and the clock. Match the surrounding style:
-  comments in prose that say why, names that say what a function returns, errors whose codes a user
-  can act on (`bead prime` lists them). Unknown input is reported, never guessed at; nothing is
-  ever half-written. No `mod.rs` files, and a source file warns above 500 lines.
+- Rust code follows *Rules every crate keeps* in `CONTRIBUTING.md` and its crate's `AGENTS.md`.
+  Crates depend only downwards (`beadroll-core` and `beadroll-git` → `beadroll-store` →
+  `beadroll-sync` → `beadroll`); a helper two crates need moves down, never up, and only the
+  `beadroll` crate's `cli` reads the environment, the working directory and the clock. Match the
+  surrounding style: comments in prose that say why, names that say what a function returns,
+  errors whose codes a user can act on (`bead prime` lists them). Unknown input is reported,
+  never guessed at; nothing is ever half-written. No `mod.rs` files, and a source file warns
+  above 500 lines.
 - Every behaviour change comes with a test in the module of its subject. A black-box test runs
   `bead` through `beadroll-test-support` (`Sandbox`, `Machine`): the binary Cargo built, unless
   `BEAD_UNDER_TEST` names another. A fault is injected through a failpoint (`BEAD_FAILPOINTS`,
-  `docs/RUST-PORT.md` §4.5), never by patching or by sleeping: `backoff@always=skip` skips the
-  wait between attempts, and `pause-until(PATH)` holds bead at a point for the test to act
-  (`hardening/gate.rs`); such a test's machine is `rust_only`, this build's binary. In-crate tests
-  pass the failpoint registry in `Settings`, never through the process environment.
+  listed in `crates/beadroll-store/src/failpoint.rs`), never by patching or by sleeping:
+  `backoff@always=skip` skips the wait between attempts, and `pause-until(PATH)` holds bead at a
+  point for the test to act (`hardening/gate.rs`); such a test's machine is `rust_only`, this
+  build's binary. In-crate tests pass the failpoint registry in `Settings`, never through the
+  process environment.
 - Record deliberate decisions in `docs/REVIEWING.md` §2 and user-facing behaviour in `README.md`; a
   review finding you close gets its row in `docs/FINDINGS.md`. Format 1 is frozen: additions only.
 - Run the fast baseline before committing, the stress suite when the sync protocol changed. The
@@ -89,7 +90,7 @@ closed; `docs/reviews/` holds the reports verbatim.
    version` in `Cargo.toml` to match (`cargo build` then updates `Cargo.lock`).
 2. `./check.sh --stress` green, and CI green on `main`.
 3. `git tag -a vX.Y.Z -m "beadroll X.Y.Z"` and `git push origin main vX.Y.Z`. Nothing is
-   published: machines build from source (`docs/RUST-PORT.md` §8).
+   published: machines build from source.
 4. Each machine reinstalls (*Install* in the README) and checks `bead --version`.
 
 ## Work tracking (bead)

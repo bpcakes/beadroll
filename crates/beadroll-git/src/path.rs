@@ -1,6 +1,6 @@
-//! Path existence and lenient canonicalization (`docs/RUST-PORT.md` §5 row 10). Missing or
-//! inaccessible components remain in the result, unlike libc realpath, which fails on missing
-//! components.
+//! Path existence and lenient canonicalization, as Python's `os.path.realpath`
+//! (`docs/REVIEWING.md` §2). Missing or inaccessible components remain in the result, unlike libc
+//! realpath, which fails on missing components.
 
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};

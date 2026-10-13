@@ -1,7 +1,7 @@
-//! The only crate that starts git (`docs/RUST-PORT.md` §2.1, §2.3d, §2.3f). It owns process
-//! sessions, timeout handling, output files, persistent object readers and writers, checkout
-//! facts, transport environments, push and damage classification, URL normalization and lenient
-//! path resolution.
+//! The only crate that starts git, and it starts the git binary (`docs/REVIEWING.md` §2). It owns
+//! process sessions, timeout handling, output files, persistent object readers and writers,
+//! checkout facts, transport environments, push and damage classification, URL normalization and
+//! lenient path resolution.
 //!
 //! Every process runs in an explicit [`Env`]; this crate reads no ambient environment, working
 //! directory or clock.

@@ -11,6 +11,10 @@ finding until the cutover was tested in the Python suite, at `python-0.1.0`; eve
 tests was ported to Rust, and at the cutover the inventory that mapped each to its port
 (`cargo xtask inventory`) rewrote this column with their paths.
 
+Rows that cite `RUST-PORT.md` by section (the U rows, reviews 8 and 9, and some others) cite the
+plan the port followed, removed once the port was done (roll-dih8.24); it is in git:
+`git show 5a6ea8d:docs/RUST-PORT.md`.
+
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 

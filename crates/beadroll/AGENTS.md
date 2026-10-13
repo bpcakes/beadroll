@@ -2,8 +2,8 @@
 
 ## Purpose
 
-`crates/beadroll` is the `bead` binary (`docs/RUST-PORT.md` §2.1): `commands` maps typed requests to
-typed outcomes, `cli` parses arguments, renders results and owns the output streams and exit codes.
+`crates/beadroll` is the `bead` binary: `commands` maps typed requests to typed outcomes, `cli`
+parses arguments, renders results and owns the output streams and exit codes.
 Coordinated commands (`claim`, `release`, `takeover` and `update --claim`/`--status in_progress`)
 use receipts. Integration tests cover commands, golden outputs, cross-version compatibility,
 storage, protocol behavior and fault recovery.
@@ -11,7 +11,7 @@ storage, protocol behavior and fault recovery.
 ## Key entrypoints
 
 - `src/main.rs`: the executable; it calls `beadroll::run`.
-- `src/sys.rs`: what bead needs of the operating system around `main` (§2.3f), one of the two
+- `src/sys.rs`: what bead needs of the operating system around `main`, one of the two
   audited unsafe spots: a constructor that records whether standard input was open at exec, before
   the runtime reopens it on `/dev/null`; SIGXFSZ ignored; and inherited descriptors kept from
   child processes.
@@ -41,7 +41,7 @@ storage, protocol behavior and fault recovery.
 - `tests/cli/commands/*.rs`: command behavior, and `commands/setup.rs`, the golden
   path of setting a tracker up (roll-dih8.13); `tests/cli/golden.rs` and
   `golden/normal.rs`: the golden scenarios and their normalisation, against the files in
-  `tests/golden/`, fixed reference outputs whose provenance is recorded in §4.2.
+  `tests/golden/`, fixed reference outputs whose provenance is in `docs/REVIEWING.md` §2.
 - `tests/cli/parity.rs` and `parity/*.rs`: machines converge and export alike, the published tree
   follows format 1, sync settles pending attempts, a retry recognises its receipt
   (`parity/retries.rs`), and the answers
@@ -50,8 +50,8 @@ storage, protocol behavior and fault recovery.
   that are not UTF-8 (`parity/inputs.rs`, `parity/actors.rs`).
 - `tests/cli/protocol.rs`, `hardening.rs`, `storage.rs`, `compat.rs`, `replay.rs`: the black-box
   tests of their respective subjects (the real-export test is `#[ignore]`d, run by
-  `cargo xtask check --real`); `hardening/gate.rs`: the `pause-until` handshake (§4.5) a test holds
-  bead at. `tests/cli/sweep.rs`: the ownership protocol enumerated, its boundaries reached through
+  `cargo xtask check --real`); `hardening/gate.rs`: the `pause-until` handshake a test holds bead
+  at. `tests/cli/sweep.rs`: the ownership protocol enumerated, its boundaries reached through
   failpoints (`fault_env`), each
   schedule showing that its fault fired (`fault_fired`); the thirteen-schedule slice runs in the
   fast suite, and `sweep/sweep_failure_reporting.rs` checks
@@ -59,8 +59,8 @@ storage, protocol behavior and fault recovery.
   `tests/cli/stress.rs`: two randomised models, ignored by default; they draw from
   `stress/seeded_random.rs`, whose MT19937 stream preserves recorded scenarios for each seed.
 - `main.rs`'s `rust_only`: the machine of a test that uses build-specific failpoints, reads the
-  store in the test process, or checks a build-specific contract (§5 row 26). It runs this build's
-  binary whatever `BEAD_UNDER_TEST` says.
+  store in the test process, or checks a build-specific contract (a structured error where Python
+  died with a traceback). It runs this build's binary whatever `BEAD_UNDER_TEST` says.
 
 ## Edit here for X
 
@@ -78,7 +78,7 @@ storage, protocol behavior and fault recovery.
 ## Invariants
 
 - Only `cli` reads the process environment, the working directory and the clock; it passes values
-  down (§2.2).
+  down.
 - No `print!`, `println!` or `eprintln!`: every write goes through `cli/output.rs`, where a closed
   pipe or a hung-up terminal is a quiet exit 0 and a failed write to stderr keeps the status.
 - Output preserves its established formats: `--json` results spaced with raw UTF-8, errors and

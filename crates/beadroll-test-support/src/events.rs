@@ -1,4 +1,4 @@
-//! Events as bead writes them, for beadroll-core's integration tests (`docs/RUST-PORT.md` §4.4):
+//! Events as bead writes them, for beadroll-core's integration tests:
 //! the [`json!`](crate::json) macro, ids that sort in the order they are made, and the envelope
 //! `Tx.emit` writes. Core's own unit tests cannot use these: there the dev-dependency would build a
 //! second `beadroll_core`, whose types do not match.

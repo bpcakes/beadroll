@@ -205,7 +205,7 @@ impl Journal {
                 } else {
                     Box::default()
                 };
-                // A copy that is not valid may name anything: only a string is an issue (§5 row 29).
+                // A copy that is not valid may name anything: only a string is an issue (U10).
                 let issue = placement.issue().map(|issue| self.shared.text(issue));
                 let stand_in = Event::stand_in(placement, Op::Quarantined, trusted, issue);
                 self.install(stand_in);

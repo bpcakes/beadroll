@@ -1,7 +1,7 @@
 //! Golden outputs pin complete help pages, human-readable `show` and other reading commands over
 //! a scripted tracker, and `info` keys. Variable ids, times and paths are normalised in
 //! `golden/normal.rs`. Expected files in `tests/golden/` are fixed reference outputs (provenance
-//! in `docs/RUST-PORT.md` §4.2). Never regenerate them to hide a failure: an intentional output
+//! in `docs/REVIEWING.md` §2). Never regenerate them to hide a failure: an intentional output
 //! change edits the expected file by hand in the same change.
 
 mod normal;

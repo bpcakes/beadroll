@@ -1,8 +1,8 @@
-//! Reads a private repository's object format from plain git-init configuration
-//! (`docs/RUST-PORT.md` Appendix B). Accept only standalone section headers and unquoted `key =
-//! value` lines without trailing comments or escapes. Interpret extensions only under repository
-//! format version 1; version 0 without an object format is SHA-1. Without
-//! core.repositoryformatversion, git ignores extensions.
+//! Reads a private repository's object format from plain git-init configuration, where git would
+//! read it so, instead of asking `rev-parse --show-object-format`. Accept only standalone section
+//! headers and unquoted `key = value` lines without trailing comments or escapes. Interpret
+//! extensions only under repository format version 1; version 0 without an object format is
+//! SHA-1. Without core.repositoryformatversion, git ignores extensions.
 //!
 //! Return [`StoredFormat::Unsure`] for unusual syntax or a format differing from the requested
 //! one, so the caller asks git. A matching format can be used directly: if git later refuses the

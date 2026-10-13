@@ -1,5 +1,5 @@
 //! State retained between commands: pending attempts and receipts settled by sync, invalid
-//! pending files and published counts in `meta.json` (`docs/RUST-PORT.md` §2.3j).
+//! pending files and published counts in `meta.json` (`docs/REVIEWING.md` §1).
 
 use std::os::unix::fs::PermissionsExt as _;
 

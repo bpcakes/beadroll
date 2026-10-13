@@ -7,7 +7,7 @@ use super::{COMMANDS, find};
 use crate::cli::help::page;
 use crate::cli::parse::{Page, Parsed, parse};
 
-/// `HelpAndPrime.test_every_command_has_help` over the table (`docs/RUST-PORT.md` §4.6): more
+/// `HelpAndPrime.test_every_command_has_help` over the table: more
 /// than 20 commands, each under a name of its own, which `help NAME` finds; `NAME --help`
 /// shows that command's page, whose usage is `bead NAME`.
 #[test]

@@ -2,16 +2,16 @@
 
 ## Purpose
 
-`crates/beadroll-store` is this machine's side of bead (`docs/RUST-PORT.md` §2.1): the settings the
-CLI hands down, `BEAD_HOME`, the store's files and modes, the lock's file, atomic writes, journal
-segments and torn tails, attempt and pending files, identity and aliases, workspace discovery and
+`crates/beadroll-store` is this machine's side of bead: the settings the CLI hands down,
+`BEAD_HOME`, the store's files and modes, the lock's file, atomic writes, journal segments and torn
+tails, attempt and pending files, identity and aliases, workspace discovery and
 remote resolution, actor detection, `view`, and the failpoint registry.
 
 ## Key entrypoints
 
 - `src/settings.rs`: `Settings` (the variables, the environment git inherits, the working directory,
   the clock; `home()` with the `BEAD_HOME` rules; `checkout` and `fact`: what checkout-side git says
-  of the repository, asked once, `docs/RUST-PORT.md` Appendix B), `Clock`, `normalize_path`,
+  of the repository, asked once, `crates/beadroll-git/AGENTS.md`), `Clock`, `normalize_path`,
   `join_path`.
 - `src/fs.rs`: `private_dirs`, `private_dir`, `write_atomic`, `fsync`, `dir_entries`, `glob_ending`,
   `read_json_text`, `read_json_keeping_surrogates` (preserving lone surrogates across whole-file
@@ -48,12 +48,14 @@ remote resolution, actor detection, `view`, and the failpoint registry.
 
 - A file in the store, its name, mode or how it is written: here.
 - Workspace discovery, identity, actor detection: here.
-- A failpoint's registry and parsing (§2.3g, §4.5): `src/failpoint.rs`; the points themselves sit
-  where they fire. A new point joins `POINTS`, and an action a point can take joins `allowed`.
+- A failpoint's registry, parsing and the list of points and actions: `src/failpoint.rs`; the
+  points themselves sit where they fire. A new point joins `POINTS` and the list in the module's
+  docs, and an action a point can take joins `allowed`.
 
 ## Invariants
 
-- The bytes on disk follow the frozen format 1 (§1.1), readable by every compatible version.
+- The bytes on disk follow the frozen format 1 (`docs/REVIEWING.md` §1), readable by every
+  compatible version.
   The memo is no part of it: a cache in `sync.git` that goes with it, and a memo that is
   missing, cannot be read or names a file whose identity changed counts for nothing. Nor is the
   projection: a cache that one build of bead (`Settings::build`) reads and writes, whole or not
@@ -62,10 +64,10 @@ remote resolution, actor detection, `view`, and the failpoint registry.
 - Directories 0700 and files 0600 throughout the store, whatever the umask; files written into a
   checkout follow the umask.
 - Atomic writes use the established temporary names and `fsync(2)` through `rustix`, not `sync_all`
-  (§2.3e); appends use `O_APPEND`.
+  (`docs/REVIEWING.md` §2); appends use `O_APPEND`.
 - Settings arrive as values (`Settings`); this crate never reads the process environment or the
-  working directory (§2.2). A numeric `BEAD_*` setting that is not a number is a `CONFIG` error
-  when the settings are built (§5 row 26).
+  working directory. A numeric `BEAD_*` setting that is not a number is a `CONFIG` error when
+  the settings are built, where Python died with a traceback (`docs/REVIEWING.md` §2).
 - The repository's top, common directory and format are asked through `Settings::fact` (one
   `rev-parse`, each answer matching its separate call), never one call a question; the
   default coordination ref is valid without `check-ref-format`. `git` is set before the first

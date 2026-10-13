@@ -1,4 +1,4 @@
-//! Settings explicitly select the checkout in which git runs (`docs/RUST-PORT.md` §2.2).
+//! Settings explicitly select the checkout in which git runs (`CONTRIBUTING.md`).
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;

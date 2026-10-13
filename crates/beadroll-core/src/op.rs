@@ -1,4 +1,4 @@
-//! An event's typed operation (`docs/RUST-PORT.md` §2.3b). Payloads are read only after
+//! An event's typed operation. Payloads are read only after
 //! validation; invalid events are never applied. A member of the wrong type therefore reads as
 //! absent, and missing or falsy members use operation-specific defaults.
 
@@ -9,7 +9,7 @@ use crate::event::Field;
 use crate::json::{Int, Object, Value};
 
 /// An integer field read from a format-1 event, retaining a legacy boolean representation.
-/// Replay accepts booleans in integer fields of old histories (`docs/RUST-PORT.md` §5 row 1).
+/// Replay accepts booleans in integer fields of old histories (`docs/REVIEWING.md` §2).
 /// Comparison uses their numeric values (`true` equals 1, `false` equals 0), while JSON keeps
 /// the original type and display keeps the established `True`/`False` spelling (`[PTrue]`).
 #[derive(Clone, Debug)]

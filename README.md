@@ -401,6 +401,24 @@ present, and `bead` picks the nearest agent in the process tree. `BEAD_AGENT`,
 `BEAD_THREAD` and `--actor NAME` override them. The machine is an opaque id; its
 hostname is a local alias (`bead machines --name ID=ALIAS`), never in events.
 
+The variables bead reads, every one optional:
+
+| Variable | Meaning |
+|---|---|
+| `BEAD_HOME` | The store's root, absolute after `~` expansion; default `~/.local/state/beadroll` |
+| `BEAD_WORKSPACE` | The workspace id, overriding the derived one and its check (*Moving a repository*) |
+| `BEAD_REMOTE` | The coordination remote for this call: a remote's name, a URL or a path |
+| `BEAD_AGENT`, `BEAD_THREAD`, `BEAD_ACTOR` | Who is acting, over what the harness says; `--actor` wins over all of them |
+| `CLAUDE_CODE_SESSION_ID`, `CLAUDECODE`, `CODEX_THREAD_ID`, `CODEX_SESSION_ID` | The harness and its thread (above) |
+| `BEAD_NET_TIMEOUT` | Seconds, a decimal, that one fetch or push may take; default 45 |
+| `BEAD_ROTATE_BYTES` | The size at which this machine's journal starts a new segment; default 262,144 |
+| `BEAD_REPACK_LOOSE`, `BEAD_REPACK_PACKS` | `sync.git` is repacked beyond this many loose objects or packs; defaults 1,000 and 40 |
+| `NO_COLOR`, `CLICOLOR`, `CLICOLOR_FORCE`, `TERM` | Colour on a terminal (*Quick start*) |
+| `COLUMNS` | The width bead's own texts wrap at, else the terminal's, at most 100 |
+
+A number bead cannot read is a `CONFIG` error, even for `--version`. The tests'
+and the `infra/` drivers' own variables are in `CONTRIBUTING.md`.
+
 ## Moving a repository
 
 A new origin URL (a rename, another owner, another host) gives the URL-derived
@@ -456,8 +474,9 @@ repository, bare remotes and machine homes in a temporary directory, each machin
 
 Every test that runs bead runs the one Cargo builds, unless `BEAD_UNDER_TEST` names another by its
 absolute path. Until 0.2.0 bead was a Python package, whose suite the Rust tests port; the
-port's tests passed against both, and the last Python is tagged `python-0.1.0`
-(`docs/RUST-PORT.md` is the plan the port followed).
+port's tests passed against both, and the last Python is tagged `python-0.1.0`.
+The plan the port followed, `docs/RUST-PORT.md`, is in git history (`git show
+5a6ea8d:docs/RUST-PORT.md`), its measurements among it.
 
 Seven independent reviews have been run against the code. Their reports are kept
 verbatim under `docs/reviews/`; `docs/FINDINGS.md` is the ledger of every finding, its status,
@@ -509,7 +528,7 @@ the record of it before any test data is written), their tests beside them, and 
   × chains rather than with events × ownership events. Replaying 200,000
   events, about 55% of them in attempt files, takes 0.29 s and holds at most
   133 MB on the heap (a 215 MB resident peak), 116 MB of it the loaded journal
-  (`docs/RUST-PORT.md`, Appendix A; Python's bitsets took 11.8 s and 1.7 GB).
+  (`cargo xtask timing --replay`; Python's bitsets took 11.8 s and 1.7 GB).
 - The branch recorded on an event is whatever `HEAD` was in the directory the
   command ran in. It is a trace, not a lock: a claim does not pin a branch.
 - A command reads the store's projection while it is current, and replays the
@@ -517,9 +536,9 @@ the record of it before any test data is written), their tests beside them, and 
   apply, or the projection removed). At 200,000 events (the largest public
   Beads trackers import as at most 29,000), a read takes 73–87 ms with it and
   1.06 s without; a sync that merges ten events another machine wrote, 0.31 s and
-  1.31 s; a publishing sync, 0.38 s and 1.34 s (`docs/RUST-PORT.md`, Appendix
-  A). With it, a read costs what the state does: 18 ms for a thousand issues,
-  whether 50,000 events made them or 200,000. A real tracker's state is mostly
+  1.31 s; a publishing sync, 0.38 s and 1.34 s (`cargo xtask timing`). With
+  it, a read costs what the state does: 18 ms for a thousand issues, whether
+  50,000 events made them or 200,000. A real tracker's state is mostly
   its texts, which only the commands that print them read: on three of the
   largest public Beads trackers (21–47 MB, up to 13,394 issues) a `list` takes
   36–75 ms and a published write 0.21–0.35 s, while `export`, `search` and

@@ -192,7 +192,7 @@ pub fn plan_import(state: &State, records: &[Value]) -> Result<Plan, ImportError
 fn check(path: &str, number: usize, parsed: &json::Parsed) -> Result<(), ImportError> {
     let record = &parsed.value;
     if parsed.lone_surrogates {
-        // An escaped lone surrogate is not text (§5 row 30).
+        // An escaped lone surrogate is not text (U11).
         return Err(fail(format!("{path}:{number}: text is not valid UTF-8")));
     }
     let Some(id) = record

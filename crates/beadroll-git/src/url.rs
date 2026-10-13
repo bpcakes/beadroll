@@ -1,6 +1,6 @@
 //! Remote URL rules over OS bytes. ASCII patterns identify schemes and other structural
 //! components. Trimming and lowercase mapping operate on Unicode text while retaining invalid
-//! UTF-8 bytes unchanged (`docs/RUST-PORT.md` §5 row 24).
+//! UTF-8 bytes unchanged (U06 in `docs/FINDINGS.md`).
 
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
