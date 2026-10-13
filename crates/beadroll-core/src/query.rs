@@ -1,4 +1,5 @@
-//! Queries over state: conflicts, blockers, descendants, readiness and waits-for cycles.
+//! Queries over state: conflicts, blockers, descendants and subtrees, readiness and waits-for
+//! cycles.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
@@ -149,6 +150,38 @@ impl State {
             }
         }
         found
+    }
+
+    /// Each of `roots` and every issue beneath it, as [`State::descendants`] finds them, each once
+    /// and after every issue beneath it: children in the order they were created, roots in the
+    /// order given. A merged cycle is followed until it leads back to an issue already listed. The
+    /// walk keeps its own stack, so a deep tree cannot overflow the thread's.
+    pub fn subtrees_leaf_up(&self, roots: &[EventId]) -> Vec<EventId> {
+        // the children still to visit, last created first so that the first created pops first
+        let pending = |uid: EventId| {
+            let mut children = self.children(uid).to_vec();
+            children.sort_unstable_by(|a, b| b.cmp(a));
+            children
+        };
+        let mut listed = Vec::new();
+        let mut seen = HashSet::new();
+        for &root in roots {
+            if !seen.insert(root) {
+                continue;
+            }
+            let mut stack = vec![(root, pending(root))];
+            while let Some((_, children)) = stack.last_mut() {
+                match children.pop() {
+                    Some(child) => {
+                        if seen.insert(child) {
+                            stack.push((child, pending(child)));
+                        }
+                    }
+                    None => listed.extend(stack.pop().map(|(uid, _)| uid)),
+                }
+            }
+        }
+        listed
     }
 
     /// The `blocks` targets of `issue` that are issues and not done, by sorted edge.

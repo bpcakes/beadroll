@@ -334,6 +334,7 @@ fn dispatch(
             &commands::TransitionArgs {
                 ids: ns.texts("ids").to_vec(),
                 reason: owned(ns, "reason"),
+                recursive: ns.flag("recursive"),
                 force: ns.flag("force"),
                 offline,
                 remote: remote.clone(),

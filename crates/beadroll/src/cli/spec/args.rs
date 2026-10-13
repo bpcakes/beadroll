@@ -175,6 +175,17 @@ pub(super) const TRANSITION: &[ArgSpec] = &[
     REMOTE_COORDINATED,
 ];
 
+/// `close` takes `reopen`'s and `delete`'s arguments, and `--recursive`, which only it has.
+pub(super) const CLOSE: &[ArgSpec] = &[
+    TRANSITION[0],
+    TRANSITION[1],
+    flag(&["--recursive"], "recursive")
+        .help("close everything beneath each ID too, children first"),
+    TRANSITION[2],
+    TRANSITION[3],
+    TRANSITION[4],
+];
+
 pub(super) const SHOW: &[ArgSpec] = &[IDS];
 
 pub(super) const LIST: &[ArgSpec] = &[

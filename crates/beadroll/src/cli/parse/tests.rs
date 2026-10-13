@@ -226,9 +226,10 @@ fn a_receipt_signs_every_destination_with_its_value_or_default() {
         parsed(&["claim", "A", "B"]).asked(),
         "{\"command\": \"claim\", \"ids\": [\"A\", \"B\"], \"offline\": false, \"remote\": null}"
     );
+    // close writes no receipt; its namespace shows a flag's default as well as a given value
     assert_eq!(
         parsed(&["close", "A", "-r", "done", "--force"]).asked(),
         "{\"command\": \"close\", \"force\": true, \"ids\": [\"A\"], \"offline\": false, \
-         \"reason\": \"done\", \"remote\": null}"
+         \"reason\": \"done\", \"recursive\": false, \"remote\": null}"
     );
 }

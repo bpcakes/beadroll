@@ -879,6 +879,7 @@ Arguments:
 
 Options:
   -r, --reason <REASON>  recorded with it: what was done, or why
+      --recursive        close everything beneath each ID too, children first
       --force            act on an issue someone else has claimed
       --offline          do not contact the remote; a claim made this way is
                          provisional
@@ -903,6 +904,7 @@ Arguments:
 
 Options:
   -r, --reason <REASON>  recorded with it: what was done, or why
+      --recursive        close everything beneath each ID too, children first
       --force            act on an issue someone else has claimed
       --offline          do not contact the remote; a claim made this way is
                          provisional

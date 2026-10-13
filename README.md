@@ -79,6 +79,7 @@ bead ready <epic> --json            # only its subtree: its children, theirs, an
 bead claim <id>                     # or: bead update <id> --status in_progress
 bead comments add <id> "started"
 bead close <id> --reason "done"
+bead close --recursive <epic>       # and everything beneath it, children first, in one write
 bead claims                         # who holds what, on which branch, and when each was last active
 bead log <id>                       # who did what: machine, actor, operation, branch
 bead export -o /tmp/x/.beads/issues.jsonl   # for bv or any Beads reader
@@ -195,6 +196,7 @@ A reader therefore sees all of an attempt or none of it.
 | `bead release X` | Ends your claim; the issue is open again. |
 | `bead takeover X --reason "..."` | Replaces the current owner and starts a new generation. Online only. |
 | `bead close X` / `bead delete X` (as owner) | Closes (or tombstones) and ends exactly your claim, then publishes at once. `show` tells whether the closing commit is merged into the default branch. |
+| `bead close --recursive X` | Closes X and every issue beneath it through parent-child edges, at any depth, children before parents, in one write: your claims among them end, and someone else's claim on any of them refuses the whole command, naming each (`--force` overrides). Issues beneath that are deleted, or already closed, are left as they are. |
 | old owner acts after a takeover | Its close or release names a claim that is no longer current, so every machine ignores it and reports it under `stale`. |
 
 `in_progress` is reached only through a claim, so `update --status in_progress`

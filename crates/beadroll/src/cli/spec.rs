@@ -5,8 +5,8 @@
 use super::layout::Block;
 use super::texts;
 use args::{
-    CLAIM, COMMENTS, CREATE, DEP, EXPORT, HELP, IMPORT, INIT, LIST, LOG, MACHINES, READY, RELEASE,
-    SEARCH, SHOW, SYNC, TAKEOVER, TRANSITION, UPDATE,
+    CLAIM, CLOSE, COMMENTS, CREATE, DEP, EXPORT, HELP, IMPORT, INIT, LIST, LOG, MACHINES, READY,
+    RELEASE, SEARCH, SHOW, SYNC, TAKEOVER, TRANSITION, UPDATE,
 };
 
 mod args;
@@ -203,7 +203,7 @@ pub(crate) const COMMANDS: [CommandSpec; 27] = [
         "who holds what, and when each owner was last active",
         &[],
     ),
-    command("close", "close issues", TRANSITION),
+    command("close", "close issues", CLOSE),
     command("reopen", "reopen issues", TRANSITION),
     command("delete", "delete issues", TRANSITION),
     command("show", "full detail for one or more issues", SHOW),

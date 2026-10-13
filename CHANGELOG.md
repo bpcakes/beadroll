@@ -6,6 +6,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in the README)
 
 ## [Unreleased]
 
+- `bead close --recursive ID...` closes each issue and everything beneath it, at any depth,
+  children first, in one write (roll-dih8.4). Issues beneath that are deleted or already closed
+  are left as they are and counted in one line; another owner's claim anywhere in the subtree
+  refuses the whole command, naming each, unless `--force`. Only `close` takes the flag.
 - `docs/RUST-PORT.md`, the plan the Rust port followed, is removed (roll-dih8.24), with its test
   catalogues in `docs/rust-port/`. What of it was still in force moved: format 1 byte for byte and
   the design decisions to `docs/REVIEWING.md`, the rules every crate keeps and the tests' variables

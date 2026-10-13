@@ -328,6 +328,15 @@ These were decided deliberately. Report problems *with* them, not their existenc
   field, status, label, parent or claim writes nothing and answers `unchanged`. Setting a field to
   the value it shows is still written: such a write settles a conflict, and comparing values
   would hide one (roll-dih8.20).
+- `close --recursive ID...` closes each ID and every issue beneath it (roll-dih8.4): the scope
+  `ready --epic` takes, through every parent link, so an issue that also has a parent outside is
+  closed with the rest. One write, children before parents (siblings as they were created, roots
+  as named); the order changes no state, only what `log` shows. An issue beneath that is deleted,
+  or closed with nothing to end, is left as it is and counted in one line: closing a deleted
+  issue by name brings it back as closed, and the subtree must not. A named ID answers as a plain
+  `close` does. Someone else's claim anywhere in it refuses the whole command, naming every such
+  issue, so that one look settles them; `--force` closes them as it closes one. Only `close`
+  takes the flag: `delete` and `reopen` keep acting on what they name.
 - Help pages keep argparse's layout and formatter but no longer its empty texts: a
   command's page takes its line from the command list as its description, every argument has a
   help text, and `create`, `dep` and `comments` end with an epilog whose paragraphs wrap as the
