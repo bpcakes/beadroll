@@ -6,6 +6,13 @@ versioned separately (format 1, frozen; see *Format and upgrades* in the README)
 
 ## [Unreleased]
 
+- `bead init --import FILE --dry-run` and `bead import FILE --dry-run` say what the import would
+  do and write nothing, start no store and ask no remote (roll-dih8.26): how many issues would
+  come in, by status, and how many are already here; every record it would be refused for, not
+  only the first; the `in_progress` ones, which arrive with no owner; dependencies on keys the file
+  lacks; and, in a git checkout, the branches with commits touching `.beads/issues.jsonl` that HEAD
+  lacks and the worktrees with uncommitted changes to it. `--json` gives `importable` and the rest.
+  `MIGRATING.md` starts with it, and names `br sync --flush-only` for a database ahead of its file.
 - Each long text (description, design, acceptance criteria, notes) is held once, in its
   register, where it was also copied into the issue (roll-lqjj.10): a state and the projection's
   text file hold it once. A generated 49 MB export's text file falls from 75.0 MB to 43.3 MB, and

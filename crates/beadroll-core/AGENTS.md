@@ -42,6 +42,8 @@ consumer on tokio calls through `spawn_blocking`.
   `saw`; its tests compare it with per-event ancestry bitsets.
 - `src/query.rs`, `src/view.rs`, `src/export.rs`, `src/import.rs`, `src/published.rs`: queries,
   `brief`/`detail`/`line`, `export_records`, `read_records`/`plan_import`, `Tree`.
+- `src/import/dry_run.rs`: `problems` (every problem an import would be refused for, empty exactly
+  when it goes through) and `preview` (what it would bring), for `--dry-run`.
 - `tests/core/`: integration tests of replay, storage compatibility and validation.
 
 ## Edit here for X

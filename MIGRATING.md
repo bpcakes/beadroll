@@ -16,7 +16,36 @@ to do, what to check, and the two things that are not obvious.
   `.beadroll.json` (*Configuration* in the README: `bead init --tracked
   --remote …`), and commit it on the default branch in the same change.
 - A current `.beads/issues.jsonl`. If your tracker lives in `br`'s or `bd`'s
-  database only, export it first (`br sync --export-only`, or `bd export`).
+  database only, or the database has changes the file lacks, export it first
+  (`br sync --flush-only`, or `bd export`).
+
+## A dry run first
+
+```sh
+cd the-repo
+bead init --import .beads/issues.jsonl --dry-run
+```
+
+It reads and checks the file exactly as the import would, and writes nothing,
+starts no store and asks no remote. It says:
+
+- how many issues would come in, by status, and how many the tracker already
+  has (an import leaves those as they are);
+- every record the import would be refused for, not only the first: one bad
+  record refuses the whole file, so fix them all before the real run;
+- the `in_progress` issues, which arrive with no owner (below);
+- dependencies on keys the file does not hold;
+- the branches, local or remote-tracking, with commits touching
+  `.beads/issues.jsonl` that this checkout's HEAD does not have, and the other
+  worktrees with changes to it not committed. Beads keeps its tracker on every
+  branch, so work recorded on one of them is not in this checkout's copy. Bring
+  it here first (merge the branch, or commit and merge the worktree's changes,
+  then export again): a later import adds issues but never another copy's newer
+  closes or edits.
+
+`--json` says the same for an agent; `importable` is whether the import would
+go through. `bead import FILE --dry-run` does the same against a tracker that
+already exists.
 
 ## The move
 

@@ -17,7 +17,7 @@ use beadroll_sync::{
     Error as SyncError, Link, publish_soon, publish_soon_to, synchronise, writing,
 };
 
-use super::import::import_records;
+use super::import::{answer_dry_run, import_records};
 use super::{Context, Failure, Outcome, text};
 
 /// `init`'s arguments.
@@ -27,6 +27,8 @@ pub(crate) struct InitArgs {
     pub(crate) tracked: bool,
     pub(crate) remote: Option<OsString>,
     pub(crate) offline: bool,
+    /// `--dry-run`: what `--import` would do, nothing imported or started, no remote asked.
+    pub(crate) dry_run: bool,
 }
 
 /// The relative path to `path` from `start`, both absolute.
@@ -337,6 +339,9 @@ fn publication_note(ws: &Workspace, live: Option<&Endpoint>) -> Result<Option<St
 /// and publishes at once unless `--offline`. A tracker the remote already publishes is joined
 /// instead of a second one started ([`join_published`]).
 pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure> {
+    if args.dry_run {
+        return dry_run(ctx, &args);
+    }
     let mut notes = Vec::new();
     let given = given_remote(ctx, &args, &mut notes)?;
     let live = given.as_ref().map(|given| given.live.clone());
@@ -434,4 +439,27 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
         outcome.settled = true;
     }
     Ok(outcome)
+}
+
+/// `init --import FILE --dry-run`: what the import would do, planned against the tracker this
+/// checkout has here, if any; the remote is not asked, and nothing is written.
+fn dry_run(ctx: &Context<'_>, args: &InitArgs) -> Result<Outcome, Failure> {
+    let Some(path) = args.import_path.as_ref().filter(|path| !path.is_empty()) else {
+        return Err(Failure::usage(
+            "--dry-run says what --import would do: give it --import FILE",
+            "",
+        ));
+    };
+    let state = view_outline(ctx.ws)?;
+    let mut notes = vec![
+        "The remote was not asked: if it already publishes a tracker, init joins it and imports \
+         only the records it lacks."
+            .to_owned(),
+    ];
+    if state.prefix().is_some() {
+        notes.push(
+            "This checkout has a tracker here already: the import would add to it.".to_owned(),
+        );
+    }
+    answer_dry_run(ctx.ws, &state, path, notes)
 }

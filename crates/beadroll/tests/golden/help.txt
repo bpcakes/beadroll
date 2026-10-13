@@ -344,6 +344,8 @@ Options:
                               origin
       --offline               record locally only; the next sync or online
                               command publishes it
+      --dry-run               say what the import would do and import nothing,
+                              asking no remote
   -h, --help                  Print help
 
 Global options:
@@ -371,6 +373,8 @@ Options:
                               origin
       --offline               record locally only; the next sync or online
                               command publishes it
+      --dry-run               say what the import would do and import nothing,
+                              asking no remote
   -h, --help                  Print help
 
 Global options:
@@ -392,6 +396,8 @@ Arguments:
 Options:
       --offline  record locally only; the next sync or online command publishes
                  it
+      --dry-run  say what the import would do and import nothing, asking no
+                 remote
   -h, --help     Print help
 
 Global options:
@@ -413,6 +419,8 @@ Arguments:
 Options:
       --offline  record locally only; the next sync or online command publishes
                  it
+      --dry-run  say what the import would do and import nothing, asking no
+                 remote
   -h, --help     Print help
 
 Global options:

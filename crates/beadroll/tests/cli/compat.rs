@@ -3,6 +3,8 @@
 //! in beadroll-core's `tests/core/compat.rs`; coordination-ref validation is checked in
 //! beadroll-store's `tests/store/compat.rs`.
 
+mod import_dry_run;
+
 mod compat_custom_statuses {
     use std::collections::{BTreeMap, BTreeSet};
 

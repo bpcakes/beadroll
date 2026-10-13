@@ -70,6 +70,7 @@ is about 2 ms, and a read (`show`, `list`, `ready`) about 15 ms.
 
 ```sh
 cd some-repo                      # any worktree or clone
+bead init --import .beads/issues.jsonl --dry-run   # what it would import; nothing written
 bead init --import .beads/issues.jsonl   # keeps ids, comments, dependencies; publishes at once
 bead                              # the one-screen overview; bead help COMMAND for one command
 bead prime                        # the workflow an agent loads at the start of a session
@@ -87,7 +88,10 @@ bead info                           # where the store is, who you are, what the 
 ```
 
 Set a repository up once, from any checkout: `bead init`, with `--import` when
-it comes from Beads. After publishing, `init` prints `Published to <remote> (<ref>)`
+it comes from Beads, and first with `--dry-run` too: it says what the import
+would bring and every record it would refuse, names the branches and worktrees
+whose `.beads/issues.jsonl` has changes this checkout lacks, and writes nothing.
+After publishing, `init` prints `Published to <remote> (<ref>)`
 so you can see where the tracker went. Nothing is committed: the tracker is found from the origin
 URL, so every worktree, clone and machine of the repository shares it. On
 another machine or in another clone, install `bead` and run `bead sync` there;

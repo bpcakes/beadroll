@@ -77,6 +77,7 @@ pub(super) const INIT: &[ArgSpec] = &[
         .help("write .beadroll.json naming this tracker, to commit: only for a remote other than origin, or \"where\": false"),
     opt(&["--remote"], "remote").help("coordination remote (name or URL) if it is not origin"),
     OFFLINE_LOCAL,
+    DRY_RUN,
 ];
 
 pub(super) const IMPORT: &[ArgSpec] = &[
@@ -84,7 +85,12 @@ pub(super) const IMPORT: &[ArgSpec] = &[
         .metavar("FILE")
         .help("a Beads JSONL export (- for standard input)"),
     OFFLINE_LOCAL,
+    DRY_RUN,
 ];
+
+/// `--dry-run`, of `init --import` and `import`.
+const DRY_RUN: ArgSpec = flag(&["--dry-run"], "dry_run")
+    .help("say what the import would do and import nothing, asking no remote");
 
 pub(super) const EXPORT: &[ArgSpec] = &[opt(&["-o", "--output"], "output")
     .metavar("FILE")

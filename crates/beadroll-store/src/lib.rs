@@ -7,6 +7,7 @@
 
 mod actor;
 mod discover;
+mod elsewhere;
 mod error;
 mod failpoint;
 mod fs;
@@ -23,6 +24,7 @@ pub use discover::{
     checked_config, derived_shaped, find_workspace, moved_workspaces, tracked_config_warning,
     workspaces_named,
 };
+pub use elsewhere::{Elsewhere, elsewhere};
 pub use error::{Error, git_code};
 pub use failpoint::{Action, Failpoints, Fired, POINTS, Selector, kill_self};
 pub use fs::{

@@ -1,11 +1,13 @@
 //! Plans a Beads JSONL import: validates records and produces ordered events. The caller writes
-//! all events or none.
+//! all events or none. [`dry_run`] says what an import would do without planning to write it.
 
 use crate::event::{EXPORT_FIELDS, MAX_NESTING, event_problem, payload_problem, write_problem};
 use crate::id::EventId;
 use crate::json::{self, Object, Value};
 use crate::state::State;
 use crate::text::{repr_str, strip};
+
+pub mod dry_run;
 
 /// The id a would-be create is checked under before it is minted.
 pub const PROBE_ID: &str = "00000000-0000-7000-8000-000000000000";
@@ -137,24 +139,9 @@ pub fn plan_import(state: &State, records: &[Value]) -> Result<Plan, ImportError
     let taken = |key: &str| known.contains_key(key) || new_ids.contains(&key);
     for record in &fresh {
         let data = create_data(record, &taken);
-        let mut probe = Object::new();
-        probe.insert("v".into(), Value::from(1));
-        probe.insert("id".into(), Value::from(PROBE_ID));
-        probe.insert("replica".into(), Value::from("probe"));
-        probe.insert("deps".into(), Value::Array(Vec::new()));
-        probe.insert("op".into(), Value::from("create"));
-        probe.insert("issue".into(), Value::from(PROBE_ID));
-        probe.insert("data".into(), Value::from(data.clone()));
-        let probe = Value::from(probe);
-        let problem = event_problem(&probe)
-            .or_else(|| payload_problem(&probe))
-            .or_else(|| write_problem(&probe));
-        if let Some(problem) = problem {
+        if let Some(problem) = create_problem(record, &data) {
             // Nothing has been written yet: the import fails whole.
-            return Err(fail(format!(
-                "record {} cannot be imported: {problem}",
-                repr_str(id_of(record))
-            )));
+            return Err(problem);
         }
         steps.push(Step::Create(data));
     }
@@ -186,6 +173,27 @@ pub fn plan_import(state: &State, records: &[Value]) -> Result<Plan, ImportError
         steps,
         imported: fresh.len(),
     })
+}
+
+/// Why `record`'s create, whose payload is `data`, cannot be written, checked as the create bead
+/// would mint for it.
+fn create_problem(record: &Value, data: &Object) -> Option<ImportError> {
+    let mut probe = Object::new();
+    probe.insert("v".into(), Value::from(1));
+    probe.insert("id".into(), Value::from(PROBE_ID));
+    probe.insert("replica".into(), Value::from("probe"));
+    probe.insert("deps".into(), Value::Array(Vec::new()));
+    probe.insert("op".into(), Value::from("create"));
+    probe.insert("issue".into(), Value::from(PROBE_ID));
+    probe.insert("data".into(), Value::from(data.clone()));
+    let probe = Value::from(probe);
+    let problem = event_problem(&probe)
+        .or_else(|| payload_problem(&probe))
+        .or_else(|| write_problem(&probe))?;
+    Some(fail(format!(
+        "record {} cannot be imported: {problem}",
+        repr_str(id_of(record))
+    )))
 }
 
 /// The checks every record passes before anything is planned.
