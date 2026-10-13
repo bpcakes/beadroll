@@ -3,7 +3,7 @@
 //! created, through loops and at any depth.
 
 use beadroll_core::id::EventId;
-use beadroll_test_support::json;
+use beadroll_test_support::{Json, json};
 
 use super::replay_audit_properties::fixture::Fixture;
 
@@ -44,6 +44,29 @@ fn every_issue_comes_after_those_beneath_it_and_each_once() {
     assert_eq!(order, ids(&[&deep, &first, &second, &root, &other]));
     // a root with nothing beneath it is itself
     assert_eq!(st.subtrees_leaf_up(&ids(&[&second])), ids(&[&second]));
+}
+
+#[test]
+fn siblings_come_in_the_order_they_were_made_not_of_their_ids() {
+    let mut f = Fixture::new();
+    let root = f.create("au-root");
+    let first = f.create("au-first");
+    let made = f.create("au-second");
+    // made after the first, which it saw, under an id that sorts before every other, as two
+    // ids of one millisecond can
+    let second =
+        EventId::from_u128((1_790_000_000_000_u128 << 80) | (7 << 76) | (2 << 62)).to_string();
+    f.edit(&made, |event| {
+        event.insert("id".into(), Json::from(second.as_str()));
+        event.insert("issue".into(), Json::from(second.as_str()));
+    });
+    adopt(&mut f, &second, &root);
+    adopt(&mut f, &first, &root);
+    let st = f.state();
+    assert_eq!(
+        st.subtrees_leaf_up(&ids(&[&root])),
+        ids(&[&first, &second, &root])
+    );
 }
 
 #[test]

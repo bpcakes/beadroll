@@ -333,7 +333,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   closed with the rest. One write, children before parents (siblings as they were created, roots
   as named); the order changes no state, only what `log` shows. An issue beneath that is deleted,
   or closed with nothing to end, is left as it is and counted in one line: closing a deleted
-  issue by name brings it back as closed, and the subtree must not. A named ID answers as a plain
+  issue by name brings it back as closed, and the subtree must not. A repeat still publishes this
+  actor's close that ended a claim beneath, as a plain repeat does. A named ID answers as a plain
   `close` does. Someone else's claim anywhere in it refuses the whole command, naming every such
   issue, so that one look settles them; `--force` closes them as it closes one. Only `close`
   takes the flag: `delete` and `reopen` keep acting on what they name.

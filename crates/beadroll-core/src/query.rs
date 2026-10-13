@@ -153,14 +153,15 @@ impl State {
     }
 
     /// Each of `roots` and every issue beneath it, as [`State::descendants`] finds them, each once
-    /// and after every issue beneath it: children in the order they were created, roots in the
-    /// order given. A merged cycle is followed until it leads back to an issue already listed. The
-    /// walk keeps its own stack, so a deep tree cannot overflow the thread's.
+    /// and after every issue beneath it: children in the order replay made them, which is the
+    /// order of their creates (never their ids', which share a millisecond in random order), roots
+    /// in the order given. A merged cycle is followed until it leads back to an issue already
+    /// listed. The walk keeps its own stack, so a deep tree cannot overflow the thread's.
     pub fn subtrees_leaf_up(&self, roots: &[EventId]) -> Vec<EventId> {
-        // the children still to visit, last created first so that the first created pops first
+        // the children still to visit, the last made first so that the first made pops first
         let pending = |uid: EventId| {
             let mut children = self.children(uid).to_vec();
-            children.sort_unstable_by(|a, b| b.cmp(a));
+            children.reverse();
             children
         };
         let mut listed = Vec::new();

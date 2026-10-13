@@ -28,7 +28,11 @@ fn create(machine: &Machine, title: &str, parent: Option<&str>) -> String {
 /// Machine a with tracker `ex` and the tree epic E, its children A and B (in that order), and A's
 /// child G: the keys E, A, B, G.
 fn tree(sandbox: &Sandbox) -> (Machine, [String; 4]) {
-    let a = Machine::new(sandbox, "a");
+    tree_on(Machine::new(sandbox, "a"))
+}
+
+/// `tree` on `a`.
+fn tree_on(a: Machine) -> (Machine, [String; 4]) {
     a.bead(["init", "--prefix", "ex"]);
     let e = create(&a, "epic", None);
     ok(&a, &["update", &e, "--type", "epic"]);
@@ -204,6 +208,34 @@ fn this_actors_claim_beneath_ends_with_the_close() {
     b.bead(["sync"]);
     assert_eq!(status(&b, &child_a), "closed");
     assert!(b.show(&child_a)["claim"] == Json::Null);
+}
+
+#[test]
+fn a_retry_of_an_unpublished_recursive_close_publishes_the_claim_it_ended() {
+    let sandbox = crate::sandbox();
+    let (a, [e, child_a, child_b, g]) = tree_on(crate::rust_only(&sandbox, "a"));
+    ok(&a, &["claim", &child_a]);
+    let b = Machine::new(&sandbox, "b");
+    // written here, then stopped before its push
+    let stopped = a
+        .cmd(["close", "--recursive", &e])
+        .env("BEAD_FAILPOINTS", "push.before=exit(98)")
+        .run();
+    assert_eq!(stopped.returncode(), 98, "{}", stopped.stderr);
+    b.bead(["sync"]);
+    assert_eq!(status(&b, &child_a), "in_progress");
+    // everything is closed here now, so the retry writes nothing; it still publishes the claim
+    // it ended
+    let again = ok(&a, &["close", "--recursive", &e]);
+    assert!(
+        again.contains("3 issues beneath were already closed or deleted"),
+        "{again}"
+    );
+    b.bead(["sync"]);
+    for key in [&e, &child_a, &child_b, &g] {
+        assert_eq!(status(&b, key), "closed", "{key}");
+    }
+    assert_eq!(b.show(&child_a)["claim"], Json::Null);
 }
 
 #[test]

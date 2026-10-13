@@ -27,11 +27,11 @@ pub(crate) struct TransitionArgs {
     pub(crate) remote: Option<OsString>,
 }
 
-/// The issues a transition answers for, in the order it writes them, and how many issues beneath
-/// them a recursive close leaves as they are.
+/// The issues a transition answers for, in the order it writes them, and the issues beneath them
+/// a recursive close leaves as they are.
 struct Plan {
     issues: Vec<EventId>,
-    left: usize,
+    left: Vec<EventId>,
     /// An id named without `--recursive` that names no issue: refused once the ids before it are,
     /// as each id was checked in turn before there was a plan.
     unknown: Option<Failure>,
@@ -109,6 +109,16 @@ pub(crate) fn transition(
         if let Some(unknown) = plan.unknown.take() {
             return Err(unknown);
         }
+        // a repeat of this actor's close that ended a claim still publishes it, as a plain close
+        // does, though the issue beneath is left out of the answer
+        let st = tx.state()?;
+        ended = ended
+            || ends_claims
+                && plan
+                    .left
+                    .iter()
+                    .filter_map(|uid| st.issue(*uid))
+                    .any(|issue| ended_by(issue, &me));
         let st = tx.state()?;
         let result = briefs(st, &plan.issues)?;
         Ok::<_, Failure>((result, ended, named, unchanged, plan))
@@ -131,9 +141,9 @@ pub(crate) fn transition(
     }
     let reason_given = args.reason.as_deref().is_some_and(|r| !r.is_empty());
     let mut lines = answer(&mut result, &unchanged, (verb, said), reason_given, notes);
-    if plan.left > 0 {
+    if !plan.left.is_empty() {
         // after the issues' lines, before the notes
-        lines.insert(result.len(), Line::from(left_as_they_are(plan.left)));
+        lines.insert(result.len(), Line::from(left_as_they_are(plan.left.len())));
     }
     let result = Value::Array(result.into_iter().map(Value::from).collect());
     Ok(Outcome::new(result, lines))
@@ -146,7 +156,7 @@ pub(crate) fn transition(
 fn plan(st: &State, args: &TransitionArgs) -> Result<Plan, Failure> {
     let mut plan = Plan {
         issues: Vec::new(),
-        left: 0,
+        left: Vec::new(),
         unknown: None,
     };
     if !args.recursive {
@@ -172,7 +182,7 @@ fn plan(st: &State, args: &TransitionArgs) -> Result<Plan, Failure> {
             .issue(uid)
             .is_none_or(|issue| issue.status() == "tombstone" || already(st, issue, "closed"));
         if beneath && done {
-            plan.left += 1;
+            plan.left.push(uid);
         } else {
             plan.issues.push(uid);
         }
