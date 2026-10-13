@@ -17,7 +17,7 @@ use crate::fs::{fsync, write_atomic_parts};
 use crate::workspace::Workspace;
 
 /// The first bytes of a text file.
-const MAGIC: &[u8; 16] = b"bead texts 1\n\0\0\0";
+const MAGIC: &[u8; 16] = b"bead texts 2\n\0\0\0";
 
 /// Where its first texts are: after the magic and the generation.
 pub(super) const START: u64 = 32;

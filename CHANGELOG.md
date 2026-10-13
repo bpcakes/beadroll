@@ -6,6 +6,12 @@ versioned separately (format 1, frozen; see *Format and upgrades* in the README)
 
 ## [Unreleased]
 
+- Each long text (description, design, acceptance criteria, notes) is held once, in its
+  register, where it was also copied into the issue (roll-lqjj.10): a state and the projection's
+  text file hold it once. A generated 49 MB export's text file falls from 75.0 MB to 43.3 MB, and
+  the first sync that makes its projection from 245 MB on the heap to 191 MB. The projection's
+  encoding and the text file's header change, so each store's projection is made again once.
+  `cargo xtask timing --read N` and `--import N` record `projection_bytes` and `texts_bytes`.
 - `bead close --recursive ID...` closes each issue and everything beneath it, at any depth,
   children first, in one write (roll-dih8.4). Issues beneath that are deleted or already closed
   are left as they are and counted in one line; another owner's claim anywhere in the subtree

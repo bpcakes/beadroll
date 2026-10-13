@@ -66,6 +66,8 @@ consumer on tokio calls through `spawn_blocking`.
 - No `HashMap` or `HashSet` iteration order reaches an output; issues keep replay order.
 - Parsing, rendering and replay preserve the compatibility contracts in `docs/REVIEWING.md` §2;
   a departure requires a documented decision and regression coverage.
+- A long field's value is kept once, in its register; `Issue::field` shows it from there, so
+  replay never copies it into the issue's fields (roll-lqjj.10).
 - A projection extended is replay: `projection/tests.rs` checks every batch a store takes in on
   histories of machines that write, sync and race, and each batch it must decline.
 - `saw` agrees with the reference ancestry bitsets: `state/seen/tests.rs` checks every pair

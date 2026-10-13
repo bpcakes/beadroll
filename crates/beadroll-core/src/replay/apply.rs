@@ -15,7 +15,7 @@ use crate::id::EventId;
 use crate::journal::{Event, Rest};
 use crate::json::{Object, Value};
 use crate::op::Op;
-use crate::state::{Comment, IdMap, IdSet, Issue, KeySpace, Knowledge, Stale, State};
+use crate::state::{Comment, IdMap, IdSet, Issue, KeySpace, Knowledge, Stale, State, is_text};
 use crate::text::str_of;
 
 /// The event replay is applying: its index in the journal, its id, what replay keeps of it, and
@@ -329,7 +329,10 @@ fn write_register(
     register.retain(|old, _| !(supersede.contains(old) || k.saw_at(at, *old)));
     register.insert(eid, value);
     // Deterministic display; alternatives stay visible as a conflict. Only what is shown is
-    // copied out of the register.
+    // copied out of the register, and a long field's not even that: it is shown from there.
+    if is_text(field) {
+        return;
+    }
     let shown = register.last().map(|(_, shown)| shown);
     if field == Field::Status {
         let member = |name: &str| shown.and_then(|shown| shown.get(name)).cloned();

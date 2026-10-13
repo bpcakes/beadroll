@@ -14,6 +14,7 @@ use crate::state::State;
 use super::{Extended, Projection, Record, decode_state, project};
 
 mod hostile;
+mod texts_once;
 
 /// A seeded generator (SplitMix64): the same draws on every run.
 struct Rng(u64);

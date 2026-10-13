@@ -9,14 +9,21 @@ use crate::replay::replay;
 use super::super::{Extended, Projection, Record, project};
 use super::same;
 
-const HERE: &str = "0000aa01";
+pub(super) const HERE: &str = "0000aa01";
 
-fn id(n: u128) -> String {
+pub(super) fn id(n: u128) -> String {
     let value = ((1_790_000_000_000 + n) << 80) | (7 << 76) | (2 << 62) | n;
     EventId::from_u128(value).to_string()
 }
 
-fn event(n: u128, replica: &str, deps: &[u128], op: &str, issue: u128, data: Object) -> Value {
+pub(super) fn event(
+    n: u128,
+    replica: &str,
+    deps: &[u128],
+    op: &str,
+    issue: u128,
+    data: Object,
+) -> Value {
     let mut event = Object::new();
     event.insert("v".into(), Value::from(1));
     event.insert("id".into(), Value::from(id(n)));
@@ -38,7 +45,7 @@ fn fields(title: &str) -> Object {
 }
 
 /// A record of the journal of `folder`.
-fn record(value: Value, folder: &str, sequenced: bool) -> Record {
+pub(super) fn record(value: Value, folder: &str, sequenced: bool) -> Record {
     Record {
         value,
         replica: folder.to_owned(),
@@ -58,7 +65,7 @@ fn base() -> Vec<Record> {
     ]
 }
 
-fn journal(records: &[Record]) -> Journal {
+pub(super) fn journal(records: &[Record]) -> Journal {
     let mut journal = Journal::new();
     for r in records {
         journal.add(r.value.clone(), &r.replica, &r.origin, r.sequenced);

@@ -10,7 +10,7 @@ use crate::id::EventId;
 use crate::json::{Int, Object, Value};
 use crate::op::Create;
 use crate::state::{
-    Comment, IdMap, IdSet, Issue, KeySpace, Knowledge, Origin, Rename, State, VecMap,
+    Comment, IdMap, IdSet, Issue, KeySpace, Knowledge, Origin, Rename, State, VecMap, is_text,
 };
 use crate::time::event_time;
 
@@ -113,7 +113,8 @@ fn new_issue(event: &Doing<'_>, create: &Create, key: String, who: &str, when: &
     for (field, value) in defaults {
         issue.set(field, Some(value));
     }
-    for (field, value) in &create.fields {
+    // a long field is kept in its register alone, below, and shown from there
+    for (field, value) in create.fields.iter().filter(|(field, _)| !is_text(*field)) {
         issue.set(*field, Some(value.clone()));
     }
     let given = |field: Field| {

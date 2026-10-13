@@ -202,7 +202,13 @@ These were decided deliberately. Report problems *with* them, not their existenc
   texts (its long fields, their registers' values, its comments and its extras) are kept apart
   (roll-lqjj.6), in `<store>/projection-texts`, each issue's as bytes of their own the state places
   and sums, the state keeping what a list and a later event need of them unread (the events behind
-  each long field's register, which of those fields two writers set differently). A command that
+  each long field's register, which of those fields two writers set differently). A long field's
+  value is kept once, in its register, which the field shows (roll-lqjj.10: the entry of the
+  largest id, absent when that is a later write's null, null when the create left it so), never
+  copied beside it, so the state holds each text once and the text file writes it once: a generated
+  49 MB export's text file went from 75.0 MB to 43.3 MB, and the first sync that makes its
+  projection from 245 MB on the heap to 191 MB (`cargo xtask timing --import 14000`, whose records
+  now hold `projection_bytes` and `texts_bytes`, as `--read N` does). A command that
   prints no texts (`list`, `ready`, `blocked`, `claims`, `dep`, `info`, a transition's or a
   release's answer) never reads them; one that prints issues whole (`show`, `comments`, `update`,
   `claim`, `takeover`) reads in only theirs; `export`, `search` and `lint` read every text; and
@@ -259,8 +265,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   2026-10-12): its heap peak stays within what making the projection of the imported journal
   takes, which a published import does in its own publish, an offline one in the first command
   after it, and every new machine in its first sync of the tracker. A generated 49 MB export
-  (14,000 records) peaks at 165 MB offline and at 245 MB published, the projection's making, where
-  it peaked at 473 MB (`cargo xtask timing --import`). Each form of the
+  (14,000 records) peaks at 165 MB offline and at 191 MB published, the projection's making, where
+  it peaked at 473 MB, and at 245 MB before roll-lqjj.10 kept each long text once (`cargo xtask
+  timing --import`). Each form of the
   export is let go of once the next is made, the transaction keeps each event once and lets go of
   it as it is encoded, `init` reads the prefix before it imports, so that its state never takes
   the imported events in, and a text file is written from its parts. A tighter budget was not

@@ -222,3 +222,42 @@ fn a_bead_killed_as_it_adds_texts_leaves_the_last_projection() {
     assert!(shown.stdout.contains("written offline"), "{}", shown.stdout);
     assert_eq!(answers(&a, &keys, false), answers(&a, &keys, true));
 }
+
+/// roll-lqjj.10: a long text is kept once, in its register, which the field shows, so the text
+/// file holds it once: a 100,000-byte description makes about 100 KB of it, and replacing it adds
+/// about 100 KB more, where each was written twice; and bead answers alike with and without it.
+#[test]
+fn a_long_description_is_written_to_the_text_file_once() {
+    let sandbox = crate::sandbox();
+    let a = crate::rust_only(&sandbox, "texts-once");
+    a.bead(["init", "--prefix", "ex"]);
+    let first = sandbox.root().join("first.txt");
+    std::fs::write(&first, "d".repeat(100_000)).unwrap();
+    let path = first.to_str().unwrap();
+    let created = a.bead(["create", "long", "--description-file", path]);
+    let key = created.expect("an issue")["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    a.bead(["list"]);
+    let made = std::fs::metadata(texts(&a)).unwrap().len();
+    assert!(made < 101_000, "{made} bytes for one 100,000-byte text");
+    let second = sandbox.root().join("second.txt");
+    std::fs::write(&second, "e".repeat(100_000)).unwrap();
+    a.bead([
+        "update",
+        &key,
+        "--description-file",
+        second.to_str().unwrap(),
+    ]);
+    a.bead(["show", &key]);
+    let grown = std::fs::metadata(texts(&a)).unwrap().len() - made;
+    assert!(
+        grown < 101_000,
+        "{grown} bytes added for one 100,000-byte text"
+    );
+    let keys = [key];
+    assert_eq!(answers(&a, &keys, false), answers(&a, &keys, true));
+    let shown = a.show(&keys[0]);
+    assert_eq!(shown["description"].as_str().map(str::len), Some(100_000));
+}

@@ -1,5 +1,5 @@
-//! Where an issue's texts are (roll-lqjj.6): its long fields, the values their registers hold, its
-//! comments and its extras. Replay makes them in the issue. A projection keeps them in a file of
+//! Where an issue's texts are (roll-lqjj.6): its long fields' values, which their registers hold
+//! alone (roll-lqjj.10), its comments and its extras. Replay makes them in the issue. A projection keeps them in a file of
 //! their own, and a state read from it has them there until a command that prints them reads them
 //! in; what a list and a later event need of them without reading them stays in the issue: the
 //! events behind each long field's register, and which of those fields two writers set

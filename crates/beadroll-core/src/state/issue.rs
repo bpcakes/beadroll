@@ -11,7 +11,7 @@ use crate::time::event_time;
 
 use super::claim::{Claim, EndedClaim, LostClaim, Provisional, Stale};
 use super::small::{IdMap, IdSet, VecMap};
-use super::texts::Texts;
+use super::texts::{Texts, is_text};
 
 /// An issue.
 #[derive(Clone, Debug, PartialEq)]
@@ -19,7 +19,7 @@ pub struct Issue {
     pub(crate) uid: EventId,
     pub(crate) key: String,
     /// Fields addressed by [`Field::index`]: absent or carrying a value, including null for a
-    /// field cleared by create.
+    /// field cleared by create. A long field's slot stays empty: its register holds its value.
     pub(crate) fields: [Option<Value>; 16],
     pub(crate) reg: VecMap<Field, IdMap<Value>>,
     pub(crate) label_tags: VecMap<String, IdSet>,
@@ -134,8 +134,14 @@ impl Issue {
         &self.key
     }
 
-    /// A field's value, if the issue has the field (`null` when a create cleared it).
+    /// A field's value, if the issue has the field (`null` when a create cleared it). A long
+    /// field's is the value its register shows, kept there alone (roll-lqjj.10): the entry of the
+    /// largest id, absent when that entry is a later write's null, as replay always showed it.
     pub fn field(&self, field: Field) -> Option<&Value> {
+        if is_text(field) {
+            let (id, value) = self.reg.get(&field)?.last()?;
+            return (*value != Value::Null || *id == self.uid).then_some(value);
+        }
         self.fields.get(field.index()).and_then(Option::as_ref)
     }
 
