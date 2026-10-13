@@ -4,7 +4,8 @@
 //! many bytes it is, and the time, the peak resident set and the heap peak of `bead init --import`
 //! into a scratch store, recorded locally only (`--offline`) and published to a local bare remote,
 //! as a first import is, and of the first `bead sync` after an offline import, which publishes it
-//! and makes the projection of it. Bead runs in xtask (`cargo xtask bead`), whose heap is counted,
+//! and makes the projection of it, and how many bytes the projection and its text file hold
+//! after the published import. Bead runs in xtask (`cargo xtask bead`), whose heap is counted,
 //! unless `BEAD_UNDER_TEST` names another bead, whose heap is then not known. Evidence, never a
 //! gate.
 
@@ -157,6 +158,14 @@ pub(crate) fn measure(records: usize, label: Option<&str>) -> Result<String, Fai
                  \"{name}_heap_peak_bytes\": {}, ",
                 peak_bytes(peaks.resident),
                 peak_bytes(peaks.heap),
+            ));
+        }
+        // the projection the import's publish made, every text in its text file
+        if !offline {
+            fields.push(format!(
+                "\"projection_bytes\": {}, \"texts_bytes\": {}, ",
+                world.stored_bytes("projection")?,
+                world.stored_bytes("projection-texts")?,
             ));
         }
     }

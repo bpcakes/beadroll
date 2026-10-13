@@ -3,7 +3,8 @@
 //! ready`), and a local write (`bead comments add --offline`, so that only what the store does is
 //! timed): with the store's projection in place (`*_seconds`), and with it removed before each
 //! (`cold_*_seconds`), so that each replays the journal, as every command did before roll-lqjj.2,
-//! and writes the projection back. Evidence, never a gate.
+//! and writes the projection back; and how many bytes the projection and its text file hold.
+//! Evidence, never a gate.
 
 use super::history::{ROTATE_BYTES, Shape, history};
 use super::world::{RUNS, World, bead, profile, write_store};
@@ -31,10 +32,9 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
     world.bead(&["sync"])?;
     world.forget("projection")?;
     let first = world.timed(&["list", "--json"])?;
-    let projection = world.store().join("projection");
-    let bytes = std::fs::metadata(&projection)
-        .map_err(|error| Failure::io("cannot read", &projection, &error))?
-        .len();
+    // made whole after a replay: every issue's texts are in the text file
+    let bytes = world.stored_bytes("projection")?;
+    let texts = world.stored_bytes("projection-texts")?;
     let mut fields = Vec::new();
     for (name, args) in READS {
         let (mut warm, mut cold) = (f64::INFINITY, f64::INFINITY);
@@ -71,7 +71,8 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
     Ok(format!(
         "{{\"label\": {}, \"shape\": {}, \"events\": {count}, \"segments\": {}, \
          \"attempt_files\": {}, \"journal_bytes\": {}, \"projection_bytes\": {bytes}, \
-         \"profile\": {}, \"runs\": {RUNS}, \"first_seconds\": {first:.4}, {}",
+         \"texts_bytes\": {texts}, \"profile\": {}, \"runs\": {RUNS}, \"first_seconds\": {first:.4}, \
+         {}",
         json_string(&label),
         json_string(shape.name()),
         layout.segments,

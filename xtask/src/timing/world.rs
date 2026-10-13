@@ -114,6 +114,14 @@ impl World {
         self.home.join(WORKSPACE)
     }
 
+    /// How many bytes the store's file `name` holds (`projection`, `projection-texts`).
+    pub(super) fn stored_bytes(&self, name: &str) -> Result<u64, Failure> {
+        let path = self.store().join(name);
+        let metadata =
+            std::fs::metadata(&path).map_err(|error| Failure::io("cannot read", &path, &error))?;
+        Ok(metadata.len())
+    }
+
     /// `bead ARGS` in the checkout, on the scratch store ([`isolated`]); a failure fails the
     /// timing.
     pub(super) fn bead(&self, args: &[&str]) -> Result<(), Failure> {
