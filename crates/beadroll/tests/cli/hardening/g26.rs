@@ -143,14 +143,31 @@ mod g26_object_format {
             text(&origin),
         ];
         git(&init, None, &plain);
+        // the project's first commit comes from a repository made SHA-256, not from a clone of
+        // the empty project: git before 2.41 clones an empty repository in SHA-1 (8b214c2e9dda
+        // mended it), and the project refuses what such a clone pushes
+        let seed = sandbox.root().join("seed-256");
+        let made = [
+            "init",
+            "-q",
+            "--object-format=sha256",
+            "-b",
+            "main",
+            text(&seed),
+        ];
+        git(&made, None, &plain);
+        let start = ["commit", "-q", "--allow-empty", "-m", "start"];
+        git(&start, Some(&seed), &plain);
+        let push = ["push", "-q", text(&origin), "HEAD:main"];
+        git(&push, Some(&seed), &plain);
         let (a, b) = machines(&sandbox, &plain);
         // each machine's checkout is a clone of the SHA-256 project (`m.checkout = ...`)
         let (a_dir, b_dir) = (sandbox.root().join("a-256"), sandbox.root().join("b-256"));
-        git(&["clone", "-q", text(&origin), text(&a_dir)], None, &plain);
-        let start = ["commit", "-q", "--allow-empty", "-m", "start"];
-        git(&start, Some(&a_dir), &plain);
-        git(&["push", "-q", "origin", "HEAD:main"], Some(&a_dir), &plain);
-        git(&["clone", "-q", text(&origin), text(&b_dir)], None, &plain);
+        for dir in [&a_dir, &b_dir] {
+            git(&["clone", "-q", text(&origin), text(dir)], None, &plain);
+            let format = git(&["rev-parse", "--show-object-format"], Some(dir), &plain);
+            assert_eq!(format, "sha256", "{}", dir.display());
+        }
         a.cmd(["init", "--prefix", "of"]).cwd(&a_dir).json();
         let issue = id(a.cmd(["create", "one"]).cwd(&a_dir).json());
         assert_published(&a, &a_dir, &b, &b_dir, &issue, "SHA-256 project");

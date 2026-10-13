@@ -398,6 +398,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
   sets it aside as `sync.git.damaged-<time>` and makes it again, once per command, under the store
   lock; the second time in one command is `SYNC_REPO_DAMAGED`. A line the remote relayed is never
   taken as local damage.
+- `sync.git` hashes like the checkout bead runs in (G26), not like the remote: bead does not ask
+  the remote for its format. git before 2.41 clones an *empty* SHA-256 repository in SHA-1; in
+  such a checkout the user's own push and bead's are both refused (`REMOTE_UNREACHABLE` carrying
+  git's "does not support this repository's hash algorithm"), events stay in the store, and once
+  the checkout is SHA-256 bead makes `sync.git` again and publishes them.
 - git's automatic maintenance is off in `sync.git` (`gc.auto=0`, no detached gc, `fetch.unpackLimit=1`
   so fetched objects stay packed); bead repacks it under the store lock when loose objects or packs
   pile up, and prunes only unreachable loose objects older than an hour (an in-flight fetch's are

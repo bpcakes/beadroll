@@ -23,10 +23,6 @@ jobs:
       GIT_VERSION: "2.40.4"
       # kernel.org's sha256sums.asc for git-2.40.4.tar.xz
       GIT_SHA256: 8016dfeb9ba598a2e591270092b642ac70e65660606905277ea8e4c309b65d18
-      # One test fails under git 2.40 for a reason filed, not bead's: G26's SHA-256 project cannot
-      # even be pushed by git (roll-k2wy.21). Every other test runs.
-      KNOWN_ON_OLD_GIT: >-
-        test(=hardening::g26::g26_object_format::sha256_project_syncs)
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -60,7 +56,7 @@ jobs:
           git config --global user.name check
           git config --global user.email check@example.invalid
       - name: Run the tests
-        run: cargo nextest run --workspace --locked -E "not ($KNOWN_ON_OLD_GIT)"
+        run: cargo nextest run --workspace --locked
 
   slow:
     name: stress models and full sweep (ubuntu-latest)
