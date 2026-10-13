@@ -75,8 +75,8 @@ pub struct Link<'a> {
     hasher: Option<Hasher>,
     /// `mktree --batch` for the next publish's trees, started after a fetch as `hasher` is.
     trees: Option<Trees>,
-    /// `update-ref --stdin` in `sync.git`, started once a publish has something to push:
-    /// `refs/beads/remote` after the push.
+    /// `update-ref --stdin` in `sync.git`, started after the first successful fetch and reused
+    /// after a push, or started before the push when there was no head to fetch.
     refs: Option<Refs>,
     /// What is remembered of the store's journal files: read again by each merge, under the store
     /// lock, added to as files are hashed, counted and written, and written back when it changed.
@@ -85,9 +85,13 @@ pub struct Link<'a> {
     made: HashSet<String>,
     /// The blob the tree of the last merged tip holds at each path.
     listed: HashMap<String, String>,
+    /// Subtree objects reachable from the last merged tip, by their full path.
+    listed_trees: HashMap<Vec<u8>, String>,
     /// The store's journal files this link has handed to `hash-object`, by path, in order: a file
     /// whose remembered blob it could use is not among them.
     pub hashed: Vec<String>,
+    /// Unchanged claims directories named directly in publication trees, without mktree input.
+    pub reused_trees: Vec<String>,
 }
 
 /// The environment a link to `ws`'s remote runs git in ([`sync_env`], with `GIT_DIR` its
@@ -165,7 +169,9 @@ impl<'a> Link<'a> {
             memo: None,
             made: HashSet::new(),
             listed: HashMap::new(),
+            listed_trees: HashMap::new(),
             hashed: Vec::new(),
+            reused_trees: Vec::new(),
         })
     }
 
@@ -239,6 +245,7 @@ impl<'a> Link<'a> {
         self.memo = None;
         self.made.clear();
         self.listed.clear();
+        self.listed_trees.clear();
     }
 
     /// What is remembered of the store's journal files, read when first needed.
@@ -320,8 +327,8 @@ impl<'a> Link<'a> {
             let known = self.remote_counts.get(&name).copied().unwrap_or(0);
             count += lines as i64 - known as i64;
         }
-        for path in claim_files(ws)? {
-            if !self.remote_counts.contains_key(&relative(ws, &path)) {
+        for path in claim_files(ws)?.iter() {
+            if !self.remote_counts.contains_key(&relative(ws, path)) {
                 count += 1;
             }
         }
@@ -338,8 +345,8 @@ impl<'a> Link<'a> {
             let lines = self.memo().lines(&name, &path)? as i64;
             counts.insert(name, Value::from(lines));
         }
-        for path in claim_files(ws)? {
-            counts.insert(relative(ws, &path), Value::from(1));
+        for path in claim_files(ws)?.iter() {
+            counts.insert(relative(ws, path), Value::from(1));
         }
         Ok(counts)
     }

@@ -71,9 +71,9 @@ fn git_inherits_no_descriptor_beyond_the_standard_three() {
 }
 
 /// Pins the number and arguments of git invocations. A read asks for checkout facts, origin
-/// configuration and committed configuration. Sync adds transport settings, fetch, two subsequent
-/// ref updates and persistent object readers and writers. Publishing adds the transaction's HEAD
-/// lookup, commit, push and ref update. A git wrapper records each invocation, catching
+/// configuration and committed configuration. Sync adds transport settings, fetch, one ref
+/// transaction and persistent object readers and writers. Publishing adds the transaction's HEAD
+/// lookup, commit and push, reusing the ref writer. A git wrapper records each invocation, catching
 /// accidental fallback to one process per question.
 #[test]
 fn a_command_starts_the_consolidated_gits_and_no_others() {
@@ -119,7 +119,6 @@ fn a_command_starts_the_consolidated_gits_and_no_others() {
         "mktree",
         "rev-parse",
         "update-ref",
-        "update-ref",
     ];
     let write = [
         "cat-file",
@@ -134,8 +133,6 @@ fn a_command_starts_the_consolidated_gits_and_no_others() {
         "rev-parse",
         "rev-parse",
         "update-ref",
-        "update-ref",
-        "update-ref",
     ];
     assert_eq!(started(&["show", &key, "--json"]), read);
     assert_eq!(started(&["info", "--json"]), read);
@@ -144,21 +141,23 @@ fn a_command_starts_the_consolidated_gits_and_no_others() {
     assert_eq!(started(&["claim", &key, "--json"]), write);
 }
 
-/// After fetch, update `refs/beads/remote` to the fetched tip, then delete the fetch ref through
-/// a separate git invocation. Deleting immediately in one transaction can race another fetch
-/// still listing refs (G16). A wrapper records each `update-ref` invocation.
+/// After fetch, keep the fetched head and delete the private fetch ref in one transaction. The
+/// wrapper records both the invocation and its input; G16 checks the concurrent fetch retries.
 #[test]
-fn the_refs_a_fetch_leaves_are_set_by_two_separate_update_refs() {
+fn the_refs_a_fetch_leaves_are_set_in_one_transaction() {
     let sandbox = crate::sandbox();
-    let m = Machine::new(&sandbox, "refs");
+    let m = crate::rust_only(&sandbox, "refs");
     m.bead(["init", "--prefix", "ex"]);
     m.bead(["create", "x"]);
     let shims = sandbox.root().join("update-ref-shims");
     std::fs::create_dir(&shims).unwrap();
     let log = sandbox.root().join("update-refs.log");
+    let input = sandbox.root().join("update-refs-input.log");
     let script = format!(
-        "#!/bin/sh\nif [ \"$1\" = update-ref ]; then echo \"$*\" >> {log}; fi\nexec {git} \"$@\"\n",
+        "#!/bin/sh\nif [ \"$1\" = update-ref ]; then\n  echo \"$*\" >> {log}\n  \
+         tee -a {input} | {git} \"$@\"\n  exit $?\nfi\nexec {git} \"$@\"\n",
         log = quoted(&log.display().to_string()),
+        input = quoted(&input.display().to_string()),
         git = quoted(&real_git().display().to_string()),
     );
     std::fs::write(shims.join("git"), script).unwrap();
@@ -168,19 +167,41 @@ fn the_refs_a_fetch_leaves_are_set_by_two_separate_update_refs() {
     let run = m.cmd(["sync", "--json"]).env("PATH", path.unwrap()).run();
     assert_eq!(run.returncode(), 0, "{}", run.stderr);
     let logged = std::fs::read_to_string(&log).unwrap_or_default();
-    let calls: Vec<Vec<&str>> = logged.lines().map(|l| l.split(' ').collect()).collect();
-    let [remote, fetched] = calls.as_slice() else {
-        panic!("not two update-refs: {logged}");
+    assert_eq!(logged, "update-ref --stdin\n");
+    let input = std::fs::read_to_string(&input).unwrap();
+    let lines: Vec<&str> = input.lines().collect();
+    let ["start", remote, fetched, "commit"] = lines.as_slice() else {
+        panic!("not one update-ref transaction: {input}");
     };
+    let remote: Vec<&str> = remote.split(' ').collect();
     let tip = remote.get(2).copied().unwrap_or_default();
-    assert_eq!(remote[..2], ["update-ref", "refs/beads/remote"], "{logged}");
+    assert_eq!(remote[..2], ["update", "refs/beads/remote"], "{input}");
     assert!(
         tip.len() == 40 && tip.bytes().all(|b| b.is_ascii_hexdigit()),
-        "{logged}"
+        "{input}"
     );
-    assert_eq!(fetched.len(), 3, "{logged}");
-    assert_eq!(fetched[..2], ["update-ref", "-d"], "{logged}");
-    assert!(fetched[2].starts_with("refs/beads/fetch/"), "{logged}");
+    assert!(fetched.starts_with("delete refs/beads/fetch/"), "{input}");
+    let sync_git = m.store().join("sync.git");
+    let kept = git(
+        [
+            "--git-dir",
+            sync_git.to_str().unwrap(),
+            "rev-parse",
+            "refs/beads/remote",
+        ],
+        None,
+    );
+    assert_eq!(kept.trim(), tip);
+    let temporary = git(
+        [
+            "--git-dir",
+            sync_git.to_str().unwrap(),
+            "for-each-ref",
+            "refs/beads/fetch/",
+        ],
+        None,
+    );
+    assert!(temporary.is_empty(), "{temporary}");
 }
 
 /// Transport settings are read when a link is made, after a write's transaction. A git wrapper

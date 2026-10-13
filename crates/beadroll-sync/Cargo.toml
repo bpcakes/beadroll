@@ -17,6 +17,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 beadroll-test-support.workspace = true
+rustix.workspace = true
 
 [lints]
 workspace = true

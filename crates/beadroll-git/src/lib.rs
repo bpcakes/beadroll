@@ -21,6 +21,7 @@ mod signal;
 #[cfg(test)]
 mod testing;
 mod text;
+mod tree;
 mod url;
 mod writers;
 
@@ -34,12 +35,13 @@ pub use env::{
 };
 pub use error::{Error, IoError, strerror};
 pub use format::{StoredFormat, stored_format};
-pub use objects::{Object, Objects, list_tree, root_tree};
+pub use objects::{Object, Objects, TreeListing, list_tree, list_tree_with_subtrees, root_tree};
 pub use path::{exists, realpath};
 pub use runner::{Env, Git, Output};
 pub use session::NoAnswer;
 pub use signal::signal_name;
 pub use text::path_arg;
+pub use tree::blob_tree_id;
 pub use url::{
     is_local_path, lowercase_text_bytes, normalize_remote, strip_text_bytes, without_password,
 };

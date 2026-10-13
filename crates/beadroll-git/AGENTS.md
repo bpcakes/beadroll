@@ -20,9 +20,12 @@ resolution shared with the store.
   starts every git and killed with its helpers and reaped when dropped; `NoAnswer`.
 - `src/objects.rs`: `Objects` (`cat-file --batch-command`: `name`, `get`, `start`, `stop`),
   `Object`, `list_tree` (what `ls-tree -r -z COMMIT` lists) and `root_tree` (what `rev-parse
-  COMMIT^{tree}` finds), with git's own checks: tree entries as `decode_tree_entry` reads them,
-  commits as `parse_commit_buffer` does, the commit's and the root tree's names checked against
+  COMMIT^{tree}` finds), and `list_tree_with_subtrees` (also retaining subtree names), with git's
+  own checks: tree entries as `decode_tree_entry` reads them, commits as `parse_commit_buffer`
+  does, the commit's and the root tree's names checked against
   their contents.
+- `src/tree.rs`: `blob_tree_id`, the canonical name of an ordinary blob-only tree, to compare
+  desired entries against a reachable subtree before reusing it; no reachability claim of its own.
 - `src/writers.rs`: `Hasher` (`hash-object -w --no-filters --stdin-paths`), `Trees` (`mktree
   --batch`), `Refs` (`update-ref --stdin` transactions).
 - `src/checkout.rs`: `Checkout` and `Fact`: one combined `rev-parse` (top, common directory,
@@ -100,14 +103,13 @@ is first found, beside origin's `config --get-regexp ^remote\.origin\.(push)?url
 `check-ref-format` for a tracked ref other than the default; and `symbolic-ref`, `rev-parse
 --verify` and `merge-base --is-ancestor` only for `show` of a closed issue. `sync.git` side: `init
 --bare` once; `fetch` into the process's own ref; one `cat-file --batch-command` for every object
-read; `update-ref` for `refs/beads/remote` and `update-ref -d` for the fetch's ref; one
-`hash-object -w --no-filters --stdin-paths` and one `mktree --batch` a round; `commit-tree`;
-`push --porcelain --no-verify`; an `update-ref --stdin` transaction after a push; and `repack -a
--d -q` and `prune --expire=1.hour.ago` when maintenance is due. `rev-parse --show-object-format`
+read; one `update-ref --stdin` for a transaction keeping the fetched head and deleting the fetch's
+ref, reused after a push; one `hash-object -w --no-filters --stdin-paths` and one `mktree --batch`
+a round; `commit-tree`; `push --porcelain --no-verify`; and `repack -a -d -q` and `prune --expire=1.hour.ago` when maintenance is due. `rev-parse --show-object-format`
 only where `sync.git`'s config does not settle its format. That is 3 processes for a read and for
-`info`, 10 for a sync with nothing new, and 14 for a publishing write or a one-round claim (each
-further round of a claim starts its own fetch, two `update-ref`s, `hash-object`, `mktree`,
-`commit-tree`, push and `rev-parse` of HEAD; one fewer each with a tracked `.beadroll.json`),
+`info`, 9 for a sync with nothing new, and 12 for a publishing write or a one-round claim (each
+further round of a claim starts its own fetch, `hash-object`, `mktree`, `commit-tree`, push and
+`rev-parse` of HEAD; one fewer each with a tracked `.beadroll.json`),
 where Python started 3, 4, 20 and 26–27.
 
 ## Common commands

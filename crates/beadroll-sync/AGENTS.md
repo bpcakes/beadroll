@@ -19,7 +19,7 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   repository made aside, writing nothing in the store; `src/link/merge.rs`: `Link::merge`;
   `src/link/publish.rs`: its tree and `Link::publish`; `src/link/read.rs`: the remote's tree read
   through the link's `cat-file`; `src/link/write.rs`: blobs, trees and the ref after a push through
-  its `hash-object`, `mktree` and `update-ref`, with separate ref updates after a fetch.
+  its `hash-object`, `mktree` and `update-ref`, with one ref transaction after a fetch.
   Each falls back to the corresponding separate git command. `Link::local_blobs` hashes only
   journal files the store's memo (`beadroll_store::Memo`) cannot vouch for; `Link::hashed` lists them
   (roll-lqjj.1); `Link::unpublished` and `Link::published_counts` take a segment's lines from the
@@ -55,13 +55,16 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   published one as it is, and a publish names it in a tree only when this link made it or the tree
   of the tip it merged holds it at that path, so that a blob a gc dropped is never named in a
   tree. Its `cat-file` starts before a fetch, its `hash-object` and `mktree` after it, its
-  `update-ref` before a publish's `commit-tree`, and all end with the link or when `sync.git` is
-  set aside (`rebuild`, a stale format).
-- The fetch's own ref (`refs/beads/fetch/<pid>-<hex>`) is deleted by a separate
-  `update-ref -d` after `refs/beads/remote`'s, never in a transaction ready the moment the fetch
-  ends: concurrent fetches of the store list every ref then, and git fails one that finds a listed
-  ref gone (G16: one transaction failed G16's test in 8 of 120 runs, and seven processes fetching
-  at once lost 13 of 2,100 fetches with it, none of 7,000 with the two calls).
+  `update-ref` after a successful fetch (before `commit-tree` if no head was fetched), and all
+  end with the link or when `sync.git` is set aside (`rebuild`, a stale format).
+- One `update-ref` transaction keeps the fetched head in `refs/beads/remote` and deletes the
+  fetch's private ref, reusing that git after a push (roll-dih8.14). A failed transaction falls
+  back to the established separate calls. Deleting the private ref can race another fetch's
+  checks of all refs; that fetch retries under the bounded policy in `link/fetch.rs`.
+- A publish can name a claims subtree without rebuilding it only when the last merged tip holds
+  it at that path and its object name equals the desired entries' canonical tree name. Merge,
+  rebuild and the rehash fallback clear candidates; `Link::reused_trees` records reuse. It changes
+  no published bytes (roll-lqjj.13).
 - A transaction reads where the caller works (`capture_where`) when it starts, under the store
   lock, and an ownership command makes a new one each round: the `where` an
   event records is HEAD as it is then.

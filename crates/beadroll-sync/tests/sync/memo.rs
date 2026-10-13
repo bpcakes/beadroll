@@ -16,12 +16,15 @@ use beadroll_test_support::{Machine, Sandbox, git};
 
 use crate::support::{actor, claim_command, sandbox, workspace};
 
+mod trees;
+
 /// What one round did: the files its link hashed, the paths it found forked, and the tree the
 /// remote holds after it.
 struct Round {
     hashed: Vec<String>,
     forks: Vec<String>,
     tree: String,
+    reused_trees: Vec<String>,
 }
 
 /// A round of a sync through a link of its own, as a command makes one: a fetch, then a merge and
@@ -43,13 +46,14 @@ fn round(ws: &Workspace, origin: &Path) -> Round {
         hashed: link.hashed.clone(),
         forks: link.forks.clone(),
         tree: tree.trim().to_owned(),
+        reused_trees: link.reused_trees.clone(),
     }
 }
 
 /// Every journal file of the store, by its path there, in the order a link hashes them.
 fn journal_files(ws: &Workspace) -> Vec<String> {
     let mut files = segment_files(ws).expect("the segments");
-    files.extend(claim_files(ws).expect("the attempt files"));
+    files.extend(claim_files(ws).expect("the attempt files").iter().cloned());
     files.iter().map(|file| relative(ws, file)).collect()
 }
 

@@ -556,9 +556,16 @@ the record of it before any test data is written), their tests beside them, and 
   does where two machines write: 0.45 s at 50,000 events, 1–2 s at 200,000,
   kept so for correctness (roll-lqjj.8). A replay holds at most 107 MB
   on the heap at 200,000 events (events the size of this repository's own take
-  more than three times that). A store heavy in claims pays for listing its
-  attempt files on every command: a read takes 0.56 s at 92,000 of them, which
-  only a checkpoint would change. A fetch or push that gets no answer fails
+  more than three times that). A store heavy in claims still checks every
+  attempt file's metadata. Reusing directory listings, unchanged published
+  claims trees and the post-fetch ref writer reduced a warm `list` from
+  0.57 s to 0.47 s and a publishing sync from 2.86 s to 2.45 s at 92,000
+  attempt files; at 2,680 files, 33 ms to 28 ms and 208 ms to 170 ms
+  (`cargo xtask timing --read N --ownership` and `--sync N --ownership`,
+  200,000 and 6,000 events, release on macOS arm64, best of five against a
+  local bare remote). Reads still check metadata for every file, and the
+  local-write timings at 200,000 events did not improve. A fetch or push that
+  gets no answer fails
   after `BEAD_NET_TIMEOUT` seconds (default 45) instead of hanging.
 - Publishing is serialised on one ref. Under heavy contention (four machines
   syncing continuously) claims took 9 s median and 27 s at p90, and 3 of 841

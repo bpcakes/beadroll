@@ -572,15 +572,17 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - The Rust binary starts fewer gits than Python (Phase 4; `crates/beadroll-git/AGENTS.md` lists
   them): one combined `rev-parse` for the repository's top, common directory and format, and in
   `sync.git` a long-lived `cat-file --batch-command`, `hash-object --stdin-paths` and `mktree
-  --batch`, and an `update-ref --stdin` for the ref after a push, with the listing and
+  --batch`, and an `update-ref --stdin` for refs after fetches and pushes, with the listing and
   `TIP^{tree}` worked out in-process as git works them out. Whatever is not certain goes to the
   git Python runs for it, and its answer or failure is the one given; `sync.git` gets the same objects and refs. What can
   change while bead runs is asked by Python's own call where Python asks it: origin's URLs each
   time the workspace is found, the transport settings each time a link is made, HEAD and its
-  branch (one `rev-parse` where its answer is certain) each time a transaction starts. The two
-  refs after a fetch stay Python's two `update-ref`s, at Python's pace: as one transaction they
-  deleted the fetch's own ref while concurrent fetches of the store still listed every ref, and git
-  failed those (G16). What still differs: which gits run (one more `rev-parse` where a
+  branch (one `rev-parse` where its answer is certain) each time a transaction starts. After a fetch,
+  one transaction keeps the fetched head in `refs/beads/remote` and deletes the fetch's own ref
+  (roll-dih8.14). It reuses the same writer after a push and falls back to the two standalone
+  calls if it cannot answer; post-fetch bookkeeping stays best effort. The earlier transaction
+  was reverted because deleting fetch refs sooner made concurrent fetches fail (G16); fetches
+  now retry that race (roll-dih8.12). What still differs: which gits run (one more `rev-parse` where a
   combined one cannot answer: a bare repository or none at discovery, no commit yet or a branch
   name git finds ambiguous when a transaction starts); origin's `config` runs, read-only, beside
   the first `rev-parse`, so also in discovery's early-error paths where Python stops before asking
@@ -601,6 +603,25 @@ These were decided deliberately. Report problems *with* them, not their existenc
   made from remembered blobs, short of damage (an object lost while the published tree names it),
   hashes every file once more, as every publish did before (L02). The merge still asks git what
   Python asks, in the same order: fewer files to `hash-object`, then the published tree.
+- Accepted attempt names are shared within a command's locked phase (roll-lqjj.12). Each
+  claims directory is enumerated once while its length, device, inode, modification and change times,
+  and mode stay the same. A changed directory is read again, including after a merge or an
+  attempt's confirmation; taking or releasing the store lock clears the listing, so a fetch
+  outside the lock cannot carry old names into the next phase. Unlocked readers also validate
+  each directory before reusing its names. Missing or unreadable directory metadata never
+  authorizes reuse, and enumeration errors remain errors. This is an in-memory cache only;
+  every file is still stat-ed for projection and blob checks, so an in-place rewrite with an
+  unchanged directory is seen under the same rules as before. Neither the projection's layout
+  nor the published membership map in `meta.json` changes.
+- A publish reuses an unchanged claims subtree only when the last merged tip holds it
+  (roll-lqjj.13). The desired entries' canonical tree object name, with mode 100644 and every
+  filename and blob, must equal the subtree name at that path. SHA-1 and SHA-256 are checked
+  against `mktree`; unusual names go through `mktree` as before. Every merge and repository
+  rebuild forgets the old candidates, and a failed tree build's rehash fallback forgets them
+  too. The published tree bytes stay identical. This removes unchanged claims from `mktree`'s
+  input, not from the file identity checks, blob map or comparison against the merged tree;
+  changed claims directories are rebuilt in full. The same reachability rule as blob reuse
+  keeps a subtree a gc could have dropped out of the new tree.
 - A fetch that loses to another process's fetch of the store is tried again (roll-dih8.12): git's
   checks of a fetch read every ref, and every process fetches into a ref of its own under
   `refs/beads/fetch/` that it deletes after, so git can find such a ref gone between listing it

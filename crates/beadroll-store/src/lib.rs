@@ -13,6 +13,7 @@ mod failpoint;
 mod fs;
 mod identity;
 mod journal;
+mod listing;
 mod memo;
 mod place;
 mod projection;

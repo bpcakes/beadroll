@@ -1,6 +1,6 @@
 //! One tracker's store on this machine, its checkout configuration and coordination remote.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -10,6 +10,7 @@ use beadroll_core::text::repr_str;
 
 use crate::error::Error;
 use crate::fs::{Unreadable, read_json_text, write_atomic};
+use crate::listing::Claims;
 use crate::settings::Settings;
 
 mod remote;
@@ -48,6 +49,7 @@ pub struct Workspace {
     pub settings: Arc<Settings>,
     holding: Cell<bool>,
     wrote: Cell<bool>,
+    pub(crate) claims: RefCell<Claims>,
 }
 
 impl Workspace {
@@ -79,6 +81,7 @@ impl Workspace {
             settings,
             holding: Cell::new(false),
             wrote: Cell::new(false),
+            claims: RefCell::new(Claims::default()),
         })
     }
 
@@ -87,9 +90,12 @@ impl Workspace {
         self.holding.get()
     }
 
-    /// Records whether this process holds the store lock.
+    /// Records whether this process holds the store lock. A new locked or unlocked phase lists
+    /// attempts afresh: another command may write while a sync fetches outside the lock.
     pub fn set_holding(&self, holding: bool) {
-        self.holding.set(holding);
+        if self.holding.replace(holding) != holding {
+            *self.claims.borrow_mut() = Claims::default();
+        }
     }
 
     /// Whether this process appended events the remote does not have yet.

@@ -1,7 +1,6 @@
 //! Writes to sync.git through persistent git processes: hash-object between fetches for files the
-//! memo cannot validate, mktree per publication and update-ref transactions after pushes.
-//! Unusable answers fall back to standalone commands. Post-fetch refs use two separate updates
-//! ([`Link::keep_fetched`]).
+//! memo cannot validate, mktree per publication and update-ref transactions after fetches and
+//! pushes. Unusable answers fall back to standalone commands.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
@@ -26,7 +25,7 @@ impl Link<'_> {
     ) -> Result<BTreeMap<String, String>, Error> {
         let ws = self.ws;
         let mut files = segment_files(ws)?;
-        files.extend(claim_files(ws)?);
+        files.extend(claim_files(ws)?.iter().cloned());
         let names: Vec<String> = files.iter().map(|file| relative(ws, file)).collect();
         let present: BTreeSet<&str> = names.iter().map(String::as_str).collect();
         let memo = self.memo.get_or_insert_with(|| Memo::load(ws));
@@ -126,20 +125,28 @@ impl Link<'_> {
     }
 
     /// After fetching `tip` into `mine`, update refs/beads/remote to keep the fetched objects
-    /// reachable, then delete `mine` in a separate git invocation. Ignore failures of these
-    /// bookkeeping calls.
+    /// reachable and delete `mine` in the same transaction. Ignore failures of these bookkeeping
+    /// calls, falling back to separate invocations if the transaction cannot answer.
     ///
-    /// An immediate single transaction can delete the fetch ref while another fetch is still
-    /// checking all refs, producing a bad-object race. Separate invocations preserve the
-    /// established sequencing (G16); fetch retry handles remaining transient races.
-    pub(super) fn keep_fetched(&self, tip: &str, mine: &str) -> Result<(), Error> {
+    /// Deleting the fetch ref can race another fetch's check of all refs. That fetch retries
+    /// (`fetch.retry`), including when this transaction removes the ref sooner than two calls did.
+    pub(super) fn keep_fetched(&mut self, tip: &str, mine: &str) -> Result<(), Error> {
+        if self
+            .transaction(&[
+                format!("update {REMOTE_REF} {tip}"),
+                format!("delete {mine}"),
+            ])
+            .is_ok()
+        {
+            return Ok(());
+        }
         self.run(&[OsStr::new("update-ref"), REMOTE_REF.as_ref(), tip.as_ref()])?;
         self.run(&[OsStr::new("update-ref"), "-d".as_ref(), mine.as_ref()])?;
         Ok(())
     }
 
-    /// Starts the link's `update-ref` if it has none, once a publish knows it will push: it is
-    /// ready when the push is done.
+    /// Starts the link's `update-ref` if the fetch did not, once a publish knows it will push:
+    /// it is ready when the push is done.
     pub(super) fn ready_refs(&mut self) {
         if self.refs.is_none() {
             self.refs = Refs::start(&self.env).ok();
@@ -158,8 +165,8 @@ impl Link<'_> {
         self.git(&args, None).map(drop)
     }
 
-    /// `commands` as one transaction of the link's `update-ref`, started now if it was not before
-    /// the push; one that does not go through ends it.
+    /// `commands` as one transaction of the link's `update-ref`, started when first needed;
+    /// one that does not go through ends it.
     fn transaction(&mut self, commands: &[String]) -> Result<(), NoAnswer> {
         let refs = match &mut self.refs {
             Some(refs) => refs,

@@ -41,6 +41,10 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   projection, `<store>/projection`, read when the journal's files are the ones it was made from,
   caught up when records were only appended to them, else the journal replayed, and written back
   when the files held still; `src/projection/file.rs`: its header, sums and what it was made from.
+- `src/listing.rs`: `Claims`, the in-memory accepted-attempt names shared by `claim_files`,
+  validated against each directory's identity on every call and cleared at lock boundaries.
+  A directory change re-lists it; the file identities used by the memo and projection are still
+  checked individually (roll-lqjj.12).
 - `src/memo.rs`: `Memo`, what the store remembers of each journal file between commands (its
   identity on disk, `FileKey`, its lines and its blob in `sync.git`), kept as
   `sync.git/journal-memo` (`memo_path`) by the holder of the store lock (roll-lqjj.1).

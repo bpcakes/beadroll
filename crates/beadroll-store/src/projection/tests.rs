@@ -182,6 +182,62 @@ fn a_journal_changed_otherwise_is_replayed() {
     assert_eq!(made(&ws), before);
 }
 
+/// A cached claims listing says nothing about bytes. Keep the directory unchanged while an
+/// accepted attempt changes its title at the same length: projection must answer the new bytes.
+#[test]
+fn an_attempt_rewritten_in_place_invalidates_the_projection() {
+    let home = tempfile::tempdir().unwrap();
+    let ws = store(home.path(), Some("this build"));
+    begun(&ws);
+    let path = ws
+        .events_dir
+        .join(HERE)
+        .join("claims")
+        .join(format!("{}.json", id(5)));
+    write_attempt_file(
+        &path,
+        &[title(5, &[4], 2, "before")],
+        &ws.settings.failpoints,
+    )
+    .unwrap();
+    assert!(replays(&ws));
+    let data = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, data.replace("before", "AFTER!")).unwrap();
+    assert!(replays(&ws));
+    let state = view(&ws).unwrap();
+    assert!(answers(&state).contains("AFTER!"));
+    std::fs::remove_file(&path).unwrap();
+    assert!(replays(&ws));
+}
+
+#[test]
+fn a_new_lock_phase_lists_attempts_afresh() {
+    let home = tempfile::tempdir().unwrap();
+    let ws = store(home.path(), Some("this build"));
+    let path = ws
+        .events_dir
+        .join(HERE)
+        .join("claims")
+        .join(format!("{}.json", id(5)));
+    write_attempt_file(
+        &path,
+        &[title(5, &[4], 2, "before")],
+        &ws.settings.failpoints,
+    )
+    .unwrap();
+    ws.set_holding(true);
+    let first = crate::claim_files(&ws).unwrap();
+    assert!(std::sync::Arc::ptr_eq(
+        &first,
+        &crate::claim_files(&ws).unwrap()
+    ));
+    ws.set_holding(false);
+    ws.set_holding(true);
+    let again = crate::claim_files(&ws).unwrap();
+    assert_eq!(first, again);
+    assert!(!std::sync::Arc::ptr_eq(&first, &again));
+}
+
 #[test]
 fn a_damaged_projection_is_never_trusted() {
     let home = tempfile::tempdir().unwrap();

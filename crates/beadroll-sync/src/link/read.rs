@@ -6,7 +6,7 @@
 
 use std::ffi::OsStr;
 
-use beadroll_git::{list_tree, root_tree};
+use beadroll_git::{list_tree_with_subtrees, root_tree};
 
 use super::Link;
 use crate::error::Error;
@@ -36,9 +36,10 @@ impl Link<'_> {
     /// returns GIT_ERROR.
     pub(super) fn listing(&mut self, tip: &str) -> Result<Vec<(Vec<u8>, String)>, Error> {
         if let Ok(commit) = self.objects.get(tip)
-            && let Ok(rows) = list_tree(&mut self.objects, &commit)
+            && let Ok(listing) = list_tree_with_subtrees(&mut self.objects, &commit)
         {
-            return Ok(rows);
+            self.listed_trees = listing.subtrees;
+            return Ok(listing.files);
         }
         let args = ["ls-tree", "-r", "-z", tip].map(OsStr::new);
         let listing = self.check(&args)?.stdout;

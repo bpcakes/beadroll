@@ -114,6 +114,7 @@ dependencies = [
  "beadroll-store",
  "beadroll-test-support",
  "fastrand",
+ "rustix",
  "thiserror",
 ]
 

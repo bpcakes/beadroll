@@ -84,6 +84,7 @@ impl Link<'_> {
         // the memo as it is now: another bead process may have written it since this link last did
         self.memo = Some(Memo::load(self.ws));
         self.listed.clear();
+        self.listed_trees.clear();
         let mut pulled: i64 = 0;
         for path in segment_files(self.ws)? {
             repair_tail(self.ws, &path)?;

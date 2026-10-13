@@ -6,6 +6,7 @@ use std::fs::OpenOptions;
 use std::io::{Read as _, Seek as _, SeekFrom, Write as _};
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use beadroll_core::journal::{self, Journal, Problem};
 use beadroll_core::json::{self, Format, Value};
@@ -37,19 +38,10 @@ pub fn segment_files(ws: &Workspace) -> Result<Vec<PathBuf>, Error> {
     Ok(out)
 }
 
-/// Every accepted attempt file in the store (`events/<machine>/claims/<id>.json`).
-pub fn claim_files(ws: &Workspace) -> Result<Vec<PathBuf>, Error> {
-    let mut out = Vec::new();
-    for folder in dir_entries(&ws.events_dir)? {
-        if folder.is_dir() {
-            out.extend(
-                dir_entries(&folder.join("claims"))?
-                    .into_iter()
-                    .filter(|p| has_suffix(p, ".json")),
-            );
-        }
-    }
-    Ok(out)
+/// Every accepted attempt file in the store (`events/<machine>/claims/<id>.json`), in name
+/// order. Reuse names only while their directories keep their identity; never reuse file stats.
+pub fn claim_files(ws: &Workspace) -> Result<Arc<[PathBuf]>, Error> {
+    ws.claims.borrow_mut().files(&ws.events_dir)
 }
 
 /// This machine's own ownership attempts the remote has not confirmed. Never read as events.
@@ -318,15 +310,15 @@ pub(crate) fn load_listed(
         }
     }
     let mut attempts = Vec::new();
-    for path in claim_files(ws)? {
+    for path in claim_files(ws)?.iter() {
         let origin = path.display().to_string();
-        let replica = folder_name(&path, 2);
-        let read = read_keyed(&path).ok();
+        let replica = folder_name(path, 2);
+        let read = read_keyed(path).ok();
         let data = read.as_ref().map(|(data, _)| data.as_slice());
-        for event in attempt_events(&path, data, Some(&mut journal.invalid)) {
+        for event in attempt_events(path, data, Some(&mut journal.invalid)) {
             journal.add(event, &replica, &origin, false);
         }
-        attempts.push((path, read.and_then(|(_, key)| key)));
+        attempts.push((path.clone(), read.and_then(|(_, key)| key)));
     }
     journal.settle();
     Ok(Loaded {

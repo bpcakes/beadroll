@@ -370,8 +370,8 @@ pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
         let behind = lines.sub(&known);
         count = count.add(if behind > zero { &behind } else { &zero });
     }
-    for path in claim_files(ws)? {
-        if !published.contains_key(&relative(ws, &path)) {
+    for path in claim_files(ws)?.iter() {
+        if !published.contains_key(&relative(ws, path)) {
             count = count.add(&Int::from(1));
         }
     }

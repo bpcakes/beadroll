@@ -145,15 +145,37 @@ pub fn list_tree(
     objects: &mut Objects,
     commit: &Object,
 ) -> Result<Vec<(Vec<u8>, String)>, NoAnswer> {
+    Ok(list_tree_with_subtrees(objects, commit)?.files)
+}
+
+/// A recursive listing together with the subtree objects encountered along its paths.
+#[derive(Debug)]
+pub struct TreeListing {
+    /// Nontree entries, as [`list_tree`] returns them.
+    pub files: Vec<(Vec<u8>, String)>,
+    /// Subtree names by their paths, without a trailing slash.
+    pub subtrees: HashMap<Vec<u8>, String>,
+}
+
+/// [`list_tree`], also retaining the names of the subtrees it read. These names are reachable
+/// from this commit; a caller may reuse one only if it describes exactly the desired entries.
+pub fn list_tree_with_subtrees(
+    objects: &mut Objects,
+    commit: &Object,
+) -> Result<TreeListing, NoAnswer> {
     let root = root_tree(objects, commit)?;
     let mut listing = Listing {
         objects,
         raw_len: root.oid.len() / 2,
         trees: HashMap::new(),
         rows: Vec::new(),
+        subtrees: HashMap::new(),
     };
     listing.walk(&root.data, &[], 0)?;
-    Ok(listing.rows)
+    Ok(TreeListing {
+        files: listing.rows,
+        subtrees: listing.subtrees,
+    })
 }
 
 /// A listing under way: the trees read so far, by name, and the rows found.
@@ -162,6 +184,7 @@ struct Listing<'a> {
     raw_len: usize,
     trees: HashMap<String, Vec<u8>>,
     rows: Vec<(Vec<u8>, String)>,
+    subtrees: HashMap<Vec<u8>, String>,
 }
 
 impl Listing<'_> {
@@ -181,6 +204,7 @@ impl Listing<'_> {
                 continue;
             }
             // a directory: ls-tree -r goes into it there and then, without checking its name
+            self.subtrees.insert(path.clone(), oid.clone());
             let tree = match self.trees.get(&oid) {
                 Some(tree) => tree.clone(),
                 None => {
@@ -402,6 +426,16 @@ mod tests {
                 list_tree(&mut objects, &tip).unwrap(),
                 ls_tree(&env, &commit)
             );
+            let listed = list_tree_with_subtrees(&mut objects, &tip).unwrap();
+            for (path, oid) in listed.subtrees {
+                let path = String::from_utf8(path).unwrap();
+                assert_eq!(
+                    env.git(["rev-parse", &format!("{commit}:{path}")])
+                        .string()
+                        .unwrap(),
+                    oid
+                );
+            }
             let tree = env.git(["rev-parse", &format!("{commit}^{{tree}}")]);
             assert_eq!(
                 root_tree(&mut objects, &tip).unwrap().oid,

@@ -6,13 +6,16 @@ use std::ffi::OsStr;
 
 use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Format, Object, Value};
-use beadroll_git::{PushOutcome, Trees, push_outcome};
+use beadroll_git::{PushOutcome, Trees, blob_tree_id, push_outcome};
 use beadroll_store::{
     Fired, attempt_path, encode_events, hex_token, relative, repair_tail, segment_files,
 };
 
 use super::Link;
 use crate::error::Error;
+
+/// Filenames and blob names in a directory, in filename order.
+type BlobEntries<'a> = Vec<(&'a str, &'a str)>;
 
 impl Link<'_> {
     /// The tree to publish: the manifest and every journal file, with `pending`'s attempt at the
@@ -25,12 +28,17 @@ impl Link<'_> {
             repair_tail(self.ws, &path)?;
         }
         let (blobs, remembered) = self.blobs(pending)?;
+        let reused = self.reused_trees.len();
         let events = match self.events_tree(&mut trees, &blobs) {
-            // A remembered blob `sync.git` no longer holds: its object was lost while the published
-            // tree still names it, which git does not report as damage. Every file is hashed
-            // again, which makes it again, as every publish did before the memo.
-            Err(error) if remembered && !matches!(error, Error::SyncRepoDamaged(_)) => {
+            // A remembered blob or reused tree `sync.git` no longer holds. Every file is hashed
+            // again and every tree rebuilt, as before the caches. A reused tree can be lost even
+            // when this publication freshly hashed all its blobs.
+            Err(error)
+                if (remembered || self.reused_trees.len() > reused)
+                    && !matches!(error, Error::SyncRepoDamaged(_)) =>
+            {
                 self.forget_blobs();
+                self.listed_trees.clear();
                 let (blobs, _) = self.blobs(pending)?;
                 if trees.is_none() {
                     trees = Trees::start(&self.env).ok();
@@ -67,29 +75,36 @@ impl Link<'_> {
 
     /// The tree of `events/` that `blobs` make, by path in the store.
     fn events_tree(
-        &self,
+        &mut self,
         trees: &mut Option<Trees>,
         blobs: &BTreeMap<String, String>,
     ) -> Result<String, Error> {
-        let mut folders: BTreeMap<String, BTreeMap<String, Vec<String>>> = BTreeMap::new();
+        let mut folders: BTreeMap<&str, BTreeMap<&str, BlobEntries<'_>>> = BTreeMap::new();
         for (path, sha) in blobs {
             let parts: Vec<&str> = path.split('/').collect();
             let group = if parts.len() == 4 { parts[2] } else { "" };
             folders
-                .entry(parts.get(1).copied().unwrap_or_default().to_owned())
+                .entry(parts.get(1).copied().unwrap_or_default())
                 .or_default()
-                .entry(group.to_owned())
+                .entry(group)
                 .or_default()
-                .push(format!(
-                    "100644 blob {sha}\t{}\n",
-                    parts.last().copied().unwrap_or_default()
-                ));
+                .push((parts.last().copied().unwrap_or_default(), sha));
         }
         let mut rows = String::new();
         for (replica, groups) in &folders {
-            let mut entries = groups.get("").cloned().unwrap_or_default().concat();
+            let mut entries = blob_entries(groups.get("").map_or(&[], Vec::as_slice));
             if let Some(claims) = groups.get("claims") {
-                let tree = self.make_tree(trees, claims.concat())?;
+                let path = format!("events/{replica}/claims");
+                let known = self
+                    .listed_trees
+                    .get(path.as_bytes())
+                    .filter(|oid| blob_tree_id(claims, oid.len()).as_ref() == Some(oid));
+                let tree = if let Some(oid) = known {
+                    self.reused_trees.push(path);
+                    oid.clone()
+                } else {
+                    self.make_tree(trees, blob_entries(claims))?
+                };
                 entries.push_str(&format!("040000 tree {tree}\tclaims\n"));
             }
             let tree = self.make_tree(trees, entries)?;
@@ -183,4 +198,12 @@ impl Link<'_> {
         self.last_error = said;
         Ok(outcome)
     }
+}
+
+/// The canonical mktree input for ordinary files, allocated only for trees being written.
+fn blob_entries(entries: &[(&str, &str)]) -> String {
+    entries
+        .iter()
+        .map(|(name, oid)| format!("100644 blob {oid}\t{name}\n"))
+        .collect()
 }

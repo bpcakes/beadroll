@@ -6,6 +6,12 @@ versioned separately (format 1, frozen; see *Format and upgrades* in the README)
 
 ## [Unreleased]
 
+- Commands reuse accepted-attempt directory listings within each locked phase while retaining
+  every file's metadata check (roll-lqjj.12). Publishing reuses unchanged claims subtrees held by
+  the merged tip (roll-lqjj.13), and fetched-head bookkeeping shares one `update-ref` transaction
+  process with the later push (roll-dih8.14). The protocol, published bytes and store format are
+  unchanged.
+
 - `bead init --import FILE --dry-run` and `bead import FILE --dry-run` say what the import would
   do and write nothing, start no store and ask no remote (roll-dih8.26): how many issues would
   come in, by status, and how many are already here; every record it would be refused for, not
