@@ -463,6 +463,22 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - An import that contains one invalid record or dependency fails whole; nothing is written. A
   status bead does not set itself (`pinned`, a custom one) is kept verbatim, as Beads tools keep
   it; such an issue is neither ready nor done.
+- An import resolves a dependency by looking its key up, never by scanning the batch
+  (roll-lqjj.15). The batch's new keys are indexed by the number of the create that makes each
+  one, and a known record's listed dependencies by `(key, type)`, that index built only for a
+  record whose issue still holds unresolved ones. Planning and dry-run validation ask one
+  function whether a key will have an issue, so that the payload a dry run checks is the payload
+  the import writes. The hashes are only for lookups: creates and additions follow record order,
+  retractions follow the stored dangling order, and diagnostics keep their validation phases and
+  record numbers. Dependency lookup work is expected to grow with the records and dependencies
+  examined, rather than their product; types and metadata keep their meaning.
+  `cargo xtask timing --plan 16000` measures it: 16,000 records, each depending on a key at the
+  end of the batch, took 0.896 s to plan and 0.452 s to validate for a dry run before, and
+  0.049 s and 0.071 s after (validation reads the file itself, so its figure includes parsing).
+  Re-importing one known issue with 16,000 unresolved dependencies still listed fell from
+  0.205 s to 0.001 s. The fastest of five runs each, three runs of the probe on 2026-10-13,
+  Rust 1.99.0, 16 cores; they measure the core calls, not an end-to-end import, which
+  `timing --import N` measures.
 - Text from files and stdin is UTF-8 regardless of locale; OS errors are structured (`IO`); a
   git child runs in a separate session without the controlling terminal. A timed-out fetch is
   killed with its process group; a timed-out push kills only the client so its uncertain result

@@ -21,7 +21,9 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   there with the projection and without it, and the bytes the projection and its text file hold; `timing/merge.rs`: `timing --merge N`, a sync that
   merges what another machine wrote after the store's frontier; `timing/contend.rs`: `timing
   --contend M`, machines writing one tracker at once (roll-lqjj.7); `timing/import.rs`: `timing
-  --import N`, importing a generated Beads export (roll-lqjj.9); `timing/world.rs`: the scratch
+  --import N`, importing a generated Beads export (roll-lqjj.9); `timing/plan.rs`: `timing --plan
+  N`, the core calls an import of N records makes, every record depending on a key at the end of
+  the batch (roll-lqjj.15); `timing/world.rs`: the scratch
   store, checkout and remote they run `bead` on; `timing/history.rs`: the histories it replays
   (`--ownership`: heavy in claims, takeovers and releases in attempt files; `--churn`: a thousand
   issues changed over and over, a state that stays its size); `timing/memory.rs`: the journal written under `target/timing/` while it is measured,
@@ -68,6 +70,8 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   `--rotate BYTES`
 - `cargo run --release --package xtask -- timing --import 14000`: a generated 49 MB export,
   offline, its first sync, and published, and the projection and text file it made
+- `cargo run --release --package xtask -- timing --plan 16000`: planning that import, validating
+  it for a dry run, and re-importing a known issue whose dependencies are all unresolved
 - `cargo test -p xtask`
 - `python3 xtask/python/printable_table.py > crates/beadroll-core/src/text/printable.rs`, with
   CPython 3.14.7 (Unicode 16.0.0), the versions the table was made with; do not change the

@@ -283,6 +283,8 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   key and becomes a real edge on every machine the moment that key exists, so
   importing in several batches gives the same result as one. An import is
   checked whole before anything is written: one bad record fails it.
+  Large imports and dry runs resolve dependencies without rescanning the batch
+  for each target.
 - Several bead processes on one machine (agents in different worktrees) never
   collide inside the private `sync.git`: each fetch lands in a ref of its own.
 - A publish hashes only the journal files that changed since the last one: the

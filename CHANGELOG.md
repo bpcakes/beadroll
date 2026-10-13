@@ -6,6 +6,12 @@ versioned separately (format 1, frozen; see *Format and upgrades* in the README)
 
 ## [Unreleased]
 
+- Import planning and dry-run validation index dependency keys once per batch (roll-lqjj.15),
+  avoiding repeated scans as the number of imported issues grows, and both resolve a key through
+  the same lookup. A re-import indexes a record's listed dependencies only when the issue still
+  holds unresolved ones, and an import no longer copies each record to read it.
+  `cargo xtask timing --plan N` measures these calls.
+
 - Commands reuse accepted-attempt directory listings within each locked phase while retaining
   every file's metadata check (roll-lqjj.12). Publishing reuses unchanged claims subtrees held by
   the merged tip (roll-lqjj.13), and fetched-head bookkeeping shares one `update-ref` transaction

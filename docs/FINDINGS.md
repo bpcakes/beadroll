@@ -2,8 +2,10 @@
 
 Every finding from every review, in one place. The reports themselves are kept verbatim under
 `reviews/`; this file is the living record of what each finding became. A finding is **fixed**
-when the behaviour is changed and a test fails without the fix; **by design** when the behaviour
-is kept on purpose (with the reason); **open** otherwise.
+when the behaviour is changed and a test fails without the fix; **optimized** when the behaviour
+is kept byte for byte and only the work it takes is removed, so that the tests pass on both
+implementations and a release probe is the evidence; **by design** when the behaviour is kept on
+purpose (with the reason); **open** otherwise.
 
 The Tests column names Rust tests: the crate whose tests hold them, then each test's path in its
 test binary (`cargo nextest run -E 'test(/^PATH/)'` runs it, or a class's module of them). Each
@@ -17,6 +19,16 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
+
+## Algorithmic review (`roll-lqjj.14`, ids Z)
+
+The review's candidates and measurements are recorded on `roll-lqjj.14`. These are **optimized**
+findings: the tests name what the behaviour must stay, and the probe each row cites is the
+evidence that the work went away. Timing is never a test gate.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| Z01 | Medium | Import planning and dry-run validation scanned all new ids for each dependency; re-import scanned each listed dependency for each unresolved one | optimized | Index the batch's new keys by create number, in one function planning and the dry run share, and match unresolved dependencies against a set of listed `(key, type)` pairs, built only for a record that has any (roll-lqjj.15); output remains in record order | `beadroll-core`: `compat::import_plan` covers target resolution, metadata, dependency types, event order and diagnostic order; `cargo xtask timing --plan N` measures planning, dry-run validation and re-import (`xtask`: `timing::plan::tests`) |
 
 ## Review 12: Claude and Codex review of the Rust naming cleanup (ids D)
 

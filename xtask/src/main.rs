@@ -48,6 +48,7 @@ usage: cargo xtask <command>
          [--out FILE]
   timing --contend M [--writes W] [--latency MS] [--label NAME] [--out FILE]
   timing --import N [--label NAME] [--out FILE]
+  timing --plan N [--label NAME] [--out FILE]
   timing --load DIR [--no-replay]
       Run COMMAND and append what it took, one JSON line, to FILE (default
       target/timing.jsonl); or replay a parsed journal of N valid events in-process, the best of
@@ -69,8 +70,11 @@ usage: cargo xtask <command>
       --contend M, M machines writing one tracker at once (W writes each, 25 by default), every
       write published, each fetch and push made MS milliseconds slower (300 by default); --import
       N, the time, peak resident set and heap peak of bead init --import of a generated export of
-      N records, shaped as real trackers' are, offline and then the first sync, and published.
-      Timings are evidence, never a gate.
+      N records, shaped as real trackers' are, offline and then the first sync, and published;
+      --plan N, the core calls an import of N records makes in this process, each record
+      depending on a key at the end of the batch: planning it, validating it for a dry run, and
+      planning a re-import of one known issue whose N dependencies are all still unresolved, the
+      fastest of five runs each. Timings are evidence, never a gate.
 
   bead ARG...
       Run bead with ARGs in this process, whose heap is counted, and say on standard error the
