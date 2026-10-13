@@ -8,9 +8,10 @@ use std::os::unix::ffi::OsStrExt as _;
 use beadroll_core::import::dry_run::{Preview, preview, problems};
 use beadroll_core::import::{Step, Target, plan_import, read_records};
 use beadroll_core::json::{Object, Value};
+use beadroll_core::replay::replay;
 use beadroll_core::state::State;
 use beadroll_core::text::printed_text;
-use beadroll_store::{Elsewhere, Workspace, elsewhere, view_outline};
+use beadroll_store::{Elsewhere, ViewError, Workspace, elsewhere, load_journal};
 use beadroll_sync::{Tx, writing};
 
 use super::{Context, Failure, Line, Outcome, Tone, need_tracker, read_utf8};
@@ -25,7 +26,7 @@ const SHOWN: usize = 20;
 /// `dry_run`, what that would do, nothing imported.
 pub(crate) fn import(ctx: &Context<'_>, path: &OsStr, dry_run: bool) -> Result<Outcome, Failure> {
     if dry_run {
-        let state = view_outline(ctx.ws)?;
+        let state = read_only(ctx.ws)?;
         need_tracker(&state)?;
         return answer_dry_run(ctx.ws, &state, path, Vec::new());
     }
@@ -83,6 +84,12 @@ pub(crate) fn import_records(tx: &mut Tx<'_>, path: &OsStr) -> Result<usize, Fai
         }
     }
     Ok(plan.imported)
+}
+
+/// The tracker `ws` keeps here, as its journal replays: read, and nothing written, where a view
+/// keeps the projection it makes. Empty where there is no store.
+pub(crate) fn read_only(ws: &Workspace) -> Result<State, Failure> {
+    Ok(replay(load_journal(ws)?).map_err(ViewError::from)?)
 }
 
 /// What importing the export at `path` into `state`, `ws`'s tracker, would do: nothing imported, no

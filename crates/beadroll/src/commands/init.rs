@@ -17,7 +17,7 @@ use beadroll_sync::{
     Error as SyncError, Link, publish_soon, publish_soon_to, synchronise, writing,
 };
 
-use super::import::{answer_dry_run, import_records};
+use super::import::{answer_dry_run, import_records, read_only};
 use super::{Context, Failure, Outcome, text};
 
 /// `init`'s arguments.
@@ -450,7 +450,7 @@ fn dry_run(ctx: &Context<'_>, args: &InitArgs) -> Result<Outcome, Failure> {
             "",
         ));
     };
-    let state = view_outline(ctx.ws)?;
+    let state = read_only(ctx.ws)?;
     let mut notes = vec![
         "The remote was not asked: if it already publishes a tracker, init joins it and imports \
          only the records it lacks."

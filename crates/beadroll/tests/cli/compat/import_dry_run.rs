@@ -166,6 +166,103 @@ fn branches_and_worktrees_with_tracker_changes_the_checkout_lacks_are_named() {
         "{}",
         human.stdout
     );
+    // the same from deeper in the checkout: the file is the one at its top
+    let sub = checkout.join("sub");
+    std::fs::create_dir_all(&sub).unwrap();
+    let from_sub = a
+        .cmd([
+            "init",
+            "--import",
+            "../.beads/issues.jsonl",
+            "--dry-run",
+            "--json",
+        ])
+        .cwd(&sub)
+        .run();
+    assert_eq!(from_sub.returncode(), 0, "{}", from_sub.stderr);
+    let said = beadroll_test_support::parse_json(&from_sub.stdout).unwrap();
+    assert_eq!(
+        said["elsewhere"]["refs"].as_array().map(<[Json]>::len),
+        Some(1),
+        "{said:?}"
+    );
+    assert_eq!(
+        said["elsewhere"]["worktrees"].as_array().map(<[Json]>::len),
+        Some(1)
+    );
+}
+
+#[test]
+fn another_worktrees_index_is_left_as_it_is() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let checkout = a.checkout();
+    let file = beads_file(&a, EXPORT);
+    let at = Some(checkout);
+    git(["add", ".beads"], at);
+    git(["commit", "-q", "-m", "tracker"], at);
+    let tree = checkout.with_file_name("other-tree");
+    git(
+        [
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "other",
+            tree.to_str().unwrap(),
+        ],
+        at,
+    );
+    // the same bytes written again later: its index entry's stat data is stale, which a plain git
+    // status would refresh and write back
+    let copy = tree.join(".beads/issues.jsonl");
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    std::fs::write(&copy, std::fs::read(&copy).unwrap()).unwrap();
+    let index = checkout.join(".git/worktrees/other-tree/index");
+    let before = std::fs::read(&index).unwrap();
+    let said = answer(&a, &["init", "--import", &file, "--dry-run"]);
+    assert_eq!(
+        said["elsewhere"]["worktrees"].as_array().map(<[Json]>::len),
+        Some(0)
+    );
+    assert_eq!(std::fs::read(&index).unwrap(), before);
+}
+
+/// Every file in `store`, with its size and when it last changed: what a dry run must leave.
+fn files(store: &Path) -> Vec<(std::path::PathBuf, u64, std::time::SystemTime)> {
+    let mut found = Vec::new();
+    let mut folders = vec![store.to_path_buf()];
+    while let Some(folder) = folders.pop() {
+        for entry in std::fs::read_dir(&folder).unwrap() {
+            let path = entry.unwrap().path();
+            let meta = std::fs::symlink_metadata(&path).unwrap();
+            if meta.is_dir() {
+                folders.push(path.clone());
+            }
+            found.push((path, meta.len(), meta.modified().unwrap()));
+        }
+    }
+    found.sort();
+    found
+}
+
+#[test]
+fn a_dry_run_writes_nothing_in_a_store_either() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let file = beads_file(&a, EXPORT);
+    a.bead(["init", "--import", &file, "--offline"]);
+    // without its projection, a read would make it again and keep it: a dry run must not
+    let store = a.store();
+    for name in ["projection", "projection-texts"] {
+        let _ = std::fs::remove_file(store.join(name));
+    }
+    let before = files(&store);
+    let more = format!("{EXPORT}{{\"id\":\"ex-4\",\"title\":\"four\"}}\n");
+    let file = beads_file(&a, &more);
+    answer(&a, &["import", &file, "--dry-run"]);
+    answer(&a, &["init", "--import", &file, "--dry-run"]);
+    assert_eq!(files(&store), before);
 }
 
 #[test]

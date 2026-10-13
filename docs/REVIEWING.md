@@ -448,14 +448,16 @@ These were decided deliberately. Report problems *with* them, not their existenc
   what git sends skips the shape under those versions, saying so.
 - `--dry-run` of `init --import FILE` and of `import FILE` (roll-dih8.26) says what the import
   would do and writes nothing: it plans with the import's own steps (`read_records`, then
-  `plan_import`) against the tracker this checkout has here, an empty one for `init`, never
-  starts a store and never asks the remote (a tracker the remote publishes would be joined, and
+  `plan_import`) against the tracker this checkout has here, an empty one for `init`, read by
+  replaying its journal (a view would keep the projection it makes), never starts a store and
+  never asks the remote (a tracker the remote publishes would be joined, and
   only what it lacks imported: the answer says so). It exits 0 whatever its verdict, which
   `importable` gives, and lists every problem the import would be refused for, where the import
   stops at the first (`import::dry_run::problems`, empty exactly when the import goes through).
   In a git checkout it names each branch, local or remote-tracking, with commits touching
-  `.beads/issues.jsonl` that HEAD does not have (`rev-list --count HEAD..REF -- FILE`, one git a
-  branch), and each other worktree with changes to that file not committed: Beads keeps its
+  `.beads/issues.jsonl` that HEAD does not have (`rev-list --count HEAD..REF -- :(top)FILE`, one
+  git a branch, the file at the top wherever bead runs), and each other worktree with changes to
+  that file not committed (`git --no-optional-locks status`, which never writes its index back): Beads keeps its
   tracker on every branch, and an import only adds issues, never another copy's newer edits. A
   name that is not UTF-8 is shown with `?` for each such byte.
 - An import that contains one invalid record or dependency fails whole; nothing is written. A

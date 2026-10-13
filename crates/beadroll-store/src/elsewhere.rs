@@ -26,6 +26,8 @@ pub struct Elsewhere {
 pub fn elsewhere(settings: &Settings, path: &str) -> Result<Elsewhere, Error> {
     let git = &settings.git;
     let mut found = Elsewhere::default();
+    // from the top of the checkout, wherever in it bead runs
+    let pathspec = format!(":(top){path}");
     if !git
         .git(["rev-parse", "--verify", "-q", "HEAD"])
         .run()?
@@ -53,7 +55,7 @@ pub fn elsewhere(settings: &Settings, path: &str) -> Result<Elsewhere, Error> {
                 OsStr::new("--count"),
                 OsStr::from_bytes(&range),
                 OsStr::new("--"),
-                OsStr::new(path),
+                OsStr::new(&pathspec),
             ])
             .run()?;
         let count = std::str::from_utf8(crate::strip_ascii(&counted.stdout))
@@ -73,8 +75,10 @@ pub fn elsewhere(settings: &Settings, path: &str) -> Result<Elsewhere, Error> {
         if tree == top {
             continue;
         }
+        // read only: without optional locks, status never writes the refreshed index back
         let status = git
             .git([
+                OsStr::new("--no-optional-locks"),
                 OsStr::new("-C"),
                 OsStr::from_bytes(tree),
                 OsStr::new("status"),
