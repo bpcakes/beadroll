@@ -23,12 +23,10 @@ jobs:
       GIT_VERSION: "2.40.4"
       # kernel.org's sha256sums.asc for git-2.40.4.tar.xz
       GIT_SHA256: 8016dfeb9ba598a2e591270092b642ac70e65660606905277ea8e4c309b65d18
-      # Two tests fail under git 2.40 for reasons filed, not bead's: G26's SHA-256 project cannot
-      # even be pushed by git (roll-k2wy.21), and V1 reads a message older git words differently
-      # (roll-k2wy.17). Every other test runs.
+      # One test fails under git 2.40 for a reason filed, not bead's: G26's SHA-256 project cannot
+      # even be pushed by git (roll-k2wy.21). Every other test runs.
       KNOWN_ON_OLD_GIT: >-
         test(=hardening::g26::g26_object_format::sha256_project_syncs)
-        | test(=hardening::v1::v1_push_side_translation::git_keeps_the_rejection_tokens_bead_reads_untranslated)
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6

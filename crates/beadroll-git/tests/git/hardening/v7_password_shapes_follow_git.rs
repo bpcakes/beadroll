@@ -188,7 +188,8 @@ fn git_confirmed_password_shapes_are_dropped() {
 }
 
 /// Against a local 401 server recording Authorization, git sends the secret of each shape; with
-/// the URL without_password returns, git sends no secret (and no user either over http).
+/// the URL without_password returns, git sends no secret (and no user either over http). A shape
+/// this git sends no secret for is not one the check applies to, and is skipped, saying so.
 #[test]
 fn http_secrets_git_sends_are_the_ones_bead_drops() {
     let (_dir, root) = scratch();
@@ -206,7 +207,17 @@ fn http_secrets_git_sends_are_the_ones_bead_drops() {
         ls_remote(&root, &url, &[]);
         let sent: Vec<String> = seen.lock().unwrap().iter().map(|h| basic(h)).collect();
         if sent.is_empty() {
-            continue; // this git never contacted the server (git 2.43 rejects an upper-case scheme)
+            // git looks for a remote helper named after the scheme as written: git-remote-HTTP
+            // exists only where the file system ignores case, as macOS's does
+            eprintln!("skipped {url}: this git has no remote helper for the scheme");
+            continue;
+        }
+        // git 2.46 to 2.48 send empty credentials, never the password, when the user is empty:
+        // git 610cbc1dfb ("http: allow authenticating proactively") broke it, 3306edb380 in 2.49
+        // mended it
+        if template.contains("://:") && sent.iter().all(|auth| auth.is_empty() || auth == ":") {
+            eprintln!("skipped {url}: this git sends no password with an empty user");
+            continue;
         }
         assert!(
             sent.iter().any(|auth| auth.contains(secret)),

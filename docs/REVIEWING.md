@@ -372,6 +372,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   quietly.
 - Passwords in remote URLs are dropped, never stored or used; the store is private by its own
   file modes (0700/0600), files written into the checkout follow the caller's umask.
+  git 2.46 to 2.48 send empty credentials instead of the password of a URL whose user is empty
+  (`http://:TOKEN@host`; mended in 2.49): bead drops that password all the same, and the test of
+  what git sends skips the shape under those versions, saying so.
 - An import that contains one invalid record or dependency fails whole; nothing is written. A
   status bead does not set itself (`pinned`, a custom one) is kept verbatim, as Beads tools keep
   it; such an issue is neither ready nor done.
