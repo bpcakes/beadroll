@@ -1,0 +1,245 @@
+//! What a projection derives once a batch has applied (roll-lqjj.17): a projection extended one
+//! event at a time keeps each issue's labels and the parent-child index as replay of everything so
+//! far leaves them, though it finishes only what the batch can have changed. A close changes
+//! neither, which is what a bulk close relies on; a label operation changes the labels of the
+//! issue it names; a dependency written, or a create that gives an import that waited for its key
+//! an edge, changes the index.
+
+use crate::id::EventId;
+use crate::json::{Object, Value};
+use crate::replay::replay;
+use crate::text::str_of;
+
+use super::super::{Extended, Projection, Record, project};
+use super::hostile::{HERE, event, id, journal, record};
+use super::same;
+
+/// `rest` applied to a projection of `base` one event at a time, as a command that writes one
+/// event per issue and reads the state between them does: each time, what the projection derives
+/// is what replay of everything applied so far derives.
+fn one_at_a_time(base: &[Record], rest: &[Record]) {
+    let mut projection = project(journal(base)).unwrap();
+    let mut held: Vec<Record> = base.to_vec();
+    for (n, next) in rest.iter().enumerate() {
+        held.push(next.clone());
+        projection = match projection.extend(vec![next.clone()]).unwrap() {
+            Extended::Applied(extended) => *extended,
+            Extended::Replay => panic!("event {} is one a projection applies", n + 1),
+        };
+        let full = replay(journal(&held)).unwrap();
+        assert!(
+            same(projection.state(), &full),
+            "after event {}: {:?} against {:?}",
+            n + 1,
+            projection.state().issues().collect::<Vec<_>>(),
+            full.issues().collect::<Vec<_>>(),
+        );
+    }
+}
+
+/// A create of the issue numbered `n` under `key`, with `labels` and the imported dependencies
+/// `dangling` on keys named as text.
+fn creating(key: &str, labels: &[&str], dangling: &[(&str, &str)]) -> Object {
+    let mut fields = Object::new();
+    fields.insert("title".into(), Value::from(key));
+    let mut data = Object::new();
+    data.insert("key".into(), Value::from(key));
+    data.insert("fields".into(), Value::from(fields));
+    if !labels.is_empty() {
+        let labels = labels.iter().map(|label| Value::from(*label)).collect();
+        data.insert("labels".into(), Value::Array(labels));
+    }
+    if !dangling.is_empty() {
+        let deps = (dangling.iter())
+            .map(|(to, kind)| {
+                let mut dep = Object::new();
+                dep.insert("depends_on_id".into(), Value::from(*to));
+                dep.insert("type".into(), Value::from(*kind));
+                Value::from(dep)
+            })
+            .collect();
+        data.insert("dangling".into(), Value::Array(deps));
+        data.insert("imported".into(), Value::from(true));
+    }
+    data
+}
+
+/// The labels `labels` name.
+fn labels(labels: &[&str]) -> Object {
+    let mut data = Object::new();
+    let labels = labels.iter().map(|label| Value::from(*label)).collect();
+    data.insert("labels".into(), Value::Array(labels));
+    data
+}
+
+/// A dependency on the issue numbered `to`, of `kind`.
+fn edge(to: u128, kind: &str) -> Object {
+    let mut data = Object::new();
+    data.insert("to".into(), Value::from(id(to)));
+    data.insert("type".into(), Value::from(kind));
+    data
+}
+
+/// An `init` and two issues, each with a label: the frontier is event 3.
+fn base() -> Vec<Record> {
+    vec![
+        record(event(1, HERE, &[], "init", 1, Object::new()), HERE, true),
+        record(
+            event(2, HERE, &[1], "create", 2, creating("pr-a1", &["ui"], &[])),
+            HERE,
+            true,
+        ),
+        record(
+            event(3, HERE, &[2], "create", 3, creating("pr-b2", &["ui"], &[])),
+            HERE,
+            true,
+        ),
+    ]
+}
+
+#[test]
+fn a_close_one_event_at_a_time_leaves_the_labels_and_the_index_as_replay_does() {
+    let base = base();
+    let closes = vec![
+        record(event(4, HERE, &[3], "close", 2, Object::new()), HERE, true),
+        record(event(5, HERE, &[4], "close", 3, Object::new()), HERE, true),
+        record(event(6, HERE, &[5], "reopen", 2, Object::new()), HERE, true),
+        record(event(7, HERE, &[6], "delete", 3, Object::new()), HERE, true),
+    ];
+    one_at_a_time(&base, &closes);
+}
+
+#[test]
+fn every_label_operation_one_event_at_a_time_leaves_the_labels_as_replay_does() {
+    let base = base();
+    let written = vec![
+        // added, taken away, and set, which takes away every label the writer saw
+        record(
+            event(4, HERE, &[3], "label_add", 2, labels(&["db", "ops"])),
+            HERE,
+            true,
+        ),
+        record(
+            event(5, HERE, &[4], "label_remove", 2, labels(&["ui"])),
+            HERE,
+            true,
+        ),
+        record(
+            event(6, HERE, &[5], "label_set", 2, labels(&["only"])),
+            HERE,
+            true,
+        ),
+        record(
+            event(7, HERE, &[6], "label_set", 3, labels(&[])),
+            HERE,
+            true,
+        ),
+        // a create carries the labels an import brought
+        record(
+            event(8, HERE, &[7], "create", 8, creating("pr-c3", &["new"], &[])),
+            HERE,
+            true,
+        ),
+    ];
+    one_at_a_time(&base, &written);
+}
+
+#[test]
+fn every_dependency_written_one_event_at_a_time_leaves_the_index_as_replay_does() {
+    let base = base();
+    let written = vec![
+        record(
+            event(4, HERE, &[3], "dep_add", 3, edge(2, "parent-child")),
+            HERE,
+            true,
+        ),
+        record(
+            event(5, HERE, &[4], "dep_add", 3, edge(2, "blocks")),
+            HERE,
+            true,
+        ),
+        // taken back by target and type, which leaves the edge with no addition behind it
+        record(
+            event(6, HERE, &[5], "dep_remove", 3, edge(2, "parent-child")),
+            HERE,
+            true,
+        ),
+        // a create whose imported dependency is on a key that has its issue already
+        record(
+            event(
+                7,
+                HERE,
+                &[6],
+                "create",
+                7,
+                creating("pr-c3", &[], &[("pr-a1", "parent-child")]),
+            ),
+            HERE,
+            true,
+        ),
+    ];
+    one_at_a_time(&base, &written);
+}
+
+#[test]
+fn a_create_that_gives_a_waiting_import_its_edge_leaves_the_index_as_replay_does() {
+    // The import named a key no issue had, so the edge is the created issue's, given by a create
+    // that is not about it: the whole index is built again whenever an edge can have moved.
+    let mut base = base();
+    base.push(record(
+        event(
+            4,
+            HERE,
+            &[3],
+            "create",
+            4,
+            creating("pr-c3", &[], &[("pr-d4", "parent-child")]),
+        ),
+        HERE,
+        true,
+    ));
+    let waiting = project(journal(&base)).unwrap();
+    let waits = EventId::parse(&id(4)).unwrap();
+    assert!(
+        waiting.state().issue(waits).unwrap().deps().is_empty(),
+        "no issue has the key the import names yet"
+    );
+    let written = vec![record(
+        event(5, HERE, &[4], "create", 5, creating("pr-d4", &[], &[])),
+        HERE,
+        true,
+    )];
+    one_at_a_time(&base, &written);
+}
+
+/// A projection of `base` with `rest` applied one event at a time.
+fn extended(base: &[Record], rest: Vec<Record>) -> Projection {
+    let mut projection = project(journal(base)).unwrap();
+    for next in rest {
+        projection = match projection.extend(vec![next]).unwrap() {
+            Extended::Applied(extended) => *extended,
+            Extended::Replay => panic!("a projection applies these"),
+        };
+    }
+    projection
+}
+
+#[test]
+fn the_ids_a_projection_holds_stay_ascending_however_the_events_sort() {
+    let base = base();
+    // The second event comes before the first by id, as two writes of one millisecond can.
+    let out_of_order = vec![
+        record(event(9, HERE, &[3], "close", 2, Object::new()), HERE, true),
+        record(event(4, HERE, &[9], "close", 3, Object::new()), HERE, true),
+    ];
+    let projection = extended(&base, out_of_order.clone());
+    let mut every: Vec<String> = (base.iter().chain(&out_of_order))
+        .filter_map(|r| r.value.get("id").map(str_of))
+        .collect();
+    every.sort();
+    let held: Vec<String> = (projection.ids.iter()).map(EventId::to_string).collect();
+    assert_eq!(held, every, "every id once, ascending");
+    let mut held = base;
+    held.extend(out_of_order);
+    assert!(same(projection.state(), &replay(journal(&held)).unwrap()));
+}

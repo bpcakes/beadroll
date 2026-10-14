@@ -229,6 +229,32 @@ These were decided deliberately. Report problems *with* them, not their existenc
   such events in without replaying would mean reproducing what replay settles by the order it
   applies events in (the key two concurrent creates minted, the order of comments, claim history
   and issue order), the question a checkpoint's continuation faces too (roll-lqjj.4).
+- A projection extended finishes only what the batch changed (roll-lqjj.17, Z02). Replay finishes a
+  whole journal by deriving each issue's labels from the tags that remain and building the
+  parent-child index from every issue's edges; a projection that redid all of that for every batch
+  cost the whole state each time, so a command that writes one event per issue and reads the state
+  between them (`close`, `reopen` and `delete`, over ids or a subtree) cost the state once per
+  issue. It now relabels the issues whose operations change labels (the three label operations, and
+  a create, which carries an import's), and builds the index again only when an operation changes a
+  dependency edge (`dep_add`, `dep_remove`, and a create, which brings an import's edges and gives
+  the imports that waited for its key theirs). Each is listed one by one, so that an operation
+  added says which it is. The new ids are taken into the ascending ids where they belong, appended
+  where every one comes after them, instead of sorting them all again; two ids minted in one
+  millisecond sort by their random bits, so the merge runs too, and it costs the ids after the
+  first new one rather than every id the journal holds. The state, the order of everything derived
+  and format 1 are unchanged, which the differential test against replay keeps.
+  One batch that changes an edge still has the whole index built again, proportional to the state
+  and not to the batch: that is one pass a command, as no command writes many dependency events
+  while reading the state between them (an import plans and writes its batch whole), and taking an
+  edge out of the index without rebuilding it would mean keeping each issue's parents beside it to
+  know which bucket to leave. `cargo xtask timing --extend 8000` measures it on 8,000 issues, each
+  with two labels and a tenth of them a parent of nine: 8,000 closes one event at a time took
+  17.97 s before and 0.048 s after, against the same closes in one batch, 0.039 s before and
+  0.037 s after; 8,000 label additions one at a time, 18.68 s before and 0.050 s after; 8,000
+  dependency additions one at a time, 18.59 s before and 5.33 s after, which is the index built
+  again 8,000 times and what the closes no longer pay. The fastest of three runs each, 2026-10-14,
+  Rust 1.99.0, 16 cores. End to end, `bead close` naming all 8,000 of those issues went from
+  19.8 s to 0.7 s, the best of three runs each.
 - No history boundary (roll-lqjj.3, step 4 of epic roll-lqjj; the maintainer's decision of
   2026-10-12, on the evidence in the port plan's Appendix A, "roll-lqjj.3", which git keeps, §1): a
   machine's work merges by itself however old it is, as every merge has so far. The alternatives
