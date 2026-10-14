@@ -40,6 +40,15 @@ The claim was the one two caches relied on.
 |---|---|---|---|---|---|
 | Y01 | Medium | The journal memo and the projection trusted a file identity that a same-length rewrite in place keeps when it falls in one timestamp tick, so a stale blob could be published and a stale state read; the shared attempt listing trusted a directory's identity the same way, so an attempt file this process had just written could be left out of a publication tree; the tests that said otherwise failed whenever two writes shared a tick | fixed | A cache vouches for a file only once it was settled when the cache was written (`FileKey::settled_before`): the memo forgets the rest, and the projection reads each against the sum kept of its bytes, which attempt files now carry too. Writing an attempt forgets the listed names (`Workspace::forget_claims`), as the merge's own writes do. The tests say what bead guarantees, and force the times they depend on | `beadroll-store`: `memo::tests::a_memo_says_nothing_of_a_file_it_was_not_written_after`, `projection::tests::an_identity_of_the_projections_own_tick_is_read_against_its_sum`, `projection::tests::an_attempt_written_here_is_listed_whatever_the_times_say`, `listing::tests::in_place_rewrites_reuse_names_and_a_file_key_never_vouches_for_bytes`, `listing::tests::names_are_shared_until_added_removed_or_replaced`; `beadroll-sync`: `memo::a_memo_written_before_a_file_says_nothing_of_it` |
 
+## Review 13: Claude and Codex review of the import lookups and the cache rule (ids M)
+
+Reported inline, no file: a review of the branch that closed Z01 and Y01, before it landed.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| M01 | Low | `Memo::load` took the memo's bytes and the memo's own identity from the path in two looks, so a memo a locked writer renamed over it in between would pair the bytes read with a later moment and vouch for a file that moment never settled: stale lines, and a wrong count of what is unpublished | fixed | Both come from one open file (`read_keyed`), whatever replaces it at that path after | `beadroll-store`: nothing reaches the race now, there being no window between the two; `memo::tests::a_memo_says_nothing_of_a_file_it_was_not_written_after` and `beadroll-sync`: `memo::a_memo_written_before_a_file_says_nothing_of_it` keep the rule it would have broken |
+| M02 | Low | An attempt file's sum was compared only where its identity had not moved, which no test could make certain: `an_attempt_rewritten_in_place_invalidates_the_projection` takes the changed-identity path whenever the clock moved, so dropping the comparison would have passed | fixed | `projection::tests::an_attempt_of_the_projections_own_tick_is_read_against_its_sum` calls `resummed` with identities that stand still: the sum kept, a sum that differs, none kept, and the file listed as another | `beadroll-store`: that test, which fails when the comparison is removed |
+
 ## Review 12: Claude and Codex review of the Rust naming cleanup (ids D)
 
 Reports: `reviews/2026-10-12-12-claude-rust-names.md` and

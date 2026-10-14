@@ -631,7 +631,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   in the tick of the files it has just written. What a cache says of such a file is therefore not
   trusted (git calls one racily clean): the memo forgets it and hashes or counts it again, and the
   projection reads it against the sum kept of its bytes, which attempt files carry as segments
-  did, and replays the journal when nothing summed can answer. The cost is the files one command
+  did, and replays the journal when nothing summed can answer. Each cache takes the bytes it
+  holds and the identity it compares them against from one open file, since a writer under the
+  lock can rename a newer cache over it between two looks at the path (M01). The cost is the files one command
   wrote, read once more by the next, and nothing else: `cargo xtask timing --read 20000` moved
   within its own noise (a `list` 0.030 s and a local write 0.069 s, against 0.028-0.044 s and
   0.055-0.074 s before, on 2026-10-13, Rust 1.99.0, 16 cores). What a publish hashes stays

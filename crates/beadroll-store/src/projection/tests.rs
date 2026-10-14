@@ -12,13 +12,14 @@ use beadroll_core::json::{Object, Value};
 use beadroll_core::replay::replay;
 use beadroll_core::state::{Issue, State};
 
+use crate::fs::content_sum;
 use crate::journal::{append_events, load_journal, view, write_attempt_file};
 use crate::memo::FileKey;
 use crate::settings::Settings;
 use crate::workspace::Workspace;
 
 use super::file::{Held, Made};
-use super::{file, grown, projection, projection_path, read_texts, same};
+use super::{file, grown, kept, projection, projection_path, read_texts, resummed, same};
 
 const HERE: &str = "0000aa01";
 
@@ -230,6 +231,53 @@ fn an_identity_of_the_projections_own_tick_is_read_against_its_sum() {
         .collect();
     assert_eq!(read, [(path.as_str(), 40, sum)], "read whole, against it");
     assert!(grown(&made(None), &now, 100).is_none(), "nothing summed");
+}
+
+/// An attempt file of the projection's own tick is the one it was made from only when its bytes
+/// sum to what was kept of them: its identity cannot say, since a rewrite in place that keeps its
+/// length keeps every part of it. Whether the identity moved is for the filesystem's clock to
+/// decide, so the sum is checked here, where it cannot be skipped.
+#[test]
+fn an_attempt_of_the_projections_own_tick_is_read_against_its_sum() {
+    let home = tempfile::tempdir().unwrap();
+    let ws = store(home.path(), Some("this build"));
+    let path = ws
+        .events_dir
+        .join(HERE)
+        .join("claims")
+        .join(format!("{}.json", id(5)));
+    write_attempt_file(&ws, &path, &[title(5, &[4], 2, "before")]).unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    let now = kept(&ws, &path, FileKey::of(&path), false, None).unwrap();
+    let was = |sum| Held { sum, ..now.clone() };
+    let summed = was(Some(content_sum(&bytes)));
+    // the bytes it was made from: the file stands, and what is kept of it keeps that sum
+    assert_eq!(resummed(&ws, &path, &summed, &now), Some(summed.clone()));
+    // other bytes than the ones summed, and nothing summed of it at all
+    assert_eq!(resummed(&ws, &path, &was(Some([0; 16])), &now), None);
+    assert_eq!(resummed(&ws, &path, &was(None), &now), None);
+    // another file at that path than the one listed
+    let listed = Held {
+        key: now.key.up_to(now.key.len() + 1),
+        ..now.clone()
+    };
+    assert_eq!(resummed(&ws, &path, &summed, &listed), None);
+    // the bytes changed, its length kept: no sum of them is the one kept
+    let changed = String::from_utf8(bytes)
+        .unwrap()
+        .replace("before", "AFTER!");
+    std::fs::write(&path, &changed).unwrap();
+    assert_eq!(resummed(&ws, &path, &summed, &now), None);
+    let now = kept(&ws, &path, FileKey::of(&path), false, None).unwrap();
+    let after = was(Some(content_sum(changed.as_bytes())));
+    assert_eq!(
+        resummed(&ws, &path, &after, &now),
+        Some(Held {
+            sum: after.sum,
+            ..now
+        }),
+        "the file it is now, against the sum of its bytes now"
+    );
 }
 
 /// A cached claims listing says nothing about bytes. Keep the directory unchanged while an

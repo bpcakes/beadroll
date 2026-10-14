@@ -20,7 +20,7 @@ use std::os::unix::fs::MetadataExt as _;
 use std::path::{Path, PathBuf};
 
 use crate::error::Error;
-use crate::fs::{read, write_atomic};
+use crate::fs::{read, read_keyed, write_atomic};
 use crate::workspace::Workspace;
 
 /// The memo's first line: what it is, and the version of its layout. Each file follows as its path
@@ -146,14 +146,14 @@ pub struct Memo {
 
 impl Memo {
     /// The memo of `ws` as it is on disk, of the files that were settled when it was written;
-    /// none when it is missing, cannot be read whole, or its own identity cannot be had.
+    /// none when it is missing, cannot be read whole, or its own identity cannot be had. Its
+    /// bytes and its own identity come from one open file, since a writer under the lock can
+    /// rename a newer memo over this one between two looks at the path: the moment the one we
+    /// read was written is the only one its files may be settled before.
     pub fn load(ws: &Workspace) -> Memo {
-        let path = memo_path(ws);
-        let mut files = std::fs::read(&path)
-            .ok()
-            .and_then(|data| parse(&data))
-            .unwrap_or_default();
-        settled(&mut files, FileKey::of(&path).map(|memo| memo.written()));
+        let (data, key) = read_keyed(&memo_path(ws)).unwrap_or_default();
+        let mut files = parse(&data).unwrap_or_default();
+        settled(&mut files, key.map(|memo| memo.written()));
         Memo {
             files,
             changed: false,
