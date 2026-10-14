@@ -4,9 +4,10 @@ beadroll is a Beads-compatible issue tracker for coding agents working across gi
 machines. The implementation is a Cargo workspace (Rust 1.99, pinned by `rust-toolchain.toml`):
 `cargo build --package beadroll` builds the working copy as `target/debug/bead`, and `cargo install
 --locked --force --path crates/beadroll --root ~/.local`, run from the checkout's root, installs it
-as the `bead` command. `README.md` says what it does and why; `CONTRIBUTING.md` has the rules
-every crate keeps. `docs/REVIEWING.md` is the map of the design, format 1 byte for byte, the
-decisions that are not findings, and the rules reviewers work under. `docs/FINDINGS.md` is the
+as the `bead` command. `README.md` says what it does and why, and `docs/GUARANTEES.md` every
+guarantee it keeps; `CONTRIBUTING.md` has the rules every crate keeps. `docs/REVIEWING.md` is
+the map of the design, format 1 byte for byte, the decisions that are not findings, and the
+rules reviewers work under. `docs/FINDINGS.md` is the
 ledger of every review finding and how it was closed; `docs/reviews/` holds the reports verbatim.
 
 ## Layout
@@ -73,8 +74,9 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
   point for the test to act (`hardening/gate.rs`); such a test's machine is `rust_only`, this
   build's binary. In-crate tests pass the failpoint registry in `Settings`, never through the
   process environment.
-- Record deliberate decisions in `docs/REVIEWING.md` §2 and user-facing behaviour in `README.md`; a
-  review finding you close gets its row in `docs/FINDINGS.md`. Format 1 is frozen: additions only.
+- Record deliberate decisions in `docs/REVIEWING.md` §2, every guarantee in `docs/GUARANTEES.md`,
+  and what a new user reads first in `README.md`; a review finding you close gets its row in
+  `docs/FINDINGS.md`. Format 1 is frozen: additions only.
 - Run the fast baseline before committing, the stress suite when the sync protocol changed. The
   commit message says what changed in behaviour, in prose.
 - After a push, a machine upgrades by rerunning its install (`cargo install --locked --force

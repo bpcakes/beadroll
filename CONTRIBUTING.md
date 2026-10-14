@@ -42,9 +42,43 @@ push test data anywhere but a throwaway remote of your own.
   goldens in `crates/beadroll/tests/golden/` are what Python's bead printed.
 - `xtask/` — `cargo xtask check` (the baseline) and `cargo xtask timing`.
 - `infra/` — stdlib-Python drivers against real machines, with their tests.
-- `README.md` is what the tool does; `docs/REVIEWING.md` is the map of the design
-  and the list of deliberate decisions; `docs/FINDINGS.md` is the ledger of every
-  review finding and how it was closed.
+- `README.md` is what the tool does, and `docs/GUARANTEES.md` every guarantee it
+  keeps; `docs/REVIEWING.md` is the map of the design and the list of deliberate
+  decisions; `docs/FINDINGS.md` is the ledger of every review finding and how it
+  was closed.
+
+## The tests
+
+The tests are the Cargo workspace's, one integration-test binary per crate, organised by subject
+as the Python suite they were ported from was, test by test: `replay` (causality, registers,
+quarantine, validation, cycles; in beadroll-core, in-process and fast), `protocol` (claims,
+attempts, fences, lost acknowledgements, sync races), `storage` (segments, torn tails, identity,
+readers against writers), `commands` (every verb end to end, identity detection, branch
+tracking), `compat` (Beads import/export, real exports, `br`/`bv`), `hardening` (the base under
+the protocol: git environment and remotes, URLs and credentials, store files and modes, output
+streams, imports), `stress` (randomised models, run by `--stress`), and `sweep` (the ownership
+protocol enumerated: three machines, nine operations at seven fault boundaries, every ordered
+pair of follow-ups, each schedule showing that its fault fired; a thirteen-schedule slice by
+default, including retries of interrupted owner closes and deletes and a sync stopped at its
+push; `BEAD_SWEEP=full` for all 660, with no failure exemptions). `golden` compares
+every help page and the reading commands' output with Python's, captured before the cutover, and
+`parity` holds what the mixed Python and Rust fleets checked, among it receipts byte for byte as
+Python wrote them. `crates/beadroll-test-support` holds the sandbox: every test builds its own
+repository, bare remotes and machine homes in a temporary directory, each machine with a scratch
+`BEAD_HOME`, so the default store is never touched.
+
+Every test that runs bead runs the one Cargo builds, unless `BEAD_UNDER_TEST` names another by its
+absolute path. Until 0.2.0 bead was a Python package, whose suite the Rust tests port; the
+port's tests passed against both, and the last Python is tagged `python-0.1.0`.
+The plan the port followed, `docs/RUST-PORT.md`, is in git history (`git show
+5a6ea8d:docs/RUST-PORT.md`), its measurements among it.
+
+`infra/` holds the maintainer's harness against real machines and a throwaway GitHub
+repository, stdlib Python that drives any `bead`:
+`drive.py` (cross-machine scenarios over ssh), `soak.py` (random agent-like traffic),
+`roundtrip.py` (import/export over real Beads exports), `selected.py` (which bead each runs, and
+the record of it before any test data is written), their tests beside them, and the synthetic
+`seed.jsonl`.
 
 ## Making a change
 
@@ -60,9 +94,10 @@ push test data anywhere but a throwaway remote of your own.
    at; nothing is ever half-written. Keep the rules below.
 3. Format 1 is frozen: a change to what events or the published manifest
    contain must be additive, so that an older bead sets the new thing aside
-   rather than misreads it (see *Format and upgrades* in the README).
-4. A deliberate decision goes in `docs/REVIEWING.md` §2; user-facing behaviour in
-   `README.md`. Keep the two agent texts (`bead prime`, `bead onboard`) true:
+   rather than misreads it (*Format and upgrades* in `docs/GUARANTEES.md`).
+4. A deliberate decision goes in `docs/REVIEWING.md` §2; a guarantee in
+   `docs/GUARANTEES.md`; what a new user reads first in `README.md`. Keep the
+   two agent texts (`bead prime`, `bead onboard`) true:
    `AGENTS.md` carries the onboard block verbatim and a test checks that.
 5. Run `./check.sh` before opening a pull request; CI runs the tests on Linux
    and macOS, with the lints of `.github/workflows/rust.yml` (`AGENTS.md` lists

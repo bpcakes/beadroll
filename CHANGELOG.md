@@ -2,7 +2,7 @@
 
 All notable changes to beadroll. The format follows [Keep a Changelog](https://keepachangelog.com/);
 versions follow [Semantic Versioning](https://semver.org/). The on-disk and published format is
-versioned separately (format 1, frozen; see *Format and upgrades* in the README).
+versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARANTEES.md`).
 
 ## [Unreleased]
 
@@ -19,6 +19,14 @@ versioned separately (format 1, frozen; see *Format and upgrades* in the README)
   the same lookup. A re-import indexes a record's listed dependencies only when the issue still
   holds unresolved ones, and an import no longer copies each record to read it.
   `cargo xtask timing --plan N` measures these calls.
+
+- The README is the front door (roll-dih8.27): the problem, what beadroll does differently from
+  Beads, a session with its output, what agents need, how it works, and the limits a user meets
+  first. Every guarantee it held moved verbatim to `docs/GUARANTEES.md` (the claims protocol at
+  each boundary, what the journals tolerate, the format, the command line, configuration in full,
+  moving a repository, every limit with its measurement); the design decisions that changed while
+  building to `docs/REVIEWING.md` §2; the tests' description to `CONTRIBUTING.md`. Nothing in
+  bead changes.
 
 - Commands reuse accepted-attempt directory listings within each locked phase while retaining
   every file's metadata check (roll-lqjj.12). Publishing reuses unchanged claims subtrees held by

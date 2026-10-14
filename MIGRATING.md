@@ -13,7 +13,7 @@ to do, what to check, and the two things that are not obvious.
   identity from that URL and publishes to `refs/beads/journal` there; no branch
   is touched and nothing is committed. That is the path to take. Only if you
   cannot push to origin, or want the tracker elsewhere, use a tracked
-  `.beadroll.json` (*Configuration* in the README: `bead init --tracked
+  `.beadroll.json` (*Configuration* in `docs/GUARANTEES.md`: `bead init --tracked
   --remote …`), and commit it on the default branch in the same change.
 - A current `.beads/issues.jsonl`. If your tracker lives in `br`'s or `bd`'s
   database only, or the database has changes the file lacks, export it first
