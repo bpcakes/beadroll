@@ -322,9 +322,11 @@ it, and the file is committed again.
   changed, each issue's once however many of them changed it, and takes its new
   event ids in wherever they sort among the ids held, so one `bead close`
   naming 8,000 issues of 8,000 takes 0.7 s rather than 19.8 s; a batch that
-  adds a dependency or takes one back still has the whole parent-child index
-  built again, which is one pass a command (roll-lqjj.17, V01 and V03;
-  `cargo xtask timing --extend N` measures the projection's part of it).
+  creates an issue, adds a dependency or takes one back still has the whole
+  parent-child index built again, since a create gives the imports that waited
+  for its key their edges, and that is one pass a command (roll-lqjj.17, V01,
+  V03 and V05; `cargo xtask timing --extend N` measures the projection's part
+  of it).
   A real tracker's state is mostly
   its texts, which only the commands that print them read: on three of the
   largest public Beads trackers (21–47 MB, up to 13,394 issues) a `list` takes
