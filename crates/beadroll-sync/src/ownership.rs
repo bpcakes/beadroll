@@ -286,7 +286,7 @@ fn publish_attempt(
         true,
         failpoints,
     )?;
-    write_attempt_file(&folder.join(format!("{id}.json")), events, failpoints)?;
+    write_attempt_file(ws, &folder.join(format!("{id}.json")), events)?;
     failpoints.hit("ownership.before-publish");
     failpoints.hit("claim.before-push");
     let outcome = match link.publish(tip, "claim", events, false) {

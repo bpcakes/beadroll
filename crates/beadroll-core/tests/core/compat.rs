@@ -1,4 +1,7 @@
-//! `test_compat`'s test of the core: comment ids in the Beads export.
+//! `test_compat`'s tests of the core: comment ids in the Beads export, what an import plans for
+//! a file, and what its dry run says about one.
+
+mod import_plan;
 
 mod compat_audit_comment_ids {
     use beadroll_core::journal::Journal;

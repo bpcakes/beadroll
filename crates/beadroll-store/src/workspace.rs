@@ -98,6 +98,13 @@ impl Workspace {
         }
     }
 
+    /// Forgets the attempt names listed in this phase: a claims directory that gains a file
+    /// within one tick of the clock its times come from keeps its identity (Y01), so a write of
+    /// an attempt has every directory listed again rather than trusting what the times say.
+    pub fn forget_claims(&self) {
+        *self.claims.borrow_mut() = Claims::default();
+    }
+
     /// Whether this process appended events the remote does not have yet.
     pub fn wrote(&self) -> bool {
         self.wrote.get()

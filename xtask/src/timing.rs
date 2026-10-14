@@ -5,8 +5,9 @@
 //! N`, a publishing `bead sync` on a store of N events ([`sync`]); with `--read N`, the reading
 //! commands there ([`read`]); with `--merge N`, a sync that merges what another machine wrote
 //! after it ([`merge`]); with `--contend M`, M machines writing at once ([`contend`]); with
-//! `--import N`, importing a generated export of N records ([`import`]). A timing never decides
-//! whether anything passes.
+//! `--import N`, importing a generated export of N records ([`import`]); with `--plan N`, the
+//! core calls an import of N records makes, on the dependency shape scanning the batch was worst
+//! for ([`plan`]). A timing never decides whether anything passes.
 
 mod contend;
 pub(crate) mod heap;
@@ -14,6 +15,7 @@ mod history;
 mod import;
 pub(crate) mod memory;
 mod merge;
+mod plan;
 mod read;
 mod replay;
 mod sync;
@@ -51,6 +53,8 @@ struct Options {
     contend: Option<usize>,
     /// Time importing a generated export of this many records instead of a command.
     import: Option<usize>,
+    /// Time the core calls an import of this many records makes instead of a command.
+    plan: Option<usize>,
     /// How many writes each `--contend` machine makes.
     writes: Option<usize>,
     /// How many milliseconds each fetch and push of `--contend` waits.
@@ -79,6 +83,7 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
         concurrent: false,
         contend: None,
         import: None,
+        plan: None,
         writes: None,
         latency: None,
         rotate: None,
@@ -105,6 +110,7 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
             "--import" => {
                 options.import = Some(number(&value("--import")?, "--import", "records")?)
             }
+            "--plan" => options.plan = Some(number(&value("--plan")?, "--plan", "records")?),
             "--contend" => {
                 options.contend = Some(number(&value("--contend")?, "--contend", "machines")?);
             }
@@ -142,18 +148,21 @@ fn check(options: &Options) -> Result<(), Failure> {
         options.merge,
         options.contend,
         options.import,
+        options.plan,
     ];
     let measured = modes.iter().flatten().count();
     if options.command.is_empty() && measured == 0 && options.load.is_none() {
         return Err(Failure::Usage(
-            "timing needs --replay N, --sync N, --read N, --merge N, --contend M, --import N, or \
-             a command after --"
+            "timing needs --replay N, --sync N, --read N, --merge N, --contend M, --import N, \
+             --plan N, or a command after --"
                 .into(),
         ));
     }
     if measured > 1 {
         return Err(Failure::Usage(
-            "one of --replay N, --sync N, --read N, --merge N, --contend M and --import N".into(),
+            "one of --replay N, --sync N, --read N, --merge N, --contend M, --import N and \
+             --plan N"
+                .into(),
         ));
     }
     if options.concurrent && options.merge.is_none() {
@@ -225,6 +234,8 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
         Some(contend::measure(machines, writes, latency, label)?)
     } else if let Some(records) = options.import {
         Some(import::measure(records, label)?)
+    } else if let Some(records) = options.plan {
+        Some(plan::measure(records, label)?)
     } else {
         None
     };

@@ -2,8 +2,10 @@
 
 Every finding from every review, in one place. The reports themselves are kept verbatim under
 `reviews/`; this file is the living record of what each finding became. A finding is **fixed**
-when the behaviour is changed and a test fails without the fix; **by design** when the behaviour
-is kept on purpose (with the reason); **open** otherwise.
+when the behaviour is changed and a test fails without the fix; **optimized** when the behaviour
+is kept byte for byte and only the work it takes is removed, so that the tests pass on both
+implementations and a release probe is the evidence; **by design** when the behaviour is kept on
+purpose (with the reason); **open** otherwise.
 
 The Tests column names Rust tests: the crate whose tests hold them, then each test's path in its
 test binary (`cargo nextest run -E 'test(/^PATH/)'` runs it, or a class's module of them). Each
@@ -17,6 +19,35 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
+
+## Algorithmic review (`roll-lqjj.14`, ids Z)
+
+The review's candidates and measurements are recorded on `roll-lqjj.14`. These are **optimized**
+findings: the tests name what the behaviour must stay, and the probe each row cites is the
+evidence that the work went away. Timing is never a test gate.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| Z01 | Medium | Import planning and dry-run validation scanned all new ids for each dependency; re-import scanned each listed dependency for each unresolved one | optimized | Index the batch's new keys by create number, in one function planning and the dry run share, and match unresolved dependencies against a set of listed `(key, type)` pairs, built only for a record that has any (roll-lqjj.15); output remains in record order | `beadroll-core`: `compat::import_plan` covers target resolution, metadata, dependency types, event order and diagnostic order; `cargo xtask timing --plan N` measures planning, dry-run validation and re-import (`xtask`: `timing::plan::tests`) |
+
+## Baseline failure found while closing Z01 (ids Y)
+
+Not reported by a review: a store test claimed that a rewrite in place always changes a file's
+identity, and failed whenever both writes fell in one tick of the clock an inode's times come from.
+The claim was the one two caches relied on.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| Y01 | Medium | The journal memo and the projection trusted a file identity that a same-length rewrite in place keeps when it falls in one timestamp tick, so a stale blob could be published and a stale state read; the shared attempt listing trusted a directory's identity the same way, so an attempt file this process had just written could be left out of a publication tree; the tests that said otherwise failed whenever two writes shared a tick | fixed | A cache vouches for a file only once it was settled when the cache was written (`FileKey::settled_before`): the memo forgets the rest, and the projection reads each against the sum kept of its bytes, which attempt files now carry too. Writing an attempt forgets the listed names (`Workspace::forget_claims`), as the merge's own writes do. The tests say what bead guarantees, and force the times they depend on | `beadroll-store`: `memo::tests::a_memo_says_nothing_of_a_file_it_was_not_written_after`, `projection::tests::an_identity_of_the_projections_own_tick_is_read_against_its_sum`, `projection::tests::an_attempt_written_here_is_listed_whatever_the_times_say`, `listing::tests::in_place_rewrites_reuse_names_and_a_file_key_never_vouches_for_bytes`, `listing::tests::names_are_shared_until_added_removed_or_replaced`; `beadroll-sync`: `memo::a_memo_written_before_a_file_says_nothing_of_it` |
+
+## Review 13: Claude and Codex review of the import lookups and the cache rule (ids M)
+
+Reported inline, no file: a review of the branch that closed Z01 and Y01, before it landed.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| M01 | Low | `Memo::load` took the memo's bytes and the memo's own identity from the path in two looks, so a memo a locked writer renamed over it in between would pair the bytes read with a later moment and vouch for a file that moment never settled: stale lines, and a wrong count of what is unpublished | fixed | Both come from one open file (`read_keyed`), whatever replaces it at that path after | `beadroll-store`: nothing reaches the race now, there being no window between the two; `memo::tests::a_memo_says_nothing_of_a_file_it_was_not_written_after` and `beadroll-sync`: `memo::a_memo_written_before_a_file_says_nothing_of_it` keep the rule it would have broken |
+| M02 | Low | An attempt file's sum was compared only where its identity had not moved, which no test could make certain: `an_attempt_rewritten_in_place_invalidates_the_projection` takes the changed-identity path whenever the clock moved, so dropping the comparison would have passed | fixed | `projection::tests::an_attempt_of_the_projections_own_tick_is_read_against_its_sum` calls `resummed` with identities that stand still: the sum kept, a sum that differs, none kept, and the file listed as another | `beadroll-store`: that test, which fails when the comparison is removed |
 
 ## Review 12: Claude and Codex review of the Rust naming cleanup (ids D)
 

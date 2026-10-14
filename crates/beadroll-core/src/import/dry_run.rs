@@ -7,7 +7,10 @@ use crate::json::{self, Value};
 use crate::state::State;
 use crate::text::{repr_str, strip};
 
-use super::{ImportError, check, create_data, create_problem, dependencies, fail, id_of, target};
+use super::{
+    ImportError, check, create_data, create_problem, created_keys, dependencies, fail, id_of,
+    resolves, target,
+};
 
 /// What an import of records (read by [`super::read_records`]) into a state would bring.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -34,7 +37,7 @@ pub fn preview(state: &State, records: &[Value]) -> Preview {
         records: records.len(),
         ..Preview::default()
     };
-    let mut waiting = HashSet::new();
+    let mut waiting: HashSet<&str> = HashSet::new();
     for record in records {
         if known.contains_key(id_of(record)) {
             preview.known += 1;
@@ -50,11 +53,8 @@ pub fn preview(state: &State, records: &[Value]) -> Preview {
         }
         for dep in dependencies(record) {
             let goal = target(dep);
-            if !known.contains_key(&goal)
-                && !ids.contains(goal.as_str())
-                && waiting.insert(goal.clone())
-            {
-                preview.waiting.push(goal);
+            if !known.contains_key(goal) && !ids.contains(goal) && waiting.insert(goal) {
+                preview.waiting.push(goal.to_owned());
             }
         }
     }
@@ -93,13 +93,14 @@ pub fn problems(state: &State, text: &str, path: &str) -> Vec<ImportError> {
         }
     }
     let known = state.keys();
-    let fresh: Vec<&Value> = (accepted.iter())
+    let fresh: Vec<&Value> = accepted
+        .iter()
         .map(|(_, record)| record)
         .filter(|record| !known.contains_key(id_of(record)))
         .collect();
-    let new_ids: Vec<&str> = fresh.iter().map(|record| id_of(record)).collect();
-    let taken = |key: &str| known.contains_key(key) || new_ids.contains(&key);
-    for record in fresh {
+    let new_keys = created_keys(&fresh);
+    let taken = |key: &str| resolves(known, &new_keys, key);
+    for record in &fresh {
         problems.extend(create_problem(record, &create_data(record, &taken)));
     }
     problems

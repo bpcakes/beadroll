@@ -73,6 +73,12 @@ impl Claims {
         Ok(Arc::clone(&self.files))
     }
 
+    /// How many directories' names are kept: what a write into one must forget.
+    #[cfg(test)]
+    pub(crate) fn listed(&self) -> usize {
+        self.directories.len()
+    }
+
     fn directory(&mut self, path: &Path) -> Result<Arc<[PathBuf]>, Error> {
         let before = DirectoryKey::of(path);
         if let Some((key, files)) = self.directories.get(path)

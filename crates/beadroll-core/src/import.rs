@@ -1,6 +1,11 @@
 //! Plans a Beads JSONL import: validates records and produces ordered events. The caller writes
 //! all events or none. [`dry_run`] says what an import would do without planning to write it.
 
+use std::collections::{HashMap, HashSet};
+use std::sync::LazyLock;
+
+use indexmap::IndexMap;
+
 use crate::event::{EXPORT_FIELDS, MAX_NESTING, event_problem, payload_problem, write_problem};
 use crate::id::EventId;
 use crate::json::{self, Object, Value};
@@ -88,7 +93,7 @@ pub fn read_records(text: &str, path: &str) -> Result<Vec<Value>, ImportError> {
         check(path, number, parsed)?;
     }
     // One id is one issue; br refuses a file that repeats one too.
-    let mut first: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    let mut first: HashMap<&str, usize> = HashMap::new();
     for (number, parsed) in (1..).zip(&records) {
         let id = id_of(&parsed.value);
         let earlier = *first.entry(id).or_insert(number);
@@ -104,28 +109,30 @@ pub fn read_records(text: &str, path: &str) -> Result<Vec<Value>, ImportError> {
 
 /// The events that import `records` (read by [`read_records`]) into `state`.
 pub fn plan_import(state: &State, records: &[Value]) -> Result<Plan, ImportError> {
-    let records: Vec<&Value> = records.iter().collect();
     let known = state.keys();
     let fresh: Vec<&Value> = records
         .iter()
-        .copied()
-        .filter(|r| !known.contains_key(id_of(r)))
+        .filter(|record| !known.contains_key(id_of(record)))
         .collect();
     let mut steps = Vec::new();
-    for record in &records {
+    for record in records {
         // A known record that no longer lists a dependency we still hold by key takes it back.
         let Some(uid) = known.get(id_of(record)) else {
             continue;
         };
-        let listed: Vec<(String, String)> = dependencies(record)
+        let dangling = state
+            .issue(*uid)
+            .map(|issue| issue.dangling())
+            .unwrap_or_default();
+        if dangling.is_empty() {
+            // The usual re-import: the record is here, its dependencies all resolved long ago.
+            continue;
+        }
+        let listed: HashSet<(&str, &str)> = dependencies(record)
             .iter()
             .map(|d| (target(d), kind(d)))
             .collect();
-        for dep in state
-            .issue(*uid)
-            .map(|issue| issue.dangling())
-            .unwrap_or_default()
-        {
+        for dep in dangling {
             if !listed.contains(&(target(dep), kind(dep))) {
                 let data = members([
                     ("key", Value::from(target(dep))),
@@ -135,8 +142,9 @@ pub fn plan_import(state: &State, records: &[Value]) -> Result<Plan, ImportError
             }
         }
     }
-    let new_ids: Vec<&str> = fresh.iter().map(|r| id_of(r)).collect();
-    let taken = |key: &str| known.contains_key(key) || new_ids.contains(&key);
+    // Only `fresh` determines the order of creates and dependency additions.
+    let new_keys = created_keys(&fresh);
+    let taken = |key: &str| resolves(known, &new_keys, key);
     for record in &fresh {
         let data = create_data(record, &taken);
         if let Some(problem) = create_problem(record, &data) {
@@ -148,7 +156,7 @@ pub fn plan_import(state: &State, records: &[Value]) -> Result<Plan, ImportError
     for (created, record) in fresh.iter().enumerate() {
         for dep in dependencies(record) {
             let goal = target(dep);
-            let to = match (known.get(&goal), new_ids.iter().position(|id| *id == goal)) {
+            let to = match (known.get(goal), new_keys.get(goal).copied()) {
                 (Some(uid), _) => Target::Issue(*uid),
                 (None, Some(at)) => Target::Created(at),
                 (None, None) => continue,
@@ -272,21 +280,40 @@ fn dependencies(record: &Value) -> &[Value] {
         .unwrap_or_default()
 }
 
-fn target(dep: &Value) -> String {
+/// The key a dependency names, empty when it names none.
+fn target(dep: &Value) -> &str {
     dep.get("depends_on_id")
         .and_then(Value::as_str)
         .unwrap_or_default()
-        .to_owned()
 }
 
 /// A dependency's nonempty type string, defaulting to `blocks`.
-fn kind(dep: &Value) -> String {
+fn kind(dep: &Value) -> &str {
     dep.get("type")
         .filter(|kind| kind.truthy())
         .and_then(Value::as_str)
         .unwrap_or("blocks")
-        .to_owned()
 }
+
+/// The keys `fresh` (the records the tracker does not have) brings, each with the number of the
+/// create that makes it: how a dependency finds a target in its own batch.
+fn created_keys<'a>(fresh: &[&'a Value]) -> HashMap<&'a str, usize> {
+    let mut keys = HashMap::with_capacity(fresh.len());
+    for (created, record) in fresh.iter().enumerate() {
+        keys.entry(id_of(record)).or_insert(created);
+    }
+    keys
+}
+
+/// Whether a dependency on `key` has an issue once the import is done: one the tracker holds, or
+/// one the batch creates. Planning and [`dry_run::problems`] decide it here, together, so that the
+/// payload a dry run checks is the payload the import writes.
+fn resolves(known: &IndexMap<String, EventId>, created: &HashMap<&str, usize>, key: &str) -> bool {
+    known.contains_key(key) || created.contains_key(key)
+}
+
+/// The members of a record that is not an object.
+static NO_MEMBERS: LazyLock<Object> = LazyLock::new(Object::new);
 
 /// What the create of a new record carries.
 fn create_data(record: &Value, taken: &dyn Fn(&str) -> bool) -> Object {
@@ -297,7 +324,7 @@ fn create_data(record: &Value, taken: &dyn Fn(&str) -> bool) -> Object {
                 "id" | "labels" | "dependencies" | "comments" | "source_repo_path"
             )
     };
-    let all = record.as_object().cloned().unwrap_or_default();
+    let all = record.as_object().unwrap_or(&NO_MEMBERS);
     let extra: Object = all
         .iter()
         .filter(|(name, _)| !reserved(name))
@@ -305,7 +332,7 @@ fn create_data(record: &Value, taken: &dyn Fn(&str) -> bool) -> Object {
         .collect();
     let dangling: Vec<Value> = dependencies(record)
         .iter()
-        .filter(|dep| !taken(&target(dep)))
+        .filter(|dep| !taken(target(dep)))
         .map(|dep| {
             let mut dep = dep.as_object().cloned().unwrap_or_default();
             let kind = dep

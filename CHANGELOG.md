@@ -6,6 +6,20 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- The journal memo and the projection vouch for a file only once it was settled when they were
+  written (Y01): a rewrite in place that keeps a file's length keeps every part of its identity
+  when it falls in the same timestamp tick, which the clock an inode's times come from need not
+  have left. Such a file is hashed again, or read against the sum kept of its bytes, which attempt
+  files now carry as segments did. Writing an attempt file forgets the attempt names listed in
+  that phase for the same reason, so an attempt this process just wrote is never left out of a
+  publication tree.
+
+- Import planning and dry-run validation index dependency keys once per batch (roll-lqjj.15),
+  avoiding repeated scans as the number of imported issues grows, and both resolve a key through
+  the same lookup. A re-import indexes a record's listed dependencies only when the issue still
+  holds unresolved ones, and an import no longer copies each record to read it.
+  `cargo xtask timing --plan N` measures these calls.
+
 - The README is the front door (roll-dih8.27): the problem, what beadroll does differently from
   Beads, a session with its output, what agents need, how it works, and the limits a user meets
   first. Every guarantee it held moved verbatim to `docs/GUARANTEES.md` (the claims protocol at
@@ -13,6 +27,7 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   moving a repository, every limit with its measurement); the design decisions that changed while
   building to `docs/REVIEWING.md` §2; the tests' description to `CONTRIBUTING.md`. Nothing in
   bead changes.
+
 - Commands reuse accepted-attempt directory listings within each locked phase while retaining
   every file's metadata check (roll-lqjj.12). Publishing reuses unchanged claims subtrees held by
   the merged tip (roll-lqjj.13), and fetched-head bookkeeping shares one `update-ref` transaction

@@ -15,7 +15,7 @@ use beadroll_core::text::parse_integer;
 use beadroll_git::IoError;
 
 use crate::error::Error;
-use crate::failpoint::{Failpoints, Fired, kill_self};
+use crate::failpoint::{Fired, kill_self};
 use crate::fs::{
     content_sum, dir_entries, fsync, glob_ending, has_suffix, private_dirs, read, read_keyed,
     write_atomic,
@@ -229,13 +229,14 @@ pub fn extend_segment(path: &Path, more: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 
-/// Writes an attempt whole: a reader sees all of it or none of it.
-pub fn write_attempt_file(
-    path: &Path,
-    events: &[Value],
-    failpoints: &Failpoints,
-) -> Result<(), Error> {
-    write_atomic(path, &encode_events(events)?, true, failpoints)
+/// Writes an attempt whole: a reader sees all of it or none of it. The attempt names listed in
+/// this phase are forgotten, since a directory that gains a file within one tick of its listing
+/// keeps its identity ([`Workspace::forget_claims`]).
+pub fn write_attempt_file(ws: &Workspace, path: &Path, events: &[Value]) -> Result<(), Error> {
+    let data = encode_events(events)?;
+    write_atomic(path, &data, true, &ws.settings.failpoints)?;
+    ws.forget_claims();
+    Ok(())
 }
 
 /// The events of the attempt file at `path`, as replay reads them: an unreadable file, or any bad
@@ -283,13 +284,13 @@ pub(crate) struct Loaded {
     /// Each segment's identity as it was read, and the sum of its bytes when they were summed.
     pub(crate) segments: Vec<(Option<FileKey>, Option<[u8; 16]>)>,
     /// The accepted attempt files, listed once the segments were read, each with its identity as
-    /// it was read (`None` when it could not be).
-    pub(crate) attempts: Vec<(PathBuf, Option<FileKey>)>,
+    /// it was read (`None` when it could not be) and the sum of its bytes when they were summed.
+    pub(crate) attempts: Vec<(PathBuf, Option<FileKey>, Option<[u8; 16]>)>,
 }
 
 /// The journal of `segments`, then of the accepted attempt files, listed once the segments are
 /// read: an attempt file is in place before any record built on it is appended. Each file's
-/// identity is the one it had as it was read; with `summed`, so is the sum of each segment's bytes.
+/// identity is the one it had as it was read; with `summed`, so is the sum of each file's bytes.
 pub(crate) fn load_listed(
     ws: &Workspace,
     segments: &[PathBuf],
@@ -315,10 +316,11 @@ pub(crate) fn load_listed(
         let replica = folder_name(path, 2);
         let read = read_keyed(path).ok();
         let data = read.as_ref().map(|(data, _)| data.as_slice());
+        let sum = data.filter(|_| summed).map(content_sum);
         for event in attempt_events(path, data, Some(&mut journal.invalid)) {
             journal.add(event, &replica, &origin, false);
         }
-        attempts.push((path.clone(), read.and_then(|(_, key)| key)));
+        attempts.push((path.clone(), read.and_then(|(_, key)| key), sum));
     }
     journal.settle();
     Ok(Loaded {

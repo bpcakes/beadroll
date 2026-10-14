@@ -155,6 +155,7 @@ impl Link<'_> {
             }
             if local.get(path).map(String::as_str) != Some(sha) {
                 write_atomic(&target, &theirs, true, &self.ws.settings.failpoints)?;
+                self.ws.forget_claims();
                 self.memo().wrote(path, &target, &theirs, Some(sha));
             }
             crate::tx::remove(pending_path)?;
@@ -176,6 +177,7 @@ impl Link<'_> {
             true
         };
         write_atomic(&target, &theirs, true, &self.ws.settings.failpoints)?;
+        self.ws.forget_claims();
         self.memo().wrote(path, &target, &theirs, Some(sha));
         Ok(new)
     }

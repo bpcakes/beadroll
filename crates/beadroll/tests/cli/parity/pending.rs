@@ -79,11 +79,7 @@ fn leave_pending(ws: &Workspace, actor: &Value, issue: &str, publish: bool) {
             true,
             &ws.settings.failpoints,
         )?;
-        write_attempt_file(
-            &folder.join(format!("{first}.json")),
-            &tx.ownership,
-            &ws.settings.failpoints,
-        )?;
+        write_attempt_file(ws, &folder.join(format!("{first}.json")), &tx.ownership)?;
         if publish {
             let outcome = link.publish(tip.as_deref(), "claim", &tx.ownership, false)?;
             assert_eq!(outcome, PushOutcome::Ok);

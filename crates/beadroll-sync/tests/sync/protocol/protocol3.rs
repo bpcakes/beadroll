@@ -100,7 +100,7 @@ fn fence_wins_against_a_real_push_still_running_after_timeout() {
         claim(&mut tx, Mode::Online, &s.key)?;
         let id = text(&tx.ownership[0]["id"]);
         let pending = ws.dir.join("pending").join(format!("{id}.json"));
-        write_attempt_file(&pending, &tx.ownership, &ws.settings.failpoints)?;
+        write_attempt_file(&ws, &pending, &tx.ownership)?;
         Link::new(&short, &Endpoint::at(origin))?.publish(
             tip.as_deref(),
             "claim",

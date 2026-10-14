@@ -131,19 +131,24 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   key and becomes a real edge on every machine the moment that key exists, so
   importing in several batches gives the same result as one. An import is
   checked whole before anything is written: one bad record fails it.
+  Large imports and dry runs resolve dependencies without rescanning the batch
+  for each target.
 - Several bead processes on one machine (agents in different worktrees) never
   collide inside the private `sync.git`: each fetch lands in a ref of its own.
 - A publish hashes only the journal files that changed since the last one: the
   segment being appended to and new claim files, not the whole history. What
   bead remembers of each file is a cache, `sync.git/journal-memo`: a file that
-  changed in any way is hashed again, and deleting the memo, or `sync.git`
-  itself, is always safe.
+  changed in any way is hashed again, as is one written in the same moment as
+  the memo itself, which a rewrite in place could have changed since with
+  nothing to show for it. Deleting the memo, or `sync.git` itself, is always
+  safe.
 - A command reads the store's projection, `<store>/projection`, instead of
   replaying the whole journal: the state the journal replays into, kept with
-  the identity of every journal file it was made from. Records appended since
-  are applied after it, as replay would apply them; anything else (a file
-  changed another way, events written concurrently, a takeover) has the
-  journal replayed, and the projection written again. It is a cache, never a
+  the identity of every journal file it was made from and a sum of its bytes.
+  Records appended since are applied after it, as replay would apply them; a
+  file written in the same moment as the projection is read against its sum;
+  anything else (a file changed another way, events written concurrently, a
+  takeover) has the journal replayed, and the projection written again. It is a cache, never a
   source: deleting it is always safe, and a damaged one, or one another build
   of bead wrote, is never read.
 - Each issue's texts (descriptions, designs, acceptance criteria, notes and
