@@ -17,7 +17,9 @@ use crate::journal::{Journal, Parts, Rest};
 use crate::json::Value;
 use crate::op::Op;
 use crate::order::Order;
-use crate::state::{Integrity, KeySpace, Knowledge, Place, State, actor_label, raise, reached};
+use crate::state::{
+    Integrity, Issue, KeySpace, Knowledge, Place, State, actor_label, raise, reached,
+};
 use crate::time::event_time;
 
 /// Folds `journal` into state. Returns KEY_SPACE only when a renamed duplicate has no free key.
@@ -305,12 +307,84 @@ pub(crate) fn apply_one(
 /// tags remain, and the parent-child index.
 pub(crate) fn finish(st: &mut State) {
     for issue in st.issues.values_mut() {
-        issue.labels = issue
-            .label_tags
-            .iter()
-            .filter(|(_, tags)| !tags.is_empty())
-            .map(|(label, _)| label.clone())
-            .collect();
+        relabel(issue);
     }
     st.index_children();
+}
+
+/// [`finish`] after a batch applied to a state replay had already finished, over what `doing` can
+/// have changed alone, so that a projection extended again and again costs what was applied and
+/// not what the journal holds (roll-lqjj.17). An operation changes the labels of the issue it names
+/// and of no other, a create the issue it makes (which it must name as its issue to be valid); the
+/// parent-child index is made of dependency edges, which only a create or a dependency written
+/// touches. Each issue is relabelled once however many of the batch's events change its labels, as
+/// only the labels it has once they have all applied are derived from.
+pub(crate) fn finish_some(st: &mut State, doing: &[Box<Rest>]) {
+    let mut relabelled: Vec<EventId> = (doing.iter())
+        .filter(|what| relabels(&what.op))
+        .filter_map(|what| what.issue.as_deref())
+        .filter_map(EventId::parse)
+        .collect();
+    relabelled.sort_unstable();
+    relabelled.dedup();
+    for uid in relabelled {
+        if let Some(issue) = st.issues.get_mut(&uid) {
+            relabel(issue);
+        }
+    }
+    if doing.iter().any(|what| rewires(&what.op)) {
+        st.index_children();
+    }
+}
+
+/// The issue's labels: those whose tags remain.
+fn relabel(issue: &mut Issue) {
+    issue.labels = (issue.label_tags.iter())
+        .filter(|(_, tags)| !tags.is_empty())
+        .map(|(label, _)| label.clone())
+        .collect();
+}
+
+/// Whether `op` can change the labels of the issue it names: a create carries the labels an import
+/// brought. Every operation is named, so that one added says which it is.
+fn relabels(op: &Op) -> bool {
+    match op {
+        Op::Create(_) | Op::LabelAdd(_) | Op::LabelRemove(_) | Op::LabelSet(_) => true,
+        Op::Init { .. }
+        | Op::Set(_)
+        | Op::Claim(_)
+        | Op::Release(_)
+        | Op::Close(_)
+        | Op::Reopen
+        | Op::Delete(_)
+        | Op::Comment { .. }
+        | Op::DepAdd { .. }
+        | Op::DepRemove { .. }
+        | Op::Quarantined
+        | Op::Invalid
+        | Op::Unknown(_) => false,
+    }
+}
+
+/// Whether `op` can change a dependency edge: a create carries the edges an import brought on keys
+/// that exist, and gives the imports that waited for its key theirs. Every operation is named, so
+/// that one added says which it is.
+fn rewires(op: &Op) -> bool {
+    match op {
+        Op::Create(_) | Op::DepAdd { .. } | Op::DepRemove { .. } => true,
+        Op::Init { .. }
+        | Op::Set(_)
+        | Op::Claim(_)
+        | Op::Release(_)
+        | Op::Close(_)
+        | Op::Reopen
+        | Op::Delete(_)
+        | Op::Comment { .. }
+        | Op::LabelAdd(_)
+        | Op::LabelRemove(_)
+        | Op::LabelSet(_)
+        | Op::Quarantined
+        | Op::Invalid
+        | Op::Unknown(_) => false,
+    }
 }

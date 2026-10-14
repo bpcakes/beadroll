@@ -71,7 +71,8 @@ impl Writer {
         self.out.extend_from_slice(bytes);
     }
 
-    pub(crate) fn ids(&mut self, ids: &[EventId]) {
+    /// The ids, counted and then written in the order they come: a slice's or a set's own.
+    pub(crate) fn ids<'a>(&mut self, ids: impl ExactSizeIterator<Item = &'a EventId>) {
         self.count(ids.len());
         for id in ids {
             self.id(*id);

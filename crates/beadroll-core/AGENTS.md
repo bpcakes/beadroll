@@ -35,7 +35,8 @@ consumer on tokio calls through `spawn_blocking`.
 - `src/projection.rs`: `project`, `Projection` (roll-lqjj.2), a replayed state kept to have events
   applied after it: what every event had seen cut to the events the state still names
   (`state/seen/compact.rs`); `projection/extend.rs`: `Projection::extend`, which applies records
-  appended to its journal when replay would apply them after all of it, and declines otherwise;
+  appended to its journal when replay would apply them after all of it, and declines otherwise, and
+  then finishes only what the batch changed (`replay::finish_some`, roll-lqjj.17);
   `projection/codec.rs`, `projection/state_codec.rs`, `state/seen/codec.rs`: its bytes.
 - `state/seen.rs`: what every event had seen, as one clock per event over chains (each machine's
   journal, and chains of the unsequenced events of attempt files): the ancestry index behind
@@ -72,6 +73,13 @@ consumer on tokio calls through `spawn_blocking`.
   replay never copies it into the issue's fields (roll-lqjj.10).
 - A projection extended is replay: `projection/tests.rs` checks every batch a store takes in on
   histories of machines that write, sync and race, and each batch it must decline.
+  What the finishing pass derives (each issue's labels, the parent-child index) is redone for what
+  the batch can have changed alone, so an operation added to `Op` must say in `replay::relabels`
+  and `replay::rewires` whether it changes labels or an edge; the compiler asks, and
+  `projection/tests/finished.rs` keeps each answer against replay (roll-lqjj.17, `docs/REVIEWING.md`
+  §2). An issue is relabelled once a batch, not once an event, and the ids a projection holds are a
+  `BTreeSet` so a batch's go in wherever they sort among them; the bytes stay the ascending
+  sequence they were, and bytes that are not ascending are still refused.
 - `saw` agrees with the reference ancestry bitsets: `state/seen/tests.rs` checks every pair
   on hostile histories. Replay's speed and memory are measured by
   `cargo run --release --package xtask -- timing --replay N [--ownership]`: at 200,000 events its

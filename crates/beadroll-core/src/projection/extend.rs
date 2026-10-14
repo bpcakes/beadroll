@@ -26,7 +26,7 @@ use indexmap::IndexMap;
 use crate::id::EventId;
 use crate::journal::{Event, Journal, Parts, Rest};
 use crate::op::Op;
-use crate::replay::{Names, Room, apply_one, finish, observe_one};
+use crate::replay::{Names, Room, apply_one, finish_some, observe_one};
 use crate::state::{KeySpace, Texts, is_text};
 
 use super::{Projection, Record, small};
@@ -68,7 +68,7 @@ impl Projection {
         if !journal.invalid.is_empty()
             || !journal.quarantined().is_empty()
             || journal.events().len() != count
-            || (journal.events().keys()).any(|id| self.ids.binary_search(id).is_ok())
+            || (journal.events().keys()).any(|id| self.ids.contains(id))
         {
             return Ok(Extended::Replay);
         }
@@ -137,7 +137,7 @@ impl Projection {
             )?;
         }
         self.state.knowledge = knowledge;
-        finish(&mut self.state);
+        finish_some(&mut self.state, &doing);
         self.advance(&events, &order);
         Ok(Extended::Applied(Box::new(self)))
     }
@@ -232,7 +232,6 @@ impl Projection {
             .collect();
         self.heads.sort_unstable();
         self.ids.extend(events.keys().copied());
-        self.ids.sort_unstable();
         for (machine, added) in order {
             if let Some(length) = self.lengths.get_mut(machine) {
                 *length = length.saturating_add(small(added.len()));

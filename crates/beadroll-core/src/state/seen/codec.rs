@@ -19,7 +19,7 @@ impl Knowledge {
         w.count(self.events.len());
         for (id, event) in &self.events {
             w.id(*id);
-            w.ids(event.deps());
+            w.ids(event.deps().iter());
             w.name(event.shared_replica());
             w.optional_shared(event.shared_actor());
         }

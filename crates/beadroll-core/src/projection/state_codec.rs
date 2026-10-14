@@ -60,7 +60,7 @@ pub(crate) fn write_state(w: &mut Writer, st: &State, given: &HashMap<EventId, T
         w.text(&entry.problem);
         w.optional_text(entry.origin.as_deref());
     }
-    w.ids(&st.pending);
+    w.ids(st.pending.iter());
     w.number(st.orphans);
     w.number(st.comment_count);
     w.count(st.last_by_thread.len());
@@ -69,7 +69,7 @@ pub(crate) fn write_state(w: &mut Writer, st: &State, given: &HashMap<EventId, T
         w.optional_text(thread.as_deref());
         w.id(*id);
     }
-    w.ids(&st.awaiting);
+    w.ids(st.awaiting.iter());
 }
 
 /// A state, what every event had seen left out: the caller gives it the knowledge it has.
@@ -132,7 +132,7 @@ fn write_issue(w: &mut Writer, issue: &Issue, place: TextPlace) {
     w.count(issue.label_tags.len());
     for (label, tags) in &issue.label_tags {
         w.text(label);
-        w.ids(tags.iter().as_slice());
+        w.ids(tags.iter());
     }
     w.count(issue.dep_tags.len());
     for ((to, kind), tags) in &issue.dep_tags {
@@ -145,7 +145,7 @@ fn write_issue(w: &mut Writer, issue: &Issue, place: TextPlace) {
     for ((to, kind), removals) in &issue.retracted {
         w.text(to);
         w.optional_text(kind.as_deref());
-        w.ids(removals.iter().as_slice());
+        w.ids(removals.iter());
     }
     write_ownership(w, issue);
     write_values(w, &issue.unconfirmed);
@@ -165,7 +165,7 @@ fn write_issue(w: &mut Writer, issue: &Issue, place: TextPlace) {
     w.count(stored.tags.len());
     for (field, ids) in &stored.tags {
         w.count(field.index());
-        w.ids(ids);
+        w.ids(ids.iter());
     }
     w.count(stored.disputed.len());
     for field in &stored.disputed {

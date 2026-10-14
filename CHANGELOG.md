@@ -6,6 +6,18 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A projection finishes only what a batch changed (roll-lqjj.17): the labels of the issues whose
+  operations change labels, each issue's derived once however many of the batch's events changed
+  them, and the parent-child index only when an operation changes a dependency edge, instead of
+  deriving both over the whole state for every batch applied. The ids it holds are a set, so a
+  batch's go in where they belong wherever they sort among them. A command that writes one event
+  per issue and reads the state between them — `close`, `reopen` and `delete`, over several ids or
+  a subtree — therefore costs the state once rather than once per issue: one `bead close` naming
+  8,000 issues of 8,000 takes 0.7 s where it took 19.8 s. Replay, the state every command sees,
+  the projection's bytes and format 1 are unchanged; `cargo xtask timing --extend N` measures it,
+  including a batch that changes one issue's labels over and over and writes whose ids sort before
+  every id held.
+
 - The journal memo and the projection vouch for a file only once it was settled when they were
   written (Y01): a rewrite in place that keeps a file's length keeps every part of its identity
   when it falls in the same timestamp tick, which the clock an inode's times come from need not

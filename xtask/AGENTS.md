@@ -23,7 +23,10 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   --contend M`, machines writing one tracker at once (roll-lqjj.7); `timing/import.rs`: `timing
   --import N`, importing a generated Beads export (roll-lqjj.9); `timing/plan.rs`: `timing --plan
   N`, the core calls an import of N records makes, every record depending on a key at the end of
-  the batch (roll-lqjj.15); `timing/world.rs`: the scratch
+  the batch (roll-lqjj.15); `timing/extend.rs`: `timing --extend N`, events applied to a projection
+  of N issues one event at a time and in one batch, including a batch that changes one issue's
+  labels over and over and writes whose ids sort before every id held (roll-lqjj.17, V01 and V02);
+  `timing/world.rs`: the scratch
   store, checkout and remote they run `bead` on; `timing/history.rs`: the histories it replays
   (`--ownership`: heavy in claims, takeovers and releases in attempt files; `--churn`: a thousand
   issues changed over and over, a state that stays its size); `timing/memory.rs`: the journal written under `target/timing/` while it is measured,
@@ -72,6 +75,10 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   offline, its first sync, and published, and the projection and text file it made
 - `cargo run --release --package xtask -- timing --plan 16000`: planning that import, validating
   it for a dry run, and re-importing a known issue whose dependencies are all unresolved
+- `cargo run --release --package xtask -- timing --extend 8000`: closes, label additions and
+  dependency additions applied to a projection of 8,000 issues, one event at a time and in one
+  batch, with one issue's labels changed over and over and writes whose ids sort before every id
+  held
 - `cargo test -p xtask`
 - `python3 xtask/python/printable_table.py > crates/beadroll-core/src/text/printable.rs`, with
   CPython 3.14.7 (Unicode 16.0.0), the versions the table was made with; do not change the
