@@ -68,7 +68,7 @@ impl Projection {
         if !journal.invalid.is_empty()
             || !journal.quarantined().is_empty()
             || journal.events().len() != count
-            || (journal.events().keys()).any(|id| self.ids.binary_search(id).is_ok())
+            || (journal.events().keys()).any(|id| self.ids.contains(id))
         {
             return Ok(Extended::Replay);
         }
@@ -231,42 +231,12 @@ impl Projection {
             .copied()
             .collect();
         self.heads.sort_unstable();
-        let mut added: Vec<EventId> = events.keys().copied().collect();
-        added.sort_unstable();
-        take_in(&mut self.ids, added);
+        self.ids.extend(events.keys().copied());
         for (machine, added) in order {
             if let Some(length) = self.lengths.get_mut(machine) {
                 *length = length.saturating_add(small(added.len()));
             }
         }
         self.open = self.state.integrity.is_empty() && self.state.pending.is_empty();
-    }
-}
-
-/// Takes `added` into `ids`, both ascending and nothing in both: appended where every added id
-/// comes after every one held, which is what this machine's own writes do, and merged in from the
-/// first place they differ otherwise. Sorting the whole again would cost what the journal holds
-/// every time a batch is applied, not what the batch brought (roll-lqjj.17).
-fn take_in(ids: &mut Vec<EventId>, added: Vec<EventId>) {
-    let Some(first) = added.first().copied() else {
-        return;
-    };
-    let rest = ids.split_off(ids.partition_point(|id| *id < first));
-    ids.reserve(rest.len() + added.len());
-    let mut rest = rest.into_iter().peekable();
-    let mut added = added.into_iter().peekable();
-    loop {
-        let takes_added = match (rest.peek(), added.peek()) {
-            (Some(held), Some(new)) => new < held,
-            (None, Some(_)) => true,
-            (_, None) => false,
-        };
-        let next = if takes_added {
-            added.next()
-        } else {
-            rest.next()
-        };
-        let Some(id) = next else { return };
-        ids.push(id);
     }
 }

@@ -517,6 +517,38 @@ mod tests {
     }
 
     #[test]
+    fn extend_takes_a_count_of_issues_and_is_a_measurement_of_its_own() {
+        let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
+        let options = parse(args(&["--extend", "8000"])).unwrap();
+        assert_eq!(options.extend, Some(8000));
+        // The count reaches the extension measurement and no other: an arm that set another
+        // mode's field, or none, would leave this one empty.
+        let modes = [
+            options.replay,
+            options.sync,
+            options.read,
+            options.merge,
+            options.contend,
+            options.import,
+            options.plan,
+        ];
+        assert!(modes.iter().all(Option::is_none), "{modes:?}");
+        for wrong in [
+            &["--extend", "many"][..],
+            &["--extend"],
+            // counted among the measurements, so it is refused beside another
+            &["--extend", "10", "--plan", "10"],
+            &["--extend", "10", "--replay", "10"],
+            &["--extend", "10", "--rotate", "4096"],
+        ] {
+            assert!(
+                matches!(parse(args(wrong)), Err(Failure::Usage(_))),
+                "{wrong:?}"
+            );
+        }
+    }
+
+    #[test]
     fn ownership_shapes_a_replay_and_load_names_a_directory() {
         let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
         let options = parse(args(&["--replay", "10", "--ownership"])).unwrap();

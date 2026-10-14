@@ -77,7 +77,9 @@ consumer on tokio calls through `spawn_blocking`.
   the batch can have changed alone, so an operation added to `Op` must say in `replay::relabels`
   and `replay::rewires` whether it changes labels or an edge; the compiler asks, and
   `projection/tests/finished.rs` keeps each answer against replay (roll-lqjj.17, `docs/REVIEWING.md`
-  §2).
+  §2). An issue is relabelled once a batch, not once an event, and the ids a projection holds are a
+  `BTreeSet` so a batch's go in wherever they sort among them; the bytes stay the ascending
+  sequence they were, and bytes that are not ascending are still refused.
 - `saw` agrees with the reference ancestry bitsets: `state/seen/tests.rs` checks every pair
   on hostile histories. Replay's speed and memory are measured by
   `cargo run --release --package xtask -- timing --replay N [--ownership]`: at 200,000 events its

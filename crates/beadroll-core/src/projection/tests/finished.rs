@@ -3,7 +3,8 @@
 //! far leaves them, though it finishes only what the batch can have changed. A close changes
 //! neither, which is what a bulk close relies on; a label operation changes the labels of the
 //! issue it names; a dependency written, or a create that gives an import that waited for its key
-//! an edge, changes the index.
+//! an edge, changes the index. A batch derives each issue's labels from what it holds once every
+//! one of its events has applied, however many of them change that issue.
 
 use crate::id::EventId;
 use crate::json::{Object, Value};
@@ -35,6 +36,29 @@ fn one_at_a_time(base: &[Record], rest: &[Record]) {
             full.issues().collect::<Vec<_>>(),
         );
     }
+}
+
+/// `rest` applied to a projection of `base` as one batch, which is what a store takes a write or a
+/// merge in as: what the projection derives is what replay of everything derives.
+fn in_one_batch(base: &[Record], rest: &[Record]) -> Projection {
+    let projection = project(journal(base)).unwrap();
+    let extended = match projection.extend(rest.to_vec()).unwrap() {
+        Extended::Applied(extended) => *extended,
+        Extended::Replay => panic!("the batch is one a projection applies"),
+    };
+    let mut held: Vec<Record> = base.to_vec();
+    held.extend_from_slice(rest);
+    let full = replay(journal(&held)).unwrap();
+    assert!(same(extended.state(), &full));
+    extended
+}
+
+/// The labels of the issue numbered `n`, as the state derived them.
+fn labels_of(projection: &Projection, n: u128) -> Vec<String> {
+    let uid = EventId::parse(&id(n)).unwrap();
+    (projection.state().issue(uid).unwrap().labels().iter())
+        .map(String::clone)
+        .collect()
 }
 
 /// A create of the issue numbered `n` under `key`, with `labels` and the imported dependencies
@@ -145,6 +169,50 @@ fn every_label_operation_one_event_at_a_time_leaves_the_labels_as_replay_does() 
 }
 
 #[test]
+fn a_batch_that_changes_one_issues_labels_over_and_over_derives_them_from_what_it_holds() {
+    // Four events change issue 2's labels and one changes issue 3's. The labels are those the
+    // issues hold once all five have applied, derived once for each issue and not once for each
+    // event (roll-lqjj.17, Z02 follow-up).
+    let base = base();
+    let churn = vec![
+        record(
+            event(4, HERE, &[3], "label_add", 2, labels(&["db"])),
+            HERE,
+            true,
+        ),
+        record(
+            event(5, HERE, &[4], "label_add", 2, labels(&["ops"])),
+            HERE,
+            true,
+        ),
+        record(
+            event(6, HERE, &[5], "label_remove", 2, labels(&["ui"])),
+            HERE,
+            true,
+        ),
+        record(
+            event(7, HERE, &[6], "label_set", 2, labels(&["final"])),
+            HERE,
+            true,
+        ),
+        record(
+            event(8, HERE, &[7], "label_add", 3, labels(&["x"])),
+            HERE,
+            true,
+        ),
+    ];
+    let batched = in_one_batch(&base, &churn);
+    assert_eq!(
+        labels_of(&batched, 2),
+        ["final"],
+        "the set the last one gives"
+    );
+    assert_eq!(labels_of(&batched, 3), ["ui", "x"]);
+    // The same events one at a time reach the same labels, as replay does either way.
+    one_at_a_time(&base, &churn);
+}
+
+#[test]
 fn every_dependency_written_one_event_at_a_time_leaves_the_index_as_replay_does() {
     let base = base();
     let written = vec![
@@ -242,4 +310,27 @@ fn the_ids_a_projection_holds_stay_ascending_however_the_events_sort() {
     let mut held = base;
     held.extend(out_of_order);
     assert!(same(projection.state(), &replay(journal(&held)).unwrap()));
+}
+
+#[test]
+fn ids_that_interleave_with_the_ones_held_go_in_where_they_belong_in_one_batch() {
+    // What a machine writes while its clock is behind the ids it holds, or a merge of a machine
+    // whose clock ran ahead: the new ids are not all after the held ones, and none of them is
+    // appended (roll-lqjj.17, Z02 follow-up). The bytes still hold them ascending, which the
+    // decoder requires, so the set cannot hide a wrong order.
+    let base = base();
+    let interleaved = vec![
+        record(event(9, HERE, &[3], "close", 2, Object::new()), HERE, true),
+        record(event(4, HERE, &[9], "close", 3, Object::new()), HERE, true),
+    ];
+    let batched = in_one_batch(&base, &interleaved);
+    let held: Vec<String> = (batched.ids.iter()).map(EventId::to_string).collect();
+    let mut every: Vec<String> = (base.iter().chain(&interleaved))
+        .filter_map(|r| r.value.get("id").map(str_of))
+        .collect();
+    every.sort();
+    assert_eq!(held, every, "every id once, ascending");
+    let (encoded, _) = batched.encode(0);
+    let read_back = Projection::decode(&encoded).unwrap();
+    assert_eq!(read_back.ids, batched.ids, "the bytes keep them ascending");
 }

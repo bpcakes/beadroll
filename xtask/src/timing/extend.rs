@@ -4,8 +4,12 @@
 //! one event per issue and reads the state between them does, against the same events in one
 //! batch. It measures closes, which change neither labels nor edges; label additions, which change
 //! the labels of the issue each names; and dependency additions, which the parent-child index is
-//! made of, so one of them has it built again over the whole state. The fastest of [`RUNS`] runs
-//! counts. Evidence, never a gate.
+//! made of, so one of them has it built again over the whole state. Two shapes measure what the
+//! finishing pass and the ids cost when a batch is not one event per issue in clock order: N label
+//! additions to one issue in a single batch, whose labels are derived once rather than once per
+//! event, and N closes one at a time whose ids all sort before every id held, as a machine's own
+//! writes do after its clock rolls back or a peer's clock runs ahead (Z02 follow-up). The fastest
+//! of [`RUNS`] runs counts. Evidence, never a gate.
 
 use std::time::Instant;
 
@@ -25,7 +29,17 @@ const MACHINE: &str = "a";
 /// The id of the probe's event number `n`: a UUIDv7, ids in the order of their numbers, so that
 /// what a machine writes comes after every event it holds.
 fn id(n: u64) -> String {
-    let millis = 1_791_558_245_123 + n;
+    stamped(1_791_558_245_123, n)
+}
+
+/// The id of event `n` written a year earlier: before every id [`id`] gives, whatever `n` is, as a
+/// machine's own write is after its clock rolls back or when it takes in a peer that ran ahead.
+fn earlier(n: u64) -> String {
+    stamped(1_759_935_845_123, n)
+}
+
+/// A UUIDv7 at `millis`, numbered `n`.
+fn stamped(millis: u64, n: u64) -> String {
     format!(
         "{:08x}-{:04x}-7000-8000-{:012x}",
         millis >> 16,
@@ -52,6 +66,19 @@ fn event(n: u64, op: &str, issue: &str, after: Option<u64>, data: Object) -> Val
     members.insert("op".into(), Value::from(op));
     members.insert("issue".into(), Value::from(issue));
     members.insert("data".into(), Value::from(data));
+    Value::from(members)
+}
+
+/// An event as [`event`] writes it, but identified by [`earlier`]: its id sorts before every id of
+/// the tracker, and it still builds on `after`, which is one of them.
+fn event_earlier(n: u64, op: &str, issue: &str, after: Option<&str>, data: Object) -> Value {
+    let mut members = match event(n, op, issue, None, data) {
+        Value::Object(members) => *members,
+        other => return other,
+    };
+    members.insert("id".into(), Value::from(earlier(n)));
+    let deps = (after.into_iter()).map(Value::from).collect();
+    members.insert("deps".into(), Value::Array(deps));
     Value::from(members)
 }
 
@@ -120,6 +147,48 @@ fn events(issues: usize, op: &str, payload: impl Fn(usize) -> Object) -> Vec<Rec
             let number = created(issues) + n as u64;
             let issue = id(created(n));
             record(event(number, op, &issue, Some(number - 1), payload(n)))
+        })
+        .collect()
+}
+
+/// The `issues` closes again, each identified before every id the tracker holds and chained after
+/// the one before it, the first on the tracker's last event: ids that are never appended.
+fn closes_before_held(issues: usize, head: &str) -> Vec<Record> {
+    (1..=issues)
+        .map(|n| {
+            let number = created(issues) + n as u64;
+            let issue = id(created(n));
+            let after = if n == 1 {
+                head.to_owned()
+            } else {
+                earlier(number - 1)
+            };
+            record(event_earlier(
+                number,
+                "close",
+                &issue,
+                Some(&after),
+                closing(n),
+            ))
+        })
+        .collect()
+}
+
+/// `issues` label additions to the first issue alone, chained: one batch that changes one issue's
+/// labels over and over, where the labels derived are those it holds once they have all applied.
+fn churn(issues: usize) -> Vec<Record> {
+    let issue = id(created(1));
+    (1..=issues)
+        .map(|n| {
+            let number = created(issues) + n as u64;
+            record(event(number, "label_add", &issue, Some(number - 1), {
+                let mut data = Object::new();
+                data.insert(
+                    "labels".into(),
+                    Value::Array(vec![Value::from(format!("c{n}"))]),
+                );
+                data
+            }))
         })
         .collect()
 }
@@ -207,6 +276,9 @@ pub(crate) fn measure(issues: usize, label: Option<&str>) -> Result<String, Fail
         &events(issues, "label_add", labelling),
         one_at_a_time,
     )?;
+    let churned = fastest(&seed, &churn(issues), applied)?;
+    let head = id(created(issues));
+    let before_held = fastest(&seed, &closes_before_held(issues, &head), one_at_a_time)?;
     let edges = fastest(
         &seed,
         &events(issues, "dep_add", wiring(issues)),
@@ -220,7 +292,10 @@ pub(crate) fn measure(issues: usize, label: Option<&str>) -> Result<String, Fail
         "{{\"label\": {}, \"issues\": {issues}, \"profile\": {}, \"runs\": {RUNS}, \
          \"closed\": {closed}, \"close_one_by_one_seconds\": {one_by_one:.4}, \
          \"close_in_one_batch_seconds\": {in_one_batch:.4}, \
-         \"label_one_by_one_seconds\": {labels:.4}, \"dep_one_by_one_seconds\": {edges:.4}, ",
+         \"close_before_held_one_by_one_seconds\": {before_held:.4}, \
+         \"label_one_by_one_seconds\": {labels:.4}, \
+         \"label_one_issue_in_one_batch_seconds\": {churned:.4}, \
+         \"dep_one_by_one_seconds\": {edges:.4}, ",
         json_string(&label),
         json_string(profile()),
     ))
@@ -261,6 +336,46 @@ mod tests {
         assert_eq!(closed(&singly), 12);
         assert_eq!(closed(&batched), 12);
         assert_eq!(singly.heads(), batched.heads());
+    }
+
+    #[test]
+    fn a_churning_batch_changes_one_issue_and_its_ids_come_after_the_trackers() {
+        let seed = tracker(6).unwrap();
+        let batch = churn(6);
+        assert_eq!(batch.len(), 6);
+        let issue = id(created(1));
+        assert!(
+            (batch.iter()).all(|r| r.value.get("issue").and_then(Value::as_str) == Some(&*issue)),
+            "every one is about the first issue"
+        );
+        let churned = applied(seed, batch).unwrap();
+        let labels: Vec<&str> = (churned.state().issues())
+            .find(|held| held.uid().to_string() == issue)
+            .unwrap()
+            .labels()
+            .iter()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(labels, ["c1", "c2", "c3", "c4", "c5", "c6", "db", "ui"]);
+    }
+
+    #[test]
+    fn the_closes_written_earlier_sort_before_every_id_the_tracker_holds() {
+        let seed = tracker(6).unwrap();
+        let head = id(created(6));
+        let batch = closes_before_held(6, &head);
+        // `head` is the tracker's last event and its largest id, as [`id`] ascends with `n`.
+        for held in &batch {
+            let written = held.value.get("id").and_then(Value::as_str).unwrap();
+            assert!(written < head.as_str(), "{written} comes before {head}");
+        }
+        let closed = one_at_a_time(seed, batch).unwrap();
+        assert_eq!(
+            (closed.state().issues())
+                .filter(|issue| issue.status() == "closed")
+                .count(),
+            6
+        );
     }
 
     #[test]

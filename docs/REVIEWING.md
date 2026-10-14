@@ -238,11 +238,16 @@ These were decided deliberately. Report problems *with* them, not their existenc
   a create, which carries an import's), and builds the index again only when an operation changes a
   dependency edge (`dep_add`, `dep_remove`, and a create, which brings an import's edges and gives
   the imports that waited for its key theirs). Each is listed one by one, so that an operation
-  added says which it is. The new ids are taken into the ascending ids where they belong, appended
-  where every one comes after them, instead of sorting them all again; two ids minted in one
-  millisecond sort by their random bits, so the merge runs too, and it costs the ids after the
-  first new one rather than every id the journal holds. The state, the order of everything derived
-  and format 1 are unchanged, which the differential test against replay keeps.
+  added says which it is. Each issue is relabelled once however many of the batch's events change
+  its labels, since only the labels it holds once they have all applied are derived from (V01). The
+  ids the projection holds are a set, so a batch's go in where they belong at a cost of their own
+  rather than the whole being sorted again: ids minted in one millisecond sort by their random
+  bits, and a machine whose clock rolled back, or a peer whose clock ran ahead, leaves new ids
+  below every id held, where a merge into a vector would have moved its whole tail on every write
+  (V02). The bytes are unchanged — the set is written and read as the ascending sequence it always
+  was, and bytes that are not ascending are still refused rather than quietly sorted. The state,
+  the order of everything derived and format 1 are unchanged, which the differential test against
+  replay keeps.
   One batch that changes an edge still has the whole index built again, proportional to the state
   and not to the batch: that is one pass a command, as no command writes many dependency events
   while reading the state between them (an import plans and writes its batch whole), and taking an
@@ -252,9 +257,14 @@ These were decided deliberately. Report problems *with* them, not their existenc
   17.97 s before and 0.048 s after, against the same closes in one batch, 0.039 s before and
   0.037 s after; 8,000 label additions one at a time, 18.68 s before and 0.050 s after; 8,000
   dependency additions one at a time, 18.59 s before and 5.33 s after, which is the index built
-  again 8,000 times and what the closes no longer pay. The fastest of three runs each, 2026-10-14,
-  Rust 1.99.0, 16 cores. End to end, `bead close` naming all 8,000 of those issues went from
-  19.8 s to 0.7 s, the best of three runs each.
+  again 8,000 times and what the closes no longer pay. It measures the two shapes a batch takes
+  when it is not one event per issue in clock order too: 8,000 label additions to one issue in a
+  single batch, 6.32 s before the labels were derived once an issue and 0.129 s after, and 8,000
+  closes one at a time whose ids all sort before every id held, 0.235 s with the merged vector and
+  0.048 s with the set, which is what the same closes in clock order cost, so where the new ids
+  sort no longer matters. The fastest of three runs each, 2026-10-14, Rust 1.99.0, 16 cores. End to
+  end, `bead close` naming all 8,000 of those issues went from 19.8 s to 0.7 s, the best of three
+  runs each.
 - No history boundary (roll-lqjj.3, step 4 of epic roll-lqjj; the maintainer's decision of
   2026-10-12, on the evidence in the port plan's Appendix A, "roll-lqjj.3", which git keeps, §1): a
   machine's work merges by itself however old it is, as every merge has so far. The alternatives

@@ -77,9 +77,10 @@ usage: cargo xtask <command>
       planning a re-import of one known issue whose N dependencies are all still unresolved, the
       fastest of five runs each; --extend N, events applied to a projection of N issues in this
       process, each with two labels and a tenth of them a parent of nine: N closes one event at a
-      time as a bulk close applies them, the same closes in one batch, and N label and N
-      dependency additions one at a time, the fastest of three runs each. Timings are evidence,
-      never a gate.
+      time as a bulk close applies them, the same closes in one batch, N closes one at a time whose
+      ids sort before every id held, N label and N dependency additions one at a time, and N label
+      additions to one issue in a single batch, the fastest of three runs each. Timings are
+      evidence, never a gate.
 
   bead ARG...
       Run bead with ARGs in this process, whose heap is counted, and say on standard error the

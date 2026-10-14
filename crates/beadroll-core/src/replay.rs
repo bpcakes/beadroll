@@ -317,13 +317,18 @@ pub(crate) fn finish(st: &mut State) {
 /// not what the journal holds (roll-lqjj.17). An operation changes the labels of the issue it names
 /// and of no other, a create the issue it makes (which it must name as its issue to be valid); the
 /// parent-child index is made of dependency edges, which only a create or a dependency written
-/// touches.
+/// touches. Each issue is relabelled once however many of the batch's events change its labels, as
+/// only the labels it has once they have all applied are derived from.
 pub(crate) fn finish_some(st: &mut State, doing: &[Box<Rest>]) {
-    for what in doing.iter().filter(|what| relabels(&what.op)) {
-        let issue = (what.issue.as_deref())
-            .and_then(EventId::parse)
-            .and_then(|uid| st.issues.get_mut(&uid));
-        if let Some(issue) = issue {
+    let mut relabelled: Vec<EventId> = (doing.iter())
+        .filter(|what| relabels(&what.op))
+        .filter_map(|what| what.issue.as_deref())
+        .filter_map(EventId::parse)
+        .collect();
+    relabelled.sort_unstable();
+    relabelled.dedup();
+    for uid in relabelled {
+        if let Some(issue) = st.issues.get_mut(&uid) {
             relabel(issue);
         }
     }

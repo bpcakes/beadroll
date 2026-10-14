@@ -19,7 +19,7 @@ mod extend;
 mod state_codec;
 mod text_codec;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::hash::{DefaultHasher, Hasher as _};
 
 use crate::id::EventId;
@@ -91,8 +91,10 @@ pub struct Projection {
     pub(crate) state: State,
     /// The frontier: the events nothing builds on, by id.
     pub(crate) heads: Vec<EventId>,
-    /// Every event the journal holds, by id: a record of one of them is not a new event.
-    pub(crate) ids: Vec<EventId>,
+    /// Every event the journal holds, by id: a record of one of them is not a new event. A set,
+    /// so that a batch's ids go in where they belong at a cost of their own, whatever the clocks
+    /// that minted them make of their order (roll-lqjj.17).
+    pub(crate) ids: BTreeSet<EventId>,
     /// Each machine's journal length: the position of its next record.
     pub(crate) lengths: HashMap<String, u32>,
     /// The claims takeovers superseded.
@@ -106,8 +108,7 @@ pub struct Projection {
 pub fn project(mut journal: Journal) -> Result<Projection, KeySpace> {
     journal.settle();
     let heads = journal.frontier();
-    let mut ids: Vec<EventId> = journal.events().keys().copied().collect();
-    ids.sort_unstable();
+    let ids: BTreeSet<EventId> = journal.events().keys().copied().collect();
     let lengths = (journal.order().iter())
         .map(|(machine, ids)| (machine.clone(), small(ids.len())))
         .collect();
@@ -183,8 +184,8 @@ impl Projection {
         let state = w.finish();
         let mut w = Writer::default();
         kept.write_index(&mut w);
-        w.ids(&self.heads);
-        w.ids(&self.ids);
+        w.ids(self.heads.iter());
+        w.ids(self.ids.iter());
         let mut lengths: Vec<(&String, &u32)> = self.lengths.iter().collect();
         lengths.sort();
         w.count(lengths.len());
@@ -194,7 +195,7 @@ impl Projection {
         }
         let mut superseded: Vec<EventId> = self.superseded.iter().copied().collect();
         superseded.sort_unstable();
-        w.ids(&superseded);
+        w.ids(superseded.iter());
         w.flag(self.open);
         let encoded = Encoded {
             state,
@@ -225,10 +226,12 @@ impl Projection {
             return Err(Unreadable("the frontier"));
         }
         let ids = r.ids()?;
-        // looked up by halves: in order, each once
+        // In order, each once: bytes that are not are refused rather than quietly sorted and
+        // deduplicated by the set they are read into.
         if !ids.windows(2).all(|pair| matches!(pair, [a, b] if a < b)) {
             return Err(Unreadable("the ids"));
         }
+        let ids: BTreeSet<EventId> = ids.into_iter().collect();
         let mut lengths = HashMap::new();
         for _ in 0..r.count()? {
             let machine = r.text()?;
