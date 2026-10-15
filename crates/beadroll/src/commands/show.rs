@@ -3,6 +3,7 @@
 use std::ffi::OsString;
 
 use beadroll_core::json::{Object, Value};
+use beadroll_core::state::Issue;
 use beadroll_core::text::{repr, str_of};
 use beadroll_core::view::icon;
 use beadroll_store::merged_into_default;
@@ -24,20 +25,23 @@ pub(crate) fn show(ctx: &Context<'_>, ids: &[OsString]) -> Result<Outcome, Failu
             .filter_map(|issue| issue.as_ref().ok())
             .copied(),
     );
+    // Whether each closing commit is on the default branch is asked of git once for all of them
+    // (roll-lqjj.26): the commits of the issues before the first key that names none, where the
+    // command stops.
+    let closing: Vec<Option<String>> = (issues.iter())
+        .map_while(|issue| issue.as_ref().ok())
+        .map(|issue| closing_commit(issue))
+        .collect();
+    let asked: Vec<&str> = closing.iter().flatten().map(String::as_str).collect();
+    let mut merged = merged_into_default(&ctx.ws.settings, &asked)?.into_iter();
     let mut result = Vec::new();
-    for issue in issues {
+    for (at, issue) in issues.into_iter().enumerate() {
         let issue = issue?;
         let mut detail = details.of(issue);
-        if issue.status() == "closed"
+        if closing[at].is_some()
             && let Some(at) = detail.get_index_of("closed_on")
         {
-            let commit = detail
-                .get("closed_on")
-                .and_then(|c| c.get("commit"))
-                .filter(|c| c.truthy())
-                .map(str_of)
-                .unwrap_or_default();
-            let merged = match merged_into_default(&ctx.ws.settings, &commit)? {
+            let merged = match merged.next().flatten() {
                 Some(merged) => Value::Bool(merged),
                 None => Value::from("unknown"),
             };
@@ -48,6 +52,16 @@ pub(crate) fn show(ctx: &Context<'_>, ids: &[OsString]) -> Result<Outcome, Failu
     let lines: Vec<Line> = result.iter().flat_map(lines_of).collect();
     let result = Value::Array(result.into_iter().map(Value::from).collect());
     Ok(Outcome::new(result, lines).answered_from(st))
+}
+
+/// The commit a closed issue's detail shows under `closed_on`, empty when it names none; `None` for
+/// an issue that is not closed or shows no `closed_on`.
+fn closing_commit(issue: &Issue) -> Option<String> {
+    let place = issue.closed_on().filter(|place| place.truthy())?;
+    let commit = (place.get("commit"))
+        .filter(|commit| commit.truthy())
+        .map(str_of);
+    (issue.status() == "closed").then(|| commit.unwrap_or_default())
 }
 
 /// The member `key` rendered as text, or an empty string when absent.

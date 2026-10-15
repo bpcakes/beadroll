@@ -6,6 +6,16 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `bead show` asks git whether the closing commits are on the default branch once for all the
+  issues it shows (roll-lqjj.26, review 16's X08), instead of about five gits for each closed
+  issue, each finding the default branch again: the default branch is found once, each distinct
+  commit is asked once, and the full commit ids bead records are asked together, so `show` of
+  1,000 closed issues starts 8 or 9 gits rather than 5,003 and takes 0.1 s rather than 23 to 29 s.
+  `merged` and everything `show` prints are unchanged, also for a commit made while the clock was
+  ahead, which `rev-list` alone can take for one the default branch lacks. A closing commit from
+  another machine's event now reaches git only as a revision, never as an option, and one with a
+  NUL in it is `unknown` where it made `show` fail with `IO` (X14).
+
 - A write published at once reads the store's state twice, once for the write and once for the
   merge of the sync that publishes it, and `bead sync` once a round (roll-lqjj.29, X06), where an
   online write read it four or five times: the sync that publishes a write no longer counts renames
