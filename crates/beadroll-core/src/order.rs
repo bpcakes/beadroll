@@ -56,6 +56,12 @@ pub(crate) struct Order {
     pub(crate) ordered: Vec<usize>,
     /// The events that wait for missing causes, in journal order.
     pub(crate) pending: Vec<usize>,
+    /// Whether a quarantined id is placed by less than all its causes: those it would wait for
+    /// ([`effective_deps`]: its own copy's, or else those every copy names) include one the
+    /// journal does not hold, which a record still to come can be, or its causes looped back onto
+    /// it and it was released after every other event that could apply. Events that come after
+    /// all of these can then be ordered before it.
+    pub(crate) loose: bool,
     /// Every event's effective causes that the journal holds, by index, as listed.
     causes: Lists,
 }
@@ -139,6 +145,21 @@ impl Order {
             items: Vec::with_capacity(count),
         };
         let mut ready = BinaryHeap::new();
+        // what [`effective_deps`] lets go of: the causes its own copy names, or else those every
+        // variant does, that the journal does not hold
+        let unheld = |dep: &&EventId| !events.contains_key(*dep);
+        let mut loose = (journal.quarantined().iter()).any(|(id, variants)| {
+            match journal
+                .event(*id)
+                .map(Event::deps)
+                .filter(|deps| !deps.is_empty())
+            {
+                Some(deps) => deps.iter().any(|dep| unheld(&dep)),
+                None => (variants.first().map(Event::deps).unwrap_or_default().iter())
+                    .filter(unheld)
+                    .any(|dep| variants.iter().all(|variant| variant.deps().contains(dep))),
+            }
+        });
         for (index, event) in events.values().enumerate() {
             causes.starts.push(causes.items.len());
             let listed = journal.quarantined().contains_key(&event.id());
@@ -193,6 +214,7 @@ impl Order {
             if stuck.is_empty() {
                 break;
             }
+            loose = true;
             for at in stuck {
                 if let (Some(count), Some((id, _))) = (waiting.get_mut(at), events.get_index(at)) {
                     *count = 0;
@@ -206,6 +228,7 @@ impl Order {
         Order {
             ordered,
             pending,
+            loose,
             causes,
         }
     }

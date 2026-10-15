@@ -8,8 +8,10 @@
 //! finishing pass and the ids cost when a batch is not one event per issue in clock order: N label
 //! additions to one issue in a single batch, whose labels are derived once rather than once per
 //! event, and N closes one at a time whose ids all sort before every id held, as a machine's own
-//! writes do after its clock rolls back or a peer's clock runs ahead (Z02 follow-up). The fastest
-//! of [`RUNS`] runs counts. Evidence, never a gate.
+//! writes do after its clock rolls back or a peer's clock runs ahead (Z02 follow-up). And N closes
+//! one at a time to the tracker with an event of an operation a newer bead writes after its last
+//! create, which replay reports and sets aside: a projection holding it is extended all the same
+//! (roll-lqjj.28). The fastest of [`RUNS`] runs counts. Evidence, never a gate.
 
 use std::time::Instant;
 
@@ -123,9 +125,9 @@ fn create(n: usize) -> Object {
     data
 }
 
-/// The tracker the probe applies events to: `issues` issues, in one machine's journal, each event
-/// built on the one before it.
-pub(super) fn tracker(issues: usize) -> Result<Projection, Failure> {
+/// The journal of the tracker the probe applies events to: `issues` issues, in one machine's
+/// journal, each event built on the one before it.
+fn journal(issues: usize) -> Journal {
     let mut data = Object::new();
     data.insert("prefix".into(), Value::from("ex"));
     let mut journal = Journal::new();
@@ -135,6 +137,32 @@ pub(super) fn tracker(issues: usize) -> Result<Projection, Failure> {
         let value = event(number, "create", &id(number), Some(number - 1), create(n));
         journal.add(value, MACHINE, "", true);
     }
+    journal
+}
+
+/// That tracker, replayed.
+pub(super) fn tracker(issues: usize) -> Result<Projection, Failure> {
+    replayed(journal(issues))
+}
+
+/// That tracker with one event more, built on its last create: of an operation a newer bead writes
+/// and this one does not know, which replay reports and sets aside.
+fn tracker_past_newer(issues: usize) -> Result<Projection, Failure> {
+    let mut journal = journal(issues);
+    let number = created(issues) + 1;
+    let value = event(
+        number,
+        "archive",
+        &id(number),
+        Some(number - 1),
+        Object::new(),
+    );
+    journal.add(value, MACHINE, "", true);
+    replayed(journal)
+}
+
+/// `journal` replayed into a projection.
+fn replayed(journal: Journal) -> Result<Projection, Failure> {
     project(journal).map_err(|_| Failure::Failed("the probe's own tracker does not replay".into()))
 }
 
@@ -142,9 +170,19 @@ pub(super) fn tracker(issues: usize) -> Result<Projection, Failure> {
 /// the one before it, the first on the tracker's last event. `payload` makes each one's data from
 /// the number of the issue it is about.
 fn events(issues: usize, op: &str, payload: impl Fn(usize) -> Object) -> Vec<Record> {
+    events_after(created(issues), issues, op, payload)
+}
+
+/// [`events`] after the tracker's event numbered `last`.
+fn events_after(
+    last: u64,
+    issues: usize,
+    op: &str,
+    payload: impl Fn(usize) -> Object,
+) -> Vec<Record> {
     (1..=issues)
         .map(|n| {
-            let number = created(issues) + n as u64;
+            let number = last + n as u64;
             let issue = id(created(n));
             record(event(number, op, &issue, Some(number - 1), payload(n)))
         })
@@ -284,6 +322,11 @@ pub(crate) fn measure(issues: usize, label: Option<&str>) -> Result<String, Fail
         &events(issues, "dep_add", wiring(issues)),
         one_at_a_time,
     )?;
+    let past_newer = fastest(
+        &tracker_past_newer(issues)?,
+        &events_after(created(issues) + 1, issues, "close", closing),
+        one_at_a_time,
+    )?;
     let label = label.map_or_else(
         || format!("projection extended on {issues} issues"),
         str::to_owned,
@@ -295,7 +338,8 @@ pub(crate) fn measure(issues: usize, label: Option<&str>) -> Result<String, Fail
          \"close_before_held_one_by_one_seconds\": {before_held:.4}, \
          \"label_one_by_one_seconds\": {labels:.4}, \
          \"label_one_issue_in_one_batch_seconds\": {churned:.4}, \
-         \"dep_one_by_one_seconds\": {edges:.4}, ",
+         \"dep_one_by_one_seconds\": {edges:.4}, \
+         \"close_past_newer_one_by_one_seconds\": {past_newer:.4}, ",
         json_string(&label),
         json_string(profile()),
     ))
@@ -375,6 +419,23 @@ mod tests {
                 .filter(|issue| issue.status() == "closed")
                 .count(),
             6
+        );
+    }
+
+    #[test]
+    fn closes_after_an_event_replay_sets_aside_are_taken_one_at_a_time() {
+        let seed = tracker_past_newer(8).unwrap();
+        let reported: Vec<&str> = (seed.state().integrity().iter())
+            .map(|entry| entry.problem.as_str())
+            .collect();
+        assert_eq!(reported, ["unknown operation 'archive'"]);
+        let closes = events_after(created(8) + 1, 8, "close", closing);
+        let closed = one_at_a_time(seed, closes).unwrap();
+        assert_eq!(
+            (closed.state().issues())
+                .filter(|issue| issue.status() == "closed")
+                .count(),
+            8
         );
     }
 

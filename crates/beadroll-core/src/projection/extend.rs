@@ -14,12 +14,28 @@
 //! a cause that is neither new nor on the frontier. An event that cannot apply, which replay
 //! reports in an order of its own, is found as it is observed: the projection is then dropped.
 //!
+//! What replay reports does not stop the projection (roll-lqjj.28): a newer bead's operation, a
+//! payload or a record that cannot be used, an unreadable line, an id with two contents, a broken
+//! chain, a refused takeover. Replay sets each aside from what nothing after can change: the records
+//! of its id, its causes and its machine's journal before it, and for a takeover the claim it names;
+//! and it lists them in an order nothing after can change either, those found as the journal was
+//! read first, then the rest in causal order, where every new event comes after them. A batch that
+//! would add one is declined, so the list stays replay's. What a record still to come can change,
+//! the projection declines too. A record of an id an integrity entry names settles anew an id found
+//! only in another machine's journal (an event, or two contents): such a batch is declined. A
+//! takeover refused for naming an id no event has is refused for another reason once an event has
+//! it; and an id with several contents waits only for the causes the journal holds, so one it names
+//! that is still to come, or causes that loop back onto it (it is then released after every other
+//! event), place it after events still to come: a journal holding either is not extended at all
+//! ([`Projection::extendable`]), nor is one with an event waiting for a cause, which replay applies
+//! once the cause comes.
+//!
 //! An event that changes an issue's texts (a long field set, a comment, a delete's record) needs
 //! them in the issue: a store reads them in before it extends (roll-lqjj.6), and when one is not,
 //! the projection declines too. Texts read in that change are written again.
 
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::{BinaryHeap, HashMap, HashSet};
 
 use indexmap::IndexMap;
 
@@ -65,10 +81,14 @@ impl Projection {
             journal.add(value, &replica, &origin, sequenced);
         }
         journal.settle();
+        // an id replay reported a record of, held or not (found only in another machine's journal)
+        let reported: HashSet<EventId> = (self.state.integrity.iter())
+            .filter_map(|entry| entry.event.as_deref().and_then(EventId::parse))
+            .collect();
         if !journal.invalid.is_empty()
             || !journal.quarantined().is_empty()
             || journal.events().len() != count
-            || (journal.events().keys()).any(|id| self.ids.contains(id))
+            || (journal.events().keys()).any(|id| self.ids.contains(id) || reported.contains(id))
         {
             return Ok(Extended::Replay);
         }
@@ -217,13 +237,14 @@ impl Projection {
     }
 
     /// The frontier, the ids and the journals' lengths and latest events with the new `events` and
-    /// their machines' records (`order`), once they apply.
+    /// their machines' records (`order`), once they apply. Whether more can be applied after stays
+    /// as it was: a batch that waits for a cause or holds a takeover is declined.
     fn advance(
         &mut self,
         events: &IndexMap<EventId, Event>,
         order: &IndexMap<String, Vec<EventId>>,
     ) {
-        let named: std::collections::HashSet<EventId> = (events.values())
+        let named: HashSet<EventId> = (events.values())
             .flat_map(|event| event.deps().iter().copied())
             .collect();
         self.heads = (events.keys())
@@ -241,6 +262,5 @@ impl Projection {
                 *last = (*last).max(latest);
             }
         }
-        self.open = self.state.integrity.is_empty() && self.state.pending.is_empty();
     }
 }

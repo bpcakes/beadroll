@@ -25,7 +25,8 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   N`, the core calls an import of N records makes, every record depending on a key at the end of
   the batch (roll-lqjj.15); `timing/extend.rs`: `timing --extend N`, events applied to a projection
   of N issues one event at a time and in one batch, including a batch that changes one issue's
-  labels over and over and writes whose ids sort before every id held (roll-lqjj.17, V01 and V02);
+  labels over and over, writes whose ids sort before every id held (roll-lqjj.17, V01 and V02),
+  and closes after an event of an operation a newer bead writes (roll-lqjj.28);
   `timing/dangling.rs`: `timing --dangling N`, replay of N creates whose imports name keys no issue
   has yet, never, later, or one issue every other's, and the controls, and a projection taking one
   issue's keys one create a batch (roll-lqjj.18, W01); `timing/ready.rs`: `timing --ready N`,
@@ -103,8 +104,8 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   it for a dry run, and re-importing a known issue whose dependencies are all unresolved
 - `cargo run --release --package xtask -- timing --extend 8000`: closes, label additions and
   dependency additions applied to a projection of 8,000 issues, one event at a time and in one
-  batch, with one issue's labels changed over and over and writes whose ids sort before every id
-  held
+  batch, with one issue's labels changed over and over, writes whose ids sort before every id
+  held, and closes after an event of an operation a newer bead writes
 - `cargo run --release --package xtask -- timing --ready 4000`: readiness on a held chain, a free
   chain, a lattice and a gated lattice of 4,000 issues, judged for every issue at once, issue by
   issue, and by the complete blocker lists made issue by issue and all at once

@@ -91,7 +91,15 @@ consumer on tokio calls through `spawn_blocking`.
 - A long field's value is kept once, in its register; `Issue::field` shows it from there, so
   replay never copies it into the issue's fields (roll-lqjj.10).
 - A projection extended is replay: `projection/tests.rs` checks every batch a store takes in on
-  histories of machines that write, sync and race, and each batch it must decline.
+  histories of machines that write, sync and race, and each batch it must decline. What replay
+  reports does not stop it (roll-lqjj.28): `projection/tests/flawed.rs` runs the same on histories
+  holding every kind of integrity entry, a copy of a machine's identity among the writers, and
+  `projection/tests/reported.rs` each kind by hand. It is not extended when an event waits for a
+  cause, or when a record still to come can change what replay made of the events before it
+  (`replay::Replayed::unsettled`: a takeover of an id no event has, an id with several contents
+  placed by less than its causes, `Order::loose`), and it declines a batch with a record of an id
+  an integrity entry names; anything added to what replay reports must say which it is, and
+  `cargo test --release --package beadroll-core -- --ignored many_seeds` runs 10,000 histories.
   What the finishing pass derives (each issue's labels, the parent-child index) is redone for what
   the batch can have changed alone, so an operation added to `Op` must say in `replay::relabels`
   and `replay::rewires` whether it changes labels or an edge; the compiler asks, and

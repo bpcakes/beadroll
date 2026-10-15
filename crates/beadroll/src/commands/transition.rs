@@ -3,6 +3,7 @@
 //! already as asked is left alone and said to be. `close --recursive` closes every issue beneath
 //! each one too, children first, in the same transaction.
 
+use std::collections::HashSet;
 use std::ffi::OsString;
 
 use beadroll_core::code::Code;
@@ -54,75 +55,68 @@ pub(crate) fn transition(
         "reopen" => ("Reopened", "open", "open"),
         _ => ("Deleted", "tombstone", "deleted"),
     };
-    let ends_claims = matches!(op, "close" | "delete");
     let (mut result, ended, named, unchanged, plan) = writing(ctx.ws, ctx.actor, |tx| {
         need_tracker(tx.state()?)?;
         let me = ctx.actor.label(&tx.replica);
-        let mut plan = plan(tx.state()?, args)?;
+        let st = tx.state()?;
+        let mut plan = plan(st, args)?;
         if args.recursive && !args.force {
             // the issues left as they are too: one deleted without seeing a claim still holds it
             let subtree: Vec<EventId> = plan.issues.iter().chain(&plan.left).copied().collect();
-            refuse_claimed(tx.state()?, &subtree, &me)?;
+            refuse_claimed(st, &subtree, &me)?;
         }
-        let mut ended = false;
-        // the claim each issue's event names: it ends exactly that claim, never a successor's
-        let mut named: Vec<(EventId, EventId)> = Vec::new();
-        let mut unchanged = Vec::new();
+        let ends_claims = matches!(op, "close" | "delete");
+        let mut decided = Decided {
+            // a repeat of this actor's close that ended a claim still publishes it, as a plain
+            // close does, though the issue beneath is left out of the answer; nothing is written
+            // to those
+            ended: ends_claims
+                && (plan.left.iter())
+                    .filter_map(|uid| st.issue(*uid))
+                    .any(|issue| ended_by(issue, &me)),
+            ..Decided::default()
+        };
+        // Each issue is decided from the state the events before it leave. An event changes only
+        // its own issue, so until an issue is named again that is the state read before writing;
+        // only then are the events decided so far written and the state read again
+        // (roll-lqjj.28). Read before every issue, it replayed the journal after each event the
+        // projection could not take.
+        // the events decided and not yet written
+        let mut events: Vec<(EventId, Object)> = Vec::new();
+        // the issues of those events
+        let mut written: HashSet<EventId> = HashSet::new();
+        let mut failure = None;
         for &uid in &plan.issues {
-            let (shown, held, mine_ended, settled) = {
-                let st = tx.state()?;
-                let issue = known(st, uid)?;
-                (
-                    issue.key().to_owned(),
-                    issue.claim().cloned(),
-                    ended_by(issue, &me),
-                    already(st, issue, status),
-                )
-            };
-            if let Some(held) = &held
-                && !me.is(&held.owner)
-                && !args.force
-            {
-                return Err(Failure::new(
-                    Code::ClaimedByOther,
-                    format!(
-                        "{shown} is claimed by {}: use `bead takeover` first, or --force",
-                        held.owner
-                    ),
-                ));
+            if written.contains(&uid) {
+                for (uid, data) in events.drain(..) {
+                    tx.emit(op, Some(&uid.to_string()), data, None)?;
+                }
+                written.clear();
             }
-            let mut data = Object::new();
-            if let Some(reason) = args.reason.as_deref().filter(|r| !r.is_empty()) {
-                data.insert("reason".into(), Value::from(text(reason)?));
-            }
-            if ends_claims && let Some(held) = held.as_ref().filter(|held| me.is(&held.owner)) {
-                data.insert("claim".into(), Value::from(held.id.to_string()));
-                match named.iter_mut().find(|(issue, _)| *issue == uid) {
-                    Some(entry) => entry.1 = held.id,
-                    None => named.push((uid, held.id)),
+            match decide(tx.state()?, uid, (op, status), args, &me, &mut decided) {
+                Ok(Some(data)) => {
+                    written.insert(uid);
+                    events.push((uid, data));
+                }
+                Ok(None) => {}
+                Err(stop) => {
+                    failure = Some(stop);
+                    break;
                 }
             }
-            ended = ended || held.is_some() || (ends_claims && mine_ended);
-            unchanged.push(settled);
-            if !settled {
-                tx.emit(op, Some(&uid.to_string()), data, None)?;
-            }
         }
-        if let Some(unknown) = plan.unknown.take() {
-            return Err(unknown);
+        for (uid, data) in events {
+            tx.emit(op, Some(&uid.to_string()), data, None)?;
         }
-        // a repeat of this actor's close that ended a claim still publishes it, as a plain close
-        // does, though the issue beneath is left out of the answer
-        let st = tx.state()?;
-        ended = ended
-            || ends_claims
-                && plan
-                    .left
-                    .iter()
-                    .filter_map(|uid| st.issue(*uid))
-                    .any(|issue| ended_by(issue, &me));
-        let st = tx.state()?;
-        let result = briefs(st, &plan.issues)?;
+        if let Some(failure) = failure.or_else(|| plan.unknown.take()) {
+            return Err(failure);
+        }
+        let result = briefs(tx.state()?, &plan.issues)?;
+        let Decided {
+            ended,
+            named,
+            unchanged,
+        } = decided;
         Ok::<_, Failure>((result, ended, named, unchanged, plan))
     })?;
     let warning = if ended {
@@ -149,6 +143,59 @@ pub(crate) fn transition(
     }
     let result = Value::Array(result.into_iter().map(Value::from).collect());
     Ok(Outcome::new(result, lines))
+}
+
+/// What a transition's events name and leave: the claim each issue's event names (it ends exactly
+/// that claim, never a successor's), whether a claim ended, and which issues it leaves unchanged.
+#[derive(Default)]
+struct Decided {
+    named: Vec<(EventId, EventId)>,
+    ended: bool,
+    unchanged: Vec<bool>,
+}
+
+/// What `op`, giving `status`, writes for the issue `uid`, decided from `st`, the state the events
+/// before it leave: the event's data, or nothing for an issue already as asked, which `decided`
+/// marks unchanged; the claim the event ends, and whether one ended, go in `decided` too.
+fn decide(
+    st: &State,
+    uid: EventId,
+    (op, status): (&str, &str),
+    args: &TransitionArgs,
+    me: &Label,
+    decided: &mut Decided,
+) -> Result<Option<Object>, Failure> {
+    let ends_claims = matches!(op, "close" | "delete");
+    let issue = known(st, uid)?;
+    let held = issue.claim();
+    if let Some(held) = held
+        && !me.is(&held.owner)
+        && !args.force
+    {
+        return Err(Failure::new(
+            Code::ClaimedByOther,
+            format!(
+                "{} is claimed by {}: use `bead takeover` first, or --force",
+                issue.key(),
+                held.owner
+            ),
+        ));
+    }
+    let mut data = Object::new();
+    if let Some(reason) = args.reason.as_deref().filter(|r| !r.is_empty()) {
+        data.insert("reason".into(), Value::from(text(reason)?));
+    }
+    if ends_claims && let Some(held) = held.filter(|held| me.is(&held.owner)) {
+        data.insert("claim".into(), Value::from(held.id.to_string()));
+        match decided.named.iter_mut().find(|(issue, _)| *issue == uid) {
+            Some(entry) => entry.1 = held.id,
+            None => decided.named.push((uid, held.id)),
+        }
+    }
+    decided.ended = decided.ended || held.is_some() || (ends_claims && ended_by(issue, me));
+    let settled = already(st, issue, status);
+    decided.unchanged.push(settled);
+    Ok((!settled).then_some(data))
 }
 
 /// What `args` acts on in `st`: each id named, in the order given; with `--recursive`, each named
