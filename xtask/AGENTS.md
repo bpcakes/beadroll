@@ -29,21 +29,21 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   `timing/dangling.rs`: `timing --dangling N`, replay of N creates whose imports name keys no issue
   has yet, never, later, or one issue every other's, and the controls, and a projection taking one
   issue's keys one create a batch (roll-lqjj.18, W01); `timing/ready.rs`: `timing --ready N`,
-  readiness judged on N issues in a chain held by its root's prerequisite, the same chain free, and
-  a lattice whose rows share their ancestors, for every issue at once (the analysis alone, and
-  `State::ready` with its sort), issue by issue, and by the complete blocker lists every reader
-  built before (roll-lqjj.19); `timing/details.rs`: `timing --details N`, every issue of N on a
-  sparse graph without parents shown in full, the issues that depend on each found once for all of
-  them and for each alone, and the reverse lookup alone both ways, with one issue's detail and
-  lookup both ways as a control (roll-lqjj.20); `timing/renames.rs`: `timing --renames N`, replay of
-  two machines each creating the same N keys, so that N copies are renamed, against the same
-  creates renamed by nobody, and each with the first machine's issues importing a dependency on a
-  key that never comes (roll-lqjj.25, X03);
-  `timing/growth.rs`: the growth guards only time can
-  keep (roll-lqjj.34, X15), tests ignored by every other run that time planning an import, its
-  dry run, a re-import, replay of imports that wait for keys and a projection taking ids before
-  every id it holds, at a size and eight times it, on the probes' shapes, and fail above 24 times
-  as long;
+  readiness judged on N issues in a chain held by its root's prerequisite, the same chain free, a
+  lattice whose rows share their ancestors, and that lattice beneath gates of its own for its first
+  rows, for every issue at once (the analysis alone, and `State::ready` with its sort), issue by
+  issue, and by the complete blocker lists made issue by issue (roll-lqjj.19) and all at once
+  (`State::blocker_lists`, roll-lqjj.24); `timing/details.rs`: `timing --details N`, every issue of
+  N on a sparse graph without parents shown in full, the issues that depend on each found once for
+  all of them (`State::details_of`) and for each alone, and the reverse lookup alone both ways, with
+  one issue's detail and lookup both ways as a control (roll-lqjj.20); `timing/renames.rs`:
+  `timing --renames N`, replay of two machines each creating the same N keys, so that N copies are
+  renamed, against the same creates renamed by nobody, and each with the first machine's issues
+  importing a dependency on a key that never comes (roll-lqjj.25, X03); `timing/growth.rs`: the
+  growth guards only time can keep (roll-lqjj.34, X15), tests ignored by every other run that time
+  planning an import, its dry run, a re-import, replay of imports that wait for keys and a
+  projection taking ids before every id it holds, at a size and eight times it, on the probes'
+  shapes, and fail above 24 times as long;
   `timing/world.rs`: the scratch
   store, checkout and remote they run `bead` on; `timing/history.rs`: the histories it replays
   (`--ownership`: heavy in claims, takeovers and releases in attempt files; `--churn`: a thousand
@@ -106,8 +106,8 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   batch, with one issue's labels changed over and over and writes whose ids sort before every id
   held
 - `cargo run --release --package xtask -- timing --ready 4000`: readiness on a held chain, a free
-  chain and a lattice of 4,000 issues, judged for every issue at once, issue by issue, and by the
-  complete blocker lists
+  chain, a lattice and a gated lattice of 4,000 issues, judged for every issue at once, issue by
+  issue, and by the complete blocker lists made issue by issue and all at once
 - `cargo run --release --package xtask -- timing --details 8000`: every issue of 8,000 shown in
   full, its dependents found once for all of them and for each alone, and one issue's as a control
 - `cargo run --release --package xtask -- timing --renames 8000`: replay renaming 8,000 copies two

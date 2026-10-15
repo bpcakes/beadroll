@@ -84,9 +84,10 @@ usage: cargo xtask <command>
       ids sort before every id held, N label and N dependency additions one at a time, and N label
       additions to one issue in a single batch, the fastest of three runs each; --ready N,
       readiness judged in this process on N issues in a chain held by its root's prerequisite, the
-      same chain free, and a lattice whose rows share their ancestors: for every issue at once
-      (the analysis alone, and bead ready's answer with its sort), issue by issue, and by the
-      complete blocker lists every reader built before, the fastest of three runs each;
+      same chain free, a lattice whose rows share their ancestors, and that lattice beneath gates
+      of its own for its first rows: for every issue at once (the analysis alone, and bead
+      ready's answer with its sort), issue by issue, and by the complete blocker lists made issue
+      by issue and all at once, the fastest of three runs each;
       --details N, every issue of N on a sparse graph without parents shown in full in this
       process, the issues that depend on each found once for all of them and for each alone, the
       reverse lookup alone both ways, and for one issue its detail and the lookup both ways as a

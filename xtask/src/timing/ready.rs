@@ -1,13 +1,16 @@
-//! `timing --ready N`: what judging readiness takes (roll-lqjj.19) on a state of N issues in three
-//! shapes — a chain, each issue the child of the one before, whose first waits for a prerequisite,
-//! so that every issue is held through its ancestors; the same chain with nothing waiting, so that
-//! every issue is ready and the answer is sorted; and a lattice, rows of [`WIDTH`] issues each the
-//! child of two in the row above, the first row waiting for a prerequisite, so that the issues of a
-//! row share every ancestor — judged four ways: for every issue at once (`State::readiness`, the
+//! `timing --ready N`: what judging readiness (roll-lqjj.19) and listing blockers (roll-lqjj.24)
+//! take on a state of N issues in four shapes — a chain, each issue the child of the one before,
+//! whose first waits for a prerequisite, so that every issue is held through its ancestors; the
+//! same chain with nothing waiting, so that every issue is ready and the answer is sorted; a
+//! lattice, rows of [`WIDTH`] issues each the child of two in the row above, the first row waiting
+//! for a prerequisite, so that the issues of a row share every ancestor; and the same lattice
+//! beneath [`GATES`] gates, each issue of its first [`GATED_ROWS`] rows waiting for one of its own,
+//! so that every list is long — judged five ways: for every issue at once (`State::readiness`, the
 //! analysis alone, and `State::ready`, with its filter and its sort), issue by issue by the first
-//! thing found (`State::is_blocked`, the question `bead show` asks of one issue), and by the
-//! complete blocker lists (`State::open_blockers`, what every reader built for every issue before,
-//! and what `bead blocked` still lists for the issues held). Replay is not measured. The fastest of
+//! thing found (`State::is_blocked`, the question a detail of one issue asks), by the complete
+//! blocker lists made issue by issue (`State::open_blockers`, what `bead blocked` made for every
+//! issue held before) and by every list made at once (`State::blocker_lists`, what it makes now).
+//! How many blockers the lists hold in all is recorded too. Replay is not measured. The fastest of
 //! [`RUNS`] runs counts. Evidence, never a gate.
 
 use std::time::Instant;
@@ -27,6 +30,13 @@ const RUNS: usize = 3;
 /// How many issues a row of the lattice holds.
 const WIDTH: usize = 4;
 
+/// How many rows of the gated lattice wait for a gate of their own each, every issue below them
+/// inheriting all their gates: so many gates, every issue's list as long.
+const GATED_ROWS: usize = 16;
+
+/// The gated lattice's gates, issues 1 to this.
+const GATES: usize = GATED_ROWS * WIDTH;
+
 /// The machine whose journal the probe's events are in.
 pub(super) const MACHINE: &str = "a";
 
@@ -40,10 +50,19 @@ enum Shape {
     /// Issue 1 the prerequisite of the first row, and each later issue the child of two in the row
     /// above it.
     LatticeHeld,
+    /// [`GATES`] gates, then the same lattice, each issue of its first [`GATED_ROWS`] rows waiting
+    /// for a gate of its own: every issue below them lists every gate, so the lists are long and
+    /// the answer is mostly what is listed.
+    LatticeGated,
 }
 
 impl Shape {
-    const ALL: [Shape; 3] = [Shape::ChainHeld, Shape::ChainFree, Shape::LatticeHeld];
+    const ALL: [Shape; 4] = [
+        Shape::ChainHeld,
+        Shape::ChainFree,
+        Shape::LatticeHeld,
+        Shape::LatticeGated,
+    ];
 
     /// The name its figures are recorded under.
     fn name(self) -> &'static str {
@@ -51,6 +70,7 @@ impl Shape {
             Shape::ChainHeld => "chain_held",
             Shape::ChainFree => "chain_free",
             Shape::LatticeHeld => "lattice_held",
+            Shape::LatticeGated => "lattice_gated",
         }
     }
 
@@ -73,6 +93,20 @@ impl Shape {
                     (above(column), "parent-child"),
                     (above(column + 1), "parent-child"),
                 ]
+            }
+            Shape::LatticeGated if n <= GATES => Vec::new(),
+            Shape::LatticeGated => {
+                let (row, column) = ((n - GATES - 1) / WIDTH, (n - GATES - 1) % WIDTH);
+                let mut linked = Vec::new();
+                if row < GATED_ROWS {
+                    linked.push((key(n - GATES), "blocks"));
+                }
+                if row > 0 {
+                    let above = |column: usize| key(GATES + 1 + (row - 1) * WIDTH + column % WIDTH);
+                    linked.push((above(column), "parent-child"));
+                    linked.push((above(column + 1), "parent-child"));
+                }
+                linked
             }
         }
     }
@@ -168,8 +202,8 @@ pub(super) fn fastest(ask: impl Fn() -> usize) -> (f64, usize) {
 /// or ready).
 type Question<'s> = (&'static str, Box<dyn Fn() -> usize + 's>);
 
-/// The four ways of asking, each on `state` as a whole.
-fn questions(state: &State) -> [Question<'_>; 4] {
+/// The five ways of asking, each on `state` as a whole.
+fn questions(state: &State) -> [Question<'_>; 5] {
     [
         (
             "analysis",
@@ -191,7 +225,20 @@ fn questions(state: &State) -> [Question<'_>; 4] {
                     .count()
             }),
         ),
+        (
+            "lists_all",
+            Box::new(|| {
+                let lists = state.blocker_lists();
+                (state.issues()).filter(|i| !lists.of(i).is_empty()).count()
+            }),
+        ),
     ]
+}
+
+/// How many blockers every issue's list holds in all: what the lists print.
+fn listed(state: &State) -> usize {
+    let lists = state.blocker_lists();
+    state.issues().map(|issue| lists.of(issue).len()).sum()
 }
 
 /// Measures; returns the beginning of the line to record.
@@ -200,6 +247,7 @@ pub(crate) fn measure(issues: usize, label: Option<&str>) -> Result<String, Fail
     for shape in Shape::ALL {
         let state = state(shape, issues)?;
         let name = shape.name();
+        figures.push_str(&format!("\"{name}_listed\": {}, ", listed(&state)));
         for (question, ask) in questions(&state) {
             let (seconds, answer) = fastest(ask);
             let counted = if question == "ready" { "ready" } else { "held" };
@@ -209,7 +257,7 @@ pub(crate) fn measure(issues: usize, label: Option<&str>) -> Result<String, Fail
         }
     }
     let label = label.map_or_else(
-        || format!("readiness of {issues} issues judged four ways"),
+        || format!("readiness of {issues} issues judged five ways"),
         str::to_owned,
     );
     Ok(format!(
@@ -232,18 +280,19 @@ mod tests {
 
     #[test]
     fn the_held_chain_holds_every_issue_but_the_prerequisite() {
-        // held by analysis, ready, held issue by issue, held by the lists
-        assert_eq!(answers(Shape::ChainHeld, 10), [9, 1, 9, 9]);
+        // held by analysis, ready, held issue by issue, held by the lists, and by every list at once
+        assert_eq!(answers(Shape::ChainHeld, 10), [9, 1, 9, 9, 9]);
+        assert_eq!(listed(&state(Shape::ChainHeld, 10).unwrap()), 9);
     }
 
     #[test]
     fn the_free_chain_holds_nothing() {
-        assert_eq!(answers(Shape::ChainFree, 10), [0, 10, 0, 0]);
+        assert_eq!(answers(Shape::ChainFree, 10), [0, 10, 0, 0, 0]);
     }
 
     #[test]
     fn the_lattice_holds_every_row_through_two_parents_each() {
-        assert_eq!(answers(Shape::LatticeHeld, 13), [12, 1, 12, 12]);
+        assert_eq!(answers(Shape::LatticeHeld, 13), [12, 1, 12, 12, 12]);
         let state = state(Shape::LatticeHeld, 13).unwrap();
         let parents = |n: usize| -> Vec<String> {
             let issue = state.resolve(&key(n)).unwrap();
@@ -259,6 +308,29 @@ mod tests {
         assert_eq!(parents(6), [key(2), key(3)]);
         assert_eq!(parents(9), [key(2), key(5)], "the row wraps around");
         assert_eq!(parents(13), [key(6), key(9)]);
+    }
+
+    #[test]
+    fn the_gated_lattice_lists_every_gate_beneath_its_gated_rows() {
+        // the gates are ready, every issue of the lattice held
+        let issues = GATES + (GATED_ROWS + 4) * WIDTH;
+        assert_eq!(
+            answers(Shape::LatticeGated, issues),
+            [
+                issues - GATES,
+                GATES,
+                issues - GATES,
+                issues - GATES,
+                issues - GATES
+            ]
+        );
+        let state = state(Shape::LatticeGated, issues).unwrap();
+        let lists = state.blocker_lists();
+        let last = state.resolve(&key(issues)).unwrap();
+        assert_eq!(lists.of(last).len(), GATES, "every gate");
+        assert_eq!(state.open_blockers(last).len(), GATES);
+        let first = state.resolve(&key(GATES + 1)).unwrap();
+        assert_eq!(lists.of(first).len(), 1, "its own gate");
     }
 
     #[test]

@@ -2,13 +2,13 @@
 //! (roll-lqjj.20), above all finding the issues that depend on each, on a sparse graph — issue n
 //! waits for issue n/2, and every third issue is also related to the one before — that has no
 //! parent-child edge, so that no detail walks ancestors and the reverse lookup is what grows. Asked
-//! seven ways: every detail with its dependents found once for all of them (`State::dependents_of`
-//! and `State::detail_with`, what `bead show`, `bead update`, `bead claim` and `bead takeover` do
-//! with the issues they are given) and every detail alone (`State::detail`, a pass over every
-//! edge for each); the reverse lookup alone, once for all (`State::dependents_of`) and as every
-//! detail made it before, every issue's edges collected and sorted for each; and as a control, for
-//! one issue, its detail alone, and the lookup now and before. Replay is not measured. The fastest
-//! of [`RUNS`] runs counts. Evidence, never a gate.
+//! seven ways: every detail with what they share found once for all of them (`State::details_of`,
+//! what `bead show`, `bead update`, `bead claim` and `bead takeover` do with the issues they are
+//! given, roll-lqjj.24) and every detail alone (`State::detail`, a pass over every edge for each);
+//! the reverse lookup alone, once for all (`State::dependents_of`) and as every detail made it
+//! before, every issue's edges collected and sorted for each; and as a control, for one issue, its
+//! detail alone, and the lookup now and before. Replay is not measured. The fastest of [`RUNS`]
+//! runs counts. Evidence, never a gate.
 
 use beadroll_core::journal::Journal;
 use beadroll_core::json::{Object, Value};
@@ -78,9 +78,9 @@ fn questions(state: &State) -> Result<[Question<'_>; 7], Failure> {
         (
             "together",
             Box::new(|| {
-                let dependents = state.dependents_of(state.issues());
+                let details = state.details_of(state.issues());
                 (state.issues())
-                    .map(|issue| listed(&state.detail_with(issue, &dependents)))
+                    .map(|issue| listed(&details.of(issue)))
                     .sum()
             }),
         ),
