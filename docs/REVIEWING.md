@@ -205,7 +205,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   whole, not fsynced: the durability bullet below says why that suffices, roll-lqjj.27, X05) when
   every segment ended with a whole line, never into a store that is not there; a projection missing,
   cut, damaged (a 128-bit sum of each part) or another build's is never read, and a failed write is
-  no failure. A state read from it alone, as a command that only reads reads it, knows of its events
+  no failure. A state read from it alone, as a read that finds it current reads it (a write,
+  the first read after one, `info` and `machines` decode the whole), knows of its events
   only who wrote those behind a register with several entries, the only ones its conflicts name, and
   where machines' journals broke (roll-lqjj.35, X16): the events' records were about a fifth of what
   such a command decoded, and their causes, which only applying more events reads, half of that.

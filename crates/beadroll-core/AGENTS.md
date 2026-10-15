@@ -95,7 +95,9 @@ consumer on tokio calls through `spawn_blocking`.
   a departure requires a documented decision and regression coverage.
 - A long field's value is kept once, in its register; `Issue::field` shows it from there, so
   replay never copies it into the issue's fields (roll-lqjj.10).
-- A state read alone (`projection::decode_state`, which every reading command decodes) knows of
+- A state read alone (`projection::decode_state`, which a read decodes when it finds the
+  projection current; a write, the first read after one, `info` and `machines` decode the whole
+  with `Projection::decode`) knows of
   its events only who wrote those behind a register with several entries, the only events
   `State::conflicts` names, and where machines' journals broke; every event the state names, with
   its causes, machine and actor, is in the projection's index, which only `Projection::decode`

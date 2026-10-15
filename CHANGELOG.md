@@ -6,10 +6,11 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
-- A command that only reads (`list`, `ready`, `blocked`, `show`, `prime`, ...) decodes of the events
-  in the projection only who wrote the values two writers set without seeing each other, which
-  conflicts show; every event's record, with its causes, moved to the projection's index, which only
-  a write reads (roll-lqjj.35, X16; `projection::ENCODING` 6, so the first command of this build
+- A read that finds the projection current (`list`, `ready`, `blocked`, `show`, `prime`, ...)
+  decodes of the events in it only who wrote the values two writers set without seeing each other,
+  which conflicts show; every event's record, with its causes, moved to the projection's index,
+  which only `Projection::decode` reads: a write, the first read after one (which extends the
+  projection and saves it), `info` and `machines`, none of which gains (roll-lqjj.35, X16; `projection::ENCODING` 6, so the first command of this build
   replays the journal once). At 200,000 events the state a read decodes is 10.7 MB rather than 14.0
   MB and takes 44 ms rather than 57 ms in process, holding 60 MB rather than 73 MB (`cargo xtask
   timing --decode N`, new); `list` takes 0.121 s rather than 0.146 s, `show` 0.116 s rather than
