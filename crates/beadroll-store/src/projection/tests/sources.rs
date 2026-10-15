@@ -104,6 +104,14 @@ fn writes() -> Vec<(&'static str, Write)> {
             std::fs::remove_file(&path).unwrap();
             ws.forget_claims(&path);
         }),
+        // in place, by a writer that tells the phase (`Workspace::forget_claims`): the file is
+        // stat-ed again, and only the identity kept of it says it is not the one read
+        ("an attempt file rewritten in place, announced", |ws| {
+            let path = claimed(ws, 5);
+            let text = std::fs::read_to_string(&path).unwrap();
+            std::fs::write(&path, text.replace("offline", "online")).unwrap();
+            ws.forget_claims(&path);
+        }),
         // by a writer that does not tell the phase (`Workspace::forget_claims`)
         (
             "an attempt file replaced by the same bytes, unannounced",
@@ -199,4 +207,47 @@ fn a_projection_that_cannot_name_its_files_is_not_current() {
     // nor does one whose claims directories could not be told
     let keys: Keys = Arc::from([]);
     assert!(Sources::of(Vec::new(), Arc::from([]), keys, None).is_none());
+}
+
+/// Each comparison of the sources is made on its own: the sources of a projection read from a store
+/// that has not changed, altered in one respect only, are no longer the store's. A comparison the
+/// writes above are all caught by another of is pinned here: the names of the attempt files, which
+/// the identities and the directories also say a file was added or removed by, and the identities,
+/// which alone see a file rewritten in place that the phase was told of.
+#[test]
+fn each_comparison_of_the_sources_is_made() {
+    type Alter = fn(&mut Sources);
+    let alterations: [(&str, Alter); 5] = [
+        ("a segment's identity", |sources| {
+            let (_, key) = &mut sources.segments[0];
+            *key = key.up_to(key.len() + 1);
+        }),
+        ("a segment's name", |sources| {
+            sources.segments[0].0.push('x');
+        }),
+        ("an attempt file's name", |sources| {
+            let mut names = sources.attempts.to_vec();
+            names[0].set_extension("other");
+            sources.attempts = names.into();
+        }),
+        ("an attempt file's identity", |sources| {
+            let mut keys = sources.keys.to_vec();
+            keys[0] = keys[0].map(|key| key.up_to(key.len() + 1));
+            sources.keys = keys.into();
+        }),
+        ("a claims directory's identity", |sources| {
+            sources.stamp = Arc::from([]);
+        }),
+    ];
+    for how in [How::Replayed, How::Stored, How::Appended, How::Uncached] {
+        for locked in [false, true] {
+            for (what, alter) in alterations {
+                let home = tempfile::tempdir().unwrap();
+                let (ws, mut read) = read_as(home.path(), how, locked);
+                alter(read.sources.as_mut().expect("sources"));
+                let message = format!("{how:?}, locked {locked}: {what}");
+                assert!(read.into_current(&ws).is_none(), "{message}");
+            }
+        }
+    }
 }

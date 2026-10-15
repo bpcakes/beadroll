@@ -173,6 +173,19 @@ impl Window {
         }
     }
 
+    /// What `b`'s copy of the segment at `path` under `events/` has beyond `a`'s, appended to
+    /// `a`'s, as a merge extends a segment: the write of the window, from outside `a`'s process.
+    fn append_rest(&self, path: &str) -> impl FnOnce() + Send + use<> {
+        let from = self.b.store().join("events").join(path);
+        let to = self.a.store().join("events").join(path);
+        move || {
+            let (theirs, ours) = (std::fs::read(from).unwrap(), std::fs::read(&to).unwrap());
+            let rest = theirs.strip_prefix(ours.as_slice()).expect("a longer copy");
+            let mut segment = std::fs::OpenOptions::new().append(true).open(to).unwrap();
+            std::io::Write::write_all(&mut segment, rest).expect("an append");
+        }
+    }
+
     /// The file at `path` under `a`'s `events/` replaced by another of the same bytes renamed over
     /// it, as an atomic write does, the names it leaves the same: the write of the window, from
     /// outside `a`'s process too.
@@ -281,6 +294,23 @@ fn a_segment_written_after_the_merge_is_read_by_the_claims_transaction() {
     let causes = s.causes(&ws);
     assert!(causes.contains(&written), "{written} among {causes:?}");
     assert!(s.a.show(&s.keys[0]).get("claim").is_some());
+}
+
+/// The likeliest write of all: an event appended to a segment `a` has already, as a merge extends
+/// one. The segment's length is all that says so, and the claim builds on the event appended.
+#[test]
+fn an_event_appended_to_a_segment_after_the_merge_is_read_by_the_claims_transaction() {
+    let s = Window::new();
+    s.b.bead(["comments", "add", &s.keys[1], "published"]);
+    let theirs = s.theirs();
+    s.a.bead(["sync"]);
+    s.b.bead(["comments", "add", &s.keys[1], "kept back", "--offline"]);
+    let segment = format!("{theirs}/000001.jsonl");
+    let written = last_id(&s.b.store().join("events").join(&segment));
+    let (ws, reads) = s.claim_while(s.append_rest(&segment));
+    assert_eq!(reads, 2, "the merge's read, and the store read again");
+    let causes = s.causes(&ws);
+    assert!(causes.contains(&written), "{written} among {causes:?}");
 }
 
 /// The same for an attempt file: the claim of another issue, accepted by `b` alone, is written

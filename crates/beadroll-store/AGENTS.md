@@ -97,8 +97,10 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   when it was listed (`Claims::stamp`): a file added, removed or renamed over changes its
   directory's, so a write is seen whether the writer told the phase (`write_attempt_file`; the
   merge's `write_journal` with a separate `forget_claims`) or not (a bare `write_atomic`), and it
-  costs nothing more per attempt file. A rewrite in place changes none of them, and nothing in the
-  window makes one.
+  costs nothing more per attempt file. An attempt file rewritten in place leaves its directory as
+  it is and is not stat-ed again under the lock, so it is seen only if the writer told the phase,
+  and otherwise not at any length or time; nothing in bead rewrites one in place, and nothing in
+  the window writes at all.
 - An identity taken of an attempt file is kept only while the store lock is held, for the rest of
   that phase, and forgotten when bead writes that file (`Workspace::forget_claims`); a reader
   outside the lock stats each file afresh, after the segments it reads (X13, roll-lqjj.30).

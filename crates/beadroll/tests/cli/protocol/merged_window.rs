@@ -60,23 +60,27 @@ impl Pair {
     /// The causes of the claim of the first issue `a` makes while the file at `path` under `b`'s
     /// `events/` is copied to `a`'s, in the window between its merge and its transaction.
     fn causes_of_a_claim_while_copying(&self, path: &str) -> Vec<Json> {
-        let window = Gate::new(&self.sandbox, "window");
-        let failpoints = format!("ownership.before-transaction={}", window.action());
         let from = self.b.store().join("events").join(path);
         let to = self.a.store().join("events").join(path);
+        self.causes_of_a_claim_while(move || {
+            let folder = to.parent().expect("a folder");
+            std::fs::create_dir_all(folder).expect("a folder");
+            std::fs::copy(&from, &to).expect("a copy");
+            aged(folder);
+        })
+    }
+
+    /// The causes of the claim of the first issue `a` makes while `write` is done, from outside
+    /// its process, in the window between its merge and its transaction.
+    fn causes_of_a_claim_while(&self, write: impl FnOnce() + Send) -> Vec<Json> {
+        let window = Gate::new(&self.sandbox, "window");
+        let failpoints = format!("ownership.before-transaction={}", window.action());
         let (claimed, copied) = beside(
             || {
                 let claim = self.a.cmd(["claim", &self.keys[0], "--json"]);
                 claim.env("BEAD_FAILPOINTS", &failpoints).run()
             },
-            |finished| {
-                window.meet(finished, || {
-                    let folder = to.parent().expect("a folder");
-                    std::fs::create_dir_all(folder).expect("a folder");
-                    std::fs::copy(&from, &to).expect("a copy");
-                    aged(folder);
-                })
-            },
+            |finished| window.meet(finished, write),
         );
         assert!(copied.is_some(), "the claim never reached the window");
         assert_eq!(claimed.returncode(), 0, "{}", claimed.stderr);
@@ -126,6 +130,29 @@ fn a_claim_builds_on_a_segment_written_between_its_merge_and_its_transaction() {
     let segment = format!("{}/000001.jsonl", s.theirs());
     let written = last_id(&s.b.store().join("events").join(&segment));
     let causes = s.causes_of_a_claim_while_copying(&segment);
+    assert!(causes.contains(&written), "{written:?} among {causes:?}");
+}
+
+/// The likeliest write of all: an event appended to a segment `a` has already, as a merge extends
+/// one. The claim builds on the event appended.
+#[test]
+fn a_claim_builds_on_an_event_appended_to_a_segment_it_has() {
+    let s = Pair::new();
+    s.b.bead(["comments", "add", &s.keys[1], "published"]);
+    let segment = format!("{}/000001.jsonl", s.theirs());
+    s.a.bead(["sync"]);
+    s.b.bead(["comments", "add", &s.keys[1], "kept back", "--offline"]);
+    let written = last_id(&s.b.store().join("events").join(&segment));
+    let (from, to) = (
+        s.b.store().join("events").join(&segment),
+        s.a.store().join("events").join(&segment),
+    );
+    let causes = s.causes_of_a_claim_while(|| {
+        let (theirs, ours) = (std::fs::read(&from).unwrap(), std::fs::read(&to).unwrap());
+        let rest = theirs.strip_prefix(ours.as_slice()).expect("a longer copy");
+        let mut file = std::fs::OpenOptions::new().append(true).open(&to).unwrap();
+        std::io::Write::write_all(&mut file, rest).expect("an append");
+    });
     assert!(causes.contains(&written), "{written:?} among {causes:?}");
 }
 

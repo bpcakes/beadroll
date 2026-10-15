@@ -368,33 +368,41 @@ These were decided deliberately. Report problems *with* them, not their existenc
   was listed (`Stamp`, which the listing keeps without a stat of its own): a file added, removed or
   renamed over changes its directory's, whatever wrote it and whether or not it told the phase,
   and a directory that changed is answer enough, without a stat of its files. What none of it sees
-  is a rewrite in place of the same length within one tick of the clock, a file written within one
-  tick of its directory's listing on a kernel that stamps from a coarse clock (X13), or an inode
-  reused by two replacements within one: nothing between the merge's read and `Tx::on` writes a
-  journal file, and what a merge writes it writes before it reads (it can replace one foreign
-  segment twice in a command, through `repair_tail` and then the fork's replacement). Closing the
+  is, for a segment, a rewrite in place of the same length within one tick of the clock; for an
+  attempt file, a rewrite in place that the phase was not told of, at any length and at any time,
+  since under the lock the check does not stat attempt files and such a rewrite leaves the
+  directory as it is (told, the phase stats the file again and the identity comparison sees it);
+  and a file written within one tick of its directory's listing on a kernel that stamps from a
+  coarse clock (X13), or an inode reused by two replacements within one. Nothing between the
+  merge's read and `Tx::on` writes a journal file, no bead code rewrites an attempt file in place,
+  and what a merge writes it writes before it reads (it can replace one foreign segment twice in a
+  command, through `repair_tail` and then the fork's replacement). Closing the
   window by construction was weighed and not done: every write under `events/` (`append_events`,
   `extend_segment`, `repair_tail`, `write_attempt_file`, `write_atomic` of any path under it) is a
   function of the store that takes the `Workspace`, so a window nothing can write in would need
   each of them to ask for a token the round holds from its merge until `Tx::on` takes it, a change
   to the signatures of three crates for a window with nothing in it, and a token does not see a
   file written by a caller that has none; the guard compares the files whatever wrote them, but
-  for those rewrites in place, and stays. A failpoint, `ownership.before-transaction`, holds a
+  for the rewrites in place above, and stays. A failpoint, `ownership.before-transaction`, holds a
   round in the window for a test to write there, in process (`reads::`: a segment, an attempt file
-  in a folder `a` has not, one added to a claims directory it has, and one replaced by a rename,
-  all written from outside the process, count two reads, and all but the last look for the written
-  event among the claim's causes; `a_claim_whose_merge_wrote_files_still_reads_the_state_once`
-  keeps what the merge wrote itself from reading again) and through `bead claim`
-  (`protocol::merged_window`), and the sources' own tests write each kind of change, announced to
-  the phase or not, after each way a projection is read (`projection::tests::sources`; the
-  listing's `Stamp` in `listing::tests`). Each fails with the guard disabled (`into_current`
-  returning the projection unchecked); the replaced attempt file's, and the sources' tests of a
-  replacement the phase was not told of, also fail with the directories not compared, which is the
-  guard as it stood when it trusted the phase's identities alone. The check costs, in process, release build, one
-  segment: 26 µs; 50: 0.13 ms; 300: 0.67 ms (about 2 µs a segment, a listing and a `stat`), and
-  under 40 µs more for the attempt files, with 20,000 of them as with none, the locked phase's
-  listing and identities being reused (outside the lock, which `Tx::on` is not for, it lists and
-  stats all 20,000: 54 ms). A claim on a tracker of 20,000 imported issues (one segment), release
+  in a folder `a` has not, one added to a claims directory it has, one replaced by a rename, and
+  an event appended to a segment it has, as a merge extends one, all written from outside the
+  process, count two reads, and all but the replacement look for the written event among the
+  claim's causes; `a_claim_whose_merge_wrote_files_still_reads_the_state_once` keeps what the
+  merge wrote itself from reading again) and through `bead claim` (`protocol::merged_window`,
+  the same but for the replacement), and the sources' own tests write each kind of change,
+  announced to the phase or not, among them an attempt file rewritten in place that the phase was
+  told of, after each way a projection is read, and alter each comparison of the sources on its
+  own, the names of the attempt files and their identities among them, so that dropping any one
+  fails a test (`projection::tests::sources`; the listing's `Stamp` in `listing::tests`). Each
+  fails with the guard disabled (`into_current` returning the projection unchecked), and the
+  end-to-end tests of an appended segment also with the segments left out; the replaced attempt
+  file's, and the sources' tests of a replacement the phase was not told of, also fail with the
+  directories not compared, which is the guard as it stood when it trusted the phase's identities
+  alone. The check costs, in process, release build, one segment: 26 µs; 50: 0.13 ms; 300: 0.67 ms
+  (about 2 µs a segment, a listing and a `stat`), and under 40 µs more for the attempt files, with
+  20,000 of them as with none, the locked phase's listing and identities being reused (outside the
+  lock, which `Tx::on` is not for, it lists and stats all 20,000: 54 ms). A claim on a tracker of 20,000 imported issues (one segment), release
   builds, ten claims each way alternated on a machine shared with three other builds, took 274 ms
   at best before and 282 ms after (304 and 286 ms in an earlier run), which is noise; the
   syscalls of a first claim made by the bead process, counted with `strace -c` (`openat`,

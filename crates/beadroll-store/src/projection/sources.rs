@@ -8,9 +8,13 @@
 //! sums that make a stored projection vouch for a file of its own timestamp tick are not used:
 //! every write bead makes to a journal file changes its length (an append) or its inode (a file
 //! written whole and renamed into place), or the set of files, and with the store lock held nothing
-//! else writes. A rewrite in place of the same length within one tick of the clock, or an inode
-//! reused by two replacements within one, would go unseen; nothing between a merge's read and its
-//! transaction writes a journal file at all, and what a merge writes it writes before it reads.
+//! else writes. A segment rewritten in place with its length kept within one tick of the clock, or
+//! an inode reused by two replacements within one, would go unseen. An attempt file rewritten in
+//! place goes unseen whatever its length and whenever, unless the writer told the phase
+//! (`Workspace::forget_claims`), since under the lock the check does not stat attempt files and
+//! the rewrite leaves their directory as it is. Nothing between a merge's read and its transaction
+//! writes a journal file at all, nothing in bead rewrites an attempt file in place, and what a
+//! merge writes it writes before it reads.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -31,7 +35,8 @@ use super::kept;
 pub struct Sourced {
     projection: Projection,
     /// `None` when a file's identity could not be had: nothing vouches for the projection then.
-    sources: Option<Sources>,
+    /// Open to the tests, which alter one comparison's side at a time.
+    pub(super) sources: Option<Sources>,
 }
 
 impl Sourced {
@@ -65,13 +70,13 @@ impl Sourced {
 #[derive(Debug)]
 pub(super) struct Sources {
     /// Each segment's path under the store's `events` and its identity as it was read, by path.
-    segments: Vec<(String, FileKey)>,
+    pub(super) segments: Vec<(String, FileKey)>,
     /// The accepted attempt files as they were listed, in the order of the listing.
-    attempts: Arc<[PathBuf]>,
+    pub(super) attempts: Arc<[PathBuf]>,
     /// Each one's identity: the identities the locked phase keeps (roll-lqjj.30).
-    keys: Keys,
+    pub(super) keys: Keys,
     /// The identity each claims directory had when they were listed.
-    stamp: Stamp,
+    pub(super) stamp: Stamp,
 }
 
 impl Sources {
@@ -155,8 +160,10 @@ impl Sources {
     /// [`claim_keys`]), and the claims directories are the same as listed: a file added, removed
     /// or renamed over, by whatever wrote it, changes its directory's identity, which is
     /// compared whether or not the writer told the phase (`Workspace::forget_claims`), as are the
-    /// names and the identities the phase keeps of the files. A rewrite in place changes none of
-    /// the directory's.
+    /// names and the identities the phase keeps of the files. A file rewritten in place leaves its
+    /// directory's identity as it is, and the phase stats it again only if told: told, its
+    /// identity is compared; not told, it goes unseen, whatever its length and whenever it was
+    /// written.
     fn attempts_unchanged(&self, ws: &Workspace) -> bool {
         let Ok((paths, Some(stamp))) = claim_files_afresh(ws) else {
             return false;
