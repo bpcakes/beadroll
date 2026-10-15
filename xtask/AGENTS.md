@@ -28,7 +28,11 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   labels over and over and writes whose ids sort before every id held (roll-lqjj.17, V01 and V02);
   `timing/dangling.rs`: `timing --dangling N`, replay of N creates whose imports name keys no issue
   has yet, never, later, or one issue every other's, and the controls, and a projection taking one
-  issue's keys one create a batch (roll-lqjj.18, W01);
+  issue's keys one create a batch (roll-lqjj.18, W01); `timing/ready.rs`: `timing --ready N`,
+  readiness judged on N issues in a chain held by its root's prerequisite, the same chain free, and
+  a lattice whose rows share their ancestors, for every issue at once (the analysis alone, and
+  `State::ready` with its sort), issue by issue, and by the complete blocker lists every reader
+  built before (roll-lqjj.19);
   `timing/world.rs`: the scratch
   store, checkout and remote they run `bead` on; `timing/history.rs`: the histories it replays
   (`--ownership`: heavy in claims, takeovers and releases in attempt files; `--churn`: a thousand
@@ -82,6 +86,9 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   dependency additions applied to a projection of 8,000 issues, one event at a time and in one
   batch, with one issue's labels changed over and over and writes whose ids sort before every id
   held
+- `cargo run --release --package xtask -- timing --ready 4000`: readiness on a held chain, a free
+  chain and a lattice of 4,000 issues, judged for every issue at once, issue by issue, and by the
+  complete blocker lists
 - `cargo test -p xtask`
 - `python3 xtask/python/printable_table.py > crates/beadroll-core/src/text/printable.rs`, with
   CPython 3.14.7 (Unicode 16.0.0), the versions the table was made with; do not change the

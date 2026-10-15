@@ -50,6 +50,7 @@ usage: cargo xtask <command>
   timing --import N [--label NAME] [--out FILE]
   timing --plan N [--label NAME] [--out FILE]
   timing --extend N [--label NAME] [--out FILE]
+  timing --ready N [--label NAME] [--out FILE]
   timing --load DIR [--no-replay]
       Run COMMAND and append what it took, one JSON line, to FILE (default
       target/timing.jsonl); or replay a parsed journal of N valid events in-process, the best of
@@ -79,8 +80,12 @@ usage: cargo xtask <command>
       process, each with two labels and a tenth of them a parent of nine: N closes one event at a
       time as a bulk close applies them, the same closes in one batch, N closes one at a time whose
       ids sort before every id held, N label and N dependency additions one at a time, and N label
-      additions to one issue in a single batch, the fastest of three runs each. Timings are
-      evidence, never a gate.
+      additions to one issue in a single batch, the fastest of three runs each; --ready N,
+      readiness judged in this process on N issues in a chain held by its root's prerequisite, the
+      same chain free, and a lattice whose rows share their ancestors: for every issue at once
+      (the analysis alone, and bead ready's answer with its sort), issue by issue, and by the
+      complete blocker lists every reader built before, the fastest of three runs each. Timings
+      are evidence, never a gate.
 
   bead ARG...
       Run bead with ARGs in this process, whose heap is counted, and say on standard error the
