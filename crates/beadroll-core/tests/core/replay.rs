@@ -1,6 +1,7 @@
 //! In-process replay checks for causality, registers, labels, dependencies, quarantine,
 //! validation and cycles.
 
+mod dependents;
 mod port_alignment;
 mod readiness;
 mod replay_audit_bugs;

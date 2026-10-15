@@ -48,6 +48,9 @@ consumer on tokio calls through `spawn_blocking`.
   all of them (`Readiness`), which `State::ready` and the CLI's `ready`, `blocked` and `prime` ask,
   and `State::is_blocked`, the same question for one issue, answered by the first thing found
   (roll-lqjj.19); `State::open_blockers` still lists the blockers themselves.
+  `src/view/dependents.rs`: `State::dependents_of`, the issues that depend on each of several
+  issues, found in one pass over every issue's edges (`Dependents`), from which
+  `State::detail_with` lists each one's; `State::detail` makes it for its one issue (roll-lqjj.20).
 - `src/import/dry_run.rs`: `problems` (every problem an import would be refused for, empty exactly
   when it goes through) and `preview` (what it would bring), for `--dry-run`.
 - `tests/core/`: integration tests of replay, storage compatibility and validation.
@@ -102,6 +105,14 @@ consumer on tokio calls through `spawn_blocking`.
   scopes and random graphs (roll-lqjj.19). A reader that asks of many issues asks `readiness` once:
   asked issue by issue, a chain of N issues costs N². `cargo run --release --package xtask --
   timing --ready N` measures the four ways.
+- A detail's `dependents` are every issue with an edge to its issue's uid, in replay order, each
+  one's edges to it in sorted order, never an edge that was removed; only the edges say so, so
+  finding them reads every issue's edges. A reader that shows several issues in full
+  finds them for all of them in one pass (`State::dependents_of`) and makes each detail with
+  `State::detail_with`: asked issue by issue, N details read every edge N times (roll-lqjj.20).
+  `tests/core/replay/dependents.rs` keeps the details so made equal to `State::detail` of each
+  issue alone and to what every detail found before, member for member, and `cargo run --release
+  --package xtask -- timing --details N` measures both ways.
 - `saw` agrees with the reference ancestry bitsets: `state/seen/tests.rs` checks every pair
   on hostile histories. Replay's speed and memory are measured by
   `cargo run --release --package xtask -- timing --replay N [--ownership]`: at 200,000 events its

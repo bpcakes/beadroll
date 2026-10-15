@@ -14,10 +14,20 @@ use super::{Context, Failure, Line, Outcome, Tone, need_tracker, resolve_arg, vi
 pub(crate) fn show(ctx: &Context<'_>, ids: &[OsString]) -> Result<Outcome, Failure> {
     let st = view_of(ctx.ws, ids)?;
     need_tracker(&st)?;
+    // Every key is resolved first, so that the issues that depend on them are found once for all
+    // of them (roll-lqjj.20); a key that names no issue still fails where it stands, after the
+    // issues before it.
+    let issues: Vec<_> = ids.iter().map(|key| resolve_arg(&st, key)).collect();
+    let dependents = st.dependents_of(
+        issues
+            .iter()
+            .filter_map(|issue| issue.as_ref().ok())
+            .copied(),
+    );
     let mut result = Vec::new();
-    for key in ids {
-        let issue = resolve_arg(&st, key)?;
-        let mut detail = st.detail(issue);
+    for issue in issues {
+        let issue = issue?;
+        let mut detail = st.detail_with(issue, &dependents);
         if issue.status() == "closed"
             && let Some(at) = detail.get_index_of("closed_on")
         {

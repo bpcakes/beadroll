@@ -15,7 +15,7 @@ use beadroll_core::text::str_of;
 use beadroll_store::{Actor, Label, view_outline};
 use beadroll_sync::{Mode, Tx, coordinated, publish_soon, writing};
 
-use super::ownership::{ClaimStep, command_signature, still_held};
+use super::ownership::{ClaimStep, command_signature, details, still_held};
 use super::{
     ContentArgs, Context, Failure, Line, Outcome, Payload, Tone, arg_texts, encodable, ended_by,
     field_args, need_tracker, remove_edge, resolve_arg, split_args, view_of,
@@ -103,11 +103,7 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
         publish_soon(ctx.ws, args.offline, args.remote.as_deref())
     };
     let st = view_of(ctx.ws, &args.ids)?;
-    let mut result = args
-        .ids
-        .iter()
-        .map(|key| Ok(st.detail(resolve_arg(&st, key)?)))
-        .collect::<Result<Vec<Object>, Failure>>()?;
+    let mut result = details(&st, &args.ids)?;
     let lines = answer(&mut result, asked_nothing, notes, warning);
     let result = Value::Array(result.into_iter().map(Value::from).collect());
     Ok(Outcome::new(result, lines))

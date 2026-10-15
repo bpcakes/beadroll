@@ -1,10 +1,14 @@
 //! Issue presentation: objects in stable field order and the one-line list format.
 
+mod dependents;
+
 use crate::event::{EXPORT_FIELDS, Field};
 use crate::json::{Object, Value};
 use crate::query::Alternative;
 use crate::state::{Comment, Issue, State};
 use crate::text::str_of;
+
+pub use dependents::Dependents;
 
 /// The status icons `list` prints.
 pub fn icon(status: &str) -> &'static str {
@@ -86,8 +90,18 @@ impl State {
         out
     }
 
-    /// Full issue details. The CLI adds the git-dependent `merged` field after `closed_on`.
+    /// Full issue details. The CLI adds the git-dependent `merged` field after `closed_on`. The
+    /// issues that depend on it are found by reading every issue's edges, once; a reader that
+    /// shows several issues finds them for all of them at once with [`State::dependents_of`] and
+    /// asks [`State::detail_with`].
     pub fn detail(&self, issue: &Issue) -> Object {
+        self.detail_with(issue, &self.dependents_of([issue]))
+    }
+
+    /// Full issue details as [`State::detail`] gives them, the issues that depend on it taken from
+    /// `dependents` (roll-lqjj.20): found there when they were found in this state and it was asked
+    /// about, and for it alone otherwise.
+    pub fn detail_with(&self, issue: &Issue, dependents: &Dependents<'_>) -> Object {
         let mut out = Object::new();
         out.insert("id".into(), Value::from(issue.key()));
         for name in EXPORT_FIELDS {
@@ -112,7 +126,18 @@ impl State {
         if !issue.dangling().is_empty() {
             out.insert("unresolved_dependencies".into(), unresolved(issue));
         }
-        out.insert("dependents".into(), self.dependents(issue));
+        let alone;
+        let found = (dependents.found_in(self))
+            .then(|| dependents.of(issue))
+            .flatten();
+        let dependents = match found {
+            Some(found) => found,
+            None => {
+                alone = self.dependents_of([issue]);
+                alone.of(issue).unwrap_or_default()
+            }
+        };
+        out.insert("dependents".into(), dependents_shown(dependents));
         let comments = issue
             .comments()
             .iter()
@@ -191,25 +216,6 @@ impl State {
         dependencies.collect::<Vec<_>>().into()
     }
 
-    /// The issues that depend on this one, in replay order, each by sorted edge.
-    fn dependents(&self, issue: &Issue) -> Value {
-        let uid = issue.uid().to_string();
-        let mut dependents = Vec::new();
-        for other in self.issues() {
-            let mut edges: Vec<&(String, String)> = other.deps().keys().collect();
-            edges.sort();
-            for (_, kind) in edges.into_iter().filter(|(to, _)| *to == uid) {
-                let mut dep = Object::new();
-                dep.insert("id".into(), Value::from(other.key()));
-                dep.insert("title".into(), field(other, Field::Title));
-                dep.insert("status".into(), field(other, Field::Status));
-                dep.insert("dependency_type".into(), Value::from(kind.as_str()));
-                dependents.push(Value::from(dep));
-            }
-        }
-        dependents.into()
-    }
-
     /// The one-line issue summary before output escaping.
     pub fn line(&self, issue: &Issue) -> String {
         self.row(issue).to_string()
@@ -280,6 +286,20 @@ impl std::fmt::Display for Row {
         }
         Ok(())
     }
+}
+
+/// The issues that depend on one, as [`State::dependents_of`] found them: the key, title and status
+/// of each, and the type of its edge.
+fn dependents_shown(dependents: &[(&Issue, &str)]) -> Value {
+    let dependents = dependents.iter().map(|(other, kind)| {
+        let mut dep = Object::new();
+        dep.insert("id".into(), Value::from(other.key()));
+        dep.insert("title".into(), field(other, Field::Title));
+        dep.insert("status".into(), field(other, Field::Status));
+        dep.insert("dependency_type".into(), Value::from(*kind));
+        Value::from(dep)
+    });
+    dependents.collect::<Vec<_>>().into()
 }
 
 /// Strings as a JSON array.
