@@ -751,23 +751,23 @@ These were decided deliberately. Report problems *with* them, not their existenc
   time the workspace is found, the transport settings each time a link is made, HEAD and its
   branch (one `rev-parse` where its answer is certain) each time a transaction starts, under the
   store lock and so not with discovery's gits: a branch switched while a write waits for the lock
-  is the one its events record. After a fetch,
-  one transaction keeps the fetched head in `refs/beads/remote` and deletes the fetch's own ref
-  (roll-dih8.14). It reuses the same writer after a push and falls back to the two standalone
-  calls if it cannot answer; post-fetch bookkeeping stays best effort. The earlier transaction
-  was reverted because deleting fetch refs sooner made concurrent fetches fail (G16); fetches
-  now retry that race (roll-dih8.12). What still differs: which gits run (one more `rev-parse` where a
-  combined one cannot answer: a bare repository or none at discovery, no commit yet or a branch
-  name git finds ambiguous when a transaction starts); origin's `config` runs, read-only, beside
-  the first `rev-parse`, so also in discovery's early-error paths where Python stops before asking
-  for origin, and so does the `cat-file` of the committed `.beadroll.json` wherever the directory
-  bead starts in does not show one in the tree (roll-lqjj.33: no `.git` above it holds a
-  `.beadroll.json` beside it, it is inside a repository, no repository is found, or `GIT_DIR` or
-  `GIT_WORK_TREE` are set): its answer is used only where git's own top has no `.beadroll.json`, a
-  wrong guess costing a git whose answer is unused, or one started after the others as before,
-  never another answer, warning or error, and a tree with a dangling link or a file that is not
-  JSON, which discovery refuses first, starts none; and a SIGKILL while a blob is hashed can leave a file in the temporary directory (the
-  attempt's or the manifest's content, never in the store).
+  is the one its events record. After a fetch, one transaction keeps the fetched head in
+  `refs/beads/remote` and deletes the fetch's own ref (roll-dih8.14). It reuses the same writer
+  after a push and falls back to the two standalone calls if it cannot answer; post-fetch
+  bookkeeping stays best effort. The earlier transaction was reverted because deleting fetch refs
+  sooner made concurrent fetches fail (G16); fetches now retry that race (roll-dih8.12). What
+  still differs: which gits run (one more `rev-parse` where a combined one cannot answer: a bare
+  repository or none at discovery, no commit yet or a branch name git finds ambiguous when a
+  transaction starts); origin's `config` runs, read-only, beside the first `rev-parse`, so also in
+  discovery's early-error paths where Python stops before asking for origin, and so does the
+  `cat-file` of the committed `.beadroll.json` wherever the directory bead starts in does not show
+  one in the tree (roll-lqjj.33: no `.git` above it holds a `.beadroll.json` beside it, it is
+  inside a repository, no repository is found, or `GIT_DIR` or `GIT_WORK_TREE` are set): its
+  answer is used only where git's own top has no `.beadroll.json`, a wrong guess costing a git
+  whose answer is unused, or one started after the others as before, never another answer, warning
+  or error, and a tree with a dangling link or a file that is not JSON, which discovery refuses
+  first, starts none; and a SIGKILL while a blob is hashed can leave a file in the temporary
+  directory (the attempt's or the manifest's content, never in the store).
 - A publish hashes only the journal files it cannot vouch for (roll-lqjj.1, step 2 of epic
   roll-lqjj): the store remembers, in `sync.git/journal-memo`, each segment's and attempt file's
   identity on disk when it was hashed (length, modification and change times, inode, device: what

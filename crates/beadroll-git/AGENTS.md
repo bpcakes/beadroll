@@ -30,11 +30,11 @@ resolution shared with the store.
   --batch`), `Refs` (`update-ref --stdin` transactions).
 - `src/checkout.rs`: `Checkout` and `Fact`: one combined `rev-parse` (top, common directory,
   object format), each line normalized to the corresponding separate call, the single calls when
-  the combined one cannot answer; `origin_urls`, `config --get-regexp` of
-  `ORIGIN_KEYS` asked each time the workspace is found (the first time beside the combined
-  `rev-parse`, and beside one more local git the caller asks to start with them: the committed
-  `.beadroll.json`'s `cat-file`). `head_and_branch` and `HeadAnswers`: HEAD and its branch, asked each time a
-  transaction starts, in one `rev-parse` where its two lines are certain.
+  the combined one cannot answer; `origin_urls`, `config --get-regexp` of `ORIGIN_KEYS` asked each
+  time the workspace is found (the first time beside the combined `rev-parse`, and beside one more
+  local git the caller asks to start with them: the committed `.beadroll.json`'s `cat-file`).
+  `head_and_branch` and `HeadAnswers`: HEAD and its branch, asked each time a transaction starts,
+  in one `rev-parse` where its two lines are certain.
 - `src/alongside.rs`: `Git::run_alongside`, a git and any number of others at once, all started
   from the calling thread.
 - `src/format.rs`: `stored_format`, `StoredFormat`: `extensions.objectformat` read from a plain
@@ -95,26 +95,26 @@ resolution shared with the store.
 
 ## Which gits a command starts
 
-Checkout side, in the caller's directory and environment: the combined `rev-parse
---show-toplevel --path-format=absolute --git-common-dir --show-object-format` when the workspace
-is first found, beside origin's `config --get-regexp ^remote\.origin\.(push)?url$`; `config
---null --get-regexp` of the transport keys each time a link is made; `rev-parse HEAD
---abbrev-ref HEAD` each time a transaction starts; `cat-file --batch` for a committed
-`.beadroll.json`, whose answer is used only when the tree has none, started beside those two where
-the directory bead runs in shows none in the tree (discovery's `may_read_committed`, a guess: a
-wrong one costs a git whose answer is unused, or one started after them), so not at all in a
-working tree with a `.beadroll.json` at its top; `remote get-url NAME` for a remote given by name;
-`check-ref-format` for a tracked ref other than the default; and `symbolic-ref`, `rev-parse
---verify` and `merge-base --is-ancestor` only for `show` of a closed issue. `sync.git` side: `init
---bare` once; `fetch` into the process's own ref; one `cat-file --batch-command` for every object
-read; one `update-ref --stdin` for a transaction keeping the fetched head and deleting the fetch's
-ref, reused after a push; one `hash-object -w --no-filters --stdin-paths` and one `mktree --batch`
-a round; `commit-tree`; `push --porcelain --no-verify`; and `repack -a -d -q` and `prune --expire=1.hour.ago` when maintenance is due. `rev-parse --show-object-format`
-only where `sync.git`'s config does not settle its format. That is 3 processes for a read and for
-`info` (2 where the tree holds a `.beadroll.json`), 9 for a sync with nothing new, and 12 for a publishing write or a one-round claim (each
-further round of a claim starts its own fetch, `hash-object`, `mktree`, `commit-tree`, push and
-`rev-parse` of HEAD; one fewer each with a tracked `.beadroll.json`),
-where Python started 3, 4, 20 and 26–27.
+Checkout side, in the caller's directory and environment: the combined `rev-parse --show-toplevel
+--path-format=absolute --git-common-dir --show-object-format` when the workspace is first found,
+beside origin's `config --get-regexp ^remote\.origin\.(push)?url$`; `config --null --get-regexp` of
+the transport keys each time a link is made; `rev-parse HEAD --abbrev-ref HEAD` each time a
+transaction starts; `cat-file --batch` for a committed `.beadroll.json`, whose answer is used only
+when the tree has none, started beside those two where the directory bead runs in shows none in the
+tree (discovery's `may_read_committed`, a guess: a wrong one costs a git whose answer is unused, or
+one started after them), so not at all in a working tree with a `.beadroll.json` at its top; `remote
+get-url NAME` for a remote given by name; `check-ref-format` for a tracked ref other than the
+default; and `symbolic-ref`, `rev-parse --verify` and `merge-base --is-ancestor` only for `show` of
+a closed issue. `sync.git` side: `init --bare` once; `fetch` into the process's own ref; one
+`cat-file --batch-command` for every object read; one `update-ref --stdin` for a transaction keeping
+the fetched head and deleting the fetch's ref, reused after a push; one `hash-object -w --no-filters
+--stdin-paths` and one `mktree --batch` a round; `commit-tree`; `push --porcelain --no-verify`; and
+`repack -a -d -q` and `prune --expire=1.hour.ago` when maintenance is due. `rev-parse
+--show-object-format` only where `sync.git`'s config does not settle its format. That is 3 processes
+for a read and for `info` (2 where the tree holds a `.beadroll.json`), 9 for a sync with nothing
+new, and 12 for a publishing write or a one-round claim (each further round of a claim starts its
+own fetch, `hash-object`, `mktree`, `commit-tree`, push and `rev-parse` of HEAD; one fewer each with
+a tracked `.beadroll.json`), where Python started 3, 4, 20 and 26–27.
 
 ## Common commands
 
