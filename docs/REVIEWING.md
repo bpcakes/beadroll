@@ -614,24 +614,28 @@ These were decided deliberately. Report problems *with* them, not their existenc
   well, now that roll-lqjj.24 and .25 have landed (roll-lqjj.38): `edges` counts the edges
   `State::blocker_lists` reads, building its rows and walking up them, over the four shapes
   `timing --ready` measures, and those `State::details_of` reads for the details of every issue of
-  those shapes and of the sparse graph, and `renamed` counts the keys replay reads to rename the N
-  copies of two machines that each minted `ex-1` to `ex-N`, with and without imports waiting for
+  those shapes and of the sparse graph, and `renamed` counts the keys, and the waiting entries, replay reads to
+  rename the N copies of two machines that each minted `ex-1` to `ex-N`, with and without imports waiting for
   keys that never come. At 250 and at 2,000 issues each reads 8.0 to 10.1 times as much (the gated
   lattice has a fixed 64 gates, so it grows a little faster below 2,000); the code before the
   changes, run the same way, reads 62 to 67 times as much (a held chain's `blocked` lists 62,995
   and 4,003,995 edges (63.6 times) and a held lattice's 119,618 and 7,956,118 (66.5), both with
   the `readiness()` pass `bead blocked` made first, which the guard leaves out, its details 62,748
   and 4,001,998, a free chain's details 62,496 and 3,999,996, a held lattice's details 32,235 and
-  2,007,985; renaming 94,125 and 6,003,000 keys, or 156,875 and 10,005,000 with imports waiting;
-  the sparse graph, which has no parent, was linear before). The lookup in `claims_key` itself is
-  a map and a range; turned back into a scan of the issues it reads nothing counted, so the
-  nightly times it as well (`timing::growth`, roll-lqjj.38): replaying 2,000 and 16,000 copies,
-  without and with imports waiting for keys that never come, takes 10.0 to 10.4 times as long on
-  main, the fastest of five (release, a shared machine, 2026-10-15), and fails above 24. The
-  version that collected every claimed key for each copy, as before roll-lqjj.25, took 70.3 times
-  as long (0.162 s and 11.4 s); `claims_key` asking `by_key` by a scan of the issues 54.2 (0.027 s
-  and 1.44 s); asking the waiting index by a scan of the issues' lists 39.8 (0.018 s and 0.70 s)
-  and, with imports waiting, 150 (0.092 s and 13.8 s).
+  2,007,985; renaming 93,625 and 5,999,000 keys, or, with imports waiting, 156,125 and 9,999,000
+  keys and 63,000 and 4,004,000 waiting entries; the sparse graph, which has no parent, was linear
+  before). The lookup in `claims_key` itself is a map and a range. Turned back into a scan of the
+  issues' waiting lists it would read each entry through `awaited`, which counts, so the `renamed`
+  guard fails it on every push (Waiting 63,000 and 4,004,000). Turned into a scan of `by_key`, or
+  of the waiting index's entries, it reads nothing counted, so the nightly times it as well
+  (`timing::growth`, roll-lqjj.38): replaying 2,000 and 16,000 copies, without and with imports
+  waiting for keys that never come, takes 10.0 to 10.4 times as long on main, the fastest of five
+  (release, a shared machine, 2026-10-15), and fails above 24. The version that collected every
+  claimed key for each copy, as before roll-lqjj.25, took 70.3 times as long (0.162 s and 11.4 s);
+  `claims_key` asking `by_key` by a scan of the issues 54.2 (0.027 s and 1.44 s), and the scan of
+  the issues' waiting lists 39.8 (0.018 s and 0.70 s) and, with imports waiting, 150 (0.092 s and
+  13.8 s); a scan of the waiting index's entries measured 40.8 times on the waiting shape in the
+  review of this change.
 - No history boundary (roll-lqjj.3, step 4 of epic roll-lqjj; the maintainer's decision of
   2026-10-12, on the evidence in the port plan's Appendix A, "roll-lqjj.3", which git keeps, §1): a
   machine's work merges by itself however old it is, as every merge has so far. The alternatives
