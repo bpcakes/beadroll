@@ -96,6 +96,12 @@ consumer on tokio calls through `spawn_blocking`.
   (W01). The index is derived and never written: a state read back builds it from the issues'
   lists, and `projection/tests/awaiting.rs` keeps replay, a projection extended and one read back
   listing the same entries at the same places, and what replay made of waiting imports before it.
+- A copy renamed for a key two machines minted is given its key by asking of each candidate
+  (`State::claims_key`: `by_key` holds it, or `Awaiting::names` finds an entry that waits for it),
+  never by collecting `claimed_keys()` for each copy (roll-lqjj.25, X03); `claimed_keys` is public
+  and keeps its answer, and `mint_key` still collects it, once a command. Under test every
+  `claims_key` answer is checked against `claimed_keys` and kept (`state/asked.rs`), so replay and
+  projection tests that rename copies prove the two agree.
 - Readiness is one rule, the one `State::open_blockers` lists blockers by, and whether anything
   holds an issue is answered three ways that must agree: judged for every issue at once
   (`State::readiness`, each issue, edge and child visited once, a merged cycle once, nothing
