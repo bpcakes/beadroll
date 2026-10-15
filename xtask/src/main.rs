@@ -82,8 +82,9 @@ usage: cargo xtask <command>
       fastest of five runs each; --extend N, events applied to a projection of N issues in this
       process, each with two labels and a tenth of them a parent of nine: N closes one event at a
       time as a bulk close applies them, the same closes in one batch, N closes one at a time whose
-      ids sort before every id held, N label and N dependency additions one at a time, and N label
-      additions to one issue in a single batch, the fastest of three runs each; --ready N,
+      ids sort before every id held, N label and N dependency additions one at a time, N label
+      additions to one issue in a single batch, and N closes one at a time after an event of an
+      operation a newer bead writes, the fastest of three runs each; --ready N,
       readiness judged in this process on N issues in a chain held by its root's prerequisite, the
       same chain free, a lattice whose rows share their ancestors, and that lattice beneath gates
       of its own for its first rows: for every issue at once (the analysis alone, and bead
