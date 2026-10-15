@@ -11,7 +11,7 @@
 use std::sync::OnceLock;
 
 use crate::error::Error;
-use crate::runner::{Env, Output};
+use crate::runner::{Env, Git, Output};
 
 /// The keys that hold origin's URLs (`git config --get-regexp`).
 pub const ORIGIN_KEYS: &str = r"^remote\.origin\.(push)?url$";
@@ -58,16 +58,38 @@ pub struct Checkout {
 }
 
 impl Checkout {
-    /// Queries ORIGIN_KEYS with git config whenever the workspace is found. The first query runs
-    /// beside the combined rev-parse; neither waits for the other.
-    pub fn origin_urls(&self, env: &Env) -> Result<Output, Error> {
+    /// Queries ORIGIN_KEYS with git config whenever the workspace is found, and runs `also`, a
+    /// local question the caller may need answered there (the committed `.beadroll.json`), beside
+    /// it: origin's answer, and `also`'s. The first query runs beside the combined rev-parse; none
+    /// waits for another.
+    pub fn origin_urls(
+        &self,
+        env: &Env,
+        also: Option<Git<'_>>,
+    ) -> (Result<Output, Error>, Option<Result<Output, Error>>) {
         let origin = env.git(ORIGIN_ARGS);
         if self.combined.get().is_some() {
-            return origin.run();
+            return match also {
+                None => (origin.run(), None),
+                Some(also) => {
+                    let (origin, [also]) = origin.run_alongside([also]);
+                    (origin, Some(also))
+                }
+            };
         }
-        let (rev_parse, origin) = env.git(rev_parse_args()).run_alongside(origin);
+        let rev_parse = env.git(rev_parse_args());
+        let (rev_parse, origin, also) = match also {
+            None => {
+                let (rev_parse, [origin]) = rev_parse.run_alongside([origin]);
+                (rev_parse, origin, None)
+            }
+            Some(also) => {
+                let (rev_parse, [origin, also]) = rev_parse.run_alongside([origin, also]);
+                (rev_parse, origin, Some(also))
+            }
+        };
         let _ = self.combined.set(combined_rev_parse(rev_parse));
-        origin
+        (origin, also)
     }
 
     /// What `git rev-parse` prints for `fact` alone, in `env`: its exit status and output.
@@ -280,9 +302,15 @@ mod tests {
         let transport = ["config", "--null", "--get-regexp", crate::TRANSPORT_KEYS];
         let checkout = Checkout::default();
         // the first question of a checkout without a commit yet: the combined rev-parse runs
-        // beside origin's call and answers the facts
-        let found = checkout.origin_urls(&env).unwrap();
+        // beside origin's call and the caller's own question, and answers the facts
+        let committed = || {
+            env.git(["cat-file", "--batch"])
+                .input(&b"HEAD:.beadroll.json\n"[..])
+        };
+        let (found, also) = checkout.origin_urls(&env, Some(committed()));
+        let found = found.unwrap();
         assert_eq!(found, env.git(ORIGIN_ARGS).run().unwrap());
+        assert_eq!(also.unwrap().unwrap(), committed().run().unwrap());
         assert_eq!(found.returncode, 1, "nothing set");
         assert!(matches!(checkout.combined.get(), Some(Some(_))));
         let top = env.git(Fact::Toplevel.args()).run().unwrap();
@@ -296,8 +324,15 @@ mod tests {
         let mut text = std::fs::read_to_string(&config).unwrap();
         text.push_str(local);
         std::fs::write(&config, text).unwrap();
-        let found = checkout.origin_urls(&env).unwrap();
+        let (found, also) = checkout.origin_urls(&env, None);
+        assert!(also.is_none());
+        let found = found.unwrap();
         assert_eq!(found, env.git(ORIGIN_ARGS).run().unwrap());
+        let (again, also) = checkout.origin_urls(&env, Some(committed()));
+        assert_eq!(
+            (again.unwrap(), also.unwrap().unwrap()),
+            (found.clone(), committed().run().unwrap())
+        );
         assert_eq!(
             found.stdout,
             b"remote.origin.url ../o.git\nremote.origin.pushurl a b\nremote.origin.pushurl\n"
