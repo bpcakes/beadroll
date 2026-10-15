@@ -6,6 +6,22 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A command pays for each attempt file once where it paid several times (roll-lqjj.30, X07): its
+  identity is taken once a phase under the store lock, whoever asks (the projection, the blobs a
+  merge and a publish reuse), `meta.json` and its map of every published file are read once a
+  command, the unpublished count reads only the memo's segment lines, and a listing sorts its
+  names without taking each path apart. Every file is still stat-ed, never vouched for by its
+  directory: an online write stats each attempt file four times where it did seven, a sync three
+  where it did five, a read or a local write once. At 91,952 attempt files (`cargo xtask timing
+  --read 200000 --ownership`) `list` takes 0.75 s rather than 0.97 s and a local write 0.93 s
+  rather than 1.26 s; an online write 3.9 s rather than 5.7 s and a sync with nothing new 2.9 s
+  rather than 4.0 s. Outputs and format 1 are unchanged.
+
+- A reader outside the store lock lists the attempt files again once it has read the segments
+  (X13): a claims directory that gains a file within one tick of an earlier listing keeps its
+  identity on kernels that stamp it from a coarse clock, and a record in those segments that
+  builds on that attempt was then read without it, waiting for one read.
+
 - `bead show` says `merged: unknown` of a closing commit that is not 4 to 64 lowercase hex digits,
   without asking git (roll-lqjj.26, X14): bead records the commit as `git rev-parse HEAD` prints
   it, and text another machine's event holds, such as `HEAD~1` or `:/text`, was evaluated as a
