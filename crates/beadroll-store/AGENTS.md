@@ -24,7 +24,8 @@ remote resolution, actor detection, `view`, and the failpoint registry.
 - `src/failpoint.rs`: `Failpoints`, the registry `Settings` carries (`BEAD_FAILPOINTS` and the two
   crash hooks): `hit`, `hit_path` for `atomic-write:`/`atomic-written:`, `has`, and `hits`, which
   in-crate tests read to check that a fault fired; `POINTS`, every point bead has.
-- `src/workspace.rs`: `Workspace` (`meta`, `save_meta`, `note_sync`, `ref_name`), `stamp`;
+- `src/workspace.rs`: `Workspace` (`meta`, read once a command while the file keeps its identity,
+  `save_meta`, `note_sync`, `ref_name`), `stamp`;
   `src/workspace/remote.rs`: what a remote given to bead means (`resolve_endpoint`, `endpoint`,
   an `Endpoint` being the URL, whether it is a remote's own push URL and the name it was chosen
   by; `Endpoint::chosen`, the remote as it was chosen, which a store remembers and compares and
@@ -46,10 +47,13 @@ remote resolution, actor detection, `view`, and the failpoint registry.
 - `src/listing.rs`: `Claims`, the in-memory accepted-attempt names shared by `claim_files`,
   validated against each directory's identity on every call and cleared at lock boundaries.
   A directory change re-lists it; the file identities used by the memo and projection are still
-  checked individually (roll-lqjj.12).
+  checked individually (roll-lqjj.12): `claim_keys` stats each file once a locked phase, whoever
+  asks, and each time outside the lock (roll-lqjj.30). `claim_files_afresh` is the listing a
+  reader takes once it has read the segments, every directory read again outside the lock (X13).
 - `src/memo.rs`: `Memo`, what the store remembers of each journal file between commands (its
   identity on disk, `FileKey`, its lines and its blob in `sync.git`), kept as
-  `sync.git/journal-memo` (`memo_path`) by the holder of the store lock (roll-lqjj.1).
+  `sync.git/journal-memo` (`memo_path`) by the holder of the store lock (roll-lqjj.1);
+  `Memo::load_only`, the entries of a few files, the memo still checked whole, never written back.
 - `tests/store/`: store files, settings, discovery, compatibility and damage handling.
 
 ## Edit here for X
@@ -77,6 +81,9 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   whole but not fsynced, whose every reader checks them against their sums (`docs/REVIEWING.md`
   §2, the durability bullet). A new file that is read without a sum to check, or that is a
   source of anything, is written with `write_atomic`.
+- An identity taken of an attempt file is kept only while the store lock is held, for the rest of
+  that phase, and forgotten when bead writes that file (`Workspace::forget_claims`); a reader
+  outside the lock stats each file afresh, after the segments it reads (X13, roll-lqjj.30).
 - Settings arrive as values (`Settings`); this crate never reads the process environment or the
   working directory. A numeric `BEAD_*` setting that is not a number is a `CONFIG` error when
   the settings are built, where Python died with a traceback (`docs/REVIEWING.md` §2).

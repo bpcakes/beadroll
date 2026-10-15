@@ -39,9 +39,31 @@ pub fn segment_files(ws: &Workspace) -> Result<Vec<PathBuf>, Error> {
 }
 
 /// Every accepted attempt file in the store (`events/<machine>/claims/<id>.json`), in name
-/// order. Reuse names only while their directories keep their identity; never reuse file stats.
+/// order. Reuse names only while their directories keep their identity.
 pub fn claim_files(ws: &Workspace) -> Result<Arc<[PathBuf]>, Error> {
     ws.claims.borrow_mut().files(&ws.events_dir)
+}
+
+/// [`claim_files`], listed once whatever records may build on them have been read: an attempt file
+/// is in place before any record built on it is appended. Under the store lock the names this
+/// phase listed stand, since no other bead process can add to them and bead's own writes forget
+/// them; without it every directory is read again, since one that gained a file within one tick of
+/// an earlier listing keeps its identity (X13).
+pub(crate) fn claim_files_afresh(ws: &Workspace) -> Result<Arc<[PathBuf]>, Error> {
+    let mut claims = ws.claims.borrow_mut();
+    if ws.holding() {
+        claims.files(&ws.events_dir)
+    } else {
+        claims.files_afresh(&ws.events_dir)
+    }
+}
+
+/// The identity of each of `files`, accepted attempt files: under the store lock, the one taken
+/// in this phase, each file stat-ed once whoever asks (the projection, the memo's blobs); without
+/// it, each stat-ed now. A directory's identity never vouches for its files (roll-lqjj.12), and
+/// what bead writes is stat-ed again ([`Workspace::forget_claims`]).
+pub fn claim_keys(ws: &Workspace, files: &Arc<[PathBuf]>) -> Arc<[Option<FileKey>]> {
+    ws.claims.borrow_mut().keys(files, ws.holding())
 }
 
 /// This machine's own ownership attempts the remote has not confirmed. Never read as events.
@@ -231,11 +253,11 @@ pub fn extend_segment(path: &Path, more: &[u8]) -> Result<(), Error> {
 
 /// Writes an attempt whole: a reader sees all of it or none of it. The attempt names listed in
 /// this phase are forgotten, since a directory that gains a file within one tick of its listing
-/// keeps its identity ([`Workspace::forget_claims`]).
+/// keeps its identity, and so is the identity taken of the file ([`Workspace::forget_claims`]).
 pub fn write_attempt_file(ws: &Workspace, path: &Path, events: &[Value]) -> Result<(), Error> {
     let data = encode_events(events)?;
     write_atomic(path, &data, true, &ws.settings.failpoints)?;
-    ws.forget_claims();
+    ws.forget_claims(path);
     Ok(())
 }
 
@@ -289,8 +311,9 @@ pub(crate) struct Loaded {
 }
 
 /// The journal of `segments`, then of the accepted attempt files, listed once the segments are
-/// read: an attempt file is in place before any record built on it is appended. Each file's
-/// identity is the one it had as it was read; with `summed`, so is the sum of each file's bytes.
+/// read ([`claim_files_afresh`]): an attempt file is in place before any record built on it is
+/// appended. Each file's identity is the one it had as it was read; with `summed`, so is the sum of
+/// each file's bytes.
 pub(crate) fn load_listed(
     ws: &Workspace,
     segments: &[PathBuf],
@@ -311,7 +334,7 @@ pub(crate) fn load_listed(
         }
     }
     let mut attempts = Vec::new();
-    for path in claim_files(ws)?.iter() {
+    for path in claim_files_afresh(ws)?.iter() {
         let origin = path.display().to_string();
         let replica = folder_name(path, 2);
         let read = read_keyed(path).ok();

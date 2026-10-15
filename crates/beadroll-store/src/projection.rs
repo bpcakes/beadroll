@@ -33,6 +33,7 @@ mod texts;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use beadroll_core::id::EventId;
 use beadroll_core::journal::{self, Problem};
@@ -43,7 +44,8 @@ use beadroll_core::state::State;
 
 use crate::fs::{content_sum, read_keyed, write_cache_parts};
 use crate::journal::{
-    ViewError, attempt_events, claim_files, folder_name, load_journal, load_listed, segment_files,
+    ViewError, attempt_events, claim_files_afresh, claim_keys, folder_name, load_journal,
+    load_listed, segment_files,
 };
 use crate::memo::FileKey;
 use crate::workspace::Workspace;
@@ -158,15 +160,16 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
         });
     };
     let stored = file::read(&projection_path(ws)).filter(|stored| stored.made.build == build);
-    if let (Some(stored), Some(seen)) = (stored, held(ws, &segments, true)) {
-        let attempts = claim_files(ws)?;
-        let listed = held(ws, &attempts, false);
+    if let (Some(stored), Some(seen)) = (stored, held(ws, &segments, true))
+        && let Some(tails) = grown(&stored.made, &seen, stored.written)
+        && let Some((mut records, read)) = read_tails(ws, &tails)
+        // listed once the segments are read: an attempt file is in place before a record built on
+        // it is appended
+        && let Some(listed) = attempts(ws)?
+    {
         let file = Some(stored.made.texts);
         let settled = stored.written;
-        if listed
-            .as_ref()
-            .is_some_and(|listed| same(&stored.made, &seen, listed, settled))
-        {
+        if tails.is_empty() && same(&stored.made, &seen, &listed.held, settled) {
             if want != Want::Projection
                 && let Ok(mut state) = decode_state(&stored.state)
             {
@@ -181,21 +184,18 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
                 projection.state_mut().set_texts_file(file);
                 return Ok(Now::Projection(Box::new(projection)));
             }
-        } else if let Some(tails) = grown(&stored.made, &seen, settled) {
-            let made = stored.made.clone();
-            let decoded = stored.encoded().and_then(|e| Projection::decode(&e).ok());
-            if let Some(mut projection) = decoded
-                && let Some((records, now)) = appended(ws, &made, &tails, build, settled)?
+        } else if let Some(now) =
+            appended(ws, &stored.made, read, listed, &mut records, build, settled)
+            && let Some(mut projection) = stored.encoded().and_then(|e| Projection::decode(&e).ok())
+        {
+            projection.state_mut().set_texts_file(file);
+            let uids = about(&records);
+            if read_texts(ws, projection.state_mut(), uids)
+                && let Extended::Applied(mut projection) = projection.extend(records)?
             {
-                projection.state_mut().set_texts_file(file);
-                let uids = about(&records);
-                if read_texts(ws, projection.state_mut(), uids)
-                    && let Extended::Applied(mut projection) = projection.extend(records)?
-                {
-                    save(ws, now, &mut projection);
-                    if want != Want::Texts || read_all(ws, projection.state_mut()) {
-                        return Ok(Now::Projection(projection));
-                    }
+                save(ws, now, &mut projection);
+                if want != Want::Texts || read_all(ws, projection.state_mut()) {
+                    return Ok(Now::Projection(projection));
                 }
             }
         }
@@ -358,37 +358,26 @@ fn machine(path: &str) -> &str {
     path.split('/').next().unwrap_or_default()
 }
 
-/// The records appended since the projection was made: each grown segment's after where it was
-/// read up to, then each attempt file it was not made from, listed once the segments are read;
-/// and what a projection with them is made from, each file as it was read. An attempt file whose
-/// identity was not settled when the projection was written (`settled`) is read and summed, as a
-/// segment of that moment's own tick is. `None` when what was appended cannot be read as a store
-/// reads it whole: a grown segment's bytes before are not the ones summed, a file of the
-/// projection's own tick is not the one it was made from or has no sum, a segment ends in a line
-/// not yet whole, a record is unreadable, an attempt file was replaced or removed.
-fn appended(
-    ws: &Workspace,
-    made: &Made,
-    tails: &[Tail],
-    build: &str,
-    settled: i128,
-) -> Result<Option<(Vec<Record>, Made)>, ViewError> {
+/// The records of the segments `tails` name after where each was read up to, and what a
+/// projection keeps of each as it was read. `None` when they cannot be read as a store reads them
+/// whole: a grown segment's bytes before are not the ones summed, a file of the projection's own
+/// tick is not the one it was made from or has no sum, a segment ends in a line not yet whole, a
+/// record is unreadable.
+fn read_tails(ws: &Workspace, tails: &[Tail]) -> Option<(Vec<Record>, Vec<Held>)> {
     let mut records = Vec::new();
     let mut problems: Vec<Problem> = Vec::new();
-    let mut read: HashMap<&str, Held> = HashMap::new();
+    let mut read = Vec::with_capacity(tails.len());
     for tail in tails {
         let path = ws.events_dir.join(&tail.path);
         let Ok((data, Some(key))) = read_keyed(&path) else {
-            return Ok(None);
+            return None;
         };
         let from = usize::try_from(tail.from).unwrap_or(usize::MAX);
-        let (Some(before), Some(after)) = (data.get(..from), data.get(from..)) else {
-            return Ok(None);
-        };
+        let (before, after) = (data.get(..from)?, data.get(from..)?);
         if tail.sum.is_some_and(|sum| content_sum(before) != sum)
             || after.last().is_some_and(|last| *last != b'\n')
         {
-            return Ok(None);
+            return None;
         }
         let origin = path.display().to_string();
         let replica = folder_name(&path, 1);
@@ -400,45 +389,71 @@ fn appended(
                 sequenced: true,
             });
         }
-        let sum = Some(content_sum(&data));
-        let Some(held) = kept(ws, &path, Some(key), true, sum) else {
-            return Ok(None);
-        };
-        read.insert(&tail.path, held);
+        read.push(kept(ws, &path, Some(key), true, Some(content_sum(&data)))?);
     }
+    problems.is_empty().then_some((records, read))
+}
+
+/// The accepted attempt files as they are: each one's path, and what a projection keeps of it.
+struct Listed {
+    paths: Arc<[PathBuf]>,
+    held: Vec<Held>,
+}
+
+/// The accepted attempt files, listed and each stat-ed once the segments are read
+/// ([`claim_files_afresh`], [`claim_keys`]); `None` when one's identity cannot be had.
+fn attempts(ws: &Workspace) -> Result<Option<Listed>, ViewError> {
+    let paths = claim_files_afresh(ws)?;
+    let keys = claim_keys(ws, &paths);
+    let held = (paths.iter().zip(keys.iter().copied()))
+        .map(|(path, key)| kept(ws, path, key, false, None))
+        .collect::<Option<Vec<Held>>>();
+    Ok(held.map(|held| Listed { paths, held }))
+}
+
+/// What a projection with the records appended since it was made is made from, each file as it was
+/// read: the segments `read` (whose records are in `records` already), then each attempt file
+/// `listed` that it was not made from, its records added to `records`. An attempt file whose
+/// identity was not settled when the projection was written (`settled`) is read and summed, as a
+/// segment of that moment's own tick is. `None` when what was appended cannot be read as a store
+/// reads it whole: a file of the projection's own tick is not the one it was made from or has no
+/// sum, a record is unreadable, an attempt file was replaced or removed.
+fn appended(
+    ws: &Workspace,
+    made: &Made,
+    read: Vec<Held>,
+    listed: Listed,
+    records: &mut Vec<Record>,
+    build: &str,
+    settled: i128,
+) -> Option<Made> {
+    let mut problems: Vec<Problem> = Vec::new();
     let before: HashMap<&str, &Held> = (made.files.iter())
         .filter(|held| !held.segment)
         .map(|held| (held.path.as_str(), held))
         .collect();
-    let attempts = claim_files(ws)?;
-    let Some(listed) = held(ws, &attempts, false) else {
-        return Ok(None);
-    };
-    let still: HashSet<&str> = listed.iter().map(|held| held.path.as_str()).collect();
+    let still: HashSet<&str> = listed.held.iter().map(|held| held.path.as_str()).collect();
     if !before.keys().all(|path| still.contains(path)) {
-        return Ok(None); // an attempt file is gone
+        return None; // an attempt file is gone
     }
     let mut files: Vec<Held> = Vec::new();
-    for (path, now) in attempts.iter().zip(listed) {
+    for (path, now) in listed.paths.iter().zip(listed.held) {
         match before.get(now.path.as_str()) {
             Some(was) if was.key == now.key && was.key.settled_before(settled) => {
                 files.push(now);
                 continue;
             }
-            Some(was) if was.key != now.key => return Ok(None),
+            Some(was) if was.key != now.key => return None,
             // Of the projection's own tick: only its bytes can say it is the file it was made
             // from, and an attempt file never changes but by being replaced.
-            Some(was) => match resummed(ws, path, was, &now) {
-                Some(held) => {
-                    files.push(held);
-                    continue;
-                }
-                None => return Ok(None),
-            },
+            Some(was) => {
+                files.push(resummed(ws, path, was, &now)?);
+                continue;
+            }
             None => {}
         }
         let Ok((data, Some(key))) = read_keyed(path) else {
-            return Ok(None);
+            return None;
         };
         let origin = path.display().to_string();
         let replica = folder_name(path, 2);
@@ -453,8 +468,11 @@ fn appended(
         files.extend(kept(ws, path, Some(key), false, Some(content_sum(&data))));
     }
     if !problems.is_empty() {
-        return Ok(None);
+        return None;
     }
+    let mut read: HashMap<String, Held> = (read.into_iter())
+        .map(|held| (held.path.clone(), held))
+        .collect();
     let mut segments: Vec<Held> = (made.files.iter())
         .filter(|held| held.segment)
         .map(|held| {
@@ -466,14 +484,11 @@ fn appended(
     segments.sort_by(|a, b| a.path.cmp(&b.path));
     segments.extend(files);
     let build = build.to_owned();
-    Ok(Some((
-        records,
-        Made {
-            build,
-            files: segments,
-            texts: made.texts,
-        },
-    )))
+    Some(Made {
+        build,
+        files: segments,
+        texts: made.texts,
+    })
 }
 
 /// Writes `projection` back as made from `made`, when the store is there; a cache that cannot be

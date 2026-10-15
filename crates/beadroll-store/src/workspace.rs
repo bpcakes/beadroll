@@ -9,8 +9,9 @@ use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::text::repr_str;
 
 use crate::error::Error;
-use crate::fs::{Unreadable, read_json_text, write_atomic};
+use crate::fs::{Unreadable, read_json_keyed, write_atomic_keyed};
 use crate::listing::Claims;
+use crate::memo::FileKey;
 use crate::settings::Settings;
 
 mod remote;
@@ -50,7 +51,12 @@ pub struct Workspace {
     holding: Cell<bool>,
     wrote: Cell<bool>,
     pub(crate) claims: RefCell<Claims>,
+    /// What `meta.json` held when this process last read or wrote it, by that file's identity.
+    meta_read: RefCell<Option<(FileKey, MetaRead)>>,
 }
+
+/// `meta.json` as an object with a string remote, or what is wrong with it.
+type MetaRead = Result<Arc<Object>, String>;
 
 impl Workspace {
     /// The workspace `id` (an opaque token, never a path) of a checkout named `name` with `origin`
@@ -82,6 +88,7 @@ impl Workspace {
             holding: Cell::new(false),
             wrote: Cell::new(false),
             claims: RefCell::new(Claims::default()),
+            meta_read: RefCell::new(None),
         })
     }
 
@@ -91,18 +98,20 @@ impl Workspace {
     }
 
     /// Records whether this process holds the store lock. A new locked or unlocked phase lists
-    /// attempts afresh: another command may write while a sync fetches outside the lock.
+    /// attempts afresh and stats each again: another command may write while a sync fetches
+    /// outside the lock.
     pub fn set_holding(&self, holding: bool) {
         if self.holding.replace(holding) != holding {
             *self.claims.borrow_mut() = Claims::default();
         }
     }
 
-    /// Forgets the attempt names listed in this phase: a claims directory that gains a file
-    /// within one tick of the clock its times come from keeps its identity (Y01), so a write of
-    /// an attempt has every directory listed again rather than trusting what the times say.
-    pub fn forget_claims(&self) {
-        *self.claims.borrow_mut() = Claims::default();
+    /// Forgets the attempt names listed in this phase, and the identity taken of `written`, the
+    /// attempt file bead has just written: a claims directory that gains a file within one tick of
+    /// the clock its times come from keeps its identity (Y01), so a write of an attempt has every
+    /// directory listed again rather than trusting what the times say.
+    pub fn forget_claims(&self, written: &Path) {
+        self.claims.borrow_mut().forget(written);
     }
 
     /// Whether this process appended events the remote does not have yet.
@@ -127,18 +136,14 @@ impl Workspace {
     /// [`Workspace::remote`]), the file may be the only record of the coordination remote: one
     /// that cannot be read or parsed, or whose remote is not a string, is an error, never a
     /// silent switch to origin.
-    pub fn meta(&self, strict: bool) -> Result<Object, Error> {
+    pub fn meta(&self, strict: bool) -> Result<Arc<Object>, Error> {
         let path = self.dir.join("meta.json");
-        let problem = match read_json_text(&path) {
-            Err(Unreadable::Missing) => return Ok(Object::new()),
-            Ok(Value::Object(meta)) if matches!(meta.get("remote"), None | Some(Value::Str(_))) => {
-                return Ok(*meta);
-            }
-            Ok(_) => "not an object with a string remote".to_owned(),
-            Err(Unreadable::Other(problem)) => problem,
+        let problem = match self.read_meta(&path) {
+            Ok(meta) => return Ok(meta),
+            Err(problem) => problem,
         };
         if !strict {
-            return Ok(Object::new());
+            return Ok(Arc::default());
         }
         Err(Error::io_message(format!(
             "{} cannot be used ({problem}): it records the coordination remote last used here; \
@@ -147,13 +152,40 @@ impl Workspace {
         )))
     }
 
+    /// `meta.json` at `path`, read once a command (roll-lqjj.30): again only when the file there
+    /// is not the one this process last read or wrote, which its identity says, since bead only
+    /// ever replaces it whole. Its `published` map holds an entry for every journal file.
+    fn read_meta(&self, path: &Path) -> MetaRead {
+        if let Some(now) = FileKey::of(path)
+            && let Some((key, read)) = &*self.meta_read.borrow()
+            && *key == now
+        {
+            return read.clone();
+        }
+        let (read, key) = read_json_keyed(path);
+        let read = match read {
+            Err(Unreadable::Missing) => Ok(Arc::default()),
+            Ok(Value::Object(meta)) if matches!(meta.get("remote"), None | Some(Value::Str(_))) => {
+                Ok(Arc::new(*meta))
+            }
+            Ok(_) => Err("not an object with a string remote".to_owned()),
+            Err(Unreadable::Other(problem)) => Err(problem),
+        };
+        *self.meta_read.borrow_mut() = key.map(|key| (key, read.clone()));
+        read
+    }
+
     /// Records `values` in `meta.json`, in their order after the keys it has; empty values are
     /// skipped, and a `null` one forgets its key. A damaged file is kept for [`Workspace::remote`]
     /// to report, unless a remote is being recorded: that repairs it. Origin is never recorded: it
     /// is looked up each time.
     pub fn save_meta(&self, values: &[(&str, Value)]) -> Result<(), Error> {
         let mut meta = match self.meta(true) {
-            Ok(meta) => meta,
+            Ok(meta) => {
+                // let go of, so that what was read is changed rather than copied
+                self.meta_read.replace(None);
+                Arc::unwrap_or_clone(meta)
+            }
             Err(_) => {
                 let remote = values.iter().find(|(key, _)| *key == "remote");
                 if !remote.is_some_and(|(_, value)| value.truthy()) {
@@ -174,14 +206,15 @@ impl Workspace {
         {
             meta.shift_remove("remote");
         }
-        let text = json::write(&Value::from(meta), Format::INDENTED)
-            .map_err(|e| Error::io_message(e.to_string()))?;
-        write_atomic(
-            &self.dir.join("meta.json"),
-            text.as_bytes(),
-            true,
-            &self.settings.failpoints,
-        )
+        let meta = Value::from(meta);
+        let text =
+            json::write(&meta, Format::INDENTED).map_err(|e| Error::io_message(e.to_string()))?;
+        let path = self.dir.join("meta.json");
+        let key = write_atomic_keyed(&path, text.as_bytes(), &self.settings.failpoints)?;
+        if let (Some(key), Value::Object(meta)) = (key, meta) {
+            *self.meta_read.borrow_mut() = Some((key, Ok(Arc::new(*meta))));
+        }
+        Ok(())
     }
 
     /// Bookkeeping once the remote has accepted. It never turns a command that took effect into a

@@ -199,7 +199,7 @@ impl Link<'_> {
             }
             if local.get(path).map(String::as_str) != Some(sha) {
                 self.write_journal(path, &target, &theirs, Some(sha))?;
-                self.ws.forget_claims();
+                self.ws.forget_claims(&target);
             }
             crate::tx::remove(pending_path)?;
             self.confirmed.push(attempt_id);
@@ -220,7 +220,7 @@ impl Link<'_> {
             true
         };
         self.write_journal(path, &target, &theirs, Some(sha))?;
-        self.ws.forget_claims();
+        self.ws.forget_claims(&target);
         Ok(new)
     }
 

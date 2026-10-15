@@ -5,35 +5,39 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use beadroll_git::{Hasher, NoAnswer, Refs, Trees};
-use beadroll_store::{FileKey, Memo, REMOTE_REF, claim_files, relative, segment_files};
+use beadroll_store::{FileKey, Memo, REMOTE_REF, claim_files, claim_keys, relative, segment_files};
 
 use super::Link;
 use crate::error::Error;
 
 impl Link<'_> {
     /// Local journal blobs by store path, under the lock. Reuse a memoized hash while the file
-    /// identity matches. A publication tree additionally requires the blob to exist in sync.git:
-    /// this link created it or the last merged tree references it at this path, protecting
-    /// against garbage collection. Merge comparisons need only the hash. Hash and remember other
-    /// files; failures may indicate local damage.
+    /// identity matches: an attempt file's is the one taken in this locked phase, each stat-ed
+    /// once whoever asks ([`claim_keys`]). A publication tree additionally requires the blob to
+    /// exist in sync.git: this link created it or the last merged tree references it at this
+    /// path, protecting against garbage collection. Merge comparisons need only the hash. Hash and
+    /// remember other files; failures may indicate local damage.
     pub(super) fn local_blobs(
         &mut self,
         for_tree: bool,
     ) -> Result<BTreeMap<String, String>, Error> {
         let ws = self.ws;
-        let mut files = segment_files(ws)?;
-        files.extend(claim_files(ws)?.iter().cloned());
+        let segments = segment_files(ws)?;
+        let attempts = claim_files(ws)?;
+        let keys = (segments.iter().map(|file| FileKey::of(file)))
+            .chain(claim_keys(ws, &attempts).iter().copied())
+            .collect::<Vec<_>>();
+        let files: Vec<&PathBuf> = segments.iter().chain(attempts.iter()).collect();
         let names: Vec<String> = files.iter().map(|file| relative(ws, file)).collect();
         let present: BTreeSet<&str> = names.iter().map(String::as_str).collect();
         let memo = self.memo.get_or_insert_with(|| Memo::load(ws));
         memo.retain(|name| present.contains(name));
         let mut blobs = BTreeMap::new();
         let mut unknown = Vec::new();
-        for (file, name) in files.iter().zip(&names) {
-            let key = FileKey::of(file);
+        for ((file, name), key) in files.iter().zip(&names).zip(keys) {
             let remembered = key
                 .as_ref()
                 .and_then(|key| memo.blob(name, key))
