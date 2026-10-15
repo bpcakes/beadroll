@@ -276,12 +276,18 @@ These were decided deliberately. Report problems *with* them, not their existenc
   publishes (a close of its own claim), whose merge may bring in more: then from the store. A
   command that reads the state while it emits borrows it beside an `Emitter` (`Tx::lend`) and
   reads it as it was before, as the copy it took did; the next state asked for has every event
-  emitted, a state replayed being replayed again once more are. At 20,000 imported issues
-  (`scripts/setup.sh` of review 16, release builds, best of three, a machine shared with ten
-  other builds), the reads and seconds of an online comment, update, close, create, `dep add` and
-  claim went from 4, 5, 4, 4, 4 and 3 to 2 each (1.05, 1.39, 1.06, 1.05, 1.24 and 0.97 s to 0.72,
-  0.75, 0.78, 0.79, 0.81 and 0.72 s), and a sync that brings nothing from 3 to 1 (0.60 s to
-  0.27 s). The `projection.read` failpoint counts them (`beadroll-sync`'s `reads::` tests).
+  emitted, a state replayed being replayed again once more are. On a tracker of 20,000 issues
+  imported from one Beads export (a forest of epics of nine children each, every seventh issue
+  blocking the one seven before it, two labels, a description and a comment each, a third of them
+  closed) and published to a local bare remote, release builds, best of three, a read counted as
+  an open of `<store>/projection` under strace, on a machine shared with ten other builds, the
+  reads and seconds of an online comment, update, close, create, `dep add` and claim went from 4,
+  5, 4, 4, 4 and 3 to 2 each (1.05, 1.39, 1.06, 1.05, 1.24 and 0.97 s to 0.72, 0.75, 0.78, 0.79,
+  0.81 and 0.72 s), and a sync that brings nothing from 3 to 1 (0.60 s to 0.27 s). `cargo xtask
+  timing --sync N` measures the same two on its generated history: a write published at once
+  (`online_seconds`; 1.15 s to 0.80 s at 200,000 events) and a sync after a local write
+  (`seconds`; 0.94 s to 0.49 s). The `projection.read` failpoint counts the reads
+  (`beadroll-sync`'s `reads::` tests).
 - A projection extended finishes only what the batch changed (roll-lqjj.17, Z02). Replay finishes a
   whole journal by deriving each issue's labels from the tags that remain and building the
   parent-child index from every issue's edges; a projection that redid all of that for every batch
