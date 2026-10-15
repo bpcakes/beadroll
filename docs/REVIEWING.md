@@ -197,19 +197,21 @@ These were decided deliberately. Report problems *with* them, not their existenc
   (its state also keeps who wrote them, which conflicts show). Anything else replays the journal,
   as every command did: a file replaced, rewritten, cut or gone, an earlier segment grown, a
   takeover (which can turn an earlier end of its claim stale), a record not its machine's own or
-  not new, a new machine's journal, a cause behind the frontier, or a journal with anything replay
-  reports. The answers are replay's: a differential test checks every batch a store takes in
-  against replay, on histories of machines that write, sync and race. It is written back
-  atomically (renamed into place whole, not fsynced: the durability bullet below says why that
-  suffices, roll-lqjj.27, X05) when every segment ended with a whole line, never into a store that
-  is not there; a projection missing, cut, damaged (a 128-bit sum of each part) or another build's
-  is never read, and a failed write is no failure. A state read from it knows, of its events, those
-  it names: `State::saw`, `holds` and `events`, which no command reads, answer for those alone. Each
-  issue's texts (its long fields, their registers' values, its comments and its extras) are kept
-  apart (roll-lqjj.6), in `<store>/projection-texts`, each issue's as bytes of their own the state
-  places and sums, the state keeping what a list and a later event need of them unread (the events
-  behind each long field's register, which of those fields two writers set differently). A long
-  field's value is kept once, in its register, which the field shows (roll-lqjj.10: the entry of the
+  not new, a new machine's journal, a cause behind the frontier, a batch with anything replay
+  reports, a journal with an event waiting for a cause, or the few things in a journal that a record
+  still to come can change (below). The answers are replay's: a differential test checks every batch
+  a store takes in against replay, on histories of machines that write, sync and race, and on
+  histories holding every kind of integrity entry. It is written back atomically (renamed into place
+  whole, not fsynced: the durability bullet below says why that suffices, roll-lqjj.27, X05) when
+  every segment ended with a whole line, never into a store that is not there; a projection missing,
+  cut, damaged (a 128-bit sum of each part) or another build's is never read, and a failed write is
+  no failure. A state read from it knows, of its events, those it names: `State::saw`, `holds` and
+  `events`, which no command reads, answer for those alone. Each issue's texts (its long fields,
+  their registers' values, its comments and its extras) are kept apart (roll-lqjj.6), in
+  `<store>/projection-texts`, each issue's as bytes of their own the state places and sums, the
+  state keeping what a list and a later event need of them unread (the events behind each long
+  field's register, which of those fields two writers set differently). A long field's value is kept
+  once, in its register, which the field shows (roll-lqjj.10: the entry of the
   largest id, absent when that is a later write's null, null when the create left it so), never
   copied beside it, so the state holds each text once and the text file writes it once: a generated
   49 MB export's text file went from 75.0 MB to 43.3 MB, and the first sync that makes its
@@ -233,6 +235,45 @@ These were decided deliberately. Report problems *with* them, not their existenc
   replaying would mean reproducing what replay settles by the order it applies events in (the key
   two concurrent creates minted, the order of comments, claim history and issue order), the question
   a checkpoint's continuation faces too (roll-lqjj.4).
+- A journal with anything replay reports is extended past it (roll-lqjj.28, X04). It was not, so
+  one event of an operation a newer bead writes (a rolling upgrade), one id found with two
+  contents or one copied machine identity had every later command replay the whole journal, for
+  good. Replay sets each integrity entry aside from what nothing after can change (the records of
+  its id, its causes, its machine's journal before it, and for a takeover the claim it names), and
+  lists them in an order nothing after can change either: those found as the journal was read
+  first, the rest in causal order, before every event that builds on the whole frontier; a batch
+  that would add one is still declined. Three things a record still to come can change, and the
+  projection does not take them: a takeover refused for naming an id no event has is refused for
+  another reason once an event has it ("names a claim that is not a claim on this issue" becomes
+  "of a claim its writer had not seen"); an id found with several contents waits only for the
+  causes the journal holds (`effective_deps`), so one it names that is still to come, or causes
+  that loop back onto it, after which it is released behind every other event, put it after
+  events still to come (`Order::loose`); and a record of an id found only in another machine's
+  journal settles that id anew, as an event or as two contents. A journal holding either of the
+  first two is not extended at all (`replay::Replayed::unsettled`), a batch with the third is
+  declined; bead writes none of the three itself. The rule was found rather than argued
+  alone: the differential test's generator writes every kind (an unknown
+  operation, a payload and a record that cannot be used, an unreadable line, a second content of an
+  id, a record in another machine's journal and its writer's own later, a copy of a machine's
+  identity writing to its journal, a takeover of a claim not seen, of something that is not a
+  claim, and of an id no event has yet), and found each of the three, the second as a loop; a
+  cause still to come comes from reading `effective_deps` (`projection/tests/flawed.rs`, 10,000
+  histories with `--ignored many_seeds`); `projection/tests/reported.rs` holds every kind by hand.
+  `close`, `reopen` and `delete` decide every issue they answer for from the state before
+  they write and read it once more after (`decide`), where each read before each issue replayed the
+  journal again whenever the projection could not take the event before: an issue named twice is
+  as its event left it, which built on everything the state holds (its status the one asked, no
+  claim; a close drops its provisional claims, a delete or a reopen leaves them and is written
+  again), and the answers are those of reading the state before each. The review's `inert.sh` (N
+  issues, M of them closed, one event of a newer bead's operation in a journal of its own; best of
+  three, the bead before and this one in turn on a machine ten other builds shared, so the
+  absolute figures are high): 60 closes of 4,000 issues took
+  11.60 s and take 0.066 s, as on a clean journal (0.065 s), and 20 of 16,000 17.40 s and 0.221 s
+  (0.220 s); the `list` after them 0.299 s and 0.075 s, 1.343 s and 0.283 s. With a takeover of an
+  id no event has instead, which still keeps the projection from extending, they take 0.26 s
+  rather than 11.73 s, and 1.18 s rather than 17.56 s: two replays, not one an issue. `cargo xtask
+  timing --extend 4000` applies 4,000 closes one at a time past a newer bead's event in 0.026 s,
+  what they take on the tracker without it.
 - `log`, `info` and `machines` answer from the projection (roll-lqjj.31, X09). `info` and
   `machines` read nothing else of the journal: the issues, the waiting events, the integrity
   problems and the renamed keys are its state's; the events (every id, an attempt file's and a

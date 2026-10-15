@@ -119,8 +119,10 @@ still as format 1; an older bead sets aside the events it cannot apply
 (reported under `integrity`, applied by nobody), carries them through sync
 untouched, and applies them once upgraded. Machines can therefore be upgraded
 in any order; a mixed fleet is safe, and shows integrity notes until it is
-uniform. The format number changes only for a change that would make an old
-reader *misread* events; none is planned. Should one ever be needed it follows
+uniform. What an older bead sets aside costs it nothing more: it keeps
+reading its projection and applying new events to it. The format number
+changes only for a change that would make an old reader *misread* events;
+none is planned. Should one ever be needed it follows
 *writers lag readers*: the new bead reads both formats but writes the old one
 until every machine on the tracker has announced, in the manifest it publishes,
 that it reads the new one; then it flips. Nothing ever rewrites existing events.
@@ -331,8 +333,17 @@ it, and the file is committed again.
   parent-child index built again, since a create gives the imports that waited
   for its key their edges, and that is one pass a command (roll-lqjj.17, V01,
   V03 and V05; `cargo xtask timing --extend N` measures the projection's part
-  of it). An import's dependencies on keys no issue has yet cost what they
-  are: a create visits only those waiting for its own key, so 16,000 imports
+  of it). A journal holding what `bead info` reports under `integrity` (a
+  newer bead's event, an id with two contents, a copied machine identity's
+  broken chain) keeps its projection current; only a takeover of an id no
+  event has, and an id with two contents whose causes are not all there or
+  loop back onto it, have every command replay it. A `close`, `reopen` or
+  `delete` reads the state once before its events and once after, whatever
+  the journal holds: 60 closes of 4,000 issues with a newer bead's event in
+  the journal take 0.066 s rather than 11.6 s, and 0.26 s rather than 11.7 s
+  when the projection cannot be kept (roll-lqjj.28). An import's dependencies
+  on keys no issue has yet cost what they are: a create visits only those
+  waiting for its own key, so 16,000 imports
   each waiting for a key that never comes replay in 0.09 s rather than 30 s,
   and one issue waiting for 16,000 keys costs about what the same 16,000 edges
   cost it given at once (roll-lqjj.18; `cargo xtask timing --dangling N`).
