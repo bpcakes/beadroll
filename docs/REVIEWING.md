@@ -1097,13 +1097,25 @@ These were decided deliberately. Report problems *with* them, not their existenc
   directory of 15,000 attempt files took to list. Neither the projection's layout nor the
   published membership map in `meta.json` changes.
 - `meta.json`, whose `published` map holds an entry for every journal file, is read once a command
-  (roll-lqjj.30): again only when the file at its path is not the one this process last read or
-  wrote, by its identity, which bead only ever changes by renaming a whole new file over it; what
-  a write leaves is known by the identity its own descriptor has once renamed into place, so that
-  a file another process renamed over it is another file. The unpublished count every command
-  gives reads only the memo's entries of the segments whose lines it counts; the memo is still
-  checked whole, every line as one is written, now in the order bead writes them (each path
-  once, as before), and one read so is never written back.
+  (roll-lqjj.30): again only when the file at its path no longer has the identity it had when this
+  process last read or wrote it, which bead only ever changes by renaming a whole new file over
+  it; what a write leaves is known by the identity its own descriptor has once renamed into
+  place. The unpublished count every command gives reads only the memo's entries of the segments
+  whose lines it counts; the memo is still checked whole, every line as one is written, now in
+  the order bead writes them (each path once, as before), and one read so is never written back.
+  The parsed copy is trusted on an identity that need not be settled (Y01), which leaves a
+  residue: two other processes that each replace the file within one timestamp tick of this
+  one's read, the second's new file given the first's inode back at the same length, leave the
+  identity remembered (on a kernel before 6.13, whose ticks are coarse, or a file system with
+  whole-second times; the review of #17 saw ext4 reuse the inode in 1,902 of 2,000 double
+  replacements). The process then answers from its older copy, so its unpublished count errs
+  high, and a save writes that copy back with its own keys, losing those only the others set
+  (`name`): bookkeeping, in a file that is last-writer-wins already, since a sync records itself
+  there outside the lock. Settling the identity would need a moment on the file system's clock
+  after the read, which only a file's own times give; the wall clock, with a bound on the tick,
+  would have the file parsed again whenever it was written within that bound, which is after
+  this process's own write and between commands run one after another: the usual path, whose
+  parses the cache saves (55 ms each at 200,000 events).
 - A publish reuses an unchanged claims subtree only when the last merged tip holds it
   (roll-lqjj.13). The desired entries' canonical tree object name, with mode 100644 and every
   filename and blob, must equal the subtree name at that path. SHA-1 and SHA-256 are checked

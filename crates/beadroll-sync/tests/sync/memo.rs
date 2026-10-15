@@ -275,6 +275,32 @@ fn a_memo_that_is_missing_stale_or_unreadable_is_not_trusted() {
     assert_eq!(damaged.tree, quiet.tree, "the published copy is back");
 }
 
+/// An attempt file damaged here, its length kept, is replaced by the merge with the published
+/// copy, and the identity the merge's locked phase took of the damaged one is forgotten with it
+/// (roll-lqjj.30): the publish that follows in that phase finds the copy the merge wrote, as the
+/// memo remembers it, and hashes nothing more.
+#[test]
+fn an_attempt_the_merge_replaces_is_known_by_its_new_identity() {
+    let sandbox = sandbox();
+    let origin = sandbox.origin();
+    let (a, ws, key, _b) = set_up(&sandbox);
+    claim_command(&ws, &actor(&a), &key).expect("a claim");
+    let attempt = relative(&ws, &claim_files(&ws).expect("the attempt files")[0]);
+    let quiet = settled_round(&ws, origin);
+    assert_eq!(quiet.hashed, [attempt.as_str()]);
+
+    let file = ws.dir.join(&attempt);
+    let mut bytes = std::fs::read(&file).expect("the attempt file");
+    let at = bytes.iter().position(|b| *b == b'{').expect("a record");
+    bytes[at] = b'[';
+    std::fs::write(&file, &bytes).expect("damage");
+    let damaged = settled_round(&ws, origin);
+    assert_eq!(damaged.forks, [attempt.as_str()]);
+    assert_eq!(damaged.hashed, [attempt.as_str()], "the damaged copy, once");
+    assert_eq!(damaged.tree, quiet.tree, "the published copy is back");
+    assert_eq!(settled_round(&ws, origin).hashed, Vec::<String>::new());
+}
+
 /// A memo vouches for a file only once the file was settled when the memo was written: a rewrite
 /// in place that keeps a file's length can keep every part of its identity, while the times it
 /// sets are the ones the file already has. A memo written before a file says nothing of it: the

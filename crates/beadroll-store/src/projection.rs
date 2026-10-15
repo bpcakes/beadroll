@@ -369,6 +369,7 @@ fn read_tails(ws: &Workspace, tails: &[Tail]) -> Option<(Vec<Record>, Vec<Held>)
     let mut read = Vec::with_capacity(tails.len());
     for tail in tails {
         let path = ws.events_dir.join(&tail.path);
+        ws.settings.failpoints.hit("journal.before-read");
         let Ok((data, Some(key))) = read_keyed(&path) else {
             return None;
         };

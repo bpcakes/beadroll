@@ -20,7 +20,9 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 - A reader outside the store lock lists the attempt files again once it has read the segments
   (X13): a claims directory that gains a file within one tick of an earlier listing keeps its
   identity on kernels that stamp it from a coarse clock, and a record in those segments that
-  builds on that attempt was then read without it, waiting for one read.
+  builds on that attempt was then read without it, waiting for one read. A new failpoint,
+  `journal.before-read`, holds a reader before each segment it reads, so that a test can have a
+  writer accept an attempt and append a record built on it there.
 
 - `bead show` says `merged: unknown` of a closing commit that is not 4 to 64 lowercase hex digits,
   without asking git (roll-lqjj.26, X14): bead records the commit as `git rev-parse HEAD` prints

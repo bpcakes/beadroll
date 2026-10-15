@@ -323,6 +323,7 @@ pub(crate) fn load_listed(
     let mut whole = true;
     let mut held = Vec::with_capacity(segments.len());
     for path in segments {
+        ws.settings.failpoints.hit("journal.before-read");
         let (data, key) = read_keyed(path)?;
         whole &= data.last().is_none_or(|last| *last == b'\n');
         held.push((key, summed.then(|| content_sum(&data))));

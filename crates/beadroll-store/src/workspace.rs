@@ -153,8 +153,10 @@ impl Workspace {
     }
 
     /// `meta.json` at `path`, read once a command (roll-lqjj.30): again only when the file there
-    /// is not the one this process last read or wrote, which its identity says, since bead only
-    /// ever replaces it whole. Its `published` map holds an entry for every journal file.
+    /// no longer has the identity it had when this process last read or wrote it, since bead only
+    /// ever replaces it whole. Its `published` map holds an entry for every journal file. The
+    /// identity need not be settled: two replacements by others within one tick, the inode reused
+    /// at the same length, go unseen, a residue `docs/REVIEWING.md` §2 weighs.
     fn read_meta(&self, path: &Path) -> MetaRead {
         if let Some(now) = FileKey::of(path)
             && let Some((key, read)) = &*self.meta_read.borrow()
