@@ -7,7 +7,7 @@ use super::*;
 
 #[test]
 fn a_read_writes_back_what_it_caught_up_and_a_write_only_many_records() {
-    let size = 64 * 1000;
+    let size = TAIL * 1000;
     for want in [Want::Texts, Want::Outline] {
         for tail in [0, 1, 1000, 1001, u64::MAX] {
             assert!(kept_for(want, tail, size), "{tail}");
@@ -30,8 +30,9 @@ fn length(ws: &Workspace) -> u64 {
 }
 
 /// Writes one after another, each finding the records the ones before it appended: the stored
-/// projection stays as it was until those records hold more than a 64th of its bytes, every write
-/// answering as replay all the same; then a write writes it back, and a read after any write does.
+/// projection stays as it was until those records hold more than a [`TAIL`]th of its bytes, every
+/// write answering as replay all the same; then a write writes it back, and a read after any write
+/// does.
 #[test]
 fn a_projection_caught_up_for_a_write_is_written_back_once_the_records_after_it_are_many() {
     let home = tempfile::tempdir().unwrap();
@@ -46,8 +47,10 @@ fn a_projection_caught_up_for_a_write_is_written_back_once_the_records_after_it_
     let replayed = |ws: &Workspace| answers(&replay(load_journal(ws).unwrap()).unwrap());
     let mut stored = std::fs::read(projection_path(&ws)).unwrap();
     let mut since = length(&ws);
-    let (mut left, mut kept) = (0, 0);
-    for n in 205..245 {
+    let (mut left, mut kept, mut n) = (0, 0, 204);
+    while kept < 3 {
+        n += 1;
+        assert!(n < 2000, "{left} left, never written back");
         append_events(&ws, HERE, &[title(n, &[n - 1], 5, &format!("title {n}"))]).unwrap();
         let mut caught = projection(&ws).unwrap().into_state();
         let uids: Vec<EventId> = caught.issues().map(Issue::uid).collect();
@@ -62,10 +65,8 @@ fn a_projection_caught_up_for_a_write_is_written_back_once_the_records_after_it_
             left += 1;
         }
     }
-    assert!(left >= 20 && kept >= 2, "{left} left, {kept} written back");
-    if length(&ws) == since {
-        append_events(&ws, HERE, &[title(245, &[244], 5, "after")]).unwrap();
-    }
+    assert!(left >= 3 * 10, "{left} left before 3 written back");
+    append_events(&ws, HERE, &[title(n + 1, &[n], 5, "after")]).unwrap();
     assert_eq!(answers(&view(&ws).unwrap()), replayed(&ws));
     assert_ne!(std::fs::read(projection_path(&ws)).unwrap(), stored);
     assert_eq!(made(&ws).unwrap().values().sum::<u64>(), length(&ws));

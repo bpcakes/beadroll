@@ -68,8 +68,10 @@ const SLACK: u64 = 1 << 20;
 /// hold before a command that extends it to write writes it back ([`kept_for`]). Applying a
 /// record costs about fifty nanoseconds a byte of it and writing a projection back about six a
 /// byte of it, so the last write before one is written back spends about an eighth of what that
-/// costs on the records, and a run of writes about a sixteenth a write on average.
-const TAIL: u64 = 64;
+/// costs on the records, and a run of writes about a sixteenth a write on average. This crate's
+/// tests take 4: their stores hold a few kilobytes, in which with 64 every write would write the
+/// projection back, and with 4 their writes leave it to the next command for a record or two.
+const TAIL: u64 = if cfg!(test) { 4 } else { 64 };
 
 /// Where a store keeps its projection.
 pub fn projection_path(ws: &Workspace) -> PathBuf {
@@ -79,7 +81,7 @@ pub fn projection_path(ws: &Workspace) -> PathBuf {
 /// The projection of the store's journal as it is now: the stored one, the records appended since
 /// applied after it, or the journal replayed. Its issues' texts are there but for those the records
 /// applied are about; [`read_texts`] reads in more. For a command that applies events to it: the
-/// stored one caught up with a few records is not written back ([`kept_for`]).
+/// stored one caught up with a few records is not written back (`kept_for`).
 pub fn projection(ws: &Workspace) -> Result<Projection, ViewError> {
     Ok(projection_sourced(ws)?.into_projection())
 }

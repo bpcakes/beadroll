@@ -4,6 +4,8 @@
 //! and whatever a read writing the projection back meets, bead answers as the journal replayed.
 
 use std::path::Path;
+use std::process::Stdio;
+use std::time::{Duration, Instant};
 
 use beadroll_test_support::Machine;
 
@@ -61,6 +63,40 @@ fn comment(machine: &Machine, key: &str, text: &str) {
     machine.bead(["comments", "add", key, text, "--offline"]);
 }
 
+/// How long a write may take beside a read held at a gate before the test calls it stuck.
+const LIMIT: Duration = Duration::from_secs(30);
+
+/// A comment written offline that has [`LIMIT`] to finish, killed otherwise: what it printed to
+/// standard error when it failed or was stuck. A write that waited for the held read to finish
+/// would wait as long as the gate, and the test with it.
+fn comment_within(machine: &Machine, key: &str, text: &str) -> Result<(), String> {
+    let mut child = (machine
+        .cmd(["comments", "add", key, text, "--offline"])
+        .command())
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+    let deadline = Instant::now() + LIMIT;
+    while child.try_wait().unwrap().is_none() {
+        if Instant::now() > deadline {
+            child.kill().unwrap();
+            let stuck = child.wait_with_output().unwrap();
+            return Err(format!(
+                "still waiting after {LIMIT:?}: {}",
+                String::from_utf8_lossy(&stuck.stderr)
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let done = child.wait_with_output().unwrap();
+    match done.status.success() {
+        true => Ok(()),
+        false => Err(String::from_utf8_lossy(&done.stderr).into_owned()),
+    }
+}
+
 /// A write finds the stored projection and the records after it; it writes the projection back
 /// when those records hold more than a 64th of its bytes, and leaves it otherwise, however many
 /// writes come in a row; the read after them takes every record in and writes it back.
@@ -104,34 +140,52 @@ fn writes_in_a_row_leave_the_projection_until_the_records_after_it_are_many() {
 
 /// A write killed as it reads the projection, as it reads the records after it, halfway through
 /// appending its own, or as it writes the projection back leaves the stored one as it was, and bead
-/// answers as the journal replayed; a write after them goes through, and a read takes it in.
+/// answers as the journal replayed; a write after them goes through, and a read takes it in. The
+/// first three kill it after one write left its record, then after as many as leave most of what a
+/// write takes in before it writes the projection back.
 #[test]
 fn a_write_killed_between_its_steps_leaves_the_projection_it_found() {
     let sandbox = crate::sandbox();
     let a = crate::rust_only(&sandbox, "deferred-killed");
     let keys = imported(&a, 300);
-    for failpoints in [
-        "projection.read=sigkill",
-        "journal.before-read=sigkill",
-        "append.mid=torn-sigkill",
-    ] {
-        // a record after the stored projection, which the reads below then take in
-        comment(&a, &keys[0], "left to the next read");
-        let stored = std::fs::read(projection(&a)).unwrap();
-        let killed = (a.cmd(["comments", "add", &keys[1], "killed-mid-write", "--offline"]))
-            .env("BEAD_FAILPOINTS", failpoints)
-            .run();
-        assert_eq!(killed.returncode(), -9, "{failpoints}: {}", killed.stderr);
-        assert_eq!(
-            std::fs::read(projection(&a)).unwrap(),
-            stored,
-            "{failpoints}"
-        );
-        assert_eq!(
-            answers(&a, &keys, false),
-            answers(&a, &keys, true),
-            "{failpoints}"
-        );
+    for long in [false, true] {
+        for failpoints in [
+            "projection.read=sigkill",
+            "journal.before-read=sigkill",
+            "append.mid=torn-sigkill",
+        ] {
+            // a record after the stored projection, which the reads below then take in; the first
+            // after `append.mid` cuts the half line it left
+            comment(&a, &keys[0], "left to the next read");
+            if long {
+                // written back, then three quarters of what a write leaves to the next read
+                let _ = answers(&a, &keys, false);
+                let (written, made) = (std::fs::read(projection(&a)).unwrap(), journal_bytes(&a));
+                while (journal_bytes(&a) - made) * TAIL * 4 <= written.len() as u64 * 3 {
+                    comment(&a, &keys[0], "one more");
+                }
+                assert_eq!(std::fs::read(projection(&a)).unwrap(), written);
+                assert!(
+                    (journal_bytes(&a) - made) * TAIL <= written.len() as u64,
+                    "the killed write would write it back"
+                );
+            }
+            let stored = std::fs::read(projection(&a)).unwrap();
+            let killed = (a.cmd(["comments", "add", &keys[1], "killed-mid-write", "--offline"]))
+                .env("BEAD_FAILPOINTS", failpoints)
+                .run();
+            assert_eq!(killed.returncode(), -9, "{failpoints}: {}", killed.stderr);
+            assert_eq!(
+                std::fs::read(projection(&a)).unwrap(),
+                stored,
+                "{failpoints}, long {long}"
+            );
+            assert_eq!(
+                answers(&a, &keys, false),
+                answers(&a, &keys, true),
+                "{failpoints}, long {long}"
+            );
+        }
     }
     // records after the stored projection many enough that the next write writes it back, which is
     // killed as it does; the first of them cuts the half line left above
@@ -180,8 +234,9 @@ fn writes_while_a_read_writes_the_projection_back_are_taken_in_by_the_next_read(
         },
         |finished| {
             gate.meet(finished, || {
-                comment(&a, &keys[1], "while the read waits");
-                comment(&a, &keys[2], "this one too");
+                // a write that waited for the read would have the test wait out the gate
+                comment_within(&a, &keys[1], "while the read waits").unwrap();
+                comment_within(&a, &keys[2], "this one too").unwrap();
                 std::fs::read(projection(&a)).unwrap()
             })
         },
