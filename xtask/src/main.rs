@@ -67,8 +67,8 @@ usage: cargo xtask <command>
       xtask's profile) on a scratch store of those N events, its journals rotated at BYTES (bead's
       default, 262144), against a local bare remote: the first sync, then the best of five after a
       local write each, with the store's memo of its journal files and its projection, without
-      its projection, and without either. --read N times bead list, show and ready there, and a
-      local write (bead comments add --offline), with the projection and without it; --merge N, a bead sync that merges M events (ten by default)
+      its projection, and without either. --read N times bead list, show, ready, log --limit 1,
+      info and machines there, and a local write (bead comments add --offline), with the projection and without it; --merge N, a bead sync that merges M events (ten by default)
       another machine wrote after everything the store holds, with the projection and without it
       (--concurrent: the store writes too, so that the merge brings concurrent events);
       --contend M, M machines writing one tracker at once (W writes each, 25 by default), every
