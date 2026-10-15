@@ -6,6 +6,13 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `bead show`, `bead update`, `bead claim` and `bead takeover` find the issues that depend on each
+  issue they show once for all of them (roll-lqjj.20), instead of reading and sorting every issue's
+  dependencies again for each: showing all 8,000 issues of a sparse tracker takes 0.28 s rather
+  than 3.26 s, and all 4,000 0.13 s rather than 0.85 s. What each detail lists, its order and the
+  order of the details are unchanged; one issue's detail still reads every issue's dependencies
+  once, and costs no more than it did. `cargo xtask timing --details N` measures it.
+
 - `bead ready`, `bead blocked` and `bead prime` judge whether anything holds an issue once for
   every issue (roll-lqjj.19), instead of building each issue's complete blocker list, walking its
   ancestors, to test the list for emptiness: a chain of 4,000 issues under one held root is judged

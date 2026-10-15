@@ -341,6 +341,45 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `ready` took 37.0 s and takes 0.149 s; on the lattice of 4,000, 3.59 s and
   0.046 s. The fastest of three runs each, 2026-10-15, Rust 1.99.0, 64 cores; the end-to-end
   figures the best of five (of three at 16,000), the commands reading the store's projection.
+- The issues that depend on each of several issues shown in full are found once for all of them
+  (roll-lqjj.20, Z05). A detail lists as `dependents` every issue with an edge to its issue, and
+  only the edges say which those are, so `State::detail` read every issue's edges, collected and
+  sorted each one's, and kept those that name its issue's uid; `bead show`, `bead update`,
+  `bead claim` and `bead takeover` answer with a detail for every issue named, so N issues read
+  and sorted every edge N times. `State::dependents_of` finds them for all the issues named in one
+  pass over every issue's edges, keeping only the edges that name one of them — by the text of its
+  uid, as an edge names it, so a copy renamed for a key two machines minted is never taken for the
+  other — and sorting only those; `State::detail_with` lists each one's from it, and the four
+  commands make it once a command, for the issues named. It is a view made for one batch of details
+  and dropped with it, not an index the state keeps: a command needs the dependents of the issues
+  it shows and of no others, an index of every issue's would have to be built for every state a
+  command reads, or kept up to date by replay and the projection (and, stored, change the
+  projection's encoding), to save a pass the commands that show issues make once, and that pass
+  for all 8,000 issues below takes 8 ms. One issue alone (`State::detail`, which `bead show` of
+  one issue, `create`, `comments` and `dep` ask) is still one pass, comparing each edge's target
+  with its uid rather than hashing it, and costs less than the pass it replaces, since an issue's
+  edges are sorted only when one of them names it. What is listed and its order are unchanged —
+  the issues in replay order, each one's edges to it in sorted order, once for each type, every
+  type and every status, never a removed edge, nothing for a dependency that names no issue — as
+  are the order of the details, an issue named twice shown twice, and the error a key that names
+  no issue gives, where it stands among the others; a lookup made in another state is never used,
+  and an issue it was not made for finds its own. `tests/core/replay/dependents.rs` keeps each
+  detail so made equal to the issue's detail alone and its dependents to what every detail found
+  before, member for member, and `commands::shared_dependents` each command's answer to `bead show`
+  of each issue alone. `blocked` in each detail is still judged issue by issue
+  (`State::is_blocked`, roll-lqjj.19), and on a graph without parents that reads the issue's own
+  edges alone. `cargo xtask timing --details N` measures it on a sparse graph without parent-child
+  edges — issue n waits for issue n/2, and every third is related to the one before as well —
+  replay left out: all the details, their dependents found once, take 20, 49 and 95 ms at 4,000,
+  8,000 and 16,000 issues, against 0.49, 1.92 and 8.87 s with each detail finding its own; the
+  lookup alone for all of them 3.0, 8.1 and 17.0 ms, against 0.67, 3.42 and 18.4 s as every
+  detail made it before (the review's figures of 2026-10-13 for all the details were 0.54 and
+  2.33 s at 4,000 and 8,000); for one issue, the lookup 0.11, 0.22 and 1.2 ms against 0.22, 0.40
+  and 1.7 ms before, and its whole detail 0.12, 0.23 and 1.3 ms. End to end, `bead show` of all
+  4,000 issues of such a tracker took 0.85 s and takes 0.13 s, of all 8,000 3.26 s and 0.28 s,
+  printing the same bytes, and of one issue 34 and 69 ms before and after alike, which is reading
+  the state. The fastest of three runs each, 2026-10-15, Rust 1.99.0, 64 cores; the end-to-end
+  figures the best of five, the commands reading the store's projection.
 - No history boundary (roll-lqjj.3, step 4 of epic roll-lqjj; the maintainer's decision of
   2026-10-12, on the evidence in the port plan's Appendix A, "roll-lqjj.3", which git keeps, §1): a
   machine's work merges by itself however old it is, as every merge has so far. The alternatives

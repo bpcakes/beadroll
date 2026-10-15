@@ -337,6 +337,11 @@ it, and the file is committed again.
   `bead ready` there takes 0.037 s rather than 2.05 s; `bead blocked`
   still lists each held issue's blockers, and `bead show` judges its one issue
   by walking its ancestors (roll-lqjj.19; `cargo xtask timing --ready N`).
+  `bead show`, `bead update`, `bead claim` and `bead takeover` find the issues
+  that depend on every issue they show in one pass for all of them, so showing
+  all 8,000 issues of a sparse tracker takes 0.28 s rather than 3.26 s; one
+  issue's detail still reads every issue's dependencies once (roll-lqjj.20;
+  `cargo xtask timing --details N`).
   A real tracker's state is mostly
   its texts, which only the commands that print them read: on three of the
   largest public Beads trackers (21–47 MB, up to 13,394 issues) a `list` takes
