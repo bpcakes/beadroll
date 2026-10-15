@@ -266,6 +266,7 @@ impl State {
             // an entry taken out while events apply is null, and names no key
             taken.extend(issue.dangling.iter().filter_map(awaited));
         }
+        tally(Work::Key, taken.len());
         taken
     }
 
@@ -284,6 +285,7 @@ impl State {
     /// machines minted alike, which collecting every key for each copy made cost the whole tracker
     /// a copy (X03 in `docs/FINDINGS.md`).
     pub(crate) fn claims_key(&self, key: &str) -> bool {
+        tally(Work::Key, 1);
         let claimed = self.by_key.contains_key(key) || self.awaiting.names(key);
         #[cfg(test)]
         asked::agrees(self, key, claimed);

@@ -26,7 +26,7 @@ const MACHINES: [&str; 2] = ["a", "b"];
 
 /// What the two machines create.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Shape {
+pub(super) enum Shape {
     /// Both create `ex-1` to `ex-N`: the second machine's N copies are renamed.
     Renamed,
     /// The first creates `ex-1` to `ex-N`, the second `ex-N+1` to `ex-2N`: nothing is renamed.
@@ -124,7 +124,7 @@ fn create(key: &str, awaited: Option<String>) -> Object {
 
 /// The journal of `shape` with `issues` creates a machine, after an `init` of the first machine's:
 /// the first machine's creates in a chain after it, the second's in a chain of its own after it.
-fn journal(shape: Shape, issues: usize) -> Journal {
+pub(super) fn journal(shape: Shape, issues: usize) -> Journal {
     let mut journal = Journal::new();
     let mut data = Object::new();
     data.insert("prefix".into(), Value::from("ex"));

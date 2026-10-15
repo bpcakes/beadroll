@@ -1,6 +1,6 @@
-//! Readiness (roll-lqjj.19) and the dependents of the issues shown in full (roll-lqjj.20): every
-//! issue's edges read a bounded number of times, however deep its ancestry and however many issues
-//! are shown.
+//! Readiness (roll-lqjj.19), the dependents of the issues shown in full (roll-lqjj.20) and what
+//! the lists and details of several issues share (roll-lqjj.24): every issue's edges read a
+//! bounded number of times, however deep its ancestry and however many issues are shown.
 
 use crate::query::ReadyScope;
 use crate::state::State;
@@ -10,6 +10,13 @@ use super::{History, grows_linearly, key};
 
 /// How many issues a row of the lattice holds.
 const WIDTH: usize = 4;
+
+/// How many rows of the gated lattice wait for a gate of their own each, as `timing --ready`'s
+/// gated lattice has them.
+const GATED_ROWS: usize = 16;
+
+/// The gated lattice's gates, issues 1 to this.
+const GATES: usize = GATED_ROWS * WIDTH;
 
 /// How the issues readiness is judged on are linked: the shapes `timing --ready` measures.
 #[derive(Clone, Copy, Debug)]
@@ -21,10 +28,18 @@ enum Shape {
     /// Issue 1 the prerequisite of the first row, and each later issue the child of two in the
     /// row above it.
     LatticeHeld,
+    /// [`GATES`] gates, then the same lattice, each issue of its first [`GATED_ROWS`] rows waiting
+    /// for a gate of its own: every issue below them lists every gate, so the lists are long.
+    LatticeGated,
 }
 
 impl Shape {
-    const ALL: [Shape; 3] = [Shape::ChainHeld, Shape::ChainFree, Shape::LatticeHeld];
+    const ALL: [Shape; 4] = [
+        Shape::ChainHeld,
+        Shape::ChainFree,
+        Shape::LatticeHeld,
+        Shape::LatticeGated,
+    ];
 
     /// What issue `n`, counting from one, depends on.
     fn linked(self, n: usize) -> Vec<(String, &'static str)> {
@@ -43,6 +58,20 @@ impl Shape {
                     (above(column), "parent-child"),
                     (above(column + 1), "parent-child"),
                 ]
+            }
+            Shape::LatticeGated if n <= GATES => Vec::new(),
+            Shape::LatticeGated => {
+                let (row, column) = ((n - GATES - 1) / WIDTH, (n - GATES - 1) % WIDTH);
+                let mut linked = Vec::new();
+                if row < GATED_ROWS {
+                    linked.push((key(n - GATES), "blocks"));
+                }
+                if row > 0 {
+                    let above = |column: usize| key(GATES + 1 + (row - 1) * WIDTH + column % WIDTH);
+                    linked.push((above(column), "parent-child"));
+                    linked.push((above(column + 1), "parent-child"));
+                }
+                linked
             }
         }
     }
@@ -115,6 +144,56 @@ fn the_details_of_every_issue_read_each_edge_a_bounded_number_of_times() {
             let dependents = state.dependents_of(state.issues());
             for issue in state.issues() {
                 drop(state.detail_with(issue, &dependents));
+            }
+        },
+    );
+}
+
+#[test]
+fn listing_the_blockers_of_every_held_issue_reads_each_edge_a_bounded_number_of_times() {
+    // every shape `timing --ready` measures: their lists are linear in their issues (a gated
+    // issue lists a bounded number of gates), where a chain whose every issue listed all those
+    // above it would list N² on purpose. The edges counted are those the lists are made from and
+    // those the walk up the parents reads again, which is where a walk of every ancestry shows.
+    for shape in Shape::ALL {
+        grows_linearly(
+            &format!("the blockers of every issue of {shape:?}"),
+            &[Work::Edge],
+            |issues| shape.state(issues),
+            |state| {
+                let lists = state.blocker_lists();
+                let held = state.issues().filter(|issue| !lists.of(issue).is_empty());
+                assert_eq!(held.count() == 0, matches!(shape, Shape::ChainFree));
+            },
+        );
+    }
+}
+
+#[test]
+fn the_details_of_every_issue_judge_readiness_reading_each_edge_a_bounded_number_of_times() {
+    // every shape, the ones with parents too: a detail that walked its own ancestors for `blocked`
+    // read N²/2 edges of a chain
+    for shape in Shape::ALL {
+        grows_linearly(
+            &format!("the detail of every issue of {shape:?}, made together"),
+            &[Work::Edge],
+            |issues| shape.state(issues),
+            |state| {
+                let details = state.details_of(state.issues());
+                for issue in state.issues() {
+                    drop(details.of(issue));
+                }
+            },
+        );
+    }
+    grows_linearly(
+        "the detail of every issue of the sparse graph, made together",
+        &[Work::Edge],
+        sparse,
+        |state| {
+            let details = state.details_of(state.issues());
+            for issue in state.issues() {
+                drop(details.of(issue));
             }
         },
     );

@@ -3,12 +3,15 @@
 //! input is the shape the algorithm was quadratic on before, the shape its `cargo xtask timing`
 //! probe measures, built outside the count; only the call is counted. A module for each:
 //! `import` (roll-lqjj.15), `finished` (.17), `awaiting` (.18), and `edges`, readiness (.19) and
-//! the dependents of the issues shown (.20).
+//! the dependents of the issues shown (.20) with the blockers and readiness of several issues
+//! (.24), and `renamed`, the key of a copy two machines minted alike (roll-lqjj.25).
 //!
 //! Shapes whose cost still grows faster than their input by design are not guarded, and
 //! `docs/REVIEWING.md` §2 says why for each: a batch that changes an edge builds the parent-child
-//! index again over the whole state (roll-lqjj.17), and one issue that gains N edges, or waits for
-//! N keys that come one batch at a time, searches or copies its own growing list (roll-lqjj.18).
+//! index again over the whole state (roll-lqjj.17), one issue that gains N edges, or waits for
+//! N keys that come one batch at a time, searches or copies its own growing list (roll-lqjj.18),
+//! and a copy of a numbered key (`ex-1.1`), which counts upward past every number taken, so that N
+//! copies two machines minted alike ask N² keys (roll-lqjj.46).
 
 use crate::id::EventId;
 use crate::journal::Journal;
@@ -23,6 +26,7 @@ mod awaiting;
 mod edges;
 mod finished;
 mod import;
+mod renamed;
 
 /// The size of the smaller input.
 const SMALL: usize = 250;

@@ -574,38 +574,68 @@ These were decided deliberately. Report problems *with* them, not their existenc
   and each pair was taken back to back.
 - What roll-lqjj.15 to .20 made grow with its input is guarded by counting its work, and by time
   only where a count cannot see it (roll-lqjj.34, X15). Their tests compare answers, which a
-  quadratic implementation gives as well, so beadroll-core counts the work where every way of doing
-  it passes (`work::tally`, compiled into this crate's own tests alone, `cfg(test)`, so no build of
-  bead carries it): an issue's edges when they are handed out, a parent's children, an issue
-  relabelled, the parent-child index built, a waiting import's key read and the entries the waiting
-  index hands out, examines or makes whole, and an import's record and dependency keys read. A
-  guard for each algorithm (`work::tests::import`, `finished`, `awaiting`, `edges`) counts its work
-  on the shape its `timing` probe measures, at 250 and at 2,000, and fails above sixteen times as
-  much: twice what linear work does, a quarter of what quadratic work does. Counting rather than
-  timing makes the guards exact, fast (0.25 s for all of them, debug) and the same on every machine,
-  so they run on every push. Fourteen quadratic versions — `Readiness` and `ready` asking
-  `is_blocked` of each issue, a detail finding its own dependents, `dependents_of` passing once per
-  issue asked about, `finish_some` finishing the whole state, building the index for every batch or
-  relabelling once per event, a create reading every waiting list, a removal by key reading its
-  issue's whole list, every waiting list made whole each batch, import planning, its dry run and a
-  re-import scanning the batch — each fail their guard, with 16 to 64 times the work where the code
-  on main does 8. A count sees only work that passes the place it is kept: a lookup turned back into
-  a scan of a vector reads nothing counted. Those are timed: `xtask`'s growth tests time planning an
-  import, its dry run, a re-import, replaying imports that wait for keys and a projection taking
-  ids that sort before every id it holds, the fastest of five runs at a size and at eight times it,
-  and fail when the larger takes more than 24 times as long, about three times what linear work
-  takes and well under the 64 of quadratic. They are the one exception to "timings never gate"
-  (`xtask/AGENTS.md`): ignored by every other run, so that no pull request or `./check.sh` waits on a
-  timing, and run by the nightly workflow in release, one at a time (`ci::x15_growth_guards` keeps
-  the step). On main they measure 8.4 to 13.6 times; the scans of roll-lqjj.15 restored measure
-  30 to 60, a create that reads every waiting list's keys inline 84, and every id moved on each
-  batch, as the merged vector of V02 moved them, 59 (64 cores, shared with ten other builds,
+  quadratic implementation gives as well, so beadroll-core counts the work where every way of
+  doing it passes (`work::tally`, compiled into this crate's own tests alone, `cfg(test)`, so no
+  build of bead carries it): an issue's edges when they are handed out, the parents and blockers
+  `State::blocker_lists` reads from its rows, a parent's children, an issue relabelled, the
+  parent-child index built, a waiting import's key read and the entries the waiting index hands
+  out, examines or makes whole, an import's record and dependency keys read, and the keys replay
+  asks of (`State::claims_key`) or collects (`State::claimed_keys`) to rename a copy. A guard for
+  each algorithm (`work::tests::import`, `finished`, `awaiting`, `edges`, `renamed`) counts its
+  work on the shape its `timing` probe measures, at 250 and at 2,000, and fails above sixteen
+  times as much: twice what linear work does, a quarter of what quadratic work does. Counting
+  rather than timing makes the guards exact, fast (under half a second for all of them, debug) and
+  the same on every machine, so they run on every push. Fourteen quadratic versions — `Readiness`
+  and `ready` asking `is_blocked` of each issue, a detail finding its own dependents,
+  `dependents_of` passing once per issue asked about, `finish_some` finishing the whole state,
+  building the index for every batch or relabelling once per event, a create reading every waiting
+  list, a removal by key reading its issue's whole list, every waiting list made whole each batch,
+  import planning, its dry run and a re-import scanning the batch — each fail their guard, with 16
+  to 64 times the work where the code on main does 8. A count sees only work that passes the place
+  it is kept: a lookup turned back into a scan of a vector reads nothing counted. Those are timed:
+  `xtask`'s growth tests time planning an import, its dry run, a re-import, replaying imports that
+  wait for keys, replaying copies two machines minted alike and a projection taking ids that sort
+  before every id it holds, the fastest of five runs at a size and at eight times it, and fail
+  when the larger takes more than 24 times as long, about three times what linear work takes and
+  well under the 64 of quadratic. They are the one exception to "timings never gate"
+  (`xtask/AGENTS.md`): ignored by every other run, so that no pull request or `./check.sh` waits
+  on a timing, and run by the nightly workflow in release, one at a time (`ci::x15_growth_guards`
+  keeps the step). On main they measure 8.4 to 13.6 times; the scans of roll-lqjj.15 restored
+  measure 30 to 60, a create that reads every waiting list's keys inline 84, and every id moved on
+  each batch, as the merged vector of V02 moved them, 59 (64 cores, shared with ten other builds,
   2026-10-15). Not guarded, since they grow faster than their input by design, as the bullets
   above say: a batch that changes an edge builds the parent-child index again, and one issue that
   gains N edges, or waits for N keys that come one batch at a time, searches its own edges and
-  copies its list's tail. What X01 to X03 found still quadratic on main (`bead blocked`'s lists,
-  `blocked` in each of several details, a renamed copy's free key) gets its guards, which fail on
-  main, once the changes that remove it land; roll-lqjj.34 records them.
+  copies its list's tail; and a copy of a numbered key, since two machines that both mint the
+  children `ex-1.1` to `ex-1.N` of one parent have each copy count upward past every number taken,
+  so that 40 and 320 copies ask 1,640 and 102,720 keys, 62.6 times as many (roll-lqjj.46, which
+  the `renamed` guard's plain keys leave out). What X01 to X03 found still quadratic (`bead
+  blocked`'s lists, `blocked` in each of several details, a renamed copy's free key) is guarded as
+  well, now that roll-lqjj.24 and .25 have landed (roll-lqjj.38): `edges` counts the edges
+  `State::blocker_lists` reads, building its rows and walking up them, over the four shapes
+  `timing --ready` measures, and those `State::details_of` reads for the details of every issue of
+  those shapes and of the sparse graph, and `renamed` counts the keys, and the waiting entries, replay reads to
+  rename the N copies of two machines that each minted `ex-1` to `ex-N`, with and without imports waiting for
+  keys that never come. At 250 and at 2,000 issues each reads 8.0 to 10.1 times as much (the gated
+  lattice has a fixed 64 gates, so it grows a little faster below 2,000); the code before the
+  changes, run the same way, reads 62 to 67 times as much (a held chain's `blocked` lists 62,995
+  and 4,003,995 edges (63.6 times) and a held lattice's 119,618 and 7,956,118 (66.5), both with
+  the `readiness()` pass `bead blocked` made first, which the guard leaves out, its details 62,748
+  and 4,001,998, a free chain's details 62,496 and 3,999,996, a held lattice's details 32,235 and
+  2,007,985; renaming 93,625 and 5,999,000 keys, or, with imports waiting, 156,125 and 9,999,000
+  keys and 63,000 and 4,004,000 waiting entries; the sparse graph, which has no parent, was linear
+  before). The lookup in `claims_key` itself is a map and a range. Turned back into a scan of the
+  issues' waiting lists it would read each entry through `awaited`, which counts, so the `renamed`
+  guard fails it on every push (Waiting 63,000 and 4,004,000). Turned into a scan of `by_key`, or
+  of the waiting index's entries, it reads nothing counted, so the nightly times it as well
+  (`timing::growth`, roll-lqjj.38): replaying 2,000 and 16,000 copies, without and with imports
+  waiting for keys that never come, takes 10.0 to 10.4 times as long on main, the fastest of five
+  (release, a shared machine, 2026-10-15), and fails above 24. The version that collected every
+  claimed key for each copy, as before roll-lqjj.25, took 70.3 times as long (0.162 s and 11.4 s);
+  `claims_key` asking `by_key` by a scan of the issues 54.2 (0.027 s and 1.44 s), and the scan of
+  the issues' waiting lists 39.8 (0.018 s and 0.70 s) and, with imports waiting, 150 (0.092 s and
+  13.8 s); a scan of the waiting index's entries measured 40.8 times on the waiting shape in the
+  review of this change.
 - No history boundary (roll-lqjj.3, step 4 of epic roll-lqjj; the maintainer's decision of
   2026-10-12, on the evidence in the port plan's Appendix A, "roll-lqjj.3", which git keeps, §1): a
   machine's work merges by itself however old it is, as every merge has so far. The alternatives

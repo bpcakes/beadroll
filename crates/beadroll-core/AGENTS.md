@@ -63,7 +63,9 @@ consumer on tokio calls through `spawn_blocking`.
   when it goes through) and `preview` (what it would bring), for `--dry-run`.
 - `src/work.rs`: `tally`, the work the algorithms of roll-lqjj.15 to .20 do, counted in this crate's
   own tests alone (`cfg(test)`; it does nothing in any other build), and `work/tests/`, the guards
-  that fail when that work grows with the square of its input (roll-lqjj.34, X15).
+  that fail when that work grows with the square of its input (roll-lqjj.34, X15), among them the
+  blockers and details of several issues (X01, X02) and the keys a renamed copy asks of (X03,
+  roll-lqjj.38).
 - `tests/core/`: integration tests of replay, storage compatibility and validation.
 
 ## Edit here for X
@@ -150,10 +152,14 @@ consumer on tokio calls through `spawn_blocking`.
   parent's children when `State::children` does, an issue relabelled (`replay::relabel`), the
   parent-child index built (`State::index_children`), a waiting import's key read
   (`state::awaited`, which replay reads it through and nowhere else) and the entries `Awaiting`
-  hands out, examines or makes whole, and an import's record or dependency key read (`id_of`,
-  `target`). Read an edge, a waiting key or an import key through those, never around them, or a
-  guard stops seeing the work; what a count cannot see, a lookup turned back into a scan, is timed
-  by `xtask`'s growth tests, nightly in release.
+  hands out, examines or makes whole, an import's record or dependency key read (`id_of`,
+  `target`), and the keys `State::claims_key` is asked of and `State::claimed_keys` collects. Read
+  an edge, a waiting key or an import key through those, never around them, and collect the
+  claimed keys through `claimed_keys`, or a guard stops seeing the work. `blocker_lists` counts the
+  rows it walks (`Rows::row`, `Rows::item`), and the test-only check that each `claims_key` ask
+  agrees with the keys claimed (`state/asked.rs`) reads them directly, so that it counts nothing.
+  What a count cannot see, a lookup turned back into a scan, is timed by `xtask`'s growth tests,
+  nightly in release.
 - `saw` agrees with the reference ancestry bitsets: `state/seen/tests.rs` checks every pair
   on hostile histories. Replay's speed and memory are measured by
   `cargo run --release --package xtask -- timing --replay N [--ownership]`: at 200,000 events its

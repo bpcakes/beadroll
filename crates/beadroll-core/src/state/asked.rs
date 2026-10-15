@@ -26,12 +26,24 @@ thread_local! {
     static ASKED: RefCell<Vec<Ask>> = const { RefCell::new(Vec::new()) };
 }
 
+/// Whether an issue has `key` or an entry of an issue's list names it, asked of every issue and
+/// every entry, as [`State::claimed_keys`] collects them; nothing it reads is counted, so that
+/// checking an ask adds nothing to the work a guard counts: the entries' keys are read as
+/// `depends_on_id` here, not through `awaited`.
+fn holds(state: &State, key: &str) -> bool {
+    state.by_key.contains_key(key)
+        || (state.issues.values()).any(|issue| {
+            (issue.dangling.iter())
+                .any(|dep| dep.get("depends_on_id").and_then(Value::as_str) == Some(key))
+        })
+}
+
 /// Fails unless `claimed`, what [`State::claims_key`] answered of `key`, is whether
-/// [`State::claimed_keys`] holds it; keeps the ask.
+/// [`State::claimed_keys`] would hold it; keeps the ask.
 pub(super) fn agrees(state: &State, key: &str, claimed: bool) {
     assert_eq!(
         claimed,
-        state.claimed_keys().contains(key),
+        holds(state, key),
         "whether {key:?} is claimed, asked of the key and of every key collected"
     );
     let mid_batch = (state.issues.values())

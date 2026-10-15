@@ -3,9 +3,10 @@
 //! the input; a count cannot see work done some other way, such as a lookup turned back into a scan
 //! of a vector, or a merge into a vector that moves its tail. These time the core calls whose work
 //! that can hide in — planning an import, validating it for a dry run, re-importing an issue whose
-//! dependencies wait, replaying imports that wait for keys, and a projection taking ids that sort
-//! before every id it holds — on the shapes their `timing` probes measure, at a size and at
-//! [`LARGER`] times it, and fail when the larger takes more than [`BOUND`] times as long.
+//! dependencies wait, replaying imports that wait for keys, replaying copies two machines minted
+//! alike, which are renamed, and a projection taking ids that sort before every id it holds — on
+//! the shapes their `timing` probes measure, at a size and at [`LARGER`] times it, and fail when
+//! the larger takes more than [`BOUND`] times as long.
 //!
 //! The one exception to "timings never gate" (`xtask/AGENTS.md`): each test is ignored, because a
 //! debug build's figures say nothing and a loaded machine's little more, and the nightly workflow
@@ -19,7 +20,7 @@ use beadroll_core::import::dry_run::problems;
 use beadroll_core::import::{plan_import, read_records};
 use beadroll_core::replay::replay;
 
-use super::{dangling, extend, plan};
+use super::{dangling, extend, plan, renames};
 
 /// How many times each size is timed; the fastest run counts.
 const RUNS: usize = 5;
@@ -131,4 +132,19 @@ fn a_projection_taking_ids_before_every_id_it_holds_takes_time_growing_with_them
         },
         |(projection, closes)| extend::one_at_a_time(projection, closes).unwrap(),
     );
+}
+
+#[test]
+#[ignore = "a ratio of release timings: the nightly workflow runs it"]
+fn replaying_copies_two_machines_minted_alike_takes_time_growing_with_them() {
+    // renaming a copy asks of each key it tries whether an issue has it or an import waits for it
+    // (roll-lqjj.25, X03); a count sees the asks, not whether one is a lookup or a scan
+    for shape in [renames::Shape::Renamed, renames::Shape::RenamedWaiting] {
+        grows_linearly(
+            &format!("replaying two machines' creates of the same keys, {shape:?}"),
+            2_000,
+            |copies| renames::journal(shape, copies),
+            |journal| replay(journal).unwrap(),
+        );
+    }
 }

@@ -42,7 +42,8 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   renamed, against the same creates renamed by nobody, and each with the first machine's issues
   importing a dependency on a key that never comes (roll-lqjj.25, X03); `timing/growth.rs`: the
   growth guards only time can keep (roll-lqjj.34, X15), tests ignored by every other run that time
-  planning an import, its dry run, a re-import, replay of imports that wait for keys and a
+  planning an import, its dry run, a re-import, replay of imports that wait for keys, replay of
+  copies two machines minted alike (`timing/renames.rs`'s journals; roll-lqjj.38, X03) and a
   projection taking ids before every id it holds, at a size and eight times it, on the probes'
   shapes, and fail above 24 times as long;
   `timing/world.rs`: the scratch
