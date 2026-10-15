@@ -145,10 +145,11 @@ pub fn forget(receipts: &[PathBuf]) -> Result<(), Error> {
 /// Offline mode or no remote makes it a local write. A matching accepted receipt signature
 /// returns the previous result without executing again.
 ///
-/// Failpoints mark the persisted receipt and attempt (`ownership.before-publish`), impending push
-/// (`claim.before-push`), acceptance (`ownership.after-publish-ok`), local confirmation
-/// (`ownership.after-confirm`) and backoff. An error after confirmation leaves the pending twin
-/// in place.
+/// Failpoints mark the start of the transaction on the merge's projection
+/// (`ownership.before-transaction`), the persisted receipt and attempt (`ownership.before-publish`),
+/// impending push (`claim.before-push`), acceptance (`ownership.after-publish-ok`), local
+/// confirmation (`ownership.after-confirm`) and backoff. An error after confirmation leaves the
+/// pending twin in place.
 pub fn coordinated<E: From<Error>>(
     ws: &Workspace,
     actor: &Actor,
@@ -216,7 +217,10 @@ pub fn coordinated<E: From<Error>>(
             }
             // whatever this command had in flight is settled one way or the other
             receipt = None;
-            // the store's projection as the merge left it: nothing since has written the journal
+            // nothing between the merge and here writes the journal, so the projection the merge
+            // left is the store's (roll-lqjj.29); `Tx::on` reads the store again if something did
+            // (roll-lqjj.37)
+            ws.settings.failpoints.hit("ownership.before-transaction");
             let tx = made.insert(match link.merged.take() {
                 Some(merged) => Tx::on(ws, actor, merged)?,
                 None => Tx::new(ws, actor)?,

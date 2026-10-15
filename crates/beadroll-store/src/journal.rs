@@ -20,6 +20,7 @@ use crate::fs::{
     content_sum, dir_entries, fsync, glob_ending, has_suffix, private_dirs, read, read_keyed,
     write_atomic,
 };
+use crate::listing::Stamp;
 use crate::memo::FileKey;
 use crate::workspace::Workspace;
 
@@ -48,14 +49,17 @@ pub fn claim_files(ws: &Workspace) -> Result<Arc<[PathBuf]>, Error> {
 /// is in place before any record built on it is appended. Under the store lock the names this
 /// phase listed stand, since no other bead process can add to them and bead's own writes forget
 /// them; without it every directory is read again, since one that gained a file within one tick of
-/// an earlier listing keeps its identity (X13).
-pub(crate) fn claim_files_afresh(ws: &Workspace) -> Result<Arc<[PathBuf]>, Error> {
+/// an earlier listing keeps its identity (X13). With the names, the identity each claims directory
+/// had when it was listed, which says later whether a file was written in any of them since
+/// (roll-lqjj.37).
+pub(crate) fn claim_files_afresh(ws: &Workspace) -> Result<(Arc<[PathBuf]>, Option<Stamp>), Error> {
     let mut claims = ws.claims.borrow_mut();
-    if ws.holding() {
-        claims.files(&ws.events_dir)
+    let files = if ws.holding() {
+        claims.files(&ws.events_dir)?
     } else {
-        claims.files_afresh(&ws.events_dir)
-    }
+        claims.files_afresh(&ws.events_dir)?
+    };
+    Ok((files, claims.stamp()))
 }
 
 /// The identity of each of `files`, accepted attempt files: under the store lock, the one taken
@@ -308,6 +312,9 @@ pub(crate) struct Loaded {
     /// The accepted attempt files, listed once the segments were read, each with its identity as
     /// it was read (`None` when it could not be) and the sum of its bytes when they were summed.
     pub(crate) attempts: Vec<(PathBuf, Option<FileKey>, Option<[u8; 16]>)>,
+    /// The listing they are of, which the phase keeps, and the identity each claims directory had
+    /// when it was listed (roll-lqjj.37).
+    pub(crate) listing: (Arc<[PathBuf]>, Option<Stamp>),
 }
 
 /// The journal of `segments`, then of the accepted attempt files, listed once the segments are
@@ -335,7 +342,8 @@ pub(crate) fn load_listed(
         }
     }
     let mut attempts = Vec::new();
-    for path in claim_files_afresh(ws)?.iter() {
+    let listing = claim_files_afresh(ws)?;
+    for path in listing.0.iter() {
         let origin = path.display().to_string();
         let replica = folder_name(path, 2);
         let read = read_keyed(path).ok();
@@ -352,6 +360,7 @@ pub(crate) fn load_listed(
         whole,
         segments: held,
         attempts,
+        listing,
     })
 }
 

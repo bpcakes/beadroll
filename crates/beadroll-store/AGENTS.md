@@ -43,13 +43,20 @@ remote resolution, actor detection, `view`, and the failpoint registry.
 - `src/projection.rs`: `projection` and the state `view` reads (roll-lqjj.2): the store's
   projection, `<store>/projection`, read when the journal's files are the ones it was made from,
   caught up when records were only appended to them, else the journal replayed, and written back
-  when the files held still; `src/projection/file.rs`: its header, sums and what it was made from.
+  when the files held still; `src/projection/file.rs`: its header, sums and what it was made from;
+  `src/projection/sources.rs`: `Sourced`, a projection with the journal files it was made from
+  (`projection_sourced`: each segment's identity as `current` read it, the attempt files by the
+  listing and identities the locked phase keeps), and `Sourced::into_current`, which says whether
+  they are still the store's files (roll-lqjj.37).
 - `src/listing.rs`: `Claims`, the in-memory accepted-attempt names shared by `claim_files`,
   validated against each directory's identity on every call and cleared at lock boundaries.
   A directory change re-lists it; the file identities used by the memo and projection are still
   checked individually (roll-lqjj.12): `claim_keys` stats each file once a locked phase, whoever
   asks, and each time outside the lock (roll-lqjj.30). `claim_files_afresh` is the listing a
-  reader takes once it has read the segments, every directory read again outside the lock (X13).
+  reader takes once it has read the segments, every directory read again outside the lock (X13),
+  with the `Stamp` of the listing: the identity each claims directory had when it was listed,
+  which tells a later reader that a file was added, removed or renamed over, whoever wrote it
+  (roll-lqjj.37).
 - `src/memo.rs`: `Memo`, what the store remembers of each journal file between commands (its
   identity on disk, `FileKey`, its lines and its blob in `sync.git`), kept as
   `sync.git/journal-memo` (`memo_path`) by the holder of the store lock (roll-lqjj.1);
@@ -81,6 +88,19 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   whole but not fsynced, whose every reader checks them against their sums (`docs/REVIEWING.md`
   §2, the durability bullet). A new file that is read without a sum to check, or that is a
   source of anything, is written with `write_atomic`.
+- A caller that goes on from a projection it read earlier in a locked phase takes it with
+  `projection_sourced` and asks `Sourced::into_current` before it does, and reads the store again
+  when that says a file was written since (`Tx::on` does, roll-lqjj.37). Identities suffice
+  because every write bead makes to a journal file changes a length (an append) or an inode (a file
+  renamed into place) or the set of files. The check stats each segment again, and takes the
+  attempt files' listing and identities from the phase, with the identity each claims directory had
+  when it was listed (`Claims::stamp`): a file added, removed or renamed over changes its
+  directory's, so a write is seen whether the writer told the phase (`write_attempt_file`; the
+  merge's `write_journal` with a separate `forget_claims`) or not (a bare `write_atomic`), and it
+  costs nothing more per attempt file. An attempt file rewritten in place leaves its directory as
+  it is and is not stat-ed again under the lock, so it is seen only if the writer told the phase,
+  and otherwise not at any length or time; nothing in bead rewrites one in place, and nothing in
+  the window writes at all.
 - An identity taken of an attempt file is kept only while the store lock is held, for the rest of
   that phase, and forgotten when bead writes that file (`Workspace::forget_claims`); a reader
   outside the lock stats each file afresh, after the segments it reads (X13, roll-lqjj.30).

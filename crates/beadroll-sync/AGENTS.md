@@ -11,7 +11,9 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
 
 - `src/tx.rs`: `Tx` (`emit`, `state`, `lend`, `on`), `Emitter`, `locked`, `writing`,
   `writing_state`, `forget_receipts`, `drop_pending`. A `Tx` starts from the store's projection
-  (`on`: one the caller read under the lock it holds) and applies each event it emits to it; one
+  (`on`: one the caller read under the lock it holds, with the journal files it was made from
+  (`Sourced`); read again, as `new` does, when a file was written since, roll-lqjj.37) and applies
+  each event it emits to it; one
   the projection cannot take (a takeover) has the journal replayed instead. `lend` lends the
   state beside an `Emitter`, for a command that reads it while it emits, without a copy
   (roll-lqjj.29); `writing_state` hands back the state a write leaves.
@@ -32,7 +34,9 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   `unpublished_count` (the memo's segment entries alone, `meta.json` as the command read it),
   `pause`, `ROUNDS`.
 - `src/ownership.rs`: `coordinated` (up to 24 rounds of a claim, takeover, release or claiming
-  update), `settle_commands` (receipts), `settle_pending` (fences), `forget`, `Mode`, `Settled`.
+  update), `settle_commands` (receipts), `settle_pending` (fences), `forget`, `Mode`, `Settled`;
+  the failpoint `ownership.before-transaction` sits between a round's merge (and what settles after
+  it) and its transaction, where nothing writes the journal.
 - `src/error.rs`: `Error`, each variant with its code.
 - `tests/sync/`: in-crate protocol tests; `support.rs` opens a machine's store in the test process
   and runs command bodies through `coordinated`. Faults come from failpoints passed in `Settings`; the
@@ -76,8 +80,13 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
 - A transaction reads where the caller works (`capture_where`) when it starts, under the store
   lock, and an ownership command makes a new one each round: the `where` an
   event records is HEAD as it is then.
-- A round reads the store's state once, by its merge, which keeps it (`Link::merged`): an
-  ownership round's transaction starts from it, and a sync's report is made of the last one. A
+- A round reads the store's state once, by its merge, which keeps it (`Link::merged`, a
+  `Sourced`: the projection and the journal files it was made from): an ownership round's
+  transaction starts from it, and a sync's report is made of the last one. A transaction starts from
+  it only while those files are the store's (`Tx::on` asks `Sourced::into_current` and falls back to
+  `Tx::new`, which reads again): a step added between the merge and the transaction may write the
+  journal, and the round then reads the store again, which the `reads::` and `protocol::merged_window`
+  tests show with `ownership.before-transaction`. A
   sync that reports counts the renames before it from a projection its first merge reads before
   merging, which that merge goes on with when it writes no journal file; every journal write of a
   merge goes through `write_journal` or `wrote`, which mark it. A write's sync (`publish_soon`)

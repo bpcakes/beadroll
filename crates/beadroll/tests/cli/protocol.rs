@@ -1,6 +1,7 @@
 //! Sync and ownership protocol tests.
 
 mod actual_transport_review;
+mod merged_window;
 mod port_alignment;
 mod protocol3;
 mod protocol_reaudit;

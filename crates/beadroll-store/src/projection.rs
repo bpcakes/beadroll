@@ -29,6 +29,7 @@
 //! read, writes them all to a new one.
 
 mod file;
+mod sources;
 mod texts;
 
 use std::collections::{HashMap, HashSet};
@@ -47,11 +48,14 @@ use crate::journal::{
     ViewError, attempt_events, claim_files_afresh, claim_keys, folder_name, load_journal,
     load_listed, segment_files,
 };
+use crate::listing::{Keys, Stamp};
 use crate::memo::FileKey;
 use crate::workspace::Workspace;
 
 use file::{Held, Made};
+use sources::Sources;
 
+pub use sources::Sourced;
 pub use texts::texts_path;
 
 /// How many bytes of texts no longer read a text file may hold beyond as many as are read, before
@@ -67,9 +71,16 @@ pub fn projection_path(ws: &Workspace) -> PathBuf {
 /// applied after it, or the journal replayed. Its issues' texts are there but for those the records
 /// applied are about; [`read_texts`] reads in more.
 pub fn projection(ws: &Workspace) -> Result<Projection, ViewError> {
+    Ok(projection_sourced(ws)?.into_projection())
+}
+
+/// [`projection`], with the journal files it was made from, which tell later whether it still is
+/// the store's (roll-lqjj.37, [`Sourced::into_current`]): the files `current` listed and stat-ed to
+/// read it, kept, not taken again.
+pub fn projection_sourced(ws: &Workspace) -> Result<Sourced, ViewError> {
     match current(ws, Want::Projection)? {
-        Now::Projection(projection) => Ok(*projection),
-        Now::State(_) => Ok(project(load_journal(ws)?)?),
+        Now::Projection(projection, sources) => Ok(Sourced::new(*projection, sources)),
+        Now::State(_) => Ok(Sourced::new(project(load_journal(ws)?)?, None)),
     }
 }
 
@@ -78,7 +89,7 @@ pub fn projection(ws: &Workspace) -> Result<Projection, ViewError> {
 pub(crate) fn state(ws: &Workspace) -> Result<State, ViewError> {
     Ok(match current(ws, Want::Texts)? {
         Now::State(state) => *state,
-        Now::Projection(projection) => projection.into_state(),
+        Now::Projection(projection, _) => projection.into_state(),
     })
 }
 
@@ -87,7 +98,7 @@ pub(crate) fn state(ws: &Workspace) -> Result<State, ViewError> {
 pub(crate) fn outline(ws: &Workspace) -> Result<State, ViewError> {
     Ok(match current(ws, Want::Outline)? {
         Now::State(state) => *state,
-        Now::Projection(projection) => projection.into_state(),
+        Now::Projection(projection, _) => projection.into_state(),
     })
 }
 
@@ -133,10 +144,11 @@ enum Want {
     Outline,
 }
 
-/// What a command takes from the store: a state alone, or a projection.
+/// What a command takes from the store: a state alone, or a projection, and the journal files it
+/// was made from when they are known.
 enum Now {
     State(Box<State>),
-    Projection(Box<Projection>),
+    Projection(Box<Projection>, Option<Sources>),
 }
 
 /// The issues `records` are about.
@@ -152,11 +164,12 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
     let segments = segment_files(ws)?;
     ws.settings.failpoints.hit("journal.after-enumerate");
     let Some(build) = ws.settings.build.as_deref() else {
-        let journal = load_listed(ws, &segments, false)?.journal;
+        let loaded = load_listed(ws, &segments, false)?;
         return Ok(if want == Want::Projection {
-            Now::Projection(Box::new(project(journal)?))
+            let sources = Sources::read(ws, &segments, &loaded);
+            Now::Projection(Box::new(project(loaded.journal)?), sources)
         } else {
-            Now::State(Box::new(replay(journal)?))
+            Now::State(Box::new(replay(loaded.journal)?))
         });
     };
     let stored = file::read(&projection_path(ws)).filter(|stored| stored.made.build == build);
@@ -182,9 +195,13 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
                 stored.encoded().and_then(|e| Projection::decode(&e).ok())
             {
                 projection.state_mut().set_texts_file(file);
-                return Ok(Now::Projection(Box::new(projection)));
+                let seen = (seen.into_iter())
+                    .map(|held| (held.path, held.key))
+                    .collect();
+                let sources = Sources::of(seen, listed.paths, listed.keys, listed.stamp);
+                return Ok(Now::Projection(Box::new(projection), sources));
             }
-        } else if let Some(now) =
+        } else if let Some((now, sources)) =
             appended(ws, &stored.made, read, listed, &mut records, build, settled)
             && let Some(mut projection) = stored.encoded().and_then(|e| Projection::decode(&e).ok())
         {
@@ -195,12 +212,13 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
             {
                 save(ws, now, &mut projection);
                 if want != Want::Texts || read_all(ws, projection.state_mut()) {
-                    return Ok(Now::Projection(projection));
+                    return Ok(Now::Projection(projection, sources));
                 }
             }
         }
     }
     let loaded = load_listed(ws, &segments, true)?;
+    let sources = Sources::read(ws, &segments, &loaded);
     let mut projection = project(loaded.journal)?;
     // each file as it was read: the projection is theirs
     let read = (segments.iter().zip(loaded.segments))
@@ -225,7 +243,7 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
             &mut projection,
         );
     }
-    Ok(Now::Projection(Box::new(projection)))
+    Ok(Now::Projection(Box::new(projection), sources))
 }
 
 /// The identities of `paths` now, by their paths under the store's `events`; `None` when one
@@ -395,21 +413,30 @@ fn read_tails(ws: &Workspace, tails: &[Tail]) -> Option<(Vec<Record>, Vec<Held>)
     problems.is_empty().then_some((records, read))
 }
 
-/// The accepted attempt files as they are: each one's path, and what a projection keeps of it.
+/// The accepted attempt files as they are: each one's path and identity as the phase has them,
+/// the identity each claims directory had when they were listed, and what a projection keeps of
+/// each.
 struct Listed {
     paths: Arc<[PathBuf]>,
+    keys: Keys,
+    stamp: Option<Stamp>,
     held: Vec<Held>,
 }
 
 /// The accepted attempt files, listed and each stat-ed once the segments are read
 /// ([`claim_files_afresh`], [`claim_keys`]); `None` when one's identity cannot be had.
 fn attempts(ws: &Workspace) -> Result<Option<Listed>, ViewError> {
-    let paths = claim_files_afresh(ws)?;
+    let (paths, stamp) = claim_files_afresh(ws)?;
     let keys = claim_keys(ws, &paths);
     let held = (paths.iter().zip(keys.iter().copied()))
         .map(|(path, key)| kept(ws, path, key, false, None))
         .collect::<Option<Vec<Held>>>();
-    Ok(held.map(|held| Listed { paths, held }))
+    Ok(held.map(|held| Listed {
+        paths,
+        keys,
+        stamp,
+        held,
+    }))
 }
 
 /// What a projection with the records appended since it was made is made from, each file as it was
@@ -418,7 +445,9 @@ fn attempts(ws: &Workspace) -> Result<Option<Listed>, ViewError> {
 /// identity was not settled when the projection was written (`settled`) is read and summed, as a
 /// segment of that moment's own tick is. `None` when what was appended cannot be read as a store
 /// reads it whole: a file of the projection's own tick is not the one it was made from or has no
-/// sum, a record is unreadable, an attempt file was replaced or removed.
+/// sum, a record is unreadable, an attempt file was replaced or removed. With it, the journal
+/// files it is made from, for [`Sourced`]: the attempt files by the listing and identities the
+/// phase has of them.
 fn appended(
     ws: &Workspace,
     made: &Made,
@@ -427,7 +456,7 @@ fn appended(
     records: &mut Vec<Record>,
     build: &str,
     settled: i128,
-) -> Option<Made> {
+) -> Option<(Made, Option<Sources>)> {
     let mut problems: Vec<Problem> = Vec::new();
     let before: HashMap<&str, &Held> = (made.files.iter())
         .filter(|held| !held.segment)
@@ -485,11 +514,13 @@ fn appended(
     segments.sort_by(|a, b| a.path.cmp(&b.path));
     segments.extend(files);
     let build = build.to_owned();
-    Some(Made {
+    let made = Made {
         build,
         files: segments,
         texts: made.texts,
-    })
+    };
+    let sources = Sources::made(&made, listed.paths, listed.keys, listed.stamp);
+    Some((made, sources))
 }
 
 /// Writes `projection` back as made from `made`, when the store is there; a cache that cannot be

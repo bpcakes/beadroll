@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use beadroll_store::{
-    Memo, complete_prefix, extend_segment, pending_files, projection, read, read_attempt,
+    Memo, complete_prefix, extend_segment, pending_files, projection_sourced, read, read_attempt,
     repair_tail, replica_id, segment_files, write_atomic,
 };
 
@@ -76,7 +76,7 @@ impl Link<'_> {
     /// A file whose identity is the one the memo remembers is not hashed, and not read when its
     /// remembered blob is the published one. The published tree's blobs are kept for the publish
     /// that follows ([`Link::local_blobs`]). The store's projection as the merge leaves it is kept
-    /// too ([`Link::merged`]).
+    /// too, with the journal files it was made from ([`Link::merged`]).
     pub fn merge(&mut self, tip: Option<&str>) -> Result<i64, Error> {
         self.merge_from(tip, false)
     }
@@ -102,7 +102,7 @@ impl Link<'_> {
         }
         // the store's projection, with every whole line its segments hold
         let found = if count && self.renames_before.is_none() {
-            let found = projection(self.ws)?;
+            let found = projection_sourced(self.ws)?;
             self.renames_before = Some(found.state().renames().len());
             Some(found)
         } else {
@@ -135,7 +135,7 @@ impl Link<'_> {
         // the store's projection, the records merged applied to it, or the journal replayed
         let merged = match found {
             Some(found) if !self.wrote => found,
-            _ => projection(self.ws)?,
+            _ => projection_sourced(self.ws)?,
         };
         if let Some(own) = &own
             && merged.state().chain_breaks().contains_key(own)

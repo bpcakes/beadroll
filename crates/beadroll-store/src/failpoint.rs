@@ -23,8 +23,11 @@
 //! command's publish; `ownership.after-confirm`, after its confirmation and before its pending
 //! files are cleaned up; `publish.before` and `publish.result`, at the start of a publish;
 //! `push.before`, `push.reply` (after git push returns) and `push.after-ok`, around every push;
-//! `fetch.result`, at the start of a fetch; `fetch.retry`, before the wait to try again a fetch
-//! that lost to another process's; `append.mid`, inside a segment append after a partial line;
+//! `ownership.before-transaction`, after a round's merge and what settles after it and before the
+//! transaction that starts from the projection the merge read, where a test writes the journal to
+//! see that the round reads the store again; `fetch.result`, at the start of a fetch;
+//! `fetch.retry`, before the wait to try again a fetch that lost to another process's;
+//! `append.mid`, inside a segment append after a partial line;
 //! `backoff`, the unlocked wait between rounds; `claim.before-push`, between a claim's fetch and
 //! push; `pending.after-list`, between listing and reading `pending/`; `journal.after-enumerate`,
 //! `journal.before-read` (before each segment is read), `view.before-load-pending` and
@@ -50,8 +53,9 @@ use beadroll_core::code::Code;
 use crate::error::Error;
 
 /// The points bead has, besides `atomic-write:<path part>` and `atomic-written:<path part>`.
-pub const POINTS: [&str; 21] = [
+pub const POINTS: [&str; 22] = [
     "ownership.before-publish",
+    "ownership.before-transaction",
     "ownership.after-publish-ok",
     "ownership.after-confirm",
     "push.before",
