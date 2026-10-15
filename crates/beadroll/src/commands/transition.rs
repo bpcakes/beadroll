@@ -3,6 +3,7 @@
 //! already as asked is left alone and said to be. `close --recursive` closes every issue beneath
 //! each one too, children first, in the same transaction.
 
+use std::collections::HashSet;
 use std::ffi::OsString;
 
 use beadroll_core::code::Code;
@@ -54,75 +55,32 @@ pub(crate) fn transition(
         "reopen" => ("Reopened", "open", "open"),
         _ => ("Deleted", "tombstone", "deleted"),
     };
-    let ends_claims = matches!(op, "close" | "delete");
     let (mut result, ended, named, unchanged, plan) = writing(ctx.ws, ctx.actor, |tx| {
         need_tracker(tx.state()?)?;
         let me = ctx.actor.label(&tx.replica);
-        let mut plan = plan(tx.state()?, args)?;
+        let st = tx.state()?;
+        let mut plan = plan(st, args)?;
         if args.recursive && !args.force {
             // the issues left as they are too: one deleted without seeing a claim still holds it
             let subtree: Vec<EventId> = plan.issues.iter().chain(&plan.left).copied().collect();
-            refuse_claimed(tx.state()?, &subtree, &me)?;
+            refuse_claimed(st, &subtree, &me)?;
         }
-        let mut ended = false;
-        // the claim each issue's event names: it ends exactly that claim, never a successor's
-        let mut named: Vec<(EventId, EventId)> = Vec::new();
-        let mut unchanged = Vec::new();
-        for &uid in &plan.issues {
-            let (shown, held, mine_ended, settled) = {
-                let st = tx.state()?;
-                let issue = known(st, uid)?;
-                (
-                    issue.key().to_owned(),
-                    issue.claim().cloned(),
-                    ended_by(issue, &me),
-                    already(st, issue, status),
-                )
-            };
-            if let Some(held) = &held
-                && !me.is(&held.owner)
-                && !args.force
-            {
-                return Err(Failure::new(
-                    Code::ClaimedByOther,
-                    format!(
-                        "{shown} is claimed by {}: use `bead takeover` first, or --force",
-                        held.owner
-                    ),
-                ));
-            }
-            let mut data = Object::new();
-            if let Some(reason) = args.reason.as_deref().filter(|r| !r.is_empty()) {
-                data.insert("reason".into(), Value::from(text(reason)?));
-            }
-            if ends_claims && let Some(held) = held.as_ref().filter(|held| me.is(&held.owner)) {
-                data.insert("claim".into(), Value::from(held.id.to_string()));
-                match named.iter_mut().find(|(issue, _)| *issue == uid) {
-                    Some(entry) => entry.1 = held.id,
-                    None => named.push((uid, held.id)),
-                }
-            }
-            ended = ended || held.is_some() || (ends_claims && mine_ended);
-            unchanged.push(settled);
-            if !settled {
-                tx.emit(op, Some(&uid.to_string()), data, None)?;
-            }
+        // Every issue decided from this one state: the state read again after each event would
+        // replay the journal each time, when the projection cannot take the event (roll-lqjj.28).
+        let decided = decide(st, &plan, (op, status), args, &me);
+        for (uid, data) in decided.events {
+            tx.emit(op, Some(&uid.to_string()), data, None)?;
         }
-        if let Some(unknown) = plan.unknown.take() {
-            return Err(unknown);
+        if let Some(failure) = decided.failure.or_else(|| plan.unknown.take()) {
+            return Err(failure);
         }
-        // a repeat of this actor's close that ended a claim still publishes it, as a plain close
-        // does, though the issue beneath is left out of the answer
-        let st = tx.state()?;
-        ended = ended
-            || ends_claims
-                && plan
-                    .left
-                    .iter()
-                    .filter_map(|uid| st.issue(*uid))
-                    .any(|issue| ended_by(issue, &me));
-        let st = tx.state()?;
-        let result = briefs(st, &plan.issues)?;
+        let result = briefs(tx.state()?, &plan.issues)?;
+        let Decided {
+            ended,
+            named,
+            unchanged,
+            ..
+        } = decided;
         Ok::<_, Failure>((result, ended, named, unchanged, plan))
     })?;
     let warning = if ended {
@@ -149,6 +107,91 @@ pub(crate) fn transition(
     }
     let result = Value::Array(result.into_iter().map(Value::from).collect());
     Ok(Outcome::new(result, lines))
+}
+
+/// What a transition writes, decided from the state before it writes anything: an event for each
+/// issue it changes, in the order it answers for them, and the failure it stops at after them; the
+/// claim each issue's event names (it ends exactly that claim, never a successor's); whether a
+/// claim ended; and which issues it leaves unchanged.
+#[derive(Default)]
+struct Decided {
+    events: Vec<(EventId, Object)>,
+    failure: Option<Failure>,
+    named: Vec<(EventId, EventId)>,
+    ended: bool,
+    unchanged: Vec<bool>,
+}
+
+/// What `op`, giving `status`, writes for each issue `plan` answers for, decided from `st`, the
+/// state before it writes anything, as the state after the events before each would have it.
+/// An event changes only its own issue, so an issue not written yet is as `st` has it. One named
+/// again after its event is as that event left it: the event built on everything `st` holds, so it
+/// saw every value of the issue's status and every claim on it, and leaves the status asked for,
+/// undisputed, and no claim (the one it ended counted already); a close drops the provisional
+/// claims too, where a delete or a reopen leaves them and is written again.
+fn decide(
+    st: &State,
+    plan: &Plan,
+    (op, status): (&str, &str),
+    args: &TransitionArgs,
+    me: &Label,
+) -> Decided {
+    let ends_claims = matches!(op, "close" | "delete");
+    let mut decided = Decided::default();
+    // the issues an event was decided for
+    let mut written: HashSet<EventId> = HashSet::new();
+    let mut each = |uid: EventId| -> Result<(), Failure> {
+        let issue = known(st, uid)?;
+        // the claim held, whether this actor ended the last one, and whether the issue is as asked
+        let (held, mine_ended, settled) = if written.contains(&uid) {
+            let left = op == "close" || issue.provisional_claims().is_empty();
+            (None, false, left)
+        } else {
+            let held = issue.claim().cloned();
+            (held, ended_by(issue, me), already(st, issue, status))
+        };
+        if let Some(held) = &held
+            && !me.is(&held.owner)
+            && !args.force
+        {
+            return Err(Failure::new(
+                Code::ClaimedByOther,
+                format!(
+                    "{} is claimed by {}: use `bead takeover` first, or --force",
+                    issue.key(),
+                    held.owner
+                ),
+            ));
+        }
+        let mut data = Object::new();
+        if let Some(reason) = args.reason.as_deref().filter(|r| !r.is_empty()) {
+            data.insert("reason".into(), Value::from(text(reason)?));
+        }
+        if ends_claims && let Some(held) = held.as_ref().filter(|held| me.is(&held.owner)) {
+            data.insert("claim".into(), Value::from(held.id.to_string()));
+            match decided.named.iter_mut().find(|(issue, _)| *issue == uid) {
+                Some(entry) => entry.1 = held.id,
+                None => decided.named.push((uid, held.id)),
+            }
+        }
+        decided.ended = decided.ended || held.is_some() || (ends_claims && mine_ended);
+        decided.unchanged.push(settled);
+        if !settled {
+            written.insert(uid);
+            decided.events.push((uid, data));
+        }
+        Ok(())
+    };
+    let failure = plan.issues.iter().find_map(|uid| each(*uid).err());
+    decided.failure = failure;
+    // a repeat of this actor's close that ended a claim still publishes it, as a plain close
+    // does, though the issue beneath is left out of the answer; nothing is written to those
+    decided.ended = decided.ended
+        || ends_claims
+            && (plan.left.iter())
+                .filter_map(|uid| st.issue(*uid))
+                .any(|issue| ended_by(issue, me));
+    decided
 }
 
 /// What `args` acts on in `st`: each id named, in the order given; with `--recursive`, each named
