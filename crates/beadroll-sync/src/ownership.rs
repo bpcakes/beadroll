@@ -216,7 +216,11 @@ pub fn coordinated<E: From<Error>>(
             }
             // whatever this command had in flight is settled one way or the other
             receipt = None;
-            let tx = made.insert(Tx::new(ws, actor)?);
+            // the store's projection as the merge left it: nothing since has written the journal
+            let tx = made.insert(match link.merged.take() {
+                Some(merged) => Tx::on(ws, actor, merged)?,
+                None => Tx::new(ws, actor)?,
+            });
             let answer = build(tx, Mode::Online).map_err(Round::Build)?;
             if tx.has_pending() {
                 let pending = tx.take_pending();

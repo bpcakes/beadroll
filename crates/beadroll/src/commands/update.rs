@@ -12,13 +12,13 @@ use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::str_of;
-use beadroll_store::{Actor, Label, view_outline};
-use beadroll_sync::{Mode, Tx, coordinated, publish_soon, writing};
+use beadroll_store::{Actor, Label};
+use beadroll_sync::{Emitter, Mode, Tx, coordinated, publish_soon, writing_state};
 
 use super::ownership::{ClaimStep, command_signature, details, still_held};
 use super::{
     ContentArgs, Context, Failure, Line, Outcome, Payload, Tone, arg_texts, encodable, ended_by,
-    field_args, need_tracker, remove_edge, resolve_arg, split_args, view_of,
+    field_args, need_tracker, remove_edge, resolve_arg, split_args, view_of, view_of_written,
 };
 
 /// `update`'s arguments.
@@ -58,6 +58,10 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
         && args.set_labels.is_none()
         && args.fields.parent.as_deref().is_none_or(OsStr::is_empty);
     let mut notes = Vec::new();
+    // the state the write left, which the answer reads unless a publish follows (roll-lqjj.29)
+    let mut written = None;
+    // a retried claim may have been accepted and changed hands since
+    let mut check_held = false;
     let ended = if wants_claim {
         let step = ClaimStep {
             actor: ctx.actor,
@@ -86,23 +90,31 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
         )?;
         if mode == Mode::Offline {
             notes.push("claim is PROVISIONAL: not exclusive until claimed online".to_owned());
-        } else if status.as_deref() != Some("closed") {
-            // a claiming close ends the claim on purpose
-            still_held(ctx, &view_outline(ctx.ws)?, &args.ids)?;
         }
+        // a claiming close ends the claim on purpose
+        check_held = mode != Mode::Offline && status.as_deref() != Some("closed");
         ended
     } else {
-        writing(ctx.ws, ctx.actor, |tx| {
+        let (ended, state) = writing_state(ctx.ws, ctx.actor, |tx| {
             edits(tx, ctx.actor, args, &fields, status.as_deref())
-        })?
+        })?;
+        written = state;
+        ended
     };
     // the same promptness `bead close` gives
     let warning = if ended.is_empty() {
         None
     } else {
+        written = None; // the publish may bring in what other machines wrote: read after it
         publish_soon(ctx.ws, args.offline, args.remote.as_deref())
     };
-    let st = view_of(ctx.ws, &args.ids)?;
+    let st = match written {
+        Some(written) => view_of_written(ctx.ws, written, &args.ids)?,
+        None => view_of(ctx.ws, &args.ids)?,
+    };
+    if check_held {
+        still_held(ctx, &st, &args.ids)?;
+    }
     let mut result = details(&st, &args.ids)?;
     let lines = answer(&mut result, asked_nothing, notes, warning);
     let result = Value::Array(result.into_iter().map(Value::from).collect());
@@ -166,28 +178,29 @@ fn edits(
     fields: &Payload,
     status: Option<&str>,
 ) -> Result<Vec<String>, Failure> {
-    let st: State = tx.state()?.clone();
-    need_tracker(&st)?;
     let me = actor.label(&tx.replica);
+    // read as it was before anything is emitted, without a copy (roll-lqjj.29)
+    let (st, mut tx) = tx.lend()?;
+    need_tracker(st)?;
     let targets = args
         .ids
         .iter()
-        .map(|key| resolve_arg(&st, key))
+        .map(|key| resolve_arg(st, key))
         .collect::<Result<Vec<_>, Failure>>()?;
     let new_parent: Option<EventId> = match args.fields.parent.as_deref().filter(|p| !p.is_empty())
     {
-        Some(key) => Some(resolve_arg(&st, key)?.uid()),
+        Some(key) => Some(resolve_arg(st, key)?.uid()),
         None => None,
     };
     let mut ended = Vec::new();
     for issue in &targets {
-        check(&st, issue, args, &me, status, new_parent)?;
+        check(st, issue, args, &me, status, new_parent)?;
         if status == Some("closed") && (issue.claim().is_some() || ended_by(issue, &me)) {
             ended.push(issue.key().to_owned());
         }
     }
     for issue in &targets {
-        edit(tx, &st, issue, args, fields, status, new_parent, &me)?;
+        edit(&mut tx, st, issue, args, fields, status, new_parent, &me)?;
     }
     Ok(ended)
 }
@@ -243,7 +256,7 @@ fn check(
     reason = "The edit transaction needs the request, actor and field changes together"
 )]
 fn edit(
-    tx: &mut Tx<'_>,
+    tx: &mut Emitter<'_>,
     st: &State,
     issue: &Issue,
     args: &UpdateArgs,
@@ -319,7 +332,7 @@ fn with(name: &str, value: Object) -> Object {
 }
 
 /// Emits a label event: `{"labels": [...]}`.
-fn labels(tx: &mut Tx<'_>, op: &str, uid: &str, items: &[OsString]) -> Result<(), Failure> {
+fn labels(tx: &mut Emitter<'_>, op: &str, uid: &str, items: &[OsString]) -> Result<(), Failure> {
     let (items, valid) = arg_texts(items);
     let mut data = Object::new();
     data.insert(

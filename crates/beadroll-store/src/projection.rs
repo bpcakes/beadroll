@@ -146,6 +146,7 @@ fn about(records: &[Record]) -> Vec<EventId> {
 }
 
 fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
+    ws.settings.failpoints.hit("projection.read");
     let segments = segment_files(ws)?;
     ws.settings.failpoints.hit("journal.after-enumerate");
     let Some(build) = ws.settings.build.as_deref() else {

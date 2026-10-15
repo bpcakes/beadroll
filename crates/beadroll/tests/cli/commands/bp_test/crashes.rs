@@ -64,6 +64,22 @@ fn local_work_after_a_lost_acknowledgement_does_not_fork_the_journal() {
     assert_eq!(comments, [Json::from("work continues before anyone syncs")]);
 }
 
+/// An update made while a claim of this machine awaits the remote answers with the issue as `show`
+/// gives it, the unconfirmed claim listed, from the state its write left (roll-lqjj.29) as from the
+/// store read again.
+#[test]
+fn an_update_answers_with_the_unconfirmed_claim_as_show_does() {
+    let sandbox = crate::sandbox();
+    let (a, _, x, _) = two_machines(&sandbox);
+    let crashed = a.cmd(["claim", &x]).env(CRASH_AFTER_PUSH, "1").run();
+    assert_eq!(crashed.returncode(), 99, "{}", crashed.stderr);
+    let updated = a.bead(["update", &x, "--title", "Retitled", "--offline"]);
+    let updated = updated.unwrap()[0].clone();
+    assert_eq!(updated["title"].as_str(), Some("Retitled"));
+    assert_eq!(column(&updated["unconfirmed"], "op"), [Json::from("claim")]);
+    assert_eq!(updated, a.show(&x));
+}
+
 /// A claim that stopped after writing its attempt as pending, before pushing it, leaves no false
 /// owner: the remote was never claimed, so another machine's claim succeeds, the stopped
 /// machine's next sync finds no integrity problem, and it agrees on the new owner.

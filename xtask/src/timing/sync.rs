@@ -5,7 +5,9 @@
 //! local writes: with the store's memo of its journal files and its projection in place
 //! (`seconds`); with the projection removed before each sync (`unprojected_seconds`), as bead
 //! synced before roll-lqjj.2; and with both removed (`cold_seconds`), as before roll-lqjj.1, every
-//! file hashed and read and the journal replayed. Evidence, never a gate.
+//! file hashed and read and the journal replayed. Before those, the best of a few writes published
+//! at once (`online_seconds`, `bead comments add` with the remote there), which read the store's
+//! state once for the write and once for the sync's merge (roll-lqjj.29). Evidence, never a gate.
 
 use super::history::{Shape, history};
 use super::world::{RUNS, World, bead, profile, write_store};
@@ -34,6 +36,12 @@ pub(crate) fn measure(
     let layout = write_store(&world.store(), &files, rotate)?;
     drop(files);
     let first = world.timed(&["sync"])?;
+    // a write published at once, as an agent's is
+    let mut online = f64::INFINITY;
+    for run in 0..RUNS {
+        let text = format!("online {run}");
+        online = online.min(world.timed(&["comments", "add", "ex-1", &text])?);
+    }
     // the best sync with the store's memo and projection in place, without its projection, and
     // without either
     let mut best = [f64::INFINITY; 3];
@@ -59,8 +67,9 @@ pub(crate) fn measure(
     Ok(format!(
         "{{\"label\": {}, \"shape\": {}, \"events\": {count}, \"rotate_bytes\": {rotate}, \
          \"segments\": {}, \"attempt_files\": {}, \"journal_bytes\": {}, \"profile\": {}, \
-         \"runs\": {RUNS}, \"first_seconds\": {first:.4}, \"seconds\": {warm:.4}, \
-         \"unprojected_seconds\": {unprojected:.4}, \"cold_seconds\": {cold:.4}, ",
+         \"runs\": {RUNS}, \"first_seconds\": {first:.4}, \"online_seconds\": {online:.4}, \
+         \"seconds\": {warm:.4}, \"unprojected_seconds\": {unprojected:.4}, \
+         \"cold_seconds\": {cold:.4}, ",
         json_string(&label),
         json_string(shape.name()),
         layout.segments,

@@ -8,7 +8,7 @@ use beadroll_core::text::{parse_integer, shell_quote};
 use beadroll_git::PushOutcome;
 use beadroll_store::{
     Endpoint, Failpoints, Fired, Memo, Workspace, claim_files, load_pending, moved_workspaces,
-    pending_files, relative, segment_files, view_outline, workspaces_named, write_atomic,
+    pending_files, relative, segment_files, workspaces_named, write_atomic,
 };
 
 use crate::error::Error;
@@ -131,14 +131,28 @@ impl Synced {
 /// before they are dropped. A damaged `sync.git` is rebuilt once. A URL-derived workspace that finds
 /// this checkout's origin holding a tracker under another id adopts it (`moved.json`).
 pub fn synchronise(ws: &Workspace, remote: &Endpoint) -> Result<Synced, Error> {
+    exchange(ws, remote, true)?.ok_or_else(|| Error::Validation("no report".to_owned()))
+}
+
+/// [`synchronise`], and what it did when `report` asks for it: a write published at once is not
+/// told. The store's state is read once per round, by its merge, and the report is made of the
+/// state the last merge left (roll-lqjj.29); the keys renamed before the sync are counted by the
+/// first merge, from the projection it reads before it merges, which is the one it goes on with
+/// when nothing comes in.
+fn exchange(ws: &Workspace, remote: &Endpoint, report: bool) -> Result<Option<Synced>, Error> {
     let mut link = Link::new(ws, remote)?;
-    // counts alone: no issue's texts are read in (roll-lqjj.6)
-    let known_renames = view_outline(ws)?.renames().len();
     let (mut pulled, mut pushed) = (0i64, 0i64);
     let mut repacked = false;
     let mut settled = None;
     for attempt in 1..=ROUNDS {
-        let round = sync_round(ws, &mut link, &mut pulled, &mut pushed, &mut repacked);
+        let round = sync_round(
+            ws,
+            &mut link,
+            report,
+            &mut pulled,
+            &mut pushed,
+            &mut repacked,
+        );
         match round {
             Ok(true) => {
                 settled = Some(attempt);
@@ -158,7 +172,7 @@ pub fn synchronise(ws: &Workspace, remote: &Endpoint) -> Result<Synced, Error> {
                 let Some(adopted) = adopted else {
                     return Err(error);
                 };
-                return synchronise(&adopted, remote);
+                return exchange(&adopted, remote, report);
             }
         }
         pause(attempt, &ws.settings.failpoints);
@@ -169,7 +183,6 @@ pub fn synchronise(ws: &Workspace, remote: &Endpoint) -> Result<Synced, Error> {
             conflict_detail(&link)
         )));
     };
-    let state = view_outline(ws)?;
     let mut values = Vec::new();
     if let Some(name) = &ws.name {
         values.push(("name", Value::from(name.to_string_lossy().into_owned())));
@@ -177,7 +190,14 @@ pub fn synchronise(ws: &Workspace, remote: &Endpoint) -> Result<Synced, Error> {
     values.push(("published", Value::from(link.published_counts()?)));
     ws.note_sync(remote, &values);
     ws.set_wrote(false);
-    Ok(Synced {
+    if !report {
+        return Ok(None);
+    }
+    let Some(merged) = link.merged.take() else {
+        return Err(Error::Validation("no state".to_owned()));
+    };
+    let state = merged.state();
+    Ok(Some(Synced {
         pulled,
         pushed,
         attempts,
@@ -189,14 +209,14 @@ pub fn synchronise(ws: &Workspace, remote: &Endpoint) -> Result<Synced, Error> {
         renamed: state
             .renames()
             .iter()
-            .skip(known_renames)
+            .skip(link.renames_before.unwrap_or_default())
             .map(|r| Value::from(r.to_value()))
             .collect(),
         forked_journals: link.forks.clone(),
         confirmed: link.confirmed.clone(),
         waiting_events: state.pending().len(),
         integrity: state.integrity().len(),
-    })
+    }))
 }
 
 /// `NOT_INITIALIZED` when neither this store nor `remote` has a tracker: `bead init` starts one, and
@@ -233,10 +253,12 @@ fn nothing_published(ws: &Workspace, remote: &Endpoint) -> Error {
     Error::NotInitialized(message)
 }
 
-/// One round: whether it went through (the remote took the publish).
+/// One round: whether it went through (the remote took the publish). With `report`, the first merge
+/// counts the keys renamed before it ([`Link::merge_from`]).
 fn sync_round(
     ws: &Workspace,
     link: &mut Link<'_>,
+    report: bool,
     pulled: &mut i64,
     pushed: &mut i64,
     repacked: &mut bool,
@@ -248,7 +270,7 @@ fn sync_round(
             // current head, not a snapshot
             tip = link.fetch()?;
         }
-        *pulled += link.merge(tip.as_deref())?;
+        *pulled += link.merge_from(tip.as_deref(), report)?;
         if tip.is_none() && segment_files(ws)?.is_empty() {
             return Err(nothing_published(ws, &link.endpoint()));
         }
@@ -424,7 +446,7 @@ fn publish_to(ws: &Workspace, remote: &Endpoint) -> Result<(), Error> {
     if remote.url.is_empty() {
         return Ok(());
     }
-    synchronise(ws, remote).map(drop)
+    exchange(ws, remote, false).map(drop)
 }
 
 /// What a failed publish says: the local write stands, not yet published.

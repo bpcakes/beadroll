@@ -75,8 +75,19 @@ impl Link<'_> {
     ///
     /// A file whose identity is the one the memo remembers is not hashed, and not read when its
     /// remembered blob is the published one. The published tree's blobs are kept for the publish
-    /// that follows ([`Link::local_blobs`]).
+    /// that follows ([`Link::local_blobs`]). The store's projection as the merge leaves it is kept
+    /// too ([`Link::merged`]).
     pub fn merge(&mut self, tip: Option<&str>) -> Result<i64, Error> {
+        self.merge_from(tip, false)
+    }
+
+    /// [`Link::merge`], and with `count`, unless this link counted them already, how many keys the
+    /// store's state had renamed before anything came in ([`Link::renames_before`]): the projection
+    /// read for it is the one the merge leaves when it writes no journal file, so that a sync that
+    /// brings nothing reads the projection once (roll-lqjj.29).
+    pub(crate) fn merge_from(&mut self, tip: Option<&str>, count: bool) -> Result<i64, Error> {
+        self.merged = None;
+        self.wrote = false;
         self.remote_counts.clear();
         self.forks.clear();
         self.confirmed.clear();
@@ -89,6 +100,14 @@ impl Link<'_> {
         for path in segment_files(self.ws)? {
             repair_tail(self.ws, &path)?;
         }
+        // the store's projection, with every whole line its segments hold
+        let found = if count && self.renames_before.is_none() {
+            let found = projection(self.ws)?;
+            self.renames_before = Some(found.state().renames().len());
+            Some(found)
+        } else {
+            None
+        };
         let own = replica_id(&self.ws.settings, false)?;
         let pending: HashMap<String, PathBuf> = pending_files(self.ws)
             .into_iter()
@@ -114,13 +133,38 @@ impl Link<'_> {
         }
         self.save_memo();
         // the store's projection, the records merged applied to it, or the journal replayed
-        let merged = projection(self.ws)?;
+        let merged = match found {
+            Some(found) if !self.wrote => found,
+            _ => projection(self.ws)?,
+        };
         if let Some(own) = &own
             && merged.state().chain_breaks().contains_key(own)
         {
             return Err(Error::JournalFork(OWN_CHAIN.to_owned()));
         }
+        self.merged = Some(merged);
         Ok(pulled)
+    }
+
+    /// Writes `data` to the journal file at `target` (`path` under the store) as published: the
+    /// memo remembers it, and the merge has written.
+    fn write_journal(
+        &mut self,
+        path: &str,
+        target: &Path,
+        data: &[u8],
+        blob: Option<&str>,
+    ) -> Result<(), Error> {
+        write_atomic(target, data, true, &self.ws.settings.failpoints)?;
+        self.wrote(path, target, data, blob);
+        Ok(())
+    }
+
+    /// The journal file at `target` (`path` under the store) was written with `data`: the memo
+    /// remembers it, and the merge has written.
+    fn wrote(&mut self, path: &str, target: &Path, data: &[u8], blob: Option<&str>) {
+        self.wrote = true;
+        self.memo().wrote(path, target, data, blob);
     }
 
     /// One remote attempt file: confirms a pending attempt of ours, copies a new one, or replaces
@@ -154,9 +198,8 @@ impl Link<'_> {
                 )));
             }
             if local.get(path).map(String::as_str) != Some(sha) {
-                write_atomic(&target, &theirs, true, &self.ws.settings.failpoints)?;
+                self.write_journal(path, &target, &theirs, Some(sha))?;
                 self.ws.forget_claims();
-                self.memo().wrote(path, &target, &theirs, Some(sha));
             }
             crate::tx::remove(pending_path)?;
             self.confirmed.push(attempt_id);
@@ -176,9 +219,8 @@ impl Link<'_> {
         } else {
             true
         };
-        write_atomic(&target, &theirs, true, &self.ws.settings.failpoints)?;
+        self.write_journal(path, &target, &theirs, Some(sha))?;
         self.ws.forget_claims();
-        self.memo().wrote(path, &target, &theirs, Some(sha));
         Ok(new)
     }
 
@@ -218,10 +260,12 @@ impl Link<'_> {
             let pulled = newlines(&theirs) as i64 - newlines(&ours) as i64;
             match theirs.get(ours.len()..).filter(|_| !ours.is_empty()) {
                 // what ours lacks, appended: the segment stays the file it was (roll-lqjj.2)
-                Some(more) => extend_segment(&target, more)?,
-                None => write_atomic(&target, &theirs, true, &self.ws.settings.failpoints)?,
+                Some(more) => {
+                    extend_segment(&target, more)?;
+                    self.wrote(path, &target, &theirs, written);
+                }
+                None => self.write_journal(path, &target, &theirs, written)?,
             }
-            self.memo().wrote(path, &target, &theirs, written);
             return Ok(pulled);
         }
         if Some(replica) == own {
@@ -233,8 +277,7 @@ impl Link<'_> {
             true,
             &self.ws.settings.failpoints,
         )?;
-        write_atomic(&target, &theirs, true, &self.ws.settings.failpoints)?;
-        self.memo().wrote(path, &target, &theirs, written);
+        self.write_journal(path, &target, &theirs, written)?;
         self.forks.push(path.to_owned());
         Ok(0)
     }

@@ -165,14 +165,15 @@ fn change(
         None => (None, true),
     };
     let (issue_key, shown) = writing(ctx.ws, ctx.actor, |tx| {
-        let st: State = tx.state()?.clone();
-        need_tracker(&st)?;
-        let issue = resolve_arg(&st, issue_key)?;
+        // read as it was before anything is emitted, without a copy (roll-lqjj.29)
+        let (st, mut tx) = tx.lend()?;
+        need_tracker(st)?;
+        let issue = resolve_arg(st, issue_key)?;
         let uid = issue.uid().to_string();
-        let target = match resolve_arg(&st, target_key) {
+        let target = match resolve_arg(st, target_key) {
             Ok(target) => Some(target),
             Err(failure) => {
-                if action == "add" || dangling_key(&st, issue, target_key).is_none() {
+                if action == "add" || dangling_key(st, issue, target_key).is_none() {
                     return Err(failure);
                 }
                 // an imported dependency on a key that is not an issue yet: it can still be
@@ -211,7 +212,7 @@ fn change(
                 target.key().to_owned()
             }
             (_, None) => {
-                let key = dangling_key(&st, issue, target_key).unwrap_or_default();
+                let key = dangling_key(st, issue, target_key).unwrap_or_default();
                 let mut data = Object::new();
                 data.insert("key".into(), Value::from(key.as_str()));
                 data.insert("type".into(), kind.clone().map_or(Value::Null, Value::from));
@@ -220,7 +221,13 @@ fn change(
                 key
             }
             (_, Some(target)) => {
-                remove_edge(tx, &st, issue, &target.uid().to_string(), kind.as_deref())?;
+                remove_edge(
+                    &mut tx,
+                    st,
+                    issue,
+                    &target.uid().to_string(),
+                    kind.as_deref(),
+                )?;
                 encodable(kind_valid)?;
                 target.key().to_owned()
             }
