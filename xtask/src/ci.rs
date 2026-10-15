@@ -1,18 +1,18 @@
 //! CI coverage: every push tests Linux and macOS, and nightly runs include the oldest supported
-//! git built from source. These checks keep the workflow matrix aligned with supported
-//! environments.
+//! git built from source and the growth guards timed in release. These checks keep the workflow
+//! matrix aligned with supported environments.
+
+/// The text of the file at `path` from the repository's root.
+fn read(path: &str) -> String {
+    let file = crate::workspace::root().join(path);
+    std::fs::read_to_string(&file).unwrap_or_else(|error| panic!("{path}: {error}"))
+}
 
 /// Supported platform and git-version coverage.
 mod v8_supported_environments {
     use regex_lite::Regex;
 
-    use crate::workspace;
-
-    /// The text of the file at `path` from the repository's root.
-    fn read(path: &str) -> String {
-        let file = workspace::root().join(path);
-        std::fs::read_to_string(&file).unwrap_or_else(|error| panic!("{path}: {error}"))
-    }
+    use super::read;
 
     #[test]
     fn the_suite_runs_on_linux_macos_and_the_oldest_supported_git() {
@@ -53,5 +53,31 @@ mod v8_supported_environments {
             !nightly.contains("BEAD_UNDER_TEST"),
             "the nightly tests a bead other than the one Cargo builds"
         );
+    }
+}
+
+/// The growth guards only time can keep (X15): ignored by every other run, they run nightly, in
+/// release and one at a time, or not at all.
+mod x15_growth_guards {
+    use super::read;
+
+    #[test]
+    fn the_nightly_times_the_growth_guards_in_release_one_at_a_time() {
+        let nightly = read(".github/workflows/rust-nightly.yml");
+        let step = nightly
+            .lines()
+            .find(|line| line.contains("test(/^timing::growth::/)"))
+            .expect("the nightly runs no growth guard");
+        for part in [
+            "--release",
+            "--run-ignored only",
+            "--test-threads 1",
+            "--package xtask",
+        ] {
+            assert!(
+                step.contains(part),
+                "the growth guards run without `{part}`: {step}"
+            );
+        }
     }
 }

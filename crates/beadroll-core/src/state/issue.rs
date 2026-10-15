@@ -8,6 +8,7 @@ use crate::id::EventId;
 use crate::json::{Int, Object, Value};
 use crate::op::IntegerField;
 use crate::time::event_time;
+use crate::work::{Work, tally};
 
 use super::claim::{Claim, EndedClaim, LostClaim, Provisional, Stale};
 use super::small::{IdMap, IdSet, VecMap};
@@ -204,11 +205,13 @@ impl Issue {
     /// Its dependencies: `(target, type)` and the metadata of the earliest addition, in the order
     /// first added. A target is an issue's uid, or text that names no issue.
     pub fn deps(&self) -> Deps<'_> {
+        tally(Work::Edge, self.dep_tags.len());
         Deps(&self.dep_tags)
     }
 
     /// The additions behind each dependency, empty once removed.
     pub fn dep_tags(&self) -> &VecMap<(String, String), IdMap<Value>> {
+        tally(Work::Edge, self.dep_tags.len());
         &self.dep_tags
     }
 

@@ -46,8 +46,8 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
   `cargo fmt --all -- --check` and `cargo clippy --workspace --all-targets --all-features --locked
   -- -D warnings -D clippy::mod_module_files`. CI (`.github/workflows/rust.yml`) runs them, the
   tests on Linux and macOS, cargo-deny and the `infra/` tests on every push and pull request, and
-  `.github/workflows/rust-nightly.yml` the tests under git 2.40, the oldest supported, and the
-  stress models with the full sweep.
+  `.github/workflows/rust-nightly.yml` the tests under git 2.40, the oldest supported, the
+  stress models with the full sweep, and `xtask`'s growth guards timed in release.
 - The default store `~/.local/state/beadroll` holds this repository's own real tracker. The tests
   give every machine a scratch `BEAD_HOME`; set one yourself for any manual experiment
   (`export BEAD_HOME=$(mktemp -d)`), and never run `bead`, `br` or `bv` inside other repositories

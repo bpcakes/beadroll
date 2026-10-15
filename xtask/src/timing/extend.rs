@@ -28,7 +28,7 @@ const MACHINE: &str = "a";
 
 /// The id of the probe's event number `n`: a UUIDv7, ids in the order of their numbers, so that
 /// what a machine writes comes after every event it holds.
-fn id(n: u64) -> String {
+pub(super) fn id(n: u64) -> String {
     stamped(1_791_558_245_123, n)
 }
 
@@ -94,7 +94,7 @@ fn record(value: Value) -> Record {
 
 /// The number of the event that creates issue `n`, the issues numbered from one: the `init` is
 /// event one, so each create follows the one before it.
-fn created(n: usize) -> u64 {
+pub(super) fn created(n: usize) -> u64 {
     n as u64 + 1
 }
 
@@ -125,7 +125,7 @@ fn create(n: usize) -> Object {
 
 /// The tracker the probe applies events to: `issues` issues, in one machine's journal, each event
 /// built on the one before it.
-fn tracker(issues: usize) -> Result<Projection, Failure> {
+pub(super) fn tracker(issues: usize) -> Result<Projection, Failure> {
     let mut data = Object::new();
     data.insert("prefix".into(), Value::from("ex"));
     let mut journal = Journal::new();
@@ -153,7 +153,7 @@ fn events(issues: usize, op: &str, payload: impl Fn(usize) -> Object) -> Vec<Rec
 
 /// The `issues` closes again, each identified before every id the tracker holds and chained after
 /// the one before it, the first on the tracker's last event: ids that are never appended.
-fn closes_before_held(issues: usize, head: &str) -> Vec<Record> {
+pub(super) fn closes_before_held(issues: usize, head: &str) -> Vec<Record> {
     (1..=issues)
         .map(|n| {
             let number = created(issues) + n as u64;
@@ -224,7 +224,7 @@ fn wiring(issues: usize) -> impl Fn(usize) -> Object {
 }
 
 /// `records` applied to `seed`, one event at a time: the projection they make.
-fn one_at_a_time(seed: Projection, records: Vec<Record>) -> Result<Projection, Failure> {
+pub(super) fn one_at_a_time(seed: Projection, records: Vec<Record>) -> Result<Projection, Failure> {
     let mut projection = seed;
     for record in records {
         projection = applied(projection, vec![record])?;

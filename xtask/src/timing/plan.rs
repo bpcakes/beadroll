@@ -24,7 +24,7 @@ use crate::workspace::{Failure, json_string};
 const RUNS: usize = 5;
 
 /// The file the import reads.
-const PATH: &str = "issues.jsonl";
+pub(super) const PATH: &str = "issues.jsonl";
 
 /// The id of the probe's event number `n`: a UUIDv7, ids in the order of their numbers.
 fn id(n: u64) -> String {
@@ -68,7 +68,7 @@ const KNOWN: &str = "ex-known";
 
 /// The tracker the probe imports into: one issue, `dangling` dependencies on `waiting` keys that
 /// no issue has, as an import of records naming keys out of order leaves them.
-fn tracker(waiting: usize) -> Result<State, Failure> {
+pub(super) fn tracker(waiting: usize) -> Result<State, Failure> {
     let mut data = Object::new();
     data.insert("prefix".into(), Value::from("ex"));
     let mut create = Object::new();
@@ -96,7 +96,7 @@ fn tracker(waiting: usize) -> Result<State, Failure> {
 /// An export of `records` records, each depending on the key of the last one: the forward
 /// reference a scan of the batch finds last. The last record depends on the first instead, as no
 /// record may depend on itself.
-fn export(records: usize) -> String {
+pub(super) fn export(records: usize) -> String {
     let mut out = String::new();
     for n in 0..records {
         let mut record = Object::new();
@@ -118,7 +118,7 @@ fn export(records: usize) -> String {
 
 /// A re-import of the known issue: one record listing every key the tracker still waits for, so
 /// planning looks each unresolved dependency up and takes none back.
-fn reimport(waiting: usize) -> String {
+pub(super) fn reimport(waiting: usize) -> String {
     let mut record = Object::new();
     record.insert("id".into(), Value::from(KNOWN));
     record.insert("title".into(), Value::from("known"));

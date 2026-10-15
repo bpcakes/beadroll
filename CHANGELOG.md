@@ -6,6 +6,17 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- The work roll-lqjj.15 to .20 made grow with its input is guarded against growing with its square
+  again (roll-lqjj.34, X15). beadroll-core counts, in its own tests alone, the edges read, the
+  issues relabelled, the parent-child index built, the waiting imports visited and the import keys
+  read, and a test for each algorithm — import planning and its dry run, a projection's finishing
+  pass, the waiting imports, readiness and the dependents of the issues shown — fails when an
+  input eight times as large does more than sixteen times the work. What a count cannot see, a
+  lookup turned back into a scan or a set back into a vector, is timed instead: `xtask`'s growth
+  tests, ignored elsewhere, run nightly in release and fail when eight times the input takes more
+  than 24 times as long. Nothing bead does or prints changes, and a build of bead carries none of
+  the counting.
+
 - Replay renames a copy two machines minted alike by asking of each key it tries whether an issue
   has it or an import still waits for it (roll-lqjj.25), instead of collecting every issue's key
   and every key an import waits for once for each copy. Two machines that import one export of

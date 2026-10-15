@@ -7,6 +7,7 @@ use indexmap::IndexMap;
 
 use crate::id::EventId;
 use crate::json::Value;
+use crate::work::{Work, tally};
 
 use super::Issue;
 
@@ -29,8 +30,10 @@ pub(crate) struct Awaiting {
     unsettled: Vec<EventId>,
 }
 
-/// The key an imported dependency names: `None` for an entry taken out, which is null.
-fn named(dep: &Value) -> Option<&str> {
+/// The key an imported dependency names: `None` for an entry taken out, which is null. Replay
+/// reads a waiting entry's key here and nowhere else.
+pub(crate) fn named(dep: &Value) -> Option<&str> {
+    tally(Work::Waiting, 1);
     dep.get("depends_on_id").and_then(Value::as_str)
 }
 
@@ -84,9 +87,11 @@ impl Awaiting {
         }
         let range = (key.to_owned(), EventId::from_u128(0), 0)
             ..=(key.to_owned(), EventId::from_u128(u128::MAX), usize::MAX);
-        (self.entries.extract_if(range, |_| true))
+        let arrived: Vec<(EventId, usize)> = (self.entries.extract_if(range, |_| true))
             .map(|(_, uid, number)| (uid, number))
-            .collect()
+            .collect();
+        tally(Work::Waiting, arrived.len());
+        arrived
     }
 
     /// Takes out of `issue`'s list the entries that wait for `key` and that `chosen` picks.
@@ -101,6 +106,7 @@ impl Awaiting {
         } = self;
         let range = (key.to_owned(), issue.uid, 0)..=(key.to_owned(), issue.uid, usize::MAX);
         let retracted: Vec<usize> = (entries.extract_if(range, |(_, uid, number)| {
+            tally(Work::Waiting, 1);
             (place(numbers, *uid, *number))
                 .and_then(|at| issue.dangling.get(at))
                 .is_some_and(&chosen)
@@ -132,6 +138,7 @@ impl Awaiting {
             let Some(issue) = issues.get_mut(&uid) else {
                 continue;
             };
+            tally(Work::Waiting, issue.dangling.len());
             if let Some(numbers) = self.numbers.get_mut(&uid) {
                 let mut at = 0;
                 numbers.retain(|_| {
