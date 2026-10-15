@@ -18,5 +18,6 @@ mod review5_cli;
 mod review5_positive_controls;
 mod review6;
 mod setup;
+mod shared_readiness;
 mod sync_repo_damage;
 mod sync_repo_maintenance;

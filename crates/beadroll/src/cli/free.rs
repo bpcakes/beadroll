@@ -138,12 +138,13 @@ fn standing(ws: &Workspace, me: &Label) -> Result<String, Failure> {
         .filter(|i| i.claim().is_some_and(|c| me.is(&c.owner)))
         .map(|i| i.key())
         .collect();
+    let readiness = st.readiness();
     let ready = st
         .issues()
         .filter(|i| {
             i.status() == "open"
                 && i.claim().is_none()
-                && !st.is_blocked(i)
+                && !readiness.is_blocked(i)
                 && !st.disputed(i, Field::Status)
         })
         .count();

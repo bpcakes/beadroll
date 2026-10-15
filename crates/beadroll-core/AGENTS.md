@@ -44,6 +44,10 @@ consumer on tokio calls through `spawn_blocking`.
   `saw`; its tests compare it with per-event ancestry bitsets.
 - `src/query.rs`, `src/view.rs`, `src/export.rs`, `src/import.rs`, `src/published.rs`: queries,
   `brief`/`detail`/`line`, `export_records`, `read_records`/`plan_import`, `Tree`.
+  `src/query/readiness.rs`: `State::readiness`, whether anything holds each issue, judged once for
+  all of them (`Readiness`), which `State::ready` and the CLI's `ready`, `blocked` and `prime` ask,
+  and `State::is_blocked`, the same question for one issue, answered by the first thing found
+  (roll-lqjj.19); `State::open_blockers` still lists the blockers themselves.
 - `src/import/dry_run.rs`: `problems` (every problem an import would be refused for, empty exactly
   when it goes through) and `preview` (what it would bring), for `--dry-run`.
 - `tests/core/`: integration tests of replay, storage compatibility and validation.
@@ -89,6 +93,15 @@ consumer on tokio calls through `spawn_blocking`.
   (W01). The index is derived and never written: a state read back builds it from the issues'
   lists, and `projection/tests/awaiting.rs` keeps replay, a projection extended and one read back
   listing the same entries at the same places, and what replay made of waiting imports before it.
+- Readiness is one rule, the one `State::open_blockers` lists blockers by, and whether anything
+  holds an issue is answered three ways that must agree: judged for every issue at once
+  (`State::readiness`, each issue, edge and child visited once, a merged cycle once, nothing
+  recursing), for one issue by the first thing found (`State::is_blocked`), and by the list itself;
+  `tests/core/replay/readiness.rs` keeps them agreeing on deep chains, shared and second parents,
+  merged parent cycles, done and disputed ancestors and targets, epics beside plain parents, claims,
+  scopes and random graphs (roll-lqjj.19). A reader that asks of many issues asks `readiness` once:
+  asked issue by issue, a chain of N issues costs N². `cargo run --release --package xtask --
+  timing --ready N` measures the four ways.
 - `saw` agrees with the reference ancestry bitsets: `state/seen/tests.rs` checks every pair
   on hostile histories. Replay's speed and memory are measured by
   `cargo run --release --package xtask -- timing --replay N [--ownership]`: at 200,000 events its

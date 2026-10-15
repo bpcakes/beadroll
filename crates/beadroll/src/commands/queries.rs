@@ -10,13 +10,16 @@ use beadroll_store::{view, view_outline};
 
 use super::{Context, Failure, Line, Outcome, Tone, need_tracker, row};
 
-/// Open issues something holds back, by key, each with the issues blocking it.
+/// Open issues something holds back, by key, each with the issues blocking it: which they are is
+/// judged once for every issue (`State::readiness`, roll-lqjj.19), and the blockers are then listed
+/// for those alone.
 pub(crate) fn blocked(ctx: &Context<'_>) -> Result<Outcome, Failure> {
     let st = view_outline(ctx.ws)?;
     need_tracker(&st)?;
+    let held = st.readiness();
     let mut items: Vec<&Issue> = st
         .issues()
-        .filter(|i| !DONE.contains(&i.status()) && st.is_blocked(i))
+        .filter(|i| !DONE.contains(&i.status()) && held.is_blocked(i))
         .collect();
     items.sort_by(|a, b| a.key().cmp(b.key()));
     let mut result = Vec::new();

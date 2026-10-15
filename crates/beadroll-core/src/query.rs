@@ -1,5 +1,7 @@
-//! Queries over state: conflicts, blockers, descendants and subtrees, readiness and waits-for
-//! cycles.
+//! Queries over state: conflicts, blockers, descendants and subtrees, readiness (judged for one
+//! issue here, and for every issue at once in [`readiness`]) and waits-for cycles.
+
+mod readiness;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
@@ -9,6 +11,8 @@ use crate::id::EventId;
 use crate::json::{self, Format, Object, Value};
 use crate::state::{IdMap, Issue, State, Texts};
 use crate::time::event_time;
+
+pub use readiness::Readiness;
 
 /// At most this many cycles are reported.
 pub const MAX_CYCLES: usize = 200;
@@ -231,19 +235,16 @@ impl State {
         blockers
     }
 
-    /// Whether anything holds `issue`.
-    pub fn is_blocked(&self, issue: &Issue) -> bool {
-        !self.open_blockers(issue).is_empty()
-    }
-
     /// What `bead ready` lists: open issues in scope that nobody holds, nothing blocks and whose
     /// status is not disputed, by priority, then creation time, then key. Readiness is judged on the
-    /// whole tracker, so a blocker outside the scope still holds an issue inside it.
+    /// whole tracker, so a blocker outside the scope still holds an issue inside it, and once for
+    /// every issue ([`State::readiness`]) rather than candidate by candidate.
     pub fn ready(&self, scope: ReadyScope) -> Vec<&Issue> {
         let beneath = match scope {
             ReadyScope::All => None,
             ReadyScope::Subtree(root) => Some(self.descendants(root)),
         };
+        let held = self.readiness();
         let mut items: Vec<&Issue> = self
             .issues()
             .filter(|issue| issue.status() == "open")
@@ -252,7 +253,7 @@ impl State {
                     .as_ref()
                     .is_none_or(|beneath| beneath.contains(&issue.uid()))
             })
-            .filter(|issue| issue.claim().is_none() && !self.is_blocked(issue))
+            .filter(|issue| issue.claim().is_none() && !held.is_blocked(issue))
             .filter(|issue| !self.disputed(issue, Field::Status))
             .collect();
         sort_for_listing(&mut items);

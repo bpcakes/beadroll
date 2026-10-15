@@ -86,7 +86,8 @@ pub(crate) fn list(ctx: &Context<'_>, args: &ListArgs) -> Result<Outcome, Failur
 /// Open issues nobody holds, nothing blocks and whose status is not disputed; with a scope, only
 /// those beneath it. The scope decides membership only: readiness is judged on the whole tracker,
 /// so a blocker outside it (on the root, an ancestor or a second parent) still holds an issue
-/// inside it.
+/// inside it, and once for every issue (`State::readiness`, roll-lqjj.19) rather than candidate by
+/// candidate.
 pub(crate) fn ready(ctx: &Context<'_>, args: &ReadyArgs) -> Result<Outcome, Failure> {
     let st = view_outline(ctx.ws)?;
     need_tracker(&st)?;
@@ -107,10 +108,11 @@ pub(crate) fn ready(ctx: &Context<'_>, args: &ReadyArgs) -> Result<Outcome, Fail
         parent: optional(args.parent.as_ref())?,
         ..Filters::default()
     };
+    let held = st.readiness();
     let mut items: Vec<_> = select(&st, &filters)?
         .into_iter()
         .filter(|i| beneath.as_ref().is_none_or(|b| b.contains(&i.uid())))
-        .filter(|i| i.claim().is_none() && !st.is_blocked(i) && !st.disputed(i, Field::Status))
+        .filter(|i| i.claim().is_none() && !held.is_blocked(i) && !st.disputed(i, Field::Status))
         .collect();
     if args.filters.limit != Int::from(0) {
         items = first(items, &args.filters.limit);
