@@ -69,6 +69,13 @@ impl Awaiting {
         (self.numbers).insert(issue.uid, (0..issue.dangling.len()).collect());
     }
 
+    /// Whether an entry waits for `key`: one of the keys the issues' lists name, entries taken out
+    /// while events apply not among them, as [`Issue::dangling`] holds them.
+    pub(crate) fn names(&self, key: &str) -> bool {
+        let from = (key.to_owned(), EventId::from_u128(0), 0);
+        (self.entries.range(from..).next()).is_some_and(|(named, _, _)| named == key)
+    }
+
     /// Every entry that waits for `key`, no longer listed: each issue's, by its number, in the order
     /// of its list.
     pub(crate) fn arrived(&mut self, key: &str) -> Vec<(EventId, usize)> {

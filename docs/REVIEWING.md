@@ -280,8 +280,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   events apply; replay's finishing pass, and a projection's for its batch, make each such list whole
   again in its order and drop the numbers of the entries taken, and the entries left keep theirs, so
   none is listed again (W01: listed by place, each batch had every entry behind the first one taken
-  listed anew). Nothing outside replay sees a null: the one reader inside it, `claimed_keys` for a
-  copy renamed mid-batch, finds no key in one, as it found none in an entry removed. Binding is what
+  listed anew). Nothing outside replay sees a null: the one reader inside it, the claim on a key
+  (`claimed_keys`, or `State::claims_key` for a copy renamed mid-batch), finds no key in one, as it
+  found none in an entry removed. Binding is what
   it was — the key actually assigned after a rename, an issue's own key left waiting, the type a
   falsy one defaults to, the import's metadata and its create's tag, and removals by key and type or
   by target with their causal rules — and so are the order of edges and of what still waits; the
@@ -307,6 +308,37 @@ These were decided deliberately. Report problems *with* them, not their existenc
   nothing waiting, which is the parent-child index built again each batch; what remains is the
   issue's growing edges and a copy of its list's tail once a batch. The fastest of three runs each,
   2026-10-15, Rust 1.99.0, 64 cores.
+- A copy two machines minted alike is renamed by asking of each key it tries (roll-lqjj.25, X03).
+  `State::free_key` collected `claimed_keys()`, every issue's key and every key an import still
+  waits for, once for each copy replay renamed, so that N copies cost N times the tracker: two
+  machines importing one export of 8,000 records offline and syncing renamed 8,000 copies, and the
+  second machine's merging sync took 6.6 s and a cold replay 4.7 s, against 1.15 s for the same
+  creates with nothing renamed. It now asks `State::claims_key` of each candidate, which is `by_key`
+  holding it or the awaiting index naming it (`Awaiting::names`, one range lookup in the set
+  `arrived` and `retract` already keep): the keys tried and the key chosen are what they were.
+  `claimed_keys` is public and keeps its answer, and `mint_key`, which asks once a command, still
+  collects it. The index lists what `claimed_keys` reads in the issues' lists: an entry is out of
+  the index the moment it is taken, as null in a list names no key, so a copy renamed in the batch
+  an entry is taken out of, before the finishing pass makes the list whole, gets the same answers.
+  In this crate's tests, `claims_key` checks every answer it gives against `claimed_keys` and keeps
+  each ask (`state::asked`): replay and a projection extended through the scenarios of
+  `projection::tests::awaiting` and the 30 seeded histories ask 92,277 keys, 484 of them claimed
+  only by an import that waits and 87,431 while an entry taken out holds its place (replay makes
+  the lists whole once, at its end); the digest of those histories and every rename test pass unchanged on the implementation before.
+  `cargo xtask timing --renames N` replays N copies renamed against 2N creates renamed by nobody,
+  and each again with the first machine's issues importing a key that never comes; at 2,000, 4,000
+  and 8,000, before and after, run back to back and the fastest of three: 0.159 s, 0.608 s and
+  2.50 s before, 0.012 s, 0.028 s and 0.058 s after, against 0.006 s, 0.015 s and 0.035 s for the
+  control; with the imports waiting, 0.51 s, 2.14 s and 13.9 s before, 0.017 s, 0.033 s and
+  0.071 s after, against 0.010 s, 0.024 s and 0.050 s for their control. The commands, end to
+  end: two machines import the same 8,000-record Beads export offline, each minting every key, and
+  the first syncs; the second's merging sync renames all 8,000 copies, 7.0 s before and 3.0 s
+  after, and a cold `list` (its projection deleted, so that it replays the journal) takes 5.0 s
+  before and 1.2 s after; `cargo xtask timing --renames` measures the same replay in process.
+  The same 16,000 creates with nothing renamed replay cold in 1.15 s. `list --all --json` and
+  `export` are byte for byte the same (3,000 copies, both bead builds on one store). Measured on a
+  machine shared with ten other builds, so every figure is inflated; those compared were taken
+  together.
 - Readiness is judged once for every issue (roll-lqjj.19, Z04). `bead ready`, `bead blocked` and
   `bead prime` asked of each issue whether anything holds it, and the answer was the blocker list
   `open_blockers` builds — the issue's own prerequisites, an epic's unfinished children, and the

@@ -6,6 +6,15 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- Replay renames a copy two machines minted alike by asking of each key it tries whether an issue
+  has it or an import still waits for it (roll-lqjj.25), instead of collecting every issue's key
+  and every key an import waits for once for each copy. Two machines that import one export of
+  8,000 records offline and then sync rename 8,000 copies: the second machine's merging sync takes
+  3.0 s rather than 7.0 s and its first command after, a replay, 1.2 s rather than 5.0 s (measured
+  together on a shared machine). The keys chosen, the renames reported and everything printed are
+  unchanged, and `State::claimed_keys` keeps its answer. `cargo xtask timing --renames N` measures
+  replay of N renamed copies against the same creates renamed by nobody.
+
 - The projection and its text file are no longer fsynced (roll-lqjj.27, review 16 X05). Both are
   caches that carry a sum of every part and that bead makes again from the journal whenever they
   are missing, cut, damaged or out of step with each other, yet the command after every write

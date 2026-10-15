@@ -35,7 +35,10 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   built before (roll-lqjj.19); `timing/details.rs`: `timing --details N`, every issue of N on a
   sparse graph without parents shown in full, the issues that depend on each found once for all of
   them and for each alone, and the reverse lookup alone both ways, with one issue's detail and
-  lookup both ways as a control (roll-lqjj.20);
+  lookup both ways as a control (roll-lqjj.20); `timing/renames.rs`: `timing --renames N`, replay of
+  two machines each creating the same N keys, so that N copies are renamed, against the same
+  creates renamed by nobody, and each with the first machine's issues importing a dependency on a
+  key that never comes (roll-lqjj.25, X03);
   `timing/world.rs`: the scratch
   store, checkout and remote they run `bead` on; `timing/history.rs`: the histories it replays
   (`--ownership`: heavy in claims, takeovers and releases in attempt files; `--churn`: a thousand
@@ -94,6 +97,8 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   complete blocker lists
 - `cargo run --release --package xtask -- timing --details 8000`: every issue of 8,000 shown in
   full, its dependents found once for all of them and for each alone, and one issue's as a control
+- `cargo run --release --package xtask -- timing --renames 8000`: replay renaming 8,000 copies two
+  machines minted alike, against 16,000 creates renamed by nobody
 - `cargo test -p xtask`
 - `python3 xtask/python/printable_table.py > crates/beadroll-core/src/text/printable.rs`, with
   CPython 3.14.7 (Unicode 16.0.0), the versions the table was made with; do not change the
