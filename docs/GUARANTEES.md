@@ -350,6 +350,11 @@ it, and the file is committed again.
   all 8,000 issues of a sparse tracker takes 0.28 s rather than 3.26 s; one
   issue's detail still reads every issue's dependencies once (roll-lqjj.20;
   `cargo xtask timing --details N`).
+  `bead info` and `bead machines` answer from the projection as `list` does,
+  0.23 s at 200,000 events where they loaded the journal in 3.30 and 2.40 s;
+  `bead log` still reads the whole journal for its events and their order,
+  3.21 s there, but replays none of it (roll-lqjj.31; `cargo xtask timing
+  --read N`).
   A real tracker's state is mostly
   its texts, which only the commands that print them read: on three of the
   largest public Beads trackers (21–47 MB, up to 13,394 issues) a `list` takes

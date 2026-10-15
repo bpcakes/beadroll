@@ -6,6 +6,15 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `bead info` and `bead machines` answer from the store's projection, as `list` does, instead of
+  loading the whole journal, and `bead log` takes the keys it names issues by from the store's
+  state instead of replaying the journal it reads for its events (roll-lqjj.31): at 200,000 events
+  `info` takes 0.23 s rather than 3.30 s, `machines` 0.23 s rather than 2.40 s and `log` 3.21 s
+  rather than 3.78 s; at 20,000 issues, 0.21, 0.22 and 1.24 s rather than 1.16, 0.88 and 1.37 s.
+  Every output is the same. The projection now keeps each machine's latest event beside its
+  journal length, so its encoding is 5 and the first command after upgrading replays the journal
+  once. `cargo xtask timing --read N` times the three too.
+
 - `bead blocked` lists every held issue's blockers in one pass over the issues and their edges
   (roll-lqjj.24), instead of walking each issue's ancestors again for each: on a chain of 16,000
   issues under one held root it takes 0.28 s where it took 39 s, and on a lattice whose issues each
