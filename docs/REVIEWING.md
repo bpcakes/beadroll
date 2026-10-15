@@ -4,9 +4,11 @@ A brief for an independent reviewer: an agent or a person who did not write this
 to find out whether the design holds, to break it if they can, and to report with
 reproductions. Reviewers do not extend the tool.
 
-Twelve reviews have run; reviews 8 and 9 audit the Rust port plan, review 10 is Codex's, task by
+Sixteen reviews have run; reviews 8 and 9 audit the Rust port plan, review 10 is Codex's, task by
 task, of epic `roll-lqjj`, review 11 is Claude and Codex's review of its follow-up branch, and
-review 12 is their review of the Rust names (roll-dih8.17).
+review 12 is their review of the Rust names (roll-dih8.17); reviews 13 to 15 were reported inline
+on branches before they landed, and review 16 is Claude's of the performance work of roll-lqjj.15
+to .20.
 Their reports are kept verbatim in `reviews/`; every finding and what became of it is in
 `FINDINGS.md`. Start from what they did not cover.
 
