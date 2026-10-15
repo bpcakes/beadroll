@@ -1,8 +1,10 @@
 //! `State::readiness`, every issue judged at once (roll-lqjj.19), against the blocker lists
 //! `State::open_blockers` builds issue by issue, and `State::is_blocked`, the same question asked of
-//! one issue: deep chains, shared and second parents, merged parent cycles, done and disputed
-//! ancestors and targets, epics beside plain parents, claims, blockers outside a scoped subtree, and
-//! random graphs. `State::ready` keeps its order and `open_blockers` its lists.
+//! one issue; every issue's list made at once (`State::blocker_lists`, roll-lqjj.24) against its
+//! list made alone, and the `blocked` of details made together (`State::details_of`) against each
+//! detail made alone: deep chains, lattices, shared and second parents, merged parent cycles, done
+//! and disputed ancestors and targets, epics beside plain parents, claims, blockers outside a scoped
+//! subtree, and random graphs. `State::ready` keeps its order and `open_blockers` its lists.
 
 use std::collections::BTreeSet;
 
@@ -96,13 +98,30 @@ fn frontier<'s>(st: &'s State, beneath: Option<&BTreeSet<EventId>>) -> Vec<&'s I
     items
 }
 
-/// Every issue's answer judged with every other and asked on its own against its blocker list, and
-/// `ready` against the same filter over the lists; the keys of the issues held, in replay order.
+/// Every issue's answer judged with every other and asked on its own against its blocker list, its
+/// list made with every other's against the list made alone, the `blocked` of its detail made with
+/// every other's against the list too (the rest of the detail is `dependents.rs`'s), and `ready`
+/// against the same filter over the lists; the keys of the issues held, in replay order.
 fn agree(st: &State) -> Vec<String> {
     let readiness = st.readiness();
+    let lists = st.blocker_lists();
+    let details = st.details_of(st.issues());
     let mut held = Vec::new();
     for issue in st.issues() {
-        let listed = !st.open_blockers(issue).is_empty();
+        let blockers = st.open_blockers(issue);
+        let listed = !blockers.is_empty();
+        assert_eq!(
+            keys(&lists.of(issue)),
+            keys(&blockers),
+            "{} listed with every issue",
+            issue.key()
+        );
+        assert_eq!(
+            details.of(issue).get("blocked"),
+            Some(&listed.into()),
+            "{} shown with every issue",
+            issue.key()
+        );
         assert_eq!(
             st.is_blocked(issue),
             listed,
@@ -198,6 +217,61 @@ fn a_chain_far_deeper_than_a_thread_stack_takes_is_judged_without_recursion() {
         keys(&st.open_blockers(issue(&st, &chain[19_999]))),
         ["au-one"]
     );
+    // every list at once, each the gate, and every detail together held
+    let lists = st.blocker_lists();
+    assert!(
+        (chain.iter()).all(|uid| keys(&lists.of(issue(&st, uid))) == ["au-one"]),
+        "every issue of the chain lists the gate"
+    );
+    assert!(lists.of(issue(&st, &gate)).is_empty());
+    let details = st.details_of(st.issues());
+    assert!(
+        (chain.iter()).all(|uid| details.of(issue(&st, uid)).get("blocked") == Some(&true.into())),
+        "every detail of the chain is blocked"
+    );
+}
+
+#[test]
+fn distinct_blockers_gather_down_a_lattice_and_each_issue_lists_every_one_above_it() {
+    // rows of three, each issue the child of two in the row above and waiting for a gate of its
+    // own, so that what an issue inherits grows with its depth and every merge makes a new set
+    let mut f = Fixture::new();
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    for row in 0..6 {
+        let mut made = Vec::new();
+        for column in 0..3 {
+            let issue = f.create(&format!("au-{row}-{column}"));
+            let gate = f.create(&format!("au-gate-{row}-{column}"));
+            wait(&mut f, &issue, &gate);
+            if let Some(above) = rows.last() {
+                let (left, right) = (above[column].clone(), above[(column + 1) % 3].clone());
+                adopt(&mut f, &issue, &left);
+                adopt(&mut f, &issue, &right);
+            }
+            made.push(issue);
+        }
+        rows.push(made);
+    }
+    let st = f.state();
+    agree(&st);
+    // its own gate, the two of row 4 it reaches, and all three of every row above them
+    let deepest = keys(&st.blocker_lists().of(issue(&st, &rows[5][0])));
+    assert_eq!(deepest.len(), 1 + 2 + 3 * 4, "{deepest:?}");
+    // closing a gate frees only what it held, and a done row cuts off what is above it
+    let gate = st.resolve("au-gate-0-0").unwrap().uid().to_string();
+    apply(&mut f, "close", &gate, json!({}));
+    agree(&f.state());
+    for uid in rows[2].clone() {
+        apply(&mut f, "close", &uid, json!({}));
+    }
+    let st = f.state();
+    agree(&st);
+    // its own gate and those of rows 3 and 4 it reaches: the done row 2 is not passed
+    let lists = st.blocker_lists();
+    assert_eq!(keys(&lists.of(issue(&st, &rows[5][0]))).len(), 1 + 2 + 3);
+    // a done issue of row 2 still lists its own gate, the two of row 1 it reaches and those of row
+    // 0 still open
+    assert_eq!(keys(&lists.of(issue(&st, &rows[2][0]))).len(), 1 + 2 + 2);
 }
 
 #[test]

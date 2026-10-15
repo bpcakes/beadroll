@@ -1,6 +1,8 @@
-//! Queries over state: conflicts, blockers, descendants and subtrees, readiness (judged for one
-//! issue here, and for every issue at once in [`readiness`]) and waits-for cycles.
+//! Queries over state: conflicts, blockers (listed for one issue here, and for every issue at once
+//! in [`blockers`]), descendants and subtrees, readiness (judged for one issue here, and for every
+//! issue at once in [`readiness`]) and waits-for cycles.
 
+mod blockers;
 mod readiness;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -12,6 +14,7 @@ use crate::json::{self, Format, Object, Value};
 use crate::state::{IdMap, Issue, State, Texts};
 use crate::time::event_time;
 
+pub use blockers::BlockerLists;
 pub use readiness::Readiness;
 
 /// At most this many cycles are reported.
@@ -301,20 +304,19 @@ impl State {
 
 /// Sorts as `bead list` and `bead ready` list: by priority (`true` is 1), creation time, then key.
 pub fn sort_for_listing(items: &mut [&Issue]) {
-    let priority = |issue: &Issue| issue.priority();
-    let created = |issue: &Issue| {
-        issue
-            .get(Field::CreatedAt)
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_owned()
-    };
     items.sort_by(|a, b| {
-        priority(a)
-            .cmp(&priority(b))
-            .then_with(|| created(a).cmp(&created(b)))
+        (a.priority().cmp(&b.priority()))
+            .then_with(|| created(a).cmp(created(b)))
             .then_with(|| a.key().cmp(b.key()))
     });
+}
+
+/// When an issue was created, as listings sort it: borrowed, since a sort asks it of each issue
+/// about log₂ N times (roll-lqjj.24).
+fn created(issue: &Issue) -> &str {
+    (issue.get(Field::CreatedAt))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
 }
 
 /// What a register of `field` shows of `value`: a status register's status, any other's value.

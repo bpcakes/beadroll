@@ -149,16 +149,14 @@ pub(crate) fn still_held(ctx: &Context<'_>, st: &State, keys: &[OsString]) -> Re
 }
 
 /// Each issue's detail, as `claim`, `takeover` and `update` answer with it, in the order given:
-/// the issues that depend on them found once for all of them (roll-lqjj.20), rather than by
-/// reading every issue's edges again for each.
+/// the issues that depend on them (roll-lqjj.20) and readiness (roll-lqjj.24) found once for all of
+/// them, rather than by reading every issue's edges and walking its ancestors again for each.
 pub(crate) fn details(st: &State, keys: &[OsString]) -> Result<Vec<Object>, Failure> {
     let issues = (keys.iter())
         .map(|key| resolve_arg(st, key))
         .collect::<Result<Vec<_>, Failure>>()?;
-    let dependents = st.dependents_of(issues.iter().copied());
-    Ok((issues.iter())
-        .map(|issue| st.detail_with(issue, &dependents))
-        .collect())
+    let details = st.details_of(issues.iter().copied());
+    Ok((issues.iter()).map(|issue| details.of(issue)).collect())
 }
 
 /// `bead claim`: takes ownership of each issue.

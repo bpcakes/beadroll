@@ -14,11 +14,11 @@ use super::{Context, Failure, Line, Outcome, Tone, need_tracker, resolve_arg, vi
 pub(crate) fn show(ctx: &Context<'_>, ids: &[OsString]) -> Result<Outcome, Failure> {
     let st = view_of(ctx.ws, ids)?;
     need_tracker(&st)?;
-    // Every key is resolved first, so that the issues that depend on them are found once for all
-    // of them (roll-lqjj.20); a key that names no issue still fails where it stands, after the
-    // issues before it.
+    // Every key is resolved first, so that what their details share (the issues that depend on
+    // them, roll-lqjj.20, and readiness, roll-lqjj.24) is found once for all of them; a key that
+    // names no issue still fails where it stands, after the issues before it.
     let issues: Vec<_> = ids.iter().map(|key| resolve_arg(&st, key)).collect();
-    let dependents = st.dependents_of(
+    let details = st.details_of(
         issues
             .iter()
             .filter_map(|issue| issue.as_ref().ok())
@@ -27,7 +27,7 @@ pub(crate) fn show(ctx: &Context<'_>, ids: &[OsString]) -> Result<Outcome, Failu
     let mut result = Vec::new();
     for issue in issues {
         let issue = issue?;
-        let mut detail = st.detail_with(issue, &dependents);
+        let mut detail = details.of(issue);
         if issue.status() == "closed"
             && let Some(at) = detail.get_index_of("closed_on")
         {

@@ -107,15 +107,18 @@ fn reference(st: &State, issue: &Issue) -> Json {
 }
 
 /// The details of `asked`, in its order, made with their dependents found once for all of them,
-/// each against the issue's detail alone and its dependents against the reference; each one's
-/// dependents as `key type` pairs.
+/// and with readiness too (`State::details_of`), each against the issue's detail alone and its
+/// dependents against the reference; each one's dependents as `key type` pairs.
 fn agree(st: &State, asked: &[&Issue]) -> Vec<Vec<String>> {
     let dependents = st.dependents_of(asked.iter().copied());
+    let details = st.details_of(asked.iter().copied());
     (asked.iter())
         .map(|issue| {
             let together = Json::from(st.detail_with(issue, &dependents));
             let alone = Json::from(st.detail(issue));
             assert_eq!(text(&together), text(&alone), "{}", issue.key());
+            let shared = Json::from(details.of(issue));
+            assert_eq!(text(&shared), text(&alone), "{}", issue.key());
             let listed = &together["dependents"];
             assert_eq!(text(listed), text(&reference(st, issue)), "{}", issue.key());
             (listed.as_array().unwrap().iter())
