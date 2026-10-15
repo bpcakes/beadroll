@@ -137,7 +137,10 @@ fn object_name(commit: &[u8]) -> bool {
 const WALKED_PER_COMMIT: usize = 1_000;
 
 /// Answers each of `named`, distinct full object names, as [`ancestor_of_any`] would, into
-/// `answers`, and returns those it leaves unsettled, to ask alone.
+/// `answers`, and returns those it leaves unsettled, to ask alone. The one exception is a damaged
+/// repository missing a commit of the refs' history: git skips the missing parents of a commit it
+/// already knows a ref reaches, so a commit beside them is merged here, where `merge-base` may
+/// fail to read them and say not merged, or unknown.
 ///
 /// One `cat-file` peels each name to its commit, as `merge-base` does, and those that name none
 /// are unknown here. One `rev-list` lists the commits no ref reaches, walking from them and from
@@ -147,7 +150,9 @@ const WALKED_PER_COMMIT: usize = 1_000;
 /// dates disagree with history (a commit made while the clock was ahead) it can list a commit a
 /// ref contains. So one more `rev-list` lists the refs' history itself, newest first, up to
 /// [`WALKED_PER_COMMIT`] commits for each of them: one it lists a ref contains, and when it ends
-/// before that bound it has listed the whole history, and the others no ref contains.
+/// before that bound it has listed the whole history, and the others no ref contains. Unless it
+/// lists nothing: `rev-list` ignores a ref that leads to no commit (a tree, a blob, a tag of one),
+/// where `merge-base` fails, so when none leads to one the commits are asked alone.
 fn screened<'c>(
     git: &Env,
     refs: &[String],
@@ -198,6 +203,8 @@ fn screened<'c>(
     let walk = [
         vec!["rev-list".into(), format!("--max-count={bound}")],
         refs.to_vec(),
+        // a file named like a ref would make git ask which of them is meant
+        vec!["--".into()],
     ]
     .concat();
     let history = git.git(&walk).run()?;
@@ -205,7 +212,8 @@ fn screened<'c>(
         return Ok(unsure.into_iter().map(|(name, _)| name).collect());
     }
     let walked: HashSet<&[u8]> = lines(&history.stdout).collect();
-    let whole = walked.len() < bound;
+    // a ref that is a commit lists itself, so nothing listed is no history rather than all of it
+    let whole = !walked.is_empty() && walked.len() < bound;
     let mut alone = Vec::new();
     for (name, commit) in unsure {
         if walked.contains(commit) {

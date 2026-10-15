@@ -304,6 +304,37 @@ fn a_commit_made_with_the_clock_ahead_is_merged_however_long_main_is() {
     assert_eq!(merged, [Json::Bool(true), Json::Bool(false)]);
 }
 
+/// A default branch that leads to no commit says nothing of any commit: of two issues closed on
+/// two commits of main, `show` says `merged: unknown` together as alone once `origin/main` names
+/// the tree of main's commit and the local `main` is gone, as `merge-base` failing for that ref
+/// said, rather than that main lacks them, which `rev-list`, ignoring a ref that is no commit,
+/// would have it say.
+#[test]
+fn a_default_branch_that_is_no_commit_leaves_merged_unknown() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let main = a.checkout().to_path_buf();
+    let closed = |title: &str| {
+        let commit = ["commit", "-q", "--allow-empty", "-m", title];
+        git(IDENTITY.into_iter().chain(commit), Some(&main));
+        let key = id(&a.bead(["create", title]).unwrap());
+        a.bead(["close", &key]);
+        key
+    };
+    let keys = [closed("one"), closed("two")];
+    git(["checkout", "-q", "-b", "work", "main"], Some(&main));
+    let tree = git(["rev-parse", "main^{tree}"], Some(&main));
+    let tracking = ["update-ref", "refs/remotes/origin/main", tree.trim()];
+    git(tracking, Some(&main));
+    git(["branch", "-q", "-D", "main"], Some(&main));
+    let shown = a.bead(["show", &keys[0], &keys[1]]).unwrap();
+    let unknown = Json::from("unknown");
+    assert_eq!(shown[0]["merged"], unknown);
+    assert_eq!(shown[1]["merged"], unknown);
+    assert_eq!(shown, Json::Array(vec![a.show(&keys[0]), a.show(&keys[1])]));
+}
+
 /// Closes of the issues `titles` names, each made by another machine (`ffffffff`) on the commit
 /// beside its title, as that machine's journal records them: the issues' keys.
 fn closed_elsewhere(a: &Machine, titles: &[(&str, &str)]) -> Vec<String> {

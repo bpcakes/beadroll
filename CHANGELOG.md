@@ -12,7 +12,9 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   commit is asked once, and the full commit ids bead records are asked together, so `show` of
   1,000 closed issues starts 8 or 9 gits rather than 5,003 and takes 0.1 s rather than 23 to 29 s.
   `merged` and everything `show` prints are unchanged, also for a commit made while the clock was
-  ahead, which `rev-list` alone can take for one the default branch lacks. A closing commit from
+  ahead, which `rev-list` alone can take for one the default branch lacks, and for a default
+  branch that leads to no commit; only in a repository missing a commit of the default branch's
+  history can a commit beside it be merged where it was not, or unknown. A closing commit from
   another machine's event now reaches git only as a revision, never as an option, and one with a
   NUL in it is `unknown` where it made `show` fail with `IO` (X14).
 

@@ -995,7 +995,16 @@ These were decided deliberately. Report problems *with* them, not their existenc
   starts 3 gits to find the default branch and 2 or 3 more however many issues it shows. `merged`
   and `show`'s bytes are what they were: `show` of the 5,000 closed issues of a scratch world, in
   JSON and as text, is 8683332's byte for byte, and `checkouts::show_of_several_closed_issues_*`
-  keeps several shown together equal to each shown alone. Commit text from any machine's event
+  keeps several shown together equal to each shown alone. `rev-list` ignores a ref that leads to
+  no commit (a tree, a blob, a tag of one), where `merge-base` fails, so a walk that lists nothing
+  is no history rather than a whole one, and its commits are asked alone and unknown, as they were
+  (`checkouts::a_default_branch_that_is_no_commit_leaves_merged_unknown`). The one answer that
+  changes is in a damaged repository missing a commit of the default branch's history: where main
+  merges P, B, R and Y3, Y2, Y1, R and Y1's object is gone, `rev-list --stdin ^main B` skips the
+  missing parents of commits it already knows main reaches and leaves B out, so B is merged, while
+  `merge-base --is-ancestor B main` fails to read Y1 and says B is not (exit 1, git 2.43) or
+  unknown (exit 128, newer gits). B alone is still asked of `merge-base`, so there `show B` and
+  `show B U` disagree; the answer together is the right one. Commit text from any machine's event
   reaches `merge-base` after `--end-of-options`, never as an option, and text with a NUL, which no
   argument can carry, is unknown rather than an `IO` failure of `show` (X14). `bead show` of 1, 10,
   100 and 1,000 issues closed on distinct commits of main started 8, 53, 503 and 5,003 gits and
