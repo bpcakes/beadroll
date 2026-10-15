@@ -173,14 +173,18 @@ fn an_id_with_two_contents_placed_by_less_than_its_causes_keeps_the_projection_f
     };
     // its causes loop back onto it: released after every other event, and so after events still
     // to come; and a cause the journal does not hold, which it does not wait for and an event still
-    // to come can be
+    // to come can be, named by its own copy, or with no copy of its own (both found in this
+    // machine's journal) by every one
     let mut looped = two(&[5]);
     looped.push(record(
         event(5, HERE, &[4], "set", 2, fields("y")),
         HERE,
         true,
     ));
-    for flawed in [looped, two(&[3, 99])] {
+    let foreign = (two(&[3, 99]).into_iter())
+        .map(|copy| record(copy.value, HERE, true))
+        .collect();
+    for flawed in [looped, two(&[3, 99]), foreign] {
         let mut held = base();
         held.extend(flawed.iter().cloned());
         let projection = project(journal(&held)).unwrap();
