@@ -70,7 +70,19 @@ pub(crate) fn write_atomic_parts(
     private: bool,
     failpoints: &Failpoints,
 ) -> Result<(), Error> {
-    written_whole(path, parts, private, true, failpoints)
+    written_whole(path, parts, private, true, failpoints).map(drop)
+}
+
+/// [`write_atomic`] of a store file, with the identity of the file written, taken from its own
+/// descriptor once it is in place (an identity not yet settled, which `docs/REVIEWING.md` §2
+/// weighs for `meta.json`).
+pub(crate) fn write_atomic_keyed(
+    path: &Path,
+    data: &[u8],
+    failpoints: &Failpoints,
+) -> Result<Option<FileKey>, Error> {
+    let file = written_whole(path, &[data], true, true, failpoints)?;
+    Ok(file.metadata().ok().as_ref().and_then(FileKey::of_meta))
 }
 
 /// [`write_atomic_parts`] of a store cache, without the fsync: the projection and its text file,
@@ -85,18 +97,19 @@ pub(crate) fn write_cache_parts(
     parts: &[&[u8]],
     failpoints: &Failpoints,
 ) -> Result<(), Error> {
-    written_whole(path, parts, true, false, failpoints)
+    written_whole(path, parts, true, false, failpoints).map(drop)
 }
 
 /// `parts` written to a temporary file beside `path`, fsynced when `durable`, and renamed into
-/// place: [`write_atomic_parts`] and [`write_cache_parts`].
+/// place, the file written still open: [`write_atomic_parts`], [`write_atomic_keyed`] and
+/// [`write_cache_parts`].
 fn written_whole(
     path: &Path,
     parts: &[&[u8]],
     private: bool,
     durable: bool,
     failpoints: &Failpoints,
-) -> Result<(), Error> {
+) -> Result<File, Error> {
     let parent = path.parent().unwrap_or(Path::new("."));
     if private {
         private_dirs(parent)?;
@@ -121,16 +134,14 @@ fn written_whole(
             Some(Fired::Errno(errno)) => Err(IoError::bare(&io::Error::from_raw_os_error(errno))),
             _ => Ok(()),
         })
-        .and_then(|()| {
-            drop(file);
-            std::fs::rename(&tmp, path).map_err(|e| IoError::at(&e, path))
-        });
+        .and_then(|()| std::fs::rename(&tmp, path).map_err(|e| IoError::at(&e, path)));
     if let Err(error) = written {
+        drop(file);
         let _ = std::fs::remove_file(&tmp);
         return Err(Error::Io(error));
     }
     failpoints.hit_path("atomic-written", path);
-    Ok(())
+    Ok(file)
 }
 
 /// `.NAME.PID.tmp` beside `path`, its name's bytes kept as they are.
@@ -160,7 +171,9 @@ pub fn dir_entries(folder: &Path) -> Result<Vec<PathBuf>, Error> {
         let entry = entry.map_err(|e| Error::Io(IoError::at(&e, folder)))?;
         paths.push(entry.path());
     }
-    paths.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+    // by name: every path is `folder` and a separator followed by one, so their bytes sort as the
+    // names do, without taking each path apart at every comparison (roll-lqjj.30)
+    paths.sort_unstable_by(|a, b| a.as_os_str().cmp(b.as_os_str()));
     Ok(paths)
 }
 
@@ -181,7 +194,8 @@ pub fn glob_ending(folder: &Path, ending: &str) -> Vec<PathBuf> {
                 .is_some_and(|name| name.as_bytes().ends_with(ending.as_bytes()))
         })
         .collect();
-    paths.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+    // by name, as `dir_entries` sorts
+    paths.sort_unstable_by(|a, b| a.as_os_str().cmp(b.as_os_str()));
     paths
 }
 
@@ -237,6 +251,23 @@ pub fn read_json_text(path: &Path) -> Result<Value, Unreadable> {
         Err(error) => return Err(Unreadable::Other(os_error_str(&error, path))),
     };
     json_text(&data).map_err(Unreadable::Other)
+}
+
+/// [`read_json_text`], with the identity of the file read, from the descriptor it was read
+/// through: a file renamed over it meanwhile is never taken for the one read.
+pub(crate) fn read_json_keyed(path: &Path) -> (Result<Value, Unreadable>, Option<FileKey>) {
+    let read = File::open(path).and_then(|mut file| {
+        let meta = file.metadata()?;
+        let mut data = Vec::new();
+        file.read_to_end(&mut data)?;
+        let key = FileKey::of_meta(&meta).map(|key| key.up_to(data.len() as u64));
+        Ok((data, key))
+    });
+    match read {
+        Ok((data, key)) => (json_text(&data).map_err(Unreadable::Other), key),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => (Err(Unreadable::Missing), None),
+        Err(error) => (Err(Unreadable::Other(os_error_str(&error, path))), None),
+    }
 }
 
 /// Reads JSON for a whole-file rewrite, preserving lone surrogates with [`Surrogates`]. Allocate
@@ -323,6 +354,48 @@ pub fn utf8_error(data: &[u8], error: &std::str::Utf8Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A listing is in the order of its names' bytes, which whole paths under one folder sort in
+    /// too: a name that is a prefix of another, punctuation that sorts before the folder's
+    /// separator, upper case, and bytes that are not UTF-8 where the file system takes such a name.
+    #[test]
+    fn a_listing_is_in_the_order_of_its_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let names: [&[u8]; 9] = [
+            b"a",
+            b"a.json",
+            b"a-b",
+            b"a.b.json",
+            b"B",
+            b"a0",
+            b".hidden",
+            b"\xff",
+            b"a\x01",
+        ];
+        let mut sorted: Vec<&[u8]> = Vec::new();
+        for name in names {
+            match std::fs::write(dir.path().join(OsStr::from_bytes(name)), b"") {
+                Ok(()) => sorted.push(name),
+                // A file system that keeps names as UTF-8 (APFS) refuses one that is not: there
+                // the order of such names is nothing a listing can be asked for.
+                Err(error)
+                    if error.raw_os_error() == Some(rustix::io::Errno::ILSEQ.raw_os_error())
+                        && std::str::from_utf8(name).is_err() => {}
+                Err(error) => panic!("cannot make {name:?}: {error}"),
+            }
+        }
+        sorted.sort();
+        let listed = dir_entries(dir.path()).unwrap();
+        let listed: Vec<&[u8]> = (listed.iter())
+            .map(|path| path.file_name().unwrap().as_bytes())
+            .collect();
+        assert_eq!(listed, sorted);
+        let globbed = glob_ending(dir.path(), "");
+        let globbed: Vec<&[u8]> = (globbed.iter())
+            .map(|path| path.file_name().unwrap().as_bytes())
+            .collect();
+        assert_eq!(globbed, sorted);
+    }
 
     /// What a file read is taken to be is what was read: the file opened, up to the bytes read,
     /// whatever its path names by the time anyone looks again (roll-lqjj.2, P03).

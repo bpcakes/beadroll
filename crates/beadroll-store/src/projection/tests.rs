@@ -487,4 +487,5 @@ fn an_earlier_segment_that_grows_is_replayed() {
     assert!(replays(&ws));
 }
 
+mod attempts;
 mod texts;

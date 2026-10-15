@@ -142,6 +142,9 @@ pub struct Memo {
     files: BTreeMap<String, Remembered>,
     /// Whether it differs from what was read.
     changed: bool,
+    /// Whether it holds only some of the files the memo on disk does ([`Memo::load_only`]): it is
+    /// then never written back.
+    partial: bool,
 }
 
 impl Memo {
@@ -151,12 +154,25 @@ impl Memo {
     /// rename a newer memo over this one between two looks at the path: the moment the one we
     /// read was written is the only one its files may be settled before.
     pub fn load(ws: &Workspace) -> Memo {
+        Memo::load_of(ws, &|_| true, false)
+    }
+
+    /// [`Memo::load`], keeping only the files `wanted` names by their paths in the store: what one
+    /// that asks for a few files' lines takes, the others only checked as a memo is read whole
+    /// (roll-lqjj.30: an attempt file's entry is otherwise paid for by every command). Never
+    /// written back.
+    pub fn load_only(ws: &Workspace, wanted: &dyn Fn(&str) -> bool) -> Memo {
+        Memo::load_of(ws, wanted, true)
+    }
+
+    fn load_of(ws: &Workspace, wanted: &dyn Fn(&str) -> bool, partial: bool) -> Memo {
         let (data, key) = read_keyed(&memo_path(ws)).unwrap_or_default();
-        let mut files = parse(&data).unwrap_or_default();
+        let mut files = parse(&data, wanted).unwrap_or_default();
         settled(&mut files, key.map(|memo| memo.written()));
         Memo {
             files,
             changed: false,
+            partial,
         }
     }
 
@@ -226,7 +242,7 @@ impl Memo {
     /// store lock is held. A memo that cannot be written stays as it was: the next command reads
     /// or hashes again what it would have remembered.
     pub fn save(&mut self, ws: &Workspace) {
-        if !self.changed || !ws.dir.join("sync.git").is_dir() {
+        if !self.changed || self.partial || !ws.dir.join("sync.git").is_dir() {
             return;
         }
         let failpoints = &ws.settings.failpoints;
@@ -275,39 +291,46 @@ fn settled(files: &mut BTreeMap<String, Remembered>, written: Option<i128>) {
     }
 }
 
-/// The files a memo holds, or `None` when any part of it is not as [`Memo::render`] writes it.
-fn parse(data: &[u8]) -> Option<BTreeMap<String, Remembered>> {
+/// The files a memo holds that `wanted` names, or `None` when any part of it is not as
+/// [`Memo::render`] writes it: each file once, in the order of their paths.
+fn parse(data: &[u8], wanted: &dyn Fn(&str) -> bool) -> Option<BTreeMap<String, Remembered>> {
     let mut rest = data.strip_prefix(HEADER)?;
     let mut files = BTreeMap::new();
+    let mut last: Option<&str> = None;
     while !rest.is_empty() {
         let nul = rest.iter().position(|b| *b == 0)?;
         let path = std::str::from_utf8(rest.get(..nul)?).ok()?;
+        if path.is_empty() || last.is_some_and(|last| path <= last) {
+            return None;
+        }
+        last = Some(path);
         let after = rest.get(nul + 1..)?;
         let end = after.iter().position(|b| *b == b'\n')?;
         let fields = std::str::from_utf8(after.get(..end)?).ok()?;
-        let fields: Vec<&str> = fields.split(' ').collect();
-        let [len, modified, changed, inode, device, lines, blob] = fields.as_slice() else {
+        let mut fields = fields.split(' ');
+        let [len, modified, changed, inode, device, lines, blob] = [(); 7].map(|()| fields.next());
+        if fields.next().is_some() {
             return None;
-        };
+        }
         let key = FileKey {
-            len: number(len)?,
-            modified: number(modified)?,
-            changed: number(changed)?,
-            inode: number(inode)?,
-            device: number(device)?,
+            len: number(len?)?,
+            modified: number(modified?)?,
+            changed: number(changed?)?,
+            inode: number(inode?)?,
+            device: number(device?)?,
         };
-        let lines = match *lines {
+        let lines = match lines? {
             "-" => None,
             lines => Some(number(lines)?),
         };
-        let blob = match *blob {
+        let blob = match blob? {
             "-" => None,
-            blob if is_object_name(blob) => Some(blob.to_owned()),
+            blob if is_object_name(blob) => Some(blob),
             _ => return None,
         };
-        let file = Remembered { key, lines, blob };
-        if path.is_empty() || files.insert(path.to_owned(), file).is_some() {
-            return None;
+        if wanted(path) {
+            let blob = blob.map(str::to_owned);
+            files.insert(path.to_owned(), Remembered { key, lines, blob });
         }
         rest = after.get(end + 1..)?;
     }
@@ -334,122 +357,4 @@ fn newlines(data: &[u8]) -> usize {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn key(len: u64) -> FileKey {
-        FileKey {
-            len,
-            modified: 1_791_558_245_123_456_789,
-            changed: -5,
-            inode: 42,
-            device: u64::MAX,
-        }
-    }
-
-    fn remembered(len: u64, lines: Option<usize>, blob: Option<&str>) -> Remembered {
-        Remembered {
-            key: key(len),
-            lines,
-            blob: blob.map(str::to_owned),
-        }
-    }
-
-    #[test]
-    fn a_memo_reads_back_as_it_was_written() {
-        let mut memo = Memo::default();
-        let sha1 = "0123456789abcdef0123456789abcdef01234567";
-        let sha256 = "ab".repeat(32);
-        memo.set("events/m/000001.jsonl", key(10), Some(3), Some(sha1.into()));
-        memo.set("events/m/claims/x y.json", key(0), None, Some(sha256));
-        memo.set("events/odd\nname/000002.jsonl", key(7), Some(1), None);
-        let written = memo.render();
-        assert!(written.starts_with(HEADER));
-        assert_eq!(parse(&written), Some(memo.files.clone()));
-        assert_eq!(parse(HEADER), Some(BTreeMap::new()));
-    }
-
-    #[test]
-    fn a_memo_that_is_not_whole_is_none() {
-        let mut memo = Memo::default();
-        let sha = "0123456789abcdef0123456789abcdef01234567";
-        memo.set("events/m/000001.jsonl", key(10), Some(3), Some(sha.into()));
-        let written = memo.render();
-        for cut in 0..written.len() {
-            // a record cut short anywhere is no memo, never part of one
-            if cut != HEADER.len() {
-                assert_eq!(parse(&written[..cut]), None, "{cut}");
-            }
-        }
-        let text = String::from_utf8(written.clone()).unwrap();
-        for wrong in [
-            text.replace("bead journal memo 1", "bead journal memo 2"),
-            text.replace(" 3 ", " +3 "),
-            text.replace(" 3 ", " three "),
-            text.replace(sha, &sha.to_uppercase()),
-            text.replace(sha, &sha[..39]),
-            text.replace(" 42 ", " 42  "),
-            text.replace("events/m/000001.jsonl", ""),
-            format!("{text}{}", &text[HEADER.len()..]),
-        ] {
-            assert_eq!(parse(wrong.as_bytes()), None, "{wrong:?}");
-        }
-        let mut invalid = written;
-        invalid.insert(HEADER.len(), 0xff);
-        assert_eq!(parse(&invalid), None);
-    }
-
-    #[test]
-    fn a_memo_says_nothing_of_a_file_it_was_not_written_after() {
-        let sha = "0123456789abcdef0123456789abcdef01234567";
-        let kept = |written| {
-            let mut files = BTreeMap::new();
-            files.insert("p".to_owned(), remembered(10, Some(2), Some(sha)));
-            settled(&mut files, written);
-            files.len()
-        };
-        let moment = key(10).modified;
-        assert_eq!(kept(Some(moment + 1)), 1, "settled before the memo");
-        assert_eq!(kept(Some(moment)), 0, "of the memo's own tick");
-        assert_eq!(kept(Some(moment - 1)), 0, "written before the file");
-        assert_eq!(kept(None), 0, "no time for the memo itself");
-        // both times must be older: a change time of that moment is as racy as a write time
-        let changed_since = FileKey {
-            changed: moment + 1,
-            ..key(10)
-        };
-        assert!(key(10).settled_before(moment + 1));
-        assert!(!changed_since.settled_before(moment + 1));
-    }
-
-    #[test]
-    fn a_blob_is_remembered_only_for_the_identity_it_was_hashed_at() {
-        let mut memo = Memo::default();
-        let sha = "0123456789abcdef0123456789abcdef01234567";
-        memo.files
-            .insert("p".into(), remembered(10, Some(2), Some(sha)));
-        assert_eq!(memo.blob("p", &key(10)), Some(sha));
-        assert_eq!(memo.blob("p", &key(11)), None);
-        assert_eq!(memo.blob("q", &key(10)), None);
-        // hashed again at another identity: its lines are not known for that one
-        memo.hashed("p", key(11), sha);
-        assert_eq!(memo.files["p"], remembered(11, None, Some(sha)));
-        memo.hashed("p", key(11), sha);
-        memo.changed = false;
-        memo.hashed("p", key(11), sha);
-        assert!(!memo.changed, "nothing new was learnt");
-        memo.files
-            .insert("q".into(), remembered(3, Some(1), Some(sha)));
-        memo.changed = false;
-        memo.forget_blobs();
-        assert!(memo.changed, "a blob was forgotten");
-        assert_eq!(
-            memo.files["q"],
-            remembered(3, Some(1), None),
-            "its lines are kept"
-        );
-        assert_eq!(memo.blob("q", &key(3)), None);
-        memo.retain(|path| path != "p" && path != "q");
-        assert!(memo.changed && memo.files.is_empty());
-    }
-}
+mod tests;

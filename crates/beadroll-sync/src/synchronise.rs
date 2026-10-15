@@ -1,6 +1,8 @@
 //! Journal exchange, published-tracker adoption, immediate publication and unpublished counts.
 
+use std::collections::HashSet;
 use std::ffi::{OsStr, OsString};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use beadroll_core::json::{self, Format, Int, MAX_DIGITS, Object, Value};
@@ -364,10 +366,11 @@ pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
         _ => return Ok(None),
     }
     let meta = ws.meta(false)?;
+    let none = Object::new();
     let published = match meta.get("published") {
-        Some(Value::Object(published)) => (**published).clone(),
+        Some(Value::Object(published)) => &**published,
         _ if meta.get("last_sync").is_some_and(Value::truthy) => return Ok(None),
-        _ => Object::new(),
+        _ => &none,
     };
     let unreadable = |what: String| {
         Error::Store(beadroll_store::Error::io_message(format!(
@@ -377,23 +380,30 @@ pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
     };
     let zero = Int::from(0);
     let mut count = Int::from(0);
-    let mut memo = Memo::load(ws);
-    for path in segment_files(ws)? {
-        let lines = Int::from(memo.lines(&relative(ws, &path), &path)? as i64);
-        let known = match published.get(&relative(ws, &path)) {
+    let segments: Vec<(PathBuf, String)> = (segment_files(ws)?.into_iter())
+        .map(|path| {
+            let name = relative(ws, &path);
+            (path, name)
+        })
+        .collect();
+    // the segments' lines alone: what the memo says of each attempt file is not needed here
+    let names: HashSet<&str> = segments.iter().map(|(_, name)| name.as_str()).collect();
+    let mut memo = Memo::load_only(ws, &|name| names.contains(name));
+    for (path, name) in &segments {
+        let lines = Int::from(memo.lines(name, path)? as i64);
+        let known = match published.get(name) {
             None => Int::from(0),
             Some(value) => count_of(value).ok_or_else(|| {
-                unreadable(format!(
-                    "the published count of {} is not a number",
-                    relative(ws, &path)
-                ))
+                unreadable(format!("the published count of {name} is not a number"))
             })?,
         };
         let behind = lines.sub(&known);
         count = count.add(if behind > zero { &behind } else { &zero });
     }
     for path in claim_files(ws)?.iter() {
-        if !published.contains_key(&relative(ws, path)) {
+        // its path in the store, as `relative` gives it, without a copy of each
+        let name = path.strip_prefix(&ws.dir).unwrap_or(path).to_string_lossy();
+        if !published.contains_key(&*name) {
             count = count.add(&Int::from(1));
         }
     }

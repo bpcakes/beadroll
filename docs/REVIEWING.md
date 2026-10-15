@@ -1061,20 +1061,61 @@ These were decided deliberately. Report problems *with* them, not their existenc
   shared attempt listing answers the same hazard the way an in-process cache can: every attempt
   bead writes forgets the names (`Workspace::forget_claims`), so what this process wrote is always
   listed, while a file another process adds within one tick of our listing is simply not there
-  yet, which a listing taken a moment earlier would also have said. What remains is git's own
+  yet, which a listing taken a moment earlier would also have said, as long as nothing read since
+  builds on it: a reader that has read the segments lists the directories again (X13, below). What remains is git's own
   residue: a rewrite in place, at the same length, between bead reading a file and writing the
   cache, inside one tick. Every later rewrite is seen.
-- Accepted attempt names are shared within a command's locked phase (roll-lqjj.12). Each
+- Accepted attempt names are shared within a command's locked phase (roll-lqjj.12), and so is
+  each file's identity (roll-lqjj.30). Each
   claims directory is enumerated once while its length, device, inode, modification and change times,
   and mode stay the same. A changed directory is read again, including after a merge or an
   attempt's confirmation, which forgets the names outright rather than trusting the directory's
   times (Y01); taking or releasing the store lock clears the listing, so a fetch
   outside the lock cannot carry old names into the next phase. Unlocked readers also validate
-  each directory before reusing its names. Missing or unreadable directory metadata never
+  each directory before reusing its names, except where order matters: a reader lists every
+  directory again once it has read the segments, before it takes in the attempt files, since a
+  directory that gains a file within one tick of an earlier listing keeps its identity and a
+  record in those segments may build on that file (X13); under the lock no other bead process
+  adds one, and bead's own writes forget the names. Missing or unreadable directory metadata never
   authorizes reuse, and enumeration errors remain errors. This is an in-memory cache only;
-  every file is still stat-ed for projection and blob checks, so an in-place rewrite with an
-  unchanged directory is seen under the same rules as before. Neither the projection's layout
-  nor the published membership map in `meta.json` changes.
+  every file is still stat-ed for projection and blob checks, never vouched for by its
+  directory: once a locked phase, whoever asks (the projection, the memo's blobs at the merge and
+  again at the publish), since no other bead process writes while the lock is held and a file
+  bead writes itself has its identity taken again (`Workspace::forget_claims`); outside the lock,
+  each time it is asked for, after the segments. An in-place rewrite with an unchanged directory
+  is seen under the same rules as before, by the next phase at the latest: one made by something
+  other than bead while a phase holds the lock is seen as one made a moment later would be. The
+  phase is as far as an identity is shared: across a lock boundary another process may have
+  replaced a file, and only a stat of it can say so. A reading command and a local write stat
+  each attempt file once; an online write, which locks for its transaction and its publish's
+  merge and reads before and after the merge, four times where it did seven, and a sync three
+  where it did five. The identities are kept in the order of the listing they were taken for and
+  carried over to the next listing file by file, both being in the order of their paths, rather
+  than in a map by path: cloning and hashing every path cost a local write more than the second
+  stat pass it saved. A listing sorts its names by the bytes of their paths, which share the
+  directory as their beginning: taking each path apart at every comparison was most of the time a
+  directory of 15,000 attempt files took to list. Neither the projection's layout nor the
+  published membership map in `meta.json` changes.
+- `meta.json`, whose `published` map holds an entry for every journal file, is read once a command
+  (roll-lqjj.30): again only when the file at its path no longer has the identity it had when this
+  process last read or wrote it, which bead only ever changes by renaming a whole new file over
+  it; what a write leaves is known by the identity its own descriptor has once renamed into
+  place. The unpublished count every command gives reads only the memo's entries of the segments
+  whose lines it counts; the memo is still checked whole, every line as one is written, now in
+  the order bead writes them (each path once, as before), and one read so is never written back.
+  The parsed copy is trusted on an identity that need not be settled (Y01), which leaves a
+  residue: two other processes that each replace the file within one timestamp tick of this
+  one's read, the second's new file given the first's inode back at the same length, leave the
+  identity remembered (on a kernel before 6.13, whose ticks are coarse, or a file system with
+  whole-second times; the review of #17 saw ext4 reuse the inode in 1,902 of 2,000 double
+  replacements). The process then answers from its older copy, so its unpublished count errs
+  high, and a save writes that copy back with its own keys, losing those only the others set
+  (`name`): bookkeeping, in a file that is last-writer-wins already, since a sync records itself
+  there outside the lock. Settling the identity would need a moment on the file system's clock
+  after the read, which only a file's own times give; the wall clock, with a bound on the tick,
+  would have the file parsed again whenever it was written within that bound, which is after
+  this process's own write and between commands run one after another: the usual path, whose
+  parses the cache saves (55 ms each at 200,000 events).
 - A publish reuses an unchanged claims subtree only when the last merged tip holds it
   (roll-lqjj.13). The desired entries' canonical tree object name, with mode 100644 and every
   filename and blob, must equal the subtree name at that path. SHA-1 and SHA-256 are checked

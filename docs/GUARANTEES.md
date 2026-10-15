@@ -381,7 +381,13 @@ it, and the file is committed again.
   (`cargo xtask timing --read N --ownership` and `--sync N --ownership`,
   200,000 and 6,000 events, release on macOS arm64, best of five against a
   local bare remote). Reads still check metadata for every file, and the
-  local-write timings at 200,000 events did not improve. A fetch or push that
+  local-write timings at 200,000 events did not improve. Each attempt file's
+  metadata is now checked once a lock phase, whoever asks, and `meta.json`,
+  which lists every published file, is read once a command (roll-lqjj.30): at
+  91,952 attempt files a `list` takes 0.75 s rather than 0.97 s, a local write
+  0.93 s rather than 1.26 s, a published write 3.9 s rather than 5.7 s and a
+  sync with nothing new 2.9 s rather than 4.0 s (Linux, release, best of three
+  to five against a local bare remote, other work running). A fetch or push that
   gets no answer fails
   after `BEAD_NET_TIMEOUT` seconds (default 45) instead of hanging.
 - Publishing is serialised on one ref. Under heavy contention (four machines

@@ -121,3 +121,51 @@ fn an_unreadable_or_non_directory_is_not_hidden_by_cached_names() {
     std::fs::remove_file(&folder).unwrap();
     assert!(claims.files(home.path()).unwrap().is_empty());
 }
+
+/// Under the store lock a file's identity is taken once a phase: a new listing carries over what
+/// the last one took, file by file, but for a file bead wrote since, which is stat-ed again, and a
+/// new file, stat-ed for the first time. Outside the lock each is stat-ed every time.
+#[test]
+fn identities_are_kept_across_listings_but_for_what_bead_writes() {
+    let home = tempfile::tempdir().unwrap();
+    let folder = home.path().join("a/claims");
+    std::fs::create_dir_all(&folder).unwrap();
+    let (one, two, three) = (
+        folder.join("1.json"),
+        folder.join("2.json"),
+        folder.join("3.json"),
+    );
+    std::fs::write(&one, b"one").unwrap();
+    std::fs::write(&two, b"two").unwrap();
+    let mut claims = Claims::default();
+    let files = claims.files(home.path()).unwrap();
+    let first = claims.keys(&files, true);
+    assert_eq!(&*first, &[FileKey::of(&one), FileKey::of(&two)]);
+    // something other than bead moves both files' times: kept, the identities taken stand
+    for path in [&one, &two] {
+        let opened = std::fs::File::options().write(true).open(path).unwrap();
+        let earlier = SystemTime::now() - Duration::from_secs(60);
+        opened
+            .set_times(FileTimes::new().set_modified(earlier))
+            .unwrap();
+    }
+    assert!(Arc::ptr_eq(&first, &claims.keys(&files, true)));
+    assert_ne!(
+        claims.keys(&files, false)[0],
+        first[0],
+        "stat-ed outside the lock"
+    );
+    // bead replaces one and adds another: listed again, those two stat-ed, the other carried over
+    std::fs::write(&one, b"ONE").unwrap();
+    claims.forget(&one);
+    std::fs::write(&three, b"three").unwrap();
+    claims.forget(&three);
+    let files = claims.files(home.path()).unwrap();
+    let keys = claims.keys(&files, true);
+    assert_eq!(
+        &*keys,
+        &[FileKey::of(&one), first[1], FileKey::of(&three)],
+        "only what bead wrote is stat-ed again"
+    );
+    assert_ne!(keys[1], FileKey::of(&two));
+}

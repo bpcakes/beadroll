@@ -24,11 +24,13 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   through the link's `cat-file`; `src/link/write.rs`: blobs, trees and the ref after a push through
   its `hash-object`, `mktree` and `update-ref`, with one ref transaction after a fetch.
   Each falls back to the corresponding separate git command. `Link::local_blobs` hashes only
-  journal files the store's memo (`beadroll_store::Memo`) cannot vouch for; `Link::hashed` lists them
-  (roll-lqjj.1); `Link::unpublished` and `Link::published_counts` take a segment's lines from the
-  memo while the segment is unchanged.
+  journal files the store's memo (`beadroll_store::Memo`) cannot vouch for, an attempt file by the
+  identity its locked phase took of it (`beadroll_store::claim_keys`, roll-lqjj.30); `Link::hashed`
+  lists them (roll-lqjj.1); `Link::unpublished` and `Link::published_counts` take a segment's
+  lines from the memo while the segment is unchanged.
 - `src/synchronise.rs`: `synchronise` and `Synced`, `adopt_published`, `publish_soon`,
-  `unpublished_count`, `pause`, `ROUNDS`.
+  `unpublished_count` (the memo's segment entries alone, `meta.json` as the command read it),
+  `pause`, `ROUNDS`.
 - `src/ownership.rs`: `coordinated` (up to 24 rounds of a claim, takeover, release or claiming
   update), `settle_commands` (receipts), `settle_pending` (fences), `forget`, `Mode`, `Settled`.
 - `src/error.rs`: `Error`, each variant with its code.
