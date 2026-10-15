@@ -14,7 +14,7 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   merge reads, and `bead update` answers from the state its write left. `update`, `dep`, `claim`
   and `release` no longer copy the whole state to read it while they write. At 20,000 imported
   issues an online comment takes 0.72 s rather than 1.05 s, an update 0.75 s rather than 1.39 s,
-  a claim 0.72 s rather than 0.97 s, and a sync that brings nothing 0.27 s rather than 0.60 s.
+  a claim 0.64 s rather than 0.97 s, and a sync that brings nothing 0.27 s rather than 0.60 s.
   Outputs, receipts and the protocol are unchanged. `cargo xtask timing --sync N` records a write
   published at once (`online_seconds`).
 

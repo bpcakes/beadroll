@@ -282,8 +282,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   closed) and published to a local bare remote, release builds, best of three, a read counted as
   an open of `<store>/projection` under strace, on a machine shared with ten other builds, the
   reads and seconds of an online comment, update, close, create, `dep add` and claim went from 4,
-  5, 4, 4, 4 and 3 to 2 each (1.05, 1.39, 1.06, 1.05, 1.24 and 0.97 s to 0.72, 0.75, 0.78, 0.79,
-  0.81 and 0.72 s), and a sync that brings nothing from 3 to 1 (0.60 s to 0.27 s). `cargo xtask
+  5, 4, 4, 4 and 3 to 2 each (1.05, 1.39, 1.05, 1.05, 1.24 and 0.97 s to 0.72, 0.75, 0.78, 0.79,
+  0.81 and 0.64 s), and a sync that brings nothing from 3 to 1 (0.60 s to 0.27 s). `cargo xtask
   timing --sync N` measures the same two on its generated history: a write published at once
   (`online_seconds`; 1.15 s to 0.80 s at 200,000 events) and a sync after a local write
   (`seconds`; 0.94 s to 0.49 s). The `projection.read` failpoint counts the reads
