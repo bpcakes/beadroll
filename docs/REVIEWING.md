@@ -970,6 +970,63 @@ These were decided deliberately. Report problems *with* them, not their existenc
   or error, and a tree with a dangling link or a file that is not JSON, which discovery refuses
   first, starts none; and a SIGKILL while a blob is hashed can leave a file in the temporary
   directory (the attempt's or the manifest's content, never in the store).
+- `bead show` asks git whether closing commits are merged once a command (roll-lqjj.26, X08).
+  `merged` says whether the default branch, origin's remote-tracking ref or the local branch,
+  contains the commit an issue was closed on. It was asked issue by issue, and each asking found
+  the default branch again (`symbolic-ref`, a `rev-parse --verify` for each candidate ref) and ran
+  `merge-base --is-ancestor` against each of its refs: five gits for each closed issue, so `show`
+  of 1,000 took 23 to 29 s. `merged_into_default` now takes every commit a command shows: the
+  default branch is found once, each distinct commit is asked once, and several full object names,
+  as bead records them (`rev-parse HEAD`), are asked together. One `cat-file --batch-check` peels
+  each to its commit, as `merge-base` does: one that names none is unknown, as `merge-base` failing
+  for every ref said. One `rev-list --stdin` of the commits with every ref negated leaves out
+  exactly those a ref reaches, which are merged. What it lists is not taken as unmerged: git stops
+  walking the refs' history by commit date, a few commits after all it has left to walk is what the
+  refs reach, so a commit made while the clock was ahead and merged through commits dated before
+  it is listed though main contains it (`checkouts::a_commit_made_with_the_clock_ahead_*` make
+  one). Those are looked for in the default branch's history itself, which a second `rev-list`
+  lists newest first, up to 1,000 commits for each of them: found is merged, and not found in a
+  history listed to its end is not, as `merge-base` would say. A bound, because that walk costs
+  git a microsecond or a few a commit (0.63 s for 45,000 without a commit-graph, here) where
+  asking one commit alone costs starting a git, a millisecond or more; where history is longer, the
+  commits it leaves are asked alone with `merge-base`. So are one commit alone, which costs no more
+  so, and an abbreviation, since `^{commit}` makes `cat-file` prefer a commit among the objects a
+  short name could name and `merge-base` does not. For the commits bead records, `show` therefore
+  starts 3 gits to find the default branch and 2 or 3 more however many issues it shows. `merged`
+  and `show`'s bytes are what they were: `show` of the 5,000 closed issues of a scratch world, in
+  JSON and as text, is 8683332's byte for byte, and `checkouts::show_of_several_closed_issues_*`
+  keeps several shown together equal to each shown alone. `rev-list` ignores a ref that leads to
+  no commit (a tree, a blob, a tag of one), where `merge-base` fails, so a walk that lists nothing
+  is no history rather than a whole one, and its commits are asked alone and unknown, as they were
+  (`checkouts::a_default_branch_that_is_no_commit_leaves_merged_unknown`). The one answer that
+  changes is in a damaged repository missing a commit of the default branch's history: where main
+  merges P, B, R and Y3, Y2, Y1, R and Y1's object is gone, `rev-list --stdin ^main B` skips the
+  missing parents of commits it already knows main reaches and leaves B out, so B is merged, while
+  `merge-base --is-ancestor B main` fails to read Y1 and says B is not (exit 1, git 2.43) or
+  unknown (exit 128, newer gits). B alone is still asked of `merge-base`, so there `show B` and
+  `show B U` disagree; the answer together is the right one. Commit text from any machine's event
+  reaches `merge-base` after `--end-of-options`, never as an option, and text with a NUL, which no
+  argument can carry, is unknown rather than an `IO` failure of `show` (X14). `bead show` of 1, 10,
+  100 and 1,000 issues closed on distinct commits of main started 8, 53, 503 and 5,003 gits and
+  took 65 ms, 0.23 s, 2.06 s and 23.3 s; it starts 8 and takes 66, 64, 70 and 104 ms, three of the
+  gits being the read's own. Issues closed on one commit, on unmerged commits, or half on each
+  start the same gits before and 8 or 9 after, and 1,000 of them took 23.7 to 28.8 s and take 84 to
+  102 ms; all 5,000 closed issues of that world took 190 s and take 0.27 s. A release build on a
+  clone whose main has 1,100 commits and an unmerged branch 1,000 more, the gits counted with
+  strace, the fastest of three runs, 2026-10-15, 64 cores shared with ten other builds (load
+  about 15).
+- A closing commit that is not an object name in hex is `merged: unknown`, never asked of git
+  (roll-lqjj.26, X14). `where.commit` comes from any machine's event, and bead records it as
+  `git rev-parse HEAD` prints it, the full object name in lowercase hex; text of 4 to 64 lowercase
+  hex digits, a full name or an abbreviation, is asked as before, and anything else is unknown
+  without a git started: a revision expression (`HEAD~1`, `main@{yesterday}`, `:/text`, which
+  searches every commit message), uppercase hex, a ref's name such as `main`. git would evaluate
+  it here, in this checkout, where it names something other than what it named where it was
+  written, if it named anything there. bead never writes such text; an event that holds it was
+  written by hand or by another program. The place itself is still shown as recorded, in `where`
+  and `closed_on`. A ref whose name is itself such hex (a tag `2024`, a branch `cafe`) is still
+  resolved, as before: `merge-base` tries refs before abbreviations, so a name shorter than a full
+  object name is the ref when there is one, and a full object name is always the object.
 - A publish hashes only the journal files it cannot vouch for (roll-lqjj.1, step 2 of epic
   roll-lqjj): the store remembers, in `sync.git/journal-memo`, each segment's and attempt file's
   identity on disk when it was hashed (length, modification and change times, inode, device: what
