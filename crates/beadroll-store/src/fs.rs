@@ -70,6 +70,33 @@ pub(crate) fn write_atomic_parts(
     private: bool,
     failpoints: &Failpoints,
 ) -> Result<(), Error> {
+    written_whole(path, parts, private, true, failpoints)
+}
+
+/// [`write_atomic_parts`] of a store cache, without the fsync: the projection and its text file,
+/// whose every part a reader checks against a sum kept of it and which bead makes again from the
+/// journal whenever it is missing, cut, damaged or out of step with the other. Renamed into place
+/// whole, so that no reader sees it half-written; a crash may leave it lost, cut, zeroed or as it
+/// was before, and each costs a replay (`docs/REVIEWING.md` §2), where flushing it cost the
+/// command after every write as much again as the write (X05). The failpoints fire as for
+/// [`write_atomic`].
+pub(crate) fn write_cache_parts(
+    path: &Path,
+    parts: &[&[u8]],
+    failpoints: &Failpoints,
+) -> Result<(), Error> {
+    written_whole(path, parts, true, false, failpoints)
+}
+
+/// `parts` written to a temporary file beside `path`, fsynced when `durable`, and renamed into
+/// place: [`write_atomic_parts`] and [`write_cache_parts`].
+fn written_whole(
+    path: &Path,
+    parts: &[&[u8]],
+    private: bool,
+    durable: bool,
+    failpoints: &Failpoints,
+) -> Result<(), Error> {
     let parent = path.parent().unwrap_or(Path::new("."));
     if private {
         private_dirs(parent)?;
@@ -88,7 +115,7 @@ pub(crate) fn write_atomic_parts(
     let written = (parts.iter())
         .try_for_each(|part| file.write_all(part))
         .map_err(|e| IoError::bare(&e))
-        .and_then(|()| fsync(&file))
+        .and_then(|()| if durable { fsync(&file) } else { Ok(()) })
         .and_then(|()| match failpoints.hit_path("atomic-write", path) {
             // the write fails as a full volume fails it
             Some(Fired::Errno(errno)) => Err(IoError::bare(&io::Error::from_raw_os_error(errno))),
@@ -368,6 +395,32 @@ mod tests {
         write_atomic_parts(&target, &parts, true, &Failpoints::none()).unwrap();
         assert_eq!(std::fs::read(&target).unwrap(), b"headtexts\n");
         let names: Vec<_> = dir_entries(dir.path()).unwrap();
+        assert_eq!(names, std::slice::from_ref(&target));
+    }
+
+    /// A cache is written as any store file is but for the fsync: whole, 0600, in place of the
+    /// one there or not at all, nothing left behind, and past both failpoints of an atomic write.
+    #[test]
+    fn a_cache_is_written_whole_or_not_at_all_and_passes_the_failpoints() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("a/b/projection-texts");
+        let parts: [&[u8]; 3] = [b"head", b"", b"texts\n"];
+        write_cache_parts(&target, &parts, &Failpoints::none()).unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"headtexts\n");
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        // the volume full as it is written again: the one there stays, and nothing else
+        let spec = "atomic-write:-texts=errno(ENOSPC);atomic-written:-texts@always=sleep(0)";
+        let failpoints = Failpoints::from_env(Some(OsStr::new(spec)), false, false).unwrap();
+        let error = write_cache_parts(&target, &[b"other"], &failpoints).unwrap_err();
+        assert_eq!(error.code().as_str(), "IO");
+        assert_eq!(failpoints.hits("atomic-write:-texts"), 1);
+        assert_eq!(failpoints.hits("atomic-written:-texts"), 0);
+        assert_eq!(std::fs::read(&target).unwrap(), b"headtexts\n");
+        write_cache_parts(&target, &[b"other"], &failpoints).unwrap();
+        assert_eq!(failpoints.hits("atomic-written:-texts"), 1);
+        assert_eq!(std::fs::read(&target).unwrap(), b"other");
+        let names: Vec<_> = dir_entries(target.parent().unwrap()).unwrap();
         assert_eq!(names, std::slice::from_ref(&target));
     }
 

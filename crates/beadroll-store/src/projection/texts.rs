@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use beadroll_core::id::EventId;
 use beadroll_core::state::{State, TextPlace};
 
-use crate::fs::{fsync, write_atomic_parts};
+use crate::fs::write_cache_parts;
 use crate::workspace::Workspace;
 
 /// The first bytes of a text file.
@@ -58,20 +58,24 @@ pub(super) fn read_in(file: &File, state: &mut State, wanted: &[(EventId, TextPl
     true
 }
 
-/// Starts the text file again, of `generation`, holding `texts` after its header: whole and durable,
-/// in place of the one there, or not at all.
+/// Starts the text file again, of `generation`, holding `texts` after its header: whole, in place of
+/// the one there, or not at all. A cache, so not flushed: a text file a crash leaves lost, cut,
+/// zeroed or as it was is another generation's or fails the sums of the texts a projection places
+/// in it, and the journal is replayed ([`crate::fs::write_cache_parts`]).
 pub(super) fn start(ws: &Workspace, generation: [u8; 16], texts: &[u8]) -> bool {
     // the texts written as they are, not first copied behind the header (roll-lqjj.9)
     let parts: [&[u8]; 3] = [MAGIC, &generation, texts];
-    write_atomic_parts(&texts_path(ws), &parts, true, &ws.settings.failpoints).is_ok()
+    write_cache_parts(&texts_path(ws), &parts, &ws.settings.failpoints).is_ok()
 }
 
-/// Appends `texts` to `file`, `at` its length, durably.
+/// Appends `texts` to `file`, `at` its length, before the projection that places them is written;
+/// not flushed, for the reason [`start`] is not: texts a crash loses, or leaves zeroed, fail their
+/// sums, and so do other texts appended where they were.
 pub(super) fn append(ws: &Workspace, file: &File, at: u64, texts: &[u8]) -> bool {
     if texts.is_empty() {
         return true;
     }
-    let written = file.write_all_at(texts, at).is_ok() && fsync(file).is_ok();
+    let written = file.write_all_at(texts, at).is_ok();
     ws.settings.failpoints.hit("projection.texts-appended");
     written
 }
