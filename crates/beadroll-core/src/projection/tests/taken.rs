@@ -27,7 +27,7 @@ pub(super) struct Tally {
 /// Machine 0's store, of each seed's world, takes in 60 batches, each extending its projection or
 /// declined; every extension must be what projecting the whole journal makes. A world `flawed` has
 /// machines that also write what replay reports, and one whose identity was copied.
-pub(super) fn differential(seeds: std::ops::Range<u64>, flawed: bool) -> Tally {
+pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -> Tally {
     let mut tally = Tally::default();
     for seed in seeds {
         let mut world = if flawed {

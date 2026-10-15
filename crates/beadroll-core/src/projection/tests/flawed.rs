@@ -208,9 +208,14 @@ const EVERY_KIND: [&str; 9] = [
     "unreadable line",
 ];
 
+/// Seeds whose histories fail when one of the three things that keep the projection from being
+/// extended is dropped: a takeover of an id no event has (90, 182), a record of an id an integrity
+/// entry names (44), and an id with several contents whose causes loop back onto it (1451).
+const KEEPS_OUT: [u64; 4] = [44, 90, 182, 1451];
+
 #[test]
 fn every_extension_past_an_integrity_entry_is_replays_answer_or_declined() {
-    let tally = differential(0..40, true);
+    let tally = differential((0..40).chain(KEEPS_OUT), true);
     assert!(
         tally.declined.is_empty(),
         "local writes declined in seeds {:?}",
