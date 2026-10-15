@@ -53,7 +53,10 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   A directory change re-lists it; the file identities used by the memo and projection are still
   checked individually (roll-lqjj.12): `claim_keys` stats each file once a locked phase, whoever
   asks, and each time outside the lock (roll-lqjj.30). `claim_files_afresh` is the listing a
-  reader takes once it has read the segments, every directory read again outside the lock (X13).
+  reader takes once it has read the segments, every directory read again outside the lock (X13),
+  with the `Stamp` of the listing: the identity each claims directory had when it was listed,
+  which tells a later reader that a file was added, removed or renamed over, whoever wrote it
+  (roll-lqjj.37).
 - `src/memo.rs`: `Memo`, what the store remembers of each journal file between commands (its
   identity on disk, `FileKey`, its lines and its blob in `sync.git`), kept as
   `sync.git/journal-memo` (`memo_path`) by the holder of the store lock (roll-lqjj.1);
@@ -89,10 +92,13 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   `projection_sourced` and asks `Sourced::into_current` before it does, and reads the store again
   when that says a file was written since (`Tx::on` does, roll-lqjj.37). Identities suffice
   because every write bead makes to a journal file changes a length (an append) or an inode (a file
-  renamed into place) or the set of files; an attempt file bead writes goes through
-  `write_attempt_file`, which forgets the phase's listing (`Workspace::forget_claims`), or the
-  check would not see it. The check stats each segment and takes the attempt files' listing and
-  identities from the phase: it costs nothing more per attempt file.
+  renamed into place) or the set of files. The check stats each segment again, and takes the
+  attempt files' listing and identities from the phase, with the identity each claims directory had
+  when it was listed (`Claims::stamp`): a file added, removed or renamed over changes its
+  directory's, so a write is seen whether the writer told the phase (`write_attempt_file`; the
+  merge's `write_journal` with a separate `forget_claims`) or not (a bare `write_atomic`), and it
+  costs nothing more per attempt file. A rewrite in place changes none of them, and nothing in the
+  window makes one.
 - An identity taken of an attempt file is kept only while the store lock is held, for the rest of
   that phase, and forgotten when bead writes that file (`Workspace::forget_claims`); a reader
   outside the lock stats each file afresh, after the segments it reads (X13, roll-lqjj.30).

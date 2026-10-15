@@ -13,13 +13,14 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   true: a segment or an attempt file written there would have had the event built on stale heads
   and the claim checked against an old state, and no test would have noticed. The projection a
   merge keeps now comes with the identities of the files it was made from, and `Tx::on` compares
-  them with the files (the segments listed and stat-ed, the attempt files through the identities
-  the phase already took) and reads the store again when they differ. Nothing writes there today,
-  so no output changes and a round still reads the state once; the check costs 26 µs with one
-  segment and 0.67 ms with 300, and the best of ten claims on 20,000 issues took 0.29 s where it
-  took 0.30 s (a machine shared with other builds, so the same within noise). A new
-  failpoint, `ownership.before-transaction`, holds a round between its merge and its transaction,
-  so that a test can write the journal there.
+  them with the files and reads the store again when they differ: the segments are listed and
+  stat-ed, the attempt files are the listing and identities the phase already took, and so is the
+  identity of each claims directory, which a file added, removed or renamed over changes whoever
+  wrote it. Nothing writes there today, so no output changes and a round still reads the state
+  once; the check costs 26 µs with one segment and 0.67 ms with 300, and the best of ten claims on
+  20,000 issues took 0.27 s before and 0.28 s after (a machine shared with other builds, so the
+  same within noise). A new failpoint, `ownership.before-transaction`, holds a round between its
+  merge and its transaction, so that a test can write the journal there.
 
 - The guards held back from the work of roll-lqjj.34 are added now that their changes are on main
   (roll-lqjj.38, X15): `bead blocked`'s lists (X01), `blocked` in each of several details (X02)

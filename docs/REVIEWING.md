@@ -357,39 +357,50 @@ These were decided deliberately. Report problems *with* them, not their existenc
   replaced or gone) it falls back to `Tx::new`, which reads the store again, counted at
   `projection.read`, so the event builds on the heads that include what was written and the
   command decides against the state with it. The guard is in `Tx::on`'s signature, which takes a
-  `Sourced` and no bare projection, so a caller cannot go on from a projection unchecked. Only
-  identities are compared (length, times, inode and device, as the memo compares files), without
-  the sums that make a stored projection vouch for a file of its own timestamp tick: every write
-  bead makes to a journal file changes a length (an append) or an inode (a file written whole and
-  renamed into place), and with the store lock held nothing else writes. A rewrite in place of the
-  same length within one tick of the clock, or an inode reused by two replacements within it, goes
-  unseen, as it does for the memo, and bead makes neither. The attempt side is exact for what bead
-  writes because `write_attempt_file` and the merge's writes forget the phase's listing
-  (`Workspace::forget_claims`), and for a file added or removed behind its back because a changed
-  claims directory is listed again. Closing the window by construction was weighed and not done:
-  every write under `events/` (`append_events`, `extend_segment`, `repair_tail`,
-  `write_attempt_file`, `write_atomic` of any path under it) is a function of the store that takes
-  the `Workspace`, so a window nothing can write in would need each of them to ask for a token the
-  round holds from its merge until `Tx::on` takes it, a change to the signatures of three crates
-  for a window with nothing in it, and a token does not see a file written by a caller that has
-  none; the guard compares the files whatever wrote them, and stays. A failpoint,
-  `ownership.before-transaction`, holds a round in the window for a test to write there, in
-  process (`reads::a_segment_written_after_the_merge_is_read_by_the_claims_transaction` and
-  `an_attempt_file_written_after_the_merge_is_read_by_the_claims_transaction` count two reads and
-  look for the written event among the claim's causes; `reads::a_claim_whose_merge_wrote_files_still_reads_the_state_once`
+  `Sourced` and no bare projection, so a caller cannot go on from a projection unchecked.
+  Only identities are compared (length, times, inode and device, as the memo compares files),
+  without the sums that make a stored projection vouch for a file of its own timestamp tick. The
+  segments are listed and stat-ed again. The attempt files are the locked phase's listing and the
+  identities it keeps of them, which alone would miss a file replaced by a writer that did not tell
+  the phase (`Workspace::forget_claims`; the merge's writes are a `write_journal` and a separate
+  forget, and a bare `write_atomic` has none), the phase carrying over the identity of every file
+  it was not told of. So the check also compares the identity each claims directory had when it
+  was listed (`Stamp`, which the listing keeps without a stat of its own): a file added, removed or
+  renamed over changes its directory's, whatever wrote it and whether or not it told the phase,
+  and a directory that changed is answer enough, without a stat of its files. What none of it sees
+  is a rewrite in place of the same length within one tick of the clock, a file written within one
+  tick of its directory's listing on a kernel that stamps from a coarse clock (X13), or an inode
+  reused by two replacements within one: nothing between the merge's read and `Tx::on` writes a
+  journal file, and what a merge writes it writes before it reads (it can replace one foreign
+  segment twice in a command, through `repair_tail` and then the fork's replacement). Closing the
+  window by construction was weighed and not done: every write under `events/` (`append_events`,
+  `extend_segment`, `repair_tail`, `write_attempt_file`, `write_atomic` of any path under it) is a
+  function of the store that takes the `Workspace`, so a window nothing can write in would need
+  each of them to ask for a token the round holds from its merge until `Tx::on` takes it, a change
+  to the signatures of three crates for a window with nothing in it, and a token does not see a
+  file written by a caller that has none; the guard compares the files whatever wrote them, but
+  for those rewrites in place, and stays. A failpoint, `ownership.before-transaction`, holds a
+  round in the window for a test to write there, in process (`reads::`: a segment, an attempt file
+  in a folder `a` has not, one added to a claims directory it has, and one replaced by a rename,
+  all written from outside the process, count two reads, and all but the last look for the written
+  event among the claim's causes; `a_claim_whose_merge_wrote_files_still_reads_the_state_once`
   keeps what the merge wrote itself from reading again) and through `bead claim`
-  (`protocol::merged_window`), and the sources' own tests write each kind of change after each
-  way a projection is read (`projection::tests::sources`). Each fails with the guard disabled
-  (`into_current` returning the projection unchecked). The check costs, in process, release
-  build, one segment: 26 µs; 50: 0.13 ms; 300: 0.67 ms (about 2 µs a segment, a listing and a
-  `stat`), and under 40 µs more for the attempt files, with 20,000 of them as with none, the
-  locked phase's listing and identities being reused (outside the lock, which `Tx::on` is not for,
-  it lists and stats all 20,000: 54 ms). A claim on a tracker of 20,000 imported issues (one
-  segment), release builds, ten claims each way alternated on a machine shared with three other
-  builds, took 304 ms at best before and 286 ms after, which is noise; the syscalls of one claim,
-  git's included (`strace -f -c`), went from 2,566 to 2,583 of `openat`, `newfstatat`, `fstat`,
-  `getdents64` and `statx`: 6 more `getdents64` (three directory reads), 4 `statx`, 4 `openat`
-  and 3 `fstat`, and no more `newfstatat`.
+  (`protocol::merged_window`), and the sources' own tests write each kind of change, announced to
+  the phase or not, after each way a projection is read (`projection::tests::sources`; the
+  listing's `Stamp` in `listing::tests`). Each fails with the guard disabled (`into_current`
+  returning the projection unchecked); the replaced attempt file's, and the sources' tests of a
+  replacement the phase was not told of, also fail with the directories not compared, which is the
+  guard as it stood when it trusted the phase's identities alone. The check costs, in process, release build, one
+  segment: 26 µs; 50: 0.13 ms; 300: 0.67 ms (about 2 µs a segment, a listing and a `stat`), and
+  under 40 µs more for the attempt files, with 20,000 of them as with none, the locked phase's
+  listing and identities being reused (outside the lock, which `Tx::on` is not for, it lists and
+  stats all 20,000: 54 ms). A claim on a tracker of 20,000 imported issues (one segment), release
+  builds, ten claims each way alternated on a machine shared with three other builds, took 274 ms
+  at best before and 282 ms after (304 and 286 ms in an earlier run), which is noise; the
+  syscalls of a first claim made by the bead process, counted with `strace -c` (`openat`,
+  `newfstatat`, `fstat`, `getdents64` and `statx`), went from 269 to 286: 4 `openat`, 3 `fstat`,
+  6 `getdents64` (three directory reads) and 4 `statx`, and no more `newfstatat`; with git's
+  counted (`-f`) a later claim made 16 more.
 - A projection extended finishes only what the batch changed (roll-lqjj.17, Z02). Replay finishes a
   whole journal by deriving each issue's labels from the tags that remain and building the
   parent-child index from every issue's edges; a projection that redid all of that for every batch
