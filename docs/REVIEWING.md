@@ -432,13 +432,24 @@ These were decided deliberately. Report problems *with* them, not their existenc
   6 ns a byte of projection to write it back: it writes back only once the records it applied
   hold more than a 64th of the projection's bytes (`projection::TAIL`, `kept_for`), so the last
   write before a write-back spends about an eighth of one on the records, and a run of writes a
-  sixteenth a write. A command that reads writes back whatever it applied, as before: with records
+  sixteenth a write. A record about an issue no other record of the tail is about costs more than
+  its bytes: its issue's texts are read in, and appended to the text file again when the
+  projection is written back, about 20 µs a comment at 200,000 events in all. The bound is at the
+  end of a run, about 845 comments at 200,000 events and 85 at 20,000, each on an issue of its own
+  (release, median of three, back to back with the base): the read that meets the whole tail took
+  0.320 s where the read after one write took 0.306 s (37.6 and 34.2 ms at 20,000), and the write
+  that ends the run, applying it and writing the projection back, 0.416 s where a write after a
+  write took 0.400 s on the base (54.9 and 53.5 ms); over the run, the review measured 0.29–0.30 s
+  a write against the base's 0.41 s. A command that reads writes back whatever it applied, as before: with records
   after it every read would decode the index too (26 ms at 200,000 events, a fifth of a
   write-back) and apply them again, and a reader cannot know how many reads will follow. Nothing
   else moves: the projection's bytes are the same (no `projection::ENCODING` change), it is
   written back less often and never otherwise, so what a crash or a race can leave is what a
   write-back that failed or was killed already left, records after an older projection, which
-  the rules above (Y01 included: an older projection's files are only more settled) take in.
+  the rules above take in. Y01 included: a file that was not settled when the stored projection
+  was written stays unsettled while writes leave that projection, so each of them reads it whole
+  and checks its sum again until a read writes the projection back, which costs time, never an
+  answer.
   The differential test extends, beside each batch, the projection last written back by every
   batch since at once, in the order a store reads them (`projection/tests/taken.rs`). Measured
   (`cargo xtask timing --read N`, release, best of five, before and after back to back on a
@@ -446,7 +457,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   takes 0.259 s, at 20,000 0.048 s and 0.036 s; a sync after a local write (`--sync N`, `seconds`)
   0.506 s and 0.339 s at 200,000, and a write published at once (`online_seconds`) 0.803 s and
   0.643 s, since the merge no longer writes back the write's own record; a write after a read and
-  the read after it, which writes back, did not move (0.258 and 0.262 s, 0.273 and 0.281 s). The
+  the read after it, which writes back, did not move (0.258 and 0.262 s, 0.273 and 0.281 s); a
+  read after a run of writes pays for what they left, up to the bound above. The
   rest of the design, each step its own issue (the write's free, roll-lqjj.42; the knowledge
   compacted now and then, .43; copying the bytes of what a write did not touch, .44; append-only
   parts, .45), is on roll-lqjj.36.

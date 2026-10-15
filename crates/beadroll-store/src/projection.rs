@@ -68,7 +68,10 @@ const SLACK: u64 = 1 << 20;
 /// hold before a command that extends it to write writes it back ([`kept_for`]). Applying a
 /// record costs about fifty nanoseconds a byte of it and writing a projection back about six a
 /// byte of it, so the last write before one is written back spends about an eighth of what that
-/// costs on the records, and a run of writes about a sixteenth a write on average. This crate's
+/// costs on the records, and a run of writes about a sixteenth a write on average. A record about
+/// an issue no other is about costs more, its issue's texts read in and, when the projection is
+/// written back, appended again: about twenty microseconds a comment at 200,000 events, so that the
+/// write that ends a run took 4% longer than a write after a write did before. This crate's
 /// tests take 4: their stores hold a few kilobytes, in which with 64 every write would write the
 /// projection back, and with 4 their writes leave it to the next command for a record or two.
 const TAIL: u64 = if cfg!(test) { 4 } else { 64 };
@@ -268,8 +271,8 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
 /// reads writes back whatever it extended: the next one then reads the state alone, where with
 /// records still to apply it would decode the index and apply them again, each time. A command that
 /// extends the projection to write (a transaction, a merge) decodes the index and applies records
-/// whatever it is given, so for it a few more cost about twelve microseconds each, and a save the
-/// whole projection encoded and written: it writes back only once the records hold more than a
+/// whatever it is given, so for it a few more cost twelve to twenty microseconds each, and a save
+/// the whole projection encoded and written: it writes back only once the records hold more than a
 /// [`TAIL`]th of the projection's bytes, and leaves the stored one and its records to the next
 /// command otherwise.
 fn kept_for(want: Want, tail: u64, size: u64) -> bool {

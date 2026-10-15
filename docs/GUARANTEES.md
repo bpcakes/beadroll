@@ -151,8 +151,10 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   file written in the same moment as the projection is read against its sum;
   anything else (a file changed another way, events written concurrently, a
   takeover) has the journal replayed, and the projection written again. A write
-  leaves it as it found it while the records after it are few, and the next read
-  writes it again with them. It is a cache, never a
+  leaves it as it found it while the records after it are few, as `bead info`
+  and `bead machines` do, which read it as a write does; the next command that
+  reads issues (`list`, `show`, `ready` and the like) writes it again with them.
+  It is a cache, never a
   source: deleting it is always safe, and a damaged one, or one another build
   of bead wrote, is never read.
 - Each issue's texts (descriptions, designs, acceptance criteria, notes and
