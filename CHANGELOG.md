@@ -14,10 +14,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   causes are not all there or loop back onto it still do, since an event still to come can change
   what replay makes of them. `bead close`, `bead reopen` and `bead delete` decide every issue they
   name from the state before they write, and read it once more after, instead of once after each
-  issue's event: 60 closes on 4,000 issues with such an event in the journal take 0.066 s rather
-  than 11.6 s, and 0.26 s where the projection still cannot be kept. What they write and answer,
-  an issue named twice included, after an event waiting for a cause too, is unchanged. `cargo
-  xtask timing --extend N` measures closes past an event of a newer bead.
+  issue's event; only an issue named again is decided from the state read again after the events
+  before it. 60 closes on 4,000 issues with such an event in the journal take 0.066 s rather than
+  11.6 s, and 0.26 s where the projection still cannot be kept. What they write and answer is
+  unchanged. `cargo xtask timing --extend N` measures closes past an event of a newer bead.
 
 - A command pays for each attempt file once where it paid several times (roll-lqjj.30, X07): its
   identity is taken once a phase under the store lock, whoever asks (the projection, the blobs a

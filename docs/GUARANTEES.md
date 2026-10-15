@@ -339,9 +339,10 @@ it, and the file is committed again.
   event has, and an id with two contents whose causes are not all there or
   loop back onto it, have every command replay it. A `close`, `reopen` or
   `delete` reads the state once before its events and once after, whatever
-  the journal holds: 60 closes of 4,000 issues with a newer bead's event in
-  the journal take 0.066 s rather than 11.6 s, and 0.26 s rather than 11.7 s
-  when the projection cannot be kept (roll-lqjj.28). An import's dependencies
+  the journal holds, and once more before an issue it names again: 60 closes
+  of 4,000 issues with a newer bead's event in the journal take 0.066 s
+  rather than 11.6 s, and 0.26 s rather than 11.7 s when the projection
+  cannot be kept (roll-lqjj.28). An import's dependencies
   on keys no issue has yet cost what they are: a create visits only those
   waiting for its own key, so 16,000 imports
   each waiting for a key that never comes replay in 0.09 s rather than 30 s,

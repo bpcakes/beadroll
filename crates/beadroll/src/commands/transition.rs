@@ -58,7 +58,6 @@ pub(crate) fn transition(
     let (mut result, ended, named, unchanged, plan) = writing(ctx.ws, ctx.actor, |tx| {
         need_tracker(tx.state()?)?;
         let me = ctx.actor.label(&tx.replica);
-        let heads = tx.heads().to_vec();
         let st = tx.state()?;
         let mut plan = plan(st, args)?;
         if args.recursive && !args.force {
@@ -66,16 +65,50 @@ pub(crate) fn transition(
             let subtree: Vec<EventId> = plan.issues.iter().chain(&plan.left).copied().collect();
             refuse_claimed(st, &subtree, &me)?;
         }
-        // Every issue decided from this one state: the state read again after each event would
-        // replay the journal each time, when the projection cannot take the event (roll-lqjj.28).
-        // The first event builds on the frontier and each later one on the one before: when a
-        // head waits for a cause the journal lacks, every one waits too, and changes nothing.
-        let waits = heads.iter().any(|head| st.pending().contains(head));
-        let decided = decide(st, &plan, (op, status, waits), args, &me);
-        for (uid, data) in decided.events {
+        let ends_claims = matches!(op, "close" | "delete");
+        let mut decided = Decided {
+            // a repeat of this actor's close that ended a claim still publishes it, as a plain
+            // close does, though the issue beneath is left out of the answer; nothing is written
+            // to those
+            ended: ends_claims
+                && (plan.left.iter())
+                    .filter_map(|uid| st.issue(*uid))
+                    .any(|issue| ended_by(issue, &me)),
+            ..Decided::default()
+        };
+        // Each issue is decided from the state the events before it leave. An event changes only
+        // its own issue, so until an issue is named again that is the state read before writing;
+        // only then are the events decided so far written and the state read again
+        // (roll-lqjj.28). Read before every issue, it replayed the journal after each event the
+        // projection could not take.
+        // the events decided and not yet written
+        let mut events: Vec<(EventId, Object)> = Vec::new();
+        // the issues of those events
+        let mut written: HashSet<EventId> = HashSet::new();
+        let mut failure = None;
+        for &uid in &plan.issues {
+            if written.contains(&uid) {
+                for (uid, data) in events.drain(..) {
+                    tx.emit(op, Some(&uid.to_string()), data, None)?;
+                }
+                written.clear();
+            }
+            match decide(tx.state()?, uid, (op, status), args, &me, &mut decided) {
+                Ok(Some(data)) => {
+                    written.insert(uid);
+                    events.push((uid, data));
+                }
+                Ok(None) => {}
+                Err(stop) => {
+                    failure = Some(stop);
+                    break;
+                }
+            }
+        }
+        for (uid, data) in events {
             tx.emit(op, Some(&uid.to_string()), data, None)?;
         }
-        if let Some(failure) = decided.failure.or_else(|| plan.unknown.take()) {
+        if let Some(failure) = failure.or_else(|| plan.unknown.take()) {
             return Err(failure);
         }
         let result = briefs(tx.state()?, &plan.issues)?;
@@ -83,7 +116,6 @@ pub(crate) fn transition(
             ended,
             named,
             unchanged,
-            ..
         } = decided;
         Ok::<_, Failure>((result, ended, named, unchanged, plan))
     })?;
@@ -113,91 +145,57 @@ pub(crate) fn transition(
     Ok(Outcome::new(result, lines))
 }
 
-/// What a transition writes, decided from the state before it writes anything: an event for each
-/// issue it changes, in the order it answers for them, and the failure it stops at after them; the
-/// claim each issue's event names (it ends exactly that claim, never a successor's); whether a
-/// claim ended; and which issues it leaves unchanged.
+/// What a transition's events name and leave: the claim each issue's event names (it ends exactly
+/// that claim, never a successor's), whether a claim ended, and which issues it leaves unchanged.
 #[derive(Default)]
 struct Decided {
-    events: Vec<(EventId, Object)>,
-    failure: Option<Failure>,
     named: Vec<(EventId, EventId)>,
     ended: bool,
     unchanged: Vec<bool>,
 }
 
-/// What `op`, giving `status`, writes for each issue `plan` answers for, decided from `st`, the
-/// state before it writes anything, as the state after the events before each would have it.
-/// An event changes only its own issue, so an issue not written yet is as `st` has it. When the
-/// events `waits` for a cause, none applies, and every issue is as `st` has it however often it is
-/// named. Otherwise one named again after its event is as that event left it: the event built on
-/// everything `st` holds and applies after all of it, so it saw every value of the issue's status
-/// and every claim on it, and leaves the status asked for, undisputed, and no claim (the one it
-/// ended counted already); a close drops the provisional claims too, where a delete or a reopen
-/// leaves them and is written again.
+/// What `op`, giving `status`, writes for the issue `uid`, decided from `st`, the state the events
+/// before it leave: the event's data, or nothing for an issue already as asked, which `decided`
+/// marks unchanged; the claim the event ends, and whether one ended, go in `decided` too.
 fn decide(
     st: &State,
-    plan: &Plan,
-    (op, status, waits): (&str, &str, bool),
+    uid: EventId,
+    (op, status): (&str, &str),
     args: &TransitionArgs,
     me: &Label,
-) -> Decided {
+    decided: &mut Decided,
+) -> Result<Option<Object>, Failure> {
     let ends_claims = matches!(op, "close" | "delete");
-    let mut decided = Decided::default();
-    // the issues an event was decided for
-    let mut written: HashSet<EventId> = HashSet::new();
-    let mut each = |uid: EventId| -> Result<(), Failure> {
-        let issue = known(st, uid)?;
-        // the claim held, whether this actor ended the last one, and whether the issue is as asked
-        let (held, mine_ended, settled) = if !waits && written.contains(&uid) {
-            let left = op == "close" || issue.provisional_claims().is_empty();
-            (None, false, left)
-        } else {
-            let held = issue.claim().cloned();
-            (held, ended_by(issue, me), already(st, issue, status))
-        };
-        if let Some(held) = &held
-            && !me.is(&held.owner)
-            && !args.force
-        {
-            return Err(Failure::new(
-                Code::ClaimedByOther,
-                format!(
-                    "{} is claimed by {}: use `bead takeover` first, or --force",
-                    issue.key(),
-                    held.owner
-                ),
-            ));
+    let issue = known(st, uid)?;
+    let held = issue.claim();
+    if let Some(held) = held
+        && !me.is(&held.owner)
+        && !args.force
+    {
+        return Err(Failure::new(
+            Code::ClaimedByOther,
+            format!(
+                "{} is claimed by {}: use `bead takeover` first, or --force",
+                issue.key(),
+                held.owner
+            ),
+        ));
+    }
+    let mut data = Object::new();
+    if let Some(reason) = args.reason.as_deref().filter(|r| !r.is_empty()) {
+        data.insert("reason".into(), Value::from(text(reason)?));
+    }
+    if ends_claims && let Some(held) = held.filter(|held| me.is(&held.owner)) {
+        data.insert("claim".into(), Value::from(held.id.to_string()));
+        match decided.named.iter_mut().find(|(issue, _)| *issue == uid) {
+            Some(entry) => entry.1 = held.id,
+            None => decided.named.push((uid, held.id)),
         }
-        let mut data = Object::new();
-        if let Some(reason) = args.reason.as_deref().filter(|r| !r.is_empty()) {
-            data.insert("reason".into(), Value::from(text(reason)?));
-        }
-        if ends_claims && let Some(held) = held.as_ref().filter(|held| me.is(&held.owner)) {
-            data.insert("claim".into(), Value::from(held.id.to_string()));
-            match decided.named.iter_mut().find(|(issue, _)| *issue == uid) {
-                Some(entry) => entry.1 = held.id,
-                None => decided.named.push((uid, held.id)),
-            }
-        }
-        decided.ended = decided.ended || held.is_some() || (ends_claims && mine_ended);
-        decided.unchanged.push(settled);
-        if !settled {
-            written.insert(uid);
-            decided.events.push((uid, data));
-        }
-        Ok(())
-    };
-    let failure = plan.issues.iter().find_map(|uid| each(*uid).err());
-    decided.failure = failure;
-    // a repeat of this actor's close that ended a claim still publishes it, as a plain close
-    // does, though the issue beneath is left out of the answer; nothing is written to those
-    decided.ended = decided.ended
-        || ends_claims
-            && (plan.left.iter())
-                .filter_map(|uid| st.issue(*uid))
-                .any(|issue| ended_by(issue, me));
-    decided
+    }
+    decided.ended = decided.ended || held.is_some() || (ends_claims && ended_by(issue, me));
+    let settled = already(st, issue, status);
+    decided.unchanged.push(settled);
+    Ok((!settled).then_some(data))
 }
 
 /// What `args` acts on in `st`: each id named, in the order given; with `--recursive`, each named

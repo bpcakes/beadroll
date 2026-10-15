@@ -1,8 +1,9 @@
 //! `bead close`, `reopen` and `delete` of several issues decide every one from the state before
-//! they write and read the state once more after (roll-lqjj.28): one named twice is answered as the
-//! event before left it, on a clean journal, one with a newer bead's operation in it, and one with a
-//! takeover of an id no event has, which keeps the store's projection from being extended; and as
-//! it was, when every event written waits for a cause the journal lacks.
+//! they write and read the state once more after, and once more before each issue named again
+//! (roll-lqjj.28): every issue is answered as the events before it left it, on a clean journal, one
+//! with a newer bead's operation in it, and one with a takeover of an id no event has, which keeps
+//! the store's projection from being extended; and on journals whose waiting events keep the
+//! events written from applying, or from seeing everything.
 
 use std::path::Path;
 
@@ -176,7 +177,7 @@ fn several_issues_and_one_named_twice_are_answered_as_each_event_left_them() {
 }
 
 #[test]
-fn a_transition_of_several_issues_reads_the_state_once_more_however_the_projection_fares() {
+fn a_transition_reads_the_state_once_more_and_again_only_before_an_issue_named_again() {
     for journal in JOURNALS {
         let sandbox = crate::sandbox();
         let a = crate::rust_only(&sandbox, "a");
@@ -184,17 +185,22 @@ fn a_transition_of_several_issues_reads_the_state_once_more_however_the_projecti
         let keys: Vec<String> = (0..6).map(|n| create(&a, &format!("t{n}"), None)).collect();
         add(&a, journal);
         // The projection read, or the journal: once, and once more after the events only when
-        // the projection cannot be extended past them. Every issue's state read again after the
-        // event before it would load the journal once an issue.
-        let reads = match journal {
-            Journal::Dangling => 2,
-            Journal::Clean | Journal::Newer => 1,
-        };
+        // the projection cannot be extended past them, and before an issue named again, after the
+        // events before it, likewise. Every issue's state read again after the event before it
+        // would load the journal once an issue.
         let stop = |nth: usize| format!("journal.after-enumerate@nth({nth})=exit(97)");
-        for op in ["close", "reopen", "delete"] {
+        for (op, again) in [("close", false), ("reopen", true), ("delete", true)] {
+            let reads = match journal {
+                Journal::Dangling if again => 3,
+                Journal::Dangling => 2,
+                Journal::Clean | Journal::Newer => 1,
+            };
             let mut args = vec![op];
-            args.extend(keys.iter().map(String::as_str));
-            args.push(keys[0].as_str());
+            args.extend(keys[..3].iter().map(String::as_str));
+            if again {
+                args.push(keys[0].as_str());
+            }
+            args.extend(keys[3..].iter().map(String::as_str));
             args.push("--offline");
             // the last read is reached, and stops it before anything is written
             let stopped = a.cmd(&args).env("BEAD_FAILPOINTS", stop(reads)).run();
@@ -312,4 +318,66 @@ fn an_issue_named_again_is_as_its_event_left_it_though_events_off_the_frontier_w
         ]
     );
     assert_eq!(a.show(&claimed)["status"].as_str(), Some("closed"));
+}
+
+#[test]
+fn an_issue_named_again_is_as_the_events_before_left_it_though_they_did_not_see_everything() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let alpha = create(&a, "alpha", None);
+    let uid = a.bead(["info"]).unwrap()["frontier"][0]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    create(&a, "beta", None);
+    // Another machine set alpha's status without having seen beta's create, and two events naming
+    // each other, one of them that change, wait: the change is on no head's past, so the close
+    // built on the frontier does not see it, and alpha's status stays disputed after it.
+    let [change, first, second] = [(); 3].map(|()| uuid7(&Clock::system()));
+    let event = |id: &str, deps: &[&str], issue: &str, data: Json| {
+        let deps = Json::Array(deps.iter().map(|dep| Json::from(*dep)).collect());
+        json!({"v": 1, "id": id, "replica": "feedface", "deps": deps,
+               "actor": {"agent": "other"}, "op": "set", "issue": issue, "data": data})
+    };
+    let title = || json!({"fields": {"title": "x"}});
+    let folder = a.store().join("events").join("feedface");
+    std::fs::create_dir_all(&folder).unwrap();
+    let lines: String = [
+        event(
+            &change,
+            &[&uid],
+            &uid,
+            json!({"fields": {"status": "in_progress"}}),
+        ),
+        event(&first, &[&second, &change], &first, title()),
+        event(&second, &[&first], &second, title()),
+    ]
+    .iter()
+    .map(|record| write(record, Format::ASCII).unwrap() + "\n")
+    .collect();
+    std::fs::write(folder.join("000001.jsonl"), lines).unwrap();
+    let info = a.bead(["info"]).unwrap();
+    assert_eq!(info["waiting_events"].as_i64(), Some(2));
+    assert_eq!(info["frontier"].as_array().map(<[Json]>::len), Some(1));
+    // this machine's records
+    let own = || {
+        let me = a.bead(["info"]).unwrap()["machine"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        (std::fs::read_dir(a.store().join("events").join(me)).unwrap())
+            .map(|entry| std::fs::read_to_string(entry.unwrap().path()).unwrap())
+            .map(|text| text.lines().count())
+            .sum::<usize>()
+    };
+    let before = own();
+    let closes = a.run(["close", &alpha, &alpha, "--offline", "--json"]);
+    assert_eq!(closes.returncode(), 0, "{}", closes.stderr);
+    let closes = parse_json(&closes.stdout).unwrap();
+    let unchanged: Vec<bool> = (closes.as_array().unwrap().iter())
+        .map(|item| item.get("unchanged").is_some())
+        .collect();
+    assert_eq!(unchanged, [false, false]);
+    assert_eq!(own() - before, 2);
 }

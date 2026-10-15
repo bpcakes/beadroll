@@ -261,15 +261,15 @@ These were decided deliberately. Report problems *with* them, not their existenc
   generator or by hand, is answered otherwise without it (`projection/tests/flawed.rs`, which runs
   the seeds that find the other three by default, and 10,000 histories with `--ignored
   many_seeds`); `projection/tests/reported.rs` holds every kind by hand, and each of the three.
-  `close`, `reopen` and `delete` decide every issue they answer for from the state before
-  they write and read it once more after (`decide`), where each read before each issue replayed the
-  journal again whenever the projection could not take the event before: an issue named twice is
-  as its event left it, which built on everything the state holds (its status the one asked, no
-  claim; a close drops its provisional claims, a delete or a reopen leaves them and is written
-  again), unless a head of the frontier waits for a cause the journal lacks: then every event
-  written waits too, and every issue is as the state has it however often it is named (a head the
-  first event builds on, not any event waiting, since two events naming each other wait off the
-  frontier). The answers are those of reading the state before each. Measured end to end on a
+  `close`, `reopen` and `delete` decide every issue they answer for from the state the events
+  before it leave (`decide`), as when they read the state before each issue, which replayed the
+  journal again whenever the projection could not take the event before. An event changes only
+  its own issue, so until an issue is named again that is the state read before writing; an issue
+  named again is decided from the state read again after the events before it, a replay only where
+  the projection cannot take them. Deciding it as its first event must have left it is not exact:
+  that event may wait (a head of the frontier waiting for a cause) or not see everything (an event
+  named only by waiting ones, or by a released id with two contents, is in no head's past), and
+  the issue then keeps its status, a dispute or a provisional claim. Measured end to end on a
   scratch tracker of N imported issues: one event of an operation this bead does not know, built on
   the frontier, written as the only record of a journal of a machine of its own, then `bead close`
   of M other issues `--offline`, timed, and the `list` after it; and the same with that event a
