@@ -17,6 +17,14 @@ const READS: [&[&str]; 5] = [
     &["export"],
 ];
 
+/// The reading commands that answer from the projection's index as well as its state
+/// (roll-lqjj.31), compared last: each machine names itself in them.
+const HISTORY: [&[&str]; 3] = [
+    &["log", "--limit", "0", "--json"],
+    &["info", "--json"],
+    &["machines", "--json"],
+];
+
 fn projection(machine: &Machine) -> PathBuf {
     machine.store().join("projection")
 }
@@ -25,12 +33,19 @@ fn texts(machine: &Machine) -> PathBuf {
     machine.store().join("projection-texts")
 }
 
-/// What `machine` answers to the reading commands and to `show` of each of `keys`; with
-/// `replaying`, its projection is removed before each, so that each replays the journal.
+/// What `machine` answers to the reading commands, to `show` of each of `keys`, then to the
+/// history's; with `replaying`, its projection is removed before each, so that each replays the
+/// journal.
 fn answers(machine: &Machine, keys: &[String], replaying: bool) -> Vec<String> {
     let mut out = Vec::new();
     let shows: Vec<Vec<&str>> = keys.iter().map(|key| vec!["show", key, "--json"]).collect();
-    for args in READS.iter().map(|args| args.to_vec()).chain(shows) {
+    let history = HISTORY.iter().map(|args| args.to_vec());
+    for args in READS
+        .iter()
+        .map(|args| args.to_vec())
+        .chain(shows)
+        .chain(history)
+    {
         if replaying {
             let _ = std::fs::remove_file(projection(machine));
         }
@@ -118,7 +133,11 @@ fn machines_that_sync_answer_alike_with_and_without_their_projections() {
         let kept = answers(machine, &keys, false);
         assert_eq!(answers(machine, &keys, true), kept, "{}", machine.name());
     }
-    assert_eq!(answers(&a, &keys, false), answers(&b, &keys, false));
+    // the same tracker, each machine naming itself in its history's answers
+    let (mut of_a, mut of_b) = (answers(&a, &keys, false), answers(&b, &keys, false));
+    of_a.truncate(of_a.len() - HISTORY.len());
+    of_b.truncate(of_b.len() - HISTORY.len());
+    assert_eq!(of_a, of_b);
 }
 
 #[test]

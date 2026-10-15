@@ -1,6 +1,7 @@
 //! `timing --read N`: how long the reading commands take on a store of N events, published once
 //! to a local bare remote as a store in use is (`bead list`, `bead show` of an issue, `bead
-//! ready`), and a local write (`bead comments add --offline`, so that only what the store does is
+//! ready`, and `bead log` of the last event, `bead info` and `bead machines`, which answered from
+//! the whole journal before roll-lqjj.31), and a local write (`bead comments add --offline`, so that only what the store does is
 //! timed): with the store's projection in place (`*_seconds`), and with it removed before each
 //! (`cold_*_seconds`), so that each replays the journal, as every command did before roll-lqjj.2,
 //! and writes the projection back; and how many bytes the projection and its text file hold.
@@ -11,10 +12,13 @@ use super::world::{RUNS, World, bead, profile, write_store};
 use crate::workspace::{self, Failure, json_string};
 
 /// The commands timed, and how a record names each.
-const READS: [(&str, &[&str]); 3] = [
+const READS: [(&str, &[&str]); 6] = [
     ("list", &["list", "--json"]),
     ("show", &["show", "ex-1", "--json"]),
     ("ready", &["ready", "--json"]),
+    ("log", &["log", "--limit", "1", "--json"]),
+    ("info", &["info", "--json"]),
+    ("machines", &["machines", "--json"]),
 ];
 
 /// Measures; returns the beginning of the line to record.

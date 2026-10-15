@@ -233,6 +233,30 @@ These were decided deliberately. Report problems *with* them, not their existenc
   replaying would mean reproducing what replay settles by the order it applies events in (the key
   two concurrent creates minted, the order of comments, claim history and issue order), the question
   a checkpoint's continuation faces too (roll-lqjj.4).
+- `log`, `info` and `machines` answer from the projection (roll-lqjj.31, X09). `info` and
+  `machines` read nothing else of the journal: the issues, the waiting events, the integrity
+  problems and the renamed keys are its state's; the events (every id, an attempt file's and a
+  stand-in's among them), each machine's journal length and the frontier its index's; the
+  segments the files' listing; the attempts awaiting the remote this machine's pending files.
+  `machines` also says when each machine last wrote, its greatest event id, which its last record
+  need not have since ids are minted from a clock that can go back (V02): the index keeps it
+  beside the journal length, taken from the journal's order by `project` as the lengths are and
+  advanced with them by `extend` (`projection::ENCODING` 5). `log` reads the whole journal still,
+  since it lists every event in causal order, but takes the keys it names issues by from the
+  store's state (`view_outline`), read after the journal so that every issue an event names is
+  there, where it replayed a clone of the journal; the two can come from two moments when a
+  writer appends between them, which shows a newer key and nothing else. Every output is the
+  same, byte for byte (`commands::history`, which passes on the bead before; and the bead before
+  and after compared on three machines' tracker with renamed keys, an attempt file, a pending
+  attempt and a damaged line, cold, warm, after a write and after a merge). At 200,000 events
+  (`cargo xtask timing --read 200000`, plain, release, best of five, before and after back to back
+  on a machine shared with ten other builds) `info` took 3.30 s and takes 0.23 s, `machines` 2.40
+  and 0.23 s, `log --limit 1` 3.78 and 3.21 s, where `list` takes 0.21 s; at 20,000 issues (an
+  imported forest, best of five) 1.16 and 0.21 s, 0.88 and 0.22 s, 1.37 and 1.24 s, at half the
+  memory for the first two (213 to 114 MB resident). With no projection, as after an upgrade or
+  with a damaged one, each makes it as every command does, replaying the journal and writing the
+  projection back, so the first `machines` costs a replay it did not before (2.16 to 3.76 s at
+  200,000, `info` 6.20 to 3.91 s), and the first `log` reads the journal twice (5.02 to 6.25 s).
 - A projection extended finishes only what the batch changed (roll-lqjj.17, Z02). Replay finishes a
   whole journal by deriving each issue's labels from the tags that remain and building the
   parent-child index from every issue's edges; a projection that redid all of that for every batch

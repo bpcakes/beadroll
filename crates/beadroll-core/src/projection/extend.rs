@@ -216,8 +216,8 @@ impl Projection {
         (ordered.len() == events.len()).then_some(ordered)
     }
 
-    /// The frontier, the ids and the journals' lengths with the new `events` and their machines'
-    /// records (`order`), once they apply.
+    /// The frontier, the ids and the journals' lengths and latest events with the new `events` and
+    /// their machines' records (`order`), once they apply.
     fn advance(
         &mut self,
         events: &IndexMap<EventId, Event>,
@@ -235,6 +235,10 @@ impl Projection {
         for (machine, added) in order {
             if let Some(length) = self.lengths.get_mut(machine) {
                 *length = length.saturating_add(small(added.len()));
+            }
+            if let Some(&latest) = added.iter().max() {
+                let last = self.lasts.entry(machine.clone()).or_insert(latest);
+                *last = (*last).max(latest);
             }
         }
         self.open = self.state.integrity.is_empty() && self.state.pending.is_empty();

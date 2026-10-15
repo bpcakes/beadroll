@@ -438,6 +438,7 @@ fn equal(extended: &Projection, full: &Projection) -> bool {
         && extended.heads == full.heads
         && extended.ids == full.ids
         && extended.lengths == full.lengths
+        && extended.lasts == full.lasts
         && extended.open == full.open
 }
 

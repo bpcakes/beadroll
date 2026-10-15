@@ -18,7 +18,7 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   `timing --sync N`, a publishing `bead sync` on a scratch store of the same history, with the
   store's memo of its journal files and its projection, without its projection, and without
   either (roll-lqjj.1, roll-lqjj.2); `timing/read.rs`: `timing --read N`, the reading commands
-  there with the projection and without it, and the bytes the projection and its text file hold; `timing/merge.rs`: `timing --merge N`, a sync that
+  there (`log`, `info` and `machines` among them, roll-lqjj.31) with the projection and without it, and the bytes the projection and its text file hold; `timing/merge.rs`: `timing --merge N`, a sync that
   merges what another machine wrote after the store's frontier; `timing/contend.rs`: `timing
   --contend M`, machines writing one tracker at once (roll-lqjj.7); `timing/import.rs`: `timing
   --import N`, importing a generated Beads export (roll-lqjj.9); `timing/plan.rs`: `timing --plan
