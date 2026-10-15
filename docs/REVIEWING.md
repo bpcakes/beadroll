@@ -1020,10 +1020,13 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `git rev-parse HEAD` prints it, the full object name in lowercase hex; text of 4 to 64 lowercase
   hex digits, a full name or an abbreviation, is asked as before, and anything else is unknown
   without a git started: a revision expression (`HEAD~1`, `main@{yesterday}`, `:/text`, which
-  searches every commit message), uppercase hex, a ref's name. git would evaluate it here, in this
-  checkout, where it names something other than what it named where it was written, if it named
-  anything there. bead never writes such text; an event that holds it was written by hand or by
-  another program. The place itself is still shown as recorded, in `where` and `closed_on`.
+  searches every commit message), uppercase hex, a ref's name such as `main`. git would evaluate
+  it here, in this checkout, where it names something other than what it named where it was
+  written, if it named anything there. bead never writes such text; an event that holds it was
+  written by hand or by another program. The place itself is still shown as recorded, in `where`
+  and `closed_on`. A ref whose name is itself such hex (a tag `2024`, a branch `cafe`) is still
+  resolved, as before: `merge-base` tries refs before abbreviations, so a name shorter than a full
+  object name is the ref when there is one, and a full object name is always the object.
 - A publish hashes only the journal files it cannot vouch for (roll-lqjj.1, step 2 of epic
   roll-lqjj): the store remembers, in `sync.git/journal-memo`, each segment's and attempt file's
   identity on disk when it was hashed (length, modification and change times, inode, device: what

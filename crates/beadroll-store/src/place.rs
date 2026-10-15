@@ -44,7 +44,8 @@ pub fn capture_where(ws: &Workspace) -> Result<Option<Value>, Error> {
 /// branch in a worktree workflow is often stale); `None` when the commit or the branch is unknown
 /// here, and for text that is not an object name in hex, full or abbreviated, as bead records the
 /// commit of a place (`rev-parse HEAD`), which is never asked of git: a commit comes from any
-/// machine's event, and git would evaluate a revision expression (`HEAD~1`, `:/text`) here.
+/// machine's event, and git would evaluate a revision expression (`HEAD~1`, `:/text`) here. A ref
+/// whose name is such hex (a tag `cafe`) is still resolved, as git tries refs before abbreviations.
 ///
 /// A reader that shows several closed issues asks once for all of them (roll-lqjj.26): the default
 /// branch is found once and each distinct commit is answered once. Full object names, as bead
