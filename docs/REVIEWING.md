@@ -614,11 +614,12 @@ These were decided deliberately. Report problems *with* them, not their existenc
   without imports waiting for keys that never come. At 250 and at 2,000 issues each reads 8.0 to 8.1
   times as much; the code before the changes, run the same way, reads 62 to 67 times as much (a
   held chain's `blocked` lists 62,250 and 3,998,000 edges, its details 62,748 and 4,001,998, a
-  held lattice's lists 118,144 and 7,944,144 and its details 32,235 and 2,007,985; renaming 94,125
-  and 6,003,000 keys, or 156,875 and 10,005,000 with imports waiting). The lookup in `claims_key`
-  itself is a map and a range; turned back into a scan of the issues it reads nothing counted,
-  and only a timing would see it, which the nightly does not yet take (the growth tests above
-  time none of X01 to X03).
+  free chain's details 62,496 and 3,999,996, a held lattice's lists 118,144 and 7,944,144 and its
+  details 32,235 and 2,007,985; renaming 94,125 and 6,003,000 keys, or 156,875 and 10,005,000 with
+  imports waiting; the sparse graph, which has no parent, was linear before). The lookup in
+  `claims_key` itself is a map and a range; turned back into a scan of the issues it reads nothing
+  counted, and only a timing would see it, which the nightly does not yet take (the growth tests
+  above time none of X01 to X03).
 - No history boundary (roll-lqjj.3, step 4 of epic roll-lqjj; the maintainer's decision of
   2026-10-12, on the evidence in the port plan's Appendix A, "roll-lqjj.3", which git keeps, §1): a
   machine's work merges by itself however old it is, as every merge has so far. The alternatives
