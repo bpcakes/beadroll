@@ -578,11 +578,13 @@ These were decided deliberately. Report problems *with* them, not their existenc
   it passes (`work::tally`, compiled into this crate's own tests alone, `cfg(test)`, so no build of
   bead carries it): an issue's edges when they are handed out, a parent's children, an issue
   relabelled, the parent-child index built, a waiting import's key read and the entries the waiting
-  index hands out, examines or makes whole, and an import's record and dependency keys read. A
-  guard for each algorithm (`work::tests::import`, `finished`, `awaiting`, `edges`) counts its work
+  index hands out, examines or makes whole, an import's record and dependency keys read, and the
+  keys replay asks of (`State::claims_key`) or collects (`State::claimed_keys`) to rename a copy. A
+  guard for each algorithm (`work::tests::import`, `finished`, `awaiting`, `edges`, `renamed`) counts its work
   on the shape its `timing` probe measures, at 250 and at 2,000, and fails above sixteen times as
   much: twice what linear work does, a quarter of what quadratic work does. Counting rather than
-  timing makes the guards exact, fast (0.25 s for all of them, debug) and the same on every machine,
+  timing makes the guards exact, fast (a second for all of them, debug, most of it the check that each key asked of agrees with the
+  keys collected, which the renamed copies' guard runs at every ask) and the same on every machine,
   so they run on every push. Fourteen quadratic versions — `Readiness` and `ready` asking
   `is_blocked` of each issue, a detail finding its own dependents, `dependents_of` passing once per
   issue asked about, `finish_some` finishing the whole state, building the index for every batch or
@@ -603,9 +605,20 @@ These were decided deliberately. Report problems *with* them, not their existenc
   2026-10-15). Not guarded, since they grow faster than their input by design, as the bullets
   above say: a batch that changes an edge builds the parent-child index again, and one issue that
   gains N edges, or waits for N keys that come one batch at a time, searches its own edges and
-  copies its list's tail. What X01 to X03 found still quadratic on main (`bead blocked`'s lists,
-  `blocked` in each of several details, a renamed copy's free key) gets its guards, which fail on
-  main, once the changes that remove it land; roll-lqjj.34 records them.
+  copies its list's tail. What X01 to X03 found still quadratic (`bead blocked`'s lists,
+  `blocked` in each of several details, a renamed copy's free key) is guarded as well, now that
+  roll-lqjj.24 and .25 have landed (roll-lqjj.38): `edges` counts the edges `State::blocker_lists`
+  reads for a held chain and a held lattice, and those `State::details_of` reads for the details of
+  every issue of each of the readiness shapes and of the sparse graph, and `renamed` counts the keys
+  replay reads to rename the N copies of two machines that each minted `ex-1` to `ex-N`, with and
+  without imports waiting for keys that never come. At 250 and at 2,000 issues each reads 8.0 to 8.1
+  times as much; the code before the changes, run the same way, reads 62 to 67 times as much (a
+  held chain's `blocked` lists 62,250 and 3,998,000 edges, its details 62,748 and 4,001,998, a
+  held lattice's lists 118,144 and 7,944,144 and its details 32,235 and 2,007,985; renaming 94,125
+  and 6,003,000 keys, or 156,875 and 10,005,000 with imports waiting). The lookup in `claims_key`
+  itself is a map and a range; turned back into a scan of the issues it reads nothing counted,
+  and only a timing would see it, which the nightly does not yet take (the growth tests above
+  time none of X01 to X03).
 - No history boundary (roll-lqjj.3, step 4 of epic roll-lqjj; the maintainer's decision of
   2026-10-12, on the evidence in the port plan's Appendix A, "roll-lqjj.3", which git keeps, §1): a
   machine's work merges by itself however old it is, as every merge has so far. The alternatives

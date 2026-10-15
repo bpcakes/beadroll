@@ -6,6 +6,16 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- The guards held back from the work of roll-lqjj.34 are added now that their changes are on main
+  (roll-lqjj.38, X15): `bead blocked`'s lists (X01), `blocked` in each of several details (X02) and
+  a renamed copy's key (X03) each fail a test of beadroll-core when they grow with the square of
+  their input, as import planning, finishing, waiting imports, readiness and dependents already
+  do. Counted on a chain and a lattice held by their first issue and on two machines' creates of
+  the same keys, at 250 and at 2,000 issues the code reads 8.0 to 8.1 times as much, and read 62
+  to 67 times as much before roll-lqjj.24 and .25. `State::claims_key` and `State::claimed_keys`
+  count the keys they read, in this crate's tests alone; no build of bead carries the counting,
+  and nothing bead does or prints changes.
+
 - A tracker whose journal holds anything `bead info` reports under `integrity` (an event of an
   operation a newer bead writes, as in a rolling upgrade, an id found with two contents, a broken
   chain from a copied machine identity, a refused takeover) keeps reading its projection and

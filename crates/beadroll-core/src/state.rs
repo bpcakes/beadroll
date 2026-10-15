@@ -260,6 +260,14 @@ impl State {
     /// Keys a new or renamed issue must not take: every issue's, and every key an imported dependency
     /// is still waiting for (the record it names may be imported later).
     pub fn claimed_keys(&self) -> std::collections::HashSet<&str> {
+        let taken = self.collect_claimed_keys();
+        tally(Work::Key, taken.len());
+        taken
+    }
+
+    /// The keys [`State::claimed_keys`] collects, uncounted: what the test that checks
+    /// [`State::claims_key`] against it collects them with, at every ask.
+    fn collect_claimed_keys(&self) -> std::collections::HashSet<&str> {
         let mut taken: std::collections::HashSet<&str> =
             self.by_key.keys().map(String::as_str).collect();
         for issue in self.issues.values() {
@@ -284,6 +292,7 @@ impl State {
     /// machines minted alike, which collecting every key for each copy made cost the whole tracker
     /// a copy (X03 in `docs/FINDINGS.md`).
     pub(crate) fn claims_key(&self, key: &str) -> bool {
+        tally(Work::Key, 1);
         let claimed = self.by_key.contains_key(key) || self.awaiting.names(key);
         #[cfg(test)]
         asked::agrees(self, key, claimed);

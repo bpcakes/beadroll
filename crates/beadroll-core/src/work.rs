@@ -9,9 +9,10 @@
 //!
 //! A count sees only the work that passes the place it is kept, which is chosen as the one every
 //! way of doing that work passes: the edges an issue holds when they are asked for, an imported
-//! dependency's key when it is read, the key of an import's record or dependency. A change that
-//! does the work some other way, a lookup turned back into a scan of a vector, is seen by time
-//! alone: `xtask`'s growth tests time those in release, every night.
+//! dependency's key when it is read, the key of an import's record or dependency, the key a renamed
+//! copy asks the state of. A change that does the work some other way, a lookup turned back into a
+//! scan of a vector, is seen by time alone: `xtask`'s growth tests time those in release, every
+//! night.
 
 /// A kind of work counted.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -27,7 +28,8 @@ pub(crate) enum Work {
     /// An imported dependency that waits for a key, visited: its key read, its entry handed to the
     /// create its key settles or examined for a removal, or kept when its list is made whole.
     Waiting,
-    /// The key of an import's record, or the key one of its dependencies names, read.
+    /// The key of an import's record, or the key one of its dependencies names, read; a key asked
+    /// of whether an issue or an import claims it, and each key collected as claimed.
     Key,
 }
 

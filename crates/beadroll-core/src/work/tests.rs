@@ -3,7 +3,8 @@
 //! input is the shape the algorithm was quadratic on before, the shape its `cargo xtask timing`
 //! probe measures, built outside the count; only the call is counted. A module for each:
 //! `import` (roll-lqjj.15), `finished` (.17), `awaiting` (.18), and `edges`, readiness (.19) and
-//! the dependents of the issues shown (.20).
+//! the dependents of the issues shown (.20) with the blockers and readiness of several issues
+//! (.24), and `renamed`, the key of a copy two machines minted alike (roll-lqjj.25).
 //!
 //! Shapes whose cost still grows faster than their input by design are not guarded, and
 //! `docs/REVIEWING.md` §2 says why for each: a batch that changes an edge builds the parent-child
@@ -23,6 +24,7 @@ mod awaiting;
 mod edges;
 mod finished;
 mod import;
+mod renamed;
 
 /// The size of the smaller input.
 const SMALL: usize = 250;

@@ -31,7 +31,7 @@ thread_local! {
 pub(super) fn agrees(state: &State, key: &str, claimed: bool) {
     assert_eq!(
         claimed,
-        state.claimed_keys().contains(key),
+        state.collect_claimed_keys().contains(key),
         "whether {key:?} is claimed, asked of the key and of every key collected"
     );
     let mid_batch = (state.issues.values())

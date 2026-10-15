@@ -1,6 +1,6 @@
-//! Readiness (roll-lqjj.19) and the dependents of the issues shown in full (roll-lqjj.20): every
-//! issue's edges read a bounded number of times, however deep its ancestry and however many issues
-//! are shown.
+//! Readiness (roll-lqjj.19), the dependents of the issues shown in full (roll-lqjj.20) and what
+//! the lists and details of several issues share (roll-lqjj.24): every issue's edges read a
+//! bounded number of times, however deep its ancestry and however many issues are shown.
 
 use crate::query::ReadyScope;
 use crate::state::State;
@@ -115,6 +115,54 @@ fn the_details_of_every_issue_read_each_edge_a_bounded_number_of_times() {
             let dependents = state.dependents_of(state.issues());
             for issue in state.issues() {
                 drop(state.detail_with(issue, &dependents));
+            }
+        },
+    );
+}
+
+#[test]
+fn listing_the_blockers_of_every_held_issue_reads_each_edge_a_bounded_number_of_times() {
+    // the shapes whose lists are linear in their issues: each held issue has one blocker, however
+    // deep it lies, where a chain held by every issue above it would list N² on purpose
+    for shape in [Shape::ChainHeld, Shape::LatticeHeld] {
+        grows_linearly(
+            &format!("the blockers of every issue of {shape:?}"),
+            &[Work::Edge],
+            |issues| shape.state(issues),
+            |state| {
+                let lists = state.blocker_lists();
+                let held = state.issues().filter(|issue| !lists.of(issue).is_empty());
+                assert_eq!(held.count(), state.issues().count() - 1);
+            },
+        );
+    }
+}
+
+#[test]
+fn the_details_of_every_issue_judge_readiness_reading_each_edge_a_bounded_number_of_times() {
+    // every shape, the ones with parents too: a detail that walked its own ancestors for `blocked`
+    // read N²/2 edges of a chain
+    for shape in Shape::ALL {
+        grows_linearly(
+            &format!("the detail of every issue of {shape:?}, made together"),
+            &[Work::Edge],
+            |issues| shape.state(issues),
+            |state| {
+                let details = state.details_of(state.issues());
+                for issue in state.issues() {
+                    drop(details.of(issue));
+                }
+            },
+        );
+    }
+    grows_linearly(
+        "the detail of every issue of the sparse graph, made together",
+        &[Work::Edge],
+        sparse,
+        |state| {
+            let details = state.details_of(state.issues());
+            for issue in state.issues() {
+                drop(details.of(issue));
             }
         },
     );
