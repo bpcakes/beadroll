@@ -343,6 +343,19 @@ fn issues_asked_twice_or_not_at_all_get_the_detail_they_would_alone() {
         text(&Json::from(st.detail_with(target, &made))),
         text(&Json::from(st.detail(target)))
     );
+    // and so is its readiness, however many issues the details were made for
+    for asked in [vec![source, other], vec![source], vec![]] {
+        let details = st.details_of(asked.iter().copied());
+        for issue in [target, other, source] {
+            assert_eq!(
+                text(&Json::from(details.of(issue))),
+                text(&Json::from(st.detail(issue))),
+                "{} among {} asked",
+                issue.key(),
+                asked.len()
+            );
+        }
+    }
     // nor is it given what was found in another state, even of the same issues
     h.link(
         8,

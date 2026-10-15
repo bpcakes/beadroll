@@ -3,7 +3,9 @@
 //! (roll-lqjj.19), on a tracker with a prerequisite inherited down a chain and through a second
 //! parent, a merged parent loop, an epic waiting for its child, and done ancestors and targets;
 //! `blocked` still lists each issue's blockers, and a scope still leaves out what an outside
-//! prerequisite holds.
+//! prerequisite holds. The commands that answer with several issues in full — `show`, `update` and
+//! `claim` — judge `blocked` for all of them at once (roll-lqjj.24) and give each the detail
+//! `show` gives of it alone.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -197,4 +199,63 @@ fn ready_blocked_and_prime_judge_every_issue_at_once_as_show_judges_each() {
             .collect::<Vec<_>>(),
         ["ex-e", "ex-k", "ex-m", "ex-z"]
     );
+}
+
+/// A value as written, members in their order: `Json` equality does not see the order.
+fn text(value: &Json) -> String {
+    write(value, Format::COMPACT).unwrap()
+}
+
+/// What `bead show` gives of each of `keys` alone, in order, as one list.
+fn alone(machine: &Machine, keys: &[&str]) -> String {
+    let shown: Vec<Json> = keys.iter().map(|key| machine.show(key)).collect();
+    text(&Json::Array(shown))
+}
+
+#[test]
+fn several_issues_shown_in_full_are_judged_at_once_as_each_is_judged_alone() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let path = records(&sandbox, &tree());
+    a.bead(["init", "--prefix", "ex", "--import", path.to_str().unwrap()]);
+    let keys = [
+        "ex-gate", "ex-root", "ex-c1", "ex-c2", "ex-c3", "ex-free", "ex-s", "ex-gate2", "ex-k",
+        "ex-m", "ex-z", "ex-e", "ex-x", "ex-y", "ex-done", "ex-d1", "ex-t", "ex-c3",
+    ];
+    let shown = a.bead(["show"].into_iter().chain(keys)).unwrap();
+    assert_eq!(text(&shown), alone(&a, &keys));
+    // what is held: the chain and what hangs from it, the loop and what hangs from it, the epic
+    // with an open child, and a closed issue still waiting for its own prerequisite
+    let held: BTreeSet<String> = (shown.as_array().unwrap().iter())
+        .filter(|detail| detail["blocked"].as_bool().unwrap())
+        .map(|detail| detail["id"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(
+        held,
+        set(&[
+            "ex-root", "ex-c1", "ex-c2", "ex-c3", "ex-s", "ex-k", "ex-m", "ex-z", "ex-e", "ex-done"
+        ])
+    );
+    // update and claim answer the same way, and a gate closing frees what it held in every answer
+    let several = ["ex-c1", "ex-s", "ex-z", "ex-free"];
+    let updated = a
+        .bead(
+            ["update"]
+                .into_iter()
+                .chain(several)
+                .chain(["--priority", "1"]),
+        )
+        .unwrap();
+    assert_eq!(text(&updated), alone(&a, &several));
+    let blocked: Vec<bool> = (updated.as_array().unwrap().iter())
+        .map(|detail| detail["blocked"].as_bool().unwrap())
+        .collect();
+    assert_eq!(blocked, [true, true, true, false]);
+    a.bead(["close", "ex-gate", "--reason", "done"]);
+    let claimed = a.bead(["claim", "ex-c2", "ex-gate2", "ex-c2"]).unwrap();
+    assert_eq!(text(&claimed), alone(&a, &["ex-c2", "ex-gate2", "ex-c2"]));
+    let blocked: Vec<bool> = (claimed.as_array().unwrap().iter())
+        .map(|detail| detail["blocked"].as_bool().unwrap())
+        .collect();
+    assert_eq!(blocked, [false, false, false], "the gate was closed");
 }

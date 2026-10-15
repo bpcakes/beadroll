@@ -47,10 +47,15 @@ consumer on tokio calls through `spawn_blocking`.
   `src/query/readiness.rs`: `State::readiness`, whether anything holds each issue, judged once for
   all of them (`Readiness`), which `State::ready` and the CLI's `ready`, `blocked` and `prime` ask,
   and `State::is_blocked`, the same question for one issue, answered by the first thing found
-  (roll-lqjj.19); `State::open_blockers` still lists the blockers themselves.
+  (roll-lqjj.19); `State::open_blockers` lists one issue's blockers themselves, and
+  `src/query/blockers.rs`: `State::blocker_lists`, every issue's list at once (`BlockerLists`),
+  equal for every issue to `open_blockers`, which `bead blocked` prints (roll-lqjj.24).
   `src/view/dependents.rs`: `State::dependents_of`, the issues that depend on each of several
   issues, found in one pass over every issue's edges (`Dependents`), from which
   `State::detail_with` lists each one's; `State::detail` makes it for its one issue (roll-lqjj.20).
+  `src/view/details.rs`: `State::details_of`, what the details of several issues share, their
+  dependents and, for several, `State::readiness` for their `blocked` (`Details`), which `bead
+  show`, `update`, `claim` and `takeover` make their details from (roll-lqjj.24).
 - `src/import/dry_run.rs`: `problems` (every problem an import would be refused for, empty exactly
   when it goes through) and `preview` (what it would bring), for `--dry-run`.
 - `src/work.rs`: `tally`, the work the algorithms of roll-lqjj.15 to .20 do, counted in this crate's
@@ -108,17 +113,22 @@ consumer on tokio calls through `spawn_blocking`.
 - Readiness is one rule, the one `State::open_blockers` lists blockers by, and whether anything
   holds an issue is answered three ways that must agree: judged for every issue at once
   (`State::readiness`, each issue, edge and child visited once, a merged cycle once, nothing
-  recursing), for one issue by the first thing found (`State::is_blocked`), and by the list itself;
-  `tests/core/replay/readiness.rs` keeps them agreeing on deep chains, shared and second parents,
-  merged parent cycles, done and disputed ancestors and targets, epics beside plain parents, claims,
-  scopes and random graphs (roll-lqjj.19). A reader that asks of many issues asks `readiness` once:
-  asked issue by issue, a chain of N issues costs N². `cargo run --release --package xtask --
-  timing --ready N` measures the four ways.
+  recursing), for one issue by the first thing found (`State::is_blocked`), and by the list itself,
+  which a reader that lists many issues' blockers makes for all of them at once
+  (`State::blocker_lists`, equal for every issue to `open_blockers`, roll-lqjj.24);
+  `tests/core/replay/readiness.rs` keeps them agreeing on deep chains, lattices, shared and second
+  parents, merged parent cycles, done and disputed ancestors and targets, epics beside plain
+  parents, claims, scopes and random graphs (roll-lqjj.19). A reader that asks of many issues asks
+  `readiness` or `blocker_lists` once: asked issue by issue, a chain of N issues costs N². `cargo
+  run --release --package xtask -- timing --ready N` measures the ways.
 - A detail's `dependents` are every issue with an edge to its issue's uid, in replay order, each
   one's edges to it in sorted order, never an edge that was removed; only the edges say so, so
   finding them reads every issue's edges. A reader that shows several issues in full
   finds them for all of them in one pass (`State::dependents_of`) and makes each detail with
-  `State::detail_with`: asked issue by issue, N details read every edge N times (roll-lqjj.20).
+  `State::detail_with`: asked issue by issue, N details read every edge N times (roll-lqjj.20). A
+  detail's `blocked` is judged the same way: `State::details_of` finds the dependents and, for
+  several issues, readiness once for all of them, and `Details::of` makes each detail; `State::detail`
+  of one issue walks its own ancestors (roll-lqjj.24).
   `tests/core/replay/dependents.rs` keeps the details so made equal to `State::detail` of each
   issue alone and to what every detail found before, member for member, and `cargo run --release
   --package xtask -- timing --details N` measures both ways.
