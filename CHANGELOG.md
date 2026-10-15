@@ -6,6 +6,16 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- Every command starts the committed `.beadroll.json`'s `git cat-file` together with the other two
+  gits that find the workspace (roll-lqjj.33), instead of after both had answered, wherever the
+  directory it runs in shows no `.beadroll.json` in the tree: a worktree on an older branch, a
+  bisect, a bare clone, a repository named by `GIT_DIR`. The same gits run, the answer is used only
+  where git's own top has no `.beadroll.json`, and every answer, warning and error is unchanged;
+  the third git no longer waits for the first two, which was a git's start and exit (about 1.4 ms
+  here, more on macOS) of every command in such a tree. A write still reads HEAD and its branch
+  when its transaction starts, under the store lock, so a branch switched while it waited is what
+  its events record.
+
 - `bead show`, `bead update`, `bead claim` and `bead takeover` find the issues that depend on each
   issue they show once for all of them (roll-lqjj.20), instead of reading and sorting every issue's
   dependencies again for each: showing all 8,000 issues of a sparse tracker takes 0.28 s rather
