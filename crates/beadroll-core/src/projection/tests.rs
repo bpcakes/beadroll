@@ -13,6 +13,7 @@ use crate::state::State;
 
 use super::{Extended, Projection, Record, decode_state, project};
 
+mod awaiting;
 mod finished;
 mod hostile;
 mod texts_once;

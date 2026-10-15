@@ -303,9 +303,11 @@ pub(crate) fn apply_one(
     Ok(())
 }
 
-/// What replay finishes with once every event has applied: each issue's labels, the labels whose
-/// tags remain, and the parent-child index.
+/// What replay finishes with once every event has applied: each list of imported dependencies an
+/// entry was taken from made whole, each issue's labels, the labels whose tags remain, and the
+/// parent-child index.
 pub(crate) fn finish(st: &mut State) {
+    st.settle_awaiting();
     for issue in st.issues.values_mut() {
         relabel(issue);
     }
@@ -318,8 +320,10 @@ pub(crate) fn finish(st: &mut State) {
 /// and of no other, a create the issue it makes (which it must name as its issue to be valid); the
 /// parent-child index is made of dependency edges, which only a create or a dependency written
 /// touches. Each issue is relabelled once however many of the batch's events change its labels, as
-/// only the labels it has once they have all applied are derived from.
+/// only the labels it has once they have all applied are derived from. The lists of imported
+/// dependencies an entry was taken from are made whole, as replay makes them.
 pub(crate) fn finish_some(st: &mut State, doing: &[Box<Rest>]) {
+    st.settle_awaiting();
     let mut relabelled: Vec<EventId> = (doing.iter())
         .filter(|what| relabels(&what.op))
         .filter_map(|what| what.issue.as_deref())

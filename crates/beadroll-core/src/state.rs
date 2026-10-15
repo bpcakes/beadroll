@@ -1,5 +1,6 @@
 //! Replayed state: issues in replay order, their registers, tags and claims, and event ancestry.
 
+mod awaiting;
 mod claim;
 mod issue;
 mod seen;
@@ -14,6 +15,7 @@ use crate::json::Value;
 use crate::key;
 use crate::text::str_of;
 
+pub(crate) use awaiting::Awaiting;
 pub use claim::{Claim, EndedClaim, LostClaim, Provisional, Stale};
 pub(crate) use issue::Origin;
 pub use issue::{Comment, Deps, DepsIter, Issue};
@@ -102,10 +104,10 @@ pub struct State {
     /// Each parent's children, by the text their parent-child edges name, in replay order: built
     /// once replay ends, when edges no longer change.
     pub(crate) children: std::collections::HashMap<String, Vec<EventId>>,
-    /// The issues that may still hold imported dependencies on keys that were not issues yet, in
-    /// the order created. Only a create gives an issue such dependencies, so a new key need look
-    /// at these alone, not at every issue.
-    pub(crate) awaiting: Vec<EventId>,
+    /// Where every imported dependency on a key that is not an issue's yet is, by that key: a new
+    /// key visits the entries that wait for it and no others (roll-lqjj.18). Derived from the
+    /// issues' lists, so a state read back builds it again rather than reading it.
+    pub(crate) awaiting: Awaiting,
     /// The text file its issues' texts are placed in, as the store that read it names it
     /// (roll-lqjj.6); `None` for a state replayed.
     pub(crate) texts_file: Option<[u8; 16]>,
@@ -126,7 +128,7 @@ impl State {
             comment_count: 0,
             last_by_thread: IndexMap::new(),
             children: std::collections::HashMap::new(),
-            awaiting: Vec::new(),
+            awaiting: Awaiting::default(),
             texts_file: None,
         }
     }
@@ -258,6 +260,7 @@ impl State {
         let mut taken: std::collections::HashSet<&str> =
             self.by_key.keys().map(String::as_str).collect();
         for issue in self.issues.values() {
+            // an entry taken out while events apply is null, and names no key
             taken.extend(
                 issue
                     .dangling
@@ -326,6 +329,12 @@ impl State {
         }
         issue.unconfirmed.push(Value::from(entry));
         true
+    }
+
+    /// Makes whole every list of imported dependencies an entry was taken from while events
+    /// applied ([`Awaiting::settle`]).
+    pub(crate) fn settle_awaiting(&mut self) {
+        self.awaiting.settle(&mut self.issues);
     }
 
     /// Indexes the parent-child edges, once replay has settled them.

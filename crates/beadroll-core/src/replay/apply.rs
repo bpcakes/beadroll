@@ -15,7 +15,9 @@ use crate::id::EventId;
 use crate::journal::{Event, Rest};
 use crate::json::{Object, Value};
 use crate::op::Op;
-use crate::state::{Comment, IdMap, IdSet, Issue, KeySpace, Knowledge, Stale, State, is_text};
+use crate::state::{
+    Awaiting, Comment, IdMap, IdSet, Issue, KeySpace, Knowledge, Stale, State, is_text,
+};
 use crate::text::str_of;
 
 /// The event replay is applying: its index in the journal, its id, what replay keeps of it, and
@@ -110,7 +112,7 @@ pub(super) fn apply_event(
         Op::DepRemove { to, key, kind } => dep_remove(
             &c,
             issue,
-            &st.by_key,
+            (&st.by_key, &mut st.awaiting),
             to.as_deref(),
             key.as_deref(),
             kind.as_deref(),
@@ -241,17 +243,16 @@ fn dep_add(c: &Ctx<'_>, issue: &mut Issue, to: &str, kind: Option<&str>, meta: &
 fn dep_remove(
     c: &Ctx<'_>,
     issue: &mut Issue,
-    by_key: &IndexMap<String, EventId>,
+    (by_key, awaiting): (&IndexMap<String, EventId>, &mut Awaiting),
     to: Option<&str>,
     key: Option<&str>,
     wanted: Option<&str>,
 ) -> bool {
     let matches = |kind: &str| wanted.is_none_or(|wanted| wanted == kind);
     if let Some(key) = key.filter(|key| !key.is_empty()) {
-        issue.dangling.retain(|dep| {
-            let depends_on = dep.get("depends_on_id").and_then(Value::as_str);
-            !(depends_on == Some(key) && matches(&dangling_type(dep)))
-        });
+        // the entries that wait for `key`, found where they are listed rather than by reading the
+        // issue's whole list
+        awaiting.retract(issue, key, |dep| matches(&dangling_type(dep)));
         // A concurrent create of the key that sorted first bound it already.
         if let Some(bound) = by_key.get(key).filter(|_| c.k.saw_at(c.at, c.uid)) {
             let bound = bound.to_string();

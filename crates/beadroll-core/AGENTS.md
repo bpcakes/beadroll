@@ -31,7 +31,8 @@ consumer on tokio calls through `spawn_blocking`.
   which takes what each event does from its journal; `src/state.rs` (`state/issue.rs`,
   `state/claim.rs`, `state/seen.rs`): `State`, `Issue`, claims, `saw`; `state/small.rs`:
   `VecMap`, `IdMap`, `IdSet`, the vectors an issue keeps its registers and tags in, grown one
-  entry at a time while short.
+  entry at a time while short; `state/awaiting.rs`: `Awaiting`, where every imported dependency
+  that waits for a key is, by that key (roll-lqjj.18).
 - `src/projection.rs`: `project`, `Projection` (roll-lqjj.2), a replayed state kept to have events
   applied after it: what every event had seen cut to the events the state still names
   (`state/seen/compact.rs`); `projection/extend.rs`: `Projection::extend`, which applies records
@@ -80,6 +81,13 @@ consumer on tokio calls through `spawn_blocking`.
   §2). An issue is relabelled once a batch, not once an event, and the ids a projection holds are a
   `BTreeSet` so a batch's go in wherever they sort among them; the bytes stay the ascending
   sequence they were, and bytes that are not ascending are still refused.
+- A create visits only the imported dependencies that wait for its key, and a removal by key only
+  an issue's entries for that key: `State::awaiting` lists each by the key it names, its issue and
+  its place in the issue's list (roll-lqjj.18). An entry taken out leaves null in its place while
+  events apply, and the finishing pass (`finish`, `finish_some`) makes each such list whole, so no
+  state outside replay holds a null. The index is derived and never written: a state read back
+  builds it from the issues' lists, and `projection/tests/awaiting.rs` keeps replay, a projection
+  extended and one read back agreeing on it, and on what replay made of waiting imports before it.
 - `saw` agrees with the reference ancestry bitsets: `state/seen/tests.rs` checks every pair
   on hostile histories. Replay's speed and memory are measured by
   `cargo run --release --package xtask -- timing --replay N [--ownership]`: at 200,000 events its

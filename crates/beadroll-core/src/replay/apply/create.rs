@@ -2,8 +2,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use indexmap::IndexMap;
-
 use super::Doing;
 use crate::event::{Field, REGISTERS};
 use crate::id::EventId;
@@ -38,26 +36,31 @@ pub(super) fn create(
         });
     }
     let mut issue = new_issue(event, create, key.clone(), who, when);
-    st.by_key.insert(key, eid);
-    materialise_dangling(k, &st.by_key, &mut issue);
-    let waits = !issue.dangling.is_empty();
-    st.issues.insert(eid, Box::new(issue));
-    // An import may have named this key before it existed. Each issue's materialising touches that
-    // issue alone, so the issues still waiting are all there is to visit, in any order.
-    let (by_key, issues) = (&st.by_key, &mut st.issues);
-    st.awaiting.retain(|uid| {
-        let Some(other) = issues
-            .get_mut(uid)
-            .filter(|other| !other.dangling.is_empty())
-        else {
-            return false;
-        };
-        materialise_dangling(k, by_key, other);
-        !other.dangling.is_empty()
-    });
-    if waits {
-        st.awaiting.push(eid);
+    st.by_key.insert(key.clone(), eid);
+    // What the import names of keys that have their issues becomes edges now; the rest waits. Its
+    // own key never settles what it names of itself.
+    for dep in std::mem::take(&mut issue.dangling) {
+        let target = (dep.get("depends_on_id").and_then(Value::as_str))
+            .and_then(|named| st.by_key.get(named))
+            .filter(|target| **target != eid);
+        match target {
+            Some(target) => bind(k, &mut issue, &dep, *target),
+            None => issue.dangling.push(dep),
+        }
     }
+    // An import may have named this key before it existed: the entries that wait for it become
+    // edges, and nothing else waiting is visited (roll-lqjj.18). Each touches its own issue alone.
+    for (uid, at) in st.awaiting.arrived(&key) {
+        let Some(other) = st.issues.get_mut(&uid) else {
+            continue;
+        };
+        if let Some(dep) = st.awaiting.take(other, at) {
+            bind(k, other, &dep, eid);
+        }
+    }
+    // Listed after the key's own entries are settled, so that what it names of itself waits.
+    st.awaiting.wait(&issue);
+    st.issues.insert(eid, Box::new(issue));
     Ok(())
 }
 
@@ -160,44 +163,32 @@ fn imported_comment(comment: &Object) -> Comment {
     Comment::Imported(members)
 }
 
-/// An imported dependency on a key that did not exist yet becomes a real edge the moment the key
-/// does, tagged with the create that carried it, so every machine derives the same edge and a later
-/// removal that saw that create can take it away.
-fn materialise_dangling(k: &Knowledge, by_key: &IndexMap<String, EventId>, issue: &mut Issue) {
+/// An imported dependency on a key that did not exist yet becomes a real edge to `target`, the issue
+/// that has the key, the moment the key exists, tagged with the create that carried it, so every
+/// machine derives the same edge and a later removal that saw that create can take it away.
+fn bind(k: &Knowledge, issue: &mut Issue, dep: &Value, target: EventId) {
     let uid = issue.uid;
-    let mut kept = Vec::new();
-    for dep in std::mem::take(&mut issue.dangling) {
-        let target = dep
-            .get("depends_on_id")
-            .and_then(Value::as_str)
-            .and_then(|key| by_key.get(key));
-        let Some(target) = target.copied().filter(|target| *target != uid) else {
-            kept.push(dep);
-            continue;
-        };
-        let (target, kind) = (target.to_string(), dangling_type(&dep));
-        let removals = [(target.clone(), Some(kind.clone())), (target.clone(), None)];
-        let taken_back = removals
-            .iter()
-            .filter_map(|removed| issue.retracted.get(removed))
-            .flatten()
-            .any(|removal| k.saw(*removal, uid));
-        if taken_back {
-            continue; // taken back before the target existed, by someone who had seen this import
-        }
-        let mut meta = Object::new(); // as dep_add stamps it
-        meta.insert("created_at".into(), Value::from(event_time(uid.millis())));
-        let creator = k.who(uid).unwrap_or_default();
-        meta.insert("created_by".into(), Value::from(creator));
-        for name in ["created_at", "created_by", "metadata", "thread_id"] {
-            if let Some(value) = dep.get(name) {
-                meta.insert(name.into(), value.clone());
-            }
-        }
-        issue
-            .dep_tags
-            .get_or_insert_with((target, kind), IdMap::default)
-            .insert_if_absent(uid, Value::from(meta));
+    let (target, kind) = (target.to_string(), dangling_type(dep));
+    let removals = [(target.clone(), Some(kind.clone())), (target.clone(), None)];
+    let taken_back = removals
+        .iter()
+        .filter_map(|removed| issue.retracted.get(removed))
+        .flatten()
+        .any(|removal| k.saw(*removal, uid));
+    if taken_back {
+        return; // taken back before the target existed, by someone who had seen this import
     }
-    issue.dangling = kept;
+    let mut meta = Object::new(); // as dep_add stamps it
+    meta.insert("created_at".into(), Value::from(event_time(uid.millis())));
+    let creator = k.who(uid).unwrap_or_default();
+    meta.insert("created_by".into(), Value::from(creator));
+    for name in ["created_at", "created_by", "metadata", "thread_id"] {
+        if let Some(value) = dep.get(name) {
+            meta.insert(name.into(), value.clone());
+        }
+    }
+    issue
+        .dep_tags
+        .get_or_insert_with((target, kind), IdMap::default)
+        .insert_if_absent(uid, Value::from(meta));
 }

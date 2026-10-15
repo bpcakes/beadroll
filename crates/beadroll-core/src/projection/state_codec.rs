@@ -1,6 +1,7 @@
 //! A state's issues, and what replay keeps beside them, as bytes ([`super::codec`]). What replay
 //! derives once it has applied every event (each issue's labels, the parent-child index) is not
-//! written: it is derived again as the state is read.
+//! written: it is derived again as the state is read, and so is where each imported dependency
+//! that waits for a key is (roll-lqjj.18), from the issues' lists.
 //!
 //! An issue's texts (its long fields, the values their registers hold, its comments and its
 //! extras) are written apart, each issue's as bytes of their own ([`super::text_codec`]), which a
@@ -15,8 +16,8 @@ use crate::id::EventId;
 use crate::json::{Int, Value};
 use crate::replay::finish;
 use crate::state::{
-    Claim, EndedClaim, IdMap, IdSet, Integrity, Issue, Knowledge, LostClaim, Origin, Provisional,
-    Rename, Stale, State, Stored, TextPlace, Texts, VecMap, is_text,
+    Awaiting, Claim, EndedClaim, IdMap, IdSet, Integrity, Issue, Knowledge, LostClaim, Origin,
+    Provisional, Rename, Stale, State, Stored, TextPlace, Texts, VecMap, is_text,
 };
 
 use super::codec::{Reader, Unreadable, Writer};
@@ -69,7 +70,6 @@ pub(crate) fn write_state(w: &mut Writer, st: &State, given: &HashMap<EventId, T
         w.optional_text(thread.as_deref());
         w.id(*id);
     }
-    w.ids(st.awaiting.iter());
 }
 
 /// A state, what every event had seen left out: the caller gives it the knowledge it has.
@@ -108,7 +108,7 @@ pub(crate) fn read_state(r: &mut Reader<'_>) -> Result<State, Unreadable> {
         let thread = (r.text()?, r.optional_text()?);
         st.last_by_thread.insert(thread, r.id()?);
     }
-    st.awaiting = r.ids()?;
+    st.awaiting = Awaiting::of(st.issues.values().map(|issue| &**issue));
     finish(&mut st);
     Ok(st)
 }
