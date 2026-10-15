@@ -2,13 +2,12 @@
 
 use std::os::unix::ffi::OsStrExt as _;
 
-use beadroll_core::journal::Journal;
 use beadroll_core::json::{Object, Value};
-use beadroll_core::state::State;
+use beadroll_core::projection::Projection;
 use beadroll_core::text::{printed_text, str_of};
 use beadroll_store::{
-    Workspace, dir_entries, load_journal, load_pending, replica_id, segment_files,
-    tracked_config_warning, view_outline,
+    Workspace, dir_entries, load_pending, projection, replica_id, segment_files,
+    tracked_config_warning,
 };
 
 use super::{Context, Failure, Outcome};
@@ -21,8 +20,8 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// problems and renamed keys; with any `sync.git` set aside as damaged.
 pub(crate) fn info(ctx: &Context<'_>) -> Result<Outcome, Failure> {
     let ws = ctx.ws;
-    let mut journal = load_journal(ws)?;
-    let st = view_outline(ws)?;
+    let projection = projection(ws)?;
+    let st = projection.state();
     let replica = replica_id(&ws.settings, false)?;
     let remote = match ws.remote(None) {
         Ok(Some(remote)) => Value::from(printed_text(remote.as_bytes())),
@@ -66,7 +65,7 @@ pub(crate) fn info(ctx: &Context<'_>) -> Result<Outcome, Failure> {
     result.insert("actor".into(), ctx.actor.value.clone());
     let label = ctx.actor.label(replica.as_deref().unwrap_or("?"));
     result.insert("actor_label".into(), Value::from(label.shown()));
-    numbers(ws, &mut journal, &st, &mut result)?;
+    numbers(ws, &projection, &mut result)?;
     let synced = ws.meta(false)?.get("last_sync").cloned();
     result.insert("last_sync".into(), synced.unwrap_or(Value::Null));
     // set aside by a rebuild; nothing in them is the only copy of anything, delete at leisure
@@ -89,28 +88,27 @@ pub(crate) fn info(ctx: &Context<'_>) -> Result<Outcome, Failure> {
 /// The journal's numbers, in `info`'s order: issues, events in all and by machine, segments, the
 /// frontier, this machine's attempts awaiting the remote, events waiting for what they build on,
 /// integrity problems and renamed keys.
-fn numbers(
-    ws: &Workspace,
-    journal: &mut Journal,
-    st: &State,
-    result: &mut Object,
-) -> Result<(), Failure> {
+///
+/// None of them reads the journal (roll-lqjj.31): the issues, the waiting events, the integrity
+/// problems and the renamed keys are the store's projection's state; the events, each machine's
+/// and the frontier its index (every event id, each machine's journal length, the heads); the
+/// segments the files' listing; the attempts awaiting the remote this machine's pending files.
+/// The journal is read only when the projection is not the journal's, to make it.
+fn numbers(ws: &Workspace, projection: &Projection, result: &mut Object) -> Result<(), Failure> {
+    let st = projection.state();
     result.insert("issues".into(), Value::from(st.issues().count() as i64));
-    result.insert("events".into(), Value::from(journal.events().len() as i64));
-    let mut machines: Vec<_> = journal.order().iter().collect();
-    machines.sort_by(|a, b| a.0.cmp(b.0));
+    let events = projection.event_count();
+    result.insert("events".into(), Value::from(events as i64));
     let mut by_machine = Object::new();
-    for (replica, ids) in machines {
-        by_machine.insert(replica.clone(), Value::from(ids.len() as i64));
+    for (replica, length, _) in projection.journals() {
+        by_machine.insert(replica.to_owned(), Value::from(i64::from(length)));
     }
     result.insert("events_by_machine".into(), Value::from(by_machine));
     result.insert(
         "segments".into(),
         Value::from(segment_files(ws)?.len() as i64),
     );
-    let frontier = journal
-        .heads()
-        .into_iter()
+    let frontier = (projection.heads().iter())
         .map(|id| Value::from(id.to_string()))
         .collect();
     result.insert("frontier".into(), Value::Array(frontier));

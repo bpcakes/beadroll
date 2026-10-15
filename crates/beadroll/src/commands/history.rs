@@ -7,12 +7,11 @@ use beadroll_core::code::Code;
 use beadroll_core::json::{self, Format, Int, Object, Surrogates, Value};
 use beadroll_core::op::Op;
 use beadroll_core::order::causal_order;
-use beadroll_core::replay::replay;
 use beadroll_core::text::{printed_text, str_of, surrogateescaped};
 use beadroll_core::time::event_time;
 use beadroll_store::{
-    Unreadable, ViewError, load_journal, machine_aliases, read_json_keeping_surrogates,
-    write_atomic,
+    Unreadable, load_journal, machine_aliases, projection, read_json_keeping_surrogates,
+    view_outline, write_atomic,
 };
 
 use super::{Context, Failure, Line, Outcome, Tone, resolve_arg};
@@ -21,6 +20,11 @@ use super::{Context, Failure, Line, Outcome, Tone, resolve_arg};
 /// who (the actor's name when it was given one, as its claims are labelled, else its agent and
 /// thread), operation (with the fields a `set` changed) and issue. A positive `limit` keeps the
 /// last that many; a negative limit leaves that many off the start.
+///
+/// The events and their order are the journal's, which it reads whole; the keys it names issues
+/// by are the store's state's, read after it so that every issue an event names is there
+/// (roll-lqjj.31). It replays nothing of its own: the journal is replayed only when the
+/// projection is not the journal's, to make it, as for every command.
 pub(crate) fn log(
     ctx: &Context<'_>,
     key: Option<&OsStr>,
@@ -28,7 +32,7 @@ pub(crate) fn log(
 ) -> Result<Outcome, Failure> {
     let mut journal = load_journal(ctx.ws)?;
     journal.settle();
-    let st = replay(journal.clone()).map_err(ViewError::from)?;
+    let st = view_outline(ctx.ws)?;
     let (order, _) = causal_order(&journal);
     let aliases = machine_aliases(&ctx.ws.settings);
     let wanted = match key.filter(|k| !k.is_empty()) {
@@ -125,31 +129,30 @@ pub(crate) fn log(
 
 /// Every machine that wrote to the tracker, with its local display name, how many events it wrote
 /// and when it last wrote. With `name` (`ID=ALIAS`), that name is recorded first.
+///
+/// Each machine's journal length and latest event are the store's projection's: the journal is
+/// read only when the projection is not the journal's, to make it (roll-lqjj.31).
 pub(crate) fn machines(ctx: &Context<'_>, name: Option<&OsStr>) -> Result<Outcome, Failure> {
     if let Some(name) = name.filter(|n| !n.is_empty()) {
         record_alias(ctx, name)?;
     }
-    let journal = load_journal(ctx.ws)?;
+    let projection = projection(ctx.ws)?;
     let aliases = machine_aliases(&ctx.ws.settings);
-    let mut machines: Vec<_> = journal.order().iter().collect();
-    machines.sort_by(|a, b| a.0.cmp(b.0));
     let mut rows = Vec::new();
     let mut lines = Vec::new();
-    for (replica, ids) in machines {
-        let last = ids.iter().max().map_or(0, |id| id.millis());
-        let last = event_time(last);
+    for (replica, events, last) in projection.journals() {
+        let last = event_time(last.map_or(0, |id| id.millis()));
         let alias = aliases.get(replica);
         let mut row = Object::new();
-        row.insert("machine".into(), Value::from(replica.as_str()));
+        row.insert("machine".into(), Value::from(replica));
         row.insert("alias".into(), Value::from(alias.cloned()));
-        row.insert("events".into(), Value::from(ids.len() as i64));
+        row.insert("events".into(), Value::from(i64::from(events)));
         row.insert("last_event".into(), Value::from(last.as_str()));
         let shown = alias
             .filter(|a| !a.is_empty())
             .map_or("(unnamed)", String::as_str);
         lines.push(format!(
-            "{replica}  {shown:<14} {:>6} events  last {}",
-            ids.len(),
+            "{replica}  {shown:<14} {events:>6} events  last {}",
             last.chars().take(19).collect::<String>()
         ));
         rows.push(Value::from(row));

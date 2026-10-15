@@ -36,7 +36,7 @@ pub use codec::Unreadable;
 pub use extend::Extended;
 
 /// The version of the bytes [`Projection::encode`] writes. Bytes of another are not read.
-pub const ENCODING: u32 = 4;
+pub const ENCODING: u32 = 5;
 
 /// A projection's bytes: its state, which a command that only reads needs alone, its index, what
 /// applying more events needs, and the texts it has that are written nowhere yet.
@@ -45,7 +45,8 @@ pub struct Encoded {
     /// The state, each issue with where its texts are.
     pub state: Vec<u8>,
     /// What every event the state names had seen, the frontier, every event id, each machine's
-    /// journal length, the claims takeovers superseded, and whether events can be applied after.
+    /// journal length and latest event, the claims takeovers superseded, and whether events can be
+    /// applied after.
     pub index: Vec<u8>,
     /// The texts written nowhere yet, each issue's at the place the state gives it: to append to
     /// the text file the state's places are in.
@@ -97,6 +98,9 @@ pub struct Projection {
     pub(crate) ids: BTreeSet<EventId>,
     /// Each machine's journal length: the position of its next record.
     pub(crate) lengths: HashMap<String, u32>,
+    /// Each machine's latest event in its journal, by id: when it last wrote, which a machine's
+    /// last record need not say, since ids are minted from a clock that can go back (roll-lqjj.31).
+    pub(crate) lasts: HashMap<String, EventId>,
     /// The claims takeovers superseded.
     pub(crate) superseded: HashSet<EventId>,
     /// Whether events can be applied after it: the journal had nothing quarantined, unreadable,
@@ -112,6 +116,9 @@ pub fn project(mut journal: Journal) -> Result<Projection, KeySpace> {
     let lengths = (journal.order().iter())
         .map(|(machine, ids)| (machine.clone(), small(ids.len())))
         .collect();
+    let lasts = (journal.order().iter())
+        .filter_map(|(machine, ids)| Some((machine.clone(), *ids.iter().max()?)))
+        .collect();
     let (mut state, superseded) = replayed(journal)?;
     let open = state.integrity.is_empty() && state.pending.is_empty();
     let mut kept = named(&state);
@@ -122,6 +129,7 @@ pub fn project(mut journal: Journal) -> Result<Projection, KeySpace> {
         heads,
         ids,
         lengths,
+        lasts,
         superseded,
         open,
     })
@@ -141,6 +149,21 @@ impl Projection {
     /// The frontier: the events nothing builds on, by id. A new event's causes.
     pub fn heads(&self) -> &[EventId] {
         &self.heads
+    }
+
+    /// How many events the journal holds: every id, an attempt file's and a stand-in's among them.
+    pub fn event_count(&self) -> usize {
+        self.ids.len()
+    }
+
+    /// Each machine's journal, in the order of their names: how many records it holds, and its
+    /// latest event, by id.
+    pub fn journals(&self) -> Vec<(&str, u32, Option<EventId>)> {
+        let mut out: Vec<(&str, u32, Option<EventId>)> = (self.lengths.iter())
+            .map(|(machine, length)| (machine.as_str(), *length, self.lasts.get(machine).copied()))
+            .collect();
+        out.sort_unstable_by(|a, b| a.0.cmp(b.0));
+        out
     }
 
     /// Whether events can be applied after it ([`Projection::extend`]): its journal had nothing
@@ -193,6 +216,13 @@ impl Projection {
             w.text(machine);
             w.number(u64::from(*length));
         }
+        let mut lasts: Vec<(&String, &EventId)> = self.lasts.iter().collect();
+        lasts.sort();
+        w.count(lasts.len());
+        for (machine, last) in lasts {
+            w.text(machine);
+            w.id(*last);
+        }
         let mut superseded: Vec<EventId> = self.superseded.iter().copied().collect();
         superseded.sort_unstable();
         w.ids(superseded.iter());
@@ -237,6 +267,11 @@ impl Projection {
             let machine = r.text()?;
             lengths.insert(machine, r.small()?);
         }
+        let mut lasts = HashMap::new();
+        for _ in 0..r.count()? {
+            let machine = r.text()?;
+            lasts.insert(machine, r.id()?);
+        }
         let superseded = r.ids()?.into_iter().collect();
         let open = r.flag()?;
         r.done()?;
@@ -245,6 +280,7 @@ impl Projection {
             heads,
             ids,
             lengths,
+            lasts,
             superseded,
             open,
         })

@@ -334,3 +334,32 @@ fn ids_that_interleave_with_the_ones_held_go_in_where_they_belong_in_one_batch()
     let read_back = Projection::decode(&encoded).unwrap();
     assert_eq!(read_back.ids, batched.ids, "the bytes keep them ascending");
 }
+
+#[test]
+fn each_machines_latest_event_is_its_greatest_id_however_its_records_sort() {
+    // What `bead machines` says a machine last wrote (roll-lqjj.31): its greatest id, which its
+    // last record need not have when its clock went back. Projected, extended one event at a
+    // time, in one batch, and read back from the bytes, a projection says what the whole
+    // journal does.
+    let base = base();
+    let out_of_order = vec![
+        record(event(9, HERE, &[3], "close", 2, Object::new()), HERE, true),
+        record(event(4, HERE, &[9], "close", 3, Object::new()), HERE, true),
+    ];
+    let mut held = base.clone();
+    held.extend(out_of_order.clone());
+    let nine = EventId::parse(&id(9));
+    let full = project(journal(&held)).unwrap();
+    assert_eq!(full.journals(), [(HERE, 5, nine)]);
+    assert_eq!(full.event_count(), 5);
+    let one_by_one = extended(&base, out_of_order.clone());
+    let batched = in_one_batch(&base, &out_of_order);
+    for projection in [&one_by_one, &batched] {
+        assert_eq!(projection.journals(), full.journals());
+        assert_eq!(projection.event_count(), full.event_count());
+        let (encoded, _) = projection.encode(0);
+        let read_back = Projection::decode(&encoded).unwrap();
+        assert_eq!(read_back.journals(), full.journals());
+        assert_eq!(read_back.event_count(), full.event_count());
+    }
+}

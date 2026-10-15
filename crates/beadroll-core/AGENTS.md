@@ -38,7 +38,10 @@ consumer on tokio calls through `spawn_blocking`.
   (`state/seen/compact.rs`); `projection/extend.rs`: `Projection::extend`, which applies records
   appended to its journal when replay would apply them after all of it, and declines otherwise, and
   then finishes only what the batch changed (`replay::finish_some`, roll-lqjj.17);
-  `projection/codec.rs`, `projection/state_codec.rs`, `state/seen/codec.rs`: its bytes.
+  `projection/codec.rs`, `projection/state_codec.rs`, `state/seen/codec.rs`: its bytes. Its
+  index also holds what `bead info` and `bead machines` answer from (roll-lqjj.31): the frontier,
+  every event id (`Projection::event_count`), and each machine's journal length and latest event
+  (`Projection::journals`), which `project` takes from the journal's order and `extend` advances.
 - `state/seen.rs`: what every event had seen, as one clock per event over chains (each machine's
   journal, and chains of the unsequenced events of attempt files): the ancestry index behind
   `saw`; its tests compare it with per-event ancestry bitsets.
