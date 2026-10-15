@@ -53,6 +53,21 @@ fn replaced(ws: &Workspace, path: &Path) {
     write_atomic(path, &bytes, true, &ws.settings.failpoints).unwrap();
 }
 
+/// Puts the modification time of the directory `dir` back a minute, so that a change made in it
+/// is seen however coarse the clock its times come from is: a directory that gains a file within
+/// one tick of its listing keeps its identity (X13).
+fn aged(dir: &Path) {
+    let earlier = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
+    let opened = std::fs::File::open(dir).unwrap();
+    let times = std::fs::FileTimes::new().set_modified(earlier);
+    opened.set_times(times).unwrap();
+}
+
+/// The claims directory of this machine.
+fn claims(ws: &Workspace) -> PathBuf {
+    ws.events_dir.join(HERE).join("claims")
+}
+
 type Write = fn(&Workspace);
 
 /// What bead can write under `events/`, each a way the journal's files stop being the ones a
@@ -88,6 +103,30 @@ fn writes() -> Vec<(&'static str, Write)> {
             let path = claimed(ws, 5);
             std::fs::remove_file(&path).unwrap();
             ws.forget_claims(&path);
+        }),
+        // by a writer that does not tell the phase (`Workspace::forget_claims`)
+        (
+            "an attempt file replaced by the same bytes, unannounced",
+            |ws| {
+                replaced(ws, &claimed(ws, 5));
+                aged(&claims(ws));
+            },
+        ),
+        ("an attempt file removed, unannounced", |ws| {
+            std::fs::remove_file(claimed(ws, 5)).unwrap();
+            aged(&claims(ws));
+        }),
+        (
+            "an attempt file added to a claims directory, unannounced",
+            |ws| {
+                std::fs::write(claimed(ws, 8), b"{}\n").unwrap();
+                aged(&claims(ws));
+            },
+        ),
+        ("a claims directory of another machine, unannounced", |ws| {
+            let folder = ws.events_dir.join("0000bb02").join("claims");
+            std::fs::create_dir_all(&folder).unwrap();
+            std::fs::write(folder.join(format!("{}.json", id(8))), b"{}\n").unwrap();
         }),
     ]
 }
@@ -155,5 +194,9 @@ fn a_projection_that_cannot_name_its_files_is_not_current() {
     let projection = read.into_projection();
     assert!(Sourced::new(projection, None).into_current(&ws).is_none());
     let nameless: Keys = Arc::from([None]);
-    assert!(Sources::of(Vec::new(), Arc::from([PathBuf::from("a")]), nameless).is_none());
+    let (paths, stamp) = (Arc::from([PathBuf::from("a")]), Some(Arc::from([])));
+    assert!(Sources::of(Vec::new(), paths, nameless, stamp).is_none());
+    // nor does one whose claims directories could not be told
+    let keys: Keys = Arc::from([]);
+    assert!(Sources::of(Vec::new(), Arc::from([]), keys, None).is_none());
 }

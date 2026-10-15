@@ -14,8 +14,8 @@ use crate::memo::FileKey;
 
 /// A directory's identity and entry-change times. An in-place file rewrite need not change any
 /// of these, so this key must never vouch for the files' bytes.
-#[derive(Debug, PartialEq, Eq)]
-struct DirectoryKey {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct DirectoryKey {
     len: u64,
     device: u64,
     inode: u64,
@@ -41,12 +41,22 @@ impl DirectoryKey {
 /// Each file's identity, in the order of a listing; `None` where it could not be had.
 pub(crate) type Keys = Arc<[Option<FileKey>]>;
 
+/// The identity each claims directory had when its names were listed, by path, in the order of
+/// the listing (`None`: it was not there). A file that is added, removed or renamed over changes
+/// its directory's, whatever wrote it, which is how a reader that took a listing earlier in a
+/// locked phase tells that a file of it was written since (roll-lqjj.37).
+pub(crate) type Stamp = Arc<[(PathBuf, Option<DirectoryKey>)]>;
+
 /// The accepted attempt directories observed in one workspace. Missing or unreadable metadata
 /// never authorizes reuse. The combined listing shares its paths across callers until a
 /// directory changes, and each directory is read again only when its own identity changes.
 #[derive(Debug, Default)]
 pub(crate) struct Claims {
     directories: HashMap<PathBuf, (DirectoryKey, Arc<[PathBuf]>)>,
+    /// The claims directories of the last listing, present or not.
+    present: Vec<PathBuf>,
+    /// Whether one of them changed as it was listed, so that no identity stands for it.
+    unstable: bool,
     sources: Vec<Arc<[PathBuf]>>,
     files: Arc<[PathBuf]>,
     /// Each file's identity as it was stat-ed in this phase, by the listing it was taken for, kept
@@ -59,6 +69,7 @@ pub(crate) struct Claims {
 
 impl Claims {
     pub(crate) fn files(&mut self, events: &Path) -> Result<Arc<[PathBuf]>, Error> {
+        self.unstable = false;
         let mut sources = Vec::new();
         let mut present = Vec::new();
         // Machine directories are few, and their type can change without changing events/.
@@ -70,6 +81,7 @@ impl Claims {
             }
         }
         self.directories.retain(|path, _| present.contains(path));
+        self.present = present;
         if sources.len() != self.sources.len()
             || !sources
                 .iter()
@@ -90,6 +102,23 @@ impl Claims {
     pub(crate) fn files_afresh(&mut self, events: &Path) -> Result<Arc<[PathBuf]>, Error> {
         self.directories.clear();
         self.files(events)
+    }
+
+    /// The identity each claims directory had when the names last listed were ([`Stamp`]); `None`
+    /// when one cannot be vouched for, because it changed while it was listed. Called right after
+    /// [`Claims::files`] or [`Claims::files_afresh`], whose listing it is of.
+    pub(crate) fn stamp(&self) -> Option<Stamp> {
+        if self.unstable {
+            return None;
+        }
+        // a directory that is not remembered is not there
+        let identities: Vec<_> = (self.present.iter())
+            .map(|path| {
+                let key = self.directories.get(path).map(|(key, _)| key.clone());
+                (path.clone(), key)
+            })
+            .collect();
+        Some(identities.into())
     }
 
     /// The identity of each of `files` ([`FileKey::of`]): with `keep` (the store lock held), the
@@ -171,11 +200,13 @@ impl Claims {
             .collect();
         // A directory changed during enumeration is still the listing readdir gave us, but
         // cannot be remembered as a listing of either identity.
-        if let Some(key) = before
-            && DirectoryKey::of(path).as_ref() == Some(&key)
-        {
-            self.directories
-                .insert(path.to_path_buf(), (key, Arc::clone(&files)));
+        match before {
+            Some(key) if DirectoryKey::of(path).as_ref() == Some(&key) => {
+                self.directories
+                    .insert(path.to_path_buf(), (key, Arc::clone(&files)));
+            }
+            Some(_) => self.unstable = true,
+            None => {}
         }
         Ok(files)
     }

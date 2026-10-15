@@ -5,7 +5,7 @@
 //! are still the ones it was made from: a file written between the two has the store read again
 //! (roll-lqjj.37).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use beadroll_core::json::{Format, Object, Value, write};
 use beadroll_store::{Endpoint, Workspace, glob_ending, json_text, read_attempt, replica_id};
@@ -115,13 +115,13 @@ fn a_claim_reads_the_state_once_a_round() {
     assert!(a.show(&key).get("claim").is_some());
 }
 
-/// Two machines on one tracker: `a` has published two issues, `b` has joined and is about to write
+/// Two machines on one tracker: `a` has published three issues, `b` has joined and is about to write
 /// what `a` has not seen.
 struct Window {
     sandbox: Sandbox,
     a: Machine,
     b: Machine,
-    keys: [String; 2],
+    keys: [String; 3],
 }
 
 impl Window {
@@ -130,7 +130,7 @@ impl Window {
         let (a, b) = (Machine::new(&sandbox, "a"), Machine::new(&sandbox, "b"));
         a.bead(["init", "--prefix", "ex"]);
         let key = || text(&a.bead(["create", "x"]).expect("an issue")["id"]);
-        let keys = [key(), key()];
+        let keys = [key(), key(), key()];
         b.bead(["sync"]);
         Window {
             sandbox,
@@ -160,14 +160,46 @@ impl Window {
     }
 
     /// `path` under `b`'s `events/`, copied to where `a` would have it had its merge brought it in:
-    /// the write of the window.
+    /// the write of the window. Written from outside `a`'s process, which does not forget the names
+    /// it listed (`Workspace::forget_claims`).
     fn copy_over(&self, path: &str) -> impl FnOnce() + Send + use<> {
         let from = self.b.store().join("events").join(path);
         let to = self.a.store().join("events").join(path);
         move || {
-            std::fs::create_dir_all(to.parent().expect("a folder")).expect("a folder");
-            std::fs::copy(from, to).expect("a copy");
+            let folder = to.parent().expect("a folder");
+            std::fs::create_dir_all(folder).expect("a folder");
+            std::fs::copy(from, &to).expect("a copy");
+            aged(folder);
         }
+    }
+
+    /// The file at `path` under `a`'s `events/` replaced by another of the same bytes renamed over
+    /// it, as an atomic write does, the names it leaves the same: the write of the window, from
+    /// outside `a`'s process too.
+    fn rename_over(&self, path: &str) -> impl FnOnce() + Send + use<> {
+        let target = self.a.store().join("events").join(path);
+        move || {
+            let new = target.with_extension("json.window");
+            std::fs::copy(&target, &new).expect("a copy");
+            std::fs::rename(&new, &target).expect("a rename");
+            aged(target.parent().expect("a folder"));
+        }
+    }
+
+    /// The attempt file of `folder` under `events/` that `b` has and `a` has not.
+    fn lacking(&self, folder: &str) -> String {
+        let names = |machine: &Machine| -> Vec<String> {
+            let claims = machine.store().join("events").join(folder).join("claims");
+            let files = glob_ending(&claims, ".json");
+            let name = |file: &PathBuf| file.file_name().map(|n| n.to_string_lossy().into_owned());
+            files.iter().filter_map(name).collect()
+        };
+        let known = names(&self.a);
+        let own: Vec<String> = (names(&self.b).into_iter())
+            .filter(|name| !known.contains(name))
+            .collect();
+        assert_eq!(own.len(), 1, "the attempt files b wrote alone: {own:?}");
+        own.into_iter().next().unwrap_or_default()
     }
 
     /// `a` claims the first issue, held at the window between its merge and its transaction,
@@ -208,6 +240,16 @@ impl Window {
         let deps = events[0]["deps"].as_array().expect("causes");
         deps.iter().map(text).collect()
     }
+}
+
+/// Puts the modification time of the directory `dir` back a minute, so that a change made in it is
+/// seen however coarse the clock its times come from is: a directory that gains a file within one
+/// tick of its listing keeps its identity (X13).
+fn aged(dir: &Path) {
+    let earlier = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
+    let opened = std::fs::File::open(dir).expect("a directory");
+    let times = std::fs::FileTimes::new().set_modified(earlier);
+    opened.set_times(times).expect("a time");
 }
 
 /// The id of the last event of `file`, a segment, or of the attempt file `file`.
@@ -257,6 +299,45 @@ fn an_attempt_file_written_after_the_merge_is_read_by_the_claims_transaction() {
     assert_eq!(reads, 2, "the merge's read, and the store read again");
     let causes = s.causes(&ws);
     assert!(causes.contains(&written), "{written} among {causes:?}");
+}
+
+/// The same for a claims directory `a` has already, which gains a file: another claim of `b`'s,
+/// accepted by `b` alone, written from outside the process with the phase not told.
+#[test]
+fn an_attempt_file_added_to_a_claims_directory_after_the_merge_is_read_by_the_claims_transaction() {
+    let s = Window::new();
+    s.b.bead(["claim", &s.keys[1]]);
+    let theirs = s.theirs();
+    s.a.bead(["sync"]);
+    s.b.bead(["claim", &s.keys[2], "--offline"]);
+    let name = s.lacking(&theirs);
+    let written = last_id(
+        &s.b.store()
+            .join("events")
+            .join(&theirs)
+            .join("claims")
+            .join(&name),
+    );
+    let (ws, reads) = s.claim_while(s.copy_over(&format!("{theirs}/claims/{name}")));
+    assert_eq!(reads, 2, "the merge's read, and the store read again");
+    let causes = s.causes(&ws);
+    assert!(causes.contains(&written), "{written} among {causes:?}");
+}
+
+/// And for an attempt file `a` has, replaced in place by a rename: the names are the same, the
+/// claims directory is not.
+#[test]
+fn an_attempt_file_replaced_after_the_merge_is_read_by_the_claims_transaction() {
+    let s = Window::new();
+    s.b.bead(["claim", &s.keys[1]]);
+    let theirs = s.theirs();
+    s.a.bead(["sync"]);
+    let claims = s.a.store().join("events").join(&theirs).join("claims");
+    let files = glob_ending(&claims, ".json");
+    assert_eq!(files.len(), 1, "{files:?}");
+    let name = files[0].file_name().expect("a name").to_string_lossy();
+    let (_, reads) = s.claim_while(s.rename_over(&format!("{theirs}/claims/{name}")));
+    assert_eq!(reads, 2, "the merge's read, and the store read again");
 }
 
 /// The guard does not read the store again for what the merge itself wrote: a claim whose merge

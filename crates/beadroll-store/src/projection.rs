@@ -48,7 +48,7 @@ use crate::journal::{
     ViewError, attempt_events, claim_files_afresh, claim_keys, folder_name, load_journal,
     load_listed, segment_files,
 };
-use crate::listing::Keys;
+use crate::listing::{Keys, Stamp};
 use crate::memo::FileKey;
 use crate::workspace::Workspace;
 
@@ -198,7 +198,7 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
                 let seen = (seen.into_iter())
                     .map(|held| (held.path, held.key))
                     .collect();
-                let sources = Sources::of(seen, listed.paths, listed.keys);
+                let sources = Sources::of(seen, listed.paths, listed.keys, listed.stamp);
                 return Ok(Now::Projection(Box::new(projection), sources));
             }
         } else if let Some((now, sources)) =
@@ -414,22 +414,29 @@ fn read_tails(ws: &Workspace, tails: &[Tail]) -> Option<(Vec<Record>, Vec<Held>)
 }
 
 /// The accepted attempt files as they are: each one's path and identity as the phase has them,
-/// and what a projection keeps of it.
+/// the identity each claims directory had when they were listed, and what a projection keeps of
+/// each.
 struct Listed {
     paths: Arc<[PathBuf]>,
     keys: Keys,
+    stamp: Option<Stamp>,
     held: Vec<Held>,
 }
 
 /// The accepted attempt files, listed and each stat-ed once the segments are read
 /// ([`claim_files_afresh`], [`claim_keys`]); `None` when one's identity cannot be had.
 fn attempts(ws: &Workspace) -> Result<Option<Listed>, ViewError> {
-    let paths = claim_files_afresh(ws)?;
+    let (paths, stamp) = claim_files_afresh(ws)?;
     let keys = claim_keys(ws, &paths);
     let held = (paths.iter().zip(keys.iter().copied()))
         .map(|(path, key)| kept(ws, path, key, false, None))
         .collect::<Option<Vec<Held>>>();
-    Ok(held.map(|held| Listed { paths, keys, held }))
+    Ok(held.map(|held| Listed {
+        paths,
+        keys,
+        stamp,
+        held,
+    }))
 }
 
 /// What a projection with the records appended since it was made is made from, each file as it was
@@ -512,7 +519,7 @@ fn appended(
         files: segments,
         texts: made.texts,
     };
-    let sources = Sources::made(&made, listed.paths, listed.keys);
+    let sources = Sources::made(&made, listed.paths, listed.keys, listed.stamp);
     Some((made, sources))
 }
 

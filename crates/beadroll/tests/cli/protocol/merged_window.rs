@@ -11,13 +11,13 @@ use beadroll_test_support::{Json, Machine, Sandbox};
 
 use crate::hardening::gate::{Gate, beside};
 
-/// Machine `a`, which started a tracker of two issues and has written alone, and machine `b`,
+/// Machine `a`, which started a tracker of three issues and has written alone, and machine `b`,
 /// which joined it.
 struct Pair {
     sandbox: Sandbox,
     a: Machine,
     b: Machine,
-    keys: [String; 2],
+    keys: [String; 3],
     /// `a`'s folder under `events/`.
     own: String,
 }
@@ -34,7 +34,7 @@ impl Pair {
             let created = a.bead(["create", title]).expect("an issue");
             created["id"].as_str().expect("an id").to_owned()
         };
-        let keys = [issue("first"), issue("second")];
+        let keys = [issue("first"), issue("second"), issue("third")];
         b.bead(["sync"]);
         let mut own = folders(&a);
         assert_eq!(own.len(), 1, "a has written alone: {own:?}");
@@ -71,8 +71,10 @@ impl Pair {
             },
             |finished| {
                 window.meet(finished, || {
-                    std::fs::create_dir_all(to.parent().expect("a folder")).expect("a folder");
+                    let folder = to.parent().expect("a folder");
+                    std::fs::create_dir_all(folder).expect("a folder");
                     std::fs::copy(&from, &to).expect("a copy");
+                    aged(folder);
                 })
             },
         );
@@ -85,6 +87,16 @@ impl Pair {
         let events = read_attempt(&attempts[0], None);
         events[0]["deps"].as_array().expect("causes").to_vec()
     }
+}
+
+/// Puts the modification time of the directory `dir` back a minute, so that a change made in it is
+/// seen however coarse the clock its times come from is: a directory that gains a file within one
+/// tick of its listing keeps its identity (X13).
+fn aged(dir: &Path) {
+    let earlier = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
+    let opened = std::fs::File::open(dir).expect("a directory");
+    let times = std::fs::FileTimes::new().set_modified(earlier);
+    opened.set_times(times).expect("a time");
 }
 
 /// The folders under a machine's `events/`.
@@ -129,6 +141,30 @@ fn a_claim_builds_on_an_attempt_file_written_between_its_merge_and_its_transacti
     assert_eq!(files.len(), 1, "{files:?}");
     let name = files[0].file_name().expect("a name").to_string_lossy();
     let written = last_id(&files[0]);
+    let causes = s.causes_of_a_claim_while_copying(&format!("{folder}/claims/{name}"));
+    assert!(causes.contains(&written), "{written:?} among {causes:?}");
+}
+
+/// The same for a claims directory `a` has already, which gains a file: another claim of `b`'s,
+/// accepted by `b` alone, written with nothing told to the claim's process.
+#[test]
+fn a_claim_builds_on_an_attempt_file_added_to_a_claims_directory_it_has() {
+    let s = Pair::new();
+    s.b.bead(["claim", &s.keys[1]]);
+    let folder = s.theirs();
+    s.a.bead(["sync"]);
+    s.b.bead(["claim", &s.keys[2], "--offline"]);
+    let names = |machine: &Machine| -> Vec<std::path::PathBuf> {
+        let claims = machine.store().join("events").join(&folder).join("claims");
+        glob_ending(&claims, ".json")
+    };
+    let known = names(&s.a);
+    let new: Vec<_> = (names(&s.b).into_iter())
+        .filter(|file| !known.iter().any(|k| k.file_name() == file.file_name()))
+        .collect();
+    assert_eq!(new.len(), 1, "{new:?}");
+    let name = new[0].file_name().expect("a name").to_string_lossy();
+    let written = last_id(&new[0]);
     let causes = s.causes_of_a_claim_while_copying(&format!("{folder}/claims/{name}"));
     assert!(causes.contains(&written), "{written:?} among {causes:?}");
 }

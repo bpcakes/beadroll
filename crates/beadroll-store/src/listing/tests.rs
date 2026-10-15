@@ -68,6 +68,58 @@ fn names_are_shared_until_added_removed_or_replaced() {
     assert_eq!(&*claims.files(&events).unwrap(), &[a.join("5.json")]);
 }
 
+/// The stamp of a listing is the identity each claims directory had when it was listed, and moves
+/// with a directory whoever wrote in it: a file renamed over keeps the names and not the
+/// directory's identity, as one added or removed does, and a claims directory that was not there
+/// and is, with or without the phase being told (roll-lqjj.37).
+#[test]
+fn a_stamp_follows_each_claims_directory_whatever_wrote_in_it() {
+    let home = tempfile::tempdir().unwrap();
+    let events = home.path().join("events");
+    let (a, b) = (events.join("a/claims"), events.join("b"));
+    std::fs::create_dir_all(&a).unwrap();
+    std::fs::create_dir_all(&b).unwrap();
+    std::fs::write(a.join("1.json"), b"one").unwrap();
+    let mut claims = Claims::default();
+    claims.files(&events).unwrap();
+    let first = claims.stamp().expect("stable directories");
+    let identities: Vec<_> = first
+        .iter()
+        .map(|(path, key)| (path, key.is_some()))
+        .collect();
+    assert_eq!(identities, [(&a, true), (&b.join("claims"), false)]);
+    // the names are shared, and so is the stamp
+    claims.files(&events).unwrap();
+    assert_eq!(claims.stamp(), Some(Arc::clone(&first)));
+
+    // a file renamed over, the phase not told: the names are the same, the directory is not
+    let names = claims.files(&events).unwrap();
+    std::fs::write(a.join("1.json.new"), b"one").unwrap();
+    std::fs::rename(a.join("1.json.new"), a.join("1.json")).unwrap();
+    aged(&a);
+    assert_eq!(*claims.files(&events).unwrap(), *names);
+    let second = claims.stamp().unwrap();
+    assert_ne!(second, first);
+
+    // a file added and one removed, the phase not told, then told of another write
+    std::fs::write(a.join("2.json"), b"two").unwrap();
+    aged(&a);
+    claims.files(&events).unwrap();
+    let third = claims.stamp().unwrap();
+    assert_ne!(third, second);
+    std::fs::remove_file(a.join("2.json")).unwrap();
+    aged(&a);
+    claims.forget(&a.join("2.json"));
+    claims.files(&events).unwrap();
+    assert_ne!(claims.stamp().unwrap(), third);
+
+    // a claims directory that was not there
+    let before = claims.stamp().unwrap();
+    std::fs::create_dir(b.join("claims")).unwrap();
+    claims.files(&events).unwrap();
+    assert_ne!(claims.stamp().unwrap(), before);
+}
+
 /// A rewrite in place keeps a directory's identity, so the names are reused; it changes the
 /// file's, as long as the times it sets are not the ones the file already has. A kernel stamps an
 /// inode from a clock of its own granularity, so a same-length rewrite within one of its ticks
