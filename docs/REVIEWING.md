@@ -257,14 +257,19 @@ These were decided deliberately. Report problems *with* them, not their existenc
   id, a record in another machine's journal and its writer's own later, a copy of a machine's
   identity writing to its journal, a takeover of a claim not seen, of something that is not a
   claim, and of an id no event has yet), and found each of the three, the second as a loop; a
-  cause still to come comes from reading `effective_deps` (`projection/tests/flawed.rs`, 10,000
-  histories with `--ignored many_seeds`); `projection/tests/reported.rs` holds every kind by hand.
+  cause still to come comes from reading `effective_deps`, and no history built so far, by the
+  generator or by hand, is answered otherwise without it (`projection/tests/flawed.rs`, which runs
+  the seeds that find the other three by default, and 10,000 histories with `--ignored
+  many_seeds`); `projection/tests/reported.rs` holds every kind by hand, and each of the three.
   `close`, `reopen` and `delete` decide every issue they answer for from the state before
   they write and read it once more after (`decide`), where each read before each issue replayed the
   journal again whenever the projection could not take the event before: an issue named twice is
   as its event left it, which built on everything the state holds (its status the one asked, no
   claim; a close drops its provisional claims, a delete or a reopen leaves them and is written
-  again), and the answers are those of reading the state before each. Measured end to end on a
+  again), unless a head of the frontier waits for a cause the journal lacks: then every event
+  written waits too, and every issue is as the state has it however often it is named (a head the
+  first event builds on, not any event waiting, since two events naming each other wait off the
+  frontier). The answers are those of reading the state before each. Measured end to end on a
   scratch tracker of N imported issues: one event of an operation this bead does not know, built on
   the frontier, written as the only record of a journal of a machine of its own, then `bead close`
   of M other issues `--offline`, timed, and the `list` after it; and the same with that event a

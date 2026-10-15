@@ -98,6 +98,11 @@ impl<'a> Tx<'a> {
             .map(|record| record.value)
     }
 
+    /// What the next event emitted builds on: the frontier, or the last event emitted.
+    pub fn heads(&self) -> &[EventId] {
+        &self.heads
+    }
+
     /// Whether any sequential event was emitted.
     pub fn has_pending(&self) -> bool {
         self.emitted.iter().any(|record| record.sequenced)

@@ -58,6 +58,7 @@ pub(crate) fn transition(
     let (mut result, ended, named, unchanged, plan) = writing(ctx.ws, ctx.actor, |tx| {
         need_tracker(tx.state()?)?;
         let me = ctx.actor.label(&tx.replica);
+        let heads = tx.heads().to_vec();
         let st = tx.state()?;
         let mut plan = plan(st, args)?;
         if args.recursive && !args.force {
@@ -67,7 +68,10 @@ pub(crate) fn transition(
         }
         // Every issue decided from this one state: the state read again after each event would
         // replay the journal each time, when the projection cannot take the event (roll-lqjj.28).
-        let decided = decide(st, &plan, (op, status), args, &me);
+        // The first event builds on the frontier and each later one on the one before: when a
+        // head waits for a cause the journal lacks, every one waits too, and changes nothing.
+        let waits = heads.iter().any(|head| st.pending().contains(head));
+        let decided = decide(st, &plan, (op, status, waits), args, &me);
         for (uid, data) in decided.events {
             tx.emit(op, Some(&uid.to_string()), data, None)?;
         }
@@ -124,15 +128,17 @@ struct Decided {
 
 /// What `op`, giving `status`, writes for each issue `plan` answers for, decided from `st`, the
 /// state before it writes anything, as the state after the events before each would have it.
-/// An event changes only its own issue, so an issue not written yet is as `st` has it. One named
-/// again after its event is as that event left it: the event built on everything `st` holds, so it
-/// saw every value of the issue's status and every claim on it, and leaves the status asked for,
-/// undisputed, and no claim (the one it ended counted already); a close drops the provisional
-/// claims too, where a delete or a reopen leaves them and is written again.
+/// An event changes only its own issue, so an issue not written yet is as `st` has it. When the
+/// events `waits` for a cause, none applies, and every issue is as `st` has it however often it is
+/// named. Otherwise one named again after its event is as that event left it: the event built on
+/// everything `st` holds and applies after all of it, so it saw every value of the issue's status
+/// and every claim on it, and leaves the status asked for, undisputed, and no claim (the one it
+/// ended counted already); a close drops the provisional claims too, where a delete or a reopen
+/// leaves them and is written again.
 fn decide(
     st: &State,
     plan: &Plan,
-    (op, status): (&str, &str),
+    (op, status, waits): (&str, &str, bool),
     args: &TransitionArgs,
     me: &Label,
 ) -> Decided {
@@ -143,7 +149,7 @@ fn decide(
     let mut each = |uid: EventId| -> Result<(), Failure> {
         let issue = known(st, uid)?;
         // the claim held, whether this actor ended the last one, and whether the issue is as asked
-        let (held, mine_ended, settled) = if written.contains(&uid) {
+        let (held, mine_ended, settled) = if !waits && written.contains(&uid) {
             let left = op == "close" || issue.provisional_claims().is_empty();
             (None, false, left)
         } else {

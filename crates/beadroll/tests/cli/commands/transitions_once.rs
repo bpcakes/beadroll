@@ -1,7 +1,8 @@
 //! `bead close`, `reopen` and `delete` of several issues decide every one from the state before
 //! they write and read the state once more after (roll-lqjj.28): one named twice is answered as the
 //! event before left it, on a clean journal, one with a newer bead's operation in it, and one with a
-//! takeover of an id no event has, which keeps the store's projection from being extended.
+//! takeover of an id no event has, which keeps the store's projection from being extended; and as
+//! it was, when every event written waits for a cause the journal lacks.
 
 use std::path::Path;
 
@@ -49,6 +50,14 @@ fn answers(out: &str) -> Vec<&str> {
     out.lines().filter(|line| line.starts_with('✓')).collect()
 }
 
+/// Writes `record` as the only one of the journal of a machine of its own, `feedface`.
+fn place(machine: &Machine, record: &Json) {
+    let folder = machine.store().join("events").join("feedface");
+    std::fs::create_dir_all(&folder).unwrap();
+    let line = write(record, Format::ASCII).unwrap() + "\n";
+    std::fs::write(Path::new(&folder).join("000001.jsonl"), line).unwrap();
+}
+
 /// Puts `journal`'s record, built on everything `machine` holds, in a journal of a machine of its
 /// own, and checks that replay reports what it should of it.
 fn add(machine: &Machine, journal: Journal) {
@@ -70,10 +79,7 @@ fn add(machine: &Machine, journal: Journal) {
             "takeover names a claim that is not a claim on this issue",
         ),
     };
-    let folder = machine.store().join("events").join("feedface");
-    std::fs::create_dir_all(&folder).unwrap();
-    let line = write(&record, Format::ASCII).unwrap() + "\n";
-    std::fs::write(Path::new(&folder).join("000001.jsonl"), line).unwrap();
+    place(machine, &record);
     let info = machine.bead(["info"]).unwrap();
     let problems: Vec<&str> = (info["integrity"].as_array().unwrap().iter())
         .map(|entry| entry["problem"].as_str().unwrap())
@@ -207,4 +213,103 @@ fn a_transition_of_several_issues_reads_the_state_once_more_however_the_projecti
             assert_eq!(verb, keys.len(), "{journal:?} {op}: {}", run.stdout);
         }
     }
+}
+
+#[test]
+fn an_issue_named_again_after_an_event_that_waits_is_decided_as_it_was() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let [claimed, open, closed, deleted] =
+        ["claimed", "open", "closed", "deleted"].map(|t| create(&a, t, None));
+    ok(&a, &["claim", &claimed, "--offline"]);
+    ok(&a, &["close", &closed]);
+    // On the frontier, an event waiting for a cause no record has: every event written after it
+    // builds on it and waits too, so an issue named again is as it was before the first.
+    let id = uuid7(&Clock::system());
+    place(
+        &a,
+        &json!({"v": 1, "id": (id.as_str()), "replica": "feedface",
+                "deps": [(uuid7(&Clock::system()))], "actor": {"agent": "newer"},
+                "op": "set", "issue": (id.as_str()), "data": {"fields": {"title": "x"}}}),
+    );
+    let waiting = || {
+        a.bead(["info"]).unwrap()["waiting_events"]
+            .as_i64()
+            .unwrap()
+    };
+    assert_eq!(waiting(), 1);
+    let closes = ok(&a, &["close", &claimed, &open, &claimed, "--offline"]);
+    assert_eq!(
+        answers(&closes),
+        [
+            format!("✓ Closed {claimed}: claimed"),
+            format!("✓ Closed {open}: open"),
+            format!("✓ Closed {claimed}: claimed"),
+        ]
+    );
+    assert_eq!(waiting(), 4);
+    let reopens = ok(&a, &["reopen", &closed, &closed, "--offline"]);
+    assert_eq!(
+        answers(&reopens),
+        [
+            format!("✓ Reopened {closed}: closed"),
+            format!("✓ Reopened {closed}: closed"),
+        ]
+    );
+    assert_eq!(waiting(), 6);
+    let deletes = a.run(["delete", &deleted, &deleted, "--offline", "--json"]);
+    assert_eq!(deletes.returncode(), 0, "{}", deletes.stderr);
+    let deletes = parse_json(&deletes.stdout).unwrap();
+    for item in deletes.as_array().unwrap() {
+        assert_eq!(item["status"].as_str(), Some("open"), "{item:?}");
+        assert!(item.get("unchanged").is_none(), "{item:?}");
+    }
+    assert_eq!(waiting(), 8);
+    for (key, status) in [
+        (&claimed, "in_progress"),
+        (&open, "open"),
+        (&closed, "closed"),
+        (&deleted, "open"),
+    ] {
+        assert_eq!(a.show(key)["status"].as_str(), Some(status), "{key}");
+    }
+}
+
+#[test]
+fn an_issue_named_again_is_as_its_event_left_it_though_events_off_the_frontier_wait() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let [claimed, open] = ["claimed", "open"].map(|t| create(&a, t, None));
+    ok(&a, &["claim", &claimed, "--offline"]);
+    // Two events, each naming the other as its cause: both wait, and neither is on the frontier,
+    // so the events written after them apply.
+    let [first, second] = [(); 2].map(|()| uuid7(&Clock::system()));
+    let frontier = a.bead(["info"]).unwrap()["frontier"].clone();
+    let event = |id: &str, cause: &str| {
+        json!({"v": 1, "id": id, "replica": "feedface", "deps": [cause],
+               "actor": {"agent": "newer"}, "op": "set", "issue": id,
+               "data": {"fields": {"title": "x"}}})
+    };
+    let folder = a.store().join("events").join("feedface");
+    std::fs::create_dir_all(&folder).unwrap();
+    let lines: String = [event(&first, &second), event(&second, &first)]
+        .iter()
+        .map(|record| write(record, Format::ASCII).unwrap() + "\n")
+        .collect();
+    std::fs::write(folder.join("000001.jsonl"), lines).unwrap();
+    let info = a.bead(["info"]).unwrap();
+    assert_eq!(info["waiting_events"].as_i64(), Some(2));
+    assert_eq!(info["frontier"], frontier);
+    let closes = ok(&a, &["close", &claimed, &open, &claimed, "--offline"]);
+    assert_eq!(
+        answers(&closes),
+        [
+            format!("✓ Closed {claimed}: claimed"),
+            format!("✓ Closed {open}: open"),
+            format!("✓ Already closed {claimed}: claimed"),
+        ]
+    );
+    assert_eq!(a.show(&claimed)["status"].as_str(), Some("closed"));
 }
