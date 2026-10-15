@@ -42,7 +42,7 @@ pub(crate) fn blocked(ctx: &Context<'_>) -> Result<Outcome, Failure> {
     if lines.is_empty() {
         lines.push("Nothing is blocked".into());
     }
-    Ok(Outcome::new(Value::Array(result), lines))
+    Ok(Outcome::new(Value::Array(result), lines).from_state(st))
 }
 
 /// Issues whose key, title, texts or comments contain `query`, ignoring case; open issues unless
@@ -94,7 +94,7 @@ pub(crate) fn search(ctx: &Context<'_>, query: &OsStr, all: bool) -> Result<Outc
     if lines.is_empty() {
         lines.push("No matches".into());
     }
-    Ok(Outcome::new(result, lines))
+    Ok(Outcome::new(result, lines).from_state(st))
 }
 
 /// Open tasks, bugs and features without acceptance criteria, by key.
@@ -134,5 +134,5 @@ pub(crate) fn lint(ctx: &Context<'_>) -> Result<Outcome, Failure> {
     let mut result = Object::new();
     result.insert("count".into(), Value::from(findings.len() as i64));
     result.shift_insert(0, "findings".into(), Value::Array(findings));
-    Ok(Outcome::new(result, lines))
+    Ok(Outcome::new(result, lines).from_state(st))
 }

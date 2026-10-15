@@ -243,14 +243,18 @@ pub fn confirm_ownership(ws: &Workspace, events: &[Value]) -> Result<(), Error> 
 /// A local write: `body` emits into a transaction, under the store lock; then the sequential
 /// events are appended and ownership events made here (offline, or with no remote) count at once.
 /// A command that went through retires its actor's receipts: a repeat of an earlier command is a
-/// new command. Nothing is written if `body` fails.
+/// new command. Nothing is written if `body` fails. The transaction, which holds the store's whole
+/// projection, is let go of once the lock is: freeing it is no part of the write, every command
+/// waiting for the lock would wait for it too, and on a large tracker it takes about as long as
+/// decoding the projection did (83 ms and 136 ms at 200,000 events; roll-lqjj.32, X10).
 pub fn writing<T, E: From<Error>>(
     ws: &Workspace,
     actor: &Actor,
     body: impl FnOnce(&mut Tx<'_>) -> Result<T, E>,
 ) -> Result<T, E> {
-    locked(ws, || {
-        let mut tx = Tx::new(ws, actor)?;
+    let mut made = None;
+    let result = locked(ws, || {
+        let tx = made.insert(Tx::new(ws, actor)?);
         let replica = tx.replica.clone();
         if tx.state()?.chain_breaks().contains_key(&replica) {
             return Err(Error::JournalFork(
@@ -260,7 +264,7 @@ pub fn writing<T, E: From<Error>>(
             )
             .into());
         }
-        let result = body(&mut tx)?;
+        let result = body(tx)?;
         let sequenced = tx.has_pending();
         let pending = tx.take_pending();
         let finish = || -> Result<(), Error> {
@@ -278,7 +282,9 @@ pub fn writing<T, E: From<Error>>(
         };
         finish()?;
         Ok(result)
-    })
+    });
+    drop(made);
+    result
 }
 
 /// A later command of this actor went through: the receipts that would answer a repeat of an

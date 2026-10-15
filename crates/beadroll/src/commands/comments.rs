@@ -61,7 +61,7 @@ pub(crate) fn comments(ctx: &Context<'_>, args: &CommentArgs) -> Result<Outcome,
     if lines.is_empty() {
         lines.push("No comments".to_owned());
     }
-    Ok(Outcome::new(Value::Array(comments), lines))
+    Ok(Outcome::new(Value::Array(comments), lines).from_state(st))
 }
 
 /// Records a comment on the issue `key` names.

@@ -178,6 +178,9 @@ pub fn coordinated<E: From<Error>>(
     let mut receipt: Option<(Vec<Value>, Mode)> = None;
     // this actor's settled receipts: dropped only once this command has gone through
     let mut stale: Vec<PathBuf> = Vec::new();
+    // a round's transaction, which holds the store's whole projection: let go of once the round
+    // has let go of the lock, as `writing` lets go of its own
+    let mut made = None;
     for attempt in 1..=ROUNDS {
         let round = locked(ws, || -> Result<Option<Mode>, Round<E>> {
             // under the lock: ownership is decided against the head as it is now
@@ -213,8 +216,8 @@ pub fn coordinated<E: From<Error>>(
             }
             // whatever this command had in flight is settled one way or the other
             receipt = None;
-            let mut tx = Tx::new(ws, actor)?;
-            let answer = build(&mut tx, Mode::Online).map_err(Round::Build)?;
+            let tx = made.insert(Tx::new(ws, actor)?);
+            let answer = build(tx, Mode::Online).map_err(Round::Build)?;
             if tx.has_pending() {
                 let pending = tx.take_pending();
                 append_events(ws, &tx.replica, pending).map_err(Error::from)?;
@@ -236,11 +239,12 @@ pub fn coordinated<E: From<Error>>(
                 PushOutcome::Rejected => Ok(None),
                 PushOutcome::Uncertain => {
                     // the attempt stays pending; keep its answer in case the push did land
-                    receipt = Some((tx.ownership, answer));
+                    receipt = Some((std::mem::take(&mut tx.ownership), answer));
                     Ok(None)
                 }
             }
         });
+        drop(made.take());
         match round {
             Ok(Some(answer)) => return Ok(answer),
             Ok(None) => {}
