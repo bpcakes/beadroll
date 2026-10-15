@@ -150,7 +150,9 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   Records appended since are applied after it, as replay would apply them; a
   file written in the same moment as the projection is read against its sum;
   anything else (a file changed another way, events written concurrently, a
-  takeover) has the journal replayed, and the projection written again. It is a cache, never a
+  takeover) has the journal replayed, and the projection written again. A write
+  leaves it as it found it while the records after it are few, and the next read
+  writes it again with them. It is a cache, never a
   source: deleting it is always safe, and a damaged one, or one another build
   of bead wrote, is never read.
 - Each issue's texts (descriptions, designs, acceptance criteria, notes and
@@ -382,7 +384,11 @@ it, and the file is committed again.
   0.23 s at 200,000 events where they loaded the journal in 3.30 and 2.40 s;
   `bead log` still reads the whole journal for its events and their order,
   3.21 s there, but replays none of it (roll-lqjj.31; `cargo xtask timing
-  --read N`).
+  --read N`). A write after a write takes the records before it in without
+  writing the projection back until they hold more than a 64th of its bytes, so
+  at 200,000 events it takes 0.26 s rather than 0.38 s, and a sync after a local
+  write 0.34 s rather than 0.51 s; the read after a write still writes it back
+  (roll-lqjj.36; `cargo xtask timing --read N`, `write_after_write_seconds`).
   A real tracker's state is mostly
   its texts, which only the commands that print them read: on three of the
   largest public Beads trackers (21–47 MB, up to 13,394 issues) a `list` takes

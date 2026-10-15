@@ -43,7 +43,9 @@ remote resolution, actor detection, `view`, and the failpoint registry.
 - `src/projection.rs`: `projection` and the state `view` reads (roll-lqjj.2): the store's
   projection, `<store>/projection`, read when the journal's files are the ones it was made from,
   caught up when records were only appended to them, else the journal replayed, and written back
-  when the files held still; `src/projection/file.rs`: its header, sums and what it was made from;
+  when the files held still: by a command that reads whatever it caught up, by one that writes only
+  once the records it applied hold more than a 64th of the projection's bytes (`kept_for`,
+  roll-lqjj.36); `src/projection/file.rs`: its header, sums and what it was made from;
   `src/projection/sources.rs`: `Sourced`, a projection with the journal files it was made from
   (`projection_sourced`: each segment's identity as `current` read it, the attempt files by the
   listing and identities the locked phase keeps), and `Sourced::into_current`, which says whether

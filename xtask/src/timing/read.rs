@@ -4,8 +4,11 @@
 //! the whole journal before roll-lqjj.31), and a local write (`bead comments add --offline`, so that only what the store does is
 //! timed): with the store's projection in place (`*_seconds`), and with it removed before each
 //! (`cold_*_seconds`), so that each replays the journal, as every command did before roll-lqjj.2,
-//! and writes the projection back; and how many bytes the projection and its text file hold.
-//! Evidence, never a gate.
+//! and writes the projection back; a write cycle (roll-lqjj.36): a write after a read that left
+//! nothing to take in (`write_after_read_seconds`), the `bead show` after it, which takes the
+//! write's record in and writes the projection back (`read_after_write_seconds`), and a write after
+//! a write, which takes the record of the one before in (`write_after_write_seconds`); and how many
+//! bytes the projection and its text file hold. Evidence, never a gate.
 
 use super::history::{ROTATE_BYTES, Shape, history};
 use super::world::{RUNS, World, bead, profile, write_store};
@@ -65,6 +68,22 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
     }
     fields.push(format!(
         "\"write_seconds\": {warm:.4}, \"cold_write_seconds\": {cold:.4}, "
+    ));
+    let [mut write, mut read, mut again] = [f64::INFINITY; 3];
+    for run in 0..RUNS {
+        world.bead(&["list", "--json"])?;
+        let comment = |what: &str| -> Result<f64, Failure> {
+            let text = format!("cycle {run}, {what}");
+            world.timed(&["comments", "add", "ex-1", &text, "--offline"])
+        };
+        write = write.min(comment("after a read")?);
+        read = read.min(world.timed(&["show", "ex-1", "--json"])?);
+        comment("first")?;
+        again = again.min(comment("after a write")?);
+    }
+    fields.push(format!(
+        "\"write_after_read_seconds\": {write:.4}, \"read_after_write_seconds\": {read:.4}, \
+         \"write_after_write_seconds\": {again:.4}, "
     ));
     // An ownership-heavy store is a hundred thousand files: nothing to leave lying about.
     std::fs::remove_dir_all(&dir).map_err(|error| Failure::io("cannot remove", &dir, &error))?;

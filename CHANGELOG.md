@@ -6,6 +6,16 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A write that follows a write no longer writes the store's projection back (roll-lqjj.36, X17):
+  a command that writes leaves the stored projection as it found it while the records after it
+  hold less than a 64th of its bytes, and the next read takes them in and writes it back, as every
+  command did. At 200,000 events a write after a write takes 0.26 s rather than 0.38 s, a sync
+  after a local write 0.34 s rather than 0.51 s and a write published at once 0.64 s rather than
+  0.80 s; at 20,000, a write after a write 36 ms rather than 48 ms. Reads, and a write after a
+  read, cost what they did. What every command answers and the projection's bytes are unchanged.
+  `cargo xtask timing --read N` measures a write cycle: a write after a read, the read after it and
+  a write after a write.
+
 - A read that finds the projection current (`list`, `ready`, `blocked`, `show`, `prime`, ...)
   decodes of the events in it only who wrote the values two writers set without seeing each other,
   which conflicts show; every event's record, with its causes, moved to the projection's index,

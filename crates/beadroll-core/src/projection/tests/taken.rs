@@ -1,5 +1,7 @@
 //! Machine 0's store of a world taking in what the machines write, batch by batch, its projection
-//! extended by each or declining it, every extension compared with projecting the whole journal.
+//! extended by each or declining it, every extension compared with projecting the whole journal;
+//! and the projection that store last wrote back, extended by every batch since at once, as the
+//! next command extends it when the writes before it left it as it was (roll-lqjj.36).
 
 use std::collections::BTreeMap;
 
@@ -7,16 +9,22 @@ use crate::id::EventId;
 use crate::json::{Object, Value};
 use crate::replay::replay;
 
-use super::super::{Extended, project};
-use super::{TextFile, World, equal, flawed, load, read_back, read_in, records, same, whole};
+use super::super::{Extended, Projection, Record, project};
+use super::{
+    MACHINES, Rng, TextFile, World, equal, flawed, load, read_back, read_in, records, same, whole,
+};
 
 /// What [`differential`] saw: the batches taken in, the merges among them, the batches that came to
 /// a projection that could not be extended, and the local writes declined by one that could that are
 /// not takeovers (by seed); with the extensions applied to a projection that held each kind of
-/// integrity entry (by [`flawed::kinds`]), and the entries of each kind the batches brought.
+/// integrity entry (by [`flawed::kinds`]), and the entries of each kind the batches brought; and
+/// of the projection written back some batches before, the extensions by two batches or more at
+/// once, and the most batches one took in.
 #[derive(Default, Debug)]
 pub(super) struct Tally {
     pub(super) applied: usize,
+    pub(super) deferred: usize,
+    pub(super) longest: usize,
     pub(super) merged: usize,
     pub(super) closed: usize,
     pub(super) declined: Vec<u64>,
@@ -41,6 +49,17 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -
         let mut held: Vec<usize> = vec![0];
         let mut projection = project(load(&world, &held)).unwrap();
         let mut file = TextFile::new();
+        // the store whose writes leave the projection to a later command: what it wrote back last,
+        // with its own text file, the batches taken in since, and draws of its own, so that the
+        // world is the one it was before it
+        let mut written = TextFile::new();
+        let mut stored = Stored {
+            projection: read_back(&projection, &mut written),
+            file: written,
+            since: Vec::new(),
+            batches: 0,
+            coin: Rng(seed),
+        };
         for _ in 0..60 {
             let batch = world.next_batch();
             if world.rng.chance(50) {
@@ -49,6 +68,7 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -
             held.extend(&batch);
             let full = project(load(&world, &held)).unwrap();
             assert!(same(full.state(), &replay(load(&world, &held)).unwrap()));
+            stored.take(&world, &batch, &full, seed, &mut tally);
             let local = batch.iter().all(|at| world.events[*at].machine == 0);
             let before = flawed::kinds(projection.state());
             let open = projection.extendable();
@@ -84,4 +104,86 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -
         }
     }
     tally
+}
+
+/// The projection a store wrote back last, its text file, and what came after it.
+struct Stored {
+    projection: Projection,
+    file: TextFile,
+    /// The events taken in since it was written back, as they came.
+    since: Vec<usize>,
+    /// How many batches they came in.
+    batches: usize,
+    coin: Rng,
+}
+
+impl Stored {
+    /// Takes `batch` in: the projection written back is extended by every record since at once, as
+    /// a store reads them, and must be what projecting the whole journal makes (`full`); it is then
+    /// written back now and then, as a read or a write after many records does, or, declined, made
+    /// whole and written back, as a store replays.
+    fn take(
+        &mut self,
+        world: &World,
+        batch: &[usize],
+        full: &Projection,
+        seed: u64,
+        tally: &mut Tally,
+    ) {
+        self.since.extend(batch);
+        self.batches += 1;
+        let records = read_after(world, &self.since);
+        let about = (records.iter())
+            .filter_map(|record| record.value.get("issue").and_then(Value::as_str))
+            .filter_map(EventId::parse)
+            .collect();
+        let mut extending = self.projection.clone();
+        read_in(extending.state_mut(), &self.file, Some(about));
+        let written = match extending.extend(records).unwrap() {
+            Extended::Applied(extended) => {
+                assert!(
+                    equal(&whole(&extended, &self.file), full),
+                    "seed {seed}: {} batches at once",
+                    self.batches
+                );
+                if self.batches > 1 {
+                    tally.deferred += 1;
+                    tally.longest = tally.longest.max(self.batches);
+                }
+                self.coin.chance(30).then_some(*extended)
+            }
+            Extended::Replay => Some(full.clone()),
+        };
+        if let Some(written) = written {
+            self.projection = read_back(&written, &mut self.file);
+            (self.since, self.batches) = (Vec::new(), 0);
+        }
+    }
+}
+
+/// The records of `since` as a store reads them after its projection: each machine's folder's
+/// segment records in the order they were appended, the folders by name, then the attempt files,
+/// by name.
+fn read_after(world: &World, since: &[usize]) -> Vec<Record> {
+    let mut order: Vec<usize> = Vec::with_capacity(since.len());
+    for folder in MACHINES {
+        let here = |at: &&usize| {
+            let written = &world.events[**at];
+            !written.attempt && world.folders[written.machine] == folder
+        };
+        order.extend(since.iter().filter(here));
+    }
+    let mut attempts: Vec<(&str, String, usize)> = (since.iter())
+        .filter(|at| world.events[**at].attempt)
+        .map(|at| {
+            (
+                world.folders[world.events[*at].machine],
+                world.id_of(*at),
+                *at,
+            )
+        })
+        .collect();
+    attempts.sort();
+    order.extend(attempts.into_iter().map(|(_, _, at)| at));
+    records(world, &order)
 }

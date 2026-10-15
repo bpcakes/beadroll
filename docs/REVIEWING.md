@@ -422,6 +422,34 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `newfstatat`, `fstat`, `getdents64` and `statx`), went from 269 to 286: 4 `openat`, 3 `fstat`,
   6 `getdents64` (three directory reads) and 4 `statx`, and no more `newfstatat`; with git's
   counted (`-f`) a later claim made 16 more.
+- A write leaves the stored projection as it found it while the records after it are few
+  (roll-lqjj.36, step 1 of X17's design). Every command that applied records after the stored
+  projection wrote it back, so the command after every write encoded the whole projection and
+  wrote it again: at 200,000 events 94 ms to encode and about 16 ms to sum and write 19 MB, where
+  applying the write's record took 0.25 ms. A command that extends the projection to write (a
+  transaction, a merge; `info` and `machines`, which read its index) decodes the index and applies
+  records whatever it is given, and a few more cost it about 50 ns a byte of them, against about
+  6 ns a byte of projection to write it back: it writes back only once the records it applied
+  hold more than a 64th of the projection's bytes (`projection::TAIL`, `kept_for`), so the last
+  write before a write-back spends about an eighth of one on the records, and a run of writes a
+  sixteenth a write. A command that reads writes back whatever it applied, as before: with records
+  after it every read would decode the index too (26 ms at 200,000 events, a fifth of a
+  write-back) and apply them again, and a reader cannot know how many reads will follow. Nothing
+  else moves: the projection's bytes are the same (no `projection::ENCODING` change), it is
+  written back less often and never otherwise, so what a crash or a race can leave is what a
+  write-back that failed or was killed already left, records after an older projection, which
+  the rules above (Y01 included: an older projection's files are only more settled) take in.
+  The differential test extends, beside each batch, the projection last written back by every
+  batch since at once, in the order a store reads them (`projection/tests/taken.rs`). Measured
+  (`cargo xtask timing --read N`, release, best of five, before and after back to back on a
+  machine shared with three other builds): at 200,000 events a write after a write took 0.375 s and
+  takes 0.259 s, at 20,000 0.048 s and 0.036 s; a sync after a local write (`--sync N`, `seconds`)
+  0.506 s and 0.339 s at 200,000, and a write published at once (`online_seconds`) 0.803 s and
+  0.643 s, since the merge no longer writes back the write's own record; a write after a read and
+  the read after it, which writes back, did not move (0.258 and 0.262 s, 0.273 and 0.281 s). The
+  rest of the design, each step its own issue (the write's free, roll-lqjj.42; the knowledge
+  compacted now and then, .43; copying the bytes of what a write did not touch, .44; append-only
+  parts, .45), is on roll-lqjj.36.
 - A projection extended finishes only what the batch changed (roll-lqjj.17, Z02). Replay finishes a
   whole journal by deriving each issue's labels from the tags that remain and building the
   parent-child index from every issue's edges; a projection that redid all of that for every batch
