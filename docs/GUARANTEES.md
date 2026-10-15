@@ -331,6 +331,12 @@ it, and the file is committed again.
   each waiting for a key that never comes replay in 0.09 s rather than 30 s,
   and one issue waiting for 16,000 keys costs about what the same 16,000 edges
   cost it given at once (roll-lqjj.18; `cargo xtask timing --dangling N`).
+  `bead ready`, `bead blocked` and `bead prime` judge what is held once for
+  every issue rather than issue by issue, so a chain of 4,000 issues under one
+  held root is judged in 2 ms where listing each one's blockers took 1.7 s, and
+  `bead ready` there takes 0.037 s rather than 2.05 s; `bead blocked`
+  still lists each held issue's blockers, and `bead show` judges its one issue
+  by walking its ancestors (roll-lqjj.19; `cargo xtask timing --ready N`).
   A real tracker's state is mostly
   its texts, which only the commands that print them read: on three of the
   largest public Beads trackers (21–47 MB, up to 13,394 issues) a `list` takes

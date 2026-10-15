@@ -6,6 +6,14 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `bead ready`, `bead blocked` and `bead prime` judge whether anything holds an issue once for
+  every issue (roll-lqjj.19), instead of building each issue's complete blocker list, walking its
+  ancestors, to test the list for emptiness: a chain of 4,000 issues under one held root is judged
+  in 2 ms where it took 1.7 s, and `bead ready` on such a tracker takes 0.037 s rather than
+  2.05 s. The rule, what each command lists and its order are unchanged; `bead blocked` still
+  lists each held issue's blockers, and `bead show` still judges its one issue by walking its
+  ancestors, stopping at the first thing found. `cargo xtask timing --ready N` measures it.
+
 - Replay finds an imported dependency on a key no issue has yet by that key (roll-lqjj.18): a
   create visits only the dependencies waiting for its own key, instead of every issue still waiting
   and each one's whole list of them. 16,000 imports each waiting for a key that never comes replay

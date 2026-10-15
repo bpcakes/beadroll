@@ -303,6 +303,44 @@ These were decided deliberately. Report problems *with* them, not their existenc
   nothing waiting, which is the parent-child index built again each batch; what remains is the
   issue's growing edges and a copy of its list's tail once a batch. The fastest of three runs each,
   2026-10-15, Rust 1.99.0, 64 cores.
+- Readiness is judged once for every issue (roll-lqjj.19, Z04). `bead ready`, `bead blocked` and
+  `bead prime` asked of each issue whether anything holds it, and the answer was the blocker list
+  `open_blockers` builds — the issue's own prerequisites, an epic's unfinished children, and the
+  prerequisites of every ancestor that is not done, found by walking up its parents — tested for
+  emptiness, so a chain of N issues under one held root walked N²/2 ancestors and sorted N lists to
+  say that everything in it waits, and the CLI's `ready` asked the same way on a path of its own.
+  `State::readiness` now judges them all in one pass: the issues that are not done and have a
+  prerequisite of their own are found, then every issue that is not done and reaches one of them
+  through parents that are not done, by one walk down the parent-child index from them, and an
+  issue is held when it has such a prerequisite, is an epic with an unfinished child, or has a
+  parent so reached; each issue, edge and child is visited once, a merged cycle once, and nothing
+  recurses. `State::ready` and the CLI's `ready`, `blocked` and `prime` ask it once a command. The
+  rule is unchanged — a `blocks` target counts only while it is not done, a disputed status is
+  never done, only an epic waits for its children and nothing beneath it inherits that wait, a done
+  ancestor's prerequisites are not inherited and the walk does not pass it, every parent link
+  counts, and a scope restricts what is listed, never what holds — and three answers must agree:
+  judged with every issue, asked of one issue by the first thing found (`State::is_blocked`, what
+  `bead show` asks of its one issue, which no longer builds the list either), and the list itself,
+  which `replay::readiness` checks on deep chains, shared and second parents, merged parent cycles,
+  done and disputed ancestors and targets, epics beside plain parents, claims, scopes and 80 random
+  graphs, and `commands::shared_readiness` across the four commands. The lists are still built
+  where they are printed: `bead blocked` lists each held issue's blockers, whose output is the
+  lists, and a tracker shown one issue at a time still walks each one's ancestry. `cargo xtask
+  timing --ready N` measures the four ways on a chain of N issues held by its root's prerequisite,
+  the same chain with nothing waiting, and a lattice of rows of four each the child of two in the
+  row above, replay left out: judged for every issue at once, the held chain takes 0.9, 1.8, 4.3
+  and 11.2 ms at 2,000, 4,000, 8,000 and 16,000 issues, against 0.43, 1.74, 7.12 and 33.3 s by the
+  lists, which is what every reader built before (the review's figures of 2026-10-13 were 0.41 and
+  1.68 s at 2,000 and 4,000), and 0.26, 1.00, 4.12 and 20.1 s asked issue by issue; the free
+  chain, where everything is ready and the answer is sorted, 0.4, 0.8, 2.3 and 10.4 ms for `ready`
+  against 0.2, 0.5, 0.9 and 4.6 ms for the analysis alone, the rest the sort of every issue by
+  priority, creation time and key; the lattice, 1.0, 2.0, 5.9 and 13.7 ms against 0.63, 2.62, 12.6
+  and 90.2 s by the lists, where every issue of a row shares every ancestor above it. End to end,
+  `bead ready` on a store holding the chain of 4,000 took 2.05 s and takes 0.037 s, and
+  `bead blocked`, which prints the lists, 4.05 s and 2.14 s; on the chain of 16,000,
+  `ready` took 37.0 s and takes 0.149 s; on the lattice of 4,000, 3.59 s and
+  0.046 s. The fastest of three runs each, 2026-10-15, Rust 1.99.0, 64 cores; the end-to-end
+  figures the best of five (of three at 16,000), the commands reading the store's projection.
 - No history boundary (roll-lqjj.3, step 4 of epic roll-lqjj; the maintainer's decision of
   2026-10-12, on the evidence in the port plan's Appendix A, "roll-lqjj.3", which git keeps, §1): a
   machine's work merges by itself however old it is, as every merge has so far. The alternatives
