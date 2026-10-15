@@ -6,6 +6,11 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `bead show` says `merged: unknown` of a closing commit that is not 4 to 64 lowercase hex digits,
+  without asking git (roll-lqjj.26, X14): bead records the commit as `git rev-parse HEAD` prints
+  it, and text another machine's event holds, such as `HEAD~1` or `:/text`, was evaluated as a
+  revision in this checkout, where it names some other commit or searches every commit message.
+
 - `bead show` asks git whether the closing commits are on the default branch once for all the
   issues it shows (roll-lqjj.26, review 16's X08), instead of about five gits for each closed
   issue, each finding the default branch again: the default branch is found once, each distinct

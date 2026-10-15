@@ -65,7 +65,7 @@ A reader therefore sees all of an attempt or none of it.
 | `bead claim X --offline` | Records a provisional claim. It is listed, never exclusive, and never displaces a confirmed owner. |
 | `bead release X` | Ends your claim; the issue is open again. |
 | `bead takeover X --reason "..."` | Replaces the current owner and starts a new generation. Online only. |
-| `bead close X` / `bead delete X` (as owner) | Closes (or tombstones) and ends exactly your claim, then publishes at once. `show` tells whether the closing commit is merged into the default branch. |
+| `bead close X` / `bead delete X` (as owner) | Closes (or tombstones) and ends exactly your claim, then publishes at once. `show` tells whether the closing commit is merged into the default branch; a commit recorded as anything but hex digits, which another machine's event can hold, is `unknown`. |
 | `bead close --recursive X` | Closes X and every issue beneath it through parent-child edges, at any depth, children before parents, in one write: your claims among them end, and someone else's claim on any of them refuses the whole command, naming each (`--force` overrides). Issues beneath that are deleted, or already closed, are left as they are. |
 | old owner acts after a takeover | Its close or release names a claim that is no longer current, so every machine ignores it and reports it under `stale`. |
 

@@ -1015,6 +1015,15 @@ These were decided deliberately. Report problems *with* them, not their existenc
   clone whose main has 1,100 commits and an unmerged branch 1,000 more, the gits counted with
   strace, the fastest of three runs, 2026-10-15, 64 cores shared with ten other builds (load
   about 15).
+- A closing commit that is not an object name in hex is `merged: unknown`, never asked of git
+  (roll-lqjj.26, X14). `where.commit` comes from any machine's event, and bead records it as
+  `git rev-parse HEAD` prints it, the full object name in lowercase hex; text of 4 to 64 lowercase
+  hex digits, a full name or an abbreviation, is asked as before, and anything else is unknown
+  without a git started: a revision expression (`HEAD~1`, `main@{yesterday}`, `:/text`, which
+  searches every commit message), uppercase hex, a ref's name. git would evaluate it here, in this
+  checkout, where it names something other than what it named where it was written, if it named
+  anything there. bead never writes such text; an event that holds it was written by hand or by
+  another program. The place itself is still shown as recorded, in `where` and `closed_on`.
 - A publish hashes only the journal files it cannot vouch for (roll-lqjj.1, step 2 of epic
   roll-lqjj): the store remembers, in `sync.git/journal-memo`, each segment's and attempt file's
   identity on disk when it was hashed (length, modification and change times, inode, device: what

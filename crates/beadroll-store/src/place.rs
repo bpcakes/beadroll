@@ -42,12 +42,14 @@ pub fn capture_where(ws: &Workspace) -> Result<Option<Value>, Error> {
 /// Whether each of `commits`, in their order, is reachable from the default branch as this
 /// checkout knows it: true when the remote-tracking ref or the local branch contains it (a local
 /// branch in a worktree workflow is often stale); `None` when the commit or the branch is unknown
-/// here, and for an empty commit.
+/// here, and for text that is not an object name in hex, full or abbreviated, as bead records the
+/// commit of a place (`rev-parse HEAD`), which is never asked of git: a commit comes from any
+/// machine's event, and git would evaluate a revision expression (`HEAD~1`, `:/text`) here.
 ///
 /// A reader that shows several closed issues asks once for all of them (roll-lqjj.26): the default
 /// branch is found once and each distinct commit is answered once. Full object names, as bead
 /// records the commit of a place, are answered together when there are several, in a fixed number
-/// of gits ([`screened`]); any other text, a single commit, and those few that history too long to
+/// of gits ([`screened`]); an abbreviation, a single commit, and those few that history too long to
 /// walk leaves unsettled, are asked alone with `merge-base --is-ancestor`, as one commit always was.
 pub fn merged_into_default(
     settings: &Settings,
@@ -55,7 +57,7 @@ pub fn merged_into_default(
 ) -> Result<Vec<Option<bool>>, Error> {
     let git = &settings.git;
     let asked: BTreeSet<&str> = (commits.iter().copied())
-        .filter(|commit| !commit.is_empty())
+        .filter(|commit| (4..=64).contains(&commit.len()) && hex(commit.as_bytes()))
         .collect();
     let mut answers: HashMap<&str, Option<bool>> = HashMap::new();
     let refs = if asked.is_empty() {
@@ -122,13 +124,17 @@ fn default_refs(git: &Env) -> Result<Vec<String>, Error> {
     Ok(Vec::new())
 }
 
+/// Whether `text` is lowercase hex digits, as git prints an object name.
+fn hex(text: &[u8]) -> bool {
+    (text.iter()).all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+}
+
 /// Whether `commit` is a full object name in lowercase hex, SHA-1 or SHA-256, as `rev-parse HEAD`
 /// prints it: the commits answered together. git takes such a name as that object whatever refs
 /// there are, so `cat-file` and `merge-base` read it alike; an abbreviation would not be, as
 /// `^{commit}` makes git prefer a commit among the objects it could name.
 fn object_name(commit: &[u8]) -> bool {
-    matches!(commit.len(), 40 | 64)
-        && (commit.iter()).all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+    matches!(commit.len(), 40 | 64) && hex(commit)
 }
 
 /// How many commits of the default branch's history [`screened`] walks for each commit it has
@@ -236,12 +242,9 @@ fn lines(output: &[u8]) -> impl Iterator<Item = &[u8]> {
 
 /// What `merge-base --is-ancestor` says of `commit` against each of `refs`: contained when one
 /// contains it, not when one says not and none contains it, unknown when git answered neither (a
-/// commit unknown here, text that names none). `commit` is read as a revision, never as an option,
-/// and text no argument can carry, with a NUL, names no commit.
+/// commit unknown here, an abbreviation git finds ambiguous). `commit` is read as a revision, never
+/// as an option.
 fn ancestor_of_any(git: &Env, refs: &[String], commit: &str) -> Result<Option<bool>, Error> {
-    if commit.contains('\0') {
-        return Ok(None);
-    }
     let mut codes = Vec::new();
     for target in refs {
         let ask = [

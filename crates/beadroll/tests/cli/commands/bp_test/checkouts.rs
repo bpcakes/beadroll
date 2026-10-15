@@ -398,6 +398,32 @@ fn a_closing_commit_from_another_machine_is_read_only_as_a_commit() {
     assert_eq!(together, Some(Json::Array(alone)));
 }
 
+/// A closing commit that is not an object name in hex is unknown, never asked of git: of issues
+/// another machine closed on `HEAD`, on `:/init` (the first commit, by its message), on this
+/// checkout's commit in uppercase and on its first twelve digits, only the last is merged (review
+/// 16, X14).
+#[test]
+fn a_closing_commit_that_is_no_object_name_in_hex_is_unknown() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let head = git(["rev-parse", "HEAD"], Some(a.checkout()));
+    let upper = head.trim().to_uppercase();
+    let titles = [
+        ("expression", "HEAD"),
+        ("search", ":/init"),
+        ("uppercase", upper.as_str()),
+        ("abbreviated", &head[..12]),
+    ];
+    let keys = closed_elsewhere(&a, &titles);
+    let alone: Vec<Json> = keys.iter().map(|key| a.show(key)).collect();
+    let merged: Vec<&Json> = alone.iter().map(|shown| &shown["merged"]).collect();
+    let unknown = Json::from("unknown");
+    assert_eq!(merged, [&unknown, &unknown, &unknown, &Json::Bool(true)]);
+    let together = a.bead(["show"].into_iter().chain(keys.iter().map(String::as_str)));
+    assert_eq!(together, Some(Json::Array(alone)));
+}
+
 /// An issue created outside any checkout, in the workspace `BEAD_WORKSPACE` names, records no
 /// `where`; nor does one created in a checkout whose `.beadroll.json` switches it off.
 #[test]
