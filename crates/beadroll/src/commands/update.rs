@@ -106,7 +106,7 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
     let mut result = details(&st, &args.ids)?;
     let lines = answer(&mut result, asked_nothing, notes, warning);
     let result = Value::Array(result.into_iter().map(Value::from).collect());
-    Ok(Outcome::new(result, lines).from_state(st))
+    Ok(Outcome::new(result, lines).answered_from(st))
 }
 
 /// The answer's lines, `Updated` (or `Unchanged` when nothing was asked) for each issue, then

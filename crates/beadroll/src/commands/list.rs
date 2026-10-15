@@ -80,7 +80,7 @@ pub(crate) fn list(ctx: &Context<'_>, args: &ListArgs) -> Result<Outcome, Failur
     if lines.is_empty() {
         lines.push("No issues".into());
     }
-    Ok(Outcome::new(result, lines).from_state(st))
+    Ok(Outcome::new(result, lines).answered_from(st))
 }
 
 /// Open issues nobody holds, nothing blocks and whose status is not disputed; with a scope, only
@@ -122,5 +122,5 @@ pub(crate) fn ready(ctx: &Context<'_>, args: &ReadyArgs) -> Result<Outcome, Fail
     if lines.is_empty() {
         lines.push("Nothing is ready".into());
     }
-    Ok(Outcome::new(result, lines).from_state(st))
+    Ok(Outcome::new(result, lines).answered_from(st))
 }

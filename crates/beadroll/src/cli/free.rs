@@ -131,7 +131,7 @@ fn prime(ws: Option<&Workspace>, actor: &Actor, settings: &Settings) -> Result<O
         result.insert("actor".into(), Value::from(me.shown()));
     }
     Ok(match state {
-        Some(state) => outcome.from_state(state),
+        Some(state) => outcome.answered_from(state),
         None => outcome,
     })
 }

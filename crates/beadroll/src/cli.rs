@@ -36,7 +36,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Runs `bead` with the process's arguments; the exit status is 0, 1 for an error, 2 for a usage
 /// error. The process ends with the run, so the state a command answered from is never freed
-/// ([`Outcome::from_state`]).
+/// ([`Outcome::answered_from`]).
 pub(crate) fn main() -> ExitCode {
     ExitCode::from(run(std::env::args_os().skip(1).collect(), true))
 }

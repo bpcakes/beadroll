@@ -47,7 +47,7 @@ pub(crate) fn show(ctx: &Context<'_>, ids: &[OsString]) -> Result<Outcome, Failu
     }
     let lines: Vec<Line> = result.iter().flat_map(lines_of).collect();
     let result = Value::Array(result.into_iter().map(Value::from).collect());
-    Ok(Outcome::new(result, lines).from_state(st))
+    Ok(Outcome::new(result, lines).answered_from(st))
 }
 
 /// The member `key` rendered as text, or an empty string when absent.

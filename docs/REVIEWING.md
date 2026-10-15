@@ -577,6 +577,34 @@ These were decided deliberately. Report problems *with* them, not their existenc
   keep part of an import. bead's heap is counted by running bead in xtask (`cargo xtask bead`,
   with xtask's counting allocator, below), the reason xtask depends on the `beadroll`
   library.
+- A command keeps the state it answered from until its process exits, and a write frees its
+  projection after the store lock (roll-lqjj.32, X10). A reading command decoded the state, printed
+  from it and freed every issue of it just before the process ended: at 200,000 events decoding
+  takes about 100 ms and freeing 50 to 85 ms, work nobody waits for once the answer is written.
+  `Outcome::answered_from` hands a command's last state to the command line, and `run`, the
+  process's own run, leaks it (`cli::ended_with`) rather than freeing it. Only the state a command
+  answers from is handed over, the last it makes, so that no command holds two because of it: a run
+  that publishes what the command wrote (`wrote()`, not `--offline`) frees it first, as a publish
+  reads a state of its own, and `cargo xtask timing --import 14000` peaks at the same heap before
+  and after (165,555,895 and 165,554,920 bytes offline, 191,873,888 and 191,872,068 published). A
+  state a command makes and does not answer from (`transition`'s check for a superseded claim, the
+  state `still_held` reads) is freed as before. Libraries never leak: `run_with`, which `cargo
+  xtask bead` and in-process tests call, frees the state when the run ends, so a test that runs
+  bead twice in a process accumulates nothing, and `writing`, `coordinated`, `view` and
+  pancake-studio's use of `beadroll-core` keep their ordinary lifetimes. `log` and `machines`,
+  which load the journal beside the state they replay, are not given the rule here (X09 changes
+  them). The other half is the write's: `writing` and each round of `coordinated` held their
+  transaction, which owns the store's whole projection (83 ms to free at 200,000 events), inside
+  `locked`, so every command waiting for the store lock waited for the free too; both now keep the
+  transaction outside the closure and drop it after the lock is let go of, and it is freed, not
+  leaked, there, since a library does not know its process ends. Nothing observable changed: the
+  tests pass on both implementations, and the probe is the evidence (`cargo xtask timing --read N`,
+  best of three runs of five each, run back to back on a shared machine: at 200,000 events `list`
+  0.203 s before and 0.150 s after, `show` 0.203 s and 0.158 s, `ready` 0.261 s and 0.200 s, and a
+  local write 0.281 s and 0.290 s, which still frees its projection before the process ends; at
+  20,000 events `list` 23.0 and 21.1 ms, `show` 23.3 and 20.7 ms, `ready` 25.7 and 24.2 ms, and a
+  write 52.9 and 52.7 ms). The time other commands wait for the lock is not in those figures: it is
+  the free that moved out of it.
 - What each event had seen is one clock per event over chains, the reachability index of
   `state/seen.rs`: every machine's journal is a chain, and each event of an
   attempt file joins a chain whose last event is among its ancestors, or starts one, so there are

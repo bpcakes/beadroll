@@ -42,6 +42,9 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
 
 ## Invariants
 
+- A transaction, which holds the store's whole projection, is let go of after the store lock is,
+  never inside it: `writing` and each round of `coordinated` keep theirs outside `locked` and drop
+  it when it returns (roll-lqjj.32).
 - Up to 24 rounds per command, with a uniformly sampled pause from zero up to
   `min(0.1 × 2^(attempt − 1), 2)` seconds after a failed round, outside the store lock
   (roll-lqjj.7; `docs/REVIEWING.md` §2).

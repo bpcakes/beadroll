@@ -82,7 +82,7 @@ pub(crate) fn info(ctx: &Context<'_>) -> Result<Outcome, Failure> {
         .iter()
         .map(|(key, value)| format!("{key}: {}", str_of(value)))
         .collect();
-    Ok(Outcome::new(result, lines).from_state(st))
+    Ok(Outcome::new(result, lines).answered_from(st))
 }
 
 /// The journal's numbers, in `info`'s order: issues, events in all and by machine, segments, the

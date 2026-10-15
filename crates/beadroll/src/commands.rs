@@ -184,7 +184,7 @@ pub(crate) struct Outcome {
     /// The command published and counted what it left unpublished itself ([`note_unpublished`]),
     /// as `init` does when it wrote through another workspace than the one it was given.
     pub(crate) settled: bool,
-    /// The state the answer was made from ([`Outcome::from_state`]).
+    /// The state the answer was made from ([`Outcome::answered_from`]).
     pub(crate) state: Option<State>,
 }
 
@@ -214,7 +214,7 @@ impl Outcome {
     /// rather than freeing it, unless it has what the command wrote to publish first
     /// (`cli::ended_with`, roll-lqjj.32). Only the state a command answers from is given, the last
     /// it makes, so that none is held beside another one.
-    pub(crate) fn from_state(self, state: State) -> Outcome {
+    pub(crate) fn answered_from(self, state: State) -> Outcome {
         Outcome {
             state: Some(state),
             ..self
