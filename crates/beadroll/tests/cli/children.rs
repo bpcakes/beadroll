@@ -2,11 +2,12 @@
 //! processes bead starts, their arguments and timing, and the equivalence of in-process object
 //! reads to git's answers (`crates/beadroll-git/AGENTS.md`).
 
+use std::ffi::OsString;
 use std::os::unix::fs::PermissionsExt as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use beadroll_test_support::{Json, Machine, git, parse_json};
+use beadroll_test_support::{Invocation, Json, Machine, Run, Sandbox, git, parse_json};
 
 use crate::hardening::gate::{Gate, beside};
 
@@ -70,6 +71,43 @@ fn git_inherits_no_descriptor_beyond_the_standard_three() {
     assert!(seen.iter().all(|s| *s == "closed"), "{seen:?}");
 }
 
+/// A git first on PATH that notes each git bead starts, by its first argument, then runs the
+/// real one.
+struct Counted {
+    path: OsString,
+    log: PathBuf,
+}
+
+impl Counted {
+    fn new(sandbox: &Sandbox) -> Counted {
+        let shims = sandbox.root().join("counting-shims");
+        std::fs::create_dir(&shims).unwrap();
+        let log = sandbox.root().join("gits.log");
+        let script = format!(
+            "#!/bin/sh\necho \"$1\" >> {log}\nexec {git} \"$@\"\n",
+            log = quoted(&log.display().to_string()),
+            git = quoted(&real_git().display().to_string()),
+        );
+        std::fs::write(shims.join("git"), script).unwrap();
+        let executable = std::fs::Permissions::from_mode(0o755);
+        std::fs::set_permissions(shims.join("git"), executable).unwrap();
+        let path = std::env::var_os("PATH").unwrap_or_default();
+        let dirs = std::iter::once(shims).chain(std::env::split_paths(&path));
+        let path = std::env::join_paths(dirs).unwrap();
+        Counted { path, log }
+    }
+
+    /// What `bead` did, and the gits it started, sorted.
+    fn run(&self, bead: Invocation<'_>) -> (Run, Vec<String>) {
+        std::fs::write(&self.log, "").unwrap();
+        let run = bead.env("PATH", &self.path).run();
+        let log = std::fs::read_to_string(&self.log).unwrap();
+        let mut seen: Vec<String> = log.lines().map(str::to_owned).collect();
+        seen.sort();
+        (run, seen)
+    }
+}
+
 /// Pins the number and arguments of git invocations. A read asks for checkout facts, origin
 /// configuration and committed configuration. Sync adds transport settings, fetch, one ref
 /// transaction and persistent object readers and writers. Publishing adds the transaction's HEAD
@@ -83,29 +121,10 @@ fn a_command_starts_the_consolidated_gits_and_no_others() {
     let created = m.bead(["create", "x"]).unwrap();
     let key = created["id"].as_str().unwrap().to_owned();
     m.bead(["sync"]);
-    let shims = sandbox.root().join("counting-shims");
-    std::fs::create_dir(&shims).unwrap();
-    let log = sandbox.root().join("gits.log");
-    let script = format!(
-        "#!/bin/sh\necho \"$1\" >> {log}\nexec {git} \"$@\"\n",
-        log = quoted(&log.display().to_string()),
-        git = quoted(&real_git().display().to_string()),
-    );
-    std::fs::write(shims.join("git"), script).unwrap();
-    std::fs::set_permissions(shims.join("git"), std::fs::Permissions::from_mode(0o755)).unwrap();
-    let path = std::env::var_os("PATH").unwrap_or_default();
-    let path = std::env::join_paths(std::iter::once(shims).chain(std::env::split_paths(&path)));
-    let path = path.unwrap();
+    let counted = Counted::new(&sandbox);
     let started = |args: &[&str]| -> Vec<String> {
-        std::fs::write(&log, "").unwrap();
-        let run = m.cmd(args).env("PATH", &path).run();
+        let (run, seen) = counted.run(m.cmd(args));
         assert_eq!(run.returncode(), 0, "{args:?}: {}", run.stderr);
-        let mut seen: Vec<String> = std::fs::read_to_string(&log)
-            .unwrap()
-            .lines()
-            .map(str::to_owned)
-            .collect();
-        seen.sort();
         seen
     };
     let read = ["cat-file", "config", "rev-parse"];
@@ -139,6 +158,78 @@ fn a_command_starts_the_consolidated_gits_and_no_others() {
     assert_eq!(started(&["sync", "--json"]), sync);
     assert_eq!(started(&["create", "y", "--json"]), write);
     assert_eq!(started(&["claim", &key, "--json"]), write);
+}
+
+/// Discovery reads the committed `.beadroll.json` only where the tree has none, and starts that
+/// `cat-file` beside its other two gits where the directory bead starts in shows none (X11): a
+/// tracked checkout starts none, from its top or below, nor does a tree whose `.beadroll.json` is
+/// a dangling link or not JSON, which discovery refuses first, each refusal as before; a tree
+/// without one reads the committed copy, from a subdirectory too, and resolves to the same
+/// tracker.
+#[test]
+fn discovery_reads_the_committed_configuration_only_where_the_tree_has_none() {
+    let sandbox = crate::sandbox();
+    let m = crate::rust_only(&sandbox, "tracked");
+    m.bead(["init", "--tracked", "--prefix", "ex"]);
+    git(["add", ".beadroll.json"], Some(m.checkout()));
+    let identity = ["-c", "user.name=t", "-c", "user.email=t@example.invalid"];
+    let commit = ["commit", "-q", "-m", "track bead"];
+    git(identity.into_iter().chain(commit), Some(m.checkout()));
+    m.bead(["create", "x"]);
+    let below = m.checkout().join("sub").join("deeper");
+    std::fs::create_dir_all(&below).unwrap();
+    let counted = Counted::new(&sandbox);
+    let listed = |cwd: &Path, gits: &[&str]| -> String {
+        let (run, seen) = counted.run(m.cmd(["list", "--json"]).cwd(cwd));
+        assert_eq!(run.returncode(), 0, "{}", run.stderr);
+        assert_eq!(seen, gits, "{}", cwd.display());
+        run.stdout
+    };
+    let tracked = listed(m.checkout(), &["config", "rev-parse"]);
+    assert_eq!(listed(&below, &["config", "rev-parse"]), tracked);
+    let file = m.checkout().join(".beadroll.json");
+    std::fs::remove_file(&file).unwrap();
+    let committed = ["cat-file", "config", "rev-parse"];
+    assert_eq!(listed(m.checkout(), &committed), tracked);
+    assert_eq!(listed(&below, &committed), tracked);
+    let refused = |said: &str| {
+        let (run, seen) = counted.run(m.cmd(["list", "--json"]));
+        assert_eq!(run.returncode(), 1, "{}", run.stdout);
+        assert!(run.stderr.contains(said), "{}", run.stderr);
+        assert_eq!(seen, ["config", "rev-parse"]);
+    };
+    std::os::unix::fs::symlink("nowhere.json", &file).unwrap();
+    refused("is a symbolic link that does not resolve to a file");
+    std::fs::remove_file(&file).unwrap();
+    std::fs::write(&file, "{").unwrap();
+    refused("is not valid JSON");
+    // Where the directory tells nothing (`GIT_DIR` names the repository), the committed copy is
+    // read beside the other gits whatever the tree holds, and its answer is used only where the
+    // tree has no file: a tree whose file names a derived-looking workspace is refused for that
+    // file, not listed through the committed copy's workspace.
+    std::fs::write(&file, r#"{"workspace": "0123456789abcdef"}"#).unwrap();
+    let elsewhere = m.checkout().join(".git");
+    let discovered = |git_dir: bool| {
+        let mut bead = m.cmd(["list", "--json"]);
+        if git_dir {
+            bead = bead.env("GIT_DIR", &elsewhere);
+        }
+        let (run, seen) = counted.run(bead);
+        assert_eq!(run.returncode(), 1, "{}", run.stdout);
+        assert!(
+            run.stderr.contains("names workspace 0123456789abcdef"),
+            "{}",
+            run.stderr
+        );
+        seen
+    };
+    assert_eq!(discovered(false), ["config", "rev-parse"]);
+    assert_eq!(discovered(true), committed);
+    std::fs::remove_file(&file).unwrap();
+    let (run, seen) = counted.run(m.cmd(["list", "--json"]).env("GIT_DIR", &elsewhere));
+    assert_eq!(run.returncode(), 0, "{}", run.stderr);
+    assert_eq!(run.stdout, tracked);
+    assert_eq!(seen, committed);
 }
 
 /// After fetch, keep the fetched head and delete the private fetch ref in one transaction. The

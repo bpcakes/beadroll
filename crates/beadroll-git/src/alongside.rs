@@ -1,9 +1,10 @@
-//! Two local gits at once: finding the workspace asks the
-//! combined `rev-parse` and origin's `config`, and neither waits for the other.
+//! Local gits at once: finding the workspace asks the combined `rev-parse`, origin's `config` and,
+//! where the tree may lack `.beadroll.json`, the committed copy's `cat-file`, and none waits for
+//! another.
 //!
-//! Both are started from the calling thread, one after the other, so that neither can inherit a
-//! descriptor the other's start had not yet marked close-on-exec; each runs as the runner runs
-//! every git, and the one started first is killed and reaped if it is never waited for.
+//! All are started from the calling thread, one after the other, so that none can inherit a
+//! descriptor another's start had not yet marked close-on-exec; each runs as the runner runs every
+//! git, and one started before is killed and reaped if it is never waited for.
 
 use std::fs::File;
 use std::io;
@@ -13,24 +14,21 @@ use crate::error::{Error, IoError};
 use crate::runner::{Git, Output, finished, kill};
 
 impl Git<'_> {
-    /// Runs this git and `other` at once, each as [`Git::run`] runs it: `other` started first, then
-    /// this one run to its end, then `other` waited for. For two local questions; one with a time
-    /// limit runs on its own, in turn.
-    pub fn run_alongside(self, other: Git<'_>) -> (Result<Output, Error>, Result<Output, Error>) {
-        if self.has_timeout() || other.has_timeout() {
-            return (self.run(), other.run());
+    /// Runs this git and `others` at once, each as [`Git::run`] runs it: `others` started first, in
+    /// order, then this one run to its end, then `others` waited for. For local questions; when one
+    /// has a time limit, each runs on its own, in turn.
+    pub fn run_alongside<const N: usize>(
+        self,
+        others: [Git<'_>; N],
+    ) -> (Result<Output, Error>, [Result<Output, Error>; N]) {
+        if self.has_timeout() || others.iter().any(Git::has_timeout) {
+            return (self.run(), others.map(Git::run));
         }
-        let started = other.prepare().and_then(|(mut command, out, err)| {
-            let child = command
-                .spawn()
-                .map_err(|e| Error::Io(IoError::at(&e, "git")))?;
-            Ok(Running {
-                child: Some(child),
-                out,
-                err,
-            })
-        });
-        (self.run(), started.and_then(Running::finish))
+        let started = others.map(|other| Running::start(&other));
+        (
+            self.run(),
+            started.map(|other| other.and_then(Running::finish)),
+        )
     }
 }
 
@@ -43,6 +41,19 @@ struct Running {
 }
 
 impl Running {
+    /// Starts `git`, to be waited for later.
+    fn start(git: &Git<'_>) -> Result<Running, Error> {
+        let (mut command, out, err) = git.prepare()?;
+        let child = command
+            .spawn()
+            .map_err(|e| Error::Io(IoError::at(&e, "git")))?;
+        Ok(Running {
+            child: Some(child),
+            out,
+            err,
+        })
+    }
+
     /// Waits for git and returns what it did.
     fn finish(mut self) -> Result<Output, Error> {
         let status = match self.child.take() {
@@ -70,25 +81,28 @@ mod tests {
     use crate::runner::Env;
 
     #[test]
-    fn two_gits_run_alongside_answer_as_each_run_alone() {
+    fn gits_run_alongside_answer_as_each_run_alone() {
         let env = Env::new(std::env::vars_os(), None, std::env::temp_dir());
         let first = ["hash-object", "--stdin"];
         let second = ["rev-parse", "--verify", "refs/nothing/here"];
-        let (a, b) = env
+        let third = ["hash-object", "--stdin", "-t", "blob"];
+        let (a, [b, c]) = env
             .git(first)
             .input(b"hello\n".to_vec())
-            .run_alongside(env.git(second));
+            .run_alongside([env.git(second), env.git(third).input(b"other\n".to_vec())]);
         let alone = env.git(first).input(b"hello\n".to_vec()).run();
         assert_eq!(a.unwrap(), alone.unwrap());
         assert_eq!(b.unwrap(), env.git(second).run().unwrap());
+        let alone = env.git(third).input(b"other\n".to_vec()).run();
+        assert_eq!(c.unwrap(), alone.unwrap());
         let empty = Env::new(
             [(OsString::from("PATH"), OsString::from("/nonexistent"))],
             None,
             std::env::temp_dir(),
         );
-        let (a, b) = empty
+        let (a, [b]) = empty
             .git(["--version"])
-            .run_alongside(empty.git(["--version"]));
+            .run_alongside([empty.git(["--version"])]);
         assert_eq!(a.unwrap_err().to_string(), "No such file or directory: git");
         assert_eq!(b.unwrap_err().to_string(), "No such file or directory: git");
     }

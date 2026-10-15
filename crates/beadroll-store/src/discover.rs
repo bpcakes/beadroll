@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use beadroll_core::json::{Object, Value};
 use beadroll_core::text::repr_str;
-use beadroll_git::{Fact, Output, is_local_path, normalize_remote, realpath};
+use beadroll_git::{Fact, Git, Output, is_local_path, normalize_remote, realpath};
 use sha2::{Digest as _, Sha256};
 
 use crate::error::Error;
@@ -51,22 +51,29 @@ pub fn checked_config(config: Value, path: &str) -> Result<Object, Error> {
     Ok(*config)
 }
 
-/// The committed `.beadroll.json`, for a checkout whose tree has none (a worktree on a branch cut
-/// before it was committed, a bisect, a bare clone): HEAD's copy first, then the default branch's.
-/// One git call.
-fn committed_config(settings: &Settings) -> Result<Object, Error> {
-    let refs = ["HEAD", "refs/remotes/origin/HEAD"];
-    let input: String = refs
+/// Where [`committed_config`] looks for `.beadroll.json`, in order: HEAD's copy first, then the
+/// default branch's.
+const COMMITTED_REFS: [&str; 2] = ["HEAD", "refs/remotes/origin/HEAD"];
+
+/// The git that reads the committed `.beadroll.json` ([`committed_config`]): one git call.
+fn committed_query(settings: &Settings) -> Git<'_> {
+    let input: String = COMMITTED_REFS
         .iter()
         .map(|r| format!("{r}:.beadroll.json\n"))
         .collect();
-    let proc = settings
+    settings
         .git
         .git(["cat-file", "--batch"])
         .input(input.into_bytes())
-        .run()?;
+}
+
+/// The committed `.beadroll.json`, for a checkout whose tree has none (a worktree on a branch cut
+/// before it was committed, a bisect, a bare clone), from what [`committed_query`] answered: HEAD's
+/// copy first, then the default branch's.
+fn committed_config(answer: Result<Output, beadroll_git::Error>) -> Result<Object, Error> {
+    let proc = answer?;
     let mut out: &[u8] = if proc.success() { &proc.stdout } else { b"" };
-    for name in refs {
+    for name in COMMITTED_REFS {
         let (header, rest) = match out.iter().position(|b| *b == b'\n') {
             Some(at) => (&out[..at], &out[at + 1..]),
             None => (out, &b""[..]),
@@ -264,6 +271,36 @@ pub fn moved_workspaces(settings: &Settings) -> Result<Object, Error> {
     })
 }
 
+/// Whether discovery may read the committed `.beadroll.json` ([`committed_config`]), as far as the
+/// directory git starts in tells before git answers: the tree git would find from there has no
+/// `.beadroll.json` (a symbolic link counts, even a dangling one), or no tree is found, or
+/// `GIT_DIR` or `GIT_WORK_TREE` name one elsewhere. Then the committed copy's `cat-file` starts
+/// with discovery's other two gits instead of after them. Only the guess of when to start it:
+/// git's top decides whether its answer is used, and a wrong guess costs a git whose answer is
+/// unused, or one started after the others, as each was before.
+fn may_read_committed(settings: &Settings) -> bool {
+    let cwd = &settings.cwd;
+    if !cwd.is_absolute()
+        || ["GIT_DIR", "GIT_WORK_TREE"]
+            .iter()
+            .any(|v| settings.git.var(v).is_some())
+    {
+        return true;
+    }
+    // git's discovery, upwards: a `.git` (a directory or a file naming one) marks the top of a
+    // working tree; a directory that is itself a repository (bare, or a `.git`) has no tree
+    let present = |path: &Path| path.symlink_metadata().is_ok();
+    for dir in cwd.ancestors() {
+        if present(&dir.join(".git")) {
+            return !present(&dir.join(".beadroll.json"));
+        }
+        if dir.join("HEAD").is_file() && dir.join("objects").is_dir() && dir.join("refs").is_dir() {
+            return true;
+        }
+    }
+    true
+}
+
 /// The checkout's origin, from what `git config --get-regexp ^remote\.origin\.(push)?url$`
 /// printed there (`asked`): its [`configured_url`] as configured, the URL bead gives git to reach
 /// origin as `git push origin` does (a relative path, or a spelling a rule rewrites, left to git),
@@ -293,8 +330,10 @@ fn anchored(origin: &OsStr, root: Option<&Path>) -> OsString {
 /// URL, so every worktree and clone agrees; without an origin, it is local to the repository.
 pub fn find_workspace(settings: &Arc<Settings>) -> Result<Workspace, Error> {
     // Query origin URLs at each discovery. On the first call, run that query beside checkout
-    // discovery and consume its result when needed.
-    let origin_urls = settings.checkout.origin_urls(&settings.git);
+    // discovery and consume its result when needed; where the tree may have no `.beadroll.json`,
+    // read the committed copy beside them too, and use it only if git's top has none.
+    let early = may_read_committed(settings).then(|| committed_query(settings));
+    let (origin_urls, committed) = settings.checkout.origin_urls(&settings.git, early);
     let top = settings.fact(Fact::Toplevel)?;
     let root: Option<PathBuf> = top.success().then(|| {
         let raw = crate::strip_ascii(&top.stdout);
@@ -321,7 +360,7 @@ pub fn find_workspace(settings: &Arc<Settings>) -> Result<Workspace, Error> {
             };
             checked_config(config, &shown)?
         }
-        _ => committed_config(settings)?,
+        _ => committed_config(committed.unwrap_or_else(|| committed_query(settings).run()))?,
     };
     let (origin, origin_push) = origin(origin_urls)?;
     let cwd = &settings.cwd;
