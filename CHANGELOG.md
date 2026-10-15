@@ -6,6 +6,17 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `bead blocked` lists every held issue's blockers in one pass over the issues and their edges
+  (roll-lqjj.24), instead of walking each issue's ancestors again for each: on a chain of 16,000
+  issues under one held root it takes 0.28 s where it took 39 s, and on a lattice whose issues each
+  list 64 gates 0.45 s where it took 81 s. `bead show`, `bead update`, `bead claim` and `bead
+  takeover` judge `blocked` once for all the issues they show, instead of walking each one's
+  ancestors: `bead show` of every issue of that chain takes 0.62 s where it took 27 s. The lists,
+  `blocked` and everything printed are the same bytes; one issue's detail still walks its own
+  ancestors. Sorting issues for `list` and `ready` no longer allocates a string for every
+  comparison (0.95 ms rather than 2.1 ms for 20,000 issues). `cargo xtask timing --ready N`
+  measures the lists both ways, on a lattice with gates of its own too.
+
 - The work roll-lqjj.15 to .20 made grow with its input is guarded against growing with its square
   again (roll-lqjj.34, X15). beadroll-core counts, in its own tests alone, the edges read, the
   issues relabelled, the parent-child index built, the waiting imports visited and the import keys

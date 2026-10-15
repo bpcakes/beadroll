@@ -339,9 +339,12 @@ it, and the file is committed again.
   `bead ready`, `bead blocked` and `bead prime` judge what is held once for
   every issue rather than issue by issue, so a chain of 4,000 issues under one
   held root is judged in 2 ms where listing each one's blockers took 1.7 s, and
-  `bead ready` there takes 0.037 s rather than 2.05 s; `bead blocked`
-  still lists each held issue's blockers, and `bead show` judges its one issue
-  by walking its ancestors (roll-lqjj.19; `cargo xtask timing --ready N`).
+  `bead ready` there takes 0.037 s rather than 2.05 s; `bead blocked` lists
+  every held issue's blockers once for all of them, so a chain of 16,000 issues
+  under one held root takes 0.28 s rather than 39 s, and the commands that show
+  several issues judge each one's `blocked` once for all of them, so `bead show`
+  of all of them takes 0.62 s rather than 27 s; one issue's detail walks its own
+  ancestors (roll-lqjj.19, roll-lqjj.24; `cargo xtask timing --ready N`).
   `bead show`, `bead update`, `bead claim` and `bead takeover` find the issues
   that depend on every issue they show in one pass for all of them, so showing
   all 8,000 issues of a sparse tracker takes 0.28 s rather than 3.26 s; one
