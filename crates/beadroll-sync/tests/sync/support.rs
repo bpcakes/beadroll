@@ -86,7 +86,7 @@ fn signature(actor: &Actor, asked: Json, request: Json) -> String {
 
 /// Builds a claim for key with generation one greater than the issue's last.
 pub(crate) fn claim(tx: &mut Tx<'_>, mode: Mode, key: &str) -> Result<Mode, Error> {
-    let st = tx.state()?.clone();
+    let (st, mut tx) = tx.lend()?;
     let issue = st
         .resolve(key)
         .ok_or_else(|| Error::Validation(format!("Issue not found: {key}")))?;

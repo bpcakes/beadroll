@@ -23,6 +23,7 @@ use std::os::unix::ffi::OsStrExt as _;
 use std::path::PathBuf;
 
 use beadroll_core::json::{Object, Value};
+use beadroll_core::projection::Projection;
 use beadroll_git::{
     CountRules, Env, Fact, Hasher, IoError, Objects, Refs, Trees, local_damage, sync_env,
     transport_config, transport_settings, with_settings,
@@ -92,6 +93,15 @@ pub struct Link<'a> {
     pub hashed: Vec<String>,
     /// Unchanged claims directories named directly in publication trees, without mktree input.
     pub reused_trees: Vec<String>,
+    /// The store's projection as the last merge left it, this machine's own chain checked in it:
+    /// what the round goes on from, so that nothing in it reads the projection again
+    /// (roll-lqjj.29).
+    pub(crate) merged: Option<Projection>,
+    /// How many keys the store's state had renamed when a merge that was asked to count them
+    /// first read it ([`Link::merge_from`]).
+    pub(crate) renames_before: Option<usize>,
+    /// Whether the merge under way has written a journal file.
+    wrote: bool,
 }
 
 /// The environment a link to `ws`'s remote runs git in ([`sync_env`], with `GIT_DIR` its
@@ -172,6 +182,9 @@ impl<'a> Link<'a> {
             listed_trees: HashMap::new(),
             hashed: Vec::new(),
             reused_trees: Vec::new(),
+            merged: None,
+            renames_before: None,
+            wrote: false,
         })
     }
 

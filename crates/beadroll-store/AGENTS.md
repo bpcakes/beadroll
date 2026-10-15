@@ -34,7 +34,8 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   `tracked_config_warning` (a `.beadroll.json` the other checkouts do not see), `workspaces_named`.
 - `src/journal.rs`: segment, attempt and pending files, `append_events`, `repair_tail` (a segment
   that ends with a newline is whole, and only its last byte is read), `load_journal`,
-  `load_pending`, `view`; `src/place.rs`: `capture_where`, `merged_into_default`;
+  `load_pending`, `view`, `pending_listed` (what `view` makes of a state a caller has already,
+  roll-lqjj.29); `src/place.rs`: `capture_where`, `merged_into_default`;
   `src/elsewhere.rs`: `elsewhere`, the branches and worktrees whose copy of a file (Beads'
   `.beads/issues.jsonl`) has changes the checkout lacks, for an import's dry run.
 - `src/projection.rs`: `projection` and the state `view` reads (roll-lqjj.2): the store's

@@ -9,9 +9,12 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
 
 ## Key entrypoints
 
-- `src/tx.rs`: `Tx` (`emit`, `state`), `locked`, `writing`, `forget_receipts`, `drop_pending`. A
-  `Tx` starts from the store's projection and applies each event it emits to it; one the
-  projection cannot take (a takeover) has the journal replayed instead.
+- `src/tx.rs`: `Tx` (`emit`, `state`, `lend`, `on`), `Emitter`, `locked`, `writing`,
+  `writing_state`, `forget_receipts`, `drop_pending`. A `Tx` starts from the store's projection
+  (`on`: one the caller read under the lock it holds) and applies each event it emits to it; one
+  the projection cannot take (a takeover) has the journal replayed instead. `lend` lends the
+  state beside an `Emitter`, for a command that reads it while it emits, without a copy
+  (roll-lqjj.29); `writing_state` hands back the state a write leaves.
 - `src/link.rs`: `Link` (`unpublished`, `maintain`, `rebuild`) and the gits it keeps in
   `sync.git` (`crates/beadroll-git/AGENTS.md`); `src/link/fetch.rs`: `Link::fetch`, which tries
   again a fetch that lost to another process's fetch of the store; `src/link/asked.rs`: `Link::publishes`, the
@@ -71,6 +74,12 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
 - A transaction reads where the caller works (`capture_where`) when it starts, under the store
   lock, and an ownership command makes a new one each round: the `where` an
   event records is HEAD as it is then.
+- A round reads the store's state once, by its merge, which keeps it (`Link::merged`): an
+  ownership round's transaction starts from it, and a sync's report is made of the last one. A
+  sync that reports counts the renames before it from a projection its first merge reads before
+  merging, which that merge goes on with when it writes no journal file; every journal write of a
+  merge goes through `write_journal` or `wrote`, which mark it. A write's sync (`publish_soon`)
+  makes no report (roll-lqjj.29; the `reads::` tests count them at `projection.read`).
 - A link asks for the checkout's transport settings when it is made (`Link::new`,
   `beadroll_git::transport_settings`). A link is made at the start of `synchronise`, another if
   it adopts a published tracker, one before the rounds of `coordinated`, and one for a write

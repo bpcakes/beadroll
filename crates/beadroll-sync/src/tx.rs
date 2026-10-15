@@ -55,14 +55,21 @@ pub struct Tx<'a> {
     writable: bool,
     /// The state replayed, once the projection is gone.
     state: Option<State>,
+    /// How many of the events emitted the state replayed has: it is replayed again once more are.
+    replayed: usize,
 }
 
 impl<'a> Tx<'a> {
     /// A transaction of `actor` on `ws`: this machine's identity (minted on first use), the store's
     /// journal, and where the caller works.
     pub fn new(ws: &'a Workspace, actor: &Actor) -> Result<Tx<'a>, Error> {
+        Tx::on(ws, actor, projection(ws)?)
+    }
+
+    /// [`Tx::new`] on `projection`, the store's as it is now, which the caller read under the
+    /// store lock it still holds: a round that merged has it already (roll-lqjj.29).
+    pub fn on(ws: &'a Workspace, actor: &Actor, projection: Projection) -> Result<Tx<'a>, Error> {
         let replica = replica_id(&ws.settings, true)?.unwrap_or_default();
-        let projection = projection(ws)?;
         let place = capture_where(ws)?;
         Ok(Tx {
             ws,
@@ -77,6 +84,7 @@ impl<'a> Tx<'a> {
             conditional: false,
             writable: actor.writable,
             state: None,
+            replayed: 0,
         })
     }
 
@@ -121,6 +129,9 @@ impl<'a> Tx<'a> {
         if let Some(projection) = &self.projection {
             return Ok(projection.state());
         }
+        if self.replayed < self.emitted.len() {
+            self.state = None;
+        }
         if self.state.is_none() {
             let mut journal = load_journal(self.ws)?;
             for record in &self.emitted {
@@ -130,6 +141,7 @@ impl<'a> Tx<'a> {
                 journal.add(value.clone(), &self.replica, "", *sequenced);
             }
             self.state = Some(replay(journal)?);
+            self.replayed = self.emitted.len();
         }
         match &self.state {
             Some(state) => Ok(state),
@@ -137,6 +149,99 @@ impl<'a> Tx<'a> {
         }
     }
 
+    /// Emits op on issue, defaulting issue to the event itself, with data and a supplied or fresh
+    /// id ([`Emitter::emit`]).
+    pub fn emit(
+        &mut self,
+        op: &str,
+        issue: Option<&str>,
+        data: Object,
+        event_id: Option<String>,
+    ) -> Result<Value, Error> {
+        self.emitter().emit(op, issue, data, event_id)
+    }
+
+    /// What emits into this transaction, the state left as it is.
+    fn emitter(&mut self) -> Emitter<'_> {
+        Emitter {
+            ws: self.ws,
+            actor: &self.actor,
+            replica: &self.replica,
+            heads: &mut self.heads,
+            emitted: &mut self.emitted,
+            place: &self.place,
+            ownership: &mut self.ownership,
+            conditional: self.conditional,
+            writable: self.writable,
+        }
+    }
+
+    /// The state, as [`Tx::state`] gives it, lent beside an [`Emitter`] that emits into this
+    /// transaction: what a command reads while it emits is the state as it was before, as a copy
+    /// taken first would be, without one (roll-lqjj.29). The events emitted are in the state the
+    /// next time it is asked for.
+    pub fn lend(&mut self) -> Result<(&State, Emitter<'_>), Error> {
+        self.state()?;
+        let Tx {
+            ws,
+            actor,
+            replica,
+            projection,
+            heads,
+            emitted,
+            place,
+            ownership,
+            conditional,
+            writable,
+            state,
+            ..
+        } = self;
+        let state = match (projection, state) {
+            (Some(projection), _) => projection.state(),
+            (None, Some(state)) => state,
+            (None, None) => return Err(Error::Validation("no state".to_owned())),
+        };
+        let emitter = Emitter {
+            ws,
+            actor,
+            replica,
+            heads,
+            emitted,
+            place,
+            ownership,
+            conditional: *conditional,
+            writable: *writable,
+        };
+        Ok((state, emitter))
+    }
+
+    /// The state with every event emitted, taken out of the transaction, which is done with: what
+    /// the store holds once they are written.
+    pub fn into_state(mut self) -> Result<State, Error> {
+        self.state()?;
+        match (self.projection, self.state) {
+            (Some(projection), _) => Ok(projection.into_state()),
+            (None, Some(state)) => Ok(state),
+            (None, None) => Err(Error::Validation("no state".to_owned())),
+        }
+    }
+}
+
+/// What emits into a [`Tx`] while its state is lent ([`Tx::lend`]).
+#[derive(Debug)]
+pub struct Emitter<'t> {
+    ws: &'t Workspace,
+    actor: &'t Value,
+    replica: &'t str,
+    heads: &'t mut Vec<EventId>,
+    emitted: &'t mut Vec<Record>,
+    place: &'t Option<Value>,
+    ownership: &'t mut Vec<Value>,
+    conditional: bool,
+    writable: bool,
+}
+
+impl Emitter<'_> {
     /// Emits op on issue, defaulting issue to the event itself, with data and a supplied or fresh
     /// id. Validate before minting, including the [`MAX_NESTING`] write limit.
     pub fn emit(
@@ -153,14 +258,14 @@ impl<'a> Tx<'a> {
         let mut event = Object::new();
         event.insert("v".into(), Value::from(FORMAT));
         event.insert("id".into(), Value::from(id.as_str()));
-        event.insert("replica".into(), Value::from(self.replica.as_str()));
+        event.insert("replica".into(), Value::from(self.replica));
         event.insert("deps".into(), Value::Array(deps));
         event.insert("actor".into(), self.actor.clone());
         event.insert("op".into(), Value::from(op));
         let issue = issue.filter(|issue| !issue.is_empty()).unwrap_or(&id);
         event.insert("issue".into(), Value::from(issue));
         event.insert("data".into(), Value::from(data));
-        if let Some(place) = &self.place {
+        if let Some(place) = self.place {
             event.insert("where".into(), place.clone());
         }
         let event = Value::from(event);
@@ -189,14 +294,13 @@ impl<'a> Tx<'a> {
             self.ownership.push(event.clone());
         }
         // later emits build on it
-        self.heads = EventId::parse(&id).into_iter().collect();
+        *self.heads = EventId::parse(&id).into_iter().collect();
         self.emitted.push(Record {
             value: event.clone(),
-            replica: self.replica.clone(),
+            replica: self.replica.to_owned(),
             origin: String::new(),
             sequenced,
         });
-        self.state = None;
         Ok(event)
     }
 }
@@ -252,8 +356,30 @@ pub fn writing<T, E: From<Error>>(
     actor: &Actor,
     body: impl FnOnce(&mut Tx<'_>) -> Result<T, E>,
 ) -> Result<T, E> {
+    written(ws, actor, false, body).map(|(result, _)| result)
+}
+
+/// [`writing`], and the state it leaves the store's journal in: the transaction's, with every
+/// event it emitted, so that a command that answers from it does not read the store again
+/// (roll-lqjj.29). `None` when the transaction cannot have it; the store's is then read as before.
+pub fn writing_state<T, E: From<Error>>(
+    ws: &Workspace,
+    actor: &Actor,
+    body: impl FnOnce(&mut Tx<'_>) -> Result<T, E>,
+) -> Result<(T, Option<State>), E> {
+    written(ws, actor, true, body)
+}
+
+/// [`writing`], with the transaction's state at the end when `keep` asks for it. The transaction
+/// is let go of, or made into that state, once the lock is (roll-lqjj.32).
+fn written<T, E: From<Error>>(
+    ws: &Workspace,
+    actor: &Actor,
+    keep: bool,
+    body: impl FnOnce(&mut Tx<'_>) -> Result<T, E>,
+) -> Result<(T, Option<State>), E> {
     let mut made = None;
-    let result = locked(ws, || {
+    let result = locked(ws, || -> Result<(T, bool), E> {
         let tx = made.insert(Tx::new(ws, actor)?);
         let replica = tx.replica.clone();
         if tx.state()?.chain_breaks().contains_key(&replica) {
@@ -265,6 +391,8 @@ pub fn writing<T, E: From<Error>>(
             .into());
         }
         let result = body(tx)?;
+        // the events emitted applied while the transaction still has them
+        let kept = keep && tx.state().is_ok();
         let sequenced = tx.has_pending();
         let pending = tx.take_pending();
         let finish = || -> Result<(), Error> {
@@ -281,10 +409,11 @@ pub fn writing<T, E: From<Error>>(
             Ok(())
         };
         finish()?;
-        Ok(result)
+        Ok((result, kept))
     });
-    drop(made);
-    result
+    let (result, kept) = result?;
+    let state = made.filter(|_| kept).and_then(|tx| tx.into_state().ok());
+    Ok((result, state))
 }
 
 /// A later command of this actor went through: the receipts that would answer a repeat of an

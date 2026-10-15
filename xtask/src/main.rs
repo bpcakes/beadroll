@@ -65,9 +65,10 @@ usage: cargo xtask <command>
       from disk and replays it, and of one that only loads it: --load DIR is that process.
       --sync N times a publishing bead sync (BEAD_UNDER_TEST, else the bead Cargo builds in
       xtask's profile) on a scratch store of those N events, its journals rotated at BYTES (bead's
-      default, 262144), against a local bare remote: the first sync, then the best of five after a
-      local write each, with the store's memo of its journal files and its projection, without
-      its projection, and without either. --read N times bead list, show, ready, log --limit 1,
+      default, 262144), against a local bare remote: the first sync, the best of five writes
+      published at once (bead comments add), then the best of five syncs after a local write
+      each, with the store's memo of its journal files and its projection, without its
+      projection, and without either. --read N times bead list, show, ready, log --limit 1,
       info and machines there, and a local write (bead comments add --offline), with the projection and without it; --merge N, a bead sync that merges M events (ten by default)
       another machine wrote after everything the store holds, with the projection and without it
       (--concurrent: the store writes too, so that the merge brings concurrent events);

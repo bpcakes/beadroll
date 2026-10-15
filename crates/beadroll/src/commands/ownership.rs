@@ -56,11 +56,12 @@ pub(crate) struct ClaimStep<'a> {
 
 impl ClaimStep<'_> {
     pub(crate) fn run(&self, tx: &mut Tx<'_>, mode: Mode) -> Result<Mode, Failure> {
-        let st: State = tx.state()?.clone();
-        need_tracker(&st)?;
         let me = self.actor.label(&tx.replica);
+        // read as it was before anything is emitted, without a copy (roll-lqjj.29)
+        let (st, mut tx) = tx.lend()?;
+        need_tracker(st)?;
         for key in self.keys {
-            let issue = resolve_arg(&st, key)?;
+            let issue = resolve_arg(st, key)?;
             let held = issue.claim();
             if st.is_done(issue) {
                 return Err(Failure::new(
@@ -252,11 +253,12 @@ pub(crate) fn release(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome
         args.remote.as_deref(),
         &signature,
         |tx, mode| -> Result<Mode, Failure> {
-            let st: State = tx.state()?.clone();
-            need_tracker(&st)?;
             let me = ctx.actor.label(&tx.replica);
+            // read as it was before anything is emitted, without a copy (roll-lqjj.29)
+            let (st, mut tx) = tx.lend()?;
+            need_tracker(st)?;
             for key in &args.ids {
-                let issue = resolve_arg(&st, key)?;
+                let issue = resolve_arg(st, key)?;
                 let uid = issue.uid().to_string();
                 let held = issue.claim();
                 if let Some(held) = held.filter(|held| me.is(&held.owner)) {

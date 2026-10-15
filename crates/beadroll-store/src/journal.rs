@@ -405,8 +405,9 @@ pub fn view_outline(ws: &Workspace) -> Result<State, ViewError> {
     pending_listed(ws, state)
 }
 
-/// `state` with this machine's own unconfirmed ownership attempts listed on their issues.
-fn pending_listed(ws: &Workspace, mut state: State) -> Result<State, ViewError> {
+/// `state` with this machine's own unconfirmed ownership attempts listed on their issues: what
+/// [`view`] makes of the state of the store's journal, given that state.
+pub fn pending_listed(ws: &Workspace, mut state: State) -> Result<State, ViewError> {
     ws.settings.failpoints.hit("view.before-load-pending");
     for attempt in load_pending(ws)? {
         for event in &attempt {

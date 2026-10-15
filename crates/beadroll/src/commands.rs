@@ -30,9 +30,10 @@ use beadroll_core::op::IntegerField;
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::{printed_text, repr_str, strip};
 use beadroll_store::{
-    Actor, Label, ViewError, Workspace, normalize_path, read_texts, view, view_outline,
+    Actor, Label, ViewError, Workspace, normalize_path, pending_listed, read_texts, view,
+    view_outline,
 };
-use beadroll_sync::{Tx, unpublished_count};
+use beadroll_sync::{Emitter, unpublished_count};
 
 pub(crate) use args::{
     ContentArgs, Payload, arg_text, arg_texts, encodable, field_args, resolve_arg, rpartition,
@@ -268,7 +269,23 @@ pub(crate) fn texts(values: &[OsString]) -> Result<Vec<String>, Failure> {
 /// that prints those issues whole needs, where its others' texts would only be read in vain
 /// (roll-lqjj.6). Every text, when theirs cannot be read.
 pub(crate) fn view_of(ws: &Workspace, keys: &[impl AsRef<OsStr>]) -> Result<State, Failure> {
-    let mut st = view_outline(ws)?;
+    texts_of(ws, view_outline(ws)?, keys)
+}
+
+/// [`view_of`], from `st`, the state a write left the store's journal in
+/// ([`beadroll_sync::writing_state`]), which the command has already: this machine's pending
+/// attempts are listed on it as `view` lists them, and the store is not read again (roll-lqjj.29).
+pub(crate) fn view_of_written(
+    ws: &Workspace,
+    st: State,
+    keys: &[impl AsRef<OsStr>],
+) -> Result<State, Failure> {
+    texts_of(ws, pending_listed(ws, st)?, keys)
+}
+
+/// `st` with the texts of the issues `keys` name read in; the store's state with every text, when
+/// theirs cannot be.
+fn texts_of(ws: &Workspace, mut st: State, keys: &[impl AsRef<OsStr>]) -> Result<State, Failure> {
     let uids: Vec<_> = (keys.iter())
         .filter_map(|key| resolve_arg(&st, key.as_ref()).ok().map(Issue::uid))
         .collect();
@@ -361,7 +378,7 @@ pub(crate) fn ended_by(issue: &Issue, me: &Label) -> bool {
 /// a concurrent import sorting first keeps that key, and the dependency binds to that copy after
 /// merging.
 pub(crate) fn remove_edge(
-    tx: &mut Tx<'_>,
+    tx: &mut Emitter<'_>,
     st: &State,
     issue: &Issue,
     to: &str,

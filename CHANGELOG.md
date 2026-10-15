@@ -6,6 +6,18 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A write published at once reads the store's state twice, once for the write and once for the
+  merge of the sync that publishes it, and `bead sync` once a round (roll-lqjj.29, X06), where an
+  online write read it four or five times: the sync that publishes a write no longer counts renames
+  or makes the report it threw away, a sync's report and a claim's transaction go on from the
+  state its merge read, `bead sync` counts the keys renamed before it from the state its first
+  merge reads, and `bead update` answers from the state its write left. `update`, `dep`, `claim`
+  and `release` no longer copy the whole state to read it while they write. At 20,000 imported
+  issues an online comment takes 0.72 s rather than 1.05 s, an update 0.75 s rather than 1.39 s,
+  a claim 0.64 s rather than 0.97 s, and a sync that brings nothing 0.27 s rather than 0.60 s.
+  Outputs, receipts and the protocol are unchanged. `cargo xtask timing --sync N` records a write
+  published at once (`online_seconds`).
+
 - A reading command keeps the state it answered from until its process exits instead of freeing
   every issue of it just before (roll-lqjj.32): at 200,000 events decoding takes about 100 ms and
   freeing 50 to 85 ms, so `bead list`, `show` and `ready` take about a quarter less there. A run

@@ -29,9 +29,13 @@
 //! push; `pending.after-list`, between listing and reading `pending/`; `journal.after-enumerate`,
 //! `view.before-load-pending` and `identity.before-link`, for readers racing writers;
 //! `projection.texts-appended`, after a projection's texts are appended and before the
-//! projection that places them is written; `clock`, every reading of the clock (event times,
-//! torn and fork stamps); and `atomic-write:<path part>` and `atomic-written:<path part>`, before
-//! and after the rename of an atomic write whose target contains that part. In-crate tests pass
+//! projection that places them is written; `projection.read`, which a test counts, once for every
+//! read of the store's state through `projection::current` (by `projection`, `state` and the
+//! views, whether it decodes the stored projection or replays the journal because none fits), and
+//! never for the journal a transaction loads and replays itself (`Tx::state` with no projection);
+//! `clock`, every reading of the clock (event times, torn and fork stamps); and
+//! `atomic-write:<path part>` and `atomic-written:<path part>`, before and after the rename of an
+//! atomic write whose target contains that part. In-crate tests pass
 //! the registry in `Settings` and read [`Failpoints::hits`] to see that a fault was reached.
 
 use std::collections::BTreeMap;
@@ -45,7 +49,7 @@ use beadroll_core::code::Code;
 use crate::error::Error;
 
 /// The points bead has, besides `atomic-write:<path part>` and `atomic-written:<path part>`.
-pub const POINTS: [&str; 19] = [
+pub const POINTS: [&str; 20] = [
     "ownership.before-publish",
     "ownership.after-publish-ok",
     "ownership.after-confirm",
@@ -62,6 +66,7 @@ pub const POINTS: [&str; 19] = [
     "pending.after-list",
     "journal.after-enumerate",
     "projection.texts-appended",
+    "projection.read",
     "view.before-load-pending",
     "identity.before-link",
     "clock",
