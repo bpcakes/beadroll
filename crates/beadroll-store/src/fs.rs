@@ -357,7 +357,7 @@ mod tests {
 
     /// A listing is in the order of its names' bytes, which whole paths under one folder sort in
     /// too: a name that is a prefix of another, punctuation that sorts before the folder's
-    /// separator, upper case, bytes that are not UTF-8.
+    /// separator, upper case, and bytes that are not UTF-8 where the file system takes such a name.
     #[test]
     fn a_listing_is_in_the_order_of_its_names() {
         let dir = tempfile::tempdir().unwrap();
@@ -372,10 +372,18 @@ mod tests {
             b"\xff",
             b"a\x01",
         ];
+        let mut sorted: Vec<&[u8]> = Vec::new();
         for name in names {
-            std::fs::write(dir.path().join(OsStr::from_bytes(name)), b"").unwrap();
+            match std::fs::write(dir.path().join(OsStr::from_bytes(name)), b"") {
+                Ok(()) => sorted.push(name),
+                // A file system that keeps names as UTF-8 (APFS) refuses one that is not: there
+                // the order of such names is nothing a listing can be asked for.
+                Err(error)
+                    if error.raw_os_error() == Some(rustix::io::Errno::ILSEQ.raw_os_error())
+                        && std::str::from_utf8(name).is_err() => {}
+                Err(error) => panic!("cannot make {name:?}: {error}"),
+            }
         }
-        let mut sorted: Vec<&[u8]> = names.to_vec();
         sorted.sort();
         let listed = dir_entries(dir.path()).unwrap();
         let listed: Vec<&[u8]> = (listed.iter())
