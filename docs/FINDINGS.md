@@ -20,6 +20,32 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Review 16: Claude review of the performance work of roll-lqjj.15 to .20 (`reviews/2026-10-15-16-claude-performance-follow-up.md`, ids X)
+
+A review of `4d7e03e..8683332`, Z01 to Z05 and the cache rule, asked for as a follow-up: it found no bug in that range, and what
+remains of the work it removed, and where a command's time goes now. Each row is open until the pull request its issue names
+lands; that pull request sets the row.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| X01 | Medium | `bead blocked` built each held issue's list with `open_blockers`, walking its ancestry, so a deep hierarchy cost issues times depth: a held chain of 16,000 took 43.2 s | open | roll-lqjj.24, branch `blocked-lists-at-once` | None yet |
+| X02 | Medium | The details of several issues judged `blocked` one by one with `is_blocked`, each walking its ancestors (Z05's probe had no parents): `show` of every issue of a held chain of 16,000 took 28.7 s | open | roll-lqjj.24, branch `blocked-lists-at-once` | None yet |
+| X03 | Medium | Replay built `claimed_keys()`, every key, once for each renamed copy: two machines importing one export of 8,000 records offline, a sync took 6.6 s and a cold replay 4.7 s against 1.15 s with nothing renamed | open | roll-lqjj.25, branch `renamed-copies-by-lookup` | None yet |
+| X04 | Medium | One integrity entry (a newer bead's operation, a quarantined duplicate, a copied machine identity) switched the projection off for good, so every later write replayed the journal, and `close`, `reopen` and `delete` replayed it once per issue: 60 closes of 4,000 issues took 10.3 s against 0.07 s | open | roll-lqjj.28, branch `extend-past-integrity-entries` | None yet |
+| X05 | Medium | The projection and its text file, checksummed caches rebuilt whenever lost or damaged, were fsynced like the journal, by the command after every write: a read after a write took 39 ms against 9.5 ms unflushed on 300 issues | open | roll-lqjj.27, branch `caches-unflushed` | None yet |
+| X06 | Medium | An online write decoded the projection four or five times (two of them to count renames and to make a report its caller drops), and `update`, `dep`, `claim` and `release` cloned the whole state: an online comment took 1.10 s against 0.30 s offline on 20,000 issues | open | roll-lqjj.29, branch `one-decode-per-online-write` | None yet |
+| X07 | Medium | Every attempt file was paid for by every command several times (up to seven stat passes, `meta.json`'s map of them parsed two to four times, the memo): with 91,952 attempt files `list` took 1.04 s against 0.19 s and an online write 6.1 s | open | roll-lqjj.30, branch `attempt-files-once-a-command` | None yet |
+| X08 | Medium | `bead show` started about five gits for every closed issue to say whether its commit is merged, resolving the default branch again each time: 1,000 closed issues took 29.8 s | open | roll-lqjj.26, branch `merged-once-a-command` | None yet |
+| X09 | Low | `log`, `info` and `machines` loaded the whole journal, and `log` replayed it to name keys: 0.9 to 1.5 s at 20,000 issues where `list` takes 0.26 s | open | roll-lqjj.31, branch `history-from-the-projection` | None yet |
+| X10 | Low | Every command freed its whole state before exiting (a quarter of `list` at 200,000 events), and a write freed its projection inside the store lock | open | roll-lqjj.32, branch `keep-state-until-exit` | None yet |
+| X11 | Low | Discovery's `cat-file` for the committed `.beadroll.json` started only once the `config` and `rev-parse` it runs beside had answered: a few ms of every command on a small tracker | open | roll-lqjj.33, branch `discovery-gits-together` | None yet |
+| X12 | Low | `sort_for_listing` allocated a string for each comparison: 4.3 ms against 3.1 ms for 20,000 issues | open | roll-lqjj.24, branch `blocked-lists-at-once` | None yet |
+| X13 | Low | `appended()` and `load_listed` could reuse the claims listing taken before the segments were read, where a directory keeps its identity within a tick (kernels before 6.13), so an attempt a new record builds on was missing for one read | open | roll-lqjj.30, branch `attempt-files-once-a-command` | None yet |
+| X14 | Medium | A `where.commit` from any machine reached git unchecked: a NUL failed `show` of that issue with `IO`, a leading `-` was read as an option, and a revision expression (`HEAD~1`, `:/regex`) was evaluated | open | roll-lqjj.26, branch `merged-once-a-command` | None yet |
+| X15 | Low | Nothing guarded the work Z01 to Z05 removed against coming back: their tests compare answers and timings never gate | open | roll-lqjj.34, branch `complexity-guards` | None yet |
+| X16 | Low | A reading command decodes the whole state whatever it prints (about 100 ms at 200,000 events): short fields kept twice, dependency targets as 36-byte strings with a metadata object each, every named event's causes, which only extension reads | open | roll-lqjj.35, a design | None yet |
+| X17 | Low | Every write cycle decodes the projection with its index, re-encodes all of it and rewrites it whole: 19 MB, 136 ms and 96 ms at 200,000 events | open | roll-lqjj.36, a design | None yet |
+
 ## Algorithmic review (`roll-lqjj.14`, ids Z)
 
 The review's candidates and measurements are recorded on `roll-lqjj.14`. These are **optimized**
