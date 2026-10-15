@@ -13,11 +13,12 @@
 //! lattice, for every issue at once and issue by issue ([`ready`]); with `--details N`, every issue
 //! of N shown in full, its dependents found once for all and for each alone ([`details`]); with
 //! `--renames N`, replay of N copies renamed, against the same creates renamed by nobody
-//! ([`renames`]). A timing
-//! never decides whether anything passes.
+//! ([`renames`]); with `--decode N`, a projection of N events decoded, its state part alone and
+//! whole ([`decode`]). A timing never decides whether anything passes.
 
 mod contend;
 mod dangling;
+mod decode;
 mod details;
 mod extend;
 #[cfg(test)]
@@ -79,6 +80,8 @@ struct Options {
     details: Option<usize>,
     /// Time replay renaming this many copies instead of a command.
     renames: Option<usize>,
+    /// Time decoding a projection of this many events instead of a command.
+    decode: Option<usize>,
     /// How many writes each `--contend` machine makes.
     writes: Option<usize>,
     /// How many milliseconds each fetch and push of `--contend` waits.
@@ -113,6 +116,7 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
         ready: None,
         details: None,
         renames: None,
+        decode: None,
         writes: None,
         latency: None,
         rotate: None,
@@ -153,6 +157,7 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
             "--renames" => {
                 options.renames = Some(number(&value("--renames")?, "--renames", "copies")?);
             }
+            "--decode" => options.decode = Some(number(&value("--decode")?, "--decode", "events")?),
             "--contend" => {
                 options.contend = Some(number(&value("--contend")?, "--contend", "machines")?);
             }
@@ -196,20 +201,22 @@ fn check(options: &Options) -> Result<(), Failure> {
         options.ready,
         options.details,
         options.renames,
+        options.decode,
     ];
     let measured = modes.iter().flatten().count();
     if options.command.is_empty() && measured == 0 && options.load.is_none() {
         return Err(Failure::Usage(
             "timing needs --replay N, --sync N, --read N, --merge N, --contend M, --import N, \
-             --plan N, --extend N, --dangling N, --ready N, --details N, --renames N, or a command \
-             after --"
+             --plan N, --extend N, --dangling N, --ready N, --details N, --renames N, --decode N, \
+             or a command after --"
                 .into(),
         ));
     }
     if measured > 1 {
         return Err(Failure::Usage(
             "one of --replay N, --sync N, --read N, --merge N, --contend M, --import N, \
-             --plan N, --extend N, --dangling N, --ready N, --details N and --renames N"
+             --plan N, --extend N, --dangling N, --ready N, --details N, --renames N and \
+             --decode N"
                 .into(),
         ));
     }
@@ -294,6 +301,8 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
         Some(details::measure(issues, label)?)
     } else if let Some(copies) = options.renames {
         Some(renames::measure(copies, label)?)
+    } else if let Some(count) = options.decode {
+        Some(decode::measure(count, options.shape, label)?)
     } else {
         None
     };
@@ -582,6 +591,7 @@ mod tests {
             options.ready,
             options.details,
             options.renames,
+            options.decode,
         ];
         assert!(modes.iter().all(Option::is_none), "{modes:?}");
         for wrong in [
@@ -617,6 +627,7 @@ mod tests {
             options.ready,
             options.details,
             options.renames,
+            options.decode,
         ];
         assert!(modes.iter().all(Option::is_none), "{modes:?}");
         for wrong in [
@@ -652,6 +663,7 @@ mod tests {
             options.dangling,
             options.details,
             options.renames,
+            options.decode,
         ];
         assert!(modes.iter().all(Option::is_none), "{modes:?}");
         for wrong in [
@@ -687,6 +699,7 @@ mod tests {
             options.dangling,
             options.ready,
             options.renames,
+            options.decode,
         ];
         assert!(modes.iter().all(Option::is_none), "{modes:?}");
         for wrong in [
@@ -722,6 +735,7 @@ mod tests {
             options.dangling,
             options.ready,
             options.details,
+            options.decode,
         ];
         assert!(modes.iter().all(Option::is_none), "{modes:?}");
         for wrong in [
@@ -731,6 +745,43 @@ mod tests {
             &["--renames", "10", "--details", "10"],
             &["--renames", "10", "--replay", "10"],
             &["--renames", "10", "--rotate", "4096"],
+        ] {
+            assert!(
+                matches!(parse(args(wrong)), Err(Failure::Usage(_))),
+                "{wrong:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn decode_takes_a_count_of_events_a_shape_and_is_a_measurement_of_its_own() {
+        let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
+        let options = parse(args(&["--decode", "200000", "--ownership"])).unwrap();
+        assert_eq!(options.decode, Some(200_000));
+        assert_eq!(options.shape, history::Shape::Ownership);
+        // The count reaches this measurement and no other.
+        let modes = [
+            options.replay,
+            options.sync,
+            options.read,
+            options.merge,
+            options.contend,
+            options.import,
+            options.plan,
+            options.extend,
+            options.dangling,
+            options.ready,
+            options.details,
+            options.renames,
+        ];
+        assert!(modes.iter().all(Option::is_none), "{modes:?}");
+        for wrong in [
+            &["--decode", "many"][..],
+            &["--decode"],
+            // counted among the measurements, so it is refused beside another
+            &["--decode", "10", "--read", "10"],
+            &["--decode", "10", "--replay", "10"],
+            &["--decode", "10", "--rotate", "4096"],
         ] {
             assert!(
                 matches!(parse(args(wrong)), Err(Failure::Usage(_))),

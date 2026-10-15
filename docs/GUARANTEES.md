@@ -325,7 +325,12 @@ it, and the file is committed again.
   1.06 s without; a sync that merges ten events another machine wrote, 0.31 s and
   1.31 s; a publishing sync, 0.38 s and 1.34 s (`cargo xtask timing`). With
   it, a read costs what the state does: 18 ms for a thousand issues, whether
-  50,000 events made them or 200,000. A write derives the labels its own events
+  50,000 events made them or 200,000. A command that only reads decodes, of the
+  events, only who wrote values two writers set without seeing each other,
+  every event's record being kept in the projection's index for the writes
+  that need it (roll-lqjj.35): at 200,000 events `list` takes 0.121 s rather
+  than 0.146 s, `show` 0.116 s rather than 0.150 s and `ready` 0.157 s rather
+  than 0.201 s (`cargo xtask timing --read N`, `--decode N`). A write derives the labels its own events
   changed, each issue's once however many of them changed it, and takes its new
   event ids in wherever they sort among the ids held, so one `bead close`
   naming 8,000 issues of 8,000 takes 0.7 s rather than 19.8 s; a batch that

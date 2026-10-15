@@ -40,7 +40,11 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   one issue's detail and lookup both ways as a control (roll-lqjj.20); `timing/renames.rs`:
   `timing --renames N`, replay of two machines each creating the same N keys, so that N copies are
   renamed, against the same creates renamed by nobody, and each with the first machine's issues
-  importing a dependency on a key that never comes (roll-lqjj.25, X03); `timing/growth.rs`: the
+  importing a dependency on a key that never comes (roll-lqjj.25, X03); `timing/decode.rs`:
+  `timing --decode N`, a projection of N events decoded in this process, its state part alone (what
+  a command that only reads decodes) and whole with its index (what a write decodes), with the heap
+  a decoded state holds and the bytes of the state part, the index and the texts (roll-lqjj.35,
+  X16); `timing/growth.rs`: the
   growth guards only time can keep (roll-lqjj.34, X15), tests ignored by every other run that time
   planning an import, its dry run, a re-import, replay of imports that wait for keys, replay of
   copies two machines minted alike (`timing/renames.rs`'s journals; roll-lqjj.38, X03) and a
@@ -114,6 +118,8 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   full, its dependents found once for all of them and for each alone, and one issue's as a control
 - `cargo run --release --package xtask -- timing --renames 8000`: replay renaming 8,000 copies two
   machines minted alike, against 16,000 creates renamed by nobody
+- `cargo run --release --package xtask -- timing --decode 200000`, and with `--ownership`,
+  `--churn` or `--text`: the projection of 200,000 events decoded, its state part alone and whole
 - `cargo test -p xtask`
 - `cargo nextest run --release --locked --package xtask --run-ignored only --test-threads 1 -E
   'test(/^timing::growth::/)'`: the growth guards, as the nightly workflow runs them

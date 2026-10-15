@@ -36,17 +36,18 @@ pub use codec::Unreadable;
 pub use extend::Extended;
 
 /// The version of the bytes [`Projection::encode`] writes. Bytes of another are not read.
-pub const ENCODING: u32 = 5;
+pub const ENCODING: u32 = 6;
 
 /// A projection's bytes: its state, which a command that only reads needs alone, its index, what
 /// applying more events needs, and the texts it has that are written nowhere yet.
 #[derive(Clone, Debug)]
 pub struct Encoded {
-    /// The state, each issue with where its texts are.
+    /// The state, each issue with where its texts are, and of its events only who wrote those a
+    /// state's conflicts name and where machines' journals broke (roll-lqjj.35).
     pub state: Vec<u8>,
-    /// What every event the state names had seen, the frontier, every event id, each machine's
-    /// journal length and latest event, the claims takeovers superseded, and whether events can be
-    /// applied after.
+    /// Every event the state names, with its causes, machine and actor, and what each had seen, the
+    /// frontier, every event id, each machine's journal length and latest event, the claims
+    /// takeovers superseded, and whether events can be applied after.
     pub index: Vec<u8>,
     /// The texts written nowhere yet, each issue's at the place the state gives it: to append to
     /// the text file the state's places are in.
@@ -206,9 +207,10 @@ impl Projection {
         let mut w = Writer::default();
         let given: HashMap<EventId, TextPlace> = places.iter().copied().collect();
         write_state(&mut w, &self.state, &given);
-        kept.write_events(&mut w);
+        kept.write_writers(&mut w, &asked(&self.state));
         let state = w.finish();
         let mut w = Writer::default();
+        kept.write_events(&mut w);
         kept.write_index(&mut w);
         w.ids(self.heads.iter());
         w.ids(self.ids.iter());
@@ -252,7 +254,12 @@ impl Projection {
     /// The projection [`Projection::encode`] wrote as these bytes.
     pub fn decode(encoded: &Encoded) -> Result<Projection, Unreadable> {
         let mut state = decode_state(&encoded.state)?;
+        let writers: Vec<EventId> = state.knowledge.events.keys().copied().collect();
         let mut r = Reader::new(&encoded.index);
+        state.knowledge.read_events(&mut r)?;
+        if !(writers.iter()).all(|writer| state.knowledge.events.contains_key(writer)) {
+            return Err(Unreadable("the writers"));
+        }
         state.knowledge.read_index(&mut r)?;
         let heads = r.ids()?;
         if !(heads.iter()).all(|head| state.knowledge.events.contains_key(head)) {
@@ -291,12 +298,14 @@ impl Projection {
 }
 
 /// The state [`Projection::encode`] wrote as `bytes` ([`Encoded::state`]): all a command that only
-/// reads needs. Of its events it knows the machine and actor of those it names, not what each had
-/// seen.
+/// reads needs. Of its events it knows only who wrote those behind a register with several
+/// entries, which its conflicts name ([`State::who`]), and where machines' journals broke: not
+/// their causes, nor what each had seen, nor any other event it names, which only applying more
+/// events reads (roll-lqjj.35).
 pub fn decode_state(bytes: &[u8]) -> Result<State, Unreadable> {
     let mut r = Reader::new(bytes);
     let mut state = read_state(&mut r)?;
-    state.knowledge = Knowledge::read_events(&mut r)?;
+    state.knowledge = Knowledge::read_writers(&mut r)?;
     r.done()?;
     Ok(state)
 }
@@ -394,6 +403,24 @@ fn named(state: &State) -> HashSet<EventId> {
         }
         out.extend(issue.claim.as_ref().map(|claim| claim.id));
         out.extend(issue.provisional_claims.iter().map(|offline| offline.id));
+    }
+    out
+}
+
+/// The events a state read alone asks who wrote: those behind each register with several entries,
+/// which alone [`State::conflicts`] can name, a long field's among them when the issue's texts are
+/// not read in. A register of one entry is never a conflict.
+fn asked(state: &State) -> HashSet<EventId> {
+    let mut out = HashSet::new();
+    for issue in state.issues.values() {
+        for tags in issue.reg.values().filter(|tags| tags.len() > 1) {
+            out.extend(tags.iter().map(|(id, _)| *id));
+        }
+        if let Texts::There(stored) = &issue.texts {
+            for (_, ids) in stored.tags.iter().filter(|(_, ids)| ids.len() > 1) {
+                out.extend(ids.iter().copied());
+            }
+        }
     }
     out
 }

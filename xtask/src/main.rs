@@ -53,6 +53,7 @@ usage: cargo xtask <command>
   timing --ready N [--label NAME] [--out FILE]
   timing --details N [--label NAME] [--out FILE]
   timing --renames N [--label NAME] [--out FILE]
+  timing --decode N [--ownership|--churn|--text] [--label NAME] [--out FILE]
   timing --load DIR [--no-replay]
       Run COMMAND and append what it took, one JSON line, to FILE (default
       target/timing.jsonl); or replay a parsed journal of N valid events in-process, the best of
@@ -96,8 +97,11 @@ usage: cargo xtask <command>
       control, the fastest of three runs each; --renames N, replay in this process of two machines
       each creating the same N keys, so that N copies are renamed, against the control of 2N
       creates renamed by nobody, and each again with the first machine's issues importing a
-      dependency on a key that never comes, the fastest of three runs each. Timings are evidence,
-      never a gate.
+      dependency on a key that never comes, the fastest of three runs each; --decode N, the
+      projection of N events decoded in this process: its state part alone, as a command that only
+      reads decodes it, and whole with its index, as a write does, the fastest of seven runs each,
+      the heap a decoded state holds, and the bytes of the state part, the index and the texts.
+      Timings are evidence, never a gate.
 
   bead ARG...
       Run bead with ARGs in this process, whose heap is counted, and say on standard error the
