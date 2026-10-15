@@ -265,38 +265,44 @@ These were decided deliberately. Report problems *with* them, not their existenc
   sort no longer matters. The fastest of three runs each, 2026-10-14, Rust 1.99.0, 16 cores. End to
   end, `bead close` naming all 8,000 of those issues went from 19.8 s to 0.7 s, the best of three
   runs each.
-- An imported dependency on a key no issue has yet is found by that key (roll-lqjj.18, Z03).
-  Replay kept the issues that waited for keys and, on every create, visited each of them and read
-  its whole list of waiting dependencies, so N imports that each waited for a key cost N² however
-  few keys ever came, and one issue waiting for N keys had its list read again as each came. The
-  state now lists every waiting entry by the key it names, its issue and its place in the issue's
-  list (`state::Awaiting`, an ordered set, so no hash order reaches anything): a create takes the
-  entries its own key settles and visits nothing else, and a removal by key finds an issue's
-  entries for that key the same way. An entry taken out leaves null in its place, so the places of
-  the others hold however many go from one list while events apply; replay's finishing pass, and a
-  projection's for its batch, make each such list whole again in its order and move the entries
-  after the first one taken to their new places, once a batch. Nothing outside replay sees a null:
-  the one reader inside it, `claimed_keys` for a copy renamed mid-batch, finds no key in one, as it
-  found none in an entry removed. Binding is what it was — the key actually assigned after a
-  rename, an issue's own key left waiting, the type a falsy one defaults to, the import's metadata
-  and its create's tag, and removals by key and type or by target with their causal rules — and so
-  are the order of edges and of what still waits; the scenarios in
-  `projection::tests::awaiting` and the digest of 30 seeded histories pass unchanged on the
-  implementation before it. The index is derived, like the parent-child index: a projection's
+- An imported dependency on a key no issue has yet is found by that key (roll-lqjj.18, Z03). Replay
+  kept the issues that waited for keys and, on every create, visited each of them and read its whole
+  list of waiting dependencies, so N imports that each waited for a key cost N² however few keys
+  ever came, and one issue waiting for N keys had its list read again as each came. The state now
+  lists every waiting entry by the key it names, its issue and a number fixed when its list began to
+  wait, its place then (`state::Awaiting`, ordered sets, so no hash order reaches anything): a
+  create takes the entries its own key settles and visits nothing else, and a removal by key finds
+  an issue's entries for that key the same way. An entry taken out leaves null in its place while
+  events apply; replay's finishing pass, and a projection's for its batch, make each such list whole
+  again in its order and drop the numbers of the entries taken, and the entries left keep theirs, so
+  none is listed again (W01: listed by place, each batch had every entry behind the first one taken
+  listed anew). Nothing outside replay sees a null: the one reader inside it, `claimed_keys` for a
+  copy renamed mid-batch, finds no key in one, as it found none in an entry removed. Binding is what
+  it was — the key actually assigned after a rename, an issue's own key left waiting, the type a
+  falsy one defaults to, the import's metadata and its create's tag, and removals by key and type or
+  by target with their causal rules — and so are the order of edges and of what still waits; the
+  scenarios in `projection::tests::awaiting` and the digest of 30 seeded histories pass unchanged on
+  the implementation before it. The index is derived, like the parent-child index: a projection's
   bytes no longer carry the issues that waited (`projection::ENCODING` 4), and a state read back
-  lists its entries again from the issues' lists, so that one read back, one extended and one
-  replayed agree on it exactly. `cargo xtask timing --dangling N` measures replay of N creates:
-  at 8,000 and 16,000, none waiting (the control) took 0.021 s and 0.045 s before and 0.021 s and
-  0.044 s after; each waiting for a key that never comes, 3.10 s and 12.41 s before, 0.026 s and
-  0.056 s after; the first half waiting for keys the second half brings, 1.55 s and 6.01 s
-  before, 0.029 s and 0.061 s after; one issue waiting for every other's key, which come one
-  create at a time, 1.10 s and 3.96 s before, 0.19 s and 0.69 s after. That last still grows with
-  the square of N, and its control says why: one issue given the same N edges at once, by an
-  import naming keys that have their issues, takes 0.13 s and 0.45 s before and 0.14 s and 0.45 s
-  after. An issue's edges are a vector searched in order (`state::small`, roll-dih8.11), so its
-  N-th edge costs N whichever way it comes, `dep_add` included; with that insertion left out, as
-  an experiment, the shape took 0.034 s and 0.066 s. The fastest of three runs each, 2026-10-15,
-  Rust 1.99.0, 64 cores.
+  lists its entries again from the issues' lists, numbered from each list's first entry, so that one
+  read back, one extended and one replayed list the same entries at the same places. `cargo xtask
+  timing --dangling N` measures replay of N creates, at 8,000 and 16,000 before and after, run back
+  to back: none waiting (the control), 0.021 s and 0.045 s before, 0.019 s and 0.046 s after; each
+  waiting for a key that never comes, 4.50 s and 30.28 s before, 0.044 s and 0.093 s after; the
+  first half waiting for keys the second half brings, 2.02 s and 7.94 s before, 0.038 s and 0.084 s
+  after; one issue waiting for every other's key, which come one create at a time, 1.57 s and 9.05 s
+  before, 0.24 s and 0.78 s after. That last still grows with the square of N, and its control says
+  why: one issue given the same N edges at once, by an import naming keys that have their issues,
+  takes 0.145 s and 0.500 s before and 0.141 s and 0.498 s after. An issue's edges are a vector
+  searched in order (`state::small`, roll-dih8.11), so its N-th edge costs N whichever way it comes,
+  `dep_add` included; with that insertion left out, as an experiment in a quieter run that morning
+  (12.41 s before and 0.056 s after for keys that never come at 16,000), the shape took 0.034 s and
+  0.066 s. It measures a projection taking that issue's keys one create a batch too, as a store
+  takes them a command at a time: 1.26 s and 5.08 s before, 10.13 s and 50.68 s with entries listed
+  by place (W01), and 0.38 s and 1.52 s after, against 0.137 s and 0.450 s for the same creates with
+  nothing waiting, which is the parent-child index built again each batch; what remains is the
+  issue's growing edges and a copy of its list's tail once a batch. The fastest of three runs each,
+  2026-10-15, Rust 1.99.0, 64 cores.
 - No history boundary (roll-lqjj.3, step 4 of epic roll-lqjj; the maintainer's decision of
   2026-10-12, on the evidence in the port plan's Appendix A, "roll-lqjj.3", which git keeps, §1): a
   machine's work merges by itself however old it is, as every merge has so far. The alternatives

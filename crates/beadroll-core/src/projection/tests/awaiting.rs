@@ -440,6 +440,47 @@ fn a_removal_by_key_concurrent_with_the_targets_create_wins_whichever_applies_fi
     }
 }
 
+#[test]
+fn an_entry_keeps_its_number_however_many_before_it_go_batch_after_batch() {
+    // One issue waits for five keys. A removal by key takes the second, and then the others come in
+    // the order it names them, one create a batch, each taking the first entry left: every batch
+    // makes the list whole again, and the entries left stay listed as they were, never listed
+    // again (F1), while each state answers as replay does.
+    let keys = ["pr-k1", "pr-k2", "pr-k3", "pr-k4", "pr-k5"];
+    let named = (keys.iter())
+        .map(|key| on(key, Some("blocks"), &[]))
+        .collect();
+    let mut held = base();
+    held.push(at(3, HERE, &[2], "create", 3, creating("pr-x", named)));
+    let mut projection = project(journal(&held)).unwrap();
+    let uid = EventId::parse(&id(3)).unwrap();
+    let mut listed: Vec<(String, EventId, usize)> = (keys.iter().enumerate())
+        .map(|(number, key)| ((*key).to_owned(), uid, number))
+        .collect();
+    assert_eq!(projection.state().awaiting.numbered(), listed);
+    let mut batches = vec![("pr-k2", by_key("pr-k2", None), "dep_remove", 3)];
+    for (n, key) in (5..).zip(["pr-k1", "pr-k3", "pr-k4", "pr-k5"]) {
+        batches.push((key, creating(key, vec![]), "create", n));
+    }
+    for (n, (key, data, op, issue)) in (4..).zip(batches) {
+        let next = at(n, HERE, &[n - 1], op, issue, data);
+        held.push(next.clone());
+        projection = match projection.extend(vec![next]).unwrap() {
+            Extended::Applied(extended) => *extended,
+            Extended::Replay => panic!("a projection applies {key}'s batch"),
+        };
+        listed.retain(|(named, ..)| named != key);
+        assert_eq!(
+            projection.state().awaiting.numbered(),
+            listed,
+            "after {key}"
+        );
+        assert!(same(projection.state(), &replay(journal(&held)).unwrap()));
+    }
+    assert!(waiting(projection.state(), 3).is_empty());
+    assert_eq!(edges(projection.state(), 3).len(), 4);
+}
+
 /// How many keys the seeded histories create, `pr-k0` onwards, and how many they name: the last
 /// five never have an issue.
 const MADE: usize = 25;

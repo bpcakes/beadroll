@@ -346,7 +346,15 @@ fn same(a: &State, b: &State) -> bool {
         && a.comment_count == b.comment_count
         && a.last_by_thread.iter().eq(b.last_by_thread.iter())
         && a.children == b.children
-        && a.awaiting == b.awaiting
+        && awaiting(a).is_some_and(|listed| Some(listed) == awaiting(b))
+}
+
+/// What `state` lists as waiting, by place: where an entry is listed at a place that does not hold
+/// it, that place is `None`, which no state agrees with.
+fn awaiting(state: &State) -> Option<Vec<(String, EventId, usize)>> {
+    (state.awaiting.listed(&state.issues).into_iter())
+        .map(|(key, uid, at)| Some((key, uid, at?)))
+        .collect()
 }
 
 impl World {

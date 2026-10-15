@@ -83,11 +83,12 @@ consumer on tokio calls through `spawn_blocking`.
   sequence they were, and bytes that are not ascending are still refused.
 - A create visits only the imported dependencies that wait for its key, and a removal by key only
   an issue's entries for that key: `State::awaiting` lists each by the key it names, its issue and
-  its place in the issue's list (roll-lqjj.18). An entry taken out leaves null in its place while
-  events apply, and the finishing pass (`finish`, `finish_some`) makes each such list whole, so no
-  state outside replay holds a null. The index is derived and never written: a state read back
-  builds it from the issues' lists, and `projection/tests/awaiting.rs` keeps replay, a projection
-  extended and one read back agreeing on it, and on what replay made of waiting imports before it.
+  a number it keeps, its place when its list began to wait (roll-lqjj.18). An entry taken out
+  leaves null in its place while events apply, and the finishing pass (`finish`, `finish_some`)
+  makes each such list whole, so no state outside replay holds a null, and lists nothing again
+  (W01). The index is derived and never written: a state read back builds it from the issues'
+  lists, and `projection/tests/awaiting.rs` keeps replay, a projection extended and one read back
+  listing the same entries at the same places, and what replay made of waiting imports before it.
 - `saw` agrees with the reference ancestry bitsets: `state/seen/tests.rs` checks every pair
   on hostile histories. Replay's speed and memory are measured by
   `cargo run --release --package xtask -- timing --replay N [--ownership]`: at 200,000 events its

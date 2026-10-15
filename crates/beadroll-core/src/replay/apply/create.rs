@@ -50,11 +50,11 @@ pub(super) fn create(
     }
     // An import may have named this key before it existed: the entries that wait for it become
     // edges, and nothing else waiting is visited (roll-lqjj.18). Each touches its own issue alone.
-    for (uid, at) in st.awaiting.arrived(&key) {
+    for (uid, number) in st.awaiting.arrived(&key) {
         let Some(other) = st.issues.get_mut(&uid) else {
             continue;
         };
-        if let Some(dep) = st.awaiting.take(other, at) {
+        if let Some(dep) = st.awaiting.take(other, number) {
             bind(k, other, &dep, eid);
         }
     }

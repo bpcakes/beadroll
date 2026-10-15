@@ -7,12 +7,16 @@
 //! Replay used to visit every issue still waiting, and each waiting issue's whole list, on every
 //! create, so the middle three grew with the square of N. One issue's edges are a vector searched
 //! in order (`state::small`, roll-dih8.11), so its N edges cost what the last control measures
-//! however they come. The fastest of [`RUNS`] runs counts. Evidence, never a gate.
+//! however they come. It also measures a projection of the first issue waiting for every other's
+//! key taking the creates that bring them one create a batch, as a store takes them a command at a
+//! time, against the same creates when it waits for nothing: each batch makes the issue's list whole
+//! again (W01). The fastest of [`RUNS`] runs counts. Evidence, never a gate.
 
 use std::time::Instant;
 
 use beadroll_core::journal::Journal;
 use beadroll_core::json::{Object, Value};
+use beadroll_core::projection::{Extended, Projection, Record, project};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
 
@@ -136,17 +140,70 @@ fn create(n: usize, named: &[String]) -> Object {
     data
 }
 
-/// The journal of `issues` creates of `shape`, after an `init`.
-fn journal(shape: Shape, issues: usize) -> Journal {
+/// The events of `issues` creates of `shape`, after an `init`.
+fn events(shape: Shape, issues: usize) -> Vec<Value> {
     let mut data = Object::new();
     data.insert("prefix".into(), Value::from("ex"));
+    let creates =
+        (1..=issues).map(|n| event(n as u64 + 1, "create", create(n, &shape.named(n, issues))));
+    std::iter::once(event(1, "init", data))
+        .chain(creates)
+        .collect()
+}
+
+/// The journal of `issues` creates of `shape`, after an `init`.
+fn journal(shape: Shape, issues: usize) -> Journal {
     let mut journal = Journal::new();
-    journal.add(event(1, "init", data), MACHINE, "", true);
-    for n in 1..=issues {
-        let value = event(n as u64 + 1, "create", create(n, &shape.named(n, issues)));
+    for value in events(shape, issues) {
         journal.add(value, MACHINE, "", true);
     }
     journal
+}
+
+/// A projection of the first of `issues` creates of `shape`, after an `init`, and the records of the
+/// others, to take in one a batch.
+fn extension(shape: Shape, issues: usize) -> Result<(Projection, Vec<Record>), Failure> {
+    let mut events = events(shape, issues);
+    let rest = events.split_off(events.len().min(2));
+    let mut first = Journal::new();
+    for value in events {
+        first.add(value, MACHINE, "", true);
+    }
+    let seed = project(first).map_err(|_| Failure::Failed("the probe needs a key".into()))?;
+    let records = (rest.into_iter())
+        .map(|value| Record {
+            value,
+            replica: MACHINE.to_owned(),
+            origin: String::new(),
+            sequenced: true,
+        })
+        .collect();
+    Ok((seed, records))
+}
+
+/// The fastest of [`RUNS`] runs of a fresh copy of `seed` taking `records` one a batch, neither
+/// copied while the clock runs, and the edges and waiting dependencies of the state it made.
+fn fastest_taken(seed: &Projection, records: &[Record]) -> Result<(f64, (usize, usize)), Failure> {
+    let mut best = f64::INFINITY;
+    let mut counts = (0, 0);
+    for _ in 0..RUNS {
+        let (mut projection, records) = (seed.clone(), records.to_vec());
+        let clock = Instant::now();
+        for record in records {
+            projection = match projection.extend(vec![record]) {
+                Ok(Extended::Applied(extended)) => *extended,
+                Ok(Extended::Replay) => {
+                    return Err(Failure::Failed(
+                        "the probe's own creates are declined".into(),
+                    ));
+                }
+                Err(_) => return Err(Failure::Failed("the probe needs a key".into())),
+            };
+        }
+        best = best.min(clock.elapsed().as_secs_f64());
+        counts = counted(projection.state());
+    }
+    Ok((best, counts))
 }
 
 /// How many edges the state's issues have, and how many dependencies still wait for a key.
@@ -180,6 +237,16 @@ pub(crate) fn measure(issues: usize, label: Option<&str>) -> Result<String, Fail
         figures.push_str(&format!(
             "\"{name}_seconds\": {seconds:.4}, \"{name}_edges\": {edges}, \
              \"{name}_waiting\": {waiting}, "
+        ));
+    }
+    for shape in [Shape::Plain, Shape::OneAwaitsMany] {
+        let (seed, records) = extension(shape, issues)?;
+        let (seconds, (edges, waiting)) = fastest_taken(&seed, &records)?;
+        let name = shape.name();
+        figures.push_str(&format!(
+            "\"{name}_taken_one_a_batch_seconds\": {seconds:.4}, \
+             \"{name}_taken_one_a_batch_edges\": {edges}, \
+             \"{name}_taken_one_a_batch_waiting\": {waiting}, "
         ));
     }
     let label = label.map_or_else(
@@ -269,6 +336,27 @@ mod tests {
         let waiting = create(1, &Shape::OneAwaitsMany.named(1, 6));
         alone.add(event(2, "create", waiting), MACHINE, "", true);
         assert_eq!(counted(&replay(alone).unwrap()), (0, 5));
+    }
+
+    #[test]
+    fn a_projection_takes_the_keys_one_create_a_batch_and_ends_as_replay_does() {
+        for shape in [Shape::Plain, Shape::OneAwaitsMany] {
+            let (seed, records) = extension(shape, 6).unwrap();
+            assert_eq!(seed.state().issues().count(), 1, "the first issue alone");
+            assert_eq!(records.len(), 5);
+            let (_, counts) = fastest_taken(&seed, &records).unwrap();
+            assert_eq!(
+                counts,
+                counted(&replay(journal(shape, 6)).unwrap()),
+                "{shape:?}"
+            );
+        }
+        let (seed, _) = extension(Shape::OneAwaitsMany, 6).unwrap();
+        assert_eq!(
+            counted(seed.state()),
+            (0, 5),
+            "it waits for every other's key"
+        );
     }
 
     #[test]
