@@ -1,6 +1,7 @@
 # bead's nightly checks: the tests under the oldest git bead supports, 2.40, built from source,
 # beside the newer git every push already tests with (V8_Python312's replacement); and the slow
-# suites, the stress models and the full ownership sweep.
+# suites, the stress models, the full ownership sweep, and the growth guards only time can keep,
+# timed in release (X15).
 # Until the cutover the tests also ran here against Python's launcher, and the first stress model
 # on a fleet that alternated the two implementations. Nothing here touches a real store or a real
 # remote: every test builds its own repositories and bare remotes in a temporary directory.
@@ -89,3 +90,7 @@ jobs:
         env:
           BEAD_SWEEP: full
         run: cargo nextest run --locked --package beadroll -E 'test(=sweep::sweep::sweep)'
+      # One test at a time, alone on the runner: each compares two timings of its own.
+      - name: The growth guards, timed in release
+        if: ${{ !cancelled() }}
+        run: cargo nextest run --locked --release --package xtask --run-ignored only --test-threads 1 -E 'test(/^timing::growth::/)'

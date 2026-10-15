@@ -20,6 +20,8 @@ mod contend;
 mod dangling;
 mod details;
 mod extend;
+#[cfg(test)]
+mod growth;
 pub(crate) mod heap;
 mod history;
 mod import;

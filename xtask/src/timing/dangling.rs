@@ -31,7 +31,7 @@ const MACHINE: &str = "a";
 
 /// What the creates name of keys no issue has when they are made.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Shape {
+pub(super) enum Shape {
     /// Nothing: every dependency an import brings has its issue, as most do.
     Plain,
     /// Each issue a key that no issue ever has.
@@ -152,7 +152,7 @@ fn events(shape: Shape, issues: usize) -> Vec<Value> {
 }
 
 /// The journal of `issues` creates of `shape`, after an `init`.
-fn journal(shape: Shape, issues: usize) -> Journal {
+pub(super) fn journal(shape: Shape, issues: usize) -> Journal {
     let mut journal = Journal::new();
     for value in events(shape, issues) {
         journal.add(value, MACHINE, "", true);

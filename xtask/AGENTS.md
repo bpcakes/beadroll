@@ -39,6 +39,11 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   two machines each creating the same N keys, so that N copies are renamed, against the same
   creates renamed by nobody, and each with the first machine's issues importing a dependency on a
   key that never comes (roll-lqjj.25, X03);
+  `timing/growth.rs`: the growth guards only time can
+  keep (roll-lqjj.34, X15), tests ignored by every other run that time planning an import, its
+  dry run, a re-import, replay of imports that wait for keys and a projection taking ids before
+  every id it holds, at a size and eight times it, on the probes' shapes, and fail above 24 times
+  as long;
   `timing/world.rs`: the scratch
   store, checkout and remote they run `bead` on; `timing/history.rs`: the histories it replays
   (`--ownership`: heavy in claims, takeovers and releases in attempt files; `--churn`: a thousand
@@ -48,7 +53,8 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   `/usr/bin/time` reports it, and the heap as `timing/heap.rs` counts it, xtask's global allocator
   (the system's, counted; its one unsafe spot, `CONTRIBUTING.md`).
 - `src/hygiene.rs`: the repository lint (a test only).
-- `src/ci.rs`: `v8_supported_environments`, the CI matrix the workflows keep (a test only).
+- `src/ci.rs`: `v8_supported_environments`, the CI matrix the workflows keep, and
+  `x15_growth_guards`, the nightly step that runs the growth guards (tests only).
 - `src/workspace.rs`: paths, failures and JSON strings for all of them.
 - `python/printable_table.py`: writes `crates/beadroll-core/src/text/printable.rs` with the Unicode
   non-printable table that `repr()` uses, generated with CPython 3.14.7's `str.isprintable()`
@@ -68,7 +74,14 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   shows only its summary, one that fails everything it printed.
 - Without `BEAD_UNDER_TEST`, `check --real` tests the executable Cargo reports building, never a
   path it works out: the target directory, a build target and the profile can each move it.
-- Timings are evidence and never gate anything.
+- Timings are evidence and never gate anything, with one exception, the growth guards
+  (`timing/growth.rs`, X15): a ratio of two timings of one core call, the larger input eight times
+  the smaller, may not exceed 24, where growing with the input gives about 8 and with its square
+  64. They are `#[ignore]`d, so that no debug build, `./check.sh` or pull request is gated by a
+  timing, and the nightly workflow runs them in release, one at a time:
+  `cargo nextest run --release --locked --package xtask --run-ignored only --test-threads 1 -E
+  'test(/^timing::growth::/)'`; `ci::x15_growth_guards` keeps that step. Anything a count can see
+  is guarded by count instead, in beadroll-core (`work::tests`), on every push.
 - `timing --sync` runs `bead` and git on a scratch store, checkout and remote under
   `target/timing/`, which it removes after, as workspace `timing`, never the real store or another
   repository: none of them inherits the shell's `BEAD_*` and `GIT_*` variables.
@@ -100,6 +113,8 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
 - `cargo run --release --package xtask -- timing --renames 8000`: replay renaming 8,000 copies two
   machines minted alike, against 16,000 creates renamed by nobody
 - `cargo test -p xtask`
+- `cargo nextest run --release --locked --package xtask --run-ignored only --test-threads 1 -E
+  'test(/^timing::growth::/)'`: the growth guards, as the nightly workflow runs them
 - `python3 xtask/python/printable_table.py > crates/beadroll-core/src/text/printable.rs`, with
   CPython 3.14.7 (Unicode 16.0.0), the versions the table was made with; do not change the
   Unicode version implicitly
