@@ -264,16 +264,20 @@ These were decided deliberately. Report problems *with* them, not their existenc
   journal again whenever the projection could not take the event before: an issue named twice is
   as its event left it, which built on everything the state holds (its status the one asked, no
   claim; a close drops its provisional claims, a delete or a reopen leaves them and is written
-  again), and the answers are those of reading the state before each. The review's `inert.sh` (N
-  issues, M of them closed, one event of a newer bead's operation in a journal of its own; best of
-  three, the bead before and this one in turn on a machine ten other builds shared, so the
-  absolute figures are high): 60 closes of 4,000 issues took
-  11.60 s and take 0.066 s, as on a clean journal (0.065 s), and 20 of 16,000 17.40 s and 0.221 s
-  (0.220 s); the `list` after them 0.299 s and 0.075 s, 1.343 s and 0.283 s. With a takeover of an
-  id no event has instead, which still keeps the projection from extending, they take 0.26 s
-  rather than 11.73 s, and 1.18 s rather than 17.56 s: two replays, not one an issue. `cargo xtask
-  timing --extend 4000` applies 4,000 closes one at a time past a newer bead's event in 0.026 s,
-  what they take on the tracker without it.
+  again), and the answers are those of reading the state before each. Measured end to end on a
+  scratch tracker of N imported issues: one event of an operation this bead does not know, built on
+  the frontier, written as the only record of a journal of a machine of its own, then `bead close`
+  of M other issues `--offline`, timed, and the `list` after it; and the same with that event a
+  takeover naming an id no event has. Release builds, the fastest of three runs, the bead before
+  and this one in turn on a machine ten other builds shared, so the absolute figures are high: 60
+  closes of 4,000 issues past the unknown operation took 11.60 s and take 0.066 s, as on a clean
+  journal (0.065 s), and 20 of 16,000 17.40 s and 0.221 s (0.220 s); the `list` after them 0.299 s
+  and 0.075 s, 1.343 s and 0.283 s. Past the takeover of an absent id, which still keeps the
+  projection from extending, they take 0.26 s rather than 11.73 s, and 1.18 s rather than 17.56 s:
+  two replays, not one an issue. In process, `cargo xtask timing --extend 4000` reports
+  `close_past_newer_one_by_one_seconds`, 4,000 closes applied one at a time past an event of a newer
+  bead's operation: 0.026 s, what they take on the tracker without it
+  (`close_one_by_one_seconds`).
 - `log`, `info` and `machines` answer from the projection (roll-lqjj.31, X09). `info` and
   `machines` read nothing else of the journal: the issues, the waiting events, the integrity
   problems and the renamed keys are its state's; the events (every id, an attempt file's and a
