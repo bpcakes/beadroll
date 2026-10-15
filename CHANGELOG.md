@@ -6,6 +6,15 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- Replay finds an imported dependency on a key no issue has yet by that key (roll-lqjj.18): a
+  create visits only the dependencies waiting for its own key, instead of every issue still waiting
+  and each one's whole list of them. 16,000 imports each waiting for a key that never comes replay
+  in 0.06 s where they took 12.4 s, and one issue waiting for 16,000 keys that come one create at
+  a time costs about what the same edges cost it given at once. Edges, what still waits, their order
+  and format 1 are unchanged. The projection no longer stores the waiting issues, which it derives
+  instead, so its encoding is 4 and the first command after upgrading replays the journal once;
+  `cargo xtask timing --dangling N` measures it.
+
 - A projection finishes only what a batch changed (roll-lqjj.17): the labels of the issues whose
   operations change labels, each issue's derived once however many of the batch's events changed
   them, and the parent-child index only when an operation changes a dependency edge, instead of

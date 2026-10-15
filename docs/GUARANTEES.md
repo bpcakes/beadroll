@@ -326,7 +326,11 @@ it, and the file is committed again.
   parent-child index built again, since a create gives the imports that waited
   for its key their edges, and that is one pass a command (roll-lqjj.17, V01,
   V03 and V05; `cargo xtask timing --extend N` measures the projection's part
-  of it).
+  of it). An import's dependencies on keys no issue has yet cost what they
+  are: a create visits only those waiting for its own key, so 16,000 imports
+  each waiting for a key that never comes replay in 0.06 s rather than 12.4 s,
+  and one issue waiting for 16,000 keys costs about what the same 16,000 edges
+  cost it given at once (roll-lqjj.18; `cargo xtask timing --dangling N`).
   A real tracker's state is mostly
   its texts, which only the commands that print them read: on three of the
   largest public Beads trackers (21–47 MB, up to 13,394 issues) a `list` takes
