@@ -28,9 +28,26 @@ pub fn replay(journal: Journal) -> Result<State, KeySpace> {
     Ok(replayed(journal)?.0)
 }
 
-/// [`replay`], with the claims takeovers superseded: a projection applies the events that come
-/// after with them.
-pub(crate) fn replayed(mut journal: Journal) -> Result<(State, HashSet<EventId>), KeySpace> {
+/// What a projection keeps of a replay besides its state, to apply the events that come after it.
+pub(crate) struct Replayed {
+    /// The claims takeovers superseded.
+    pub(crate) superseded: HashSet<EventId>,
+    /// Whether a record still to come can change what replay made of the events before it, other
+    /// than by applying after them: a takeover was refused for naming as its claim an id no event
+    /// has, which it is refused for otherwise once an event has it; or a quarantined id is placed
+    /// by less than its causes ([`Order::loose`]).
+    pub(crate) unsettled: bool,
+}
+
+/// What replay settled of the journal's takeovers: the claims they superseded, and whether one was
+/// refused for naming an id no event has.
+struct Takeovers {
+    superseded: HashSet<EventId>,
+    awaiting: bool,
+}
+
+/// [`replay`], with what a projection keeps besides the state.
+pub(crate) fn replayed(mut journal: Journal) -> Result<(State, Replayed), KeySpace> {
     journal.settle();
     let mut order = Order::of(&journal);
     let Parts {
@@ -65,7 +82,7 @@ pub(crate) fn replayed(mut journal: Journal) -> Result<(State, HashSet<EventId>)
     }
     let mut inert = observe(&mut st.knowledge, &order, &applying, &quarantined);
     order.forget_causes(); // what follows needs the order alone
-    let superseded = settle_takeovers(&st.knowledge, &order.ordered, &applying, &mut inert);
+    let takeovers = settle_takeovers(&st.knowledge, &order.ordered, &applying, &mut inert);
     let knowledge = std::mem::take(&mut st.knowledge);
     let applied = apply_all(
         &mut st,
@@ -73,12 +90,16 @@ pub(crate) fn replayed(mut journal: Journal) -> Result<(State, HashSet<EventId>)
         &order.ordered,
         &mut applying,
         &inert,
-        &superseded,
+        &takeovers.superseded,
     );
     st.knowledge = knowledge;
     applied?;
     finish(&mut st);
-    Ok((st, superseded))
+    let replayed = Replayed {
+        superseded: takeovers.superseded,
+        unsettled: takeovers.awaiting || order.loose,
+    };
+    Ok((st, replayed))
 }
 
 /// Phase 1: what every event had seen, and which events cannot be applied at all, each with the
@@ -176,15 +197,16 @@ pub(crate) fn observe_one(
 
 /// Phase 2: ownership bookkeeping, over applicable events only. A takeover is settled online, so it
 /// outranks anything its predecessor published later, whichever of the two sorts first here. Returns
-/// the claims superseded.
+/// the claims superseded, and whether a takeover was refused for naming an id no event has.
 fn settle_takeovers(
     k: &Knowledge,
     ordered: &[usize],
     applying: &[Option<Box<Rest>>],
     inert: &mut HashMap<usize, String>,
-) -> HashSet<EventId> {
+) -> Takeovers {
     let what = |at: usize| applying.get(at).and_then(Option::as_deref);
     let mut superseded = HashSet::new();
+    let mut awaiting = false;
     for &at in ordered {
         let Some(event) = what(at) else {
             continue;
@@ -198,7 +220,9 @@ fn settle_takeovers(
         let Some(takeover) = claiming.takeover.as_deref().filter(|t| !t.is_empty()) else {
             continue;
         };
-        let previous = EventId::parse(takeover).and_then(|p| {
+        let named = EventId::parse(takeover);
+        awaiting |= named.is_some_and(|named| !k.events.contains_key(&named));
+        let previous = named.and_then(|p| {
             let (before, previous, _) = k.events.get_full(&p)?;
             Some((before, *previous, what(before)?))
         });
@@ -221,7 +245,10 @@ fn settle_takeovers(
             inert.insert(at, reason.to_owned());
         }
     }
-    superseded
+    Takeovers {
+        superseded,
+        awaiting,
+    }
 }
 
 /// Phase 3: every event applied, or reported.

@@ -36,7 +36,7 @@ pub(super) fn event(
     Value::from(event)
 }
 
-fn fields(title: &str) -> Object {
+pub(super) fn fields(title: &str) -> Object {
     let mut fields = Object::new();
     fields.insert("title".into(), Value::from(title));
     let mut data = Object::new();
@@ -55,7 +55,7 @@ pub(super) fn record(value: Value, folder: &str, sequenced: bool) -> Record {
 }
 
 /// An `init`, issue 2 and a title set on it, by this machine: the frontier is event 3.
-fn base() -> Vec<Record> {
+pub(super) fn base() -> Vec<Record> {
     let mut create = fields("first");
     create.insert("key".into(), Value::from("pr-a1"));
     vec![
@@ -178,27 +178,6 @@ fn every_batch_replay_applies_otherwise_is_declined() {
     for (case, batch) in cases {
         assert!(declines(batch), "{case}");
     }
-}
-
-#[test]
-fn a_journal_with_anything_replay_reports_takes_nothing_after_it() {
-    let mut records = base();
-    records.push(record(
-        event(4, HERE, &[3], "set", 2, Object::new()),
-        HERE,
-        true,
-    ));
-    let projection = project(journal(&records)).unwrap();
-    assert!(!projection.extendable());
-    let batch = vec![record(
-        event(5, HERE, &[4], "set", 2, fields("x")),
-        HERE,
-        true,
-    )];
-    assert!(matches!(
-        projection.extend(batch).unwrap(),
-        Extended::Replay
-    ));
 }
 
 #[test]

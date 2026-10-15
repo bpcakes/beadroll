@@ -103,8 +103,10 @@ pub struct Projection {
     pub(crate) lasts: HashMap<String, EventId>,
     /// The claims takeovers superseded.
     pub(crate) superseded: HashSet<EventId>,
-    /// Whether events can be applied after it: the journal had nothing quarantined, unreadable,
-    /// misplaced, inert or waiting for a cause, which replay reports in an order of their own.
+    /// Whether events can be applied after it: nothing in its journal waits for a cause, and
+    /// nothing replay made of it can change with a record still to come but by the record applying
+    /// after it (`replay::Replayed::unsettled`). Whatever else replay reports stays as it is,
+    /// whatever comes after (`extend.rs`, roll-lqjj.28).
     pub(crate) open: bool,
 }
 
@@ -119,8 +121,8 @@ pub fn project(mut journal: Journal) -> Result<Projection, KeySpace> {
     let lasts = (journal.order().iter())
         .filter_map(|(machine, ids)| Some((machine.clone(), *ids.iter().max()?)))
         .collect();
-    let (mut state, superseded) = replayed(journal)?;
-    let open = state.integrity.is_empty() && state.pending.is_empty();
+    let (mut state, replayed) = replayed(journal)?;
+    let open = state.pending.is_empty() && !replayed.unsettled;
     let mut kept = named(&state);
     kept.extend(heads.iter().copied());
     state.knowledge = state.knowledge.kept(&kept);
@@ -130,7 +132,7 @@ pub fn project(mut journal: Journal) -> Result<Projection, KeySpace> {
         ids,
         lengths,
         lasts,
-        superseded,
+        superseded: replayed.superseded,
         open,
     })
 }
@@ -166,8 +168,9 @@ impl Projection {
         out
     }
 
-    /// Whether events can be applied after it ([`Projection::extend`]): its journal had nothing
-    /// quarantined, unreadable, misplaced, inert or waiting.
+    /// Whether events can be applied after it ([`Projection::extend`]): nothing in its journal waits
+    /// for a cause, no takeover was refused for naming an id no event has, and every id with
+    /// several contents is placed by all its causes.
     pub fn extendable(&self) -> bool {
         self.open
     }

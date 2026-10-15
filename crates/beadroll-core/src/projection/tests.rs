@@ -5,18 +5,23 @@
 
 use std::collections::{BTreeMap, HashSet};
 
+use crate::event::event_problem;
 use crate::id::EventId;
-use crate::journal::Journal;
+use crate::journal::{Journal, canonical};
 use crate::json::{Object, Value};
-use crate::replay::replay;
 use crate::state::State;
 
-use super::{Extended, Projection, Record, decode_state, project};
+use super::{Projection, Record, decode_state};
 
 mod awaiting;
 mod finished;
+mod flawed;
 mod hostile;
+mod reported;
+mod taken;
 mod texts_once;
+
+use taken::differential;
 
 /// A seeded generator (SplitMix64): the same draws on every run.
 struct Rng(u64);
@@ -53,19 +58,27 @@ struct Written {
     attempt: bool,
 }
 
-/// One machine: the events it knows, by index into the world's, and the ones they build on.
+/// One machine: the events it knows, by index into the world's.
 #[derive(Default)]
 struct Machine {
     known: Vec<usize>,
-    named: HashSet<String>,
 }
 
 struct World {
     rng: Rng,
     events: Vec<Written>,
     machines: Vec<Machine>,
+    /// The folder each machine writes its journal to: a machine whose identity was copied shares
+    /// it with the one it was copied from.
+    folders: Vec<&'static str>,
     remote: Vec<usize>,
     clock: u64,
+    /// Whether the machines other than machine 0 also write what replay reports ([`World::flaw`]).
+    flawed: bool,
+    /// The id the next event written gets, when one was named before it was written.
+    next_id: Option<String>,
+    /// Ids a takeover named before any event had them, with the issue it was on.
+    promised: Vec<(String, String)>,
 }
 
 impl World {
@@ -74,8 +87,12 @@ impl World {
             rng: Rng(seed),
             events: Vec::new(),
             machines: MACHINES.iter().map(|_| Machine::default()).collect(),
+            folders: MACHINES.to_vec(),
             remote: Vec::new(),
             clock: 1_790_000_000_000,
+            flawed: false,
+            next_id: None,
+            promised: Vec::new(),
         }
     }
 
@@ -83,39 +100,64 @@ impl World {
         str_of(self.events[at].value.get("id"))
     }
 
-    /// What machine `m` builds on: the events it knows that none it knows names.
+    /// What machine `m` builds on: the events it knows that none it knows names, its records
+    /// settled into events as a journal settles them. An id's own record is a valid event in the
+    /// journal of the machine it names. An id found with several contents is an event, built on
+    /// what its first own record names (nothing, without one); one with a single content is, when
+    /// its record is own or not a valid event, built on what that record names; a valid record
+    /// found only in another machine's journal is no event.
     fn heads(&self, m: usize) -> Vec<String> {
-        let mut heads: Vec<String> = (self.machines[m].known.iter())
-            .map(|at| self.id_of(*at))
-            .filter(|id| !self.machines[m].named.contains(id))
-            .collect();
-        heads.sort();
-        heads
+        let mut records: BTreeMap<String, Vec<&Written>> = BTreeMap::new();
+        for at in &self.machines[m].known {
+            records
+                .entry(self.id_of(*at))
+                .or_default()
+                .push(&self.events[*at]);
+        }
+        let mut named = HashSet::new();
+        let mut events = Vec::new();
+        for (id, records) in records.iter().filter(|(id, _)| !id.is_empty()) {
+            let valid = |written: &&&Written| event_problem(&written.value).is_none();
+            let own = (records.iter()).find(|written| {
+                valid(written)
+                    && str_of(written.value.get("replica")) == self.folders[written.machine]
+            });
+            let contents: HashSet<String> = (records.iter())
+                .map(|written| canonical(&written.value))
+                .collect();
+            let builds_on = match (own, records.first()) {
+                (Some(own), _) => Some(own),
+                (None, _) if contents.len() > 1 => None,
+                (None, Some(first)) if !valid(&first) => Some(first),
+                _ => continue,
+            };
+            events.push(id.clone());
+            if let Some(Value::Array(deps)) = builds_on.and_then(|on| on.value.get("deps")) {
+                named.extend(deps.iter().map(|dep| str_of(Some(dep))));
+            }
+        }
+        events.retain(|id| !named.contains(id));
+        events
     }
 
     fn learn(&mut self, m: usize, at: usize) {
-        if self.machines[m].known.contains(&at) {
-            return;
+        if !self.machines[m].known.contains(&at) {
+            self.machines[m].known.push(at);
         }
-        let deps = match self.events[at].value.get("deps") {
-            Some(Value::Array(deps)) => deps.iter().map(|d| str_of(Some(d))).collect(),
-            _ => Vec::new(),
-        };
-        self.machines[m].known.push(at);
-        self.machines[m].named.extend(deps);
     }
 
     /// Machine `m` writes `op` on `issue` (itself, for a create): an attempt file's for a claim
     /// or a release, its journal's otherwise. Returns the event's id.
     fn write(&mut self, m: usize, op: &str, issue: Option<String>, data: Object) -> String {
         self.clock += 1 + self.rng.below(3) as u64;
-        let random = u128::from(self.rng.next()) & ((1 << 62) - 1);
-        let value = (u128::from(self.clock) << 80) | (7 << 76) | (2 << 62) | random;
-        let id = EventId::from_u128(value).to_string();
+        let id = match self.next_id.take() {
+            Some(id) => id,
+            None => self.mint(),
+        };
         let mut event = Object::new();
         event.insert("v".into(), Value::from(1));
         event.insert("id".into(), Value::from(id.as_str()));
-        event.insert("replica".into(), Value::from(MACHINES[m]));
+        event.insert("replica".into(), Value::from(self.folders[m]));
         let deps = self.heads(m).into_iter().map(Value::from).collect();
         event.insert("deps".into(), Value::Array(deps));
         let mut actor = Object::new();
@@ -140,6 +182,13 @@ impl World {
         let at = self.events.len() - 1;
         self.learn(m, at);
         id
+    }
+
+    /// A new event id, of the world's clock.
+    fn mint(&mut self) -> String {
+        let random = u128::from(self.rng.next()) & ((1 << 62) - 1);
+        let value = (u128::from(self.clock) << 80) | (7 << 76) | (2 << 62) | random;
+        EventId::from_u128(value).to_string()
     }
 
     /// Machine `m` publishes what it knows and takes in what the remote has.
@@ -284,7 +333,7 @@ fn records(world: &World, batch: &[usize]) -> Vec<Record> {
         .iter()
         .map(|at| {
             let written = &world.events[*at];
-            let machine = MACHINES[written.machine];
+            let machine = world.folders[written.machine];
             let id = world.id_of(*at);
             let origin = if written.attempt {
                 format!("events/{machine}/claims/{id}.json")
@@ -306,8 +355,9 @@ fn records(world: &World, batch: &[usize]) -> Vec<Record> {
 fn load(world: &World, held: &[usize]) -> Journal {
     let mut journal = Journal::new();
     let mut attempts: BTreeMap<(usize, String), usize> = BTreeMap::new();
-    for m in 0..MACHINES.len() {
-        for at in held.iter().filter(|at| world.events[**at].machine == m) {
+    for (m, folder) in MACHINES.iter().enumerate() {
+        let here = |at: &&usize| world.folders[world.events[**at].machine] == *folder;
+        for at in held.iter().filter(here) {
             if world.events[*at].attempt {
                 attempts.insert((m, world.id_of(*at)), *at);
                 continue;
@@ -362,7 +412,7 @@ impl World {
     /// machines have done what they do meanwhile.
     fn next_batch(&mut self) -> Vec<usize> {
         loop {
-            let m = self.rng.below(MACHINES.len());
+            let m = self.rng.below(self.machines.len());
             if m == 0 && self.rng.chance(60) {
                 let before = self.events.len();
                 for _ in 0..1 + self.rng.below(3) {
@@ -373,12 +423,20 @@ impl World {
             if m == 0 {
                 return self.sync(0);
             }
+            // a copied identity writes now and then, and breaks its journal's chain each time
+            if self.flawed && m == 3 && !self.rng.chance(20) {
+                continue;
+            }
             // Another machine usually takes in the latest before it writes, and publishes after.
             if self.rng.chance(70) {
                 self.sync(m);
             }
             for _ in 0..1 + self.rng.below(3) {
-                self.act(m);
+                if self.flawed && self.rng.chance(15) {
+                    self.flaw(m);
+                } else {
+                    self.act(m);
+                }
             }
             self.sync(m);
         }
@@ -444,52 +502,14 @@ fn equal(extended: &Projection, full: &Projection) -> bool {
 
 #[test]
 fn every_extension_is_replays_answer_or_declined() {
-    // Merges taken in, and local writes the projection declined: only a takeover is declined.
-    let (mut merged, mut declined) = (0, Vec::new());
-    for seed in 0..40 {
-        let mut world = World::new(20_261_012 + seed);
-        let mut data = Object::new();
-        data.insert("prefix".into(), Value::from("pr"));
-        world.write(0, "init", None, data);
-        let mut held: Vec<usize> = vec![0];
-        let mut projection = project(load(&world, &held)).unwrap();
-        let mut file = TextFile::new();
-        for _ in 0..60 {
-            let batch = world.next_batch();
-            if world.rng.chance(50) {
-                projection = read_back(&projection, &mut file);
-            }
-            held.extend(&batch);
-            let full = project(load(&world, &held)).unwrap();
-            assert!(same(full.state(), &replay(load(&world, &held)).unwrap()));
-            let local = batch.iter().all(|at| world.events[*at].machine == 0);
-            let records = records(&world, &batch);
-            // as a store does: the texts of the issues the batch is about read in first
-            let about = (records.iter())
-                .filter_map(|record| record.value.get("issue").and_then(Value::as_str))
-                .filter_map(EventId::parse)
-                .collect();
-            read_in(projection.state_mut(), &file, Some(about));
-            projection = match projection.extend(records).unwrap() {
-                Extended::Applied(extended) => {
-                    assert!(equal(&whole(&extended, &file), &full), "seed {seed}");
-                    merged += usize::from(!local);
-                    *extended
-                }
-                Extended::Replay => {
-                    if local && !world.takes_over(&batch) {
-                        declined.push(seed);
-                    }
-                    full
-                }
-            };
-        }
-    }
+    let tally = differential(0..40, false);
     // A local write builds on the frontier: the projection takes it, a takeover's excepted. A
     // merge it takes when the merged events build on it.
     assert!(
-        declined.is_empty(),
-        "local writes declined in seeds {declined:?}"
+        tally.declined.is_empty(),
+        "local writes declined in seeds {:?}",
+        tally.declined
     );
-    assert!(merged > 50, "{merged} merges taken in");
+    assert!(tally.merged > 50, "{} merges taken in", tally.merged);
+    assert_eq!(tally.closed, 0);
 }
