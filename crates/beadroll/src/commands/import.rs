@@ -28,7 +28,7 @@ pub(crate) fn import(ctx: &Context<'_>, path: &OsStr, dry_run: bool) -> Result<O
     if dry_run {
         let state = read_only(ctx.ws)?;
         need_tracker(&state)?;
-        return answer_dry_run(ctx.ws, &state, path, Vec::new());
+        return Ok(answer_dry_run(ctx.ws, &state, path, Vec::new())?.answered_from(state));
     }
     let count = writing(ctx.ws, ctx.actor, |tx| {
         need_tracker(tx.state()?)?;

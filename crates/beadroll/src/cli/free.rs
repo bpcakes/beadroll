@@ -5,6 +5,7 @@ use std::ffi::OsStr;
 use beadroll_core::code::Code;
 use beadroll_core::event::Field;
 use beadroll_core::json::{Object, Value};
+use beadroll_core::state::State;
 use beadroll_core::text::{repr, repr_bytes, str_of};
 use beadroll_store::{
     Actor, Label, Settings, Workspace, replica_id, tracked_config_warning, view_outline,
@@ -87,9 +88,13 @@ fn prime(ws: Option<&Workspace>, actor: &Actor, settings: &Settings) -> Result<O
     let replica = replica_id(settings, false)?;
     let me = actor.label(replica.as_deref().unwrap_or("?"));
     let mut context = vec![format!("You are {} (machine, agent, thread).", me.shown())];
+    let mut state = None;
     match ws {
         Some(ws) => match standing(ws, &me) {
-            Ok(line) => context.push(line),
+            Ok((line, st)) => {
+                context.push(line);
+                state = Some(st);
+            }
             // the system's errors are not an answer here; bead's are
             Err(failure) if failure.code == Code::Io => return Err(failure),
             Err(failure) => context.push(format!(
@@ -125,12 +130,15 @@ fn prime(ws: Option<&Workspace>, actor: &Actor, settings: &Settings) -> Result<O
     if let Some(Value::Object(result)) = &mut outcome.result {
         result.insert("actor".into(), Value::from(me.shown()));
     }
-    Ok(outcome)
+    Ok(match state {
+        Some(state) => outcome.answered_from(state),
+        None => outcome,
+    })
 }
 
 /// The tracker's line in `prime`: how many issues are ready, which `me` holds, how many of this
-/// machine's attempts await the remote, and the last sync.
-fn standing(ws: &Workspace, me: &Label) -> Result<String, Failure> {
+/// machine's attempts await the remote, and the last sync; with the state it was read from.
+fn standing(ws: &Workspace, me: &Label) -> Result<(String, State), Failure> {
     let st = view_outline(ws)?;
     need_tracker(&st)?;
     let held: Vec<&str> = st
@@ -168,5 +176,5 @@ fn standing(ws: &Workspace, me: &Label) -> Result<String, Failure> {
         .filter(|v| v.truthy())
         .map_or_else(|| "never".to_owned(), str_of);
     line.push_str(&format!(". Last sync: {synced}."));
-    Ok(line)
+    Ok((line, st))
 }

@@ -97,7 +97,7 @@ pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
         Value::Array(rows.into_iter().map(Value::from).collect()),
     );
     result.insert("last_sync".into(), synced.unwrap_or(Value::Null));
-    Ok(Outcome::new(result, lines))
+    Ok(Outcome::new(result, lines).answered_from(st))
 }
 
 /// A claim's line: key, state, owner and since; for a confirmed claim its generation and last

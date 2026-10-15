@@ -79,6 +79,11 @@ storage, protocol behavior and fault recovery.
 
 - Only `cli` reads the process environment, the working directory and the clock; it passes values
   down.
+- A command hands the one state it answers from to its `Outcome` (`Outcome::answered_from`, its last
+  state, never beside another): `run` (the process) keeps it until exit rather than freeing it, a
+  quarter of a reading command's time on a large tracker, and frees it first when the run publishes
+  what the command wrote; `run_with` (xtask, tests) frees it. Library code never leaks
+  (`docs/REVIEWING.md` §2, roll-lqjj.32).
 - No `print!`, `println!` or `eprintln!`: every write goes through `cli/output.rs`, where a closed
   pipe or a hung-up terminal is a quiet exit 0 and a failed write to stderr keeps the status.
 - Output preserves its established formats: `--json` results spaced with raw UTF-8, errors and

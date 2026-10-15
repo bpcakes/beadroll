@@ -21,6 +21,7 @@ use std::sync::Arc;
 use beadroll_core::code::Code;
 use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Format, Int, Object, Value};
+use beadroll_core::state::State;
 use beadroll_core::text::json_ascii_bytes;
 use beadroll_store::{Settings, detect_actor, find_workspace, nearest_harness};
 use beadroll_sync::publish_soon;
@@ -34,14 +35,17 @@ use parse::{Namespace, Page, Parsed};
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Runs `bead` with the process's arguments; the exit status is 0, 1 for an error, 2 for a usage
-/// error.
+/// error. The process ends with the run, so the state a command answered from is never freed
+/// ([`Outcome::answered_from`]).
 pub(crate) fn main() -> ExitCode {
-    main_with(std::env::args_os().skip(1).collect())
+    ExitCode::from(run(std::env::args_os().skip(1).collect(), true))
 }
 
-/// Runs `bead` with `argv`, the arguments after the program's name, as [`main`] runs it.
+/// Runs `bead` with `argv`, the arguments after the program's name, as [`main`] runs it, in a
+/// process that goes on afterwards: nothing the run made is kept, so that a caller that runs bead
+/// again (a test in process) does not pile one command's state on another's.
 pub(crate) fn main_with(argv: Vec<OsString>) -> ExitCode {
-    ExitCode::from(run(argv))
+    ExitCode::from(run(argv, false))
 }
 
 /// What the command line asked for once `--json`, `--actor`, `--color` and `--` are read:
@@ -156,14 +160,14 @@ fn home_of(name: &std::ffi::OsStr) -> Option<OsString> {
     Some(user.dir.into_os_string())
 }
 
-fn run(argv: Vec<OsString>) -> u8 {
+fn run(argv: Vec<OsString>, exits: bool) -> u8 {
     let request = read_request(argv);
     let as_json = request.as_json;
     let colors = match colors_for(&request) {
         Ok(colors) => colors,
         Err(failure) => return report(&failure, as_json, false),
     };
-    match execute(&request, colors) {
+    match execute(&request, colors, exits) {
         Ok(None) => 0,
         Ok(Some(rendered)) => {
             match emit(Some(&rendered), Stream::Stdout) {
@@ -181,8 +185,9 @@ fn run(argv: Vec<OsString>) -> u8 {
 }
 
 /// Runs the request: the text for standard output, `None` when nothing (more) is to be printed.
-/// Standard output shows colour when `colors` says so.
-fn execute(request: &Request, colors: Colors) -> Result<Option<String>, Failure> {
+/// Standard output shows colour when `colors` says so; `exits` is whether the process ends with the
+/// run.
+fn execute(request: &Request, colors: Colors, exits: bool) -> Result<Option<String>, Failure> {
     let mut settings = settings()?;
     let args = &request.args;
     if args.len() == 1 && (args[0] == "--version" || args[0] == "-V") {
@@ -247,8 +252,14 @@ fn execute(request: &Request, colors: Colors) -> Result<Option<String>, Failure>
             None,
         ),
     };
-    let Some((result, lines)) = finish(outcome, ws.as_ref().filter(|_| !free), offline, &remote)?
-    else {
+    let finished = finish(
+        outcome,
+        ws.as_ref().filter(|_| !free),
+        offline,
+        &remote,
+        exits,
+    )?;
+    let Some((result, lines)) = finished else {
         return Ok(None);
     };
     Ok(match (result, lines) {
@@ -265,19 +276,25 @@ type Answer = (Option<Value>, Option<Vec<Line>>);
 
 /// What follows a command: its own output written (`export`), what it wrote published unless it
 /// was `--offline`, and the count of events not yet published added; the result and lines then,
-/// or `None` when a reader went away.
+/// or `None` when a reader went away. The state the command answered from goes first
+/// ([`ended_with`]).
 fn finish(
     outcome: Outcome,
     ws: Option<&beadroll_store::Workspace>,
     offline: bool,
     remote: &Option<OsString>,
+    exits: bool,
 ) -> Result<Option<Answer>, Failure> {
     let Outcome {
         mut result,
         mut lines,
         raw,
         settled,
+        state,
     } = outcome;
+    let ws = ws.filter(|_| !settled);
+    let publishing = ws.is_some_and(|ws| ws.wrote() && !offline);
+    ended_with(state, publishing, exits);
     if let Some(raw) = raw {
         // the command's own output (`export`): written as the command runs, so a reader that went
         // away ends the run there, and a failed write is the command's IO error
@@ -289,7 +306,7 @@ fn finish(
             }
         }
     }
-    let Some(ws) = ws.filter(|_| !settled) else {
+    let Some(ws) = ws else {
         return Ok(Some((result, lines)));
     };
     if ws.wrote()
@@ -303,6 +320,23 @@ fn finish(
     }
     commands::note_unpublished(ws, &mut result, &mut lines)?;
     Ok(Some((result, lines)))
+}
+
+/// What becomes of the state a command answered from, once the command is done: freed, or kept
+/// until the process exits when it `exits` with the run, which is whether it was kept. A command
+/// answers from its state and the process then ends, so freeing each of its issues first is work
+/// nobody waits for, a quarter of a reading command's time on a large tracker (roll-lqjj.32).
+/// Freed instead when the run `publishing` what the command wrote, which reads a state of its
+/// own, so that none is held beside another.
+fn ended_with(state: Option<State>, publishing: bool, exits: bool) -> bool {
+    match state {
+        Some(state) if exits && !publishing => {
+            // never freed: the process ends once the answer is written
+            std::mem::forget(state);
+            true
+        }
+        _ => false,
+    }
 }
 
 /// Runs the command; with what it says about publishing: whether it was `--offline`, and the
@@ -539,6 +573,24 @@ fn report(failure: &Failure, as_json: bool, color: bool) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A state with no issues, to be kept or freed.
+    fn state() -> Option<State> {
+        let journal = beadroll_core::journal::Journal::new();
+        Some(beadroll_core::replay::replay(journal).expect("an empty journal replays"))
+    }
+
+    #[test]
+    fn the_state_a_command_answered_from_is_kept_only_by_a_process_that_ends_with_it() {
+        // roll-lqjj.32 (X10): kept, never freed, when the process ends with the run
+        assert!(ended_with(state(), false, true));
+        // freed before a publish, which reads a state of its own: never two at once
+        assert!(!ended_with(state(), true, true));
+        // freed by a caller that runs bead again in its process (xtask, a test), or no state
+        assert!(!ended_with(state(), false, false));
+        assert!(!ended_with(state(), true, false));
+        assert!(!ended_with(None, false, true));
+    }
 
     #[test]
     fn another_users_home_comes_from_the_password_database() {

@@ -63,7 +63,7 @@ pub(crate) fn dep(
         let mut result = Object::new();
         result.insert("cycles".into(), Value::Array(cycles));
         result.insert("count".into(), Value::from(count));
-        return Ok(Outcome::new(result, lines));
+        return Ok(Outcome::new(result, lines).answered_from(st));
     }
     let Some(key) = words.first() else {
         return Err(Failure::new(
@@ -79,7 +79,7 @@ pub(crate) fn dep(
             "tree".into(),
             Value::Array(lines.iter().map(|l| Value::from(l.text())).collect()),
         );
-        return Ok(Outcome::new(result, lines));
+        return Ok(Outcome::new(result, lines).answered_from(st));
     }
     let info = st.detail(issue);
     let mut result = Object::new();
@@ -118,7 +118,7 @@ pub(crate) fn dep(
     if lines.is_empty() {
         lines.push("No dependencies".to_owned());
     }
-    Ok(Outcome::new(result, lines))
+    Ok(Outcome::new(result, lines).answered_from(st))
 }
 
 /// The tree beneath `issue`: each issue it depends on, indented under it, depth first in the

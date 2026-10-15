@@ -176,7 +176,7 @@ impl From<beadroll_core::import::ImportError> for Failure {
 
 /// What a command answers: the result `--json` prints, and the lines a human reads; or, for a
 /// command that writes its own output (`export`), that output as it is.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug)]
 pub(crate) struct Outcome {
     pub(crate) result: Option<Value>,
     pub(crate) lines: Option<Vec<Line>>,
@@ -184,6 +184,8 @@ pub(crate) struct Outcome {
     /// The command published and counted what it left unpublished itself ([`note_unpublished`]),
     /// as `init` does when it wrote through another workspace than the one it was given.
     pub(crate) settled: bool,
+    /// The state the answer was made from ([`Outcome::answered_from`]).
+    pub(crate) state: Option<State>,
 }
 
 impl Outcome {
@@ -193,6 +195,7 @@ impl Outcome {
             lines: Some(lines.into_iter().map(Into::into).collect()),
             raw: None,
             settled: false,
+            state: None,
         }
     }
 
@@ -203,6 +206,18 @@ impl Outcome {
             lines: None,
             raw: Some(text),
             settled: false,
+            state: None,
+        }
+    }
+
+    /// This outcome, made from `state`, which the command line keeps until the process exits
+    /// rather than freeing it, unless it has what the command wrote to publish first
+    /// (`cli::ended_with`, roll-lqjj.32). Only the state a command answers from is given, the last
+    /// it makes, so that none is held beside another one.
+    pub(crate) fn answered_from(self, state: State) -> Outcome {
+        Outcome {
+            state: Some(state),
+            ..self
         }
     }
 }

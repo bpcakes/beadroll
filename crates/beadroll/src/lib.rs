@@ -17,7 +17,9 @@ pub fn run() -> ExitCode {
 }
 
 /// Runs `bead` with `argv`, its arguments after the program's name, in this process, as [`run`]
-/// runs it with the process's: what `cargo xtask bead` counts the heap of (roll-lqjj.9).
+/// runs it with the process's: what `cargo xtask bead` counts the heap of (roll-lqjj.9). Unlike
+/// [`run`] it keeps nothing for the process's end: whatever the command made is freed when it
+/// returns, so that running it again does not pile one run on another (roll-lqjj.32).
 pub fn run_with(argv: Vec<OsString>) -> ExitCode {
     prepare();
     cli::main_with(argv)

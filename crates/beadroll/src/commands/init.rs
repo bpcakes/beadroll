@@ -461,5 +461,5 @@ fn dry_run(ctx: &Context<'_>, args: &InitArgs) -> Result<Outcome, Failure> {
             "This checkout has a tracker here already: the import would add to it.".to_owned(),
         );
     }
-    answer_dry_run(ctx.ws, &state, path, notes)
+    Ok(answer_dry_run(ctx.ws, &state, path, notes)?.answered_from(state))
 }

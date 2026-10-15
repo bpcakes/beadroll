@@ -22,7 +22,7 @@ pub(crate) fn export(ctx: &Context<'_>, output: Option<&OsStr>) -> Result<Outcom
         text.push('\n');
     }
     let Some(output) = output.filter(|o| !o.is_empty()) else {
-        return Ok(Outcome::raw(text));
+        return Ok(Outcome::raw(text).answered_from(st));
     };
     // Normalise the output path before writing: `dump.jsonl/` names `dump.jsonl`.
     write_atomic(
@@ -36,8 +36,5 @@ pub(crate) fn export(ctx: &Context<'_>, output: Option<&OsStr>) -> Result<Outcom
     let mut result = Object::new();
     result.insert("exported".into(), Value::from(count as i64));
     result.insert("path".into(), Value::from(shown.as_str()));
-    Ok(Outcome::new(
-        result,
-        vec![format!("Exported {count} issues to {shown}")],
-    ))
+    Ok(Outcome::new(result, vec![format!("Exported {count} issues to {shown}")]).answered_from(st))
 }

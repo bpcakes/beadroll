@@ -6,6 +6,15 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A reading command keeps the state it answered from until its process exits instead of freeing
+  every issue of it just before (roll-lqjj.32): at 200,000 events decoding takes about 100 ms and
+  freeing 50 to 85 ms, so `bead list`, `show` and `ready` take about a quarter less there. A run
+  that publishes what the command wrote frees it first, so no command holds two states, and
+  `cargo xtask timing --import` peaks at the same heap as before. A write, and each round of an
+  ownership command, now frees its transaction's whole projection after the store lock is let go of
+  rather than inside it, so other commands no longer wait for the memory to be freed. Nothing a
+  command prints changes.
+
 - `bead info` and `bead machines` answer from the store's projection, as `list` does, instead of
   loading the whole journal, and `bead log` takes the keys it names issues by from the store's
   state instead of replaying the journal it reads for its events (roll-lqjj.31): at 200,000 events

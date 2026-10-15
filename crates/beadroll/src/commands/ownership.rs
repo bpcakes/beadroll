@@ -193,7 +193,7 @@ pub(crate) fn claim(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome, 
         })
         .collect();
     let result = Value::Array(result.into_iter().map(Value::from).collect());
-    Ok(Outcome::new(result, lines))
+    Ok(Outcome::new(result, lines).answered_from(st))
 }
 
 /// `bead takeover`: replaces the current owner of each issue, after investigating; it must be
@@ -239,7 +239,7 @@ pub(crate) fn takeover(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcom
         })
         .collect();
     let result = Value::Array(result.into_iter().map(Value::from).collect());
-    Ok(Outcome::new(result, lines))
+    Ok(Outcome::new(result, lines).answered_from(st))
 }
 
 /// `bead release`: gives up the actor's claim on each issue, or its offline claim.
@@ -301,5 +301,5 @@ pub(crate) fn release(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome
         })
         .collect();
     let result = Value::Array(result.into_iter().map(Value::from).collect());
-    Ok(Outcome::new(result, lines))
+    Ok(Outcome::new(result, lines).answered_from(st))
 }
