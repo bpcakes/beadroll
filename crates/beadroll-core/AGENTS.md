@@ -155,9 +155,11 @@ consumer on tokio calls through `spawn_blocking`.
   hands out, examines or makes whole, an import's record or dependency key read (`id_of`,
   `target`), and the keys `State::claims_key` is asked of and `State::claimed_keys` collects. Read
   an edge, a waiting key or an import key through those, never around them, and collect the
-  claimed keys through `claimed_keys` (the test that checks `claims_key` against it collects them
-  uncounted, with `collect_claimed_keys`), or a guard stops seeing the work; what a count cannot see, a lookup turned back into a scan, is timed
-  by `xtask`'s growth tests, nightly in release.
+  claimed keys through `claimed_keys`, or a guard stops seeing the work. `blocker_lists` counts the
+  rows it walks (`Rows::row`, `Rows::item`), and the test-only check that each `claims_key` ask
+  agrees with the keys claimed (`state/asked.rs`) reads them directly, so that it counts nothing.
+  What a count cannot see, a lookup turned back into a scan, is timed by `xtask`'s growth tests,
+  nightly in release.
 - `saw` agrees with the reference ancestry bitsets: `state/seen/tests.rs` checks every pair
   on hostile histories. Replay's speed and memory are measured by
   `cargo run --release --package xtask -- timing --replay N [--ownership]`: at 200,000 events its

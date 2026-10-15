@@ -4,8 +4,9 @@
 //! of a vector, or a merge into a vector that moves its tail. These time the core calls whose work
 //! that can hide in — planning an import, validating it for a dry run, re-importing an issue whose
 //! dependencies wait, replaying imports that wait for keys, replaying copies two machines minted
-//! alike, which are renamed, and a projection taking ids that sort before every id it holds — on the shapes their `timing` probes measure, at a size and at
-//! [`LARGER`] times it, and fail when the larger takes more than [`BOUND`] times as long.
+//! alike, which are renamed, and a projection taking ids that sort before every id it holds — on
+//! the shapes their `timing` probes measure, at a size and at [`LARGER`] times it, and fail when
+//! the larger takes more than [`BOUND`] times as long.
 //!
 //! The one exception to "timings never gate" (`xtask/AGENTS.md`): each test is ignored, because a
 //! debug build's figures say nothing and a loaded machine's little more, and the nightly workflow
