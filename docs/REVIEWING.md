@@ -330,12 +330,15 @@ These were decided deliberately. Report problems *with* them, not their existenc
   and 8,000, before and after, run back to back and the fastest of three: 0.159 s, 0.608 s and
   2.50 s before, 0.012 s, 0.028 s and 0.058 s after, against 0.006 s, 0.015 s and 0.035 s for the
   control; with the imports waiting, 0.51 s, 2.14 s and 13.9 s before, 0.017 s, 0.033 s and
-  0.071 s after, against 0.010 s, 0.024 s and 0.050 s for their control. The commands, on the two
-  machines of `twice.sh` (8,000 copies): B's merging sync 7.0 s before and 3.0 s after, a cold
-  `list` 5.0 s before and 1.2 s after, `list --all --json` and `export` byte for byte the same
-  (3,000 copies, both bead builds on one store). The sweep's control, the same creates with nothing
-  renamed, replays cold in 1.15 s. Measured on a machine shared with ten other agents running the
-  same kind of work, so every figure is inflated; those compared were taken together.
+  0.071 s after, against 0.010 s, 0.024 s and 0.050 s for their control. The commands, end to
+  end: two machines import the same 8,000-record Beads export offline, each minting every key, and
+  the first syncs; the second's merging sync renames all 8,000 copies, 7.0 s before and 3.0 s
+  after, and a cold `list` (its projection deleted, so that it replays the journal) takes 5.0 s
+  before and 1.2 s after; `cargo xtask timing --renames` measures the same replay in process.
+  The same 16,000 creates with nothing renamed replay cold in 1.15 s. `list --all --json` and
+  `export` are byte for byte the same (3,000 copies, both bead builds on one store). Measured on a
+  machine shared with ten other builds, so every figure is inflated; those compared were taken
+  together.
 - Readiness is judged once for every issue (roll-lqjj.19, Z04). `bead ready`, `bead blocked` and
   `bead prime` asked of each issue whether anything holds it, and the answer was the blocker list
   `open_blockers` builds — the issue's own prerequisites, an epic's unfinished children, and the
