@@ -443,7 +443,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   timing, and run by the nightly workflow in release, one at a time (`ci::x15_growth_guards` keeps
   the step). On main they measure 8.4 to 13.6 times; the scans of roll-lqjj.15 restored measure
   30 to 60, a create that reads every waiting list's keys inline 84, and every id moved on each
-  batch, as the merged vector of V02 moved them, 59 (64 cores, shared with ten other agents,
+  batch, as the merged vector of V02 moved them, 59 (64 cores, shared with ten other builds,
   2026-10-15). Not guarded, since they grow faster than their input by design, as the bullets
   above say: a batch that changes an edge builds the parent-child index again, and one issue that
   gains N edges, or waits for N keys that come one batch at a time, searches its own edges and
