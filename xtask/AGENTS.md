@@ -26,6 +26,8 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   the batch (roll-lqjj.15); `timing/extend.rs`: `timing --extend N`, events applied to a projection
   of N issues one event at a time and in one batch, including a batch that changes one issue's
   labels over and over and writes whose ids sort before every id held (roll-lqjj.17, V01 and V02);
+  `timing/dangling.rs`: `timing --dangling N`, replay of N creates whose imports name keys no issue
+  has yet, never, later, or one issue every other's, and the controls (roll-lqjj.18);
   `timing/world.rs`: the scratch
   store, checkout and remote they run `bead` on; `timing/history.rs`: the histories it replays
   (`--ownership`: heavy in claims, takeovers and releases in attempt files; `--churn`: a thousand

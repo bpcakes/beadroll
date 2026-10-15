@@ -8,9 +8,11 @@
 //! `--import N`, importing a generated export of N records ([`import`]); with `--plan N`, the
 //! core calls an import of N records makes, on the dependency shape scanning the batch was worst
 //! for ([`plan`]); with `--extend N`, events applied to a projection of N issues one at a time
-//! and in one batch ([`extend`]). A timing never decides whether anything passes.
+//! and in one batch ([`extend`]); with `--dangling N`, replay of N creates whose imports name keys
+//! no issue has yet ([`dangling`]). A timing never decides whether anything passes.
 
 mod contend;
+mod dangling;
 mod extend;
 pub(crate) mod heap;
 mod history;
@@ -59,6 +61,8 @@ struct Options {
     plan: Option<usize>,
     /// Time events applied to a projection of this many issues instead of a command.
     extend: Option<usize>,
+    /// Time replay of this many creates naming keys no issue has yet instead of a command.
+    dangling: Option<usize>,
     /// How many writes each `--contend` machine makes.
     writes: Option<usize>,
     /// How many milliseconds each fetch and push of `--contend` waits.
@@ -89,6 +93,7 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
         import: None,
         plan: None,
         extend: None,
+        dangling: None,
         writes: None,
         latency: None,
         rotate: None,
@@ -118,6 +123,9 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
             "--plan" => options.plan = Some(number(&value("--plan")?, "--plan", "records")?),
             "--extend" => {
                 options.extend = Some(number(&value("--extend")?, "--extend", "issues")?);
+            }
+            "--dangling" => {
+                options.dangling = Some(number(&value("--dangling")?, "--dangling", "issues")?);
             }
             "--contend" => {
                 options.contend = Some(number(&value("--contend")?, "--contend", "machines")?);
@@ -158,19 +166,20 @@ fn check(options: &Options) -> Result<(), Failure> {
         options.import,
         options.plan,
         options.extend,
+        options.dangling,
     ];
     let measured = modes.iter().flatten().count();
     if options.command.is_empty() && measured == 0 && options.load.is_none() {
         return Err(Failure::Usage(
             "timing needs --replay N, --sync N, --read N, --merge N, --contend M, --import N, \
-             --plan N, --extend N, or a command after --"
+             --plan N, --extend N, --dangling N, or a command after --"
                 .into(),
         ));
     }
     if measured > 1 {
         return Err(Failure::Usage(
             "one of --replay N, --sync N, --read N, --merge N, --contend M, --import N, \
-             --plan N and --extend N"
+             --plan N, --extend N and --dangling N"
                 .into(),
         ));
     }
@@ -247,6 +256,8 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
         Some(plan::measure(records, label)?)
     } else if let Some(issues) = options.extend {
         Some(extend::measure(issues, label)?)
+    } else if let Some(issues) = options.dangling {
+        Some(dangling::measure(issues, label)?)
     } else {
         None
     };
@@ -531,6 +542,7 @@ mod tests {
             options.contend,
             options.import,
             options.plan,
+            options.dangling,
         ];
         assert!(modes.iter().all(Option::is_none), "{modes:?}");
         for wrong in [
@@ -540,6 +552,38 @@ mod tests {
             &["--extend", "10", "--plan", "10"],
             &["--extend", "10", "--replay", "10"],
             &["--extend", "10", "--rotate", "4096"],
+        ] {
+            assert!(
+                matches!(parse(args(wrong)), Err(Failure::Usage(_))),
+                "{wrong:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn dangling_takes_a_count_of_issues_and_is_a_measurement_of_its_own() {
+        let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
+        let options = parse(args(&["--dangling", "16000"])).unwrap();
+        assert_eq!(options.dangling, Some(16000));
+        // The count reaches this measurement and no other.
+        let modes = [
+            options.replay,
+            options.sync,
+            options.read,
+            options.merge,
+            options.contend,
+            options.import,
+            options.plan,
+            options.extend,
+        ];
+        assert!(modes.iter().all(Option::is_none), "{modes:?}");
+        for wrong in [
+            &["--dangling", "many"][..],
+            &["--dangling"],
+            // counted among the measurements, so it is refused beside another
+            &["--dangling", "10", "--extend", "10"],
+            &["--dangling", "10", "--replay", "10"],
+            &["--dangling", "10", "--rotate", "4096"],
         ] {
             assert!(
                 matches!(parse(args(wrong)), Err(Failure::Usage(_))),
