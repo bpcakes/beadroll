@@ -1,6 +1,8 @@
 //! A copy of a key two machines minted alike (roll-lqjj.25, X03): replay finds the copy's key by
 //! asking of each candidate whether an issue or an import has it, and never by collecting every
-//! key the tracker claims, so renaming N copies reads a bounded number of keys for each.
+//! key the tracker claims, so renaming N copies of plain keys (`ex-1` to `ex-N`) asks a bounded
+//! number of keys for each. A numbered key (`ex-1.1`) is counted upward past every number taken
+//! (`key::free_key`), so N copies of those ask N² keys; that is not guarded here (roll-lqjj.46).
 
 use crate::journal::Journal;
 use crate::json::{Object, Value};
@@ -75,16 +77,14 @@ fn renaming_every_copy_of_keys_two_machines_minted_reads_a_bounded_number_of_key
     for waiting in [false, true] {
         grows_linearly(
             &format!("replaying two machines' creates of the same keys, waiting: {waiting}"),
-            &[Work::Key],
+            &[Work::Key, Work::Waiting],
             |issues| (minted_twice(issues, waiting), issues),
             |(journal, issues)| {
                 let state = replay(journal).unwrap();
-                // every copy of the second machine was kept, under a key of its own
+                // every copy of the second machine was kept, renamed, and what is asserted here
+                // reads no key through a counted accessor
                 assert_eq!(state.issues().count(), 2 * issues);
-                assert_eq!(
-                    state.claimed_keys().len(),
-                    2 * issues + usize::from(waiting) * issues
-                );
+                assert_eq!(state.renames().len(), issues);
             },
         );
     }

@@ -8,8 +8,10 @@
 //!
 //! Shapes whose cost still grows faster than their input by design are not guarded, and
 //! `docs/REVIEWING.md` §2 says why for each: a batch that changes an edge builds the parent-child
-//! index again over the whole state (roll-lqjj.17), and one issue that gains N edges, or waits for
-//! N keys that come one batch at a time, searches or copies its own growing list (roll-lqjj.18).
+//! index again over the whole state (roll-lqjj.17), one issue that gains N edges, or waits for
+//! N keys that come one batch at a time, searches or copies its own growing list (roll-lqjj.18),
+//! and a copy of a numbered key (`ex-1.1`), which counts upward past every number taken, so that N
+//! copies two machines minted alike ask N² keys (roll-lqjj.46).
 
 use crate::id::EventId;
 use crate::journal::Journal;

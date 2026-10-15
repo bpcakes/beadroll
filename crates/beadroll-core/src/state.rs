@@ -260,20 +260,13 @@ impl State {
     /// Keys a new or renamed issue must not take: every issue's, and every key an imported dependency
     /// is still waiting for (the record it names may be imported later).
     pub fn claimed_keys(&self) -> std::collections::HashSet<&str> {
-        let taken = self.collect_claimed_keys();
-        tally(Work::Key, taken.len());
-        taken
-    }
-
-    /// The keys [`State::claimed_keys`] collects, uncounted: what the test that checks
-    /// [`State::claims_key`] against it collects them with, at every ask.
-    fn collect_claimed_keys(&self) -> std::collections::HashSet<&str> {
         let mut taken: std::collections::HashSet<&str> =
             self.by_key.keys().map(String::as_str).collect();
         for issue in self.issues.values() {
             // an entry taken out while events apply is null, and names no key
             taken.extend(issue.dangling.iter().filter_map(awaited));
         }
+        tally(Work::Key, taken.len());
         taken
     }
 

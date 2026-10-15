@@ -8,6 +8,7 @@
 
 use crate::id::EventId;
 use crate::state::{Issue, State};
+use crate::work::{Work, tally};
 
 use super::blocking;
 
@@ -46,8 +47,9 @@ impl Rows {
         rows
     }
 
-    /// Row `at`, empty when there is none.
-    fn row(&self, at: u32) -> &[u32] {
+    /// Row `at`, empty when there is none, not counted: [`Rows::row`] and [`Rows::item`] count
+    /// what they hand out.
+    fn slice(&self, at: u32) -> &[u32] {
         let at = at as usize;
         match (self.starts.get(at), self.starts.get(at + 1)) {
             (Some(&from), Some(&to)) => {
@@ -55,6 +57,23 @@ impl Rows {
             }
             _ => &[],
         }
+    }
+
+    /// Row `at`, empty when there is none. Every read of a row after the rows are made passes
+    /// through here or [`Rows::item`], which count each item handed out as an edge read
+    /// (roll-lqjj.38): a walk that read the rows of an issue's ancestors over again for each issue
+    /// would be seen.
+    fn row(&self, at: u32) -> &[u32] {
+        let row = self.slice(at);
+        tally(Work::Edge, row.len());
+        row
+    }
+
+    /// Item `next` of row `at`, if the row has one.
+    fn item(&self, at: u32, next: usize) -> Option<u32> {
+        let item = self.slice(at).get(next).copied();
+        tally(Work::Edge, usize::from(item.is_some()));
+        item
     }
 }
 
@@ -257,7 +276,7 @@ impl<'r> Groups<'r> {
         let mut work: Vec<(u32, usize)> = vec![(root, 0)];
         self.enter(root);
         while let Some(&(at, next)) = work.last() {
-            if let Some(&parent) = self.parents.row(at).get(next) {
+            if let Some(parent) = self.parents.item(at, next) {
                 if let Some(top) = work.last_mut() {
                     top.1 += 1;
                 }
