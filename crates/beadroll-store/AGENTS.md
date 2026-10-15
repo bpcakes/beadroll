@@ -13,7 +13,7 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   the clock; `home()` with the `BEAD_HOME` rules; `checkout` and `fact`: what checkout-side git says
   of the repository, asked once, `crates/beadroll-git/AGENTS.md`), `Clock`, `normalize_path`,
   `join_path`.
-- `src/fs.rs`: `private_dirs`, `private_dir`, `write_atomic`, `fsync`, `dir_entries`, `glob_ending`,
+- `src/fs.rs`: `private_dirs`, `private_dir`, `write_atomic`, `write_cache_parts`, `fsync`, `dir_entries`, `glob_ending`,
   `read_json_text`, `read_json_keeping_surrogates` (preserving lone surrogates across whole-file
   rewrites) and file-read diagnostics (`os_error_str`, `utf8_error`).
 - `src/identity.rs`: `replica_id`, `machine_aliases`, `uuid7`, `hex_token`.
@@ -70,7 +70,11 @@ remote resolution, actor detection, `view`, and the failpoint registry.
 - Directories 0700 and files 0600 throughout the store, whatever the umask; files written into a
   checkout follow the umask.
 - Atomic writes use the established temporary names and `fsync(2)` through `rustix`, not `sync_all`
-  (`docs/REVIEWING.md` §2); appends use `O_APPEND`.
+  (`docs/REVIEWING.md` §2); appends use `O_APPEND`. The one exception is `write_cache_parts`, for
+  the projection and its text file (and the text file's appends): checksummed caches, renamed in
+  whole but not fsynced, whose every reader checks them against their sums (`docs/REVIEWING.md`
+  §2, the durability bullet). A new file that is read without a sum to check, or that is a
+  source of anything, is written with `write_atomic`.
 - Settings arrive as values (`Settings`); this crate never reads the process environment or the
   working directory. A numeric `BEAD_*` setting that is not a number is a `CONFIG` error when
   the settings are built, where Python died with a traceback (`docs/REVIEWING.md` §2).

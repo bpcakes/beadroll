@@ -15,7 +15,9 @@
 //! projection that is missing, unreadable, damaged or written by another build of bead: the
 //! journal is replayed. A projection made is written back, whole or not at all, with the identity
 //! each file had as it was read, when every segment ended with a whole line, never into a store
-//! that is not there. Deleting it is safe at any moment.
+//! that is not there. Deleting it is safe at any moment, and so it is not flushed: whatever a crash
+//! leaves of it, or of its text file, is read as replay would answer or not at all
+//! ([`crate::fs::write_cache_parts`]).
 //!
 //! Each issue's texts are kept apart, in `<store>/projection-texts` (roll-lqjj.6, [`texts`]): a
 //! state read from the projection has them there, and a command reads in those it prints. A
@@ -39,7 +41,7 @@ use beadroll_core::projection::{Extended, Projection, Record, decode_state, proj
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
 
-use crate::fs::{content_sum, read_keyed, write_atomic};
+use crate::fs::{content_sum, read_keyed, write_cache_parts};
 use crate::journal::{
     ViewError, attempt_events, claim_files, folder_name, load_journal, load_listed, segment_files,
 };
@@ -499,10 +501,9 @@ fn save(ws: &Workspace, mut made: Made, projection: &mut Projection) {
             let (encoded, places) = projection.encode(len);
             made.texts = generation;
             if texts::append(ws, &file, len, &encoded.texts)
-                && write_atomic(
+                && write_cache_parts(
                     &projection_path(ws),
-                    &file::bytes(&made, &encoded),
-                    true,
+                    &[&file::bytes(&made, &encoded)],
                     &ws.settings.failpoints,
                 )
                 .is_ok()
@@ -519,10 +520,9 @@ fn save(ws: &Workspace, mut made: Made, projection: &mut Projection) {
     let generation = texts::generation(&encoded.texts);
     made.texts = generation;
     if texts::start(ws, generation, &encoded.texts)
-        && write_atomic(
+        && write_cache_parts(
             &projection_path(ws),
-            &file::bytes(&made, &encoded),
-            true,
+            &[&file::bytes(&made, &encoded)],
             &ws.settings.failpoints,
         )
         .is_ok()

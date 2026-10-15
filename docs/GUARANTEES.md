@@ -156,6 +156,11 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   `list`, `ready`, a write and a sync never read them, `show` reads only its
   issue's, and `export`, `search` and `lint` read them all. It is a cache too:
   texts that cannot be read as written have the journal replayed.
+- Unlike the journal, neither file is flushed to disk: they are written whole
+  and renamed into place, not fsynced. A crash or a power loss can leave either
+  lost, cut, zeroed, as it was, or out of step with the other, and the next
+  command that cannot read what they hold as written replays the journal once
+  and writes them again; no answer ever differs for it.
 - There is no history boundary: work written offline merges on the next sync
   however long ago it was written, after days or months away, and nothing is
   refused for its age. Should bead one day publish checkpoints, so that a new

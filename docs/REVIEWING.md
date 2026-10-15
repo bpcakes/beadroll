@@ -200,37 +200,39 @@ These were decided deliberately. Report problems *with* them, not their existenc
   not new, a new machine's journal, a cause behind the frontier, or a journal with anything replay
   reports. The answers are replay's: a differential test checks every batch a store takes in
   against replay, on histories of machines that write, sync and race. It is written back
-  atomically when every segment ended with a whole line, never into a store that is not there; a
-  projection missing, cut, damaged (a 128-bit sum of each part) or another build's is never read,
-  and a failed write is no failure. A state read from it knows, of its events, those it names:
-  `State::saw`, `holds` and `events`, which no command reads, answer for those alone. Each issue's
-  texts (its long fields, their registers' values, its comments and its extras) are kept apart
-  (roll-lqjj.6), in `<store>/projection-texts`, each issue's as bytes of their own the state places
-  and sums, the state keeping what a list and a later event need of them unread (the events behind
-  each long field's register, which of those fields two writers set differently). A long field's
-  value is kept once, in its register, which the field shows (roll-lqjj.10: the entry of the
+  atomically (renamed into place whole, not fsynced: the durability bullet below says why that
+  suffices, roll-lqjj.27, X05) when every segment ended with a whole line, never into a store that
+  is not there; a projection missing, cut, damaged (a 128-bit sum of each part) or another build's
+  is never read, and a failed write is no failure. A state read from it knows, of its events, those
+  it names: `State::saw`, `holds` and `events`, which no command reads, answer for those alone. Each
+  issue's texts (its long fields, their registers' values, its comments and its extras) are kept
+  apart (roll-lqjj.6), in `<store>/projection-texts`, each issue's as bytes of their own the state
+  places and sums, the state keeping what a list and a later event need of them unread (the events
+  behind each long field's register, which of those fields two writers set differently). A long
+  field's value is kept once, in its register, which the field shows (roll-lqjj.10: the entry of the
   largest id, absent when that is a later write's null, null when the create left it so), never
   copied beside it, so the state holds each text once and the text file writes it once: a generated
   49 MB export's text file went from 75.0 MB to 43.3 MB, and the first sync that makes its
   projection from 245 MB on the heap to 191 MB (`cargo xtask timing --import 14000`, whose records
-  now hold `projection_bytes` and `texts_bytes`, as `--read N` does). A command that
-  prints no texts (`list`, `ready`, `blocked`, `claims`, `dep`, `info`, a transition's or a
-  release's answer) never reads them; one that prints issues whole (`show`, `comments`, `update`,
-  `claim`, `takeover`) reads in only theirs; `export`, `search` and `lint` read every text; and
-  records applied after the projection have the texts of the issues they are about read in first,
-  a change to texts not read in declining. Texts that cannot be read as written (a sum, a length, a
-  generation, the events behind a register that differ) have the journal replayed and both files
-  written again. Texts are only appended, under the text file's own lock, the projection written
-  after them, so that a bead killed between the two leaves the last projection; a projection made
-  whole, or whose file holds more texts no longer read than read (beyond a mebibyte), starts the
-  file again, under the generation its texts give, so that the same texts make the same file. A
-  merge that brings events written concurrently with the store's replays the journal, and stays so
-  (roll-lqjj.8, by the maintainer's direction of 2026-10-12: correctness before speed): it costs
-  what a replay does, 0.45 s at 50,000 events and 1.0–2.0 s at 200,000 (`cargo xtask timing
-  --merge N --concurrent`), and comes in about a merge in ten where two machines write. Taking
-  such events in without replaying would mean reproducing what replay settles by the order it
-  applies events in (the key two concurrent creates minted, the order of comments, claim history
-  and issue order), the question a checkpoint's continuation faces too (roll-lqjj.4).
+  now hold `projection_bytes` and `texts_bytes`, as `--read N` does). A command that prints no texts
+  (`list`, `ready`, `blocked`, `claims`, `dep`, `info`, a transition's or a release's answer) never
+  reads them; one that prints issues whole (`show`, `comments`, `update`, `claim`, `takeover`) reads
+  in only theirs; `export`, `search` and `lint` read every text; and records applied after the
+  projection have the texts of the issues they are about read in first, a change to texts not read
+  in declining. Texts that cannot be read as written (a sum, a length, a generation, the events
+  behind a register that differ) have the journal replayed and both files written again. Texts are
+  only appended, under the text file's own lock, the projection written after them, so that a bead
+  killed between the two leaves the last projection (a bead killed: after a crash of the machine the
+  order promises nothing, which the durability bullet covers); a projection made whole, or whose
+  file holds more texts no longer read than read (beyond a mebibyte), starts the file again, under
+  the generation its texts give, so that the same texts make the same file. A merge that brings
+  events written concurrently with the store's replays the journal, and stays so (roll-lqjj.8, by
+  the maintainer's direction of 2026-10-12: correctness before speed): it costs what a replay does,
+  0.45 s at 50,000 events and 1.0–2.0 s at 200,000 (`cargo xtask timing --merge N --concurrent`),
+  and comes in about a merge in ten where two machines write. Taking such events in without
+  replaying would mean reproducing what replay settles by the order it applies events in (the key
+  two concurrent creates minted, the order of comments, claim history and issue order), the question
+  a checkpoint's continuation faces too (roll-lqjj.4).
 - A projection extended finishes only what the batch changed (roll-lqjj.17, Z02). Replay finishes a
   whole journal by deriving each issue's labels from the tags that remain and building the
   parent-child index from every issue's edges; a projection that redid all of that for every batch
@@ -900,6 +902,61 @@ These were decided deliberately. Report problems *with* them, not their existenc
   on Apple platforms: 5.3 ms a call against 0.03 ms on APFS, about 40 ms a write. The remote is
   the durable copy. Atomic writes are a temporary file, fsync and rename, cleaned up on failure;
   appends are `O_APPEND` and fsync; the store lock is `File::lock`.
+  The two checksummed caches are the exception (roll-lqjj.27, X05): the projection and its text file
+  are written whole and atomically but not fsynced (`fs::write_cache_parts`; the text file's appends
+  too), because flushing them made the command after every write cost as much again as the write:
+  its read 39 ms against 9.5 ms on 300 issues, 72 ms against 46 ms on 5,000 (medians of 30
+  interleaved runs, a write followed by a `show` of another issue), and `timing --read 1000` 29 ms a
+  write against 20 ms, a cold read 35 ms against 17 ms. Every other store file stays flushed:
+  journal segments, attempt and pending files, receipts, `meta.json`, `replica.json`, and the
+  journal memo, which has no sum to read it against. Why a crash can only cost a replay: nothing in
+  either file is trusted by being there, only by what a reader checks of it, and a crash can only
+  produce files that fail a check or are a whole file bead wrote at an earlier moment.
+  1. The projection is a new file renamed over the old (the failpoints `atomic-write` and
+     `atomic-written` fire as for every atomic write), so a reader sees the old file or the new,
+     whole. After a crash the name holds the old file, the new one, or a new one whose blocks did
+     not all reach the disk (cut, zeroed, a hole, a mix of old and zero): the header's lengths
+     must add up to the file's size and each of its three parts must match its sum, and anything
+     else is no projection (`projection::tests::a_damaged_projection_is_never_trusted`, every
+     cut and a flipped byte every seventh). A whole file is one bead wrote, true of the journal
+     as it was then, and is judged as a projection killed before its write is: its journal files'
+     identities, settled by its own write time, against the files now, a segment grown read
+     against the sum kept of it, anything else replayed. Which of the two files a crash kept
+     changes nothing about that.
+  2. A text is never read as a file's say-so. A projection places each issue's texts (offset,
+     length, sum) in the text file of one generation (the sum of the texts it was started with,
+     in the file's header and in the projection's `made`); a reader opens the file only if its
+     header is the magic and that generation, and takes a text only if the bytes read at its
+     place, to the full length, sum to what the projection kept (`State::read_texts`). A file
+     lost or zeroed fails the header; one cut short fails the read; one whose blocks are zeros,
+     old bytes, or other texts appended where lost ones were fails the sum; a file started again
+     that the projection does not name is another generation. There is no state in which texts
+     are read that are not the ones placed, with a 128-bit sum's confidence, and the texts that
+     do match are the right ones whatever wrote them.
+  3. The two files out of step are every pair of the above: a projection newer than its text
+     file (the appended tail lost: the places are past its end, or overlapped by texts appended
+     since), older (extra texts nothing places, which the `SLACK` rule starts the file again
+     for), of another generation, or one without the other. Each is a failed header, read or
+     sum for the texts that are asked for, and a command asking for none (`list`, `ready`,
+     `blocked`, `claims`, `dep`, `info`) reads the projection's state alone, which stands on its
+     own sums. A command that asks for a text it cannot read replays the journal, and one that
+     reads every text writes both files anew; a write whose events are about issues whose texts
+     cannot be read in replays for its state (`Tx::state`), and a projection to extend with
+     records about such issues declines and has the journal replayed. A projection left placing
+     texts past a text file's end for issues no command has asked about is not repaired on the spot,
+     and is not wrong: the first command to ask about one of them finds it unreadable and replays.
+  4. The cost is a replay, once, as for any projection missing: the answer of every command is
+     the same as before, and so is the file written then. Neither file is a source of anything:
+     the journal is, and each state read from them is checked against its files and the sums
+     above. A write error that only appears when the kernel writes a file back (a full volume
+     after the rename) leaves a file the checks above refuse, as one that failed at once leaves
+     the last.
+  Tests: `projection::tests` (a damaged or cut projection; a stale one; one the volume was full
+  for; the text file damaged, cut, gone or another's), `projection::tests::texts` (the text file
+  shorter than the projection places, with other texts appended where the lost ones were; every
+  pairing of a projection and a text file as a crash can leave them, read by a listing, a show, an
+  export and a write; both files past the failpoints), and the black-box
+  `storage::projection` (a bead killed as it writes either file).
 - The remote seam waits for its second implementation (roll-k2wy.14.1): the protocol
   (`synchronise`, `coordinated`, `settle_*`, `merge`) uses a link's fetch, tree reading and push,
   never `sync.git`'s internals, and merge works on (path → blob) maps; a `Remote` trait comes with
