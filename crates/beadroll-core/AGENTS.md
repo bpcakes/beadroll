@@ -53,6 +53,9 @@ consumer on tokio calls through `spawn_blocking`.
   `State::detail_with` lists each one's; `State::detail` makes it for its one issue (roll-lqjj.20).
 - `src/import/dry_run.rs`: `problems` (every problem an import would be refused for, empty exactly
   when it goes through) and `preview` (what it would bring), for `--dry-run`.
+- `src/work.rs`: `tally`, the work the algorithms of roll-lqjj.15 to .20 do, counted in this crate's
+  own tests alone (`cfg(test)`; it does nothing in any other build), and `work/tests/`, the guards
+  that fail when that work grows with the square of its input (roll-lqjj.34, X15).
 - `tests/core/`: integration tests of replay, storage compatibility and validation.
 
 ## Edit here for X
@@ -119,6 +122,17 @@ consumer on tokio calls through `spawn_blocking`.
   `tests/core/replay/dependents.rs` keeps the details so made equal to `State::detail` of each
   issue alone and to what every detail found before, member for member, and `cargo run --release
   --package xtask -- timing --details N` measures both ways.
+- What those algorithms do grows with their input, and `work/tests/` keeps it so: each counts its
+  work on the shape it was quadratic on, at a size and at eight times it, and fails above sixteen
+  times as much (roll-lqjj.34, X15). The counts are kept where every way of doing the work passes
+  (`work::tally`): an issue's edges when `Issue::deps` or `Issue::dep_tags` hands them out and a
+  parent's children when `State::children` does, an issue relabelled (`replay::relabel`), the
+  parent-child index built (`State::index_children`), a waiting import's key read
+  (`state::awaited`, which replay reads it through and nowhere else) and the entries `Awaiting`
+  hands out, examines or makes whole, and an import's record or dependency key read (`id_of`,
+  `target`). Read an edge, a waiting key or an import key through those, never around them, or a
+  guard stops seeing the work; what a count cannot see, a lookup turned back into a scan, is timed
+  by `xtask`'s growth tests, nightly in release.
 - `saw` agrees with the reference ancestry bitsets: `state/seen/tests.rs` checks every pair
   on hostile histories. Replay's speed and memory are measured by
   `cargo run --release --package xtask -- timing --replay N [--ownership]`: at 200,000 events its

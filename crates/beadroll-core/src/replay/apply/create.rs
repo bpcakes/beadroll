@@ -8,7 +8,8 @@ use crate::id::EventId;
 use crate::json::{Int, Object, Value};
 use crate::op::Create;
 use crate::state::{
-    Comment, IdMap, IdSet, Issue, KeySpace, Knowledge, Origin, Rename, State, VecMap, is_text,
+    Comment, IdMap, IdSet, Issue, KeySpace, Knowledge, Origin, Rename, State, VecMap, awaited,
+    is_text,
 };
 use crate::time::event_time;
 
@@ -40,7 +41,7 @@ pub(super) fn create(
     // What the import names of keys that have their issues becomes edges now; the rest waits. Its
     // own key never settles what it names of itself.
     for dep in std::mem::take(&mut issue.dangling) {
-        let target = (dep.get("depends_on_id").and_then(Value::as_str))
+        let target = (awaited(&dep))
             .and_then(|named| st.by_key.get(named))
             .filter(|target| **target != eid);
         match target {

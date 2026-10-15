@@ -21,6 +21,7 @@ use crate::state::{
     Integrity, Issue, KeySpace, Knowledge, Place, State, actor_label, raise, reached,
 };
 use crate::time::event_time;
+use crate::work::{Work, tally};
 
 /// Folds `journal` into state. Returns KEY_SPACE only when a renamed duplicate has no free key.
 pub fn replay(journal: Journal) -> Result<State, KeySpace> {
@@ -343,6 +344,7 @@ pub(crate) fn finish_some(st: &mut State, doing: &[Box<Rest>]) {
 
 /// The issue's labels: those whose tags remain.
 fn relabel(issue: &mut Issue) {
+    tally(Work::Relabel, 1 + issue.label_tags.len());
     issue.labels = (issue.label_tags.iter())
         .filter(|(_, tags)| !tags.is_empty())
         .map(|(label, _)| label.clone())

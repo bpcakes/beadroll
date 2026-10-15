@@ -16,8 +16,9 @@ use crate::journal::{Event, Journal};
 use crate::json::Value;
 use crate::key;
 use crate::text::str_of;
+use crate::work::{Work, tally};
 
-pub(crate) use awaiting::Awaiting;
+pub(crate) use awaiting::{Awaiting, named as awaited};
 pub use claim::{Claim, EndedClaim, LostClaim, Provisional, Stale};
 pub(crate) use issue::Origin;
 pub use issue::{Comment, Deps, DepsIter, Issue};
@@ -263,12 +264,7 @@ impl State {
             self.by_key.keys().map(String::as_str).collect();
         for issue in self.issues.values() {
             // an entry taken out while events apply is null, and names no key
-            taken.extend(
-                issue
-                    .dangling
-                    .iter()
-                    .filter_map(|dep| dep.get("depends_on_id")?.as_str()),
-            );
+            taken.extend(issue.dangling.iter().filter_map(awaited));
         }
         taken
     }
@@ -308,10 +304,11 @@ impl State {
 
     /// The children of `uid`: issues with a parent-child edge to it, in replay order.
     pub fn children(&self, uid: EventId) -> &[EventId] {
-        self.children
-            .get(&uid.to_string())
+        let children = (self.children.get(&uid.to_string()))
             .map(Vec::as_slice)
-            .unwrap_or_default()
+            .unwrap_or_default();
+        tally(Work::Edge, children.len());
+        children
     }
 
     /// Lists a local unconfirmed ownership attempt without making it count as ownership. Returns
@@ -353,6 +350,7 @@ impl State {
     pub(crate) fn index_children(&mut self) {
         let mut children: std::collections::HashMap<String, Vec<EventId>> =
             std::collections::HashMap::new();
+        tally(Work::Index, self.issues.len());
         for child in self.issues.values() {
             for (to, kind) in child.deps().keys() {
                 if kind == "parent-child" {

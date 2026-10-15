@@ -11,6 +11,7 @@ use crate::id::EventId;
 use crate::json::{self, Object, Value};
 use crate::state::State;
 use crate::text::{repr_str, strip};
+use crate::work::{Work, tally};
 
 pub mod dry_run;
 
@@ -269,6 +270,7 @@ fn members<const N: usize>(items: [(&str, Value); N]) -> Object {
 }
 
 fn id_of(record: &Value) -> &str {
+    tally(Work::Key, 1);
     record.get("id").and_then(Value::as_str).unwrap_or_default()
 }
 
@@ -282,6 +284,7 @@ fn dependencies(record: &Value) -> &[Value] {
 
 /// The key a dependency names, empty when it names none.
 fn target(dep: &Value) -> &str {
+    tally(Work::Key, 1);
     dep.get("depends_on_id")
         .and_then(Value::as_str)
         .unwrap_or_default()
