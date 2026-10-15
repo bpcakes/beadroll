@@ -1,13 +1,18 @@
 //! How often a sync and a write read the state of the store's journal (roll-lqjj.29): once per
 //! round of a sync, by its merge, which the report and an ownership command's transaction go on
-//! from, and once for a write's transaction. Counted at the `projection.read` failpoint.
+//! from, and once for a write's transaction. Counted at the `projection.read` failpoint. An
+//! ownership command's transaction goes on from the merge's read only while the journal's files
+//! are still the ones it was made from: a file written between the two has the store read again
+//! (roll-lqjj.37).
+
+use std::path::Path;
 
 use beadroll_core::json::{Format, Object, Value, write};
-use beadroll_store::{Endpoint, Workspace};
+use beadroll_store::{Endpoint, Workspace, glob_ending, json_text, read_attempt, replica_id};
 use beadroll_sync::{publish_soon, synchronise, writing};
-use beadroll_test_support::{Machine, json};
+use beadroll_test_support::{Machine, Sandbox, json};
 
-use crate::support::{actor, claim_command, sandbox, text, workspace};
+use crate::support::{Gate, actor, alongside, claim_command, sandbox, text, workspace};
 
 /// A spec that never fires and counts every read.
 const COUNTED: (&str, &str) = ("BEAD_FAILPOINTS", "projection.read@nth(1000000)=sleep(0)");
@@ -108,4 +113,167 @@ fn a_claim_reads_the_state_once_a_round() {
     claim_command(&ws, &actor(&a), &key).expect("a claim");
     assert_eq!(reads(&ws), 1);
     assert!(a.show(&key).get("claim").is_some());
+}
+
+/// Two machines on one tracker: `a` has published two issues, `b` has joined and is about to write
+/// what `a` has not seen.
+struct Window {
+    sandbox: Sandbox,
+    a: Machine,
+    b: Machine,
+    keys: [String; 2],
+}
+
+impl Window {
+    fn new() -> Window {
+        let sandbox = sandbox();
+        let (a, b) = (Machine::new(&sandbox, "a"), Machine::new(&sandbox, "b"));
+        a.bead(["init", "--prefix", "ex"]);
+        let key = || text(&a.bead(["create", "x"]).expect("an issue")["id"]);
+        let keys = [key(), key()];
+        b.bead(["sync"]);
+        Window {
+            sandbox,
+            a,
+            b,
+            keys,
+        }
+    }
+
+    /// What `b` wrote on its own, kept to itself (`--offline`): its folder under `events/`, which
+    /// `a` has not.
+    fn theirs(&self) -> String {
+        let folders = |machine: &Machine| -> Vec<String> {
+            let events = machine.store().join("events");
+            let names = std::fs::read_dir(events).expect("a store's events");
+            names
+                .map(|entry| entry.expect("an entry").file_name())
+                .map(|name| name.to_string_lossy().into_owned())
+                .collect()
+        };
+        let known = folders(&self.a);
+        let own: Vec<String> = (folders(&self.b).into_iter())
+            .filter(|folder| !known.contains(folder))
+            .collect();
+        assert_eq!(own.len(), 1, "the folders b wrote alone: {own:?}");
+        own.into_iter().next().unwrap_or_default()
+    }
+
+    /// `path` under `b`'s `events/`, copied to where `a` would have it had its merge brought it in:
+    /// the write of the window.
+    fn copy_over(&self, path: &str) -> impl FnOnce() + Send + use<> {
+        let from = self.b.store().join("events").join(path);
+        let to = self.a.store().join("events").join(path);
+        move || {
+            std::fs::create_dir_all(to.parent().expect("a folder")).expect("a folder");
+            std::fs::copy(from, to).expect("a copy");
+        }
+    }
+
+    /// `a` claims the first issue, held at the window between its merge and its transaction,
+    /// where `write` is done: the claim, `a`'s store and how often its state was read.
+    fn claim_while(&self, write: impl FnOnce() + Send) -> (Workspace, u64) {
+        let gate = Gate::new(&self.sandbox, "window");
+        let spec = format!(
+            "projection.read@nth(1000000)=sleep(0);ownership.before-transaction={}",
+            gate.action()
+        );
+        let ws = workspace(
+            &self.a,
+            self.sandbox.origin(),
+            &[("BEAD_FAILPOINTS", &spec)],
+        );
+        let actor = actor(&self.a);
+        let (claimed, met) = alongside(
+            || claim_command(&ws, &actor, &self.keys[0]),
+            |done| gate.meet(done, write),
+        );
+        claimed.expect("a claim");
+        assert!(met.is_some(), "the claim never reached the window");
+        let reads = reads(&ws);
+        (ws, reads)
+    }
+
+    /// The causes of the claim `a` made: the events its event builds on.
+    fn causes(&self, ws: &Workspace) -> Vec<String> {
+        let replica = replica_id(&ws.settings, false).expect("an identity");
+        let claims = ws
+            .events_dir
+            .join(replica.expect("a replica"))
+            .join("claims");
+        let files = glob_ending(&claims, ".json");
+        assert_eq!(files.len(), 1, "the claims accepted: {files:?}");
+        let events = read_attempt(&files[0], None);
+        assert_eq!(events.len(), 1, "{events:?}");
+        let deps = events[0]["deps"].as_array().expect("causes");
+        deps.iter().map(text).collect()
+    }
+}
+
+/// The id of the last event of `file`, a segment, or of the attempt file `file`.
+fn last_id(file: &Path) -> String {
+    let data = std::fs::read(file).expect("a journal file");
+    let last = data.split(|b| *b == b'\n').rfind(|line| !line.is_empty());
+    let event = json_text(last.expect("an event")).expect("an event");
+    text(&event["id"])
+}
+
+/// A segment another machine's merge would have brought in is written between a claim's merge and
+/// its transaction. The transaction starts from the store as it is, which holds that machine's
+/// event, and the claim builds on it; before the guard it started from the merge's projection and
+/// built on the heads from before.
+#[test]
+fn a_segment_written_after_the_merge_is_read_by_the_claims_transaction() {
+    let s = Window::new();
+    s.b.bead([
+        "comments",
+        "add",
+        &s.keys[1],
+        "written meanwhile",
+        "--offline",
+    ]);
+    let segment = format!("{}/000001.jsonl", s.theirs());
+    let written = last_id(&s.b.store().join("events").join(&segment));
+    let (ws, reads) = s.claim_while(s.copy_over(&segment));
+    assert_eq!(reads, 2, "the merge's read, and the store read again");
+    let causes = s.causes(&ws);
+    assert!(causes.contains(&written), "{written} among {causes:?}");
+    assert!(s.a.show(&s.keys[0]).get("claim").is_some());
+}
+
+/// The same for an attempt file: the claim of another issue, accepted by `b` alone, is written
+/// into `a`'s store between its claim's merge and its transaction.
+#[test]
+fn an_attempt_file_written_after_the_merge_is_read_by_the_claims_transaction() {
+    let s = Window::new();
+    s.b.bead(["claim", &s.keys[1], "--offline"]);
+    let theirs = s.theirs();
+    let attempts = s.b.store().join("events").join(&theirs).join("claims");
+    let files = glob_ending(&attempts, ".json");
+    assert_eq!(files.len(), 1, "{files:?}");
+    let name = files[0].file_name().expect("a name").to_string_lossy();
+    let written = last_id(&files[0]);
+    let (ws, reads) = s.claim_while(s.copy_over(&format!("{theirs}/claims/{name}")));
+    assert_eq!(reads, 2, "the merge's read, and the store read again");
+    let causes = s.causes(&ws);
+    assert!(causes.contains(&written), "{written} among {causes:?}");
+}
+
+/// The guard does not read the store again for what the merge itself wrote: a claim whose merge
+/// brought in a segment, or an attempt file, goes on from the projection it read after them, and
+/// reads the state once, as a claim whose merge brought nothing does.
+#[test]
+fn a_claim_whose_merge_wrote_files_still_reads_the_state_once() {
+    let writes: [&[&str]; 2] = [&["comments", "add", "KEY", "meanwhile"], &["claim", "KEY"]];
+    for write in writes {
+        let s = Window::new();
+        let args = write.iter().map(|arg| arg.replace("KEY", &s.keys[1]));
+        s.b.bead(args.collect::<Vec<String>>());
+        let ws = workspace(&s.a, s.sandbox.origin(), &[COUNTED]);
+        claim_command(&ws, &actor(&s.a), &s.keys[0]).expect("a claim");
+        assert_eq!(reads(&ws), 1, "after {write:?}");
+        let causes = s.causes(&ws);
+        assert_eq!(causes.len(), 1, "{causes:?}");
+        assert!(s.a.show(&s.keys[0]).get("claim").is_some());
+    }
 }

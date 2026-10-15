@@ -317,7 +317,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   made of the state its last merge left, under the lock and before the publish rather than after
   it, which differs only by what another process writes in between, and an ownership round's
   transaction starts from it (`Tx::on`), since nothing between the merge and the transaction, under
-  the same lock, writes the journal. A sync that reports (`bead sync`, `init` joining a tracker)
+  the same lock, writes the journal, which `Tx::on` checks (roll-lqjj.37, the bullet after this
+  one). A sync that reports (`bead sync`, `init` joining a tracker)
   counts the renames before it from a projection its first merge reads once the torn tails are cut
   and before it merges, recorded at once so that a merge that fails later keeps the count, and goes
   on with that projection when the merge writes no journal file (each of its journal writes marks
@@ -338,6 +339,57 @@ These were decided deliberately. Report problems *with* them, not their existenc
   (`online_seconds`; 1.15 s to 0.80 s at 200,000 events) and a sync after a local write
   (`seconds`; 0.94 s to 0.49 s). The `projection.read` failpoint counts the reads
   (`beadroll-sync`'s `reads::` tests).
+- An ownership round goes on from its merge's projection only while the journal's files are the
+  ones it was made from (roll-lqjj.37). The transaction of roll-lqjj.29 starts from the projection
+  the merge read, which is right because nothing writes under `events/` between the two:
+  `settle_commands` and `drop_pending` touch receipts and pending attempts, which are not the
+  journal, and `settle_pending`'s publish cuts torn segment tails, which the merge cut already,
+  and hashes and pushes. PR #13's review checked each step, and only a comment kept it so: a step
+  added there that wrote a segment or an attempt file would have started the claim's transaction
+  from heads that lack it, which the event would name as its causes, and checked the claim against
+  a state without it, and no test would have noticed, `reads::` counting reads and the sweep
+  judging outcomes. The projection a merge keeps now comes with the journal files it was made
+  from (`Sourced`, `projection_sourced`): each segment's path and identity as
+  `projection::current` read it, and the accepted attempt files by the listing and the identities
+  the locked phase keeps of them (roll-lqjj.30), taken from what that read listed and stat-ed
+  anyway. `Tx::on` takes it and asks `Sourced::into_current` whether they still are the store's
+  files; when any differs (a segment grown, added, replaced or gone, an attempt file added,
+  replaced or gone) it falls back to `Tx::new`, which reads the store again, counted at
+  `projection.read`, so the event builds on the heads that include what was written and the
+  command decides against the state with it. The guard is in `Tx::on`'s signature, which takes a
+  `Sourced` and no bare projection, so a caller cannot go on from a projection unchecked. Only
+  identities are compared (length, times, inode and device, as the memo compares files), without
+  the sums that make a stored projection vouch for a file of its own timestamp tick: every write
+  bead makes to a journal file changes a length (an append) or an inode (a file written whole and
+  renamed into place), and with the store lock held nothing else writes. A rewrite in place of the
+  same length within one tick of the clock, or an inode reused by two replacements within it, goes
+  unseen, as it does for the memo, and bead makes neither. The attempt side is exact for what bead
+  writes because `write_attempt_file` and the merge's writes forget the phase's listing
+  (`Workspace::forget_claims`), and for a file added or removed behind its back because a changed
+  claims directory is listed again. Closing the window by construction was weighed and not done:
+  every write under `events/` (`append_events`, `extend_segment`, `repair_tail`,
+  `write_attempt_file`, `write_atomic` of any path under it) is a function of the store that takes
+  the `Workspace`, so a window nothing can write in would need each of them to ask for a token the
+  round holds from its merge until `Tx::on` takes it, a change to the signatures of three crates
+  for a window with nothing in it, and a token does not see a file written by a caller that has
+  none; the guard compares the files whatever wrote them, and stays. A failpoint,
+  `ownership.before-transaction`, holds a round in the window for a test to write there, in
+  process (`reads::a_segment_written_after_the_merge_is_read_by_the_claims_transaction` and
+  `an_attempt_file_written_after_the_merge_is_read_by_the_claims_transaction` count two reads and
+  look for the written event among the claim's causes; `reads::a_claim_whose_merge_wrote_files_still_reads_the_state_once`
+  keeps what the merge wrote itself from reading again) and through `bead claim`
+  (`protocol::merged_window`), and the sources' own tests write each kind of change after each
+  way a projection is read (`projection::tests::sources`). Each fails with the guard disabled
+  (`into_current` returning the projection unchecked). The check costs, in process, release
+  build, one segment: 26 µs; 50: 0.13 ms; 300: 0.67 ms (about 2 µs a segment, a listing and a
+  `stat`), and under 40 µs more for the attempt files, with 20,000 of them as with none, the
+  locked phase's listing and identities being reused (outside the lock, which `Tx::on` is not for,
+  it lists and stats all 20,000: 54 ms). A claim on a tracker of 20,000 imported issues (one
+  segment), release builds, ten claims each way alternated on a machine shared with three other
+  builds, took 304 ms at best before and 286 ms after, which is noise; the syscalls of one claim,
+  git's included (`strace -f -c`), went from 2,566 to 2,583 of `openat`, `newfstatat`, `fstat`,
+  `getdents64` and `statx`: 6 more `getdents64` (three directory reads), 4 `statx`, 4 `openat`
+  and 3 `fstat`, and no more `newfstatat`.
 - A projection extended finishes only what the batch changed (roll-lqjj.17, Z02). Replay finishes a
   whole journal by deriving each issue's labels from the tags that remain and building the
   parent-child index from every issue's edges; a projection that redid all of that for every batch

@@ -308,6 +308,8 @@ pub(crate) struct Loaded {
     /// The accepted attempt files, listed once the segments were read, each with its identity as
     /// it was read (`None` when it could not be) and the sum of its bytes when they were summed.
     pub(crate) attempts: Vec<(PathBuf, Option<FileKey>, Option<[u8; 16]>)>,
+    /// The listing they are of, which the phase keeps (roll-lqjj.37).
+    pub(crate) listing: Arc<[PathBuf]>,
 }
 
 /// The journal of `segments`, then of the accepted attempt files, listed once the segments are
@@ -335,7 +337,8 @@ pub(crate) fn load_listed(
         }
     }
     let mut attempts = Vec::new();
-    for path in claim_files_afresh(ws)?.iter() {
+    let listing = claim_files_afresh(ws)?;
+    for path in listing.iter() {
         let origin = path.display().to_string();
         let replica = folder_name(path, 2);
         let read = read_keyed(path).ok();
@@ -352,6 +355,7 @@ pub(crate) fn load_listed(
         whole,
         segments: held,
         attempts,
+        listing,
     })
 }
 

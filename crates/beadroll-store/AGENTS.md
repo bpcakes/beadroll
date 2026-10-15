@@ -43,7 +43,11 @@ remote resolution, actor detection, `view`, and the failpoint registry.
 - `src/projection.rs`: `projection` and the state `view` reads (roll-lqjj.2): the store's
   projection, `<store>/projection`, read when the journal's files are the ones it was made from,
   caught up when records were only appended to them, else the journal replayed, and written back
-  when the files held still; `src/projection/file.rs`: its header, sums and what it was made from.
+  when the files held still; `src/projection/file.rs`: its header, sums and what it was made from;
+  `src/projection/sources.rs`: `Sourced`, a projection with the journal files it was made from
+  (`projection_sourced`: each segment's identity as `current` read it, the attempt files by the
+  listing and identities the locked phase keeps), and `Sourced::into_current`, which says whether
+  they are still the store's files (roll-lqjj.37).
 - `src/listing.rs`: `Claims`, the in-memory accepted-attempt names shared by `claim_files`,
   validated against each directory's identity on every call and cleared at lock boundaries.
   A directory change re-lists it; the file identities used by the memo and projection are still
@@ -81,6 +85,14 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   whole but not fsynced, whose every reader checks them against their sums (`docs/REVIEWING.md`
   §2, the durability bullet). A new file that is read without a sum to check, or that is a
   source of anything, is written with `write_atomic`.
+- A caller that goes on from a projection it read earlier in a locked phase takes it with
+  `projection_sourced` and asks `Sourced::into_current` before it does, and reads the store again
+  when that says a file was written since (`Tx::on` does, roll-lqjj.37). Identities suffice
+  because every write bead makes to a journal file changes a length (an append) or an inode (a file
+  renamed into place) or the set of files; an attempt file bead writes goes through
+  `write_attempt_file`, which forgets the phase's listing (`Workspace::forget_claims`), or the
+  check would not see it. The check stats each segment and takes the attempt files' listing and
+  identities from the phase: it costs nothing more per attempt file.
 - An identity taken of an attempt file is kept only while the store lock is held, for the rest of
   that phase, and forgotten when bead writes that file (`Workspace::forget_claims`); a reader
   outside the lock stats each file afresh, after the segments it reads (X13, roll-lqjj.30).

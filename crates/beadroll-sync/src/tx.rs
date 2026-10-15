@@ -12,9 +12,9 @@ use beadroll_core::replay::replay;
 use beadroll_core::state::State;
 use beadroll_git::IoError;
 use beadroll_store::{
-    Actor, Workspace, append_events, attempt_path, capture_where, encode_events, glob_ending,
-    json_text, load_journal, private_dir, private_dirs, projection, read_texts, replica_id, uuid7,
-    write_attempt_file,
+    Actor, Sourced, Workspace, append_events, attempt_path, capture_where, encode_events,
+    glob_ending, json_text, load_journal, private_dir, private_dirs, projection, read_texts,
+    replica_id, uuid7, write_attempt_file,
 };
 
 use crate::error::Error;
@@ -63,12 +63,23 @@ impl<'a> Tx<'a> {
     /// A transaction of `actor` on `ws`: this machine's identity (minted on first use), the store's
     /// journal, and where the caller works.
     pub fn new(ws: &'a Workspace, actor: &Actor) -> Result<Tx<'a>, Error> {
-        Tx::on(ws, actor, projection(ws)?)
+        Tx::from(ws, actor, projection(ws)?)
     }
 
-    /// [`Tx::new`] on `projection`, the store's as it is now, which the caller read under the
-    /// store lock it still holds: a round that merged has it already (roll-lqjj.29).
-    pub fn on(ws: &'a Workspace, actor: &Actor, projection: Projection) -> Result<Tx<'a>, Error> {
+    /// [`Tx::new`] on the store's projection as the caller read it under the store lock it still
+    /// holds: a round that merged has it already (roll-lqjj.29). That is the store's as it is now
+    /// while nothing has written under `events/` since, which the projection's sources say: when
+    /// the journal's files are no longer the ones it was made from, the store is read again, as
+    /// `new` does (roll-lqjj.37).
+    pub fn on(ws: &'a Workspace, actor: &Actor, read: Sourced) -> Result<Tx<'a>, Error> {
+        match read.into_current(ws) {
+            Some(projection) => Tx::from(ws, actor, projection),
+            None => Tx::new(ws, actor),
+        }
+    }
+
+    /// A transaction on `projection`, the store's as it is now.
+    fn from(ws: &'a Workspace, actor: &Actor, projection: Projection) -> Result<Tx<'a>, Error> {
         let replica = replica_id(&ws.settings, true)?.unwrap_or_default();
         let place = capture_where(ws)?;
         Ok(Tx {
