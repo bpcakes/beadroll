@@ -35,6 +35,11 @@ impl<'s> Dependents<'s> {
     pub(crate) fn found_in(&self, state: &State) -> bool {
         std::ptr::eq(self.state, state)
     }
+
+    /// How many distinct issues were asked about.
+    pub(crate) fn asked(&self) -> usize {
+        self.asked.len()
+    }
 }
 
 impl State {

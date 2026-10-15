@@ -359,10 +359,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `bead show` asks of its one issue, which no longer builds the list either), and the list itself,
   which `replay::readiness` checks on deep chains, shared and second parents, merged parent cycles,
   done and disputed ancestors and targets, epics beside plain parents, claims, scopes and 80 random
-  graphs, and `commands::shared_readiness` across the four commands. The lists are still built
-  where they are printed: `bead blocked` lists each held issue's blockers, whose output is the
-  lists, and a tracker shown one issue at a time still walks each one's ancestry. `cargo xtask
-  timing --ready N` measures the four ways on a chain of N issues held by its root's prerequisite,
+  graphs, and `commands::shared_readiness` across the four commands. The lists were still built
+  where they are printed then, and the details of several issues still judged `blocked` issue by
+  issue; both are made once for all of them since (roll-lqjj.24, below). `cargo xtask timing
+  --ready N` measured four ways on a chain of N issues held by its root's prerequisite,
   the same chain with nothing waiting, and a lattice of rows of four each the child of two in the
   row above, replay left out: judged for every issue at once, the held chain takes 0.9, 1.8, 4.3
   and 11.2 ms at 2,000, 4,000, 8,000 and 16,000 issues, against 0.43, 1.74, 7.12 and 33.3 s by the
@@ -402,9 +402,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   and an issue it was not made for finds its own. `tests/core/replay/dependents.rs` keeps each
   detail so made equal to the issue's detail alone and its dependents to what every detail found
   before, member for member, and `commands::shared_dependents` each command's answer to `bead show`
-  of each issue alone. `blocked` in each detail is still judged issue by issue
-  (`State::is_blocked`, roll-lqjj.19), and on a graph without parents that reads the issue's own
-  edges alone. `cargo xtask timing --details N` measures it on a sparse graph without parent-child
+  of each issue alone. `blocked` in each detail was judged issue by issue then
+  (`State::is_blocked`, roll-lqjj.19; once for all of them since, roll-lqjj.24, below), which on a
+  graph without parents reads the issue's own edges alone. `cargo xtask timing --details N` measures it on a sparse graph without parent-child
   edges — issue n waits for issue n/2, and every third is related to the one before as well —
   replay left out: all the details, their dependents found once, take 20, 49 and 95 ms at 4,000,
   8,000 and 16,000 issues, against 0.49, 1.92 and 8.87 s with each detail finding its own; the
@@ -416,6 +416,57 @@ These were decided deliberately. Report problems *with* them, not their existenc
   printing the same bytes, and of one issue 34 and 69 ms before and after alike, which is reading
   the state. The fastest of three runs each, 2026-10-15, Rust 1.99.0, 64 cores; the end-to-end
   figures the best of five, the commands reading the store's projection.
+- Every held issue's blockers are listed once for all of them, and the details of several issues
+  judge `blocked` once for all of them (roll-lqjj.24, X01, X02, X12). Z04 judged readiness once
+  but left two askers walking ancestors: `bead blocked` listed each held issue's blockers with
+  `State::open_blockers`, and `bead show`, `update`, `claim` and `takeover` asked
+  `State::is_blocked` of each detail's issue, both a walk up the issue's ancestors, so a chain of
+  N issues under one held root cost N²/2 steps in each (Z04's and Z05's probes had no parents, or
+  no lists, and did not see it). `State::blocker_lists` makes every list in one pass: the issues
+  that are not done are grouped as they reach each other up their parents through issues that are
+  not done (Tarjan's components without recursion, a merged parent cycle being one group), each
+  group found after every group above it, and what an issue inherits is a set of direct blockers
+  kept once: a group that adds nothing of its own to the one set above it shares that set, and a
+  union that equals one of the sets above is that set, so a chain's N lists are one set and a
+  lattice's grow only by what its rows add. An issue that is done is not passed through, as in
+  `open_blockers`: it lists its own direct blockers and what each parent that is not done
+  inherits. An epic adds its unfinished children, which nothing beneath it inherits.
+  `BlockerLists::of` gives the list, sorted by key, equal for every issue to `open_blockers`
+  (`replay::readiness` checks it on every issue of the chain, a lattice that gathers distinct
+  gates, merged cycles, done and disputed ancestors and targets, epics and 80 random graphs), and
+  `bead blocked` prints it for the issues whose list is not empty, which are the issues
+  `State::readiness` holds; `open_blockers` stays the reference for one issue. The details of
+  several issues share what they share in a batch type, `Details` (`State::details_of`): the
+  dependents `State::dependents_of` finds (Z05) and, when several distinct issues are asked
+  about, one `State::readiness` for their `blocked`; one issue's detail keeps walking its own
+  ancestors, which costs less than judging every issue, as its dependents are found by comparing
+  edges rather than hashing. `State::detail`, `detail_with`, `dependents_of`, `readiness`,
+  `open_blockers` and `is_blocked` keep their signatures and answers for pancake-studio and
+  everyone else: `detail_with` judges its issue alone, and a caller that shows several issues makes
+  `details_of` and asks `Details::of`. Readiness was not put inside `Dependents`, as the
+  prototype did, because that type's name and its `detail_with` argument say they are the
+  dependents. The sort `bead list` and `bead ready` list by (`sort_for_listing`) compares the
+  creation times it holds as borrowed text rather than copying one per comparison. What is
+  printed, its order, the order of the details and the errors are unchanged: `bead blocked` and
+  `bead show` of every issue of the stores below print the same bytes before and after, as text
+  and as JSON. `replay::readiness`, `replay::dependents` and `commands::shared_readiness` keep the
+  answers; `cargo xtask timing --ready N` measures the lists made one issue at a time and all at
+  once, on the chain, the lattice and a lattice whose first sixteen rows wait for gates of their
+  own, so that every issue below lists up to 64 of them, replay left out: the held chain's lists
+  take 0.5, 1.1, 2.4 and 7.0 ms at 2,000, 4,000, 8,000 and 16,000 issues against 0.45, 1.83, 8.26
+  and 46.2 s one by one; the lattice's 0.6, 1.3, 6.3 and 11 ms against 0.65, 2.73, 20.6 and 85.3 s;
+  the gated lattice's 4.1, 8.9, 23 and 43 ms (121,600, 249,600, 505,600 and 1,017,600 entries
+  listed) against 0.63, 2.66, 18.8 and 86.4 s; and the `blocked` of every detail, judged for every
+  issue in 1.0, 2.5, 6.0 and 15.8 ms on the chain, takes 0.25, 1.04, 4.51 and 28.3 s asked of one
+  issue at a time (the lattices 14 s at 16,000). End to end on scratch stores of imported issues,
+  `bead blocked` and `bead show` of every issue, before and after: a held chain of 4,000, 2.13 s
+  and 1.52 s become 0.068 s and 0.152 s; of 16,000, 39.2 s and 27.1 s become 0.28 s and 0.62 s; the
+  gated lattice of 4,000, 3.63 s and 0.77 s become 0.139 s and 0.209 s; of 16,000, 81.3 s and
+  16.9 s become 0.45 s and 0.70 s; what remains is the output (7.8 MB of text for the last
+  `blocked`) and reading the state. Sorting 20,000 issues for a listing takes 0.95 ms where it
+  took 2.1 ms. The fastest of three runs each (of forty for the sort), 2026-10-15, Rust 1.99.0, on
+  a 64-core machine ten other builds and measurements shared, so the absolute figures are inflated
+  and each pair was taken back to back.
 - What roll-lqjj.15 to .20 made grow with its input is guarded by counting its work, and by time
   only where a count cannot see it (roll-lqjj.34, X15). Their tests compare answers, which a
   quadratic implementation gives as well, so beadroll-core counts the work where every way of doing

@@ -1,6 +1,7 @@
 //! Issue presentation: objects in stable field order and the one-line list format.
 
 mod dependents;
+mod details;
 
 use crate::event::{EXPORT_FIELDS, Field};
 use crate::json::{Object, Value};
@@ -9,6 +10,7 @@ use crate::state::{Comment, Issue, State};
 use crate::text::str_of;
 
 pub use dependents::Dependents;
+pub use details::Details;
 
 /// The status icons `list` prints.
 pub fn icon(status: &str) -> &'static str {
@@ -91,17 +93,23 @@ impl State {
     }
 
     /// Full issue details. The CLI adds the git-dependent `merged` field after `closed_on`. The
-    /// issues that depend on it are found by reading every issue's edges, once; a reader that
-    /// shows several issues finds them for all of them at once with [`State::dependents_of`] and
-    /// asks [`State::detail_with`].
+    /// issues that depend on it are found by reading every issue's edges, once, and whether
+    /// anything holds it by walking its ancestors; a reader that shows several issues makes what
+    /// their details share once for all of them with [`State::details_of`].
     pub fn detail(&self, issue: &Issue) -> Object {
         self.detail_with(issue, &self.dependents_of([issue]))
     }
 
     /// Full issue details as [`State::detail`] gives them, the issues that depend on it taken from
     /// `dependents` (roll-lqjj.20): found there when they were found in this state and it was asked
-    /// about, and for it alone otherwise.
+    /// about, and for it alone otherwise. Whether anything holds it is judged for it alone.
     pub fn detail_with(&self, issue: &Issue, dependents: &Dependents<'_>) -> Object {
+        self.detail_judged(issue, dependents, self.is_blocked(issue))
+    }
+
+    /// Full issue details as [`State::detail_with`] gives them, `blocked` being whether anything
+    /// holds the issue, as [`State::is_blocked`] answers.
+    fn detail_judged(&self, issue: &Issue, dependents: &Dependents<'_>, blocked: bool) -> Object {
         let mut out = Object::new();
         out.insert("id".into(), Value::from(issue.key()));
         for name in EXPORT_FIELDS {
@@ -143,7 +151,7 @@ impl State {
             .iter()
             .map(|comment| Value::from(shown_comment(comment)));
         out.insert("comments".into(), comments.collect::<Vec<_>>().into());
-        out.insert("blocked".into(), Value::from(self.is_blocked(issue)));
+        out.insert("blocked".into(), Value::from(blocked));
         out.insert("origin".into(), Value::from(issue.origin()));
         if let Some(place) = issue.where_().filter(|place| place.truthy()) {
             out.insert("where".into(), place.clone());

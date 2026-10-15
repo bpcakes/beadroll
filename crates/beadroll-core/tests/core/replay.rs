@@ -2,6 +2,7 @@
 //! validation and cycles.
 
 mod dependents;
+mod listing_order;
 mod port_alignment;
 mod readiness;
 mod replay_audit_bugs;

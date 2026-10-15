@@ -10,26 +10,23 @@ use beadroll_store::{view, view_outline};
 
 use super::{Context, Failure, Line, Outcome, Tone, need_tracker, row};
 
-/// Open issues something holds back, by key, each with the issues blocking it: which they are is
-/// judged once for every issue (`State::readiness`, roll-lqjj.19), and the blockers are then listed
-/// for those alone.
+/// Open issues something holds back, by key, each with the issues blocking it: every issue's
+/// blockers are listed once for all of them (`State::blocker_lists`, roll-lqjj.24), so that a deep
+/// tree is not walked up once for each issue in it.
 pub(crate) fn blocked(ctx: &Context<'_>) -> Result<Outcome, Failure> {
     let st = view_outline(ctx.ws)?;
     need_tracker(&st)?;
-    let held = st.readiness();
-    let mut items: Vec<&Issue> = st
-        .issues()
-        .filter(|i| !DONE.contains(&i.status()) && held.is_blocked(i))
+    let lists = st.blocker_lists();
+    let mut items: Vec<(&Issue, Vec<&Issue>)> = (st.issues())
+        .filter(|i| !DONE.contains(&i.status()))
+        .map(|i| (i, lists.of(i)))
+        .filter(|(_, blockers)| !blockers.is_empty())
         .collect();
-    items.sort_by(|a, b| a.key().cmp(b.key()));
+    items.sort_by(|(a, _), (b, _)| a.key().cmp(b.key()));
     let mut result = Vec::new();
     let mut lines: Vec<Line> = Vec::new();
-    for issue in items {
-        let blockers: Vec<String> = st
-            .open_blockers(issue)
-            .iter()
-            .map(|b| b.key().to_owned())
-            .collect();
+    for (issue, blockers) in items {
+        let blockers: Vec<String> = blockers.iter().map(|b| b.key().to_owned()).collect();
         lines.push(
             row(&st, issue)
                 .with(Tone::Plain, "  ⟵ ")
