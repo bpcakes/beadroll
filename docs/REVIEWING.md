@@ -257,6 +257,31 @@ These were decided deliberately. Report problems *with* them, not their existenc
   with a damaged one, each makes it as every command does, replaying the journal and writing the
   projection back, so the first `machines` costs a replay it did not before (2.16 to 3.76 s at
   200,000, `info` 6.20 to 3.91 s), and the first `log` reads the journal twice (5.02 to 6.25 s).
+- A write or a sync reads the store's state where it needs it, and no more (roll-lqjj.29, X06): a
+  write once for its transaction, a sync once a round, by its merge, and `bead sync` once more when
+  something comes in. An online write read it four or five times: for its transaction, for
+  `update`'s answer, to count the keys renamed before the sync that publishes it, for the merge's
+  check of this machine's own chain, and for the sync's report, which that sync threw away. A
+  write's sync (`publish_soon`) now makes no report and counts nothing. A merge keeps the
+  projection it reads for its check (`Link::merged`): the report of a sync that goes through is
+  made of the state its last merge left, under the lock and before the publish rather than after
+  it, which differs only by what another process writes in between, and an ownership round's
+  transaction starts from it (`Tx::on`), since nothing between the merge and the transaction, under
+  the same lock, writes the journal. A sync that reports (`bead sync`, `init` joining a tracker)
+  counts the renames before it from a projection its first merge reads once the torn tails are cut
+  and before it merges, recorded at once so that a merge that fails later keeps the count, and goes
+  on with that projection when the merge writes no journal file (each of its journal writes marks
+  the merge: `write_journal`, `wrote`). `update` answers from the state its transaction leaves
+  (`writing_state`), this machine's pending attempts listed on it as `view` lists them, unless it
+  publishes (a close of its own claim), whose merge may bring in more: then from the store. A
+  command that reads the state while it emits borrows it beside an `Emitter` (`Tx::lend`) and
+  reads it as it was before, as the copy it took did; the next state asked for has every event
+  emitted, a state replayed being replayed again once more are. At 20,000 imported issues
+  (`scripts/setup.sh` of review 16, release builds, best of three, a machine shared with ten
+  other builds), the reads and seconds of an online comment, update, close, create, `dep add` and
+  claim went from 4, 5, 4, 4, 4 and 3 to 2 each (1.05, 1.39, 1.06, 1.05, 1.24 and 0.97 s to 0.72,
+  0.75, 0.78, 0.79, 0.81 and 0.72 s), and a sync that brings nothing from 3 to 1 (0.60 s to
+  0.27 s). The `projection.read` failpoint counts them (`beadroll-sync`'s `reads::` tests).
 - A projection extended finishes only what the batch changed (roll-lqjj.17, Z02). Replay finishes a
   whole journal by deriving each issue's labels from the tags that remain and building the
   parent-child index from every issue's edges; a projection that redid all of that for every batch

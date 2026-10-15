@@ -349,7 +349,13 @@ it, and the file is committed again.
   that depend on every issue they show in one pass for all of them, so showing
   all 8,000 issues of a sparse tracker takes 0.28 s rather than 3.26 s; one
   issue's detail still reads every issue's dependencies once (roll-lqjj.20;
-  `cargo xtask timing --details N`).
+  `cargo xtask timing --details N`). A write published at once reads the
+  state twice, for the write and for the merge of the sync that publishes it,
+  a claim once a round, and `bead sync` once a round when nothing comes in and
+  twice when something does, so that at 20,000 imported issues an online
+  comment takes 0.72 s rather than 1.05 s, an update 0.75 s rather than
+  1.39 s and a sync that brings nothing 0.27 s rather than 0.60 s (roll-lqjj.29;
+  `cargo xtask timing --sync N`, `online_seconds`).
   `bead info` and `bead machines` answer from the projection as `list` does,
   0.23 s at 200,000 events where they loaded the journal in 3.30 and 2.40 s;
   `bead log` still reads the whole journal for its events and their order,
