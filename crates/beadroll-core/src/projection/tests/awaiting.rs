@@ -8,7 +8,7 @@
 use crate::id::EventId;
 use crate::json::{Format, Object, Value, write};
 use crate::replay::replay;
-use crate::state::{Rename, State};
+use crate::state::{Rename, State, asked};
 use crate::time::event_time;
 
 use super::super::{Extended, Record, project};
@@ -327,6 +327,91 @@ fn a_copy_renamed_for_a_key_two_machines_made_takes_a_key_nothing_waits_for() {
     assert_eq!(waiting(&state, 3), [on("pr-k.3", Some("related"), &[])]);
 }
 
+/// The asks of [`State::claims_key`] made while `make` makes a state, each as its key, whether it is
+/// claimed, by a dependency that waits alone, and while an entry taken out holds its place. Every
+/// ask answered as collecting every key would, or the hook that keeps them fails.
+fn asks_making(make: impl FnOnce() -> State) -> Vec<(String, bool, bool, bool)> {
+    asked::taken();
+    make();
+    (asked::taken().into_iter())
+        .map(|ask| (ask.key, ask.claimed, ask.awaited, ask.mid_batch))
+        .collect()
+}
+
+#[test]
+fn a_renamed_copy_asks_of_each_key_it_tries_whether_an_issue_has_it_or_an_import_waits_for_it() {
+    let v = creating(
+        "pr-v",
+        vec![
+            on("pr-k.1", Some("blocks"), &[]),
+            on("pr-k.2", Some("blocks"), &[]),
+            on("pr-k.3", Some("related"), &[]),
+        ],
+    );
+    let copy = at(6, THERE, &[2], "create", 6, creating("pr-k.1", vec![]));
+    let mine = at(5, HERE, &[4], "create", 5, creating("pr-k.1", vec![]));
+    let removal = at(4, HERE, &[3], "dep_remove", 3, by_key("pr-k.2", None));
+    let made = |rest: &[Record]| {
+        let mut all = base();
+        all.extend_from_slice(rest);
+        let replayed = asks_making(|| replay(journal(&all)).unwrap());
+        let in_one_batch =
+            asks_making(
+                || match project(journal(&base())).unwrap().extend(rest.to_vec()) {
+                    Ok(Extended::Applied(extended)) => extended.state().clone(),
+                    _ => panic!("a projection takes them in one batch"),
+                },
+            );
+        assert_eq!(replayed, in_one_batch);
+        replayed
+    };
+    let ask = |key: &str, claimed, awaited| (key.to_owned(), claimed, awaited, true);
+    // The copy counts up from its own key. pr-k.1's issue took out the entry that waited for it,
+    // and its list is made whole once the batch is applied: the copy asks while it holds its
+    // place, and finds the two keys still waited for claimed though no issue has them.
+    let creates = at(4, HERE, &[3], "create", 4, creating("pr-k.1", vec![]));
+    let rest = [
+        at(3, HERE, &[2], "create", 3, v.clone()),
+        creates,
+        copy.clone(),
+    ];
+    assert_eq!(
+        made(&rest),
+        [
+            ask("pr-k.1", true, false),
+            ask("pr-k.2", true, true),
+            ask("pr-k.3", true, true),
+            ask("pr-k.4", false, false)
+        ]
+    );
+    // Taken back by key in the same batch, pr-k.2 is no longer waited for: the copy takes it.
+    let rest = [
+        at(3, HERE, &[2], "create", 3, v),
+        removal,
+        mine,
+        copy.clone(),
+    ];
+    assert_eq!(
+        made(&rest),
+        [ask("pr-k.1", true, false), ask("pr-k.2", false, false)]
+    );
+    // With nothing waiting, an issue's key alone is claimed.
+    let rest = [
+        at(3, HERE, &[2], "create", 3, creating("pr-k.2", vec![])),
+        at(4, HERE, &[3], "create", 4, creating("pr-k.1", vec![])),
+        copy,
+    ];
+    let settled = |key: &str, claimed| (key.to_owned(), claimed, false, false);
+    assert_eq!(
+        made(&rest),
+        [
+            settled("pr-k.1", true),
+            settled("pr-k.2", true),
+            settled("pr-k.3", false)
+        ]
+    );
+}
+
 #[test]
 fn a_removal_by_key_takes_back_what_waits_of_its_type_and_then_the_edge_it_became() {
     let x = creating(
@@ -631,6 +716,11 @@ struct Exercised {
     /// Copies renamed, and batches a projection took rather than replaying.
     renames: usize,
     applied: usize,
+    /// Keys asked of while copies were renamed, those claimed by a dependency that waits alone, and
+    /// those asked while an entry taken out of a list held its place.
+    asked: usize,
+    awaited: usize,
+    mid_batch: usize,
 }
 
 impl Exercised {
@@ -653,6 +743,31 @@ impl Exercised {
                 .count();
         }
         self.renames += state.renames().len();
+    }
+
+    /// Counts the asks made since the last were taken.
+    fn asks(&mut self) {
+        for ask in asked::taken() {
+            self.asked += 1;
+            self.awaited += usize::from(ask.awaited);
+            self.mid_batch += usize::from(ask.mid_batch);
+        }
+    }
+}
+
+/// Fails unless the finished `state` answers of every key it holds or names, of every key the
+/// histories make or name, and of the keys their renames tried, whether it claims it as collecting
+/// every key does.
+fn claims_as_collected(state: &State) {
+    let collected = state.claimed_keys();
+    let mut keys: Vec<String> = collected.iter().map(|key| (*key).to_owned()).collect();
+    keys.extend((0..NAMED + 5).map(key));
+    for rename in state.renames() {
+        keys.extend([rename.from.clone(), format!("{}0", rename.from)]);
+    }
+    for key in &keys {
+        let claimed = state.claims_key(key);
+        assert_eq!(claimed, collected.contains(key.as_str()), "{key}");
     }
 }
 
@@ -697,6 +812,9 @@ fn histories_heavy_in_imports_that_wait_agree_every_way_and_with_replay_before_t
         }
         let everything: Vec<usize> = (0..world.events.len()).collect();
         let state = replay(load(&world, &everything)).unwrap();
+        exercised.asks();
+        claims_as_collected(&state);
+        asked::taken();
         digest = fnv(digest, rendered(&state).as_bytes());
         exercised.count(&state);
     }
@@ -707,6 +825,12 @@ fn histories_heavy_in_imports_that_wait_agree_every_way_and_with_replay_before_t
             && seen.own > 50
             && seen.renames > 500
             && seen.applied > 500,
+        "{exercised:?}"
+    );
+    // Every rename asked as collecting every key would, in the batch an entry was taken out in and
+    // of keys only an import waits for among them (`asked`, which fails otherwise).
+    assert!(
+        seen.asked > seen.renames && seen.awaited > 100 && seen.mid_batch > 500,
         "{exercised:?}"
     );
     assert_eq!(digest, BEFORE_THE_INDEX, "{digest:#x}");

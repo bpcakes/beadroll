@@ -52,6 +52,7 @@ usage: cargo xtask <command>
   timing --extend N [--label NAME] [--out FILE]
   timing --ready N [--label NAME] [--out FILE]
   timing --details N [--label NAME] [--out FILE]
+  timing --renames N [--label NAME] [--out FILE]
   timing --load DIR [--no-replay]
       Run COMMAND and append what it took, one JSON line, to FILE (default
       target/timing.jsonl); or replay a parsed journal of N valid events in-process, the best of
@@ -89,7 +90,11 @@ usage: cargo xtask <command>
       --details N, every issue of N on a sparse graph without parents shown in full in this
       process, the issues that depend on each found once for all of them and for each alone, the
       reverse lookup alone both ways, and for one issue its detail and the lookup both ways as a
-      control, the fastest of three runs each. Timings are evidence, never a gate.
+      control, the fastest of three runs each; --renames N, replay in this process of two machines
+      each creating the same N keys, so that N copies are renamed, against the control of 2N
+      creates renamed by nobody, and each again with the first machine's issues importing a
+      dependency on a key that never comes, the fastest of three runs each. Timings are evidence,
+      never a gate.
 
   bead ARG...
       Run bead with ARGs in this process, whose heap is counted, and say on standard error the

@@ -1,5 +1,7 @@
 //! Replayed state: issues in replay order, their registers, tags and claims, and event ancestry.
 
+#[cfg(test)]
+pub(crate) mod asked;
 mod awaiting;
 mod claim;
 mod issue;
@@ -273,13 +275,23 @@ impl State {
 
     /// The key assigned to duplicate issue `uid` when `key` is taken.
     pub fn free_key(&self, key: &str, uid: EventId) -> Result<String, KeySpace> {
-        let taken = self.claimed_keys();
         key::free_key(key, &uid.to_string(), &|candidate| {
-            taken.contains(candidate)
+            self.claims_key(candidate)
         })
         .ok_or_else(|| KeySpace {
             key: key.to_owned(),
         })
+    }
+
+    /// Whether [`State::claimed_keys`] holds `key`: an issue's, or one an imported dependency still
+    /// waits for, asked of the key alone. Replay asks it of every key it tries for a copy two
+    /// machines minted alike, which collecting every key for each copy made cost the whole tracker
+    /// a copy (X03 in `docs/FINDINGS.md`).
+    pub(crate) fn claims_key(&self, key: &str) -> bool {
+        let claimed = self.by_key.contains_key(key) || self.awaiting.names(key);
+        #[cfg(test)]
+        asked::agrees(self, key, claimed);
+        claimed
     }
 
     /// A key held by neither an issue nor an imported dependency. Children count upward from
