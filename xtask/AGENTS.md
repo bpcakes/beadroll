@@ -32,7 +32,10 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   readiness judged on N issues in a chain held by its root's prerequisite, the same chain free, and
   a lattice whose rows share their ancestors, for every issue at once (the analysis alone, and
   `State::ready` with its sort), issue by issue, and by the complete blocker lists every reader
-  built before (roll-lqjj.19);
+  built before (roll-lqjj.19); `timing/details.rs`: `timing --details N`, every issue of N on a
+  sparse graph without parents shown in full, the issues that depend on each found once for all of
+  them and for each alone, and the reverse lookup alone both ways, with one issue's detail and
+  lookup both ways as a control (roll-lqjj.20);
   `timing/world.rs`: the scratch
   store, checkout and remote they run `bead` on; `timing/history.rs`: the histories it replays
   (`--ownership`: heavy in claims, takeovers and releases in attempt files; `--churn`: a thousand
@@ -89,6 +92,8 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
 - `cargo run --release --package xtask -- timing --ready 4000`: readiness on a held chain, a free
   chain and a lattice of 4,000 issues, judged for every issue at once, issue by issue, and by the
   complete blocker lists
+- `cargo run --release --package xtask -- timing --details 8000`: every issue of 8,000 shown in
+  full, its dependents found once for all of them and for each alone, and one issue's as a control
 - `cargo test -p xtask`
 - `python3 xtask/python/printable_table.py > crates/beadroll-core/src/text/printable.rs`, with
   CPython 3.14.7 (Unicode 16.0.0), the versions the table was made with; do not change the

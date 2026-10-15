@@ -28,7 +28,7 @@ const RUNS: usize = 3;
 const WIDTH: usize = 4;
 
 /// The machine whose journal the probe's events are in.
-const MACHINE: &str = "a";
+pub(super) const MACHINE: &str = "a";
 
 /// How the issues are linked.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -79,7 +79,7 @@ impl Shape {
 }
 
 /// The key of issue `n`.
-fn key(n: usize) -> String {
+pub(super) fn key(n: usize) -> String {
     format!("ex-{n}")
 }
 
@@ -96,7 +96,7 @@ fn id(n: u64) -> String {
 
 /// An event as `Tx.emit` writes it: numbered `n`, doing `op` on itself, built on the event before
 /// it, as the events of one machine's journal are.
-fn event(n: u64, op: &str, data: Object) -> Value {
+pub(super) fn event(n: u64, op: &str, data: Object) -> Value {
     let mut actor = Object::new();
     actor.insert("agent".into(), Value::from("timing"));
     actor.insert("thread".into(), Value::from("a"));
@@ -118,7 +118,7 @@ fn event(n: u64, op: &str, data: Object) -> Value {
 
 /// The create of issue `n`, imported, with a dependency of each type on each key in `linked`,
 /// which become edges at once since every key named has its issue.
-fn create(n: usize, linked: &[(String, &str)]) -> Object {
+pub(super) fn create(n: usize, linked: &[(String, &str)]) -> Object {
     let mut fields = Object::new();
     fields.insert("title".into(), Value::from(format!("issue {n}")));
     let mut data = Object::new();
@@ -153,7 +153,7 @@ fn state(shape: Shape, issues: usize) -> Result<State, Failure> {
 }
 
 /// The fastest of [`RUNS`] runs of `ask`, and its answer.
-fn fastest(ask: impl Fn() -> usize) -> (f64, usize) {
+pub(super) fn fastest(ask: impl Fn() -> usize) -> (f64, usize) {
     let mut best = f64::INFINITY;
     let mut answer = 0;
     for _ in 0..RUNS {
