@@ -593,8 +593,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   re-import scanning the batch — each fail their guard, with 16 to 64 times the work where the code
   on main does 8. A count sees only work that passes the place it is kept: a lookup turned back into
   a scan of a vector reads nothing counted. Those are timed: `xtask`'s growth tests time planning an
-  import, its dry run, a re-import, replaying imports that wait for keys and a projection taking
-  ids that sort before every id it holds, the fastest of five runs at a size and at eight times it,
+  import, its dry run, a re-import, replaying imports that wait for keys, replaying copies two
+  machines minted alike and a projection taking ids that sort before every id it holds, the fastest of five runs at a size and at eight times it,
   and fail when the larger takes more than 24 times as long, about three times what linear work
   takes and well under the 64 of quadratic. They are the one exception to "timings never gate"
   (`xtask/AGENTS.md`): ignored by every other run, so that no pull request or `./check.sh` waits on a
@@ -618,8 +618,13 @@ These were decided deliberately. Report problems *with* them, not their existenc
   details 32,235 and 2,007,985; renaming 94,125 and 6,003,000 keys, or 156,875 and 10,005,000 with
   imports waiting; the sparse graph, which has no parent, was linear before). The lookup in
   `claims_key` itself is a map and a range; turned back into a scan of the issues it reads nothing
-  counted, and only a timing would see it, which the nightly does not yet take (the growth tests
-  above time none of X01 to X03).
+  counted, so the nightly times it as well (`timing::growth`, roll-lqjj.38): replaying 2,000 and
+  16,000 copies, without and with imports waiting for keys that never come, takes 10.0 to 10.4
+  times as long on main, the fastest of five (release, a shared machine, 2026-10-15), and fails
+  above 24. The version that collected every claimed key for each copy, as before roll-lqjj.25,
+  took 70.3 times as long (0.162 s and 11.4 s); `claims_key` asking `by_key` by a scan of the
+  issues 54.2 (0.027 s and 1.44 s); asking the waiting index by a scan of the issues' lists 39.8
+  (0.018 s and 0.70 s) and, with imports waiting, 150 (0.092 s and 13.8 s).
 - No history boundary (roll-lqjj.3, step 4 of epic roll-lqjj; the maintainer's decision of
   2026-10-12, on the evidence in the port plan's Appendix A, "roll-lqjj.3", which git keeps, §1): a
   machine's work merges by itself however old it is, as every merge has so far. The alternatives

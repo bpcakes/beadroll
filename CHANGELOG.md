@@ -14,7 +14,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   the same keys, at 250 and at 2,000 issues the code reads 8.0 to 8.1 times as much, and read 62
   to 67 times as much before roll-lqjj.24 and .25. `State::claims_key` and `State::claimed_keys`
   count the keys they read, in this crate's tests alone; no build of bead carries the counting,
-  and nothing bead does or prints changes.
+  and nothing bead does or prints changes. A renamed copy's key is also timed, for the lookup a
+  count cannot see turned back into a scan: `xtask`'s growth tests, run nightly in release, replay
+  2,000 and 16,000 copies two machines minted alike and fail above 24 times as long (10 on main;
+  70 where every claimed key is collected for each copy, 54 and 40 where a lookup is a scan).
 
 - A tracker whose journal holds anything `bead info` reports under `integrity` (an event of an
   operation a newer bead writes, as in a rolling upgrade, an id found with two contents, a broken
