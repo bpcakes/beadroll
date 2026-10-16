@@ -13,7 +13,7 @@ use beadroll_core::json::{Object, Value};
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::str_of;
 use beadroll_store::{Label, view_outline};
-use beadroll_sync::{publish_soon, writing};
+use beadroll_sync::{publish_soon, writing_spent};
 
 use super::{Context, Failure, Line, Outcome, Tone, ended_by, need_tracker, resolve_arg, text};
 
@@ -55,7 +55,7 @@ pub(crate) fn transition(
         "reopen" => ("Reopened", "open", "open"),
         _ => ("Deleted", "tombstone", "deleted"),
     };
-    let (mut result, ended, named, unchanged, plan) = writing(ctx.ws, ctx.actor, |tx| {
+    let written = writing_spent(ctx.ws, ctx.actor, |tx| {
         need_tracker(tx.state()?)?;
         let me = ctx.actor.label(&tx.replica);
         let st = tx.state()?;
@@ -119,6 +119,10 @@ pub(crate) fn transition(
         } = decided;
         Ok::<_, Failure>((result, ended, named, unchanged, plan))
     })?;
+    let ((mut result, ended, named, unchanged, plan), spent) = written;
+    // an ended claim is published here, and its answer reads the store again: the transaction is
+    // let go of before either, as the command line lets go of it before a publish (roll-lqjj.42)
+    let spent = (!ended).then_some(spent);
     let warning = if ended {
         publish_soon(ctx.ws, args.offline, args.remote.as_deref())
     } else {
@@ -142,7 +146,11 @@ pub(crate) fn transition(
         lines.insert(result.len(), Line::from(left_as_they_are(plan.left.len())));
     }
     let result = Value::Array(result.into_iter().map(Value::from).collect());
-    Ok(Outcome::new(result, lines))
+    let outcome = Outcome::new(result, lines);
+    Ok(match spent {
+        Some(spent) => outcome.wrote_in(spent),
+        None => outcome,
+    })
 }
 
 /// What a transition's events name and leave: the claim each issue's event names (it ends exactly

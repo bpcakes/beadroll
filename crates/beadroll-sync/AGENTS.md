@@ -10,13 +10,15 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
 ## Key entrypoints
 
 - `src/tx.rs`: `Tx` (`emit`, `state`, `lend`, `on`), `Emitter`, `locked`, `writing`,
-  `writing_state`, `forget_receipts`, `drop_pending`. A `Tx` starts from the store's projection
+  `writing_state`, `writing_spent` (with `Spent`), `forget_receipts`, `drop_pending`. A `Tx` starts from the store's projection
   (`on`: one the caller read under the lock it holds, with the journal files it was made from
   (`Sourced`); read again, as `new` does, when a file was written since, roll-lqjj.37) and applies
   each event it emits to it; one
   the projection cannot take (a takeover) has the journal replayed instead. `lend` lends the
   state beside an `Emitter`, for a command that reads it while it emits, without a copy
-  (roll-lqjj.29); `writing_state` hands back the state a write leaves.
+  (roll-lqjj.29); `writing_state` hands back the state a write leaves, and `writing_spent` what
+  its transaction held (`Spent`), for a caller whose process ends with its command to keep
+  (roll-lqjj.42).
 - `src/link.rs`: `Link` (`unpublished`, `maintain`, `rebuild`) and the gits it keeps in
   `sync.git` (`crates/beadroll-git/AGENTS.md`); `src/link/fetch.rs`: `Link::fetch`, which tries
   again a fetch that lost to another process's fetch of the store; `src/link/asked.rs`: `Link::publishes`, the
@@ -56,7 +58,8 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
 
 - A transaction, which holds the store's whole projection, is let go of after the store lock is,
   never inside it: `writing` and each round of `coordinated` keep theirs outside `locked` and drop
-  it when it returns (roll-lqjj.32).
+  it when it returns (roll-lqjj.32). `writing_spent` hands what it held to its caller instead, who
+  keeps it or frees it; this crate never leaks it (roll-lqjj.42).
 - Up to 24 rounds per command, with a uniformly sampled pause from zero up to
   `min(0.1 × 2^(attempt − 1), 2)` seconds after a failed round, outside the store lock
   (roll-lqjj.7; `docs/REVIEWING.md` §2).

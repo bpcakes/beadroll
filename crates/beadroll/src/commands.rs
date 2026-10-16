@@ -6,6 +6,8 @@ mod comments;
 mod create;
 mod dep;
 mod export;
+#[cfg(test)]
+mod held;
 mod history;
 mod import;
 mod info;
@@ -33,7 +35,7 @@ use beadroll_store::{
     Actor, Label, ViewError, Workspace, normalize_path, pending_listed, read_texts, view,
     view_outline,
 };
-use beadroll_sync::{Emitter, unpublished_count};
+use beadroll_sync::{Emitter, Spent, unpublished_count};
 
 pub(crate) use args::{
     ContentArgs, Payload, arg_text, arg_texts, encodable, field_args, resolve_arg, rpartition,
@@ -185,9 +187,20 @@ pub(crate) struct Outcome {
     /// The command published and counted what it left unpublished itself ([`note_unpublished`]),
     /// as `init` does when it wrote through another workspace than the one it was given.
     pub(crate) settled: bool,
-    /// The state the answer was made from ([`Outcome::answered_from`]).
-    pub(crate) state: Option<State>,
+    /// What the command made and is done with ([`Outcome::answered_from`], [`Outcome::wrote_in`]):
+    /// one thing, never two.
+    pub(crate) held: Option<Box<dyn Held>>,
 }
+
+/// What a command leaves for the command line to keep until the process exits, or to free first
+/// when the run goes on to publish (`cli::ended_with`, roll-lqjj.32): the state it answered from,
+/// or the transaction a write was made in. Freeing either takes about as long as reading it did,
+/// work nobody waits for once the answer is written.
+pub(crate) trait Held: std::fmt::Debug {}
+
+impl Held for State {}
+
+impl Held for Spent {}
 
 impl Outcome {
     pub(crate) fn new<L: Into<Line>>(result: impl Into<Value>, lines: Vec<L>) -> Outcome {
@@ -196,7 +209,7 @@ impl Outcome {
             lines: Some(lines.into_iter().map(Into::into).collect()),
             raw: None,
             settled: false,
-            state: None,
+            held: None,
         }
     }
 
@@ -207,7 +220,7 @@ impl Outcome {
             lines: None,
             raw: Some(text),
             settled: false,
-            state: None,
+            held: None,
         }
     }
 
@@ -217,7 +230,18 @@ impl Outcome {
     /// it makes, so that none is held beside another one.
     pub(crate) fn answered_from(self, state: State) -> Outcome {
         Outcome {
-            state: Some(state),
+            held: Some(Box::new(state)),
+            ..self
+        }
+    }
+
+    /// This outcome, of a write made in the transaction `spent` came from, which the command line
+    /// keeps as it keeps a state answered from (roll-lqjj.42). A command that goes on to read a
+    /// state or to publish before it answers lets go of it first, so that none is held beside
+    /// another one.
+    pub(crate) fn wrote_in(self, spent: Spent) -> Outcome {
+        Outcome {
+            held: Some(Box::new(spent)),
             ..self
         }
     }

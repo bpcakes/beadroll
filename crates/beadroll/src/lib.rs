@@ -6,6 +6,8 @@
 mod cli;
 mod commands;
 mod sys;
+#[cfg(test)]
+mod testing;
 
 use std::ffi::OsString;
 use std::process::ExitCode;

@@ -236,6 +236,37 @@ impl<'a> Tx<'a> {
             (None, None) => Err(Error::Validation("no state".to_owned())),
         }
     }
+
+    /// What the transaction held that costs to free, taken out of it, which is done with, as it
+    /// stands: the events it emitted are in it only if its state was asked for since.
+    fn into_spent(self) -> Spent {
+        Spent {
+            projection: self.projection,
+            state: self.state,
+        }
+    }
+}
+
+/// What a write's transaction held when the write was done: its projection, or the state replayed
+/// once it had none, which is almost all of what the transaction holds. [`writing_spent`] hands it
+/// over where [`writing`] lets go of it: freeing the projection of a large tracker takes about as
+/// long as decoding the state of one (83 ms at 200,000 events), and a caller whose process ends
+/// with its command, as `bead` itself does, need not free it at all (roll-lqjj.42). A caller that
+/// does not know that drops it, which frees it.
+#[derive(Debug, Default)]
+pub struct Spent {
+    /// The store's projection, the events applied that the transaction asked its state for.
+    projection: Option<Projection>,
+    /// The journal replayed with the events emitted, once the projection was gone.
+    state: Option<State>,
+}
+
+impl Spent {
+    /// Whether it holds nothing: the transaction had let go of its projection and had not
+    /// replayed the journal.
+    pub fn is_empty(&self) -> bool {
+        self.projection.is_none() && self.state.is_none()
+    }
 }
 
 /// What emits into a [`Tx`] while its state is lent ([`Tx::lend`]).
@@ -361,13 +392,14 @@ pub fn confirm_ownership(ws: &Workspace, events: &[Value]) -> Result<(), Error> 
 /// new command. Nothing is written if `body` fails. The transaction, which holds the store's whole
 /// projection, is let go of once the lock is: freeing it is no part of the write, every command
 /// waiting for the lock would wait for it too, and on a large tracker it takes about as long as
-/// decoding the projection did (83 ms and 136 ms at 200,000 events; roll-lqjj.32, X10).
+/// decoding the projection did (83 ms and 136 ms at 200,000 events; roll-lqjj.32, X10). A caller
+/// whose process ends with its command does not have to free it at all ([`writing_spent`]).
 pub fn writing<T, E: From<Error>>(
     ws: &Workspace,
     actor: &Actor,
     body: impl FnOnce(&mut Tx<'_>) -> Result<T, E>,
 ) -> Result<T, E> {
-    written(ws, actor, false, body).map(|(result, _)| result)
+    written(ws, actor, false, body).map(|done| done.result)
 }
 
 /// [`writing`], and the state it leaves the store's journal in: the transaction's, with every
@@ -378,17 +410,48 @@ pub fn writing_state<T, E: From<Error>>(
     actor: &Actor,
     body: impl FnOnce(&mut Tx<'_>) -> Result<T, E>,
 ) -> Result<(T, Option<State>), E> {
-    written(ws, actor, true, body)
+    written(ws, actor, true, body).map(|done| {
+        let state = done
+            .tx
+            .filter(|_| done.applied)
+            .and_then(|tx| tx.into_state().ok());
+        (done.result, state)
+    })
+}
+
+/// [`writing`], and what its transaction held, handed over instead of let go of: for a caller
+/// whose process ends with its command, which then keeps it until the process exits rather than
+/// freeing it (roll-lqjj.42). The caller lets go of it first when it goes on to read a state or to
+/// publish, so that it never holds two.
+pub fn writing_spent<T, E: From<Error>>(
+    ws: &Workspace,
+    actor: &Actor,
+    body: impl FnOnce(&mut Tx<'_>) -> Result<T, E>,
+) -> Result<(T, Spent), E> {
+    written(ws, actor, false, body).map(|done| {
+        let spent = done.tx.map_or_else(Spent::default, Tx::into_spent);
+        (done.result, spent)
+    })
+}
+
+/// A write that went through: what its body returned, whether the transaction has the events it
+/// emitted applied (when [`written`] was asked to), and the transaction, which the lock no longer
+/// protects and no one has let go of yet.
+struct Written<'w, T> {
+    result: T,
+    applied: bool,
+    tx: Option<Tx<'w>>,
 }
 
 /// [`writing`], with the transaction's state at the end when `keep` asks for it. The transaction
-/// is let go of, or made into that state, once the lock is (roll-lqjj.32).
-fn written<T, E: From<Error>>(
-    ws: &Workspace,
+/// is given back with the result, to be let go of, or made into that state, once the lock is
+/// (roll-lqjj.32); it is let go of here when the write fails.
+fn written<'w, T, E: From<Error>>(
+    ws: &'w Workspace,
     actor: &Actor,
     keep: bool,
     body: impl FnOnce(&mut Tx<'_>) -> Result<T, E>,
-) -> Result<(T, Option<State>), E> {
+) -> Result<Written<'w, T>, E> {
     let mut made = None;
     let result = locked(ws, || -> Result<(T, bool), E> {
         let tx = made.insert(Tx::new(ws, actor)?);
@@ -403,7 +466,7 @@ fn written<T, E: From<Error>>(
         }
         let result = body(tx)?;
         // the events emitted applied while the transaction still has them
-        let kept = keep && tx.state().is_ok();
+        let applied = keep && tx.state().is_ok();
         let sequenced = tx.has_pending();
         let pending = tx.take_pending();
         let finish = || -> Result<(), Error> {
@@ -420,11 +483,14 @@ fn written<T, E: From<Error>>(
             Ok(())
         };
         finish()?;
-        Ok((result, kept))
+        Ok((result, applied))
     });
-    let (result, kept) = result?;
-    let state = made.filter(|_| kept).and_then(|tx| tx.into_state().ok());
-    Ok((result, state))
+    let (result, applied) = result?;
+    Ok(Written {
+        result,
+        applied,
+        tx: made,
+    })
 }
 
 /// A later command of this actor went through: the receipts that would answer a repeat of an

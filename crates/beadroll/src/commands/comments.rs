@@ -6,7 +6,7 @@ use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 use beadroll_core::code::Code;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::text::{str_of, strip};
-use beadroll_sync::writing;
+use beadroll_sync::writing_spent;
 
 use super::{
     Context, Failure, Outcome, arg_text, encodable, need_tracker, read_utf8, resolve_arg, view_of,
@@ -93,7 +93,7 @@ fn add(
         .as_deref()
         .filter(|a| !a.is_empty())
         .map(arg_text);
-    let (id, issue_key) = writing(ctx.ws, ctx.actor, |tx| {
+    let ((id, issue_key), spent) = writing_spent(ctx.ws, ctx.actor, |tx| {
         let (uid, issue_key) = {
             let st = tx.state()?;
             need_tracker(st)?;
@@ -114,8 +114,5 @@ fn add(
     result.insert("id".into(), Value::from(id));
     result.insert("issue_id".into(), Value::from(issue_key.as_str()));
     result.insert("text".into(), Value::from(text));
-    Ok(Outcome::new(
-        result,
-        vec![format!("Comment added to {issue_key}")],
-    ))
+    Ok(Outcome::new(result, vec![format!("Comment added to {issue_key}")]).wrote_in(spent))
 }
