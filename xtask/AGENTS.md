@@ -20,7 +20,8 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   `check::run`: the old profiles cleaned, the suites through `cargo llvm-cov nextest --no-report`,
   then the HTML, lcov and JSON reports under `target/coverage/`) and `summarize` (lines by crate,
   the `PROTOCOL` files with the runs of lines no test reaches, and whether the black-box tests'
-  `bead` processes are in the count: `CHILD_ONLY`); `coverage/lcov.rs` reads an `lcov.info`;
+  `bead` processes are in the count: `CHILD_ONLY`), `unmerged_profiles` (the profiles the report
+  steps' logs say were left out: the run fails on any); `coverage/lcov.rs` reads an `lcov.info`;
   `coverage/tests.rs` runs the command on fake tools.
 - `src/timing.rs`, `src/timing/replay.rs`: `timing`, and `timing --replay N`; `timing/sync.rs`:
   `timing --sync N`, a publishing `bead sync` on a scratch store of the same history, with the
@@ -112,26 +113,28 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   that the processes of one binary merge into 16 files: the default, one file of half a megabyte
   for each process, is 3.5 GB for the fast suite alone.
 - `coverage` has one count of lines, the one it prints and the docs quote: those of `lcov.info`,
-  each source line with code once, run or not. The HTML index and `summary.json` are llvm-cov's
-  own, which adds up the lines of each function, so that a line two functions share (a closure on
-  the line of the call that takes it) counts twice: at 72b13f9, 96.12% of 21,018 lines there
-  against 96.4% of 19,705 here, with 1,313 lines more (`replay/apply/claims.rs` has 140 lines of
-  code and 164 there) and the closures that never ran among the uncovered. That is also what the line view cannot see: a closure that never ran on a line that
-  did (`transition.rs:190`, roll-k2wy.14.15) is red in the HTML's regions and absent from the
-  unreached lines printed. Both counts include the unit tests written inline in the product's
-  files (`#[cfg(test)] mod tests { ... }`, 1,789 lines at 99.6%, 11 of them in the protocol's
-  files), which cargo-llvm-cov cannot leave out on a stable toolchain: the product's code alone
-  is 96.1% of 17,916 lines. The tests in files of their own (`tests.rs`, `tests/`) are left out,
-  as are the tooling and the test support (`IGNORED`).
+  each source line with code once, run or not. The HTML index and `summary.json` are llvm-cov's own,
+  which adds up the lines of each function, so that a line two functions share (a closure on the
+  line of the call that takes it) counts twice: at 72b13f9, 96.12% of 21,018 lines there against
+  96.4% of 19,705 here, with 1,313 lines more (`replay/apply/claims.rs` has 140 lines of code and
+  164 there) and the closures that never ran among the uncovered. That is also what the line view
+  cannot see: a closure that never ran on a line that did (`transition.rs:190`, roll-k2wy.14.15) is
+  red in the HTML's regions and absent from the unreached lines printed. Both counts include the
+  unit tests written inline in the product's files (`#[cfg(test)] mod tests { ... }`, 1,789 lines at
+  99.6%, 11 of them in the protocol's files), which cargo-llvm-cov cannot leave out on a stable
+  toolchain: the product's code alone is 96.1% of 17,916 lines. The tests in files of their own
+  (`tests.rs`, `tests/`) are left out, as are the tooling and the test support (`IGNORED`).
 - A `bead` that writes no profile leaves what only it runs reading as unreached: one killed by
   SIGKILL (the sweep's `sigkill` schedules, whose failpoint `kill_self` reads as unreached for it)
   and one run under a resource limit. Under `ulimit -f` the profile written at exit fails on the
-  limit and says so on the standard error the test reads, and leaves a truncated file; under
-  `ulimit -n` it may not open its file. So a test that runs `bead` under `ulimit` takes
+  limit and says so on the standard error the test reads, and leaves a truncated file; under `ulimit
+  -n` it may not open its file. So a test that runs `bead` under `ulimit` takes
   `beadroll_test_support::UNPROFILED` (`LLVM_PROFILE_FILE=/dev/null`) for that run, and
-  `coverage::tests` finds the test files that format a `ulimit` and want it of each. The steps
-  set `BEAD_UNDER_TEST` empty: a `bead` the build did not make has no counters. The doctests are
-  left out: the workspace has none, and cargo-llvm-cov covers them only on a nightly toolchain.
+  `coverage::tests::limits` finds the runs under `ulimit` in the tracked test files (a string
+  literal in code with `ulimit ` and `exec `, however it is written) and wants a use of it in code
+  for each. The steps set `BEAD_UNDER_TEST` empty: a `bead` the build did not make has no counters.
+  The doctests are left out: the workspace has none, and cargo-llvm-cov covers them only on a
+  nightly toolchain.
 - Timings are evidence and never gate anything, with one exception, the growth guards
   (`timing/growth.rs`, X15): a ratio of two timings of one core call, the larger input eight times
   the smaller, may not exceed 24, where growing with the input gives about 8 and with its square

@@ -53,8 +53,9 @@ usage: cargo xtask <command>
       the growth guards are left out, and BEAD_UNDER_TEST is ignored: the bead counted is the one
       the build makes. It needs cargo-llvm-cov and the toolchain's llvm-tools, which it asks you
       to install when they are missing (rust-toolchain.toml has neither). Fails when a suite
-      fails, the report still made, or when the report does not count the bead processes. A bead
-      killed by SIGKILL, or run under a file-size limit, writes no profile. Each step's whole
+      fails, the report still made; when a profile could not be merged into the report, so that
+      its counts are missing; or when the report does not count the bead processes. A bead
+      killed by SIGKILL, or run under a resource limit, writes no profile. Each step's whole
       output is kept in target/coverage/logs/; nothing is installed or published.
 
   timing [--label NAME] [--out FILE] -- COMMAND [ARG...]

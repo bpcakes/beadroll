@@ -164,53 +164,6 @@ fn the_reports_leave_out_the_tooling_and_tolerate_a_profile_that_did_not_finish(
     }
 }
 
-/// The tracked files of the repository's tests under `crates/`, with their text.
-fn test_sources() -> Vec<(String, String)> {
-    let root = workspace::root();
-    let listed = Command::new("git")
-        .args(["ls-files", "-z", "crates"])
-        .current_dir(&root)
-        .output()
-        .expect("git runs");
-    assert!(listed.status.success(), "git ls-files failed");
-    let names = String::from_utf8(listed.stdout).expect("UTF-8 file names");
-    names
-        .split('\0')
-        .filter(|name| name.ends_with(".rs") && name.contains("/tests/"))
-        .map(|name| {
-            (
-                name.to_owned(),
-                std::fs::read_to_string(root.join(name)).expect(name),
-            )
-        })
-        .collect()
-}
-
-#[test]
-fn every_test_that_runs_bead_under_a_limit_keeps_the_profile_out_of_it() {
-    // Under `ulimit` the profile an instrumented bead writes at exit fails on the limit (-f), or
-    // cannot open its file (-n), and says so on the standard error the test reads: such a run
-    // takes `UNPROFILED` (`beadroll_test_support`). The probes that run `dd` under `ulimit -f 1`
-    // are not bead and do not format their limit in (a limit that is a literal).
-    let sources = test_sources();
-    assert!(sources.len() > 100, "{} files listed", sources.len());
-    let limited: Vec<&str> = (sources.iter())
-        .filter(|(_, text)| text.contains("format!(\"ulimit "))
-        .map(|(name, _)| name.as_str())
-        .collect();
-    assert!(
-        limited.len() >= 3,
-        "the scan found the tests that limit bead: {limited:?}"
-    );
-    for name in limited {
-        let text = &sources.iter().find(|(n, _)| n == name).expect("listed").1;
-        assert!(
-            text.contains("UNPROFILED"),
-            "{name} runs bead under a ulimit and does not take UNPROFILED"
-        );
-    }
-}
-
 #[test]
 fn the_protocol_and_the_child_only_file_are_files_of_this_repository() {
     let root = workspace::root();
@@ -226,6 +179,43 @@ fn the_protocol_and_the_child_only_file_are_files_of_this_repository() {
             .contains("fn main"),
         "{CHILD_ONLY} is not an executable's main"
     );
+}
+
+#[test]
+fn a_log_with_a_byte_that_is_not_utf8_still_names_the_profiles_it_left_out() {
+    // The checkout's path is in the line that says where the report was saved, in all three logs.
+    let dir = tempfile::tempdir().expect("a scratch directory");
+    let log = [
+        b"warning: /t/x.profraw: invalid instrumentation profile data (file header is corrupt)\n"
+            .as_slice(),
+        b"    Finished report saved to /t/\xffcheckout/lcov.info\n",
+    ]
+    .concat();
+    std::fs::write(dir.path().join("report-lcov.log"), &log).expect("a log");
+    std::fs::write(dir.path().join("report-html.log"), &log).expect("a log");
+    std::fs::write(
+        dir.path().join("tests.log"),
+        b"warning: /t/z.profraw: not a report's\n",
+    )
+    .expect("a log");
+    assert_eq!(unmerged_profiles(dir.path()).unwrap(), ["/t/x.profraw"]);
+}
+
+#[test]
+fn a_log_that_cannot_be_read_is_an_error_and_not_a_log_with_nothing_in_it() {
+    let dir = tempfile::tempdir().expect("a scratch directory");
+    // a directory where a log should be: it lists as one and cannot be read as a file
+    std::fs::create_dir(dir.path().join("report-lcov.log")).expect("a directory");
+    let Err(Failure::Failed(message)) = unmerged_profiles(dir.path()) else {
+        panic!("a log that cannot be read passed");
+    };
+    assert!(message.starts_with("cannot read "), "{message}");
+    assert!(message.contains("report-lcov.log"), "{message}");
+    let missing = dir.path().join("no-such-logs");
+    assert!(matches!(
+        unmerged_profiles(&missing),
+        Err(Failure::Failed(_))
+    ));
 }
 
 #[test]
@@ -438,4 +428,5 @@ fn a_report_without_the_children_says_so() {
     assert!(!summary_of(&absent).0);
 }
 
+mod limits;
 mod run;

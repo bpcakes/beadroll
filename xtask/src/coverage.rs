@@ -17,8 +17,8 @@
 //! The profiles of the children are merged into a few files per binary ([`PROFILE`]) rather than
 //! written one to a process: the suite starts `bead` tens of thousands of times, half a megabyte
 //! of counters each. A `bead` that dies by SIGKILL (the sweep's `sigkill` schedules) or runs under
-//! a file-size limit (the V6 and G48 tests, which keep the profile out of the limit) writes no
-//! profile, so a line only such a process runs counts as not run.
+//! a resource limit (a test that does takes `UNPROFILED`, which keeps the profile out of the limit)
+//! writes no profile, so a line only such a process runs counts as not run.
 //!
 //! cargo-llvm-cov and the toolchain's `llvm-tools` are not in `rust-toolchain.toml`: the command
 //! checks that they are installed and says how to install them.
@@ -150,17 +150,19 @@ fn make(
     // With `--failure-mode all` the reports are made of the profiles that merge and only warn of
     // the rest, in logs nobody reads: a profile left out is counts lost, which would read as code
     // no test reaches, so it fails the run and is said here.
-    let skipped = unmerged_profiles(&setup.logs);
+    let skipped = unmerged_profiles(&setup.logs)?;
     if let Some(first) = skipped.first() {
         let these = match skipped.len() {
             1 => "1 profile".to_owned(),
             n => format!("{n} profiles"),
         };
+        let logs = setup.logs.strip_prefix(root).unwrap_or(&setup.logs);
         writeln!(
             stdout,
             "{:<14} {these} could not be merged and the counts in them are missing from this \
-             report, the first {first} (the report steps' logs name them all)",
-            "profiles"
+             report, the first {first} ({}/report-*.log name them all)",
+            "profiles",
+            logs.display()
         )
         .map_err(cannot_report)?;
         passed = false;
@@ -184,7 +186,8 @@ fn make(
     // The HTML index and summary.json add up the lines of each function, so that a line two
     // functions share (a closure on the line of the call that takes it) counts twice.
     let kept = format!(
-        "{}, lcov.info, summary.json (counted per function: more lines than above)",
+        "{}, lcov.info, summary.json (the HTML index and summary.json count per function: more \
+         lines than above)",
         shown.display()
     );
     writeln!(stdout, "{:<14} {kept}", "report").map_err(cannot_report)?;
@@ -193,18 +196,25 @@ fn make(
 
 /// The profiles `llvm-profdata` left out of the reports, from the logs of the report steps: it
 /// warns `warning: PATH.profraw: invalid instrumentation profile data (...)`, once for each report.
-fn unmerged_profiles(logs: &Path) -> Vec<String> {
+/// A log is read as bytes, since a path with one that is not UTF-8 (the checkout's, in the line
+/// that says where the report was saved) is in all of them; one that cannot be read at all is an
+/// error, not a log with nothing in it.
+fn unmerged_profiles(logs: &Path) -> Result<Vec<String>, Failure> {
     let mut skipped = BTreeSet::new();
-    let names = std::fs::read_dir(logs).into_iter().flatten().flatten();
+    let names =
+        std::fs::read_dir(logs).map_err(|error| Failure::io("cannot read", logs, &error))?;
     for entry in names {
+        let entry = entry.map_err(|error| Failure::io("cannot read", logs, &error))?;
         let name = entry.file_name();
         let name = name.to_string_lossy();
         if name.starts_with("report-") && name.ends_with(".log") {
-            let text = std::fs::read_to_string(entry.path()).unwrap_or_default();
-            skipped.extend(skipped_in(&text));
+            let path = entry.path();
+            let bytes =
+                std::fs::read(&path).map_err(|error| Failure::io("cannot read", &path, &error))?;
+            skipped.extend(skipped_in(&String::from_utf8_lossy(&bytes)));
         }
     }
-    skipped.into_iter().collect()
+    Ok(skipped.into_iter().collect())
 }
 
 /// The profiles `text`, a report step's output, says were left out.

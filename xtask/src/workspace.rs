@@ -116,9 +116,11 @@ pub(crate) fn json_string(text: &str) -> String {
 }
 
 /// A fake tool for a test: `body` as the executable shell script `name` in `dir`, whose path this
-/// is. A process another test forks while the file is still open for writing holds it until it
-/// execs, and running the file meanwhile fails with ETXTBSY: it is run once, with no arguments
-/// (which the bodies let pass), until it starts, since later runs cannot meet that.
+/// is. Under `cargo test`, whose tests are threads of one process, a process another test forks
+/// while the file is still open for writing holds it until it execs, and running the file
+/// meanwhile fails with ETXTBSY: it is run once, with no arguments (which the bodies let pass),
+/// until it starts, since later runs cannot meet that. (nextest runs a process for each test, and
+/// does not meet it.)
 #[cfg(test)]
 pub(crate) fn fake_tool(dir: &Path, name: &str, body: &str) -> OsString {
     use std::os::unix::fs::PermissionsExt as _;

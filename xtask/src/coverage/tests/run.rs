@@ -106,7 +106,7 @@ fn a_run_writes_the_three_reports_and_says_what_the_suites_ran() {
         "{out}"
     );
     assert!(
-        out.contains("lcov.info, summary.json (counted per function"),
+        out.contains("lcov.info, summary.json (the HTML index and summary.json count per function"),
         "{out}"
     );
     for kept in [
@@ -222,7 +222,7 @@ fn a_profile_left_out_of_the_reports_is_said_and_fails_the_run() {
     // Three report steps warned of it; it is one profile.
     let first = format!("{}/beadroll-1_3.profraw", fake.dir.path().display());
     let said = format!(
-        "profiles       1 profile could not be merged and the counts in them are missing from this report, the first {first} (the report steps' logs name them all)"
+        "profiles       1 profile could not be merged and the counts in them are missing from this report, the first {first} (target/coverage/logs/report-*.log name them all)"
     );
     assert!(out.contains(&said), "{out}");
     assert!(
@@ -239,7 +239,7 @@ fn a_profile_left_out_of_the_reports_is_said_and_fails_the_run() {
         "{out}"
     );
     assert!(
-        out.contains("the first ") && out.contains("/a.profraw (the report"),
+        out.contains("the first ") && out.contains("/a.profraw (target/coverage/logs/report-*.log"),
         "{out}"
     );
 }
@@ -273,14 +273,17 @@ fn a_step_that_fails_is_reported_failed_with_what_it_printed_and_never_as_done()
         "no report: {made:?}"
     );
     let shown = String::from_utf8(stdout).expect("UTF-8");
-    for step in ["clean", "report html", "report lcov", "report json"] {
-        assert!(
-            shown.contains(&format!(
-                "{step:<14} failed, exit 1 (0s)\n    error: boom\n"
-            )),
-            "{step}: {shown}"
-        );
-    }
+    // However long a fake step took: whole seconds, as the runner counts them.
+    let failed = regex_lite::Regex::new(r"(?m)^(.{14}) failed, exit 1 \(\d+s\)\n    error: boom$")
+        .expect("a valid pattern");
+    let steps: Vec<&str> = (failed.captures_iter(&shown))
+        .map(|found| found.get(1).map_or("", |step| step.as_str().trim_end()))
+        .collect();
+    assert_eq!(
+        steps,
+        ["clean", "report html", "report lcov", "report json"],
+        "{shown}"
+    );
     assert!(
         shown.contains("tests          exit 1, no summary"),
         "{shown}"
