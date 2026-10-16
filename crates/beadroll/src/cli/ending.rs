@@ -57,15 +57,16 @@ fn what_a_command_held_is_kept_only_by_a_process_that_ends_with_it_and_publishes
     assert!(ended_with(spent, false, true));
 }
 
-/// Runs `finish` on an outcome holding a probe, for a write already made (`wrote()`), as the
-/// process ends with it when `exits`: what it answered, and how often the probe was freed.
+/// Runs `finish` on an outcome holding a probe, for a command that wrote (`wrote`) or did not, as
+/// the process ends with it when `exits`: what it answered, and how often the probe was freed.
 fn finishing(
     ws: &Workspace,
+    wrote: bool,
     offline: bool,
     exits: bool,
 ) -> (Result<Option<Answer>, Failure>, Arc<AtomicUsize>) {
     let (outcome, freed) = holding_a_probe();
-    ws.set_wrote(true);
+    ws.set_wrote(wrote);
     (finish(outcome, Some(ws), offline, &None, exits), freed)
 }
 
@@ -75,10 +76,30 @@ fn finishing(
 fn a_write_that_is_not_published_keeps_what_it_held_when_the_process_ends_with_it() {
     let (sandbox, machine) = tracker();
     let ws = workspace(&machine, sandbox.origin(), &[]);
-    let (answer, freed) = finishing(&ws, true, true);
+    let (answer, freed) = finishing(&ws, true, true, true);
     assert!(answer.is_ok_and(|answer| answer.is_some()));
     assert_eq!(freed.load(Ordering::SeqCst), 0, "kept: the process ends");
-    let (answer, freed) = finishing(&ws, true, false);
+    let (answer, freed) = finishing(&ws, true, true, false);
+    assert!(answer.is_ok_and(|answer| answer.is_some()));
+    assert_eq!(
+        freed.load(Ordering::SeqCst),
+        1,
+        "freed: the process goes on"
+    );
+}
+
+/// What a run publishes is what its command wrote, not whatever is not `--offline`: a read, which
+/// wrote nothing and is not `--offline` either, publishes nothing, so it keeps the state it
+/// answered from to the end of the process (roll-lqjj.32). Were the flag alone to decide, every read
+/// would free its state first, and the gain of keeping it would be lost.
+#[test]
+fn a_command_that_wrote_nothing_keeps_what_it_held_though_it_is_not_offline() {
+    let (sandbox, machine) = tracker();
+    let ws = workspace(&machine, sandbox.origin(), &[]);
+    let (answer, freed) = finishing(&ws, false, false, true);
+    assert!(answer.is_ok_and(|answer| answer.is_some()));
+    assert_eq!(freed.load(Ordering::SeqCst), 0, "kept: nothing to publish");
+    let (answer, freed) = finishing(&ws, false, false, false);
     assert!(answer.is_ok_and(|answer| answer.is_some()));
     assert_eq!(
         freed.load(Ordering::SeqCst),
