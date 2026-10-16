@@ -58,6 +58,10 @@ pub(crate) struct Claims {
     /// Whether one of them changed as it was listed, so that no identity stands for it.
     unstable: bool,
     sources: Vec<Arc<[PathBuf]>>,
+    /// The names of a directory that is not there: one listing for all of them and for every
+    /// call, so that the combined listing, which is kept while its sources are the same
+    /// listings, is not made again for want of one (roll-lqjj.47).
+    absent: Arc<[PathBuf]>,
     files: Arc<[PathBuf]>,
     /// Each file's identity as it was stat-ed in this phase, by the listing it was taken for, kept
     /// only while the store lock is held: no other bead process writes then, and a file bead
@@ -206,6 +210,7 @@ impl Claims {
                     .insert(path.to_path_buf(), (key, Arc::clone(&files)));
             }
             Some(_) => self.unstable = true,
+            None if files.is_empty() => return Ok(Arc::clone(&self.absent)),
             None => {}
         }
         Ok(files)

@@ -10,7 +10,7 @@ use beadroll_core::text::{parse_integer, shell_quote};
 use beadroll_git::PushOutcome;
 use beadroll_store::{
     Endpoint, Failpoints, Fired, Memo, Workspace, claim_files, load_pending, moved_workspaces,
-    pending_files, relative, segment_files, workspaces_named, write_atomic,
+    pending_files, relative, relative_name, segment_files, workspaces_named, write_atomic,
 };
 
 use crate::error::Error;
@@ -386,9 +386,10 @@ pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
             (path, name)
         })
         .collect();
-    // the segments' lines alone: what the memo says of each attempt file is not needed here
+    // the segments' lines alone: what the memo says of each attempt file is not needed here, and
+    // a segment's name ends as no attempt file's does, so that the lookup is for those alone
     let names: HashSet<&str> = segments.iter().map(|(_, name)| name.as_str()).collect();
-    let mut memo = Memo::load_only(ws, &|name| names.contains(name));
+    let mut memo = Memo::load_only(ws, &|name| name.ends_with(".jsonl") && names.contains(name));
     for (path, name) in &segments {
         let lines = Int::from(memo.lines(name, path)? as i64);
         let known = match published.get(name) {
@@ -402,8 +403,7 @@ pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
     }
     for path in claim_files(ws)?.iter() {
         // its path in the store, as `relative` gives it, without a copy of each
-        let name = path.strip_prefix(&ws.dir).unwrap_or(path).to_string_lossy();
-        if !published.contains_key(&*name) {
+        if !published.contains_key(&*relative_name(ws, path)) {
             count = count.add(&Int::from(1));
         }
     }

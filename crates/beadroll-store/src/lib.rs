@@ -48,7 +48,9 @@ pub use settings::{
     Clock, NET_TIMEOUT, REPACK_LOOSE, REPACK_PACKS, ROTATE_BYTES, Settings, join_path,
     normalize_path,
 };
-pub use workspace::{DEFAULT_REF, Endpoint, REMOTE_REF, Workspace, relative, remembered, stamp};
+pub use workspace::{
+    DEFAULT_REF, Endpoint, REMOTE_REF, Workspace, relative, relative_name, remembered, stamp,
+};
 
 /// The bytes without the ASCII whitespace at either end.
 pub(crate) fn strip_ascii(data: &[u8]) -> &[u8] {

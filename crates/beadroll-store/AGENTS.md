@@ -58,11 +58,15 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   reader takes once it has read the segments, every directory read again outside the lock (X13),
   with the `Stamp` of the listing: the identity each claims directory had when it was listed,
   which tells a later reader that a file was added, removed or renamed over, whoever wrote it
-  (roll-lqjj.37).
+  (roll-lqjj.37). A claims directory that is not there has one empty listing for every call, so
+  that the combined listing is kept while nothing changed (roll-lqjj.47).
 - `src/memo.rs`: `Memo`, what the store remembers of each journal file between commands (its
   identity on disk, `FileKey`, its lines and its blob in `sync.git`), kept as
   `sync.git/journal-memo` (`memo_path`) by the holder of the store lock (roll-lqjj.1);
-  `Memo::load_only`, the entries of a few files, the memo still checked whole, never written back.
+  `Memo::load_only`, the entries of a few files, the memo still checked whole (the lines of the
+  others for their shape alone, which makes nothing of them, roll-lqjj.47), never written back.
+  `relative_name` (`src/workspace.rs`) is `relative` borrowed from the path when the path is the
+  workspace directory and a UTF-8 name, as the store's listings make them.
 - `tests/store/`: store files, settings, discovery, compatibility and damage handling.
 
 ## Edit here for X

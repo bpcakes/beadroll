@@ -219,7 +219,8 @@ pub fn read(path: &Path) -> Result<Vec<u8>, IoError> {
 pub(crate) fn read_keyed(path: &Path) -> Result<(Vec<u8>, Option<FileKey>), IoError> {
     let file = File::open(path).map_err(|e| IoError::at(&e, path))?;
     let meta = file.metadata().map_err(|e| IoError::at(&e, path))?;
-    let mut data = Vec::new();
+    // the length is known: a file of 15 MB is not copied again at each doubling of its buffer
+    let mut data = Vec::with_capacity(usize::try_from(meta.len()).unwrap_or(0));
     file.take(meta.len())
         .read_to_end(&mut data)
         .map_err(|e| IoError::at(&e, path))?;

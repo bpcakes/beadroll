@@ -6,6 +6,21 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- The unpublished count every command gives costs less on a tracker with many attempt files
+  (roll-lqjj.47): it was not the 75 ms the issue was opened on for a store that has synced (1.3 ms
+  of a 115 ms `list` at 200,000 events, 0.3 ms of 16 ms at 20,000, unchanged), which only a store
+  the memo does not vouch for pays (a copy or move of the store, a missing memo, a store never
+  synced: 22 ms at 200,000 events, until the next sync), but it grew with attempt files, which
+  nothing compacts. On the ownership-heavy history (91,952 attempt files at 200,000 events) it
+  takes 91 ms rather than 155 in a `list`, which takes 0.67 s rather than 0.74 s, and 8 ms rather
+  than 14 at 9,132 files, where `list` takes 68 ms rather than 75; a sync's count 31 ms rather than
+  98 and `info`'s 39 ms rather than 101. The memo's lines for files the count does not read are
+  checked for their shape and not made into values, the attempt files are named by their bytes,
+  and a claims directory that does not exist yet (this machine's, until it first claims) no longer
+  makes every call copy the whole listing of attempt names. Every number and message is as it
+  was. What remains is `meta.json`'s `published` map, one entry per journal file (roll-lqjj.49),
+  and a write's second listing of the attempt files (roll-lqjj.48).
+
 - `cargo xtask coverage [--stress] [--sweep]` reports which lines of the product's code the suites
   run, and the nightly workflow keeps its report as an artifact (roll-k2wy.14.5): cargo-llvm-cov
   over the workspace's tests, with `--stress` the stress models and with `--sweep` all 660 schedules

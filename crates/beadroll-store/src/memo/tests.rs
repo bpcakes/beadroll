@@ -144,3 +144,134 @@ fn a_blob_is_remembered_only_for_the_identity_it_was_hashed_at() {
     memo.retain(|path| path != "p" && path != "q");
     assert!(memo.changed && memo.files.is_empty());
 }
+
+/// The lines a memo read for some of its files only checks (roll-lqjj.47) are judged as the lines
+/// it makes into values are: whatever a field of one is, `fields_are_written` says what
+/// `fields_of` does, at the edges of each number's type and where a number is not one.
+#[test]
+fn a_line_is_checked_as_it_is_made() {
+    let sha1 = "0123456789abcdef0123456789abcdef01234567";
+    let sha256 = "ab".repeat(32);
+    let u64_max = u64::MAX.to_string();
+    let u64_over = "18446744073709551616";
+    let i128_max = i128::MAX.to_string();
+    let i128_over = "170141183460469231731687303715884105728";
+    let i128_min = i128::MIN.to_string();
+    let wide = "9".repeat(60);
+    // the numbers a field takes in turn, and the blobs that follow the fields
+    let numbers = [
+        "0",
+        "7",
+        "-5",
+        "-0",
+        "+3",
+        "",
+        "-",
+        "3 ",
+        " 3",
+        "1e3",
+        "0x1",
+        "٣",
+        "١٢",
+        "003",
+        &u64_max,
+        u64_over,
+        &i128_max,
+        i128_over,
+        &i128_min,
+        &wide,
+        "999999999",
+        "1000000000",
+        "9999999999999999999",
+        "10000000000000000000",
+    ];
+    let blobs = [
+        "-",
+        sha1,
+        &sha256,
+        "",
+        "--",
+        &sha1[..39],
+        &sha1.to_uppercase(),
+        &format!("{sha1}0"),
+        "g123456789abcdef0123456789abcdef01234567",
+    ];
+    let mut checked = 0;
+    for number in numbers {
+        for blob in blobs {
+            // each position takes the number in turn, the others being as written
+            for at in 0..6 {
+                let mut fields = ["10", "1791558245123456789", "-5", "42", "1", "3"];
+                fields[at] = number;
+                let line = format!("{} {blob}", fields.join(" "));
+                assert_eq!(
+                    fields_are_written(&line),
+                    fields_of(&line).is_some(),
+                    "{line:?}"
+                );
+                checked += 1;
+            }
+        }
+    }
+    // the lines of a missing field, an extra one, and none at all
+    for line in [
+        "",
+        " ",
+        "10 1 2 3 4 5",
+        "10 1 2 3 4 5 - -",
+        "10 1 2 3 4 - ",
+        "10  1 2 3 4 5 -",
+        "10 1 2 3 4 - -",
+    ] {
+        assert_eq!(
+            fields_are_written(line),
+            fields_of(line).is_some(),
+            "{line:?}"
+        );
+        checked += 1;
+    }
+    assert!(checked > 1_000);
+    // and the line as written is both
+    let written = format!("10 1791558245123456789 -5 42 {} 3 {sha1}", u64::MAX);
+    assert!(fields_are_written(&written) && fields_of(&written).is_some());
+}
+
+/// A memo read for some of its files has those files' entries as a read of the whole has them,
+/// whichever they are (roll-lqjj.47: the others are checked, not made).
+#[test]
+fn a_memo_read_for_some_files_holds_what_a_read_of_the_whole_holds_of_them() {
+    let sha = "0123456789abcdef0123456789abcdef01234567";
+    let mut memo = Memo::default();
+    for n in 0..20u64 {
+        let blob = (n % 3 != 0).then(|| sha.to_owned());
+        let lines = (n % 4 != 0).then_some(n as usize);
+        memo.set(
+            &format!("events/m/{n:06}.jsonl"),
+            key(n),
+            lines,
+            blob.clone(),
+        );
+        memo.set(
+            &format!("events/m/claims/{n:03}.json"),
+            key(n + 100),
+            Some(1),
+            blob,
+        );
+    }
+    let written = memo.render();
+    let whole = parse(&written, &|_| true).expect("a memo");
+    assert_eq!(whole.len(), 40);
+    for wanted in [
+        (|path: &str| path.ends_with(".jsonl")) as fn(&str) -> bool,
+        |path| path.ends_with(".json"),
+        |path| path.contains("00"),
+        |_| false,
+    ] {
+        let part = parse(&written, &wanted).expect("a memo");
+        let expected: BTreeMap<_, _> = (whole.iter())
+            .filter(|(path, _)| wanted(path))
+            .map(|(path, file)| (path.clone(), file.clone()))
+            .collect();
+        assert_eq!(part, expected);
+    }
+}

@@ -221,3 +221,41 @@ fn identities_are_kept_across_listings_but_for_what_bead_writes() {
     );
     assert_ne!(keys[1], FileKey::of(&two));
 }
+
+/// A machine whose claims directory is not there (this one, until it first claims) does not make
+/// the combined listing again at every call: its names are the one empty listing, so that the
+/// listing kept is the sources' for as long as they stay (roll-lqjj.47, where 92,000 paths were
+/// copied at each call), and the directory is seen the moment it has a file.
+#[test]
+fn a_claims_directory_that_is_not_there_keeps_the_listing() {
+    let home = tempfile::tempdir().unwrap();
+    let events = home.path().join("events");
+    let (a, b) = (events.join("a/claims"), events.join("b"));
+    std::fs::create_dir_all(&a).unwrap();
+    std::fs::create_dir_all(&b).unwrap();
+    std::fs::write(a.join("1.json"), b"one").unwrap();
+    let mut claims = Claims::default();
+    let first = claims.files(&events).unwrap();
+    assert_eq!(&*first, &[a.join("1.json")]);
+    for _ in 0..3 {
+        assert!(
+            Arc::ptr_eq(&first, &claims.files(&events).unwrap()),
+            "b has no claims directory, and nothing changed"
+        );
+    }
+    // afresh reads every directory again, and the listing it makes is the same names
+    let again = claims.files_afresh(&events).unwrap();
+    assert_eq!(&*again, &*first);
+    assert!(Arc::ptr_eq(&again, &claims.files(&events).unwrap()));
+
+    // b's directory comes, with a file: seen at once, and kept in its turn
+    std::fs::create_dir(b.join("claims")).unwrap();
+    std::fs::write(b.join("claims/2.json"), b"two").unwrap();
+    let grown = claims.files(&events).unwrap();
+    assert_eq!(&*grown, &[a.join("1.json"), b.join("claims/2.json")]);
+    assert!(Arc::ptr_eq(&grown, &claims.files(&events).unwrap()));
+
+    // and gone again: the names are those of the directories that are there
+    std::fs::remove_dir_all(b.join("claims")).unwrap();
+    assert_eq!(&*claims.files(&events).unwrap(), &[a.join("1.json")]);
+}
