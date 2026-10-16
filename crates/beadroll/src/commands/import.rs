@@ -12,7 +12,7 @@ use beadroll_core::replay::replay;
 use beadroll_core::state::State;
 use beadroll_core::text::printed_text;
 use beadroll_store::{Elsewhere, ViewError, Workspace, elsewhere, load_journal};
-use beadroll_sync::{Tx, writing};
+use beadroll_sync::{Tx, writing_spent};
 
 use super::{Context, Failure, Line, Outcome, Tone, need_tracker, read_utf8};
 
@@ -30,16 +30,13 @@ pub(crate) fn import(ctx: &Context<'_>, path: &OsStr, dry_run: bool) -> Result<O
         need_tracker(&state)?;
         return Ok(answer_dry_run(ctx.ws, &state, path, Vec::new())?.answered_from(state));
     }
-    let count = writing(ctx.ws, ctx.actor, |tx| {
+    let (count, spent) = writing_spent(ctx.ws, ctx.actor, |tx| {
         need_tracker(tx.state()?)?;
         import_records(tx, path)
     })?;
     let mut result = Object::new();
     result.insert("imported".into(), Value::from(count as i64));
-    Ok(Outcome::new(
-        result,
-        vec![format!("Imported {count} issues")],
-    ))
+    Ok(Outcome::new(result, vec![format!("Imported {count} issues")]).wrote_in(spent))
 }
 
 /// Emits the events that import the export at `path` (`-`: standard input) into `tx`; how many

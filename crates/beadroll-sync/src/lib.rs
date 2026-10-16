@@ -20,6 +20,6 @@ pub use synchronise::{
     refused, synchronise, unpublished_count,
 };
 pub use tx::{
-    Emitter, OWNERSHIP, Tx, confirm_ownership, drop_pending, forget_receipts, locked, remove,
-    writing, writing_state,
+    Emitter, OWNERSHIP, Spent, Tx, confirm_ownership, drop_pending, forget_receipts, locked,
+    remove, writing, writing_spent, writing_state,
 };

@@ -12,7 +12,7 @@ use beadroll_core::query::{Edges, blocking};
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::str_of;
 use beadroll_store::view_outline;
-use beadroll_sync::writing;
+use beadroll_sync::writing_spent;
 
 use super::{
     Context, Failure, Line, Outcome, Tone, arg_text, encodable, need_tracker, remove_edge,
@@ -164,7 +164,7 @@ fn change(
         }
         None => (None, true),
     };
-    let (issue_key, shown) = writing(ctx.ws, ctx.actor, |tx| {
+    let ((issue_key, shown), spent) = writing_spent(ctx.ws, ctx.actor, |tx| {
         // read as it was before anything is emitted, without a copy (roll-lqjj.29)
         let (st, mut tx) = tx.lend()?;
         need_tracker(st)?;
@@ -243,10 +243,7 @@ fn change(
     result.insert("issue_id".into(), Value::from(issue_key.as_str()));
     result.insert("depends_on_id".into(), Value::from(shown.as_str()));
     result.insert("action".into(), Value::from(action));
-    Ok(Outcome::new(
-        result,
-        vec![format!("{issue_key} {done} {shown}")],
-    ))
+    Ok(Outcome::new(result, vec![format!("{issue_key} {done} {shown}")]).wrote_in(spent))
 }
 
 /// The key of the imported dependency of `issue` that `given` names, itself or with the prefix.

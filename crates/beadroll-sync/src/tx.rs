@@ -1,8 +1,8 @@
-//! Local transactions: one locked read-modify-append over this machine's journal.
+//! Local transactions: one locked read-modify-append over this machine's journal. The transaction
+//! and what it emits are here; the store lock and the writes that run a body in one, with what they
+//! hand back of it, are in `tx/writes.rs`.
 
-use std::fs::OpenOptions;
-use std::os::unix::fs::OpenOptionsExt as _;
-use std::path::Path;
+mod writes;
 
 use beadroll_core::event::{FORMAT, MAX_NESTING, event_problem, payload_problem, write_problem};
 use beadroll_core::id::EventId;
@@ -10,14 +10,17 @@ use beadroll_core::json::{Object, Value};
 use beadroll_core::projection::{Extended, Projection, Record};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
-use beadroll_git::IoError;
 use beadroll_store::{
-    Actor, Sourced, Workspace, append_events, attempt_path, capture_where, encode_events,
-    glob_ending, json_text, load_journal, private_dir, private_dirs, projection, read_texts,
-    replica_id, uuid7, write_attempt_file,
+    Actor, Sourced, Workspace, capture_where, encode_events, load_journal, projection, read_texts,
+    replica_id, uuid7,
 };
 
 use crate::error::Error;
+
+pub use writes::{
+    confirm_ownership, drop_pending, forget_receipts, locked, remove, writing, writing_spent,
+    writing_state,
+};
 
 /// Ownership events: settled with the remote, and kept one attempt per file.
 pub const OWNERSHIP: [&str; 2] = ["claim", "release"];
@@ -236,6 +239,37 @@ impl<'a> Tx<'a> {
             (None, None) => Err(Error::Validation("no state".to_owned())),
         }
     }
+
+    /// What the transaction held that costs to free, taken out of it, which is done with, as it
+    /// stands: the events it emitted are in it only if its state was asked for since.
+    fn into_spent(self) -> Spent {
+        Spent {
+            projection: self.projection,
+            state: self.state,
+        }
+    }
+}
+
+/// What a write's transaction held when the write was done: its projection, or the state replayed
+/// once it had none, which is almost all of what the transaction holds. [`writing_spent`] hands it
+/// over where [`writing`] lets go of it: freeing the projection of a large tracker takes about as
+/// long as decoding the state of one (83 ms at 200,000 events), and a caller whose process ends
+/// with its command, as `bead` itself does, need not free it at all (roll-lqjj.42). A caller that
+/// does not know that drops it, which frees it.
+#[derive(Debug, Default)]
+pub struct Spent {
+    /// The store's projection, the events applied that the transaction asked its state for.
+    projection: Option<Projection>,
+    /// The journal replayed with the events emitted, once the projection was gone.
+    state: Option<State>,
+}
+
+impl Spent {
+    /// Whether it holds nothing: the transaction had let go of its projection and had not
+    /// replayed the journal.
+    pub fn is_empty(&self) -> bool {
+        self.projection.is_none() && self.state.is_none()
+    }
 }
 
 /// What emits into a [`Tx`] while its state is lent ([`Tx::lend`]).
@@ -313,159 +347,5 @@ impl Emitter<'_> {
             sequenced,
         });
         Ok(event)
-    }
-}
-
-/// Runs `body` holding the store lock (`<ws>/lock`, `flock(2)` exclusive), the store's directories
-/// made private first.
-pub fn locked<T, E: From<Error>>(
-    ws: &Workspace,
-    body: impl FnOnce() -> Result<T, E>,
-) -> Result<T, E> {
-    let lock = take_lock(ws).map_err(E::from)?;
-    ws.set_holding(true);
-    let result = body();
-    ws.set_holding(false);
-    drop(lock);
-    result
-}
-
-/// The store's lock file, held exclusively, the store's directories made private first.
-fn take_lock(ws: &Workspace) -> Result<std::fs::File, Error> {
-    private_dir(&ws.settings.home()?)?;
-    private_dir(&ws.dir)?;
-    private_dirs(&ws.events_dir)?;
-    let path = ws.dir.join("lock");
-    let lock = OpenOptions::new()
-        .read(true)
-        .append(true)
-        .create(true)
-        .mode(0o600)
-        .open(&path)
-        .map_err(|e| IoError::at(&e, &path))?;
-    lock.lock().map_err(|e| IoError::at(&e, &path))?;
-    Ok(lock)
-}
-
-/// The attempt counts: written, as one file, where every machine reads it.
-pub fn confirm_ownership(ws: &Workspace, events: &[Value]) -> Result<(), Error> {
-    if !events.is_empty() {
-        write_attempt_file(ws, &attempt_path(ws, events), events)?;
-    }
-    Ok(())
-}
-
-/// A local write: `body` emits into a transaction, under the store lock; then the sequential
-/// events are appended and ownership events made here (offline, or with no remote) count at once.
-/// A command that went through retires its actor's receipts: a repeat of an earlier command is a
-/// new command. Nothing is written if `body` fails. The transaction, which holds the store's whole
-/// projection, is let go of once the lock is: freeing it is no part of the write, every command
-/// waiting for the lock would wait for it too, and on a large tracker it takes about as long as
-/// decoding the projection did (83 ms and 136 ms at 200,000 events; roll-lqjj.32, X10).
-pub fn writing<T, E: From<Error>>(
-    ws: &Workspace,
-    actor: &Actor,
-    body: impl FnOnce(&mut Tx<'_>) -> Result<T, E>,
-) -> Result<T, E> {
-    written(ws, actor, false, body).map(|(result, _)| result)
-}
-
-/// [`writing`], and the state it leaves the store's journal in: the transaction's, with every
-/// event it emitted, so that a command that answers from it does not read the store again
-/// (roll-lqjj.29). `None` when the transaction cannot have it; the store's is then read as before.
-pub fn writing_state<T, E: From<Error>>(
-    ws: &Workspace,
-    actor: &Actor,
-    body: impl FnOnce(&mut Tx<'_>) -> Result<T, E>,
-) -> Result<(T, Option<State>), E> {
-    written(ws, actor, true, body)
-}
-
-/// [`writing`], with the transaction's state at the end when `keep` asks for it. The transaction
-/// is let go of, or made into that state, once the lock is (roll-lqjj.32).
-fn written<T, E: From<Error>>(
-    ws: &Workspace,
-    actor: &Actor,
-    keep: bool,
-    body: impl FnOnce(&mut Tx<'_>) -> Result<T, E>,
-) -> Result<(T, Option<State>), E> {
-    let mut made = None;
-    let result = locked(ws, || -> Result<(T, bool), E> {
-        let tx = made.insert(Tx::new(ws, actor)?);
-        let replica = tx.replica.clone();
-        if tx.state()?.chain_breaks().contains_key(&replica) {
-            return Err(Error::JournalFork(
-                "this machine's journal no longer forms one chain: the same machine identity has \
-                 written from two places. Give one of them a new identity."
-                    .to_owned(),
-            )
-            .into());
-        }
-        let result = body(tx)?;
-        // the events emitted applied while the transaction still has them
-        let kept = keep && tx.state().is_ok();
-        let sequenced = tx.has_pending();
-        let pending = tx.take_pending();
-        let finish = || -> Result<(), Error> {
-            if sequenced {
-                append_events(ws, &tx.replica, pending)?;
-            }
-            if !tx.ownership.is_empty() {
-                confirm_ownership(ws, &tx.ownership)?;
-            }
-            if sequenced || !tx.ownership.is_empty() {
-                forget_receipts(ws, &actor.value)?;
-                ws.set_wrote(true);
-            }
-            Ok(())
-        };
-        finish()?;
-        Ok((result, kept))
-    });
-    let (result, kept) = result?;
-    let state = made.filter(|_| kept).and_then(|tx| tx.into_state().ok());
-    Ok((result, state))
-}
-
-/// A later command of this actor went through: the receipts that would answer a repeat of an
-/// earlier command go. Attempts still pending stay for sync to settle.
-pub fn forget_receipts(ws: &Workspace, actor: &Value) -> Result<(), Error> {
-    for receipt in glob_ending(&ws.dir.join("pending"), ".command") {
-        let Ok(data) = std::fs::read(&receipt) else {
-            continue;
-        };
-        let Ok(Value::Object(recorded)) = json_text(&data) else {
-            continue;
-        };
-        if recorded.get("actor") == Some(actor) {
-            remove(&receipt)?;
-        }
-    }
-    Ok(())
-}
-
-/// Removes these attempts' pending files and their receipts.
-pub fn drop_pending(ws: &Workspace, attempts: &[Vec<Value>]) -> Result<(), Error> {
-    for events in attempts {
-        let Some(id) = events
-            .first()
-            .and_then(|e| e.get("id"))
-            .map(beadroll_core::text::str_of)
-        else {
-            continue;
-        };
-        let folder = ws.dir.join("pending");
-        remove(&folder.join(format!("{id}.json")))?;
-        remove(&folder.join(format!("{id}.command")))?;
-    }
-    Ok(())
-}
-
-/// Removes path, succeeding if already absent.
-pub fn remove(path: &Path) -> Result<(), Error> {
-    match std::fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(IoError::at(&error, path).into()),
     }
 }

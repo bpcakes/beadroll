@@ -114,15 +114,21 @@ pub(crate) fn main(dir: &Path, replaying: bool) -> Result<ExitCode, Failure> {
 
 /// `cargo xtask bead ARG...`: bead run with ARGs in this process, its exit status passed on, and
 /// once it is done the most the process held on its heap at once ([`heap::peak`]) said on standard
-/// error, after whatever bead wrote there (roll-lqjj.9).
+/// error, after whatever bead wrote there (roll-lqjj.9), and what it still held ([`heap::held`]):
+/// `run_with` frees what the command made, so that is a few kilobytes of the process's own, and a
+/// tracker's projection would be megabytes (roll-lqjj.42).
 pub(crate) fn bead(args: Vec<OsString>) -> ExitCode {
     let code = beadroll::run_with(args);
     eprintln!("{HEAP_PEAK} {}", heap::peak());
+    eprintln!("{HEAP_HELD} {}", heap::held());
     code
 }
 
 /// How `--load` and `cargo xtask bead` say their heap peak.
 const HEAP_PEAK: &str = "heap peak:";
+
+/// How `cargo xtask bead` says what its process still held when bead returned.
+const HEAP_HELD: &str = "heap held:";
 
 /// What a `--load` run held at its peak, in bytes: its resident set, as `/usr/bin/time` reports
 /// it, and its heap, as it reported it.

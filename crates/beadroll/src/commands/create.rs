@@ -6,7 +6,7 @@ use beadroll_core::code::Code;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::query::blocking;
 use beadroll_store::uuid7;
-use beadroll_sync::{Tx, writing};
+use beadroll_sync::{Tx, writing_spent};
 
 use super::{
     ContentArgs, Context, Failure, Outcome, Payload, arg_text, arg_texts, encodable, field_args,
@@ -42,16 +42,14 @@ pub(crate) fn create(ctx: &Context<'_>, args: &CreateArgs) -> Result<Outcome, Fa
             "create the issue, then claim it: in_progress is reached only through a claim",
         ));
     }
-    let (key, title, result) = writing(ctx.ws, ctx.actor, |tx| write_issue(tx, args, &fields))?;
+    let ((key, title, result), spent) =
+        writing_spent(ctx.ws, ctx.actor, |tx| write_issue(tx, args, &fields))?;
     if args.silent {
         let mut out = Object::new();
         out.insert("id".into(), Value::from(key.as_str()));
-        return Ok(Outcome::new(out, vec![key]));
+        return Ok(Outcome::new(out, vec![key]).wrote_in(spent));
     }
-    Ok(Outcome::new(
-        result,
-        vec![format!("✓ Created {key}: {title}")],
-    ))
+    Ok(Outcome::new(result, vec![format!("✓ Created {key}: {title}")]).wrote_in(spent))
 }
 
 /// Emits the issue (`fields`, under `--parent`, depending on each `--deps` item, `[type:]KEY`,

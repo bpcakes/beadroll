@@ -2,6 +2,8 @@
 //! arguments. It finds the workspace, runs a command, publishes what it wrote and renders the
 //! result as JSON with `--json` or as human-readable lines.
 
+#[cfg(test)]
+mod ending;
 mod free;
 mod help;
 mod layout;
@@ -21,12 +23,11 @@ use std::sync::Arc;
 use beadroll_core::code::Code;
 use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Format, Int, Object, Value};
-use beadroll_core::state::State;
 use beadroll_core::text::json_ascii_bytes;
 use beadroll_store::{Settings, detect_actor, find_workspace, nearest_harness};
 use beadroll_sync::publish_soon;
 
-use crate::commands::{self, Context, Failure, Line, Outcome, Tone};
+use crate::commands::{self, Context, Failure, Held, Line, Outcome, Tone};
 use output::{Stream, Unwritten, emit};
 use paint::{Colors, When};
 use parse::{Namespace, Page, Parsed};
@@ -35,8 +36,9 @@ use parse::{Namespace, Page, Parsed};
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Runs `bead` with the process's arguments; the exit status is 0, 1 for an error, 2 for a usage
-/// error. The process ends with the run, so the state a command answered from is never freed
-/// ([`Outcome::answered_from`]).
+/// error. The process ends with the run, so what a command held when it answered, the state it
+/// answered from or the transaction it wrote in, is never freed ([`Outcome::answered_from`],
+/// [`Outcome::wrote_in`]).
 pub(crate) fn main() -> ExitCode {
     ExitCode::from(run(std::env::args_os().skip(1).collect(), true))
 }
@@ -276,8 +278,7 @@ type Answer = (Option<Value>, Option<Vec<Line>>);
 
 /// What follows a command: its own output written (`export`), what it wrote published unless it
 /// was `--offline`, and the count of events not yet published added; the result and lines then,
-/// or `None` when a reader went away. The state the command answered from goes first
-/// ([`ended_with`]).
+/// or `None` when a reader went away. What the command held goes first ([`ended_with`]).
 fn finish(
     outcome: Outcome,
     ws: Option<&beadroll_store::Workspace>,
@@ -290,11 +291,11 @@ fn finish(
         mut lines,
         raw,
         settled,
-        state,
+        held,
     } = outcome;
     let ws = ws.filter(|_| !settled);
     let publishing = ws.is_some_and(|ws| ws.wrote() && !offline);
-    ended_with(state, publishing, exits);
+    ended_with(held, publishing, exits);
     if let Some(raw) = raw {
         // the command's own output (`export`): written as the command runs, so a reader that went
         // away ends the run there, and a failed write is the command's IO error
@@ -322,17 +323,18 @@ fn finish(
     Ok(Some((result, lines)))
 }
 
-/// What becomes of the state a command answered from, once the command is done: freed, or kept
-/// until the process exits when it `exits` with the run, which is whether it was kept. A command
-/// answers from its state and the process then ends, so freeing each of its issues first is work
-/// nobody waits for, a quarter of a reading command's time on a large tracker (roll-lqjj.32).
-/// Freed instead when the run `publishing` what the command wrote, which reads a state of its
-/// own, so that none is held beside another.
-fn ended_with(state: Option<State>, publishing: bool, exits: bool) -> bool {
-    match state {
-        Some(state) if exits && !publishing => {
+/// What becomes of what the command held (the state it answered from, or the transaction a write
+/// was made in), once the command is done: freed, or kept until the process exits when it `exits`
+/// with the run, which is whether it was kept. A command answers from its state, or writes, and the
+/// process then ends, so freeing each of its issues first is work nobody waits for, a quarter of
+/// a reading command's time on a large tracker (roll-lqjj.32), and about 83 ms of a write's at
+/// 200,000 events (roll-lqjj.42). Freed instead when the run `publishing` what the command wrote,
+/// which reads a state of its own, so that none is held beside another.
+fn ended_with(held: Option<Box<dyn Held>>, publishing: bool, exits: bool) -> bool {
+    match held {
+        Some(held) if exits && !publishing => {
             // never freed: the process ends once the answer is written
-            std::mem::forget(state);
+            std::mem::forget(held);
             true
         }
         _ => false,
@@ -575,9 +577,10 @@ mod tests {
     use super::*;
 
     /// A state with no issues, to be kept or freed.
-    fn state() -> Option<State> {
+    fn state() -> Option<Box<dyn Held>> {
         let journal = beadroll_core::journal::Journal::new();
-        Some(beadroll_core::replay::replay(journal).expect("an empty journal replays"))
+        let state = beadroll_core::replay::replay(journal).expect("an empty journal replays");
+        Some(Box::new(state))
     }
 
     #[test]
