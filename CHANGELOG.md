@@ -6,6 +6,28 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `cargo xtask coverage [--stress] [--sweep]` reports which lines of the product's code the suites
+  run, and the nightly workflow keeps its report as an artifact (roll-k2wy.14.5): cargo-llvm-cov
+  over the workspace's tests, with `--stress` the stress models and with `--sweep` all 660 schedules
+  of the ownership sweep (the nightly runs both), written as `target/coverage/html/index.html`,
+  `lcov.info` and `summary.json`, and summarised on standard output: the lines by crate, then
+  the ownership protocol's files with the runs of lines no test reaches. The `bead` processes the
+  black-box tests start are in the count: the command fails when no line of
+  `crates/beadroll/src/main.rs`, which only a `bead` process runs, ran (one black-box takeover test
+  reaches 135 of the 246 lines of `commands/ownership.rs` with an instrumented `bead` and none
+  with a plain one). On main at 071d172 the fast suite runs 96.4% of 19,685 lines and the
+  protocol's files 96.5% of 2,822; the stress models and the full sweep add three lines (96.4% and
+  96.6%). The fast suite takes 172 s against 130 s without the report (1,016 tests, 16 threads, a
+  shared 64-core machine), the stress models 252 s and the sweep 84 s, the nightly's whole command
+  8 min 46 s. The profiles are written into 16 files per binary rather than one for each
+  `bead` process (3.5 GB for the fast suite alone, against 30 MB). It needs cargo-llvm-cov and the
+  toolchain's `llvm-tools`, neither in `rust-toolchain.toml`: the command says how to install them,
+  and the nightly workflow installs `cargo-llvm-cov@0.8.7`. The V6 and G48 tests, which run `bead`
+  under `ulimit -f`, keep the profile out of the limit (`LLVM_PROFILE_FILE=/dev/null`), which made
+  them fail under the report. A `bead` killed by SIGKILL or run under a file-size limit writes no
+  profile, and the doctests (the workspace has none) are not covered. The protocol paths the first
+  report showed untested are roll-k2wy.14.6 to roll-k2wy.14.13.
+
 - A decoded issue holds each short field once (roll-lqjj.41, X16): title, priority, type,
   assignee, estimate, reference, and status with its close time and reason are shown from their
   registers, as long fields have been since roll-lqjj.10, rather than copied out of them into

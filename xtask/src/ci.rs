@@ -1,6 +1,6 @@
 //! CI coverage: every push tests Linux and macOS, and nightly runs include the oldest supported
-//! git built from source and the growth guards timed in release. These checks keep the workflow
-//! matrix aligned with supported environments.
+//! git built from source, the growth guards timed in release and the coverage report. These checks
+//! keep the workflow matrix aligned with supported environments.
 
 /// The text of the file at `path` from the repository's root.
 fn read(path: &str) -> String {
@@ -79,5 +79,66 @@ mod x15_growth_guards {
                 "the growth guards run without `{part}`: {step}"
             );
         }
+    }
+}
+
+/// The coverage report (roll-k2wy.14.5): the nightly makes it over the slow suites as well, with
+/// the cargo-llvm-cov that `cargo xtask coverage` names, and keeps it, whether the suites passed or
+/// not.
+mod coverage_report {
+    use super::read;
+    use crate::coverage::CARGO_LLVM_COV;
+
+    #[test]
+    fn the_nightly_makes_the_report_with_pinned_tools_and_keeps_it() {
+        let nightly = read(".github/workflows/rust-nightly.yml");
+        let run = nightly
+            .lines()
+            .find(|line| line.trim_start().starts_with("run:") && line.contains("xtask coverage"))
+            .expect("the nightly makes no coverage report");
+        for part in ["--locked", "--stress", "--sweep"] {
+            assert!(
+                run.contains(part),
+                "the report is made without `{part}`: {run}"
+            );
+        }
+        let pinned = format!("cargo-llvm-cov@{CARGO_LLVM_COV}");
+        assert!(
+            nightly.contains(&pinned),
+            "the nightly installs no `{pinned}`, the version `cargo xtask coverage` names"
+        );
+        assert!(
+            nightly.contains("components: llvm-tools"),
+            "the nightly's toolchain has no llvm-tools"
+        );
+
+        // The upload keeps what the command writes, and runs after a failure too.
+        let at = nightly
+            .find("actions/upload-artifact")
+            .expect("the nightly keeps no artifact");
+        let (before, upload) = nightly.split_at(at);
+        let step = before.rsplit("      - name:").next().unwrap_or("");
+        assert!(
+            step.contains("!cancelled()"),
+            "the report is lost when a suite fails"
+        );
+        for kept in [
+            "target/coverage/html",
+            "target/coverage/lcov.info",
+            "target/coverage/summary.json",
+        ] {
+            assert!(upload.contains(kept), "the report is not kept: no `{kept}`");
+        }
+    }
+
+    #[test]
+    fn the_job_sits_between_the_oldest_git_and_the_slow_suites() {
+        let nightly = read(".github/workflows/rust-nightly.yml");
+        let at = |job: &str| {
+            nightly
+                .find(&format!("\n  {job}:\n"))
+                .unwrap_or_else(|| panic!("the nightly has no job {job}"))
+        };
+        assert!(at("oldest-git") < at("coverage") && at("coverage") < at("slow"));
     }
 }

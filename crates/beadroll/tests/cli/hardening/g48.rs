@@ -99,7 +99,9 @@ mod g48_failed_atomic_write_leaves_nothing_behind {
 
     /// Runs `bead ARGS --json` under a file-size limit of `kib` KiB. SIGXFSZ is ignored so a
     /// partial write fails with EFBIG instead of killing bead. Measure the shell's block size in
-    /// `dir` before translating the limit, since `ulimit -f` units vary by platform.
+    /// `dir` before translating the limit, since `ulimit -f` units vary by platform. Under `cargo
+    /// xtask coverage` the profile bead would write at exit hits the limit too, and says so on
+    /// standard error: these runs write none.
     fn limited(machine: &Machine, dir: &Path, kib: u64, args: &[&str]) -> Run {
         let blocks = kib * 1024 / ulimit_block(dir);
         let output = Command::new("/bin/sh")
@@ -110,6 +112,7 @@ mod g48_failed_atomic_write_leaves_nothing_behind {
             .current_dir(machine.checkout())
             .env_clear()
             .envs(machine.env(None, "codex"))
+            .env("LLVM_PROFILE_FILE", "/dev/null")
             .stdin(Stdio::null())
             .output()
             .unwrap();

@@ -809,6 +809,34 @@ These were decided deliberately. Report problems *with* them, not their existenc
   the issues' waiting lists 39.8 (0.018 s and 0.70 s) and, with imports waiting, 150 (0.092 s and
   13.8 s); a scan of the waiting index's entries measured 40.8 times on the waiting shape in the
   review of this change.
+- The coverage report of the suites (roll-k2wy.14.5; `cargo xtask coverage`,
+  `xtask/src/coverage.rs`) is evidence, never a gate: no minimum, no `--fail-under`, no comparison
+  with an earlier report. It covers the fast suite on every run, and the stress models (`--stress`)
+  and the full sweep (`--sweep`, `BEAD_SWEEP=full`) in the nightly workflow's job only: they take
+  8 to 20 and about 11 minutes on a 16-core Mac (`.config/nextest.toml`), 252 s and 84 s
+  instrumented on 16 test threads of a shared 64-core machine, against 172 s for the fast suite
+  (which covers the sweep's slice); the sweep's variants (`BEAD_SWEEP_GC`,
+  `BEAD_SWEEP_CONCURRENT`) and the simulation's runs (roll-k2wy.14.1 to .14.3) are added when a
+  line needs them. Not covered: the doctests (the workspace has none, and cargo-llvm-cov covers
+  them only on a nightly toolchain, which `rust-toolchain.toml` does not pin), the growth guards
+  (timings an instrumented build would spoil) and the `infra/` drivers (Python). It counts the
+  `bead` processes the black-box tests start, since the children inherit the profile file's name
+  from the test and `beadroll-test-support` scrubs only `CLAUDE*`, `CODEX*`, `BEAD_*` and `GIT_*`;
+  the command fails when `crates/beadroll/src/main.rs`, which only such a process runs, has no
+  line run, and ignores `BEAD_UNDER_TEST`, since another `bead` has no counters. Its profiles are
+  written into 16 files per binary (`%16m`), not one for each process: the default, 8,237 files
+  and 3.5 GB for the fast suite, is 30 MB merged, with the protocol's files' unreached lines the same. Two kinds of
+  `bead` write no profile and so leave their lines reading unreached: one killed by SIGKILL (the
+  sweep's `sigkill` schedules, the failpoint's own `kill_self`) and one under `ulimit -f` (the V6
+  and G48 tests, whose helpers set `LLVM_PROFILE_FILE=/dev/null`, since the profile written at
+  exit would fail on the limit and fill the standard error they assert on; `GIT_ERROR`'s
+  classification of a git killed by SIGXFSZ is among what only they run). cargo-llvm-cov and
+  `llvm-tools` stay out of `rust-toolchain.toml`, which every contributor installs: the command
+  asks for them, and the nightly job installs `cargo-llvm-cov@0.8.7` (`xtask`'s
+  `CARGO_LLVM_COV`, kept alike by `ci::coverage_report`) and the component. What the first report
+  showed untested in the ownership protocol is filed under roll-k2wy.14 (roll-k2wy.14.6 to .13);
+  its unreachable defensive branches, error formatting and OS-error propagation are listed in a
+  comment on roll-k2wy.14.5, not filed.
 - No history boundary (roll-lqjj.3, step 4 of epic roll-lqjj; the maintainer's decision of
   2026-10-12, on the evidence in the port plan's Appendix A, "roll-lqjj.3", which git keeps, §1): a
   machine's work merges by itself however old it is, as every merge has so far. The alternatives

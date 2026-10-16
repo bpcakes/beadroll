@@ -30,7 +30,8 @@ fn error_code(run: &Run) -> Option<String> {
 
 /// `_v6_limited`: `bead ARGV --json` run as `machine` under a shell resource limit such as `-f 200`
 /// or `-n 8`: `/bin/sh -c 'ulimit LIMIT; exec "$@"'` in the machine's checkout with its
-/// environment, given 120 seconds.
+/// environment, given 120 seconds. Under `cargo xtask coverage` the profile bead would write at
+/// exit hits a file-size limit too, and says so on standard error: these runs write none.
 fn limited(machine: &Machine, limit: &str, argv: &[&str]) -> Run {
     let mut command = Command::new("/bin/sh");
     command
@@ -40,7 +41,8 @@ fn limited(machine: &Machine, limit: &str, argv: &[&str]) -> Run {
         .arg("--json")
         .current_dir(machine.checkout())
         .env_clear()
-        .envs(machine.env(None, "codex"));
+        .envs(machine.env(None, "codex"))
+        .env("LLVM_PROFILE_FILE", "/dev/null");
     run_within(command, Duration::from_secs(120))
 }
 
