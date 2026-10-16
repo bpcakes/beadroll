@@ -120,8 +120,12 @@ pub(crate) fn transition(
         Ok::<_, Failure>((result, ended, named, unchanged, plan))
     })?;
     let ((mut result, ended, named, unchanged, plan), spent) = written;
-    // an ended claim is published here, and its answer reads the store again: the transaction is
-    // let go of before either, as the command line lets go of it before a publish (roll-lqjj.42)
+    // An ended claim is published here, and its answer reads the store again: the transaction is
+    // let go of before either, as the command line lets go of it before a publish (roll-lqjj.42).
+    // Nothing but this order keeps the two apart, which the types do not: `xtask/tests/heap`
+    // peaks a close or delete that ends a claim against the claim, and fails when it is a whole
+    // projection above. A `--force --offline` close of another owner's claim neither publishes nor
+    // reads (no claim of its own to name), and frees it all the same, which is harmless.
     let spent = (!ended).then_some(spent);
     let warning = if ended {
         publish_soon(ctx.ws, args.offline, args.remote.as_deref())

@@ -129,7 +129,9 @@ usage: cargo xtask <command>
 
   bead ARG...
       Run bead with ARGs in this process, whose heap is counted, and say on standard error the
-      most it held at once (heap peak: N) once it is done: how timing --import counts bead's heap.
+      most it held at once (heap peak: N) and what it still held when bead returned (heap held:
+      N, a few kilobytes when bead freed all it made) once it is done: how timing --import counts
+      bead's heap, and what xtask's tests/heap test.
 ";
 
 fn main() -> ExitCode {

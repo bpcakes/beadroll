@@ -7,7 +7,8 @@ baseline, its tests, its doctests and the `infra/` drivers' tests, with `--stres
 models and with `--real` the real-export checks, and `./check.sh` runs it; `coverage` reports which
 lines of the product's code the suites run, with cargo-llvm-cov; `timing`
 records how long a command (or a replay) took; `bead` runs bead in xtask's process, whose
-allocator counts its heap. Its tests also keep the repository hygiene rules and CI matrix.
+allocator counts its heap, the most it held and what it still holds when bead returns. Its tests
+also keep the repository hygiene rules and CI matrix, and what bead holds on its heap.
 
 ## Key entrypoints
 
@@ -67,6 +68,13 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   xtask, for its heap), and their peaks: the resident set as
   `/usr/bin/time` reports it, and the heap as `timing/heap.rs` counts it, xtask's global allocator
   (the system's, counted; its one unsafe spot, `CONTRIBUTING.md`).
+- `tests/heap/main.rs`: the one integration-test binary, bead's heap as `cargo xtask bead` counts
+  it (roll-lqjj.42, X17): a sandbox machine whose `bead` is this build's xtask runs commands on a
+  tracker of 1,500 imported issues, and the test reads `heap peak:` and `heap held:` from standard
+  error. It keeps that a write published at once peaks where one not published does, that a close
+  or delete that ends a claim peaks where the claim did (neither holds a transaction beside a
+  state), and that every command, answering or failing, returns holding none of the tracker
+  (`run_with` and the libraries free).
 - `src/hygiene.rs`: the repository lint (a test only).
 - `src/ci.rs`: `v8_supported_environments`, the CI matrix the workflows keep,
   `x15_growth_guards`, the nightly step that runs the growth guards, and `coverage_report`, the
@@ -147,8 +155,13 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   `target/timing/`, which it removes after, as workspace `timing`, never the real store or another
   repository: none of them inherits the shell's `BEAD_*` and `GIT_*` variables.
 - Its dependencies are beadroll-core and the `beadroll` library (for `bead`, which runs bead's code
-  in xtask's process), and for its tests regex-lite (the hygiene patterns),
-  sha2 (the plain history's digest) and tempfile; it may print (its crate root allows it).
+  in xtask's process), and for its tests beadroll-test-support (the sandbox `tests/heap` runs bead
+  in), regex-lite (the hygiene patterns), sha2 (the plain history's digest) and tempfile; it may
+  print (its crate root allows it).
+- `tests/heap` counts bytes, not time: the same command peaks at the same heap to within a few
+  hundred bytes, so a margin of a twentieth is a whole projection's difference at the size of its
+  tracker, and no gate on a clock. It runs `bead` through `Machine::with_bead`, whatever
+  `BEAD_UNDER_TEST` names, since only xtask's own process counts.
 
 ## Common commands
 
@@ -184,7 +197,7 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   machines minted alike, against 16,000 creates renamed by nobody
 - `cargo run --release --package xtask -- timing --decode 200000`, and with `--ownership`,
   `--churn` or `--text`: the projection of 200,000 events decoded, its state part alone and whole
-- `cargo test -p xtask`
+- `cargo test -p xtask`, and `cargo nextest run -p xtask -E 'binary(heap)'` for bead's heap alone
 - `cargo nextest run --release --locked --package xtask --run-ignored only --test-threads 1 -E
   'test(/^timing::growth::/)'`: the growth guards, as the nightly workflow runs them
 - `python3 xtask/python/printable_table.py > crates/beadroll-core/src/text/printable.rs`, with

@@ -606,6 +606,7 @@ version = "0.2.0"
 dependencies = [
  "beadroll",
  "beadroll-core",
+ "beadroll-test-support",
  "regex-lite",
  "sha2",
  "tempfile",
