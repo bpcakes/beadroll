@@ -809,6 +809,43 @@ These were decided deliberately. Report problems *with* them, not their existenc
   the issues' waiting lists 39.8 (0.018 s and 0.70 s) and, with imports waiting, 150 (0.092 s and
   13.8 s); a scan of the waiting index's entries measured 40.8 times on the waiting shape in the
   review of this change.
+- The coverage report of the suites (roll-k2wy.14.5; `cargo xtask coverage`,
+  `xtask/src/coverage.rs`) is evidence, never a gate: no minimum, no `--fail-under`, no comparison
+  with an earlier report. It covers the fast suite on every run, and the stress models (`--stress`)
+  and the full sweep (`--sweep`, `BEAD_SWEEP=full`) in the nightly workflow's job only: on that
+  workflow's 4-vCPU runner they take about 2 and about 7 minutes and the fast suite about 3 without
+  counters (run 38874018456), and 252 s, 84 s and 164 s instrumented on 16 test threads of a shared
+  64-core machine; the fast suite covers the sweep's slice. The sweep's variants (`BEAD_SWEEP_GC`,
+  `BEAD_SWEEP_CONCURRENT`) and the simulation's runs (roll-k2wy.14.1 to .14.3) are added when a line
+  needs them. Not covered: the doctests (the workspace has none, and cargo-llvm-cov covers them only
+  on a nightly toolchain, which `rust-toolchain.toml` does not pin), the growth guards (timings an
+  instrumented build would spoil) and the `infra/` drivers (Python). It counts the `bead` processes
+  the black-box tests start, since the children inherit the profile file's name from the test and
+  `beadroll-test-support` scrubs only `CLAUDE*`, `CODEX*`, `BEAD_*` and `GIT_*`; the command fails
+  when `crates/beadroll/src/main.rs`, which only such a process runs, has no line run, and ignores
+  `BEAD_UNDER_TEST`, since another `bead` has no counters. Its profiles are written into 16 files
+  per binary (`%16m`), not one for each process: the default, 8,237 files and 3.5 GB for the fast
+  suite, is 30 MB merged, with the protocol's files' unreached lines the same. The reports are made
+  with `--failure-mode all`, so that a profile that cannot be merged does not cost the report; the
+  command reads llvm-profdata's warnings in the logs of the report steps and fails, naming how many
+  were left out, since counts lost would read as code no test reaches. It has one count of lines,
+  the printed one, that of `lcov.info` (each source line with code once); the HTML index and
+  `summary.json` are llvm-cov's, which adds up the lines of each function and so shows more lines at
+  a lower percentage (96.12% of 21,018 against 96.4% of 19,705 at 72b13f9), and every figure in the
+  docs is the printed one. Both include the unit tests written inline in the product's files (1,789
+  lines at 99.6%; the product's code alone is 96.1% of 17,916 lines), which cargo-llvm-cov cannot
+  leave out on a stable toolchain. Two kinds of `bead` write no profile and so leave their lines
+  reading unreached: one killed by SIGKILL (the sweep's `sigkill` schedules, the failpoint's own
+  `kill_self`) and one under `ulimit`, whose test takes `beadroll_test_support::UNPROFILED`
+  (`LLVM_PROFILE_FILE=/dev/null`; `coverage::tests::limits` finds every run under `ulimit` in the
+  tracked tests and wants it), since the profile written at exit would fail on `-f`'s limit and fill
+  the standard error the test asserts on. cargo-llvm-cov and `llvm-tools` stay out of
+  `rust-toolchain.toml`, which every contributor installs: the command asks for them, and the
+  nightly job installs `cargo-llvm-cov@0.8.7` (`xtask`'s `CARGO_LLVM_COV`, kept alike by
+  `ci::coverage_report`) and the component. What the first report showed untested in the ownership
+  protocol is filed under roll-k2wy.14 (roll-k2wy.14.6 to .13 and .15); its unreachable defensive
+  branches, error formatting and OS-error propagation are listed in a comment on roll-k2wy.14.5, not
+  filed.
 - No history boundary (roll-lqjj.3, step 4 of epic roll-lqjj; the maintainer's decision of
   2026-10-12, on the evidence in the port plan's Appendix A, "roll-lqjj.3", which git keeps, §1): a
   machine's work merges by itself however old it is, as every merge has so far. The alternatives

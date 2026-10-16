@@ -153,41 +153,45 @@ fn built_executable(messages: &str) -> Result<PathBuf, Failure> {
     }
 }
 
-/// Where a check runs and with what.
-struct Setup {
-    root: PathBuf,
-    cargo: OsString,
-    python: OsString,
+/// Where a check runs and with what. `cargo xtask coverage` runs its steps the same way
+/// ([`run`]), with no `bead` of its own.
+pub(crate) struct Setup {
+    pub(crate) root: PathBuf,
+    pub(crate) cargo: OsString,
+    pub(crate) python: OsString,
     /// The scratch `BEAD_HOME` of every step.
-    home: PathBuf,
+    pub(crate) home: PathBuf,
     /// Where each step's whole output is kept.
-    logs: PathBuf,
+    pub(crate) logs: PathBuf,
     /// The bead `--real` runs.
-    bead: Option<PathBuf>,
+    pub(crate) bead: Option<PathBuf>,
 }
 
 /// How a step's output is read.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Kind {
+pub(crate) enum Kind {
     Nextest,
     Doctests,
     Unittest,
     /// `infra/roundtrip.py`, reported by its own summary line ([`report_roundtrip`]).
     Roundtrip,
+    /// A command with nothing to sum up, reported as `done`, or as `failed` and how it ended: it
+    /// printed what its log keeps.
+    Plain,
 }
 
 /// One step of a check: its name, how to read it, and the command (program and arguments).
-struct Step {
-    name: &'static str,
-    kind: Kind,
-    program: OsString,
-    args: Vec<OsString>,
+pub(crate) struct Step {
+    pub(crate) name: &'static str,
+    pub(crate) kind: Kind,
+    pub(crate) program: OsString,
+    pub(crate) args: Vec<OsString>,
     /// Variables the step sets besides `BEAD_HOME`.
-    env: Vec<(&'static str, OsString)>,
+    pub(crate) env: Vec<(&'static str, OsString)>,
 }
 
 impl Step {
-    fn new<I: IntoIterator<Item = S>, S: Into<OsString>>(
+    pub(crate) fn new<I: IntoIterator<Item = S>, S: Into<OsString>>(
         name: &'static str,
         kind: Kind,
         program: &OsString,
@@ -279,7 +283,7 @@ fn steps(setup: &Setup, options: Options) -> Vec<Step> {
 
 /// Runs every step, reporting each on `out` (and a round trip's standard error on `err`): whether
 /// all of them passed.
-fn run(
+pub(crate) fn run(
     steps: &[Step],
     setup: &Setup,
     out: &mut dyn Write,
@@ -382,6 +386,8 @@ fn summary(kind: Kind, output: &Output) -> Option<String> {
             (!lines.is_empty()).then(|| lines.join(" "))
         }
         Kind::Roundtrip => None,
+        Kind::Plain if output.status.success() => Some("done".to_owned()),
+        Kind::Plain => Some(format!("failed, {}", ended(output))),
     }
 }
 
@@ -401,9 +407,14 @@ fn counted(result: &str, word: &str) -> Option<u64> {
 
 /// How a step ended, when its output sums up nothing (it did not build, or it was killed).
 fn status(output: &Output) -> String {
+    format!("{}, no summary", ended(output))
+}
+
+/// How the process ended: its exit status, or the signal that ended it.
+fn ended(output: &Output) -> String {
     match output.status.code() {
-        Some(code) => format!("exit {code}, no summary"),
-        None => format!("{}, no summary", output.status),
+        Some(code) => format!("exit {code}"),
+        None => output.status.to_string(),
     }
 }
 

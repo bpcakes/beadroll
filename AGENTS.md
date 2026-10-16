@@ -27,9 +27,10 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
   `replay`, `storage`, `compat`, `commands`, `protocol`, `hardening`, and the slow `stress` and
   `sweep`. `crates/beadroll/tests/golden/` holds fixed reference outputs, and
   `crates/beadroll/tests/cli/parity/` checks compatibility across machines and versions.
-- `xtask/` — `cargo xtask`: `check` runs the baseline, `timing` records how long a command took,
-  `bead` runs bead in a process that counts its heap; its tests keep the repository's hygiene and
-  the CI matrix.
+- `xtask/` — `cargo xtask`: `check` runs the baseline, `coverage` reports which lines the suites
+  run (cargo-llvm-cov; the nightly workflow keeps its report), `timing` records how long a command
+  took, `bead` runs bead in a process that counts its heap; its tests keep the repository's hygiene
+  and the CI matrix.
 - `infra/` — drives against real machines and a throwaway GitHub repository, in stdlib Python;
   each script's docstring says what it needs. `selected.py` chooses the bead a driver runs here
   and records it before any test data is written; `test_roundtrip.py` and `test_drive.py` test the
@@ -47,7 +48,8 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
   -- -D warnings -D clippy::mod_module_files`. CI (`.github/workflows/rust.yml`) runs them, the
   tests on Linux and macOS, cargo-deny and the `infra/` tests on every push and pull request, and
   `.github/workflows/rust-nightly.yml` the tests under git 2.40, the oldest supported, the
-  stress models with the full sweep, and `xtask`'s growth guards timed in release.
+  coverage report, the stress models with the full sweep, and `xtask`'s growth guards timed in
+  release.
 - The default store `~/.local/state/beadroll` holds this repository's own real tracker. The tests
   give every machine a scratch `BEAD_HOME`; set one yourself for any manual experiment
   (`export BEAD_HOME=$(mktemp -d)`), and never run `bead`, `br` or `bv` inside other repositories

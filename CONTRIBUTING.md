@@ -40,7 +40,8 @@ push test data anywhere but a throwaway remote of your own.
   (`crates/<crate>/tests/<name>/`), by subject (`replay`, `storage`, `compat`,
   `commands`, `protocol`, `hardening`; the slow `stress` and `sweep`). The
   goldens in `crates/beadroll/tests/golden/` are what Python's bead printed.
-- `xtask/` — `cargo xtask check` (the baseline) and `cargo xtask timing`.
+- `xtask/` — `cargo xtask check` (the baseline), `cargo xtask coverage` (which lines the suites
+  run) and `cargo xtask timing`.
 - `infra/` — stdlib-Python drivers against real machines, with their tests.
 - `README.md` is what the tool does, and `docs/GUARANTEES.md` every guarantee it
   keeps; `docs/REVIEWING.md` is the map of the design and the list of deliberate
@@ -66,6 +67,15 @@ every help page and the reading commands' output with Python's, captured before 
 Python wrote them. `crates/beadroll-test-support` holds the sandbox: every test builds its own
 repository, bare remotes and machine homes in a temporary directory, each machine with a scratch
 `BEAD_HOME`, so the default store is never touched.
+
+`cargo xtask coverage` says which lines of the product's code the suites run, the `bead` processes
+the black-box tests start included, and which lines of the ownership protocol none does: an HTML
+report, an `lcov.info` and a `summary.json` under `target/coverage/`. It needs cargo-llvm-cov
+and the toolchain's `llvm-tools` (`rust-toolchain.toml` has neither), which it asks you to install
+when they are missing; `--stress` and `--sweep` add the slow suites, as the nightly workflow does,
+whose report is kept as an artifact. A test that runs `bead` under `ulimit` takes
+`beadroll_test_support::UNPROFILED` (`LLVM_PROFILE_FILE=/dev/null`) for that run, since the profile
+`bead` writes at exit would fail on the limit. The report is evidence, never a gate.
 
 Every test that runs bead runs the one Cargo builds, unless `BEAD_UNDER_TEST` names another by its
 absolute path. Until 0.2.0 bead was a Python package, whose suite the Rust tests port; the

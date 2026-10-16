@@ -2,6 +2,7 @@
 //!
 //! - `check` runs the workspace's baseline: its tests, and with options the slow and real ones.
 //!   `./check.sh` is a thin wrapper around it.
+//! - `coverage` reports what the suites run of the product's code, with cargo-llvm-cov.
 //! - `timing` runs a command and records how long it took, as evidence.
 //!
 //! It is a developer tool, so it prints; the product crates do not (`CONTRIBUTING.md`).
@@ -17,6 +18,7 @@
 mod check;
 #[cfg(test)]
 mod ci;
+mod coverage;
 #[cfg(test)]
 mod hygiene;
 mod timing;
@@ -39,6 +41,22 @@ usage: cargo xtask <command>
       --real adds the real-export compatibility test and infra/roundtrip.py over this machine's
       Beads exports, against BEAD_UNDER_TEST or else the bead Cargo builds. Each step's whole
       output is kept in target/check/. ./check.sh runs this.
+
+  coverage [--stress] [--sweep]
+      Run the suites under cargo-llvm-cov and report which lines of the product's code they run:
+      an HTML report (target/coverage/html/index.html), target/coverage/lcov.info and
+      target/coverage/summary.json, then the lines by crate, the ownership protocol's files with
+      the lines no test reaches, and whether the black-box tests' bead processes are in the
+      count. It runs the workspace's tests through nextest, as check does, the sweep's slice among
+      them; --stress adds the stress models and --sweep all 660 schedules of the ownership sweep,
+      the slow suites, which the nightly workflow runs. The doctests (the workspace has none) and
+      the growth guards are left out, and BEAD_UNDER_TEST is ignored: the bead counted is the one
+      the build makes. It needs cargo-llvm-cov and the toolchain's llvm-tools, which it asks you
+      to install when they are missing (rust-toolchain.toml has neither). Fails when a suite
+      fails, the report still made; when a profile could not be merged into the report, so that
+      its counts are missing; or when the report does not count the bead processes. A bead
+      killed by SIGKILL, or run under a resource limit, writes no profile. Each step's whole
+      output is kept in target/coverage/logs/; nothing is installed or published.
 
   timing [--label NAME] [--out FILE] -- COMMAND [ARG...]
   timing --replay N [--ownership|--churn|--text] [--label NAME] [--out FILE]
@@ -120,6 +138,7 @@ fn main() -> ExitCode {
     let rest: Vec<_> = args.collect();
     let outcome = match command.as_ref().and_then(|c| c.to_str()) {
         Some("check") => check::main(rest),
+        Some("coverage") => coverage::main(rest),
         Some("timing") => timing::main(rest),
         Some("bead") => return timing::memory::bead(rest),
         Some("help" | "-h" | "--help") => {
@@ -127,7 +146,7 @@ fn main() -> ExitCode {
             return ExitCode::SUCCESS;
         }
         _ => Err(workspace::Failure::Usage(
-            "expected a command: check, timing or bead".into(),
+            "expected a command: check, coverage, timing or bead".into(),
         )),
     };
     match outcome {

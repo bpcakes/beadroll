@@ -43,7 +43,10 @@ tests it builds events.
   objects (`objects/17`, times 256) passes a threshold, and pack the objects a test is about to
   inspect or damage (roll-k2wy.20). A test that wants a repack runs it.
 - A run's environment is the test's, less every `CLAUDE*`, `CODEX*`, `BEAD_*` and `GIT_*`
-  variable, then the machine's home and identity, then its extras.
+  variable, then the machine's home and identity, then its extras. It keeps `LLVM_PROFILE_FILE`,
+  by which an instrumented `bead` writes its counters (`cargo xtask coverage`); a run of `bead`
+  under `ulimit` takes `UNPROFILED` after the machine's environment, since the profile written at
+  exit would fail on the limit (`xtask/AGENTS.md` says what that costs the report).
 - Nothing outside the sandbox is written; dropping it removes it.
 - A failed fixture is a failed test: the crate root allows `unwrap`, `expect`, `panic!` and
   `eprintln!` (`CONTRIBUTING.md`).

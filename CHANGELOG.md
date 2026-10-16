@@ -6,6 +6,32 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `cargo xtask coverage [--stress] [--sweep]` reports which lines of the product's code the suites
+  run, and the nightly workflow keeps its report as an artifact (roll-k2wy.14.5): cargo-llvm-cov
+  over the workspace's tests, with `--stress` the stress models and with `--sweep` all 660 schedules
+  of the ownership sweep (the nightly runs both), written as `target/coverage/html/index.html`,
+  `lcov.info` and `summary.json`, and summarised on standard output: the lines by crate, then the
+  ownership protocol's files with the runs of lines no test reaches. Its lines are those of
+  `lcov.info`, each source line with code once; the HTML index and `summary.json` are llvm-cov's
+  own, which adds up the lines of each function (96.12% of 21,018 lines there against 96.4% of
+  19,705 printed), and both include the unit tests written inline in the product's files (1,789
+  lines at 99.6%). The `bead` processes the black-box tests start are in the count: the command
+  fails when no line of `crates/beadroll/src/main.rs`, which only a `bead` process runs, ran (one
+  black-box takeover test reaches 125 of the 230 lines of `commands/ownership.rs` with an
+  instrumented `bead` and none with a plain one), and when a profile could not be merged and its
+  counts are missing. The fast suite runs 96.4% of the 19,705 lines and the protocol's files 96.6%
+  of 2,822 (the stress models and the full sweep add three lines); it takes 164 s here against 130
+  s without the report (16 test threads, a shared 64-core machine), the stress models 252 s and the
+  sweep 84 s. The profiles are written into 16 files per binary rather than one for each `bead`
+  process (3.5 GB for the fast suite alone, against 30 MB). It needs cargo-llvm-cov and the
+  toolchain's `llvm-tools`, neither in `rust-toolchain.toml`: the command says how to install them,
+  and the nightly workflow installs `cargo-llvm-cov@0.8.7`. A test that runs `bead` under `ulimit`
+  takes `beadroll_test_support::UNPROFILED` (`LLVM_PROFILE_FILE=/dev/null`) for that run, since the
+  profile written at exit would fail on the limit: the V6, G48 and segment-limit tests do. A `bead`
+  killed by SIGKILL or run under a limit writes no profile, and the doctests (the workspace has
+  none) are not covered. The protocol paths the first report showed untested are roll-k2wy.14.6
+  to roll-k2wy.14.13 and roll-k2wy.14.15.
+
 - A decoded issue holds each short field once (roll-lqjj.41, X16): title, priority, type,
   assignee, estimate, reference, and status with its close time and reason are shown from their
   registers, as long fields have been since roll-lqjj.10, rather than copied out of them into

@@ -51,6 +51,27 @@ fn summaries_are_read_from_each_runners_output() {
 }
 
 #[test]
+fn a_step_with_nothing_to_sum_up_is_done_only_when_it_succeeded() {
+    use std::os::unix::process::ExitStatusExt as _;
+    let ended = |raw: i32| Output {
+        status: std::process::ExitStatus::from_raw(raw),
+        stdout: Vec::new(),
+        stderr: b"error: boom\n".to_vec(),
+    };
+    assert_eq!(summary(Kind::Plain, &ended(0)).as_deref(), Some("done"));
+    assert_eq!(
+        summary(Kind::Plain, &ended(1 << 8)).as_deref(),
+        Some("failed, exit 1")
+    );
+    let killed = summary(Kind::Plain, &ended(9)).expect("a summary");
+    assert!(
+        killed.starts_with("failed, ") && killed.contains("signal: 9"),
+        "{killed}"
+    );
+    assert_eq!(status(&ended(2 << 8)), "exit 2, no summary");
+}
+
+#[test]
 fn a_failed_nextest_run_shows_what_failed_without_the_progress() {
     let failed = Output {
         status: std::process::ExitStatus::default(),

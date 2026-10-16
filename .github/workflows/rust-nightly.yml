@@ -1,5 +1,6 @@
 # bead's nightly checks: the tests under the oldest git bead supports, 2.40, built from source,
-# beside the newer git every push already tests with (V8_Python312's replacement); and the slow
+# beside the newer git every push already tests with (V8_Python312's replacement); a coverage
+# report of the suites, the slow ones included, kept as an artifact (roll-k2wy.14.5); and the slow
 # suites, the stress models, the full ownership sweep, and the growth guards only time can keep,
 # timed in release (X15).
 # Until the cutover the tests also ran here against Python's launcher, and the first stress model
@@ -58,6 +59,54 @@ jobs:
           git config --global user.email check@example.invalid
       - name: Run the tests
         run: cargo nextest run --workspace --locked
+
+  # What the fast suite, the stress models and the full sweep run of the product's code, the bead
+  # processes of the black-box tests among it (`cargo xtask coverage`, xtask/src/coverage.rs): an
+  # HTML report, an lcov.info and a summary.json, and the lines of the ownership protocol that no
+  # test reaches on the log. cargo-llvm-cov and the toolchain's llvm-tools are not in
+  # rust-toolchain.toml, so this job installs them, pinned as the other tools are. On this runner
+  # the slow job's stress models take about 2 minutes, its sweep about 7 and the tests of the job
+  # above about 3 (run 38874018456), without counters; 60 minutes, the job above's, is room for the
+  # instrumented build and slower runs, to be corrected by the first runs of this job.
+  coverage:
+    name: coverage report (ubuntu-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
+        with:
+          cache: false
+          rustflags: ""
+          components: llvm-tools
+      - name: Install cargo-nextest and cargo-llvm-cov
+        uses: taiki-e/install-action@13608cbb45b01feb47ef444ab1a42dc41ad56f1a # v2.79.11
+        with:
+          tool: cargo-nextest@0.9.130,cargo-llvm-cov@0.8.7
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          shared-key: rust-${{ runner.os }}-${{ github.job }}
+      - name: A git identity for the repositories the tests create
+        run: |
+          git config --global user.name check
+          git config --global user.email check@example.invalid
+      - name: The coverage report
+        run: cargo --locked xtask coverage --stress --sweep
+      # A failed suite still leaves a report, and a report of a failed run is worth reading.
+      - name: Keep the report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-report
+          path: |
+            target/coverage/html
+            target/coverage/lcov.info
+            target/coverage/summary.json
+            target/coverage/logs
+          retention-days: 30
 
   slow:
     name: stress models and full sweep (ubuntu-latest)
