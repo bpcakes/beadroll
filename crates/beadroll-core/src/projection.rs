@@ -431,4 +431,4 @@ fn small(n: usize) -> u32 {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

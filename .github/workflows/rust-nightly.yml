@@ -1,8 +1,9 @@
 # bead's nightly checks: the tests under the oldest git bead supports, 2.40, built from source,
 # beside the newer git every push already tests with (V8_Python312's replacement); a coverage
-# report of the suites, the slow ones included, kept as an artifact (roll-k2wy.14.5); and the slow
+# report of the suites, the slow ones included, kept as an artifact (roll-k2wy.14.5); the slow
 # suites, the stress models, the full ownership sweep, and the growth guards only time can keep,
-# timed in release (X15).
+# timed in release (X15); and the fuzz targets of fuzz/, each for a time budget on a corpus seeded
+# from what bead writes in a scratch store, a crash failing the job and kept as an artifact.
 # Until the cutover the tests also ran here against Python's launcher, and the first stress model
 # on a fleet that alternated the two implementations. Nothing here touches a real store or a real
 # remote: every test builds its own repositories and bare remotes in a temporary directory.
@@ -143,3 +144,62 @@ jobs:
       - name: The growth guards, timed in release
         if: ${{ !cancelled() }}
         run: cargo nextest run --locked --release --package xtask --run-ignored only --test-threads 1 -E 'test(/^timing::growth::/)'
+
+  # fuzz/ is a workspace of its own on the nightly its rust-toolchain.toml pins; bead itself, which
+  # writes the seed corpus, builds on the root's toolchain as everywhere else. Nothing real seeds
+  # it: fuzz/seed.sh runs that bead in a scratch store, checkout and bare remote.
+  fuzz:
+    name: cargo fuzz (ubuntu-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      FUZZ_SECONDS: 600
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
+        with:
+          cache: false
+          rustflags: ""
+      - name: Install the nightly fuzz/ pins
+        working-directory: fuzz
+        run: rustup toolchain install "$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)" --profile minimal
+      - name: Install cargo-fuzz
+        run: cargo install --locked cargo-fuzz@0.13.2
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          shared-key: rust-${{ runner.os }}-${{ github.job }}
+          workspaces: |
+            . -> target
+            fuzz -> target
+      - name: The fuzz targets are formatted
+        run: rustfmt --check --edition 2024 fuzz/src/lib.rs fuzz/fuzz_targets/*.rs
+      - name: Build bead, which writes the seed corpus
+        run: cargo build --locked --package beadroll
+      - name: Seed the corpus from a scratch store
+        run: fuzz/seed.sh "$RUNNER_TEMP/corpus"
+      - name: Build the fuzz targets
+        working-directory: fuzz
+        run: cargo fuzz build
+      - name: Fuzz the JSON parser
+        working-directory: fuzz
+        run: cargo fuzz run json "$RUNNER_TEMP/corpus/json" -- -max_total_time="$FUZZ_SECONDS" -timeout=30
+      - name: Fuzz the segment reader
+        if: ${{ !cancelled() }}
+        working-directory: fuzz
+        run: cargo fuzz run segment "$RUNNER_TEMP/corpus/segment" -- -max_total_time="$FUZZ_SECONDS" -timeout=30
+      - name: Fuzz the Beads importer
+        if: ${{ !cancelled() }}
+        working-directory: fuzz
+        run: cargo fuzz run import "$RUNNER_TEMP/corpus/import" -- -max_total_time="$FUZZ_SECONDS" -timeout=30
+      # libFuzzer writes the input of a crash, a timeout or a leak to fuzz/artifacts/<target>/.
+      - name: Keep the inputs that failed
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fuzz-artifacts
+          path: fuzz/artifacts/
+          if-no-files-found: ignore
+          retention-days: 30

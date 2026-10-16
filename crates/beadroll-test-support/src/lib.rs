@@ -7,7 +7,7 @@
 //! immediately.
 //!
 //! [`Json`] reads bead's JSON output; [`json!`] and [`events`] build records for core integration
-//! tests.
+//! tests, and [`values`] draws the JSON values the round-trip properties write and read back.
 #![allow(clippy::unwrap_used, reason = "a failed fixture is a failed test")]
 #![allow(clippy::expect_used, reason = "a failed fixture is a failed test")]
 #![allow(clippy::panic, reason = "a failed fixture is a failed test")]
@@ -16,6 +16,7 @@
 pub mod events;
 mod machine;
 mod sandbox;
+pub mod values;
 
 pub use beadroll_core::json::Value as Json;
 pub use machine::{Invocation, Machine, Run, UNPROFILED, code};

@@ -1,6 +1,6 @@
 //! CI coverage: every push tests Linux and macOS, and nightly runs include the oldest supported
-//! git built from source, the growth guards timed in release and the coverage report. These checks
-//! keep the workflow matrix aligned with supported environments.
+//! git built from source, the growth guards timed in release, the coverage report and the fuzz
+//! targets. These checks keep the workflow matrix aligned with supported environments.
 
 /// The text of the file at `path` from the repository's root.
 fn read(path: &str) -> String {
@@ -465,5 +465,48 @@ mod coverage_report {
             steps(job(workflow, "a").unwrap_or_default()),
             ["      - run: one\n"]
         );
+    }
+}
+
+/// The fuzz targets (roll-k2wy.14.4): every target fuzz/Cargo.toml declares runs nightly for a
+/// time budget, on the nightly fuzz/ pins for itself alone, and the input of a crash is kept.
+mod fuzzing {
+    use super::read;
+
+    #[test]
+    fn the_nightly_fuzzes_every_target_for_a_budget_and_keeps_what_crashed() {
+        let nightly = read(".github/workflows/rust-nightly.yml");
+        let manifest = read("fuzz/Cargo.toml");
+        let targets: Vec<&str> = (manifest.lines())
+            .filter_map(|line| line.strip_prefix("name = \""))
+            .filter_map(|rest| rest.strip_suffix('"'))
+            .filter(|name| *name != "beadroll-fuzz")
+            .collect();
+        assert!(targets.len() >= 3, "fuzz/Cargo.toml declares {targets:?}");
+        for target in &targets {
+            let run = format!("cargo fuzz run {target} ");
+            let step = (nightly.lines())
+                .find(|line| line.contains(&run))
+                .unwrap_or_else(|| panic!("the nightly does not fuzz {target}"));
+            assert!(
+                step.contains("-max_total_time="),
+                "{target} runs without a time budget: {step}"
+            );
+        }
+        for part in [
+            "path: fuzz/artifacts/",
+            "if: ${{ failure() }}",
+            "fuzz/seed.sh",
+        ] {
+            assert!(nightly.contains(part), "the fuzz job lost `{part}`");
+        }
+        // The nightly is pinned for fuzz/ alone: the main workspace keeps its own toolchain.
+        let pinned = read("fuzz/rust-toolchain.toml");
+        assert!(
+            pinned.contains("channel = \"nightly-20"),
+            "fuzz/ pins no dated nightly"
+        );
+        assert!(!read("rust-toolchain.toml").contains("nightly"));
+        assert!(read("Cargo.toml").contains("# fuzz/ is its own workspace"));
     }
 }

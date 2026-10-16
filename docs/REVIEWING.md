@@ -1677,6 +1677,24 @@ These were decided deliberately. Report problems *with* them, not their existenc
   (`synchronise`, `coordinated`, `settle_*`, `merge`) uses a link's fetch, tree reading and push,
   never `sync.git`'s internals, and merge works on (path → blob) maps; a `Remote` trait comes with
   the in-memory remote that will stand beside `Link`, never as a trait with one implementation.
+- Fuzzing and the properties (roll-k2wy.14.4) draw from seeded generators, not proptest: the
+  delivery-order property (`replay::tests`) replays the differential tests' histories
+  (`projection::tests::history`), whose machines write, sync and race as a strategy would have to
+  be taught to, and the JSON round trip draws values from `beadroll_test_support::values`. A
+  failure names its seed and the first answer that differs, which is what shrinking would buy for
+  values this small, and proptest would bring a dozen crates into the tests' graph. The fuzz
+  targets (`fuzz/`: the JSON parser, the segment reader, the Beads importer) assert what must hold
+  of any input, not only that nothing panics, and `cargo fuzz tmin` shrinks what they find.
+  `fuzz/` is a workspace of its own on a nightly its `rust-toolchain.toml` pins, with its own
+  `Cargo.lock` (begun from the root's, so beadroll-core builds on the same versions) and
+  `deny.toml` (libfuzzer-sys carries LLVM's libFuzzer, NCSA, allowed for it alone); the main
+  workspace's toolchain and dependencies are unchanged. The nightly runs each target for ten
+  minutes on a corpus `fuzz/seed.sh` writes from a scratch store, and keeps a crash's input as an
+  artifact; real exports seed it only on a maintainer's machine, read where they are into a
+  corpus outside the checkout. Replay is invariant under any order that keeps each journal's own,
+  with one exception the segment target found and skips: an id with several contents and not
+  exactly one copy of its own is placed by the copy read first (roll-k2wy.14.14). A store reads
+  journals in name order, so machines holding the same files agree.
 - Nothing is published: every crate is `publish = false`, there are no prebuilt binaries or
   packages, and machines build from source (`README.md`, *Install*). The repository has been
   public since 2026-10-10; tagged releases with Linux and macOS binaries, and whether the crates

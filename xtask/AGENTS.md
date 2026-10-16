@@ -77,9 +77,10 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
   (`run_with` and the libraries free).
 - `src/hygiene.rs`: the repository lint (a test only).
 - `src/ci.rs`: `v8_supported_environments`, the CI matrix the workflows keep,
-  `x15_growth_guards`, the nightly step that runs the growth guards, and `coverage_report`, the
+  `x15_growth_guards`, the nightly step that runs the growth guards, `coverage_report`, the
   nightly job that makes the coverage report with the cargo-llvm-cov `CARGO_LLVM_COV` names and
-  keeps it (tests only).
+  keeps it, and `fuzzing`, the nightly job that runs every target `fuzz/Cargo.toml` declares for a
+  time budget and keeps a crash's input (tests only).
 - `src/workspace.rs`: paths, failures and JSON strings for all of them, and `fake_tool`, the
   executable script the tests of `check` and `coverage` run in place of `cargo`.
 - `python/printable_table.py`: writes `crates/beadroll-core/src/text/printable.rs` with the Unicode

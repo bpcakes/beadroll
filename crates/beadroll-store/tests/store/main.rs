@@ -1,5 +1,6 @@
 //! Store API tests for coordination refs, shared machine homes, actor detection, remembered
-//! remotes and attempt reading. Names preserve findings-ledger references.
+//! remotes, attempt reading and the journal's lines read back. Names preserve findings-ledger
+//! references.
 #![cfg(test)]
 
 mod commands;
@@ -8,6 +9,7 @@ mod hardening;
 mod names;
 mod replay;
 mod settings;
+mod storage;
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;

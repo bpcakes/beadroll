@@ -6,7 +6,7 @@
 root with a bare `origin.git` whose `main` has one commit) and `Machine`s (each with its own home,
 clone and identity) that run a `bead` binary for every crate's black-box tests. Fixtures include
 hooks, fake `ssh`, `ps` and `git`, PTYs and failpoint handshakes. For beadroll-core's integration
-tests it builds events.
+tests it builds events, and for the round-trip properties it draws JSON values.
 
 ## Key entrypoints
 
@@ -18,6 +18,11 @@ tests it builds events.
 - `src/machine.rs`: `Machine` (`run`, `bead`, `show`, `ready`, `export`, `store`, `with_bead`),
   `Invocation` (a run's directory, thread, agent, environment and input), `Run`, `code`.
 - `src/lib.rs`: `Json` (beadroll-core's `Value`) and `parse_json`, which read `bead --json`.
+- `src/values.rs`: `Rng`, seeded JSON values for the round-trip properties (strings of the
+  characters each writer escapes or passes through, integers to `MAX_DIGITS` digits, floats of
+  every finite bit pattern, nesting to a depth), `identical` (member order and float bits
+  compared, which `Value`'s equality does not) and `sorted`, for beadroll-core's integration tests
+  and beadroll-store's tests (roll-k2wy.14.4).
 - `src/events.rs`: the `json!` macro, `Event` (an event built as `Tx.emit` writes it), `id`,
   `id_at`, `journal` and `state`, for beadroll-core's integration tests only: core's own unit tests
   would build a second `beadroll_core` (E0308).

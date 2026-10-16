@@ -418,3 +418,6 @@ fn rewires(op: &Op) -> bool {
         | Op::Unknown(_) => false,
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -69,7 +69,11 @@ consumer on tokio calls through `spawn_blocking`.
   that fail when that work grows with the square of its input (roll-lqjj.34, X15), among them the
   blockers and details of several issues (X01, X02) and the keys a renamed copy asks of (X03,
   roll-lqjj.38).
-- `tests/core/`: integration tests of replay, storage compatibility and validation.
+- `tests/core/`: integration tests of replay, storage compatibility and validation;
+  `tests/core/compat/json_round_trip.rs`: JSON round-trips in every dialect bead writes, on seeded
+  values (roll-k2wy.14.4).
+- `src/replay/tests.rs`: replay is invariant under delivery order, on the differential tests'
+  histories (`projection::tests::history`, roll-k2wy.14.4).
 
 ## Edit here for X
 
@@ -186,6 +190,17 @@ consumer on tokio calls through `spawn_blocking`.
   agrees with the keys claimed (`state/asked.rs`) reads them directly, so that it counts nothing.
   What a count cannot see, a lookup turned back into a scan, is timed by `xtask`'s growth tests,
   nightly in release.
+- Replay answers alike whatever order a journal is given its records in, as long as each
+  journal keeps its own: `replay::tests` delivers each generated history in random causal orders,
+  random interleavings of its journals and a store's order, and compares every answer the public
+  API gives (every `Issue::field`, the views, export, readiness, blockers, cycles, conflicts, what
+  replay reports, who wrote each event and what it saw); with histories holding what replay
+  reports, it keeps each journal's order and compares those reports as a set, since they are
+  listed in the order found. Its histories cost about 0.9 s and 0.7 s of the fast suite. An id
+  with several contents and not exactly one copy of its own is placed by the copy found first
+  (roll-k2wy.14.14). Every `Format` writes what `json::parse` reads back as the same value and
+  writes again as the same text (`compat::json_round_trip`), and `fuzz/` fuzzes the parser, the
+  segment reader and the importer nightly (`fuzz/README.md`).
 - `saw` agrees with the reference ancestry bitsets: `state/seen/tests.rs` checks every pair
   on hostile histories. Replay's speed and memory are measured by
   `cargo run --release --package xtask -- timing --replay N [--ownership]`: at 200,000 events its

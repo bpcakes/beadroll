@@ -1,0 +1,6 @@
+# fuzz/rust-toolchain.toml — cargo-fuzz needs a nightly compiler (sanitizers, -Z flags); this pins
+# one for fuzz/ alone. The main workspace keeps the root's rust-toolchain.toml, and rustup picks
+# this one only for commands run in this directory. Move the date forward deliberately.
+[toolchain]
+channel = "nightly-2026-10-01"
+profile = "minimal"
