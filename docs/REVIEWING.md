@@ -247,7 +247,30 @@ These were decided deliberately. Report problems *with* them, not their existenc
   and comes in about a merge in ten where two machines write. Taking such events in without
   replaying would mean reproducing what replay settles by the order it applies events in (the key
   two concurrent creates minted, the order of comments, claim history and issue order), the question
-  a checkpoint's continuation faces too (roll-lqjj.4).
+  a checkpoint's continuation faces too (roll-lqjj.4). Refined by the maintainer's decision of
+  2026-10-16 (roll-lqjj.36): what replays is a merge that brings events concurrent with the stored
+  projection's frontier, events without that frontier in their past. Since writes leave the
+  projection to the next read (below), the events written after it was saved, on this machine and
+  others, can be concurrent among themselves and still all have its frontier in their past; they
+  are then placed and applied in one batch with replay's own steps, as a merge of several machines'
+  events always was, and as the base already did for a write published at once whose only
+  concurrent local event was that write. The direction and its reason stand: nothing is taken in
+  that replay would place by an order the projection does not hold, and every answer is replay's.
+  The evidence: the differential tests, whose new track extends the projection last saved by every
+  batch since at once, in the order a store reads them (1,053 such extensions in the 40 clean
+  seeds, 378 in the 40 flawed ones; 4,000 clean and 10,000 flawed seeds in release); the review's
+  fuzzer, 6,167 writes with 1,021 answer checks against the base's replay, 874 of them with the
+  projection up to 24 writes behind; and its concurrent-creates and concurrent-rename scenarios,
+  where keys two machines minted concurrently were renamed as replay renames them
+  (`storage::projection::deferred::a_merge_concurrent_only_with_writes_left_after_the_projection_extends_it`
+  pins the rule both ways). Such a merge extends where this machine wrote more than once since the
+  other last fetched, with no read between, while those writes hold at most a 64th of the
+  projection's bytes: a sync that merges one event concurrent with three writes left took 0.23 s
+  rather than 0.93 s at 50,000 events and 0.63 s rather than 3.69 s at 200,000 (release, median of
+  four, back to back on the shared machine, the sync publishing the three writes too). Machines
+  that take turns, each write published at once, still replay every merge that brings the other's
+  write, as on the base (0.9 s a write at 50,000 events either way): the replay saves the
+  projection with the writer's own newest write, which the other's next event has not seen.
 - A journal with anything replay reports is extended past it (roll-lqjj.28, X04). It was not, so
   one event of an operation a newer bead writes (a rolling upgrade), one id found with two
   contents or one copied machine identity had every later command replay the whole journal, for
@@ -440,13 +463,15 @@ These were decided deliberately. Report problems *with* them, not their existenc
   0.320 s where the read after one write took 0.306 s (37.6 and 34.2 ms at 20,000), and the write
   that ends the run, applying it and writing the projection back, 0.416 s where a write after a
   write took 0.400 s on the base (54.9 and 53.5 ms); over the run, the review measured 0.29–0.30 s
-  a write against the base's 0.41 s. A command that reads writes back whatever it applied, as before: with records
-  after it every read would decode the index too (26 ms at 200,000 events, a fifth of a
-  write-back) and apply them again, and a reader cannot know how many reads will follow. Nothing
-  else moves: the projection's bytes are the same (no `projection::ENCODING` change), it is
+  a write against the base's 0.41 s. A command that reads writes back whatever it applied, as
+  before: with records after it every read would decode the index too (26 ms at 200,000 events, a
+  fifth of a write-back) and apply them again, and a reader cannot know how many reads will
+  follow. The projection's bytes are the same (no `projection::ENCODING` change), and it is
   written back less often and never otherwise, so what a crash or a race can leave is what a
   write-back that failed or was killed already left, records after an older projection, which
-  the rules above take in. Y01 included: a file that was not settled when the stored projection
+  the rules above take in. One thing moves with it, by the maintainer's decision of 2026-10-16: a
+  merge whose events are concurrent only with writes left after the stored projection extends it
+  where it replayed (the roll-lqjj.8 bullet above). Y01 included: a file that was not settled when the stored projection
   was written stays unsettled while writes leave that projection, so each of them reads it whole
   and checks its sum again until a read writes the projection back, which costs time, never an
   answer.

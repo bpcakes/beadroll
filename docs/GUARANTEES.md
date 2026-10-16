@@ -149,8 +149,12 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   the identity of every journal file it was made from and a sum of its bytes.
   Records appended since are applied after it, as replay would apply them; a
   file written in the same moment as the projection is read against its sum;
-  anything else (a file changed another way, events written concurrently, a
-  takeover) has the journal replayed, and the projection written again. A write
+  events written on this machine and others with all it holds in their past
+  are applied after it as replay places them, though they were written
+  concurrently with each other;
+  anything else (a file changed another way, events written concurrently with
+  what the projection holds, a takeover) has the journal replayed, and the
+  projection written again. A write
   leaves it as it found it while the records after it are few, as `bead info`
   and `bead machines` do, which read it as a write does; the next command that
   reads issues (`list`, `show`, `ready` and the like) writes it again with them.
@@ -399,9 +403,13 @@ it, and the file is committed again.
   heap offline (341 MB resident); published, it peaks at 235 MB (563 MB
   resident) as its publish makes the projection, which a new machine's first
   sync of the tracker takes too (roll-lqjj.9). A merge that brings events another
-  machine wrote concurrently replays the journal, as about one merge in ten
-  does where two machines write: 0.45 s at 50,000 events, 1–2 s at 200,000,
-  kept so for correctness (roll-lqjj.8). A replay holds at most 107 MB
+  machine wrote concurrently with what the store's projection holds replays the
+  journal, as about one merge in ten does where two machines write: 0.45 s at
+  50,000 events, 1–2 s at 200,000, kept so for correctness (roll-lqjj.8). One
+  whose events are concurrent only with writes left after the projection
+  extends it (roll-lqjj.36): a sync that merges an event concurrent with three
+  such writes, and publishes them, takes 0.23 s rather than 0.93 s at 50,000
+  events, and 0.63 s rather than 3.69 s at 200,000. A replay holds at most 107 MB
   on the heap at 200,000 events (events the size of this repository's own take
   more than three times that). A store heavy in claims still checks every
   attempt file's metadata. Reusing directory listings, unchanged published

@@ -15,7 +15,12 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   read after one write, cost what they did. A read after a run of writes applies what they left,
   and the write that ends a run writes it back: at the most, after about 845 comments in a row at
   200,000 events, the read takes 0.32 s rather than 0.31 s and that write 0.42 s rather than
-  0.40 s. What every command answers and the projection's bytes are unchanged.
+  0.40 s. What every command answers and the projection's bytes are unchanged. A merge whose
+  events were written concurrently only with this machine's writes left after the projection, not
+  with what it holds, now extends it where it replayed the journal (a refinement of roll-lqjj.8,
+  by the maintainer's decision of 2026-10-16): a sync that merges an event concurrent with three
+  such writes takes 0.63 s rather than 3.69 s at 200,000 events. One that brings events
+  concurrent with what the projection holds still replays.
   `cargo xtask timing --read N` measures a write cycle: a write after a read, the read after it and
   a write after a write.
 
