@@ -36,6 +36,9 @@ storage, protocol behavior and fault recovery.
   `src/commands/*.rs`: one command or a family each (`transition.rs` is close, reopen and delete;
   `queries.rs` blocked, search and lint; `history.rs` log and machines; `ownership.rs` claim,
   takeover and release, the claim step `update` shares, and `command_signature`, the receipt).
+- `src/cli/ending.rs`, `src/commands/held.rs`: unit tests that run `finish` and the commands in this
+  process, on a machine of the sandbox that `src/testing.rs` opens: what a command's outcome holds
+  and when the run frees it (roll-lqjj.42).
 - `tests/cli/main.rs`: the one test binary's root; `sandbox()` hands test support the binary Cargo
   built (`env!("CARGO_BIN_EXE_bead")`), the only place that default can come from.
 - `tests/cli/commands/*.rs`: command behavior, and `commands/setup.rs`, the golden
@@ -89,8 +92,6 @@ storage, protocol behavior and fault recovery.
   of its own before it answers lets go of its transaction before either (`transition`, when it ends
   a claim), so that none is held beside another. Library code never leaks (`docs/REVIEWING.md` §2,
   roll-lqjj.32, roll-lqjj.42).
-- `src/cli/ending.rs` and `src/commands/held.rs` are unit tests that run `finish` and the commands
-  in this process, on a machine of the sandbox opened by `src/testing.rs`.
 - No `print!`, `println!` or `eprintln!`: every write goes through `cli/output.rs`, where a closed
   pipe or a hung-up terminal is a quiet exit 0 and a failed write to stderr keeps the status.
 - Output preserves its established formats: `--json` results spaced with raw UTF-8, errors and
