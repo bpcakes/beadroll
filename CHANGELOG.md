@@ -6,6 +6,20 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A decoded issue holds each short field once (roll-lqjj.41, X16): title, priority, type,
+  assignee, estimate, reference, and status with its close time and reason are shown from their
+  registers, as long fields have been since roll-lqjj.10, rather than copied out of them into
+  sixteen slots beside them; an issue keeps beside its registers only when and by whom it was
+  created and when it was last touched (`projection::ENCODING` 7, so the first command of this
+  build replays the journal once). At 200,000 events the state part a read decodes is 9.45 MB
+  rather than 10.68 MB and takes 38.8 ms rather than 43.6 ms in process, holding 51.4 MB rather
+  than 60.4 MB (an issue is 560 bytes inline rather than 976); `list` takes 0.108 s rather than
+  0.115 s, `show` 0.103 s rather than 0.113 s, `info` 0.141 s rather than 0.156 s, a write
+  0.236 s rather than 0.257 s, and at 20,000 events `list` 14.6 ms rather than 16.8 ms (`cargo
+  xtask timing --decode N`, `--read N`). Replaying 200,000 events takes 0.55 s rather than 0.60 s
+  and peaks at 102 MB on the heap rather than 108 MB. Every answer is unchanged, and format 1
+  too.
+
 - A git that gives no answer within a `BEAD_NET_TIMEOUT` that is not a whole number of seconds is
   reported with that timeout, to the millisecond (`git fetch gave no answer within 0.2s`, and
   `within 2.5s`), where it was rounded to whole seconds (`within 0s`, `within 2s`); a timeout of

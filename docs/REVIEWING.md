@@ -218,15 +218,27 @@ These were decided deliberately. Report problems *with* them, not their existenc
   0.116 s where 0.150 s, `ready` 0.157 s where 0.201 s. roll-lqjj.35 records the measurements behind
   the rest of that design, each a change of `projection::ENCODING` alone: dependency edges held
   typed, their metadata with the texts (roll-lqjj.39), ownership history with the texts
-  (roll-lqjj.40), and short fields shown from their registers (roll-lqjj.41). Each issue's texts
+  (roll-lqjj.40), and short fields shown from their registers (roll-lqjj.41, landed: below; the
+  state part 9.45 MB where it was 10.68 MB, decoded in 38.8 ms where it took 43.6 ms, holding
+  51.4 MB where it held 60.4 MB, an issue 560 bytes inline where it was 976). Each issue's texts
   (its long fields, their registers' values, its comments and its extras) are kept apart
   (roll-lqjj.6), in
   `<store>/projection-texts`, each issue's as bytes of their own the state places and sums, the
   state keeping what a list and a later event need of them unread (the events behind each long
-  field's register, which of those fields two writers set differently). A long field's value is kept
-  once, in its register, which the field shows (roll-lqjj.10: the entry of the
-  largest id, absent when that is a later write's null, null when the create left it so), never
-  copied beside it, so the state holds each text once and the text file writes it once: a generated
+  field's register, which of those fields two writers set differently). Every field a register
+  holds is kept once, in its register, which the field shows (roll-lqjj.10 for long fields,
+  roll-lqjj.41 for short ones: the entry of the largest id, absent when that is a later write's
+  null, null when the create left it so; status, closed_at and close_reason from the members of
+  the status register's entry, unless a set wrote closed_at or close_reason into a register of its
+  own after the status, which the issue records in a bit each), never copied beside it. An issue
+  keeps beside its registers only created_at, created_by and updated_at, which no register holds,
+  and a field its create did not give shows its default (`""`, 2, `task`) until a write gives it
+  a register. Replay showed the same when it copied each write's value out of its register: a
+  model of that copy-out, written and checked against the code that did it before the change,
+  compares every field of every issue on every history the differential tests replay and on two
+  journals bead built (`projection/tests/shown.rs`), and `tests/core/replay/short_fields.rs` each
+  case where a create, a later write and the copy-out differed. Held once, a long text is also written
+  once to the text file: a generated
   49 MB export's text file went from 75.0 MB to 43.3 MB, and the first sync that makes its
   projection from 245 MB on the heap to 191 MB (`cargo xtask timing --import 14000`, whose records
   now hold `projection_bytes` and `texts_bytes`, as `--read N` does). A command that prints no texts

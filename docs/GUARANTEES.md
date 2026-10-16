@@ -343,7 +343,10 @@ it, and the file is committed again.
   (review 16 had `list` at 0.205 s there), at 200,000 events `list` takes
   0.121 s rather than 0.146 s, `show` 0.116 s rather than 0.150 s and `ready`
   0.157 s rather than 0.201 s (`cargo xtask timing --read N`, `--decode N`); the
-  first read after a write gains nothing. A write derives the labels its own events
+  first read after a write gains nothing. Since each short field is held once,
+  in its register (roll-lqjj.41), the state part at 200,000 events is 9.45 MB
+  rather than 10.68 MB, decoded in 38.8 ms rather than 43.6 ms, and `list`
+  takes 0.108 s, `show` 0.103 s and `ready` 0.151 s. A write derives the labels its own events
   changed, each issue's once however many of them changed it, and takes its new
   event ids in wherever they sort among the ids held, so one `bead close`
   naming 8,000 issues of 8,000 takes 0.7 s rather than 19.8 s; a batch that
