@@ -1,0 +1,1 @@
+{"v":1,"id":"01a14600-40ed-754d-b7c6-1cecea517cb5","replica":"86e7f6a9","deps":["01a145ff-7f5a-7db6-96db-61fc6a2a7cc8"],"actor":{"agent":"claude","thread":"d2603693-6b73-4b96-b091-28f826c54299"},"op":"claim","issue":"01a12c8f-efaf-7606-9cd2-cee8807969a4","data":{"mode":"online","generation":1},"where":{"branch":"fuzzing","commit":"071d1721e32adefad1182149699218470fba4356"}}
