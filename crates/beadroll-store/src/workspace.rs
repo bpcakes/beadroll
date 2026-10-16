@@ -300,13 +300,16 @@ pub fn relative(ws: &Workspace, path: &Path) -> String {
 pub fn relative_name<'a>(ws: &Workspace, path: &'a Path) -> Cow<'a, str> {
     let dir = ws.dir.as_os_str().as_bytes();
     let bytes = path.as_os_str().as_bytes();
-    // a name that starts with a separator or a dot is one `strip_prefix` would clean up
+    // a name that starts with a separator or a dot, or ends in a separator or a `/.`, is one
+    // `strip_prefix` would clean up
     if let Some(rest) = bytes
         .strip_prefix(dir)
         .and_then(|rest| rest.strip_prefix(b"/"))
         && rest
             .first()
             .is_some_and(|first| !matches!(first, b'/' | b'.'))
+        && !rest.ends_with(b"/")
+        && !rest.ends_with(b"/.")
         && let Ok(name) = std::str::from_utf8(rest)
     {
         return Cow::Borrowed(name);

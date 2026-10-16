@@ -1417,49 +1417,53 @@ These were decided deliberately. Report problems *with* them, not their existenc
   parses the cache saves (55 ms each at 200,000 events).
 - What the unpublished count costs a command (roll-lqjj.47), measured before it was changed: the
   75 ms the issue was opened on, "on the memo, at 200,000 events", is not what a store that has
-  synced pays. For the plain history (207 segments) it is 1.2-1.4 ms of a `list` of 115-135 ms,
-  of a write of 270 ms and of a sync of 270 ms, and 0.3 ms of 16 ms at 20,000 events: listing the
+  synced pays. For the plain history (207 segments) it is 1.2-1.4 ms of a `list` of 115-135 ms, of a
+  write of 270 ms and of a sync of 270 ms, and 0.3 ms of 16 ms at 20,000 events: listing the
   segments, a stat and an entry of the 28 KB memo for each, and the active segment read. The 75 ms
   is what the count costs when the memo vouches for none of the segments: a store moved or copied
   (new inodes, devices and change times), a memo missing, older than the files or damaged, a
-  `sync.git` set aside, or a store that has a remote and has never synced. The count loads the
-  memo partially and never writes it, only a sync does, so every command reads every such segment
-  in full until the next sync: 0.1 ms for each 256 KB segment, 22 ms for all 207 at 200,000
-  events. Under `strace` the same reads show 83 ms against 22, and 13 ms against 1.3 on a store
-  the memo vouches for, which is where the figure came from. The cost grows with the segments
-  (6 µs each), with the segments that were written since the last sync (0.1 ms for about a
-  thousand events, the active one always), and with attempt files, which nothing compacts (X07):
-  on the ownership-heavy history, 91,952 of them at 200,000 events, the count was 155 ms of a
-  735 ms `list` (21 %) and 14 ms of 75 ms at 9,132 files: `meta.json` parsed whole (58 ms; a reading
-  command reads it for nothing else), the memo (47 ms: 15.6 MB, every one of its 92,000 attempt
-  lines made into a value to be thrown away), the loop over the attempt files (45 ms), and the
-  combined listing of their names (11.5 ms). Three parts went, with every answer unchanged. The
-  memo's lines of the files it does not read are checked for their shape, the numbers short enough
-  to fit their type not even made (`fields_are_written`, kept the same as the lines it makes by a
-  test over the edges of each field): the memo is still read whole as roll-lqjj.30 decided, for
-  under half the cost (47 ms to 20, the read of the file in it); narrowing the check to the lines
-  it uses would have saved about 12 ms more, and gone back on that decision for them. The attempt files are named by
-  their bytes, `relative_name`, which `relative` agrees with on every path (a test over the
-  spellings `Path::strip_prefix` cleans up; 45 ms to 10). And a claims directory that is not
-  there, as this machine's is until it first claims, has one empty listing: its fresh `Arc` each
-  call failed the pointer check that keeps the combined listing, so every call copied all 92,000
-  paths (11.5 ms; the projection's calls too). Measured back to back on that history: the count
-  153-156 ms to 91-92 in a `list`, and the command 732-745 ms to 664-675; at 9,132 files the
-  count 14.2-14.5 ms to 8.2 and the command 74-76 ms to 68-69; a sync's count 98 ms to 31 and an
-  `info`'s 101 ms to 39; the plain history is as it was (1.27 ms to 1.24, 0.31 to 0.30). What
-  stays is the floor and one residue, each its own issue. `meta.json`'s `published` map has an
-  entry for every journal file (§1, format 1), parsed at 0.6 µs each: 58 ms at 92,000, now more
-  than half of what a reading command spends on the count; core's parser builds every object
+  `sync.git` set aside, or a store that has a remote and has never synced. The count loads the memo
+  partially and never writes it, only a sync does, so every command reads every such segment in full
+  until the next sync: 0.1 ms for each 256 KB segment, 22 ms for all 207 at 200,000 events. Under
+  `strace` the same reads show 83 ms against 22, and 13 ms against 1.3 on a store the memo vouches
+  for, which is likely where the figure came from. The cost grows with the segments (6 µs each),
+  with the segments that were written since the last sync (0.1 ms for about a thousand events, the
+  active one always), and with attempt files, which nothing compacts (X07): on the ownership-heavy
+  history, 91,952 of them at 200,000 events, the count was 155 ms of a 735 ms `list` (21 %) and
+  14 ms of 75 ms at 9,132 files: `meta.json` parsed whole (58 ms; a reading command reads it for
+  nothing else), the memo (47 ms timed inside the count, 33 ms read and parsed in a loop of its own:
+  15.6 MB, every one of its 92,000 attempt lines made into a value to be thrown away), the loop over
+  the attempt files (45 ms), and the combined listing of their names (11.5 ms). Three parts went,
+  with every answer unchanged. The memo's lines of the files it does not read are checked for their
+  shape, the numbers short enough to fit their type not even made (`fields_are_written`, kept the
+  same as the lines it makes by a test over the edges of each field): the memo is still read whole
+  as roll-lqjj.30 decided, for 20 ms rather than 33, the read of the file in it (the old parse and
+  the new alternated in one process on this memo, the least of 25 runs, three times over:
+  32.7-33.0 ms and 19.6-19.9); narrowing the check to the lines it uses would have saved about 12 ms
+  more, and gone back on that decision for them. The attempt files are named by their bytes,
+  `relative_name`, which `relative` agrees with on every path (a test over every spelling of up to
+  five pieces after the directory, those `Path::strip_prefix` cleans up among them; 45 ms to 10).
+  And a claims directory that is not there, as this machine's is until it first claims, has one
+  empty listing: its fresh `Arc` each call failed the pointer check that keeps the combined listing,
+  so every call copied all 92,000 paths (11.5 ms; the projection's calls too). Measured back to back
+  on that history: the count 153-156 ms to 91-92 in a `list`, and the command 732-745 ms to 664-675;
+  at 9,132 files the count 14.2-14.5 ms to 8.2 and the command 74-76 ms to 68-69; a sync's count
+  98 ms to 31 and an `info`'s 101 ms to 39; the plain history is as it was (1.27 ms to 1.24, 0.31 to
+  0.30). What stays is the floor and one residue, each its own issue. `meta.json`'s `published` map
+  has an entry for every journal file (§1, format 1), parsed at 0.6 µs each: 58 ms at 92,000, now
+  more than half of what a reading command spends on the count; core's parser builds every object
   twice, which is the first place to look (roll-lqjj.49). A write ends with the count after the
-  store lock is released, which cleared the attempt names, so it lists them again: 80 ms at
-  92,000 files, which keeps a write's count at 175 ms (roll-lqjj.48). A cached answer, a
-  fingerprint of `meta.json` and the claims directories written by every sync and read by every
-  command, would remove the rest, and was weighed and not done: the count must equal its formula
-  after a sync that failed, a merge that brought another machine's attempts in, a lost
-  acknowledgement and a store another version of bead wrote, none of which a fingerprint written
-  by one process vouches for, so that the formula is what runs whenever it does not match, and it
-  would be one more cache with its own tick hazards for a store that has 28 to 93 attempt files
-  today (this repository's three). `tests/sync/count.rs` pins the formula on every path.
+  store lock is released, which cleared the attempt names, so it lists them again: 80 ms at 92,000
+  files, which keeps a write's count at 175 ms (roll-lqjj.48). A cached answer, a fingerprint of
+  `meta.json` and the claims directories written by every sync and read by every command, would
+  remove the rest, and was weighed and not done: the count must equal its formula after a sync that
+  failed, a merge that brought another machine's attempts in, a lost acknowledgement and a store
+  another version of bead wrote, none of which a fingerprint written by one process vouches for, so
+  that the formula is what runs whenever it does not match, and it would be one more cache with its
+  own tick hazards for a store that has 28 to 93 attempt files today (this repository's three).
+  `tests/sync/count.rs` pins the formula on every path, and that a segment the memo vouches for is
+  counted from the memo and not read again; `count_foreign.rs` pins it on two machines, across a
+  foreign merge, a takeover and a lost acknowledgement.
 - A publish reuses an unchanged claims subtree only when the last merged tip holds it
   (roll-lqjj.13). The desired entries' canonical tree object name, with mode 100644 and every
   filename and blob, must equal the subtree name at that path. SHA-1 and SHA-256 are checked

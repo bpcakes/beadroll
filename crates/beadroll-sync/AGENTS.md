@@ -39,9 +39,10 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   the failpoint `ownership.before-transaction` sits between a round's merge (and what settles after
   it) and its transaction, where nothing writes the journal.
 - `src/error.rs`: `Error`, each variant with its code.
-- `tests/sync/`: in-crate protocol tests (`count.rs`: the unpublished count against a count of
-  the journal the slow way, on every path and whatever the memo holds); `support.rs` opens a machine's store in the test process
-  and runs command bodies through `coordinated`. Faults come from failpoints passed in `Settings`; the
+- `tests/sync/`: in-crate protocol tests (`count.rs` and `count_foreign.rs`: the unpublished count
+  against a count of the journal the slow way, on one machine and on two, on every path and
+  whatever the memo holds); `support.rs` opens a machine's store in the test process and runs
+  command bodies through `coordinated`. Faults come from failpoints passed in `Settings`; the
   machines around it run `BEAD_UNDER_TEST`, else the Rust `bead` Cargo built in the profile
   directory above the test binary (`beadroll_test_support::built_bead`, below).
 

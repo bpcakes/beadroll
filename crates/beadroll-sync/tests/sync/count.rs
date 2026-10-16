@@ -5,7 +5,9 @@
 //! The count reads the memo's entries of the segments alone, by a read that checks the rest of the
 //! memo for its shape and makes nothing of it, and names the attempt files by their bytes. None of
 //! that may change a number: the memo may be missing, older than the files, damaged anywhere, or
-//! behind a rotation, a write, a failed sync or a claim, and the count is the same.
+//! behind a rotation, a write, a failed sync or a claim, and the count is the same. The count
+//! takes the lines of a segment the memo vouches for from the memo, and not from the file.
+//! `count_foreign` has the same oracle on two machines.
 
 use std::fs::{FileTimes, OpenOptions};
 use std::path::{Path, PathBuf};
@@ -88,7 +90,7 @@ fn counted_slowly(ws: &Workspace) -> Option<String> {
 
 /// What `a`'s store says of the count, and that it is what counting the slow way says. The store
 /// is opened again each time: a listing a process keeps is not what another process just wrote.
-fn counts(a: &Machine, sandbox: &Sandbox, when: &str) -> Option<String> {
+pub(crate) fn counts(a: &Machine, sandbox: &Sandbox, when: &str) -> Option<String> {
     let ws = workspace(a, sandbox.origin(), &[]);
     let counted = unpublished_count(&ws)
         .expect("a count")
@@ -98,7 +100,7 @@ fn counts(a: &Machine, sandbox: &Sandbox, when: &str) -> Option<String> {
 }
 
 /// A change to the memo of `ws`'s store, which cannot make the count anything else.
-fn damage(ws: &Workspace, how: &str) {
+pub(crate) fn damage(ws: &Workspace, how: &str) {
     let memo = memo_path(ws);
     match how {
         "missing" => std::fs::remove_file(&memo).expect("a memo"),
@@ -224,8 +226,48 @@ fn the_count_is_the_slow_count_on_every_path_and_whatever_the_memo_holds() {
     assert_eq!(counts(&a, &sandbox, "synced, counts lost"), None);
 }
 
+/// The count takes the lines of a segment the memo vouches for from the memo: a memo written after
+/// the segment, whose record of it is the segment's own, is believed when it says the segment has
+/// five lines more than it has. A count that read the segments again would be the 22 ms at
+/// 200,000 events that roll-lqjj.47 was about, and would give nothing the other tests can tell
+/// from this one. (A memo that is made unreadable to the count by chmod would not do: that changes
+/// the file's ctime, and the memo no longer vouches for it.)
+#[test]
+fn a_vouched_segment_is_not_read_by_the_count() {
+    let sandbox = sandbox();
+    let origin = sandbox.origin().to_path_buf();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let key = a.bead(["create", "x"]).expect("a create")["id"]
+        .as_str()
+        .expect("a key")
+        .to_owned();
+    a.bead(["comments", "add", &key, "one", "--offline"]);
+    a.bead(["sync"]);
+    assert_eq!(counts(&a, &sandbox, "synced"), Some("0".into()));
+
+    // the record of the first segment: path, then len, mtime, ctime, inode, dev, lines and blob
+    let ws = workspace(&a, &origin, &[]);
+    let memo = memo_path(&ws);
+    let text = std::fs::read_to_string(&memo).expect("a memo");
+    let (head, tail) = text.split_once(".jsonl\0").expect("a segment in the memo");
+    let (fields, rest) = tail.split_once('\n').expect("a record");
+    let mut fields: Vec<String> = fields.split(' ').map(str::to_owned).collect();
+    let lines: usize = fields[5].parse().expect("the lines remembered");
+    fields[5] = (lines + 5).to_string();
+    let believed = format!("{head}.jsonl\0{}\n{rest}", fields.join(" "));
+    std::fs::write(&memo, believed).expect("a memo");
+    damage(&ws, "trusted for every file");
+
+    let ws = workspace(&a, &origin, &[]);
+    let counted = unpublished_count(&ws)
+        .expect("a count")
+        .map(|n| n.to_string());
+    assert_eq!(counted, Some("5".into()), "the memo is believed");
+}
+
 /// Where the remote goes while it is unreachable.
-fn away_from(origin: &Path) -> PathBuf {
+pub(crate) fn away_from(origin: &Path) -> PathBuf {
     let mut name = origin.file_name().expect("a name").to_os_string();
     name.push(".away");
     origin.with_file_name(name)

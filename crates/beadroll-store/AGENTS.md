@@ -25,7 +25,9 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   crash hooks): `hit`, `hit_path` for `atomic-write:`/`atomic-written:`, `has`, and `hits`, which
   in-crate tests read to check that a fault fired; `POINTS`, every point bead has.
 - `src/workspace.rs`: `Workspace` (`meta`, read once a command while the file keeps its identity,
-  `save_meta`, `note_sync`, `ref_name`), `stamp`;
+  `save_meta`, `note_sync`, `ref_name`), `stamp`, `relative` and `relative_name` (`relative`
+  borrowed from the path when the path is the workspace directory and a UTF-8 name, as the store's
+  listings make them, roll-lqjj.47);
   `src/workspace/remote.rs`: what a remote given to bead means (`resolve_endpoint`, `endpoint`,
   an `Endpoint` being the URL, whether it is a remote's own push URL and the name it was chosen
   by; `Endpoint::chosen`, the remote as it was chosen, which a store remembers and compares and
@@ -65,8 +67,6 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   `sync.git/journal-memo` (`memo_path`) by the holder of the store lock (roll-lqjj.1);
   `Memo::load_only`, the entries of a few files, the memo still checked whole (the lines of the
   others for their shape alone, which makes nothing of them, roll-lqjj.47), never written back.
-  `relative_name` (`src/workspace.rs`) is `relative` borrowed from the path when the path is the
-  workspace directory and a UTF-8 name, as the store's listings make them.
 - `tests/store/`: store files, settings, discovery, compatibility and damage handling.
 
 ## Edit here for X
