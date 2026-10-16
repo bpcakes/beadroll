@@ -102,15 +102,21 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
     let (root, out) = (workspace::root(), workspace::output_dir("coverage")?);
     let (mut stdout, mut stderr) = (io::stdout(), io::stderr());
     let passed = make(&tools, &root, &out, options, &mut stdout, &mut stderr)?;
-    Ok(if passed {
+    Ok(exit_code(passed))
+}
+
+/// The exit status of a run that `passed`, or did not.
+fn exit_code(passed: bool) -> ExitCode {
+    if passed {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
-    })
+    }
 }
 
 /// Runs the suites `options` select under `tools`, writes the report under `out` and tells what it
-/// shows: whether every step ran and the report counts the children.
+/// shows: whether every step ran, no profile was left out of the report and it counts the
+/// children.
 fn make(
     tools: &Tools,
     root: &Path,
@@ -141,6 +147,24 @@ fn make(
     };
     let steps = steps(&setup, out, options);
     let mut passed = check::run(&steps, &setup, stdout, stderr).map_err(cannot_report)?;
+    // With `--failure-mode all` the reports are made of the profiles that merge and only warn of
+    // the rest, in logs nobody reads: a profile left out is counts lost, which would read as code
+    // no test reaches, so it fails the run and is said here.
+    let skipped = unmerged_profiles(&setup.logs);
+    if let Some(first) = skipped.first() {
+        let these = match skipped.len() {
+            1 => "1 profile".to_owned(),
+            n => format!("{n} profiles"),
+        };
+        writeln!(
+            stdout,
+            "{:<14} {these} could not be merged and the counts in them are missing from this \
+             report, the first {first} (the report steps' logs name them all)",
+            "profiles"
+        )
+        .map_err(cannot_report)?;
+        passed = false;
+    }
     let lcov = out.join("lcov.info");
     let text = std::fs::read_to_string(&lcov).map_err(|error| {
         Failure::Failed(format!(
@@ -157,9 +181,42 @@ fn make(
         .unwrap_or(out)
         .join("html")
         .join("index.html");
-    let kept = format!("{} (and lcov.info, summary.json)", shown.display());
+    // The HTML index and summary.json add up the lines of each function, so that a line two
+    // functions share (a closure on the line of the call that takes it) counts twice.
+    let kept = format!(
+        "{}, lcov.info, summary.json (counted per function: more lines than above)",
+        shown.display()
+    );
     writeln!(stdout, "{:<14} {kept}", "report").map_err(cannot_report)?;
     Ok(passed)
+}
+
+/// The profiles `llvm-profdata` left out of the reports, from the logs of the report steps: it
+/// warns `warning: PATH.profraw: invalid instrumentation profile data (...)`, once for each report.
+fn unmerged_profiles(logs: &Path) -> Vec<String> {
+    let mut skipped = BTreeSet::new();
+    let names = std::fs::read_dir(logs).into_iter().flatten().flatten();
+    for entry in names {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("report-") && name.ends_with(".log") {
+            let text = std::fs::read_to_string(entry.path()).unwrap_or_default();
+            skipped.extend(skipped_in(&text));
+        }
+    }
+    skipped.into_iter().collect()
+}
+
+/// The profiles `text`, a report step's output, says were left out.
+fn skipped_in(text: &str) -> Vec<String> {
+    const EXTENSION: &str = ".profraw";
+    text.lines()
+        .filter_map(|line| line.strip_prefix("warning: "))
+        .filter_map(|warning| {
+            let at = warning.find(&format!("{EXTENSION}: "))? + EXTENSION.len();
+            warning.get(..at).map(str::to_owned)
+        })
+        .collect()
 }
 
 /// The tools the report is made with.
@@ -176,13 +233,14 @@ impl Tools {
     /// that is missing, and the command that installs it.
     fn require(&self, root: &Path) -> Result<String, Failure> {
         let mut missing = Vec::new();
-        let version = Command::new(&self.cargo)
+        let asked = Command::new(&self.cargo)
             .args(["llvm-cov", "--version"])
             .current_dir(root)
             .output()
-            .ok()
-            .filter(|output| output.status.success())
-            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned());
+            .map_err(|error| Failure::Failed(format!("cannot run cargo: {error}")))?;
+        // Cargo ran, and says it has no such subcommand when it is not installed.
+        let version = (asked.status.success())
+            .then(|| String::from_utf8_lossy(&asked.stdout).trim().to_owned());
         if version.is_none() {
             missing.push(format!(
                 "cargo-llvm-cov is not installed: cargo install --locked cargo-llvm-cov --version {CARGO_LLVM_COV}"

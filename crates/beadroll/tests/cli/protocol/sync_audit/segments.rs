@@ -9,7 +9,7 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use beadroll_test_support::{Json, Machine, parse_json};
+use beadroll_test_support::{Json, Machine, UNPROFILED, parse_json};
 
 use super::{Worker, jsonl, own_segment, setup, setup_with, wait_marker};
 
@@ -162,6 +162,7 @@ fn bug_file_size_limit_partial_append_must_not_poison_next_write() {
         .current_dir(a.checkout())
         .env_clear()
         .envs(a.env(None, "codex"))
+        .envs([UNPROFILED])
         .output()
         .unwrap();
     assert!(!proc.status.success(), "{:?}", proc.status);

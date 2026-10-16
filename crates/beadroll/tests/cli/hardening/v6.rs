@@ -10,7 +10,7 @@ use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
-use beadroll_test_support::{Json, Machine, Run, parse_json};
+use beadroll_test_support::{Json, Machine, Run, UNPROFILED, parse_json};
 use rustix::fs::{Access, access};
 
 mod v6_descriptor_exhaustion;
@@ -30,8 +30,8 @@ fn error_code(run: &Run) -> Option<String> {
 
 /// `_v6_limited`: `bead ARGV --json` run as `machine` under a shell resource limit such as `-f 200`
 /// or `-n 8`: `/bin/sh -c 'ulimit LIMIT; exec "$@"'` in the machine's checkout with its
-/// environment, given 120 seconds. Under `cargo xtask coverage` the profile bead would write at
-/// exit hits a file-size limit too, and says so on standard error: these runs write none.
+/// environment, given 120 seconds. The profile an instrumented bead writes at exit would hit the
+/// limit too ([`UNPROFILED`]): these runs write none.
 fn limited(machine: &Machine, limit: &str, argv: &[&str]) -> Run {
     let mut command = Command::new("/bin/sh");
     command
@@ -42,7 +42,7 @@ fn limited(machine: &Machine, limit: &str, argv: &[&str]) -> Run {
         .current_dir(machine.checkout())
         .env_clear()
         .envs(machine.env(None, "codex"))
-        .env("LLVM_PROFILE_FILE", "/dev/null");
+        .envs([UNPROFILED]);
     run_within(command, Duration::from_secs(120))
 }
 

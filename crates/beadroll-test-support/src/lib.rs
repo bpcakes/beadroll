@@ -18,7 +18,7 @@ mod machine;
 mod sandbox;
 
 pub use beadroll_core::json::Value as Json;
-pub use machine::{Invocation, Machine, Run, code};
+pub use machine::{Invocation, Machine, Run, UNPROFILED, code};
 pub use sandbox::{Sandbox, UNDER_TEST, built_bead, git, select_bead};
 
 /// Reads bead's output as a JSON document.

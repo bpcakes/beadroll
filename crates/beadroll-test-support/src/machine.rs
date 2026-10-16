@@ -13,6 +13,15 @@ use crate::{Json, Sandbox};
 /// cannot reach the binary under test.
 const SCRUBBED: [&str; 6] = ["CLAUDE", "CODEX", "BEAD_", "GIT_", "NO_COLOR", "CLICOLOR"];
 
+/// The variable that keeps the profile an instrumented `bead` writes at exit (`cargo xtask
+/// coverage`) out of a resource limit: `LLVM_PROFILE_FILE=/dev/null`. A run of `bead` under
+/// `ulimit` takes it, as `.envs([UNPROFILED])` after the machine's environment. Otherwise the write
+/// of half a megabyte of counters hits `ulimit -f`, fills the standard error the test reads with
+/// "LLVM Profile Error" and leaves a truncated profile that cannot be merged; `ulimit -n` can stop
+/// it opening the file. A build without counters ignores it, and what the run would have counted is
+/// lost, as it is for a `bead` killed by SIGKILL.
+pub const UNPROFILED: (&str, &str) = ("LLVM_PROFILE_FILE", "/dev/null");
+
 /// One simulated developer machine with its own BEAD_HOME, clone and identity.
 pub struct Machine {
     name: String,

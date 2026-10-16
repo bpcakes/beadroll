@@ -175,7 +175,8 @@ pub(crate) enum Kind {
     Unittest,
     /// `infra/roundtrip.py`, reported by its own summary line ([`report_roundtrip`]).
     Roundtrip,
-    /// A command with nothing to sum up, reported as `done`: it printed what its log keeps.
+    /// A command with nothing to sum up, reported as `done`, or as `failed` and how it ended: it
+    /// printed what its log keeps.
     Plain,
 }
 
@@ -385,7 +386,8 @@ fn summary(kind: Kind, output: &Output) -> Option<String> {
             (!lines.is_empty()).then(|| lines.join(" "))
         }
         Kind::Roundtrip => None,
-        Kind::Plain => Some("done".to_owned()),
+        Kind::Plain if output.status.success() => Some("done".to_owned()),
+        Kind::Plain => Some(format!("failed, {}", ended(output))),
     }
 }
 
@@ -405,9 +407,14 @@ fn counted(result: &str, word: &str) -> Option<u64> {
 
 /// How a step ended, when its output sums up nothing (it did not build, or it was killed).
 fn status(output: &Output) -> String {
+    format!("{}, no summary", ended(output))
+}
+
+/// How the process ended: its exit status, or the signal that ended it.
+fn ended(output: &Output) -> String {
     match output.status.code() {
-        Some(code) => format!("exit {code}, no summary"),
-        None => format!("{}, no summary", output.status),
+        Some(code) => format!("exit {code}"),
+        None => output.status.to_string(),
     }
 }
 

@@ -4,10 +4,12 @@
 use super::*;
 
 /// What a run of the whole command does on a fake `cargo`: nextest ends with `nextest_exit`, a
-/// report is written from `lcov` (none when it is `None`, as when no profile was made).
+/// report is written from `lcov` (none when it is `None`, as when no profile was made), and every
+/// report step warns that each of `unmerged` was left out.
 struct Fake {
     dir: tempfile::TempDir,
     out: PathBuf,
+    unmerged: Vec<&'static str>,
 }
 
 impl Fake {
@@ -15,7 +17,11 @@ impl Fake {
         let dir = tempfile::tempdir().expect("a scratch directory");
         let out = dir.path().join("target").join("coverage");
         std::fs::create_dir_all(&out).expect("the output directory");
-        Fake { dir, out }
+        Fake {
+            dir,
+            out,
+            unmerged: Vec::new(),
+        }
     }
 
     /// Runs the command with `options`: whether it passed, standard output and standard error.
@@ -35,13 +41,22 @@ impl Fake {
             }
             None => drop(std::fs::remove_file(&source)),
         }
+        let warned: String = (self.unmerged.iter())
+            .map(|name| {
+                format!(
+                    "echo 'warning: {}/{name}: invalid instrumentation profile data \
+                     (file header is corrupt)' >&2\n",
+                    root.display()
+                )
+            })
+            .collect();
         let cargo = format!(
             "case \"$2\" in\n\
              --version) echo 'cargo-llvm-cov 0.8.7'; exit 0;;\n\
              clean) exit 0;;\n\
              nextest) echo '     Summary [   1.0s] 5 tests run: 5 passed, 0 skipped'; \
                       echo '        FAIL [   0.2s] (2/5) a::b' >&2; exit {nextest_exit};;\n\
-             report) for last; do :; done\n\
+             report) {warned}for last; do :; done\n\
                      case \"$*\" in\n\
                      *--lcov*) cp '{source}' \"$last\" || exit 1;;\n\
                      *--json*) echo '{{}}' > \"$last\";;\n\
@@ -90,7 +105,10 @@ fn a_run_writes_the_three_reports_and_says_what_the_suites_ran() {
         out.contains("counted: crates/beadroll/src/main.rs"),
         "{out}"
     );
-    assert!(out.ends_with("(and lcov.info, summary.json)\n"), "{out}");
+    assert!(
+        out.contains("lcov.info, summary.json (counted per function"),
+        "{out}"
+    );
     for kept in [
         "html/index.html",
         "lcov.info",
@@ -193,4 +211,79 @@ fn missing_tools_stop_the_run_before_anything_runs() {
     );
     assert!(matches!(made, Err(Failure::Failed(_))), "{made:?}");
     assert!(stdout.is_empty() && !out.exists(), "something ran");
+}
+
+#[test]
+fn a_profile_left_out_of_the_reports_is_said_and_fails_the_run() {
+    let mut fake = Fake::new();
+    fake.unmerged = vec!["beadroll-1_3.profraw"];
+    let (passed, out, _) = fake.run(0, Some(&report(REPORT)), Options::default());
+    assert!(!passed.expect("a report"), "{out}");
+    // Three report steps warned of it; it is one profile.
+    let first = format!("{}/beadroll-1_3.profraw", fake.dir.path().display());
+    let said = format!(
+        "profiles       1 profile could not be merged and the counts in them are missing from this report, the first {first} (the report steps' logs name them all)"
+    );
+    assert!(out.contains(&said), "{out}");
+    assert!(
+        out.contains("counted: crates/beadroll/src/main.rs"),
+        "the rest is told: {out}"
+    );
+
+    let mut fake = Fake::new();
+    fake.unmerged = vec!["b.profraw", "a.profraw"];
+    let (passed, out, _) = fake.run(0, Some(&report(REPORT)), Options::default());
+    assert!(!passed.expect("a report"), "{out}");
+    assert!(
+        out.contains("profiles       2 profiles could not be merged"),
+        "{out}"
+    );
+    assert!(
+        out.contains("the first ") && out.contains("/a.profraw (the report"),
+        "{out}"
+    );
+}
+
+#[test]
+fn a_run_where_every_profile_merged_says_nothing_of_profiles() {
+    let fake = Fake::new();
+    let (passed, out, _) = fake.run(0, Some(&report(REPORT)), Options::default());
+    assert!(passed.expect("a report"), "{out}");
+    assert!(!out.contains("profiles "), "{out}");
+}
+
+#[test]
+fn a_step_that_fails_is_reported_failed_with_what_it_printed_and_never_as_done() {
+    let dir = tempfile::tempdir().expect("a scratch directory");
+    let cargo = "if [ \"$2\" = --version ]; then echo 'cargo-llvm-cov 0.8.7'; exit 0; fi\n\
+                 echo 'error: boom' >&2\nexit 1\n";
+    let tools = tools(dir.path(), "boom", cargo, true);
+    let out = dir.path().join("coverage");
+    let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
+    let made = make(
+        &tools,
+        dir.path(),
+        &out,
+        Options::default(),
+        &mut stdout,
+        &mut stderr,
+    );
+    assert!(
+        matches!(made, Err(Failure::Failed(_))),
+        "no report: {made:?}"
+    );
+    let shown = String::from_utf8(stdout).expect("UTF-8");
+    for step in ["clean", "report html", "report lcov", "report json"] {
+        assert!(
+            shown.contains(&format!(
+                "{step:<14} failed, exit 1 (0s)\n    error: boom\n"
+            )),
+            "{step}: {shown}"
+        );
+    }
+    assert!(
+        shown.contains("tests          exit 1, no summary"),
+        "{shown}"
+    );
+    assert!(!shown.contains("done"), "{shown}");
 }

@@ -1,8 +1,6 @@
 //! The baseline fails if a selected step fails. Fake cargo and python3 executables produce
 //! synthetic statuses, round-trip details and summaries, and failure diagnostics on stderr.
 
-use std::os::unix::fs::PermissionsExt as _;
-
 use super::*;
 
 /// A check with `--real` whose test steps exit with `module_status` and whose round trip exits
@@ -50,11 +48,7 @@ fn check(module_status: i32, real_status: i32) -> (bool, String, String) {
 
 /// An executable shell script `name` in `dir` with `body`: its path.
 fn script(dir: &Path, name: &str, body: &str) -> OsString {
-    let path = dir.join(name);
-    std::fs::write(&path, format!("#!/bin/sh\n{body}")).expect("the fake tool");
-    let executable = std::fs::Permissions::from_mode(0o755);
-    std::fs::set_permissions(&path, executable).expect("an executable fake");
-    path.into_os_string()
+    workspace::fake_tool(dir, name, body)
 }
 
 #[test]

@@ -1,7 +1,6 @@
 //! The coverage command's own tests: its options and steps, the tools it asks for, how its
 //! summary reads a report, and a whole run on fake tools.
 
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::PathBuf;
 
 use super::*;
@@ -12,10 +11,7 @@ fn args(list: &[&str]) -> Vec<OsString> {
 
 /// An executable shell script `name` in `dir` with `body`: its path.
 fn script(dir: &Path, name: &str, body: &str) -> OsString {
-    let path = dir.join(name);
-    std::fs::write(&path, format!("#!/bin/sh\n{body}")).expect("the fake tool");
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("its mode");
-    path.into_os_string()
+    workspace::fake_tool(dir, name, body)
 }
 
 #[test]
@@ -168,6 +164,53 @@ fn the_reports_leave_out_the_tooling_and_tolerate_a_profile_that_did_not_finish(
     }
 }
 
+/// The tracked files of the repository's tests under `crates/`, with their text.
+fn test_sources() -> Vec<(String, String)> {
+    let root = workspace::root();
+    let listed = Command::new("git")
+        .args(["ls-files", "-z", "crates"])
+        .current_dir(&root)
+        .output()
+        .expect("git runs");
+    assert!(listed.status.success(), "git ls-files failed");
+    let names = String::from_utf8(listed.stdout).expect("UTF-8 file names");
+    names
+        .split('\0')
+        .filter(|name| name.ends_with(".rs") && name.contains("/tests/"))
+        .map(|name| {
+            (
+                name.to_owned(),
+                std::fs::read_to_string(root.join(name)).expect(name),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn every_test_that_runs_bead_under_a_limit_keeps_the_profile_out_of_it() {
+    // Under `ulimit` the profile an instrumented bead writes at exit fails on the limit (-f), or
+    // cannot open its file (-n), and says so on the standard error the test reads: such a run
+    // takes `UNPROFILED` (`beadroll_test_support`). The probes that run `dd` under `ulimit -f 1`
+    // are not bead and do not format their limit in (a limit that is a literal).
+    let sources = test_sources();
+    assert!(sources.len() > 100, "{} files listed", sources.len());
+    let limited: Vec<&str> = (sources.iter())
+        .filter(|(_, text)| text.contains("format!(\"ulimit "))
+        .map(|(name, _)| name.as_str())
+        .collect();
+    assert!(
+        limited.len() >= 3,
+        "the scan found the tests that limit bead: {limited:?}"
+    );
+    for name in limited {
+        let text = &sources.iter().find(|(n, _)| n == name).expect("listed").1;
+        assert!(
+            text.contains("UNPROFILED"),
+            "{name} runs bead under a ulimit and does not take UNPROFILED"
+        );
+    }
+}
+
 #[test]
 fn the_protocol_and_the_child_only_file_are_files_of_this_repository() {
     let root = workspace::root();
@@ -183,6 +226,33 @@ fn the_protocol_and_the_child_only_file_are_files_of_this_repository() {
             .contains("fn main"),
         "{CHILD_ONLY} is not an executable's main"
     );
+}
+
+#[test]
+fn a_report_step_names_the_profiles_it_left_out_and_nothing_else() {
+    let log = "\
+warning: /t/target/llvm-cov-target/beadroll-12273580044368410187_3.profraw: invalid instrumentation profile data (file header is corrupt)
+warning: 2 functions have mismatched data
+warning: /t/x.profraw: unsupported instrumentation profile format version
+error: not a warning about /t/y.profraw: but an error
+    Finished report saved to /t/target/coverage/lcov.info
+";
+    assert_eq!(
+        skipped_in(log),
+        [
+            "/t/target/llvm-cov-target/beadroll-12273580044368410187_3.profraw",
+            "/t/x.profraw"
+        ]
+    );
+    assert!(skipped_in("").is_empty());
+}
+
+#[test]
+fn the_exit_status_says_whether_the_run_passed() {
+    let shown = |passed| format!("{:?}", exit_code(passed));
+    assert_eq!(shown(true), format!("{:?}", ExitCode::SUCCESS));
+    assert_eq!(shown(false), format!("{:?}", ExitCode::FAILURE));
+    assert_ne!(shown(true), shown(false));
 }
 
 /// A `bead` that was never built is the same as no tool: `cargo` prints this for a subcommand it
@@ -260,6 +330,20 @@ fn the_tools_are_checked_and_each_missing_one_says_how_to_install_it() {
         own_llvm.require(root).unwrap(),
         "cargo-llvm-cov 0.8.7, llvm-tools"
     );
+}
+
+#[test]
+fn a_cargo_that_cannot_run_is_not_one_without_llvm_cov() {
+    let dir = tempfile::tempdir().expect("a scratch directory");
+    let missing = Tools {
+        cargo: dir.path().join("no-such-cargo").into_os_string(),
+        rustc: rustc(dir.path(), true),
+        llvm_from_env: false,
+    };
+    let Err(Failure::Failed(message)) = missing.require(dir.path()) else {
+        panic!("a cargo that does not run passed");
+    };
+    assert!(message.starts_with("cannot run cargo: "), "{message}");
 }
 
 #[test]
