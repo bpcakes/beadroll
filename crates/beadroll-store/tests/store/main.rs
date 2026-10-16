@@ -5,6 +5,7 @@
 mod commands;
 mod compat;
 mod hardening;
+mod names;
 mod replay;
 mod settings;
 

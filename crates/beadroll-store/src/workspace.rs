@@ -1,7 +1,9 @@
 //! One tracker's store on this machine, its checkout configuration and coordination remote.
 
+use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::ffi::{OsStr, OsString};
+use std::os::unix::ffi::OsStrExt as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -288,4 +290,29 @@ pub fn relative(ws: &Workspace, path: &Path) -> String {
         .unwrap_or(path)
         .to_string_lossy()
         .into_owned()
+}
+
+/// [`relative`], borrowed from `path` when it needs no copy: a path the store's own listings
+/// made, which is the workspace directory, a separator and a name in UTF-8, is taken apart by its
+/// bytes rather than its components, which took the unpublished count's loop over 92,000 attempt
+/// files from 45 ms to 10 ms (roll-lqjj.47). Any other path is taken apart as `relative` always
+/// did.
+pub fn relative_name<'a>(ws: &Workspace, path: &'a Path) -> Cow<'a, str> {
+    let dir = ws.dir.as_os_str().as_bytes();
+    let bytes = path.as_os_str().as_bytes();
+    // a name that starts with a separator or a dot, or ends in a separator or a `/.`, is one
+    // `strip_prefix` would clean up
+    if let Some(rest) = bytes
+        .strip_prefix(dir)
+        .and_then(|rest| rest.strip_prefix(b"/"))
+        && rest
+            .first()
+            .is_some_and(|first| !matches!(first, b'/' | b'.'))
+        && !rest.ends_with(b"/")
+        && !rest.ends_with(b"/.")
+        && let Ok(name) = std::str::from_utf8(rest)
+    {
+        return Cow::Borrowed(name);
+    }
+    path.strip_prefix(&ws.dir).unwrap_or(path).to_string_lossy()
 }

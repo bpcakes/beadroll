@@ -4,7 +4,7 @@
 
 use std::fs::FileTimes;
 use std::os::unix::fs::PermissionsExt as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
@@ -17,7 +17,13 @@ use super::{Claims, DirectoryKey};
 /// directory that gains or loses a file within one of that clock's ticks keeps its identity, and
 /// what bead writes itself is listed again because the write forgets the names (Y01).
 fn aged(dir: &Path) {
-    let earlier = SystemTime::now() - Duration::from_secs(60);
+    aged_by(dir, 60);
+}
+
+/// [`aged`] by `seconds`: a directory aged by a different number of seconds each time has a new
+/// identity each time, whatever granularity its clock has.
+fn aged_by(dir: &Path, seconds: u64) {
+    let earlier = SystemTime::now() - Duration::from_secs(seconds);
     let opened = std::fs::File::open(dir).unwrap();
     opened
         .set_times(FileTimes::new().set_modified(earlier))
@@ -220,4 +226,145 @@ fn identities_are_kept_across_listings_but_for_what_bead_writes() {
         "only what bead wrote is stat-ed again"
     );
     assert_ne!(keys[1], FileKey::of(&two));
+}
+
+/// A machine whose claims directory is not there (this one, until it first claims) does not make
+/// the combined listing again at every call: its names are the one empty listing, so that the
+/// listing kept is the sources' for as long as they stay (roll-lqjj.47, where 92,000 paths were
+/// copied at each call), and the directory is seen the moment it has a file.
+#[test]
+fn a_claims_directory_that_is_not_there_keeps_the_listing() {
+    let home = tempfile::tempdir().unwrap();
+    let events = home.path().join("events");
+    let (a, b) = (events.join("a/claims"), events.join("b"));
+    std::fs::create_dir_all(&a).unwrap();
+    std::fs::create_dir_all(&b).unwrap();
+    std::fs::write(a.join("1.json"), b"one").unwrap();
+    let mut claims = Claims::default();
+    let first = claims.files(&events).unwrap();
+    assert_eq!(&*first, &[a.join("1.json")]);
+    for _ in 0..3 {
+        assert!(
+            Arc::ptr_eq(&first, &claims.files(&events).unwrap()),
+            "b has no claims directory, and nothing changed"
+        );
+    }
+    // afresh reads every directory again, and the listing it makes is the same names
+    let again = claims.files_afresh(&events).unwrap();
+    assert_eq!(&*again, &*first);
+    assert!(Arc::ptr_eq(&again, &claims.files(&events).unwrap()));
+
+    // b's directory comes, with a file: seen at once, and kept in its turn
+    std::fs::create_dir(b.join("claims")).unwrap();
+    std::fs::write(b.join("claims/2.json"), b"two").unwrap();
+    let grown = claims.files(&events).unwrap();
+    assert_eq!(&*grown, &[a.join("1.json"), b.join("claims/2.json")]);
+    assert!(Arc::ptr_eq(&grown, &claims.files(&events).unwrap()));
+
+    // and gone again: the names are those of the directories that are there
+    std::fs::remove_dir_all(b.join("claims")).unwrap();
+    assert_eq!(&*claims.files(&events).unwrap(), &[a.join("1.json")]);
+}
+
+/// A seeded generator (SplitMix64): the same walk on every run.
+struct Rng(u64);
+
+impl Rng {
+    fn below(&mut self, n: usize) -> usize {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        ((z ^ (z >> 31)) % n as u64) as usize
+    }
+}
+
+/// The claims files of the tree under `events` as a walk of it gives them: each machine's in the
+/// order of its names, the machines in the order of theirs.
+fn walked(events: &Path) -> Vec<PathBuf> {
+    let sorted = |dir: &Path| -> Vec<PathBuf> {
+        let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect();
+        paths.sort();
+        paths
+    };
+    let mut files = Vec::new();
+    for machine in sorted(events) {
+        let claims = machine.join("claims");
+        if machine.is_dir() && claims.is_dir() {
+            files.extend(sorted(&claims).into_iter().filter(|file| {
+                let name = file.file_name().unwrap().to_string_lossy();
+                name.len() > ".json".len() && name.ends_with(".json")
+            }));
+        }
+    }
+    files
+}
+
+/// A random walk over the claims directories of five machines, whose directories are made, filled,
+/// emptied, removed and made again, with the listing asked for after every step: it is the names
+/// the tree holds however the walk got there, and it is kept, the very listing, when nothing
+/// changed since it was made (roll-lqjj.47: a machine with no claims directory is one empty
+/// listing, not a new one at every call).
+#[test]
+fn a_random_walk_over_claims_directories_lists_what_the_tree_holds() {
+    let home = tempfile::tempdir().unwrap();
+    let events = home.path().join("events");
+    std::fs::create_dir_all(&events).unwrap();
+    let mut claims = Claims::default();
+    let mut rng = Rng(0x1234_5678_9abc_def1);
+    let machines = ["a", "a-b", "b", "c", "d"];
+    let mut listed_files = 0;
+    for step in 0..4000_u64 {
+        let machine = events.join(machines[rng.below(machines.len())]);
+        let folder = machine.join("claims");
+        let mut changed = false;
+        match rng.below(10) {
+            0 => std::fs::create_dir_all(&machine).unwrap(),
+            1 => std::fs::create_dir_all(&folder).unwrap(),
+            2 | 3 => {
+                std::fs::create_dir_all(&folder).unwrap();
+                let file = folder.join(format!("{}.json", rng.below(12)));
+                std::fs::write(&file, b"x").unwrap();
+                changed = true;
+                // half of what is written is a write bead made and tells the listing of
+                if rng.below(2) == 0 {
+                    claims.forget(&file);
+                }
+            }
+            4 => {
+                let files = walked(&events)
+                    .into_iter()
+                    .filter(|file| file.starts_with(&folder))
+                    .collect::<Vec<_>>();
+                if !files.is_empty() {
+                    std::fs::remove_file(&files[rng.below(files.len())]).unwrap();
+                    changed = true;
+                }
+            }
+            5 => drop(std::fs::remove_dir_all(&folder)),
+            6 => drop(std::fs::remove_dir_all(&machine)),
+            7 if folder.is_dir() => {
+                std::fs::write(folder.join("note.txt"), b"x").unwrap();
+                changed = true;
+            }
+            8 => {
+                claims.files_afresh(&events).unwrap();
+            }
+            _ => {}
+        }
+        if changed {
+            aged_by(&folder, 60 + step);
+        }
+        let listed = claims.files(&events).unwrap();
+        assert_eq!(&*listed, &walked(&events)[..], "step {step}");
+        assert!(
+            Arc::ptr_eq(&listed, &claims.files(&events).unwrap()),
+            "step {step}: nothing changed since the listing"
+        );
+        listed_files += usize::from(!listed.is_empty());
+    }
+    assert!(listed_files > 400, "the walk lists files: {listed_files}");
 }

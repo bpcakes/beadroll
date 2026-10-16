@@ -31,15 +31,18 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   lists them (roll-lqjj.1); `Link::unpublished` and `Link::published_counts` take a segment's
   lines from the memo while the segment is unchanged.
 - `src/synchronise.rs`: `synchronise` and `Synced`, `adopt_published`, `publish_soon`,
-  `unpublished_count` (the memo's segment entries alone, `meta.json` as the command read it),
+  `unpublished_count` (the memo's segment entries alone, `meta.json` as the command read it, the
+  attempt files named by their bytes with `relative_name`; roll-lqjj.30 and roll-lqjj.47),
   `pause`, `ROUNDS`.
 - `src/ownership.rs`: `coordinated` (up to 24 rounds of a claim, takeover, release or claiming
   update), `settle_commands` (receipts), `settle_pending` (fences), `forget`, `Mode`, `Settled`;
   the failpoint `ownership.before-transaction` sits between a round's merge (and what settles after
   it) and its transaction, where nothing writes the journal.
 - `src/error.rs`: `Error`, each variant with its code.
-- `tests/sync/`: in-crate protocol tests; `support.rs` opens a machine's store in the test process
-  and runs command bodies through `coordinated`. Faults come from failpoints passed in `Settings`; the
+- `tests/sync/`: in-crate protocol tests (`count.rs` and `count_foreign.rs`: the unpublished count
+  against a count of the journal the slow way, on one machine and on two, on every path and
+  whatever the memo holds); `support.rs` opens a machine's store in the test process and runs
+  command bodies through `coordinated`. Faults come from failpoints passed in `Settings`; the
   machines around it run `BEAD_UNDER_TEST`, else the Rust `bead` Cargo built in the profile
   directory above the test binary (`beadroll_test_support::built_bead`, below).
 

@@ -292,49 +292,106 @@ fn settled(files: &mut BTreeMap<String, Remembered>, written: Option<i128>) {
 }
 
 /// The files a memo holds that `wanted` names, or `None` when any part of it is not as
-/// [`Memo::render`] writes it: each file once, in the order of their paths.
+/// [`Memo::render`] writes it: each file once, in the order of their paths. Every line is checked
+/// whole, as one is written, whichever are asked for (what it says of one file never depends on
+/// which), but only the lines asked for are made into values: the others are checked for their
+/// shape alone ([`fields_are_written`]), which costs under half of making them (roll-lqjj.47: the
+/// 92,000 attempt files of an ownership-heavy tracker were 47 ms a command, for a count that
+/// reads the segments' lines alone).
 fn parse(data: &[u8], wanted: &dyn Fn(&str) -> bool) -> Option<BTreeMap<String, Remembered>> {
-    let mut rest = data.strip_prefix(HEADER)?;
+    // every byte is a part of a path or of the fields behind it, so that text is checked as a whole
+    let mut rest = std::str::from_utf8(data.strip_prefix(HEADER)?).ok()?;
     let mut files = BTreeMap::new();
     let mut last: Option<&str> = None;
     while !rest.is_empty() {
-        let nul = rest.iter().position(|b| *b == 0)?;
-        let path = std::str::from_utf8(rest.get(..nul)?).ok()?;
+        let nul = rest.find('\0')?;
+        let path = rest.get(..nul)?;
         if path.is_empty() || last.is_some_and(|last| path <= last) {
             return None;
         }
         last = Some(path);
         let after = rest.get(nul + 1..)?;
-        let end = after.iter().position(|b| *b == b'\n')?;
-        let fields = std::str::from_utf8(after.get(..end)?).ok()?;
-        let mut fields = fields.split(' ');
-        let [len, modified, changed, inode, device, lines, blob] = [(); 7].map(|()| fields.next());
-        if fields.next().is_some() {
-            return None;
-        }
-        let key = FileKey {
-            len: number(len?)?,
-            modified: number(modified?)?,
-            changed: number(changed?)?,
-            inode: number(inode?)?,
-            device: number(device?)?,
-        };
-        let lines = match lines? {
-            "-" => None,
-            lines => Some(number(lines)?),
-        };
-        let blob = match blob? {
-            "-" => None,
-            blob if is_object_name(blob) => Some(blob),
-            _ => return None,
-        };
+        let end = after.find('\n')?;
+        let fields = after.get(..end)?;
         if wanted(path) {
-            let blob = blob.map(str::to_owned);
-            files.insert(path.to_owned(), Remembered { key, lines, blob });
+            let (key, lines, blob) = fields_of(fields)?;
+            files.insert(
+                path.to_owned(),
+                Remembered {
+                    key,
+                    lines,
+                    blob: blob.map(str::to_owned),
+                },
+            );
+        } else if !fields_are_written(fields) {
+            return None;
         }
         rest = after.get(end + 1..)?;
     }
     Some(files)
+}
+
+/// What the fields of one file's line say, or `None` when they are not as [`Memo::render`] writes
+/// them: the identity, the lines (`-` when not known) and the blob (`-` when not known).
+fn fields_of(fields: &str) -> Option<(FileKey, Option<usize>, Option<&str>)> {
+    let mut fields = fields.split(' ');
+    let [len, modified, changed, inode, device, lines, blob] = [(); 7].map(|()| fields.next());
+    if fields.next().is_some() {
+        return None;
+    }
+    let key = FileKey {
+        len: number(len?)?,
+        modified: number(modified?)?,
+        changed: number(changed?)?,
+        inode: number(inode?)?,
+        device: number(device?)?,
+    };
+    let lines = match lines? {
+        "-" => None,
+        lines => Some(number(lines)?),
+    };
+    let blob = match blob? {
+        "-" => None,
+        blob if is_object_name(blob) => Some(blob),
+        _ => return None,
+    };
+    Some((key, lines, blob))
+}
+
+/// Whether `fields` are as [`fields_of`] needs them, which it answers without making the numbers
+/// of the fields: a run of digits that is shorter than every number of its type can be long is a
+/// number of it ([`number_is_written`]).
+fn fields_are_written(fields: &str) -> bool {
+    let mut fields = fields.split(' ');
+    let [len, modified, changed, inode, device, lines, blob] = [(); 7].map(|()| fields.next());
+    let (
+        Some(len),
+        Some(modified),
+        Some(changed),
+        Some(inode),
+        Some(device),
+        Some(lines),
+        Some(blob),
+    ) = (len, modified, changed, inode, device, lines, blob)
+    else {
+        return false;
+    };
+    fields.next().is_none()
+        && number_is_written::<u64>(len, 19)
+        && number_is_written::<i128>(modified, 38)
+        && number_is_written::<i128>(changed, 38)
+        && number_is_written::<u64>(inode, 19)
+        && number_is_written::<u64>(device, 19)
+        && (lines == "-" || number_is_written::<usize>(lines, 9))
+        && (blob == "-" || is_object_name(blob))
+}
+
+/// Whether `text` is a number of type `N` as [`Memo::render`] writes it ([`number`]); `safe` is
+/// how many digits every number of `N` fits in, so that none longer than that is converted to
+/// tell.
+fn number_is_written<N: std::str::FromStr>(text: &str, safe: usize) -> bool {
+    let plain = !text.is_empty() && text.len() <= safe && text.bytes().all(|b| b.is_ascii_digit());
+    plain || number::<N>(text).is_some()
 }
 
 /// A number as [`Memo::render`] writes it: ASCII digits, a minus sign first for a negative time.
