@@ -149,7 +149,8 @@ jobs:
   # fuzz/ is a workspace of its own on the nightly its rust-toolchain.toml pins; bead itself, which
   # writes the seed corpus, builds on the root's toolchain as everywhere else. Nothing real seeds
   # it: fuzz/seed.sh runs that bead in scratch stores, checkouts and bare remotes. The corpus each
-  # night grew is kept for the next, minimized, under a key of its own run, the newest restored.
+  # night grew is kept for the next under a key of its own run, the newest restored: minimized
+  # where the target ran clean, and else whole, with what failed added, until a fix makes it pass.
   # The budget, three targets of FUZZ_SECONDS each, stays well within timeout-minutes: a job that
   # times out is cancelled, and keeps neither a crash's input nor the corpus.
   fuzz:
@@ -193,15 +194,15 @@ jobs:
         run: cargo fuzz build
       - name: Fuzz the JSON parser
         working-directory: fuzz
-        run: cargo fuzz run json "$RUNNER_TEMP/corpus/json" -- -max_total_time="$FUZZ_SECONDS" -timeout=30
+        run: cargo fuzz run json "$RUNNER_TEMP/corpus/json" -- -max_total_time="$FUZZ_SECONDS" -timeout=30 && touch "$RUNNER_TEMP/passed-json"
       - name: Fuzz the segment reader
         if: ${{ !cancelled() }}
         working-directory: fuzz
-        run: cargo fuzz run segment "$RUNNER_TEMP/corpus/segment" -- -max_total_time="$FUZZ_SECONDS" -timeout=30
+        run: cargo fuzz run segment "$RUNNER_TEMP/corpus/segment" -- -max_total_time="$FUZZ_SECONDS" -timeout=30 && touch "$RUNNER_TEMP/passed-segment"
       - name: Fuzz the Beads importer
         if: ${{ !cancelled() }}
         working-directory: fuzz
-        run: cargo fuzz run import "$RUNNER_TEMP/corpus/import" -- -max_total_time="$FUZZ_SECONDS" -timeout=30
+        run: cargo fuzz run import "$RUNNER_TEMP/corpus/import" -- -max_total_time="$FUZZ_SECONDS" -timeout=30 && touch "$RUNNER_TEMP/passed-import"
       # libFuzzer writes the input of a crash, a timeout or a leak to fuzz/artifacts/<target>/.
       - name: Keep the inputs that failed
         if: ${{ failure() }}
@@ -212,17 +213,26 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
       # libFuzzer's merge keeps the inputs that reach something the others do not; cargo fuzz cmin
-      # would rename the corpus into fuzz/, across file systems where RUNNER_TEMP is another.
+      # would rename the corpus into fuzz/, across file systems where RUNNER_TEMP is another. The
+      # merge passes over an input that crashes, so only a target that ran clean is merged: one that
+      # failed keeps its corpus whole, and what failed joins it, to fail each night until fixed.
       - name: Minimize the corpus to what reaches something new
         if: ${{ !cancelled() }}
         working-directory: fuzz
         run: |
           for target in json segment import; do
+            corpus="$RUNNER_TEMP/corpus/$target"
+            if [ ! -e "$RUNNER_TEMP/passed-$target" ]; then
+              if [ -d "artifacts/$target" ]; then
+                find "artifacts/$target" -type f -exec cp {} "$corpus/" \;
+              fi
+              continue
+            fi
             kept="$RUNNER_TEMP/kept-$target"
             mkdir "$kept"
-            cargo fuzz run "$target" "$kept" "$RUNNER_TEMP/corpus/$target" -- -merge=1 -timeout=30
-            rm -rf "$RUNNER_TEMP/corpus/$target"
-            mv "$kept" "$RUNNER_TEMP/corpus/$target"
+            cargo fuzz run "$target" "$kept" "$corpus" -- -merge=1 -timeout=30
+            rm -rf "$corpus"
+            mv "$kept" "$corpus"
           done
       - name: Keep the corpus for the next night
         if: ${{ !cancelled() }}

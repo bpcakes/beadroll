@@ -58,6 +58,10 @@ jobs:
           cache: false
           rustflags: ""
           components: clippy
+      # rust-cache runs cargo in each workspace it caches, where in fuzz/ rustup would install the
+      # nightly fuzz/ pins, which nothing here uses: every step runs the root's toolchain.
+      - name: Keep to the root's toolchain in fuzz/ too
+        run: echo "RUSTUP_TOOLCHAIN=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)" >> "$GITHUB_ENV"
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
         with:

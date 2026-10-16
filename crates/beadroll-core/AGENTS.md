@@ -197,10 +197,11 @@ consumer on tokio calls through `spawn_blocking`.
   replay reports, who wrote each event and what it saw); with histories holding what replay
   reports, it keeps each journal's order and compares those reports as a set, since they are
   listed in the order found. Its histories cost about 0.9 s and 0.7 s of the fast suite. An id
-  with several contents and not exactly one copy of its own is placed by the copy found first
-  (roll-k2wy.14.14). Every `Format` writes what `json::parse` reads back as the same value and
-  writes again as the same text (`compat::json_round_trip`), and `fuzz/` fuzzes the parser, the
-  segment reader and the importer nightly (`fuzz/README.md`).
+  with several contents and not exactly one copy of its own is placed by the copy found first,
+  and with it the issue it names and all that issue answers (roll-k2wy.14.14). Every `Format`
+  writes what `json::parse` reads back as the same value and writes again as the same text
+  (`compat::json_round_trip`), and `fuzz/` fuzzes the parser, the segment reader and the importer
+  nightly (`fuzz/README.md`).
 - `saw` agrees with the reference ancestry bitsets: `state/seen/tests.rs` checks every pair
   on hostile histories. Replay's speed and memory are measured by
   `cargo run --release --package xtask -- timing --replay N [--ownership]`: at 200,000 events its

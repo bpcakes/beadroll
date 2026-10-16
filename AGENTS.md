@@ -48,12 +48,13 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
   drivers' tests, each step with a scratch `BEAD_HOME`. One crate: `cargo nextest run -p
   beadroll`; some tests by a filter: `cargo nextest run -E 'test(/^protocol::/)'`. The lints:
   `cargo fmt --all -- --check` and `cargo clippy --workspace --all-targets --all-features --locked
-  -- -D warnings -D clippy::mod_module_files`. CI (`.github/workflows/rust.yml`) runs them, the
-  tests on Linux and macOS, cargo-deny, the `infra/` tests and `fuzz/`'s check, lints and
-  cargo-deny on every push and pull request, and
-  `.github/workflows/rust-nightly.yml` the tests under git 2.40, the oldest supported, the
-  coverage report, the stress models with the full sweep, `xtask`'s growth guards timed in
-  release, and the fuzz targets for a time budget each.
+  -- -D warnings -D clippy::mod_module_files`, and for `fuzz/`, from the root, `rustfmt --check
+  --edition 2024 fuzz/src/lib.rs fuzz/fuzz_targets/*.rs` and `cargo clippy --manifest-path
+  fuzz/Cargo.toml --all-targets --locked -- -D warnings`. CI (`.github/workflows/rust.yml`) runs
+  them, the tests on Linux and macOS, cargo-deny, the `infra/` tests and `fuzz/`'s cargo-deny on
+  every push and pull request, and `.github/workflows/rust-nightly.yml` the tests under git 2.40,
+  the oldest supported, the coverage report, the stress models with the full sweep, `xtask`'s
+  growth guards timed in release, and the fuzz targets for a time budget each.
 - The default store `~/.local/state/beadroll` holds this repository's own real tracker. The tests
   give every machine a scratch `BEAD_HOME`; set one yourself for any manual experiment
   (`export BEAD_HOME=$(mktemp -d)`), and never run `bead`, `br` or `bv` inside other repositories
@@ -95,7 +96,9 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
 ## Releasing
 
 1. `CHANGELOG.md`: move *Unreleased* into a dated version section; bump `[workspace.package]
-   version` in `Cargo.toml` to match (`cargo build` then updates `Cargo.lock`).
+   version` in `Cargo.toml` to match (`cargo build` then updates `Cargo.lock`), and run `cargo
+   update --workspace --manifest-path fuzz/Cargo.toml` for `fuzz/Cargo.lock`, which CI reads
+   `--locked` too.
 2. `./check.sh --stress` green, and CI green on `main`.
 3. `git tag -a vX.Y.Z -m "beadroll X.Y.Z"` and `git push origin main vX.Y.Z`. Nothing is
    published: machines build from source.

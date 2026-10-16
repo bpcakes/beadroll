@@ -126,7 +126,14 @@ bead d update "$y" --priority 0 --offline
 bead c close "$x" -r 'c is done' --offline
 bead b sync
 bead c sync
-on d sync > /dev/null 2>&1 || true # refused: the same identity used from two places
+# refused, and for that reason only: the same identity used from two places
+if refused=$(on d sync 2>&1 > /dev/null); then
+    refuse "a copy of c's store synced as c"
+fi
+case $refused in
+    *"the same machine identity is being used from two places"*) ;;
+    *) refuse "the copy's sync failed otherwise: $refused" ;;
+esac
 bead b sync
 z=$(key b create 'After the merge' --parent "$x")
 bead c sync

@@ -503,14 +503,17 @@ mod fuzzing {
         (head, steps)
     }
 
-    /// The number `name: N` gives in `lines`.
-    fn number(lines: &[&str], name: &str) -> u64 {
+    /// What `name: ...` gives in `lines`.
+    fn field<'w>(lines: &[&'w str], name: &str) -> &'w str {
         let prefix = format!("{name}: ");
         (lines.iter())
             .find_map(|line| line.trim().strip_prefix(&prefix))
-            .unwrap_or_else(|| panic!("no {name}"))
-            .trim_matches('"')
-            .parse()
+            .unwrap_or_else(|| panic!("no {name} in {lines:?}"))
+    }
+
+    /// The number `name: N` gives in `lines`.
+    fn number(lines: &[&str], name: &str) -> u64 {
+        (field(lines, name).trim_matches('"').parse())
             .unwrap_or_else(|error| panic!("{name}: {error}"))
     }
 
@@ -563,7 +566,11 @@ mod fuzzing {
         let mut runs = Vec::new();
         for target in &targets {
             let run = format!("run: cargo fuzz run {target} ");
-            let at = step_with(&steps, &[&run, "-max_total_time=\"$FUZZ_SECONDS\""]);
+            let passed = format!("&& touch \"$RUNNER_TEMP/passed-{target}\"");
+            let at = step_with(
+                &steps,
+                &[&run, "-max_total_time=\"$FUZZ_SECONDS\"", &passed],
+            );
             assert!(
                 seeded < at,
                 "{target} is fuzzed before the corpus is seeded"
@@ -590,11 +597,6 @@ mod fuzzing {
                 .iter()
                 .any(|line| line.contains("actions/upload-artifact@"))
         );
-        let saved = step_with(&steps, &["uses: actions/cache/save@"]);
-        assert!(
-            runs.iter().all(|at| *at < saved),
-            "the corpus is kept before it grows"
-        );
         // The nightly is pinned for fuzz/ alone: the main workspace keeps its own toolchain.
         let pinned = read("fuzz/rust-toolchain.toml");
         assert!(
@@ -603,6 +605,88 @@ mod fuzzing {
         );
         assert!(!read("rust-toolchain.toml").contains("nightly"));
         assert!(read("Cargo.toml").contains("# fuzz/ is its own workspace"));
+    }
+
+    #[test]
+    fn the_nightly_keeps_the_corpus_it_grew_and_what_failed() {
+        let nightly = read(".github/workflows/rust-nightly.yml");
+        let (_, steps) = job(&nightly, "fuzz");
+        let restored = step_with(&steps, &["uses: actions/cache/restore@"]);
+        let runs: Vec<usize> = (0..steps.len())
+            .filter(|at| (steps[*at].iter()).any(|line| line.contains("-max_total_time=")))
+            .collect();
+        // Only a target that ran clean is merged: the merge passes over an input that crashes,
+        // which the corpus keeps, with what failed, until a fix makes it pass.
+        let merged = step_with(&steps, &["cargo fuzz run \"$target\"", "-merge=1"]);
+        let minimizing = steps[merged].join("\n");
+        assert!(minimizing.contains("if [ ! -e \"$RUNNER_TEMP/passed-$target\" ]; then"));
+        assert!(minimizing.contains("find \"artifacts/$target\" -type f -exec cp {} \"$corpus/\""));
+        assert!(steps[merged].contains(&"        if: ${{ !cancelled() }}"));
+        let saved = step_with(&steps, &["uses: actions/cache/save@"]);
+        assert!(
+            runs.iter().all(|at| *at < merged) && merged < saved,
+            "the corpus is kept before it grows, or minimized after it is kept"
+        );
+        assert!(steps[saved].contains(&"        if: ${{ !cancelled() }}"));
+        // Each night's corpus under a key of its own, the newest of them restored: a constant key
+        // would be saved once and never again, and the corpus would stop growing.
+        let key = field(&steps[saved], "key");
+        assert_eq!(field(&steps[restored], "key"), key);
+        assert_eq!(
+            field(&steps[restored], "path"),
+            field(&steps[saved], "path")
+        );
+        let prefix = field(&steps[restored], "restore-keys");
+        let rest = key.strip_prefix(prefix).unwrap_or_else(|| {
+            panic!("restore-keys {prefix} is no prefix of the corpus's key {key}")
+        });
+        assert!(
+            rest.starts_with("${{ github.run_id }}"),
+            "the corpus's key {key} is not the run's own"
+        );
+    }
+
+    /// The `[[package]]` entry `lock` holds for `name`.
+    fn locked<'l>(lock: &'l str, name: &str) -> &'l str {
+        let head = format!("[[package]]\nname = \"{name}\"\n");
+        let at = lock
+            .find(&head)
+            .unwrap_or_else(|| panic!("no {name} locked"));
+        let entry = &lock[at + head.len()..];
+        entry.split("\n\n").next().unwrap_or(entry)
+    }
+
+    #[test]
+    fn the_fuzz_lock_holds_beadroll_core_as_the_root_lock_does() {
+        // CI checks fuzz/ --locked: a release's version bump, or a dependency beadroll-core gains,
+        // that only the root's lock took would turn every push red. fuzz/ builds none of
+        // beadroll-core's dev-dependencies.
+        let manifest = read("crates/beadroll-core/Cargo.toml");
+        let dev: Vec<&str> = (manifest
+            .split("[dev-dependencies]\n")
+            .nth(1)
+            .unwrap_or_default())
+        .lines()
+        .take_while(|line| !line.starts_with('['))
+        .filter_map(|line| line.split(['.', ' ', '=']).next())
+        .filter(|name| !name.is_empty())
+        .collect();
+        let (root, fuzz) = (read("Cargo.lock"), read("fuzz/Cargo.lock"));
+        let built = (locked(&root, "beadroll-core").lines())
+            .filter(|line| {
+                let name = line.trim().trim_start_matches('"');
+                !dev.iter().any(|dev| {
+                    name.strip_prefix(dev)
+                        .is_some_and(|rest| rest.starts_with(['"', ' ']))
+                })
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(
+            locked(&fuzz, "beadroll-core"),
+            built,
+            "run cargo update --workspace --manifest-path fuzz/Cargo.toml"
+        );
     }
 
     #[test]

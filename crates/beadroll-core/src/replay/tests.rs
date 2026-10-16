@@ -2,10 +2,11 @@
 //! given to a journal in any order their causes allow, or as a store reads them, each machine's
 //! journal in its own order and the attempt files after them, replay to the same state with the
 //! same answers. The histories come from the differential tests' generator (`projection::tests`,
-//! with seeds and lengths of their own): three machines that write, sync and race, colliding keys and all, with claims and releases in attempt files,
-//! takeovers and imports that wait for a key. The answers are asked through the public API alone:
-//! every field of every issue (`Issue::field`), the views, export, readiness and blockers, cycles,
-//! conflicts, and what the state says of its events.
+//! with seeds and lengths of their own): three machines that write, sync and race, colliding keys
+//! and all, with claims and releases in attempt files, takeovers and imports that wait for a key.
+//! The answers are asked through the public API alone: every field of every issue
+//! (`Issue::field`), the views, export, readiness and blockers, cycles, conflicts, and what the
+//! state says of its events.
 
 use std::collections::BTreeSet;
 

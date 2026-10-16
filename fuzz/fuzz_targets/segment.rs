@@ -4,11 +4,10 @@
 //! back alike with nothing reported. Then what was read goes where a store would find it, each
 //! record in the journal of the machine it names, and is replayed, which is total: whichever order
 //! the journals are read in, with each journal's own order kept, the state answers alike (what
-//! could not be used compared as a set, being reported in the order found; and of an input with an
-//! id that roll-k2wy.14.14 lets the journals' order place, everything but what could not be used
-//! and the chain breaks); its export is written
-//! and read back by the importer's reader; and the projection of the same journal, encoded and
-//! decoded with its texts read back, answers as replay does.
+//! could not be used compared as a set, being reported in the order found), unless an input has an
+//! id that roll-k2wy.14.14 lets the journals' order place, whose orders are not compared at all;
+//! its export is written and read back by the importer's reader; and the projection of the same
+//! journal, encoded and decoded with its texts read back, answers as replay does.
 #![no_main]
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -36,10 +35,11 @@ fn machine_of(record: &Value) -> &str {
 
 /// Whether an id of `records` has several contents, not exactly one of them its writer's own (a
 /// valid event in the journal of the machine it names), in two journals or more: the journal then
-/// places it by the first own copy it found, or the first copy, so which issue its integrity row
-/// names and which chain holds its stand-in depend on the order the journals were read in, which a
-/// store keeps the same, their names' (roll-k2wy.14.14). Copies in one journal are read in its
-/// order whatever the order of the journals.
+/// places it by the first own copy it found, or the first copy, so the order the journals were read
+/// in, which a store keeps the same, their names', decides which issue its stand-in names, which
+/// chain holds it and what its integrity row says, and with the issue all that issue answers
+/// (roll-k2wy.14.14). Copies in one journal are read in its order whatever the order of the
+/// journals.
 fn placed_by_order(records: &[Value]) -> bool {
     #[derive(Default)]
     struct Copies<'r> {
@@ -63,16 +63,6 @@ fn placed_by_order(records: &[Value]) -> bool {
         found.journals.insert(machine_of(record));
     }
     (copies.values()).any(|c| c.contents.len() > 1 && c.owned.len() != 1 && c.journals.len() > 1)
-}
-
-/// `said` without what roll-k2wy.14.14 lets the order of the journals change, when `placed`: the
-/// integrity rows and the chain breaks.
-fn comparable(said: &[(String, String)], placed: bool) -> Vec<(String, String)> {
-    let order_bound = |asked: &str| placed && matches!(asked, "integrity" | "chain breaks");
-    (said.iter())
-        .filter(|(asked, _)| !order_bound(asked))
-        .cloned()
-        .collect()
 }
 
 fuzz_target!(|data: &[u8]| {
@@ -129,15 +119,12 @@ fuzz_target!(|data: &[u8]| {
         return; // a renamed copy found no free key: reported as KEY_SPACE
     };
     let said = answers(&state);
-    let placed = placed_by_order(&read);
-    machines.reverse();
-    let other = replay(journal(&machines)).expect("replay is alike in any order");
-    let (one, another) = (
-        comparable(&said, placed),
-        comparable(&answers(&other), placed),
-    );
-    if let Some(difference) = first_difference(&one, &another) {
-        panic!("the journals read in another order answer otherwise: {difference}");
+    if !placed_by_order(&read) {
+        machines.reverse();
+        let other = replay(journal(&machines)).expect("replay is alike in any order");
+        if let Some(difference) = first_difference(&said, &answers(&other)) {
+            panic!("the journals read in another order answer otherwise: {difference}");
+        }
     }
 
     let mut export = String::new();
