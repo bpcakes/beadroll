@@ -225,6 +225,7 @@ fn every_extension_past_an_integrity_entry_is_replays_answer_or_declined() {
         assert!(tally.past.get(kind).is_some_and(|n| *n > 0), "{tally:?}");
         assert!(tally.brought.get(kind).is_some_and(|n| *n > 0), "{tally:?}");
     }
+    assert!(tally.deferred > 100, "{tally:?}");
 }
 
 /// The same over many more seeds, eight threads at a time: `cargo test --release --package
@@ -248,6 +249,8 @@ fn many_seeds_past_integrity_entries() {
         tally.applied += each.applied;
         tally.merged += each.merged;
         tally.closed += each.closed;
+        tally.deferred += each.deferred;
+        tally.longest = tally.longest.max(each.longest);
         tally.declined.extend(each.declined);
         for (kind, n) in each.past {
             *tally.past.entry(kind).or_default() += n;

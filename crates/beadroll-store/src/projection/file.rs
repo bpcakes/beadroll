@@ -45,13 +45,15 @@ pub(super) struct Made {
     pub(super) texts: [u8; 16],
 }
 
-/// A projection file read as far as its state: what it was made from, when it was written, its
-/// state, and where its index is in the file it was read from, which stays open, whatever
-/// replaces it on disk.
+/// A projection file read as far as its state: what it was made from, when it was written, how
+/// many bytes it holds, its state, and where its index is in the file it was read from, which
+/// stays open, whatever replaces it on disk.
 pub(super) struct Stored {
     pub(super) made: Made,
     /// When the projection itself was written: a file not settled by then is read again.
     pub(super) written: i128,
+    /// The file's length: what writing it again costs, near enough.
+    pub(super) size: u64,
     pub(super) state: Vec<u8>,
     file: File,
     index_at: u64,
@@ -106,12 +108,20 @@ pub(super) fn read(path: &Path) -> Option<Stored> {
     Some(Stored {
         made: unmade(&parts)?,
         written,
+        size,
         state,
         file,
         index_at,
         index_len: usize::try_from(index_len).ok()?,
         index_sum,
     })
+}
+
+impl Made {
+    /// How many bytes the journal's files held as they were read.
+    pub(super) fn journal_bytes(&self) -> u64 {
+        self.files.iter().map(|held| held.key.len()).sum()
+    }
 }
 
 /// The bytes of a projection made from `made`, its parts `encoded`.

@@ -6,7 +6,9 @@
 //! ones after them, in the order their own causes give, and each new event sees what it saw in a
 //! replay: the projection keeps every event the state names, and the frontier, with its place and
 //! what it had seen. A local write's events build on the frontier; so do a merge's, when one
-//! writer worked at a time.
+//! writer worked at a time or when the frontier is that of a projection saved before this
+//! machine's writes that the merged events are concurrent with (roll-lqjj.36): those writes and
+//! the merged events are new together, one batch, and each has the frontier in its past.
 //!
 //! Anything replay would do otherwise and the projection declines, before it changes anything:
 //! a takeover, which can turn an earlier end of its claim stale; a record that is not new, or not

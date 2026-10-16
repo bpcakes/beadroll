@@ -515,4 +515,11 @@ fn every_extension_is_replays_answer_or_declined() {
     );
     assert!(tally.merged > 50, "{} merges taken in", tally.merged);
     assert_eq!(tally.closed, 0);
+    // a projection written back several batches before takes them all in at once (roll-lqjj.36)
+    assert!(
+        tally.deferred > 500 && tally.longest >= 8,
+        "{} extensions by several batches, {} at most",
+        tally.deferred,
+        tally.longest
+    );
 }

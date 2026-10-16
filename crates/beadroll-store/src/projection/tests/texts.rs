@@ -160,7 +160,8 @@ fn texts_lost_behind_a_projection_are_never_read_as_its_own() {
     // the first issue described again: its texts are appended where the comment's were
     let again = "why it matters, said again at greater length";
     append_events(&ws, HERE, &[described(8, &[7], 2, again)]).unwrap();
-    let mut extended = projection(&ws).unwrap().into_state();
+    // a read takes it in, and writes back the projection with the texts it appended
+    let mut extended = outline(&ws).unwrap();
     let wanted = extended.wanted_texts([uid(3)]);
     let [(_, place)] = wanted[..] else {
         panic!("{wanted:?}")

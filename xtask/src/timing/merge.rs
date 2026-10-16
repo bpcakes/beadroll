@@ -3,9 +3,11 @@
 //! local bare remote: with the store's projection in place (`seconds`), where the merged events are
 //! applied after it, and removed before each sync (`cold_seconds`), where the journal is replayed,
 //! as every sync did before roll-lqjj.2. With `--concurrent` the store writes a comment of its own
-//! before each merge, so that the events merged were written concurrently with its own: the
-//! projection then declines them and the journal is replayed, and the sync also publishes the
-//! store's write (roll-lqjj.8). Evidence, never a gate.
+//! before each merge, so that the events merged were written concurrently with its own, the one
+//! before among them, which the merge before replayed into the projection: the projection then
+//! declines them and the journal is replayed (roll-lqjj.8; events concurrent only with writes left
+//! after the projection would be extended, roll-lqjj.36), and the sync also publishes the store's
+//! write. Evidence, never a gate.
 
 use super::history::{ROTATE_BYTES, Shape, history};
 use super::world::{RUNS, World, bead, profile, write_store};

@@ -15,7 +15,9 @@
 //! projection that is missing, unreadable, damaged or written by another build of bead: the
 //! journal is replayed. A projection made is written back, whole or not at all, with the identity
 //! each file had as it was read, when every segment ended with a whole line, never into a store
-//! that is not there. Deleting it is safe at any moment, and so it is not flushed: whatever a crash
+//! that is not there; one caught up for a command that writes, only once the records it applied
+//! are many ([`kept_for`]), so that a run of writes does not write the whole projection again for
+//! each. Deleting it is safe at any moment, and so it is not flushed: whatever a crash
 //! leaves of it, or of its text file, is read as replay would answer or not at all
 //! ([`crate::fs::write_cache_parts`]).
 //!
@@ -62,6 +64,18 @@ pub use texts::texts_path;
 /// a projection writes its texts to a new one.
 const SLACK: u64 = 1 << 20;
 
+/// How many times the bytes of the records applied after a stored projection its own bytes may
+/// hold before a command that extends it to write writes it back ([`kept_for`]). Applying a
+/// record costs about fifty nanoseconds a byte of it and writing a projection back about six a
+/// byte of it, so the last write before one is written back spends about an eighth of what that
+/// costs on the records, and a run of writes about a sixteenth a write on average. A record about
+/// an issue no other is about costs more, its issue's texts read in and, when the projection is
+/// written back, appended again: about twenty microseconds a comment at 200,000 events, so that the
+/// write that ends a run took 4% longer than a write after a write did before. This crate's
+/// tests take 4: their stores hold a few kilobytes, in which with 64 every write would write the
+/// projection back, and with 4 their writes leave it to the next command for a record or two.
+const TAIL: u64 = if cfg!(test) { 4 } else { 64 };
+
 /// Where a store keeps its projection.
 pub fn projection_path(ws: &Workspace) -> PathBuf {
     ws.dir.join("projection")
@@ -69,7 +83,8 @@ pub fn projection_path(ws: &Workspace) -> PathBuf {
 
 /// The projection of the store's journal as it is now: the stored one, the records appended since
 /// applied after it, or the journal replayed. Its issues' texts are there but for those the records
-/// applied are about; [`read_texts`] reads in more.
+/// applied are about; [`read_texts`] reads in more. For a command that applies events to it: the
+/// stored one caught up with a few records is not written back (`kept_for`).
 pub fn projection(ws: &Workspace) -> Result<Projection, ViewError> {
     Ok(projection_sourced(ws)?.into_projection())
 }
@@ -182,6 +197,7 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
     {
         let file = Some(stored.made.texts);
         let settled = stored.written;
+        let (size, was) = (stored.size, stored.made.journal_bytes());
         if tails.is_empty() && same(&stored.made, &seen, &listed.held, settled) {
             if want != Want::Projection
                 && let Ok(mut state) = decode_state(&stored.state)
@@ -207,10 +223,14 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
         {
             projection.state_mut().set_texts_file(file);
             let uids = about(&records);
+            // the records applied: the bytes the journal's files grew by, only appended to
+            let tail = now.journal_bytes().saturating_sub(was);
             if read_texts(ws, projection.state_mut(), uids)
                 && let Extended::Applied(mut projection) = projection.extend(records)?
             {
-                save(ws, now, &mut projection);
+                if kept_for(want, tail, size) {
+                    save(ws, now, &mut projection);
+                }
                 if want != Want::Texts || read_all(ws, projection.state_mut()) {
                     return Ok(Now::Projection(projection, sources));
                 }
@@ -244,6 +264,19 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
         );
     }
     Ok(Now::Projection(Box::new(projection), sources))
+}
+
+/// Whether a projection of `size` bytes, extended by records that `tail` bytes of the journal's
+/// files hold, is written back for a command that wants `want` (roll-lqjj.36, X17). A command that
+/// reads writes back whatever it extended: the next one then reads the state alone, where with
+/// records still to apply it would decode the index and apply them again, each time. A command that
+/// extends the projection to write (a transaction, a merge) decodes the index and applies records
+/// whatever it is given, so for it a few more cost twelve to twenty microseconds each, and a save
+/// the whole projection encoded and written: it writes back only once the records hold more than a
+/// [`TAIL`]th of the projection's bytes, and leaves the stored one and its records to the next
+/// command otherwise.
+fn kept_for(want: Want, tail: u64, size: u64) -> bool {
+    want != Want::Projection || tail.saturating_mul(TAIL) > size
 }
 
 /// The identities of `paths` now, by their paths under the store's `events`; `None` when one
