@@ -148,18 +148,17 @@ impl Stamps {
     }
 }
 
-/// What a field a create did not give shows while no register holds it: `""`, 2, `task` and
-/// `open` for those every issue shows, nothing for the rest.
+/// What a field a create did not give shows while no register holds it: `""`, 2 and `task` for
+/// the title, priority and issue_type every issue shows, nothing for the rest. Status has no
+/// default: a create always makes its register.
 fn default(field: Field) -> Option<&'static Value> {
     static TITLE: LazyLock<Value> = LazyLock::new(|| Value::from(""));
     static PRIORITY: LazyLock<Value> = LazyLock::new(|| Value::from(2));
     static ISSUE_TYPE: LazyLock<Value> = LazyLock::new(|| Value::from("task"));
-    static STATUS: LazyLock<Value> = LazyLock::new(|| Value::from("open"));
     match field {
         Field::Title => Some(&TITLE),
         Field::Priority => Some(&PRIORITY),
         Field::IssueType => Some(&ISSUE_TYPE),
-        Field::Status => Some(&STATUS),
         _ => None,
     }
 }
@@ -218,10 +217,7 @@ impl Issue {
 
     /// The member `name` of the status register's entry of the largest id.
     fn status_member(&self, name: &str) -> Option<&Value> {
-        let Some(register) = self.reg.get(&Field::Status) else {
-            return default(Field::Status).filter(|_| name == "status");
-        };
-        register.last()?.1.get(name)
+        self.reg.get(&Field::Status)?.last()?.1.get(name)
     }
 
     /// A field's value, or `None` when absent or null.
