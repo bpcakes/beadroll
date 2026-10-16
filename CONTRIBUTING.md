@@ -73,9 +73,9 @@ the black-box tests start included, and which lines of the ownership protocol no
 report, an `lcov.info` and a `summary.json` under `target/coverage/`. It needs cargo-llvm-cov
 and the toolchain's `llvm-tools` (`rust-toolchain.toml` has neither), which it asks you to install
 when they are missing; `--stress` and `--sweep` add the slow suites, as the nightly workflow does,
-whose report is kept as an artifact. A test that limits the size of a file `bead` writes
-(`ulimit -f`) must keep the profile `bead` writes at exit out of the limit:
-`LLVM_PROFILE_FILE=/dev/null` for that run. The report is evidence, never a gate.
+whose report is kept as an artifact. A test that runs `bead` under `ulimit` takes
+`beadroll_test_support::UNPROFILED` (`LLVM_PROFILE_FILE=/dev/null`) for that run, since the profile
+`bead` writes at exit would fail on the limit. The report is evidence, never a gate.
 
 Every test that runs bead runs the one Cargo builds, unless `BEAD_UNDER_TEST` names another by its
 absolute path. Until 0.2.0 bead was a Python package, whose suite the Rust tests port; the

@@ -71,7 +71,8 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
   `x15_growth_guards`, the nightly step that runs the growth guards, and `coverage_report`, the
   nightly job that makes the coverage report with the cargo-llvm-cov `CARGO_LLVM_COV` names and
   keeps it (tests only).
-- `src/workspace.rs`: paths, failures and JSON strings for all of them.
+- `src/workspace.rs`: paths, failures and JSON strings for all of them, and `fake_tool`, the
+  executable script the tests of `check` and `coverage` run in place of `cargo`.
 - `python/printable_table.py`: writes `crates/beadroll-core/src/text/printable.rs` with the Unicode
   non-printable table that `repr()` uses, generated with CPython 3.14.7's `str.isprintable()`
   under Unicode 16.0.0.
@@ -96,21 +97,41 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
 - Without `BEAD_UNDER_TEST`, `check --real` tests the executable Cargo reports building, never a
   path it works out: the target directory, a build target and the profile can each move it.
 - `coverage` is evidence too: no minimum, no `--fail-under`, no comparison with an earlier report.
-  It fails when a suite fails (the report is still made) and when the report does not count the
-  `bead` processes the black-box tests start: `crates/beadroll/src/main.rs` can only be run by one,
-  so a report where none of its lines ran lost them (`beadroll-test-support` scrubs the
-  environment `bead` runs in, `CLAUDE*`, `CODEX*`, `BEAD_*` and `GIT_*`, and must keep
-  `LLVM_PROFILE_FILE`, which the instrumented `bead` writes its counters by). The report is of the
-  command's own run: `llvm-cov clean --workspace` and the removal of the last outputs come first.
-  The profiles are written to `PROFILE`, `%16m`, so that the processes of one binary merge into 16
-  files: the default, one file of half a megabyte for each process, is 3.5 GB for the fast suite
-  alone. A test that caps a file's size (`ulimit -f`) sets `LLVM_PROFILE_FILE=/dev/null` for the
-  capped run, since the profile bead writes at exit would fail on the cap and say so on standard
-  error. So a `bead` killed by SIGKILL (the sweep's `sigkill` schedules, which cannot show the
-  failpoint's own kill either: `failpoint.rs`' `kill_self` reads as unreached) or run under a
-  file-size cap writes no profile, and a line only it runs reads as unreached. The steps set
-  `BEAD_UNDER_TEST` empty: a `bead` the build did not make has no counters. The doctests are left
-  out: the workspace has none, and cargo-llvm-cov covers them only on a nightly toolchain.
+  It fails when a suite fails (the report is still made), when the report does not count the
+  `bead` processes the black-box tests start, and when a profile was left out of it.
+  `crates/beadroll/src/main.rs` can only be run by a `bead`, so a report where none of its lines
+  ran lost the children (`beadroll-test-support` scrubs the environment `bead` runs in, `CLAUDE*`,
+  `CODEX*`, `BEAD_*` and `GIT_*`, and must keep `LLVM_PROFILE_FILE`, which the instrumented `bead`
+  writes its counters by). The reports are made with `--failure-mode all`, so that one profile that
+  cannot be merged (a `bead` cut short while it wrote, or a pool file a capped run left truncated:
+  every later process that picks that file is lost with it) does not cost the whole report, and
+  llvm-profdata only warns of it in the report steps' logs; the command reads those warnings, says
+  how many profiles were left out and which is the first, and fails, since counts lost read as
+  code no test reaches. The report is of the command's own run: `llvm-cov clean --workspace` and
+  the removal of the last outputs come first. The profiles are written to `PROFILE`, `%16m`, so
+  that the processes of one binary merge into 16 files: the default, one file of half a megabyte
+  for each process, is 3.5 GB for the fast suite alone.
+- `coverage` has one count of lines, the one it prints and the docs quote: those of `lcov.info`,
+  each source line with code once, run or not. The HTML index and `summary.json` are llvm-cov's
+  own, which adds up the lines of each function, so that a line two functions share (a closure on
+  the line of the call that takes it) counts twice: at 72b13f9, 96.12% of 21,018 lines there
+  against 96.4% of 19,705 here, with 1,313 lines more (`replay/apply/claims.rs` has 140 lines of
+  code and 164 there) and the closures that never ran among the uncovered. That is also what the line view cannot see: a closure that never ran on a line that
+  did (`transition.rs:190`, roll-k2wy.14.15) is red in the HTML's regions and absent from the
+  unreached lines printed. Both counts include the unit tests written inline in the product's
+  files (`#[cfg(test)] mod tests { ... }`, 1,789 lines at 99.6%, 11 of them in the protocol's
+  files), which cargo-llvm-cov cannot leave out on a stable toolchain: the product's code alone
+  is 96.1% of 17,916 lines. The tests in files of their own (`tests.rs`, `tests/`) are left out,
+  as are the tooling and the test support (`IGNORED`).
+- A `bead` that writes no profile leaves what only it runs reading as unreached: one killed by
+  SIGKILL (the sweep's `sigkill` schedules, whose failpoint `kill_self` reads as unreached for it)
+  and one run under a resource limit. Under `ulimit -f` the profile written at exit fails on the
+  limit and says so on the standard error the test reads, and leaves a truncated file; under
+  `ulimit -n` it may not open its file. So a test that runs `bead` under `ulimit` takes
+  `beadroll_test_support::UNPROFILED` (`LLVM_PROFILE_FILE=/dev/null`) for that run, and
+  `coverage::tests` finds the test files that format a `ulimit` and want it of each. The steps
+  set `BEAD_UNDER_TEST` empty: a `bead` the build did not make has no counters. The doctests are
+  left out: the workspace has none, and cargo-llvm-cov covers them only on a nightly toolchain.
 - Timings are evidence and never gate anything, with one exception, the growth guards
   (`timing/growth.rs`, X15): a ratio of two timings of one core call, the larger input eight times
   the smaller, may not exceed 24, where growing with the input gives about 8 and with its square
@@ -130,14 +151,15 @@ allocator counts its heap. Its tests also keep the repository hygiene rules and 
 
 - `cargo xtask check [--stress] [--real]`, or `./check.sh` with the same options: the workspace's
   baseline, one line per step
-- `cargo xtask coverage [--stress] [--sweep]`: the fast suite under cargo-llvm-cov (1,016 tests in
-  172 s against 130 s plain, 16 threads on a shared 64-core machine, 2 min 55 s for the whole
-  command); `--stress` adds the stress models (252 s) and `--sweep` all 660 schedules (84 s), as
-  the nightly workflow does (8 min 46 s together). Needs `cargo install --locked cargo-llvm-cov
-  --version 0.8.7` and `rustup component add llvm-tools`. The report is
-  `target/coverage/html/index.html`, with `lcov.info` and `summary.json` beside it. After a run,
-  `cargo llvm-cov report --failure-mode all --text --output-path FILE` and `--show-missing-lines`
-  read the same profiles further.
+- `cargo xtask coverage [--stress] [--sweep]`: the fast suite under cargo-llvm-cov (1,026 tests in
+  164 s here, 16 threads on a shared 64-core machine, 2 min 47 s for the whole command; 1,016 took
+  172 s against 130 s plain); `--stress` adds the stress models (252 s) and `--sweep` all 660
+  schedules (84 s), as the nightly workflow does (8 min 46 s together). On the nightly's 4-vCPU
+  runner the same suites took about 3 minutes (the fast suite), 2 (stress) and 7 (sweep) without
+  counters. Needs `cargo install --locked cargo-llvm-cov --version 0.8.7` and `rustup component
+  add llvm-tools`. The report is `target/coverage/html/index.html`, with `lcov.info` and
+  `summary.json` beside it. After a run, `cargo llvm-cov report --failure-mode all --text
+  --output-path FILE` and `--show-missing-lines` read the same profiles further.
 - `cargo xtask timing --label NAME -- COMMAND`
 - `cargo run --release --package xtask -- timing --replay 10000`, and with `--ownership`
 - `cargo run --release --package xtask -- timing --sync 200000`, and with `--ownership` or
