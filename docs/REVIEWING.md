@@ -1077,6 +1077,14 @@ These were decided deliberately. Report problems *with* them, not their existenc
   not a correctness assertion. Git's server-side ref-race diagnostics can say either
   `incorrect old value provided` or `failed to update ref`; the locale test accepts both while
   still requiring the ref-lock error, rejection status and bead's rejection classification.
+  ActualTransportReview's tests cut a release's push short by holding it in the remote's hook, and
+  order the rounds with a gate on `backoff` (`hardening::gate`): one lets the push land before
+  bead's next round, which finds the release accepted, the other opens the gate first, so that the
+  round fences the push and builds the release again; the command's other fetches and pushes have a
+  second each, far more than they take. They ran under a `BEAD_NET_TIMEOUT` of 0.1 s, which caps
+  every fetch and push of the command, with the random wait between rounds deciding the order, and
+  on a macOS runner a fetch or the fence sometimes missed it, so the release failed with the claim
+  still shown (roll-dih8.28).
 - A command receipt survives a *failed* later command by the same actor and is dropped only when
   a later command by that actor goes through: the remote accepted it, or it was a local write that
   was appended. A recognised retry still reports the claim as it is now.
