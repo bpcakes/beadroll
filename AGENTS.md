@@ -117,8 +117,7 @@ clone and machine of this repository, stored outside the working tree, never on 
 <!-- Project specifics go here: the issue prefix and the epics to start from, what "done" means
      (tests, docs, merged where), and the branch or PR conventions a close reason should name. -->
 
-Project specifics: the prefix is `roll-`; the backlog hangs off epic `roll-dih8`, and deferred
-items (`bead list --status deferred`) wait for the open-source milestone. "Done" means the fast
-baseline is green, the docs above are updated, and the change is on `main`. The block above is
-`bead onboard`'s output verbatim; a test keeps it that way, so change the text in `ONBOARD`
-(`crates/beadroll/src/cli/texts.rs`).
+Project specifics: the prefix is `roll-`, and most of the backlog hangs off the open epics, which
+`bead list --type epic` lists. "Done" means the fast baseline is green, the docs above are
+updated, and the change is on `main`. The block above is `bead onboard`'s output verbatim; a test
+keeps it that way, so change the text in `ONBOARD` (`crates/beadroll/src/cli/texts.rs`).

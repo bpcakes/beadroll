@@ -1499,8 +1499,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   never `sync.git`'s internals, and merge works on (path → blob) maps; a `Remote` trait comes with
   the in-memory remote that will stand beside `Link`, never as a trait with one implementation.
 - Nothing is published: every crate is `publish = false`, there are no prebuilt binaries or
-  packages, and machines build from source (`README.md`, *Install*); public channels wait for the
-  open-source milestone (roll-ydfw). pancake-studio takes `beadroll-core` as a git dependency on
+  packages, and machines build from source (`README.md`, *Install*). The repository has been
+  public since 2026-10-10; tagged releases with Linux and macOS binaries, and whether the crates
+  go to crates.io, wait for roll-ydfw. pancake-studio takes `beadroll-core` as a git dependency on
   this public repository, pinned to a commit (the maintainer's decision of 2026-10-10,
   roll-k2wy.15), so none of its builds needs credentials. `infra/` stays stdlib Python driving any
   `bead`, until there is a reason to move it into xtask.
