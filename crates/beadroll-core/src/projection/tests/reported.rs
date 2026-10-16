@@ -3,11 +3,11 @@
 //! keeps it from extending, or has the batch declined.
 
 use crate::json::{Object, Value};
-use crate::replay::replay;
 
 use super::super::{Extended, Record, project};
 use super::hostile::{HERE, base, event, fields, id, journal, record};
 use super::same;
+use super::shown::replayed;
 
 /// Whether the projection of `base()` and `flawed`, which replay reports `problem` of, takes `batch`
 /// as replay applies it after them.
@@ -26,7 +26,7 @@ fn taken_after(flawed: &[Record], problem: &str, batch: Vec<Record>) -> bool {
     held.extend(batch.iter().cloned());
     match projection.extend(batch).unwrap() {
         Extended::Applied(extended) => {
-            assert!(same(extended.state(), &replay(journal(&held)).unwrap()));
+            assert!(same(extended.state(), &replayed(&held)));
             assert!(extendable && extended.extendable());
             true
         }
@@ -123,7 +123,7 @@ fn a_journal_with_what_replay_reports_is_extended_past_it() {
 fn a_takeover_of_an_id_no_event_has_keeps_the_projection_from_extending() {
     // refused for naming no claim, until an event has the id: then for naming one it had not seen
     let refused = |records: &[Record]| {
-        let state = replay(journal(records)).unwrap();
+        let state = replayed(records);
         let entry = state
             .integrity()
             .iter()
@@ -222,7 +222,7 @@ fn a_record_of_an_id_found_only_in_another_machines_journal_is_declined() {
         held.extend(batch.iter().cloned());
         // replay settles the id anew, an event or one with two contents: either way it no longer
         // reports a record found in one journal alone
-        let after = replay(journal(&held)).unwrap();
+        let after = replayed(&held);
         assert!(
             !(after.integrity().iter()).any(|entry| entry.problem.contains("found only in")),
             "{:?}",

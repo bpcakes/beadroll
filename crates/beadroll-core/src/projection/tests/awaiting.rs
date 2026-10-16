@@ -13,6 +13,7 @@ use crate::time::event_time;
 
 use super::super::{Extended, Record, project};
 use super::hostile::{HERE, event, id, journal, record};
+use super::shown::replayed;
 use super::{MACHINES, TextFile, World, equal, load, read_back, read_in, records, same, whole};
 
 /// Another machine.
@@ -128,7 +129,7 @@ struct Taken {
 fn every_way(base: &[Record], rest: &[Record]) -> (State, Taken) {
     let mut all = base.to_vec();
     all.extend_from_slice(rest);
-    let full = replay(journal(&all)).unwrap();
+    let full = replayed(&all);
     let in_one_batch = match project(journal(base)).unwrap().extend(rest.to_vec()) {
         Ok(Extended::Applied(extended)) => {
             assert!(same(extended.state(), &full), "in one batch");
@@ -153,7 +154,7 @@ fn every_way(base: &[Record], rest: &[Record]) -> (State, Taken) {
                     project(journal(&held)).unwrap()
                 }
             };
-            let replayed = replay(journal(&held)).unwrap();
+            let replayed = replayed(&held);
             assert!(
                 same(whole(&projection, &file).state(), &replayed),
                 "after record {} (read back: {reading_back})",
@@ -560,7 +561,7 @@ fn an_entry_keeps_its_number_however_many_before_it_go_batch_after_batch() {
             listed,
             "after {key}"
         );
-        assert!(same(projection.state(), &replay(journal(&held)).unwrap()));
+        assert!(same(projection.state(), &replayed(&held)));
     }
     assert!(waiting(projection.state(), 3).is_empty());
     assert_eq!(edges(projection.state(), 3).len(), 4);

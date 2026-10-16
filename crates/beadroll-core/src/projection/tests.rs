@@ -19,6 +19,7 @@ mod flawed;
 mod hostile;
 mod known;
 mod reported;
+mod shown;
 mod taken;
 mod texts_once;
 
