@@ -468,6 +468,8 @@ mod tests {
     fn a_timeout_reads_in_seconds_to_the_millisecond() {
         let read = [
             (45.0, "45"),
+            (10.0, "10"),
+            (100.0, "100"),
             (1.0, "1"),
             (2.5, "2.5"),
             (0.2, "0.2"),

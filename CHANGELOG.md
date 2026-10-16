@@ -6,9 +6,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
-- A git that gives no answer within a `BEAD_NET_TIMEOUT` of a fraction of a second is reported
-  with that timeout, to the millisecond (`git fetch gave no answer within 0.2s`), where it was
-  rounded to whole seconds (`within 0s`); a timeout of whole seconds reads as before (roll-0bp4).
+- A git that gives no answer within a `BEAD_NET_TIMEOUT` that is not a whole number of seconds is
+  reported with that timeout, to the millisecond (`git fetch gave no answer within 0.2s`, and
+  `within 2.5s`), where it was rounded to whole seconds (`within 0s`, `within 2s`); a timeout of
+  whole seconds reads as before (roll-0bp4).
 
 - A write that follows a write no longer writes the store's projection back (roll-lqjj.36, X17):
   a command that writes leaves the stored projection as it found it while the records after it
