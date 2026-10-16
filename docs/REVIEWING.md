@@ -263,11 +263,13 @@ These were decided deliberately. Report problems *with* them, not their existenc
   projection up to 24 writes behind; and its concurrent-creates and concurrent-rename scenarios,
   where keys two machines minted concurrently were renamed as replay renames them
   (`storage::projection::deferred::a_merge_concurrent_only_with_writes_left_after_the_projection_extends_it`
-  pins the rule both ways). Such a merge extends where this machine wrote more than once since the
-  other last fetched, with no read between, while those writes hold at most a 64th of the
-  projection's bytes: a sync that merges one event concurrent with three writes left took 0.23 s
-  rather than 0.93 s at 50,000 events and 0.63 s rather than 3.69 s at 200,000 (release, median of
-  four, back to back on the shared machine, the sync publishing the three writes too). Machines
+  pins the rule both ways). Such a merge extends where this machine has records left after its
+  stored projection that the other machine had not seen, with no read between, while they hold at
+  most a 64th of the projection's bytes: for `bead sync`, after a single write left so; for a write
+  published at once, after more than one, since the base already took in the one record such a write
+  leaves. A sync that merges one event concurrent with three writes left took 0.23 s rather than
+  0.93 s at 50,000 events and 0.63 s rather than 3.69 s at 200,000 (release, median of four, back to
+  back on the shared machine, the sync publishing the three writes too). Machines
   that take turns, each write published at once, still replay every merge that brings the other's
   write, as on the base (0.9 s a write at 50,000 events either way): the replay saves the
   projection with the writer's own newest write, which the other's next event has not seen.
@@ -471,10 +473,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
   write-back that failed or was killed already left, records after an older projection, which
   the rules above take in. One thing moves with it, by the maintainer's decision of 2026-10-16: a
   merge whose events are concurrent only with writes left after the stored projection extends it
-  where it replayed (the roll-lqjj.8 bullet above). Y01 included: a file that was not settled when the stored projection
-  was written stays unsettled while writes leave that projection, so each of them reads it whole
-  and checks its sum again until a read writes the projection back, which costs time, never an
-  answer.
+  where it replayed (the roll-lqjj.8 bullet above). Y01 included: a file that was not settled when
+  the stored projection was written stays unsettled while writes leave that projection, so each of
+  them reads it whole and checks its sum again until a read writes the projection back, which costs
+  time, never an answer.
   The differential test extends, beside each batch, the projection last written back by every
   batch since at once, in the order a store reads them (`projection/tests/taken.rs`). Measured
   (`cargo xtask timing --read N`, release, best of five, before and after back to back on a
