@@ -50,6 +50,7 @@ usage: cargo xtask <command>
   timing --import N [--label NAME] [--out FILE]
   timing --plan N [--label NAME] [--out FILE]
   timing --extend N [--label NAME] [--out FILE]
+  timing --dangling N [--label NAME] [--out FILE]
   timing --ready N [--label NAME] [--out FILE]
   timing --details N [--label NAME] [--out FILE]
   timing --renames N [--label NAME] [--out FILE]
@@ -85,7 +86,12 @@ usage: cargo xtask <command>
       time as a bulk close applies them, the same closes in one batch, N closes one at a time whose
       ids sort before every id held, N label and N dependency additions one at a time, N label
       additions to one issue in a single batch, and N closes one at a time after an event of an
-      operation a newer bead writes, the fastest of three runs each; --ready N,
+      operation a newer bead writes, the fastest of three runs each; --dangling N, replay in this
+      process of N creates whose imports name keys no issue has yet: none (the control), keys that
+      never come, keys of issues created later, the first issue naming every other's key as they
+      come one create at a time, and the last naming them once they all exist (its control), and
+      a projection of that first issue taking those creates a batch at a time against the same
+      creates waiting for nothing, the fastest of three runs each; --ready N,
       readiness judged in this process on N issues in a chain held by its root's prerequisite, the
       same chain free, a lattice whose rows share their ancestors, and that lattice beneath gates
       of its own for its first rows: for every issue at once (the analysis alone, and bead
