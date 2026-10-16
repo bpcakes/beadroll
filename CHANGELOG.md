@@ -6,6 +6,20 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- Two properties join the fast suite (roll-k2wy.14.4): replay answers alike whatever order the
+  records of a generated history reach it in, causal or as a store reads them, compared through
+  every answer the public API gives (`replay::tests`, about 1.7 s of test time); and JSON
+  round-trips in every dialect bead writes: all twelve `Format`s, the shortest float that reads
+  back, lone surrogates through a store file's rewrite, journal lines, export records through the
+  importer's reader, `--json` views and error envelopes (`compat::json_round_trip`, `storage`).
+  Both draw from seeded generators; `beadroll_test_support::values` is new. cargo-fuzz targets for
+  the JSON parser, the segment reader and the Beads importer are in `fuzz/`, a workspace of its own
+  on a pinned nightly, and run nightly for ten minutes each on the corpus earlier nights grew and
+  the seeds `fuzz/seed.sh` writes from scratch stores, a crash failing the job with its input kept
+  (`fuzz/README.md`); every push checks, lints and runs cargo-deny on them. What the segment
+  target found, an id with several contents and no single copy of its own placed by the copy read
+  first, is roll-k2wy.14.14. Nothing bead does or prints changes.
+
 - A write that is not published at once (`--offline`) keeps its transaction until the process
   exits, as a read keeps its state, rather than freeing it first (roll-lqjj.42, X17): `create`,
   `comments add`, `dep add` and `remove`, `close`, `reopen` and `delete`, and `import` hand the

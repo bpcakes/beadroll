@@ -67,7 +67,10 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   `sync.git/journal-memo` (`memo_path`) by the holder of the store lock (roll-lqjj.1);
   `Memo::load_only`, the entries of a few files, the memo still checked whole (the lines of the
   others for their shape alone, which makes nothing of them, roll-lqjj.47), never written back.
-- `tests/store/`: store files, settings, discovery, compatibility and damage handling.
+- `tests/store/`: store files, settings, discovery, compatibility and damage handling;
+  `tests/store/storage.rs`: the journal's lines (`encode_events`) read back by the segment and
+  attempt readers as the values written, and a segment cut in its last line losing only that line,
+  on seeded values (`beadroll_test_support::values`, roll-k2wy.14.4).
 
 ## Edit here for X
 

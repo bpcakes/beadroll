@@ -2,6 +2,7 @@
 //! a file, and what its dry run says about one.
 
 mod import_plan;
+mod json_round_trip;
 
 mod compat_audit_comment_ids {
     use beadroll_core::journal::Journal;

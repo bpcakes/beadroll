@@ -1,0 +1,40 @@
+# fuzz/Cargo.toml — bead's fuzz targets (cargo-fuzz, roll-k2wy.14.4): a workspace of its own, so
+# that its nightly toolchain (rust-toolchain.toml here) and its dependencies stay out of the main
+# workspace and its Cargo.lock. README.md says how to build, seed and run them.
+[package]
+name = "beadroll-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+beadroll-core = { path = "../crates/beadroll-core" }
+libfuzzer-sys = "0.4"                       # the libFuzzer driver cargo-fuzz builds against
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "json"
+path = "fuzz_targets/json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "segment"
+path = "fuzz_targets/segment.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "import"
+path = "fuzz_targets/import.rs"
+test = false
+doc = false
+bench = false

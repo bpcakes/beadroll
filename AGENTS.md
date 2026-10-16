@@ -31,6 +31,9 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
   run (cargo-llvm-cov; the nightly workflow keeps its report), `timing` records how long a command
   took, `bead` runs bead in a process that counts its heap; its tests keep the repository's hygiene
   and the CI matrix.
+- `fuzz/` — cargo-fuzz targets for the JSON parser, the segment reader and the Beads importer, run
+  nightly: a workspace of its own on the nightly its `rust-toolchain.toml` pins, outside the main
+  workspace; `fuzz/README.md` says how to seed and run them.
 - `infra/` — drives against real machines and a throwaway GitHub repository, in stdlib Python;
   each script's docstring says what it needs. `selected.py` chooses the bead a driver runs here
   and records it before any test data is written; `test_roundtrip.py` and `test_drive.py` test the
@@ -45,11 +48,13 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
   drivers' tests, each step with a scratch `BEAD_HOME`. One crate: `cargo nextest run -p
   beadroll`; some tests by a filter: `cargo nextest run -E 'test(/^protocol::/)'`. The lints:
   `cargo fmt --all -- --check` and `cargo clippy --workspace --all-targets --all-features --locked
-  -- -D warnings -D clippy::mod_module_files`. CI (`.github/workflows/rust.yml`) runs them, the
-  tests on Linux and macOS, cargo-deny and the `infra/` tests on every push and pull request, and
-  `.github/workflows/rust-nightly.yml` the tests under git 2.40, the oldest supported, the
-  coverage report, the stress models with the full sweep, and `xtask`'s growth guards timed in
-  release.
+  -- -D warnings -D clippy::mod_module_files`, and for `fuzz/`, from the root, `rustfmt --check
+  --edition 2024 fuzz/src/lib.rs fuzz/fuzz_targets/*.rs` and `cargo clippy --manifest-path
+  fuzz/Cargo.toml --all-targets --locked -- -D warnings`. CI (`.github/workflows/rust.yml`) runs
+  them, the tests on Linux and macOS, cargo-deny, the `infra/` tests and `fuzz/`'s cargo-deny on
+  every push and pull request, and `.github/workflows/rust-nightly.yml` the tests under git 2.40,
+  the oldest supported, the coverage report, the stress models with the full sweep, `xtask`'s
+  growth guards timed in release, and the fuzz targets for a time budget each.
 - The default store `~/.local/state/beadroll` holds this repository's own real tracker. The tests
   give every machine a scratch `BEAD_HOME`; set one yourself for any manual experiment
   (`export BEAD_HOME=$(mktemp -d)`), and never run `bead`, `br` or `bv` inside other repositories
@@ -91,7 +96,9 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
 ## Releasing
 
 1. `CHANGELOG.md`: move *Unreleased* into a dated version section; bump `[workspace.package]
-   version` in `Cargo.toml` to match (`cargo build` then updates `Cargo.lock`).
+   version` in `Cargo.toml` to match (`cargo build` then updates `Cargo.lock`), and run `cargo
+   update --workspace --manifest-path fuzz/Cargo.toml` for `fuzz/Cargo.lock`, which CI reads
+   `--locked` too.
 2. `./check.sh --stress` green, and CI green on `main`.
 3. `git tag -a vX.Y.Z -m "beadroll X.Y.Z"` and `git push origin main vX.Y.Z`. Nothing is
    published: machines build from source.

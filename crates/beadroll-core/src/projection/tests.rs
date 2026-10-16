@@ -26,7 +26,7 @@ mod texts_once;
 use taken::differential;
 
 /// A seeded generator (SplitMix64): the same draws on every run.
-struct Rng(u64);
+pub(crate) struct Rng(pub(crate) u64);
 
 impl Rng {
     fn next(&mut self) -> u64 {
@@ -37,7 +37,7 @@ impl Rng {
         z ^ (z >> 31)
     }
 
-    fn below(&mut self, n: usize) -> usize {
+    pub(crate) fn below(&mut self, n: usize) -> usize {
         (self.next() % n.max(1) as u64) as usize
     }
 
@@ -460,6 +460,26 @@ fn load(world: &World, held: &[usize]) -> Journal {
         }
     }
     journal
+}
+
+/// Every record the machines of the world of `seed` write while machine 0's store takes in
+/// `batches` batches, in the order they were written, each as a store holds it: the histories the
+/// properties of replay deliver in other orders (`replay::tests`). A world `flawed` also writes
+/// what replay reports.
+pub(crate) fn history(seed: u64, batches: usize, flawed: bool) -> Vec<Record> {
+    let mut world = if flawed {
+        World::flawed(seed)
+    } else {
+        World::new(seed)
+    };
+    let mut data = Object::new();
+    data.insert("prefix".into(), Value::from("pr"));
+    world.write(0, "init", None, data);
+    for _ in 0..batches {
+        world.next_batch();
+    }
+    let every: Vec<usize> = (0..world.events.len()).collect();
+    records(&world, &every)
 }
 
 /// Whether two states answer alike: everything replay builds, and what a state answers with of its
