@@ -64,14 +64,14 @@ jobs:
   # processes of the black-box tests among it (`cargo xtask coverage`, xtask/src/coverage.rs): an
   # HTML report, an lcov.info and a summary.json, and the lines of the ownership protocol that no
   # test reaches on the log. cargo-llvm-cov and the toolchain's llvm-tools are not in
-  # rust-toolchain.toml, so this job installs them, pinned as the other tools are. Run on 16 test
-  # threads of a 64-core machine that other builds shared, the fast suite took 172 s, the full
-  # sweep 84 s and the stress models 252 s, instrumented; this runner has four cores, and the
-  # timeout is the slow job's, a guess to be corrected by the first runs.
+  # rust-toolchain.toml, so this job installs them, pinned as the other tools are. On this runner
+  # the slow job's stress models take about 2 minutes, its sweep about 7 and the tests of the job
+  # above about 3 (run 38874018456), without counters; 60 minutes, the job above's, is room for the
+  # instrumented build and slower runs, to be corrected by the first runs of this job.
   coverage:
     name: coverage report (ubuntu-latest)
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6

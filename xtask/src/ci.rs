@@ -84,61 +84,232 @@ mod x15_growth_guards {
 
 /// The coverage report (roll-k2wy.14.5): the nightly makes it over the slow suites as well, with
 /// the cargo-llvm-cov that `cargo xtask coverage` names, and keeps it, whether the suites passed or
-/// not.
+/// not. `problems` reads the workflow as text, so that each way of spoiling the job is a test
+/// against an edited copy.
 mod coverage_report {
     use super::read;
     use crate::coverage::CARGO_LLVM_COV;
 
-    #[test]
-    fn the_nightly_makes_the_report_with_pinned_tools_and_keeps_it() {
-        let nightly = read(".github/workflows/rust-nightly.yml");
-        let run = nightly
-            .lines()
-            .find(|line| line.trim_start().starts_with("run:") && line.contains("xtask coverage"))
-            .expect("the nightly makes no coverage report");
-        for part in ["--locked", "--stress", "--sweep"] {
-            assert!(
-                run.contains(part),
-                "the report is made without `{part}`: {run}"
-            );
+    const NIGHTLY: &str = ".github/workflows/rust-nightly.yml";
+
+    /// Where the job `name` is in `workflow`: from its line to the next job's, or the end.
+    fn job_range(workflow: &str, name: &str) -> Option<std::ops::Range<usize>> {
+        let header = format!("  {name}:\n");
+        let start = if workflow.starts_with(&header) {
+            0
+        } else {
+            workflow.find(&format!("\n{header}"))? + 1
+        };
+        let mut offset = start + header.len();
+        for line in workflow.get(offset..)?.split_inclusive('\n') {
+            // a sibling job: two spaces in, a name, a colon
+            let sibling = line.starts_with("  ")
+                && !line.starts_with("   ")
+                && !line.trim_start().starts_with('#')
+                && line.trim_end().ends_with(':');
+            if sibling {
+                break;
+            }
+            offset += line.len();
+        }
+        Some(start..offset)
+    }
+
+    /// The text of the job `name`.
+    fn job<'a>(workflow: &'a str, name: &str) -> Option<&'a str> {
+        workflow.get(job_range(workflow, name)?)
+    }
+
+    /// The steps of a job: each from its `- ` line to the next one's.
+    fn steps(job: &str) -> Vec<&str> {
+        let mut starts: Vec<usize> = job
+            .match_indices("\n      - ")
+            .map(|(at, _)| at + 1)
+            .collect();
+        starts.push(job.len());
+        starts
+            .windows(2)
+            .map(|pair| &job[pair[0]..pair[1]])
+            .collect()
+    }
+
+    /// What is wrong with the coverage job of `workflow`, one line each; nothing when it is right.
+    fn problems(workflow: &str) -> Vec<String> {
+        let mut found = Vec::new();
+        let mut say = |problem: String| found.push(problem);
+        let Some(coverage) = job(workflow, "coverage") else {
+            return vec!["the nightly has no coverage job".to_owned()];
+        };
+        let order = |name: &str| workflow.find(&format!("\n  {name}:\n"));
+        if !(order("oldest-git") < order("coverage") && order("coverage") < order("slow")) {
+            say("the job is not between oldest-git and slow".to_owned());
+        }
+        let timeout = (coverage.lines())
+            .find_map(|line| line.strip_prefix("    timeout-minutes: "))
+            .and_then(|minutes| minutes.trim().parse::<u32>().ok());
+        if timeout.is_none() {
+            say("the job has no timeout-minutes of its own".to_owned());
+        }
+        if coverage.contains("continue-on-error") {
+            say("a step may fail without failing the job".to_owned());
+        }
+        if !coverage.contains("components: llvm-tools") {
+            say("the toolchain has no llvm-tools".to_owned());
         }
         let pinned = format!("cargo-llvm-cov@{CARGO_LLVM_COV}");
-        assert!(
-            nightly.contains(&pinned),
-            "the nightly installs no `{pinned}`, the version `cargo xtask coverage` names"
-        );
-        assert!(
-            nightly.contains("components: llvm-tools"),
-            "the nightly's toolchain has no llvm-tools"
-        );
+        if !coverage.contains(&pinned) {
+            say(format!(
+                "it installs no `{pinned}`, the version `cargo xtask coverage` names"
+            ));
+        }
+        let steps = steps(coverage);
+        match steps.iter().find(|step| step.contains("xtask coverage")) {
+            None => say("no step makes the report".to_owned()),
+            Some(step) => {
+                let run = step
+                    .lines()
+                    .find(|line| line.trim_start().starts_with("run:"));
+                let run = run.unwrap_or_default();
+                for part in ["cargo --locked xtask coverage", "--stress", "--sweep"] {
+                    if !run.contains(part) {
+                        say(format!("the report is made without `{part}`: {run}"));
+                    }
+                }
+                if run.contains("||") || run.contains(';') || run.contains('&') {
+                    say(format!(
+                        "the command's exit status is not the step's: {run}"
+                    ));
+                }
+                if step.contains("\n        if:") {
+                    say("the report is made only on a condition".to_owned());
+                }
+            }
+        }
+        match steps
+            .iter()
+            .find(|step| step.contains("actions/upload-artifact"))
+        {
+            None => say("the report is not uploaded by this job".to_owned()),
+            Some(step) => {
+                if !step.contains("!cancelled()") {
+                    say("the report is lost when a suite fails".to_owned());
+                }
+                for kept in [
+                    "target/coverage/html",
+                    "target/coverage/lcov.info",
+                    "target/coverage/summary.json",
+                ] {
+                    if !step.contains(kept) {
+                        say(format!("the report is not kept: no `{kept}`"));
+                    }
+                }
+            }
+        }
+        found
+    }
 
-        // The upload keeps what the command writes, and runs after a failure too.
-        let at = nightly
-            .find("actions/upload-artifact")
-            .expect("the nightly keeps no artifact");
-        let (before, upload) = nightly.split_at(at);
-        let step = before.rsplit("      - name:").next().unwrap_or("");
-        assert!(
-            step.contains("!cancelled()"),
-            "the report is lost when a suite fails"
-        );
-        for kept in [
-            "target/coverage/html",
-            "target/coverage/lcov.info",
-            "target/coverage/summary.json",
-        ] {
-            assert!(upload.contains(kept), "the report is not kept: no `{kept}`");
+    #[test]
+    fn the_nightly_makes_the_report_with_pinned_tools_and_keeps_it() {
+        let found = problems(&read(NIGHTLY));
+        assert!(found.is_empty(), "\n{}", found.join("\n"));
+    }
+
+    /// `workflow` with `from` replaced by `to` in the job `name`, where it must be once.
+    fn edited(workflow: &str, name: &str, from: &str, to: &str) -> String {
+        let range = job_range(workflow, name).expect("the job");
+        let text = &workflow[range.clone()];
+        assert_eq!(text.matches(from).count(), 1, "{from}");
+        format!(
+            "{}{}{}",
+            &workflow[..range.start],
+            text.replace(from, to),
+            &workflow[range.end..]
+        )
+    }
+
+    #[test]
+    fn every_way_of_spoiling_the_job_is_found() {
+        let nightly = read(NIGHTLY);
+        let coverage = job(&nightly, "coverage").expect("the job");
+        let run = "run: cargo --locked xtask coverage --stress --sweep";
+        let upload = steps(coverage)
+            .into_iter()
+            .find(|step| step.contains("upload-artifact"))
+            .expect("the upload step");
+        let timeout = (coverage.lines())
+            .find(|line| line.starts_with("    timeout-minutes: "))
+            .expect("a timeout");
+        let change = |from: &str, to: &str| edited(&nightly, "coverage", from, to);
+        let moved = {
+            // the upload step now ends the file, in the slow job
+            let without = change(upload, "");
+            format!("{}\n{upload}", without.trim_end())
+        };
+        let spoiled = [
+            ("exit status", change(run, &format!("{run} || true"))),
+            ("exit status", change(run, &format!("{run}; true"))),
+            (
+                "without `--sweep`",
+                change(run, "run: cargo --locked xtask coverage --stress"),
+            ),
+            (
+                "without `--stress`",
+                change(run, "run: cargo --locked xtask coverage --sweep"),
+            ),
+            (
+                "without `cargo --locked xtask coverage`",
+                change(run, "run: cargo xtask coverage --stress --sweep"),
+            ),
+            ("no timeout-minutes", change(&format!("{timeout}\n"), "")),
+            (
+                "without failing the job",
+                change(run, &format!("{run}\n        continue-on-error: true")),
+            ),
+            (
+                "no llvm-tools",
+                change("          components: llvm-tools\n", ""),
+            ),
+            (
+                "installs no `cargo-llvm-cov@",
+                change(
+                    &format!("cargo-llvm-cov@{CARGO_LLVM_COV}"),
+                    "cargo-llvm-cov@0.0.1",
+                ),
+            ),
+            (
+                "lost when a suite fails",
+                change(
+                    "        if: ${{ !cancelled() }}\n        uses: actions/upload-artifact",
+                    "        uses: actions/upload-artifact",
+                ),
+            ),
+            (
+                "no `target/coverage/lcov.info`",
+                change("            target/coverage/lcov.info\n", ""),
+            ),
+            ("not uploaded by this job", moved),
+        ];
+        for (expected, workflow) in spoiled {
+            let found = problems(&workflow);
+            assert!(
+                found.iter().any(|problem| problem.contains(expected)),
+                "{expected:?} not found among {found:?}"
+            );
         }
     }
 
     #[test]
-    fn the_job_sits_between_the_oldest_git_and_the_slow_suites() {
-        let nightly = read(".github/workflows/rust-nightly.yml");
-        let at = |job: &str| {
-            nightly
-                .find(&format!("\n  {job}:\n"))
-                .unwrap_or_else(|| panic!("the nightly has no job {job}"))
-        };
-        assert!(at("oldest-git") < at("coverage") && at("coverage") < at("slow"));
+    fn the_job_is_found_in_a_workflow_and_not_beyond_it() {
+        let workflow = "jobs:\n  a:\n    x: 1\n    steps:\n      - run: one\n  b-c:\n    y: 2\n";
+        assert_eq!(
+            job(workflow, "a"),
+            Some("  a:\n    x: 1\n    steps:\n      - run: one\n")
+        );
+        assert_eq!(job(workflow, "b-c"), Some("  b-c:\n    y: 2\n"));
+        assert_eq!(job(workflow, "d"), None);
+        assert_eq!(
+            steps(job(workflow, "a").unwrap_or_default()),
+            ["      - run: one\n"]
+        );
     }
 }
