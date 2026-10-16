@@ -178,7 +178,7 @@ impl Git<'_> {
             let first = self.args.first().map(|a| a.to_string_lossy());
             return Err(Error::Timeout {
                 command: first.unwrap_or_default().into_owned(),
-                seconds: format!("{:.0}", self.timeout.unwrap_or_default()),
+                seconds: seconds(self.timeout.unwrap_or_default()),
             });
         };
         Ok((finished(status, &out, &err)?, self.args))
@@ -216,6 +216,14 @@ impl Git<'_> {
         detach(&mut command);
         Ok((command, out, err))
     }
+}
+
+/// A timeout as [`Error::Timeout`] gives it: in seconds, to the millisecond and without trailing
+/// zeros (`45`, `0.2`), as `BEAD_NET_TIMEOUT` is set.
+fn seconds(timeout: f64) -> String {
+    let text = format!("{timeout:.3}");
+    let text = text.trim_end_matches('0');
+    text.strip_suffix('.').unwrap_or(text).to_owned()
 }
 
 /// A completed git's status and captured output.
@@ -454,6 +462,22 @@ mod tests {
             said.contains("SIGKILL") || said.contains("signal"),
             "{said}"
         );
+    }
+
+    #[test]
+    fn a_timeout_reads_in_seconds_to_the_millisecond() {
+        let read = [
+            (45.0, "45"),
+            (1.0, "1"),
+            (2.5, "2.5"),
+            (0.2, "0.2"),
+            (0.25, "0.25"),
+            (0.1234, "0.123"),
+            (0.0, "0"),
+        ];
+        for (timeout, shown) in read {
+            assert_eq!(seconds(timeout), shown, "{timeout}");
+        }
     }
 
     #[test]

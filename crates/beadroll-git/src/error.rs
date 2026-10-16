@@ -67,12 +67,12 @@ pub fn strerror(error: &io::Error) -> String {
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum Error {
     /// git did not finish within its time (code `REMOTE_UNREACHABLE`): `"git {first argument} gave no
-    /// answer within {seconds, rounded}s"`.
+    /// answer within {seconds}s"`, the time as it was set, to the millisecond (`45`, `0.2`).
     #[error("git {command} gave no answer within {seconds}s")]
     Timeout {
         /// git's first argument (`fetch`, `push`).
         command: String,
-        /// The allowed duration rounded to zero decimal places.
+        /// The allowed duration in seconds, to the millisecond and without trailing zeros.
         seconds: String,
     },
     /// git failed (code `GIT_ERROR`): `"git {the first two arguments}: {what git said}"`, or

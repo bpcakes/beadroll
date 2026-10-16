@@ -78,7 +78,7 @@ fn timeouts_leak_nothing_and_reap_as_documented() {
                 .run()
                 .expect_err("the alias outlives its time");
             assert!(matches!(error, Error::Timeout { .. }), "{error:?}");
-            assert_eq!(error.to_string(), "git -C gave no answer within 0s");
+            assert_eq!(error.to_string(), "git -C gave no answer within 0.2s");
         }
         std::thread::sleep(Duration::from_millis(300));
         assert_eq!(open_descriptors(), before, "reap={reap}");
