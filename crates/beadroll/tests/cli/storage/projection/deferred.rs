@@ -58,6 +58,9 @@ fn journal_bytes(machine: &Machine) -> u64 {
     walk(&machine.store().join("events"))
 }
 
+/// How many segments a replay reads in the merge test, at the least: more than an extension does.
+const SEGMENTS: usize = 24;
+
 /// A comment written offline: only the store writes.
 fn comment(machine: &Machine, key: &str, text: &str) {
     machine.bead(["comments", "add", key, text, "--offline"]);
@@ -256,5 +259,74 @@ fn writes_while_a_read_writes_the_projection_back_are_taken_in_by_the_next_read(
     ] {
         let shown = a.run(["show", key, "--json"]);
         assert!(shown.stdout.contains(text), "{}", shown.stdout);
+    }
+}
+
+/// A merge whose events are concurrent with writes left after the stored projection, but not with
+/// the projection, extends it: the events written since it was saved, here and there, all have its
+/// frontier in their past, and are placed and applied in one batch as replay places them (the
+/// maintainer's decision of 2026-10-16, roll-lqjj.36, refining roll-lqjj.8). Once a read has
+/// written those writes back, the events merged are concurrent with the projection's own, and the
+/// merge replays the journal, as roll-lqjj.8 decided. Either way bead answers as the journal
+/// replayed.
+#[test]
+fn a_merge_concurrent_only_with_writes_left_after_the_projection_extends_it() {
+    for written_back in [false, true] {
+        let sandbox = crate::sandbox();
+        let mut a = crate::rust_only(&sandbox, "a");
+        let b = crate::rust_only(&sandbox, "b");
+        let keys = imported(&a, 300);
+        // a journal of many segments, each of which a replay reads and an extension does not
+        a.extra.insert("BEAD_ROTATE_BYTES".into(), "1".into());
+        for n in 0..SEGMENTS {
+            comment(&a, &keys[0], &format!("a's segment {n}"));
+        }
+        a.extra.clear();
+        a.bead(["sync"]);
+        // b's own journal begun and taken in: a machine's first segment has the journal replayed
+        b.bead(["sync"]);
+        comment(&b, &keys[0], "b's first");
+        b.bead(["sync"]);
+        a.bead(["sync"]);
+        let _ = answers(&b, &keys, false);
+        let stored = std::fs::read(projection(&b)).unwrap();
+        for n in 0..3 {
+            comment(&b, &keys[1], &format!("b's note {n}"));
+        }
+        let left = std::fs::read(projection(&b)).unwrap() == stored;
+        assert!(left, "b's notes written back");
+        // concurrent with b's notes, and after what b's projection holds
+        comment(&a, &keys[1], "a's note");
+        a.bead(["update", &keys[2], "--title", "a's title", "--offline"]);
+        a.bead(["sync"]);
+        if written_back {
+            let _ = answers(&b, &keys, false);
+            let written = std::fs::read(projection(&b)).unwrap() != stored;
+            assert!(written, "b's notes left by a read");
+        }
+        // a replay reads every segment, an extension the few that grew or are new
+        let synced = (b.cmd(["sync"]))
+            .env(
+                "BEAD_FAILPOINTS",
+                format!("journal.before-read@nth({SEGMENTS})=exit(97)"),
+            )
+            .run();
+        let code = if written_back { 97 } else { 0 };
+        assert_eq!(
+            synced.returncode(),
+            code,
+            "written back {written_back}: {}",
+            synced.stderr
+        );
+        let read = answers(&b, &keys, false);
+        assert_eq!(
+            answers(&b, &keys, true),
+            read,
+            "written back {written_back}"
+        );
+        let shown = b.run(["show", &keys[1], "--json"]);
+        for note in ["a's note", "b's note 2"] {
+            assert!(shown.stdout.contains(note), "{}", shown.stdout);
+        }
     }
 }
