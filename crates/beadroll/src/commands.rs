@@ -188,7 +188,12 @@ pub(crate) struct Outcome {
     /// as `init` does when it wrote through another workspace than the one it was given.
     pub(crate) settled: bool,
     /// What the command made and is done with ([`Outcome::answered_from`], [`Outcome::wrote_in`]):
-    /// one thing, never two.
+    /// one thing. That limits what the outcome carries, not what the command holds on the way to
+    /// it: a command that publishes or reads a state of its own before it answers has to let go of
+    /// what it made first, and nothing in the types makes it. The order of its code does
+    /// (`cli::finish` calls `ended_with` before `publish_soon`, `transition` drops its transaction
+    /// before it publishes), and the tests that pin it: `cli::ending` the order, `xtask/tests/heap`
+    /// the heap.
     pub(crate) held: Option<Box<dyn Held>>,
 }
 
@@ -227,7 +232,7 @@ impl Outcome {
     /// This outcome, made from `state`, which the command line keeps until the process exits
     /// rather than freeing it, unless it has what the command wrote to publish first
     /// (`cli::ended_with`, roll-lqjj.32). Only the state a command answers from is given, the last
-    /// it makes, so that none is held beside another one.
+    /// it makes; one it made and does not answer from is freed where the command is done with it.
     pub(crate) fn answered_from(self, state: State) -> Outcome {
         Outcome {
             held: Some(Box::new(state)),
@@ -237,8 +242,8 @@ impl Outcome {
 
     /// This outcome, of a write made in the transaction `spent` came from, which the command line
     /// keeps as it keeps a state answered from (roll-lqjj.42). A command that goes on to read a
-    /// state or to publish before it answers lets go of it first, so that none is held beside
-    /// another one.
+    /// state or to publish before it answers drops `spent` first, so that it is not held beside
+    /// the state it reads: this method cannot see that, the command's order does.
     pub(crate) fn wrote_in(self, spent: Spent) -> Outcome {
         Outcome {
             held: Some(Box::new(spent)),

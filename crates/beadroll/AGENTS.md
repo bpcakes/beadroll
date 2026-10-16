@@ -90,8 +90,13 @@ storage, protocol behavior and fault recovery.
   tracker and 83 ms of a write's at 200,000 events, and frees it first when the run publishes what
   the command wrote; `run_with` (xtask, tests) frees it. A command that publishes or reads a state
   of its own before it answers lets go of its transaction before either (`transition`, when it ends
-  a claim), so that none is held beside another. Library code never leaks (`docs/REVIEWING.md` §2,
-  roll-lqjj.32, roll-lqjj.42).
+  a claim), so that none is held beside another. The one slot of `Outcome::held` does not see to
+  that: it limits what the outcome carries, not what a command holds on the way to it. The order
+  of the code does (`finish` calls `ended_with` before `publish_soon`; `transition` drops its
+  transaction before it publishes), and the tests that pin it: `cli::ending` the order,
+  `xtask/tests/heap` the heap (`xtask/AGENTS.md`). Library code never leaks (`docs/REVIEWING.md`
+  §2, roll-lqjj.32, roll-lqjj.42), which the same heap tests see: nothing of the tracker is held
+  when `run_with` returns, whether the command answered or failed.
 - No `print!`, `println!` or `eprintln!`: every write goes through `cli/output.rs`, where a closed
   pipe or a hung-up terminal is a quiet exit 0 and a failed write to stderr keeps the status.
 - Output preserves its established formats: `--json` results spaced with raw UTF-8, errors and

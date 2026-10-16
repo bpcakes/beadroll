@@ -11,12 +11,16 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   `comments add`, `dep add` and `remove`, `close`, `reopen` and `delete`, and `import` hand the
   transaction, which holds the whole projection with its index, to the command line, which leaves
   it to the process's end. At 200,000 events an offline write takes 0.196 s rather than 0.269 s (a
-  write after a write 0.183 s rather than 0.257 s) and at 20,000 33 ms rather than 46 ms. A write that goes on to publish frees it first,
-  so that no command holds two, as it freed it before (so does one on a tracker with no remote,
-  which the command line does not ask about; writes published at once and syncs do not move), and `claim`, `release`, `takeover` and `update` with
-  a claim read the store after they write, so they free it too. Output, exit codes, format 1 and
-  the projection (`projection::ENCODING`) are unchanged. `beadroll_sync::writing_spent` hands the
-  transaction over; `writing`, `writing_state`, `coordinated` and `run_with` free as before.
+  write after a write 0.183 s rather than 0.257 s) and at 20,000 about 32 ms rather than 37 ms. A
+  write that goes on to publish frees it first, so that no command holds two, as it freed it
+  before (so does one on a tracker with no remote, which the command line does not ask about;
+  writes published at once and syncs do not move), and `claim`, `release`, `takeover` and `update`
+  with a claim read the store after they write, so they free it too. Output, exit codes, format 1
+  and the projection (`projection::ENCODING`) are unchanged. `beadroll_sync::writing_spent` hands
+  the transaction over; `writing`, `writing_state`, `coordinated` and `run_with` free as before.
+  `cargo xtask bead` also says what its process still held when bead returned (`heap held:`), and
+  xtask's `heap` tests keep, with the peak, that no command holds a transaction beside the state
+  it reads and that nothing of a tracker is held once a command returns, answered or failed.
 
 - The unpublished count every command gives costs less on a tracker with many attempt files
   (roll-lqjj.47): it was not the 75 ms the issue was opened on for a store that has synced (1.3 ms

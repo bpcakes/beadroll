@@ -509,7 +509,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   the read after it, which writes back, did not move (0.258 and 0.262 s, 0.273 and 0.281 s); a
   read after a run of writes pays for what they left, up to the bound above. The
   rest of the design, each step its own issue (the write's free, roll-lqjj.42, landed in the
-  bullet on the state a command answered from above; the knowledge compacted now and then, .43;
+  bullet on the state a command answered from below; the knowledge compacted now and then, .43;
   copying the bytes of what a write did not touch, .44; append-only parts, .45), is on
   roll-lqjj.36.
 - A projection extended finishes only what the batch changed (roll-lqjj.17, Z02). Replay finishes a
@@ -935,8 +935,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `beadroll_sync::writing_spent` hands what the transaction held (`Spent`: its projection with its
   index, or the state replayed once it had no projection) back with the write's result, where
   `writing` drops it; `create`, `comments add`, `dep add` and `remove`, `close`, `reopen` and
-  `delete`, and `import` give it to their outcome (`Outcome::wrote_in`), which holds one thing, a
-  state or a transaction, never two (`Outcome::held`). `ended_with` keeps it by the rule above,
+  `delete`, and `import` give it to their outcome (`Outcome::wrote_in`), which carries one thing, a
+  state or a transaction (`Outcome::held`). `ended_with` keeps it by the rule above,
   until the process exits, and frees it first when the run publishes (`wrote()`, not
   `--offline`): a publish reads a state of its own, and the write's transaction freed before it is
   what keeps a write published at once at the heap of a write that is not (below). A command that publishes or reads a state of its own before it answers lets go of
@@ -948,15 +948,31 @@ These were decided deliberately. Report problems *with* them, not their existenc
   own. `claim`, `takeover`, `release` and an update that claims read the store after `coordinated`,
   whose rounds let go of their transaction as before, and `init` publishes inside the command:
   none of them keeps one, since each would hold it beside the state it reads or the publish it
-  makes. `writing`, `writing_state`, `coordinated` and every library free as before, `run_with`
+  makes. The outcome's one slot limits what it carries, not what a command holds on the way to
+  it, and nothing in the types makes a command let go before it publishes or reads: the order of
+  its code does (`finish` calls `ended_with` before `publish_soon`; `transition` drops its
+  transaction before it publishes and before `superseded` reads), and the tests below pin that
+  order and its heap. `writing`, `writing_state`, `coordinated` and every library free as before, `run_with`
   frees what the outcome holds, and a write that fails frees its transaction where it fails, as a
   read that fails frees its state: the cost of the free is paid there, and nowhere else. Output,
   format 1 and the projection (`projection::ENCODING`) are unchanged. The tests:
-  `cli::ending` shows the outcome's thing kept to the end of the process and freed otherwise, and
-  that a write that publishes has freed it by the time the publish first reads the store, held at
-  `projection.read`; `commands::held` that each command above hands its transaction over and the
-  `close` that ends a claim and a failed write hand over nothing; the black-box suites run every
-  command through the binary, which keeps. Measured with release builds of the base (071d172)
+  `cli::ending` shows the outcome's thing kept to the end of the process and freed otherwise, that
+  a run that wrote nothing keeps it though it is not `--offline` (what publishes is `wrote()`, not
+  the flag), and that a write that publishes has freed it by the time the publish first reads the
+  store, held at `projection.read`; `commands::held` that each command above hands its
+  transaction over and the `close` that ends a claim and a failed write hand over nothing;
+  `xtask`'s `heap` tests, which run `cargo xtask bead` through the sandbox on a tracker of 1,500
+  issues and read its `heap peak:` and `heap held:`, that a write published at once peaks where one
+  not published does and a `close` or `delete` that ends a claim where the claim did (a whole
+  projection above it when the transaction is freed after the publish: 7.19 MB against 4.51 MB,
+  and 7.18 against 3.85 for a write published at once), and that after a read, a write published
+  or not, a claim, a close, a failed write and a failed claim, nothing of the tracker is still held
+  when `run_with` returns (under 64 KB, where a transaction leaked on a failure, in `writing` or in
+  a round of `coordinated` leaves 3.27 MB); the black-box suites run every command through the
+  binary, which keeps. Each of these fails when what it pins is broken, as shown by making the
+  breakage: the free moved after the publish (in `finish` and in `transition`), nothing kept,
+  everything kept, a transaction leaked on failure, in `writing` and in a round of `coordinated`,
+  and a publish decided by the flag alone. Measured with release builds of the base (071d172)
   and this one alternated on a machine shared with three other builds and a reviewer, the
   fastest of three runs of the probe's best of five (`cargo xtask timing --read N` and `--sync
   N`; the figures are the pairs, not the machine's): at 200,000 events an offline write took
@@ -964,8 +980,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
   0.257 s and 0.183 s, and the read after a write, which frees what it read as before, 0.276 s and
   0.273 s; a write published at once (`online_seconds`) 0.634 s and 0.645 s and a sync after a
   local write 0.354 s and 0.349 s, which free the transaction first as they did; at 20,000 events
-  45.8 and 33.4 ms, 39.6 and 33.3 ms, 38.6 and 32.7 ms, 32.6 and 31.7 ms, 134 and 137 ms, and
-  96.4 and 99.8 ms. The heap, counted by `cargo xtask bead` on a store of 20,000 imported issues
+  a write took about 37 ms and takes about 32 ms (the review's alternated reruns, 36.2 and 31.6,
+  37.4 and 32.3 and 36.9 and 32.2 ms; mine, after a read 39.6 and 33.3 ms and after a write 38.6
+  and 32.7 ms, where a first reading of 45.8 and 33.4 ms was inflated by the load and is not
+  used), the read after a write 32.6 and 31.7 ms, a write published at once 134 and 137 ms and a
+  sync 96.4 and 99.8 ms: the free it saves is the 6 ms or so stated above. The heap, counted by `cargo xtask bead` on a store of 20,000 imported issues
   (a `list` has just written the projection back, so that each starts alike): an offline
   comment peaks at 122,618,737 bytes before and 122,618,682 after, one published at once at
   122,618,640 and 122,618,585, and a `close` published 122,618,581 and 122,618,526. The probe
