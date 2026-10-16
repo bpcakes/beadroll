@@ -8,12 +8,12 @@ use std::collections::HashSet;
 use crate::event::Field;
 use crate::id::EventId;
 use crate::json::{Object, Value};
-use crate::replay::replay;
 use crate::state::State;
 
 use super::super::{Extended, Projection, asked, decode_state, named, project};
 use super::hostile::{HERE, base, event, fields, id, journal, record};
 use super::read_in;
+use super::shown::replayed;
 
 /// The machine that writes beside this one in the tests below.
 const THERE: &str = "0000bb02";
@@ -115,7 +115,7 @@ fn a_state_read_alone_knows_who_wrote_a_long_field_whose_texts_were_not_read_in(
     assert_eq!(conflicts[0].0, Field::Design);
     let by: Vec<&str> = conflicts[0].1.iter().map(|each| each.by.as_str()).collect();
     assert!(by.iter().all(|by| !by.is_empty()), "{by:?}");
-    let replayed = replay(journal(&records)).unwrap();
+    let replayed = replayed(&records);
     assert_eq!(
         format!("{conflicts:?}"),
         format!("{:?}", issue(&replayed).unwrap())

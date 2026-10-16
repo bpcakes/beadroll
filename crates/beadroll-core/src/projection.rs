@@ -36,7 +36,7 @@ pub use codec::Unreadable;
 pub use extend::Extended;
 
 /// The version of the bytes [`Projection::encode`] writes. Bytes of another are not read.
-pub const ENCODING: u32 = 6;
+pub const ENCODING: u32 = 7;
 
 /// A projection's bytes: its state, which a command that only reads needs alone, its index, what
 /// applying more events needs, and the texts it has that are written nowhere yet.

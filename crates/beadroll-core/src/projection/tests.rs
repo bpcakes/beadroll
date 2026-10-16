@@ -19,6 +19,7 @@ mod flawed;
 mod hostile;
 mod known;
 mod reported;
+mod shown;
 mod taken;
 mod texts_once;
 
@@ -236,13 +237,10 @@ impl World {
         if issue.is_none() || roll < 18 {
             let key = format!("pr-{}", ["a1", "b2", "c3", "d4", "e5"][self.rng.below(5)]);
             data.insert("key".into(), Value::from(key));
-            let mut fields = Object::new();
-            fields.insert("title".into(), Value::from(format!("t{roll}")));
-            fields.insert("status".into(), Value::from("open"));
-            fields.insert("priority".into(), Value::from(2));
-            fields.insert("issue_type".into(), Value::from("task"));
+            let imported = self.rng.chance(20);
+            let fields = created(&mut self.rng, roll, imported);
             data.insert("fields".into(), Value::from(fields));
-            if self.rng.chance(20) {
+            if imported {
                 let mut dep = Object::new();
                 let key = format!("pr-{}", ["a1", "b2", "f6"][self.rng.below(3)]);
                 dep.insert("depends_on_id".into(), Value::from(key));
@@ -255,10 +253,7 @@ impl World {
         }
         let (op, data) = match roll {
             18..=34 => {
-                let mut fields = Object::new();
-                let field = ["title", "assignee", "description"][roll % 3];
-                fields.insert(field.into(), Value::from(format!("v{roll}")));
-                data.insert("fields".into(), Value::from(fields));
+                data.insert("fields".into(), Value::from(written(&mut self.rng, roll)));
                 ("set", data)
             }
             35..=44 => {
@@ -320,6 +315,97 @@ impl World {
             _ => ("delete", data),
         };
         self.write(m, op, issue, data);
+    }
+}
+
+/// The fields of a generated create, which now and then leaves a field to its default, gives one
+/// null or a legacy boolean priority, or makes an issue closed with what it gives of the close;
+/// an import's, now and then the times and the author its record gives, the author null included.
+fn created(r: &mut Rng, roll: usize, imported: bool) -> Object {
+    let mut fields = Object::new();
+    for field in ["title", "priority", "issue_type"] {
+        if !r.chance(10) {
+            fields.insert(field.into(), drawn(r, field, roll, false));
+        }
+    }
+    match r.below(10) {
+        0 => {}
+        1 => {
+            fields.insert("status".into(), Value::from("closed"));
+            for field in ["closed_at", "close_reason"] {
+                let value = match r.below(3) {
+                    0 => continue,
+                    1 => Value::Null,
+                    _ => drawn(r, field, roll, false),
+                };
+                fields.insert(field.into(), value);
+            }
+        }
+        _ => {
+            fields.insert("status".into(), Value::from("open"));
+        }
+    }
+    for field in ["assignee", "estimated_minutes", "external_ref"] {
+        if r.chance(40) {
+            fields.insert(field.into(), drawn(r, field, roll, true));
+        }
+    }
+    for field in ["created_at", "updated_at", "created_by"] {
+        if imported && r.chance(50) {
+            let value = match field {
+                "created_by" if r.chance(30) => Value::Null,
+                "created_by" => Value::from(format!("v{roll}")),
+                _ => Value::from(format!("2025-12-{:02}T00:00:00Z", 1 + r.below(28))),
+            };
+            fields.insert(field.into(), value);
+        }
+    }
+    fields
+}
+
+/// The fields of a generated set: one to three, in the order drawn, so that a status comes before
+/// or after a closed_at or close_reason, which a set writes into registers of their own.
+fn written(r: &mut Rng, roll: usize) -> Object {
+    let mut fields = Object::new();
+    for _ in 0..=r.below(3) {
+        let field = *r.pick(&SET).expect("fields");
+        if !fields.contains_key(field) {
+            let value = drawn(r, field, roll, true);
+            fields.insert(field.into(), value);
+        }
+    }
+    fields
+}
+
+/// The fields a generated set writes.
+const SET: [&str; 10] = [
+    "title",
+    "assignee",
+    "description",
+    "priority",
+    "estimated_minutes",
+    "external_ref",
+    "status",
+    "closed_at",
+    "close_reason",
+    "notes",
+];
+
+/// A value of `field` for an event of `roll` to write: null now and then where `nullable` and the
+/// field may be cleared, and a legacy boolean priority now and then.
+fn drawn(r: &mut Rng, field: &str, roll: usize, nullable: bool) -> Value {
+    let required = matches!(field, "title" | "priority" | "issue_type" | "status");
+    if nullable && !required && r.chance(30) {
+        return Value::Null;
+    }
+    match field {
+        "priority" if r.chance(15) => Value::Bool(r.chance(50)),
+        "priority" => Value::from(r.below(5) as i64),
+        "estimated_minutes" => Value::from(roll as i64),
+        "issue_type" => Value::from(["task", "bug"][r.below(2)]),
+        "status" => Value::from(["open", "in_progress", "closed"][r.below(3)]),
+        "closed_at" => Value::from(format!("2026-01-{:02}T00:00:00Z", 1 + roll % 28)),
+        _ => Value::from(format!("v{roll}")),
     }
 }
 

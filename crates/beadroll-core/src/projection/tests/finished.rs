@@ -8,12 +8,12 @@
 
 use crate::id::EventId;
 use crate::json::{Object, Value};
-use crate::replay::replay;
 use crate::text::str_of;
 
 use super::super::{Extended, Projection, Record, project};
 use super::hostile::{HERE, event, id, journal, record};
 use super::same;
+use super::shown::replayed;
 
 /// `rest` applied to a projection of `base` one event at a time, as a command that writes one
 /// event per issue and reads the state between them does: each time, what the projection derives
@@ -27,7 +27,7 @@ fn one_at_a_time(base: &[Record], rest: &[Record]) {
             Extended::Applied(extended) => *extended,
             Extended::Replay => panic!("event {} is one a projection applies", n + 1),
         };
-        let full = replay(journal(&held)).unwrap();
+        let full = replayed(&held);
         assert!(
             same(projection.state(), &full),
             "after event {}: {:?} against {:?}",
@@ -48,7 +48,7 @@ fn in_one_batch(base: &[Record], rest: &[Record]) -> Projection {
     };
     let mut held: Vec<Record> = base.to_vec();
     held.extend_from_slice(rest);
-    let full = replay(journal(&held)).unwrap();
+    let full = replayed(&held);
     assert!(same(extended.state(), &full));
     extended
 }
@@ -309,7 +309,7 @@ fn the_ids_a_projection_holds_stay_ascending_however_the_events_sort() {
     assert_eq!(held, every, "every id once, ascending");
     let mut held = base;
     held.extend(out_of_order);
-    assert!(same(projection.state(), &replay(journal(&held)).unwrap()));
+    assert!(same(projection.state(), &replayed(&held)));
 }
 
 #[test]

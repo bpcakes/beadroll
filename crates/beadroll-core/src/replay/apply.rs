@@ -15,9 +15,7 @@ use crate::id::EventId;
 use crate::journal::{Event, Rest};
 use crate::json::{Object, Value};
 use crate::op::Op;
-use crate::state::{
-    Awaiting, Comment, IdMap, IdSet, Issue, KeySpace, Knowledge, Stale, State, is_text,
-};
+use crate::state::{Awaiting, Comment, IdMap, IdSet, Issue, KeySpace, Knowledge, Stale, State};
 use crate::text::str_of;
 
 /// The event replay is applying: its index in the journal, its id, what replay keeps of it, and
@@ -329,25 +327,17 @@ fn write_register(
     let register = issue.reg.get_or_insert_with(field, IdMap::default);
     register.retain(|old, _| !(supersede.contains(old) || k.saw_at(at, *old)));
     register.insert(eid, value);
-    // Deterministic display; alternatives stay visible as a conflict. Only what is shown is
-    // copied out of the register, and a long field's not even that: it is shown from there.
-    if is_text(field) {
-        return;
-    }
-    let shown = register.last().map(|(_, shown)| shown);
-    if field == Field::Status {
-        let member = |name: &str| shown.and_then(|shown| shown.get(name)).cloned();
-        let shown = [
-            (Field::Status, member("status")),
-            (Field::ClosedAt, member(Field::ClosedAt.name())),
-            (Field::CloseReason, member(Field::CloseReason.name())),
-        ];
-        for (field, value) in shown {
-            issue.set(field, value);
+    // Deterministic display: the entry of the largest id shows (`Issue::field`), the alternatives
+    // stay visible as a conflict. Nothing is copied out of the register (roll-lqjj.41); a
+    // closed_at or close_reason shows whichever of its own register and the status's was written
+    // last.
+    match field {
+        Field::Status => {
+            issue.stamps.wrote(Field::ClosedAt, false);
+            issue.stamps.wrote(Field::CloseReason, false);
         }
-    } else {
-        let shown = shown.filter(|shown| **shown != Value::Null).cloned();
-        issue.set(field, shown);
+        Field::ClosedAt | Field::CloseReason => issue.stamps.wrote(field, true),
+        _ => {}
     }
 }
 

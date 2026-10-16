@@ -4,10 +4,10 @@
 use crate::id::EventId;
 use crate::journal::Journal;
 use crate::json::{Object, Value};
-use crate::replay::replay;
 
 use super::super::{Extended, Projection, Record, project};
 use super::same;
+use super::shown::replayed;
 
 pub(super) const HERE: &str = "0000aa01";
 
@@ -80,7 +80,7 @@ fn declines(batch: Vec<Record>) -> bool {
     all.extend(batch.iter().cloned());
     match projection.extend(batch).unwrap() {
         Extended::Applied(extended) => {
-            assert!(same(extended.state(), &replay(journal(&all)).unwrap()));
+            assert!(same(extended.state(), &replayed(&all)));
             false
         }
         Extended::Replay => true,

@@ -4,11 +4,11 @@
 use crate::event::Field;
 use crate::id::EventId;
 use crate::json::{Object, Value};
-use crate::replay::replay;
 use crate::state::State;
 
 use super::super::{Projection, Record, project};
 use super::hostile::{HERE, event, id, journal, record};
+use super::shown::replayed;
 
 const THERE: &str = "0000bb02";
 
@@ -47,7 +47,7 @@ fn description(state: &State) -> Option<Value> {
 /// The state of `records` as replay makes it, and as a projection of them read back from its
 /// bytes, its texts read in, makes it.
 fn both(records: &[Record]) -> (State, State) {
-    let replayed = replay(journal(records)).unwrap();
+    let replayed = replayed(records);
     let (encoded, _) = project(journal(records)).unwrap().encode(0);
     let mut projection = Projection::decode(&encoded).unwrap();
     let state = projection.state_mut();
@@ -63,10 +63,14 @@ fn both(records: &[Record]) -> (State, State) {
 fn a_long_text_is_held_once_and_written_once() {
     let text = "d".repeat(100_000);
     let mut records = created(Some(Value::from(text.as_str())));
-    let state = replay(journal(&records)).unwrap();
+    let state = replayed(&records);
     let issue = state.issue(EventId::parse(&id(2)).unwrap()).unwrap();
-    // in the register alone, which the field shows
-    assert_eq!(issue.fields[Field::Description.index()], None);
+    // in the register alone, which the field shows: an issue keeps no field's value beside it
+    let register = issue.registers().get(&Field::Description).unwrap();
+    assert_eq!(
+        register.last().map(|(_, value)| value),
+        issue.field(Field::Description)
+    );
     assert_eq!(description(&state), Some(Value::from(text.as_str())));
     let (encoded, _) = project(journal(&records)).unwrap().encode(0);
     assert!(encoded.texts.len() < 101_000, "{}", encoded.texts.len());

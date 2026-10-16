@@ -19,9 +19,9 @@ use super::texts::{Texts, is_text};
 pub struct Issue {
     pub(crate) uid: EventId,
     pub(crate) key: String,
-    /// Fields addressed by [`Field::index`]: absent or carrying a value, including null for a
-    /// field cleared by create. A long field's slot stays empty: its register holds its value.
-    pub(crate) fields: [Option<Value>; 16],
+    /// What it shows that no register holds. Every other field is shown from its register
+    /// ([`Issue::field`]), which holds each value once (roll-lqjj.10, roll-lqjj.41).
+    pub(crate) stamps: Stamps,
     pub(crate) reg: VecMap<Field, IdMap<Value>>,
     pub(crate) label_tags: VecMap<String, IdSet>,
     pub(crate) dep_tags: VecMap<(String, String), IdMap<Value>>,
@@ -112,6 +112,57 @@ impl std::fmt::Debug for Deps<'_> {
     }
 }
 
+/// What an issue shows that no register holds: when and by whom it was created and when an event
+/// last touched it, as its create gave them or they defaulted to, and for `closed_at` and
+/// `close_reason`, which a set may write into registers of their own, whether that register or
+/// the status register was written last, which is what each shows.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Stamps {
+    pub(crate) created_at: Value,
+    /// Null for an import that did not say: the record's author is unknown, not the importer.
+    pub(crate) created_by: Value,
+    pub(crate) updated_at: Value,
+    /// Whether `closed_at` shows its own register's value rather than the status register's member.
+    pub(crate) own_closed_at: bool,
+    /// The same for `close_reason`.
+    pub(crate) own_close_reason: bool,
+}
+
+impl Stamps {
+    /// Whether `field` (`closed_at` or `close_reason`) shows its own register.
+    pub(crate) fn own(&self, field: Field) -> bool {
+        match field {
+            Field::ClosedAt => self.own_closed_at,
+            Field::CloseReason => self.own_close_reason,
+            _ => false,
+        }
+    }
+
+    /// Records which register of `field` was written last: its own (`own`) or the status's.
+    pub(crate) fn wrote(&mut self, field: Field, own: bool) {
+        match field {
+            Field::ClosedAt => self.own_closed_at = own,
+            Field::CloseReason => self.own_close_reason = own,
+            _ => {}
+        }
+    }
+}
+
+/// What a field a create did not give shows while no register holds it: `""`, 2 and `task` for
+/// the title, priority and issue_type every issue shows, nothing for the rest. Status has no
+/// default: a create always makes its register.
+fn default(field: Field) -> Option<&'static Value> {
+    static TITLE: LazyLock<Value> = LazyLock::new(|| Value::from(""));
+    static PRIORITY: LazyLock<Value> = LazyLock::new(|| Value::from(2));
+    static ISSUE_TYPE: LazyLock<Value> = LazyLock::new(|| Value::from("task"));
+    match field {
+        Field::Title => Some(&TITLE),
+        Field::Priority => Some(&PRIORITY),
+        Field::IssueType => Some(&ISSUE_TYPE),
+        _ => None,
+    }
+}
+
 /// Where an issue was created, kept as the create's machine, actor and place, which events share:
 /// [`Issue::origin`] makes the object from them.
 #[derive(Clone, Debug, PartialEq)]
@@ -135,26 +186,43 @@ impl Issue {
         &self.key
     }
 
-    /// A field's value, if the issue has the field (`null` when a create cleared it). A long
-    /// field's is the value its register shows, kept there alone (roll-lqjj.10): the entry of the
-    /// largest id, absent when that entry is a later write's null, as replay always showed it.
+    /// A field's value, if the issue has the field (`null` when a create cleared it), shown from
+    /// where it is kept once: its register's entry of the largest id, absent when that entry is a
+    /// later write's null (roll-lqjj.10, roll-lqjj.41); status, and closed_at and close_reason
+    /// unless a set wrote one after the status, from the members of the status register's entry;
+    /// the create's default while a field it did not give has no register; and created_at,
+    /// created_by and updated_at from the issue's own stamps.
     pub fn field(&self, field: Field) -> Option<&Value> {
-        if is_text(field) {
-            let (id, value) = self.reg.get(&field)?.last()?;
-            return (*value != Value::Null || *id == self.uid).then_some(value);
+        match field {
+            Field::CreatedAt => return Some(&self.stamps.created_at),
+            Field::CreatedBy => return Some(&self.stamps.created_by),
+            Field::UpdatedAt => return Some(&self.stamps.updated_at),
+            Field::Status => return self.status_member("status"),
+            Field::ClosedAt | Field::CloseReason if !self.stamps.own(field) => {
+                return self.status_member(field.name());
+            }
+            _ => {}
         }
-        self.fields.get(field.index()).and_then(Option::as_ref)
+        let Some(register) = self.reg.get(&field) else {
+            return default(field);
+        };
+        let (id, value) = register.last()?;
+        // The create's own value, null included, shows until a write replaces it. A write that had
+        // not seen the create keeps the create's entry beside its own: the create's null, the
+        // larger, then shows for a long field (roll-lqjj.10) and not at all for a short one, as
+        // replay showed a short field once a write had touched its register.
+        let created = *id == self.uid && (is_text(field) || register.len() == 1);
+        (*value != Value::Null || created).then_some(value)
+    }
+
+    /// The member `name` of the status register's entry of the largest id.
+    fn status_member(&self, name: &str) -> Option<&Value> {
+        self.reg.get(&Field::Status)?.last()?.1.get(name)
     }
 
     /// A field's value, or `None` when absent or null.
     pub fn get(&self, field: Field) -> Option<&Value> {
         self.field(field).filter(|value| **value != Value::Null)
-    }
-
-    pub(crate) fn set(&mut self, field: Field, value: Option<Value>) {
-        if let Some(slot) = self.fields.get_mut(field.index()) {
-            *slot = value;
-        }
     }
 
     /// A text field, or `""`.

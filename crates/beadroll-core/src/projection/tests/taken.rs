@@ -11,7 +11,8 @@ use crate::replay::replay;
 
 use super::super::{Extended, Projection, Record, project};
 use super::{
-    MACHINES, Rng, TextFile, World, equal, flawed, load, read_back, read_in, records, same, whole,
+    MACHINES, Rng, TextFile, World, equal, flawed, load, read_back, read_in, records, same, shown,
+    whole,
 };
 
 /// What [`differential`] saw: the batches taken in, the merges among them, the batches that came to
@@ -68,6 +69,7 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -
             held.extend(&batch);
             let full = project(load(&world, &held)).unwrap();
             assert!(same(full.state(), &replay(load(&world, &held)).unwrap()));
+            shown::agree(&load(&world, &held), full.state());
             stored.take(&world, &batch, &full, seed, &mut tally);
             let local = batch.iter().all(|at| world.events[*at].machine == 0);
             let before = flawed::kinds(projection.state());
