@@ -17,6 +17,7 @@ mod awaiting;
 mod finished;
 mod flawed;
 mod hostile;
+mod known;
 mod reported;
 mod taken;
 mod texts_once;
@@ -484,7 +485,9 @@ fn read_back(projection: &Projection, file: &mut TextFile) -> Projection {
     assert!(decoded.state().issues().all(|issue| !issue.texts().here()));
     let original = whole(projection, file);
     assert!(same(whole(&decoded, file).state(), original.state()));
+    assert!(known::knows_alike(&decoded, projection));
     let mut state = decode_state(&encoded.state).unwrap();
+    assert!(known::knows_writers_alone(&state, projection));
     read_in(&mut state, file, None);
     assert!(same(&state, original.state()));
     decoded

@@ -1,20 +1,72 @@
-//! What a projection keeps of what every event had seen, as bytes ([`crate::projection`]), in two
-//! parts: the events, each with its causes, machine and actor, the machines and where their
-//! journals broke, which a state answers with ([`crate::state::State::who`], its conflicts'
-//! writers); and each machine's applicable positions and each event's place and clock, which
-//! applying more events needs.
+//! What a projection keeps of what every event had seen, as bytes ([`crate::projection`]), in three
+//! parts: what a state answers with alone, the writers of the events behind a register two writers
+//! set without seeing each other ([`crate::state::State::who`], its conflicts' writers) and where
+//! machines' journals broke, which its state part holds (roll-lqjj.35); and in its index, which
+//! only applying more events reads, every event it names with its causes, machine and actor, the
+//! machines, and each machine's applicable positions and each event's place and clock.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use indexmap::{IndexMap, IndexSet};
 
+use crate::id::EventId;
 use crate::journal::Event;
 use crate::projection::codec::{Reader, Unreadable, Writer};
 
 use super::{Ancestry, Clock, Knowledge, Place, UNOBSERVED};
 
 impl Knowledge {
-    /// What a state answers with: the events, the machines, where their journals broke.
+    /// What a state answers with alone: the machine and actor of the events among `asked` (in the
+    /// journal's order), and where machines' journals broke.
+    pub(crate) fn write_writers(&self, w: &mut Writer, asked: &HashSet<EventId>) {
+        let writers: Vec<(&EventId, &Event)> = (self.events.iter())
+            .filter(|(id, _)| asked.contains(*id))
+            .collect();
+        w.count(writers.len());
+        for (id, event) in writers {
+            w.id(*id);
+            w.name(event.shared_replica());
+            w.optional_shared(event.shared_actor());
+        }
+        w.count(self.chain_breaks.len());
+        for (replica, positions) in &self.chain_breaks {
+            w.text(replica);
+            w.count(positions.len());
+            for position in positions {
+                w.count(*position);
+            }
+        }
+    }
+
+    /// What [`Knowledge::write_writers`] wrote: a knowledge that has placed no event yet, whose
+    /// events are the ones a state asks who wrote, without their causes.
+    pub(crate) fn read_writers(r: &mut Reader<'_>) -> Result<Knowledge, Unreadable> {
+        let n = r.count()?;
+        let mut events = IndexMap::with_capacity(n);
+        for _ in 0..n {
+            let id = r.id()?;
+            let event = Event::applied(id, Box::default(), r.name()?, r.optional_shared()?);
+            events.insert(id, event);
+        }
+        let mut chain_breaks = IndexMap::new();
+        for _ in 0..r.count()? {
+            let replica = r.text()?;
+            let positions = (0..r.count()?)
+                .map(|_| r.index())
+                .collect::<Result<_, _>>()?;
+            chain_breaks.insert(replica, positions);
+        }
+        Ok(Knowledge {
+            events,
+            replicas: Vec::new(),
+            applicable: Vec::new(),
+            ancestry: Ancestry::default(),
+            chain_breaks,
+        })
+    }
+
+    /// What applying more events needs of the events: each with its causes, machine and actor, and
+    /// the machines.
     pub(crate) fn write_events(&self, w: &mut Writer) {
         w.count(self.events.len());
         for (id, event) in &self.events {
@@ -27,18 +79,11 @@ impl Knowledge {
         for replica in &self.replicas {
             w.text(replica);
         }
-        w.count(self.chain_breaks.len());
-        for (replica, positions) in &self.chain_breaks {
-            w.text(replica);
-            w.count(positions.len());
-            for position in positions {
-                w.count(*position);
-            }
-        }
     }
 
-    /// What [`Knowledge::write_events`] wrote: a knowledge that has placed no event yet.
-    pub(crate) fn read_events(r: &mut Reader<'_>) -> Result<Knowledge, Unreadable> {
+    /// What [`Knowledge::write_events`] wrote, in place of the events [`Knowledge::read_writers`]
+    /// read: still none placed.
+    pub(crate) fn read_events(&mut self, r: &mut Reader<'_>) -> Result<(), Unreadable> {
         let n = r.count()?;
         let mut events = IndexMap::with_capacity(n);
         for _ in 0..n {
@@ -50,21 +95,9 @@ impl Knowledge {
         let replicas = (0..r.count()?)
             .map(|_| r.text())
             .collect::<Result<_, _>>()?;
-        let mut chain_breaks = IndexMap::new();
-        for _ in 0..r.count()? {
-            let replica = r.text()?;
-            let positions = (0..r.count()?)
-                .map(|_| r.index())
-                .collect::<Result<_, _>>()?;
-            chain_breaks.insert(replica, positions);
-        }
-        Ok(Knowledge {
-            events,
-            replicas,
-            applicable: Vec::new(),
-            ancestry: Ancestry::default(),
-            chain_breaks,
-        })
+        self.events = events;
+        self.replicas = replicas;
+        Ok(())
     }
 
     /// What applying more events needs: each machine's applicable positions, each event's place

@@ -40,6 +40,11 @@ pub(crate) fn peak() -> usize {
     PEAK.load(Ordering::Relaxed)
 }
 
+/// What this process holds on its heap now, in bytes.
+pub(crate) fn held() -> usize {
+    HELD.load(Ordering::Relaxed)
+}
+
 // SAFETY: each method calls the same method of `System` with the arguments it was given, under the
 // contract `GlobalAlloc` states for both; only the counts are added.
 unsafe impl GlobalAlloc for Counting {

@@ -39,7 +39,10 @@ consumer on tokio calls through `spawn_blocking`.
   appended to its journal when replay would apply them after all of it, and declines otherwise, and
   then finishes only what the batch changed (`replay::finish_some`, roll-lqjj.17);
   `projection/codec.rs`, `projection/state_codec.rs`, `state/seen/codec.rs`: its bytes. Its
-  index also holds what `bead info` and `bead machines` answer from (roll-lqjj.31): the frontier,
+  state part (`decode_state`, what a command that only reads decodes) holds of its events only who
+  wrote those behind a register with several entries and where journals broke; its index holds
+  every event the state names with its causes, machine and actor (roll-lqjj.35). Its index also
+  holds what `bead info` and `bead machines` answer from (roll-lqjj.31): the frontier,
   every event id (`Projection::event_count`), and each machine's journal length and latest event
   (`Projection::journals`), which `project` takes from the journal's order and `extend` advances.
 - `state/seen.rs`: what every event had seen, as one clock per event over chains (each machine's
@@ -92,6 +95,15 @@ consumer on tokio calls through `spawn_blocking`.
   a departure requires a documented decision and regression coverage.
 - A long field's value is kept once, in its register; `Issue::field` shows it from there, so
   replay never copies it into the issue's fields (roll-lqjj.10).
+- A state read alone (`projection::decode_state`, which a read decodes when it finds the
+  projection current; a write, the first read after one, `info` and `machines` decode the whole
+  with `Projection::decode`) knows of
+  its events only who wrote those behind a register with several entries, the only events
+  `State::conflicts` names, and where machines' journals broke; every event the state names, with
+  its causes, machine and actor, is in the projection's index, which only `Projection::decode`
+  reads (roll-lqjj.35, X16). Anything else asked of an event (`State::who` of another, `saw`,
+  `holds`, `events`) is asked of a projection or of replay; `read_back` in `projection/tests.rs`
+  checks both parts on every history the differential tests read back.
 - A projection extended is replay: `projection/tests.rs` checks every batch a store takes in on
   histories of machines that write, sync and race, and each batch it must decline. What replay
   reports does not stop it (roll-lqjj.28): `projection/tests/flawed.rs` runs the same on histories

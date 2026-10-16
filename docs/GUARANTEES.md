@@ -321,11 +321,21 @@ it, and the file is committed again.
 - A command reads the store's projection while it is current, and replays the
   journal when it is not (after another build of bead, a change it could not
   apply, or the projection removed). At 200,000 events (the largest public
-  Beads trackers import as at most 29,000), a read takes 73–87 ms with it and
-  1.06 s without; a sync that merges ten events another machine wrote, 0.31 s and
-  1.31 s; a publishing sync, 0.38 s and 1.34 s (`cargo xtask timing`). With
-  it, a read costs what the state does: 18 ms for a thousand issues, whether
-  50,000 events made them or 200,000. A write derives the labels its own events
+  Beads trackers import as at most 29,000), a read took 73–87 ms with it and
+  1.06 s without when the projection came in (roll-lqjj.2); a sync that merges
+  ten events another machine wrote, 0.31 s and 1.31 s; a publishing sync, 0.38 s
+  and 1.34 s (`cargo xtask timing`). With it, a read costs what the state does:
+  18 ms for a thousand issues, whether 50,000 events made them or 200,000. A
+  read that finds the projection current decodes its state part alone, which
+  keeps, of the events, only who wrote values two writers set without seeing
+  each other; every event's record is in the projection's index, which only
+  `Projection::decode` reads: a write, the first read after one (which extends
+  the projection and saves it), `info` and `machines` (roll-lqjj.35). Measured
+  later, with both builds back to back on a machine shared with other work
+  (review 16 had `list` at 0.205 s there), at 200,000 events `list` takes
+  0.121 s rather than 0.146 s, `show` 0.116 s rather than 0.150 s and `ready`
+  0.157 s rather than 0.201 s (`cargo xtask timing --read N`, `--decode N`); the
+  first read after a write gains nothing. A write derives the labels its own events
   changed, each issue's once however many of them changed it, and takes its new
   event ids in wherever they sort among the ids held, so one `bead close`
   naming 8,000 issues of 8,000 takes 0.7 s rather than 19.8 s; a batch that

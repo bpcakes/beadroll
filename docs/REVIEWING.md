@@ -193,8 +193,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   its new records and new attempt files' are applied after the projection when replay would apply
   them so: each new event has the whole frontier in its past, which a local write's always do and
   a merge's do when one writer worked at a time; they are then placed and applied with replay's
-  own steps, and of what every event had seen the projection keeps only the events the state names
-  (its state also keeps who wrote them, which conflicts show). Anything else replays the journal,
+  own steps, and of what every event had seen the projection keeps only the events the state names,
+  each with its causes, machine and actor, in its index. Anything else replays the journal,
   as every command did: a file replaced, rewritten, cut or gone, an earlier segment grown, a
   takeover (which can turn an earlier end of its claim stale), a record not its machine's own or
   not new, a new machine's journal, a cause behind the frontier, a batch with anything replay
@@ -205,9 +205,22 @@ These were decided deliberately. Report problems *with* them, not their existenc
   whole, not fsynced: the durability bullet below says why that suffices, roll-lqjj.27, X05) when
   every segment ended with a whole line, never into a store that is not there; a projection missing,
   cut, damaged (a 128-bit sum of each part) or another build's is never read, and a failed write is
-  no failure. A state read from it knows, of its events, those it names: `State::saw`, `holds` and
-  `events`, which no command reads, answer for those alone. Each issue's texts (its long fields,
-  their registers' values, its comments and its extras) are kept apart (roll-lqjj.6), in
+  no failure. A state read from it alone, as a read that finds it current reads it (a write,
+  the first read after one, `info` and `machines` decode the whole), knows of its events
+  only who wrote those behind a register with several entries, the only ones its conflicts name, and
+  where machines' journals broke (roll-lqjj.35, X16): the events' records were about a fifth of what
+  such a command decoded, and their causes, which only applying more events reads, half of that.
+  `State::who` of any other event, `saw`, `holds` and `events`, which no command asks of a state
+  read alone, answer for those alone. At 200,000 events (`cargo xtask timing --decode N`) the state
+  part is 10.7 MB where it was 14.0 MB, the index 8.8 MB where it was 5.4 MB, and the state decodes
+  in 44 ms in process where it took 57 ms, holding 60 MB where it held 73 MB; a write decodes the
+  same, in 63 ms; `cargo xtask timing --read N` there: `list` 0.121 s where it took 0.146 s, `show`
+  0.116 s where 0.150 s, `ready` 0.157 s where 0.201 s. roll-lqjj.35 records the measurements behind
+  the rest of that design, each a change of `projection::ENCODING` alone: dependency edges held
+  typed, their metadata with the texts (roll-lqjj.39), ownership history with the texts
+  (roll-lqjj.40), and short fields shown from their registers (roll-lqjj.41). Each issue's texts
+  (its long fields, their registers' values, its comments and its extras) are kept apart
+  (roll-lqjj.6), in
   `<store>/projection-texts`, each issue's as bytes of their own the state places and sums, the
   state keeping what a list and a later event need of them unread (the events behind each long
   field's register, which of those fields two writers set differently). A long field's value is kept

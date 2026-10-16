@@ -6,6 +6,19 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A read that finds the projection current (`list`, `ready`, `blocked`, `show`, `prime`, ...)
+  decodes of the events in it only who wrote the values two writers set without seeing each other,
+  which conflicts show; every event's record, with its causes, moved to the projection's index,
+  which only `Projection::decode` reads: a write, the first read after one (which extends the
+  projection and saves it), `info` and `machines`, none of which gains (roll-lqjj.35, X16; `projection::ENCODING` 6, so the first command of this build
+  replays the journal once). At 200,000 events the state a read decodes is 10.7 MB rather than 14.0
+  MB and takes 44 ms rather than 57 ms in process, holding 60 MB rather than 73 MB (`cargo xtask
+  timing --decode N`, new); `list` takes 0.121 s rather than 0.146 s, `show` 0.116 s rather than
+  0.150 s and `ready` 0.157 s rather than 0.201 s, and at 20,000 events `list` 16 ms rather than 20
+  ms (`cargo xtask timing --read N`). A write decodes the same. Every answer is unchanged, and
+  format 1 too. The rest of the design, each step its own issue: roll-lqjj.39, roll-lqjj.40,
+  roll-lqjj.41.
+
 - An ownership round (claim, release, takeover, close of an owned issue) goes on from the
   projection its merge read only while the journal's files are the ones it was made from
   (roll-lqjj.37). Since roll-lqjj.29 it started its transaction from that projection because
