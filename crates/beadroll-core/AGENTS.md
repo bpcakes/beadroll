@@ -72,8 +72,8 @@ consumer on tokio calls through `spawn_blocking`.
 - `tests/core/`: integration tests of replay, storage compatibility and validation;
   `tests/core/compat/json_round_trip.rs`: JSON round-trips in every dialect bead writes, on seeded
   values (roll-k2wy.14.4).
-- `src/replay/tests.rs`: replay is invariant under delivery order, on the differential tests'
-  histories (`projection::tests::history`, roll-k2wy.14.4).
+- `src/replay/tests.rs`: replay is invariant under delivery order, on histories of the
+  differential tests' generator (`projection::tests::history`, roll-k2wy.14.4).
 
 ## Edit here for X
 

@@ -1,8 +1,8 @@
 //! Replay is invariant under delivery order (roll-k2wy.14.4): the records of a generated history,
 //! given to a journal in any order their causes allow, or as a store reads them, each machine's
 //! journal in its own order and the attempt files after them, replay to the same state with the
-//! same answers. The histories are the differential tests' (`projection::tests`): three machines
-//! that write, sync and race, colliding keys and all, with claims and releases in attempt files,
+//! same answers. The histories come from the differential tests' generator (`projection::tests`,
+//! with seeds and lengths of their own): three machines that write, sync and race, colliding keys and all, with claims and releases in attempt files,
 //! takeovers and imports that wait for a key. The answers are asked through the public API alone:
 //! every field of every issue (`Issue::field`), the views, export, readiness and blockers, cycles,
 //! conflicts, and what the state says of its events.
@@ -258,10 +258,11 @@ fn first_difference(expected: &[(String, String)], got: &[(String, String)]) -> 
     }
 }
 
-/// What [`delivered_alike`] delivered: the records, those of attempt files, the copies renamed and
-/// what replay reported.
+/// What [`delivered_alike`] delivered: the most machines a history had, the records, those of
+/// attempt files, the copies renamed and what replay reported.
 #[derive(Default)]
 struct Tally {
+    machines: usize,
     records: usize,
     attempts: usize,
     renamed: usize,
@@ -279,6 +280,8 @@ fn delivered_alike(seeds: std::ops::Range<u64>, flawed: bool) -> Tally {
     for seed in seeds {
         let records = history(20_261_016 + seed, BATCHES, flawed);
         tally.records += records.len();
+        let machines: BTreeSet<&str> = records.iter().map(|r| r.replica.as_str()).collect();
+        tally.machines = tally.machines.max(machines.len());
         tally.attempts += records.iter().filter(|record| !record.sequenced).count();
         let written: Vec<usize> = (0..records.len()).collect();
         let first = delivered(&records, &written);
@@ -307,11 +310,12 @@ fn delivered_alike(seeds: std::ops::Range<u64>, flawed: bool) -> Tally {
 fn replay_answers_alike_in_any_order_the_causes_allow_and_as_a_store_reads() {
     let tally = delivered_alike(0..SEEDS, false);
     // The histories hold what the property is about: events of three machines, attempt files,
-    // and copies two machines minted alike, renamed.
-    eprintln!(
-        "tally {} {} {}",
-        tally.records, tally.attempts, tally.renamed
-    );
+    // and copies two machines minted alike, renamed; and nothing replay reports.
+    assert_eq!(tally.machines, 3, "records of {} machines", tally.machines);
+    assert!(tally.records > 1_500, "{} records", tally.records);
+    assert!(tally.attempts > 200, "{} attempt records", tally.attempts);
+    assert!(tally.renamed > 100, "{} renames", tally.renamed);
+    assert_eq!(tally.reported, 0, "{} reported", tally.reported);
 }
 
 #[test]
