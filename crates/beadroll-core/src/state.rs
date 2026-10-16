@@ -20,8 +20,8 @@ use crate::work::{Work, tally};
 
 pub(crate) use awaiting::{Awaiting, named as awaited};
 pub use claim::{Claim, EndedClaim, LostClaim, Provisional, Stale};
-pub(crate) use issue::Origin;
 pub use issue::{Comment, Deps, DepsIter, Issue};
+pub(crate) use issue::{Origin, Stamps};
 pub(crate) use seen::{Knowledge, Place, raise, reached};
 pub use small::{IdMap, IdSet, VecMap};
 pub use texts::{Stored, TEXT_FIELDS, TextPlace, Texts, is_text};

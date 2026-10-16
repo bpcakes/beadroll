@@ -13,5 +13,6 @@ mod replay_review4;
 mod replay_scale;
 mod replay_third_review;
 mod review5_replay;
+mod short_fields;
 mod subtrees_leaf_up;
 mod unit_test;

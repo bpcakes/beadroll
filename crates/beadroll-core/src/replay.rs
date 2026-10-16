@@ -319,10 +319,7 @@ pub(crate) fn apply_one(
         .and_then(|uid| st.issues.get_mut(&uid))
     {
         if !event.imported {
-            issue.set(
-                crate::event::Field::UpdatedAt,
-                Some(Value::from(when.as_str())),
-            );
+            issue.stamps.updated_at = Value::from(when.as_str());
         }
         if let Some(place) = event.place.as_ref().filter(|place| place.truthy()) {
             issue.where_ = Some(std::sync::Arc::clone(place));

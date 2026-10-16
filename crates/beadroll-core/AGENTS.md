@@ -93,8 +93,17 @@ consumer on tokio calls through `spawn_blocking`.
 - No `HashMap` or `HashSet` iteration order reaches an output; issues keep replay order.
 - Parsing, rendering and replay preserve the compatibility contracts in `docs/REVIEWING.md` §2;
   a departure requires a documented decision and regression coverage.
-- A long field's value is kept once, in its register; `Issue::field` shows it from there, so
-  replay never copies it into the issue's fields (roll-lqjj.10).
+- Every field a register holds is kept there once and shown from there by `Issue::field`: a long
+  field's (roll-lqjj.10) and a short one's (roll-lqjj.41), status, closed_at and close_reason
+  from the members of the status register's entry, unless a set wrote closed_at or close_reason
+  after the status into a register of its own, which `Stamps` records. An issue keeps beside its
+  registers only what no register holds (`Stamps`: created_at, created_by, updated_at), and a
+  field a create did not give shows its default (`""`, 2, `task`) until a write gives it a
+  register; replay copies nothing out of a register. `projection/tests/shown.rs` compares every
+  field of every issue with a model of what replay showed when it copied values out, on every
+  history the differential tests replay and on two journals bead built, and
+  `tests/core/replay/short_fields.rs` each case where a create, a later write and that copy
+  differ.
 - A state read alone (`projection::decode_state`, which a read decodes when it finds the
   projection current; a write, the first read after one, `info` and `machines` decode the whole
   with `Projection::decode`) knows of

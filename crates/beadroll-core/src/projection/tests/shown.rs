@@ -1,11 +1,12 @@
 //! What every field of every issue shows (roll-lqjj.41), against a model of it made from the
-//! issue's registers, the create that made it and the order replay applied the events in: the
-//! value replay copied out of a register into the issue as it applied each write, the register's
-//! entry of the largest id (absent when that entry is a later write's null), the members of the
-//! status register's (status, closed_at, close_reason), and what the create gave or defaulted to
-//! beside them. Checked on every history the differential tests replay, and on the journals of two
-//! stores bead built ([`FIXTURES`]), whose fields are also compared with what bead showed of them
-//! when they were recorded.
+//! issue's registers, the create that made it and the order replay applied the events in, which is
+//! what replay showed when it copied each write's value out of its register into the issue: a
+//! register's entry of the largest id (absent when that entry is a later write's null), the
+//! members of the status register's (status, closed_at, close_reason), and what the create gave or
+//! defaulted to beside them. Written before short fields were shown from their registers, and
+//! green on the code that copied them out; checked on every history the differential tests replay,
+//! and on the journals of two stores bead built ([`FIXTURES`]), whose fields are also compared with
+//! what bead showed of them when they were recorded, by the code that copied them out.
 
 use std::collections::HashMap;
 

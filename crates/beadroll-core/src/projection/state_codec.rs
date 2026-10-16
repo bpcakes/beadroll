@@ -17,7 +17,7 @@ use crate::json::{Int, Value};
 use crate::replay::finish;
 use crate::state::{
     Awaiting, Claim, EndedClaim, IdMap, IdSet, Integrity, Issue, Knowledge, LostClaim, Origin,
-    Provisional, Rename, Stale, State, Stored, TextPlace, Texts, VecMap, is_text,
+    Provisional, Rename, Stale, Stamps, State, Stored, TextPlace, Texts, VecMap, is_text,
 };
 
 use super::codec::{Reader, Unreadable, Writer};
@@ -117,10 +117,12 @@ pub(crate) fn read_state(r: &mut Reader<'_>) -> Result<State, Unreadable> {
 fn write_issue(w: &mut Writer, issue: &Issue, place: TextPlace) {
     w.id(issue.uid);
     w.text(&issue.key);
-    for (at, value) in issue.fields.iter().enumerate() {
-        let text = Field::ALL.get(at).is_some_and(|field| is_text(*field));
-        w.optional_value(value.as_ref().filter(|_| !text));
-    }
+    let stamps = &issue.stamps;
+    w.value(&stamps.created_at);
+    w.value(&stamps.created_by);
+    w.value(&stamps.updated_at);
+    w.flag(stamps.own_closed_at);
+    w.flag(stamps.own_close_reason);
     let registers: Vec<_> = (issue.reg.iter())
         .filter(|(field, _)| !is_text(**field))
         .collect();
@@ -176,10 +178,13 @@ fn write_issue(w: &mut Writer, issue: &Issue, place: TextPlace) {
 fn read_issue(r: &mut Reader<'_>) -> Result<Issue, Unreadable> {
     let uid = r.id()?;
     let key = r.text()?;
-    let mut fields: [Option<Value>; 16] = Default::default();
-    for field in &mut fields {
-        *field = r.optional_value()?;
-    }
+    let stamps = Stamps {
+        created_at: r.value()?,
+        created_by: r.value()?,
+        updated_at: r.value()?,
+        own_closed_at: r.flag()?,
+        own_close_reason: r.flag()?,
+    };
     let mut reg = Vec::new();
     for _ in 0..r.count()? {
         let field = Field::ALL.get(r.index()?).copied();
@@ -227,7 +232,7 @@ fn read_issue(r: &mut Reader<'_>) -> Result<Issue, Unreadable> {
     Ok(Issue {
         uid,
         key,
-        fields,
+        stamps,
         reg: VecMap::from_distinct(reg),
         label_tags: VecMap::from_distinct(label_tags),
         dep_tags: VecMap::from_distinct(dep_tags),

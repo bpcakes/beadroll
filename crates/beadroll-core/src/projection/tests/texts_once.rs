@@ -65,8 +65,12 @@ fn a_long_text_is_held_once_and_written_once() {
     let mut records = created(Some(Value::from(text.as_str())));
     let state = replayed(&records);
     let issue = state.issue(EventId::parse(&id(2)).unwrap()).unwrap();
-    // in the register alone, which the field shows
-    assert_eq!(issue.fields[Field::Description.index()], None);
+    // in the register alone, which the field shows: an issue keeps no field's value beside it
+    let register = issue.registers().get(&Field::Description).unwrap();
+    assert_eq!(
+        register.last().map(|(_, value)| value),
+        issue.field(Field::Description)
+    );
     assert_eq!(description(&state), Some(Value::from(text.as_str())));
     let (encoded, _) = project(journal(&records)).unwrap().encode(0);
     assert!(encoded.texts.len() < 101_000, "{}", encoded.texts.len());

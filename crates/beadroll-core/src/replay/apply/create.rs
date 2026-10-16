@@ -8,8 +8,8 @@ use crate::id::EventId;
 use crate::json::{Int, Object, Value};
 use crate::op::Create;
 use crate::state::{
-    Comment, IdMap, IdSet, Issue, KeySpace, Knowledge, Origin, Rename, State, VecMap, awaited,
-    is_text,
+    Comment, IdMap, IdSet, Issue, KeySpace, Knowledge, Origin, Rename, Stamps, State, VecMap,
+    awaited,
 };
 use crate::time::event_time;
 
@@ -65,8 +65,9 @@ pub(super) fn create(
     Ok(())
 }
 
-/// The issue a create makes, under `key`: its defaults, then the fields it carries, with a register
-/// for each, and what an import brings (labels, extras, comments, dependencies on keys).
+/// The issue a create makes, under `key`: a register for each field it carries, the status's
+/// holding its closed_at and close_reason too, its stamps (given, or of the create), and what an
+/// import brings (labels, extras, comments, dependencies on keys).
 fn new_issue(event: &Doing<'_>, create: &Create, key: String, who: &str, when: &str) -> Issue {
     let eid = event.id;
     let place = (event.what.place.as_ref())
@@ -77,11 +78,49 @@ fn new_issue(event: &Doing<'_>, create: &Create, key: String, who: &str, when: &
         actor: event.trace.shared_actor().cloned(),
         place: place.clone(),
     };
-    let mut issue = Issue {
+    let given = |field: Field| {
+        create
+            .fields
+            .iter()
+            .find(|(f, _)| *f == field)
+            .map(|(_, value)| value.clone())
+    };
+    let stamps = Stamps {
+        created_at: given(Field::CreatedAt).unwrap_or_else(|| Value::from(when)),
+        // an import's record that does not say has an unknown author, not the importer
+        created_by: given(Field::CreatedBy).unwrap_or_else(|| {
+            if create.imported {
+                Value::Null
+            } else {
+                Value::from(who)
+            }
+        }),
+        updated_at: given(Field::UpdatedAt).unwrap_or_else(|| Value::from(when)),
+        own_closed_at: false,
+        own_close_reason: false,
+    };
+    // Each field it gives is kept in a register, which shows it, and nowhere else; a field it
+    // does not give shows its default until a write gives it a register (roll-lqjj.41).
+    let mut reg = VecMap::default();
+    for field in REGISTERS {
+        if let Some(value) = given(field) {
+            reg.insert(field, IdMap::of(eid, value));
+        }
+    }
+    let mut status = Object::new();
+    let open = Value::from("open");
+    status.insert("status".into(), given(Field::Status).unwrap_or(open));
+    for field in [Field::ClosedAt, Field::CloseReason] {
+        if let Some(value) = given(field) {
+            status.insert(field.name().into(), value);
+        }
+    }
+    reg.insert(Field::Status, IdMap::of(eid, Value::from(status)));
+    Issue {
         uid: eid,
         key,
-        fields: Default::default(),
-        reg: VecMap::default(),
+        stamps,
+        reg,
         label_tags: create
             .labels
             .iter()
@@ -104,52 +143,7 @@ fn new_issue(event: &Doing<'_>, create: &Create, key: String, who: &str, when: &
         where_: place,
         closed_on: None,
         texts: crate::state::Texts::Here,
-    };
-    let defaults = [
-        (Field::Title, Value::from("")),
-        (Field::Status, Value::from("open")),
-        (Field::Priority, Value::from(2)),
-        (Field::IssueType, Value::from("task")),
-        (Field::CreatedAt, Value::from(when)),
-        (Field::CreatedBy, Value::from(who)),
-        (Field::UpdatedAt, Value::from(when)),
-    ];
-    for (field, value) in defaults {
-        issue.set(field, Some(value));
     }
-    // a long field is kept in its register alone, below, and shown from there
-    for (field, value) in create.fields.iter().filter(|(field, _)| !is_text(*field)) {
-        issue.set(*field, Some(value.clone()));
-    }
-    let given = |field: Field| {
-        create
-            .fields
-            .iter()
-            .find(|(f, _)| *f == field)
-            .map(|(_, value)| value)
-    };
-    if create.imported && given(Field::CreatedBy).is_none() {
-        issue.set(Field::CreatedBy, Some(Value::Null)); // the record's author is unknown, not the importer
-    }
-    for field in REGISTERS {
-        if let Some(value) = given(field) {
-            issue.reg.insert(field, IdMap::of(eid, value.clone()));
-        }
-    }
-    let mut status = Object::new();
-    status.insert(
-        "status".into(),
-        issue.field(Field::Status).cloned().unwrap_or(Value::Null),
-    );
-    for field in [Field::ClosedAt, Field::CloseReason] {
-        if let Some(value) = given(field) {
-            status.insert(field.name().into(), value.clone());
-        }
-    }
-    issue
-        .reg
-        .insert(Field::Status, IdMap::of(eid, Value::from(status)));
-    issue
 }
 
 /// An imported comment with uid defaulting to null, followed by the imported fields.
