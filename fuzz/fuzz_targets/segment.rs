@@ -4,7 +4,9 @@
 //! back alike with nothing reported. Then what was read goes where a store would find it, each
 //! record in the journal of the machine it names, and is replayed, which is total: whichever order
 //! the journals are read in, with each journal's own order kept, the state answers alike (what
-//! could not be used compared as a set, being reported in the order found); its export is written
+//! could not be used compared as a set, being reported in the order found; and of an input with an
+//! id that roll-k2wy.14.14 lets the journals' order place, everything but what could not be used
+//! and the chain breaks); its export is written
 //! and read back by the importer's reader; and the projection of the same journal, encoded and
 //! decoded with its texts read back, answers as replay does.
 #![no_main]
@@ -23,31 +25,54 @@ use libfuzzer_sys::fuzz_target;
 /// The machine whose journal a record that names none is found in.
 const HERE: &str = "0000aa01";
 
-/// Whether an id of `records` has several contents and not exactly one of them is its writer's own
-/// (a valid event in the journal of the machine it names): the journal then places it by the first
-/// own copy it found, or the first copy, so what replay reports of it depends on the order the
-/// journals were read in, which a store keeps the same, their names' (roll-k2wy.14.14).
+/// The machine in whose journal `record` is found: the one it names, as a store holding it would
+/// find it, or [`HERE`] when it names none that can be a folder.
+fn machine_of(record: &Value) -> &str {
+    let named = record.get("replica").and_then(Value::as_str);
+    named
+        .filter(|m| !m.is_empty() && !m.contains('/'))
+        .unwrap_or(HERE)
+}
+
+/// Whether an id of `records` has several contents, not exactly one of them its writer's own (a
+/// valid event in the journal of the machine it names), in two journals or more: the journal then
+/// places it by the first own copy it found, or the first copy, so which issue its integrity row
+/// names and which chain holds its stand-in depend on the order the journals were read in, which a
+/// store keeps the same, their names' (roll-k2wy.14.14). Copies in one journal are read in its
+/// order whatever the order of the journals.
 fn placed_by_order(records: &[Value]) -> bool {
-    let mut copies: BTreeMap<&str, (BTreeSet<String>, BTreeSet<String>)> = BTreeMap::new();
+    #[derive(Default)]
+    struct Copies<'r> {
+        contents: BTreeSet<String>,
+        owned: BTreeSet<String>,
+        journals: BTreeSet<&'r str>,
+    }
+    let mut copies: BTreeMap<&str, Copies<'_>> = BTreeMap::new();
     for record in records {
         let Some(id) = record.get("id").and_then(Value::as_str) else {
             continue;
         };
-        let named = record
-            .get("replica")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let own = event_problem(record).is_none() && !named.is_empty() && !named.contains('/');
+        let named = record.get("replica").and_then(Value::as_str);
+        let own = event_problem(record).is_none() && named == Some(machine_of(record));
         let content = json::write(record, Format::CANONICAL).unwrap_or_default();
-        let (contents, owned) = copies.entry(id).or_default();
+        let found = copies.entry(id).or_default();
         if own {
-            owned.insert(content.clone());
+            found.owned.insert(content.clone());
         }
-        contents.insert(content);
+        found.contents.insert(content);
+        found.journals.insert(machine_of(record));
     }
-    copies
-        .values()
-        .any(|(contents, owned)| contents.len() > 1 && owned.len() != 1)
+    (copies.values()).any(|c| c.contents.len() > 1 && c.owned.len() != 1 && c.journals.len() > 1)
+}
+
+/// `said` without what roll-k2wy.14.14 lets the order of the journals change, when `placed`: the
+/// integrity rows and the chain breaks.
+fn comparable(said: &[(String, String)], placed: bool) -> Vec<(String, String)> {
+    let order_bound = |asked: &str| placed && matches!(asked, "integrity" | "chain breaks");
+    (said.iter())
+        .filter(|(asked, _)| !order_bound(asked))
+        .cloned()
+        .collect()
 }
 
 fuzz_target!(|data: &[u8]| {
@@ -80,10 +105,7 @@ fuzz_target!(|data: &[u8]| {
     // Each record in the journal of the machine it names, the attempt's in an attempt file.
     let mut machines: Vec<(String, Vec<&Value>)> = Vec::new();
     for value in &read {
-        let named = value.get("replica").and_then(Value::as_str);
-        let machine = named
-            .filter(|m| !m.is_empty() && !m.contains('/'))
-            .unwrap_or(HERE);
+        let machine = machine_of(value);
         match machines.iter_mut().find(|(m, _)| m == machine) {
             Some((_, records)) => records.push(value),
             None => machines.push((machine.to_owned(), vec![value])),
@@ -107,12 +129,15 @@ fuzz_target!(|data: &[u8]| {
         return; // a renamed copy found no free key: reported as KEY_SPACE
     };
     let said = answers(&state);
-    if !placed_by_order(&read) {
-        machines.reverse();
-        let other = replay(journal(&machines)).expect("replay is alike in any order");
-        if let Some(difference) = first_difference(&said, &answers(&other)) {
-            panic!("the journals read in another order answer otherwise: {difference}");
-        }
+    let placed = placed_by_order(&read);
+    machines.reverse();
+    let other = replay(journal(&machines)).expect("replay is alike in any order");
+    let (one, another) = (
+        comparable(&said, placed),
+        comparable(&answers(&other), placed),
+    );
+    if let Some(difference) = first_difference(&one, &another) {
+        panic!("the journals read in another order answer otherwise: {difference}");
     }
 
     let mut export = String::new();

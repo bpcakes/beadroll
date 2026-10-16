@@ -2,8 +2,9 @@
 # beside the newer git every push already tests with (V8_Python312's replacement); a coverage
 # report of the suites, the slow ones included, kept as an artifact (roll-k2wy.14.5); the slow
 # suites, the stress models, the full ownership sweep, and the growth guards only time can keep,
-# timed in release (X15); and the fuzz targets of fuzz/, each for a time budget on a corpus seeded
-# from what bead writes in a scratch store, a crash failing the job and kept as an artifact.
+# timed in release (X15); and the fuzz targets of fuzz/, each for a time budget on the corpus
+# earlier nights grew and seeds of what bead writes in scratch stores, a crash failing the job and
+# kept as an artifact.
 # Until the cutover the tests also ran here against Python's launcher, and the first stress model
 # on a fleet that alternated the two implementations. Nothing here touches a real store or a real
 # remote: every test builds its own repositories and bare remotes in a temporary directory.
@@ -147,7 +148,10 @@ jobs:
 
   # fuzz/ is a workspace of its own on the nightly its rust-toolchain.toml pins; bead itself, which
   # writes the seed corpus, builds on the root's toolchain as everywhere else. Nothing real seeds
-  # it: fuzz/seed.sh runs that bead in a scratch store, checkout and bare remote.
+  # it: fuzz/seed.sh runs that bead in scratch stores, checkouts and bare remotes. The corpus each
+  # night grew is kept for the next, minimized, under a key of its own run, the newest restored.
+  # The budget, three targets of FUZZ_SECONDS each, stays well within timeout-minutes: a job that
+  # times out is cancelled, and keeps neither a crash's input nor the corpus.
   fuzz:
     name: cargo fuzz (ubuntu-latest)
     runs-on: ubuntu-latest
@@ -174,11 +178,15 @@ jobs:
           workspaces: |
             . -> target
             fuzz -> target
-      - name: The fuzz targets are formatted
-        run: rustfmt --check --edition 2024 fuzz/src/lib.rs fuzz/fuzz_targets/*.rs
+      - name: Restore the corpus earlier nights grew
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/corpus
+          key: fuzz-corpus-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: fuzz-corpus-
       - name: Build bead, which writes the seed corpus
         run: cargo build --locked --package beadroll
-      - name: Seed the corpus from a scratch store
+      - name: Seed the corpus from scratch stores
         run: fuzz/seed.sh "$RUNNER_TEMP/corpus"
       - name: Build the fuzz targets
         working-directory: fuzz
@@ -203,3 +211,22 @@ jobs:
           path: fuzz/artifacts/
           if-no-files-found: ignore
           retention-days: 30
+      # libFuzzer's merge keeps the inputs that reach something the others do not; cargo fuzz cmin
+      # would rename the corpus into fuzz/, across file systems where RUNNER_TEMP is another.
+      - name: Minimize the corpus to what reaches something new
+        if: ${{ !cancelled() }}
+        working-directory: fuzz
+        run: |
+          for target in json segment import; do
+            kept="$RUNNER_TEMP/kept-$target"
+            mkdir "$kept"
+            cargo fuzz run "$target" "$kept" "$RUNNER_TEMP/corpus/$target" -- -merge=1 -timeout=30
+            rm -rf "$RUNNER_TEMP/corpus/$target"
+            mv "$kept" "$RUNNER_TEMP/corpus/$target"
+          done
+      - name: Keep the corpus for the next night
+        if: ${{ !cancelled() }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/corpus
+          key: fuzz-corpus-${{ github.run_id }}-${{ github.run_attempt }}

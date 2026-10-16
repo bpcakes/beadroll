@@ -468,38 +468,133 @@ mod coverage_report {
     }
 }
 
-/// The fuzz targets (roll-k2wy.14.4): every target fuzz/Cargo.toml declares runs nightly for a
-/// time budget, on the nightly fuzz/ pins for itself alone, and the input of a crash is kept.
+/// The fuzz targets (roll-k2wy.14.4): every target fuzz/Cargo.toml declares runs nightly, in a step
+/// of its own after the corpus is seeded, for a budget the job's timeout leaves room for, on the
+/// nightly fuzz/ pins for itself alone; the input of a crash is kept, and so is the corpus; and
+/// every push checks, lints and runs cargo-deny on the targets.
 mod fuzzing {
     use super::read;
+
+    /// A step of a job: its lines, comments left out.
+    type Step<'w> = Vec<&'w str>;
+
+    /// The lines of job `job` in `workflow` before its steps, and its steps, comments left out.
+    fn job<'w>(workflow: &'w str, job: &str) -> (Vec<&'w str>, Vec<Step<'w>>) {
+        let header = format!("  {job}:");
+        let lines: Vec<&str> = (workflow.lines())
+            .skip_while(|line| *line != header)
+            .skip(1)
+            .take_while(|line| {
+                line.is_empty() || line.starts_with("   ") || line.starts_with("  #")
+            })
+            .filter(|line| !line.trim_start().starts_with('#'))
+            .collect();
+        assert!(!lines.is_empty(), "no job {job}");
+        let (mut head, mut steps) = (Vec::new(), Vec::<Step<'w>>::new());
+        for line in lines {
+            if line.starts_with("      - ") {
+                steps.push(vec![line]);
+            } else if let Some(step) = steps.last_mut() {
+                step.push(line);
+            } else {
+                head.push(line);
+            }
+        }
+        (head, steps)
+    }
+
+    /// The number `name: N` gives in `lines`.
+    fn number(lines: &[&str], name: &str) -> u64 {
+        let prefix = format!("{name}: ");
+        (lines.iter())
+            .find_map(|line| line.trim().strip_prefix(&prefix))
+            .unwrap_or_else(|| panic!("no {name}"))
+            .trim_matches('"')
+            .parse()
+            .unwrap_or_else(|error| panic!("{name}: {error}"))
+    }
+
+    /// The index of the one step of `steps` with a line holding every one of `parts`.
+    fn step_with(steps: &[Step<'_>], parts: &[&str]) -> usize {
+        let found: Vec<usize> = (0..steps.len())
+            .filter(|at| {
+                (steps[*at].iter()).any(|line| parts.iter().all(|part| line.contains(part)))
+            })
+            .collect();
+        assert_eq!(found.len(), 1, "steps with {parts:?}: {found:?}");
+        found[0]
+    }
+
+    fn targets(manifest: &str) -> Vec<&str> {
+        (manifest.lines())
+            .filter_map(|line| line.strip_prefix("name = \""))
+            .filter_map(|rest| rest.strip_suffix('"'))
+            .filter(|name| *name != "beadroll-fuzz")
+            .collect()
+    }
 
     #[test]
     fn the_nightly_fuzzes_every_target_for_a_budget_and_keeps_what_crashed() {
         let nightly = read(".github/workflows/rust-nightly.yml");
         let manifest = read("fuzz/Cargo.toml");
-        let targets: Vec<&str> = (manifest.lines())
-            .filter_map(|line| line.strip_prefix("name = \""))
-            .filter_map(|rest| rest.strip_suffix('"'))
-            .filter(|name| *name != "beadroll-fuzz")
-            .collect();
+        let targets = targets(&manifest);
         assert!(targets.len() >= 3, "fuzz/Cargo.toml declares {targets:?}");
+        let (head, steps) = job(&nightly, "fuzz");
+        let timeout = number(&head, "timeout-minutes");
+        let seconds = number(&head, "FUZZ_SECONDS");
+        // libFuzzer takes a budget of 0 for none: the job would run to its timeout and be
+        // cancelled, which keeps nothing. Building, seeding and minimizing get ten minutes.
+        assert!(
+            seconds > 0,
+            "FUZZ_SECONDS is 0, which libFuzzer reads as no limit"
+        );
+        let budget = targets.len() as u64 * seconds + 600;
+        assert!(
+            budget <= timeout * 60,
+            "{} targets of {seconds} s leave no room in {timeout} minutes",
+            targets.len()
+        );
+        let seeded = step_with(&steps, &["run: fuzz/seed.sh "]);
+        let restored = step_with(&steps, &["uses: actions/cache/restore@"]);
+        assert!(
+            restored < seeded,
+            "the corpus is seeded before it is restored"
+        );
+        let mut runs = Vec::new();
         for target in &targets {
-            let run = format!("cargo fuzz run {target} ");
-            let step = (nightly.lines())
-                .find(|line| line.contains(&run))
-                .unwrap_or_else(|| panic!("the nightly does not fuzz {target}"));
+            let run = format!("run: cargo fuzz run {target} ");
+            let at = step_with(&steps, &[&run, "-max_total_time=\"$FUZZ_SECONDS\""]);
             assert!(
-                step.contains("-max_total_time="),
-                "{target} runs without a time budget: {step}"
+                seeded < at,
+                "{target} is fuzzed before the corpus is seeded"
             );
+            let others = (targets.iter()).filter(|other| *other != target);
+            for other in others {
+                let theirs = format!("cargo fuzz run {other} ");
+                assert!(
+                    !steps[at].iter().any(|line| line.contains(&theirs)),
+                    "{target} and {other} share a step"
+                );
+            }
+            runs.push(at);
         }
-        for part in [
-            "path: fuzz/artifacts/",
-            "if: ${{ failure() }}",
-            "fuzz/seed.sh",
-        ] {
-            assert!(nightly.contains(part), "the fuzz job lost `{part}`");
+        // A crash in one target leaves the others to run; each runs whatever the one before did.
+        let first = runs.iter().min().copied().unwrap_or_default();
+        for at in runs.iter().filter(|at| **at != first) {
+            assert!(steps[*at].contains(&"        if: ${{ !cancelled() }}"));
         }
+        let kept = step_with(&steps, &["path: fuzz/artifacts/"]);
+        assert!(steps[kept].contains(&"        if: ${{ failure() }}"));
+        assert!(
+            steps[kept]
+                .iter()
+                .any(|line| line.contains("actions/upload-artifact@"))
+        );
+        let saved = step_with(&steps, &["uses: actions/cache/save@"]);
+        assert!(
+            runs.iter().all(|at| *at < saved),
+            "the corpus is kept before it grows"
+        );
         // The nightly is pinned for fuzz/ alone: the main workspace keeps its own toolchain.
         let pinned = read("fuzz/rust-toolchain.toml");
         assert!(
@@ -508,5 +603,25 @@ mod fuzzing {
         );
         assert!(!read("rust-toolchain.toml").contains("nightly"));
         assert!(read("Cargo.toml").contains("# fuzz/ is its own workspace"));
+    }
+
+    #[test]
+    fn every_push_checks_lints_and_denies_the_fuzz_targets() {
+        let every_push = read(".github/workflows/rust.yml");
+        let (_, clippy) = job(&every_push, "clippy");
+        step_with(
+            &clippy,
+            &[
+                "run: cargo clippy --manifest-path fuzz/Cargo.toml",
+                "-D warnings",
+            ],
+        );
+        let (_, deny) = job(&every_push, "deny");
+        step_with(
+            &deny,
+            &["run: cargo deny --manifest-path fuzz/Cargo.toml", "check"],
+        );
+        let (_, fmt) = job(&every_push, "fmt");
+        step_with(&fmt, &["run: rustfmt --check", "fuzz/fuzz_targets/"]);
     }
 }

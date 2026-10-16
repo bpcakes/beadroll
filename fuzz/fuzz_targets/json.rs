@@ -1,12 +1,12 @@
 //! The JSON parser (roll-k2wy.14.4). Any bytes: what `json::parse` refuses is refused with an
-//! error, never a panic; what it reads nests no deeper than `MAX_DEPTH`, and written in every
+//! error, never a panic; the value it reads nests no deeper than `MAX_DEPTH`, and written in every
 //! dialect it reads back as the same value (its keys sorted, for a dialect that sorts them) and
 //! writes again as the same text. A text with lone surrogate escapes is rewritten as the store
 //! rewrites its small files (`Surrogates`): it reads back as the text did, and a second rewrite
 //! keeps every lone escape the first one wrote.
 #![no_main]
 
-use beadroll_core::json::{self, Format, MAX_DEPTH, Surrogates, lone_surrogate_escapes, nesting};
+use beadroll_core::json::{self, Format, MAX_DEPTH, Surrogates, lone_surrogate_escapes};
 use beadroll_fuzz::{FORMATS, identical, sorted};
 use libfuzzer_sys::fuzz_target;
 
@@ -14,7 +14,10 @@ fuzz_target!(|data: &[u8]| {
     let Ok(parsed) = json::parse(data) else {
         return;
     };
-    assert!(nesting(data) <= MAX_DEPTH, "read deeper than {MAX_DEPTH}");
+    assert!(
+        !parsed.value.deeper_than(MAX_DEPTH),
+        "read a value deeper than {MAX_DEPTH}"
+    );
     for format in FORMATS {
         let text = json::write(&parsed.value, format).expect("a value read is written");
         let again = json::parse(text.as_bytes()).expect("what bead writes, it reads");

@@ -42,8 +42,8 @@ push test data anywhere but a throwaway remote of your own.
   goldens in `crates/beadroll/tests/golden/` are what Python's bead printed.
 - `xtask/` — `cargo xtask check` (the baseline), `cargo xtask coverage` (which lines the suites
   run) and `cargo xtask timing`.
-- `fuzz/` — the cargo-fuzz targets, a workspace of its own on a pinned nightly, run nightly
-  (`fuzz/README.md`).
+- `fuzz/` — the cargo-fuzz targets, a workspace of its own on a pinned nightly, fuzzed nightly
+  and checked on every push (`fuzz/README.md`).
 - `infra/` — stdlib-Python drivers against real machines, with their tests.
 - `README.md` is what the tool does, and `docs/GUARANTEES.md` every guarantee it
   keeps; `docs/REVIEWING.md` is the map of the design and the list of deliberate
@@ -68,7 +68,7 @@ every help page and the reading commands' output with Python's, captured before 
 `parity` holds what the mixed Python and Rust fleets checked, among it receipts byte for byte as
 Python wrote them. Two properties run with them, over seeded generators rather than fixed
 cases: replay answers alike whatever order the records of a generated history are delivered in
-(`replay::tests`, on the differential tests' histories), and JSON round-trips in every dialect
+(`replay::tests`, on the differential tests' generator), and JSON round-trips in every dialect
 bead writes (`compat::json_round_trip`, and the journal's lines in `beadroll-store`'s `storage`,
 on `beadroll_test_support::values`); the cargo-fuzz targets in `fuzz/` run nightly.
 `crates/beadroll-test-support` holds the sandbox: every test builds its own
@@ -181,7 +181,9 @@ the record of it before any test data is written), their tests beside them, and 
   no `wait-timeout` or `ctrlc` (a waiter thread is enough); no proptest (the
   properties draw from seeded generators, `docs/REVIEWING.md` §2), and
   libfuzzer-sys only in `fuzz/`'s own workspace. `cargo deny` checks licences,
-  advisories and sources (`deny.toml`, and `fuzz/deny.toml` for that workspace).
+  advisories and sources (`deny.toml`), and for that workspace under
+  `fuzz/deny.toml`; CI runs both on every push, with `cargo clippy` and `rustfmt`
+  on the fuzz targets.
 
 ## Variables the tests and drivers read
 

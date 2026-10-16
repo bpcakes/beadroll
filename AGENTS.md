@@ -49,7 +49,8 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
   beadroll`; some tests by a filter: `cargo nextest run -E 'test(/^protocol::/)'`. The lints:
   `cargo fmt --all -- --check` and `cargo clippy --workspace --all-targets --all-features --locked
   -- -D warnings -D clippy::mod_module_files`. CI (`.github/workflows/rust.yml`) runs them, the
-  tests on Linux and macOS, cargo-deny and the `infra/` tests on every push and pull request, and
+  tests on Linux and macOS, cargo-deny, the `infra/` tests and `fuzz/`'s check, lints and
+  cargo-deny on every push and pull request, and
   `.github/workflows/rust-nightly.yml` the tests under git 2.40, the oldest supported, the
   coverage report, the stress models with the full sweep, `xtask`'s growth guards timed in
   release, and the fuzz targets for a time budget each.

@@ -1,6 +1,8 @@
 # bead's checks on every push and pull request, shaped and pinned like
 # jig-sh's rust-tests.yml: formatting, lints, the tests on Linux and macOS with their doctests,
-# cargo-deny, and the tests of the infra/ drivers on every Python they may meet. The oracle, the
+# cargo-deny, and the tests of the infra/ drivers on every Python they may meet; and fuzz/'s
+# targets formatted, checked, linted and run through cargo-deny on the root's toolchain, which
+# needs no nightly (they are fuzzed nightly, in rust-nightly.yml). The oracle, the
 # differential checks against CPython and the mixed Python/Rust fleets ran here until the cutover
 # removed the Python implementation (python-0.1.0 has them). The nightly checks are
 # rust-nightly.yml's. Nothing here touches a real store or a real remote: every test builds its own
@@ -39,6 +41,9 @@ jobs:
           components: rustfmt
       - name: Check formatting
         run: cargo fmt --all -- --check
+      # fuzz/ is a workspace of its own, which cargo fmt --all does not reach.
+      - name: Check the fuzz targets' formatting
+        run: rustfmt --check --edition 2024 fuzz/src/lib.rs fuzz/fuzz_targets/*.rs
 
   clippy:
     name: cargo clippy
@@ -57,8 +62,15 @@ jobs:
         uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
         with:
           shared-key: rust-${{ runner.os }}-${{ github.job }}
+          workspaces: |
+            . -> target
+            fuzz -> target
       - name: Lint every target
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D clippy::mod_module_files
+      # The fuzz targets build against beadroll-core's API on the root's toolchain: a change to it
+      # that breaks them fails here, not in the next night's fuzzing.
+      - name: Check and lint the fuzz targets
+        run: cargo clippy --manifest-path fuzz/Cargo.toml --all-targets --locked -- -D warnings
       # The support crate must never need the binary path that only a consuming test root has.
       - name: Build the shared test support on its own
         run: cargo build --package beadroll-test-support --locked
@@ -124,6 +136,10 @@ jobs:
           tool: cargo-deny@0.19.7
       - name: Check advisories, bans, licences and sources
         run: cargo deny --locked check
+      # From the root, so that the root's toolchain runs it; cargo-deny reads the deny.toml beside
+      # the manifest.
+      - name: The same for fuzz/'s own workspace, under fuzz/deny.toml
+        run: cargo deny --manifest-path fuzz/Cargo.toml --locked check
 
   # The infra/ drivers stay stdlib Python (docs/REVIEWING.md §2) and run on the maintainer's
   # machines with whatever Python each has, so their tests run on the Pythons check.sh ran them on
