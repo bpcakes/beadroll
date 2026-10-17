@@ -57,7 +57,8 @@ excepted. An event a late sync brings, or one a machine wrote with its clock
 behind, shows when it arrives, whatever its time. The cursor keeps, for each
 tracker, the frontier of what was shown, never a time, so it does not grow with
 the history. Events waiting for causes not here yet are counted and show once
-they arrive; an ownership attempt shows once the remote has accepted it. The
+they arrive, and a tracker none of whose events can show yet keeps the window it
+is owed; an ownership attempt shows once the remote has accepted it. The
 first recap on a machine shows the last 24 hours and counts the events before
 them, and a tracker first seen later shows what came since the last recap that
 marked anything seen, counted the same way. Those hours are the events' own

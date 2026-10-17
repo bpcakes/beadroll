@@ -164,6 +164,47 @@ fn a_tracker_unreadable_when_first_found_is_owed_its_window_until_it_is_shown() 
 }
 
 #[test]
+fn a_tracker_whose_events_all_wait_for_a_cause_stays_owed_its_window() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let (_other, mut b) = beside(&a, crate::rust_only);
+    b.extra.insert("BEAD_ROTATE_BYTES".into(), "1".into());
+    a.bead(["init", "--prefix", "one"]);
+    create(&a, "Seen");
+    recap(&a);
+    let before = |args: &[&str]| {
+        b.cmd(args)
+            .env("BEAD_FAILPOINTS", "clock@always=offset(-2d)")
+            .json()
+    };
+    before(&["init", "--prefix", "two", "--offline"]);
+    before(&["create", "Older than the last recap", "--offline"]);
+    b.bead(["create", "Newer than the last recap", "--offline"]);
+    // the segment that holds the tracker's init has not arrived: every other event waits for it
+    let store = b.bead(["info"]).unwrap()["path"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let mut written = super::segments(std::path::Path::new(&store));
+    written.sort();
+    let init = written.remove(0);
+    let held = init.with_extension("held");
+    std::fs::rename(&init, &held).unwrap();
+    let waiting = recap(&a);
+    assert!(events(&waiting).is_empty());
+    let tracker = (waiting["workspaces"].as_array().unwrap().iter())
+        .find(|tracker| tracker["pending"].as_i64() == Some(2));
+    assert!(tracker.is_some(), "{waiting:?}");
+    std::fs::rename(held, init).unwrap();
+    let arrived = recap(&a);
+    assert_eq!(each(&arrived, "title"), ["Newer than the last recap"]);
+    let new = (arrived["workspaces"].as_array().unwrap().iter())
+        .find(|tracker| tracker["earlier"] == Json::from(1_i64));
+    assert!(new.is_some(), "{arrived:?}");
+    assert!(events(&recap(&a)).is_empty());
+}
+
+#[test]
 fn the_cursor_files_cannot_be_taken_for_a_store() {
     let sandbox = crate::sandbox();
     let mut a = Machine::new(&sandbox, "a");

@@ -243,11 +243,16 @@ fn tracker(
     value.insert("pending".into(), number(st.pending().len() as u64));
     let integrity = st.integrity().iter().map(|row| Value::from(row.to_value()));
     value.insert("integrity".into(), Value::Array(integrity.collect()));
-    Part {
-        value,
-        lines,
-        mark: Some((ws.id.clone(), Mark::Shown(shown.frontier))),
-    }
+    // a frontier of nothing (none of its events in causal order yet: all wait for a cause, or it
+    // has none) vouches for nothing, so the cursor keeps what it holds: the window a tracker never
+    // shown is owed, or a frontier
+    let mark = if shown.frontier.is_empty() {
+        owed.map(Mark::Owed)
+    } else {
+        Some(Mark::Shown(shown.frontier))
+    };
+    let mark = mark.map(|mark| (ws.id.clone(), mark));
+    Part { value, lines, mark }
 }
 
 /// The lines a readable tracker's part opens with: its heading and its last sync; where a first
