@@ -6,6 +6,12 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `bead recap` shows new activity across all local trackers, with each event's
+  machine, agent, thread, branch and commit (roll-dih8.2). A successful read
+  advances a local cursor; `--no-advance` previews and `--all` revisits history.
+  It works outside a checkout, supports `--json`, and keeps late-arriving events
+  visible even when their timestamps precede activity already read.
+
 - A command that reads decodes dependency edges typed (roll-lqjj.39, X16): each edge's target is an
   issue's id, held as its 16 bytes, when its text is an id's spelling, and the text otherwise; its
   kind is one name for every edge of that kind in a state replayed or decoded; and the metadata each

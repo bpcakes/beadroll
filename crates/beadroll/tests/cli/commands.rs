@@ -13,6 +13,7 @@ mod history;
 mod location_review;
 mod publish_on_write;
 mod ready_subtree;
+mod recap;
 mod repeats;
 mod review5_cli;
 mod review5_positive_controls;

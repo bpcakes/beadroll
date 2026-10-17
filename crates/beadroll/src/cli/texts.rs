@@ -74,6 +74,7 @@ const COMMANDS: &[Row] = &[
     ),
     row("", "claims", "who holds what, on which branch, since when"),
     row("", "log ID   info   machines", ""),
+    row("", "recap", "new activity across all local trackers"),
     row(
         "Agents",
         "prime",
@@ -109,6 +110,20 @@ const COMMANDS: &[Row] = &[
         "one command's page, as bead COMMAND --help shows it",
     ),
     row("", "--version", "this bead's version"),
+];
+
+/// Recap's local scope and acknowledgement rule.
+pub(crate) const RECAP_EPILOG: &[Block] = &[
+    Block::Text(
+        "Reads every store under BEAD_HOME, from any directory, without contacting remotes. \
+        Sync each repository first to include activity from other machines.",
+    ),
+    Block::Text(
+        "The first run shows all available activity; later runs show unseen events. \
+        The cursor advances only after output is written and flushed. --no-advance previews \
+        without saving; --all includes previously seen events. Stores with integrity problems \
+        keep their cursors. Events waiting for causes remain unseen.",
+    ),
 ];
 
 /// The first line of `bead prime`; where the caller stands follows it.

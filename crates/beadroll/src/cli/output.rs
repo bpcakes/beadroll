@@ -30,6 +30,20 @@ pub(crate) fn emit(text: Option<&str>, stream: Stream) -> Result<(), Unwritten> 
     written.map_err(|error| hung_up(error, stream))
 }
 
+/// Writes an answer that will be acknowledged on disk. Rust's standard-output wrapper treats
+/// EBADF as success; a read-only stdout descriptor must instead leave recap's bookmark intact.
+/// A file over a duplicate of stdout preserves that error, while the stdout lock keeps writes
+/// ordered with the usual output path. File writes are unbuffered; flushing needs no fsync.
+pub(crate) fn emit_delivered(text: &str) -> Result<(), Unwritten> {
+    let stdout = io::stdout();
+    let mut held = stdout.lock();
+    let written = held.flush().and_then(|()| {
+        let fd = stdout.as_fd().try_clone_to_owned()?;
+        write_to(&mut std::fs::File::from(fd), Some(text))
+    });
+    written.map_err(|error| hung_up(error, Stream::Stdout))
+}
+
 fn write_to(out: &mut impl io::Write, text: Option<&str>) -> io::Result<()> {
     if let Some(text) = text {
         out.write_all(text.as_bytes())?;

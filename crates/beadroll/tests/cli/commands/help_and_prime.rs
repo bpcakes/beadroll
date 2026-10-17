@@ -48,14 +48,14 @@ fn help_command_shows_one_commands_usage() {
     assert_eq!(code(&a.run(["help", "nonsense", "--json"])), "USAGE");
 }
 
-/// The 27 commands, in help display order.
-const COMMANDS: [&str; 27] = [
+/// The commands, in help display order.
+const COMMANDS: [&str; 28] = [
     "init", "import", "export", "create", "update", "claim", "release", "takeover", "claims",
     "close", "reopen", "delete", "show", "list", "ready", "blocked", "search", "dep", "comments",
-    "lint", "sync", "log", "info", "machines", "help", "prime", "onboard",
+    "lint", "sync", "log", "info", "machines", "recap", "help", "prime", "onboard",
 ];
 
-/// Each of the 27 commands answers both `NAME --help` and `help NAME` with its usage, and a name
+/// Each command answers both `NAME --help` and `help NAME` with its usage, and a name
 /// that is no command is a usage error that suggests the one meant. The unit test in
 /// `src/cli/spec.rs` checks the command table itself.
 #[test]

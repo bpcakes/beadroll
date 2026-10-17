@@ -140,6 +140,24 @@ agents and tests match parts of them; `bead prime` lists the codes.
 
 These were decided deliberately. Report problems *with* them, not their existence.
 
+- `bead recap` (roll-dih8.2) is local and spans all stores under `BEAD_HOME`; it
+  bypasses checkout discovery and never syncs. Its machine-local cursor is an exact
+  set of delivered event ids per workspace, not a timestamp or a writer's largest id:
+  late arrivals and clock skew must remain visible. The version-1 cursor is compact
+  JSON, `{"version":1,"workspaces":{"ID":["EVENT",...]}}`, with sorted workspace
+  and event ids, held in `.recap.json` under a separate `.recap.lock`. The leading
+  dots cannot occur at the start of a workspace id, so existing stores cannot
+  collide with these files. These private
+  files are not part of format 1 or a published tree. A recap reads each journal
+  once and replays it for current keys, titles and diagnostics; its work and cursor
+  grow with local history. It saves only after stdout succeeds, so interruption can
+  repeat activity but cannot acknowledge an answer it failed to write. Its output
+  uses a duplicate stdout descriptor through `cli/output.rs`, because Rust's usual
+  stdout wrapper suppresses EBADF. `commands::recap` tests late sync, missing causes,
+  multiple repositories, integrity problems, cursor failures, closed pipes and
+  concurrent reads. Stores with integrity problems keep their cursor; pending
+  events stay unseen. The recap is a view of recorded activity, not a second replay
+  of which historical operations still determine current state.
 - Rust APIs describe their role rather than the implementation language bead replaced
   (roll-dih8.17): `op::IntegerField` retains the boolean or integer representation of a format-1
   field, and text and path helpers name their parsing, trimming, casing and normalization

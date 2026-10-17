@@ -9,6 +9,9 @@ remote resolution, actor detection, `view`, and the failpoint registry.
 
 ## Key entrypoints
 
+- `src/recap.rs`: `recap_workspaces`, stores under `BEAD_HOME` without checkout discovery,
+  and `RecapCursor`, the local event-id bookmark and its separate lock. It is saved only
+  after the CLI delivers and flushes the answer; neither file is synced.
 - `src/settings.rs`: `Settings` (the variables, the environment git inherits, the working directory,
   the clock; `home()` with the `BEAD_HOME` rules; `checkout` and `fact`: what checkout-side git says
   of the repository, asked once, `crates/beadroll-git/AGENTS.md`), `Clock`, `normalize_path`,

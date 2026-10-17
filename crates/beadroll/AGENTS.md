@@ -10,6 +10,8 @@ storage, protocol behavior and fault recovery.
 
 ## Key entrypoints
 
+- `src/commands/recap.rs`: incremental activity across every local store; `src/cli/recap.rs`
+  delivers the answer before saving its cursor, through `cli/output.rs`'s checked stdout write.
 - `src/main.rs`: the executable; it calls `beadroll::run`.
 - `src/sys.rs`: what bead needs of the operating system around `main`, one of the two
   audited unsafe spots: a constructor that records whether standard input was open at exec, before
