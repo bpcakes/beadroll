@@ -102,7 +102,10 @@ fn issue(state: &State, n: u128) -> &crate::state::Issue {
 /// Issue `n`'s edges, in their order: the key of each target, its type, and its metadata.
 fn edges(state: &State, n: u128) -> Vec<(String, String, Value)> {
     (issue(state, n).deps().iter())
-        .map(|((to, kind), meta)| (state.key_of(to).to_owned(), kind.clone(), meta.clone()))
+        .map(|(edge, meta)| {
+            let to = state.target_key(edge.to()).into_owned();
+            (to, edge.kind().to_owned(), edges::shown(meta))
+        })
         .collect()
 }
 
@@ -743,8 +746,9 @@ fn rendered(state: &State) -> String {
     let mut out = String::new();
     for issue in state.issues() {
         out.push_str(&format!("{} {}\n", issue.uid(), issue.key()));
-        for ((to, kind), meta) in issue.deps().iter() {
-            out.push_str(&format!("  {to} {kind} {}\n", text(meta)));
+        for (edge, meta) in issue.deps().iter() {
+            let (to, kind) = (edge.to(), edge.kind());
+            out.push_str(&format!("  {to} {kind} {}\n", text(&edges::shown(meta))));
         }
         for dep in issue.dangling() {
             out.push_str(&format!("  waits {}\n", text(dep)));
@@ -789,10 +793,11 @@ impl Exercised {
             .collect();
         for issue in state.issues() {
             let created = event_time(issue.uid().millis());
-            for ((to, _), meta) in issue.deps().iter() {
+            for (edge, meta) in issue.deps().iter() {
+                let meta = edges::shown(meta);
                 let imported = meta.get("created_at").and_then(Value::as_str) == Some(&*created)
                     || meta.get("created_by").and_then(Value::as_str) == Some("importer");
-                let later = (EventId::parse(to).and_then(|to| places.get(&to)))
+                let later = (edge.to().id().and_then(|to| places.get(&to)))
                     .is_some_and(|to| *to > places[&issue.uid()]);
                 self.waited += usize::from(imported && later);
             }
@@ -858,15 +863,12 @@ fn histories_heavy_in_imports_that_wait_agree_every_way_and_with_replay_before_t
             assert!(same(full.state(), &replayed) && answers_alike(&full, &replayed));
             answered = edges::fold(answered, full.state(), n == 49);
             let records = records(&world, &batch);
-            let about: Vec<EventId> = (records.iter())
-                .filter_map(|record| record.value.get("issue").and_then(Value::as_str))
-                .filter_map(EventId::parse)
-                .collect();
             tracks = tracks.map(|(mut projection, mut file, back)| {
                 if reading_back {
                     projection = read_back(&projection, &mut file, back);
                 }
-                read_in(projection.state_mut(), &file, Some(about.clone()));
+                let about = projection.about(&records);
+                read_in(projection.state_mut(), &file, Some(about));
                 let projection = match projection.extend(records.clone()).unwrap() {
                     Extended::Applied(extended) => {
                         assert!(

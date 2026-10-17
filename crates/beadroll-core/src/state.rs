@@ -4,6 +4,7 @@
 pub(crate) mod asked;
 mod awaiting;
 mod claim;
+mod edges;
 mod issue;
 mod seen;
 mod small;
@@ -20,7 +21,8 @@ use crate::work::{Work, tally};
 
 pub(crate) use awaiting::{Awaiting, named as awaited};
 pub use claim::{Claim, EndedClaim, LostClaim, Provisional, Stale};
-pub use issue::{Comment, Deps, DepsIter, Issue};
+pub use edges::{DepTags, Deps, DepsIter, Edge, Meta, Target};
+pub use issue::{Comment, Issue};
 pub(crate) use issue::{Origin, Stamps};
 pub(crate) use seen::{Knowledge, Place, raise, reached};
 pub use small::{IdMap, IdSet, VecMap};
@@ -104,9 +106,9 @@ pub struct State {
     pub(crate) orphans: u64,
     pub(crate) comment_count: u64,
     pub(crate) last_by_thread: IndexMap<(String, Option<String>), EventId>,
-    /// Each parent's children, by the text their parent-child edges name, in replay order: built
-    /// once replay ends, when edges no longer change.
-    pub(crate) children: std::collections::HashMap<String, Vec<EventId>>,
+    /// Each parent's children, by the id their parent-child edges name, in replay order: built
+    /// once replay ends, when edges no longer change. An edge to text names no parent.
+    pub(crate) children: std::collections::HashMap<EventId, Vec<EventId>>,
     /// Where every imported dependency on a key that is not an issue's yet is, by that key: a new
     /// key visits the entries that wait for it and no others (roll-lqjj.18). Derived from the
     /// issues' lists, so a state read back builds it again rather than reading it.
@@ -186,6 +188,11 @@ impl State {
         EventId::parse(uid).and_then(|uid| self.issue(uid))
     }
 
+    /// The issue a dependency on `to` depends on, if `to` is an issue's id.
+    pub fn target(&self, to: &Target) -> Option<&Issue> {
+        to.id().and_then(|uid| self.issue(uid))
+    }
+
     /// The issues, in bytewise key order.
     pub fn issues_by_key(&self) -> Vec<&Issue> {
         let mut issues: Vec<&Issue> = self.issues().collect();
@@ -255,6 +262,14 @@ impl State {
         self.issue_named(uid).map_or(uid, Issue::key)
     }
 
+    /// The key of the issue `to` names, or the text it was named by when it names no issue.
+    pub fn target_key(&self, to: &Target) -> std::borrow::Cow<'_, str> {
+        match self.target(to) {
+            Some(issue) => issue.key().into(),
+            None => to.to_string().into(),
+        }
+    }
+
     /// The actor who wrote `event`, formatted as an actor label.
     pub fn who(&self, event: EventId) -> String {
         self.knowledge.who(event).unwrap_or_default()
@@ -309,7 +324,7 @@ impl State {
 
     /// The children of `uid`: issues with a parent-child edge to it, in replay order.
     pub fn children(&self, uid: EventId) -> &[EventId] {
-        let children = (self.children.get(&uid.to_string()))
+        let children = (self.children.get(&uid))
             .map(Vec::as_slice)
             .unwrap_or_default();
         tally(Work::Edge, children.len());
@@ -353,13 +368,13 @@ impl State {
 
     /// Indexes the parent-child edges, once replay has settled them.
     pub(crate) fn index_children(&mut self) {
-        let mut children: std::collections::HashMap<String, Vec<EventId>> =
+        let mut children: std::collections::HashMap<EventId, Vec<EventId>> =
             std::collections::HashMap::new();
         tally(Work::Index, self.issues.len());
         for child in self.issues.values() {
-            for (to, kind) in child.deps().keys() {
-                if kind == "parent-child" {
-                    children.entry(to.clone()).or_default().push(child.uid);
+            for edge in child.deps().keys() {
+                if let (Some(parent), "parent-child") = (edge.to().id(), edge.kind()) {
+                    children.entry(parent).or_default().push(child.uid);
                 }
             }
         }
@@ -375,8 +390,8 @@ impl State {
         let mut found: std::collections::BTreeSet<EventId> = issue
             .deps()
             .keys()
-            .filter(|(_, kind)| crate::query::blocking(kind))
-            .filter_map(|(to, _)| EventId::parse(to).filter(|to| self.issues.contains_key(to)))
+            .filter(|edge| crate::query::blocking(edge.kind()))
+            .filter_map(|edge| edge.to().id().filter(|to| self.issues.contains_key(to)))
             .collect();
         found.extend(self.children(uid).iter().copied());
         found.into_iter().collect()

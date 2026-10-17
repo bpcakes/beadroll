@@ -8,7 +8,7 @@
 use std::collections::HashSet;
 
 use crate::id::EventId;
-use crate::state::{Issue, State};
+use crate::state::{Issue, State, Target};
 
 use super::blocking;
 
@@ -45,14 +45,15 @@ impl State {
     /// edges rather than with the depth of every issue's ancestry.
     pub fn readiness(&self) -> Readiness<'_> {
         let at = |uid: EventId| self.issues.get_index_of(&uid);
-        let named = |to: &str| EventId::parse(to).and_then(at);
+        let named = |to: &Target| to.id().and_then(at);
         let flag = |flags: &[bool], at: usize| flags.get(at).copied().unwrap_or(false);
         let done: Vec<bool> = self.issues().map(|issue| self.is_done(issue)).collect();
         // A prerequisite of its own: a `blocks` target that is an issue and not done.
         let own: Vec<bool> = (self.issues())
             .map(|issue| {
-                (issue.deps().keys()).any(|(to, kind)| {
-                    blocking(kind) && named(to).is_some_and(|target| !flag(&done, target))
+                (issue.deps().keys()).any(|edge| {
+                    blocking(edge.kind())
+                        && named(edge.to()).is_some_and(|target| !flag(&done, target))
                 })
             })
             .collect();
@@ -94,9 +95,9 @@ impl State {
                                 .get_index_of(child)
                                 .is_some_and(|child| !flag(&done, child))
                         })
-                    || (issue.deps().keys()).any(|(to, kind)| {
-                        kind == "parent-child"
-                            && named(to).is_some_and(|parent| flag(&reached, parent))
+                    || (issue.deps().keys()).any(|edge| {
+                        edge.kind() == "parent-child"
+                            && named(edge.to()).is_some_and(|parent| flag(&reached, parent))
                     })
             })
             .collect();
@@ -128,10 +129,10 @@ impl State {
     /// Whether `issue` has a prerequisite of its own: a `blocks` target that is an issue and not
     /// done, as [`State::direct_blockers`] lists them.
     fn holds_directly(&self, issue: &Issue) -> bool {
-        (issue.deps().keys()).any(|(to, kind)| {
-            blocking(kind)
+        (issue.deps().keys()).any(|edge| {
+            blocking(edge.kind())
                 && self
-                    .issue_named(to)
+                    .target(edge.to())
                     .is_some_and(|target| !self.is_done(target))
         })
     }
@@ -148,7 +149,7 @@ impl State {
     /// [`State::parents_of`] sorts, for a walk whose answer does not depend on the order.
     fn parent_issues<'s>(&'s self, issue: &'s Issue) -> impl Iterator<Item = &'s Issue> {
         (issue.deps().keys())
-            .filter(|(_, kind)| kind == "parent-child")
-            .filter_map(|(to, _)| self.issue_named(to))
+            .filter(|edge| edge.kind() == "parent-child")
+            .filter_map(|edge| self.target(edge.to()))
     }
 }

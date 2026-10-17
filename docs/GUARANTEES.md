@@ -161,8 +161,9 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   It is a cache, never a
   source: deleting it is always safe, and a damaged one, or one another build
   of bead wrote, is never read.
-- Each issue's texts (descriptions, designs, acceptance criteria, notes and
-  comments) are kept beside the projection, in `<store>/projection-texts`:
+- Each issue's texts (descriptions, designs, acceptance criteria, notes,
+  comments, and the metadata its dependencies were added with, which only
+  `export` prints) are kept beside the projection, in `<store>/projection-texts`:
   `list`, `ready`, a write and a sync never read them, `show` reads only its
   issue's, and `export`, `search` and `lint` read them all. It is a cache too:
   texts that cannot be read as written have the journal replayed.
@@ -349,7 +350,12 @@ it, and the file is committed again.
   decodes in 38.8 ms rather than 43.6 ms, `Projection::decode` (a write's and
   the first read's after one) takes 58.5 ms rather than 62.4 ms, and `list`
   takes 0.108 s rather than 0.115 s, `show` 0.103 s rather than 0.113 s and
-  `ready` 0.151 s rather than 0.157 s. A write derives the labels its own events
+  `ready` 0.151 s rather than 0.157 s. Since dependency edges are held typed,
+  their metadata with the texts (roll-lqjj.39), the state part at 200,000
+  events is 7.69 MB rather than 9.45 MB and decodes in 33.1 ms rather than
+  41.0 ms, holding 43.2 MB rather than 51.4 MB; `list` takes 0.099 s rather
+  than 0.111 s, `show` 0.091 s rather than 0.106 s, `ready` 0.146 s rather than
+  0.165 s and a local write 0.162 s rather than 0.184 s. A write derives the labels its own events
   changed, each issue's once however many of them changed it, and takes its new
   event ids in wherever they sort among the ids held, so one `bead close`
   naming 8,000 issues of 8,000 takes 0.7 s rather than 19.8 s; a batch that

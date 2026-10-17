@@ -8,12 +8,12 @@ use crate::id::EventId;
 use crate::json::{Int, Object, Value};
 use crate::op::Create;
 use crate::state::{
-    Comment, IdMap, IdSet, Issue, KeySpace, Knowledge, Origin, Rename, Stamps, State, VecMap,
-    awaited,
+    Comment, Edge, IdMap, IdSet, Issue, KeySpace, Knowledge, Meta, Origin, Rename, Stamps, State,
+    Target, VecMap, awaited,
 };
 use crate::time::event_time;
 
-use super::dangling_type;
+use super::{Names, dangling_type};
 
 /// Makes the issue a create names.
 pub(super) fn create(
@@ -21,8 +21,8 @@ pub(super) fn create(
     k: &Knowledge,
     event: &Doing<'_>,
     create: &Create,
-    who: &str,
-    when: &str,
+    (who, when): (&str, &str),
+    names: &Names,
 ) -> Result<(), KeySpace> {
     let eid = event.id;
     let mut key = create.key.clone();
@@ -45,7 +45,7 @@ pub(super) fn create(
             .and_then(|named| st.by_key.get(named))
             .filter(|target| **target != eid);
         match target {
-            Some(target) => bind(k, &mut issue, &dep, *target),
+            Some(target) => bind(k, names, &mut issue, &dep, *target),
             None => issue.dangling.push(dep),
         }
     }
@@ -56,7 +56,7 @@ pub(super) fn create(
             continue;
         };
         if let Some(dep) = st.awaiting.take(other, number) {
-            bind(k, other, &dep, eid);
+            bind(k, names, other, &dep, eid);
         }
     }
     // Listed after the key's own entries are settled, so that what it names of itself waits.
@@ -161,10 +161,11 @@ fn imported_comment(comment: &Object) -> Comment {
 /// An imported dependency on a key that did not exist yet becomes a real edge to `target`, the issue
 /// that has the key, the moment the key exists, tagged with the create that carried it, so every
 /// machine derives the same edge and a later removal that saw that create can take it away.
-fn bind(k: &Knowledge, issue: &mut Issue, dep: &Value, target: EventId) {
+fn bind(k: &Knowledge, names: &Names, issue: &mut Issue, dep: &Value, target: EventId) {
     let uid = issue.uid;
-    let (target, kind) = (target.to_string(), dangling_type(dep));
-    let removals = [(target.clone(), Some(kind.clone())), (target.clone(), None)];
+    let kind = dangling_type(dep);
+    let text = target.to_string();
+    let removals = [(text.clone(), Some(kind.clone())), (text, None)];
     let taken_back = removals
         .iter()
         .filter_map(|removed| issue.retracted.get(removed))
@@ -182,8 +183,12 @@ fn bind(k: &Knowledge, issue: &mut Issue, dep: &Value, target: EventId) {
             meta.insert(name.into(), value.clone());
         }
     }
+    let edge = Edge {
+        to: Target::Id(target),
+        kind: names.of(&kind),
+    };
     issue
         .dep_tags
-        .get_or_insert_with((target, kind), IdMap::default)
-        .insert_if_absent(uid, Value::from(meta));
+        .get_or_insert_with(edge, IdMap::default)
+        .insert_if_absent(uid, Meta::of(meta));
 }

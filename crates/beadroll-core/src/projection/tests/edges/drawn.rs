@@ -195,9 +195,10 @@ impl Exercised {
             .map(|rename| rename.uid.to_string())
             .collect();
         for issue in state.issues() {
-            for ((to, kind), tags) in issue.dep_tags().iter().filter(|(_, t)| !t.is_empty()) {
+            for (edge, tags) in issue.dep_tags().iter().filter(|(_, t)| !t.is_empty()) {
+                let (to, kind) = (edge.to().to_string(), edge.kind().to_owned());
                 let ids: Vec<_> = tags.iter().map(|(id, _)| *id).collect();
-                let target = state.issue_named(to);
+                let target = state.target(edge.to());
                 self.nameless += usize::from(target.is_none());
                 let lower = crate::id::EventId::parse(&to.to_lowercase());
                 self.capitals += usize::from(target.is_none() && lower.is_some());
@@ -205,6 +206,7 @@ impl Exercised {
                 let later = target.is_some_and(|target| target.uid() > issue.uid());
                 self.waited += usize::from(ids.contains(&issue.uid()) && later);
                 for (_, meta) in tags.iter() {
+                    let meta = super::shown(meta);
                     let stamped = meta.get("metadata").or(meta.get("thread_id"));
                     self.stamped += usize::from(stamped.is_some());
                 }
@@ -218,7 +220,7 @@ impl Exercised {
                     .flat_map(|removals| removals.iter())
                     .any(|removal| ids.iter().any(|id| state.saw(*id, *removal)));
                 self.again += usize::from(again);
-                self.renamed += usize::from(renamed.contains(to));
+                self.renamed += usize::from(renamed.contains(&to));
             }
         }
     }

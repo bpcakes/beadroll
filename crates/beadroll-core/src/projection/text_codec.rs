@@ -1,15 +1,23 @@
 //! An issue's texts as bytes of their own (roll-lqjj.6): its registers in their order, the long
 //! ones with their values, which are its long fields' values too (roll-lqjj.10: each written
-//! once), its comments and its extras, which a projection keeps in its text file; and what an
-//! issue keeps of them unread ([`Stored`]).
+//! once), its comments, its extras and the metadata of each addition behind each of its edges
+//! (roll-lqjj.39), which a projection keeps in its text file; and what an issue keeps of them
+//! unread ([`Stored`]). An edge and the events that added it are in the state part, which an
+//! issue's edges' metadata read in must match, as its long fields' registers must match
+//! [`Stored::tags`]: nothing more of them is kept unread.
 
 use crate::event::Field;
 use crate::id::EventId;
+use crate::json::Object;
 use crate::query::split;
-use crate::state::{Comment, Issue, Stored, TextPlace, Texts, VecMap, is_text};
+use crate::state::{Comment, DepTags, Issue, Meta, Stored, TextPlace, Texts, VecMap, is_text};
 
 use super::codec::{Reader, Unreadable, Writer};
 use super::state_codec::{read_tags, write_tags};
+
+/// The metadata of an addition whose issue's texts are not in it: never written, since only texts
+/// in their issue are.
+static NO_MEMBERS: std::sync::LazyLock<Object> = std::sync::LazyLock::new(Object::new);
 
 /// What an issue whose texts are in it keeps of them once they are written at `place`: the events
 /// behind each long field's register, and the long fields disputed.
@@ -29,7 +37,7 @@ pub(super) fn summary(issue: &Issue, place: TextPlace) -> Stored {
 }
 
 /// An issue's texts as bytes of their own: its registers in their order (the long ones with their
-/// values, which its long fields show), its comments and its extras.
+/// values, which its long fields show), its comments, its extras and its edges' metadata.
 pub(crate) fn write_texts(issue: &Issue) -> Vec<u8> {
     let mut w = Writer::default();
     w.count(issue.reg.len());
@@ -67,12 +75,52 @@ pub(crate) fn write_texts(issue: &Issue) -> Vec<u8> {
     if let Some(extra) = &issue.extra {
         w.object(extra);
     }
+    write_edge_metadata(&mut w, &issue.dep_tags);
     w.finish()
 }
 
+/// The metadata of each addition behind each edge of `edges`, in their order, each with the event
+/// that added it. An issue's texts are written only once they are in it ([`Texts::here`]), every
+/// addition's metadata with them.
+fn write_edge_metadata(w: &mut Writer, edges: &DepTags) {
+    w.count(edges.len());
+    for tags in edges.values() {
+        w.count(tags.len());
+        for (id, meta) in tags {
+            w.id(*id);
+            w.object(meta.members().unwrap_or(&NO_MEMBERS));
+        }
+    }
+}
+
+/// The metadata [`write_edge_metadata`] wrote, each edge's additions by id.
+fn read_edge_metadata(r: &mut Reader<'_>) -> Result<Vec<Vec<(EventId, Object)>>, Unreadable> {
+    let n = r.count()?;
+    let mut edges = Vec::with_capacity(n);
+    for _ in 0..n {
+        let m = r.count()?;
+        let mut tags = Vec::with_capacity(m);
+        for _ in 0..m {
+            tags.push((r.id()?, r.object()?));
+        }
+        edges.push(tags);
+    }
+    Ok(edges)
+}
+
+/// Whether `metadata`, read from an issue's texts, is of `edges`, the issue's: the same additions
+/// of each edge, in order.
+fn of_edges(metadata: &[Vec<(EventId, Object)>], edges: &DepTags) -> bool {
+    metadata.len() == edges.len()
+        && (metadata.iter().zip(edges.values())).all(|(read, tags)| {
+            read.len() == tags.len()
+                && (read.iter().zip(tags.iter())).all(|((id, _), (tag, _))| id == tag)
+        })
+}
+
 /// Reads `issue`'s texts in from `bytes`, the ones [`write_texts`] wrote at `place`: they must be
-/// whole and have the events its long fields' registers were written with. Nothing changes when
-/// they are not.
+/// whole and have the events its long fields' registers were written with, and the additions its
+/// edges have. Nothing changes when they are not.
 pub(crate) fn read_texts(
     issue: &mut Issue,
     bytes: &[u8],
@@ -110,6 +158,7 @@ pub(crate) fn read_texts(
         });
     }
     let extra = r.flag()?.then(|| r.object()).transpose()?.map(Box::new);
+    let metadata = read_edge_metadata(&mut r)?;
     r.done()?;
     // the texts this issue was written with: the same events behind each long field's register
     let tags: Vec<(Field, Vec<EventId>)> = (order.iter())
@@ -118,7 +167,7 @@ pub(crate) fn read_texts(
                 .map(|tags| (*field, tags.iter().map(|(id, _)| *id).collect()))
         })
         .collect();
-    if tags != stored.tags {
+    if tags != stored.tags || !of_edges(&metadata, &issue.dep_tags) {
         return Err(Unreadable("texts of another issue"));
     }
     // registers in the order they were made: as the texts were written, then any made since
@@ -138,6 +187,11 @@ pub(crate) fn read_texts(
     issue.reg = VecMap::from_distinct(reg);
     issue.comments = comments;
     issue.extra = extra;
+    for (tags, read) in issue.dep_tags.values_mut().zip(metadata) {
+        for (meta, (_, members)) in tags.values_mut().zip(read) {
+            *meta = Meta::of(members);
+        }
+    }
     issue.texts = Texts::Read(place);
     Ok(())
 }

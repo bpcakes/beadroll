@@ -11,7 +11,7 @@ use std::hash::Hash;
 use crate::event::{DONE, Field};
 use crate::id::EventId;
 use crate::json::{self, Format, Object, Value};
-use crate::state::{IdMap, Issue, State, Texts};
+use crate::state::{Edge, IdMap, Issue, State, Texts};
 use crate::time::event_time;
 
 pub use blockers::BlockerLists;
@@ -131,12 +131,12 @@ impl State {
 
     /// The issues `issue` names as parents, by sorted edge.
     pub fn parents_of(&self, issue: &Issue) -> Vec<&Issue> {
-        let mut edges: Vec<&(String, String)> = issue.deps().keys().collect();
+        let mut edges: Vec<&Edge> = issue.deps().keys().collect();
         edges.sort();
         edges
             .into_iter()
-            .filter(|(_, kind)| kind == "parent-child")
-            .filter_map(|(to, _)| self.issue_named(to))
+            .filter(|edge| edge.kind() == "parent-child")
+            .filter_map(|edge| self.target(edge.to()))
             .collect()
     }
 
@@ -194,12 +194,12 @@ impl State {
 
     /// The `blocks` targets of `issue` that are issues and not done, by sorted edge.
     pub fn direct_blockers(&self, issue: &Issue) -> Vec<&Issue> {
-        let mut edges: Vec<&(String, String)> = issue.deps().keys().collect();
+        let mut edges: Vec<&Edge> = issue.deps().keys().collect();
         edges.sort();
         edges
             .into_iter()
-            .filter(|(_, kind)| blocking(kind))
-            .filter_map(|(to, _)| self.issue_named(to))
+            .filter(|edge| blocking(edge.kind()))
+            .filter_map(|edge| self.target(edge.to()))
             .filter(|target| !self.is_done(target))
             .collect()
     }
@@ -273,14 +273,12 @@ impl State {
                     let Some(issue) = self.issue(*uid) else {
                         return Vec::new();
                     };
-                    let mut targets: Vec<&(String, String)> = issue.deps().keys().collect();
+                    let mut targets: Vec<&Edge> = issue.deps().keys().collect();
                     targets.sort();
                     targets
                         .into_iter()
-                        .filter(|(_, kind)| blocking(kind))
-                        .filter_map(|(to, _)| {
-                            EventId::parse(to).filter(|to| self.issues.contains_key(to))
-                        })
+                        .filter(|edge| blocking(edge.kind()))
+                        .filter_map(|edge| edge.to().id().filter(|to| self.issues.contains_key(to)))
                         .collect()
                 }
             }

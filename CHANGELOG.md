@@ -6,6 +6,31 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A command that reads decodes dependency edges typed (roll-lqjj.39, X16): each edge's target is
+  an issue's id, held as its 16 bytes, when its text is an id's spelling, and the text otherwise;
+  its kind is one name for every edge of that kind; and the metadata each addition carries
+  (`created_at`, `created_by` and whatever an import or the `dep_add` brought), which only `bead
+  export` prints, is kept with the issue's texts (roll-lqjj.6) and read in where export and a later
+  event need it. Readiness, blockers and dependents no longer parse each target as an id. At
+  200,000 events (`cargo xtask timing --decode N`, both builds back to back on a shared machine) the
+  state part a read decodes is 7.69 MB where it was 9.45 MB and decodes in 33.1 ms where it took
+  41.0 ms, holding 43.2 MB where it held 51.4 MB; the text file is 3.62 MB where it was 2.00 MB;
+  `cargo xtask timing --read N`: `list` 0.099 s where 0.111 s, `show` 0.091 s where 0.106 s,
+  `ready` 0.146 s where 0.165 s, a local write 0.162 s where 0.184 s, and at 20,000 events 13.9,
+  13.3 and 17.3 ms where 15.7, 16.1 and 19.2 ms. The ownership-heavy history, which has no edges,
+  decodes as before (33.8 ms, 34.0 ms before), and replay's heap peak at 200,000 events is
+  unchanged (102.1 MB). A write that adds or removes an edge needs that issue's texts read in, as one that sets a
+  long field does, and so does a create of a key another issue's import waits for, in the issue
+  that waits: `Projection::about` lists them, and the store and a transaction read in what it
+  lists. `Issue::deps` and `Issue::dep_tags` give the same answers in the same order, as `Edge`
+  (`Target` and kind) and `Meta` (`None` until the texts are read in); `State::target` and
+  `State::target_key` answer of a `Target` as `issue_named` and `key_of` of text. Output, exit
+  codes and format 1 are unchanged; the projection is made again once (`projection::ENCODING` 9).
+  `projection/tests/edges.rs`, committed and green before the change, pins what every issue's edges
+  answered on every state the differential histories pass through and on three bead-built
+  journals, and the differential generator now draws targets that name no issue, kinds beyond
+  blocks and parent-child, imports' metadata, concurrent, re-added and renamed edges.
+
 - A write-back of the projection compacts what every event had seen only now and then (roll-lqjj.43,
   X17): it had found every event the state names and cut the knowledge down to them at every
   write-back, though a projection read back and extended holds what was kept and the batch's events.

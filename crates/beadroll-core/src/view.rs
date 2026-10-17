@@ -6,7 +6,7 @@ mod details;
 use crate::event::{EXPORT_FIELDS, Field};
 use crate::json::{Object, Value};
 use crate::query::Alternative;
-use crate::state::{Comment, Issue, State};
+use crate::state::{Comment, Edge, Issue, State};
 use crate::text::str_of;
 
 pub use dependents::Dependents;
@@ -207,18 +207,18 @@ impl State {
     /// What an issue depends on, by sorted edge: the key, title and status of each target (an
     /// edge to text that names no issue shows it with status `unknown`).
     fn dependencies_shown(&self, issue: &Issue) -> Value {
-        let mut edges: Vec<&(String, String)> = issue.deps().keys().collect();
+        let mut edges: Vec<&Edge> = issue.deps().keys().collect();
         edges.sort();
-        let dependencies = edges.iter().map(|(to, kind)| {
-            let target = self.issue_named(to);
+        let dependencies = edges.iter().map(|edge| {
+            let target = self.target(edge.to());
             let mut dep = Object::new();
-            dep.insert("id".into(), Value::from(self.key_of(to)));
+            dep.insert("id".into(), Value::from(&*self.target_key(edge.to())));
             dep.insert("title".into(), Value::from(target.map_or("", Issue::title)));
             dep.insert(
                 "status".into(),
                 Value::from(target.map_or("unknown", Issue::status)),
             );
-            dep.insert("dependency_type".into(), Value::from(kind.as_str()));
+            dep.insert("dependency_type".into(), Value::from(edge.kind()));
             Value::from(dep)
         });
         dependencies.collect::<Vec<_>>().into()

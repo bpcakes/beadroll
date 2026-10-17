@@ -82,7 +82,12 @@ fn projection(events: &[Value]) -> (Projection, usize, usize) {
             let mut edges: Vec<(String, String)> = issue
                 .deps()
                 .keys()
-                .map(|(to, kind)| (st.key_of(to).to_owned(), kind.clone()))
+                .map(|edge| {
+                    (
+                        st.target_key(edge.to()).into_owned(),
+                        edge.kind().to_owned(),
+                    )
+                })
                 .collect();
             edges.sort();
             let mut dangling: Vec<String> = issue
@@ -158,7 +163,11 @@ impl History<'_> {
         }
         let issue = issues[self.stream.index(issues.len())];
         let uid = issue.uid().to_string();
-        let mut edges: Vec<(String, String)> = issue.deps().keys().cloned().collect();
+        let mut edges: Vec<(String, String)> = issue
+            .deps()
+            .keys()
+            .map(|edge| (edge.to().to_string(), edge.kind().to_owned()))
+            .collect();
         edges.sort();
         if roll < 0.7 && !issue.dangling().is_empty() {
             // Dep remove by key, or a re-import that drops it.

@@ -6,8 +6,7 @@
 //! that adds no blocker of its own to the one set it inherits shares that set, so the work grows
 //! with the issues, their edges and the blockers listed, not with the depth of every ancestry.
 
-use crate::id::EventId;
-use crate::state::{Issue, State};
+use crate::state::{Issue, State, Target};
 use crate::work::{Work, tally};
 
 use super::blocking;
@@ -158,19 +157,19 @@ impl State {
     /// through: it has its own direct blockers and its parents' sets, as its walk would find them.
     pub fn blocker_lists(&self) -> BlockerLists<'_> {
         let count = self.issues.len();
-        let place = |to: &str| EventId::parse(to).and_then(|uid| self.issues.get_index_of(&uid));
+        let place = |to: &Target| to.id().and_then(|uid| self.issues.get_index_of(&uid));
         let done: Vec<bool> = self.issues().map(|issue| self.is_done(issue)).collect();
         let edges = |at: usize| {
             (self.issues.get_index(at).into_iter()).flat_map(|(_, issue)| issue.deps().keys())
         };
         let parents = Rows::of(count, |at, row| {
-            let named = edges(at).filter(|(_, kind)| kind == "parent-child");
-            row.extend(named.filter_map(|(to, _)| place(to)).map(small));
+            let named = edges(at).filter(|edge| edge.kind() == "parent-child");
+            row.extend(named.filter_map(|edge| place(edge.to())).map(small));
         });
         let direct = Rows::of(count, |at, row| {
             let from = row.len();
-            let named = edges(at).filter(|(_, kind)| blocking(kind));
-            let targets = named.filter_map(|(to, _)| place(to));
+            let named = edges(at).filter(|edge| blocking(edge.kind()));
+            let targets = named.filter_map(|edge| place(edge.to()));
             row.extend(
                 targets
                     .filter(|&to| !done.get(to).copied().unwrap_or(false))

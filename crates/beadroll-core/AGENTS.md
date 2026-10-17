@@ -32,7 +32,9 @@ consumer on tokio calls through `spawn_blocking`.
   `state/claim.rs`, `state/seen.rs`): `State`, `Issue`, claims, `saw`; `state/small.rs`:
   `VecMap`, `IdMap`, `IdSet`, the vectors an issue keeps its registers and tags in, grown one
   entry at a time while short; `state/awaiting.rs`: `Awaiting`, where every imported dependency
-  that waits for a key is, by that key (roll-lqjj.18).
+  that waits for a key is, by that key (roll-lqjj.18); `state/edges.rs`: `Edge` (a `Target`, an
+  issue's id or the text of one that is no id, and its kind), `Meta`, the metadata an addition of
+  an edge carries, and `Deps`, what `Issue::deps` hands out (roll-lqjj.39).
 - `src/projection.rs`: `project`, `Projection` (roll-lqjj.2), a replayed state kept to have events
   applied after it: what every event had seen cut to the events the state still names
   (`state/seen/compact.rs`), by `project` and then now and then, by the write-back that finds the
@@ -130,6 +132,22 @@ consumer on tokio calls through `spawn_blocking`.
   the differential tests is kept three ways (`WriteBack`): as the store writes it back, and at every
   write-back uncompacted or compacted, each compared with replay, who wrote every event the state
   names and what each head had seen of it included (`answers_alike`).
+- An issue's edges are typed (roll-lqjj.39): a target is `Target::Id` exactly when its text is an
+  id's spelling (`Target::of`; an id that is no issue's stays an id), and text otherwise, shown and
+  ordered by that text, so edges sort as the pairs of strings did; a kind is one `Arc<str>` for
+  every edge of it, through replay's `Names` and the projection's name table. The state part keeps
+  each edge and the events that added it; the metadata of each addition is with the issue's texts,
+  `None` in a state read alone until they are read in, which only an export (and applying more
+  events) needs. So an edge added or removed changes an issue's texts, and so does a create of a
+  key another issue's import waits for, which makes that issue an edge: `Projection::extend`
+  declines when such an issue's texts are not in, and `Projection::about` lists them for a store to
+  read in first. Read an edge through `Issue::deps` and `Issue::dep_tags`, never the field: what an
+  issue's edges are held in may change (roll-lqjj.21). `projection/tests/edges.rs` pins what every
+  issue's edges answered when they were held as strings (edges, tags and metadata in order,
+  readiness, blockers, dependents, cycles, details and the export, as digests of every state the
+  differential histories pass through and in full on three bead-built journals), and checks export
+  and show alike with the metadata read from the texts; `projection/tests/edges/drawn.rs` is what
+  the differential generator draws for it.
 - A projection extended is replay: `projection/tests.rs` checks every batch a store takes in on
   histories of machines that write, sync and race, and each batch it must decline. What replay
   reports does not stop it (roll-lqjj.28): `projection/tests/flawed.rs` runs the same on histories

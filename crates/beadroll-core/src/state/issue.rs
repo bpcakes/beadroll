@@ -11,6 +11,7 @@ use crate::time::event_time;
 use crate::work::{Work, tally};
 
 use super::claim::{Claim, EndedClaim, LostClaim, Provisional, Stale};
+use super::edges::{DepTags, Deps};
 use super::small::{IdMap, IdSet, VecMap};
 use super::texts::{Texts, is_text};
 
@@ -24,7 +25,9 @@ pub struct Issue {
     pub(crate) stamps: Stamps,
     pub(crate) reg: VecMap<Field, IdMap<Value>>,
     pub(crate) label_tags: VecMap<String, IdSet>,
-    pub(crate) dep_tags: VecMap<(String, String), IdMap<Value>>,
+    /// Its edges and the additions behind each: in the state part of a projection, the metadata of
+    /// each addition with the texts (roll-lqjj.39).
+    pub(crate) dep_tags: DepTags,
     pub(crate) labels: BTreeSet<String>,
     pub(crate) comments: Vec<Comment>,
     /// Few issues have extras: boxed, so that the others keep a pointer.
@@ -44,72 +47,6 @@ pub struct Issue {
     /// Where its long fields, their registers' values, its comments and its extras are
     /// (roll-lqjj.6): in it, or only in a projection's text file.
     pub(crate) texts: Texts,
-}
-
-/// An issue's dependencies ([`Issue::deps`]), read from the additions behind them, which hold the
-/// metadata each was added with: a removed dependency has none left.
-#[derive(Clone, Copy)]
-pub struct Deps<'a>(&'a VecMap<(String, String), IdMap<Value>>);
-
-impl<'a> Deps<'a> {
-    /// Each dependency and the metadata of its earliest addition.
-    pub fn iter(self) -> DepsIter<'a> {
-        let earliest: fn(_) -> _ = earliest;
-        self.0.into_iter().filter_map(earliest)
-    }
-
-    /// Each dependency.
-    pub fn keys(self) -> impl Iterator<Item = &'a (String, String)> {
-        self.iter().map(|(edge, _)| edge)
-    }
-
-    /// The metadata of the earliest addition of `edge`, if the issue has that dependency.
-    pub fn get(self, edge: &(String, String)) -> Option<&'a Value> {
-        (self.0.get(edge)?.first()).map(|(_, meta)| meta)
-    }
-
-    /// Whether the issue has the dependency `edge`.
-    pub fn contains_key(self, edge: &(String, String)) -> bool {
-        self.get(edge).is_some()
-    }
-
-    /// How many dependencies the issue has.
-    pub fn len(self) -> usize {
-        self.iter().count()
-    }
-
-    /// Whether it has none.
-    pub fn is_empty(self) -> bool {
-        self.iter().next().is_none()
-    }
-}
-
-impl<'a> IntoIterator for Deps<'a> {
-    type Item = (&'a (String, String), &'a Value);
-    type IntoIter = DepsIter<'a>;
-
-    fn into_iter(self) -> DepsIter<'a> {
-        self.iter()
-    }
-}
-
-/// The iterator over [`Deps`].
-pub type DepsIter<'a> = std::iter::FilterMap<
-    <&'a VecMap<(String, String), IdMap<Value>> as IntoIterator>::IntoIter,
-    fn((&'a (String, String), &'a IdMap<Value>)) -> Option<(&'a (String, String), &'a Value)>,
->;
-
-/// A dependency and the metadata of its earliest addition, if it has one left.
-fn earliest<'a>(
-    (edge, tags): (&'a (String, String), &'a IdMap<Value>),
-) -> Option<(&'a (String, String), &'a Value)> {
-    tags.first().map(|(_, meta)| (edge, meta))
-}
-
-impl std::fmt::Debug for Deps<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_map().entries(self.iter()).finish()
-    }
 }
 
 /// What an issue shows that no register holds: when and by whom it was created and when an event
@@ -270,15 +207,17 @@ impl Issue {
         &self.label_tags
     }
 
-    /// Its dependencies: `(target, type)` and the metadata of the earliest addition, in the order
-    /// first added. A target is an issue's uid, or text that names no issue.
+    /// Its dependencies: each edge and the metadata of its earliest addition, in the order first
+    /// added. A target is an issue's id, or text that names no issue; the metadata is there once
+    /// the issue's texts are (roll-lqjj.39).
     pub fn deps(&self) -> Deps<'_> {
         tally(Work::Edge, self.dep_tags.len());
         Deps(&self.dep_tags)
     }
 
-    /// The additions behind each dependency, empty once removed.
-    pub fn dep_tags(&self) -> &VecMap<(String, String), IdMap<Value>> {
+    /// The additions behind each dependency, empty once removed, each with its metadata once the
+    /// issue's texts are in it.
+    pub fn dep_tags(&self) -> &DepTags {
         tally(Work::Edge, self.dep_tags.len());
         &self.dep_tags
     }
@@ -377,7 +316,8 @@ impl Issue {
     }
 
     /// Where its texts are: in it, or in a projection's text file, not read; its long fields,
-    /// their registers, its comments and its extras are empty until they are read in.
+    /// their registers, its comments and its extras are empty, and its edges' metadata absent,
+    /// until they are read in.
     pub fn texts(&self) -> &Texts {
         &self.texts
     }

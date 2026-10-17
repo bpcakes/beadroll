@@ -25,7 +25,8 @@
 //! state read from the projection has them there, and a command reads in those it prints. A
 //! command that prints none (`list`, `ready`) reads the state alone ([`outline`]); one that may
 //! print any, every text ([`state`]); and records applied after the projection have the texts of
-//! the issues they are about read in first. Texts that cannot be read as written have the journal
+//! the issues they can change read in first: those they are about, and those that wait for a key a
+//! create among them brings, in which it makes an edge (`Projection::about`, roll-lqjj.39). Texts that cannot be read as written have the journal
 //! replayed, as a projection that cannot be does. Texts written nowhere yet are appended to the
 //! text file, and a projection made whole, or whose text file holds more texts no longer read than
 //! read, writes them all to a new one.
@@ -40,7 +41,6 @@ use std::sync::Arc;
 
 use beadroll_core::id::EventId;
 use beadroll_core::journal::{self, Problem};
-use beadroll_core::json::Value;
 use beadroll_core::projection::{Extended, Projection, Record, decode_state, project};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
@@ -166,14 +166,6 @@ enum Now {
     Projection(Box<Projection>, Option<Sources>),
 }
 
-/// The issues `records` are about.
-fn about(records: &[Record]) -> Vec<EventId> {
-    (records.iter())
-        .filter_map(|record| record.value.get("issue").and_then(Value::as_str))
-        .filter_map(EventId::parse)
-        .collect()
-}
-
 fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
     ws.settings.failpoints.hit("projection.read");
     let segments = segment_files(ws)?;
@@ -222,7 +214,7 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
             && let Some(mut projection) = stored.encoded().and_then(|e| Projection::decode(&e).ok())
         {
             projection.state_mut().set_texts_file(file);
-            let uids = about(&records);
+            let uids = projection.about(&records);
             // the records applied: the bytes the journal's files grew by, only appended to
             let tail = now.journal_bytes().saturating_sub(was);
             if read_texts(ws, projection.state_mut(), uids)

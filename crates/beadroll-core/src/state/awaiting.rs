@@ -79,6 +79,18 @@ impl Awaiting {
         (self.entries.range(from..).next()).is_some_and(|(named, _, _)| named == key)
     }
 
+    /// The issue of every entry that waits for `key`, as often as it has one, still listed: those a
+    /// create of the key makes an edge in.
+    pub(crate) fn waiting(&self, key: &str) -> Vec<EventId> {
+        let from = (key.to_owned(), EventId::from_u128(0), 0);
+        let waiting: Vec<EventId> = (self.entries.range(from..))
+            .take_while(|(named, _, _)| named == key)
+            .map(|(_, uid, _)| *uid)
+            .collect();
+        tally(Work::Waiting, waiting.len());
+        waiting
+    }
+
     /// Every entry that waits for `key`, no longer listed: each issue's, by its number, in the order
     /// of its list.
     pub(crate) fn arrived(&mut self, key: &str) -> Vec<(EventId, usize)> {

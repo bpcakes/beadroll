@@ -12,11 +12,15 @@
 
 pub(super) mod drawn;
 
-use crate::json::{Format, Value, write};
+use crate::id::EventId;
+use crate::journal::Journal;
+use crate::json::{Format, Object, Value, write};
 use crate::query::{Edges, ReadyScope};
 use crate::replay::replay;
-use crate::state::{Issue, State};
+use crate::state::{Issue, Meta, State};
 
+use super::super::{Extended, decode_state, project};
+use super::TextFile;
 use super::shown::{FIXTURES as SHOWN, fixture};
 
 /// The digests of every state the differential tests' histories pass through, by shape and seed,
@@ -39,6 +43,13 @@ const FIXTURES: [(&str, &str, &str); 3] = [
         include_str!("edges/kinds.answers"),
     ),
 ];
+
+/// An addition's metadata as a value, as the code that held it as one gave it: null while the
+/// issue's texts are not read in, which a state replay made never is.
+pub(super) fn shown(meta: &Meta) -> Value {
+    meta.members()
+        .map_or(Value::Null, |members| Value::from(members.clone()))
+}
 
 /// A value as compact JSON.
 fn text(value: &Value) -> String {
@@ -73,10 +84,12 @@ pub(super) fn outline(state: &State) -> String {
     let lists = state.blocker_lists();
     for issue in state.issues() {
         out.push_str(&format!("{} {}\n", issue.uid(), issue.key()));
-        for ((to, kind), _) in issue.deps().iter() {
+        for (edge, _) in issue.deps().iter() {
+            let (to, kind) = (edge.to(), edge.kind());
             out.push_str(&format!("  dep {to} {kind}\n"));
         }
-        for ((to, kind), tags) in issue.dep_tags() {
+        for (edge, tags) in issue.dep_tags() {
+            let (to, kind) = (edge.to(), edge.kind());
             let ids: Vec<String> = tags.iter().map(|(id, _)| id.to_string()).collect();
             out.push_str(&format!("  tags {to} {kind} [{}]\n", ids.join(" ")));
         }
@@ -104,12 +117,13 @@ pub(super) fn outline(state: &State) -> String {
 pub(super) fn metadata(state: &State) -> String {
     let mut out = String::new();
     for issue in state.issues() {
-        for ((to, kind), tags) in issue.dep_tags() {
+        for (edge, tags) in issue.dep_tags() {
+            let (to, kind) = (edge.to(), edge.kind());
             for (id, meta) in tags.iter() {
                 out.push_str(&format!(
                     "{} {to} {kind} {id} {}\n",
                     issue.key(),
-                    text(meta)
+                    text(&shown(meta))
                 ));
             }
         }
@@ -125,12 +139,14 @@ pub(super) fn answers(state: &State) -> String {
     let details = state.details_of(state.issues());
     for issue in state.issues() {
         out.push_str(&format!("{}\n", issue.key()));
-        for ((to, kind), meta) in issue.deps().iter() {
-            out.push_str(&format!("  meta {to} {kind} {}\n", text(meta)));
+        for (edge, meta) in issue.deps().iter() {
+            let (to, kind) = (edge.to(), edge.kind());
+            out.push_str(&format!("  meta {to} {kind} {}\n", text(&shown(meta))));
         }
-        for ((to, kind), tags) in issue.dep_tags() {
+        for (edge, tags) in issue.dep_tags() {
+            let (to, kind) = (edge.to(), edge.kind());
             for (id, meta) in tags.iter() {
-                out.push_str(&format!("  tag {to} {kind} {id} {}\n", text(meta)));
+                out.push_str(&format!("  tag {to} {kind} {id} {}\n", text(&shown(meta))));
             }
         }
         let detail = Value::from(details.of(issue));
@@ -246,4 +262,186 @@ fn the_stores_bead_built_answer_of_their_edges_what_they_did() {
             "{name} answers otherwise than it did:\n{now}"
         );
     }
+}
+
+/// What `bead export` prints of `state`, and `bead show` of every issue (its detail made alone).
+fn printed(state: &State) -> String {
+    let mut out = String::new();
+    for record in state.export_records() {
+        out.push_str(&format!("export {}\n", text(&Value::from(record))));
+    }
+    for issue in state.issues() {
+        out.push_str(&format!(
+            "show {}\n",
+            text(&Value::from(state.detail(issue)))
+        ));
+    }
+    out
+}
+
+#[test]
+fn export_and_show_print_the_same_with_edges_metadata_read_from_the_texts_as_from_replay() {
+    let mut journals: Vec<Journal> = FIXTURES
+        .iter()
+        .map(|(_, lines, _)| fixture(lines))
+        .collect();
+    for flawed in [false, true] {
+        for seed in 0..crate::replay::tests::SEEDS {
+            let records = super::history(20_261_016 + seed, crate::replay::tests::BATCHES, flawed);
+            journals.push(super::hostile::journal(&records));
+        }
+    }
+    let mut additions = 0;
+    for journal in journals {
+        let replayed = replay(journal.clone()).unwrap();
+        let (encoded, _) = project(journal).unwrap().encode(0);
+        let file = encoded.texts;
+        // a state read alone has every edge and the events behind it, and no metadata
+        let mut state = decode_state(&encoded.state).unwrap();
+        assert_eq!(outline(&state), outline(&replayed));
+        for issue in state.issues() {
+            let tags = issue.dep_tags().values();
+            assert!(
+                tags.flat_map(|tags| tags.values())
+                    .all(|meta| meta.members().is_none())
+            );
+        }
+        // `show` reads in the texts of the issues it shows alone
+        for issue in replayed.issues().filter(|issue| !issue.deps().is_empty()) {
+            let mut one = state.clone();
+            super::read_in(&mut one, &file, Some(vec![issue.uid()]));
+            let shown = one.detail(one.issue(issue.uid()).unwrap());
+            assert_eq!(
+                text(&Value::from(shown)),
+                text(&replayed.detail(issue).into())
+            );
+            let read = one.issue(issue.uid()).unwrap();
+            assert_eq!(read.dep_tags(), issue.dep_tags());
+            additions += issue
+                .dep_tags()
+                .values()
+                .map(|tags| tags.len())
+                .sum::<usize>();
+        }
+        // `export` reads in every issue's
+        super::read_in(&mut state, &file, None);
+        assert_eq!(printed(&state), printed(&replayed));
+        assert_eq!(metadata(&state), metadata(&replayed));
+    }
+    assert!(additions > 300, "{additions} additions read in");
+}
+
+/// A projection whose texts are not read in takes a create of a key an import of one of its issues
+/// waits for, in which the create makes an edge whose metadata is with that issue's texts, only once
+/// they are read in, as [`Projection::about`] lists them; otherwise it declines, and replay makes
+/// the edge.
+#[test]
+fn a_create_of_an_awaited_key_extends_once_the_waiting_issues_texts_are_read_in() {
+    use super::hostile::{HERE, event, id, record};
+    let mut init = Object::new();
+    init.insert("prefix".into(), Value::from("pr"));
+    let create = |key: &str, dangling: Option<Value>| {
+        let mut data = Object::new();
+        data.insert("key".into(), Value::from(key));
+        data.insert("fields".into(), Value::from(Object::new()));
+        if let Some(dep) = dangling {
+            data.insert("imported".into(), Value::from(true));
+            data.insert("dangling".into(), Value::Array(vec![dep]));
+        }
+        data
+    };
+    let mut dep = Object::new();
+    dep.insert("depends_on_id".into(), Value::from("pr-later"));
+    dep.insert("type".into(), Value::from("tracks"));
+    dep.insert("metadata".into(), Value::from("{\"why\":\"later\"}"));
+    let held = vec![
+        record(event(1, HERE, &[], "init", 1, init), HERE, true),
+        record(
+            event(2, HERE, &[1], "create", 2, create("pr-x", Some(dep.into()))),
+            HERE,
+            true,
+        ),
+    ];
+    let batch = vec![record(
+        event(3, HERE, &[2], "create", 3, create("pr-later", None)),
+        HERE,
+        true,
+    )];
+    let mut file = TextFile::new();
+    let stored = super::read_back(
+        &project(super::hostile::journal(&held)).unwrap(),
+        &mut file,
+        super::WriteBack::Encoded,
+    );
+    let waiting = EventId::parse(&id(2)).unwrap();
+    assert_eq!(
+        stored.about(&batch),
+        [EventId::parse(&id(3)).unwrap(), waiting]
+    );
+    // not read in: declined
+    let declined = stored.clone().extend(batch.clone()).unwrap();
+    assert!(matches!(declined, Extended::Replay));
+    // read in as a store reads them: taken, and replay's answer, the edge's metadata with it
+    let mut reading = stored;
+    let about = reading.about(&batch);
+    super::read_in(reading.state_mut(), &file, Some(about));
+    let Extended::Applied(extended) = reading.extend(batch.clone()).unwrap() else {
+        panic!("declined with the waiting issue's texts read in");
+    };
+    let mut all = held;
+    all.extend(batch);
+    let replayed = replay(super::hostile::journal(&all)).unwrap();
+    assert!(super::same(extended.state(), &replayed));
+    let read = super::read_back(&extended, &mut file, super::WriteBack::Encoded);
+    let mut state = read.into_state();
+    super::read_in(&mut state, &file, None);
+    assert_eq!(printed(&state), printed(&replayed));
+    assert!(printed(&replayed).contains(r#""metadata":"{\"why\":\"later\"}""#));
+}
+
+/// Texts whose edges' additions are not the issue's, which only a state changed while its texts
+/// were not read in can meet, are refused whole: an addition more or less, or an edge more.
+#[test]
+fn texts_whose_edges_differ_from_the_issues_are_never_read_in() {
+    let (_, journal, _) = FIXTURES[2];
+    let (encoded, _) = project(fixture(journal)).unwrap().encode(0);
+    let state = decode_state(&encoded.state).unwrap();
+    let file = encoded.texts;
+    let edged = (state.issues())
+        .find(|issue| issue.dep_tags().values().any(|tags| tags.len() == 1))
+        .map(Issue::uid)
+        .unwrap();
+    let [(uid, place)] = state.wanted_texts([edged])[..] else {
+        panic!("its texts are there");
+    };
+    let bytes = &file[usize::try_from(place.at).unwrap()..][..place.len as usize];
+    let later = EventId::from_u128(u128::MAX);
+    let changes: [fn(&mut crate::state::DepTags, EventId); 3] = [
+        |edges, later| {
+            let tags = edges.values_mut().find(|tags| !tags.is_empty()).unwrap();
+            tags.insert(later, Meta::default());
+        },
+        |edges, _| {
+            let tags = edges.values_mut().find(|tags| tags.len() == 1).unwrap();
+            *tags = crate::state::IdMap::default();
+        },
+        |edges, later| {
+            let edge = crate::state::Edge {
+                to: crate::state::Target::Id(later),
+                kind: "related".into(),
+            };
+            edges.insert(edge, crate::state::IdMap::of(later, Meta::default()));
+        },
+    ];
+    for change in changes {
+        let mut changed = state.clone();
+        change(&mut changed.issues.get_mut(&uid).unwrap().dep_tags, later);
+        assert!(changed.read_texts(uid, place, bytes).is_err());
+        assert!(
+            !changed.issue(uid).unwrap().texts().here(),
+            "nothing read in"
+        );
+    }
+    let mut whole = state;
+    whole.read_texts(uid, place, bytes).unwrap();
 }

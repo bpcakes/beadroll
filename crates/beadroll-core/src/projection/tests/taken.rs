@@ -8,7 +8,6 @@
 
 use std::collections::BTreeMap;
 
-use crate::id::EventId;
 use crate::json::{Object, Value};
 use crate::replay::replay;
 
@@ -120,10 +119,6 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -
             let local = batch.iter().all(|at| world.events[*at].machine == 0);
             let records = records(&world, &batch);
             // as a store does: the texts of the issues the batch is about read in first
-            let about: Vec<EventId> = (records.iter())
-                .filter_map(|record| record.value.get("issue").and_then(Value::as_str))
-                .filter_map(EventId::parse)
-                .collect();
             tracks = tracks.map(|(mut projection, mut file, back)| {
                 // the figures are the store's
                 let counted = back == WriteBack::Encoded;
@@ -135,7 +130,8 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -
                 let before = flawed::kinds(projection.state());
                 let open = projection.extendable();
                 tally.closed += usize::from(!open && counted);
-                read_in(projection.state_mut(), &file, Some(about.clone()));
+                let about = projection.about(&records);
+                read_in(projection.state_mut(), &file, Some(about));
                 if counted {
                     for (kind, n) in flawed::kinds(full.state()) {
                         let new = n.saturating_sub(before.get(kind).copied().unwrap_or(0));
@@ -201,10 +197,7 @@ impl Stored {
         self.since.extend(batch);
         self.batches += 1;
         let records = read_after(world, &self.since);
-        let about = (records.iter())
-            .filter_map(|record| record.value.get("issue").and_then(Value::as_str))
-            .filter_map(EventId::parse)
-            .collect();
+        let about = self.projection.about(&records);
         let mut extending = self.projection.clone();
         read_in(extending.state_mut(), &self.file, Some(about));
         let written = match extending.extend(records).unwrap() {

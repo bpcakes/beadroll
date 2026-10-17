@@ -3,11 +3,12 @@
 //! written: it is derived again as the state is read, and so is where each imported dependency
 //! that waits for a key is (roll-lqjj.18), from the issues' lists.
 //!
-//! An issue's texts (its long fields, the values their registers hold, its comments and its
-//! extras) are written apart, each issue's as bytes of their own ([`super::text_codec`]), which a
-//! projection keeps in its text file (roll-lqjj.6); the issue is written with where they are and
-//! what a list and a later event need of them unread ([`Stored`]). An issue read back has its
-//! texts there until they are read in.
+//! An issue's texts (its long fields, the values their registers hold, its comments, its extras
+//! and the metadata of its edges' additions) are written apart, each issue's as bytes of their own
+//! ([`super::text_codec`]), which a projection keeps in its text file (roll-lqjj.6); the issue is
+//! written with where they are and what a list and a later event need of them unread ([`Stored`]),
+//! and with its edges typed and the events that added each (roll-lqjj.39). An issue read back has
+//! its texts there until they are read in.
 
 use std::collections::HashMap;
 
@@ -16,8 +17,9 @@ use crate::id::EventId;
 use crate::json::{Int, Value};
 use crate::replay::finish;
 use crate::state::{
-    Awaiting, Claim, EndedClaim, IdMap, IdSet, Integrity, Issue, Knowledge, LostClaim, Origin,
-    Provisional, Rename, Stale, Stamps, State, Stored, TextPlace, Texts, VecMap, is_text,
+    Awaiting, Claim, DepTags, Edge, EndedClaim, IdMap, IdSet, Integrity, Issue, Knowledge,
+    LostClaim, Meta, Origin, Provisional, Rename, Stale, Stamps, State, Stored, Target, TextPlace,
+    Texts, VecMap, is_text,
 };
 
 use super::codec::{Reader, Unreadable, Writer};
@@ -136,12 +138,7 @@ fn write_issue(w: &mut Writer, issue: &Issue, place: TextPlace) {
         w.text(label);
         w.ids(tags.iter());
     }
-    w.count(issue.dep_tags.len());
-    for ((to, kind), tags) in &issue.dep_tags {
-        w.text(to);
-        w.text(kind);
-        write_tags(w, tags);
-    }
+    write_edges(w, &issue.dep_tags);
     write_values(w, &issue.dangling);
     w.count(issue.retracted.len());
     for ((to, kind), removals) in &issue.retracted {
@@ -194,11 +191,7 @@ fn read_issue(r: &mut Reader<'_>) -> Result<Issue, Unreadable> {
     for _ in 0..r.count()? {
         label_tags.push((r.text()?, read_ids(r)?));
     }
-    let mut dep_tags = Vec::new();
-    for _ in 0..r.count()? {
-        let edge = (r.text()?, r.text()?);
-        dep_tags.push((edge, read_tags(r)?));
-    }
+    let dep_tags = read_edges(r)?;
     let dangling = read_values(r)?;
     let mut retracted = std::collections::BTreeMap::new();
     for _ in 0..r.count()? {
@@ -235,7 +228,7 @@ fn read_issue(r: &mut Reader<'_>) -> Result<Issue, Unreadable> {
         stamps,
         reg: VecMap::from_distinct(reg),
         label_tags: VecMap::from_distinct(label_tags),
-        dep_tags: VecMap::from_distinct(dep_tags),
+        dep_tags,
         labels: std::collections::BTreeSet::new(),
         comments: Vec::new(),
         extra: None,
@@ -257,6 +250,51 @@ fn read_issue(r: &mut Reader<'_>) -> Result<Issue, Unreadable> {
             disputed,
         })),
     })
+}
+
+/// An issue's edges (roll-lqjj.39): each one's target, an id as its 16 bytes or text, its kind
+/// through the name table, so that each kind is written once, and the events that added it. Their
+/// metadata is with the issue's texts ([`super::text_codec`]).
+fn write_edges(w: &mut Writer, edges: &DepTags) {
+    w.count(edges.len());
+    for (edge, tags) in edges {
+        match &edge.to {
+            Target::Id(id) => {
+                w.byte(0);
+                w.id(*id);
+            }
+            Target::Text(text) => {
+                w.byte(1);
+                w.text(text);
+            }
+        }
+        w.name(&edge.kind);
+        w.ids(tags.into_iter().map(|(id, _)| id));
+    }
+}
+
+/// The edges [`write_edges`] wrote, each addition's metadata not read: an issue read back has its
+/// texts there. Inlined: read for every issue, most of which have no edges, where the call cost the
+/// decode of the ownership-heavy history at 200,000 events about 1 ms of 33.
+#[inline]
+fn read_edges(r: &mut Reader<'_>) -> Result<DepTags, Unreadable> {
+    let n = r.count()?;
+    let mut edges = Vec::with_capacity(n);
+    for _ in 0..n {
+        let to = match r.byte()? {
+            0 => Target::Id(r.id()?),
+            1 => Target::text(r.text()?).ok_or(Unreadable("a target"))?,
+            _ => return Err(Unreadable("a target")),
+        };
+        let edge = Edge {
+            to,
+            kind: r.name()?,
+        };
+        let tags = r.ids()?.into_iter().map(|id| (id, Meta::default()));
+        let tags = IdMap::from_ascending(tags.collect()).ok_or(Unreadable("an edge's tags"))?;
+        edges.push((edge, tags));
+    }
+    Ok(VecMap::from_distinct(edges))
 }
 
 /// Who held an issue, as [`Issue`] records it.
