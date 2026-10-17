@@ -12,13 +12,15 @@ use crate::id::EventId;
 use crate::journal::Journal;
 use crate::json::{Format, Object, Value, write};
 use crate::replay::replay;
-use crate::state::{EndedClaim, LostClaim, Provisional, Stale, State};
+use crate::state::{EndedClaim, LostClaim, Provisional, Stale, State, Texts};
 
-use super::super::{Extended, project};
+use super::super::{Extended, Projection, project};
 use super::awaiting::fnv;
-use super::shown::{FIXTURES, fixture};
+use super::hostile::{HERE, base, event, id, journal, record};
+use super::shown::{FIXTURES, fixture, replayed};
 use super::{
-    MACHINES, TextFile, World, WriteBack, equal, load, read_back, read_in, records, str_of, whole,
+    MACHINES, TextFile, World, WriteBack, equal, load, read_back, read_in, records, same, str_of,
+    whole,
 };
 
 /// What `state` answers of each issue's ownership, a line each: its claim, its generation, the
@@ -56,7 +58,9 @@ pub(crate) fn answers(state: &State) -> String {
 }
 
 /// Asserts that every issue of `state`, read back with the texts of the issues `read` names read
-/// in, answers of who holds it what it does in `original`, and those read in their history too.
+/// in, answers of who holds it what it does in `original`: its claim, generation and offline
+/// claims, and who ended its last claim that ended and how; and those read in their whole
+/// ownership history, which those not read in hold none of (roll-lqjj.40).
 pub(super) fn read_alike(state: &State, original: &State, read: &[EventId]) {
     for was in original.issues() {
         let issue = state.issue(was.uid()).unwrap();
@@ -68,10 +72,15 @@ pub(super) fn read_alike(state: &State, original: &State, read: &[EventId]) {
             was.provisional_claims(),
             "{key}"
         );
+        assert_eq!(issue.last_ended(), was.last_ended(), "{key}");
         if read.contains(&issue.uid()) {
             assert_eq!(issue.claim_history(), was.claim_history(), "{key}");
             assert_eq!(issue.lost_claims(), was.lost_claims(), "{key}");
             assert_eq!(issue.stale(), was.stale(), "{key}");
+        } else {
+            let held =
+                issue.claim_history().len() + issue.lost_claims().len() + issue.stale().len();
+            assert_eq!(held, 0, "{key}: its ownership history is with its texts");
         }
     }
 }
@@ -180,11 +189,72 @@ fn every_issue_of_the_stores_bead_built_answers_of_its_ownership_what_it_did() {
     );
 }
 
+#[test]
+fn an_event_that_can_add_to_an_issues_history_waits_for_its_texts_and_has_them_written_again() {
+    // issue 2 claimed and the claim released: a claim that ended, in its history
+    let mut records = base();
+    let mut online = Object::new();
+    online.insert("mode".into(), Value::from("online"));
+    records.push(record(
+        event(4, HERE, &[3], "claim", 2, online.clone()),
+        HERE,
+        true,
+    ));
+    let mut naming = Object::new();
+    naming.insert("claim".into(), Value::from(id(4)));
+    records.push(record(
+        event(5, HERE, &[4], "release", 2, naming.clone()),
+        HERE,
+        true,
+    ));
+    let (encoded, _) = project(journal(&records)).unwrap().encode(0);
+    let read = Projection::decode(&encoded).unwrap();
+    let uid = EventId::parse(&id(2)).unwrap();
+    // read back, its history is with its texts, and who ended the claim and how is not
+    let issue = read.state().issue(uid).unwrap();
+    assert!(issue.claim_history().is_empty());
+    let ended = issue.last_ended().map(|ended| ended.how);
+    assert_eq!(ended, Some("release"));
+    let mut closing = naming.clone();
+    closing.insert("reason".into(), Value::from("done"));
+    // whether each adds to the history: a claim and a reopen of no claim do not, a release and a
+    // close naming the claim that ended come too late, and a delete changes the extras too
+    for (op, data, adds) in [
+        ("claim", online, false),
+        ("reopen", Object::new(), false),
+        ("release", naming, true),
+        ("close", closing, true),
+        ("delete", Object::new(), true),
+    ] {
+        let batch = vec![record(event(6, HERE, &[5], op, 2, data), HERE, true)];
+        let declined = read.clone().extend(batch.clone()).unwrap();
+        assert!(matches!(declined, Extended::Replay), "{op}");
+        let mut texts = read.clone();
+        let file = encoded.texts.clone();
+        let about = texts.about(&batch);
+        assert_eq!(about, [uid], "{op}");
+        read_in(texts.state_mut(), &file, Some(about));
+        let Extended::Applied(extended) = texts.extend(batch.clone()).unwrap() else {
+            panic!("{op}: its texts were read in");
+        };
+        let mut all = records.clone();
+        all.extend(batch);
+        assert!(same(extended.state(), &replayed(&all)), "{op}");
+        let issue = extended.state().issue(uid).unwrap();
+        assert_eq!(matches!(issue.texts(), Texts::Here), adds, "{op}");
+        // the history added to is written again with the texts, and read back as replay made it,
+        // whichever way it is written back
+        for back in WriteBack::EVERY {
+            read_back(&extended, &mut file.clone(), back);
+        }
+    }
+}
+
 /// What histories hold of who held each issue, counted in what replay made of them: the claims
-/// that ended, by how, and the takeovers among them that gave a reason; the claims that lost and the
-/// ends that came too late, by what they were; the offline claims still standing, and those their
-/// owner settled later, by claiming online or releasing; and the batches a projection read back
-/// took in that added to the history of an issue it had read in.
+/// that ended, by how, and the takeovers among them that gave a reason; the claims that lost and
+/// the ends that came too late, by what they were; the offline claims still standing, and those
+/// their owner settled later, by claiming online or releasing; and the batches a projection read
+/// back took in that added to the history of an issue it had read in.
 #[derive(Debug, Default)]
 pub(super) struct Seen {
     ended: std::collections::BTreeMap<String, usize>,

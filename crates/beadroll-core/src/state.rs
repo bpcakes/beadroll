@@ -20,7 +20,7 @@ use crate::text::str_of;
 use crate::work::{Work, tally};
 
 pub(crate) use awaiting::{Awaiting, named as awaited};
-pub use claim::{Claim, EndedClaim, LostClaim, Provisional, Stale};
+pub use claim::{Claim, Ended, EndedClaim, LostClaim, Provisional, Stale};
 pub use edges::{DepTags, Deps, DepsIter, Edge, Meta, Target};
 pub use issue::{Comment, Issue};
 pub(crate) use issue::{Origin, Stamps};

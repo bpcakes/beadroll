@@ -119,7 +119,7 @@ fn work(t: &mut Transcript, sandbox: &beadroll_test_support::Sandbox, a: &Machin
 /// Plants in `machine`'s store a third machine's journal holding an online claim of `key` that
 /// saw only its create, placed after the claim `machine` holds: no remote accepts two claims of
 /// one issue, so a journal holds a claim that lost only when one was planted.
-fn plant_lost_claim(machine: &Machine, key: &str) {
+pub(crate) fn plant_lost_claim(machine: &Machine, key: &str) {
     let shown = machine.show(key);
     let held = shown["claim"]["id"].as_str().expect("a claim").to_owned();
     let log = machine.bead(["log", key]).expect("its log");

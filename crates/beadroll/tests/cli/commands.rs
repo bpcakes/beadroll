@@ -11,7 +11,7 @@ mod format_policy;
 mod help_and_prime;
 mod history;
 mod location_review;
-mod ownership;
+pub(crate) mod ownership;
 mod publish_on_write;
 mod ready_subtree;
 mod repeats;

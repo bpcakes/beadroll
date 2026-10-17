@@ -7,9 +7,12 @@
 //! and writes the projection back; a write cycle (roll-lqjj.36): a write after a read that left
 //! nothing to take in (`write_after_read_seconds`), the `bead show` after it, which takes the
 //! write's record in and writes the projection back (`read_after_write_seconds`), and a write after
-//! a write, which takes the record of the one before in (`write_after_write_seconds`); a write
-//! after a read once the store has no remote, not `--offline` (`no_remote_write_seconds`,
-//! roll-lqjj.50); and how many bytes the projection and its text file hold. Evidence, never a gate.
+//! a write, which takes the record of the one before in (`write_after_write_seconds`); a claim of
+//! an issue created for it and its release, each published at once to the remote as an ownership
+//! command is (`claim_seconds`, `release_seconds`): the release ends the claim and so adds to the
+//! issue's ownership history, which its texts hold (roll-lqjj.40); a write after a read once the
+//! store has no remote, not `--offline` (`no_remote_write_seconds`, roll-lqjj.50); and how many
+//! bytes the projection and its text file hold. Evidence, never a gate.
 
 use super::history::{ROTATE_BYTES, Shape, history};
 use super::world::{RUNS, World, bead, profile, write_store};
@@ -86,6 +89,7 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
         "\"write_after_read_seconds\": {write:.4}, \"read_after_write_seconds\": {read:.4}, \
          \"write_after_write_seconds\": {again:.4}, "
     ));
+    fields.push(claimed_and_released(&world)?);
     // the same write after a read, not `--offline`, once the store has no remote to publish to
     world.without_remote()?;
     let mut alone = f64::INFINITY;
@@ -113,5 +117,28 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
         layout.bytes,
         json_string(profile()),
         fields.concat(),
+    ))
+}
+
+/// The fastest of [`RUNS`] claims of an issue created for it and of its releases, each published at
+/// once to the remote as an ownership command is: the release ends the claim and so adds to the
+/// issue's ownership history, which its texts hold (roll-lqjj.40). Its fields, as JSON members.
+fn claimed_and_released(world: &World) -> Result<String, Failure> {
+    let created = world.output(&["create", "claimed and released", "--json"], None)?;
+    let key = (beadroll_core::json::from_text(&created).ok())
+        .and_then(|value| {
+            value
+                .get("id")
+                .and_then(|id| id.as_str())
+                .map(str::to_owned)
+        })
+        .ok_or_else(|| Failure::Failed(format!("bead create printed no key: {created}")))?;
+    let (mut claim, mut release) = (f64::INFINITY, f64::INFINITY);
+    for _ in 0..RUNS {
+        claim = claim.min(world.timed(&["claim", &key])?);
+        release = release.min(world.timed(&["release", &key])?);
+    }
+    Ok(format!(
+        "\"claim_seconds\": {claim:.4}, \"release_seconds\": {release:.4}, "
     ))
 }

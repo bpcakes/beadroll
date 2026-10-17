@@ -6,6 +6,26 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- An issue's ownership history, the claims that ended, the claims that lost and the ends that
+  came too late, is kept with its texts in the projection rather than in the state part a read
+  decodes (roll-lqjj.40, X16; `projection::ENCODING` 10, so the first command of this build replays
+  the journal once): the commands that print issues whole read it in, as they read in descriptions
+  and comments, and the store reads it in before it applies records about the issue. Each issue's
+  claim, generation and offline claims stay in the state part, which `claims`, `prime`, `ready` and
+  every ownership decision read, and so does who ended its last claim and how, which `close`,
+  `delete` and `update` ask of issues whose texts they do not read in; a close or delete that
+  published the claim it ended reads in the texts of the issues it named to tell whether a takeover
+  made it too late. At 200,000 events the state part is 8.63 MB rather than 9.45 MB and decodes in
+  36.5 ms rather than 40.7 ms in process, holding 45.3 MB rather than 51.4 MB, and the text file is
+  3.31 MB rather than 2.00 MB; on the ownership-heavy history 4.79 MB rather than 8.70 MB, 20.9 ms
+  rather than 32.8 ms and 26.7 MB rather than 47.1 MB (`cargo xtask timing --decode N`). `list`
+  takes 0.108 s rather than 0.114 s, `show` 0.100 s rather than 0.106 s and `ready` 0.146 s rather
+  than 0.160 s; a claim and a release, each published, cost what they did (0.57 s and 0.58 s,
+  against 0.61 s and 0.60 s; `cargo xtask timing --read N`, which now times them). Every answer is
+  unchanged, and format 1 too. `Issue::last_ended` is new: who ended the last claim and how,
+  whether or not the issue's texts are read in; `Issue::claim_history`, `lost_claims` and `stale`
+  are empty until they are.
+
 - A command that reads decodes dependency edges typed (roll-lqjj.39, X16): each edge's target is an
   issue's id, held as its 16 bytes, when its text is an id's spelling, and the text otherwise; its
   kind is one name for every edge of that kind in a state replayed or decoded; and the metadata each
