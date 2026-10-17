@@ -1,7 +1,7 @@
 //! What a write-back copies of the bytes a projection was read back from (roll-lqjj.44), in the
 //! cases the differential histories do not draw: ids taken in that sort before and among those
 //! held, which a machine's clock gone back mints, and a state part's table that every write-back
-//! adds to. [`super::read_back`] checks each write-back here as it checks the histories': what it
+//! adds to, made anew while issues it does not change are there to be copied. [`super::read_back`] checks each write-back here as it checks the histories': what it
 //! copied is what it writes when it copies nothing, byte for byte, and it reads back as written.
 
 use crate::json::{Object, Value};
@@ -102,6 +102,54 @@ fn a_state_part_table_is_made_anew_once_it_holds_an_eighth_more_entries_and_a_fe
     }
     assert!(most > TABLE_SLACK, "the table grew to {most} entries");
     assert!(made_anew >= 4, "made anew {made_anew} times");
+    let full = project(journal(&records)).unwrap();
+    let read = read_back(&projection, &mut file, WriteBack::Uncompacted);
+    assert!(equal(&super::whole(&read, &file), &full));
+}
+
+/// `value`, an event, made on the branch `branch`.
+fn placed_on(mut value: Value, branch: &str) -> Value {
+    let mut place = Object::new();
+    place.insert("branch".into(), Value::from(branch));
+    if let Value::Object(members) = &mut value {
+        members.insert("where".into(), Value::from(place));
+    }
+    value
+}
+
+/// A state part's table made anew holds only what the records then written name, so every record
+/// is written again, those of the issues that did not change too: copied, theirs would name entries
+/// of the table before by number, and read back as others. Issue 101 is placed on a branch once and
+/// never changed; issue 103 is moved to a branch of its own at every write-back, until the table is
+/// made anew several times, and [`read_back`] compares each write-back with one that copies nothing
+/// (found by the review of roll-lqjj.44: copying there passed every other test).
+#[test]
+fn a_table_made_anew_has_every_record_written_again_those_unchanged_too() {
+    let mut still = fields("still");
+    still.insert("key".into(), Value::from("pr-still"));
+    let mut moving = fields("moving");
+    moving.insert("key".into(), Value::from("pr-moving"));
+    let init = event(100, HERE, &[], "init", 100, Object::new());
+    let still = placed_on(event(101, HERE, &[100], "create", 101, still), "home");
+    let moving = event(103, HERE, &[101], "create", 103, moving);
+    let mut records = vec![
+        record(init, HERE, true),
+        record(still, HERE, true),
+        record(moving, HERE, true),
+    ];
+    let mut projection = project(journal(&records)).unwrap();
+    let mut file = TextFile::new();
+    let mut made_anew = 0;
+    for n in 104..=500 {
+        let set = event(n, HERE, &[n - 1], "set", 103, fields("moved"));
+        let set = record(placed_on(set, &format!("b{n}")), HERE, true);
+        records.push(set.clone());
+        projection = taken(&projection, &mut file, vec![set]);
+        let kept = projection.kept.as_deref().unwrap();
+        let entries = kept.state_table.names.len() + kept.state_table.values.len();
+        made_anew += usize::from(entries <= kept.fresh + 1);
+    }
+    assert!(made_anew >= 3, "made anew {made_anew} times");
     let full = project(journal(&records)).unwrap();
     let read = read_back(&projection, &mut file, WriteBack::Uncompacted);
     assert!(equal(&super::whole(&read, &file), &full));
