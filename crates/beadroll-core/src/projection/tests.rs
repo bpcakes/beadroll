@@ -15,6 +15,7 @@ use super::{Projection, Record, decode_state};
 
 mod awaiting;
 mod compacted;
+mod edges;
 mod finished;
 mod flawed;
 mod hostile;
@@ -630,6 +631,7 @@ fn read_back(projection: &Projection, file: &mut TextFile, back: WriteBack) -> P
     assert!(known::knows_alike(&decoded, projection, compacts));
     let mut state = decode_state(&encoded.state).unwrap();
     assert!(known::knows_writers_alone(&state, projection));
+    assert_eq!(edges::outline(&state), edges::outline(original.state()));
     read_in(&mut state, file, None);
     assert!(same(&state, original.state()));
     decoded
@@ -694,4 +696,5 @@ fn every_extension_is_replays_answer_or_declined() {
         tally.left,
         tally.cut
     );
+    edges::pinned("plain", &tally.answers);
 }

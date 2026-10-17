@@ -15,8 +15,8 @@ use super::super::{Extended, Record, project};
 use super::hostile::{HERE, event, fields, id, journal, record};
 use super::shown::replayed;
 use super::{
-    MACHINES, TextFile, World, WriteBack, answers_alike, equal, load, read_back, read_in, records,
-    same, whole,
+    MACHINES, TextFile, World, WriteBack, answers_alike, edges, equal, load, read_back, read_in,
+    records, same, whole,
 };
 
 /// Another machine.
@@ -838,7 +838,9 @@ const BEFORE_THE_INDEX: u64 = 0xbffd_7bce_ab55_9b7c;
 fn histories_heavy_in_imports_that_wait_agree_every_way_and_with_replay_before_the_index() {
     let mut digest = 0xcbf2_9ce4_8422_2325;
     let mut exercised = Exercised::default();
+    let mut answers = Vec::new();
     for seed in 0..30 {
+        let mut answered = edges::START;
         let mut world = World::new(20_261_015 + seed);
         let mut data = Object::new();
         data.insert("prefix".into(), Value::from("pr"));
@@ -847,13 +849,14 @@ fn histories_heavy_in_imports_that_wait_agree_every_way_and_with_replay_before_t
         let first = project(load(&world, &held)).unwrap();
         // each way it can be written back (roll-lqjj.43), the figures the store's
         let mut tracks = WriteBack::EVERY.map(|back| (first.clone(), TextFile::new(), back));
-        for _ in 0..50 {
+        for n in 0..50 {
             let batch = next_batch(&mut world);
             let reading_back = world.rng.chance(50);
             held.extend(&batch);
             let full = project(load(&world, &held)).unwrap();
             let replayed = replay(load(&world, &held)).unwrap();
             assert!(same(full.state(), &replayed) && answers_alike(&full, &replayed));
+            answered = edges::fold(answered, full.state(), n == 49);
             let records = records(&world, &batch);
             let about: Vec<EventId> = (records.iter())
                 .filter_map(|record| record.value.get("issue").and_then(Value::as_str))
@@ -885,6 +888,7 @@ fn histories_heavy_in_imports_that_wait_agree_every_way_and_with_replay_before_t
         asked::taken();
         digest = fnv(digest, rendered(&state).as_bytes());
         exercised.count(&state);
+        answers.push((seed, answered));
     }
     let seen = &exercised;
     assert!(
@@ -902,4 +906,5 @@ fn histories_heavy_in_imports_that_wait_agree_every_way_and_with_replay_before_t
         "{exercised:?}"
     );
     assert_eq!(digest, BEFORE_THE_INDEX, "{digest:#x}");
+    edges::pinned("awaiting", &answers);
 }

@@ -172,7 +172,7 @@ fn model(journal: &Journal, order: &Order<'_>, issue: &Issue, field: Field) -> S
 /// (a Beads export with closed issues imported, concurrent edits of short fields and of a status
 /// synced into conflicts, an issue closed, reopened and closed again, a claim released and claimed
 /// again, a close by its owner, an imported closed issue reopened and closed by its status).
-const FIXTURES: [(&str, &str, &str); 2] = [
+pub(super) const FIXTURES: [(&str, &str, &str); 2] = [
     (
         "golden",
         include_str!("shown/golden.journal"),
@@ -186,7 +186,7 @@ const FIXTURES: [(&str, &str, &str); 2] = [
 ];
 
 /// The journal of a fixture's lines.
-fn fixture(lines: &str) -> Journal {
+pub(super) fn fixture(lines: &str) -> Journal {
     let mut journal = Journal::new();
     for line in lines.lines() {
         let (file, record) = line.split_once('\t').expect("a file and a record");
