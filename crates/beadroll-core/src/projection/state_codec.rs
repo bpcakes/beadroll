@@ -117,7 +117,7 @@ pub(crate) fn read_state(r: &mut Reader<'_>) -> Result<State, Unreadable> {
 }
 
 /// An issue without its texts, and where they are (`place`, for texts written nowhere yet).
-fn write_issue(w: &mut Writer, issue: &Issue, place: TextPlace) {
+pub(super) fn write_issue(w: &mut Writer, issue: &Issue, place: TextPlace) {
     w.id(issue.uid);
     w.text(&issue.key);
     let stamps = &issue.stamps;

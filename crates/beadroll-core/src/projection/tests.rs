@@ -20,6 +20,7 @@ mod finished;
 mod flawed;
 mod hostile;
 mod known;
+mod marked;
 pub(crate) mod owned;
 mod reported;
 mod shown;
@@ -748,4 +749,5 @@ fn every_extension_is_replays_answer_or_declined() {
     // them, and later events adding to histories a projection read back holds
     assert!(tally.seen.more_than(5), "{:?}", tally.seen);
     assert_eq!(tally.owned, owned::DIFFERENTIAL, "{:#x}", tally.owned);
+    tally.marked.enough();
 }
