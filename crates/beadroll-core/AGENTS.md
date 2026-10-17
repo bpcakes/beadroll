@@ -135,10 +135,11 @@ consumer on tokio calls through `spawn_blocking`.
 - An issue's edges are typed (roll-lqjj.39): a target is `Target::Id` exactly when its text is an
   id's spelling (`Target::of`; an id that is no issue's stays an id), and text otherwise, shown and
   ordered by that text, so edges sort as the pairs of strings did; a kind is one `Arc<str>` for
-  every edge of it, through replay's `Names` and the projection's name table. The state part keeps
-  each edge and the events that added it; the metadata of each addition is with the issue's texts,
-  `None` in a state read alone until they are read in, which only an export (and applying more
-  events) needs. So an edge added or removed changes an issue's texts, and so does a create of a
+  every edge of it in a state replayed or decoded, through replay's `Names` and the projection's
+  name table (an extension interns its batch's alone, so an edge it adds holds its own until the
+  next decode). The state part keeps each edge and the events that added it; the metadata of each
+  addition is with the issue's texts, `None` in a state read alone until they are read in, which
+  only an export (and applying more events) needs. So an edge added or removed changes an issue's texts, and so does a create of a
   key another issue's import waits for, which makes that issue an edge: `Projection::extend`
   declines when such an issue's texts are not in, and `Projection::about` lists them for a store to
   read in first. Read an edge through `Issue::deps` and `Issue::dep_tags`, never the field: what an

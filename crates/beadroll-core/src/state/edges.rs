@@ -1,6 +1,6 @@
 //! An issue's dependency edges, held typed (roll-lqjj.39): each one's target an issue's id, or the
-//! text of a target that is no id, and its kind a name replay and a projection hold once for every
-//! edge of that kind; and the metadata each addition of an edge carries, which only an export prints
+//! text of a target that is no id, and its kind a name replay and a decoded projection hold once
+//! for every edge of that kind; and the metadata each addition of an edge carries, which only an export prints
 //! and a projection keeps with the issue's texts (roll-lqjj.6), so that a state read alone has the
 //! edges and the events behind them, and their metadata once its texts are read in.
 
@@ -85,7 +85,9 @@ impl PartialOrd for Target {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Edge {
     pub(crate) to: Target,
-    /// Held once for every edge of this kind, by replay and by a projection's name table.
+    /// Held once for every edge of this kind, by replay and by a projection's name table as it is
+    /// decoded; an extension interns the kinds of its batch alone, so an edge it adds holds its own
+    /// until the projection is next decoded.
     pub(crate) kind: Arc<str>,
 }
 

@@ -8,7 +8,7 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 - A command that reads decodes dependency edges typed (roll-lqjj.39, X16): each edge's target is
   an issue's id, held as its 16 bytes, when its text is an id's spelling, and the text otherwise;
-  its kind is one name for every edge of that kind; and the metadata each addition carries
+  its kind is one name for every edge of that kind in a state replayed or decoded; and the metadata each addition carries
   (`created_at`, `created_by` and whatever an import or the `dep_add` brought), which only `bead
   export` prints, is kept with the issue's texts (roll-lqjj.6) and read in where export and a later
   event need it. Readiness, blockers and dependents no longer parse each target as an id. At

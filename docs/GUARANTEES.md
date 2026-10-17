@@ -163,9 +163,17 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   of bead wrote, is never read.
 - Each issue's texts (descriptions, designs, acceptance criteria, notes,
   comments, and the metadata its dependencies were added with, which only
-  `export` prints) are kept beside the projection, in `<store>/projection-texts`:
-  `list`, `ready`, a write and a sync never read them, `show` reads only its
-  issue's, and `export`, `search` and `lint` read them all. It is a cache too:
+  `export` prints) are kept beside the projection, in `<store>/projection-texts`.
+  To print them, `show`, `comments` and the writes that answer with the issues
+  they wrote (`claim`, `takeover`, `update`) read those issues' alone, and
+  `export`, `search` and `lint` read them all; `list`, `ready`, `claims` and
+  `prime` print none. Any command that takes records into the projection (a
+  write its own, a reading command those written since it was saved, a sync
+  those it merges) first reads in the texts of every issue they are about, since
+  a long field set, a comment, a delete and a dependency added or removed may
+  change them, and of every issue whose import waits for a key a create among
+  them brings, since that create gives it an edge; and appends those that
+  changed to the file when it writes the projection back. It is a cache too:
   texts that cannot be read as written have the journal replayed.
 - Unlike the journal, neither file is flushed to disk: they are written whole
   and renamed into place, not fsynced. A crash or a power loss can leave either
