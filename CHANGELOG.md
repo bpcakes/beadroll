@@ -6,6 +6,23 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A write-back of the projection compacts what every event had seen only now and then (roll-lqjj.43,
+  X17): it had found every event the state names and cut the knowledge down to them at every
+  write-back, though a projection read back and extended holds what was kept and the batch's events.
+  The index now records how many events the knowledge held when it was last compacted, and a
+  write-back compacts again only once the events taken in since are more than an eighth of those
+  (`projection::COMPACTED`, `Projection::compaction_due`); between, it writes the knowledge as it
+  is. A projection replay makes is compacted as before. At 200,000 events the read after a write
+  takes 0.223 s rather than 0.263 s, and at 20,000 27.2 ms rather than 29.6 ms; its encode in
+  process 0.048 s rather than 0.103 s. Writes, syncs and reads that write nothing back do not move.
+  Between compactions the projection is up to an eighth larger in events: at the worst point, 10,989
+  events taken in at 200,000, its file is 19.12 MB rather than 18.40 MB, the heap a decoded
+  projection holds 77.1 MB rather than 75.7 MB, a write's heap peak 100.7 MB rather than 98.5 MB
+  (98.0 MB either way just after a compaction), and the read after a write still 0.284 s against the
+  base's 0.316 s there. Output, exit codes and format 1 are unchanged; `projection::ENCODING` is 8.
+  `cargo xtask timing --decode N` also times the encode, as it is and compacting, and the worst
+  point.
+
 - A write on a tracker with no remote keeps its transaction until the process exits, as an
   offline write does, rather than freeing it first for a publish with nowhere to go (roll-lqjj.50,
   X17): the command line now chooses where a write goes before it lets go of the transaction

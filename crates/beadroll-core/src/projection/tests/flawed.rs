@@ -253,6 +253,8 @@ fn many_seeds_past_integrity_entries() {
         tally.deferred += each.deferred;
         tally.uncompacted += each.uncompacted;
         tally.unnamed = tally.unnamed.max(each.unnamed);
+        tally.left += each.left;
+        tally.cut += each.cut;
         tally.longest = tally.longest.max(each.longest);
         tally.declined.extend(each.declined);
         for (kind, n) in each.past {

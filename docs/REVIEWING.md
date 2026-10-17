@@ -193,8 +193,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
   its new records and new attempt files' are applied after the projection when replay would apply
   them so: each new event has the whole frontier in its past, which a local write's always do and
   a merge's do when one writer worked at a time; they are then placed and applied with replay's
-  own steps, and of what every event had seen the projection keeps only the events the state names,
-  each with its causes, machine and actor, in its index. Anything else replays the journal,
+  own steps, and of what every event had seen the projection keeps the events the state names,
+  each with its causes, machine and actor, in its index (and between two compactions every event
+  taken in since: roll-lqjj.43, in the bullet on when it is written back below). Anything else
+  replays the journal,
   as every command did: a file replaced, rewritten, cut or gone, an earlier segment grown, a
   takeover (which can turn an earlier end of its claim stale), a record not its machine's own or
   not new, a new machine's journal, a cause behind the frontier, a batch with anything replay
@@ -509,9 +511,53 @@ These were decided deliberately. Report problems *with* them, not their existenc
   the read after it, which writes back, did not move (0.258 and 0.262 s, 0.273 and 0.281 s); a
   read after a run of writes pays for what they left, up to the bound above. The
   rest of the design, each step its own issue (the write's free, roll-lqjj.42, landed in the
-  bullet on the state a command answered from below; the knowledge compacted now and then, .43;
-  copying the bytes of what a write did not touch, .44; append-only parts, .45), is on
-  roll-lqjj.36.
+  bullet on the state a command answered from below; the knowledge compacted now and then, .43,
+  landed: the paragraph after this one; copying the bytes of what a write did not touch, .44;
+  append-only parts, .45), is on roll-lqjj.36.
+  What every event had seen is compacted now and then, not at every write-back (roll-lqjj.43, step
+  3). Every write-back found every event the state names (`named`, 24 ms of the 94 ms encode at
+  200,000 events on ec773f9) and cut the knowledge down to them (`Knowledge::kept`, 29 ms), though a
+  projection read back and extended holds what was kept and the batch's events. The index records
+  how many events the knowledge held when it was last compacted (`Projection::compacted`), and a
+  write-back compacts it again only once the events taken in since are more than an eighth of those
+  (`projection::COMPACTED`, `Projection::compaction_due`): at an eighth exactly it is written as it
+  is, one event more and it is compacted; a projection replay makes is compacted. Every write-back
+  is the store's `save`, through `Projection::encode`, so a read that caught the projection up, a
+  write past the 64th above, a merge, `info` and `machines` all follow the rule. Between compactions
+  the knowledge holds events the state no longer names, with the places and clocks replay gave them,
+  and nothing reads them. Applying an event asks `saw_at`, `saw` and `who` of events the state names
+  (a register's entries, label and dependency tags, removals, claims, and the create a waiting
+  import binds), and those answers do not depend on what else is held: a compaction keeps the place
+  and clock of each event it keeps, and every chain whole. `State::conflicts` names a register's
+  entries and asks who wrote them; the writers a state read alone holds are those `asked` names,
+  taken from the knowledge in its order; `info` and `machines` count the ids, the journals' lengths
+  and latest events and the frontier; the ancestry's chains, the chain breaks, each machine's last
+  applicable position and the frontier are what a compaction keeps whole anyway; the sums are of the
+  bytes written. Only `State::holds` and `State::events` of a projection's state list the events
+  taken in since, and no command asks them. A write that extends to write still writes back past a
+  64th of the projection's bytes, of a file up to an eighth larger in events between compactions,
+  which moves when it writes back, never what it answers. The differential tests keep every track
+  three ways (`WriteBack`: as the store writes it back, and at every write-back uncompacted or
+  compacted), each compared with replay at every batch, who wrote every event the state names and
+  whether each head had seen it included: in the 40 clean seeds 1,104 write-backs left events the
+  state no longer names (up to 49), and of the store's own 718 left such events and 330 compacted;
+  `projection::tests::compacted` pins the boundary on both sides, and the store's
+  `projection::tests::compacted` the rule through reads and writes that write back. Measured
+  (release, before and after alternated, best of two runs of five each, on a machine shared with
+  three other builds): `cargo xtask timing --read N` at 200,000 events the read after a write took
+  0.263 s and takes 0.223 s, at 20,000 29.6 and 27.2 ms; a write after a read 0.172 and 0.174 s, a
+  write after a write 0.172 and 0.179 s (32.7 and 31.7 ms, 30.9 and 31.5 ms at 20,000), which write
+  nothing back; `--sync N`, best of three, a sync after a local write 0.330 and 0.323 s and a write
+  published at once 0.608 and 0.626 s. In process (`--decode N`), at 200,000 events the projection
+  read back and extended by a comment encodes in 0.048 s where it took 0.103 s (3.6 and 8.1 ms at
+  20,000); one that compacts took 0.105 s and takes 0.122 s, two noisy runs each, once in about
+  11,000 events there. At the worst point, 10,989 events taken in after a compaction that left
+  88,152 (1,076 after 8,849 at 20,000), the index is 9.65 MB where compacted it is 8.93 MB, the file
+  19.12 MB rather than 18.40 MB (1.873 and 1.809 MB at 20,000), a decoded projection holds 77.1 MB
+  rather than 75.7 MB and decodes in 0.069 s rather than 0.062 s, a write's heap peak (`cargo xtask
+  bead`) 100.7 MB rather than 98.5 MB (10.22 and 10.00 MB at 20,000; just after a compaction 98.0
+  and 9.95 MB either way), and the read after a write takes 0.284 s against the base's 0.316 s
+  there.
 - A projection extended finishes only what the batch changed (roll-lqjj.17, Z02). Replay finishes a
   whole journal by deriving each issue's labels from the tags that remain and building the
   parent-child index from every issue's edges; a projection that redid all of that for every batch
