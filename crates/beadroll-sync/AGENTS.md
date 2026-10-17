@@ -31,7 +31,8 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   identity its locked phase took of it (`beadroll_store::claim_keys`, roll-lqjj.30); `Link::hashed`
   lists them (roll-lqjj.1); `Link::unpublished` and `Link::published_counts` take a segment's
   lines from the memo while the segment is unchanged.
-- `src/synchronise.rs`: `synchronise` and `Synced`, `adopt_published`, `publish_soon`,
+- `src/synchronise.rs`: `synchronise` and `Synced`, `adopt_published`, `publish_soon` (and its
+  two halves, `destination`, where a write would go, and `publish_soon_at`; roll-lqjj.50),
   `unpublished_count` (the memo's segment entries alone, `meta.json` as the command read it, the
   attempt files named by their bytes with `relative_name`; roll-lqjj.30 and roll-lqjj.47),
   `pause`, `ROUNDS`.

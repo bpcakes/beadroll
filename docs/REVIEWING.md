@@ -907,8 +907,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `Outcome::answered_from` hands a command's last state to the command line, and `run`, the
   process's own run, leaks it (`cli::ended_with`) rather than freeing it. Only the state a command
   answers from is handed over, the last it makes, so that no command holds two because of it: a run
-  that publishes what the command wrote (`wrote()`, not `--offline`) frees it first, as a publish
-  reads a state of its own, and `cargo xtask timing --import 14000` peaks at the same heap before
+  that publishes what the command wrote to a remote frees it first (the rule below, roll-lqjj.42
+  and roll-lqjj.50), as a publish reads a state of its own, and `cargo xtask timing --import 14000` peaks at the same heap before
   and after (165,555,895 and 165,554,920 bytes offline, 191,873,888 and 191,872,068 published). A
   state a command makes and does not answer from (`transition`'s check for a superseded claim, the
   state `still_held` reads) is freed as before. Libraries never leak: `run_with`, which `cargo
@@ -937,9 +937,24 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `writing` drops it; `create`, `comments add`, `dep add` and `remove`, `close`, `reopen` and
   `delete`, and `import` give it to their outcome (`Outcome::wrote_in`), which carries one thing, a
   state or a transaction (`Outcome::held`). `ended_with` keeps it by the rule above,
-  until the process exits, and frees it first when the run publishes (`wrote()`, not
-  `--offline`): a publish reads a state of its own, and the write's transaction freed before it is
-  what keeps a write published at once at the heap of a write that is not (below). A command that publishes or reads a state of its own before it answers lets go of
+  until the process exits, and frees it first when the run publishes to a remote: a publish reads
+  a state of its own, and the write's transaction freed before it is what keeps a write published
+  at once at the heap of a write that is not (below). Whether it does is chosen before the free
+  (`beadroll_sync::destination`, roll-lqjj.50): the command wrote (`wrote()`), was not
+  `--offline`, and the tracker has a remote with a URL. A write on a tracker with no remote
+  publishes nothing, and keeps its transaction as an offline write does; it freed it for a publish
+  with nowhere to go, the same 83 ms at 200,000 events (`cargo xtask timing --read N`,
+  `no_remote_write_seconds`: 0.264 s before, 0.174 s after, as an offline write after a read;
+  35.6 and 32.0 ms at 20,000). Choosing asks git only what the publish asked it when it chose
+  (a remote's URL by its name, the rules that rewrite a local path, the top of the checkout for a
+  relative one), so no run starts a git process it did not start before; a remote is chosen
+  whether or not it answers, so a write whose remote is down frees its transaction for the
+  publish that fails, as it did. A remote that cannot be chosen
+  (`.beadroll.json` naming one where the store coordinates through another) keeps the
+  transaction too: the run says why where a failed publish said it, in the same words
+  (`publish_soon_at`, "recorded locally, not yet published (CONFIG)"). A `close` or `delete` that
+  ends a claim still frees it before its publish, on a tracker with no remote as well, since it
+  reads the store after to answer (`superseded`). A command that publishes or reads a state of its own before it answers lets go of
   its transaction before either: `transition`, when a `close` or `delete` ends a claim, publishes
   inside the command and reads the store after. `update` without a claim already answered from its
   transaction's state (roll-lqjj.29) and keeps that; its transaction's index, the event ids and
@@ -950,7 +965,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   none of them keeps one, since each would hold it beside the state it reads or the publish it
   makes. The outcome's one slot limits what it carries, not what a command holds on the way to
   it, and nothing in the types makes a command let go before it publishes or reads: the order of
-  its code does (`finish` calls `ended_with` before `publish_soon`; `transition` drops its
+  its code does (`finish` calls `ended_with` before `publish_soon_at`; `transition` drops its
   transaction before it publishes and before `superseded` reads), and the tests below pin that
   order and its heap. `writing`, `writing_state`, `coordinated` and every library free as before, `run_with`
   frees what the outcome holds, and a write that fails frees its transaction where it fails, as a

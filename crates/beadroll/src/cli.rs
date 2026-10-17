@@ -25,7 +25,7 @@ use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Format, Int, Object, Value};
 use beadroll_core::text::json_ascii_bytes;
 use beadroll_store::{Settings, detect_actor, find_workspace, nearest_harness};
-use beadroll_sync::publish_soon;
+use beadroll_sync::publish_soon_at;
 
 use crate::commands::{self, Context, Failure, Held, Line, Outcome, Tone};
 use output::{Stream, Unwritten, emit};
@@ -277,8 +277,9 @@ fn execute(request: &Request, colors: Colors, exits: bool) -> Result<Option<Stri
 type Answer = (Option<Value>, Option<Vec<Line>>);
 
 /// What follows a command: its own output written (`export`), what it wrote published unless it
-/// was `--offline`, and the count of events not yet published added; the result and lines then,
-/// or `None` when a reader went away. What the command held goes first ([`ended_with`]).
+/// was `--offline` or the tracker has no remote, and the count of events not yet published added;
+/// the result and lines then, or `None` when a reader went away. What the command held goes first
+/// ([`ended_with`]) when what it wrote is to reach a remote, and is kept otherwise.
 fn finish(
     outcome: Outcome,
     ws: Option<&beadroll_store::Workspace>,
@@ -294,8 +295,12 @@ fn finish(
         held,
     } = outcome;
     let ws = ws.filter(|_| !settled);
-    let publishing = ws.is_some_and(|ws| ws.wrote() && !offline);
-    ended_with(held, publishing, exits);
+    // where what the command wrote goes, chosen before what it held is let go of: a write with no
+    // remote to reach keeps it, as an offline write does (roll-lqjj.50)
+    let destination = ws
+        .filter(|ws| ws.wrote())
+        .and_then(|ws| beadroll_sync::destination(ws, offline, remote.as_deref()));
+    ended_with(held, matches!(destination, Some(Ok(_))), exits);
     if let Some(raw) = raw {
         // the command's own output (`export`): written as the command runs, so a reader that went
         // away ends the run there, and a failed write is the command's IO error
@@ -310,10 +315,7 @@ fn finish(
     let Some(ws) = ws else {
         return Ok(Some((result, lines)));
     };
-    if ws.wrote()
-        && !offline
-        && let Some(warning) = publish_soon(ws, offline, remote.as_deref())
-    {
+    if let Some(warning) = publish_soon_at(ws, destination) {
         // a local write is published at once, as a close is
         if let Some(lines) = &mut lines {
             lines.push(Line::toned(Tone::Warning, warning));

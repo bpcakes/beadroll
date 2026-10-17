@@ -433,16 +433,41 @@ fn count_of(value: &Value) -> Option<Int> {
 /// Ownership ended or a local write happened: tell the other machines now rather than at the next
 /// routine sync. A failure leaves the local write standing, and says so.
 pub fn publish_soon(ws: &Workspace, offline: bool, remote: Option<&OsStr>) -> Option<String> {
+    publish_soon_at(ws, destination(ws, offline, remote))
+}
+
+/// Where [`publish_soon`] would publish: nowhere (`None`) when `offline`, or when the tracker has
+/// no remote to publish to; else the remote, or why it could not be chosen. A command line chooses
+/// it before it lets go of what a write held, so that a write with nowhere to go keeps that to the
+/// end of the process as an offline write does (roll-lqjj.50). Choosing asks git what choosing
+/// asked it when the publish chose: a remote's URL by its name, the rules that rewrite a local
+/// path, the top of the checkout for a relative one, how an older version saved a remembered
+/// remote; nothing more.
+pub fn destination(
+    ws: &Workspace,
+    offline: bool,
+    remote: Option<&OsStr>,
+) -> Option<Result<Endpoint, Error>> {
     if offline {
         return None;
     }
-    let outcome = ws
-        .endpoint(remote)
-        .map_err(Error::from)
-        .and_then(|remote| match remote {
-            None => Ok(()),
-            Some(remote) => publish_to(ws, &remote),
-        });
+    match ws.endpoint(remote) {
+        Ok(Some(remote)) if !remote.url.is_empty() => Some(Ok(remote)),
+        Ok(_) => None,
+        Err(error) => Some(Err(error.into())),
+    }
+}
+
+/// [`publish_soon`] to the [`destination`] chosen already.
+pub fn publish_soon_at(
+    ws: &Workspace,
+    destination: Option<Result<Endpoint, Error>>,
+) -> Option<String> {
+    let outcome = match destination {
+        None => Ok(()),
+        Some(Ok(remote)) => publish_to(ws, &remote),
+        Some(Err(error)) => Err(error),
+    };
     not_yet_published(outcome)
 }
 

@@ -225,6 +225,12 @@ impl World {
         self.bead(&["comments", "add", "ex-1", text, "--offline"])
     }
 
+    /// Takes the checkout's origin away, the remote its store publishes to, so that the store has
+    /// none: a write that is not `--offline` then publishes nowhere (roll-lqjj.50).
+    pub(super) fn without_remote(&self) -> Result<(), Failure> {
+        git(&self.checkout, &["remote", "remove", "origin"])
+    }
+
     /// How long `bead ARGS` took, in seconds.
     pub(super) fn timed(&self, args: &[&str]) -> Result<f64, Failure> {
         let clock = Instant::now();

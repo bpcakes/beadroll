@@ -92,7 +92,8 @@ storage, protocol behavior and fault recovery.
   of its own before it answers lets go of its transaction before either (`transition`, when it ends
   a claim), so that none is held beside another. The one slot of `Outcome::held` does not see to
   that: it limits what the outcome carries, not what a command holds on the way to it. The order
-  of the code does (`finish` calls `ended_with` before `publish_soon`; `transition` drops its
+  of the code does (`finish` chooses the write's `destination`, calls `ended_with`, then
+  `publish_soon_at`; `transition` drops its
   transaction before it publishes), and the tests that pin it: `cli::ending` the order,
   `xtask/tests/heap` the heap (`xtask/AGENTS.md`). Library code never leaks (`docs/REVIEWING.md`
   §2, roll-lqjj.32, roll-lqjj.42), which the same heap tests see: nothing of the tracker is held
