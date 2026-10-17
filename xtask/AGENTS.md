@@ -54,7 +54,10 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
   `timing --decode N`, a projection of N events decoded in this process, its state part alone (what
   a command that only reads decodes) and whole with its index (what a write decodes), with the heap
   a decoded state holds and the bytes of the state part, the index and the texts (roll-lqjj.35,
-  X16); `timing/growth.rs`: the
+  X16), and what writing it back costs: encoded after a comment as a write-back between
+  compactions encodes it and as one that compacts it, and at the worst point, an eighth more
+  events taken in than a compaction left, its index's bytes, its decode, its heap whole and its
+  encode (roll-lqjj.43, X17); `timing/growth.rs`: the
   growth guards only time can keep (roll-lqjj.34, X15), tests ignored by every other run that time
   planning an import, its dry run, a re-import, replay of imports that wait for keys, replay of
   copies two machines minted alike (`timing/renames.rs`'s journals; roll-lqjj.38, X03) and a
@@ -199,7 +202,8 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
 - `cargo run --release --package xtask -- timing --renames 8000`: replay renaming 8,000 copies two
   machines minted alike, against 16,000 creates renamed by nobody
 - `cargo run --release --package xtask -- timing --decode 200000`, and with `--ownership`,
-  `--churn` or `--text`: the projection of 200,000 events decoded, its state part alone and whole
+  `--churn` or `--text`: the projection of 200,000 events decoded, its state part alone and whole,
+  and encoded, as it was made and at the worst point between two compactions
 - `cargo test -p xtask`, and `cargo nextest run -p xtask -E 'binary(heap)'` for bead's heap alone
 - `cargo nextest run --release --locked --package xtask --run-ignored only --test-threads 1 -E
   'test(/^timing::growth::/)'`: the growth guards, as the nightly workflow runs them
