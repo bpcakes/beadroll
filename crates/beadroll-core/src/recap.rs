@@ -38,9 +38,6 @@ pub struct Unseen {
     /// The frontier of every event whose causes the journal holds, those shown and those left out:
     /// what a recap keeps once it has shown them.
     pub frontier: Vec<EventId>,
-    /// How many events that frontier covers. Of two frontiers taken of one journal as it grows,
-    /// the one that covers more saw everything the other did.
-    pub covered: u64,
 }
 
 /// What a recap of `journal`, a settled one, shows through `window`, and what it has seen then.
@@ -68,7 +65,6 @@ pub fn unseen(journal: &Journal, window: Window<'_>) -> Unseen {
         events,
         earlier,
         frontier: frontier(journal, &ordered),
-        covered: ordered.len() as u64,
     }
 }
 

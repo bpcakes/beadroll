@@ -60,7 +60,9 @@ the history. Events waiting for causes not here yet are counted and show once
 they arrive; an ownership attempt shows once the remote has accepted it. The
 first recap on a machine shows the last 24 hours and counts the events before
 them, and a tracker first seen later shows what came since the last recap that
-marked anything seen, counted the same way. `--all` shows every event.
+marked anything seen, counted the same way. Those hours are the events' own
+times, as their writers' clocks gave them: bead keeps no record of when an event
+arrived. `--all` shows every event.
 
 Only output to a terminal marks what it showed as seen, and only once it is
 written. A pipe, a file and `--json` only show it unless `--advance` is given;
@@ -70,18 +72,23 @@ written is an `IO` error with status 1, and the next recap shows the same
 activity again, as it does after one killed before it saved. Two recaps at once
 may show the same events: each saves under a lock held only while it reads and
 replaces the cursor, never while it reads a journal or writes its answer, and
-neither loses the other's mark.
+neither loses the other's mark. When both marked one tracker, the cursor keeps
+both frontiers, since two reads of a store that a sync is writing need not see
+one another's events, until the next recap replaces them with its own.
 
 A tracker that cannot be read, its journal or a directory whose name is no
-workspace id, is reported with its error and keeps its mark, and the others
-still show. Integrity problems are counted under their tracker, which `bead
-info` lists, and its cursor moves past them all the same. A `meta.json` that
-cannot be read does not stop recap; the tracker is then named as its own
-journal names it.
+workspace id, is reported with its error, and the others still show. The
+cursor keeps what it held of it: its frontier, or, for a tracker never shown,
+the window it is owed, so that the first recap that can read it shows what came
+since that window rather than since the latest recap. Integrity problems are
+listed under their tracker, each as `bead info` gives it, and its cursor moves
+past them all the same. A `meta.json` that cannot be read does not stop recap;
+the tracker is then named as its own journal names it.
 
 The cursor is `$BEAD_HOME/.recap.json`, private and replaced atomically, beside
 its lock file `.recap.lock`; both names start with a dot, which no workspace id
-can. It belongs to the home, whoever runs bead there, and is never synced. One
+can. It holds the time of the last recap that marked anything and, for each
+tracker, the frontier of what was shown or the start of the window it is owed. It belongs to the home, whoever runs bead there, and is never synced. One
 that cannot be read, or is not one, is an `IO` error and is never reset: repair
 it, or remove it to start again from the last 24 hours.
 

@@ -135,6 +135,35 @@ fn a_tracker_that_cannot_be_read_is_reported_and_the_others_still_show() {
 }
 
 #[test]
+fn a_tracker_unreadable_when_first_found_is_owed_its_window_until_it_is_shown() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let (_other, b) = beside(&a, Machine::new);
+    a.bead(["init", "--prefix", "one"]);
+    create(&a, "Seen");
+    recap(&a);
+    b.bead(["init", "--prefix", "two"]);
+    create(&b, "Written after the last recap");
+    let store = b.bead(["info"]).unwrap()["path"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let segment = super::segments(std::path::Path::new(&store)).pop().unwrap();
+    let original = std::fs::read(&segment).unwrap();
+    std::fs::remove_file(&segment).unwrap();
+    std::fs::create_dir(&segment).unwrap();
+    // the new tracker cannot be read while another moves the cursor on, past its event's time
+    create(&a, "Moves the cursor on");
+    assert_eq!(each(&recap(&a), "title"), ["Moves the cursor on"]);
+    assert!(a.run(["recap"]).stdout.contains("cannot be read"));
+    std::fs::remove_dir(&segment).unwrap();
+    std::fs::write(&segment, original).unwrap();
+    let repaired = recap(&a);
+    assert_eq!(each(&repaired, "title"), ["Written after the last recap"]);
+    assert!(events(&recap(&a)).is_empty());
+}
+
+#[test]
 fn the_cursor_files_cannot_be_taken_for_a_store() {
     let sandbox = crate::sandbox();
     let mut a = Machine::new(&sandbox, "a");
@@ -163,7 +192,9 @@ fn a_cursor_that_is_not_one_is_reported_and_never_replaced() {
         "[]",
         r#"{"version":2,"at":null,"workspaces":{}}"#,
         r#"{"version":1,"at":-5,"workspaces":{}}"#,
-        r#"{"version":1,"at":null,"workspaces":{"x":{"frontier":["not-an-id"],"covered":1}}}"#,
+        r#"{"version":1,"at":null,"workspaces":{"x":{"frontier":["not-an-id"]}}}"#,
+        r#"{"version":1,"at":null,"workspaces":{"x":{"frontier":[],"since":5}}}"#,
+        r#"{"version":1,"at":null,"workspaces":{"x":{"since":-5}}}"#,
         r#"{"version":1,"at":null,"workspaces":{"x":["01a14b4b-95d9-7c23-b4ee-7497eb80f4e6"]}}"#,
         r#"{"version":1,"at":null,"workspaces":{},"future":true}"#,
     ] {
@@ -204,6 +235,6 @@ fn the_cursor_keeps_a_frontier_however_long_the_history() {
     let cursor = parse_json(&cursor).unwrap();
     let marks = cursor["workspaces"].as_object().unwrap();
     let (_, mark) = marks.iter().next().unwrap();
+    assert_eq!(mark.as_object().unwrap().len(), 1, "{cursor:?}");
     assert_eq!(mark["frontier"].as_array().unwrap().len(), 1, "{cursor:?}");
-    assert_eq!(mark["covered"].as_i64(), Some(32));
 }

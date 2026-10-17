@@ -10,7 +10,7 @@ use beadroll_core::journal::Event;
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::op::Op;
 use beadroll_core::recap::{Window, unseen};
-use beadroll_core::state::{Issue, State};
+use beadroll_core::state::{Integrity, Issue, State};
 use beadroll_core::text::str_of;
 use beadroll_core::time::event_time;
 use beadroll_core::view::icon;
@@ -61,10 +61,11 @@ pub(crate) struct RecapArgs {
 }
 
 /// What is new in every tracker under `BEAD_HOME`: for each, the events not below the frontier the
-/// cursor keeps of it, or, for one it has no mark of, those since the last recap marked anything
-/// (the last day, on a machine that never did). With it, when the recap marks what it shows as
-/// seen and that changes the cursor, what records that once the answer has been written. A tracker
-/// that cannot be read says why, keeps its mark, and lets the others show.
+/// cursor keeps of it, or, for one never shown, those since the window it is owed or else since
+/// the last recap marked anything (the last day, on a machine that never did). With it, when the
+/// recap marks what it shows as seen and that changes the cursor, what records that once the
+/// answer has been written. A tracker that cannot be read says why and lets the others show; it
+/// keeps its frontier, or, never shown, is owed its window from then on ([`owed`]).
 pub(crate) fn recap(
     settings: &Arc<Settings>,
     args: &RecapArgs,
@@ -76,14 +77,24 @@ pub(crate) fn recap(
     for found in home_stores(settings)? {
         let part = match found {
             Ok(ws) => {
-                let window = match (args.all, cursor.marks.get(&ws.id)) {
+                let mark = cursor.marks.get(&ws.id);
+                let window = match (args.all, mark) {
                     (true, _) => Window::All,
-                    (false, Some(mark)) => Window::After(&mark.frontier),
+                    (false, Some(Mark::Shown(frontier))) => Window::After(frontier),
+                    (false, Some(Mark::Owed(since))) => Window::Since(*since),
                     (false, None) => Window::Since(first),
                 };
-                tracker(&ws, window, &aliases, args.layout)
+                tracker(&ws, window, owed(mark, first), &aliases, args.layout)
             }
-            Err((name, error)) => Part::unusable(&name, None, Value::Null, &error.into()),
+            Err(unusable) => {
+                let id = unusable.id.as_deref();
+                let mark = id.and_then(|id| owed(cursor.marks.get(id), first));
+                let mark = mark
+                    .zip(id)
+                    .map(|(since, id)| (id.to_owned(), Mark::Owed(since)));
+                let failure = Failure::from(unusable.error);
+                Part::unusable(&unusable.name, None, Value::Null, &failure, mark)
+            }
         };
         trackers.push(Value::from(part.value));
         lines.extend(part.lines);
@@ -106,8 +117,21 @@ pub(crate) fn recap(
     Ok((Outcome::new(result, lines), delivered))
 }
 
-/// One tracker's part of the answer: its JSON, its lines, and its id and mark once shown, none
-/// when it could not be read.
+/// The window a tracker that cannot be read is owed from then on, in milliseconds since 1970: the
+/// one it is owed already, or, when it has never been shown, where a tracker first seen now starts
+/// (`first`). None once it has been shown: its frontier stays as it is. Without it, a tracker found
+/// unreadable would start at the next recap's time instead, and what came before that would be
+/// counted as earlier without ever being shown.
+fn owed(mark: Option<&Mark>, first: u64) -> Option<u64> {
+    match mark {
+        Some(Mark::Shown(_)) => None,
+        Some(Mark::Owed(since)) => Some(*since),
+        None => Some(first),
+    }
+}
+
+/// One tracker's part of the answer: its JSON, its lines, and its id and the mark the cursor is to
+/// keep of it: its frontier once shown, the window it is owed while it cannot be read, or none.
 struct Part {
     value: Object,
     lines: Vec<Line>,
@@ -116,8 +140,14 @@ struct Part {
 
 impl Part {
     /// A tracker that cannot be read: its id (or its directory's name), its name and last sync as
-    /// far as they are known, and why.
-    fn unusable(workspace: &str, name: Option<Value>, synced: Value, failure: &Failure) -> Part {
+    /// far as they are known, and why; with the window it is owed meanwhile, when it is.
+    fn unusable(
+        workspace: &str,
+        name: Option<Value>,
+        synced: Value,
+        failure: &Failure,
+        mark: Option<(String, Mark)>,
+    ) -> Part {
         let shown = name.as_ref().map(str_of);
         let mut error = Object::new();
         error.insert("code".into(), Value::from(failure.code.as_str()));
@@ -134,11 +164,7 @@ impl Part {
                 format!("  cannot be read: {}", failure.printed()),
             ),
         ];
-        Part {
-            value,
-            lines,
-            mark: None,
-        }
+        Part { value, lines, mark }
     }
 }
 
@@ -157,6 +183,7 @@ fn heading(name: Option<&str>, workspace: &str) -> Line {
 fn tracker(
     ws: &Workspace,
     window: Window<'_>,
+    owed: Option<u64>,
     aliases: &BTreeMap<String, String>,
     layout: Layout,
 ) -> Part {
@@ -168,7 +195,10 @@ fn tracker(
         .and_then(|journal| Ok((view_outline(ws)?, journal)));
     let (st, journal) = match read {
         Ok(read) => read,
-        Err(failure) => return Part::unusable(&ws.id, named, synced, &failure),
+        Err(failure) => {
+            let mark = owed.map(|since| (ws.id.clone(), Mark::Owed(since)));
+            return Part::unusable(&ws.id, named, synced, &failure, mark);
+        }
     };
     let name = (named.or_else(|| st.name().filter(|name| name.truthy()).cloned()))
         .map_or_else(|| ws.id.clone(), |name| str_of(&name));
@@ -213,20 +243,16 @@ fn tracker(
     value.insert("pending".into(), number(st.pending().len() as u64));
     let integrity = st.integrity().iter().map(|row| Value::from(row.to_value()));
     value.insert("integrity".into(), Value::Array(integrity.collect()));
-    let mark = Mark {
-        frontier: shown.frontier,
-        covered: shown.covered,
-    };
     Part {
         value,
         lines,
-        mark: Some((ws.id.clone(), mark)),
+        mark: Some((ws.id.clone(), Mark::Shown(shown.frontier))),
     }
 }
 
 /// The lines a readable tracker's part opens with: its heading and its last sync; where a first
-/// recap's window starts, and how many `earlier` events it left out; and, from `st`, how many
-/// integrity problems it has and how many events wait for causes.
+/// recap's window starts, and how many `earlier` events it left out; and, from `st`, each of its
+/// integrity problems and how many events wait for causes.
 fn opening(
     name: &str,
     workspace: &str,
@@ -255,8 +281,12 @@ fn opening(
     let count = |n: usize, what: &str| format!("{n} {what}{}", if n == 1 { "" } else { "s" });
     if !st.integrity().is_empty() {
         let problems = count(st.integrity().len(), "integrity problem");
-        let line = format!("  {problems}: bead info lists them");
-        lines.push(Line::toned(Tone::Warning, line));
+        lines.push(Line::toned(Tone::Warning, format!("  {problems}:")));
+        let each = st
+            .integrity()
+            .iter()
+            .map(|row| format!("    {}", problem(row)));
+        lines.extend(each.map(|line| Line::toned(Tone::Warning, line)));
     }
     if !st.pending().is_empty() {
         let waiting = count(st.pending().len(), "event");
@@ -264,6 +294,19 @@ fn opening(
         lines.push(Line::toned(Tone::Warning, line));
     }
     lines
+}
+
+/// An integrity problem as `bead info` gives it, in a line: what it is about (the issue, else the
+/// event), what is wrong, and where the record was found, when it was a record that could not be
+/// used.
+fn problem(row: &Integrity) -> String {
+    let about = row.issue.as_deref().or(row.event.as_deref());
+    match (about, row.origin.as_deref()) {
+        (Some(about), Some(origin)) => format!("{about}: {} ({origin})", row.problem),
+        (Some(about), None) => format!("{about}: {}", row.problem),
+        (None, Some(origin)) => format!("{origin}: {}", row.problem),
+        (None, None) => row.problem.clone(),
+    }
 }
 
 /// `n` as JSON.

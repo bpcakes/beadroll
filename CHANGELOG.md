@@ -13,8 +13,9 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   does, with its title, summary, machine id and commit. Output to a terminal marks what it showed as
   seen; pipes, files and `--json` only look unless `--advance`. The first recap shows the last 24
   hours, `--all` everything. The cursor keeps each tracker's frontier of what was shown, so a late
-  sync or a clock behind cannot hide an event and the cursor does not grow with the history; a
-  tracker that cannot be read is reported while the others show.
+  sync or a clock behind cannot hide an event and the cursor does not grow with the history.
+  Integrity problems are listed under their tracker; a tracker that cannot be read is reported
+  while the others show, and one never shown keeps the window it is owed until it can be.
 
 - A command that reads decodes dependency edges typed (roll-lqjj.39, X16): each edge's target is an
   issue's id, held as its 16 bytes, when its text is an id's spelling, and the text otherwise; its

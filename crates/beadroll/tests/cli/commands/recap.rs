@@ -57,12 +57,18 @@ fn newer_event(machine: &Machine, op: &str) {
 fn the_first_recap_shows_the_last_day_and_counts_what_came_before() {
     let sandbox = crate::sandbox();
     let a = crate::rust_only(&sandbox, "a");
-    let days_ago = |days: u32| format!("clock@always=offset(-{days}d)");
+    // each event's own time, as its writer's clock gave it: an hour either side of a day ago
+    let hours_ago = |hours: u32| format!("clock@always=offset(-{hours}h)");
     a.cmd(["init", "--prefix", "ex"])
-        .env("BEAD_FAILPOINTS", days_ago(3))
+        .env("BEAD_FAILPOINTS", hours_ago(26))
         .json();
-    for title in ["Last week's", "The day before's"] {
-        let old = a.cmd(["create", title]).env("BEAD_FAILPOINTS", days_ago(2));
+    for (title, hours) in [
+        ("A day and an hour ago", 25),
+        ("Twenty-three hours ago", 23),
+    ] {
+        let old = a
+            .cmd(["create", title])
+            .env("BEAD_FAILPOINTS", hours_ago(hours));
         old.json();
     }
     create(&a, "Today's");
@@ -70,23 +76,28 @@ fn the_first_recap_shows_the_last_day_and_counts_what_came_before() {
     assert!(
         shown
             .stdout
-            .contains("2 earlier events not shown (--all shows them)"),
+            .contains("1 earlier event not shown (--all shows it)"),
         "{}",
         shown.stdout
     );
     let first = recap(&a);
-    assert_eq!(each(&first, "title"), ["Today's"]);
+    assert_eq!(each(&first, "title"), ["Twenty-three hours ago", "Today's"]);
     let tracker = &first["workspaces"][0];
-    assert_eq!(tracker["earlier"].as_i64(), Some(2));
+    assert_eq!(tracker["earlier"].as_i64(), Some(1));
     assert!(tracker["since"].as_str().is_some_and(|s| s.ends_with('Z')));
-    // what the first recap covered is seen, the events it left out included
+    // what the first recap covered is seen, the event it left out included
     create(&a, "Tomorrow's");
     let later = recap(&a);
     assert_eq!(each(&later, "title"), ["Tomorrow's"]);
     assert_eq!(later["workspaces"][0]["since"], Json::Null);
     assert!(events(&recap(&a)).is_empty());
     let every = a.bead(["recap", "--all"]).unwrap();
-    let titles = ["Last week's", "The day before's", "Today's", "Tomorrow's"];
+    let titles = [
+        "A day and an hour ago",
+        "Twenty-three hours ago",
+        "Today's",
+        "Tomorrow's",
+    ];
     assert_eq!(each(&every, "title"), titles);
 }
 
@@ -199,6 +210,12 @@ fn the_three_layouts_show_the_same_activity() {
         full.contains(&format!("commit={}", commit.trim())),
         "{full}"
     );
+    // --format shapes human output only: --json is the same under every layout
+    let plain = a.bead(["recap", "--all"]).unwrap();
+    for layout in ["events", "issues", "full"] {
+        let json = a.bead(["recap", "--all", "--format", layout]).unwrap();
+        assert_eq!(json, plain, "--format {layout}");
+    }
     let wrong = a.run(["recap", "--format", "table", "--json"]);
     assert_eq!((wrong.returncode(), code(&wrong)), (2, "USAGE".to_owned()));
 }
@@ -300,10 +317,12 @@ fn an_event_this_bead_cannot_apply_is_reported_and_the_cursor_still_moves() {
     let later = recap(&a);
     assert_eq!(each(&later, "title"), ["After"]);
     let told = a.run(["recap"]).stdout;
-    assert!(
-        told.contains("1 integrity problem: bead info lists them"),
-        "{told}"
+    assert!(told.contains("  1 integrity problem:\n"), "{told}");
+    let listed = format!(
+        "    {}: unknown operation 'archive'\n",
+        problems[0]["issue"].as_str().unwrap()
     );
+    assert!(told.contains(&listed), "{told}");
     assert!(told.contains("No new activity"), "{told}");
 }
 

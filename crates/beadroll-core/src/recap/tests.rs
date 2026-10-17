@@ -88,7 +88,6 @@ fn a_growing_store_shows_every_event_once_and_in_causal_order() {
                 if !turned {
                     assert_eq!(shown, new, "{at}: shown again");
                 }
-                assert_eq!(got.covered, ordered.len() as u64, "{at}");
                 assert!(got.frontier.iter().all(|id| ordered.contains(id)), "{at}");
                 quarantined += quarantined_now.len();
                 (frontier, before, quarantined_before) = (got.frontier, now, quarantined_now);
@@ -142,10 +141,7 @@ fn a_linear_history_keeps_its_last_event_and_shows_what_comes_after() {
     let (c, ec) = event(3, T + 2, "0000aa", &[b], "c");
     let three = journal(&[(&ea, false), (&eb, false), (&ec, false)]);
     let later = unseen(&three, Window::After(&first.frontier));
-    assert_eq!(
-        (later.events, later.frontier, later.covered),
-        (vec![c], vec![c], 3)
-    );
+    assert_eq!((later.events, later.frontier), (vec![c], vec![c]));
     assert!(unseen(&three, Window::After(&[c])).events.is_empty());
 }
 
@@ -200,7 +196,7 @@ fn a_first_window_shows_what_is_recent_and_counts_the_rest() {
     let all = journal(&[(&ei, false), (&ea, false), (&eb, false)]);
     let window = unseen(&all, Window::Since(T - 1_000_000));
     assert_eq!((window.events, window.earlier), (vec![b], 1));
-    assert_eq!((window.frontier, window.covered), (vec![b], 3));
+    assert_eq!(window.frontier, [b]);
     assert_eq!(
         unseen(&all, Window::All).events,
         [a, b],

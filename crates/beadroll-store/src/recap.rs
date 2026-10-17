@@ -22,9 +22,19 @@ const CURSOR: &str = ".recap.json";
 /// The file whose lock a recap holds while it reads and replaces the cursor, and only then.
 const LOCK: &str = ".recap.lock";
 
-/// A directory of `BEAD_HOME` that holds a journal: the store it is, or its name as printed and
-/// why it is none bead could have made.
-pub type Found = Result<Workspace, (String, Error)>;
+/// A directory of `BEAD_HOME` that holds a journal but cannot be read as a store.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Unusable {
+    /// Its name, as printed.
+    pub name: String,
+    /// Its workspace id, when its name is one: what the cursor keeps it under meanwhile.
+    pub id: Option<String>,
+    /// Why it cannot be read.
+    pub error: Error,
+}
+
+/// A directory of `BEAD_HOME` that holds a journal: the store it is, or why it cannot be read as one.
+pub type Found = Result<Workspace, Unusable>;
 
 /// Every directory of `BEAD_HOME` that holds a journal (an `events` directory), in name order. No
 /// checkout is consulted and nothing is written; a home that is not there holds none.
@@ -32,14 +42,26 @@ pub fn home_stores(settings: &Arc<Settings>) -> Result<Vec<Found>, Error> {
     let mut stores = Vec::new();
     for path in dir_entries(&settings.home()?)? {
         let name = path.file_name().unwrap_or_default();
-        let shown = printed_text(name.as_bytes());
+        // bead names a store by its workspace id, which no other name can be
+        let store = (name.to_str()).and_then(|id| {
+            Workspace::new(Arc::clone(settings), id, None, None, Object::new()).ok()
+        });
+        let (shown, id) = (
+            printed_text(name.as_bytes()),
+            store.as_ref().map(|ws| ws.id.clone()),
+        );
+        let unusable = |error: Error| Unusable {
+            name: shown.clone(),
+            id: id.clone(),
+            error,
+        };
         // a temporary file of an atomic write elsewhere in the home may go once listed
         match std::fs::metadata(&path) {
             Ok(meta) if meta.is_dir() => {}
             Ok(_) => continue,
             Err(error) if error.kind() == ErrorKind::NotFound => continue,
             Err(error) => {
-                stores.push(Err((shown, IoError::at(&error, &path).into())));
+                stores.push(Err(unusable(IoError::at(&error, &path).into())));
                 continue;
             }
         }
@@ -48,39 +70,54 @@ pub fn home_stores(settings: &Arc<Settings>) -> Result<Vec<Found>, Error> {
             Ok(meta) if meta.is_dir() => {}
             Ok(_) => {
                 let why = format!("{} is not a directory", events.display());
-                stores.push(Err((shown, Error::io_message(why))));
+                stores.push(Err(unusable(Error::io_message(why))));
                 continue;
             }
             Err(error) if error.kind() == ErrorKind::NotFound => continue,
             Err(error) => {
-                stores.push(Err((shown, IoError::at(&error, &events).into())));
+                stores.push(Err(unusable(IoError::at(&error, &events).into())));
                 continue;
             }
         }
-        // bead names a store by its workspace id, which no other name can be
-        let store = (name.to_str())
-            .and_then(|id| Workspace::new(Arc::clone(settings), id, None, None, Object::new()).ok())
-            .ok_or_else(|| {
-                let why = format!(
-                    "{} holds a journal, but bead made no store there: its name is not a \
-                     workspace id",
-                    path.display()
-                );
-                (shown.clone(), Error::Config(why))
-            });
-        stores.push(store);
+        stores.push(store.ok_or_else(|| {
+            unusable(Error::Config(format!(
+                "{} holds a journal, but bead made no store there: its name is not a workspace id",
+                path.display()
+            )))
+        }));
     }
     Ok(stores)
 }
 
-/// What a recap has shown of one tracker: the frontier of it (`beadroll_core::recap`), and how
-/// many events that covers.
+/// What the cursor keeps of one tracker.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Mark {
-    /// The events nothing else shown builds on, sorted.
-    pub frontier: Vec<EventId>,
-    /// How many events are below it.
-    pub covered: u64,
+pub enum Mark {
+    /// What recaps have shown of it: the frontier of those events (`beadroll_core::recap`), sorted.
+    Shown(Vec<EventId>),
+    /// Where the window it is owed starts, in milliseconds since 1970: a recap found it before it
+    /// was ever shown and could not read it, so the first recap that can shows it from there.
+    Owed(u64),
+}
+
+impl Mark {
+    /// The mark of a tracker that another recap marked, `theirs`, since this one read the cursor.
+    /// Two frontiers give way to their union: two reads of one store need not be nested, since its
+    /// files are read one by one while a sync writes them one by one, and the union is below
+    /// exactly what both showed, until a recap replaces it with a frontier of its own. A frontier
+    /// settles an owed window, and of two owed windows the earlier stays.
+    fn with(self, theirs: &Mark) -> Mark {
+        match (self, theirs) {
+            (Mark::Shown(mut ours), Mark::Shown(theirs)) => {
+                ours.extend(theirs);
+                ours.sort_unstable();
+                ours.dedup();
+                Mark::Shown(ours)
+            }
+            (Mark::Owed(_), shown @ Mark::Shown(_)) => shown.clone(),
+            (shown @ Mark::Shown(_), Mark::Owed(_)) => shown,
+            (Mark::Owed(ours), Mark::Owed(theirs)) => Mark::Owed(ours.min(*theirs)),
+        }
+    }
 }
 
 /// What `bead recap` has shown on this machine: each tracker's [`Mark`], by workspace id, and when
@@ -104,9 +141,9 @@ impl RecapCursor {
 
     /// Records `marks`, each tracker's once a recap's answer has been delivered, and `at`, over the
     /// cursor as it is when this runs: read again under the cursor's lock, where a tracker whose
-    /// mark another recap changed since this one read `self` keeps whichever covers more, and the
-    /// other trackers keep theirs. The lock is held only to read and replace the file, never while
-    /// a journal is read or an answer written.
+    /// mark another recap changed since this one read `self` keeps what both recaps did
+    /// ([`Mark::with`]), and the other trackers keep theirs. The lock is held only to read and
+    /// replace the file, never while a journal is read or an answer written.
     pub fn save(
         &self,
         settings: &Settings,
@@ -128,12 +165,12 @@ impl RecapCursor {
         let path = home.join(CURSOR);
         let mut now = read_cursor(&path)?;
         for (id, mark) in marks {
-            // another recap marked this tracker since `self` was read: of two frontiers of one
-            // growing journal, the one that covers more saw all the other did
-            let raced = (now.marks.get(&id)).filter(|theirs| Some(*theirs) != self.marks.get(&id));
-            if raced.is_none_or(|theirs| theirs.covered <= mark.covered) {
-                now.marks.insert(id, mark);
-            }
+            let mark = match now.marks.get(&id) {
+                // another recap marked this tracker since `self` was read
+                Some(theirs) if Some(theirs) != self.marks.get(&id) => mark.with(theirs),
+                _ => mark,
+            };
+            now.marks.insert(id, mark);
         }
         now.at = Some(now.at.map_or(at, |was| was.max(at)));
         let text = json::write(&now.to_value(), Format::COMPACT)
@@ -153,15 +190,21 @@ impl RecapCursor {
     }
 
     /// As its file holds it: `{"version": 1, "at": MILLIS, "workspaces": {ID: {"frontier":
-    /// [EVENT, …], "covered": N}}}`, trackers and events sorted.
+    /// [EVENT, …]} or {"since": MILLIS}}}`, trackers and events sorted.
     fn to_value(&self) -> Value {
         let number = |n: u64| Value::from(i64::try_from(n).unwrap_or(i64::MAX));
         let workspaces: Object = (self.marks.iter())
             .map(|(id, mark)| {
-                let frontier = mark.frontier.iter().map(|e| Value::from(e.to_string()));
                 let mut entry = Object::new();
-                entry.insert("frontier".into(), Value::Array(frontier.collect()));
-                entry.insert("covered".into(), number(mark.covered));
+                match mark {
+                    Mark::Shown(frontier) => {
+                        let frontier = frontier.iter().map(|e| Value::from(e.to_string()));
+                        entry.insert("frontier".into(), Value::Array(frontier.collect()));
+                    }
+                    Mark::Owed(since) => {
+                        entry.insert("since".into(), number(*since));
+                    }
+                }
                 (id.clone(), Value::from(entry))
             })
             .collect();
@@ -199,16 +242,23 @@ fn read_cursor(path: &Path) -> Result<RecapCursor, Error> {
     let mut marks = BTreeMap::new();
     for (id, entry) in workspaces {
         let entry = (entry.as_object())
-            .filter(|entry| entry.len() == 2)
+            .filter(|entry| entry.len() == 1)
             .ok_or_else(|| bad("a workspace's mark is not one"))?;
-        let frontier = (entry.get("frontier").and_then(Value::as_array))
-            .ok_or_else(|| bad("a frontier is not a list"))?
-            .iter()
-            .map(|event| event.as_str().and_then(EventId::parse))
-            .collect::<Option<Vec<EventId>>>()
-            .ok_or_else(|| bad("a frontier names something not an event id"))?;
-        let covered = count(entry.get("covered")).ok_or_else(|| bad("covered is not a count"))?;
-        marks.insert(id.clone(), Mark { frontier, covered });
+        let mark = match (entry.get("frontier"), entry.get("since")) {
+            (Some(frontier), None) => Mark::Shown(
+                (frontier.as_array())
+                    .ok_or_else(|| bad("a frontier is not a list"))?
+                    .iter()
+                    .map(|event| event.as_str().and_then(EventId::parse))
+                    .collect::<Option<Vec<EventId>>>()
+                    .ok_or_else(|| bad("a frontier names something not an event id"))?,
+            ),
+            (None, since @ Some(_)) => {
+                Mark::Owed(count(since).ok_or_else(|| bad("since is not a time"))?)
+            }
+            _ => return Err(bad("a workspace's mark is not one")),
+        };
+        marks.insert(id.clone(), mark);
     }
     Ok(RecapCursor { at, marks })
 }
@@ -220,3 +270,6 @@ fn count(value: Option<&Value>) -> Option<u64> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests;

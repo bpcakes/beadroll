@@ -45,7 +45,7 @@ pub use place::{capture_where, merged_into_default, object_format};
 pub use projection::{
     Sourced, projection, projection_path, projection_sourced, read_texts, texts_path,
 };
-pub use recap::{Found, Mark, RecapCursor, home_stores};
+pub use recap::{Found, Mark, RecapCursor, Unusable, home_stores};
 pub use settings::{
     Clock, NET_TIMEOUT, REPACK_LOOSE, REPACK_PACKS, ROTATE_BYTES, Settings, join_path,
     normalize_path,
