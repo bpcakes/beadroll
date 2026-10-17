@@ -20,13 +20,14 @@ const THERE: &str = "0000bb02";
 
 /// Whether `decoded`, read back from what `projection` encoded, knows every event the state names
 /// and the frontier, in the journal's order, each with its causes, machine and actor as
-/// `projection` has them.
-pub(super) fn knows_alike(decoded: &Projection, projection: &Projection) -> bool {
+/// `projection` has them: those alone when what every event had seen was `compacted`, and every
+/// event `projection` knows otherwise (roll-lqjj.43).
+pub(super) fn knows_alike(decoded: &Projection, projection: &Projection, compacted: bool) -> bool {
     let read = &decoded.state.knowledge.events;
     let held = &projection.state.knowledge.events;
     let mut kept = named(projection.state());
     kept.extend(projection.heads.iter().copied());
-    let order = held.keys().filter(|id| kept.contains(*id));
+    let order = held.keys().filter(|id| !compacted || kept.contains(*id));
     read.keys().eq(order)
         && (read.iter()).all(|(id, event)| {
             held.get(id).is_some_and(|was| {
@@ -73,7 +74,7 @@ fn a_state_read_alone_knows_who_wrote_what_its_conflicts_name_and_the_index_ever
     );
     // the index holds what the state names, the create and the two titles, with their causes
     let decoded = Projection::decode(&encoded).unwrap();
-    assert!(knows_alike(&decoded, &projection));
+    assert!(knows_alike(&decoded, &projection, true));
     assert_eq!(decoded.state.knowledge.events.len(), 3);
     let causes = |n| (decoded.state.knowledge.events.get(&both[n])).map(|event| event.deps());
     let three = EventId::parse(&id(3)).unwrap();

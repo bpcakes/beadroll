@@ -1,7 +1,10 @@
 //! Machine 0's store of a world taking in what the machines write, batch by batch, its projection
 //! extended by each or declining it, every extension compared with projecting the whole journal;
 //! and the projection that store last wrote back, extended by every batch since at once, as the
-//! next command extends it when the writes before it left it as it was (roll-lqjj.36).
+//! next command extends it when the writes before it left it as it was (roll-lqjj.36). Each is
+//! kept three ways (roll-lqjj.43): written back as the store writes it, and at every write-back
+//! with what every event had seen left as it is, holding events the state no longer names, or cut
+//! down to those it names.
 
 use std::collections::BTreeMap;
 
@@ -9,10 +12,10 @@ use crate::id::EventId;
 use crate::json::{Object, Value};
 use crate::replay::replay;
 
-use super::super::{Extended, Projection, Record, project};
+use super::super::{Extended, Projection, Record, named, project};
 use super::{
-    MACHINES, Rng, TextFile, World, equal, flawed, load, read_back, read_in, records, same, shown,
-    whole,
+    MACHINES, Rng, TextFile, World, WriteBack, answers_alike, equal, flawed, load, read_back,
+    read_in, records, same, shown, whole,
 };
 
 /// What [`differential`] saw: the batches taken in, the merges among them, the batches that came to
@@ -20,7 +23,9 @@ use super::{
 /// not takeovers (by seed); with the extensions applied to a projection that held each kind of
 /// integrity entry (by [`flawed::kinds`]), and the entries of each kind the batches brought; and
 /// of the projection written back some batches before, the extensions by two batches or more at
-/// once, and the most batches one took in.
+/// once, and the most batches one took in: each of the projection written back as the store
+/// writes it. Of the write-backs that left what every event had seen as it was, those that left
+/// events the state no longer names, and the most such events one left.
 #[derive(Default, Debug)]
 pub(super) struct Tally {
     pub(super) applied: usize,
@@ -31,11 +36,30 @@ pub(super) struct Tally {
     pub(super) declined: Vec<u64>,
     pub(super) past: BTreeMap<&'static str, usize>,
     pub(super) brought: BTreeMap<&'static str, usize>,
+    pub(super) uncompacted: usize,
+    pub(super) unnamed: usize,
+}
+
+impl Tally {
+    /// Counts what `projection`, read back as `back` wrote it, knows that its state no longer
+    /// names.
+    fn read_back(&mut self, projection: &Projection, back: WriteBack) {
+        if back != WriteBack::Uncompacted {
+            return;
+        }
+        let mut kept = named(projection.state());
+        kept.extend(projection.heads.iter().copied());
+        let events = projection.state.knowledge.events.keys();
+        let unnamed = events.filter(|id| !kept.contains(*id)).count();
+        self.uncompacted += usize::from(unnamed > 0);
+        self.unnamed = self.unnamed.max(unnamed);
+    }
 }
 
 /// Machine 0's store, of each seed's world, takes in 60 batches, each extending its projection or
-/// declined; every extension must be what projecting the whole journal makes. A world `flawed` has
-/// machines that also write what replay reports, and one whose identity was copied.
+/// declined; every extension must be what projecting the whole journal makes, and answer as replay
+/// does of every event the state names, whichever way the projection was written back. A world
+/// `flawed` has machines that also write what replay reports, and one whose identity was copied.
 pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -> Tally {
     let mut tally = Tally::default();
     for seed in seeds {
@@ -48,61 +72,83 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -
         data.insert("prefix".into(), Value::from("pr"));
         world.write(0, "init", None, data);
         let mut held: Vec<usize> = vec![0];
-        let mut projection = project(load(&world, &held)).unwrap();
-        let mut file = TextFile::new();
-        // the store whose writes leave the projection to a later command: what it wrote back last,
-        // with its own text file, the batches taken in since, and draws of its own, so that the
-        // world is the one it was before it
-        let mut written = TextFile::new();
-        let mut stored = Stored {
-            projection: read_back(&projection, &mut written),
-            file: written,
-            since: Vec::new(),
-            batches: 0,
-            coin: Rng(seed),
-        };
+        let first = project(load(&world, &held)).unwrap();
+        // the store, each way: its projection, extended by each batch, and its text file
+        let mut tracks = WriteBack::EVERY.map(|back| (first.clone(), TextFile::new(), back));
+        // the store whose writes leave the projection to a later command, each way: what it wrote
+        // back last, with its own text file, the batches taken in since, and draws of its own, so
+        // that the world is the one it was before it
+        let mut stored = WriteBack::EVERY.map(|back| {
+            let mut written = TextFile::new();
+            Stored {
+                projection: read_back(&first, &mut written, back),
+                file: written,
+                since: Vec::new(),
+                batches: 0,
+                coin: Rng(seed),
+                back,
+            }
+        });
         for _ in 0..60 {
             let batch = world.next_batch();
-            if world.rng.chance(50) {
-                projection = read_back(&projection, &mut file);
-            }
+            let reading_back = world.rng.chance(50);
             held.extend(&batch);
             let full = project(load(&world, &held)).unwrap();
-            assert!(same(full.state(), &replay(load(&world, &held)).unwrap()));
+            let replayed = replay(load(&world, &held)).unwrap();
+            assert!(same(full.state(), &replayed));
+            assert!(answers_alike(&full, &replayed), "seed {seed}");
             shown::agree(&load(&world, &held), full.state());
-            stored.take(&world, &batch, &full, seed, &mut tally);
+            for each in &mut stored {
+                each.take(&world, &batch, &full, seed, &mut tally);
+            }
             let local = batch.iter().all(|at| world.events[*at].machine == 0);
-            let before = flawed::kinds(projection.state());
-            let open = projection.extendable();
-            tally.closed += usize::from(!open);
             let records = records(&world, &batch);
             // as a store does: the texts of the issues the batch is about read in first
-            let about = (records.iter())
+            let about: Vec<EventId> = (records.iter())
                 .filter_map(|record| record.value.get("issue").and_then(Value::as_str))
                 .filter_map(EventId::parse)
                 .collect();
-            read_in(projection.state_mut(), &file, Some(about));
-            for (kind, n) in flawed::kinds(full.state()) {
-                let new = n.saturating_sub(before.get(kind).copied().unwrap_or(0));
-                *tally.brought.entry(kind).or_default() += new;
-            }
-            projection = match projection.extend(records).unwrap() {
-                Extended::Applied(extended) => {
-                    assert!(equal(&whole(&extended, &file), &full), "seed {seed}");
-                    for kind in before.into_keys() {
-                        *tally.past.entry(kind).or_default() += 1;
-                    }
-                    tally.applied += 1;
-                    tally.merged += usize::from(!local);
-                    *extended
+            tracks = tracks.map(|(mut projection, mut file, back)| {
+                // the figures are the store's
+                let counted = back == WriteBack::Encoded;
+                if reading_back {
+                    projection = read_back(&projection, &mut file, back);
+                    tally.read_back(&projection, back);
                 }
-                Extended::Replay => {
-                    if local && open && !world.takes_over(&batch) {
-                        tally.declined.push(seed);
+                let before = flawed::kinds(projection.state());
+                let open = projection.extendable();
+                tally.closed += usize::from(!open && counted);
+                read_in(projection.state_mut(), &file, Some(about.clone()));
+                if counted {
+                    for (kind, n) in flawed::kinds(full.state()) {
+                        let new = n.saturating_sub(before.get(kind).copied().unwrap_or(0));
+                        *tally.brought.entry(kind).or_default() += new;
                     }
-                    full
                 }
-            };
+                let projection = match projection.extend(records.clone()).unwrap() {
+                    Extended::Applied(extended) => {
+                        assert!(
+                            equal(&whole(&extended, &file), &full),
+                            "seed {seed}, {back:?}"
+                        );
+                        if counted {
+                            for kind in before.into_keys() {
+                                *tally.past.entry(kind).or_default() += 1;
+                            }
+                            tally.applied += 1;
+                            tally.merged += usize::from(!local);
+                        }
+                        *extended
+                    }
+                    Extended::Replay => {
+                        if counted && local && open && !world.takes_over(&batch) {
+                            tally.declined.push(seed);
+                        }
+                        full.clone()
+                    }
+                };
+                (projection, file, back)
+            });
         }
     }
     tally
@@ -117,6 +163,8 @@ struct Stored {
     /// How many batches they came in.
     batches: usize,
     coin: Rng,
+    /// How it is written back.
+    back: WriteBack,
 }
 
 impl Stored {
@@ -148,7 +196,7 @@ impl Stored {
                     "seed {seed}: {} batches at once",
                     self.batches
                 );
-                if self.batches > 1 {
+                if self.batches > 1 && self.back == WriteBack::Encoded {
                     tally.deferred += 1;
                     tally.longest = tally.longest.max(self.batches);
                 }
@@ -157,7 +205,8 @@ impl Stored {
             Extended::Replay => Some(full.clone()),
         };
         if let Some(written) = written {
-            self.projection = read_back(&written, &mut self.file);
+            self.projection = read_back(&written, &mut self.file, self.back);
+            tally.read_back(&self.projection, self.back);
             (self.since, self.batches) = (Vec::new(), 0);
         }
     }

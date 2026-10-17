@@ -186,6 +186,16 @@ impl Projection {
     /// [`Projection::placed`] has the issues know. Of what every event had seen it keeps the events
     /// the state still names, and the frontier.
     pub fn encode(&self, texts_at: u64) -> (Encoded, Vec<(EventId, TextPlace)>) {
+        self.encode_with(texts_at, true)
+    }
+
+    /// [`Projection::encode`], what every event had seen cut down to the events the state names and
+    /// the frontier when `compact`, and written as it is otherwise.
+    pub(crate) fn encode_with(
+        &self,
+        texts_at: u64,
+        compact: bool,
+    ) -> (Encoded, Vec<(EventId, TextPlace)>) {
         let (mut texts, mut places) = (Vec::new(), Vec::new());
         for issue in self.state.issues.values() {
             if matches!(issue.texts, Texts::Here) {
@@ -201,9 +211,15 @@ impl Projection {
                 texts.extend_from_slice(&bytes);
             }
         }
-        let mut named = named(&self.state);
-        named.extend(self.heads.iter().copied());
-        let kept = self.state.knowledge.kept(&named);
+        let compacted;
+        let kept = if compact {
+            let mut named = named(&self.state);
+            named.extend(self.heads.iter().copied());
+            compacted = self.state.knowledge.kept(&named);
+            &compacted
+        } else {
+            &self.state.knowledge
+        };
         let mut w = Writer::default();
         let given: HashMap<EventId, TextPlace> = places.iter().copied().collect();
         write_state(&mut w, &self.state, &given);
