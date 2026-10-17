@@ -89,7 +89,7 @@ usage: cargo xtask <command>
       published at once (bead comments add), then the best of five syncs after a local write
       each, with the store's memo of its journal files and its projection, without its
       projection, and without either. --read N times bead list, show, ready, log --limit 1,
-      info and machines there, and a local write (bead comments add --offline), with the projection and without it, and a write cycle: a write after a read, the bead show after it, and a write after a write, and a write after a read once the store has no remote (not --offline); --merge N, a bead sync that merges M events (ten by default)
+      info and machines there, and a local write (bead comments add --offline), with the projection and without it, a write cycle: a write after a read, the bead show after it, and a write after a write, a bead claim and bead release of a new issue, each published at once, and a write after a read once the store has no remote (not --offline); --merge N, a bead sync that merges M events (ten by default)
       another machine wrote after everything the store holds, with the projection and without it
       (--concurrent: the store writes too, so that the merge brings concurrent events);
       --contend M, M machines writing one tracker at once (W writes each, 25 by default), every

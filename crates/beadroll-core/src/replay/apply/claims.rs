@@ -57,7 +57,7 @@ pub(super) fn claim(c: &Ctx<'_>, issue: &mut Issue, claiming: &Claiming) -> bool
         // Nothing has changed the issue's claim: it is still the one held before this event.
         let held_by =
             (issue.claim.as_ref()).map_or_else(|| c.name(""), |held| Arc::clone(&held.owner));
-        issue.lost_claims.push(LostClaim {
+        issue.lost(LostClaim {
             by: c.name(who),
             held_by,
             event: c.eid,
@@ -162,7 +162,7 @@ fn actor_text<'a>(trace: &'a Event, key: &str) -> Option<&'a str> {
 /// The issue's claim ended by this event, `how`, for `reason`.
 fn end_claim(c: &Ctx<'_>, issue: &mut Issue, how: &'static str, reason: Option<&str>) {
     if let Some(claim) = issue.claim.take() {
-        issue.claim_history.push(EndedClaim {
+        issue.ended(EndedClaim {
             claim: *claim,
             ending: c.eid,
             ended_by: c.name(c.who),

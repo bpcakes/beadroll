@@ -1,0 +1,80 @@
+ex-a	claim	null
+ex-a	generation	0
+ex-a	ended	[]
+ex-a	offline	[]
+ex-a	lost	[]
+ex-a	stale	[]
+ex-a	show	{"id":"ex-a","title":"Ship the port","description":"Port bead to Rust.\nKeep parity.","design":"One table drives the parser.","acceptance_criteria":"Every verb ported","notes":"Phase 2b","status":"open","priority":1,"issue_type":"epic","assignee":"maintainer","estimated_minutes":90,"created_at":"2026-01-01T00:00:00Z","created_by":"seed","updated_at":"2026-01-02T00:00:00Z","external_ref":"gh-12","labels":["port","rust"],"dependencies":[],"dependents":[{"id":"ex-a.1","title":"Parser","status":"open","dependency_type":"parent-child"},{"id":"ex-a.2","title":"Help pages","status":"closed","dependency_type":"parent-child"},{"id":"ex-a.3","title":"Native child","status":"open","dependency_type":"parent-child"}],"comments":[],"blocked":true,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+ex-a.1	claim	null
+ex-a.1	generation	0
+ex-a.1	ended	[]
+ex-a.1	offline	[]
+ex-a.1	lost	[]
+ex-a.1	stale	[]
+ex-a.1	show	{"id":"ex-a.1","title":"Parser","acceptance_criteria":"argparse parity","status":"open","priority":2,"issue_type":"task","created_at":"2026-01-01T01:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:32.411Z","parent":"ex-a","dependencies":[{"id":"ex-a","title":"Ship the port","status":"open","dependency_type":"parent-child"}],"dependents":[{"id":"ex-a.2","title":"Help pages","status":"closed","dependency_type":"blocks"},{"id":"ex-b","title":"Crash on start","status":"open","dependency_type":"blocks"}],"comments":[{"id":7,"author":"reviewer","text":"imported note","created_at":"2026-01-01T02:00:00Z"},{"id":"01a145ca-5cfb-74c5-a123-4bcb5d888307","author":"codex:gold-a-thread-0001@6b23ba73","text":"native comment","created_at":"2026-10-16T17:37:32.411Z","branch":"main"}],"blocked":false,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+ex-a.2	claim	null
+ex-a.2	generation	0
+ex-a.2	ended	[]
+ex-a.2	offline	[]
+ex-a.2	lost	[]
+ex-a.2	stale	[]
+ex-a.2	show	{"id":"ex-a.2","title":"Help pages","status":"closed","priority":2,"issue_type":"task","created_at":"2026-01-01T02:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:32.658Z","closed_at":"2026-10-16T17:37:32.658Z","parent":"ex-a","dependencies":[{"id":"ex-a","title":"Ship the port","status":"open","dependency_type":"parent-child"},{"id":"ex-a.1","title":"Parser","status":"open","dependency_type":"blocks"}],"dependents":[],"comments":[],"blocked":true,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"},"closed_on":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+ex-b	claim	null
+ex-b	generation	0
+ex-b	ended	[]
+ex-b	offline	[]
+ex-b	lost	[]
+ex-b	stale	[]
+ex-b	show	{"id":"ex-b","title":"Crash on start","description":"bead dies when stdout is closed","notes":"investigating","status":"open","priority":0,"issue_type":"bug","assignee":"alice","created_at":"2026-01-01T03:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:32.575Z","labels":["urgent"],"dependencies":[{"id":"ex-a.1","title":"Parser","status":"open","dependency_type":"blocks"}],"dependents":[],"comments":[],"blocked":true,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+ex-c	claim	null
+ex-c	generation	0
+ex-c	ended	[]
+ex-c	offline	[]
+ex-c	lost	[]
+ex-c	stale	[]
+ex-c	show	{"id":"ex-c","title":"Old feature","status":"closed","priority":3,"issue_type":"feature","created_at":"2026-01-01T04:00:00Z","created_by":"seed","updated_at":"2026-01-03T00:00:00Z","closed_at":"2026-01-03T00:00:00Z","close_reason":"shipped","dependencies":[],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+ex-d	claim	null
+ex-d	generation	0
+ex-d	ended	[]
+ex-d	offline	[]
+ex-d	lost	[]
+ex-d	stale	[]
+ex-d	show	{"id":"ex-d","title":"Title from B","acceptance_criteria":"done","status":"open","priority":2,"issue_type":"task","created_at":"2026-01-01T05:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:33.110Z","dependencies":[],"unresolved_dependencies":[{"id":"ex-zzz","dependency_type":"blocks"}],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"},"conflicts":{"title":[{"value":"Title from A","by":"codex:gold-a-thread-0001@6b23ba73","at":"2026-10-16T17:37:33.083Z","event":"01a145ca-5f9b-7702-b8a7-a824555a03cb"},{"value":"Title from B","by":"codex:gold-b-thread-0001@49d78315","at":"2026-10-16T17:37:33.110Z","event":"01a145ca-5fb6-7588-b0c5-8cc2d6da71ef"}]}}
+ex-e	claim	null
+ex-e	generation	0
+ex-e	ended	[]
+ex-e	offline	[]
+ex-e	lost	[]
+ex-e	stale	[]
+ex-e	show	{"id":"ex-e","title":"Loop one","status":"open","priority":4,"issue_type":"chore","created_at":"2026-01-01T06:00:00Z","created_by":"seed","updated_at":"2026-01-01T06:00:00Z","dependencies":[{"id":"ex-f","title":"Loop two","status":"open","dependency_type":"blocks"}],"dependents":[{"id":"ex-f","title":"Loop two","status":"open","dependency_type":"blocks"}],"comments":[],"blocked":true,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+ex-f	claim	null
+ex-f	generation	0
+ex-f	ended	[]
+ex-f	offline	[]
+ex-f	lost	[]
+ex-f	stale	[]
+ex-f	show	{"id":"ex-f","title":"Loop two","status":"open","priority":4,"issue_type":"chore","created_at":"2026-01-01T07:00:00Z","created_by":"seed","updated_at":"2026-01-01T07:00:00Z","dependencies":[{"id":"ex-e","title":"Loop one","status":"open","dependency_type":"blocks"}],"dependents":[{"id":"ex-e","title":"Loop one","status":"open","dependency_type":"blocks"}],"comments":[],"blocked":true,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+ex-a.3	claim	null
+ex-a.3	generation	0
+ex-a.3	ended	[]
+ex-a.3	offline	[]
+ex-a.3	lost	[]
+ex-a.3	stale	[]
+ex-a.3	show	{"id":"ex-a.3","title":"Native child","description":"first line\nsecond line","acceptance_criteria":"renders","status":"open","priority":1,"issue_type":"task","created_at":"2026-10-16T17:37:32.249Z","created_by":"codex:gold-a-thread-0001@6b23ba73","updated_at":"2026-10-16T17:37:32.822Z","labels":["alpha","beta"],"parent":"ex-a","dependencies":[{"id":"ex-a","title":"Ship the port","status":"open","dependency_type":"parent-child"}],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+ex-tx6d	claim	null
+ex-tx6d	generation	0
+ex-tx6d	ended	[]
+ex-tx6d	offline	[]
+ex-tx6d	lost	[]
+ex-tx6d	stale	[]
+ex-tx6d	show	{"id":"ex-tx6d","title":"Loose end","status":"tombstone","priority":3,"issue_type":"chore","created_at":"2026-10-16T17:37:32.330Z","created_by":"codex:gold-a-thread-0001@6b23ba73","updated_at":"2026-10-16T17:37:32.904Z","closed_at":"2026-10-16T17:37:32.904Z","close_reason":"not needed","dependencies":[],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+export	{"id":"ex-a","title":"Ship the port","description":"Port bead to Rust.\nKeep parity.","design":"One table drives the parser.","acceptance_criteria":"Every verb ported","notes":"Phase 2b","status":"open","priority":1,"issue_type":"epic","assignee":"maintainer","estimated_minutes":90,"created_at":"2026-01-01T00:00:00Z","created_by":"seed","updated_at":"2026-01-02T00:00:00Z","external_ref":"gh-12","labels":["port","rust"]}
+export	{"id":"ex-a.1","title":"Parser","acceptance_criteria":"argparse parity","status":"open","priority":2,"issue_type":"task","created_at":"2026-01-01T01:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:32.411Z","dependencies":[{"issue_id":"ex-a.1","depends_on_id":"ex-a","type":"parent-child","created_at":"2026-01-01T01:00:00Z","created_by":"seed","metadata":"{}","thread_id":""}],"comments":[{"id":7,"issue_id":"ex-a.1","author":"reviewer","text":"imported note","created_at":"2026-01-01T02:00:00Z"},{"id":233283818011476,"issue_id":"ex-a.1","author":"codex:gold-a-thread-0001@6b23ba73","text":"native comment","created_at":"2026-10-16T17:37:32.411Z"}]}
+export	{"id":"ex-a.2","title":"Help pages","status":"closed","priority":2,"issue_type":"task","created_at":"2026-01-01T02:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:32.658Z","closed_at":"2026-10-16T17:37:32.658Z","close_reason":"","dependencies":[{"issue_id":"ex-a.2","depends_on_id":"ex-a","type":"parent-child","created_at":"2026-01-01T02:00:00Z","created_by":"seed","metadata":"{}","thread_id":""},{"issue_id":"ex-a.2","depends_on_id":"ex-a.1","type":"blocks","created_at":"2026-01-01T02:00:00Z","created_by":"seed","metadata":"{}","thread_id":""}]}
+export	{"id":"ex-a.3","title":"Native child","description":"first line\nsecond line","acceptance_criteria":"renders","status":"open","priority":1,"issue_type":"task","created_at":"2026-10-16T17:37:32.249Z","created_by":"codex:gold-a-thread-0001@6b23ba73","updated_at":"2026-10-16T17:37:32.822Z","labels":["alpha","beta"],"dependencies":[{"issue_id":"ex-a.3","depends_on_id":"ex-a","type":"parent-child","created_at":"2026-10-16T17:37:32.249Z","created_by":"codex:gold-a-thread-0001@6b23ba73","metadata":"{}","thread_id":""}]}
+export	{"id":"ex-b","title":"Crash on start","description":"bead dies when stdout is closed","notes":"investigating","status":"open","priority":0,"issue_type":"bug","assignee":"alice","created_at":"2026-01-01T03:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:32.575Z","labels":["urgent"],"dependencies":[{"issue_id":"ex-b","depends_on_id":"ex-a.1","type":"blocks","created_at":"2026-10-16T17:37:32.493Z","created_by":"codex:gold-a-thread-0001@6b23ba73","metadata":"{}","thread_id":""}]}
+export	{"id":"ex-c","title":"Old feature","status":"closed","priority":3,"issue_type":"feature","created_at":"2026-01-01T04:00:00Z","created_by":"seed","updated_at":"2026-01-03T00:00:00Z","closed_at":"2026-01-03T00:00:00Z","close_reason":"shipped"}
+export	{"id":"ex-d","title":"Title from B","acceptance_criteria":"done","status":"open","priority":2,"issue_type":"task","created_at":"2026-01-01T05:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:33.110Z","dependencies":[{"issue_id":"ex-d","depends_on_id":"ex-zzz","type":"blocks","created_at":"2026-01-01T05:00:00Z","created_by":"seed"}]}
+export	{"id":"ex-e","title":"Loop one","status":"open","priority":4,"issue_type":"chore","created_at":"2026-01-01T06:00:00Z","created_by":"seed","updated_at":"2026-01-01T06:00:00Z","dependencies":[{"issue_id":"ex-e","depends_on_id":"ex-f","type":"blocks","created_at":"2026-01-01T06:00:00Z","created_by":"seed","metadata":"{}","thread_id":""}]}
+export	{"id":"ex-f","title":"Loop two","status":"open","priority":4,"issue_type":"chore","created_at":"2026-01-01T07:00:00Z","created_by":"seed","updated_at":"2026-01-01T07:00:00Z","dependencies":[{"issue_id":"ex-f","depends_on_id":"ex-e","type":"blocks","created_at":"2026-01-01T07:00:00Z","created_by":"seed","metadata":"{}","thread_id":""}]}
+export	{"deleted_at":"2026-10-16T17:37:32.904Z","deleted_by":"codex:gold-a-thread-0001@6b23ba73","delete_reason":"not needed","id":"ex-tx6d","title":"Loose end","status":"tombstone","priority":3,"issue_type":"chore","created_at":"2026-10-16T17:37:32.330Z","created_by":"codex:gold-a-thread-0001@6b23ba73","updated_at":"2026-10-16T17:37:32.904Z","closed_at":"2026-10-16T17:37:32.904Z","close_reason":"not needed"}

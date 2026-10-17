@@ -38,12 +38,14 @@ fn texts(machine: &Machine) -> PathBuf {
     machine.store().join("projection-texts")
 }
 
-/// What `machine` answers to the reading commands, to `show` of each of `keys`, then to the
-/// history's; with `replaying`, its projection is removed before each, so that each replays the
-/// journal.
+/// What `machine` answers to the reading commands, to `show` of each of `keys` (`--json`, and as
+/// a human reads it), then to the history's; with `replaying`, its projection is removed before
+/// each, so that each replays the journal.
 fn answers(machine: &Machine, keys: &[String], replaying: bool) -> Vec<String> {
     let mut out = Vec::new();
-    let shows: Vec<Vec<&str>> = keys.iter().map(|key| vec!["show", key, "--json"]).collect();
+    let shows: Vec<Vec<&str>> = (keys.iter())
+        .flat_map(|key| [vec!["show", key, "--json"], vec!["show", key]])
+        .collect();
     let history = HISTORY.iter().map(|args| args.to_vec());
     for args in READS
         .iter()
@@ -143,6 +145,45 @@ fn machines_that_sync_answer_alike_with_and_without_their_projections() {
     of_a.truncate(of_a.len() - HISTORY.len());
     of_b.truncate(of_b.len() - HISTORY.len());
     assert_eq!(of_a, of_b);
+}
+
+/// Two machines that end claims every way, one closing a claim after another machine took it over
+/// (an end too late), with a claim that lost: each prints every issue, its ownership history among
+/// it, and the export alike from its projection and replaying the journal, after the projection
+/// was written back with the history in its texts and read back (roll-lqjj.40).
+#[test]
+fn ownership_histories_print_alike_with_and_without_the_projection() {
+    let sandbox = crate::sandbox();
+    let a = crate::rust_only(&sandbox, "kept-a");
+    let b = crate::rust_only(&sandbox, "kept-b");
+    let keys = tracker(&a);
+    let (first, second, third) = (&keys[0], &keys[1], &keys[2]);
+    a.bead(["release", first, "-r", "for now"]);
+    a.bead(["claim", third]);
+    a.bead(["sync"]);
+    b.bead(["sync"]);
+    b.bead(["takeover", third, "-r", "a looked dead"]);
+    a.run(["close", third, "-r", "done"]);
+    b.bead(["reopen", second]);
+    b.bead(["claim", second]);
+    b.bead(["claim", first, "--offline"]);
+    b.bead(["sync"]);
+    a.bead(["sync"]);
+    a.bead(["claim", first]);
+    crate::commands::ownership::plant_lost_claim(&a, first);
+    a.bead(["update", first, "--notes", "a later text"]);
+    for machine in [&a, &b] {
+        let kept = answers(machine, &keys, false);
+        assert_eq!(answers(machine, &keys, true), kept, "{}", machine.name());
+    }
+    let shown = |key: &str| a.show(key);
+    assert!(shown(first)["lost_claims"].truthy(), "{:?}", shown(first));
+    assert!(shown(third)["stale"].truthy(), "{:?}", shown(third));
+    // the projection a read wrote back answers the same, its histories read in from its texts
+    assert!(projection(&a).is_file() && texts(&a).is_file());
+    let kept = answers(&a, &keys, false);
+    assert_eq!(answers(&a, &keys, false), kept);
+    assert_eq!(answers(&a, &keys, true), kept);
 }
 
 #[test]

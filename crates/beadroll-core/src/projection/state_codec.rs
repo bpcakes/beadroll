@@ -3,12 +3,14 @@
 //! written: it is derived again as the state is read, and so is where each imported dependency
 //! that waits for a key is (roll-lqjj.18), from the issues' lists.
 //!
-//! An issue's texts (its long fields, the values their registers hold, its comments, its extras
-//! and the metadata of its edges' additions) are written apart, each issue's as bytes of their own
-//! ([`super::text_codec`]), which a projection keeps in its text file (roll-lqjj.6); the issue is
-//! written with where they are and what a list and a later event need of them unread ([`Stored`]),
-//! and with its edges typed and the events that added each (roll-lqjj.39). An issue read back has
-//! its texts there until they are read in.
+//! An issue's texts (its long fields, the values their registers hold, its comments, its extras,
+//! the metadata of its edges' additions and its ownership history) are written apart, each issue's
+//! as bytes of their own ([`super::text_codec`]), which a projection keeps in its text file
+//! (roll-lqjj.6, roll-lqjj.39, roll-lqjj.40); the issue is written with where they are and what a
+//! list, a later event and a command's decisions need of them unread ([`Stored`]), with its edges
+//! typed and the events that added each (roll-lqjj.39), and with its current claim, its generation
+//! and its offline claims, which every ownership decision reads. An issue read back has its texts
+//! there until they are read in.
 
 use std::collections::HashMap;
 
@@ -17,9 +19,8 @@ use crate::id::EventId;
 use crate::json::{Int, Value};
 use crate::replay::finish;
 use crate::state::{
-    Awaiting, Claim, DepTags, Edge, EndedClaim, IdMap, IdSet, Integrity, Issue, Knowledge,
-    LostClaim, Meta, Origin, Provisional, Rename, Stale, Stamps, State, Stored, Target, TextPlace,
-    Texts, VecMap, is_text,
+    Awaiting, Claim, DepTags, Edge, Ended, IdMap, IdSet, Integrity, Issue, Knowledge, Meta, Origin,
+    Provisional, Rename, Stamps, State, Stored, Target, TextPlace, Texts, VecMap, is_text,
 };
 
 use super::codec::{Reader, Unreadable, Writer};
@@ -32,7 +33,7 @@ const NOWHERE: TextPlace = TextPlace {
     sum: [0; 16],
 };
 
-/// How a claim can end, as [`EndedClaim::how`] names it.
+/// How a claim can end, as [`crate::state::EndedClaim::how`] names it.
 const ENDINGS: [&str; 5] = ["takeover", "release", "close", "reopen", "delete"];
 
 /// The state, each issue with where its texts are: where they were read from or are, or for texts
@@ -170,6 +171,11 @@ fn write_issue(w: &mut Writer, issue: &Issue, place: TextPlace) {
     for field in &stored.disputed {
         w.count(field.index());
     }
+    w.flag(stored.ended.is_some());
+    if let Some(ended) = &stored.ended {
+        w.name(&ended.by);
+        write_how(w, ended.how);
+    }
 }
 
 fn read_issue(r: &mut Reader<'_>) -> Result<Issue, Unreadable> {
@@ -222,6 +228,7 @@ fn read_issue(r: &mut Reader<'_>) -> Result<Issue, Unreadable> {
         let field = Field::ALL.get(r.index()?).copied();
         disputed.push(field.ok_or(Unreadable("a long field"))?);
     }
+    let ended = r.flag()?.then(|| read_ended(r)).transpose()?;
     Ok(Issue {
         uid,
         key,
@@ -236,10 +243,10 @@ fn read_issue(r: &mut Reader<'_>) -> Result<Issue, Unreadable> {
         retracted,
         claim: held.claim,
         claim_generation: held.claim_generation,
-        claim_history: held.claim_history,
+        claim_history: Vec::new(),
         provisional_claims: held.provisional_claims,
-        lost_claims: held.lost_claims,
-        stale: held.stale,
+        lost_claims: Vec::new(),
+        stale: Vec::new(),
         unconfirmed,
         origin,
         where_,
@@ -248,6 +255,7 @@ fn read_issue(r: &mut Reader<'_>) -> Result<Issue, Unreadable> {
             place,
             tags,
             disputed,
+            ended,
         })),
     })
 }
@@ -300,14 +308,12 @@ fn read_edges(r: &mut Reader<'_>) -> Result<DepTags, Unreadable> {
     Ok(VecMap::from_distinct(edges))
 }
 
-/// Who held an issue, as [`Issue`] records it.
+/// Who holds an issue and how many times it was claimed, as [`Issue`] records it: what every
+/// ownership decision reads, which its ownership history, kept with its texts, is not.
 struct Ownership {
     claim: Option<Box<Claim>>,
     claim_generation: Int,
-    claim_history: Vec<EndedClaim>,
     provisional_claims: Vec<Provisional>,
-    lost_claims: Vec<LostClaim>,
-    stale: Vec<Stale>,
 }
 
 fn write_ownership(w: &mut Writer, issue: &Issue) {
@@ -316,52 +322,17 @@ fn write_ownership(w: &mut Writer, issue: &Issue) {
         write_claim(w, claim);
     }
     w.value(&Value::Int(issue.claim_generation.clone()));
-    w.count(issue.claim_history.len());
-    for ended in &issue.claim_history {
-        write_claim(w, &ended.claim);
-        w.id(ended.ending);
-        w.name(&ended.ended_by);
-        let how = ENDINGS.iter().position(|how| *how == ended.how);
-        w.count(how.unwrap_or(ENDINGS.len()));
-        w.optional_text(ended.reason.as_deref());
-    }
     w.count(issue.provisional_claims.len());
     for offline in &issue.provisional_claims {
         w.id(offline.id);
         w.name(&offline.owner);
         w.optional_shared(offline.where_.as_ref());
     }
-    w.count(issue.lost_claims.len());
-    for lost in &issue.lost_claims {
-        w.name(&lost.by);
-        w.name(&lost.held_by);
-        w.id(lost.event);
-    }
-    w.count(issue.stale.len());
-    for stale in &issue.stale {
-        w.text(&stale.op);
-        w.name(&stale.by);
-        w.text(&stale.at);
-        w.optional_text(stale.claim.as_deref());
-    }
 }
 
 fn read_ownership(r: &mut Reader<'_>) -> Result<Ownership, Unreadable> {
     let claim = r.flag()?.then(|| read_claim(r)).transpose()?.map(Box::new);
     let claim_generation = read_int(r)?;
-    let mut claim_history = Vec::new();
-    for _ in 0..r.count()? {
-        claim_history.push(EndedClaim {
-            claim: read_claim(r)?,
-            ending: r.id()?,
-            ended_by: r.name()?,
-            how: ENDINGS
-                .get(r.index()?)
-                .copied()
-                .ok_or(Unreadable("an ending"))?,
-            reason: r.optional_text()?,
-        });
-    }
     let mut provisional_claims = Vec::new();
     for _ in 0..r.count()? {
         provisional_claims.push(Provisional {
@@ -370,34 +341,31 @@ fn read_ownership(r: &mut Reader<'_>) -> Result<Ownership, Unreadable> {
             where_: r.optional_shared()?,
         });
     }
-    let mut lost_claims = Vec::new();
-    for _ in 0..r.count()? {
-        lost_claims.push(LostClaim {
-            by: r.name()?,
-            held_by: r.name()?,
-            event: r.id()?,
-        });
-    }
-    let mut stale = Vec::new();
-    for _ in 0..r.count()? {
-        stale.push(Stale {
-            op: r.text()?,
-            by: r.name()?,
-            at: r.text()?,
-            claim: r.optional_text()?,
-        });
-    }
     Ok(Ownership {
         claim,
         claim_generation,
-        claim_history,
         provisional_claims,
-        lost_claims,
-        stale,
     })
 }
 
-fn write_claim(w: &mut Writer, claim: &Claim) {
+/// How a claim ended, as one of [`ENDINGS`].
+pub(super) fn write_how(w: &mut Writer, how: &str) {
+    let at = ENDINGS.iter().position(|known| *known == how);
+    w.count(at.unwrap_or(ENDINGS.len()));
+}
+
+pub(super) fn read_how(r: &mut Reader<'_>) -> Result<&'static str, Unreadable> {
+    (ENDINGS.get(r.index()?).copied()).ok_or(Unreadable("an ending"))
+}
+
+fn read_ended(r: &mut Reader<'_>) -> Result<Ended, Unreadable> {
+    Ok(Ended {
+        by: r.name()?,
+        how: read_how(r)?,
+    })
+}
+
+pub(super) fn write_claim(w: &mut Writer, claim: &Claim) {
     w.id(claim.id);
     w.name(&claim.owner);
     w.name(&claim.machine);
@@ -408,7 +376,7 @@ fn write_claim(w: &mut Writer, claim: &Claim) {
     w.optional_shared(claim.where_.as_ref());
 }
 
-fn read_claim(r: &mut Reader<'_>) -> Result<Claim, Unreadable> {
+pub(super) fn read_claim(r: &mut Reader<'_>) -> Result<Claim, Unreadable> {
     Ok(Claim {
         id: r.id()?,
         owner: r.name()?,
