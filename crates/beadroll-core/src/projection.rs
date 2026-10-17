@@ -25,9 +25,15 @@
 //! read back has every issue's texts there, until the store reads in those a command needs
 //! ([`State::wanted_texts`], [`State::read_texts`]), and before applying records, those
 //! [`Projection::about`] lists.
+//!
+//! A projection read back keeps the bytes it was read from, and writing it back copies the record
+//! of every issue and event that did not change since (roll-lqjj.44, `parts.rs`): its issues mark
+//! what changes them ([`crate::state::Issues`]), and events are only ever added between
+//! compactions.
 
 pub(crate) mod codec;
 mod extend;
+mod parts;
 mod state_codec;
 mod text_codec;
 
@@ -38,17 +44,16 @@ use crate::id::EventId;
 use crate::journal::Journal;
 use crate::json::Value;
 use crate::replay::replayed;
-use crate::state::{KeySpace, Knowledge, State, TextPlace, Texts};
+use crate::state::{KeySpace, State, TextPlace, Texts};
 
-use codec::{Reader, Writer};
-use state_codec::{read_state, write_state};
-use text_codec::{read_texts, write_texts};
+use text_codec::read_texts;
 
 pub use codec::Unreadable;
 pub use extend::Extended;
+pub use parts::decode_state;
 
 /// The version of the bytes [`Projection::encode`] writes. Bytes of another are not read.
-pub const ENCODING: u32 = 10;
+pub const ENCODING: u32 = 11;
 
 /// How many times the events a projection took in of what every event had seen since it was last
 /// compacted go into the events it knew then, at most, before a write-back compacts it again
@@ -134,6 +139,11 @@ pub struct Projection {
     /// and the frontier (roll-lqjj.43): every event taken in since is held too, until a write-back
     /// compacts it again ([`Projection::compaction_due`]).
     pub(crate) compacted: usize,
+    /// The bytes it was read back from, to copy what did not change since when it is written back
+    /// (roll-lqjj.44): none for a projection replay made or one that let go of them.
+    pub(crate) kept: Option<std::sync::Arc<parts::Kept>>,
+    /// The ids taken in since it was read back, which a write-back merges into the ones it read.
+    pub(crate) added: Vec<EventId>,
 }
 
 /// Replays `journal` into a projection. Fails only as [`crate::replay::replay`] does.
@@ -162,6 +172,8 @@ pub fn project(mut journal: Journal) -> Result<Projection, KeySpace> {
         superseded: replayed.superseded,
         open,
         compacted,
+        kept: None,
+        added: Vec::new(),
     })
 }
 
@@ -228,91 +240,6 @@ impl Projection {
         &mut self.state
     }
 
-    /// The projection as bytes, the texts written nowhere yet placed from `texts_at`, the length of
-    /// the text file they are to be appended to, and the places it gave them: once both are written,
-    /// [`Projection::placed`] has the issues know. Of what every event had seen it keeps, when it is
-    /// compacted ([`Projection::compaction_due`]), the events the state still names and the
-    /// frontier, and otherwise every event it knows: those, as they were when it was last
-    /// compacted, and every event taken in since (roll-lqjj.43).
-    pub fn encode(&self, texts_at: u64) -> (Encoded, Vec<(EventId, TextPlace)>) {
-        self.encode_with(texts_at, self.compaction_due())
-    }
-
-    /// [`Projection::encode`], what every event had seen cut down to the events the state names and
-    /// the frontier when `compact`, and written as it is otherwise, whatever
-    /// [`Projection::compaction_due`] says: what the tests compare. Never compacted, a projection
-    /// would keep every event it took in, the count of its last compaction carried forward.
-    pub(crate) fn encode_with(
-        &self,
-        texts_at: u64,
-        compact: bool,
-    ) -> (Encoded, Vec<(EventId, TextPlace)>) {
-        let (mut texts, mut places) = (Vec::new(), Vec::new());
-        for issue in self.state.issues.values() {
-            if matches!(issue.texts, Texts::Here) {
-                let bytes = write_texts(issue);
-                places.push((
-                    issue.uid,
-                    TextPlace {
-                        at: texts_at.saturating_add(texts.len() as u64),
-                        len: u32::try_from(bytes.len()).unwrap_or(u32::MAX),
-                        sum: sum(&bytes),
-                    },
-                ));
-                texts.extend_from_slice(&bytes);
-            }
-        }
-        let cut;
-        let kept = if compact {
-            let mut named = named(&self.state);
-            named.extend(self.heads.iter().copied());
-            cut = self.state.knowledge.kept(&named);
-            &cut
-        } else {
-            &self.state.knowledge
-        };
-        let compacted = if compact {
-            kept.events.len()
-        } else {
-            self.compacted
-        };
-        let mut w = Writer::default();
-        let given: HashMap<EventId, TextPlace> = places.iter().copied().collect();
-        write_state(&mut w, &self.state, &given);
-        kept.write_writers(&mut w, &asked(&self.state));
-        let state = w.finish();
-        let mut w = Writer::default();
-        kept.write_events(&mut w);
-        kept.write_index(&mut w);
-        w.count(compacted);
-        w.ids(self.heads.iter());
-        w.ids(self.ids.iter());
-        let mut lengths: Vec<(&String, &u32)> = self.lengths.iter().collect();
-        lengths.sort();
-        w.count(lengths.len());
-        for (machine, length) in lengths {
-            w.text(machine);
-            w.number(u64::from(*length));
-        }
-        let mut lasts: Vec<(&String, &EventId)> = self.lasts.iter().collect();
-        lasts.sort();
-        w.count(lasts.len());
-        for (machine, last) in lasts {
-            w.text(machine);
-            w.id(*last);
-        }
-        let mut superseded: Vec<EventId> = self.superseded.iter().copied().collect();
-        superseded.sort_unstable();
-        w.ids(superseded.iter());
-        w.flag(self.open);
-        let encoded = Encoded {
-            state,
-            index: w.finish(),
-            texts,
-        };
-        (encoded, places)
-    }
-
     /// The texts [`Projection::encode`] placed, written where it placed them.
     pub fn placed(&mut self, places: &[(EventId, TextPlace)]) {
         for (uid, place) in places {
@@ -323,69 +250,6 @@ impl Projection {
             }
         }
     }
-
-    /// The projection [`Projection::encode`] wrote as these bytes.
-    pub fn decode(encoded: &Encoded) -> Result<Projection, Unreadable> {
-        let mut state = decode_state(&encoded.state)?;
-        let writers: Vec<EventId> = state.knowledge.events.keys().copied().collect();
-        let mut r = Reader::new(&encoded.index);
-        state.knowledge.read_events(&mut r)?;
-        if !(writers.iter()).all(|writer| state.knowledge.events.contains_key(writer)) {
-            return Err(Unreadable("the writers"));
-        }
-        state.knowledge.read_index(&mut r)?;
-        let compacted = r.count()?;
-        if compacted > state.knowledge.events.len() {
-            return Err(Unreadable("the events last compacted"));
-        }
-        let heads = r.ids()?;
-        if !(heads.iter()).all(|head| state.knowledge.events.contains_key(head)) {
-            return Err(Unreadable("the frontier"));
-        }
-        let ids = r.ids()?;
-        // In order, each once: bytes that are not are refused rather than quietly sorted and
-        // deduplicated by the set they are read into.
-        if !ids.windows(2).all(|pair| matches!(pair, [a, b] if a < b)) {
-            return Err(Unreadable("the ids"));
-        }
-        let ids: BTreeSet<EventId> = ids.into_iter().collect();
-        let mut lengths = HashMap::new();
-        for _ in 0..r.count()? {
-            let machine = r.text()?;
-            lengths.insert(machine, r.small()?);
-        }
-        let mut lasts = HashMap::new();
-        for _ in 0..r.count()? {
-            let machine = r.text()?;
-            lasts.insert(machine, r.id()?);
-        }
-        let superseded = r.ids()?.into_iter().collect();
-        let open = r.flag()?;
-        r.done()?;
-        Ok(Projection {
-            state,
-            heads,
-            ids,
-            lengths,
-            lasts,
-            superseded,
-            open,
-            compacted,
-        })
-    }
-}
-
-/// The state [`Projection::encode`] wrote as `bytes` ([`Encoded::state`]): all a command that only
-/// reads needs. Of its events it knows only who wrote those behind a register with several
-/// entries, which its conflicts name ([`State::who`]), and where machines' journals broke: not
-/// their causes, nor what each had seen, nor any other event it names, which only applying more
-/// events reads (roll-lqjj.35).
-pub fn decode_state(bytes: &[u8]) -> Result<State, Unreadable> {
-    let mut r = Reader::new(bytes);
-    let mut state = read_state(&mut r)?;
-    state.knowledge = Knowledge::read_writers(&mut r)?;
-    r.done()?;
-    Ok(state)
 }
 
 impl State {
@@ -446,7 +310,7 @@ impl State {
         place: TextPlace,
         bytes: &[u8],
     ) -> Result<(), Unreadable> {
-        let issue = self.issues.get_mut(&uid).ok_or(Unreadable("an issue"))?;
+        let issue = self.issues.read_in(&uid).ok_or(Unreadable("an issue"))?;
         if issue.texts.here() {
             return Ok(()); // read in already
         }
@@ -485,22 +349,13 @@ fn named(state: &State) -> HashSet<EventId> {
     out
 }
 
-/// The events a state read alone asks who wrote: those behind each register with several entries,
-/// which alone [`State::conflicts`] can name, a long field's among them when the issue's texts are
-/// not read in. A register of one entry is never a conflict.
-fn asked(state: &State) -> HashSet<EventId> {
-    let mut out = HashSet::new();
-    for issue in state.issues.values() {
-        for tags in issue.reg.values().filter(|tags| tags.len() > 1) {
-            out.extend(tags.iter().map(|(id, _)| *id));
-        }
-        if let Texts::There(stored) = &issue.texts {
-            for (_, ids) in stored.tags.iter().filter(|(_, ids)| ids.len() > 1) {
-                out.extend(ids.iter().copied());
-            }
-        }
-    }
-    out
+/// The events a state read alone asks who wrote: those behind each issue's registers with several
+/// entries ([`state_codec::asked`]).
+#[cfg(test)]
+pub(crate) fn asked(state: &State) -> HashSet<EventId> {
+    (state.issues.values())
+        .flat_map(|issue| state_codec::asked(issue))
+        .collect()
 }
 
 /// `n` as a position (a journal holds fewer than 2³² events).

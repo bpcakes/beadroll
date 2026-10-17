@@ -6,6 +6,7 @@ mod awaiting;
 mod claim;
 mod edges;
 mod issue;
+mod issues;
 mod seen;
 mod small;
 mod texts;
@@ -24,7 +25,8 @@ pub use claim::{Claim, Ended, EndedClaim, LostClaim, Provisional, Stale};
 pub use edges::{DepTags, Deps, DepsIter, Edge, Meta, Target};
 pub use issue::{Comment, Issue};
 pub(crate) use issue::{Origin, Stamps};
-pub(crate) use seen::{Knowledge, Place, raise, reached};
+pub(crate) use issues::Issues;
+pub(crate) use seen::{Arena, Knowledge, Place, raise, reached};
 pub use small::{IdMap, IdSet, VecMap};
 pub use texts::{Stored, TEXT_FIELDS, TextPlace, Texts, is_text};
 
@@ -97,8 +99,9 @@ pub struct State {
     pub(crate) knowledge: Knowledge,
     pub(crate) prefix: Option<Value>,
     pub(crate) name: Option<Value>,
-    /// Boxed, so that what a map of them keeps spare as it grows is a pointer a place, not an issue.
-    pub(crate) issues: IndexMap<EventId, Box<Issue>>,
+    /// In the order replay created them, with which changed since they were read back
+    /// (roll-lqjj.44).
+    pub(crate) issues: Issues,
     pub(crate) by_key: IndexMap<String, EventId>,
     pub(crate) renames: Vec<Rename>,
     pub(crate) integrity: Vec<Integrity>,
@@ -124,7 +127,7 @@ impl State {
             knowledge,
             prefix: None,
             name: None,
-            issues: IndexMap::new(),
+            issues: Issues::default(),
             by_key: IndexMap::new(),
             renames: Vec::new(),
             integrity: Vec::new(),

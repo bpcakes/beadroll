@@ -200,9 +200,10 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
                     return Ok(Now::State(Box::new(state)));
                 }
             } else if let Some(mut projection) =
-                stored.encoded().and_then(|e| Projection::decode(&e).ok())
+                stored.encoded().and_then(|e| Projection::decode(e).ok())
             {
                 projection.state_mut().set_texts_file(file);
+                projection.let_go(); // nothing to write back
                 let seen = (seen.into_iter())
                     .map(|held| (held.path, held.key))
                     .collect();
@@ -211,7 +212,7 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
             }
         } else if let Some((now, sources)) =
             appended(ws, &stored.made, read, listed, &mut records, build, settled)
-            && let Some(mut projection) = stored.encoded().and_then(|e| Projection::decode(&e).ok())
+            && let Some(mut projection) = stored.encoded().and_then(|e| Projection::decode(e).ok())
         {
             projection.state_mut().set_texts_file(file);
             let uids = projection.about(&records);
@@ -223,6 +224,8 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
                 if kept_for(want, tail, size) {
                     save(ws, now, &mut projection);
                 }
+                // written back or not, the command goes on without the bytes it was read from
+                projection.let_go();
                 if want != Want::Texts || read_all(ws, projection.state_mut()) {
                     return Ok(Now::Projection(projection, sources));
                 }
@@ -557,6 +560,7 @@ fn save(ws: &Workspace, mut made: Made, projection: &mut Projection) {
     if made.files.is_empty() || !ws.events_dir.is_dir() {
         return;
     }
+    ws.settings.failpoints.hit("projection.before-save");
     let generation = projection.state().texts_file();
     if let Some(generation) = generation
         && let Some(file) = texts::open(ws, generation, true)
@@ -576,7 +580,7 @@ fn save(ws: &Workspace, mut made: Made, projection: &mut Projection) {
             if texts::append(ws, &file, len, &encoded.texts)
                 && write_cache_parts(
                     &projection_path(ws),
-                    &[&file::bytes(&made, &encoded)],
+                    &file::parts(&file::head(&made, &encoded), &encoded),
                     &ws.settings.failpoints,
                 )
                 .is_ok()
@@ -595,7 +599,7 @@ fn save(ws: &Workspace, mut made: Made, projection: &mut Projection) {
     if texts::start(ws, generation, &encoded.texts)
         && write_cache_parts(
             &projection_path(ws),
-            &[&file::bytes(&made, &encoded)],
+            &file::parts(&file::head(&made, &encoded), &encoded),
             &ws.settings.failpoints,
         )
         .is_ok()

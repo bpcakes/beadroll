@@ -124,11 +124,12 @@ impl Made {
     }
 }
 
-/// The bytes of a projection made from `made`, its parts `encoded`.
-pub(super) fn bytes(made: &Made, encoded: &Encoded) -> Vec<u8> {
+/// The bytes of a projection made from `made`, its parts `encoded`, before its state: the header
+/// and what it was made from. The state and the index follow as they are ([`parts`]), not copied
+/// behind them first (roll-lqjj.44).
+pub(super) fn head(made: &Made, encoded: &Encoded) -> Vec<u8> {
     let made = made_bytes(made);
-    let mut out =
-        Vec::with_capacity(HEADER + made.len() + encoded.state.len() + encoded.index.len());
+    let mut out = Vec::with_capacity(HEADER + made.len());
     out.extend_from_slice(MAGIC);
     out.extend_from_slice(&ENCODING.to_le_bytes());
     out.extend_from_slice(&LAYOUT.to_le_bytes());
@@ -138,10 +139,13 @@ pub(super) fn bytes(made: &Made, encoded: &Encoded) -> Vec<u8> {
     for part in [&made, &encoded.state, &encoded.index] {
         out.extend_from_slice(&sum(part));
     }
-    for part in [&made, &encoded.state, &encoded.index] {
-        out.extend_from_slice(part);
-    }
+    out.extend_from_slice(&made);
     out
+}
+
+/// A projection's bytes as the parts it is written in: `head` ([`head`]), its state and its index.
+pub(super) fn parts<'a>(head: &'a [u8], encoded: &'a Encoded) -> [&'a [u8]; 3] {
+    [head, &encoded.state, &encoded.index]
 }
 
 fn made_bytes(made: &Made) -> Vec<u8> {

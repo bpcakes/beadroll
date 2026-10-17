@@ -418,10 +418,28 @@ impl Knowledge {
         let event = self.events.get(&event)?;
         Some(actor_label(event.actor(), event.replica()))
     }
+
+    /// Everything kept of the event at `at`, as text: its id, causes, machine and actor, its place,
+    /// and what it had seen (the chains and the furthest position in each). What a write-back may
+    /// copy of it as it was read (roll-lqjj.44) must be this, unchanged.
+    #[cfg(test)]
+    pub(crate) fn record_of(&self, at: usize) -> Option<String> {
+        let (id, event) = self.events.get_index(at)?;
+        let seen: Vec<(u32, u32)> = self.ancestry.clock(at).entries().collect();
+        Some(format!(
+            "{id} {:?} {} {:?} {:?} {seen:?}",
+            event.deps(),
+            event.replica(),
+            event.actor(),
+            self.ancestry.place(at),
+        ))
+    }
 }
 
 mod codec;
 mod compact;
+
+pub(crate) use codec::Arena;
 
 #[cfg(test)]
 mod tests;

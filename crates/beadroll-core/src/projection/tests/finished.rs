@@ -331,7 +331,7 @@ fn ids_that_interleave_with_the_ones_held_go_in_where_they_belong_in_one_batch()
     every.sort();
     assert_eq!(held, every, "every id once, ascending");
     let (encoded, _) = batched.encode(0);
-    let read_back = Projection::decode(&encoded).unwrap();
+    let read_back = Projection::decode(encoded).unwrap();
     assert_eq!(read_back.ids, batched.ids, "the bytes keep them ascending");
 }
 
@@ -358,7 +358,7 @@ fn each_machines_latest_event_is_its_greatest_id_however_its_records_sort() {
         assert_eq!(projection.journals(), full.journals());
         assert_eq!(projection.event_count(), full.event_count());
         let (encoded, _) = projection.encode(0);
-        let read_back = Projection::decode(&encoded).unwrap();
+        let read_back = Projection::decode(encoded.clone()).unwrap();
         assert_eq!(read_back.journals(), full.journals());
         assert_eq!(read_back.event_count(), full.event_count());
     }

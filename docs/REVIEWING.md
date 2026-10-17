@@ -562,8 +562,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   read after a run of writes pays for what they left, up to the bound above. The
   rest of the design, each step its own issue (the write's free, roll-lqjj.42, landed in the
   bullet on the state a command answered from below; the knowledge compacted now and then, .43,
-  landed: the paragraph after this one; copying the bytes of what a write did not touch, .44;
-  append-only parts, .45), is on roll-lqjj.36.
+  landed: the paragraph after this one; copying the bytes of what a write did not touch, .44,
+  landed: the paragraph after that; append-only parts, .45), is on roll-lqjj.36.
   What every event had seen is compacted now and then, not at every write-back (roll-lqjj.43, step
   3). Every write-back found every event the state names (`named`, 24 ms of the 94 ms encode at
   200,000 events on ec773f9) and cut the knowledge down to them (`Knowledge::kept`, 29 ms), though a
@@ -580,7 +580,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   import binds), and those answers do not depend on what else is held: a compaction keeps the place
   and clock of each event it keeps, and every chain whole. `State::conflicts` names a register's
   entries and asks who wrote them; the writers a state read alone holds are those `asked` names,
-  taken from the knowledge in its order; `info` and `machines` count the ids, the journals' lengths
+  each issue's in its record (roll-lqjj.44, below), listed in issue order; `info` and `machines` count the ids, the journals' lengths
   and latest events and the frontier; the ancestry's chains, the chain breaks, each machine's last
   applicable position and the frontier are what a compaction keeps whole anyway; the sums are of the
   bytes written. Only `State::holds` and `State::events` of a projection's state list the events
@@ -614,6 +614,82 @@ These were decided deliberately. Report problems *with* them, not their existenc
   of the store by it, so that one build wrote and read the projection) 100.7 MB rather than 98.5 MB
   (10.22 and 10.00 MB at 20,000; just after a compaction 98.0 and 9.95 MB either way), and the read
   after a write (`timing --read N`) 0.284 s against the base's 0.316 s.
+  A write-back copies the bytes of every issue and event the write did not touch (roll-lqjj.44,
+  step 4). Every write-back encoded every issue and every event record, whatever the batch changed:
+  on fd5ae9b at 200,000 events 43 ms of the read after a write, the issues 21 ms and the event
+  records 15 ms. Each part is now a part of records (`codec::Writer::tabled`): its records refer to
+  the names and values they share by number in a table of the part's own, written after them and
+  placed by the part's first eight bytes, so that a record means the same wherever it sits; an
+  issue's record holds the writers of its registers with several entries, every one an event of its
+  own issue, which replaces the writers section and the pass over every issue and every event
+  (`asked`, 2.5 ms) that made it, so a state read alone lists its writers in issue order. Decode
+  keeps the bytes it read (`Kept`) until the store lets go of them (`Projection::let_go`, once it
+  has written the projection back or decided not to), and a write-back copies the record of every
+  issue `Issues::changed` does not name, the keys read back, the event records read back with their
+  places and clocks, each a column of its own, and the chain sets and positions the clocks share,
+  which between two compactions only grow at their end; it merges the batch's ids into the run it
+  read and writes the rest. The marks are `state::Issues`: the map of issues lent only to read,
+  every change through `get_mut`, `values_mut` or an `insert` of an id already there, which mark the
+  issue's position, nothing that removes or moves an issue, and two ways that change nothing written
+  and do not mark, reading texts in (`read_in`, for `State::read_texts` alone) and deriving labels
+  (`relabel`); an issue whose texts are to be placed anew counts as changed whatever its marks. A
+  compaction renumbers the events, so it writes the index whole with its table made anew; the state
+  part's table is made anew once it holds more than an eighth more entries, and 64, than when it
+  last was; a value held elsewhere than in the table is found there by its bytes, so no table holds
+  anything twice. Built from the issues, `by_key` decoded about 2 ms slower than read at 200,000
+  events (a visit to each issue), and places and clocks inside each event's record about 1 ms
+  slower than as columns, so both stay written and copied. The tests saw the risk before anything
+  changed: `projection/tests/marked.rs`, committed first and green on the code before, checks after
+  every extension of every projection the differential tests read back that each issue whose record
+  changed is marked, that an extension marks only issues its records are about or that wait for a
+  key a create among them brings, and that each event read back keeps its record; `read_back`
+  checks that what a write-back copied is, byte for byte, what it writes when it copies nothing
+  against the same tables; `projection/tests/copied.rs` takes ids before and among those held, a
+  table every write-back adds to, and a table made anew while an issue it does not change is there
+  to copy, which must then be written again with every other (copied, its numbers would name the
+  old table's entries: the review of roll-lqjj.44 found that no test saw it until this one kept an
+  unchanged issue beside one rewritten at every write-back). Each way the copying can go wrong was
+  made and failed (the PR lists them): an issue changed unmarked, an event record changed or pushed
+  before the others, a name or a value's number off by one, a value added twice, the offsets off by
+  one, a compaction copying, the batch's ids out of place, the table never made anew, records copied
+  into a table made anew, texts read in marking, a key left out. An issue a create binds is marked
+  by four paths (the bind, its texts made Here, the Here rule, the pass that makes its list whole):
+  dropping the Here rule alone, or three of the paths, fails only `Issues`' own unit test, and the
+  differential tests fail only with all four gone. Since a write-back copies records by their
+  position among those read back, decode refuses a state part that holds an issue or a key twice,
+  which no bead writes, and a count of the entries its table had when last made anew beyond those
+  it holds (`projection/tests/forged.rs`). Since a record holds its texts' place, another process
+  starting the text file again between a read and its write-back leaves copied records placing
+  texts in the old file: the write-back then finds another generation and writes nothing, or, when
+  it has every text in it, every text anew and every record with it; and one whose text file
+  another process grew under it by more than a mebibyte reads every text in and starts a file of
+  its own, writing every record anew, those it did not change too, which the read after it shows by
+  reading their texts where it placed them rather than replaying (`storage::projection::raced`,
+  with `projection.before-save=pause-until`). Measured
+  (release, against roll-lqjj.40's head, 3c5d509, the two alternated, best of three, on a machine
+  shared with other builds): at 200,000 events a projection read back and extended by a comment
+  encodes in 1.9 ms where it took 39.6 ms (2.5 and 39.7 ms on the ownership-heavy history), at the
+  worst point between compactions in 4.6 ms where 43.4 ms, and when it compacts in 68.4 ms where
+  88.6 ms, its issues copied; written whole, every record written, 32.6 ms (`cargo xtask timing
+  --decode N`, `whole_encode_seconds`). `timing --read N`: the read after a write 0.150 s where it
+  took 0.184 s, and 19.9 ms where 22.5 ms at 20,000 events; list, show, ready, info, machines and
+  the writes as they were, and a write published at once (`--sync N`, 0.481 and 0.476 s). A sync
+  after a local write is about 2% slower: 0.271 s where 0.265 s, the review's five alternated rounds
+  a median 7.5 ms more (+2.8%), and four more rounds 0.2547 s at best where 0.2496 s. Its cause was
+  not found: timed step by step, no step of the sync is slower beyond the noise (the fetch, the
+  merge and its read of the projection, the publish, the counts), extending a projection read back
+  by a comment takes 0.35 ms, so the event map reserved exactly costs nothing there, letting go of
+  the bytes read before extending changes nothing, and a decoded projection frees in 65 ms where it
+  took 72 ms. The decodes, pinned to one core, 33 runs a process in four alternated rounds:
+  `decode_state` 58.3 ms at best where 58.2 ms, 39.1 where 39.7 ms on the ownership-heavy history,
+  and `Projection::decode` 104.5 where 105.5 ms, 82.1 where 81.9 ms; at their medians the
+  ownership-heavy history's within half a percent (63.1 where 63.4 ms, 84.1 where 83.7 ms) and the
+  plain history's faster (73.9 where 79.7 ms, 107.0 where 120.6 ms; the review's 73.0 where 75.4 ms
+  and 105.3 where 109.8 ms). The heap (`cargo xtask bead`): a write 79.4 MB at its peak where 81.2 MB, the
+  read after a write, which writes back, 94.5 MB where 96.3 MB, since the file's parts are written
+  as they are and a part's room is reserved for its size and a 64th; a decoded projection holds
+  59.3 MB where 61.2 MB, a state read alone 36.4 where 37.1 MB, as their maps are reserved exactly.
+  The file is 15.64 MB where it was 15.62 MB (each issue's count of writers, and the tables).
 - A projection extended finishes only what the batch changed (roll-lqjj.17, Z02). Replay finishes a
   whole journal by deriving each issue's labels from the tags that remain and building the
   parent-child index from every issue's edges; a projection that redid all of that for every batch
@@ -1789,7 +1865,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
   shorter than the projection places, with other texts appended where the lost ones were; every
   pairing of a projection and a text file as a crash can leave them, read by a listing, a show, an
   export and a write; both files past the failpoints), and the black-box
-  `storage::projection` (a bead killed as it writes either file).
+  `storage::projection` (a bead killed as it writes either file; and `raced`, a write-back
+  overtaken by another process starting the text file again, roll-lqjj.44). A write-back that copies
+  what did not change (roll-lqjj.44) writes the same bytes as one that copies nothing, which the
+  differential tests check at every write-back, so it leaves nothing a crash could not leave
+  before: the projection is still one file renamed whole, and its text file is as it was.
 - The remote seam waits for its second implementation (roll-k2wy.14.1): the protocol
   (`synchronise`, `coordinated`, `settle_*`, `merge`) uses a link's fetch, tree reading and push,
   never `sync.git`'s internals, and merge works on (path → blob) maps; a `Remote` trait comes with

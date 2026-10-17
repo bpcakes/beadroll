@@ -139,7 +139,7 @@ fuzz_target!(|data: &[u8]| {
 
     let projection = project(first).expect("a projection is replay");
     let (encoded, _) = projection.encode(0);
-    let mut decoded = Projection::decode(&encoded).expect("a projection decodes");
+    let mut decoded = Projection::decode(encoded.clone()).expect("a projection decodes");
     let state = decoded.state_mut();
     for (uid, place) in state.all_wanted_texts() {
         let at = usize::try_from(place.at).expect("a place in memory");

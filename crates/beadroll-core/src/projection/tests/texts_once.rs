@@ -49,7 +49,7 @@ fn description(state: &State) -> Option<Value> {
 fn both(records: &[Record]) -> (State, State) {
     let replayed = replayed(records);
     let (encoded, _) = project(journal(records)).unwrap().encode(0);
-    let mut projection = Projection::decode(&encoded).unwrap();
+    let mut projection = Projection::decode(encoded.clone()).unwrap();
     let state = projection.state_mut();
     for (uid, place) in state.all_wanted_texts() {
         let at = usize::try_from(place.at).unwrap();

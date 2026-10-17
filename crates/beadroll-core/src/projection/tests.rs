@@ -11,15 +11,19 @@ use crate::journal::{Journal, canonical};
 use crate::json::{Object, Value};
 use crate::state::State;
 
+use super::parts::Copying;
 use super::{Projection, Record, decode_state};
 
 pub(crate) mod awaiting;
 mod compacted;
+mod copied;
 mod edges;
 mod finished;
 mod flawed;
+mod forged;
 mod hostile;
 mod known;
+mod marked;
 pub(crate) mod owned;
 mod reported;
 mod shown;
@@ -651,16 +655,42 @@ impl WriteBack {
 /// says, its new texts appended to `file` and every issue's texts there. Read back with some
 /// issues' texts read in alone, as a command that prints those issues whole reads it, every issue
 /// answers who holds it as it did, and those read in their ownership history too
-/// (`owned::read_alike`).
+/// (`owned::read_alike`). What the write-back copied of the bytes the projection was read back
+/// from is what it writes when it copies nothing, byte for byte (roll-lqjj.44).
 fn read_back(projection: &Projection, file: &mut TextFile, back: WriteBack) -> Projection {
     let compacts = back.compacts(projection);
     let (encoded, _) = match back {
         WriteBack::Encoded => projection.encode(file.len() as u64),
         _ => projection.encode_with(file.len() as u64, compacts),
     };
+    let (written, _) = projection.encode_copying(file.len() as u64, compacts, Copying::Nothing);
+    for (part, copied, written) in [
+        ("state", &encoded.state, &written.state),
+        ("index", &encoded.index, &written.index),
+    ] {
+        let differs = (copied.iter().zip(written.iter())).position(|(a, b)| a != b);
+        assert!(
+            copied == written,
+            "the {part} part copied differs from the one written, at byte {differs:?} of {}",
+            copied.len()
+        );
+    }
     file.extend_from_slice(&encoded.texts);
-    let decoded = Projection::decode(&encoded).unwrap();
+    let decoded = Projection::decode(encoded.clone()).unwrap();
     assert!(decoded.state().issues().all(|issue| !issue.texts().here()));
+    // each name and each value once in each table, however many write-backs added to it
+    let kept = decoded.kept.as_deref().unwrap();
+    for table in [&kept.state_table, &kept.index_table] {
+        let once = |at: usize| !table.names[..at].contains(&table.names[at]);
+        assert!((0..table.names.len()).all(once), "{:?}", table.names);
+        let values: Vec<Vec<u8>> = table
+            .values
+            .iter()
+            .map(|v| super::codec::bytes_of(v))
+            .collect();
+        let once = |at: usize| !values[..at].contains(&values[at]);
+        assert!((0..values.len()).all(once), "{:?}", table.values);
+    }
     let original = whole(projection, file);
     let read = whole(&decoded, file);
     assert!(same(read.state(), original.state()));
@@ -748,4 +778,5 @@ fn every_extension_is_replays_answer_or_declined() {
     // them, and later events adding to histories a projection read back holds
     assert!(tally.seen.more_than(5), "{:?}", tally.seen);
     assert_eq!(tally.owned, owned::DIFFERENTIAL, "{:#x}", tally.owned);
+    tally.marked.enough();
 }

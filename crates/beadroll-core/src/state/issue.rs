@@ -116,6 +116,16 @@ pub(crate) struct Origin {
 static NO_EXTRA: LazyLock<Object> = LazyLock::new(Object::new);
 
 impl Issue {
+    /// Derives its labels again: those whose tags remain. No write-back writes them, so this changes
+    /// nothing a projection copies (roll-lqjj.44).
+    pub(crate) fn relabel(&mut self) {
+        tally(Work::Relabel, 1 + self.label_tags.len());
+        self.labels = (self.label_tags.iter())
+            .filter(|(_, tags)| !tags.is_empty())
+            .map(|(label, _)| label.clone())
+            .collect();
+    }
+
     /// Its id: the id of the create that made it.
     pub fn uid(&self) -> EventId {
         self.uid

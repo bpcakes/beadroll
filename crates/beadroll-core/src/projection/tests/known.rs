@@ -73,7 +73,7 @@ fn a_state_read_alone_knows_who_wrote_what_its_conflicts_name_and_the_index_ever
         format!("{:?}", issue(projection.state()).unwrap())
     );
     // the index holds what the state names, the create and the two titles, with their causes
-    let decoded = Projection::decode(&encoded).unwrap();
+    let decoded = Projection::decode(encoded).unwrap();
     assert!(knows_alike(&decoded, &projection, true));
     assert_eq!(decoded.state.knowledge.events.len(), 3);
     let causes = |n| (decoded.state.knowledge.events.get(&both[n])).map(|event| event.deps());
@@ -99,7 +99,7 @@ fn a_state_read_alone_knows_who_wrote_a_long_field_whose_texts_were_not_read_in(
     let mut file = encoded.texts.clone();
     let retitle = record(event(6, HERE, &[4, 5], "set", 2, fields("t")), HERE, true);
     records.push(retitle.clone());
-    let read = Projection::decode(&encoded).unwrap();
+    let read = Projection::decode(encoded).unwrap();
     let Extended::Applied(extended) = read.extend(vec![retitle]).unwrap() else {
         panic!("a title set needs no texts");
     };
