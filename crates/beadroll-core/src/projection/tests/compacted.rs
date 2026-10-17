@@ -77,8 +77,10 @@ fn a_write_back_compacts_the_knowledge_once_it_holds_more_than_an_eighth_more() 
     assert_eq!(compactions, 5);
 }
 
+/// A projection of no events has nothing to compact, and takes in no sequenced record: that is a new
+/// machine's journal, which only replay makes. One of a single event compacts at the next.
 #[test]
-fn a_projection_of_no_events_is_compacted_by_the_first_event_taken_in() {
+fn a_projection_of_one_event_compacts_at_the_next_and_one_of_none_has_nothing_to_compact() {
     let projection = project(journal(&[])).unwrap();
     assert_eq!((projection.known(), projection.compacted()), (0, 0));
     assert!(!projection.compaction_due());
