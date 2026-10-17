@@ -222,7 +222,6 @@ pub(super) fn pinned(shape: &str, digests: &[(u64, u64)]) {
     let recorded: Vec<&str> = (ANSWERS.lines())
         .filter(|line| line.split(' ').next() == Some(shape))
         .collect();
-    std::fs::write(format!("/tmp/claude-1002/-home-aa--herdr-worktrees-beadroll-dependency-edges-typed/86e2637d-f2eb-4d38-b4eb-cbced07f18d6/scratchpad/pin/{shape}"), now.join("\n") + "\n").unwrap();
     assert!(
         !now.is_empty() && now == recorded,
         "the {shape} histories answer otherwise than they did:\n{}",
@@ -253,10 +252,6 @@ fn the_stores_bead_built_answer_of_their_edges_what_they_did() {
     for (name, journal, recorded) in FIXTURES {
         let state = replay(fixture(journal)).unwrap();
         let now = every_way(&state);
-        std::fs::write(format!("/tmp/claude-1002/-home-aa--herdr-worktrees-beadroll-dependency-edges-typed/86e2637d-f2eb-4d38-b4eb-cbced07f18d6/scratchpad/pin/{name}.answers"), &now).unwrap();
-        if name == "golden" {
-            continue;
-        }
         assert!(
             now == recorded,
             "{name} answers otherwise than it did:\n{now}"
@@ -400,7 +395,8 @@ fn a_create_of_an_awaited_key_extends_once_the_waiting_issues_texts_are_read_in(
 }
 
 /// Texts whose edges' additions are not the issue's, which only a state changed while its texts
-/// were not read in can meet, are refused whole: an addition more or less, or an edge more.
+/// were not read in can meet, are refused whole: an addition another event's, as many as there were
+/// (an edge removed and added again), an addition more or less, or an edge more.
 #[test]
 fn texts_whose_edges_differ_from_the_issues_are_never_read_in() {
     let (_, journal, _) = FIXTURES[2];
@@ -416,7 +412,11 @@ fn texts_whose_edges_differ_from_the_issues_are_never_read_in() {
     };
     let bytes = &file[usize::try_from(place.at).unwrap()..][..place.len as usize];
     let later = EventId::from_u128(u128::MAX);
-    let changes: [fn(&mut crate::state::DepTags, EventId); 3] = [
+    let changes: [fn(&mut crate::state::DepTags, EventId); 4] = [
+        |edges, later| {
+            let tags = edges.values_mut().find(|tags| tags.len() == 1).unwrap();
+            *tags = crate::state::IdMap::of(later, Meta::default());
+        },
         |edges, later| {
             let tags = edges.values_mut().find(|tags| !tags.is_empty()).unwrap();
             tags.insert(later, Meta::default());
