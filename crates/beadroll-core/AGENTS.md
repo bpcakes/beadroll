@@ -152,7 +152,9 @@ consumer on tokio calls through `spawn_blocking`.
   deriving its labels (`relabel`) leave it unmarked, since they change nothing written, and an issue
   whose texts are to be placed anew counts as changed whatever its marks. A record's bytes depend on
   nothing outside it but its part's table, which only grows until it is made anew (the state part's
-  past an eighth more entries, the index's at a compaction), and its texts' place.
+  past an eighth more entries, the index's at a compaction), and its texts' place. Since records
+  are copied by position, decode refuses a state part that holds an issue or a key twice, and a
+  count of the entries made anew beyond its table's (`projection/tests/forged.rs`).
   `projection/tests/marked.rs` checks at every extension of every projection the differential
   tests read back that every issue whose record changed is marked, that nothing else is but issues
   the batch is about or that wait for a key it brings, and that every event read back keeps its

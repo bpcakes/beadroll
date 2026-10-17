@@ -644,17 +644,28 @@ These were decided deliberately. Report problems *with* them, not their existenc
   changed is marked, that an extension marks only issues its records are about or that wait for a
   key a create among them brings, and that each event read back keeps its record; `read_back`
   checks that what a write-back copied is, byte for byte, what it writes when it copies nothing
-  against the same tables; `projection/tests/copied.rs` takes ids before and among those held and a
-  table every write-back adds to. Each way the copying can go wrong was made and failed (the PR,
-  lists them): an issue changed unmarked, an event record changed or pushed before the others,
-  a name or a value's number off by one, a value added twice, the offsets off by one, a compaction
-  copying, the batch's ids out of place, the table never made anew, texts read in marking, a key
-  left out; an issue a create binds is marked by four paths (the bind, its texts made Here, the Here
-  rule, the pass that makes its list whole), and only with all four gone do the tests fail. Since a
-  record holds its texts' place, another process starting the text file again between a read and its
-  write-back leaves copied records placing texts in the old file: the write-back then finds another
-  generation and writes nothing, or, when it has every text in it, every text anew and every record
-  with it (`storage::projection::raced`, with `projection.before-save=pause-until`). Measured
+  against the same tables; `projection/tests/copied.rs` takes ids before and among those held, a
+  table every write-back adds to, and a table made anew while an issue it does not change is there
+  to copy, which must then be written again with every other (copied, its numbers would name the
+  old table's entries: the review of roll-lqjj.44 found that no test saw it until this one kept an
+  unchanged issue beside one rewritten at every write-back). Each way the copying can go wrong was
+  made and failed (the PR lists them): an issue changed unmarked, an event record changed or pushed
+  before the others, a name or a value's number off by one, a value added twice, the offsets off by
+  one, a compaction copying, the batch's ids out of place, the table never made anew, records copied
+  into a table made anew, texts read in marking, a key left out. An issue a create binds is marked
+  by four paths (the bind, its texts made Here, the Here rule, the pass that makes its list whole):
+  dropping the Here rule alone, or three of the paths, fails only `Issues`' own unit test, and the
+  differential tests fail only with all four gone. Since a write-back copies records by their
+  position among those read back, decode refuses a state part that holds an issue or a key twice,
+  which no bead writes, and a count of the entries its table had when last made anew beyond those
+  it holds (`projection/tests/forged.rs`). Since a record holds its texts' place, another process
+  starting the text file again between a read and its write-back leaves copied records placing
+  texts in the old file: the write-back then finds another generation and writes nothing, or, when
+  it has every text in it, every text anew and every record with it; and one whose text file
+  another process grew under it by more than a mebibyte reads every text in and starts a file of
+  its own, writing every record anew, those it did not change too, which the read after it shows by
+  reading their texts where it placed them rather than replaying (`storage::projection::raced`,
+  with `projection.before-save=pause-until`). Measured
   (release, against roll-lqjj.40's head, 3c5d509, the two alternated, best of three, on a machine
   shared with other builds): at 200,000 events a projection read back and extended by a comment
   encodes in 1.9 ms where it took 39.6 ms (2.5 and 39.7 ms on the ownership-heavy history), at the
@@ -662,11 +673,19 @@ These were decided deliberately. Report problems *with* them, not their existenc
   88.6 ms, its issues copied; written whole, every record written, 32.6 ms (`cargo xtask timing
   --decode N`, `whole_encode_seconds`). `timing --read N`: the read after a write 0.150 s where it
   took 0.184 s, and 19.9 ms where 22.5 ms at 20,000 events; list, show, ready, info, machines and
-  the writes as they were, and `--sync N` too (0.271 and 0.265 s, a write published at once 0.481
-  and 0.476 s). The decodes, pinned to one core, 33 runs a process in four alternated rounds:
+  the writes as they were, and a write published at once (`--sync N`, 0.481 and 0.476 s). A sync
+  after a local write is about 2% slower: 0.271 s where 0.265 s, the review's five alternated rounds
+  a median 7.5 ms more (+2.8%), and four more rounds 0.2547 s at best where 0.2496 s. Its cause was
+  not found: timed step by step, no step of the sync is slower beyond the noise (the fetch, the
+  merge and its read of the projection, the publish, the counts), extending a projection read back
+  by a comment takes 0.35 ms, so the event map reserved exactly costs nothing there, letting go of
+  the bytes read before extending changes nothing, and a decoded projection frees in 65 ms where it
+  took 72 ms. The decodes, pinned to one core, 33 runs a process in four alternated rounds:
   `decode_state` 58.3 ms at best where 58.2 ms, 39.1 where 39.7 ms on the ownership-heavy history,
-  and `Projection::decode` 104.5 where 105.5 ms, 82.1 where 81.9 ms, within half a percent at
-  their medians too. The heap (`cargo xtask bead`): a write 79.4 MB at its peak where 81.2 MB, the
+  and `Projection::decode` 104.5 where 105.5 ms, 82.1 where 81.9 ms; at their medians the
+  ownership-heavy history's within half a percent (63.1 where 63.4 ms, 84.1 where 83.7 ms) and the
+  plain history's faster (73.9 where 79.7 ms, 107.0 where 120.6 ms; the review's 73.0 where 75.4 ms
+  and 105.3 where 109.8 ms). The heap (`cargo xtask bead`): a write 79.4 MB at its peak where 81.2 MB, the
   read after a write, which writes back, 94.5 MB where 96.3 MB, since the file's parts are written
   as they are and a part's room is reserved for its size and a 64th; a decoded projection holds
   59.3 MB where 61.2 MB, a state read alone 36.4 where 37.1 MB, as their maps are reserved exactly.
