@@ -191,46 +191,41 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
         let settled = stored.written;
         let (size, was) = (stored.size, stored.made.journal_bytes());
         if tails.is_empty() && same(&stored.made, &seen, &listed.held, settled) {
-            if want != Want::Projection
-                && let Ok(mut state) = decode_state(&stored.state)
-            {
-                state.set_texts_file(file);
-                // texts that cannot be read have the journal replayed
-                if want == Want::Outline || read_all(ws, &mut state) {
-                    return Ok(Now::State(Box::new(state)));
+            let seen = (seen.into_iter())
+                .map(|held| (held.path, held.key))
+                .collect();
+            let sources = Sources::of(seen, listed.paths, listed.keys, listed.stamp);
+            if let Some(now) = as_stored(ws, stored, want, sources) {
+                return Ok(now);
+            }
+        } else if let Some((now, sources)) =
+            appended(ws, &stored.made, read, listed, &mut records, build, settled)
+        {
+            // Files of the projection's own tick whose bytes are the ones summed, and nothing
+            // after them: as current as files settled before it (roll-lqjj.51).
+            if records.is_empty() {
+                if let Some(now) = as_stored(ws, stored, want, sources) {
+                    return Ok(now);
                 }
             } else if let Some(mut projection) =
                 stored.encoded().and_then(|e| Projection::decode(e).ok())
             {
                 projection.state_mut().set_texts_file(file);
-                projection.let_go(); // nothing to write back
-                let seen = (seen.into_iter())
-                    .map(|held| (held.path, held.key))
-                    .collect();
-                let sources = Sources::of(seen, listed.paths, listed.keys, listed.stamp);
-                return Ok(Now::Projection(Box::new(projection), sources));
-            }
-        } else if let Some((now, sources)) =
-            appended(ws, &stored.made, read, listed, &mut records, build, settled)
-            && let Some(mut projection) = stored.encoded().and_then(|e| Projection::decode(e).ok())
-        {
-            projection.state_mut().set_texts_file(file);
-            if !records.is_empty() {
                 ws.settings.failpoints.hit("projection.extended");
-            }
-            let uids = projection.about(&records);
-            // the records applied: the bytes the journal's files grew by, only appended to
-            let tail = now.journal_bytes().saturating_sub(was);
-            if read_texts(ws, projection.state_mut(), uids)
-                && let Extended::Applied(mut projection) = projection.extend(records)?
-            {
-                if kept_for(want, tail, size) {
-                    save(ws, now, &mut projection);
-                }
-                // written back or not, the command goes on without the bytes it was read from
-                projection.let_go();
-                if want != Want::Texts || read_all(ws, projection.state_mut()) {
-                    return Ok(Now::Projection(projection, sources));
+                let uids = projection.about(&records);
+                // the records applied: the bytes the journal's files grew by, only appended to
+                let tail = now.journal_bytes().saturating_sub(was);
+                if read_texts(ws, projection.state_mut(), uids)
+                    && let Extended::Applied(mut projection) = projection.extend(records)?
+                {
+                    if kept_for(want, tail, size) {
+                        save(ws, now, &mut projection);
+                    }
+                    // written back or not, the command goes on without the bytes it was read from
+                    projection.let_go();
+                    if want != Want::Texts || read_all(ws, projection.state_mut()) {
+                        return Ok(Now::Projection(projection, sources));
+                    }
                 }
             }
         }
@@ -262,6 +257,30 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
         );
     }
     Ok(Now::Projection(Box::new(projection), sources))
+}
+
+/// The stored projection as it is, the journal's files being the ones it was made from: its state
+/// alone for a command that does not apply records, every text read in for one that prints them,
+/// or the projection whole, with the journal files it is made from (`sources`). `None` when what
+/// is wanted of it cannot be read as written, and the journal is then replayed.
+fn as_stored(
+    ws: &Workspace,
+    stored: file::Stored,
+    want: Want,
+    sources: Option<Sources>,
+) -> Option<Now> {
+    let file = Some(stored.made.texts);
+    if want != Want::Projection {
+        let mut state = decode_state(&stored.state).ok()?;
+        state.set_texts_file(file);
+        // texts that cannot be read have the journal replayed
+        return (want == Want::Outline || read_all(ws, &mut state))
+            .then(|| Now::State(Box::new(state)));
+    }
+    let mut projection = Projection::decode(stored.encoded()?).ok()?;
+    projection.state_mut().set_texts_file(file);
+    projection.let_go(); // nothing to write back
+    Some(Now::Projection(Box::new(projection), sources))
 }
 
 /// Whether a projection of `size` bytes, extended by records that `tail` bytes of the journal's

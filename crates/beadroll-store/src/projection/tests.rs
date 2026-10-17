@@ -201,6 +201,28 @@ fn a_journal_changed_otherwise_is_replayed() {
     assert_eq!(made(&ws), before);
 }
 
+/// Files of the projection's own timestamp tick whose bytes are the ones summed, with nothing
+/// appended after them, leave it current: a read applies nothing and writes nothing back, as the
+/// read after a write that wrote its projection back in its segment's tick does (roll-lqjj.51). A
+/// record appended after them is applied.
+#[test]
+fn files_of_the_projections_own_tick_as_summed_leave_it_current() {
+    let home = tempfile::tempdir().unwrap();
+    let points = Some("projection.extended@always=sleep(0)");
+    let ws = failing(home.path(), Some("this build"), points);
+    begun(&ws);
+    assert!(replays(&ws));
+    let written = std::fs::read(projection_path(&ws)).unwrap();
+    unsettle(&ws);
+    assert!(replays(&ws));
+    assert_eq!(ws.settings.failpoints.hits("projection.extended"), 0);
+    let now = std::fs::read(projection_path(&ws)).unwrap();
+    assert_eq!(now, written, "nothing written back");
+    append_events(&ws, HERE, &[title(5, &[4], 2, "again")]).unwrap();
+    assert!(replays(&ws));
+    assert!(ws.settings.failpoints.hits("projection.extended") > 0);
+}
+
 /// What a projection was made from and what its files look like now say whether it may be read:
 /// an identity settled before the projection was written stands on its own; one of the
 /// projection's own timestamp tick, which a rewrite in place at the same length could have kept,
