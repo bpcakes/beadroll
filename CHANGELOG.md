@@ -6,6 +6,16 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `bead recap` shows what is new in every tracker on the machine since a recap last marked activity
+  seen, from any directory and without the network (roll-dih8.2): one line per event as `bead log`
+  prints it, with its issue's title, or one line per issue (`--format issues`), or every event with
+  its summary, whole thread and commit (`--format full`). `--json` gives every event as `log --json`
+  does, with its title, summary, machine id and commit. Output to a terminal marks what it showed as
+  seen; pipes, files and `--json` only look unless `--advance`. The first recap shows the last 24
+  hours, `--all` everything. The cursor keeps each tracker's frontier of what was shown, so a late
+  sync or a clock behind cannot hide an event and the cursor does not grow with the history; a
+  tracker that cannot be read is reported while the others show.
+
 - A command that reads decodes dependency edges typed (roll-lqjj.39, X16): each edge's target is an
   issue's id, held as its 16 bytes, when its text is an id's spelling, and the text otherwise; its
   kind is one name for every edge of that kind in a state replayed or decoded; and the metadata each

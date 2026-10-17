@@ -141,7 +141,7 @@ fn help_pages() {
     for name in [
         "init", "import", "export", "create", "update", "claim", "release", "takeover", "claims",
         "close", "reopen", "delete", "show", "list", "ready", "blocked", "search", "dep",
-        "comments", "lint", "sync", "log", "info", "machines", "help", "prime", "onboard",
+        "comments", "lint", "sync", "log", "info", "machines", "recap", "help", "prime", "onboard",
     ] {
         t.record_with(&a, &[name, "--help"], &wide);
         t.record_with(&a, &["help", name], &wide);

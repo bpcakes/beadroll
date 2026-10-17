@@ -99,8 +99,8 @@ fn run_through_pipes(mut command: Command) -> Run {
 /// `command` with standard input, output and error on a fresh
 /// pseudo-terminal: no process's controlling terminal, and its
 /// master not inherited. How it exited, and what it wrote there, decoded with replacement and with
-/// CRLF read as LF.
-fn run_on_terminal(mut command: Command) -> (i32, String) {
+/// CRLF read as LF. Also how `recap::delivery` runs `bead recap` where a person reads it.
+pub(crate) fn run_on_terminal(mut command: Command) -> (i32, String) {
     let master = openpt(OpenptFlags::RDWR | OpenptFlags::NOCTTY).expect("a pseudo-terminal");
     fcntl_setfd(&master, FdFlags::CLOEXEC).expect("the master closes on exec");
     grantpt(&master).expect("grantpt");

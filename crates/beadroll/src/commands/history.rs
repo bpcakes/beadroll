@@ -1,12 +1,15 @@
 //! `bead log` and `bead machines`: who did what, and the machines that did it.
 
+use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_core::code::Code;
+use beadroll_core::journal::Event;
 use beadroll_core::json::{self, Format, Int, Object, Surrogates, Value};
 use beadroll_core::op::Op;
 use beadroll_core::order::causal_order;
+use beadroll_core::state::State;
 use beadroll_core::text::{printed_text, str_of, surrogateescaped};
 use beadroll_core::time::event_time;
 use beadroll_store::{
@@ -58,66 +61,7 @@ pub(crate) fn log(
     let mut result = Vec::new();
     let mut lines = Vec::new();
     for event in rows {
-        let actor = |key: &str| {
-            event
-                .actor()
-                .filter(|a| a.truthy())
-                .and_then(|a| a.get(key))
-                .cloned()
-                .unwrap_or(Value::Null)
-        };
-        let at = event_time(event.id().millis());
-        let replica = event.replica();
-        let machine = aliases.get(replica).map_or(replica, String::as_str);
-        let issue = match event.issue() {
-            Some(uid) => Value::from(st.key_of(uid)),
-            None => Value::Null,
-        };
-        let branch = event
-            .place()
-            .filter(|w| w.truthy())
-            .and_then(|w| w.get("branch"))
-            .cloned()
-            .unwrap_or(Value::Null);
-        let mut row = Object::new();
-        row.insert("at".into(), Value::from(at.as_str()));
-        row.insert("machine".into(), Value::from(machine));
-        row.insert("agent".into(), actor("agent"));
-        row.insert("thread".into(), actor("thread"));
-        row.insert("name".into(), actor("name"));
-        row.insert("op".into(), Value::from(event.op_name()));
-        row.insert("issue".into(), issue.clone());
-        row.insert("event".into(), Value::from(event.id().to_string()));
-        row.insert("branch".into(), branch.clone());
-        let or = |value: Value, default: &str| {
-            if value.truthy() {
-                str_of(&value)
-            } else {
-                default.to_owned()
-            }
-        };
-        let who = if actor("name").truthy() {
-            str_of(&actor("name"))
-        } else {
-            let thread: String = or(actor("thread"), "-").chars().take(8).collect();
-            format!("{:<6} {thread:<8}", or(actor("agent"), "?"))
-        };
-        let op = match event.op() {
-            Op::Set(fields) if !fields.is_empty() => {
-                let names: Vec<&str> = fields.iter().map(|(field, _)| field.name()).collect();
-                format!("set {}", names.join(","))
-            }
-            op => op.name().to_owned(),
-        };
-        let mut line = Line::new()
-            .with(Tone::Dim, at.chars().take(19).collect::<String>())
-            .with(Tone::Plain, format!("  {machine:<10} "))
-            .with(Tone::Who, format!("{who:<15}"))
-            .with(Tone::Plain, format!("  {op:<12} "))
-            .with(Tone::Id, str_of(&issue));
-        if branch.truthy() {
-            line.push(Tone::Dim, format!("  ({})", str_of(&branch)));
-        }
+        let (row, line) = logged(event, &st, &aliases, None);
         lines.push(line);
         result.push(Value::from(row));
     }
@@ -125,6 +69,82 @@ pub(crate) fn log(
         lines.push("No events".into());
     }
     Ok(Outcome::new(Value::Array(result), lines))
+}
+
+/// One event as `log` shows it: its row, and its line, `title` after the issue when given (as
+/// `recap` gives it): time, machine (its local display name, else its id), who (the actor's name,
+/// else its agent and thread), operation (with the fields a `set` changed), issue and branch. The
+/// keys are `st`'s, the state read after the journal the event is from.
+pub(crate) fn logged(
+    event: &Event,
+    st: &State,
+    aliases: &BTreeMap<String, String>,
+    title: Option<&str>,
+) -> (Object, Line) {
+    let actor = |key: &str| {
+        event
+            .actor()
+            .filter(|a| a.truthy())
+            .and_then(|a| a.get(key))
+            .cloned()
+            .unwrap_or(Value::Null)
+    };
+    let at = event_time(event.id().millis());
+    let replica = event.replica();
+    let machine = aliases.get(replica).map_or(replica, String::as_str);
+    let issue = match event.issue() {
+        Some(uid) => Value::from(st.key_of(uid)),
+        None => Value::Null,
+    };
+    let branch = event
+        .place()
+        .filter(|w| w.truthy())
+        .and_then(|w| w.get("branch"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let mut row = Object::new();
+    row.insert("at".into(), Value::from(at.as_str()));
+    row.insert("machine".into(), Value::from(machine));
+    row.insert("agent".into(), actor("agent"));
+    row.insert("thread".into(), actor("thread"));
+    row.insert("name".into(), actor("name"));
+    row.insert("op".into(), Value::from(event.op_name()));
+    row.insert("issue".into(), issue.clone());
+    row.insert("event".into(), Value::from(event.id().to_string()));
+    row.insert("branch".into(), branch.clone());
+    let or = |value: Value, default: &str| {
+        if value.truthy() {
+            str_of(&value)
+        } else {
+            default.to_owned()
+        }
+    };
+    let who = if actor("name").truthy() {
+        str_of(&actor("name"))
+    } else {
+        let thread: String = or(actor("thread"), "-").chars().take(8).collect();
+        format!("{:<6} {thread:<8}", or(actor("agent"), "?"))
+    };
+    let op = match event.op() {
+        Op::Set(fields) if !fields.is_empty() => {
+            let names: Vec<&str> = fields.iter().map(|(field, _)| field.name()).collect();
+            format!("set {}", names.join(","))
+        }
+        op => op.name().to_owned(),
+    };
+    let mut line = Line::new()
+        .with(Tone::Dim, at.chars().take(19).collect::<String>())
+        .with(Tone::Plain, format!("  {machine:<10} "))
+        .with(Tone::Who, format!("{who:<15}"))
+        .with(Tone::Plain, format!("  {op:<12} "))
+        .with(Tone::Id, str_of(&issue));
+    if let Some(title) = title {
+        line.push(Tone::Plain, format!("  {title}"));
+    }
+    if branch.truthy() {
+        line.push(Tone::Dim, format!("  ({})", str_of(&branch)));
+    }
+    (row, line)
 }
 
 /// Every machine that wrote to the tracker, with its local display name, how many events it wrote

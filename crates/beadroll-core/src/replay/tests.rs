@@ -201,7 +201,8 @@ fn causal(records: &[Record], rng: &mut Rng) -> Vec<usize> {
 
 /// An order a store can read `records` in, which need not follow their causes: each machine's
 /// journal in its own order, the journals interleaved at random, and each attempt file anywhere.
-fn interleaved(records: &[Record], rng: &mut Rng) -> Vec<usize> {
+/// Also the order a growing store takes them in (`recap::tests`).
+pub(crate) fn interleaved(records: &[Record], rng: &mut Rng) -> Vec<usize> {
     let mut queues: Vec<Vec<usize>> = Vec::new();
     let mut folders: Vec<&str> = Vec::new();
     for (at, record) in records.iter().enumerate() {

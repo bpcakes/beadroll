@@ -60,7 +60,7 @@ mod g55;
 mod g56;
 mod g57;
 mod g58;
-mod g59;
+pub(crate) mod g59;
 mod g60;
 mod g61;
 mod g62;

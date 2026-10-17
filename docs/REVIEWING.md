@@ -140,6 +140,19 @@ agents and tests match parts of them; `bead prime` lists the codes.
 
 These were decided deliberately. Report problems *with* them, not their existence.
 
+- `bead recap` (roll-dih8.2), as the maintainer settled it in review: one cursor per `BEAD_HOME`
+  that keeps each tracker's frontier of what was shown, not every event id and not a time, so that
+  late syncs and clocks behind cannot hide an event and the cursor does not grow with the history
+  (`beadroll_core::recap`). The walk below a frontier stops at quarantined ids, whose copies
+  disagree and may be placed before a cause one of them names: a late cause then shows, and an id
+  found quarantined after it was shown lets what it was built on show once more. Only output to a
+  terminal advances it; agents, pipes and `--json` only look unless `--advance`. The first recap
+  shows the last 24 hours. A tracker with integrity problems still advances; one that cannot be
+  read is reported and the others show. Two recaps at once may both show the same events: no lock
+  is held while an answer is written, and a save merges, keeping for each tracker whichever
+  frontier covers more. Recap reads each store as `log` does, the journal whole and the state from
+  the projection, and its event rows are `log`'s with more members. Time windows (`--since`) were
+  left for later. The cursor and its lock are no part of format 1.
 - Rust APIs describe their role rather than the implementation language bead replaced
   (roll-dih8.17): `op::IntegerField` retains the boolean or integer representation of a format-1
   field, and text and path helpers name their parsing, trimming, casing and normalization

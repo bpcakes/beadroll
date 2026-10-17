@@ -26,7 +26,9 @@ consumer on tokio calls through `spawn_blocking`.
   `journal/event.rs`: `Event`, what replay reads of a record (its id, causes, writer, actor, place
   and typed operation) and the digest of its content, with the texts and values events repeat held
   once (`Shared`); `journal/content.rs`: the digest. `src/order.rs`: `causal_order`, and `Order`,
-  the same by event index.
+  the same by event index. `src/recap.rs`: `unseen`, what `bead recap` shows of a journal below
+  the frontier it kept, and the frontier it keeps then (roll-dih8.2); its tests deliver the
+  differential tests' histories to a growing store.
 - `src/replay.rs` (`replay/apply.rs`, with `apply/claims.rs` and `apply/create.rs`): `replay`,
   which takes what each event does from its journal; `src/state.rs` (`state/issue.rs`,
   `state/claim.rs`, `state/seen.rs`): `State`, `Issue`, claims, `saw`; `state/small.rs`:

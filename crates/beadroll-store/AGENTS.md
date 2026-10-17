@@ -17,6 +17,9 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   `read_json_text`, `read_json_keeping_surrogates` (preserving lone surrogates across whole-file
   rewrites) and file-read diagnostics (`os_error_str`, `utf8_error`).
 - `src/identity.rs`: `replica_id`, `machine_aliases`, `uuid7`, `hex_token`.
+- `src/recap.rs`: `home_stores`, every store under `BEAD_HOME` without a checkout, and
+  `RecapCursor`, `bead recap`'s cursor of each tracker's frontier, saved under a lock held only to
+  read and replace it, merging with a recap that saved meanwhile (roll-dih8.2).
 - `src/actor.rs`: `detect_actor`, `nearest_harness` (its `ps` passed in by the CLI); an `Actor` is
   its JSON value, whether it can write (only with valid UTF-8 text), and its `label` derived from
   the original bytes: claims are compared by `Label::is`, never by the printed text, so an actor

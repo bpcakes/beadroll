@@ -153,10 +153,19 @@ recorded, every command says what the remote still lacks, and `bead sync`
 carries it. `ready`, `show`, `list` and the other reads never touch the
 network.
 
+`bead recap`, from any directory, shows what is new in every tracker on the
+machine since you last looked: one line per event as `bead log` prints it, with
+its issue's title, who wrote it, on which machine and branch (`--format issues`
+gives one line per issue, `--format full` each event's thread and commit). It
+never touches the network, so sync a repository first to see its other
+machines' latest work. The first recap shows the last 24 hours; after that,
+each one on a terminal marks what it showed as seen, while a pipe, a file or
+`--json`, an agent's run, only looks unless given `--advance`.
+
 The commands: `create`, `show`, `update`, `list`, `ready`, `blocked`, `close`,
 `reopen`, `delete`, `dep add|remove|list|tree|cycles`, `comments [add]`,
 `search`, `lint`; `init`, `import`, `export`, `sync`, `claim`, `release`,
-`takeover`, `claims`, `log`, `info`, `machines`; and for agents `help`,
+`takeover`, `claims`, `log`, `recap`, `info`, `machines`; and for agents `help`,
 `prime`, `onboard`. `bead` alone prints the one-screen overview and `bead help
 COMMAND` one command's page. `bead ready EPIC` keeps to an epic's subtree,
 `bead close --recursive EPIC` closes one, children first, in one write, and a
