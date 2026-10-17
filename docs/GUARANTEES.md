@@ -453,6 +453,12 @@ it, and the file is committed again.
   projection holds 77.1 MB rather than 75.7 MB (roll-lqjj.43; `cargo xtask
   timing --read N`, `read_after_write_seconds`; `--decode N`,
   `worst_index_bytes` and `worst_projection_heap_bytes`).
+  A write-back copies the bytes of every issue and event the write did not
+  touch rather than encoding them again, so at 200,000 events the read after a
+  write takes 0.15 s rather than 0.18 s, and its write-back encodes in 2 ms
+  rather than 40 ms; what a command decodes, and how long it takes, is as it
+  was, and no command holds more (roll-lqjj.44; `cargo xtask timing --read N`,
+  `read_after_write_seconds`; `--decode N`, `encode_seconds`).
   A real tracker's state is mostly
   its texts, which only the commands that print them read: on three of the
   largest public Beads trackers (21–47 MB, up to 13,394 issues) a `list` takes

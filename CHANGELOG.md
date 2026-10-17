@@ -6,6 +6,29 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A write-back of the projection copies the bytes of every issue and event the write did not
+  touch (roll-lqjj.44, X17 step 4; `projection::ENCODING` 11, so the first command of this build
+  replays the journal once): every write-back encoded every issue and every event record, whatever
+  the batch changed, 40 ms of the read after a write at 200,000 events. Each part of the projection
+  is now a part of records referring to the names and values they share by number in a table of
+  its own, an issue's record holding who wrote the events behind its registers with several
+  entries; a projection read back keeps the bytes it read until it is written back, and a state's
+  issues mark what changes them (`state::Issues`), so a write-back copies every issue not marked,
+  the keys, event records, places, clocks and chain positions read back, which between two
+  compactions only grow at their end, and merges the batch's ids into those it read. At 200,000
+  events (`cargo xtask timing --read N` and `--decode N`, both builds alternated on a shared
+  machine) the read after a write takes 0.150 s where it took 0.184 s (19.9 ms where 22.5 ms at
+  20,000), its write-back encodes in 1.9 ms where 39.6 ms (4.6 ms where 43.4 ms at the worst point
+  between compactions, 68.4 ms where 88.6 ms when it compacts); every other command, the decodes
+  and `--sync N` are as they were, a write's heap peak is 79.4 MB where 81.2 MB and the read after
+  a write's 94.5 MB where 96.3 MB (`cargo xtask bead`). `projection/tests/marked.rs` checks after
+  every extension the differential tests make of a projection read back that every issue whose
+  record changed is marked and nothing else is, and every write-back that what it copied is byte
+  for byte what it writes when it copies nothing; a new failpoint, `projection.before-save`, lets a
+  black-box test show that a write-back overtaken by another process starting the text file again
+  writes nothing or every text anew. `cargo xtask timing --decode N` also times the encode whole
+  (`whole_encode_seconds`). Output, exit codes and format 1 are unchanged.
+
 - An issue's ownership history, the claims that ended, the claims that lost and the ends that
   came too late, is kept with its texts in the projection rather than in the state part a read
   decodes (roll-lqjj.40, X16; `projection::ENCODING` 10, so the first command of this build replays
