@@ -3,7 +3,8 @@
 //! every record a write-back writes or copies of it. When another process starts the text file
 //! again between the read and the write-back, the write-back finds another generation there: it
 //! writes nothing, or, when it has every text in it, every text anew in a text file of its own and
-//! every record with them. Either way bead answers as the journal replayed.
+//! every record with them. Either way bead answers as the journal replayed. One whose text file
+//! another process grew under it starts a text file of its own and writes every record anew too.
 
 use std::os::unix::fs::MetadataExt as _;
 
@@ -88,4 +89,61 @@ fn a_write_back_overtaken_by_a_text_file_started_again_writes_nothing_or_every_t
     let replayed = answers(&b, &only, true);
     assert_eq!(list.stdout, replayed[0]);
     assert_eq!(answers(&b, &only, false), replayed);
+}
+
+/// A write-back whose text file another process grew under it, past what it reads of it by more
+/// than a mebibyte: it reads every text in and starts a text file of its own, and so writes every
+/// record anew, with its texts' place in that file, those of the issues it did not change too. The
+/// next read takes in what the other process wrote, reading the texts of the issue it is about
+/// where the write-back placed them: it extends the projection and appends to that text file,
+/// where a text read at a place of the old file would fail its sum and have the journal replayed,
+/// and the file started again.
+#[test]
+fn a_write_back_whose_text_file_grew_under_it_writes_every_record_anew() {
+    let sandbox = crate::sandbox();
+    let c = crate::rust_only(&sandbox, "raced-c");
+    let keys = tracker(&c);
+    let _ = c.run(["list", "--json"]);
+    c.bead([
+        "comments",
+        "add",
+        &keys[0],
+        "taken in by the list",
+        "--offline",
+    ]);
+    let long = sandbox.root().join("long.txt");
+    std::fs::write(&long, "x".repeat(1_200_000)).unwrap();
+    let long = long.to_str().unwrap().to_owned();
+    let gate = Gate::new(&sandbox, "raced-c");
+    let failpoints = format!("projection.before-save={}", gate.action());
+    let (list, grown) = beside(
+        || {
+            (c.cmd(["list", "--json"]))
+                .env("BEAD_FAILPOINTS", &failpoints)
+                .run()
+        },
+        |finished| {
+            gate.meet(finished, || {
+                // a description longer than a mebibyte on an issue the list leaves as it is, and
+                // a read that writes it back, appending it to the list's text file
+                c.bead(["update", &keys[2], "--description-file", &long, "--offline"]);
+                let _ = c.run(["list", "--json"]);
+                std::fs::metadata(texts(&c)).unwrap().len()
+            })
+        },
+    );
+    let grown = grown.unwrap_or_else(|| panic!("the list wrote nothing back: {}", list.stderr));
+    assert_eq!(list.returncode(), 0, "{}", list.stderr);
+    assert!(grown > 1 << 20, "the text file grew to {grown} bytes");
+    let started = files(&c);
+    assert!(started.1.len() < 1 << 20, "a text file of its own");
+    let shown = c.run(["show", &keys[2], "--json"]);
+    assert_eq!(shown.returncode(), 0, "{}", shown.stderr);
+    assert_eq!(
+        files(&c).3,
+        started.3,
+        "the texts read where the write-back placed them"
+    );
+    let replayed = answers(&c, &keys, true);
+    assert_eq!(answers(&c, &keys, false), replayed);
 }
