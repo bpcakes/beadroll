@@ -163,17 +163,18 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   of bead wrote, is never read.
 - Each issue's texts (descriptions, designs, acceptance criteria, notes,
   comments, the metadata its dependencies were added with, which only `export`
-  prints, and the claims that ended, lost or came too late) are kept beside
-  the projection, in `<store>/projection-texts`. To print them, `show`,
-  `comments` and the writes that answer with the issues they wrote (`claim`,
-  `takeover`, `update`) read those issues' alone, and `export`, `search` and
-  `lint` read them all; `list`, `ready`, `claims` and `prime` print none. Any
-  command that takes records into the projection (a write its own, a reading
-  command those written since it was saved, a sync those it merges) first
-  reads in the texts of every issue they are about, since a long field set, a
-  comment, a delete, a dependency added or removed, a claim, a release, a close
-  and a reopen may change them, and of every issue whose import waits for a key
-  a create among them brings, since that create gives it an edge; and appends
+  prints, the claims that ended or lost, and the ends that came too late) are
+  kept beside the projection, in `<store>/projection-texts`. To print them,
+  `show`, `comments` and the writes that answer with the issues they wrote
+  (`claim`, `takeover`, `update`) read those issues' alone, and `export`,
+  `search` and `lint` read them all; `list`, `ready`, `claims` and `prime`
+  print none. Any command that takes records into the projection (a write its
+  own, a reading command those written since it was saved, a sync those it
+  merges) first reads in the texts of every issue they are about, since a long
+  field set, a comment, a delete, a dependency added or removed, a claim, a
+  release, a close and a reopen may change them, and of every issue whose
+  import waits for a key a create among them brings, since that create gives
+  it an edge; and appends
   those that changed to the file when it writes the projection back. It is a
   cache too:
   texts that cannot be read as written have the journal replayed.
@@ -373,12 +374,13 @@ it, and the file is committed again.
   0.114 s, `show` 0.100 s rather than 0.106 s and `ready` 0.146 s rather than
   0.160 s; measured again on fd5ae9b, with roll-lqjj.39, on a busier machine,
   the state part is 6.85 MB rather than 7.69 MB (4.79 MB rather than 8.70 MB
-  on the history heavy in claims) and decodes in 57.2 ms rather than 61.1 ms,
-  and `list` takes 81 ms rather than 87 ms, `show` 74 ms rather than 82 ms and
-  `ready` 121 ms rather than 128 ms. A write derives the labels its own events
-  changed, each issue's once however many of them changed it, and takes its new
-  event ids in wherever they sort among the ids held, so one `bead close`
-  naming 8,000 issues of 8,000 takes 0.7 s rather than 19.8 s; a batch that
+  on the history heavy in claims) and decodes in 57.2 ms rather than 61.1 ms
+  (58.6 ms rather than 60.0 ms in the review's run), and `list` takes 81 ms
+  rather than 87 ms, `show` 74 ms rather than 82 ms and `ready` 121 ms rather
+  than 128 ms. A write derives the labels its own events changed, each issue's
+  once however many of them changed it, and takes its new event ids in
+  wherever they sort among the ids held, so one `bead close` naming 8,000
+  issues of 8,000 takes 0.7 s rather than 19.8 s; a batch that
   creates an issue, adds a dependency or takes one back still has the whole
   parent-child index built again, since a create gives the imports that waited
   for its key their edges, and that is one pass a command (roll-lqjj.17, V01,

@@ -251,11 +251,12 @@ These were decided deliberately. Report problems *with* them, not their existenc
   and 1 MiB (`beadroll-store/src/projection.rs`), and the projection written whole at every save is
   smaller by more than the appends add (469 KB where 693 KB after the first run), so no more bytes
   are written in all. Measured again on fd5ae9b, both builds alternated on a busier machine: the
-  state part 6.85 MB where it was 7.69 MB, decoded in 57.2 ms where it took 61.1 ms, holding
-  37.1 MB where it held 43.2 MB, the text file with both sections 4.93 MB where it was 3.62 MB; on
-  the ownership-heavy history 4.79 MB where 8.70 MB, 40.4 ms where 53.5 ms, 26.7 MB where 47.1 MB,
-  the texts 6.44 MB where 1.02 MB; `list` 81 ms where 87 ms, `show` 74 ms where 82 ms, `ready`
-  121 ms where 128 ms), and short fields shown from their registers (roll-lqjj.41,
+  state part 6.85 MB where it was 7.69 MB, decoded in 57.2 ms where it took 61.1 ms (58.6 ms where
+  60.0 ms, the fastest of the review's six rounds, 59.5 ms where 61.5 ms their median: −2% to −6%),
+  holding 37.1 MB where it held 43.2 MB, the text file with both sections 4.93 MB where it was
+  3.62 MB; on the ownership-heavy history 4.79 MB where 8.70 MB, 40.4 ms where 53.5 ms, 26.7 MB
+  where 47.1 MB, the texts 6.44 MB where 1.02 MB; `list` 81 ms where 87 ms, `show` 74 ms where
+  82 ms, `ready` 121 ms where 128 ms), and short fields shown from their registers (roll-lqjj.41,
   landed: below; the
   state part 9.45 MB where it was 10.68 MB, decoded in 38.8 ms where it took 43.6 ms, holding
   51.4 MB where it held 60.4 MB, an issue 560 bytes inline where it was 976). Each issue's texts
@@ -293,11 +294,13 @@ These were decided deliberately. Report problems *with* them, not their existenc
   projection from 245 MB on the heap to 191 MB (`cargo xtask timing --import 14000`, whose records
   now hold `projection_bytes` and `texts_bytes`, as `--read N` does). A command that prints no texts
   (`list`, `ready`, `blocked`, `claims`, `dep`, `info`, a transition's or a release's answer) never
-  reads them; one that prints issues whole (`show`, `comments`, `update`, `claim`, `takeover`) reads
-  in only theirs; `export`, `search` and `lint` read every text; and records applied after the
-  projection have the texts of the issues they are about read in first, and of the issues that
-  wait, by an import's dependency, for a key a create among them brings, which that create makes an
-  edge in (`Projection::about`): an edge added or removed changes its issue's texts, which hold its
+  reads them, but for a close or delete that ended a claim, which once published reads in the texts
+  of the issues it names to decide whether a takeover superseded the claim; one that prints issues
+  whole (`show`, `comments`, `update`, `claim`, `takeover`) reads in only theirs; `export`, `search`
+  and `lint` read every text; and records applied after the projection have the texts of the issues
+  they are about read in first, and of the issues that wait, by an import's dependency, for a key a
+  create among them brings, which that create makes an edge in (`Projection::about`): an edge added
+  or removed changes its issue's texts, which hold its
   additions' metadata, and a change to texts not read in declines. Edges are read through
   `Issue::deps` and `Issue::dep_tags`, which answer as when each edge was a pair of strings with a
   metadata value per addition, in the same order (targets ordered by their text): a test written
@@ -328,9 +331,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
   that replay would place by an order the projection does not hold, and every answer is replay's.
   The evidence: the differential tests, whose new track extends the projection last saved by every
   batch since at once, in the order a store reads them (1,053 such extensions in the 40 clean
-  seeds, 378 in the 40 flawed ones; 4,000 clean and 10,000 flawed seeds in release); the review's
-  fuzzer, 6,167 writes with 1,021 answer checks against the base's replay, 874 of them with the
-  projection up to 24 writes behind; and its concurrent-creates and concurrent-rename scenarios,
+  seeds, 378 in the 40 flawed ones, on roll-lqjj.36's generator; 980 and 342 on roll-lqjj.40's,
+  which draws every kind of ownership record; 4,000 clean and 10,000 flawed seeds in release); the
+  review's fuzzer, 6,167 writes with 1,021 answer checks against the base's replay, 874 of them with
+  the projection up to 24 writes behind; and its concurrent-creates and concurrent-rename scenarios,
   where keys two machines minted concurrently were renamed as replay renames them
   (`storage::projection::deferred::a_merge_concurrent_only_with_writes_left_after_the_projection_extends_it`
   pins the rule both ways). Such a merge extends where this machine has records left after its
@@ -586,7 +590,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   three ways (`WriteBack`: as the store writes it back, and at every write-back uncompacted or
   compacted), each compared with replay at every batch, who wrote every event the state names and
   whether each head had seen it included: in the 40 clean seeds 1,104 write-backs left events the
-  state no longer names (up to 49), and of the store's own 718 left such events and 330 compacted;
+  state no longer names (up to 49), and of the store's own 718 left such events and 330 compacted,
+  on roll-lqjj.43's generator (1,144, up to 39, 803 and 282 on roll-lqjj.40's);
   `projection::tests::compacted` pins the boundary on both sides, and the store's
   `projection::tests::compacted` the rule through reads and writes that write back. Measured
   (release, before and after alternated, best of two runs of five each, on a machine shared with

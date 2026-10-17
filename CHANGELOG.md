@@ -25,12 +25,13 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   against 0.61 s and 0.60 s; `cargo xtask timing --read N`, which now times them). Measured again
   on fd5ae9b, with them (both builds alternated, three rounds of the decode and five of the reads,
   on a busier machine, so slower throughout): the state part is 6.85 MB rather than 7.69 MB and
-  decodes in 57.2 ms rather than 61.1 ms, holding 37.1 MB rather than 43.2 MB, and the text file,
-  with each issue's edges' metadata and ownership history, is 4.93 MB rather than 3.62 MB; on the
-  ownership-heavy history 4.79 MB rather than 8.70 MB, 40.4 ms rather than 53.5 ms and 26.7 MB
-  rather than 47.1 MB, the texts 6.44 MB rather than 1.02 MB; `list` takes 81 ms rather than 87 ms,
-  `show` 74 ms rather than 82 ms and `ready` 121 ms rather than 128 ms, the projection file is
-  15.62 MB rather than 16.46 MB, and a published claim and a release take 0.42 s each. Every answer
+  decodes in 57.2 ms rather than 61.1 ms (58.6 ms rather than 60.0 ms, the fastest of the review's
+  six rounds: −2% to −6%), holding 37.1 MB rather than 43.2 MB, and the text file, with each issue's
+  edges' metadata and ownership history, is 4.93 MB rather than 3.62 MB; on the ownership-heavy
+  history 4.79 MB rather than 8.70 MB, 40.4 ms rather than 53.5 ms and 26.7 MB rather than 47.1 MB,
+  the texts 6.44 MB rather than 1.02 MB; `list` takes 81 ms rather than 87 ms, `show` 74 ms rather
+  than 82 ms and `ready` 121 ms rather than 128 ms, the projection file is 15.62 MB rather than
+  16.46 MB, and a published claim and a release take 0.42 s each. Every answer
   is unchanged, and format 1 too. `Issue::last_ended` is new: who ended the last claim and how,
   whether or not the issue's texts are read in; `Issue::claim_history`, `lost_claims` and `stale`
   are empty until they are.
