@@ -14,6 +14,7 @@ use crate::state::State;
 use super::{Projection, Record, decode_state};
 
 mod awaiting;
+mod compacted;
 mod finished;
 mod flawed;
 mod hostile;
@@ -601,10 +602,13 @@ impl WriteBack {
     ];
 
     /// Whether writing `projection` back cuts what every event had seen down to the events the
-    /// state names and the frontier.
-    fn compacts(self, _projection: &Projection) -> bool {
+    /// state names and the frontier: as the store writes it, once the events taken in since it was
+    /// last compacted are more than an eighth of those it knew then.
+    fn compacts(self, projection: &Projection) -> bool {
+        let since = projection.known() - projection.compacted();
         match self {
-            WriteBack::Encoded | WriteBack::Compacted => true,
+            WriteBack::Encoded => since * 8 > projection.compacted(),
+            WriteBack::Compacted => true,
             WriteBack::Uncompacted => false,
         }
     }
@@ -682,5 +686,12 @@ fn every_extension_is_replays_answer_or_declined() {
         "{} write-backs left events the state no longer names, {} at most",
         tally.uncompacted,
         tally.unnamed
+    );
+    // and as the store writes it back, on both sides of an eighth more
+    assert!(
+        tally.left > 200 && tally.cut > 200,
+        "the store's write-backs: {} left such events, {} compacted",
+        tally.left,
+        tally.cut
     );
 }

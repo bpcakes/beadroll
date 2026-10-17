@@ -25,7 +25,8 @@ use super::{
 /// of the projection written back some batches before, the extensions by two batches or more at
 /// once, and the most batches one took in: each of the projection written back as the store
 /// writes it. Of the write-backs that left what every event had seen as it was, those that left
-/// events the state no longer names, and the most such events one left.
+/// events the state no longer names, and the most such events one left; of those the store made,
+/// those that left such events, and those that compacted them away.
 #[derive(Default, Debug)]
 pub(super) struct Tally {
     pub(super) applied: usize,
@@ -38,21 +39,29 @@ pub(super) struct Tally {
     pub(super) brought: BTreeMap<&'static str, usize>,
     pub(super) uncompacted: usize,
     pub(super) unnamed: usize,
+    pub(super) left: usize,
+    pub(super) cut: usize,
 }
 
 impl Tally {
-    /// Counts what `projection`, read back as `back` wrote it, knows that its state no longer
-    /// names.
-    fn read_back(&mut self, projection: &Projection, back: WriteBack) {
-        if back != WriteBack::Uncompacted {
-            return;
-        }
-        let mut kept = named(projection.state());
-        kept.extend(projection.heads.iter().copied());
-        let events = projection.state.knowledge.events.keys();
+    /// Counts what `read`, read back from `written` written back as `back` says, knows that its
+    /// state no longer names.
+    fn read_back(&mut self, written: &Projection, read: &Projection, back: WriteBack) {
+        let mut kept = named(read.state());
+        kept.extend(read.heads.iter().copied());
+        let events = read.state.knowledge.events.keys();
         let unnamed = events.filter(|id| !kept.contains(*id)).count();
-        self.uncompacted += usize::from(unnamed > 0);
-        self.unnamed = self.unnamed.max(unnamed);
+        match back {
+            WriteBack::Uncompacted => {
+                self.uncompacted += usize::from(unnamed > 0);
+                self.unnamed = self.unnamed.max(unnamed);
+            }
+            WriteBack::Encoded => {
+                self.left += usize::from(unnamed > 0);
+                self.cut += usize::from(read.known() < written.known());
+            }
+            WriteBack::Compacted => assert_eq!(unnamed, 0),
+        }
     }
 }
 
@@ -112,8 +121,9 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -
                 // the figures are the store's
                 let counted = back == WriteBack::Encoded;
                 if reading_back {
-                    projection = read_back(&projection, &mut file, back);
-                    tally.read_back(&projection, back);
+                    let read = read_back(&projection, &mut file, back);
+                    tally.read_back(&projection, &read, back);
+                    projection = read;
                 }
                 let before = flawed::kinds(projection.state());
                 let open = projection.extendable();
@@ -206,7 +216,7 @@ impl Stored {
         };
         if let Some(written) = written {
             self.projection = read_back(&written, &mut self.file, self.back);
-            tally.read_back(&self.projection, self.back);
+            tally.read_back(&written, &self.projection, self.back);
             (self.since, self.batches) = (Vec::new(), 0);
         }
     }

@@ -9,6 +9,15 @@
 //! applies records appended to that journal when replay would apply them after every event it
 //! holds, and as it would; when it cannot know that, it declines, and the caller replays.
 //!
+//! What every event had seen is compacted so now and then, not at every write-back (roll-lqjj.43):
+//! a projection extended and written back keeps every event it knew and every event it took in,
+//! and is compacted again by the write-back that finds the events taken in since its last
+//! compaction more than a [`COMPACTED`]th of those it knew then. Between, it knows events its state
+//! no longer names, with their places and what each had seen as replay found them, which nothing
+//! asks of it: what applying an event asks, and what a state read alone answers with
+//! ([`State::conflicts`] and who wrote what it names), is of the events the state names, and the
+//! answers about those are the same whatever else it knows.
+//!
 //! Each issue's texts are kept apart (roll-lqjj.6): [`Projection::encode`] gives the bytes of the
 //! texts written nowhere yet, placed after `texts_at` bytes of a store's text file, and a state read
 //! back has every issue's texts there, until the store reads in those a command needs
@@ -36,7 +45,14 @@ pub use codec::Unreadable;
 pub use extend::Extended;
 
 /// The version of the bytes [`Projection::encode`] writes. Bytes of another are not read.
-pub const ENCODING: u32 = 7;
+pub const ENCODING: u32 = 8;
+
+/// How many times the events a projection took in of what every event had seen since it was last
+/// compacted go into the events it knew then, at most, before a write-back compacts it again
+/// (roll-lqjj.43): between compactions it knows the events its state named and the frontier when
+/// it was last compacted and at most an eighth as many again, and a write-back writes it as it is,
+/// without finding what the state names or cutting down what it knows.
+pub const COMPACTED: usize = 8;
 
 /// A projection's bytes: its state, which a command that only reads needs alone, its index, what
 /// applying more events needs, and the texts it has that are written nowhere yet.
@@ -45,8 +61,9 @@ pub struct Encoded {
     /// The state, each issue with where its texts are, and of its events only who wrote those a
     /// state's conflicts name and where machines' journals broke (roll-lqjj.35).
     pub state: Vec<u8>,
-    /// Every event the state names, with its causes, machine and actor, and what each had seen, the
-    /// frontier, every event id, each machine's journal length and latest event, the claims
+    /// Every event it knows of what every event had seen, with its causes, machine and actor, and
+    /// what each had seen (those the state named and the frontier when it was last compacted, and
+    /// every event taken in since), how many it knew then (roll-lqjj.43), the frontier, every event id, each machine's journal length and latest event, the claims
     /// takeovers superseded, and whether events can be applied after.
     pub index: Vec<u8>,
     /// The texts written nowhere yet, each issue's at the place the state gives it: to append to
@@ -89,7 +106,8 @@ pub struct Record {
 /// A journal's state, replayed, with what applying the events that come after it needs.
 #[derive(Clone, Debug)]
 pub struct Projection {
-    /// The state, what every event had seen kept for the events it still names.
+    /// The state, what every event had seen kept for the events it named and the frontier when last
+    /// compacted, and every event taken in since ([`Projection::compacted`]).
     pub(crate) state: State,
     /// The frontier: the events nothing builds on, by id.
     pub(crate) heads: Vec<EventId>,
@@ -109,6 +127,10 @@ pub struct Projection {
     /// after it (`replay::Replayed::unsettled`). Whatever else replay reports stays as it is,
     /// whatever comes after (`extend.rs`, roll-lqjj.28).
     pub(crate) open: bool,
+    /// How many events the knowledge held when it was last compacted to the events the state named
+    /// and the frontier (roll-lqjj.43): every event taken in since is held too, until a write-back
+    /// compacts it again ([`Projection::compaction_due`]).
+    pub(crate) compacted: usize,
 }
 
 /// Replays `journal` into a projection. Fails only as [`crate::replay::replay`] does.
@@ -127,6 +149,7 @@ pub fn project(mut journal: Journal) -> Result<Projection, KeySpace> {
     let mut kept = named(&state);
     kept.extend(heads.iter().copied());
     state.knowledge = state.knowledge.kept(&kept);
+    let compacted = state.knowledge.events.len();
     Ok(Projection {
         state,
         heads,
@@ -135,6 +158,7 @@ pub fn project(mut journal: Journal) -> Result<Projection, KeySpace> {
         lasts,
         superseded: replayed.superseded,
         open,
+        compacted,
     })
 }
 
@@ -169,6 +193,26 @@ impl Projection {
         out
     }
 
+    /// How many events it knows of what every event had seen (roll-lqjj.43): the events its state
+    /// names and the frontier, as it was when last compacted, and every event taken in since.
+    pub fn known(&self) -> usize {
+        self.state.knowledge.events.len()
+    }
+
+    /// How many events it knew of what every event had seen when that was last compacted.
+    pub fn compacted(&self) -> usize {
+        self.compacted
+    }
+
+    /// Whether writing it back compacts what every event had seen to the events its state names and
+    /// the frontier: once the events taken in since it was last compacted are more than a
+    /// [`COMPACTED`]th of those it knew then (roll-lqjj.43). At an eighth exactly, it is written as
+    /// it is; one event more, and it is compacted.
+    pub fn compaction_due(&self) -> bool {
+        let since = self.known().saturating_sub(self.compacted);
+        since.saturating_mul(COMPACTED) > self.compacted
+    }
+
     /// Whether events can be applied after it ([`Projection::extend`]): nothing in its journal waits
     /// for a cause, no takeover was refused for naming an id no event has, and every id with
     /// several contents is placed by all its causes.
@@ -183,10 +227,12 @@ impl Projection {
 
     /// The projection as bytes, the texts written nowhere yet placed from `texts_at`, the length of
     /// the text file they are to be appended to, and the places it gave them: once both are written,
-    /// [`Projection::placed`] has the issues know. Of what every event had seen it keeps the events
-    /// the state still names, and the frontier.
+    /// [`Projection::placed`] has the issues know. Of what every event had seen it keeps, when it is
+    /// compacted ([`Projection::compaction_due`]), the events the state still names and the
+    /// frontier, and otherwise every event it knows: those, as they were when it was last
+    /// compacted, and every event taken in since (roll-lqjj.43).
     pub fn encode(&self, texts_at: u64) -> (Encoded, Vec<(EventId, TextPlace)>) {
-        self.encode_with(texts_at, true)
+        self.encode_with(texts_at, self.compaction_due())
     }
 
     /// [`Projection::encode`], what every event had seen cut down to the events the state names and
@@ -211,14 +257,19 @@ impl Projection {
                 texts.extend_from_slice(&bytes);
             }
         }
-        let compacted;
+        let cut;
         let kept = if compact {
             let mut named = named(&self.state);
             named.extend(self.heads.iter().copied());
-            compacted = self.state.knowledge.kept(&named);
-            &compacted
+            cut = self.state.knowledge.kept(&named);
+            &cut
         } else {
             &self.state.knowledge
+        };
+        let compacted = if compact {
+            kept.events.len()
+        } else {
+            self.compacted
         };
         let mut w = Writer::default();
         let given: HashMap<EventId, TextPlace> = places.iter().copied().collect();
@@ -228,6 +279,7 @@ impl Projection {
         let mut w = Writer::default();
         kept.write_events(&mut w);
         kept.write_index(&mut w);
+        w.count(compacted);
         w.ids(self.heads.iter());
         w.ids(self.ids.iter());
         let mut lengths: Vec<(&String, &u32)> = self.lengths.iter().collect();
@@ -277,6 +329,10 @@ impl Projection {
             return Err(Unreadable("the writers"));
         }
         state.knowledge.read_index(&mut r)?;
+        let compacted = r.count()?;
+        if compacted > state.knowledge.events.len() {
+            return Err(Unreadable("the events last compacted"));
+        }
         let heads = r.ids()?;
         if !(heads.iter()).all(|head| state.knowledge.events.contains_key(head)) {
             return Err(Unreadable("the frontier"));
@@ -309,6 +365,7 @@ impl Projection {
             lasts,
             superseded,
             open,
+            compacted,
         })
     }
 }

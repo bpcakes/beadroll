@@ -5,7 +5,8 @@
 //! head's past. When every new event does, replay applies the old events as before and the new
 //! ones after them, in the order their own causes give, and each new event sees what it saw in a
 //! replay: the projection keeps every event the state names, and the frontier, with its place and
-//! what it had seen. A local write's events build on the frontier; so do a merge's, when one
+//! what it had seen (and between compactions every event taken in since, which it saw as replay
+//! did: roll-lqjj.43). A local write's events build on the frontier; so do a merge's, when one
 //! writer worked at a time or when the frontier is that of a projection saved before this
 //! machine's writes that the merged events are concurrent with (roll-lqjj.36): those writes and
 //! the merged events are new together, one batch, and each has the frontier in its past.

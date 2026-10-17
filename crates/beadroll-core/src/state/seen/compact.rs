@@ -1,6 +1,7 @@
-//! What a projection keeps of what every event had seen (roll-lqjj.2): the events its state still
-//! names, each with its place and its clock, and enough of every chain to place the events that
-//! come after all of them.
+//! What a projection keeps of what every event had seen when it is compacted (roll-lqjj.2): the
+//! events its state still names, each with its place and its clock, and enough of every chain to
+//! place the events that come after all of them; and between compactions every event taken in
+//! since as well, each pushed after them (roll-lqjj.43).
 
 use std::collections::{HashMap, HashSet};
 
