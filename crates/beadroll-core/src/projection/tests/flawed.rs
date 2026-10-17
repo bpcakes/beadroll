@@ -227,6 +227,7 @@ fn every_extension_past_an_integrity_entry_is_replays_answer_or_declined() {
     }
     assert!(tally.deferred > 100, "{tally:?}");
     assert!(tally.uncompacted > 200, "{tally:?}");
+    super::edges::pinned("flawed", &tally.answers);
 }
 
 /// The same over many more seeds, eight threads at a time: `cargo test --release --package

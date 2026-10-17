@@ -270,7 +270,7 @@ mod tests {
         (state.issues())
             .map(|issue| {
                 let to: Vec<String> = (issue.deps().keys())
-                    .map(|(to, _)| state.key_of(to).to_owned())
+                    .map(|edge| state.target_key(edge.to()).into_owned())
                     .collect();
                 (issue.key().to_owned(), to, issue.dangling().len())
             })

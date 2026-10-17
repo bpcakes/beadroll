@@ -15,7 +15,9 @@ use crate::id::EventId;
 use crate::journal::{Event, Rest};
 use crate::json::{Object, Value};
 use crate::op::Op;
-use crate::state::{Awaiting, Comment, IdMap, IdSet, Issue, KeySpace, Knowledge, Stale, State};
+use crate::state::{
+    Awaiting, Comment, Edge, IdMap, IdSet, Issue, KeySpace, Knowledge, Meta, Stale, State, Target,
+};
 use crate::text::str_of;
 
 /// The event replay is applying: its index in the journal, its id, what replay keeps of it, and
@@ -27,14 +29,14 @@ pub(super) struct Doing<'a> {
     pub(super) what: &'a Rest,
 }
 
-/// The names that claims and comments repeat (owners, machines, agents, threads, modes), held once
-/// while replay applies events: the records it makes share them.
+/// The names that claims, comments and edges repeat (owners, machines, agents, threads, modes,
+/// edges' kinds), held once while replay applies events: the records it makes share them.
 #[derive(Debug, Default)]
 pub(crate) struct Names(RefCell<HashSet<Arc<str>>>);
 
 impl Names {
     /// `name`, held once.
-    fn of(&self, name: &str) -> Arc<str> {
+    pub(super) fn of(&self, name: &str) -> Arc<str> {
         let mut held = self.0.borrow_mut();
         if let Some(name) = held.get(name) {
             return Arc::clone(name);
@@ -64,7 +66,7 @@ pub(super) fn apply_event(
             return Ok(false);
         }
         Op::Create(making) => {
-            create::create(st, k, event, making, who, when)?;
+            create::create(st, k, event, making, (who, when), names)?;
             return Ok(false);
         }
         other => other,
@@ -215,13 +217,14 @@ fn comment(c: &Ctx<'_>, issue: &mut Issue, seq: u64, text: &str, author: Option<
     true
 }
 
-/// A dependency on `to` with `kind` defaulting to blocks, event stamps and overriding metadata
-/// from `meta`.
+/// A dependency on `to` with `kind` defaulting to blocks, the kind held once for every edge of it,
+/// event stamps and overriding metadata from `meta`.
 fn dep_add(c: &Ctx<'_>, issue: &mut Issue, to: &str, kind: Option<&str>, meta: &Object) -> bool {
-    let kind = kind
-        .filter(|kind| !kind.is_empty())
-        .unwrap_or("blocks")
-        .to_owned();
+    let kind = kind.filter(|kind| !kind.is_empty()).unwrap_or("blocks");
+    let edge = Edge {
+        to: Target::of(to),
+        kind: c.name(kind),
+    };
     let mut stamp = Object::new();
     stamp.insert("created_at".into(), Value::from(c.when));
     stamp.insert("created_by".into(), Value::from(c.who));
@@ -231,8 +234,8 @@ fn dep_add(c: &Ctx<'_>, issue: &mut Issue, to: &str, kind: Option<&str>, meta: &
     );
     issue
         .dep_tags
-        .get_or_insert_with((to.to_owned(), kind), IdMap::default)
-        .insert(c.eid, Value::from(stamp));
+        .get_or_insert_with(edge, IdMap::default)
+        .insert(c.eid, Meta::of(stamp));
     true
 }
 
@@ -253,17 +256,18 @@ fn dep_remove(
         awaiting.retract(issue, key, |dep| matches(&dangling_type(dep)));
         // A concurrent create of the key that sorted first bound it already.
         if let Some(bound) = by_key.get(key).filter(|_| c.k.saw_at(c.at, c.uid)) {
-            let bound = bound.to_string();
-            for ((to, kind), tags) in issue.dep_tags.iter_mut() {
-                if *to == bound && matches(kind) {
+            let bound = Target::Id(*bound);
+            for (edge, tags) in issue.dep_tags.iter_mut() {
+                if edge.to == bound && matches(&edge.kind) {
                     tags.remove(&c.uid); // the import's own tag only: an explicit `dep add` keeps its edge
                 }
             }
         }
     } else {
         let to = to.unwrap_or_default();
-        for ((edge_to, kind), tags) in issue.dep_tags.iter_mut() {
-            if edge_to == to && matches(kind) {
+        let target = Target::of(to);
+        for (edge, tags) in issue.dep_tags.iter_mut() {
+            if edge.to == target && matches(&edge.kind) {
                 tags.retain(|tag, _| !c.k.saw_at(c.at, *tag));
             }
         }

@@ -219,15 +219,24 @@ These were decided deliberately. Report problems *with* them, not their existenc
   same, in 63 ms; `cargo xtask timing --read N` there: `list` 0.121 s where it took 0.146 s, `show`
   0.116 s where 0.150 s, `ready` 0.157 s where 0.201 s. roll-lqjj.35 records the measurements behind
   the rest of that design, each a change of `projection::ENCODING` alone: dependency edges held
-  typed, their metadata with the texts (roll-lqjj.39), ownership history with the texts
-  (roll-lqjj.40), and short fields shown from their registers (roll-lqjj.41, landed: below; the
-  state part 9.45 MB where it was 10.68 MB, decoded in 38.8 ms where it took 43.6 ms, holding
-  51.4 MB where it held 60.4 MB, an issue 560 bytes inline where it was 976). Each issue's texts
-  (its long fields, their registers' values, its comments and its extras) are kept apart
-  (roll-lqjj.6), in
+  typed, their metadata with the texts (roll-lqjj.39, landed: each target an issue's id held as
+  its 16 bytes when its text is an id's spelling, and the text otherwise, each kind one name
+  written once through the name table, the state part keeping each edge and the events that added
+  it, and each addition's metadata, which only an export prints, with the texts; the state part
+  at 200,000 events 7.69 MB where it was 9.45 MB, decoded in 33.1 ms where it took 41.0 ms,
+  holding 43.2 MB where it held 51.4 MB, the text file 3.62 MB where it was 2.00 MB; `cargo xtask timing --read N`
+  there, `list` 0.099 s where 0.111 s, `show` 0.091 s where 0.106 s, `ready` 0.146 s where
+  0.165 s, a local write 0.162 s where 0.184 s; at 20,000 events 13.9, 13.3 and 17.3 ms where
+  15.7, 16.1 and 19.2 ms),
+  ownership history with the texts (roll-lqjj.40), and short fields shown from their registers
+  (roll-lqjj.41, landed: below; the state part 9.45 MB where it was 10.68 MB, decoded in 38.8 ms
+  where it took 43.6 ms, holding 51.4 MB where it held 60.4 MB, an issue 560 bytes inline where it
+  was 976). Each issue's texts (its long fields, their registers' values, its comments, its extras
+  and the metadata of each addition behind each of its edges) are kept apart (roll-lqjj.6), in
   `<store>/projection-texts`, each issue's as bytes of their own the state places and sums, the
   state keeping what a list and a later event need of them unread (the events behind each long
-  field's register, which of those fields two writers set differently). Every field a register holds
+  field's register, which of those fields two writers set differently, and each edge with the
+  events that added it). Every field a register holds
   is kept once, in its register, which the field shows (roll-lqjj.10 for long fields, roll-lqjj.41
   for short ones), never copied beside it: the entry of the largest id, a null shown as absent
   unless the create wrote it, which a long field shows while that entry is the largest and a short
@@ -257,8 +266,16 @@ These were decided deliberately. Report problems *with* them, not their existenc
   (`list`, `ready`, `blocked`, `claims`, `dep`, `info`, a transition's or a release's answer) never
   reads them; one that prints issues whole (`show`, `comments`, `update`, `claim`, `takeover`) reads
   in only theirs; `export`, `search` and `lint` read every text; and records applied after the
-  projection have the texts of the issues they are about read in first, a change to texts not read
-  in declining. Texts that cannot be read as written (a sum, a length, a generation, the events
+  projection have the texts of the issues they are about read in first, and of the issues that
+  wait, by an import's dependency, for a key a create among them brings, which that create makes an
+  edge in (`Projection::about`): an edge added or removed changes its issue's texts, which hold its
+  additions' metadata, and a change to texts not read in declines. Edges are read through
+  `Issue::deps` and `Issue::dep_tags`, which answer as when each edge was a pair of strings with a
+  metadata value per addition, in the same order (targets ordered by their text): a test written
+  and recorded before the change (`projection/tests/edges.rs`) pins what every issue's edges
+  answered, from readiness to the export, on every state the differential histories pass through
+  and on three bead-built journals, and the differential generator draws targets that name no
+  issue, kinds of every sort, imports' metadata, concurrent, re-added and renamed edges for it. Texts that cannot be read as written (a sum, a length, a generation, the events
   behind a register that differ) have the journal replayed and both files written again. Texts are
   only appended, under the text file's own lock, the projection written after them, so that a bead
   killed between the two leaves the last projection (a bead killed: after a crash of the machine the

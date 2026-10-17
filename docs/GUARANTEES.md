@@ -161,10 +161,19 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   It is a cache, never a
   source: deleting it is always safe, and a damaged one, or one another build
   of bead wrote, is never read.
-- Each issue's texts (descriptions, designs, acceptance criteria, notes and
-  comments) are kept beside the projection, in `<store>/projection-texts`:
-  `list`, `ready`, a write and a sync never read them, `show` reads only its
-  issue's, and `export`, `search` and `lint` read them all. It is a cache too:
+- Each issue's texts (descriptions, designs, acceptance criteria, notes,
+  comments, and the metadata its dependencies were added with, which only
+  `export` prints) are kept beside the projection, in `<store>/projection-texts`.
+  To print them, `show`, `comments` and the writes that answer with the issues
+  they wrote (`claim`, `takeover`, `update`) read those issues' alone, and
+  `export`, `search` and `lint` read them all; `list`, `ready`, `claims` and
+  `prime` print none. Any command that takes records into the projection (a
+  write its own, a reading command those written since it was saved, a sync
+  those it merges) first reads in the texts of every issue they are about, since
+  a long field set, a comment, a delete and a dependency added or removed may
+  change them, and of every issue whose import waits for a key a create among
+  them brings, since that create gives it an edge; and appends those that
+  changed to the file when it writes the projection back. It is a cache too:
   texts that cannot be read as written have the journal replayed.
 - Unlike the journal, neither file is flushed to disk: they are written whole
   and renamed into place, not fsynced. A crash or a power loss can leave either
@@ -349,7 +358,12 @@ it, and the file is committed again.
   decodes in 38.8 ms rather than 43.6 ms, `Projection::decode` (a write's and
   the first read's after one) takes 58.5 ms rather than 62.4 ms, and `list`
   takes 0.108 s rather than 0.115 s, `show` 0.103 s rather than 0.113 s and
-  `ready` 0.151 s rather than 0.157 s. A write derives the labels its own events
+  `ready` 0.151 s rather than 0.157 s. Since dependency edges are held typed,
+  their metadata with the texts (roll-lqjj.39), the state part at 200,000
+  events is 7.69 MB rather than 9.45 MB and decodes in 33.1 ms rather than
+  41.0 ms, holding 43.2 MB rather than 51.4 MB; `list` takes 0.099 s rather
+  than 0.111 s, `show` 0.091 s rather than 0.106 s, `ready` 0.146 s rather than
+  0.165 s and a local write 0.162 s rather than 0.184 s. A write derives the labels its own events
   changed, each issue's once however many of them changed it, and takes its new
   event ids in wherever they sort among the ids held, so one `bead close`
   naming 8,000 issues of 8,000 takes 0.7 s rather than 19.8 s; a batch that

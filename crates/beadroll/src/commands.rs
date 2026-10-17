@@ -29,7 +29,7 @@ use beadroll_core::code::Code;
 use beadroll_core::event::DONE;
 use beadroll_core::json::{Int, Object, Value};
 use beadroll_core::op::IntegerField;
-use beadroll_core::state::{Issue, State};
+use beadroll_core::state::{Issue, State, Target};
 use beadroll_core::text::{printed_text, repr_str, strip};
 use beadroll_store::{
     Actor, Label, ViewError, Workspace, normalize_path, pending_listed, read_texts, view,
@@ -410,21 +410,21 @@ pub(crate) fn remove_edge(
     tx: &mut Emitter<'_>,
     st: &State,
     issue: &Issue,
-    to: &str,
+    to: &Target,
     kind: Option<&str>,
 ) -> Result<(), Failure> {
     let uid = issue.uid();
-    let imported = issue.dep_tags().iter().any(|((target, k), tags)| {
-        target == to && kind.is_none_or(|kind| kind == k) && tags.contains_key(&uid)
+    let imported = issue.dep_tags().iter().any(|(edge, tags)| {
+        edge.to() == to && kind.is_none_or(|kind| kind == edge.kind()) && tags.contains_key(&uid)
     });
     let kind = kind.map_or(Value::Null, Value::from);
     let mut data = Object::new();
-    data.insert("to".into(), Value::from(to));
+    data.insert("to".into(), Value::from(to.to_string()));
     data.insert("type".into(), kind.clone());
     tx.emit("dep_remove", Some(&uid.to_string()), data, None)?;
     if imported {
         let mut data = Object::new();
-        data.insert("key".into(), Value::from(st.key_of(to)));
+        data.insert("key".into(), Value::from(&*st.target_key(to)));
         data.insert("type".into(), kind);
         tx.emit("dep_remove", Some(&uid.to_string()), data, None)?;
     }
@@ -452,7 +452,7 @@ pub(crate) fn select<'s>(st: &'s State, filters: &Filters) -> Result<Vec<&'s Iss
     let statuses = split_list(&filters.status);
     let want_all = filters.all || statuses.iter().any(|s| s == "all");
     let parent = match &filters.parent {
-        Some(key) => Some(resolve(st, key)?.uid().to_string()),
+        Some(key) => Some(Target::Id(resolve(st, key)?.uid())),
         None => None,
     };
     let types = split_list(&filters.issue_type);
@@ -499,9 +499,7 @@ pub(crate) fn select<'s>(st: &'s State, filters: &Filters) -> Result<Vec<&'s Iss
             continue;
         }
         if let Some(parent) = &parent
-            && !issue
-                .deps()
-                .contains_key(&(parent.clone(), "parent-child".to_owned()))
+            && !issue.deps().contains(parent, "parent-child")
         {
             continue;
         }

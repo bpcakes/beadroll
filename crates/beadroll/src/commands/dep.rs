@@ -9,7 +9,7 @@ use beadroll_core::code::Code;
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::query::{Edges, blocking};
-use beadroll_core::state::{Issue, State};
+use beadroll_core::state::{Edge, Issue, State, Target};
 use beadroll_core::text::str_of;
 use beadroll_store::view_outline;
 use beadroll_sync::writing_spent;
@@ -132,11 +132,11 @@ fn tree(st: &State, issue: &Issue) -> Vec<Line> {
         if !seen.insert(node.uid()) {
             continue;
         }
-        let mut edges: Vec<&(String, String)> = node.deps().keys().collect();
+        let mut edges: Vec<&Edge> = node.deps().keys().collect();
         edges.sort();
         let children: Vec<&Issue> = edges
             .into_iter()
-            .filter_map(|(to, _)| st.issue_named(to))
+            .filter_map(|edge| st.target(edge.to()))
             .collect();
         work.extend(children.into_iter().rev().map(|child| (child, depth + 1)));
     }
@@ -225,7 +225,7 @@ fn change(
                     &mut tx,
                     st,
                     issue,
-                    &target.uid().to_string(),
+                    &Target::Id(target.uid()),
                     kind.as_deref(),
                 )?;
                 encodable(kind_valid)?;

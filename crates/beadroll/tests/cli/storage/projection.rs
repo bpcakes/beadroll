@@ -1,8 +1,9 @@
 //! The store's projection (roll-lqjj.2), from outside: bead answers alike with it, without it and
 //! with a damaged one, its texts kept apart or not (roll-lqjj.6), across machines that sync, and a
 //! bead killed as it writes one, or the texts it adds, leaves the last one in place; writes in a
-//! row leave it to the next read ([`deferred`], roll-lqjj.36). Every machine here runs the `bead` this package builds (`rust_only`): the
-//! projection is this build's.
+//! row leave it to the next read ([`deferred`], roll-lqjj.36); dependency edges and their metadata,
+//! kept with the texts, answer alike ([`edges`], roll-lqjj.39). Every machine here runs the `bead`
+//! this package builds (`rust_only`): the projection is this build's.
 
 use std::os::unix::fs::MetadataExt as _;
 use std::path::PathBuf;
@@ -10,6 +11,7 @@ use std::path::PathBuf;
 use beadroll_test_support::Machine;
 
 mod deferred;
+mod edges;
 
 /// The reading commands whose answers are compared.
 const READS: [&[&str]; 5] = [

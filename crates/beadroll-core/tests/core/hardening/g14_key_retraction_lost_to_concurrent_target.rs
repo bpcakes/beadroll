@@ -74,7 +74,11 @@ fn project(remove: &str, create_b: &str) -> (Vec<(String, String)>, bool) {
         import_b(create_b),
     ]);
     let a = state.issue_named(A).unwrap();
-    let mut edges: Vec<(String, String)> = a.deps().keys().cloned().collect();
+    let mut edges: Vec<(String, String)> = a
+        .deps()
+        .keys()
+        .map(|edge| (edge.to().to_string(), edge.kind().to_owned()))
+        .collect();
     edges.sort();
     (edges, state.is_blocked(a))
 }
@@ -109,7 +113,7 @@ fn replay_does_not_depend_on_the_tie_break_between_the_two_concurrent_events() {
         .unwrap()
         .deps()
         .keys()
-        .cloned()
+        .map(|edge| (edge.to().to_string(), edge.kind().to_owned()))
         .collect();
     assert_eq!(
         edges,

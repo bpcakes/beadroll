@@ -1,0 +1,211 @@
+01a145ca-5b16-7ec5-ac4b-32e568c1e4cd ex-a
+  blocked true
+  listed ex-a.1 ex-a.3
+  direct 
+  parents 
+  children ex-a.1 ex-a.2 ex-a.3
+  waits ex-a.2 ex-a.1 ex-a.3
+01a145ca-5b66-7e09-8c6e-a7787efc0415 ex-a.1
+  dep 01a145ca-5b16-7ec5-ac4b-32e568c1e4cd parent-child
+  tags 01a145ca-5b16-7ec5-ac4b-32e568c1e4cd parent-child [01a145ca-5b66-78ca-9501-eda63d5a062f]
+  blocked false
+  listed 
+  direct 
+  parents ex-a
+  children 
+  waits 
+01a145ca-5b66-7486-86db-18b4f3213c0c ex-a.2
+  dep 01a145ca-5b16-7ec5-ac4b-32e568c1e4cd parent-child
+  dep 01a145ca-5b66-7e09-8c6e-a7787efc0415 blocks
+  tags 01a145ca-5b16-7ec5-ac4b-32e568c1e4cd parent-child [01a145ca-5b66-7aaf-a2cf-4825376ddd0e]
+  tags 01a145ca-5b66-7e09-8c6e-a7787efc0415 blocks [01a145ca-5b66-7b96-b28a-6cf1c378d048]
+  blocked true
+  listed ex-a.1
+  direct ex-a.1
+  parents ex-a
+  children 
+  waits ex-a.1
+01a145ca-5b66-702d-b485-4717a1278cf4 ex-b
+  dep 01a145ca-5b66-7e09-8c6e-a7787efc0415 blocks
+  tags 01a145ca-5b66-7e09-8c6e-a7787efc0415 blocks [01a145ca-5d4d-7647-93b3-52097df60a1a]
+  blocked true
+  listed ex-a.1
+  direct ex-a.1
+  parents 
+  children 
+  waits ex-a.1
+01a145ca-5b66-72d0-8d72-41cf771a1330 ex-c
+  blocked false
+  listed 
+  direct 
+  parents 
+  children 
+  waits 
+01a145ca-5b66-7060-9855-b01d2be7e2c2 ex-d
+  blocked false
+  listed 
+  direct 
+  parents 
+  children 
+  waits 
+01a145ca-5bb8-7c86-bf9b-c3cedf17d455 ex-e
+  dep 01a145ca-5c08-72ec-8cca-83116564fe86 blocks
+  tags 01a145ca-5c08-72ec-8cca-83116564fe86 blocks [01a145ca-5bb8-7c86-bf9b-c3cedf17d455]
+  blocked true
+  listed ex-f
+  direct ex-f
+  parents 
+  children 
+  waits ex-f
+01a145ca-5c08-72ec-8cca-83116564fe86 ex-f
+  dep 01a145ca-5bb8-7c86-bf9b-c3cedf17d455 blocks
+  tags 01a145ca-5bb8-7c86-bf9b-c3cedf17d455 blocks [01a145ca-5c08-70aa-b475-5d89d5f05571]
+  blocked true
+  listed ex-e
+  direct ex-e
+  parents 
+  children 
+  waits ex-e
+01a145ca-5c59-786d-8df7-ab6433f1898c ex-a.3
+  dep 01a145ca-5b16-7ec5-ac4b-32e568c1e4cd parent-child
+  tags 01a145ca-5b16-7ec5-ac4b-32e568c1e4cd parent-child [01a145ca-5c59-78cd-97a7-882208c1d037]
+  blocked false
+  listed 
+  direct 
+  parents ex-a
+  children 
+  waits 
+01a145ca-5caa-7930-ad35-de1706c2d13a ex-tx6d
+  blocked false
+  listed 
+  direct 
+  parents 
+  children 
+  waits 
+ready ex-a.3 ex-a.1 ex-d
+cycles WaitsFor [["ex-e", "ex-f"]]
+cycles Blocking [["ex-e", "ex-f"]]
+ex-a
+  details {"id":"ex-a","title":"Ship the port","description":"Port bead to Rust.\nKeep parity.","design":"One table drives the parser.","acceptance_criteria":"Every verb ported","notes":"Phase 2b","status":"open","priority":1,"issue_type":"epic","assignee":"maintainer","estimated_minutes":90,"created_at":"2026-01-01T00:00:00Z","created_by":"seed","updated_at":"2026-01-02T00:00:00Z","external_ref":"gh-12","labels":["port","rust"],"dependencies":[],"dependents":[{"id":"ex-a.1","title":"Parser","status":"open","dependency_type":"parent-child"},{"id":"ex-a.2","title":"Help pages","status":"closed","dependency_type":"parent-child"},{"id":"ex-a.3","title":"Native child","status":"open","dependency_type":"parent-child"}],"comments":[],"blocked":true,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+ex-a.1
+  meta 01a145ca-5b16-7ec5-ac4b-32e568c1e4cd parent-child {"created_at":"2026-01-01T01:00:00Z","created_by":"seed"}
+  tag 01a145ca-5b16-7ec5-ac4b-32e568c1e4cd parent-child 01a145ca-5b66-78ca-9501-eda63d5a062f {"created_at":"2026-01-01T01:00:00Z","created_by":"seed"}
+  details {"id":"ex-a.1","title":"Parser","acceptance_criteria":"argparse parity","status":"open","priority":2,"issue_type":"task","created_at":"2026-01-01T01:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:32.411Z","parent":"ex-a","dependencies":[{"id":"ex-a","title":"Ship the port","status":"open","dependency_type":"parent-child"}],"dependents":[{"id":"ex-a.2","title":"Help pages","status":"closed","dependency_type":"blocks"},{"id":"ex-b","title":"Crash on start","status":"open","dependency_type":"blocks"}],"comments":[{"id":7,"author":"reviewer","text":"imported note","created_at":"2026-01-01T02:00:00Z"},{"id":"01a145ca-5cfb-74c5-a123-4bcb5d888307","author":"codex:gold-a-thread-0001@6b23ba73","text":"native comment","created_at":"2026-10-16T17:37:32.411Z","branch":"main"}],"blocked":false,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+ex-a.2
+  meta 01a145ca-5b16-7ec5-ac4b-32e568c1e4cd parent-child {"created_at":"2026-01-01T02:00:00Z","created_by":"seed"}
+  meta 01a145ca-5b66-7e09-8c6e-a7787efc0415 blocks {"created_at":"2026-01-01T02:00:00Z","created_by":"seed"}
+  tag 01a145ca-5b16-7ec5-ac4b-32e568c1e4cd parent-child 01a145ca-5b66-7aaf-a2cf-4825376ddd0e {"created_at":"2026-01-01T02:00:00Z","created_by":"seed"}
+  tag 01a145ca-5b66-7e09-8c6e-a7787efc0415 blocks 01a145ca-5b66-7b96-b28a-6cf1c378d048 {"created_at":"2026-01-01T02:00:00Z","created_by":"seed"}
+  details {"id":"ex-a.2","title":"Help pages","status":"closed","priority":2,"issue_type":"task","created_at":"2026-01-01T02:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:32.658Z","closed_at":"2026-10-16T17:37:32.658Z","parent":"ex-a","dependencies":[{"id":"ex-a","title":"Ship the port","status":"open","dependency_type":"parent-child"},{"id":"ex-a.1","title":"Parser","status":"open","dependency_type":"blocks"}],"dependents":[],"comments":[],"blocked":true,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"},"closed_on":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+ex-b
+  meta 01a145ca-5b66-7e09-8c6e-a7787efc0415 blocks {"created_at":"2026-10-16T17:37:32.493Z","created_by":"codex:gold-a-thread-0001@6b23ba73"}
+  tag 01a145ca-5b66-7e09-8c6e-a7787efc0415 blocks 01a145ca-5d4d-7647-93b3-52097df60a1a {"created_at":"2026-10-16T17:37:32.493Z","created_by":"codex:gold-a-thread-0001@6b23ba73"}
+  details {"id":"ex-b","title":"Crash on start","description":"bead dies when stdout is closed","notes":"investigating","status":"open","priority":0,"issue_type":"bug","assignee":"alice","created_at":"2026-01-01T03:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:32.575Z","labels":["urgent"],"dependencies":[{"id":"ex-a.1","title":"Parser","status":"open","dependency_type":"blocks"}],"dependents":[],"comments":[],"blocked":true,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+ex-c
+  details {"id":"ex-c","title":"Old feature","status":"closed","priority":3,"issue_type":"feature","created_at":"2026-01-01T04:00:00Z","created_by":"seed","updated_at":"2026-01-03T00:00:00Z","closed_at":"2026-01-03T00:00:00Z","close_reason":"shipped","dependencies":[],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+ex-d
+  details {"id":"ex-d","title":"Title from B","acceptance_criteria":"done","status":"open","priority":2,"issue_type":"task","created_at":"2026-01-01T05:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:33.110Z","dependencies":[],"unresolved_dependencies":[{"id":"ex-zzz","dependency_type":"blocks"}],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"},"conflicts":{"title":[{"value":"Title from A","by":"codex:gold-a-thread-0001@6b23ba73","at":"2026-10-16T17:37:33.083Z","event":"01a145ca-5f9b-7702-b8a7-a824555a03cb"},{"value":"Title from B","by":"codex:gold-b-thread-0001@49d78315","at":"2026-10-16T17:37:33.110Z","event":"01a145ca-5fb6-7588-b0c5-8cc2d6da71ef"}]}}
+ex-e
+  meta 01a145ca-5c08-72ec-8cca-83116564fe86 blocks {"created_at":"2026-01-01T06:00:00Z","created_by":"seed"}
+  tag 01a145ca-5c08-72ec-8cca-83116564fe86 blocks 01a145ca-5bb8-7c86-bf9b-c3cedf17d455 {"created_at":"2026-01-01T06:00:00Z","created_by":"seed"}
+  details {"id":"ex-e","title":"Loop one","status":"open","priority":4,"issue_type":"chore","created_at":"2026-01-01T06:00:00Z","created_by":"seed","updated_at":"2026-01-01T06:00:00Z","dependencies":[{"id":"ex-f","title":"Loop two","status":"open","dependency_type":"blocks"}],"dependents":[{"id":"ex-f","title":"Loop two","status":"open","dependency_type":"blocks"}],"comments":[],"blocked":true,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+ex-f
+  meta 01a145ca-5bb8-7c86-bf9b-c3cedf17d455 blocks {"created_at":"2026-01-01T07:00:00Z","created_by":"seed"}
+  tag 01a145ca-5bb8-7c86-bf9b-c3cedf17d455 blocks 01a145ca-5c08-70aa-b475-5d89d5f05571 {"created_at":"2026-01-01T07:00:00Z","created_by":"seed"}
+  details {"id":"ex-f","title":"Loop two","status":"open","priority":4,"issue_type":"chore","created_at":"2026-01-01T07:00:00Z","created_by":"seed","updated_at":"2026-01-01T07:00:00Z","dependencies":[{"id":"ex-e","title":"Loop one","status":"open","dependency_type":"blocks"}],"dependents":[{"id":"ex-e","title":"Loop one","status":"open","dependency_type":"blocks"}],"comments":[],"blocked":true,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+ex-a.3
+  meta 01a145ca-5b16-7ec5-ac4b-32e568c1e4cd parent-child {"created_at":"2026-10-16T17:37:32.249Z","created_by":"codex:gold-a-thread-0001@6b23ba73"}
+  tag 01a145ca-5b16-7ec5-ac4b-32e568c1e4cd parent-child 01a145ca-5c59-78cd-97a7-882208c1d037 {"created_at":"2026-10-16T17:37:32.249Z","created_by":"codex:gold-a-thread-0001@6b23ba73"}
+  details {"id":"ex-a.3","title":"Native child","description":"first line\nsecond line","acceptance_criteria":"renders","status":"open","priority":1,"issue_type":"task","created_at":"2026-10-16T17:37:32.249Z","created_by":"codex:gold-a-thread-0001@6b23ba73","updated_at":"2026-10-16T17:37:32.822Z","labels":["alpha","beta"],"parent":"ex-a","dependencies":[{"id":"ex-a","title":"Ship the port","status":"open","dependency_type":"parent-child"}],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+ex-tx6d
+  details {"id":"ex-tx6d","title":"Loose end","status":"tombstone","priority":3,"issue_type":"chore","created_at":"2026-10-16T17:37:32.330Z","created_by":"codex:gold-a-thread-0001@6b23ba73","updated_at":"2026-10-16T17:37:32.904Z","closed_at":"2026-10-16T17:37:32.904Z","close_reason":"not needed","dependencies":[],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+export {"id":"ex-a","title":"Ship the port","description":"Port bead to Rust.\nKeep parity.","design":"One table drives the parser.","acceptance_criteria":"Every verb ported","notes":"Phase 2b","status":"open","priority":1,"issue_type":"epic","assignee":"maintainer","estimated_minutes":90,"created_at":"2026-01-01T00:00:00Z","created_by":"seed","updated_at":"2026-01-02T00:00:00Z","external_ref":"gh-12","labels":["port","rust"]}
+export {"id":"ex-a.1","title":"Parser","acceptance_criteria":"argparse parity","status":"open","priority":2,"issue_type":"task","created_at":"2026-01-01T01:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:32.411Z","dependencies":[{"issue_id":"ex-a.1","depends_on_id":"ex-a","type":"parent-child","created_at":"2026-01-01T01:00:00Z","created_by":"seed","metadata":"{}","thread_id":""}],"comments":[{"id":7,"issue_id":"ex-a.1","author":"reviewer","text":"imported note","created_at":"2026-01-01T02:00:00Z"},{"id":233283818011476,"issue_id":"ex-a.1","author":"codex:gold-a-thread-0001@6b23ba73","text":"native comment","created_at":"2026-10-16T17:37:32.411Z"}]}
+export {"id":"ex-a.2","title":"Help pages","status":"closed","priority":2,"issue_type":"task","created_at":"2026-01-01T02:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:32.658Z","closed_at":"2026-10-16T17:37:32.658Z","close_reason":"","dependencies":[{"issue_id":"ex-a.2","depends_on_id":"ex-a","type":"parent-child","created_at":"2026-01-01T02:00:00Z","created_by":"seed","metadata":"{}","thread_id":""},{"issue_id":"ex-a.2","depends_on_id":"ex-a.1","type":"blocks","created_at":"2026-01-01T02:00:00Z","created_by":"seed","metadata":"{}","thread_id":""}]}
+export {"id":"ex-a.3","title":"Native child","description":"first line\nsecond line","acceptance_criteria":"renders","status":"open","priority":1,"issue_type":"task","created_at":"2026-10-16T17:37:32.249Z","created_by":"codex:gold-a-thread-0001@6b23ba73","updated_at":"2026-10-16T17:37:32.822Z","labels":["alpha","beta"],"dependencies":[{"issue_id":"ex-a.3","depends_on_id":"ex-a","type":"parent-child","created_at":"2026-10-16T17:37:32.249Z","created_by":"codex:gold-a-thread-0001@6b23ba73","metadata":"{}","thread_id":""}]}
+export {"id":"ex-b","title":"Crash on start","description":"bead dies when stdout is closed","notes":"investigating","status":"open","priority":0,"issue_type":"bug","assignee":"alice","created_at":"2026-01-01T03:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:32.575Z","labels":["urgent"],"dependencies":[{"issue_id":"ex-b","depends_on_id":"ex-a.1","type":"blocks","created_at":"2026-10-16T17:37:32.493Z","created_by":"codex:gold-a-thread-0001@6b23ba73","metadata":"{}","thread_id":""}]}
+export {"id":"ex-c","title":"Old feature","status":"closed","priority":3,"issue_type":"feature","created_at":"2026-01-01T04:00:00Z","created_by":"seed","updated_at":"2026-01-03T00:00:00Z","closed_at":"2026-01-03T00:00:00Z","close_reason":"shipped"}
+export {"id":"ex-d","title":"Title from B","acceptance_criteria":"done","status":"open","priority":2,"issue_type":"task","created_at":"2026-01-01T05:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:33.110Z","dependencies":[{"issue_id":"ex-d","depends_on_id":"ex-zzz","type":"blocks","created_at":"2026-01-01T05:00:00Z","created_by":"seed"}]}
+export {"id":"ex-e","title":"Loop one","status":"open","priority":4,"issue_type":"chore","created_at":"2026-01-01T06:00:00Z","created_by":"seed","updated_at":"2026-01-01T06:00:00Z","dependencies":[{"issue_id":"ex-e","depends_on_id":"ex-f","type":"blocks","created_at":"2026-01-01T06:00:00Z","created_by":"seed","metadata":"{}","thread_id":""}]}
+export {"id":"ex-f","title":"Loop two","status":"open","priority":4,"issue_type":"chore","created_at":"2026-01-01T07:00:00Z","created_by":"seed","updated_at":"2026-01-01T07:00:00Z","dependencies":[{"issue_id":"ex-f","depends_on_id":"ex-e","type":"blocks","created_at":"2026-01-01T07:00:00Z","created_by":"seed","metadata":"{}","thread_id":""}]}
+export {"deleted_at":"2026-10-16T17:37:32.904Z","deleted_by":"codex:gold-a-thread-0001@6b23ba73","delete_reason":"not needed","id":"ex-tx6d","title":"Loose end","status":"tombstone","priority":3,"issue_type":"chore","created_at":"2026-10-16T17:37:32.330Z","created_by":"codex:gold-a-thread-0001@6b23ba73","updated_at":"2026-10-16T17:37:32.904Z","closed_at":"2026-10-16T17:37:32.904Z","close_reason":"not needed"}
+ex-a
+  held true
+  beneath ex-a.2 ex-a.1 ex-a.3
+  leaf-up ex-a.1 ex-a.2 ex-a.3 ex-a
+  blockers ex-a.1 ex-a.3
+  detail {"id":"ex-a","title":"Ship the port","description":"Port bead to Rust.\nKeep parity.","design":"One table drives the parser.","acceptance_criteria":"Every verb ported","notes":"Phase 2b","status":"open","priority":1,"issue_type":"epic","assignee":"maintainer","estimated_minutes":90,"created_at":"2026-01-01T00:00:00Z","created_by":"seed","updated_at":"2026-01-02T00:00:00Z","external_ref":"gh-12","labels":["port","rust"],"dependencies":[],"dependents":[{"id":"ex-a.1","title":"Parser","status":"open","dependency_type":"parent-child"},{"id":"ex-a.2","title":"Help pages","status":"closed","dependency_type":"parent-child"},{"id":"ex-a.3","title":"Native child","status":"open","dependency_type":"parent-child"}],"comments":[],"blocked":true,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+  ready ex-a.3 ex-a.1
+  reaches ex-a ex-a.1 ex-a.2
+ex-a.1
+  held false
+  beneath 
+  leaf-up ex-a.1
+  blockers 
+  detail {"id":"ex-a.1","title":"Parser","acceptance_criteria":"argparse parity","status":"open","priority":2,"issue_type":"task","created_at":"2026-01-01T01:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:32.411Z","parent":"ex-a","dependencies":[{"id":"ex-a","title":"Ship the port","status":"open","dependency_type":"parent-child"}],"dependents":[{"id":"ex-a.2","title":"Help pages","status":"closed","dependency_type":"blocks"},{"id":"ex-b","title":"Crash on start","status":"open","dependency_type":"blocks"}],"comments":[{"id":7,"author":"reviewer","text":"imported note","created_at":"2026-01-01T02:00:00Z"},{"id":"01a145ca-5cfb-74c5-a123-4bcb5d888307","author":"codex:gold-a-thread-0001@6b23ba73","text":"native comment","created_at":"2026-10-16T17:37:32.411Z","branch":"main"}],"blocked":false,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+  ready 
+  reaches ex-a.1
+ex-a.2
+  held true
+  beneath 
+  leaf-up ex-a.2
+  blockers ex-a.1
+  detail {"id":"ex-a.2","title":"Help pages","status":"closed","priority":2,"issue_type":"task","created_at":"2026-01-01T02:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:32.658Z","closed_at":"2026-10-16T17:37:32.658Z","parent":"ex-a","dependencies":[{"id":"ex-a","title":"Ship the port","status":"open","dependency_type":"parent-child"},{"id":"ex-a.1","title":"Parser","status":"open","dependency_type":"blocks"}],"dependents":[],"comments":[],"blocked":true,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"},"closed_on":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+  ready 
+  reaches ex-a.1 ex-a.2
+ex-b
+  held true
+  beneath 
+  leaf-up ex-b
+  blockers ex-a.1
+  detail {"id":"ex-b","title":"Crash on start","description":"bead dies when stdout is closed","notes":"investigating","status":"open","priority":0,"issue_type":"bug","assignee":"alice","created_at":"2026-01-01T03:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:32.575Z","labels":["urgent"],"dependencies":[{"id":"ex-a.1","title":"Parser","status":"open","dependency_type":"blocks"}],"dependents":[],"comments":[],"blocked":true,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+  ready 
+  reaches ex-a.1 ex-b
+ex-c
+  held false
+  beneath 
+  leaf-up ex-c
+  blockers 
+  detail {"id":"ex-c","title":"Old feature","status":"closed","priority":3,"issue_type":"feature","created_at":"2026-01-01T04:00:00Z","created_by":"seed","updated_at":"2026-01-03T00:00:00Z","closed_at":"2026-01-03T00:00:00Z","close_reason":"shipped","dependencies":[],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+  ready 
+  reaches ex-c
+ex-d
+  held false
+  beneath 
+  leaf-up ex-d
+  blockers 
+  detail {"id":"ex-d","title":"Title from B","acceptance_criteria":"done","status":"open","priority":2,"issue_type":"task","created_at":"2026-01-01T05:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:33.110Z","dependencies":[],"unresolved_dependencies":[{"id":"ex-zzz","dependency_type":"blocks"}],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"},"conflicts":{"title":[{"value":"Title from A","by":"codex:gold-a-thread-0001@6b23ba73","at":"2026-10-16T17:37:33.083Z","event":"01a145ca-5f9b-7702-b8a7-a824555a03cb"},{"value":"Title from B","by":"codex:gold-b-thread-0001@49d78315","at":"2026-10-16T17:37:33.110Z","event":"01a145ca-5fb6-7588-b0c5-8cc2d6da71ef"}]}}
+  ready 
+  reaches ex-d
+ex-e
+  held true
+  beneath 
+  leaf-up ex-e
+  blockers ex-f
+  detail {"id":"ex-e","title":"Loop one","status":"open","priority":4,"issue_type":"chore","created_at":"2026-01-01T06:00:00Z","created_by":"seed","updated_at":"2026-01-01T06:00:00Z","dependencies":[{"id":"ex-f","title":"Loop two","status":"open","dependency_type":"blocks"}],"dependents":[{"id":"ex-f","title":"Loop two","status":"open","dependency_type":"blocks"}],"comments":[],"blocked":true,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+  ready 
+  reaches ex-e ex-f
+ex-f
+  held true
+  beneath 
+  leaf-up ex-f
+  blockers ex-e
+  detail {"id":"ex-f","title":"Loop two","status":"open","priority":4,"issue_type":"chore","created_at":"2026-01-01T07:00:00Z","created_by":"seed","updated_at":"2026-01-01T07:00:00Z","dependencies":[{"id":"ex-e","title":"Loop one","status":"open","dependency_type":"blocks"}],"dependents":[{"id":"ex-e","title":"Loop one","status":"open","dependency_type":"blocks"}],"comments":[],"blocked":true,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+  ready 
+  reaches ex-e ex-f
+ex-a.3
+  held false
+  beneath 
+  leaf-up ex-a.3
+  blockers 
+  detail {"id":"ex-a.3","title":"Native child","description":"first line\nsecond line","acceptance_criteria":"renders","status":"open","priority":1,"issue_type":"task","created_at":"2026-10-16T17:37:32.249Z","created_by":"codex:gold-a-thread-0001@6b23ba73","updated_at":"2026-10-16T17:37:32.822Z","labels":["alpha","beta"],"parent":"ex-a","dependencies":[{"id":"ex-a","title":"Ship the port","status":"open","dependency_type":"parent-child"}],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+  ready 
+  reaches 
+ex-tx6d
+  held false
+  beneath 
+  leaf-up ex-tx6d
+  blockers 
+  detail {"id":"ex-tx6d","title":"Loose end","status":"tombstone","priority":3,"issue_type":"chore","created_at":"2026-10-16T17:37:32.330Z","created_by":"codex:gold-a-thread-0001@6b23ba73","updated_at":"2026-10-16T17:37:32.904Z","closed_at":"2026-10-16T17:37:32.904Z","close_reason":"not needed","dependencies":[],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"6b23ba73","agent":"codex","thread":"gold-a-thread-0001","where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}},"where":{"branch":"main","commit":"b289f016a33d6b9a112f022d11c124c586e338b5"}}
+  ready 
+  reaches 

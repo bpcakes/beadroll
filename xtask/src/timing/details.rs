@@ -13,7 +13,7 @@
 use beadroll_core::journal::Journal;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::replay::replay;
-use beadroll_core::state::{Issue, State};
+use beadroll_core::state::{Edge, Issue, State, Target};
 
 use super::ready::{MACHINE, create, event, fastest, key};
 use super::world::profile;
@@ -56,12 +56,12 @@ fn listed(detail: &Object) -> usize {
 /// How many issues depend on `issue`, found as every detail found them before roll-lqjj.20: every
 /// issue's edges collected and sorted, and those that name `issue` kept.
 fn scanned(state: &State, issue: &Issue) -> usize {
-    let uid = issue.uid().to_string();
+    let uid = Target::Id(issue.uid());
     let mut found = 0;
     for other in state.issues() {
-        let mut edges: Vec<&(String, String)> = other.deps().keys().collect();
+        let mut edges: Vec<&Edge> = other.deps().keys().collect();
         edges.sort();
-        found += edges.into_iter().filter(|(to, _)| *to == uid).count();
+        found += edges.into_iter().filter(|edge| *edge.to() == uid).count();
     }
     found
 }

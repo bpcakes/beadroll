@@ -91,7 +91,11 @@ fn reference(st: &State, issue: &Issue) -> Json {
     let uid = issue.uid().to_string();
     let mut found = Vec::new();
     for other in st.issues() {
-        let mut edges: Vec<&(String, String)> = other.deps().keys().collect();
+        let mut edges: Vec<(String, String)> = other
+            .deps()
+            .keys()
+            .map(|edge| (edge.to().to_string(), edge.kind().to_owned()))
+            .collect();
         edges.sort();
         for (_, kind) in edges.into_iter().filter(|(to, _)| *to == uid) {
             let field = |name| other.field(name).cloned().unwrap_or(Json::Null);

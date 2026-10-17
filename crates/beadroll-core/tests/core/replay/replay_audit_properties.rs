@@ -10,7 +10,7 @@ use beadroll_core::event::{Field, REGISTERS, REQUIRED_FIELDS};
 use beadroll_core::journal::Journal;
 use beadroll_core::op::IntegerField;
 use beadroll_core::query::Edges;
-use beadroll_core::state::State;
+use beadroll_core::state::{State, Target};
 use beadroll_test_support::{Json, json};
 
 use fixture::{Fixture, MISSING, conflict, fields, issue, snapshot};
@@ -227,7 +227,7 @@ fn three_machine_add_wins_labels_and_dependencies() {
     let mut f = Fixture::new();
     let uid = f.issue.clone();
     let target = f.create("au-target");
-    let edge = (target.clone(), "blocks".to_owned());
+    let edge = Target::of(&target);
     for (op, removal, payload) in [
         ("label_add", "label_remove", json!({"labels": ["urgent"]})),
         (
@@ -245,7 +245,7 @@ fn three_machine_add_wins_labels_and_dependencies() {
             if op == "label_add" {
                 issue.labels().contains("urgent")
             } else {
-                issue.deps().contains_key(&edge)
+                issue.deps().contains(&edge, "blocks")
             }
         };
         assert!(held(&f.state()), "{op}");

@@ -33,9 +33,11 @@
 //! ([`Projection::extendable`]), nor is one with an event waiting for a cause, which replay applies
 //! once the cause comes.
 //!
-//! An event that changes an issue's texts (a long field set, a comment, a delete's record) needs
-//! them in the issue: a store reads them in before it extends (roll-lqjj.6), and when one is not,
-//! the projection declines too. Texts read in that change are written again.
+//! An event that changes an issue's texts (a long field set, a comment, a delete's record, an edge
+//! added or removed, whose additions' metadata is with them, roll-lqjj.39) needs them in the issue,
+//! and a create needs those of each issue that waits for its key, in which it makes an edge: a store
+//! reads them in before it extends ([`Projection::about`], roll-lqjj.6), and when one is not, the
+//! projection declines too. Texts read in that change are written again.
 
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap, HashSet};
@@ -44,6 +46,7 @@ use indexmap::IndexMap;
 
 use crate::id::EventId;
 use crate::journal::{Event, Journal, Parts, Rest};
+use crate::json::Value;
 use crate::op::Op;
 use crate::replay::{Names, Room, apply_one, finish_some, observe_one};
 use crate::state::{KeySpace, Texts, is_text};
@@ -165,25 +168,72 @@ impl Projection {
         Ok(Extended::Applied(Box::new(self)))
     }
 
+    /// The issues whose texts applying `records` can change, which a store reads in before it
+    /// extends ([`Projection::extend`]): each issue a record is about, and each that waits, by an
+    /// imported dependency, for the key a create among them brings, which that create makes an edge
+    /// of, its metadata with the issue's texts (roll-lqjj.39).
+    pub fn about(&self, records: &[Record]) -> Vec<EventId> {
+        let mut about = Vec::new();
+        for record in records {
+            let value = &record.value;
+            about.extend(
+                value
+                    .get("issue")
+                    .and_then(Value::as_str)
+                    .and_then(EventId::parse),
+            );
+            if value.get("op").and_then(Value::as_str) == Some("create")
+                && let Some(key) = value.get("data").and_then(|data| data.get("key"))
+                && let Some(key) = key.as_str()
+                && !self.state.by_key.contains_key(key)
+            {
+                about.extend(self.state.awaiting.waiting(key));
+            }
+        }
+        about
+    }
+
     /// Whether every issue whose texts `doing` changes has them in it, read in by the store first
-    /// (roll-lqjj.6): those read in are then to be written again.
+    /// (roll-lqjj.6, [`Projection::about`]): those read in are then to be written again. An edge's
+    /// metadata is with them (roll-lqjj.39), so an edge added or removed changes them, and so does a
+    /// create in each issue that waits for its key.
     fn texts_in(&mut self, doing: &[Box<Rest>]) -> bool {
         for what in doing {
             let texts = match &what.op {
                 Op::Set(fields) => fields.iter().any(|(field, _)| is_text(*field)),
-                Op::Comment { .. } | Op::Delete(_) => true,
+                Op::Comment { .. } | Op::Delete(_) | Op::DepAdd { .. } | Op::DepRemove { .. } => {
+                    true
+                }
+                Op::Create(making) if !self.state.by_key.contains_key(&making.key) => {
+                    for uid in self.state.awaiting.waiting(&making.key) {
+                        if !self.texts_here(uid) {
+                            return false;
+                        }
+                    }
+                    false
+                }
                 _ => false,
             };
-            let issue = (what.issue.as_deref())
-                .and_then(EventId::parse)
-                .and_then(|uid| self.state.issues.get_mut(&uid));
-            if let Some(issue) = issue.filter(|_| texts) {
-                match issue.texts {
-                    Texts::There(_) => return false,
-                    Texts::Read(_) => issue.texts = Texts::Here,
-                    Texts::Here => {}
-                }
+            let issue = (what.issue.as_deref()).and_then(EventId::parse);
+            if let Some(uid) = issue.filter(|_| texts)
+                && !self.texts_here(uid)
+            {
+                return false;
             }
+        }
+        true
+    }
+
+    /// Whether issue `uid`'s texts are in it, if it is an issue, to be written again: `false` when
+    /// they are only in the text file.
+    fn texts_here(&mut self, uid: EventId) -> bool {
+        let Some(issue) = self.state.issues.get_mut(&uid) else {
+            return true;
+        };
+        match issue.texts {
+            Texts::There(_) => return false,
+            Texts::Read(_) => issue.texts = Texts::Here,
+            Texts::Here => {}
         }
         true
     }

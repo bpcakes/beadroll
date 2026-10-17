@@ -449,7 +449,7 @@ mod tests {
         );
         let wired = one_at_a_time(seed, events(10, "dep_add", wiring(10))).unwrap();
         let blocks = (wired.state().issues())
-            .filter(|issue| (issue.deps().keys()).any(|(_, kind)| kind == "blocks"))
+            .filter(|issue| (issue.deps().keys()).any(|edge| edge.kind() == "blocks"))
             .count();
         assert_eq!(blocks, 10, "each issue gains an edge of its own");
     }

@@ -420,4 +420,4 @@ fn rewires(op: &Op) -> bool {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

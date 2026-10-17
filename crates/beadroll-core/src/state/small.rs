@@ -109,6 +109,11 @@ impl<K, V> VecMap<K, V> {
     pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut V)> {
         self.0.iter_mut().map(|(k, v)| (&*k, v))
     }
+
+    /// Its values, in order, to change.
+    pub(crate) fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
+        self.0.iter_mut().map(|(_, v)| v)
+    }
 }
 
 impl<K: PartialEq, V> FromIterator<(K, V)> for VecMap<K, V> {
@@ -173,6 +178,11 @@ impl<V> IdMap<V> {
     /// Its values, by id.
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.0.iter().map(|(_, v)| v)
+    }
+
+    /// Its values, by id, to change.
+    pub(crate) fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
+        self.0.iter_mut().map(|(_, v)| v)
     }
 
     /// Whether it has an entry for `id`.

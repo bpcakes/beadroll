@@ -22,9 +22,9 @@ use crate::state::State;
 use super::replay;
 
 /// Histories, each delivered in several orders.
-const SEEDS: u64 = 12;
+pub(crate) const SEEDS: u64 = 12;
 /// The batches machine 0's store takes in while a history is written: about 160 records each.
-const BATCHES: usize = 30;
+pub(crate) const BATCHES: usize = 30;
 /// Orders drawn of each history, of each kind.
 const ORDERS: usize = 6;
 

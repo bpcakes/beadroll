@@ -8,14 +8,13 @@
 
 use std::collections::BTreeMap;
 
-use crate::id::EventId;
 use crate::json::{Object, Value};
 use crate::replay::replay;
 
 use super::super::{Extended, Projection, Record, named, project};
 use super::{
-    MACHINES, Rng, TextFile, World, WriteBack, answers_alike, equal, flawed, load, read_back,
-    read_in, records, same, shown, whole,
+    MACHINES, Rng, TextFile, World, WriteBack, answers_alike, edges, equal, flawed, load,
+    read_back, read_in, records, same, shown, whole,
 };
 
 /// What [`differential`] saw: the batches taken in, the merges among them, the batches that came to
@@ -26,7 +25,9 @@ use super::{
 /// once, and the most batches one took in: each of the projection written back as the store
 /// writes it. Of the write-backs that left what every event had seen as it was, those that left
 /// events the state no longer names, and the most such events one left; of those the store made,
-/// those that left such events, and those that compacted them away.
+/// those that left such events, and those that compacted them away. And by seed, the digest of what
+/// every state replay made of its history, batch by batch, answers of its edges ([`edges::fold`]),
+/// and what those states hold of the edges the generator draws for that ([`edges::drawn`]).
 #[derive(Default, Debug)]
 pub(super) struct Tally {
     pub(super) applied: usize,
@@ -41,6 +42,8 @@ pub(super) struct Tally {
     pub(super) unnamed: usize,
     pub(super) left: usize,
     pub(super) cut: usize,
+    pub(super) answers: Vec<(u64, u64)>,
+    pub(super) drawn: edges::drawn::Exercised,
 }
 
 impl Tally {
@@ -98,7 +101,8 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -
                 back,
             }
         });
-        for _ in 0..60 {
+        let mut answers = edges::START;
+        for n in 0..60 {
             let batch = world.next_batch();
             let reading_back = world.rng.chance(50);
             held.extend(&batch);
@@ -107,16 +111,14 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -
             assert!(same(full.state(), &replayed));
             assert!(answers_alike(&full, &replayed), "seed {seed}");
             shown::agree(&load(&world, &held), full.state());
+            answers = edges::fold(answers, full.state(), n == 59);
+            tally.drawn.count(full.state());
             for each in &mut stored {
                 each.take(&world, &batch, &full, seed, &mut tally);
             }
             let local = batch.iter().all(|at| world.events[*at].machine == 0);
             let records = records(&world, &batch);
             // as a store does: the texts of the issues the batch is about read in first
-            let about: Vec<EventId> = (records.iter())
-                .filter_map(|record| record.value.get("issue").and_then(Value::as_str))
-                .filter_map(EventId::parse)
-                .collect();
             tracks = tracks.map(|(mut projection, mut file, back)| {
                 // the figures are the store's
                 let counted = back == WriteBack::Encoded;
@@ -128,7 +130,8 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -
                 let before = flawed::kinds(projection.state());
                 let open = projection.extendable();
                 tally.closed += usize::from(!open && counted);
-                read_in(projection.state_mut(), &file, Some(about.clone()));
+                let about = projection.about(&records);
+                read_in(projection.state_mut(), &file, Some(about));
                 if counted {
                     for (kind, n) in flawed::kinds(full.state()) {
                         let new = n.saturating_sub(before.get(kind).copied().unwrap_or(0));
@@ -160,6 +163,7 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -
                 (projection, file, back)
             });
         }
+        tally.answers.push((seed, answers));
     }
     tally
 }
@@ -193,10 +197,7 @@ impl Stored {
         self.since.extend(batch);
         self.batches += 1;
         let records = read_after(world, &self.since);
-        let about = (records.iter())
-            .filter_map(|record| record.value.get("issue").and_then(Value::as_str))
-            .filter_map(EventId::parse)
-            .collect();
+        let about = self.projection.about(&records);
         let mut extending = self.projection.clone();
         read_in(extending.state_mut(), &self.file, Some(about));
         let written = match extending.extend(records).unwrap() {

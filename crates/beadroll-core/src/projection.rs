@@ -18,10 +18,11 @@
 //! ([`State::conflicts`] and who wrote what it names), is of the events the state names, and the
 //! answers about those are the same whatever else it knows.
 //!
-//! Each issue's texts are kept apart (roll-lqjj.6): [`Projection::encode`] gives the bytes of the
-//! texts written nowhere yet, placed after `texts_at` bytes of a store's text file, and a state read
-//! back has every issue's texts there, until the store reads in those a command needs
-//! ([`State::wanted_texts`], [`State::read_texts`]).
+//! Each issue's texts are kept apart (roll-lqjj.6), the metadata of its edges' additions among
+//! them (roll-lqjj.39): [`Projection::encode`] gives the bytes of the texts written nowhere yet,
+//! placed after `texts_at` bytes of a store's text file, and a state read back has every issue's
+//! texts there, until the store reads in those a command needs ([`State::wanted_texts`],
+//! [`State::read_texts`]), and before applying records, those [`Projection::about`] lists.
 
 pub(crate) mod codec;
 mod extend;
@@ -45,7 +46,7 @@ pub use codec::Unreadable;
 pub use extend::Extended;
 
 /// The version of the bytes [`Projection::encode`] writes. Bytes of another are not read.
-pub const ENCODING: u32 = 8;
+pub const ENCODING: u32 = 9;
 
 /// How many times the events a projection took in of what every event had seen since it was last
 /// compacted go into the events it knew then, at most, before a write-back compacts it again

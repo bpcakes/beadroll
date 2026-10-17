@@ -133,12 +133,20 @@ impl State {
     /// keys that are still unknown, which travel on as they were imported under this record's
     /// (possibly renamed) id.
     fn dependencies(&self, issue: &Issue) -> Vec<Value> {
-        let deps = issue.deps().iter().map(|((to, kind), meta)| {
-            let member = |name: &str, default: Value| meta.get(name).cloned().unwrap_or(default);
+        let deps = issue.deps().iter().map(|(edge, meta)| {
+            // read in with the issue's texts, as an export reads every issue's
+            let member = |name: &str, default: Value| {
+                (meta.members())
+                    .and_then(|members| members.get(name).cloned())
+                    .unwrap_or(default)
+            };
             let mut dep = Object::new();
             dep.insert("issue_id".into(), Value::from(issue.key()));
-            dep.insert("depends_on_id".into(), Value::from(self.key_of(to)));
-            dep.insert("type".into(), Value::from(kind.as_str()));
+            dep.insert(
+                "depends_on_id".into(),
+                Value::from(&*self.target_key(edge.to())),
+            );
+            dep.insert("type".into(), Value::from(edge.kind()));
             dep.insert("created_at".into(), member("created_at", Value::Null));
             dep.insert("created_by".into(), member("created_by", Value::Null));
             dep.insert("metadata".into(), member("metadata", Value::from("{}")));

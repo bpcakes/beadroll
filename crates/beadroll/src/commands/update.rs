@@ -311,9 +311,9 @@ fn edit(
         )?;
     }
     if let Some(parent) = new_parent {
-        for (to, kind) in issue.deps().keys() {
-            if kind == "parent-child" {
-                remove_edge(tx, st, issue, to, Some(kind))?;
+        for edge in issue.deps().keys() {
+            if edge.kind() == "parent-child" {
+                remove_edge(tx, st, issue, edge.to(), Some(edge.kind()))?;
             }
         }
         let mut edge = Object::new();

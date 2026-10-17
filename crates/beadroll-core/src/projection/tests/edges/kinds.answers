@@ -1,0 +1,240 @@
+01a1498a-1027-76e1-8be1-182e653c04fc ex-e1
+  blocked true
+  listed ex-e1.1 ex-m0la
+  direct 
+  parents 
+  children ex-e1.1 ex-e1.2 ex-m0la
+  waits ex-e1.1 ex-e1.2 ex-m0la
+01a1498a-1027-74ff-91f2-9dade3b1b4db ex-e1.1
+  dep 01a1498a-1027-76e1-8be1-182e653c04fc parent-child
+  dep 01a1498a-1027-7d96-9619-e1d3149098ba blocks
+  tags 01a1498a-1027-76e1-8be1-182e653c04fc parent-child [01a1498a-1027-7ea0-9a84-e46a5bf1e593]
+  tags 01a1498a-1027-7d96-9619-e1d3149098ba blocks [01a1498a-1027-7637-8977-0cea179cfb67]
+  blocked true
+  listed ex-x9
+  direct ex-x9
+  parents ex-e1
+  children 
+  waits ex-x9
+01a1498a-1027-7588-b6e5-56e7b8d33a99 ex-e1.2
+  dep 01a1498a-1027-76e1-8be1-182e653c04fc parent-child
+  dep 01a1498a-1027-74ff-91f2-9dade3b1b4db related
+  dep 01a1498a-1027-7d96-9619-e1d3149098ba discovered-from
+  tags 01a1498a-1027-76e1-8be1-182e653c04fc parent-child [01a1498a-1027-73aa-97a9-a59a6a90c42f]
+  tags 01a1498a-1027-74ff-91f2-9dade3b1b4db related [01a1498a-1027-7afd-8399-a84df472183d]
+  tags 01a1498a-1027-7d96-9619-e1d3149098ba discovered-from [01a1498a-1027-794c-a314-aae8f9ed7d96]
+  blocked false
+  listed 
+  direct 
+  parents ex-e1
+  children 
+  waits 
+01a1498a-1027-7d96-9619-e1d3149098ba ex-x9
+  dep 01a1498a-1027-76e1-8be1-182e653c04fc waits-for
+  dep 01a1498a-1a65-74de-b649-4e3d71ba171f tracks
+  tags 01a1498a-1027-76e1-8be1-182e653c04fc waits-for [01a1498a-1027-7721-ab29-f43d1bafd83f]
+  tags 01a1498a-1a65-74de-b649-4e3d71ba171f tracks [01a1498a-1027-7d96-9619-e1d3149098ba]
+  blocked false
+  listed 
+  direct 
+  parents 
+  children 
+  waits 
+01a1498a-10ca-7a40-be09-782ef27c855a ex-qeqq
+  dep 01a1498a-1124-7110-b728-f7cec9bdfe4a blocks
+  dep 01a1498a-1027-74ff-91f2-9dade3b1b4db related
+  tags 01a1498a-1124-7110-b728-f7cec9bdfe4a blocks [01a1498a-169e-7a52-ba5a-924f13ead212]
+  tags 01a1498a-1027-74ff-91f2-9dade3b1b4db related [01a1498a-1808-7a5b-9649-b870ae20131d]
+  blocked false
+  listed 
+  direct 
+  parents 
+  children 
+  waits ex-dabg
+01a1498a-1124-7110-b728-f7cec9bdfe4a ex-dabg
+  dep 01a1498a-1027-7d96-9619-e1d3149098ba my-own-kind
+  tags 01a1498a-1027-7d96-9619-e1d3149098ba my-own-kind [01a1498a-1492-73c4-9e5f-917f025d708d]
+  blocked false
+  listed 
+  direct 
+  parents 
+  children 
+  waits 
+01a1498a-1181-70b5-a896-4490998dea2c ex-m0la
+  dep 01a1498a-1027-76e1-8be1-182e653c04fc parent-child
+  dep 01a1498a-1124-7110-b728-f7cec9bdfe4a discovered-from
+  tags 01a1498a-1027-76e1-8be1-182e653c04fc parent-child [01a1498a-13c9-7b7d-b9ea-92e5a8d2683d]
+  tags 01a1498a-1124-7110-b728-f7cec9bdfe4a discovered-from [01a1498a-1441-7494-81a2-58c14195dba6]
+  tags 01a1498a-10ca-7a40-be09-782ef27c855a blocks []
+  blocked false
+  listed 
+  direct 
+  parents ex-e1
+  children 
+  waits 
+01a1498a-11fe-73de-a479-92aa7aa5ec58 ex-0awl
+  dep 01a1498a-1255-7353-b6ba-07793e58553a blocks
+  tags 01a1498a-1255-7353-b6ba-07793e58553a blocks [01a1498a-1572-7b01-a6b7-9cfa82620034]
+  blocked true
+  listed ex-zn5i
+  direct ex-zn5i
+  parents 
+  children 
+  waits ex-zn5i
+01a1498a-1255-7353-b6ba-07793e58553a ex-zn5i
+  dep 01a1498a-11fe-73de-a479-92aa7aa5ec58 blocks
+  tags 01a1498a-11fe-73de-a479-92aa7aa5ec58 blocks [01a1498a-1582-7268-a09c-667e65ebcce4]
+  blocked true
+  listed ex-0awl
+  direct ex-0awl
+  parents 
+  children 
+  waits ex-0awl
+01a1498a-1a65-74de-b649-4e3d71ba171f ex-far
+  blocked false
+  listed 
+  direct 
+  parents 
+  children 
+  waits 
+ready ex-x9 ex-m0la ex-qeqq ex-far
+cycles WaitsFor [["ex-0awl", "ex-zn5i"]]
+cycles Blocking [["ex-0awl", "ex-zn5i"]]
+ex-e1
+  details {"id":"ex-e1","title":"epic one","status":"open","priority":1,"issue_type":"epic","created_at":"2026-09-01T10:00:00Z","created_by":"seed","updated_at":"2026-09-02T10:00:00Z","dependencies":[],"dependents":[{"id":"ex-e1.1","title":"child one","status":"in_progress","dependency_type":"parent-child"},{"id":"ex-e1.2","title":"child two","status":"closed","dependency_type":"parent-child"},{"id":"ex-x9","title":"imported later in the file","status":"open","dependency_type":"waits-for"},{"id":"ex-m0la","title":"from b","status":"open","dependency_type":"parent-child"}],"comments":[],"blocked":true,"origin":{"machine":"fd3854aa","agent":"codex","thread":"a-thread-0001","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}},"where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}}
+ex-e1.1
+  meta 01a1498a-1027-76e1-8be1-182e653c04fc parent-child {"created_at":"2026-09-01T11:00:00Z","created_by":"seed","metadata":"{\"why\":\"split\",\"weight\":3}","thread_id":"th-7"}
+  meta 01a1498a-1027-7d96-9619-e1d3149098ba blocks {"created_at":"2026-09-01T12:00:00Z","created_by":"importer","metadata":"{}","thread_id":""}
+  tag 01a1498a-1027-76e1-8be1-182e653c04fc parent-child 01a1498a-1027-7ea0-9a84-e46a5bf1e593 {"created_at":"2026-09-01T11:00:00Z","created_by":"seed","metadata":"{\"why\":\"split\",\"weight\":3}","thread_id":"th-7"}
+  tag 01a1498a-1027-7d96-9619-e1d3149098ba blocks 01a1498a-1027-7637-8977-0cea179cfb67 {"created_at":"2026-09-01T12:00:00Z","created_by":"importer","metadata":"{}","thread_id":""}
+  details {"id":"ex-e1.1","title":"child one","status":"in_progress","priority":2,"issue_type":"task","assignee":"claude:b-thread-0001@fa4fa478","created_at":"2026-09-01T11:00:00Z","created_by":"seed","updated_at":"2026-10-17T11:05:49.854Z","parent":"ex-e1","dependencies":[{"id":"ex-e1","title":"epic one","status":"open","dependency_type":"parent-child"},{"id":"ex-x9","title":"imported later in the file","status":"open","dependency_type":"blocks"}],"dependents":[{"id":"ex-e1.2","title":"child two","status":"closed","dependency_type":"related"},{"id":"ex-qeqq","title":"plain one","status":"open","dependency_type":"related"}],"comments":[],"blocked":true,"origin":{"machine":"fd3854aa","agent":"codex","thread":"a-thread-0001","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}},"where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"},"claim":{"id":"01a1498a-1a1e-7321-b16c-fa8e5508f50b","owner":"claude:b-thread-0001@fa4fa478","machine":"fa4fa478","agent":"claude","thread":"b-thread-0001","generation":1,"since":"2026-10-17T11:05:49.854Z","mode":"online","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}}}
+ex-e1.2
+  meta 01a1498a-1027-76e1-8be1-182e653c04fc parent-child {"created_at":"2026-09-01T12:00:00Z","created_by":"seed"}
+  meta 01a1498a-1027-74ff-91f2-9dade3b1b4db related {"created_at":"2026-09-01T13:00:00Z","created_by":"seed","metadata":"{\"note\":\"see also\"}","thread_id":"th-8"}
+  meta 01a1498a-1027-7d96-9619-e1d3149098ba discovered-from {"created_at":"2026-09-01T14:00:00Z","created_by":"seed"}
+  tag 01a1498a-1027-76e1-8be1-182e653c04fc parent-child 01a1498a-1027-73aa-97a9-a59a6a90c42f {"created_at":"2026-09-01T12:00:00Z","created_by":"seed"}
+  tag 01a1498a-1027-74ff-91f2-9dade3b1b4db related 01a1498a-1027-7afd-8399-a84df472183d {"created_at":"2026-09-01T13:00:00Z","created_by":"seed","metadata":"{\"note\":\"see also\"}","thread_id":"th-8"}
+  tag 01a1498a-1027-7d96-9619-e1d3149098ba discovered-from 01a1498a-1027-794c-a314-aae8f9ed7d96 {"created_at":"2026-09-01T14:00:00Z","created_by":"seed"}
+  details {"id":"ex-e1.2","title":"child two","status":"closed","priority":2,"issue_type":"bug","created_at":"2026-09-01T12:00:00Z","created_by":"seed","updated_at":"2026-09-03T10:00:00Z","closed_at":"2026-09-03T10:00:00Z","close_reason":"done","parent":"ex-e1","dependencies":[{"id":"ex-e1.1","title":"child one","status":"in_progress","dependency_type":"related"},{"id":"ex-e1","title":"epic one","status":"open","dependency_type":"parent-child"},{"id":"ex-x9","title":"imported later in the file","status":"open","dependency_type":"discovered-from"}],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"fd3854aa","agent":"codex","thread":"a-thread-0001","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}},"where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}}
+ex-x9
+  meta 01a1498a-1027-76e1-8be1-182e653c04fc waits-for {"created_at":"2026-09-01T09:40:00Z","created_by":"seed","metadata":"","thread_id":"th-9"}
+  meta 01a1498a-1a65-74de-b649-4e3d71ba171f tracks {"created_at":"2026-09-01T09:30:00Z","created_by":"seed","metadata":"{\"url\":\"https://example.invalid/far\"}","thread_id":"th-9"}
+  tag 01a1498a-1027-76e1-8be1-182e653c04fc waits-for 01a1498a-1027-7721-ab29-f43d1bafd83f {"created_at":"2026-09-01T09:40:00Z","created_by":"seed","metadata":"","thread_id":"th-9"}
+  tag 01a1498a-1a65-74de-b649-4e3d71ba171f tracks 01a1498a-1027-7d96-9619-e1d3149098ba {"created_at":"2026-09-01T09:30:00Z","created_by":"seed","metadata":"{\"url\":\"https://example.invalid/far\"}","thread_id":"th-9"}
+  details {"id":"ex-x9","title":"imported later in the file","status":"open","priority":0,"issue_type":"task","created_at":"2026-09-01T09:00:00Z","created_by":"seed","updated_at":"2026-09-01T09:00:00Z","dependencies":[{"id":"ex-e1","title":"epic one","status":"open","dependency_type":"waits-for"},{"id":"ex-far","title":"the far one","status":"open","dependency_type":"tracks"}],"dependents":[{"id":"ex-e1.1","title":"child one","status":"in_progress","dependency_type":"blocks"},{"id":"ex-e1.2","title":"child two","status":"closed","dependency_type":"discovered-from"},{"id":"ex-dabg","title":"plain two","status":"closed","dependency_type":"my-own-kind"}],"comments":[],"blocked":false,"origin":{"machine":"fd3854aa","agent":"codex","thread":"a-thread-0001","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}},"where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}}
+ex-qeqq
+  meta 01a1498a-1124-7110-b728-f7cec9bdfe4a blocks {"created_at":"2026-10-17T11:05:48.958Z","created_by":"claude:b-thread-0001@fa4fa478"}
+  meta 01a1498a-1027-74ff-91f2-9dade3b1b4db related {"created_at":"2026-10-17T11:05:49.320Z","created_by":"codex:a-thread-0001@fd3854aa"}
+  tag 01a1498a-1124-7110-b728-f7cec9bdfe4a blocks 01a1498a-169e-7a52-ba5a-924f13ead212 {"created_at":"2026-10-17T11:05:48.958Z","created_by":"claude:b-thread-0001@fa4fa478"}
+  tag 01a1498a-1027-74ff-91f2-9dade3b1b4db related 01a1498a-1808-7a5b-9649-b870ae20131d {"created_at":"2026-10-17T11:05:49.320Z","created_by":"codex:a-thread-0001@fd3854aa"}
+  details {"id":"ex-qeqq","title":"plain one","status":"open","priority":2,"issue_type":"task","created_at":"2026-10-17T11:05:47.466Z","created_by":"codex:a-thread-0001@fd3854aa","updated_at":"2026-10-17T11:05:49.320Z","dependencies":[{"id":"ex-e1.1","title":"child one","status":"in_progress","dependency_type":"related"},{"id":"ex-dabg","title":"plain two","status":"closed","dependency_type":"blocks"}],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"fd3854aa","agent":"codex","thread":"a-thread-0001","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}},"where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}}
+ex-dabg
+  meta 01a1498a-1027-7d96-9619-e1d3149098ba my-own-kind {"created_at":"2026-10-17T11:05:48.434Z","created_by":"claude:b-thread-0001@fa4fa478"}
+  tag 01a1498a-1027-7d96-9619-e1d3149098ba my-own-kind 01a1498a-1492-73c4-9e5f-917f025d708d {"created_at":"2026-10-17T11:05:48.434Z","created_by":"claude:b-thread-0001@fa4fa478"}
+  details {"id":"ex-dabg","title":"plain two","status":"closed","priority":2,"issue_type":"feature","created_at":"2026-10-17T11:05:47.556Z","created_by":"codex:a-thread-0001@fd3854aa","updated_at":"2026-10-17T11:05:49.659Z","closed_at":"2026-10-17T11:05:49.659Z","close_reason":"done","dependencies":[{"id":"ex-x9","title":"imported later in the file","status":"open","dependency_type":"my-own-kind"}],"dependents":[{"id":"ex-qeqq","title":"plain one","status":"open","dependency_type":"blocks"},{"id":"ex-m0la","title":"from b","status":"open","dependency_type":"discovered-from"}],"comments":[],"blocked":false,"origin":{"machine":"fd3854aa","agent":"codex","thread":"a-thread-0001","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}},"where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"},"closed_on":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}}
+ex-m0la
+  meta 01a1498a-1027-76e1-8be1-182e653c04fc parent-child {"created_at":"2026-10-17T11:05:48.233Z","created_by":"claude:b-thread-0001@fa4fa478"}
+  meta 01a1498a-1124-7110-b728-f7cec9bdfe4a discovered-from {"created_at":"2026-10-17T11:05:48.353Z","created_by":"claude:b-thread-0001@fa4fa478"}
+  tag 01a1498a-1027-76e1-8be1-182e653c04fc parent-child 01a1498a-13c9-7b7d-b9ea-92e5a8d2683d {"created_at":"2026-10-17T11:05:48.233Z","created_by":"claude:b-thread-0001@fa4fa478"}
+  tag 01a1498a-1124-7110-b728-f7cec9bdfe4a discovered-from 01a1498a-1441-7494-81a2-58c14195dba6 {"created_at":"2026-10-17T11:05:48.353Z","created_by":"claude:b-thread-0001@fa4fa478"}
+  details {"id":"ex-m0la","title":"from b","status":"open","priority":1,"issue_type":"bug","created_at":"2026-10-17T11:05:47.649Z","created_by":"claude:b-thread-0001@fa4fa478","updated_at":"2026-10-17T11:05:49.487Z","parent":"ex-e1","dependencies":[{"id":"ex-e1","title":"epic one","status":"open","dependency_type":"parent-child"},{"id":"ex-dabg","title":"plain two","status":"closed","dependency_type":"discovered-from"}],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"fa4fa478","agent":"claude","thread":"b-thread-0001","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}},"where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}}
+ex-0awl
+  meta 01a1498a-1255-7353-b6ba-07793e58553a blocks {"created_at":"2026-10-17T11:05:48.658Z","created_by":"codex:a-thread-0001@fd3854aa"}
+  tag 01a1498a-1255-7353-b6ba-07793e58553a blocks 01a1498a-1572-7b01-a6b7-9cfa82620034 {"created_at":"2026-10-17T11:05:48.658Z","created_by":"codex:a-thread-0001@fd3854aa"}
+  details {"id":"ex-0awl","title":"cycle one","status":"open","priority":2,"issue_type":"task","created_at":"2026-10-17T11:05:47.774Z","created_by":"claude:b-thread-0001@fa4fa478","updated_at":"2026-10-17T11:05:48.658Z","dependencies":[{"id":"ex-zn5i","title":"cycle two","status":"open","dependency_type":"blocks"}],"dependents":[{"id":"ex-zn5i","title":"cycle two","status":"open","dependency_type":"blocks"}],"comments":[],"blocked":true,"origin":{"machine":"fa4fa478","agent":"claude","thread":"b-thread-0001","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}},"where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}}
+ex-zn5i
+  meta 01a1498a-11fe-73de-a479-92aa7aa5ec58 blocks {"created_at":"2026-10-17T11:05:48.674Z","created_by":"claude:b-thread-0001@fa4fa478"}
+  tag 01a1498a-11fe-73de-a479-92aa7aa5ec58 blocks 01a1498a-1582-7268-a09c-667e65ebcce4 {"created_at":"2026-10-17T11:05:48.674Z","created_by":"claude:b-thread-0001@fa4fa478"}
+  details {"id":"ex-zn5i","title":"cycle two","status":"open","priority":2,"issue_type":"task","created_at":"2026-10-17T11:05:47.861Z","created_by":"claude:b-thread-0001@fa4fa478","updated_at":"2026-10-17T11:05:48.674Z","dependencies":[{"id":"ex-0awl","title":"cycle one","status":"open","dependency_type":"blocks"}],"dependents":[{"id":"ex-0awl","title":"cycle one","status":"open","dependency_type":"blocks"}],"comments":[],"blocked":true,"origin":{"machine":"fa4fa478","agent":"claude","thread":"b-thread-0001","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}},"where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}}
+ex-far
+  details {"id":"ex-far","title":"the far one","status":"open","priority":3,"issue_type":"task","created_at":"2026-09-05T10:00:00Z","created_by":"other","updated_at":"2026-09-05T10:00:00Z","dependencies":[],"unresolved_dependencies":[{"id":"ex-never","dependency_type":"blocks"}],"dependents":[{"id":"ex-x9","title":"imported later in the file","status":"open","dependency_type":"tracks"}],"comments":[],"blocked":false,"origin":{"machine":"fa4fa478","agent":"claude","thread":"b-thread-0001","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}},"where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}}
+export {"id":"ex-0awl","title":"cycle one","status":"open","priority":2,"issue_type":"task","created_at":"2026-10-17T11:05:47.774Z","created_by":"claude:b-thread-0001@fa4fa478","updated_at":"2026-10-17T11:05:48.658Z","dependencies":[{"issue_id":"ex-0awl","depends_on_id":"ex-zn5i","type":"blocks","created_at":"2026-10-17T11:05:48.658Z","created_by":"codex:a-thread-0001@fd3854aa","metadata":"{}","thread_id":""}]}
+export {"id":"ex-dabg","title":"plain two","status":"closed","priority":2,"issue_type":"feature","created_at":"2026-10-17T11:05:47.556Z","created_by":"codex:a-thread-0001@fd3854aa","updated_at":"2026-10-17T11:05:49.659Z","closed_at":"2026-10-17T11:05:49.659Z","close_reason":"done","dependencies":[{"issue_id":"ex-dabg","depends_on_id":"ex-x9","type":"my-own-kind","created_at":"2026-10-17T11:05:48.434Z","created_by":"claude:b-thread-0001@fa4fa478","metadata":"{}","thread_id":""}]}
+export {"id":"ex-e1","title":"epic one","status":"open","priority":1,"issue_type":"epic","created_at":"2026-09-01T10:00:00Z","created_by":"seed","updated_at":"2026-09-02T10:00:00Z"}
+export {"id":"ex-e1.1","title":"child one","status":"in_progress","priority":2,"issue_type":"task","assignee":"claude:b-thread-0001@fa4fa478","created_at":"2026-09-01T11:00:00Z","created_by":"seed","updated_at":"2026-10-17T11:05:49.854Z","dependencies":[{"issue_id":"ex-e1.1","depends_on_id":"ex-e1","type":"parent-child","created_at":"2026-09-01T11:00:00Z","created_by":"seed","metadata":"{\"why\":\"split\",\"weight\":3}","thread_id":"th-7"},{"issue_id":"ex-e1.1","depends_on_id":"ex-x9","type":"blocks","created_at":"2026-09-01T12:00:00Z","created_by":"importer","metadata":"{}","thread_id":""}]}
+export {"id":"ex-e1.2","title":"child two","status":"closed","priority":2,"issue_type":"bug","created_at":"2026-09-01T12:00:00Z","created_by":"seed","updated_at":"2026-09-03T10:00:00Z","closed_at":"2026-09-03T10:00:00Z","close_reason":"done","dependencies":[{"issue_id":"ex-e1.2","depends_on_id":"ex-e1","type":"parent-child","created_at":"2026-09-01T12:00:00Z","created_by":"seed","metadata":"{}","thread_id":""},{"issue_id":"ex-e1.2","depends_on_id":"ex-e1.1","type":"related","created_at":"2026-09-01T13:00:00Z","created_by":"seed","metadata":"{\"note\":\"see also\"}","thread_id":"th-8"},{"issue_id":"ex-e1.2","depends_on_id":"ex-x9","type":"discovered-from","created_at":"2026-09-01T14:00:00Z","created_by":"seed","metadata":"{}","thread_id":""}]}
+export {"id":"ex-far","title":"the far one","status":"open","priority":3,"issue_type":"task","created_at":"2026-09-05T10:00:00Z","created_by":"other","updated_at":"2026-09-05T10:00:00Z","dependencies":[{"issue_id":"ex-far","depends_on_id":"ex-never","type":"blocks","created_at":"2026-09-05T10:00:00Z","created_by":"other","metadata":"{\"external\":true}","thread_id":"th-1"}]}
+export {"id":"ex-m0la","title":"from b","status":"open","priority":1,"issue_type":"bug","created_at":"2026-10-17T11:05:47.649Z","created_by":"claude:b-thread-0001@fa4fa478","updated_at":"2026-10-17T11:05:49.487Z","dependencies":[{"issue_id":"ex-m0la","depends_on_id":"ex-dabg","type":"discovered-from","created_at":"2026-10-17T11:05:48.353Z","created_by":"claude:b-thread-0001@fa4fa478","metadata":"{}","thread_id":""},{"issue_id":"ex-m0la","depends_on_id":"ex-e1","type":"parent-child","created_at":"2026-10-17T11:05:48.233Z","created_by":"claude:b-thread-0001@fa4fa478","metadata":"{}","thread_id":""}]}
+export {"id":"ex-qeqq","title":"plain one","status":"open","priority":2,"issue_type":"task","created_at":"2026-10-17T11:05:47.466Z","created_by":"codex:a-thread-0001@fd3854aa","updated_at":"2026-10-17T11:05:49.320Z","dependencies":[{"issue_id":"ex-qeqq","depends_on_id":"ex-dabg","type":"blocks","created_at":"2026-10-17T11:05:48.958Z","created_by":"claude:b-thread-0001@fa4fa478","metadata":"{}","thread_id":""},{"issue_id":"ex-qeqq","depends_on_id":"ex-e1.1","type":"related","created_at":"2026-10-17T11:05:49.320Z","created_by":"codex:a-thread-0001@fd3854aa","metadata":"{}","thread_id":""}]}
+export {"id":"ex-x9","title":"imported later in the file","status":"open","priority":0,"issue_type":"task","created_at":"2026-09-01T09:00:00Z","created_by":"seed","updated_at":"2026-09-01T09:00:00Z","dependencies":[{"issue_id":"ex-x9","depends_on_id":"ex-e1","type":"waits-for","created_at":"2026-09-01T09:40:00Z","created_by":"seed","metadata":"","thread_id":"th-9"},{"issue_id":"ex-x9","depends_on_id":"ex-far","type":"tracks","created_at":"2026-09-01T09:30:00Z","created_by":"seed","metadata":"{\"url\":\"https://example.invalid/far\"}","thread_id":"th-9"}]}
+export {"id":"ex-zn5i","title":"cycle two","status":"open","priority":2,"issue_type":"task","created_at":"2026-10-17T11:05:47.861Z","created_by":"claude:b-thread-0001@fa4fa478","updated_at":"2026-10-17T11:05:48.674Z","dependencies":[{"issue_id":"ex-zn5i","depends_on_id":"ex-0awl","type":"blocks","created_at":"2026-10-17T11:05:48.674Z","created_by":"claude:b-thread-0001@fa4fa478","metadata":"{}","thread_id":""}]}
+ex-e1
+  held true
+  beneath ex-e1.1 ex-e1.2 ex-m0la
+  leaf-up ex-e1.1 ex-e1.2 ex-m0la ex-e1
+  blockers ex-e1.1 ex-m0la
+  detail {"id":"ex-e1","title":"epic one","status":"open","priority":1,"issue_type":"epic","created_at":"2026-09-01T10:00:00Z","created_by":"seed","updated_at":"2026-09-02T10:00:00Z","dependencies":[],"dependents":[{"id":"ex-e1.1","title":"child one","status":"in_progress","dependency_type":"parent-child"},{"id":"ex-e1.2","title":"child two","status":"closed","dependency_type":"parent-child"},{"id":"ex-x9","title":"imported later in the file","status":"open","dependency_type":"waits-for"},{"id":"ex-m0la","title":"from b","status":"open","dependency_type":"parent-child"}],"comments":[],"blocked":true,"origin":{"machine":"fd3854aa","agent":"codex","thread":"a-thread-0001","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}},"where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}}
+  ready ex-m0la
+  reaches ex-e1 ex-e1.1 ex-e1.2 ex-x9 ex-m0la
+ex-e1.1
+  held true
+  beneath 
+  leaf-up ex-e1.1
+  blockers ex-x9
+  detail {"id":"ex-e1.1","title":"child one","status":"in_progress","priority":2,"issue_type":"task","assignee":"claude:b-thread-0001@fa4fa478","created_at":"2026-09-01T11:00:00Z","created_by":"seed","updated_at":"2026-10-17T11:05:49.854Z","parent":"ex-e1","dependencies":[{"id":"ex-e1","title":"epic one","status":"open","dependency_type":"parent-child"},{"id":"ex-x9","title":"imported later in the file","status":"open","dependency_type":"blocks"}],"dependents":[{"id":"ex-e1.2","title":"child two","status":"closed","dependency_type":"related"},{"id":"ex-qeqq","title":"plain one","status":"open","dependency_type":"related"}],"comments":[],"blocked":true,"origin":{"machine":"fd3854aa","agent":"codex","thread":"a-thread-0001","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}},"where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"},"claim":{"id":"01a1498a-1a1e-7321-b16c-fa8e5508f50b","owner":"claude:b-thread-0001@fa4fa478","machine":"fa4fa478","agent":"claude","thread":"b-thread-0001","generation":1,"since":"2026-10-17T11:05:49.854Z","mode":"online","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}}}
+  ready 
+  reaches ex-e1.1 ex-x9
+ex-e1.2
+  held false
+  beneath 
+  leaf-up ex-e1.2
+  blockers 
+  detail {"id":"ex-e1.2","title":"child two","status":"closed","priority":2,"issue_type":"bug","created_at":"2026-09-01T12:00:00Z","created_by":"seed","updated_at":"2026-09-03T10:00:00Z","closed_at":"2026-09-03T10:00:00Z","close_reason":"done","parent":"ex-e1","dependencies":[{"id":"ex-e1.1","title":"child one","status":"in_progress","dependency_type":"related"},{"id":"ex-e1","title":"epic one","status":"open","dependency_type":"parent-child"},{"id":"ex-x9","title":"imported later in the file","status":"open","dependency_type":"discovered-from"}],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"fd3854aa","agent":"codex","thread":"a-thread-0001","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}},"where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}}
+  ready 
+  reaches ex-e1.2
+ex-x9
+  held false
+  beneath 
+  leaf-up ex-x9
+  blockers 
+  detail {"id":"ex-x9","title":"imported later in the file","status":"open","priority":0,"issue_type":"task","created_at":"2026-09-01T09:00:00Z","created_by":"seed","updated_at":"2026-09-01T09:00:00Z","dependencies":[{"id":"ex-e1","title":"epic one","status":"open","dependency_type":"waits-for"},{"id":"ex-far","title":"the far one","status":"open","dependency_type":"tracks"}],"dependents":[{"id":"ex-e1.1","title":"child one","status":"in_progress","dependency_type":"blocks"},{"id":"ex-e1.2","title":"child two","status":"closed","dependency_type":"discovered-from"},{"id":"ex-dabg","title":"plain two","status":"closed","dependency_type":"my-own-kind"}],"comments":[],"blocked":false,"origin":{"machine":"fd3854aa","agent":"codex","thread":"a-thread-0001","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}},"where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}}
+  ready 
+  reaches ex-x9
+ex-qeqq
+  held false
+  beneath 
+  leaf-up ex-qeqq
+  blockers 
+  detail {"id":"ex-qeqq","title":"plain one","status":"open","priority":2,"issue_type":"task","created_at":"2026-10-17T11:05:47.466Z","created_by":"codex:a-thread-0001@fd3854aa","updated_at":"2026-10-17T11:05:49.320Z","dependencies":[{"id":"ex-e1.1","title":"child one","status":"in_progress","dependency_type":"related"},{"id":"ex-dabg","title":"plain two","status":"closed","dependency_type":"blocks"}],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"fd3854aa","agent":"codex","thread":"a-thread-0001","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}},"where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}}
+  ready 
+  reaches ex-qeqq ex-dabg
+ex-dabg
+  held false
+  beneath 
+  leaf-up ex-dabg
+  blockers 
+  detail {"id":"ex-dabg","title":"plain two","status":"closed","priority":2,"issue_type":"feature","created_at":"2026-10-17T11:05:47.556Z","created_by":"codex:a-thread-0001@fd3854aa","updated_at":"2026-10-17T11:05:49.659Z","closed_at":"2026-10-17T11:05:49.659Z","close_reason":"done","dependencies":[{"id":"ex-x9","title":"imported later in the file","status":"open","dependency_type":"my-own-kind"}],"dependents":[{"id":"ex-qeqq","title":"plain one","status":"open","dependency_type":"blocks"},{"id":"ex-m0la","title":"from b","status":"open","dependency_type":"discovered-from"}],"comments":[],"blocked":false,"origin":{"machine":"fd3854aa","agent":"codex","thread":"a-thread-0001","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}},"where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"},"closed_on":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}}
+  ready 
+  reaches ex-dabg
+ex-m0la
+  held false
+  beneath 
+  leaf-up ex-m0la
+  blockers 
+  detail {"id":"ex-m0la","title":"from b","status":"open","priority":1,"issue_type":"bug","created_at":"2026-10-17T11:05:47.649Z","created_by":"claude:b-thread-0001@fa4fa478","updated_at":"2026-10-17T11:05:49.487Z","parent":"ex-e1","dependencies":[{"id":"ex-e1","title":"epic one","status":"open","dependency_type":"parent-child"},{"id":"ex-dabg","title":"plain two","status":"closed","dependency_type":"discovered-from"}],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"fa4fa478","agent":"claude","thread":"b-thread-0001","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}},"where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}}
+  ready 
+  reaches ex-m0la
+ex-0awl
+  held true
+  beneath 
+  leaf-up ex-0awl
+  blockers ex-zn5i
+  detail {"id":"ex-0awl","title":"cycle one","status":"open","priority":2,"issue_type":"task","created_at":"2026-10-17T11:05:47.774Z","created_by":"claude:b-thread-0001@fa4fa478","updated_at":"2026-10-17T11:05:48.658Z","dependencies":[{"id":"ex-zn5i","title":"cycle two","status":"open","dependency_type":"blocks"}],"dependents":[{"id":"ex-zn5i","title":"cycle two","status":"open","dependency_type":"blocks"}],"comments":[],"blocked":true,"origin":{"machine":"fa4fa478","agent":"claude","thread":"b-thread-0001","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}},"where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}}
+  ready 
+  reaches ex-0awl
+ex-zn5i
+  held true
+  beneath 
+  leaf-up ex-zn5i
+  blockers ex-0awl
+  detail {"id":"ex-zn5i","title":"cycle two","status":"open","priority":2,"issue_type":"task","created_at":"2026-10-17T11:05:47.861Z","created_by":"claude:b-thread-0001@fa4fa478","updated_at":"2026-10-17T11:05:48.674Z","dependencies":[{"id":"ex-0awl","title":"cycle one","status":"open","dependency_type":"blocks"}],"dependents":[{"id":"ex-0awl","title":"cycle one","status":"open","dependency_type":"blocks"}],"comments":[],"blocked":true,"origin":{"machine":"fa4fa478","agent":"claude","thread":"b-thread-0001","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}},"where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}}
+  ready 
+  reaches ex-0awl
+ex-far
+  held false
+  beneath 
+  leaf-up ex-far
+  blockers 
+  detail {"id":"ex-far","title":"the far one","status":"open","priority":3,"issue_type":"task","created_at":"2026-09-05T10:00:00Z","created_by":"other","updated_at":"2026-09-05T10:00:00Z","dependencies":[],"unresolved_dependencies":[{"id":"ex-never","dependency_type":"blocks"}],"dependents":[{"id":"ex-x9","title":"imported later in the file","status":"open","dependency_type":"tracks"}],"comments":[],"blocked":false,"origin":{"machine":"fa4fa478","agent":"claude","thread":"b-thread-0001","where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}},"where":{"branch":"main","commit":"eae3bed5f067a809c7e29c0ff63413de91e93c5d"}}
+  ready 
+  reaches 
