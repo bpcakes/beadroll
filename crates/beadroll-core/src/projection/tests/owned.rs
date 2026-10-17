@@ -12,7 +12,7 @@ use crate::id::EventId;
 use crate::journal::Journal;
 use crate::json::{Format, Object, Value, write};
 use crate::replay::replay;
-use crate::state::{EndedClaim, LostClaim, Provisional, Stale, State, Texts};
+use crate::state::{Ended, EndedClaim, LostClaim, Provisional, Stale, State, Texts};
 
 use super::super::{Extended, Projection, project};
 use super::awaiting::fnv;
@@ -250,6 +250,53 @@ fn an_event_that_can_add_to_an_issues_history_waits_for_its_texts_and_has_them_w
             read_back(&extended, &mut file.clone(), back);
         }
     }
+}
+
+/// Texts whose last ended claim is not the one the state part names, which only a state changed
+/// while its texts were not read in can meet, are refused whole and replayed: another ended it,
+/// it ended another way, or the state part names none.
+#[test]
+fn texts_ending_another_claim_than_the_issues_are_never_read_in() {
+    let mut records = base();
+    let mut online = Object::new();
+    online.insert("mode".into(), Value::from("online"));
+    records.push(record(event(4, HERE, &[3], "claim", 2, online), HERE, true));
+    let mut naming = Object::new();
+    naming.insert("claim".into(), Value::from(id(4)));
+    records.push(record(
+        event(5, HERE, &[4], "release", 2, naming),
+        HERE,
+        true,
+    ));
+    let (encoded, _) = project(journal(&records)).unwrap().encode(0);
+    let state = Projection::decode(&encoded).unwrap().state().clone();
+    let uid = EventId::parse(&id(2)).unwrap();
+    let [(_, place)] = state.wanted_texts([uid])[..] else {
+        panic!("its texts are there");
+    };
+    let bytes = &encoded.texts[usize::try_from(place.at).unwrap()..][..place.len as usize];
+    let by = state.issue(uid).unwrap().last_ended().unwrap().by;
+    for ended in [
+        Some(Ended {
+            by: "someone else".into(),
+            how: "release",
+        }),
+        Some(Ended { by, how: "close" }),
+        None,
+    ] {
+        let mut changed = state.clone();
+        let Texts::There(stored) = &mut changed.issues.get_mut(&uid).unwrap().texts else {
+            panic!("its texts are there");
+        };
+        stored.ended = ended.clone();
+        assert!(changed.read_texts(uid, place, bytes).is_err(), "{ended:?}");
+        let issue = changed.issue(uid).unwrap();
+        assert!(!issue.texts().here(), "nothing read in");
+        assert!(issue.claim_history().is_empty(), "{ended:?}");
+    }
+    let mut whole = state;
+    whole.read_texts(uid, place, bytes).unwrap();
+    assert_eq!(whole.issue(uid).unwrap().claim_history().len(), 1);
 }
 
 /// What histories hold of who held each issue, counted in what replay made of them: the claims
