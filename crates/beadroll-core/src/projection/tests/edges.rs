@@ -10,6 +10,8 @@
 //! texts answers of the edges ([`outline`]) is compared besides between a state read alone and the
 //! state it was written from, every time the differential tests read one back.
 
+pub(super) mod drawn;
+
 use crate::json::{Format, Value, write};
 use crate::query::{Edges, ReadyScope};
 use crate::replay::replay;
@@ -93,6 +95,24 @@ pub(super) fn outline(state: &State) -> String {
     out.push_str(&format!("ready {}\n", keys(state.ready(ReadyScope::All))));
     for edges in [Edges::WaitsFor, Edges::Blocking] {
         out.push_str(&format!("cycles {edges:?} {:?}\n", state.cycles(edges)));
+    }
+    out
+}
+
+/// The metadata of every addition behind every edge of every issue of `state`, as text: what a
+/// state read back must give once its texts are read in.
+pub(super) fn metadata(state: &State) -> String {
+    let mut out = String::new();
+    for issue in state.issues() {
+        for ((to, kind), tags) in issue.dep_tags() {
+            for (id, meta) in tags.iter() {
+                out.push_str(&format!(
+                    "{} {to} {kind} {id} {}\n",
+                    issue.key(),
+                    text(meta)
+                ));
+            }
+        }
     }
     out
 }
@@ -208,7 +228,7 @@ fn delivered(flawed: bool) -> Vec<(u64, u64)> {
 
 #[test]
 fn the_histories_replay_orders_answer_of_their_edges_what_they_did() {
-    let _ = std::panic::catch_unwind(|| pinned("delivered", &delivered(false)));
+    pinned("delivered", &delivered(false));
     pinned("delivered-flawed", &delivered(true));
 }
 

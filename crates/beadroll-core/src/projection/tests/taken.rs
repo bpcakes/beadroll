@@ -27,7 +27,8 @@ use super::{
 /// writes it. Of the write-backs that left what every event had seen as it was, those that left
 /// events the state no longer names, and the most such events one left; of those the store made,
 /// those that left such events, and those that compacted them away. And by seed, the digest of what
-/// every state replay made of its history, batch by batch, answers of its edges ([`edges::fold`]).
+/// every state replay made of its history, batch by batch, answers of its edges ([`edges::fold`]),
+/// and what those states hold of the edges the generator draws for that ([`edges::drawn`]).
 #[derive(Default, Debug)]
 pub(super) struct Tally {
     pub(super) applied: usize,
@@ -43,6 +44,7 @@ pub(super) struct Tally {
     pub(super) left: usize,
     pub(super) cut: usize,
     pub(super) answers: Vec<(u64, u64)>,
+    pub(super) drawn: edges::drawn::Exercised,
 }
 
 impl Tally {
@@ -111,6 +113,7 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -
             assert!(answers_alike(&full, &replayed), "seed {seed}");
             shown::agree(&load(&world, &held), full.state());
             answers = edges::fold(answers, full.state(), n == 59);
+            tally.drawn.count(full.state());
             for each in &mut stored {
                 each.take(&world, &batch, &full, seed, &mut tally);
             }

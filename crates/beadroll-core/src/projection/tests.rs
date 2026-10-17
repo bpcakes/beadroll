@@ -247,7 +247,11 @@ impl World {
                 let key = format!("pr-{}", ["a1", "b2", "f6"][self.rng.below(3)]);
                 dep.insert("depends_on_id".into(), Value::from(key));
                 dep.insert("type".into(), Value::from("blocks"));
-                data.insert("dangling".into(), Value::Array(vec![Value::from(dep)]));
+                let mut dangling = vec![Value::from(dep)];
+                if self.rng.chance(50) {
+                    dangling.extend(self.awaited(roll));
+                }
+                data.insert("dangling".into(), Value::Array(dangling));
                 data.insert("imported".into(), Value::from(true));
             }
             self.write(m, "create", None, data);
@@ -265,6 +269,11 @@ impl World {
             45..=54 => {
                 data.insert("labels".into(), label());
                 (["label_add", "label_remove", "label_set"][roll % 3], data)
+            }
+            55..=66 if self.rng.chance(40) => {
+                let issue = issue.unwrap_or_default();
+                let (op, on, data) = self.edge_drawn(m, issue, &issues, roll);
+                return drop(self.write(m, op, Some(on), data));
             }
             55..=66 => {
                 let to = self.rng.pick(&issues).cloned().unwrap_or_default();
@@ -627,13 +636,19 @@ fn read_back(projection: &Projection, file: &mut TextFile, back: WriteBack) -> P
     let decoded = Projection::decode(&encoded).unwrap();
     assert!(decoded.state().issues().all(|issue| !issue.texts().here()));
     let original = whole(projection, file);
-    assert!(same(whole(&decoded, file).state(), original.state()));
+    let read = whole(&decoded, file);
+    assert!(same(read.state(), original.state()));
+    assert_eq!(
+        edges::metadata(read.state()),
+        edges::metadata(original.state())
+    );
     assert!(known::knows_alike(&decoded, projection, compacts));
     let mut state = decode_state(&encoded.state).unwrap();
     assert!(known::knows_writers_alone(&state, projection));
     assert_eq!(edges::outline(&state), edges::outline(original.state()));
     read_in(&mut state, file, None);
     assert!(same(&state, original.state()));
+    assert_eq!(edges::metadata(&state), edges::metadata(original.state()));
     decoded
 }
 
@@ -697,4 +712,5 @@ fn every_extension_is_replays_answer_or_declined() {
         tally.cut
     );
     edges::pinned("plain", &tally.answers);
+    tally.drawn.enough();
 }
