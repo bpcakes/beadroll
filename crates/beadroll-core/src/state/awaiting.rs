@@ -3,8 +3,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use indexmap::IndexMap;
-
 use crate::id::EventId;
 use crate::json::Value;
 use crate::work::{Work, tally};
@@ -142,7 +140,7 @@ impl Awaiting {
     /// Makes whole every list an entry was taken from, in its order, with the numbers of the entries
     /// left: what a state is finished with, so that no null is ever seen. The entries left keep
     /// their numbers, so nothing is listed again.
-    pub(crate) fn settle(&mut self, issues: &mut IndexMap<EventId, Box<Issue>>) {
+    pub(crate) fn settle(&mut self, issues: &mut super::Issues) {
         let mut unsettled = std::mem::take(&mut self.unsettled);
         unsettled.sort_unstable();
         unsettled.dedup();
@@ -172,7 +170,7 @@ impl Awaiting {
     #[cfg(test)]
     pub(crate) fn listed(
         &self,
-        issues: &IndexMap<EventId, Box<Issue>>,
+        issues: &indexmap::IndexMap<EventId, Box<Issue>>,
     ) -> Vec<(String, EventId, Option<usize>)> {
         let mut listed: Vec<(String, EventId, Option<usize>)> = (self.entries.iter())
             .map(|(key, uid, number)| {

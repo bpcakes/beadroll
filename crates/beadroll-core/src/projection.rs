@@ -446,7 +446,7 @@ impl State {
         place: TextPlace,
         bytes: &[u8],
     ) -> Result<(), Unreadable> {
-        let issue = self.issues.get_mut(&uid).ok_or(Unreadable("an issue"))?;
+        let issue = self.issues.read_in(&uid).ok_or(Unreadable("an issue"))?;
         if issue.texts.here() {
             return Ok(()); // read in already
         }

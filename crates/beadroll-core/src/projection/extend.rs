@@ -235,17 +235,19 @@ impl Projection {
     }
 
     /// Whether issue `uid`'s texts are in it, if it is an issue, to be written again when `changes`:
-    /// `false` when they are only in the text file.
+    /// `false` when they are only in the text file. Texts read in that change are then to be placed
+    /// anew, which marks the issue; otherwise it is left as it is.
     fn texts_here(&mut self, uid: EventId, changes: bool) -> bool {
-        let Some(issue) = self.state.issues.get_mut(&uid) else {
-            return true;
-        };
-        match issue.texts {
-            Texts::There(_) => return false,
-            Texts::Read(_) if changes => issue.texts = Texts::Here,
-            Texts::Read(_) | Texts::Here => {}
+        match self.state.issues.get(&uid).map(|issue| &issue.texts) {
+            None | Some(Texts::Here) => true,
+            Some(Texts::There(_)) => false,
+            Some(Texts::Read(_)) => {
+                if changes && let Some(issue) = self.state.issues.get_mut(&uid) {
+                    issue.texts = Texts::Here;
+                }
+                true
+            }
         }
-        true
     }
 
     /// The new `events` in the order replay applies them after the projection's, when every one

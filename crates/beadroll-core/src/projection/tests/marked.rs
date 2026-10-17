@@ -4,7 +4,9 @@
 //! write-back that copied the bytes of an issue it did not mark would copy them stale, and the next
 //! command would read them as current; [`check`] finds such an issue at the extension that changed
 //! it, on every history the differential tests extend, and [`Exercised`] keeps the generator
-//! drawing every path by which an extension changes an issue.
+//! drawing every path by which an extension changes an issue. The marks are kept tight too: an
+//! extension marks only issues its records are about and issues waiting for a key a create among
+//! them brings ([`Projection::about`]), or the write-back would gain nothing.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -35,11 +37,12 @@ pub(super) fn record_of(issue: &Issue) -> Vec<u8> {
     w.finish()
 }
 
-/// What a projection holds, record by record: each issue's id and record and each event's record,
-/// by position, and how many copies were renamed.
+/// What a projection holds, record by record: each issue's id and record and whether it is marked
+/// ([`marked`]), each event's record, by position, and how many copies were renamed.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct Records {
     issues: Vec<(EventId, Vec<u8>)>,
+    marked: Vec<bool>,
     events: Vec<String>,
     renames: usize,
 }
@@ -51,6 +54,9 @@ impl Records {
         Records {
             issues: (state.issues.values())
                 .map(|issue| (issue.uid, record_of(issue)))
+                .collect(),
+            marked: (0..state.issues.len())
+                .map(|at| marked(projection, at))
                 .collect(),
             events: (0..knowledge.events.len())
                 .filter_map(|at| knowledge.record_of(at))
@@ -91,19 +97,24 @@ pub(super) fn changed(read: &Records, now: &Records) -> Changed {
 }
 
 /// Whether the issue at position `at` of `projection` is one a write-back writes again rather than
-/// copies. Every one, so far: the encode writes every issue.
-pub(super) fn marked(_projection: &Projection, _at: usize) -> bool {
-    true
+/// copies ([`crate::state::Issues::changed`]).
+pub(super) fn marked(projection: &Projection, at: usize) -> bool {
+    projection.state.issues.changed(at)
 }
 
 /// What the extensions the differential tests checked changed: of the issues read back, those a
 /// record about them changed, by what the record does, and those no record is about, which a
 /// create of a key they waited for bound; the issues created and the copies renamed; the issues
 /// whose texts are to be placed anew; the issues read back whose texts were read in and whose record
-/// stayed as read; and the events taken in after a read back.
+/// stayed as read; the events taken in after a read back; and of the issues read back, how many
+/// each extension marked and how many it changed, and how many were marked at a check while their
+/// record was still the one read back.
 #[derive(Debug, Default)]
 pub(in super::super) struct Exercised {
     pub(super) checked: usize,
+    pub(super) marks: usize,
+    pub(super) changes: usize,
+    pub(super) idle: usize,
     pub(super) by: BTreeMap<&'static str, usize>,
     pub(super) bound: usize,
     pub(super) created: usize,
@@ -117,6 +128,9 @@ impl Exercised {
     /// Adds `other`'s counts.
     pub(super) fn add(&mut self, other: &Exercised) {
         self.checked += other.checked;
+        self.marks += other.marks;
+        self.changes += other.changes;
+        self.idle += other.idle;
         for (what, n) in &other.by {
             *self.by.entry(what).or_default() += n;
         }
@@ -128,11 +142,14 @@ impl Exercised {
         self.appended += other.appended;
     }
 
-    /// Whether the clean differential histories drew every path, about half as often as they do.
+    /// Whether the clean differential histories drew every path, about half as often as they do, and
+    /// marked hardly an issue whose record had not changed (none, as they are drawn now).
     pub(super) fn enough(&self) {
         let by = |what: &str| self.by.get(what).copied().unwrap_or(0);
         assert!(
             self.checked > 5_000
+                && self.marks > 15_000
+                && self.idle * 100 <= self.marks
                 && by("set") > 4_000
                 && by("ownership") > 6_000
                 && by("delete") > 500
@@ -167,8 +184,9 @@ fn kind(op: &str) -> &'static str {
 /// Checks `after`, a projection read back as `read` and extended by `records` from `before`: every
 /// issue whose record changed since it was read back is marked, every issue read back is where it
 /// was, and every event read back has its record still; an issue changed that no record is about
-/// is one that waited for the key a create among them brings (`about`, [`Projection::about`]).
-/// Counts what the extension changed.
+/// is one that waited for the key a create among them brings (`about`, [`Projection::about`]), and
+/// so is every issue read back that the extension marked and no record is about. Counts what the
+/// extension changed and marked.
 pub(super) fn check(
     read: &Records,
     before: &Records,
@@ -198,7 +216,22 @@ pub(super) fn check(
         }
     }
     let issues = after.state().issues.values().collect::<Vec<_>>();
-    for at in changed(before, &now).issues {
+    for (at, (uid, _)) in read.issues.iter().enumerate() {
+        let newly = now.marked[at] && !before.marked[at];
+        if newly {
+            assert!(
+                ops.contains_key(uid) || about.contains(uid),
+                "issue {uid} marked, and nothing is about it"
+            );
+        }
+        tally.marks += usize::from(newly);
+        tally.idle += usize::from(now.marked[at] && now.issues[at] == read.issues[at]);
+    }
+    let this = changed(before, &now);
+    tally.changes += (this.issues.iter())
+        .filter(|at| **at < read.issues.len())
+        .count();
+    for at in this.issues {
         let Some((uid, _)) = read.issues.get(at) else {
             continue; // created since it was read back: written whole whatever happens
         };

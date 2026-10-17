@@ -113,6 +113,7 @@ pub(crate) fn read_state(r: &mut Reader<'_>) -> Result<State, Unreadable> {
     }
     st.awaiting = Awaiting::of(st.issues.values().map(|issue| &**issue));
     finish(&mut st);
+    st.issues.hold_as_read();
     Ok(st)
 }
 
