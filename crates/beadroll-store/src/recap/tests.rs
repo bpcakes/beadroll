@@ -44,7 +44,9 @@ fn a_save_keeps_what_a_recap_that_saved_meanwhile_did() {
         ("both-owed", Mark::Owed(100)),
         ("untouched", shown(&[1])),
     ]);
-    RecapCursor::default().save(&settings, start, 100).unwrap();
+    RecapCursor::default()
+        .save(&settings, start, Some(100))
+        .unwrap();
     // two recaps read the same cursor; the second saves first
     let read = RecapCursor::read(&settings).unwrap();
     let second = marks(&[
@@ -52,7 +54,7 @@ fn a_save_keeps_what_a_recap_that_saved_meanwhile_did() {
         ("owed-then-shown", shown(&[5])),
         ("both-owed", Mark::Owed(150)),
     ]);
-    read.save(&settings, second, 200).unwrap();
+    read.save(&settings, second, Some(200)).unwrap();
     let first = marks(&[
         ("both-shown", shown(&[3])),
         ("owed-then-shown", Mark::Owed(100)),
@@ -60,7 +62,7 @@ fn a_save_keeps_what_a_recap_that_saved_meanwhile_did() {
         ("both-owed", Mark::Owed(120)),
         ("new", shown(&[7])),
     ]);
-    read.save(&settings, first, 150).unwrap();
+    read.save(&settings, first, Some(150)).unwrap();
     let saved = RecapCursor::read(&settings).unwrap();
     let expected = marks(&[
         // two reads of one store need not be nested: both frontiers stay
@@ -82,12 +84,28 @@ fn a_frontier_that_is_not_the_one_read_replaces_it_when_nobody_raced() {
     let home = tempfile::tempdir().unwrap();
     let settings = settings(home.path());
     RecapCursor::default()
-        .save(&settings, marks(&[("store", shown(&[5, 6]))]), 100)
+        .save(&settings, marks(&[("store", shown(&[5, 6]))]), Some(100))
         .unwrap();
     // a store reset since: what it holds now is all a recap can vouch for
     let read = RecapCursor::read(&settings).unwrap();
-    read.save(&settings, marks(&[("store", shown(&[2]))]), 200)
+    read.save(&settings, marks(&[("store", shown(&[2]))]), Some(200))
         .unwrap();
     let saved = RecapCursor::read(&settings).unwrap();
     assert_eq!(saved.marks, marks(&[("store", shown(&[2]))]));
+}
+
+#[test]
+fn a_save_of_owed_windows_alone_keeps_the_time_of_the_last_recap_that_marked_anything() {
+    let home = tempfile::tempdir().unwrap();
+    let settings = settings(home.path());
+    RecapCursor::default()
+        .save(&settings, marks(&[("shown", shown(&[1]))]), Some(100))
+        .unwrap();
+    let read = RecapCursor::read(&settings).unwrap();
+    read.save(&settings, marks(&[("new", Mark::Owed(100))]), None)
+        .unwrap();
+    let saved = RecapCursor::read(&settings).unwrap();
+    assert_eq!(saved.at, Some(100));
+    let expected = marks(&[("new", Mark::Owed(100)), ("shown", shown(&[1]))]);
+    assert_eq!(saved.marks, expected);
 }

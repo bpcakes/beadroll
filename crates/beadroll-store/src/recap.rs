@@ -139,8 +139,9 @@ impl RecapCursor {
         read_cursor(&settings.home()?.join(CURSOR))
     }
 
-    /// Records `marks`, each tracker's once a recap's answer has been delivered, and `at`, over the
-    /// cursor as it is when this runs: read again under the cursor's lock, where a tracker whose
+    /// Records `marks`, each tracker's once a recap's answer has been delivered, and `at`, the time
+    /// of that recap when it marked activity seen (a recap that only owes trackers their windows
+    /// marked nothing), over the cursor as it is when this runs: read again under the cursor's lock, where a tracker whose
     /// mark another recap changed since this one read `self` keeps what both recaps did
     /// ([`Mark::with`]), and the other trackers keep theirs. The lock is held only to read and
     /// replace the file, never while a journal is read or an answer written.
@@ -148,7 +149,7 @@ impl RecapCursor {
         &self,
         settings: &Settings,
         marks: BTreeMap<String, Mark>,
-        at: u64,
+        at: Option<u64>,
     ) -> Result<(), Error> {
         settings.failpoints.hit("recap.before-save");
         let home = settings.home()?;
@@ -172,7 +173,9 @@ impl RecapCursor {
             };
             now.marks.insert(id, mark);
         }
-        now.at = Some(now.at.map_or(at, |was| was.max(at)));
+        if let Some(at) = at {
+            now.at = Some(now.at.map_or(at, |was| was.max(at)));
+        }
         let text = json::write(&now.to_value(), Format::COMPACT)
             .map_err(|e| Error::Validation(e.to_string()))?;
         // a write that fails says so without the file, as a full volume does: name the cursor

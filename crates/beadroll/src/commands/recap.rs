@@ -111,8 +111,10 @@ pub(crate) fn recap(
     result.insert("workspaces".into(), Value::Array(trackers));
     result.insert("advance".into(), Value::from(args.advance));
     let delivered = (args.advance && !marks.is_empty()).then(|| {
-        let (settings, now) = (Arc::clone(settings), args.now);
-        Delivered::new(move || Ok(cursor.save(&settings, marks, now)?))
+        // an owed window marks nothing seen: the time of the last recap that did stays
+        let marked = marks.values().any(|mark| matches!(mark, Mark::Shown(_)));
+        let (settings, at) = (Arc::clone(settings), marked.then_some(args.now));
+        Delivered::new(move || Ok(cursor.save(&settings, marks, at)?))
     });
     Ok((Outcome::new(result, lines), delivered))
 }

@@ -250,6 +250,29 @@ fn a_tracker_with_only_its_init_in_causal_order_stays_owed_its_window() {
 }
 
 #[test]
+fn a_recap_that_only_owes_a_window_leaves_the_time_a_later_tracker_starts_at() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let (_other, b) = beside(&a, Machine::new);
+    a.bead(["init", "--prefix", "one"]);
+    create(&a, "Seen");
+    recap(&a);
+    // written elsewhere after that recap, and first synced here after the next
+    let elsewhere = crate::sandbox();
+    let c = Machine::new(&elsewhere, "c");
+    c.bead(["init", "--prefix", "three"]);
+    create(&c, "Written between the recaps");
+    // a tracker with only its init: owed its window, it marks nothing seen
+    b.bead(["init", "--prefix", "two"]);
+    assert!(events(&recap(&a)).is_empty());
+    let store = c.store();
+    std::fs::rename(&store, a.home().join(store.file_name().unwrap())).unwrap();
+    let synced = recap(&a);
+    assert_eq!(each(&synced, "title"), ["Written between the recaps"]);
+    assert!(events(&recap(&a)).is_empty());
+}
+
+#[test]
 fn the_cursor_files_cannot_be_taken_for_a_store() {
     let sandbox = crate::sandbox();
     let mut a = Machine::new(&sandbox, "a");

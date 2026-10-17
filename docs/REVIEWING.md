@@ -150,7 +150,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   shows the last 24 hours, by the events' own times, since bead records no arrival time. A tracker
   with integrity problems still advances, its problems listed; one that cannot be read is reported
   and the others show, and one never shown is owed its window in the cursor, not the shared time
-  of the last recap. That window applies once, to what the first recap that shows or counts any
+  of the last recap that marked anything seen, which a save of owed windows alone leaves as it
+  was. That window applies once, to what the first recap that shows or counts any
   of the tracker's events finds in causal order (its init never counts); events placed after
   that, such as the rest of a first sync that a recap read halfway, are new activity and show
   whatever their time, as any late sync's do. Two recaps at once may both show the same events: no lock is held while an
