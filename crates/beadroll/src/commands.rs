@@ -191,7 +191,7 @@ pub(crate) struct Outcome {
     /// one thing. That limits what the outcome carries, not what the command holds on the way to
     /// it: a command that publishes or reads a state of its own before it answers has to let go of
     /// what it made first, and nothing in the types makes it. The order of its code does
-    /// (`cli::finish` calls `ended_with` before `publish_soon`, `transition` drops its transaction
+    /// (`cli::finish` calls `ended_with` before `publish_soon_at`, `transition` drops its transaction
     /// before it publishes), and the tests that pin it: `cli::ending` the order, `xtask/tests/heap`
     /// the heap.
     pub(crate) held: Option<Box<dyn Held>>,

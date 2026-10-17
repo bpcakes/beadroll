@@ -3,17 +3,19 @@
 //! be freed (roll-lqjj.32, roll-lqjj.42); freed first when the run goes on to publish, which reads
 //! a state of its own, so that no command holds two.
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use beadroll_core::json::Value;
+use beadroll_core::json::{Object, Value};
 use beadroll_store::Workspace;
 use beadroll_sync::Spent;
+use beadroll_test_support::{Machine, Sandbox, built_bead, git};
 
-use super::{Answer, Failure, Held, Outcome, ended_with, finish};
-use crate::testing::{tracker, workspace};
+use super::{Answer, Failure, Held, Line, Outcome, Tone, ended_with, finish};
+use crate::testing::{settings, tracker, workspace};
 
 /// Something a command held, which counts how often it was freed.
 #[derive(Debug)]
@@ -106,6 +108,73 @@ fn a_command_that_wrote_nothing_keeps_what_it_held_though_it_is_not_offline() {
         1,
         "freed: the process goes on"
     );
+}
+
+/// Opens the machine's store as a checkout without an origin opens it, with `config` as what its
+/// `.beadroll.json` tracks.
+fn without_origin(machine: &Machine, config: Object) -> Workspace {
+    let store = machine.store();
+    let id = store
+        .file_name()
+        .and_then(OsStr::to_str)
+        .expect("a store id");
+    Workspace::new(settings(machine, &[]), id, None, None, config).expect("the store")
+}
+
+/// A write on a tracker with no remote publishes nothing, as an offline write publishes nothing,
+/// so it keeps what it held to the end of the process as that write does, and says nothing of
+/// publishing (roll-lqjj.50). Were `--offline` alone to decide, it would free its transaction
+/// first for a publish with nowhere to go: about 83 ms at 200,000 events.
+#[test]
+fn a_write_on_a_tracker_with_no_remote_keeps_what_it_held_when_the_process_ends_with_it() {
+    let sandbox = Sandbox::new(built_bead());
+    let machine = Machine::new(&sandbox, "a");
+    git(["remote", "remove", "origin"], Some(machine.checkout()));
+    machine.bead(["init", "--prefix", "ex"]);
+    let ws = without_origin(&machine, Object::new());
+    assert!(
+        matches!(ws.endpoint(None), Ok(None)),
+        "a tracker with no remote"
+    );
+    let (answer, freed) = finishing(&ws, true, false, true);
+    let (_, lines) = answer.expect("finished").expect("answered");
+    assert_eq!(freed.load(Ordering::SeqCst), 0, "kept: the process ends");
+    assert_eq!(lines, Some(Vec::new()), "nothing to say of publishing");
+    let (answer, freed) = finishing(&ws, true, false, false);
+    assert!(answer.is_ok_and(|answer| answer.is_some()));
+    assert_eq!(
+        freed.load(Ordering::SeqCst),
+        1,
+        "freed: the process goes on"
+    );
+}
+
+/// A write whose remote cannot be chosen publishes nothing either, so it keeps what it held; and
+/// it says why where a publish that failed says it, in the same words: here `.beadroll.json`
+/// names one remote where the store already coordinates through another.
+#[test]
+fn a_write_whose_remote_cannot_be_chosen_keeps_what_it_held_and_says_why() {
+    let (sandbox, machine) = tracker();
+    let other = sandbox.bare("other.git");
+    machine.bead(["sync", "--remote", other.to_str().expect("a path")]);
+    let elsewhere = sandbox.root().join("elsewhere.git");
+    let mut config = Object::new();
+    let elsewhere = elsewhere.to_str().expect("a path");
+    config.insert("remote".into(), Value::from(elsewhere));
+    let ws = without_origin(&machine, config);
+    assert!(ws.endpoint(None).is_err(), "two remotes chosen");
+    let (answer, freed) = finishing(&ws, true, false, true);
+    let (_, lines) = answer.expect("finished").expect("answered");
+    assert_eq!(
+        freed.load(Ordering::SeqCst),
+        0,
+        "kept: nothing is published"
+    );
+    let said = Line::toned(
+        Tone::Warning,
+        "recorded locally, not yet published (CONFIG)",
+    );
+    assert_eq!(lines, Some(vec![said]));
 }
 
 /// The handshake of a `pause-until` failpoint (`crates/beadroll-store/src/failpoint.rs`): the

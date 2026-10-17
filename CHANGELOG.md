@@ -6,6 +6,17 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A write on a tracker with no remote keeps its transaction until the process exits, as an
+  offline write does, rather than freeing it first for a publish with nowhere to go (roll-lqjj.50,
+  X17): the command line now chooses where a write goes before it lets go of the transaction
+  (`beadroll_sync::destination`, then `publish_soon_at`), and frees it first only for a remote it
+  will reach. A remote that cannot be chosen (`.beadroll.json` naming one where the store
+  coordinates through another) keeps it too, and the run still says "recorded locally, not yet
+  published (CONFIG)" where it did. At 200,000 events such a write takes 0.174 s rather than
+  0.264 s, as an offline write does, and at 20,000 32.0 ms rather than 35.6 ms; its heap peak is
+  unchanged. `cargo xtask timing --read N` reports it (`no_remote_write_seconds`). Output, exit
+  codes, format 1 and the projection are unchanged.
+
 - Two properties join the fast suite (roll-k2wy.14.4): replay answers alike whatever order the
   records of a generated history reach it in, causal or as a store reads them, compared through
   every answer the public API gives (`replay::tests`, about 1.7 s of test time); and JSON
@@ -27,14 +38,14 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   it to the process's end. At 200,000 events an offline write takes 0.196 s rather than 0.269 s (a
   write after a write 0.183 s rather than 0.257 s) and at 20,000 about 32 ms rather than 37 ms. A
   write that goes on to publish frees it first, so that no command holds two, as it freed it
-  before (so does one on a tracker with no remote, which the command line does not ask about;
-  writes published at once and syncs do not move), and `claim`, `release`, `takeover` and `update`
-  with a claim read the store after they write, so they free it too. Output, exit codes, format 1
-  and the projection (`projection::ENCODING`) are unchanged. `beadroll_sync::writing_spent` hands
-  the transaction over; `writing`, `writing_state`, `coordinated` and `run_with` free as before.
-  `cargo xtask bead` also says what its process still held when bead returned (`heap held:`), and
-  xtask's `heap` tests keep, with the peak, that no command holds a transaction beside the state
-  it reads and that nothing of a tracker is held once a command returns, answered or failed.
+  before (writes published at once and syncs do not move), and `claim`, `release`, `takeover` and
+  `update` with a claim read the store after they write, so they free it too. Output, exit codes,
+  format 1 and the projection (`projection::ENCODING`) are unchanged.
+  `beadroll_sync::writing_spent` hands the transaction over; `writing`, `writing_state`,
+  `coordinated` and `run_with` free as before. `cargo xtask bead` also says what its process still
+  held when bead returned (`heap held:`), and xtask's `heap` tests keep, with the peak, that no
+  command holds a transaction beside the state it reads and that nothing of a tracker is held once
+  a command returns, answered or failed.
 
 - The unpublished count every command gives costs less on a tracker with many attempt files
   (roll-lqjj.47): it was not the 75 ms the issue was opened on for a store that has synced (1.3 ms
