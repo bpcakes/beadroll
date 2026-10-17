@@ -20,6 +20,7 @@ mod copied;
 mod edges;
 mod finished;
 mod flawed;
+mod forged;
 mod hostile;
 mod known;
 mod marked;

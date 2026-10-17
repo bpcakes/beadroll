@@ -306,6 +306,10 @@ impl Projection {
         r.done()?;
         let fresh = usize::try_from(after.number()?).map_err(|_| Unreadable("a count"))?;
         after.done()?;
+        // what the table held when it was made anew, which it has only added to since
+        if fresh > state_table.names.len() + state_table.values.len() {
+            return Err(Unreadable("the entries made anew"));
+        }
         let (mut r, mut after, index_table) = Reader::tabled(&index)?;
         let mut knowledge = Knowledge::default();
         let n = r.count()?;

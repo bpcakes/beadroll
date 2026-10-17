@@ -156,6 +156,10 @@ pub(crate) fn read_state(
         let issue = read_issue(r, &mut st.knowledge)?;
         st.issues.insert(issue.uid, Box::new(issue));
     }
+    // each issue once, as each record is: a write-back copies the records by position
+    if st.issues.len() != n {
+        return Err(Unreadable("an issue twice"));
+    }
     if let Some(starts) = starts {
         starts.push(u32::try_from(r.at()).map_err(|_| Unreadable("an issue"))?);
     }
@@ -165,6 +169,9 @@ pub(crate) fn read_state(
     for _ in 0..n {
         let key = r.text()?;
         st.by_key.insert(key, r.id()?);
+    }
+    if st.by_key.len() != n {
+        return Err(Unreadable("a key twice"));
     }
     let keys = from..r.at();
     for _ in 0..r.count()? {
