@@ -27,6 +27,7 @@ use crate::listing::{Keys, Stamp};
 use crate::memo::FileKey;
 use crate::workspace::Workspace;
 
+use super::Basis;
 use super::file::Made;
 use super::kept;
 
@@ -37,13 +38,21 @@ pub struct Sourced {
     /// `None` when a file's identity could not be had: nothing vouches for the projection then.
     /// Open to the tests, which alter one comparison's side at a time.
     pub(super) sources: Option<Sources>,
+    /// What it was made from, as a projection written back names it; `None` when a file was not
+    /// whole.
+    basis: Option<Basis>,
 }
 
 impl Sourced {
-    pub(super) fn new(projection: Projection, sources: Option<Sources>) -> Sourced {
+    pub(super) fn new(
+        projection: Projection,
+        sources: Option<Sources>,
+        basis: Option<Basis>,
+    ) -> Sourced {
         Sourced {
             projection,
             sources,
+            basis,
         }
     }
 
@@ -57,12 +66,18 @@ impl Sourced {
         self.projection
     }
 
-    /// The projection when the journal's files are still the ones it was made from, else `None`:
-    /// a segment grown, added, replaced or gone, an attempt file added, replaced or gone. The
-    /// caller then reads the store again ([`super::projection`]).
-    pub fn into_current(self, ws: &Workspace) -> Option<Projection> {
+    /// The projection, and what it was made from as a write that goes on from it names the
+    /// journal's files it leaves ([`super::after_write`]), whatever the journal is now.
+    pub fn into_parts(self) -> (Projection, Option<Basis>) {
+        (self.projection, self.basis)
+    }
+
+    /// This, when the journal's files are still the ones its projection was made from, else
+    /// `None`: a segment grown, added, replaced or gone, an attempt file added, replaced or gone.
+    /// The caller then reads the store again ([`super::projection`]).
+    pub fn into_current(self, ws: &Workspace) -> Option<Sourced> {
         let unchanged = self.sources.as_ref().is_some_and(|s| s.unchanged(ws));
-        unchanged.then_some(self.projection)
+        unchanged.then_some(self)
     }
 }
 

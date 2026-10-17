@@ -11,8 +11,8 @@ use beadroll_core::projection::{Extended, Projection, Record};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
 use beadroll_store::{
-    Actor, Sourced, Workspace, capture_where, encode_events, load_journal, projection, read_texts,
-    replica_id, uuid7,
+    Actor, Basis, Sourced, Workspace, after_write, append_events, capture_where, encode_events,
+    load_journal, projection_sourced, read_texts, replica_id, uuid7, write_back,
 };
 
 use crate::error::Error;
@@ -60,13 +60,24 @@ pub struct Tx<'a> {
     state: Option<State>,
     /// How many of the events emitted the state replayed has: it is replayed again once more are.
     replayed: usize,
+    /// What the projection was made from, as one written back names the journal's files
+    /// (roll-lqjj.51); `None` when they were not all whole.
+    basis: Option<Basis>,
+    /// The ids of the sequential events taken out to be appended, in their order.
+    appended: Vec<EventId>,
+    /// Whether the projection had every event emitted applied when they were taken out.
+    whole: bool,
+    /// The journal's files as this write left them ([`Tx::seal`]): its projection is then written
+    /// back as made from them.
+    sealed: Option<Basis>,
 }
 
 impl<'a> Tx<'a> {
     /// A transaction of `actor` on `ws`: this machine's identity (minted on first use), the store's
     /// journal, and where the caller works.
     pub fn new(ws: &'a Workspace, actor: &Actor) -> Result<Tx<'a>, Error> {
-        Tx::from(ws, actor, projection(ws)?)
+        let (projection, basis) = projection_sourced(ws)?.into_parts();
+        Tx::from(ws, actor, projection, basis)
     }
 
     /// [`Tx::new`] on the store's projection as the caller read it under the store lock it still
@@ -76,13 +87,21 @@ impl<'a> Tx<'a> {
     /// `new` does (roll-lqjj.37).
     pub fn on(ws: &'a Workspace, actor: &Actor, read: Sourced) -> Result<Tx<'a>, Error> {
         match read.into_current(ws) {
-            Some(projection) => Tx::from(ws, actor, projection),
+            Some(read) => {
+                let (projection, basis) = read.into_parts();
+                Tx::from(ws, actor, projection, basis)
+            }
             None => Tx::new(ws, actor),
         }
     }
 
-    /// A transaction on `projection`, the store's as it is now.
-    fn from(ws: &'a Workspace, actor: &Actor, projection: Projection) -> Result<Tx<'a>, Error> {
+    /// A transaction on `projection`, the store's as it is now, made from `basis`.
+    fn from(
+        ws: &'a Workspace,
+        actor: &Actor,
+        projection: Projection,
+        basis: Option<Basis>,
+    ) -> Result<Tx<'a>, Error> {
         let replica = replica_id(&ws.settings, true)?.unwrap_or_default();
         let place = capture_where(ws)?;
         Ok(Tx {
@@ -99,6 +118,10 @@ impl<'a> Tx<'a> {
             writable: actor.writable,
             state: None,
             replayed: 0,
+            basis,
+            appended: Vec::new(),
+            whole: false,
+            sealed: None,
         })
     }
 
@@ -107,9 +130,26 @@ impl<'a> Tx<'a> {
     /// many (an import emits one or more for each of its export's records) never holds them twice
     /// (roll-lqjj.9). The transaction is done with once they are taken.
     pub(crate) fn take_pending(&mut self) -> impl Iterator<Item = Value> + use<> {
+        self.whole = self.projection.is_some() && self.applied == self.emitted.len();
+        self.appended = (self.emitted.iter())
+            .filter(|record| record.sequenced)
+            .filter_map(|record| record.value.get("id")?.as_str().and_then(EventId::parse))
+            .collect();
         (std::mem::take(&mut self.emitted).into_iter())
             .filter(|record| record.sequenced)
             .map(|record| record.value)
+    }
+
+    /// Applies every event emitted to the projection while the transaction still has them, to
+    /// write it back (roll-lqjj.51), and appends the sequential ones to this machine's journal:
+    /// what an ownership round does under its lock before it settles its attempt.
+    pub(crate) fn append(&mut self) -> Result<(), Error> {
+        self.apply()?;
+        if self.has_pending() {
+            let pending = self.take_pending();
+            append_events(self.ws, &self.replica, pending)?;
+        }
+        Ok(())
     }
 
     /// Whether any sequential event was emitted.
@@ -121,23 +161,7 @@ impl<'a> Tx<'a> {
     /// those of the issues the events emitted can change are in it (roll-lqjj.6,
     /// `Projection::about`); a command reads in any other it prints.
     pub fn state(&mut self) -> Result<&State, Error> {
-        if self.applied < self.emitted.len()
-            && let Some(mut projection) = self.projection.take()
-        {
-            let records = self
-                .emitted
-                .get(self.applied..)
-                .unwrap_or_default()
-                .to_vec();
-            self.applied = self.emitted.len();
-            let about = projection.about(&records);
-            // texts that cannot be read in have the journal replayed
-            if read_texts(self.ws, projection.state_mut(), about)
-                && let Extended::Applied(projection) = projection.extend(records)?
-            {
-                self.projection = Some(*projection);
-            }
-        }
+        self.apply()?;
         if let Some(projection) = &self.projection {
             return Ok(projection.state());
         }
@@ -158,6 +182,55 @@ impl<'a> Tx<'a> {
         match &self.state {
             Some(state) => Ok(state),
             None => Err(Error::Validation("no state".to_owned())),
+        }
+    }
+
+    /// Applies to the projection the events emitted since it was last asked for, as its state is;
+    /// whether it then has every one. Without one, or once it declines them, it has none: the
+    /// state is the journal replayed with them.
+    pub(crate) fn apply(&mut self) -> Result<bool, Error> {
+        if self.applied < self.emitted.len()
+            && let Some(mut projection) = self.projection.take()
+        {
+            let records = self
+                .emitted
+                .get(self.applied..)
+                .unwrap_or_default()
+                .to_vec();
+            self.applied = self.emitted.len();
+            let about = projection.about(&records);
+            // texts that cannot be read in have the journal replayed
+            if read_texts(self.ws, projection.state_mut(), about)
+                && let Extended::Applied(projection) = projection.extend(records)?
+            {
+                self.projection = Some(*projection);
+            }
+        }
+        Ok(self.projection.is_some())
+    }
+
+    /// Names the journal's files as this write left them, under the store lock it still holds,
+    /// once its sequential events are appended and, when `confirmed`, its ownership events count
+    /// here: its projection is then written back as made from them ([`Tx::write_back`]). It is not
+    /// when the write wrote nothing, the projection does not have every event emitted, or the
+    /// journal holds anything else than what it was made from and those events
+    /// (`beadroll_store::after_write`).
+    pub(crate) fn seal(&mut self, confirmed: bool) {
+        let confirmed: &[Value] = if confirmed { &self.ownership } else { &[] };
+        let unconfirmed = !self.ownership.is_empty() && confirmed.is_empty();
+        let wrote = !self.appended.is_empty() || !confirmed.is_empty();
+        self.sealed = (self.basis.take())
+            .filter(|_| self.whole && wrote && !unconfirmed)
+            .and_then(|basis| after_write(self.ws, &basis, &self.appended, confirmed));
+    }
+
+    /// Writes the projection back once the store lock is let go of, as [`Tx::seal`] named the
+    /// journal's files, as a read writes back what it applied (roll-lqjj.51): the read after the
+    /// write then finds it current. A cache: a write-back that cannot be made changes nothing the
+    /// write did.
+    pub(crate) fn write_back(&mut self) {
+        if let (Some(basis), Some(projection)) = (self.sealed.take(), self.projection.as_mut()) {
+            write_back(self.ws, basis, projection);
         }
     }
 

@@ -42,6 +42,16 @@ fn texts(machine: &Machine) -> PathBuf {
     machine.store().join("projection-texts")
 }
 
+/// Runs the write `args` on `machine`, its record left after the stored projection, as a write
+/// whose own write-back was skipped or killed leaves it (`write.save=skip`, roll-lqjj.51): what the
+/// next read takes in.
+fn left<S: AsRef<std::ffi::OsStr>>(machine: &Machine, args: &[S]) {
+    let run = (machine.cmd(args))
+        .env("BEAD_FAILPOINTS", "write.save=skip")
+        .run();
+    assert_eq!(run.returncode(), 0, "{}", run.stderr);
+}
+
 /// What `machine` answers to the reading commands, to `show` of each of `keys` (`--json`, and as
 /// a human reads it), then to the history's; with `replaying`, its projection is removed before
 /// each, so that each replays the journal.
@@ -197,7 +207,7 @@ fn a_bead_killed_as_it_writes_a_projection_leaves_the_last_one() {
     let keys = tracker(&a);
     let _ = answers(&a, &keys, false);
     let last = std::fs::read(projection(&a)).unwrap();
-    a.bead(["create", "after", "--offline"]);
+    left(&a, &["create", "after", "--offline"]);
     // the next read takes the new record in, and is killed as it writes the projection with it
     let killed = (a.cmd(["list", "--json"]))
         .env("BEAD_FAILPOINTS", "atomic-write:/projection=sigkill")
@@ -279,7 +289,10 @@ fn a_bead_killed_as_it_adds_texts_leaves_the_last_projection() {
     let keys = tracker(&a);
     let _ = answers(&a, &keys, false);
     let last = std::fs::read(projection(&a)).unwrap();
-    a.bead(["comments", "add", &keys[0], "written offline", "--offline"]);
+    left(
+        &a,
+        &["comments", "add", &keys[0], "written offline", "--offline"],
+    );
     // the next read takes it in, adds its texts, and is killed before the projection is written
     let killed = (a.cmd(["list", "--json"]))
         .env("BEAD_FAILPOINTS", "projection.texts-appended=sigkill")

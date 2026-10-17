@@ -34,6 +34,7 @@
 mod file;
 mod sources;
 mod texts;
+mod written;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -59,6 +60,7 @@ use sources::Sources;
 
 pub use sources::Sourced;
 pub use texts::texts_path;
+pub use written::{Basis, after_write, write_back};
 
 /// How many bytes of texts no longer read a text file may hold beyond as many as are read, before
 /// a projection writes its texts to a new one.
@@ -94,8 +96,10 @@ pub fn projection(ws: &Workspace) -> Result<Projection, ViewError> {
 /// read it, kept, not taken again.
 pub fn projection_sourced(ws: &Workspace) -> Result<Sourced, ViewError> {
     match current(ws, Want::Projection)? {
-        Now::Projection(projection, sources) => Ok(Sourced::new(*projection, sources)),
-        Now::State(_) => Ok(Sourced::new(project(load_journal(ws)?)?, None)),
+        Now::Projection(projection, sources, basis) => {
+            Ok(Sourced::new(*projection, sources, basis))
+        }
+        Now::State(_) => Ok(Sourced::new(project(load_journal(ws)?)?, None, None)),
     }
 }
 
@@ -104,7 +108,7 @@ pub fn projection_sourced(ws: &Workspace) -> Result<Sourced, ViewError> {
 pub(crate) fn state(ws: &Workspace) -> Result<State, ViewError> {
     Ok(match current(ws, Want::Texts)? {
         Now::State(state) => *state,
-        Now::Projection(projection, _) => projection.into_state(),
+        Now::Projection(projection, ..) => projection.into_state(),
     })
 }
 
@@ -113,7 +117,7 @@ pub(crate) fn state(ws: &Workspace) -> Result<State, ViewError> {
 pub(crate) fn outline(ws: &Workspace) -> Result<State, ViewError> {
     Ok(match current(ws, Want::Outline)? {
         Now::State(state) => *state,
-        Now::Projection(projection, _) => projection.into_state(),
+        Now::Projection(projection, ..) => projection.into_state(),
     })
 }
 
@@ -159,11 +163,12 @@ enum Want {
     Outline,
 }
 
-/// What a command takes from the store: a state alone, or a projection, and the journal files it
-/// was made from when they are known.
+/// What a command takes from the store: a state alone, or a projection, the journal files it was
+/// made from when they are known, and what it was made from as a projection names it, when every
+/// file was whole.
 enum Now {
     State(Box<State>),
-    Projection(Box<Projection>, Option<Sources>),
+    Projection(Box<Projection>, Option<Sources>, Option<Basis>),
 }
 
 fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
@@ -174,7 +179,7 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
         let loaded = load_listed(ws, &segments, false)?;
         return Ok(if want == Want::Projection {
             let sources = Sources::read(ws, &segments, &loaded);
-            Now::Projection(Box::new(project(loaded.journal)?), sources)
+            Now::Projection(Box::new(project(loaded.journal)?), sources, None)
         } else {
             Now::State(Box::new(replay(loaded.journal)?))
         });
@@ -218,13 +223,14 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
                 if read_texts(ws, projection.state_mut(), uids)
                     && let Extended::Applied(mut projection) = projection.extend(records)?
                 {
+                    let basis = Basis { made: now.clone() };
                     if kept_for(want, tail, size) {
                         save(ws, now, &mut projection);
+                        // written back: what a write writes back later is encoded anew
+                        projection.let_go();
                     }
-                    // written back or not, the command goes on without the bytes it was read from
-                    projection.let_go();
                     if want != Want::Texts || read_all(ws, projection.state_mut()) {
-                        return Ok(Now::Projection(projection, sources));
+                        return Ok(Now::Projection(projection, sources, Some(basis)));
                     }
                 }
             }
@@ -243,20 +249,19 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
                 .map(|(path, key, sum)| kept(ws, path, *key, false, *sum)),
         )
         .collect::<Option<Vec<Held>>>();
+    let mut basis = None;
     if let Some(files) = read.filter(|_| loaded.whole) {
         let build = build.to_owned();
         let texts = [0; 16];
-        save(
-            ws,
-            Made {
-                build,
-                files,
-                texts,
-            },
-            &mut projection,
-        );
+        let made = Made {
+            build,
+            files,
+            texts,
+        };
+        basis = Some(Basis { made: made.clone() });
+        save(ws, made, &mut projection);
     }
-    Ok(Now::Projection(Box::new(projection), sources))
+    Ok(Now::Projection(Box::new(projection), sources, basis))
 }
 
 /// The stored projection as it is, the journal's files being the ones it was made from: its state
@@ -277,10 +282,13 @@ fn as_stored(
         return (want == Want::Outline || read_all(ws, &mut state))
             .then(|| Now::State(Box::new(state)));
     }
+    let basis = Basis {
+        made: stored.made.clone(),
+    };
     let mut projection = Projection::decode(stored.encoded()?).ok()?;
     projection.state_mut().set_texts_file(file);
-    projection.let_go(); // nothing to write back
-    Some(Now::Projection(Box::new(projection), sources))
+    // its bytes kept for a write that goes on to write it back (roll-lqjj.51)
+    Some(Now::Projection(Box::new(projection), sources, Some(basis)))
 }
 
 /// Whether a projection of `size` bytes, extended by records that `tail` bytes of the journal's

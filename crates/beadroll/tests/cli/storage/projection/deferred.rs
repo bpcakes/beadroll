@@ -1,7 +1,10 @@
-//! A write leaves the stored projection as it found it while the records after it are few
-//! (roll-lqjj.36, X17): the next read takes them in and writes it back, and a write writes it back
-//! only once they hold more than a 64th of its bytes. Whatever kills a write between its steps,
-//! and whatever a read writing the projection back meets, bead answers as the journal replayed.
+//! Records left after the stored projection (roll-lqjj.36, X17): a write writes its own
+//! projection back (roll-lqjj.51), and these are the writes whose write-back did not happen, killed
+//! or skipped (`write.save=skip`), or an older bead's. Such a write leaves the stored projection as
+//! it found it while the records after it are few: the next read takes them in and writes it back,
+//! and a write writes it back as it reads it only once they hold more than a 64th of its bytes.
+//! Whatever kills a write between its steps, and whatever a read writing the projection back
+//! meets, bead answers as the journal replayed.
 
 use std::path::Path;
 use std::process::Stdio;
@@ -9,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use beadroll_test_support::Machine;
 
-use super::{answers, projection};
+use super::{answers, left, projection};
 use crate::hardening::gate::{Gate, beside};
 
 /// How many times the records after the stored projection may go into its bytes before a write
@@ -61,9 +64,10 @@ fn journal_bytes(machine: &Machine) -> u64 {
 /// How many segments a replay reads in the merge test, at the least: more than an extension does.
 const SEGMENTS: usize = 24;
 
-/// A comment written offline: only the store writes.
+/// A comment written offline, its record left after the stored projection: only the store
+/// writes.
 fn comment(machine: &Machine, key: &str, text: &str) {
-    machine.bead(["comments", "add", key, text, "--offline"]);
+    left(machine, &["comments", "add", key, text, "--offline"]);
 }
 
 /// How long a write may take beside a read held at a gate before the test calls it stuck.
@@ -75,6 +79,7 @@ const LIMIT: Duration = Duration::from_secs(30);
 fn comment_within(machine: &Machine, key: &str, text: &str) -> Result<(), String> {
     let mut child = (machine
         .cmd(["comments", "add", key, text, "--offline"])
+        .env("BEAD_FAILPOINTS", "write.save=skip")
         .command())
     .stdin(Stdio::null())
     .stdout(Stdio::null())

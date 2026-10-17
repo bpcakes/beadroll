@@ -200,7 +200,11 @@ fn a_projection_that_cannot_name_its_files_is_not_current() {
     let home = tempfile::tempdir().unwrap();
     let (ws, read) = read_as(home.path(), How::Stored, true);
     let projection = read.into_projection();
-    assert!(Sourced::new(projection, None).into_current(&ws).is_none());
+    assert!(
+        Sourced::new(projection, None, None)
+            .into_current(&ws)
+            .is_none()
+    );
     let nameless: Keys = Arc::from([None]);
     let (paths, stamp) = (Arc::from([PathBuf::from("a")]), Some(Arc::from([])));
     assert!(Sources::of(Vec::new(), paths, nameless, stamp).is_none());

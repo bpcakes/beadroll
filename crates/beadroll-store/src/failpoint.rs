@@ -16,8 +16,9 @@
 //! failed and drops git's status line with it, the lost acknowledgement; `error(CODE)` fails
 //! `publish.result` or `fetch.result` with that code, and the command at
 //! `ownership.after-confirm`, leaving its attempt confirmed and its pending twin in place; `skip`
-//! (`backoff`, `fetch.retry`) skips the wait; `offset(±DUR)` and `at(NS)` (`clock`) shift the
-//! clock by a duration in `ns`, `us`, `ms`, `s`, `m`, `h` or `d`, or set it in nanoseconds.
+//! (`backoff`, `fetch.retry`) skips the wait, and (`write.save`) a write's write-back;
+//! `offset(±DUR)` and `at(NS)` (`clock`) shift the clock by a duration in `ns`, `us`, `ms`, `s`,
+//! `m`, `h` or `d`, or set it in nanoseconds.
 //!
 //! Points. `ownership.before-publish` and `ownership.after-publish-ok`, around an ownership
 //! command's publish; `ownership.after-confirm`, after its confirmation and before its pending
@@ -41,6 +42,8 @@
 //! never for the journal a transaction loads and replays itself (`Tx::state` with no projection);
 //! `projection.extended`, where `projection::current` applies records appended after the stored
 //! projection to it, which a test fails to see that a read finds the projection current;
+//! `write.save`, once a write has written the journal and let go of the store lock and before it
+//! writes its projection back (roll-lqjj.51), which `skip` leaves to the next command;
 //! `clock`, every reading of the clock (event times, torn and fork stamps); and
 //! `atomic-write:<path part>` and `atomic-written:<path part>`, before and after the rename of an
 //! atomic write whose target contains that part. In-crate tests pass
@@ -57,7 +60,7 @@ use beadroll_core::code::Code;
 use crate::error::Error;
 
 /// The points bead has, besides `atomic-write:<path part>` and `atomic-written:<path part>`.
-pub const POINTS: [&str; 24] = [
+pub const POINTS: [&str; 25] = [
     "ownership.before-publish",
     "ownership.before-transaction",
     "ownership.after-publish-ok",
@@ -79,6 +82,7 @@ pub const POINTS: [&str; 24] = [
     "projection.texts-appended",
     "projection.read",
     "projection.extended",
+    "write.save",
     "view.before-load-pending",
     "identity.before-link",
     "clock",
@@ -372,7 +376,7 @@ fn allowed(point: &str, action: &Action) -> Result<(), String> {
             point,
             "publish.result" | "fetch.result" | "ownership.after-confirm"
         ),
-        Action::Skip => matches!(point, "backoff" | "fetch.retry"),
+        Action::Skip => matches!(point, "backoff" | "fetch.retry" | "write.save"),
         Action::Offset(_) | Action::At(_) => point == "clock",
     };
     if fits {

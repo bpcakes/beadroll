@@ -10,7 +10,7 @@ use std::os::unix::fs::MetadataExt as _;
 
 use beadroll_test_support::{Machine, Run, Sandbox};
 
-use super::{answers, projection, texts, tracker};
+use super::{answers, left, projection, texts, tracker};
 use crate::hardening::gate::{Gate, beside};
 
 /// The generation the text file was started with: its header's second sixteen bytes.
@@ -40,7 +40,10 @@ fn overtaken(
     gate: &str,
 ) -> (Run, (Vec<u8>, Vec<u8>, u64, u64)) {
     let _ = machine.run(["list", "--json"]); // the projection written back, nothing after it
-    machine.bead(["comments", "add", key, "taken in by the list", "--offline"]);
+    left(
+        machine,
+        &["comments", "add", key, "taken in by the list", "--offline"],
+    );
     let read = generation(machine);
     let gate = Gate::new(sandbox, gate);
     let failpoints = format!("projection.before-save={}", gate.action());
@@ -104,13 +107,16 @@ fn a_write_back_whose_text_file_grew_under_it_writes_every_record_anew() {
     let c = crate::rust_only(&sandbox, "raced-c");
     let keys = tracker(&c);
     let _ = c.run(["list", "--json"]);
-    c.bead([
-        "comments",
-        "add",
-        &keys[0],
-        "taken in by the list",
-        "--offline",
-    ]);
+    left(
+        &c,
+        &[
+            "comments",
+            "add",
+            &keys[0],
+            "taken in by the list",
+            "--offline",
+        ],
+    );
     let long = sandbox.root().join("long.txt");
     std::fs::write(&long, "x".repeat(1_200_000)).unwrap();
     let long = long.to_str().unwrap().to_owned();

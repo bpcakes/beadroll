@@ -42,7 +42,8 @@ pub use journal::{
 pub use memo::{FileKey, Memo, memo_path};
 pub use place::{capture_where, merged_into_default, object_format};
 pub use projection::{
-    Sourced, projection, projection_path, projection_sourced, read_texts, texts_path,
+    Basis, Sourced, after_write, projection, projection_path, projection_sourced, read_texts,
+    texts_path, write_back,
 };
 pub use settings::{
     Clock, NET_TIMEOUT, REPACK_LOOSE, REPACK_PACKS, ROTATE_BYTES, Settings, join_path,

@@ -11,8 +11,8 @@ use beadroll_core::code::Code;
 use beadroll_core::json::Value;
 use beadroll_git::PushOutcome;
 use beadroll_store::{
-    Actor, Endpoint, Fired, Workspace, append_events, attempt_path, glob_ending, json_text,
-    load_pending, private_dirs, read, replica_id, write_atomic, write_attempt_file,
+    Actor, Endpoint, Fired, Workspace, attempt_path, glob_ending, json_text, load_pending,
+    private_dirs, read, replica_id, write_atomic, write_attempt_file,
 };
 
 use crate::error::Error;
@@ -226,12 +226,10 @@ pub fn coordinated<E: From<Error>>(
                 None => Tx::new(ws, actor)?,
             });
             let answer = build(tx, Mode::Online).map_err(Round::Build)?;
-            if tx.has_pending() {
-                let pending = tx.take_pending();
-                append_events(ws, &tx.replica, pending).map_err(Error::from)?;
-            }
+            tx.append()?;
             if tx.ownership.is_empty() {
                 forget(&stale)?; // nothing to settle: this command went through
+                tx.seal(false);
                 return Ok(Some(answer));
             }
             let outcome = publish_attempt(ws, &mut link, tip.as_deref(), &tx.ownership, signature)?;
@@ -240,6 +238,7 @@ pub fn coordinated<E: From<Error>>(
                     // this command went through: the actor has moved on from those
                     forget(&stale)?;
                     published(ws, &mut link, &remote)?;
+                    tx.seal(true);
                     Ok(Some(answer))
                 }
                 PushOutcome::Refused => Err(refused(&link).into()),
@@ -252,7 +251,7 @@ pub fn coordinated<E: From<Error>>(
                 }
             }
         });
-        drop(made.take());
+        let_go(&round, &mut made);
         match round {
             Ok(Some(answer)) => return Ok(answer),
             Ok(None) => {}
@@ -271,6 +270,15 @@ pub fn coordinated<E: From<Error>>(
         conflict_detail(&link)
     ))
     .into())
+}
+
+/// Lets go of a round's transaction (`made`) once the round has let go of the lock, a round that
+/// went through having it write its projection back first, as a write does (roll-lqjj.51).
+fn let_go<T, E>(round: &Result<Option<T>, E>, made: &mut Option<Tx<'_>>) {
+    if let (Ok(Some(_)), Some(tx)) = (round, made.as_mut()) {
+        tx.write_back();
+    }
+    drop(made.take());
 }
 
 /// Writes the attempt (`events`) as pending, its receipt (`signature`) first, and publishes it on

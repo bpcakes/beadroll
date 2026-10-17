@@ -134,8 +134,10 @@ fn written<'w, T, E: From<Error>>(
             .into());
         }
         let result = body(tx)?;
-        // the events emitted applied while the transaction still has them
-        let applied = keep && tx.state().is_ok();
+        // the events emitted applied while the transaction still has them: to answer from, and to
+        // write back (roll-lqjj.51)
+        let projected = tx.apply()?;
+        let applied = keep && (projected || tx.state().is_ok());
         let sequenced = tx.has_pending();
         let pending = tx.take_pending();
         let finish = || -> Result<(), Error> {
@@ -152,9 +154,14 @@ fn written<'w, T, E: From<Error>>(
             Ok(())
         };
         finish()?;
+        tx.seal(true);
         Ok((result, applied))
     });
     let (result, applied) = result?;
+    // the store lock let go of, as a read writes back what it applied
+    if let Some(tx) = made.as_mut() {
+        tx.write_back();
+    }
     Ok(Written {
         result,
         applied,
