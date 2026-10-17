@@ -605,12 +605,14 @@ fn save(ws: &Workspace, mut made: Made, projection: &mut Projection) {
                 && projection.state_mut().write_texts_anew()
         };
         if !anew {
-            let (encoded, places) = projection.encode(len);
+            let (parts, places) = projection.encode_in_parts(len);
             made.texts = generation;
-            if texts::append(ws, &file, len, &encoded.texts)
+            let (state, index) = (parts.state.slices(), parts.index.slices());
+            let head = file::head(&made, &state, &index);
+            if texts::append(ws, &file, len, &parts.texts)
                 && write_cache_parts(
                     &projection_path(ws),
-                    &file::parts(&file::head(&made, &encoded), &encoded),
+                    &file::slices(&head, &state, &index),
                     &ws.settings.failpoints,
                 )
                 .is_ok()
@@ -623,13 +625,15 @@ fn save(ws: &Workspace, mut made: Made, projection: &mut Projection) {
     if !projection.state_mut().write_texts_anew() {
         return; // texts placed in a text file no longer there, and not read in
     }
-    let (encoded, places) = projection.encode(texts::START);
-    let generation = texts::generation(&encoded.texts);
+    let (parts, places) = projection.encode_in_parts(texts::START);
+    let generation = texts::generation(&parts.texts);
     made.texts = generation;
-    if texts::start(ws, generation, &encoded.texts)
+    let (state, index) = (parts.state.slices(), parts.index.slices());
+    let head = file::head(&made, &state, &index);
+    if texts::start(ws, generation, &parts.texts)
         && write_cache_parts(
             &projection_path(ws),
-            &file::parts(&file::head(&made, &encoded), &encoded),
+            &file::slices(&head, &state, &index),
             &ws.settings.failpoints,
         )
         .is_ok()

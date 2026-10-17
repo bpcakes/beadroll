@@ -53,14 +53,18 @@ fn fastest_of<G, T>(
     Ok(best)
 }
 
-/// How long `projection` takes to write back, the fastest of [`RUNS`]: as read back, copying what
-/// did not change since (roll-lqjj.44), and having let go of the bytes it was read from, writing
-/// every record.
+/// How long `projection` takes to encode as a write-back encodes it, in parts that hold what they
+/// copy as it was read (roll-lqjj.51), the fastest of [`RUNS`]: as read back, copying what did not
+/// change since (roll-lqjj.44), and having let go of the bytes it was read from, writing every
+/// record.
 fn encodes(projection: &Projection) -> Result<(f64, f64), Failure> {
-    let copying = fastest(|| Ok(projection.encode(0)))?;
+    let copying = fastest(|| Ok(projection.encode_in_parts(0).0.state.len()))?;
     let mut whole = projection.clone();
     whole.let_go();
-    Ok((copying, fastest(|| Ok(whole.encode(0)))?))
+    Ok((
+        copying,
+        fastest(|| Ok(whole.encode_in_parts(0).0.state.len()))?,
+    ))
 }
 
 /// Measures; returns the beginning of the line to record.
@@ -115,7 +119,7 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
             "one comment past the worst point does not compact".into(),
         ));
     }
-    let compacting_seconds = fastest(|| Ok(past.encode(0)))?;
+    let compacting_seconds = fastest(|| Ok(past.encode_in_parts(0).0.state.len()))?;
     drop(past);
     let worst_seconds = fastest_of(
         || worst_encoded.clone(),

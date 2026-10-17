@@ -20,7 +20,7 @@ use std::sync::Arc;
 use crate::id::EventId;
 use crate::state::{Knowledge, State, TextPlace, Texts};
 
-use super::codec::{Reader, Table, Unreadable, Writer};
+use super::codec::{Part, Reader, Table, Unreadable, Writer};
 use super::state_codec::{Records, read_state, write_state};
 use super::text_codec::write_texts;
 use super::{Encoded, Projection, named, sum};
@@ -60,6 +60,18 @@ impl std::fmt::Debug for Kept {
     }
 }
 
+/// A projection's state and index as a write-back writes them, each holding what it copies as it
+/// was read back ([`Part`]), and its texts written nowhere yet, to append to the text file.
+#[derive(Debug)]
+pub struct Parts<'k> {
+    /// The state ([`Encoded::state`]).
+    pub state: Part<'k>,
+    /// The index ([`Encoded::index`]).
+    pub index: Part<'k>,
+    /// The texts ([`Encoded::texts`]).
+    pub texts: Vec<u8>,
+}
+
 /// What a write-back copies (roll-lqjj.44): what did not change since the projection was read back,
 /// or, as the tests compare it with, nothing, every record written against the same tables.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -91,6 +103,13 @@ impl Projection {
         self.encode_with(texts_at, self.compaction_due())
     }
 
+    /// [`Projection::encode`], its state and index as parts that hold what they copy as it was read
+    /// back, never assembled with what is written (roll-lqjj.51): what a write-back writes as it
+    /// is, and sums as it goes ([`sum_of`]).
+    pub fn encode_in_parts(&self, texts_at: u64) -> (Parts<'_>, Vec<(EventId, TextPlace)>) {
+        self.parts(texts_at, self.compaction_due(), Copying::Unchanged)
+    }
+
     /// [`Projection::encode`], what every event had seen cut down to the events the state names and
     /// the frontier when `compact`, and written as it is otherwise, whatever
     /// [`Projection::compaction_due`] says: what the tests compare. Never compacted, a projection
@@ -110,6 +129,22 @@ impl Projection {
         compact: bool,
         copying: Copying,
     ) -> (Encoded, Vec<(EventId, TextPlace)>) {
+        let (parts, places) = self.parts(texts_at, compact, copying);
+        let encoded = Encoded {
+            state: parts.state.to_vec(),
+            index: parts.index.to_vec(),
+            texts: parts.texts,
+        };
+        (encoded, places)
+    }
+
+    /// [`Projection::encode_copying`], as parts.
+    fn parts(
+        &self,
+        texts_at: u64,
+        compact: bool,
+        copying: Copying,
+    ) -> (Parts<'_>, Vec<(EventId, TextPlace)>) {
         let (mut texts, mut places) = (Vec::new(), Vec::new());
         for issue in self.state.issues.values() {
             if matches!(issue.texts, Texts::Here) {
@@ -129,20 +164,17 @@ impl Projection {
         let kept = self.kept.as_deref();
         let state = match kept {
             Some(kept) => {
-                let records = (copying == Copying::Unchanged).then_some(Records {
-                    bytes: &kept.state,
+                let records = (copying == Copying::Unchanged).then(|| Records {
+                    len: kept.state.len(),
                     starts: &kept.issues,
-                    keys: (
-                        kept.state.get(kept.keys.0.clone()).unwrap_or_default(),
-                        kept.keys.1,
-                    ),
+                    keys: kept.keys.clone(),
                 });
-                let (bytes, entries) = self.state_part(&given, kept.state_table.clone(), records);
+                let (part, entries) = self.state_part(&given, kept.state_table.clone(), records);
                 let fresh = kept.fresh;
                 if entries > fresh + fresh / 8 + TABLE_SLACK {
                     self.state_part(&given, Table::default(), None).0
                 } else {
-                    bytes
+                    part
                 }
             }
             None => self.state_part(&given, Table::default(), None).0,
@@ -170,12 +202,12 @@ impl Projection {
                 self.index_part(knowledge, compacted, None, copying)
             }
         };
-        let encoded = Encoded {
+        let parts = Parts {
             state,
             index,
             texts,
         };
-        (encoded, places)
+        (parts, places)
     }
 
     /// The state part, its table starting from `table`, the records of issues that did not change
@@ -185,12 +217,12 @@ impl Projection {
         given: &HashMap<EventId, TextPlace>,
         table: Table,
         records: Option<Records<'_>>,
-    ) -> (Vec<u8>, usize) {
+    ) -> (Part<'_>, usize) {
         let anew = table == Table::default();
-        let capacity = records.map_or(0, |records| {
-            records.bytes.len() + records.bytes.len() / SPARE
-        });
-        let mut w = Writer::tabled(table, capacity);
+        // what is copied stays where it was read: room for what is written
+        let capacity = records.as_ref().map_or(0, |records| records.len / SPARE);
+        let base = (self.kept.as_deref()).map_or(&[][..], |kept| &kept.state[..]);
+        let mut w = Writer::tabled(table, capacity, base);
         write_state(&mut w, &self.state, given, records);
         let table = w.table_here();
         let entries = table.names.len() + table.values.len();
@@ -200,18 +232,18 @@ impl Projection {
             _ => entries,
         };
         w.number(fresh as u64);
-        (w.finish(), entries)
+        (w.part(), entries)
     }
 
     /// The index, of `knowledge` and `compacted`, the records of the events read back, the chain
     /// sets and positions and the ids copied from `kept` when it is given and `copying` says so.
-    fn index_part(
+    fn index_part<'k>(
         &self,
         knowledge: &Knowledge,
         compacted: usize,
-        kept: Option<&Kept>,
+        kept: Option<&'k Kept>,
         copying: Copying,
-    ) -> Vec<u8> {
+    ) -> Part<'k> {
         let table = kept.map_or_else(Table::default, |kept| kept.index_table.clone());
         let copied = kept.filter(|kept| {
             copying == Copying::Unchanged
@@ -219,16 +251,18 @@ impl Projection {
                 && knowledge.arena().0 >= kept.sets.1
                 && knowledge.arena().1 >= kept.positions.1
         });
-        let capacity = kept.map_or(0, |kept| kept.index.len() + kept.index.len() / SPARE);
-        let mut w = Writer::tabled(table, capacity);
+        let capacity = copied.map_or(0, |kept| kept.index.len() / SPARE);
+        let base = kept.map_or(&[][..], |kept| &kept.index[..]);
+        let mut w = Writer::tabled(table, capacity, base);
         w.count(knowledge.events.len());
-        let stored = |range: &Range<usize>| copied.and_then(|kept| kept.index.get(range.clone()));
+        let stored =
+            |range: fn(&Kept) -> &Range<usize>| copied.map_or(0..0, |kept| range(kept).clone());
         let from = copied.map_or(0, |kept| kept.events.1);
-        w.copy(copied.map_or(&[][..], |kept| stored(&kept.events.0).unwrap_or_default()));
+        w.copy(stored(|kept| &kept.events.0));
         knowledge.write_records(&mut w, from);
-        w.copy(copied.map_or(&[][..], |kept| stored(&kept.places).unwrap_or_default()));
+        w.copy(stored(|kept| &kept.places));
         knowledge.write_places(&mut w, from);
-        w.copy(copied.map_or(&[][..], |kept| stored(&kept.clocks).unwrap_or_default()));
+        w.copy(stored(|kept| &kept.clocks));
         knowledge.write_clocks(&mut w, from);
         knowledge.write_chains(&mut w);
         w.count(compacted);
@@ -258,17 +292,18 @@ impl Projection {
         w.table_here();
         let arena = copied.map(|kept| crate::state::Arena {
             counts: (kept.sets.1, kept.positions.1),
-            sets: kept.index.get(kept.sets.0.clone()).unwrap_or_default(),
-            positions: kept.index.get(kept.positions.0.clone()).unwrap_or_default(),
+            sets: kept.sets.0.clone(),
+            positions: kept.positions.0.clone(),
         });
         knowledge.write_arena(&mut w, arena);
-        w.finish()
+        w.part()
     }
 
     /// The ids, as the ascending run `kept` read, with every id taken in since merged in where it
     /// sorts: the run copied between them, sixteen bytes an id.
-    fn merged_ids(&self, w: &mut Writer, kept: &Kept) {
+    fn merged_ids(&self, w: &mut Writer<'_>, kept: &Kept) {
         let stored = kept.index.get(kept.ids.0.clone()).unwrap_or_default();
+        let run = |from: usize, to: usize| kept.ids.0.start + from * 16..kept.ids.0.start + to * 16;
         let id_at = |at: usize| {
             let bytes = stored.get(at * 16..at * 16 + 16).unwrap_or_default();
             u128::from_be_bytes(bytes.try_into().unwrap_or([0xff; 16]))
@@ -288,11 +323,11 @@ impl Projection {
                     high = middle;
                 }
             }
-            w.copy(stored.get(from * 16..low * 16).unwrap_or_default());
+            w.copy(run(from, low));
             w.id(id);
             from = low;
         }
-        w.copy(stored.get(from * 16..).unwrap_or_default());
+        w.copy(run(from, kept.ids.1));
     }
 
     /// The projection [`Projection::encode`] wrote as these bytes, which it keeps to copy from when

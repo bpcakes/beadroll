@@ -12,7 +12,7 @@ use crate::json::{Object, Value};
 use crate::state::State;
 
 use super::parts::Copying;
-use super::{Projection, Record, decode_state};
+use super::{Projection, Record, decode_state, sum, sum_of};
 
 pub(crate) mod awaiting;
 mod compacted;
@@ -651,6 +651,21 @@ impl WriteBack {
     }
 }
 
+/// The sum of bytes in slices is the sum of the bytes together, wherever they are cut: what a part
+/// written back in slices is read against (roll-lqjj.51).
+#[test]
+fn a_sum_of_slices_is_the_sum_of_their_bytes_together() {
+    let bytes: Vec<u8> = (0..300u32).map(|n| (n * 37 % 251) as u8).collect();
+    for cut in [0, 1, 7, 8, 9, 64, 150, 299, 300] {
+        for other in [cut, cut / 2, 300] {
+            let (low, high) = (cut.min(other), cut.max(other));
+            let slices = [&bytes[..low], &bytes[low..high], &[][..], &bytes[high..]];
+            assert_eq!(sum_of(&slices), sum(&bytes), "{low} {high}");
+        }
+    }
+    assert_ne!(sum_of(&[&bytes[..299]]), sum(&bytes));
+}
+
 /// The projection read back from its bytes, as the next command reads it, written back as `back`
 /// says, its new texts appended to `file` and every issue's texts there. Read back with some
 /// issues' texts read in alone, as a command that prints those issues whole reads it, every issue
@@ -664,6 +679,22 @@ fn read_back(projection: &Projection, file: &mut TextFile, back: WriteBack) -> P
         _ => projection.encode_with(file.len() as u64, compacts),
     };
     let (written, _) = projection.encode_copying(file.len() as u64, compacts, Copying::Nothing);
+    if back == WriteBack::Encoded {
+        // as the store writes it: in slices, summed as they are (roll-lqjj.51)
+        let (parts, _) = projection.encode_in_parts(file.len() as u64);
+        for (part, bytes) in [
+            (&parts.state, &encoded.state),
+            (&parts.index, &encoded.index),
+        ] {
+            let slices = part.slices();
+            assert!(slices.concat() == *bytes && sum_of(&slices) == sum(bytes));
+            assert!(
+                slices.len() <= 1 + 2 * bytes.len().div_ceil(4096),
+                "{}",
+                slices.len()
+            );
+        }
+    }
     for (part, copied, written) in [
         ("state", &encoded.state, &written.state),
         ("index", &encoded.index, &written.index),

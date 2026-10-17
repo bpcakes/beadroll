@@ -12,6 +12,7 @@
 //! unreadable.
 
 use std::collections::HashMap;
+use std::ops::Range;
 use std::sync::Arc;
 
 use crate::id::EventId;
@@ -116,19 +117,71 @@ fn small(n: usize) -> u32 {
 }
 
 /// Bytes being written: names and shared values each written the first time and referred to after,
-/// or, for a part of records, referred to in its table.
+/// or, for a part of records, referred to in its table; and, for a part written back, runs of the
+/// part it was read from, copied as they are where they go, never assembled with the rest
+/// (roll-lqjj.51).
 #[derive(Default)]
-pub(crate) struct Writer {
+pub(crate) struct Writer<'k> {
     out: Vec<u8>,
     names: HashMap<Arc<str>, u32>,
     shared: HashMap<usize, u32>,
     table: Option<Numbering>,
+    /// The part runs are copied from.
+    base: &'k [u8],
+    /// Each run of `base` copied, and where among the bytes written it goes.
+    runs: Vec<(usize, Range<usize>)>,
+    /// How many bytes those runs hold.
+    copied: usize,
 }
 
-impl Writer {
+/// The shortest run a part keeps as it was read rather than among the bytes it writes.
+const RUN: usize = 4096;
+
+/// A part as written: the bytes written, and between them the runs copied from the part it was read
+/// from, in their order ([`Part::slices`]).
+#[derive(Debug)]
+pub struct Part<'k> {
+    out: Vec<u8>,
+    base: &'k [u8],
+    runs: Vec<(usize, Range<usize>)>,
+    copied: usize,
+}
+
+impl<'k> Part<'k> {
+    /// Its bytes, in their order, as slices of what was written and of what was copied.
+    pub fn slices(&self) -> Vec<&[u8]> {
+        let mut slices = Vec::with_capacity(2 * self.runs.len() + 1);
+        let mut from = 0;
+        for (at, run) in &self.runs {
+            slices.push(self.out.get(from..*at).unwrap_or_default());
+            slices.push(self.base.get(run.clone()).unwrap_or_default());
+            from = *at;
+        }
+        slices.push(self.out.get(from..).unwrap_or_default());
+        slices
+    }
+
+    /// How many bytes it holds.
+    pub fn len(&self) -> usize {
+        self.out.len() + self.copied
+    }
+
+    /// Whether it holds none.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Its bytes, assembled.
+    pub fn to_vec(&self) -> Vec<u8> {
+        self.slices().concat()
+    }
+}
+
+impl<'k> Writer<'k> {
     /// A part of records referring to `table`, and to what is added to it, by number: its first
-    /// eight bytes kept for where the table will be written ([`Writer::table_here`]).
-    pub(crate) fn tabled(table: Table, capacity: usize) -> Writer {
+    /// eight bytes kept for where the table will be written ([`Writer::table_here`]). What it copies
+    /// are runs of `base` ([`Writer::copy`]).
+    pub(crate) fn tabled(table: Table, capacity: usize, base: &'k [u8]) -> Writer<'k> {
         let mut out = Vec::with_capacity(capacity);
         out.extend_from_slice(&[0; 8]);
         Writer {
@@ -136,13 +189,17 @@ impl Writer {
             names: HashMap::new(),
             shared: HashMap::new(),
             table: Some(Numbering::of(table)),
+            base,
+            runs: Vec::new(),
+            copied: 0,
         }
     }
 
     /// Writes the table here, after the part's records, and says so in its first eight bytes: what
     /// follows is read with it. What the table is, as written.
     pub(crate) fn table_here(&mut self) -> Table {
-        let at = (self.out.len() as u64).to_le_bytes();
+        let at = (self.out.len() + self.copied) as u64;
+        let at = at.to_le_bytes();
         if let Some(head) = self.out.get_mut(..8) {
             head.copy_from_slice(&at);
         }
@@ -159,14 +216,60 @@ impl Writer {
         table
     }
 
-    /// `bytes` as they are: records copied.
-    pub(crate) fn copy(&mut self, bytes: &[u8]) {
-        self.out.extend_from_slice(bytes);
+    /// The bytes of the part read back at `run`, as they are: records copied, here, one run with
+    /// the run copied just before when it follows it there.
+    pub(crate) fn copy(&mut self, run: Range<usize>) {
+        if run.is_empty() {
+            return;
+        }
+        self.copied += run.len();
+        match self.runs.last_mut() {
+            Some((at, last)) if *at == self.out.len() && last.end == run.start => {
+                last.end = run.end
+            }
+            _ => self.runs.push((self.out.len(), run)),
+        }
     }
 
-    /// What was written.
+    /// What was written, as a part: the runs copied shorter than [`RUN`] put among the bytes
+    /// written, so that a part has few slices to write, however many records it copies apart.
+    pub(crate) fn part(self) -> Part<'k> {
+        if self.runs.iter().all(|(_, run)| run.len() >= RUN) {
+            return Part {
+                out: self.out,
+                base: self.base,
+                runs: self.runs,
+                copied: self.copied,
+            };
+        }
+        let short: usize = (self.runs.iter())
+            .map(|(_, run)| run.len())
+            .filter(|len| *len < RUN)
+            .sum();
+        let mut out = Vec::with_capacity(self.out.len() + short);
+        let (mut runs, mut copied, mut from) = (Vec::new(), 0, 0);
+        for (at, run) in self.runs {
+            out.extend_from_slice(self.out.get(from..at).unwrap_or_default());
+            from = at;
+            if run.len() >= RUN {
+                copied += run.len();
+                runs.push((out.len(), run));
+            } else {
+                out.extend_from_slice(self.base.get(run).unwrap_or_default());
+            }
+        }
+        out.extend_from_slice(self.out.get(from..).unwrap_or_default());
+        Part {
+            out,
+            base: self.base,
+            runs,
+            copied,
+        }
+    }
+
+    /// What was written, assembled.
     pub(crate) fn finish(self) -> Vec<u8> {
-        self.out
+        self.part().to_vec()
     }
 
     pub(crate) fn byte(&mut self, byte: u8) {

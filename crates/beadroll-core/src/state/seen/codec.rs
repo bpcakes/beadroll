@@ -24,7 +24,7 @@ impl Knowledge {
     /// records are only added after it, so a write-back copies the records it read; and so its
     /// place and its clock, each written in a column of their own ([`Knowledge::write_places`],
     /// [`Knowledge::write_clocks`]), which a decode reads in a loop of its own.
-    pub(crate) fn write_records(&self, w: &mut Writer, from: usize) {
+    pub(crate) fn write_records(&self, w: &mut Writer<'_>, from: usize) {
         for (id, event) in self.events.iter().skip(from) {
             w.id(*id);
             w.ids(event.deps().iter());
@@ -49,7 +49,7 @@ impl Knowledge {
     }
 
     /// The place of every event from the `from`th on.
-    pub(crate) fn write_places(&self, w: &mut Writer, from: usize) {
+    pub(crate) fn write_places(&self, w: &mut Writer<'_>, from: usize) {
         for place in self.ancestry.places.iter().skip(from) {
             let (kind, chain, position) = match place {
                 Place::Nowhere => (0, 0, 0),
@@ -80,7 +80,7 @@ impl Knowledge {
 
     /// The clock of every event from the `from`th on, which refers to the chain sets and positions
     /// [`Knowledge::write_arena`] writes.
-    pub(crate) fn write_clocks(&self, w: &mut Writer, from: usize) {
+    pub(crate) fn write_clocks(&self, w: &mut Writer<'_>, from: usize) {
         for clock in self.ancestry.clocks.iter().skip(from) {
             w.flag(*clock != UNOBSERVED);
             if *clock != UNOBSERVED {
@@ -109,7 +109,7 @@ impl Knowledge {
 
     /// What applying more events needs besides the records: the machines, each machine's
     /// applicable positions, and the chains of unsequenced events.
-    pub(crate) fn write_chains(&self, w: &mut Writer) {
+    pub(crate) fn write_chains(&self, w: &mut Writer<'_>) {
         w.count(self.replicas.len());
         for replica in &self.replicas {
             w.text(replica);
@@ -172,12 +172,12 @@ impl Knowledge {
     /// The chain sets from the `sets`th on and the positions from the `positions`th on, which
     /// clocks refer to: what follows `stored`, the bytes of those before, copied as they were read
     /// ([`Knowledge::read_arena`]), when they are given.
-    pub(crate) fn write_arena(&self, w: &mut Writer, stored: Option<Arena<'_>>) {
+    pub(crate) fn write_arena(&self, w: &mut Writer<'_>, stored: Option<Arena>) {
         let ancestry = &self.ancestry;
-        let (sets, positions) = stored.map_or((0, 0), |arena| arena.counts);
+        let (sets, positions) = stored.as_ref().map_or((0, 0), |arena| arena.counts);
         w.count(ancestry.sets.len());
-        if let Some(arena) = stored {
-            w.copy(arena.sets);
+        if let Some(arena) = &stored {
+            w.copy(arena.sets.clone());
         }
         for set in ancestry.sets.iter().skip(sets) {
             w.count(set.len());
@@ -227,10 +227,11 @@ impl Knowledge {
     }
 }
 
-/// The chain sets and positions a write-back read, as bytes to copy, and how many of each.
-#[derive(Clone, Copy)]
-pub(crate) struct Arena<'a> {
+/// The chain sets and positions a write-back read, as where their bytes are in the index read back,
+/// to copy, and how many of each.
+#[derive(Clone)]
+pub(crate) struct Arena {
     pub(crate) counts: (usize, usize),
-    pub(crate) sets: &'a [u8],
-    pub(crate) positions: &'a [u8],
+    pub(crate) sets: Range<usize>,
+    pub(crate) positions: Range<usize>,
 }

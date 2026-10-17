@@ -48,9 +48,9 @@ use crate::state::{KeySpace, State, TextPlace, Texts};
 
 use text_codec::read_texts;
 
-pub use codec::Unreadable;
+pub use codec::{Part, Unreadable};
 pub use extend::Extended;
-pub use parts::decode_state;
+pub use parts::{Parts, decode_state};
 
 /// The version of the bytes [`Projection::encode`] writes. Bytes of another are not read.
 pub const ENCODING: u32 = 11;
@@ -82,10 +82,18 @@ pub struct Encoded {
 /// A 128-bit sum of `bytes`: SipHash-1-3 twice, each started apart. It finds damage and change,
 /// not forgery: the store is private.
 pub fn sum(bytes: &[u8]) -> [u8; 16] {
+    sum_of(&[bytes])
+}
+
+/// [`sum`] of the bytes `slices` hold, one after another, as they are: what a part written back in
+/// pieces sums to ([`Part::slices`], roll-lqjj.51).
+pub fn sum_of(slices: &[&[u8]]) -> [u8; 16] {
     let half = |start: u8| {
         let mut hasher = DefaultHasher::new();
         hasher.write_u8(start);
-        hasher.write(bytes);
+        for bytes in slices {
+            hasher.write(bytes);
+        }
         hasher.finish()
     };
     let mut out = [0; 16];

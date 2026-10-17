@@ -90,7 +90,7 @@ pub(crate) fn write_texts(issue: &Issue) -> Vec<u8> {
 /// The metadata of each addition behind each edge of `edges`, in their order, each with the event
 /// that added it. An issue's texts are written only once they are in it ([`Texts::here`]), every
 /// addition's metadata with them.
-fn write_edge_metadata(w: &mut Writer, edges: &DepTags) {
+fn write_edge_metadata(w: &mut Writer<'_>, edges: &DepTags) {
     w.count(edges.len());
     for tags in edges.values() {
         w.count(tags.len());
@@ -128,7 +128,7 @@ fn of_edges(metadata: &[Vec<(EventId, Object)>], edges: &DepTags) -> bool {
 
 /// An issue's ownership history: the claims that ended, the claims that lost, the ends that came
 /// too late.
-fn write_history(w: &mut Writer, issue: &Issue) {
+fn write_history(w: &mut Writer<'_>, issue: &Issue) {
     w.count(issue.claim_history.len());
     for ended in &issue.claim_history {
         write_claim(w, &ended.claim);

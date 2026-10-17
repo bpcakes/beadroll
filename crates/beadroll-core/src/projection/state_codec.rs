@@ -22,6 +22,7 @@
 //! one, after the others, so a write-back copies those it read.
 
 use std::collections::HashMap;
+use std::ops::Range;
 
 use crate::event::Field;
 use crate::id::EventId;
@@ -45,20 +46,23 @@ const NOWHERE: TextPlace = TextPlace {
 /// How a claim can end, as [`crate::state::EndedClaim::how`] names it.
 const ENDINGS: [&str; 5] = ["takeover", "release", "close", "reopen", "delete"];
 
-/// Records as a state part read back holds them: the part's bytes, where each issue's record
-/// begins in them and where the last ends, and where its keys' entries are and how many.
-#[derive(Clone, Copy)]
+/// Records as a state part read back holds them: the part's length, where each issue's record
+/// begins in it and where the last ends, and where its keys' entries are and how many.
+#[derive(Clone)]
 pub(crate) struct Records<'a> {
-    pub(crate) bytes: &'a [u8],
+    pub(crate) len: usize,
     pub(crate) starts: &'a [u32],
-    pub(crate) keys: (&'a [u8], usize),
+    pub(crate) keys: (Range<usize>, usize),
 }
 
-impl<'a> Records<'a> {
-    /// The bytes of the record of the issue at `at`.
-    fn of(self, at: usize) -> Option<&'a [u8]> {
-        let (start, end) = (*self.starts.get(at)?, *self.starts.get(at + 1)?);
-        self.bytes.get(start as usize..end as usize)
+impl Records<'_> {
+    /// Where in the part the record of the issue at `at` is.
+    fn of(&self, at: usize) -> Option<Range<usize>> {
+        let (start, end) = (
+            *self.starts.get(at)? as usize,
+            *self.starts.get(at + 1)? as usize,
+        );
+        (start <= end && end <= self.len).then_some(start..end)
     }
 }
 
@@ -69,7 +73,7 @@ impl<'a> Records<'a> {
 /// each issue's key, those read back copied, since only a create adds one, after the others. Where
 /// each record begins is not written: a reader finds it.
 pub(crate) fn write_state(
-    w: &mut Writer,
+    w: &mut Writer<'_>,
     st: &State,
     given: &HashMap<EventId, TextPlace>,
     stored: Option<Records<'_>>,
@@ -78,7 +82,7 @@ pub(crate) fn write_state(
     w.optional_value(st.name.as_ref());
     w.count(st.issues.len());
     for (at, issue) in st.issues.values().enumerate() {
-        let copied = stored
+        let copied = (stored.as_ref())
             .filter(|_| !st.issues.changed(at))
             .and_then(|stored| stored.of(at));
         match copied {
@@ -90,7 +94,7 @@ pub(crate) fn write_state(
         }
     }
     w.count(st.by_key.len());
-    let keys = stored.map_or((&[][..], 0), |stored| stored.keys);
+    let keys = stored.map_or((0..0, 0), |stored| stored.keys);
     let copied = keys.1.min(st.by_key.len());
     if copied > 0 {
         w.copy(keys.0);
@@ -231,7 +235,12 @@ pub(super) fn asked(issue: &Issue) -> Vec<EventId> {
 /// An issue without its texts, and where they are (`place`, for texts written nowhere yet), and
 /// who wrote the events behind its registers with several entries, as `knowledge` knows them: each
 /// is an event of the issue's own, which only a change to the issue changes.
-pub(super) fn write_issue(w: &mut Writer, issue: &Issue, place: TextPlace, knowledge: &Knowledge) {
+pub(super) fn write_issue(
+    w: &mut Writer<'_>,
+    issue: &Issue,
+    place: TextPlace,
+    knowledge: &Knowledge,
+) {
     w.id(issue.uid);
     w.text(&issue.key);
     let stamps = &issue.stamps;
@@ -393,7 +402,7 @@ fn read_issue(r: &mut Reader<'_>, knowledge: &mut Knowledge) -> Result<Issue, Un
 /// An issue's edges (roll-lqjj.39): each one's target, an id as its 16 bytes or text, its kind
 /// through the name table, so that each kind is written once, and the events that added it. Their
 /// metadata is with the issue's texts ([`super::text_codec`]).
-fn write_edges(w: &mut Writer, edges: &DepTags) {
+fn write_edges(w: &mut Writer<'_>, edges: &DepTags) {
     w.count(edges.len());
     for (edge, tags) in edges {
         match &edge.to {
@@ -446,7 +455,7 @@ struct Ownership {
     provisional_claims: Vec<Provisional>,
 }
 
-fn write_ownership(w: &mut Writer, issue: &Issue) {
+fn write_ownership(w: &mut Writer<'_>, issue: &Issue) {
     w.flag(issue.claim.is_some());
     if let Some(claim) = &issue.claim {
         write_claim(w, claim);
@@ -479,7 +488,7 @@ fn read_ownership(r: &mut Reader<'_>) -> Result<Ownership, Unreadable> {
 }
 
 /// How a claim ended, as one of [`ENDINGS`].
-pub(super) fn write_how(w: &mut Writer, how: &str) {
+pub(super) fn write_how(w: &mut Writer<'_>, how: &str) {
     let at = ENDINGS.iter().position(|known| *known == how);
     w.count(at.unwrap_or(ENDINGS.len()));
 }
@@ -495,7 +504,7 @@ fn read_ended(r: &mut Reader<'_>) -> Result<Ended, Unreadable> {
     })
 }
 
-pub(super) fn write_claim(w: &mut Writer, claim: &Claim) {
+pub(super) fn write_claim(w: &mut Writer<'_>, claim: &Claim) {
     w.id(claim.id);
     w.name(&claim.owner);
     w.name(&claim.machine);
@@ -526,7 +535,7 @@ fn read_int(r: &mut Reader<'_>) -> Result<Int, Unreadable> {
     }
 }
 
-pub(super) fn write_tags(w: &mut Writer, tags: &IdMap<Value>) {
+pub(super) fn write_tags(w: &mut Writer<'_>, tags: &IdMap<Value>) {
     w.count(tags.len());
     for (id, value) in tags {
         w.id(*id);
@@ -547,7 +556,7 @@ fn read_ids(r: &mut Reader<'_>) -> Result<IdSet, Unreadable> {
     IdSet::from_ascending(r.ids()?).ok_or(Unreadable("ids"))
 }
 
-fn write_values(w: &mut Writer, values: &[Value]) {
+fn write_values(w: &mut Writer<'_>, values: &[Value]) {
     w.count(values.len());
     for value in values {
         w.value(value);
