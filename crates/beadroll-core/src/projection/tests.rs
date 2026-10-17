@@ -11,6 +11,7 @@ use crate::journal::{Journal, canonical};
 use crate::json::{Object, Value};
 use crate::state::State;
 
+use super::codec::{Table, Writer};
 use super::parts::Copying;
 use super::{Projection, Record, decode_state, sum, sum_of};
 
@@ -664,6 +665,36 @@ fn a_sum_of_slices_is_the_sum_of_their_bytes_together() {
         }
     }
     assert_ne!(sum_of(&[&bytes[..299]]), sum(&bytes));
+}
+
+/// Runs copied one after another join only where the second follows the first in the part read
+/// back, and a run shorter than a few kilobytes is put among the bytes written: the part is its
+/// bytes in their order whatever the runs (roll-lqjj.51).
+#[test]
+fn runs_copied_join_only_where_they_follow_each_other() {
+    let base: Vec<u8> = (0..20_000u32).map(|n| (n % 251) as u8).collect();
+    let mut w = Writer::tabled(Table::default(), 0, &base);
+    w.copy(0..5000);
+    w.copy(5000..9000);
+    w.copy(12_000..17_000);
+    w.byte(7);
+    w.copy(100..200);
+    let part = w.part();
+    let expected = [
+        &[0; 8][..],
+        &base[..9000],
+        &base[12_000..17_000],
+        &[7],
+        &base[100..200],
+    ];
+    assert_eq!(part.to_vec(), expected.concat());
+    let slices = part.slices();
+    let long: Vec<usize> = slices
+        .iter()
+        .map(|slice| slice.len())
+        .filter(|len| *len > 101)
+        .collect();
+    assert_eq!(long, [9000, 5000], "two runs kept as they were read");
 }
 
 /// The projection read back from its bytes, as the next command reads it, written back as `back`
