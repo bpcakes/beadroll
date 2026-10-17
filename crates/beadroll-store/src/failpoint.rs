@@ -32,7 +32,9 @@
 //! push; `pending.after-list`, between listing and reading `pending/`; `journal.after-enumerate`,
 //! `journal.before-read` (before each segment is read), `view.before-load-pending` and
 //! `identity.before-link`, for readers racing writers;
-//! `projection.texts-appended`, after a projection's texts are appended and before the
+//! `projection.before-save`, once a projection to write back is caught up or made and before its
+//! text file is opened, where a test acts as another process would between a read and its
+//! write-back; `projection.texts-appended`, after a projection's texts are appended and before the
 //! projection that places them is written; `projection.read`, which a test counts, once for every
 //! read of the store's state through `projection::current` (by `projection`, `state` and the
 //! views, whether it decodes the stored projection or replays the journal because none fits), and
@@ -53,7 +55,7 @@ use beadroll_core::code::Code;
 use crate::error::Error;
 
 /// The points bead has, besides `atomic-write:<path part>` and `atomic-written:<path part>`.
-pub const POINTS: [&str; 22] = [
+pub const POINTS: [&str; 23] = [
     "ownership.before-publish",
     "ownership.before-transaction",
     "ownership.after-publish-ok",
@@ -71,6 +73,7 @@ pub const POINTS: [&str; 22] = [
     "pending.after-list",
     "journal.after-enumerate",
     "journal.before-read",
+    "projection.before-save",
     "projection.texts-appended",
     "projection.read",
     "view.before-load-pending",

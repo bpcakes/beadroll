@@ -557,6 +557,7 @@ fn save(ws: &Workspace, mut made: Made, projection: &mut Projection) {
     if made.files.is_empty() || !ws.events_dir.is_dir() {
         return;
     }
+    ws.settings.failpoints.hit("projection.before-save");
     let generation = projection.state().texts_file();
     if let Some(generation) = generation
         && let Some(file) = texts::open(ws, generation, true)
