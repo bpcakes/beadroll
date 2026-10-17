@@ -196,8 +196,11 @@ fn a_store_whose_journal_path_is_unusable_when_first_found_is_owed_its_window() 
     assert!(events(&recap(&a)).is_empty());
 }
 
-#[test]
-fn a_tracker_whose_events_all_wait_for_a_cause_stays_owed_its_window() {
+/// A tracker never shown, one event of it two days old and one new, whose segment `held` (by
+/// order) has not arrived at its first recap, so that nothing of it but at most its init is in
+/// causal order: it stays owed its window, and once the segment arrives shows only its new event
+/// and counts the old one.
+fn owed_until_its_events_can_show(held: usize) {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
     let (_other, mut b) = beside(&a, crate::rust_only);
@@ -213,28 +216,37 @@ fn a_tracker_whose_events_all_wait_for_a_cause_stays_owed_its_window() {
     before(&["init", "--prefix", "two", "--offline"]);
     before(&["create", "Older than the last recap", "--offline"]);
     b.bead(["create", "Newer than the last recap", "--offline"]);
-    // the segment that holds the tracker's init has not arrived: every other event waits for it
     let store = b.bead(["info"]).unwrap()["path"]
         .as_str()
         .unwrap()
         .to_owned();
     let mut written = super::segments(std::path::Path::new(&store));
     written.sort();
-    let init = written.remove(0);
-    let held = init.with_extension("held");
-    std::fs::rename(&init, &held).unwrap();
+    let segment = written.remove(held);
+    let away = segment.with_extension("held");
+    std::fs::rename(&segment, &away).unwrap();
     let waiting = recap(&a);
-    assert!(events(&waiting).is_empty());
+    assert!(events(&waiting).is_empty(), "{waiting:?}");
     let tracker = (waiting["workspaces"].as_array().unwrap().iter())
-        .find(|tracker| tracker["pending"].as_i64() == Some(2));
+        .find(|tracker| tracker["pending"].as_i64() > Some(0));
     assert!(tracker.is_some(), "{waiting:?}");
-    std::fs::rename(held, init).unwrap();
+    std::fs::rename(away, segment).unwrap();
     let arrived = recap(&a);
     assert_eq!(each(&arrived, "title"), ["Newer than the last recap"]);
     let new = (arrived["workspaces"].as_array().unwrap().iter())
         .find(|tracker| tracker["earlier"] == Json::from(1_i64));
     assert!(new.is_some(), "{arrived:?}");
     assert!(events(&recap(&a)).is_empty());
+}
+
+#[test]
+fn a_tracker_whose_events_all_wait_for_its_init_stays_owed_its_window() {
+    owed_until_its_events_can_show(0);
+}
+
+#[test]
+fn a_tracker_with_only_its_init_in_causal_order_stays_owed_its_window() {
+    owed_until_its_events_can_show(1);
 }
 
 #[test]

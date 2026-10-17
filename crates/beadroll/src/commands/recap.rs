@@ -243,10 +243,11 @@ fn tracker(
     value.insert("pending".into(), number(st.pending().len() as u64));
     let integrity = st.integrity().iter().map(|row| Value::from(row.to_value()));
     value.insert("integrity".into(), Value::Array(integrity.collect()));
-    // a frontier of nothing (none of its events in causal order yet: all wait for a cause, or it
-    // has none) vouches for nothing, so the cursor keeps what it holds: the window a tracker never
-    // shown is owed, or a frontier
-    let mark = if shown.frontier.is_empty() {
+    // the window applies to what a recap shows or counts: one that did neither (nothing of the
+    // tracker but its init in causal order yet, or nothing new) records nothing, so the cursor
+    // keeps what it holds, the window a tracker never shown is owed, or a frontier everything here
+    // is below
+    let mark = if shown.events.is_empty() && shown.earlier == 0 {
         owed.map(Mark::Owed)
     } else {
         Some(Mark::Shown(shown.frontier))

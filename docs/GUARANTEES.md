@@ -57,8 +57,11 @@ excepted. An event a late sync brings, or one a machine wrote with its clock
 behind, shows when it arrives, whatever its time. The cursor keeps, for each
 tracker, the frontier of what was shown, never a time, so it does not grow with
 the history. Events waiting for causes not here yet are counted and show once
-they arrive, and a tracker none of whose events can show yet keeps the window it
-is owed; an ownership attempt shows once the remote has accepted it. The
+they arrive, and a tracker none of whose events can show yet (its init aside)
+keeps the window it is owed; an ownership attempt shows once the remote has
+accepted it. A tracker's window applies once, to what the first recap that shows
+or counts any of its events finds in causal order; whatever is placed after
+that is new activity and shows, whatever its time, as a late sync does. The
 first recap on a machine shows the last 24 hours and counts the events before
 them, and a tracker first seen later shows what came since the last recap that
 marked anything seen, counted the same way. Those hours are the events' own
