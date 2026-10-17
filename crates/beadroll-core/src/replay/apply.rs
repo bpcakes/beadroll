@@ -161,7 +161,7 @@ impl Ctx<'_> {
 
     /// Records an end of a claim that was no longer current; it applies nothing.
     fn stale(&self, issue: &mut Issue, named: Option<&str>) -> bool {
-        issue.stale.push(Stale {
+        issue.ignored(Stale {
             op: self.event.what.op.name().to_owned(),
             by: self.name(self.who),
             at: self.when.to_owned(),

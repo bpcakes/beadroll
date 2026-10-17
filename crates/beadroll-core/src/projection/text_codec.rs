@@ -1,26 +1,31 @@
 //! An issue's texts as bytes of their own (roll-lqjj.6): its registers in their order, the long
 //! ones with their values, which are its long fields' values too (roll-lqjj.10: each written
-//! once), its comments, its extras and the metadata of each addition behind each of its edges
-//! (roll-lqjj.39), which a projection keeps in its text file; and what an issue keeps of them
-//! unread ([`Stored`]). An edge and the events that added it are in the state part, which an
-//! issue's edges' metadata read in must match, as its long fields' registers must match
-//! [`Stored::tags`]: nothing more of them is kept unread.
+//! once), its comments, its extras, the metadata of each addition behind each of its edges
+//! (roll-lqjj.39) and its ownership history (the claims that ended, the claims that lost, the ends
+//! that came too late: roll-lqjj.40), which a projection keeps in its text file; and what an issue
+//! keeps of them unread ([`Stored`]). An edge and the events that added it are in the state part,
+//! which an issue's edges' metadata read in must match, as its long fields' registers must match
+//! [`Stored::tags`] and its last ended claim [`Stored::ended`].
 
 use crate::event::Field;
 use crate::id::EventId;
 use crate::json::Object;
 use crate::query::split;
-use crate::state::{Comment, DepTags, Issue, Meta, Stored, TextPlace, Texts, VecMap, is_text};
+use crate::state::{
+    Comment, DepTags, EndedClaim, Issue, LostClaim, Meta, Stale, Stored, TextPlace, Texts, VecMap,
+    is_text,
+};
 
 use super::codec::{Reader, Unreadable, Writer};
-use super::state_codec::{read_tags, write_tags};
+use super::state_codec::{read_claim, read_how, read_tags, write_claim, write_how, write_tags};
 
 /// The metadata of an addition whose issue's texts are not in it: never written, since only texts
 /// in their issue are.
 static NO_MEMBERS: std::sync::LazyLock<Object> = std::sync::LazyLock::new(Object::new);
 
 /// What an issue whose texts are in it keeps of them once they are written at `place`: the events
-/// behind each long field's register, and the long fields disputed.
+/// behind each long field's register, the long fields disputed, and who ended its last claim that
+/// ended, and how.
 pub(super) fn summary(issue: &Issue, place: TextPlace) -> Stored {
     let (mut tags, mut disputed) = (Vec::new(), Vec::new());
     for (field, register) in issue.reg.iter().filter(|(field, _)| is_text(**field)) {
@@ -33,11 +38,13 @@ pub(super) fn summary(issue: &Issue, place: TextPlace) -> Stored {
         place,
         tags,
         disputed,
+        ended: issue.claim_history.last().map(EndedClaim::ending),
     }
 }
 
 /// An issue's texts as bytes of their own: its registers in their order (the long ones with their
-/// values, which its long fields show), its comments, its extras and its edges' metadata.
+/// values, which its long fields show), its comments, its extras, its edges' metadata and its
+/// ownership history.
 pub(crate) fn write_texts(issue: &Issue) -> Vec<u8> {
     let mut w = Writer::default();
     w.count(issue.reg.len());
@@ -76,6 +83,7 @@ pub(crate) fn write_texts(issue: &Issue) -> Vec<u8> {
         w.object(extra);
     }
     write_edge_metadata(&mut w, &issue.dep_tags);
+    write_history(&mut w, issue);
     w.finish()
 }
 
@@ -118,9 +126,73 @@ fn of_edges(metadata: &[Vec<(EventId, Object)>], edges: &DepTags) -> bool {
         })
 }
 
+/// An issue's ownership history: the claims that ended, the claims that lost, the ends that came
+/// too late.
+fn write_history(w: &mut Writer, issue: &Issue) {
+    w.count(issue.claim_history.len());
+    for ended in &issue.claim_history {
+        write_claim(w, &ended.claim);
+        w.id(ended.ending);
+        w.name(&ended.ended_by);
+        write_how(w, ended.how);
+        w.optional_text(ended.reason.as_deref());
+    }
+    w.count(issue.lost_claims.len());
+    for lost in &issue.lost_claims {
+        w.name(&lost.by);
+        w.name(&lost.held_by);
+        w.id(lost.event);
+    }
+    w.count(issue.stale.len());
+    for stale in &issue.stale {
+        w.text(&stale.op);
+        w.name(&stale.by);
+        w.text(&stale.at);
+        w.optional_text(stale.claim.as_deref());
+    }
+}
+
+/// An issue's ownership history, as [`write_history`] wrote it.
+struct History {
+    ended: Vec<EndedClaim>,
+    lost: Vec<LostClaim>,
+    stale: Vec<Stale>,
+}
+
+fn read_history(r: &mut Reader<'_>) -> Result<History, Unreadable> {
+    let mut ended = Vec::new();
+    for _ in 0..r.count()? {
+        ended.push(EndedClaim {
+            claim: read_claim(r)?,
+            ending: r.id()?,
+            ended_by: r.name()?,
+            how: read_how(r)?,
+            reason: r.optional_text()?,
+        });
+    }
+    let mut lost = Vec::new();
+    for _ in 0..r.count()? {
+        lost.push(LostClaim {
+            by: r.name()?,
+            held_by: r.name()?,
+            event: r.id()?,
+        });
+    }
+    let mut stale = Vec::new();
+    for _ in 0..r.count()? {
+        stale.push(Stale {
+            op: r.text()?,
+            by: r.name()?,
+            at: r.text()?,
+            claim: r.optional_text()?,
+        });
+    }
+    Ok(History { ended, lost, stale })
+}
+
 /// Reads `issue`'s texts in from `bytes`, the ones [`write_texts`] wrote at `place`: they must be
-/// whole and have the events its long fields' registers were written with, and the additions its
-/// edges have. Nothing changes when they are not.
+/// whole, have the events its long fields' registers were written with and the additions its edges
+/// have, and end the last claim that ended as the issue says. Nothing changes when they are not.
 pub(crate) fn read_texts(
     issue: &mut Issue,
     bytes: &[u8],
@@ -159,6 +231,7 @@ pub(crate) fn read_texts(
     }
     let extra = r.flag()?.then(|| r.object()).transpose()?.map(Box::new);
     let metadata = read_edge_metadata(&mut r)?;
+    let history = read_history(&mut r)?;
     r.done()?;
     // the texts this issue was written with: the same events behind each long field's register
     let tags: Vec<(Field, Vec<EventId>)> = (order.iter())
@@ -167,7 +240,10 @@ pub(crate) fn read_texts(
                 .map(|tags| (*field, tags.iter().map(|(id, _)| *id).collect()))
         })
         .collect();
-    if tags != stored.tags || !of_edges(&metadata, &issue.dep_tags) {
+    if tags != stored.tags
+        || !of_edges(&metadata, &issue.dep_tags)
+        || history.ended.last().map(EndedClaim::ending) != stored.ended
+    {
         return Err(Unreadable("texts of another issue"));
     }
     // registers in the order they were made: as the texts were written, then any made since
@@ -192,6 +268,9 @@ pub(crate) fn read_texts(
             *meta = Meta::of(members);
         }
     }
+    issue.claim_history = history.ended;
+    issue.lost_claims = history.lost;
+    issue.stale = history.stale;
     issue.texts = Texts::Read(place);
     Ok(())
 }

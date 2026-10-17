@@ -228,15 +228,44 @@ These were decided deliberately. Report problems *with* them, not their existenc
   there, `list` 0.099 s where 0.111 s, `show` 0.091 s where 0.106 s, `ready` 0.146 s where
   0.165 s, a local write 0.162 s where 0.184 s; at 20,000 events 13.9, 13.3 and 17.3 ms where
   15.7, 16.1 and 19.2 ms),
-  ownership history with the texts (roll-lqjj.40), and short fields shown from their registers
-  (roll-lqjj.41, landed: below; the state part 9.45 MB where it was 10.68 MB, decoded in 38.8 ms
-  where it took 43.6 ms, holding 51.4 MB where it held 60.4 MB, an issue 560 bytes inline where it
-  was 976). Each issue's texts (its long fields, their registers' values, its comments, its extras
-  and the metadata of each addition behind each of its edges) are kept apart (roll-lqjj.6), in
+  ownership history with the texts
+  (roll-lqjj.40, landed: an issue's claims that ended, claims that lost and ends that came too late
+  are kept with its texts, read in by the commands that print issues whole and by the store before
+  a batch about the issue is applied; its claim, generation and offline claims, which every
+  ownership decision reads, stay in the state part, and so does who ended its last ended claim and
+  how, which `close`, `delete` and `update` ask of issues whose texts they do not read in, while a
+  close or delete that published a claim it ended reads in the texts of the issues it named to see
+  whether a takeover made it too late; replay marks an issue's texts to be written again only when
+  it adds to the history, and a projection declines an ownership event about an issue whose texts
+  are not read in. At 200,000 events, measured on 9cbd60a before roll-lqjj.39 landed, the state
+  part is 8.63 MB where it was 9.45 MB, decoded in 36.5 ms where it took 40.7 ms (36.9 ms where
+  39.3 ms in the review's run: −6% to −10%), holding 45.3 MB where it held 51.4 MB, and the texts 3.31 MB where
+  they were 2.00 MB, since each issue's record names its owners and machines once for itself; on
+  the ownership-heavy history 4.79 MB where 8.70 MB, 20.9 ms where 32.8 ms, 26.7 MB where 47.1 MB,
+  the texts 6.42 MB where 1.01 MB. Every ownership event that adds to an issue's history appends
+  that issue's whole text record again, its long fields, comments, extras, edges' metadata and
+  history, where the base appended nothing (measured on 9cbd60a): 2,000 cycles of a claim, a close, a reopen and a list on 200 issues of about
+  5 KB each appended 11.4 MB, the file peaking at 3.53 MB and started again five times, and one
+  issue claimed and released 600 times 22.4 MB, quadratic in its history's length, peaking at
+  1.29 MB and started again 20 times. The file's compaction bounds it at about twice its live bytes
+  and 1 MiB (`beadroll-store/src/projection.rs`), and the projection written whole at every save is
+  smaller by more than the appends add (469 KB where 693 KB after the first run), so no more bytes
+  are written in all. Measured again on fd5ae9b, both builds alternated on a busier machine: the
+  state part 6.85 MB where it was 7.69 MB, decoded in 57.2 ms where it took 61.1 ms, holding
+  37.1 MB where it held 43.2 MB, the text file with both sections 4.93 MB where it was 3.62 MB; on
+  the ownership-heavy history 4.79 MB where 8.70 MB, 40.4 ms where 53.5 ms, 26.7 MB where 47.1 MB,
+  the texts 6.44 MB where 1.02 MB; `list` 81 ms where 87 ms, `show` 74 ms where 82 ms, `ready`
+  121 ms where 128 ms), and short fields shown from their registers (roll-lqjj.41,
+  landed: below; the
+  state part 9.45 MB where it was 10.68 MB, decoded in 38.8 ms where it took 43.6 ms, holding
+  51.4 MB where it held 60.4 MB, an issue 560 bytes inline where it was 976). Each issue's texts
+  (its long fields, their registers' values, its comments, its extras, the metadata of each
+  addition behind each of its edges and its ownership history) are kept apart (roll-lqjj.6,
+  roll-lqjj.39, roll-lqjj.40), in
   `<store>/projection-texts`, each issue's as bytes of their own the state places and sums, the
-  state keeping what a list and a later event need of them unread (the events behind each long
-  field's register, which of those fields two writers set differently, and each edge with the
-  events that added it). Every field a register holds
+  state keeping what a list, a later event and a command's decisions need of them unread (the
+  events behind each long field's register, which of those fields two writers set differently,
+  each edge with the events that added it, and who ended the last claim that ended, and how). Every field a register holds
   is kept once, in its register, which the field shows (roll-lqjj.10 for long fields, roll-lqjj.41
   for short ones), never copied beside it: the entry of the largest id, a null shown as absent
   unless the create wrote it, which a long field shows while that entry is the largest and a short

@@ -50,6 +50,9 @@ consumer on tokio calls through `spawn_blocking`.
   holds what `bead info` and `bead machines` answer from (roll-lqjj.31): the frontier,
   every event id (`Projection::event_count`), and each machine's journal length and latest event
   (`Projection::journals`), which `project` takes from the journal's order and `extend` advances.
+  `projection/tests/owned.rs`: what every issue answers of who held it, pinned before its
+  ownership history moved to its texts (roll-lqjj.40), and the generator's ownership draws
+  (`World::own`, `World::race`).
 - `state/seen.rs`: what every event had seen, as one clock per event over chains (each machine's
   journal, and chains of the unsequenced events of attempt files): the ancestry index behind
   `saw`; its tests compare it with per-event ancestry bitsets.
@@ -149,6 +152,19 @@ consumer on tokio calls through `spawn_blocking`.
   differential histories pass through and in full on three bead-built journals), and checks export
   and show alike with the metadata read from the texts; `projection/tests/edges/drawn.rs` is what
   the differential generator draws for it.
+- An issue's ownership history (the claims that ended, the claims that lost, the ends that came
+  too late) is kept with its texts (roll-lqjj.40): a state read alone has it empty until they are
+  read in, as every command that prints an issue whole does (`show`, `update`, `claim`,
+  `takeover`, `comments`, `export`) and as the store does for the issues a batch is about before
+  `Projection::extend` applies it (`Projection::about`). Its claim, its generation and its offline claims, which every
+  ownership decision reads, stay in the state part, and so does who ended its last ended claim and
+  how (`Issue::last_ended`, from `Stored`), which `close`, `delete` and `update` ask of issues whose
+  texts they do not read in. Replay adds to the history only through `Issue::ended`, `Issue::lost`
+  and `Issue::ignored`, which have texts read in written again; `extend` declines a claim, release,
+  close, reopen or delete of an issue whose texts are not read in. `projection/tests/owned.rs` pins
+  what every issue answered of its ownership before the change, on three journals bead built and
+  on every differential and delivery-order history, and `read_back` checks a state read back with
+  some issues' texts read in alone.
 - A projection extended is replay: `projection/tests.rs` checks every batch a store takes in on
   histories of machines that write, sync and race, and each batch it must decline. What replay
   reports does not stop it (roll-lqjj.28): `projection/tests/flawed.rs` runs the same on histories

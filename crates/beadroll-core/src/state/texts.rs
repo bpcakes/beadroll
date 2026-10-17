@@ -1,13 +1,17 @@
 //! Where an issue's texts are (roll-lqjj.6): its long fields' values, which their registers hold
-//! alone (roll-lqjj.10), its comments, its extras, and the metadata each addition of each of its
-//! edges carries (roll-lqjj.39). Replay makes them in the issue. A projection keeps them in a file
-//! of their own, and a state read from it has them there until a command that prints them reads
-//! them in; what a list and a later event need of them without reading them stays in the issue:
-//! the events behind each long field's register, which of those fields two writers set
-//! differently, and each edge with the events that added it, which the issue holds besides.
+//! alone (roll-lqjj.10), its comments, its extras, the metadata each addition of each of its edges
+//! carries (roll-lqjj.39), and its ownership history: the claims that ended, the claims that lost
+//! and the ends that came too late (roll-lqjj.40). Replay makes them in the issue. A projection
+//! keeps them in a file of their own, and a state read from it has them there until a command that
+//! prints them reads them in; what a list, a later event and a command's decisions need of them
+//! without reading them stays in the issue: the events behind each long field's register, which of
+//! those fields two writers set differently, each edge with the events that added it, which the
+//! issue holds besides, and who ended the last claim that ended, and how.
 
 use crate::event::Field;
 use crate::id::EventId;
+
+use super::claim::Ended;
 
 /// The fields an issue says at length, kept with its texts.
 pub const TEXT_FIELDS: [Field; 4] = [
@@ -35,7 +39,8 @@ pub struct TextPlace {
 }
 
 /// What an issue keeps of texts it has not read: where they are, the events behind each long
-/// field's register (in the register's order), and the long fields two writers set differently.
+/// field's register (in the register's order), the long fields two writers set differently, and
+/// who ended its last ended claim and how.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Stored {
     /// Where they are.
@@ -44,6 +49,9 @@ pub struct Stored {
     pub tags: Vec<(Field, Vec<EventId>)>,
     /// The long fields disputed.
     pub disputed: Vec<Field>,
+    /// Who ended the last claim that ended, and how: what `close`, `delete` and `update` ask of
+    /// the ownership history of issues whose texts they do not read in (roll-lqjj.40).
+    pub ended: Option<Ended>,
 }
 
 /// Where an issue's texts are.
@@ -54,8 +62,8 @@ pub enum Texts {
     Here,
     /// In the issue, as read from this place, unchanged: written there again as they are.
     Read(TextPlace),
-    /// In a text file only. The issue's long fields, their registers, its comments and its extras
-    /// are empty, and its edges' metadata absent, until they are read in.
+    /// In a text file only. The issue's long fields, their registers, its comments, its extras and
+    /// its ownership history are empty, and its edges' metadata absent, until they are read in.
     There(Box<Stored>),
 }
 

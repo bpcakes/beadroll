@@ -15,7 +15,9 @@ use beadroll_core::text::str_of;
 use beadroll_store::{Label, view_outline};
 use beadroll_sync::{publish_soon, writing_spent};
 
-use super::{Context, Failure, Line, Outcome, Tone, ended_by, need_tracker, resolve_arg, text};
+use super::{
+    Context, Failure, Line, Outcome, Tone, ended_by, need_tracker, resolve_arg, text, texts_in,
+};
 
 /// The arguments `close`, `reopen` and `delete` take.
 pub(crate) struct TransitionArgs {
@@ -354,7 +356,9 @@ fn superseded(
     result: &mut Vec<Object>,
     notes: &mut Vec<String>,
 ) -> Result<(), Failure> {
-    let st = view_outline(ctx.ws)?;
+    // the ends that came too late are in each issue's ownership history, with its texts
+    let uids = named.iter().map(|(uid, _)| *uid);
+    let st = texts_in(ctx.ws, view_outline(ctx.ws)?, uids)?;
     let lost: Vec<EventId> = named
         .iter()
         .filter(|(uid, claim)| {

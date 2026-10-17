@@ -761,7 +761,7 @@ fn rendered(state: &State) -> String {
 }
 
 /// FNV-1a over `bytes`, from `hash`.
-fn fnv(mut hash: u64, bytes: &[u8]) -> u64 {
+pub(crate) fn fnv(mut hash: u64, bytes: &[u8]) -> u64 {
     for byte in bytes {
         hash = (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3);
     }
