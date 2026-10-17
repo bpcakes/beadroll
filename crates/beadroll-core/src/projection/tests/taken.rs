@@ -30,7 +30,8 @@ use super::{
 /// every state replay made of its history, batch by batch, answers of its edges ([`edges::fold`]),
 /// and what those states hold of the edges the generator draws for that ([`edges::drawn`]). And
 /// the digest of what replay answers of every issue's ownership at the end of each seed's history
-/// (`owned::answers`).
+/// (`owned::answers`), and what those histories hold of it, with the extensions of a projection
+/// read back that added to a history it had read in.
 #[derive(Default, Debug)]
 pub(super) struct Tally {
     pub(super) applied: usize,
@@ -48,6 +49,7 @@ pub(super) struct Tally {
     pub(super) answers: Vec<(u64, u64)>,
     pub(super) drawn: edges::drawn::Exercised,
     pub(super) owned: u64,
+    pub(super) seen: owned::Seen,
 }
 
 impl Tally {
@@ -92,8 +94,9 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -
         world.write(0, "init", None, data);
         let mut held: Vec<usize> = vec![0];
         let first = project(load(&world, &held)).unwrap();
-        // the store, each way: its projection, extended by each batch, and its text file
-        let mut tracks = WriteBack::EVERY.map(|back| (first.clone(), TextFile::new(), back));
+        // the store, each way: its projection, extended by each batch, its text file, and whether
+        // the projection was read back since replay last made it
+        let mut tracks = WriteBack::EVERY.map(|back| (first.clone(), TextFile::new(), back, false));
         // the store whose writes leave the projection to a later command, each way: what it wrote
         // back last, with its own text file, the batches taken in since, and draws of its own, so
         // that the world is the one it was before it
@@ -126,19 +129,21 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -
             let local = batch.iter().all(|at| world.events[*at].machine == 0);
             let records = records(&world, &batch);
             // as a store does: the texts of the issues the batch is about read in first
-            tracks = tracks.map(|(mut projection, mut file, back)| {
+            tracks = tracks.map(|(mut projection, mut file, back, mut read)| {
                 // the figures are the store's
                 let counted = back == WriteBack::Encoded;
                 if reading_back {
-                    let read = read_back(&projection, &mut file, back);
-                    tally.read_back(&projection, &read, back);
-                    projection = read;
+                    let back_read = read_back(&projection, &mut file, back);
+                    tally.read_back(&projection, &back_read, back);
+                    projection = back_read;
+                    read = true;
                 }
                 let before = flawed::kinds(projection.state());
                 let open = projection.extendable();
                 tally.closed += usize::from(!open && counted);
                 let about = projection.about(&records);
-                read_in(projection.state_mut(), &file, Some(about));
+                read_in(projection.state_mut(), &file, Some(about.clone()));
+                let histories = owned::histories(projection.state(), &about);
                 if counted {
                     for (kind, n) in flawed::kinds(full.state()) {
                         let new = n.saturating_sub(before.get(kind).copied().unwrap_or(0));
@@ -157,6 +162,8 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -
                             }
                             tally.applied += 1;
                             tally.merged += usize::from(!local);
+                            let added = owned::added(&histories, extended.state());
+                            tally.seen.appended += usize::from(read && added);
                         }
                         *extended
                     }
@@ -164,26 +171,41 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -
                         if counted && local && open && !world.takes_over(&batch) {
                             tally.declined.push(seed);
                         }
+                        read = false;
                         full.clone()
                     }
                 };
-                (projection, file, back)
+                (projection, file, back, read)
             });
         }
         tally.answers.push((seed, answers));
-        // what replay answers of every issue's ownership, and each track's projection read back
-        let state = replay(load(&world, &held)).unwrap();
+        tally.owned_alike(&world, &held, &mut tracks, seed);
+    }
+    tally
+}
+
+impl Tally {
+    /// Folds in what replay answers of every issue's ownership at the end of `world`'s history and
+    /// what that history holds of it, once each track's projection, read back, answers the same.
+    fn owned_alike(
+        &mut self,
+        world: &World,
+        held: &[usize],
+        tracks: &mut [(Projection, TextFile, WriteBack, bool)],
+        seed: u64,
+    ) {
+        let state = replay(load(world, held)).unwrap();
         let said = owned::answers(&state);
-        for (projection, file, back) in &mut tracks {
+        for (projection, file, back, _) in tracks {
             let read = whole(&read_back(projection, file, *back), file);
             assert!(
                 owned::answers(read.state()) == said,
                 "seed {seed}, {back:?}"
             );
         }
-        tally.owned = fnv(tally.owned, said.as_bytes());
+        self.owned = fnv(self.owned, said.as_bytes());
+        self.seen.count(world, &state);
     }
-    tally
 }
 
 /// The projection a store wrote back last, its text file, and what came after it.
@@ -217,7 +239,8 @@ impl Stored {
         let records = read_after(world, &self.since);
         let about = self.projection.about(&records);
         let mut extending = self.projection.clone();
-        read_in(extending.state_mut(), &self.file, Some(about));
+        read_in(extending.state_mut(), &self.file, Some(about.clone()));
+        let before = owned::histories(extending.state(), &about);
         let written = match extending.extend(records).unwrap() {
             Extended::Applied(extended) => {
                 assert!(
@@ -225,6 +248,9 @@ impl Stored {
                     "seed {seed}: {} batches at once",
                     self.batches
                 );
+                if self.back == WriteBack::Encoded {
+                    tally.seen.appended += usize::from(owned::added(&before, extended.state()));
+                }
                 if self.batches > 1 && self.back == WriteBack::Encoded {
                     tally.deferred += 1;
                     tally.longest = tally.longest.max(self.batches);

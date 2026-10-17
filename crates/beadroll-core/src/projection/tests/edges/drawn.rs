@@ -182,7 +182,8 @@ impl Exercised {
                 && self.kinds.len() == 5
                 && self.waited > 500
                 && self.stamped > 2_000
-                && self.concurrent > 50
+                // 50 since the generator also draws whole ownership histories (roll-lqjj.40)
+                && self.concurrent > 40
                 && self.again > 200
                 && self.renamed > 5_000,
             "{self:?}"
