@@ -14,7 +14,11 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   was made from (`Sourced`); read again, as `new` does, when a file was written since,
   roll-lqjj.37) and applies each event it emits to it; one the projection cannot take (a takeover)
   has the journal replayed instead. `lend` lends the state beside an `Emitter`, for a command that
-  reads it while it emits, without a copy (roll-lqjj.29). `src/tx/writes.rs`: `locked`, `writing`,
+  reads it while it emits, without a copy (roll-lqjj.29). `apply`, `seal` and `write_back`: a write
+  applies every event it emitted to its projection before they are taken to be appended, names under
+  the lock the journal's files as it left them (`beadroll_store::after_write`), and writes the
+  projection back once the lock is let go of (roll-lqjj.51), so that the read after it finds it
+  current. `src/tx/writes.rs`: `locked`, `writing`,
   `writing_state`, which hands back the state a write leaves, `writing_spent`, which hands back
   what its transaction held (`Spent`), for a caller whose process ends with its command to keep
   (roll-lqjj.42), `forget_receipts` and `drop_pending`.
@@ -58,7 +62,10 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
 
 - A transaction, which holds the store's whole projection, is let go of after the store lock is,
   never inside it: `writing` and each round of `coordinated` keep theirs outside `locked` and drop
-  it when it returns (roll-lqjj.32). `writing_spent` hands what it held to its caller instead, who
+  it when it returns (roll-lqjj.32). A write writes its projection back between the two, outside
+  the lock too (roll-lqjj.51): `written` after `locked` returns, a round of `coordinated` that went
+  through in `let_go`; a round that settles nothing, or whose attempt stays pending, writes nothing
+  back, since its projection holds events the journal does not. `writing_spent` hands what it held to its caller instead, who
   keeps it or frees it; this crate never leaks it, on a write that fails either (roll-lqjj.42;
   `xtask/tests/heap` sees `run_with` return holding none of it after `writing`, a failed write and
   a round of `coordinated`).

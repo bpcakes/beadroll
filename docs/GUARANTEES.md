@@ -459,6 +459,12 @@ it, and the file is committed again.
   rather than 40 ms; what a command decodes, and how long it takes, is as it
   was, and no command holds more (roll-lqjj.44; `cargo xtask timing --read N`,
   `read_after_write_seconds`; `--decode N`, `encode_seconds`).
+  A write writes its own projection back, so the read after a write is a
+  plain read: at 200,000 events 0.08 s rather than 0.15 s, and 13 ms rather
+  than 20 ms at 20,000, while each write takes 15–25 ms more there (about
+  3 ms at 20,000), and a write that is killed or fails as it writes back
+  has gone through all the same (roll-lqjj.51; `cargo xtask timing --read
+  N`, `read_after_write_seconds`, `write_after_write_seconds`).
   A real tracker's state is mostly
   its texts, which only the commands that print them read: on three of the
   largest public Beads trackers (21–47 MB, up to 13,394 issues) a `list` takes

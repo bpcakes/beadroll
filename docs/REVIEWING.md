@@ -522,7 +522,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
   6 `getdents64` (three directory reads) and 4 `statx`, and no more `newfstatat`; with git's
   counted (`-f`) a later claim made 16 more.
 - A write leaves the stored projection as it found it while the records after it are few
-  (roll-lqjj.36, step 1 of X17's design). Every command that applied records after the stored
+  (roll-lqjj.36, step 1 of X17's design); since roll-lqjj.51 a write writes its own projection
+  back (the paragraph after step 4's, below), so this holds for the records of writes whose
+  write-back did not happen (killed, skipped at `write.save`, an older bead's), which a write still
+  reads with the rule. Every command that applied records after the stored
   projection wrote it back, so the command after every write encoded the whole projection and
   wrote it again: at 200,000 events 94 ms to encode and about 16 ms to sum and write 19 MB, where
   applying the write's record took 0.25 ms. A command that extends the projection to write (a
@@ -549,7 +552,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   merge whose events are concurrent only with writes left after the stored projection extends it
   where it replayed (the roll-lqjj.8 bullet above). Y01 included: a file that was not settled when
   the stored projection was written stays unsettled while writes leave that projection, so each of
-  them reads it whole and checks its sum again until a read writes the projection back, which costs
+  them reads it whole and checks its sum again until the projection is written back, which costs
   time, never an answer.
   The differential test extends, beside each batch, the projection last written back by every
   batch since at once, in the order a store reads them (`projection/tests/taken.rs`). Measured
@@ -563,7 +566,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   rest of the design, each step its own issue (the write's free, roll-lqjj.42, landed in the
   bullet on the state a command answered from below; the knowledge compacted now and then, .43,
   landed: the paragraph after this one; copying the bytes of what a write did not touch, .44,
-  landed: the paragraph after that; append-only parts, .45), is on roll-lqjj.36.
+  landed: the paragraph after that; a write writing back its own projection, .51, landed: the
+  paragraph after step 4's; append-only parts, .45, to be decided again), is on roll-lqjj.36.
   What every event had seen is compacted now and then, not at every write-back (roll-lqjj.43, step
   3). Every write-back found every event the state names (`named`, 24 ms of the 94 ms encode at
   200,000 events on ec773f9) and cut the knowledge down to them (`Knowledge::kept`, 29 ms), though a
@@ -690,6 +694,63 @@ These were decided deliberately. Report problems *with* them, not their existenc
   as they are and a part's room is reserved for its size and a 64th; a decoded projection holds
   59.3 MB where 61.2 MB, a state read alone 36.4 where 37.1 MB, as their maps are reserved exactly.
   The file is 15.64 MB where it was 15.62 MB (each issue's count of writers, and the tables).
+  A write writes its own projection back (roll-lqjj.51), the option X17's design rejected when a
+  write-back cost 106 ms and decoding the index 26 ms at 200,000 events (roll-lqjj.36: it moved the
+  encode from the read to the write and held the store lock longer). With step 4 a write-back costs
+  about 15 ms there, and the read after a write, which decoded the index (65 ms), applied the
+  write's record and wrote the projection back, cost twice what a plain read does; by the
+  maintainer's decision of 2026-10-17 a write now writes back. It applies every event it emitted to
+  its transaction's projection before they are taken out to be appended (`Tx::apply`); under the
+  store lock it names the journal's files as it left them (`beadroll_store::after_write`): the files
+  its projection was read from, as they were, its own segment grown by exactly the events it
+  appended, in their order, the bytes before them the ones summed, and the attempt file of the
+  ownership events it confirmed here, each with its identity and the sum of its bytes; and once it
+  has let go of the lock it writes the projection back as a read writes back what it applied
+  (`write_back`, taking the text file's lock alone), before it prints its answer, so that a command
+  started as soon as the answer is read finds the projection current, and a write published at once
+  publishes after it. With anything else in the journal (a file another process changed, a merge, a
+  tail repaired), a projection that could not take the write's events (a takeover, a machine's first
+  record), an attempt still pending, or nothing written, nothing is written back and the next
+  command extends or replays as before; a transaction still reads with the 64th rule above. A
+  write-back is a cache's: one that fails or is killed (`write.save`) leaves the stored projection,
+  and the write has gone through; two writes whose write-backs land out of order leave one that the
+  next read extends. Because a write writes back within milliseconds of its append, in its segment's
+  timestamp tick, a read that finds files of the projection's own tick whose bytes are the ones
+  summed, with nothing after them, now takes the projection as current, where it decoded the index
+  and wrote the projection back. A write-back writes its parts in the slices it copied and the bytes
+  it wrote between them, never assembled, and sums them as they are (`Projection::encode_in_parts`,
+  `projection::sum_of`): assembled, a write's heap peak rose from 79.4 MB to 94.3 MB at 200,000
+  events. The tests saw the risk first: the differential extends every batch of the store's own
+  events as their transaction holds them and requires the bytes a read writes back (1,590 writes,
+  800 required); `storage::projection::written` runs twelve kinds of write, offline and published,
+  local edits and ownership commands, and requires the read after each to apply nothing
+  (`projection.extended=exit(97)`) and print what the journal replayed prints, and what the write
+  wrote back to be what a read writes back from the projection the write found (but for the sum of
+  an unchanged attempt file, which a write keeps and a read drops); a write killed at and in its
+  write-back, two writes racing their write-backs, and a write that writes nothing;
+  `projection::tests::written` what a write names of the journal and when it names nothing. Each way
+  it can go wrong was made and failed: no write-back, the segment named at its old length, the sum
+  of the new bytes alone, another file's change accepted, events after its own accepted, the tick
+  rule dropped, a write-back under the store lock (the race test then waits out the gate), the
+  events emitted last not applied, a write that wrote nothing writing back, and for the slices a run
+  left out, one slice summed, runs joined though apart, a short run dropped and the table placed
+  without the runs; accepting any new attempt file as the write's own is the same as checking its
+  path, since its events are checked. Measured against roll-lqjj.44's head (09f0ee4; release,
+  alternated, best of six rounds at 200,000 events and three at 20,000, on two pinned cores of a
+  machine shared with other builds): the read after a write takes 0.075 s where it took 0.152 s, a
+  plain read (`show` 0.072 s), and 12.9 ms where 20.4 ms at 20,000; a write after a read 0.156 s
+  where 0.140 s, a write after a write 0.161 s where 0.138 s and an offline write 0.158 s where
+  0.142 s (32.0 where 29.4 ms, 32.0 where 28.2 ms and 31.6 where 30.4 ms at 20,000); in the process
+  a write after a write takes 10.8 ms more, its write-back 14.3 ms and its read 6.6 ms less, since
+  it applies nothing, and what the whole command pays beyond that was not found (the 15.6 MB each
+  write-back leaves the page cache to write may slow the command after it). A claim and a release
+  published at once, `list`, `show` and `ready` as they were, a sync after a local write too (0.2587
+  s where 0.2567 s), a write published at once 0.455 s where 0.436 s (`--sync N`). A write's heap
+  peak 79.4 MB either way, the read after a write 43.5 MB where 94.5 MB (`cargo xtask bead`). The
+  projection's bytes are the same (no `projection::ENCODING` change). A write after a read and the
+  read after it take about 0.231 s at 200,000 events where they took 0.292 s, and a run of writes
+  about 23 ms more a write; step 5, append-only parts (roll-lqjj.45), which would take a write-back's sums and writing
+  away, is to be decided again on these figures.
 - A projection extended finishes only what the batch changed (roll-lqjj.17, Z02). Replay finishes a
   whole journal by deriving each issue's labels from the tags that remain and building the
   parent-child index from every issue's edges; a projection that redid all of that for every batch

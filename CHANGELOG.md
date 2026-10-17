@@ -6,6 +6,22 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A write writes its own projection back (roll-lqjj.51, X17), once it has let go of the store lock
+  and before it prints its answer, so that the read after it is a plain read: at 200,000 events
+  (`cargo xtask timing --read N`, against roll-lqjj.44's head, alternated, best of six) it takes
+  0.075 s where 0.152 s, and 12.9 ms where 20.4 ms at 20,000; each write pays the write-back, a
+  write after a read 0.156 s where 0.140 s and a write after a write 0.161 s where 0.138 s (about 3
+  ms more at 20,000). It names under the store lock the journal's files as it left them (its own
+  segment grown by exactly the events it appended, its confirmed attempt file) and writes nothing
+  back when the journal holds anything else, when it could not take its own events (a takeover, a
+  machine's first record) or when it wrote nothing; a write-back that fails or is killed leaves the
+  stored projection, and the write has gone through. A read now takes as current a projection whose
+  files of its own tick are the ones summed, with nothing after them. A write-back writes its parts
+  in the slices it copied, never assembled, so that a write's heap peak stays 79.4 MB, and the read
+  after a write's is 43.5 MB where 94.5 MB (`cargo xtask bead`). A new failpoint, `write.save`,
+  stops a write before its write-back or (`skip`) leaves it to the next command, and another,
+  `projection.extended`, fires where a read applies records after the stored projection. Output,
+  exit codes, format 1 and the projection's bytes are unchanged.
 - A write-back of the projection copies the bytes of every issue and event the write did not touch
   (roll-lqjj.44, X17 step 4; `projection::ENCODING` 11, so the first command of this build replays
   the journal once): every write-back encoded every issue and every event record, whatever the batch

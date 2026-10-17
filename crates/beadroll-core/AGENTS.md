@@ -48,7 +48,10 @@ consumer on tokio calls through `spawn_blocking`.
   of records each referring to the names and values they share by number in a table of the part's
   own (`codec::Table`); `projection/parts.rs`: `Projection::encode` and `Projection::decode`,
   which keeps the bytes it read (`Kept`) until `Projection::let_go`, so that a write-back copies
-  the record of every issue and event that did not change since (roll-lqjj.44). Its state part
+  the record of every issue and event that did not change since (roll-lqjj.44);
+  `Projection::encode_in_parts`, what a write-back writes: each part as the bytes written and the
+  runs copied between them (`codec::Part`), never assembled, and summed as they are (`sum_of`,
+  roll-lqjj.51). Its state part
   (`decode_state`, what a command that only reads decodes) holds of its events only who wrote
   those behind a register with several entries, in each issue's record, and where journals broke;
   its index holds the record of every event the state names, its causes, machine, actor, place and
@@ -159,7 +162,10 @@ consumer on tokio calls through `spawn_blocking`.
   tests read back that every issue whose record changed is marked, that nothing else is but issues
   the batch is about or that wait for a key it brings, and that every event read back keeps its
   record; `read_back` checks that what a write-back copied is byte for byte what it writes when it
-  copies nothing; `projection/tests/copied.rs` the ids and the table the histories do not reach.
+  copies nothing, and that the slices the store writes are those bytes, with their sum;
+  `projection/tests/copied.rs` the ids and the table the histories do not reach. The differential
+  also extends the store's own batches as the transaction that wrote them holds them (`as_written`,
+  roll-lqjj.51) and requires the same bytes as a read writes back.
 - An issue's edges are typed (roll-lqjj.39): a target is `Target::Id` exactly when its text is an
   id's spelling (`Target::of`; an id that is no issue's stays an id), and text otherwise, shown and
   ordered by that text, so edges sort as the pairs of strings did; a kind is one `Arc<str>` for

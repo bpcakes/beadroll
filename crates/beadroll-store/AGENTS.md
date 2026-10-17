@@ -45,13 +45,19 @@ remote resolution, actor detection, `view`, and the failpoint registry.
 - `src/projection.rs`: `projection` and the state `view` reads (roll-lqjj.2): the store's
   projection, `<store>/projection`, read when the journal's files are the ones it was made from,
   caught up when records were only appended to them, else the journal replayed, and written back
-  when the files held still: by a command that reads whatever it caught up, by one that writes only
-  once the records it applied hold more than a 64th of the projection's bytes (`kept_for`,
-  roll-lqjj.36), copying what did not change since it was read (roll-lqjj.44): `current` lets go of
-  the bytes it was read from (`Projection::let_go`) once it has written it back or decided not to,
-  so that a command going on with it never holds them; `src/projection/file.rs`: its header, sums
-  and what it was made from, written before the state and the index as parts (`file::head`,
-  `file::parts`), so that they are not copied behind them first;
+  when the files held still: by a command that reads whatever it caught up, by one that writes as
+  it reads only once the records it applied hold more than a 64th of the projection's bytes
+  (`kept_for`, roll-lqjj.36), and by a write once it has appended, with its own events
+  (roll-lqjj.51, `src/projection/written.rs`: `after_write` names under the store lock the
+  journal's files as the write left them, from the `Basis` its projection was read with, or nothing
+  when anything else changed; `write_back` writes it once the lock is let go of), each copying what
+  did not change since it was read (roll-lqjj.44). `current` keeps the bytes a projection was read
+  from for a command that applies events to it, and lets go of them (`Projection::let_go`) once it
+  has written it back itself. Files of the projection's own tick whose bytes are the ones summed,
+  with nothing after them, leave it current. `src/projection/file.rs`: its header, sums and what it
+  was made from, written before the state and the index, which are written and summed in the
+  slices their parts hold (`file::head`, `file::slices`, `Projection::encode_in_parts`), so that
+  they are never assembled;
   `src/projection/sources.rs`: `Sourced`, a projection with the journal files it was made from
   (`projection_sourced`: each segment's identity as `current` read it, the attempt files by the
   listing and identities the locked phase keeps), and `Sourced::into_current`, which says whether
@@ -101,6 +107,12 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   whole but not fsynced, whose every reader checks them against their sums (`docs/REVIEWING.md`
   §2, the durability bullet). A new file that is read without a sum to check, or that is a
   source of anything, is written with `write_atomic`.
+- A write's write-back is a cache's: it runs once the store lock is let go of, taking only the text
+  file's lock, as a read's does; it never fails the write, and a write killed or stopped there
+  (`write.save`) leaves the stored projection it found, for the next command to extend. It names a
+  journal only as the write left it: its own segment grown by exactly the events it appended, in
+  order, the bytes before them the ones summed, and the attempt file of the ownership events it
+  confirmed here; with anything else it writes nothing back.
 - A caller that goes on from a projection it read earlier in a locked phase takes it with
   `projection_sourced` and asks `Sourced::into_current` before it does, and reads the store again
   when that says a file was written since (`Tx::on` does, roll-lqjj.37). Identities suffice
