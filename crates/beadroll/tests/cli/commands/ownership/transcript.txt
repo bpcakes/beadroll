@@ -1,0 +1,545 @@
+$ bead init --prefix ow --import <ROOT>/issues.jsonl
+Tracker 'ow' at <ROOT>/home-own-a/<WORKSPACE1> (8 issues imported)
+Published to <ROOT>/origin.git (refs/beads/journal)
+exit 0
+
+$ bead machines --name <MACHINE1>=own-a
+<MACHINE1>  own-a               9 events  last <TIME>
+exit 0
+
+$ bead update ow-1 --design drawn here
+Updated ow-1: Released
+exit 0
+
+$ bead sync
+Synced with <ROOT>/origin.git: pulled 0, pushed 0 event(s)
+exit 0
+
+$ bead sync
+Synced with <ROOT>/origin.git: pulled 10, pushed 0 event(s)
+exit 0
+
+$ bead claim ow-1
+Claimed ow-1: Released (confirmed)
+exit 0
+
+$ bead release ow-1 -r handing back --json
+[{"id": "ow-1", "title": "Released", "status": "open", "priority": 1, "issue_type": "task", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}]
+exit 0
+
+$ bead claim ow-2 --json
+[{"id": "ow-2", "title": "Taken over, closed too late", "status": "in_progress", "priority": 2, "issue_type": "task", "assignee": "codex:own-a-thread-0001@<MACHINE1>", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "claim": {"id": "<ID1>", "owner": "codex:own-a-thread-0001@<MACHINE1>", "machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "generation": 1, "since": "<TIME>", "mode": "online", "where": {"branch": "main", "commit": "<COMMIT1>"}}}]
+exit 0
+
+$ bead sync
+Synced with <ROOT>/origin.git: pulled 3, pushed 0 event(s)
+exit 0
+
+$ bead takeover ow-2 -r a looked dead --json
+[{"id": "ow-2", "title": "Taken over, closed too late", "status": "in_progress", "priority": 2, "issue_type": "task", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "claim": {"id": "<ID2>", "owner": "codex:own-b-thread-0001@<MACHINE2>", "machine": "<MACHINE2>", "agent": "codex", "thread": "own-b-thread-0001", "generation": 2, "since": "<TIME>", "mode": "online", "where": {"branch": "main", "commit": "<COMMIT1>"}}}]
+exit 0
+
+$ bead machines --name <MACHINE2>=own-b
+<MACHINE1>  (unnamed)          10 events  last <TIME>
+exit 0
+
+$ bead close ow-2 -r done
+✓ Closed ow-2: Taken over, closed too late
+! ow-2: another owner took over before this close reached the remote; it is ignored (see `bead show`, under stale)
+exit 0
+
+$ bead claim ow-3
+Claimed ow-3: Closed by its owner (confirmed)
+exit 0
+
+$ bead close ow-3 -r finished --json
+[{"id": "ow-3", "title": "Closed by its owner", "status": "closed", "priority": 2, "issue_type": "bug", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}]
+exit 0
+
+$ bead sync
+Synced with <ROOT>/origin.git: pulled 2, pushed 0 event(s)
+exit 0
+
+$ bead claim ow-4
+Claimed ow-4: Offline claim lost (confirmed)
+exit 0
+
+$ bead claim ow-4 --offline --json
+[{"id": "ow-4", "title": "Offline claim lost", "status": "in_progress", "priority": 2, "issue_type": "task", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "provisional_claims": [{"id": "<ID3>", "owner": "codex:own-b-thread-0001@<MACHINE2>", "since": "<TIME>", "where": {"branch": "main", "commit": "<COMMIT1>"}}]}]
+exit 0
+
+$ bead sync
+Synced with <ROOT>/origin.git: pulled 1, pushed 1 event(s)
+exit 0
+
+$ bead sync
+Synced with <ROOT>/origin.git: pulled 1, pushed 0 event(s)
+exit 0
+
+$ bead show ow-4
+◐ ow-4 · Offline claim lost   [P2 · IN_PROGRESS]
+  last worked on branch main (<COMMIT2>)
+  type task · created <TIME> by seed · assignee codex:own-a-thread-0001@<MACHINE1>
+  claimed by codex:own-a-thread-0001@<MACHINE1> · generation 1 · since <TIME> · on branch main
+  provisional claim by codex:own-b-thread-0001@<MACHINE2> since <TIME> (not exclusive)
+exit 0
+
+$ bead close ow-4 -r closed over it
+✓ Closed ow-4: Offline claim lost
+exit 0
+
+$ bead claim ow-5 --offline
+Claimed ow-5: Offline claim settled (PROVISIONAL: not exclusive until claimed online)
+1 event not yet published: bead sync
+exit 0
+
+$ bead claim ow-5
+Claimed ow-5: Offline claim settled (confirmed)
+exit 0
+
+$ bead release ow-5
+Released ow-5: Offline claim settled
+exit 0
+
+$ bead sync
+Synced with <ROOT>/origin.git: pulled 3, pushed 0 event(s)
+exit 0
+
+$ bead claim ow-6
+Claimed ow-6: Taken over, released too late (confirmed)
+exit 0
+
+$ bead sync
+Synced with <ROOT>/origin.git: pulled 1, pushed 0 event(s)
+exit 0
+
+$ bead takeover ow-6 -r stale
+Took over ow-6 (generation 2): stale
+exit 0
+
+$ bead release ow-6 --offline
+Released ow-6: Taken over, released too late
+1 event not yet published: bead sync
+exit 0
+
+$ bead sync
+Synced with <ROOT>/origin.git: pulled 1, pushed 1 event(s)
+exit 0
+
+$ bead claim ow-7
+Claimed ow-7: Reopened, claimed, lost to (confirmed)
+exit 0
+
+$ bead reopen ow-7
+✓ Reopened ow-7: Reopened, claimed, lost to
+exit 0
+
+$ bead claim ow-8
+Claimed ow-8: Closed through update (confirmed)
+exit 0
+
+$ bead update ow-8 --status closed --json
+[{"id": "ow-8", "title": "Closed through update", "status": "closed", "priority": 2, "issue_type": "task", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "closed_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "closed_on": {"branch": "main", "commit": "<COMMIT1>"}}]
+exit 0
+
+$ bead sync
+Synced with <ROOT>/origin.git: pulled 4, pushed 0 event(s)
+exit 0
+
+$ bead sync
+Synced with <ROOT>/origin.git: pulled 0, pushed 0 event(s)
+exit 0
+
+$ bead sync
+Synced with <ROOT>/origin.git: pulled 0, pushed 0 event(s)
+exit 0
+
+$ bead claim ow-7
+Claimed ow-7: Reopened, claimed, lost to (confirmed)
+exit 0
+
+# a third machine's online claim of ow-7, which had not seen a's, planted in a's store
+
+$ bead show ow-7
+◐ ow-7 · Reopened, claimed, lost to   [P2 · IN_PROGRESS]
+  last worked on branch main (<COMMIT2>)
+  type feature · created <TIME> by seed · assignee codex:own-a-thread-0001@<MACHINE1>
+  claimed by codex:own-a-thread-0001@<MACHINE1> · generation 2 · since <TIME> · on branch main
+  ! claim by test:<MACHINE3>@<MACHINE3> lost to codex:own-a-thread-0001@<MACHINE1>
+1 event not yet published: bead sync
+exit 0
+
+$ bead show ow-7 --json
+[{"id": "ow-7", "title": "Reopened, claimed, lost to", "status": "in_progress", "priority": 2, "issue_type": "feature", "assignee": "codex:own-a-thread-0001@<MACHINE1>", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "claim": {"id": "<ID4>", "owner": "codex:own-a-thread-0001@<MACHINE1>", "machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "generation": 2, "since": "<TIME>", "mode": "online", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "lost_claims": [{"by": "test:<MACHINE3>@<MACHINE3>", "at": "<TIME>", "held_by": "codex:own-a-thread-0001@<MACHINE1>", "event": "<ID5>"}]}]
+exit 0
+
+$ bead claim ow-1 --offline
+Claimed ow-1: Released (PROVISIONAL: not exclusive until claimed online)
+2 events not yet published: bead sync
+exit 0
+
+# what own-a reads
+
+$ bead show ow-1
+◐ ow-1 · Released   [P1 · IN_PROGRESS]
+  last worked on branch main (<COMMIT2>)
+  type task · created <TIME> by seed
+  provisional claim by codex:own-a-thread-0001@<MACHINE1> since <TIME> (not exclusive)
+  description: A long text
+  notes: kept with the texts
+  design: drawn here
+2 events not yet published: bead sync
+exit 0
+
+$ bead show ow-1 --json
+[{"id": "ow-1", "title": "Released", "description": "A long text", "design": "drawn here", "notes": "kept with the texts", "status": "in_progress", "priority": 1, "issue_type": "task", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "provisional_claims": [{"id": "<ID6>", "owner": "codex:own-a-thread-0001@<MACHINE1>", "since": "<TIME>", "where": {"branch": "main", "commit": "<COMMIT1>"}}]}]
+exit 0
+
+$ bead show ow-2
+◐ ow-2 · Taken over, closed too late   [P2 · IN_PROGRESS]
+  last worked on branch main (<COMMIT2>)
+  type task · created <TIME> by seed · assignee codex:own-b-thread-0001@<MACHINE2>
+  claimed by codex:own-b-thread-0001@<MACHINE2> · generation 2 · since <TIME> · on branch main
+  ! ignored close by codex:own-a-thread-0001@<MACHINE1>: it named a claim that is no longer current
+2 events not yet published: bead sync
+exit 0
+
+$ bead show ow-2 --json
+[{"id": "ow-2", "title": "Taken over, closed too late", "status": "in_progress", "priority": 2, "issue_type": "task", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "claim": {"id": "<ID2>", "owner": "codex:own-b-thread-0001@<MACHINE2>", "machine": "<MACHINE2>", "agent": "codex", "thread": "own-b-thread-0001", "generation": 2, "since": "<TIME>", "mode": "online", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "stale": [{"op": "close", "by": "codex:own-a-thread-0001@<MACHINE1>", "at": "<TIME>", "claim": "<ID1>"}]}]
+exit 0
+
+$ bead show ow-3
+✓ ow-3 · Closed by its owner   [P2 · CLOSED]
+  last worked on branch main (<COMMIT2>)
+  closed on main at <COMMIT2> · merged into the default branch
+  type bug · created <TIME> by seed · assignee codex:own-b-thread-0001@<MACHINE2>
+  close_reason: finished
+2 events not yet published: bead sync
+exit 0
+
+$ bead show ow-3 --json
+[{"id": "ow-3", "title": "Closed by its owner", "status": "closed", "priority": 2, "issue_type": "bug", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "closed_at": "<TIME>", "close_reason": "finished", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "closed_on": {"branch": "main", "commit": "<COMMIT1>"}, "merged": true}]
+exit 0
+
+$ bead show ow-4
+✓ ow-4 · Offline claim lost   [P2 · CLOSED]
+  last worked on branch main (<COMMIT2>)
+  closed on main at <COMMIT2> · merged into the default branch
+  type task · created <TIME> by seed · assignee codex:own-a-thread-0001@<MACHINE1>
+  close_reason: closed over it
+2 events not yet published: bead sync
+exit 0
+
+$ bead show ow-4 --json
+[{"id": "ow-4", "title": "Offline claim lost", "status": "closed", "priority": 2, "issue_type": "task", "assignee": "codex:own-a-thread-0001@<MACHINE1>", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "closed_at": "<TIME>", "close_reason": "closed over it", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "closed_on": {"branch": "main", "commit": "<COMMIT1>"}, "merged": true}]
+exit 0
+
+$ bead show ow-5
+○ ow-5 · Offline claim settled   [P2 · OPEN]
+  last worked on branch main (<COMMIT2>)
+  type task · created <TIME> by seed
+2 events not yet published: bead sync
+exit 0
+
+$ bead show ow-5 --json
+[{"id": "ow-5", "title": "Offline claim settled", "status": "open", "priority": 2, "issue_type": "task", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}}]
+exit 0
+
+$ bead show ow-6
+◐ ow-6 · Taken over, released too late   [P3 · IN_PROGRESS]
+  last worked on branch main (<COMMIT2>)
+  type task · created <TIME> by seed · assignee codex:own-b-thread-0001@<MACHINE2>
+  claimed by codex:own-b-thread-0001@<MACHINE2> · generation 2 · since <TIME> · on branch main
+  ! ignored release by codex:own-a-thread-0001@<MACHINE1>: it named a claim that is no longer current
+2 events not yet published: bead sync
+exit 0
+
+$ bead show ow-6 --json
+[{"id": "ow-6", "title": "Taken over, released too late", "status": "in_progress", "priority": 3, "issue_type": "task", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "claim": {"id": "<ID7>", "owner": "codex:own-b-thread-0001@<MACHINE2>", "machine": "<MACHINE2>", "agent": "codex", "thread": "own-b-thread-0001", "generation": 2, "since": "<TIME>", "mode": "online", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "stale": [{"op": "release", "by": "codex:own-a-thread-0001@<MACHINE1>", "at": "<TIME>", "claim": "<ID8>"}]}]
+exit 0
+
+$ bead show ow-7
+◐ ow-7 · Reopened, claimed, lost to   [P2 · IN_PROGRESS]
+  last worked on branch main (<COMMIT2>)
+  type feature · created <TIME> by seed · assignee codex:own-a-thread-0001@<MACHINE1>
+  claimed by codex:own-a-thread-0001@<MACHINE1> · generation 2 · since <TIME> · on branch main
+  ! claim by test:<MACHINE3>@<MACHINE3> lost to codex:own-a-thread-0001@<MACHINE1>
+2 events not yet published: bead sync
+exit 0
+
+$ bead show ow-7 --json
+[{"id": "ow-7", "title": "Reopened, claimed, lost to", "status": "in_progress", "priority": 2, "issue_type": "feature", "assignee": "codex:own-a-thread-0001@<MACHINE1>", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "claim": {"id": "<ID4>", "owner": "codex:own-a-thread-0001@<MACHINE1>", "machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "generation": 2, "since": "<TIME>", "mode": "online", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "lost_claims": [{"by": "test:<MACHINE3>@<MACHINE3>", "at": "<TIME>", "held_by": "codex:own-a-thread-0001@<MACHINE1>", "event": "<ID5>"}]}]
+exit 0
+
+$ bead show ow-8
+✓ ow-8 · Closed through update   [P2 · CLOSED]
+  last worked on branch main (<COMMIT2>)
+  closed on main at <COMMIT2> · merged into the default branch
+  type task · created <TIME> by seed · assignee codex:own-b-thread-0001@<MACHINE2>
+2 events not yet published: bead sync
+exit 0
+
+$ bead show ow-8 --json
+[{"id": "ow-8", "title": "Closed through update", "status": "closed", "priority": 2, "issue_type": "task", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "closed_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "closed_on": {"branch": "main", "commit": "<COMMIT1>"}, "merged": true}]
+exit 0
+
+$ bead show ow-1 ow-2 ow-7 --json
+[{"id": "ow-1", "title": "Released", "description": "A long text", "design": "drawn here", "notes": "kept with the texts", "status": "in_progress", "priority": 1, "issue_type": "task", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "provisional_claims": [{"id": "<ID6>", "owner": "codex:own-a-thread-0001@<MACHINE1>", "since": "<TIME>", "where": {"branch": "main", "commit": "<COMMIT1>"}}]}, {"id": "ow-2", "title": "Taken over, closed too late", "status": "in_progress", "priority": 2, "issue_type": "task", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "claim": {"id": "<ID2>", "owner": "codex:own-b-thread-0001@<MACHINE2>", "machine": "<MACHINE2>", "agent": "codex", "thread": "own-b-thread-0001", "generation": 2, "since": "<TIME>", "mode": "online", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "stale": [{"op": "close", "by": "codex:own-a-thread-0001@<MACHINE1>", "at": "<TIME>", "claim": "<ID1>"}]}, {"id": "ow-7", "title": "Reopened, claimed, lost to", "status": "in_progress", "priority": 2, "issue_type": "feature", "assignee": "codex:own-a-thread-0001@<MACHINE1>", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "claim": {"id": "<ID4>", "owner": "codex:own-a-thread-0001@<MACHINE1>", "machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "generation": 2, "since": "<TIME>", "mode": "online", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "lost_claims": [{"by": "test:<MACHINE3>@<MACHINE3>", "at": "<TIME>", "held_by": "codex:own-a-thread-0001@<MACHINE1>", "event": "<ID5>"}]}]
+exit 0
+
+$ bead export
+{"id":"ow-1","title":"Released","description":"A long text","design":"drawn here","notes":"kept with the texts","status":"in_progress","priority":1,"issue_type":"task","created_at":"<TIME>","created_by":"seed","updated_at":"<TIME>"}
+{"id":"ow-2","title":"Taken over, closed too late","status":"in_progress","priority":2,"issue_type":"task","assignee":"codex:own-b-thread-0001@<MACHINE2>","created_at":"<TIME>","created_by":"seed","updated_at":"<TIME>"}
+{"id":"ow-3","title":"Closed by its owner","status":"closed","priority":2,"issue_type":"bug","assignee":"codex:own-b-thread-0001@<MACHINE2>","created_at":"<TIME>","created_by":"seed","updated_at":"<TIME>","closed_at":"<TIME>","close_reason":"finished"}
+{"id":"ow-4","title":"Offline claim lost","status":"closed","priority":2,"issue_type":"task","assignee":"codex:own-a-thread-0001@<MACHINE1>","created_at":"<TIME>","created_by":"seed","updated_at":"<TIME>","closed_at":"<TIME>","close_reason":"closed over it"}
+{"id":"ow-5","title":"Offline claim settled","status":"open","priority":2,"issue_type":"task","created_at":"<TIME>","created_by":"seed","updated_at":"<TIME>"}
+{"id":"ow-6","title":"Taken over, released too late","status":"in_progress","priority":3,"issue_type":"task","assignee":"codex:own-b-thread-0001@<MACHINE2>","created_at":"<TIME>","created_by":"seed","updated_at":"<TIME>"}
+{"id":"ow-7","title":"Reopened, claimed, lost to","status":"in_progress","priority":2,"issue_type":"feature","assignee":"codex:own-a-thread-0001@<MACHINE1>","created_at":"<TIME>","created_by":"seed","updated_at":"<TIME>"}
+{"id":"ow-8","title":"Closed through update","status":"closed","priority":2,"issue_type":"task","assignee":"codex:own-b-thread-0001@<MACHINE2>","created_at":"<TIME>","created_by":"seed","updated_at":"<TIME>","closed_at":"<TIME>","close_reason":""}
+exit 0
+
+$ bead claims
+ow-1  provisional codex:own-a-thread-0001@<MACHINE1>  since <TIME>
+ow-2  confirmed   codex:own-b-thread-0001@<MACHINE2>  since <TIME>  gen 2  last activity <TIME>  on main
+ow-6  confirmed   codex:own-b-thread-0001@<MACHINE2>  since <TIME>  gen 2  last activity <TIME>  on main
+ow-7  confirmed   codex:own-a-thread-0001@<MACHINE1>  since <TIME>  gen 2  last activity <TIME>  on main
+(as of this machine's last sync: <TIME>)
+2 events not yet published: bead sync
+exit 0
+
+$ bead claims --json
+{"claims": [{"id": "ow-1", "title": "Released", "owner": "codex:own-a-thread-0001@<MACHINE1>", "since": "<TIME>", "state": "provisional"}, {"id": "ow-2", "title": "Taken over, closed too late", "owner": "codex:own-b-thread-0001@<MACHINE2>", "machine": "<MACHINE2>", "agent": "codex", "thread": "own-b-thread-0001", "generation": 2, "since": "<TIME>", "branch": "main", "state": "confirmed", "last_activity": "<TIME>", "idle_minutes": 0}, {"id": "ow-6", "title": "Taken over, released too late", "owner": "codex:own-b-thread-0001@<MACHINE2>", "machine": "<MACHINE2>", "agent": "codex", "thread": "own-b-thread-0001", "generation": 2, "since": "<TIME>", "branch": "main", "state": "confirmed", "last_activity": "<TIME>", "idle_minutes": 0}, {"id": "ow-7", "title": "Reopened, claimed, lost to", "owner": "codex:own-a-thread-0001@<MACHINE1>", "machine": "own-a", "agent": "codex", "thread": "own-a-thread-0001", "generation": 2, "since": "<TIME>", "branch": "main", "state": "confirmed", "last_activity": "<TIME>", "idle_minutes": 0}], "last_sync": "<TIME>", "unpublished": 2}
+exit 0
+
+$ bead prime
+beadroll workflow: read once per session, then act.
+You are codex:own-a-thread-0001@<MACHINE1> (machine, agent, thread).
+Tracker 'ow': 1 ready, 1 held by you (ow-7). Last sync: <TIME>.
+
+1. Find work  bead ready [ID] --json      unblocked issues nobody holds (ID: only its subtree)
+              bead show ID --json         description, acceptance criteria, deps, comments, who holds it
+              bead claims                 what others hold, on which branch, since when
+2. Take it    bead claim ID               exclusive once the remote accepts it; ALREADY_CLAIMED: pick another (bead update ID --status in_progress does the same)
+3. Work       bead comments add ID "..."  progress and decisions, for the next session and other agents
+              bead update ID --notes "..." | --add-label L | --parent P
+              bead create "title" --parent ID -t task
+                                          split off follow-ups
+4. Finish     bead close ID -r "what was done"
+                                          ends your claim and publishes at once
+              bead release ID             hand it back unfinished
+              bead sync                   catch up: after --offline, after "not yet published", after a long gap
+
+Rules  Ownership belongs to your agent thread; a new session is a new owner. Continue your own earlier work with bead takeover ID -r "same task, new session". Never --force or take over someone else's work without a reason you have verified.
+       A conflict (two writers, same field) is listed under "conflicts" in show; a write that has seen both sides settles it. --offline claims are provisional, never exclusive.
+       Use --json for machine output. Error codes: ALREADY_CLAIMED, CLAIMED_BY_OTHER, NOT_OWNER, STATUS_CONFLICT, CYCLE, VALIDATION, ISSUE_NOT_FOUND, REMOTE_UNREACHABLE (nothing is lost; retry later), REMOTE_REFUSED (the remote refuses bead's ref: tell a human; retrying will not help), REMOTE_DAMAGED (the remote lost objects: tell a human; retrying will not help), SYNC_REPO_DAMAGED (this machine's sync repository is damaged again after a rebuild: delete it, nothing in it is the only copy of anything, and run the command again), UNRESOLVED (an attempt of yours awaits the remote: run bead sync), SYNC_CONFLICT, IO (the store or a file could not be read or written; nothing half-done).
+exit 0
+
+$ bead list --all
+◐ ow-1 [P1] [task] - Released (main)
+◐ ow-2 [P2] [task] - Taken over, closed too late @codex:own-b-thread-0001@<MACHINE2> (main)
+✓ ow-3 [P2] [bug] - Closed by its owner @codex:own-b-thread-0001@<MACHINE2> (main)
+✓ ow-4 [P2] [task] - Offline claim lost @codex:own-a-thread-0001@<MACHINE1> (main)
+○ ow-5 [P2] [task] - Offline claim settled (main)
+◐ ow-7 [P2] [feature] - Reopened, claimed, lost to @codex:own-a-thread-0001@<MACHINE1> (main)
+✓ ow-8 [P2] [task] - Closed through update @codex:own-b-thread-0001@<MACHINE2> (main)
+◐ ow-6 [P3] [task] - Taken over, released too late @codex:own-b-thread-0001@<MACHINE2> (main)
+2 events not yet published: bead sync
+exit 0
+
+$ bead list --all --json
+{"issues": [{"id": "ow-1", "title": "Released", "status": "in_progress", "priority": 1, "issue_type": "task", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}, {"id": "ow-2", "title": "Taken over, closed too late", "status": "in_progress", "priority": 2, "issue_type": "task", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}, {"id": "ow-3", "title": "Closed by its owner", "status": "closed", "priority": 2, "issue_type": "bug", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}, {"id": "ow-4", "title": "Offline claim lost", "status": "closed", "priority": 2, "issue_type": "task", "assignee": "codex:own-a-thread-0001@<MACHINE1>", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}, {"id": "ow-5", "title": "Offline claim settled", "status": "open", "priority": 2, "issue_type": "task", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}, {"id": "ow-7", "title": "Reopened, claimed, lost to", "status": "in_progress", "priority": 2, "issue_type": "feature", "assignee": "codex:own-a-thread-0001@<MACHINE1>", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}, {"id": "ow-8", "title": "Closed through update", "status": "closed", "priority": 2, "issue_type": "task", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}, {"id": "ow-6", "title": "Taken over, released too late", "status": "in_progress", "priority": 3, "issue_type": "task", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}], "total": 8, "limit": 50, "offset": 0, "has_more": false, "unpublished": 2}
+exit 0
+
+$ bead ready
+○ ow-5 [P2] [task] - Offline claim settled (main)
+2 events not yet published: bead sync
+exit 0
+
+$ bead ready --json
+[{"id": "ow-5", "title": "Offline claim settled", "status": "open", "priority": 2, "issue_type": "task", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}]
+exit 0
+
+$ bead blocked
+Nothing is blocked
+2 events not yet published: bead sync
+exit 0
+
+$ bead blocked --json
+[]
+exit 0
+
+# what own-b reads
+
+$ bead show ow-1
+○ ow-1 · Released   [P1 · OPEN]
+  last worked on branch main (<COMMIT2>)
+  type task · created <TIME> by seed
+  description: A long text
+  notes: kept with the texts
+  design: drawn here
+exit 0
+
+$ bead show ow-1 --json
+[{"id": "ow-1", "title": "Released", "description": "A long text", "design": "drawn here", "notes": "kept with the texts", "status": "open", "priority": 1, "issue_type": "task", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}}]
+exit 0
+
+$ bead show ow-2
+◐ ow-2 · Taken over, closed too late   [P2 · IN_PROGRESS]
+  last worked on branch main (<COMMIT2>)
+  type task · created <TIME> by seed · assignee codex:own-b-thread-0001@<MACHINE2>
+  claimed by codex:own-b-thread-0001@<MACHINE2> · generation 2 · since <TIME> · on branch main
+  ! ignored close by codex:own-a-thread-0001@<MACHINE1>: it named a claim that is no longer current
+exit 0
+
+$ bead show ow-2 --json
+[{"id": "ow-2", "title": "Taken over, closed too late", "status": "in_progress", "priority": 2, "issue_type": "task", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "claim": {"id": "<ID2>", "owner": "codex:own-b-thread-0001@<MACHINE2>", "machine": "<MACHINE2>", "agent": "codex", "thread": "own-b-thread-0001", "generation": 2, "since": "<TIME>", "mode": "online", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "stale": [{"op": "close", "by": "codex:own-a-thread-0001@<MACHINE1>", "at": "<TIME>", "claim": "<ID1>"}]}]
+exit 0
+
+$ bead show ow-3
+✓ ow-3 · Closed by its owner   [P2 · CLOSED]
+  last worked on branch main (<COMMIT2>)
+  closed on main at <COMMIT2> · merged into the default branch
+  type bug · created <TIME> by seed · assignee codex:own-b-thread-0001@<MACHINE2>
+  close_reason: finished
+exit 0
+
+$ bead show ow-3 --json
+[{"id": "ow-3", "title": "Closed by its owner", "status": "closed", "priority": 2, "issue_type": "bug", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "closed_at": "<TIME>", "close_reason": "finished", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "closed_on": {"branch": "main", "commit": "<COMMIT1>"}, "merged": true}]
+exit 0
+
+$ bead show ow-4
+✓ ow-4 · Offline claim lost   [P2 · CLOSED]
+  last worked on branch main (<COMMIT2>)
+  closed on main at <COMMIT2> · merged into the default branch
+  type task · created <TIME> by seed · assignee codex:own-a-thread-0001@<MACHINE1>
+  close_reason: closed over it
+exit 0
+
+$ bead show ow-4 --json
+[{"id": "ow-4", "title": "Offline claim lost", "status": "closed", "priority": 2, "issue_type": "task", "assignee": "codex:own-a-thread-0001@<MACHINE1>", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "closed_at": "<TIME>", "close_reason": "closed over it", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "closed_on": {"branch": "main", "commit": "<COMMIT1>"}, "merged": true}]
+exit 0
+
+$ bead show ow-5
+○ ow-5 · Offline claim settled   [P2 · OPEN]
+  last worked on branch main (<COMMIT2>)
+  type task · created <TIME> by seed
+exit 0
+
+$ bead show ow-5 --json
+[{"id": "ow-5", "title": "Offline claim settled", "status": "open", "priority": 2, "issue_type": "task", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}}]
+exit 0
+
+$ bead show ow-6
+◐ ow-6 · Taken over, released too late   [P3 · IN_PROGRESS]
+  last worked on branch main (<COMMIT2>)
+  type task · created <TIME> by seed · assignee codex:own-b-thread-0001@<MACHINE2>
+  claimed by codex:own-b-thread-0001@<MACHINE2> · generation 2 · since <TIME> · on branch main
+  ! ignored release by codex:own-a-thread-0001@<MACHINE1>: it named a claim that is no longer current
+exit 0
+
+$ bead show ow-6 --json
+[{"id": "ow-6", "title": "Taken over, released too late", "status": "in_progress", "priority": 3, "issue_type": "task", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "claim": {"id": "<ID7>", "owner": "codex:own-b-thread-0001@<MACHINE2>", "machine": "<MACHINE2>", "agent": "codex", "thread": "own-b-thread-0001", "generation": 2, "since": "<TIME>", "mode": "online", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "stale": [{"op": "release", "by": "codex:own-a-thread-0001@<MACHINE1>", "at": "<TIME>", "claim": "<ID8>"}]}]
+exit 0
+
+$ bead show ow-7
+○ ow-7 · Reopened, claimed, lost to   [P2 · OPEN]
+  last worked on branch main (<COMMIT2>)
+  type feature · created <TIME> by seed · assignee codex:own-b-thread-0001@<MACHINE2>
+exit 0
+
+$ bead show ow-7 --json
+[{"id": "ow-7", "title": "Reopened, claimed, lost to", "status": "open", "priority": 2, "issue_type": "feature", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}}]
+exit 0
+
+$ bead show ow-8
+✓ ow-8 · Closed through update   [P2 · CLOSED]
+  last worked on branch main (<COMMIT2>)
+  closed on main at <COMMIT2> · merged into the default branch
+  type task · created <TIME> by seed · assignee codex:own-b-thread-0001@<MACHINE2>
+exit 0
+
+$ bead show ow-8 --json
+[{"id": "ow-8", "title": "Closed through update", "status": "closed", "priority": 2, "issue_type": "task", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "closed_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "closed_on": {"branch": "main", "commit": "<COMMIT1>"}, "merged": true}]
+exit 0
+
+$ bead show ow-1 ow-2 ow-7 --json
+[{"id": "ow-1", "title": "Released", "description": "A long text", "design": "drawn here", "notes": "kept with the texts", "status": "open", "priority": 1, "issue_type": "task", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}}, {"id": "ow-2", "title": "Taken over, closed too late", "status": "in_progress", "priority": 2, "issue_type": "task", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}, "claim": {"id": "<ID2>", "owner": "codex:own-b-thread-0001@<MACHINE2>", "machine": "<MACHINE2>", "agent": "codex", "thread": "own-b-thread-0001", "generation": 2, "since": "<TIME>", "mode": "online", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "stale": [{"op": "close", "by": "codex:own-a-thread-0001@<MACHINE1>", "at": "<TIME>", "claim": "<ID1>"}]}, {"id": "ow-7", "title": "Reopened, claimed, lost to", "status": "open", "priority": 2, "issue_type": "feature", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "created_at": "<TIME>", "created_by": "seed", "updated_at": "<TIME>", "dependencies": [], "dependents": [], "comments": [], "blocked": false, "origin": {"machine": "<MACHINE1>", "agent": "codex", "thread": "own-a-thread-0001", "where": {"branch": "main", "commit": "<COMMIT1>"}}, "where": {"branch": "main", "commit": "<COMMIT1>"}}]
+exit 0
+
+$ bead export
+{"id":"ow-1","title":"Released","description":"A long text","design":"drawn here","notes":"kept with the texts","status":"open","priority":1,"issue_type":"task","created_at":"<TIME>","created_by":"seed","updated_at":"<TIME>"}
+{"id":"ow-2","title":"Taken over, closed too late","status":"in_progress","priority":2,"issue_type":"task","assignee":"codex:own-b-thread-0001@<MACHINE2>","created_at":"<TIME>","created_by":"seed","updated_at":"<TIME>"}
+{"id":"ow-3","title":"Closed by its owner","status":"closed","priority":2,"issue_type":"bug","assignee":"codex:own-b-thread-0001@<MACHINE2>","created_at":"<TIME>","created_by":"seed","updated_at":"<TIME>","closed_at":"<TIME>","close_reason":"finished"}
+{"id":"ow-4","title":"Offline claim lost","status":"closed","priority":2,"issue_type":"task","assignee":"codex:own-a-thread-0001@<MACHINE1>","created_at":"<TIME>","created_by":"seed","updated_at":"<TIME>","closed_at":"<TIME>","close_reason":"closed over it"}
+{"id":"ow-5","title":"Offline claim settled","status":"open","priority":2,"issue_type":"task","created_at":"<TIME>","created_by":"seed","updated_at":"<TIME>"}
+{"id":"ow-6","title":"Taken over, released too late","status":"in_progress","priority":3,"issue_type":"task","assignee":"codex:own-b-thread-0001@<MACHINE2>","created_at":"<TIME>","created_by":"seed","updated_at":"<TIME>"}
+{"id":"ow-7","title":"Reopened, claimed, lost to","status":"open","priority":2,"issue_type":"feature","assignee":"codex:own-b-thread-0001@<MACHINE2>","created_at":"<TIME>","created_by":"seed","updated_at":"<TIME>"}
+{"id":"ow-8","title":"Closed through update","status":"closed","priority":2,"issue_type":"task","assignee":"codex:own-b-thread-0001@<MACHINE2>","created_at":"<TIME>","created_by":"seed","updated_at":"<TIME>","closed_at":"<TIME>","close_reason":""}
+exit 0
+
+$ bead claims
+ow-2  confirmed   codex:own-b-thread-0001@<MACHINE2>  since <TIME>  gen 2  last activity <TIME>  on main
+ow-6  confirmed   codex:own-b-thread-0001@<MACHINE2>  since <TIME>  gen 2  last activity <TIME>  on main
+(as of this machine's last sync: <TIME>)
+exit 0
+
+$ bead claims --json
+{"claims": [{"id": "ow-2", "title": "Taken over, closed too late", "owner": "codex:own-b-thread-0001@<MACHINE2>", "machine": "own-b", "agent": "codex", "thread": "own-b-thread-0001", "generation": 2, "since": "<TIME>", "branch": "main", "state": "confirmed", "last_activity": "<TIME>", "idle_minutes": 0}, {"id": "ow-6", "title": "Taken over, released too late", "owner": "codex:own-b-thread-0001@<MACHINE2>", "machine": "own-b", "agent": "codex", "thread": "own-b-thread-0001", "generation": 2, "since": "<TIME>", "branch": "main", "state": "confirmed", "last_activity": "<TIME>", "idle_minutes": 0}], "last_sync": "<TIME>"}
+exit 0
+
+$ bead prime
+beadroll workflow: read once per session, then act.
+You are codex:own-b-thread-0001@<MACHINE2> (machine, agent, thread).
+Tracker 'ow': 3 ready, 2 held by you (ow-2, ow-6). Last sync: <TIME>.
+
+1. Find work  bead ready [ID] --json      unblocked issues nobody holds (ID: only its subtree)
+              bead show ID --json         description, acceptance criteria, deps, comments, who holds it
+              bead claims                 what others hold, on which branch, since when
+2. Take it    bead claim ID               exclusive once the remote accepts it; ALREADY_CLAIMED: pick another (bead update ID --status in_progress does the same)
+3. Work       bead comments add ID "..."  progress and decisions, for the next session and other agents
+              bead update ID --notes "..." | --add-label L | --parent P
+              bead create "title" --parent ID -t task
+                                          split off follow-ups
+4. Finish     bead close ID -r "what was done"
+                                          ends your claim and publishes at once
+              bead release ID             hand it back unfinished
+              bead sync                   catch up: after --offline, after "not yet published", after a long gap
+
+Rules  Ownership belongs to your agent thread; a new session is a new owner. Continue your own earlier work with bead takeover ID -r "same task, new session". Never --force or take over someone else's work without a reason you have verified.
+       A conflict (two writers, same field) is listed under "conflicts" in show; a write that has seen both sides settles it. --offline claims are provisional, never exclusive.
+       Use --json for machine output. Error codes: ALREADY_CLAIMED, CLAIMED_BY_OTHER, NOT_OWNER, STATUS_CONFLICT, CYCLE, VALIDATION, ISSUE_NOT_FOUND, REMOTE_UNREACHABLE (nothing is lost; retry later), REMOTE_REFUSED (the remote refuses bead's ref: tell a human; retrying will not help), REMOTE_DAMAGED (the remote lost objects: tell a human; retrying will not help), SYNC_REPO_DAMAGED (this machine's sync repository is damaged again after a rebuild: delete it, nothing in it is the only copy of anything, and run the command again), UNRESOLVED (an attempt of yours awaits the remote: run bead sync), SYNC_CONFLICT, IO (the store or a file could not be read or written; nothing half-done).
+exit 0
+
+$ bead list --all
+○ ow-1 [P1] [task] - Released (main)
+◐ ow-2 [P2] [task] - Taken over, closed too late @codex:own-b-thread-0001@<MACHINE2> (main)
+✓ ow-3 [P2] [bug] - Closed by its owner @codex:own-b-thread-0001@<MACHINE2> (main)
+✓ ow-4 [P2] [task] - Offline claim lost @codex:own-a-thread-0001@<MACHINE1> (main)
+○ ow-5 [P2] [task] - Offline claim settled (main)
+○ ow-7 [P2] [feature] - Reopened, claimed, lost to @codex:own-b-thread-0001@<MACHINE2> (main)
+✓ ow-8 [P2] [task] - Closed through update @codex:own-b-thread-0001@<MACHINE2> (main)
+◐ ow-6 [P3] [task] - Taken over, released too late @codex:own-b-thread-0001@<MACHINE2> (main)
+exit 0
+
+$ bead list --all --json
+{"issues": [{"id": "ow-1", "title": "Released", "status": "open", "priority": 1, "issue_type": "task", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}, {"id": "ow-2", "title": "Taken over, closed too late", "status": "in_progress", "priority": 2, "issue_type": "task", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}, {"id": "ow-3", "title": "Closed by its owner", "status": "closed", "priority": 2, "issue_type": "bug", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}, {"id": "ow-4", "title": "Offline claim lost", "status": "closed", "priority": 2, "issue_type": "task", "assignee": "codex:own-a-thread-0001@<MACHINE1>", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}, {"id": "ow-5", "title": "Offline claim settled", "status": "open", "priority": 2, "issue_type": "task", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}, {"id": "ow-7", "title": "Reopened, claimed, lost to", "status": "open", "priority": 2, "issue_type": "feature", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}, {"id": "ow-8", "title": "Closed through update", "status": "closed", "priority": 2, "issue_type": "task", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}, {"id": "ow-6", "title": "Taken over, released too late", "status": "in_progress", "priority": 3, "issue_type": "task", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}], "total": 8, "limit": 50, "offset": 0, "has_more": false}
+exit 0
+
+$ bead ready
+○ ow-1 [P1] [task] - Released (main)
+○ ow-5 [P2] [task] - Offline claim settled (main)
+○ ow-7 [P2] [feature] - Reopened, claimed, lost to @codex:own-b-thread-0001@<MACHINE2> (main)
+exit 0
+
+$ bead ready --json
+[{"id": "ow-1", "title": "Released", "status": "open", "priority": 1, "issue_type": "task", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}, {"id": "ow-5", "title": "Offline claim settled", "status": "open", "priority": 2, "issue_type": "task", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}, {"id": "ow-7", "title": "Reopened, claimed, lost to", "status": "open", "priority": 2, "issue_type": "feature", "assignee": "codex:own-b-thread-0001@<MACHINE2>", "branch": "main", "created_at": "<TIME>", "updated_at": "<TIME>"}]
+exit 0
+
+$ bead blocked
+Nothing is blocked
+exit 0
+
+$ bead blocked --json
+[]
+exit 0
+

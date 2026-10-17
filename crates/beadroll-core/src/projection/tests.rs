@@ -13,13 +13,14 @@ use crate::state::State;
 
 use super::{Projection, Record, decode_state};
 
-mod awaiting;
+pub(crate) mod awaiting;
 mod compacted;
 mod edges;
 mod finished;
 mod flawed;
 mod hostile;
 mod known;
+pub(crate) mod owned;
 mod reported;
 mod shown;
 mod taken;
@@ -153,6 +154,18 @@ impl World {
     /// Machine `m` writes `op` on `issue` (itself, for a create): an attempt file's for a claim
     /// or a release, its journal's otherwise. Returns the event's id.
     fn write(&mut self, m: usize, op: &str, issue: Option<String>, data: Object) -> String {
+        self.write_as(m, None, op, issue, data)
+    }
+
+    /// [`World::write`], by the agent's thread `thread` when given, and one drawn otherwise.
+    fn write_as(
+        &mut self,
+        m: usize,
+        thread: Option<&str>,
+        op: &str,
+        issue: Option<String>,
+        data: Object,
+    ) -> String {
         self.clock += 1 + self.rng.below(3) as u64;
         let id = match self.next_id.take() {
             Some(id) => id,
@@ -166,10 +179,11 @@ impl World {
         event.insert("deps".into(), Value::Array(deps));
         let mut actor = Object::new();
         actor.insert("agent".into(), Value::from("claude"));
-        actor.insert(
-            "thread".into(),
-            Value::from(format!("t{}", self.rng.below(2))),
-        );
+        let thread = match thread {
+            Some(thread) => thread.to_owned(),
+            None => format!("t{}", self.rng.below(2)),
+        };
+        actor.insert("thread".into(), Value::from(thread));
         event.insert("actor".into(), Value::from(actor));
         event.insert("op".into(), Value::from(op));
         event.insert(
@@ -713,4 +727,5 @@ fn every_extension_is_replays_answer_or_declined() {
     );
     edges::pinned("plain", &tally.answers);
     tally.drawn.enough();
+    assert_eq!(tally.owned, owned::DIFFERENTIAL, "{:#x}", tally.owned);
 }

@@ -12,8 +12,9 @@ use crate::json::{Object, Value};
 use crate::replay::replay;
 
 use super::super::{Extended, Projection, Record, named, project};
+use super::awaiting::fnv;
 use super::{
-    MACHINES, Rng, TextFile, World, WriteBack, answers_alike, edges, equal, flawed, load,
+    MACHINES, Rng, TextFile, World, WriteBack, answers_alike, edges, equal, flawed, load, owned,
     read_back, read_in, records, same, shown, whole,
 };
 
@@ -27,7 +28,9 @@ use super::{
 /// events the state no longer names, and the most such events one left; of those the store made,
 /// those that left such events, and those that compacted them away. And by seed, the digest of what
 /// every state replay made of its history, batch by batch, answers of its edges ([`edges::fold`]),
-/// and what those states hold of the edges the generator draws for that ([`edges::drawn`]).
+/// and what those states hold of the edges the generator draws for that ([`edges::drawn`]). And
+/// the digest of what replay answers of every issue's ownership at the end of each seed's history
+/// (`owned::answers`).
 #[derive(Default, Debug)]
 pub(super) struct Tally {
     pub(super) applied: usize,
@@ -44,6 +47,7 @@ pub(super) struct Tally {
     pub(super) cut: usize,
     pub(super) answers: Vec<(u64, u64)>,
     pub(super) drawn: edges::drawn::Exercised,
+    pub(super) owned: u64,
 }
 
 impl Tally {
@@ -73,7 +77,10 @@ impl Tally {
 /// does of every event the state names, whichever way the projection was written back. A world
 /// `flawed` has machines that also write what replay reports, and one whose identity was copied.
 pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -> Tally {
-    let mut tally = Tally::default();
+    let mut tally = Tally {
+        owned: owned::BASIS,
+        ..Tally::default()
+    };
     for seed in seeds {
         let mut world = if flawed {
             World::flawed(20_261_012 + seed)
@@ -164,6 +171,17 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -
             });
         }
         tally.answers.push((seed, answers));
+        // what replay answers of every issue's ownership, and each track's projection read back
+        let state = replay(load(&world, &held)).unwrap();
+        let said = owned::answers(&state);
+        for (projection, file, back) in &mut tracks {
+            let read = whole(&read_back(projection, file, *back), file);
+            assert!(
+                owned::answers(read.state()) == said,
+                "seed {seed}, {back:?}"
+            );
+        }
+        tally.owned = fnv(tally.owned, said.as_bytes());
     }
     tally
 }
