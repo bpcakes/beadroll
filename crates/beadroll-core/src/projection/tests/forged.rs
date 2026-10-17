@@ -105,7 +105,7 @@ fn a_count_of_entries_made_anew_beyond_the_table_is_refused() {
     }
     let whole = Encoded {
         state: [&state[..], &[last]].concat(),
-        index: encoded.index.clone(),
+        index: encoded.index,
         texts: Vec::new(),
     };
     assert!(Projection::decode(whole).is_ok(), "as written");
