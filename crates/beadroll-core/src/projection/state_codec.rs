@@ -11,6 +11,15 @@
 //! typed and the events that added each (roll-lqjj.39), and with its current claim, its generation
 //! and its offline claims, which every ownership decision reads. An issue read back has its texts
 //! there until they are read in.
+//!
+//! Each issue's record holds all a state read alone knows of its events too: who wrote the events
+//! behind its registers with several entries, each its own (roll-lqjj.35). The records refer to
+//! the names and values they share by number in the part's table ([`super::codec::Table`]), so
+//! that a record does not change unless its issue does, and a write-back copies it as it was read
+//! (roll-lqjj.44). Where each record begins is not written, but found as the part is read. Each
+//! key's issue is written after the issues, though it is their own keys in their order: made from
+//! the issues, it took a decode longer than read (a key a visit to its issue); only a create adds
+//! one, after the others, so a write-back copies those it read.
 
 use std::collections::HashMap;
 
@@ -36,17 +45,57 @@ const NOWHERE: TextPlace = TextPlace {
 /// How a claim can end, as [`crate::state::EndedClaim::how`] names it.
 const ENDINGS: [&str; 5] = ["takeover", "release", "close", "reopen", "delete"];
 
-/// The state, each issue with where its texts are: where they were read from or are, or for texts
-/// written nowhere yet, the place `given` gives them.
-pub(crate) fn write_state(w: &mut Writer, st: &State, given: &HashMap<EventId, TextPlace>) {
+/// Records as a state part read back holds them: the part's bytes, where each issue's record
+/// begins in them and where the last ends, and where its keys' entries are and how many.
+#[derive(Clone, Copy)]
+pub(crate) struct Records<'a> {
+    pub(crate) bytes: &'a [u8],
+    pub(crate) starts: &'a [u32],
+    pub(crate) keys: (&'a [u8], usize),
+}
+
+impl<'a> Records<'a> {
+    /// The bytes of the record of the issue at `at`.
+    fn of(self, at: usize) -> Option<&'a [u8]> {
+        let (start, end) = (*self.starts.get(at)?, *self.starts.get(at + 1)?);
+        self.bytes.get(start as usize..end as usize)
+    }
+}
+
+/// The state, each issue with where its texts are (where they were read from or are, or for texts
+/// written nowhere yet, the place `given` gives them) and the writers of its registers with several
+/// entries, as `knowledge` knows them: every issue's record written, or, for an issue that has not
+/// changed since it was read back ([`crate::state::Issues::changed`]), copied from `stored`; and
+/// each issue's key, those read back copied, since only a create adds one, after the others. Where
+/// each record begins is not written: a reader finds it.
+pub(crate) fn write_state(
+    w: &mut Writer,
+    st: &State,
+    given: &HashMap<EventId, TextPlace>,
+    stored: Option<Records<'_>>,
+) {
     w.optional_value(st.prefix.as_ref());
     w.optional_value(st.name.as_ref());
     w.count(st.issues.len());
-    for issue in st.issues.values() {
-        write_issue(w, issue, given.get(&issue.uid).copied().unwrap_or(NOWHERE));
+    for (at, issue) in st.issues.values().enumerate() {
+        let copied = stored
+            .filter(|_| !st.issues.changed(at))
+            .and_then(|stored| stored.of(at));
+        match copied {
+            Some(record) => w.copy(record),
+            None => {
+                let place = given.get(&issue.uid).copied().unwrap_or(NOWHERE);
+                write_issue(w, issue, place, &st.knowledge);
+            }
+        }
     }
     w.count(st.by_key.len());
-    for (key, uid) in &st.by_key {
+    let keys = stored.map_or((&[][..], 0), |stored| stored.keys);
+    let copied = keys.1.min(st.by_key.len());
+    if copied > 0 {
+        w.copy(keys.0);
+    }
+    for (key, uid) in st.by_key.iter().skip(copied) {
         w.text(key);
         w.id(*uid);
     }
@@ -73,21 +122,51 @@ pub(crate) fn write_state(w: &mut Writer, st: &State, given: &HashMap<EventId, T
         w.optional_text(thread.as_deref());
         w.id(*id);
     }
+    let breaks = &st.knowledge.chain_breaks;
+    w.count(breaks.len());
+    for (replica, positions) in breaks {
+        w.text(replica);
+        w.count(positions.len());
+        for position in positions {
+            w.count(*position);
+        }
+    }
 }
 
-/// A state, what every event had seen left out: the caller gives it the knowledge it has.
-pub(crate) fn read_state(r: &mut Reader<'_>) -> Result<State, Unreadable> {
+/// A state as [`write_state`] wrote it, its issues held as read back; of its events, it knows who
+/// wrote those behind its registers with several entries and where machines' journals broke. With
+/// `starts`, where each issue's record begins, and where the last ends, and then where its keys'
+/// entries are.
+pub(crate) fn read_state(
+    r: &mut Reader<'_>,
+    mut starts: Option<&mut Vec<u32>>,
+) -> Result<(State, std::ops::Range<usize>), Unreadable> {
     let mut st = State::new(Knowledge::default());
     st.prefix = r.optional_value()?;
     st.name = r.optional_value()?;
-    for _ in 0..r.count()? {
-        let issue = read_issue(r)?;
+    let n = r.count()?;
+    st.issues.reserve(n);
+    if let Some(starts) = starts.as_deref_mut() {
+        starts.reserve_exact(n + 1);
+    }
+    for _ in 0..n {
+        if let Some(starts) = starts.as_deref_mut() {
+            starts.push(u32::try_from(r.at()).map_err(|_| Unreadable("an issue"))?);
+        }
+        let issue = read_issue(r, &mut st.knowledge)?;
         st.issues.insert(issue.uid, Box::new(issue));
     }
-    for _ in 0..r.count()? {
+    if let Some(starts) = starts {
+        starts.push(u32::try_from(r.at()).map_err(|_| Unreadable("an issue"))?);
+    }
+    let n = r.count()?;
+    st.by_key.reserve_exact(n);
+    let from = r.at();
+    for _ in 0..n {
         let key = r.text()?;
         st.by_key.insert(key, r.id()?);
     }
+    let keys = from..r.at();
     for _ in 0..r.count()? {
         st.renames.push(Rename {
             from: r.text()?,
@@ -111,14 +190,41 @@ pub(crate) fn read_state(r: &mut Reader<'_>) -> Result<State, Unreadable> {
         let thread = (r.text()?, r.optional_text()?);
         st.last_by_thread.insert(thread, r.id()?);
     }
+    for _ in 0..r.count()? {
+        let replica = r.text()?;
+        let positions = (0..r.count()?)
+            .map(|_| r.index())
+            .collect::<Result<_, _>>()?;
+        st.knowledge.chain_breaks.insert(replica, positions);
+    }
     st.awaiting = Awaiting::of(st.issues.values().map(|issue| &**issue));
     finish(&mut st);
     st.issues.hold_as_read();
-    Ok(st)
+    Ok((st, keys))
 }
 
-/// An issue without its texts, and where they are (`place`, for texts written nowhere yet).
-pub(super) fn write_issue(w: &mut Writer, issue: &Issue, place: TextPlace) {
+/// The events behind `issue`'s registers with several entries, ascending: those
+/// [`State::conflicts`] can name, and asks who wrote, a long field's among them when the issue's
+/// texts are not read in. A register of one entry is never a conflict.
+pub(super) fn asked(issue: &Issue) -> Vec<EventId> {
+    let mut out = Vec::new();
+    for tags in issue.reg.values().filter(|tags| tags.len() > 1) {
+        out.extend(tags.iter().map(|(id, _)| *id));
+    }
+    if let Texts::There(stored) = &issue.texts {
+        for (_, ids) in stored.tags.iter().filter(|(_, ids)| ids.len() > 1) {
+            out.extend(ids.iter().copied());
+        }
+    }
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+/// An issue without its texts, and where they are (`place`, for texts written nowhere yet), and
+/// who wrote the events behind its registers with several entries, as `knowledge` knows them: each
+/// is an event of the issue's own, which only a change to the issue changes.
+pub(super) fn write_issue(w: &mut Writer, issue: &Issue, place: TextPlace, knowledge: &Knowledge) {
     w.id(issue.uid);
     w.text(&issue.key);
     let stamps = &issue.stamps;
@@ -177,9 +283,19 @@ pub(super) fn write_issue(w: &mut Writer, issue: &Issue, place: TextPlace) {
         w.name(&ended.by);
         write_how(w, ended.how);
     }
+    let writers: Vec<(EventId, &crate::journal::Event)> = (asked(issue).into_iter())
+        .filter_map(|id| Some((id, knowledge.events.get(&id)?)))
+        .collect();
+    w.count(writers.len());
+    for (id, event) in writers {
+        w.id(id);
+        w.name(event.shared_replica());
+        w.optional_shared(event.shared_actor());
+    }
 }
 
-fn read_issue(r: &mut Reader<'_>) -> Result<Issue, Unreadable> {
+/// An issue [`write_issue`] wrote, the writers it names taken into `knowledge`.
+fn read_issue(r: &mut Reader<'_>, knowledge: &mut Knowledge) -> Result<Issue, Unreadable> {
     let uid = r.id()?;
     let key = r.text()?;
     let stamps = Stamps {
@@ -230,6 +346,12 @@ fn read_issue(r: &mut Reader<'_>) -> Result<Issue, Unreadable> {
         disputed.push(field.ok_or(Unreadable("a long field"))?);
     }
     let ended = r.flag()?.then(|| read_ended(r)).transpose()?;
+    for _ in 0..r.count()? {
+        let id = r.id()?;
+        let event =
+            crate::journal::Event::applied(id, Box::default(), r.name()?, r.optional_shared()?);
+        knowledge.events.insert(id, event);
+    }
     Ok(Issue {
         uid,
         key,

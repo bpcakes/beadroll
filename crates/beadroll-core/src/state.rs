@@ -26,7 +26,7 @@ pub use edges::{DepTags, Deps, DepsIter, Edge, Meta, Target};
 pub use issue::{Comment, Issue};
 pub(crate) use issue::{Origin, Stamps};
 pub(crate) use issues::Issues;
-pub(crate) use seen::{Knowledge, Place, raise, reached};
+pub(crate) use seen::{Arena, Knowledge, Place, raise, reached};
 pub use small::{IdMap, IdSet, VecMap};
 pub use texts::{Stored, TEXT_FIELDS, TextPlace, Texts, is_text};
 

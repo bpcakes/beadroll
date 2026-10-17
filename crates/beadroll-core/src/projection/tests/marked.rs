@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, HashMap};
 use crate::id::EventId;
 use crate::journal::{Event, Journal};
 use crate::json::Value;
-use crate::state::{Issue, TextPlace, Texts};
+use crate::state::{Issue, Knowledge, TextPlace, Texts};
 
 use super::super::codec::Writer;
 use super::super::state_codec::write_issue;
@@ -29,11 +29,12 @@ const ANEW: TextPlace = TextPlace {
 };
 
 /// An issue's record as a write-back writes it, alone: with a writer of its own, so that its names
-/// and values are written in it, and the record says what the issue is and where its texts are,
-/// whatever the issues before it hold.
-pub(super) fn record_of(issue: &Issue) -> Vec<u8> {
+/// and values are written in it, and the record says what the issue is, where its texts are and who
+/// wrote the events behind its registers with several entries, as `knowledge` knows them, whatever
+/// the issues before it hold.
+pub(super) fn record_of(issue: &Issue, knowledge: &Knowledge) -> Vec<u8> {
     let mut w = Writer::default();
-    write_issue(&mut w, issue, ANEW);
+    write_issue(&mut w, issue, ANEW, knowledge);
     w.finish()
 }
 
@@ -53,7 +54,7 @@ impl Records {
         let knowledge = &state.knowledge;
         Records {
             issues: (state.issues.values())
-                .map(|issue| (issue.uid, record_of(issue)))
+                .map(|issue| (issue.uid, record_of(issue, knowledge)))
                 .collect(),
             marked: (0..state.issues.len())
                 .map(|at| marked(projection, at))
@@ -313,7 +314,7 @@ fn read_back(seed: u64) -> Projection {
         );
     }
     let (encoded, _) = project(journal).unwrap().encode(0);
-    Projection::decode(&encoded).unwrap()
+    Projection::decode(encoded).unwrap()
 }
 
 #[test]
@@ -359,7 +360,7 @@ fn reading_texts_in_changes_no_record() {
         );
     }
     let (encoded, _) = project(journal).unwrap().encode(0);
-    let mut projection = Projection::decode(&encoded).unwrap();
+    let mut projection = Projection::decode(encoded.clone()).unwrap();
     let read = Records::of(&projection);
     super::read_in(projection.state_mut(), &encoded.texts, None);
     let issues = projection.state().issues.values();

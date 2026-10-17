@@ -54,20 +54,20 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
     let (encoded, _) = projection.encode(0);
     let unreadable = |error| Failure::Failed(format!("the projection does not read back: {error}"));
     let state_seconds = fastest(|| decode_state(&encoded.state).map_err(unreadable))?;
-    let projection_seconds = fastest(|| Projection::decode(&encoded).map_err(unreadable))?;
+    let projection_seconds = fastest(|| Projection::decode(encoded.clone()).map_err(unreadable))?;
     let before = heap::held();
     let state = decode_state(&encoded.state).map_err(unreadable)?;
     let state_heap = heap::held().saturating_sub(before);
     drop(state);
     let projection_heap = held_whole(&encoded)?;
     // a write-back after a comment, between compactions
-    let read = Projection::decode(&encoded).map_err(unreadable)?;
+    let read = Projection::decode(encoded.clone()).map_err(unreadable)?;
     let once = taken(read, &encoded.texts, &comments(&projection, 1))?;
     let encode_seconds = fastest(|| Ok(once.encode(0)))?;
     drop(once);
     // the worst point: as many comments as it takes before a write-back compacts it
     let known = projection.known();
-    let read = Projection::decode(&encoded).map_err(unreadable)?;
+    let read = Projection::decode(encoded.clone()).map_err(unreadable)?;
     let worst = taken(
         read,
         &encoded.texts,
@@ -81,7 +81,7 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
     let worst_encode_seconds = fastest(|| Ok(worst.encode(0)))?;
     drop(worst);
     // and one comment more: the write-back that compacts it
-    let read = Projection::decode(&encoded).map_err(unreadable)?;
+    let read = Projection::decode(encoded.clone()).map_err(unreadable)?;
     let more = comments(&projection, known / COMPACTED + 1);
     let past = taken(read, &encoded.texts, &more)?;
     drop(projection);
@@ -92,7 +92,7 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
     }
     let compacting_seconds = fastest(|| Ok(past.encode(0)))?;
     drop(past);
-    let worst_seconds = fastest(|| Projection::decode(&worst_encoded).map_err(unreadable))?;
+    let worst_seconds = fastest(|| Projection::decode(worst_encoded.clone()).map_err(unreadable))?;
     let worst_heap = held_whole(&worst_encoded)?;
     let label = label.map_or_else(
         || format!("decode of {count} {}", shape.events()),
@@ -120,11 +120,13 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
     ))
 }
 
-/// The heap a projection holds decoded whole from `encoded`, with its index, as a write holds it.
+/// The heap a projection holds decoded whole from `encoded`, with its index, as a write holds it:
+/// once it let go of the bytes it was read from, as a store has it do before the write goes on.
 fn held_whole(encoded: &Encoded) -> Result<usize, Failure> {
     let before = heap::held();
-    let projection = Projection::decode(encoded)
+    let mut projection = Projection::decode(encoded.clone())
         .map_err(|error| Failure::Failed(format!("the projection does not read back: {error}")))?;
+    projection.let_go();
     let held = heap::held().saturating_sub(before);
     drop(projection);
     Ok(held)
@@ -204,7 +206,7 @@ mod tests {
         let known = projection.known();
         assert_eq!(known, projection.compacted());
         let (encoded, _) = projection.encode(0);
-        let read = Projection::decode(&encoded).unwrap();
+        let read = Projection::decode(encoded.clone()).unwrap();
         let worst = taken(
             read,
             &encoded.texts,
@@ -213,12 +215,12 @@ mod tests {
         .unwrap();
         assert_eq!(worst.known(), known + known / COMPACTED);
         assert!(!worst.compaction_due(), "written back as it is");
-        let read = Projection::decode(&encoded).unwrap();
+        let read = Projection::decode(encoded.clone()).unwrap();
         let more = comments(&projection, known / COMPACTED + 1);
         let past = taken(read, &encoded.texts, &more).unwrap();
         assert!(past.compaction_due(), "one comment more, and it compacts");
         let (compacted, _) = past.encode(0);
-        let compacted = Projection::decode(&compacted).unwrap();
+        let compacted = Projection::decode(compacted).unwrap();
         // the comments, named by nothing, are gone, but for the last, the frontier
         let ids: Vec<EventId> = (more.iter())
             .filter_map(|record| record.value.get("id").and_then(Value::as_str))

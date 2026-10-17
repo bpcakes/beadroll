@@ -210,7 +210,7 @@ fn an_event_that_can_add_to_an_issues_history_waits_for_its_texts_and_has_them_w
         true,
     ));
     let (encoded, _) = project(journal(&records)).unwrap().encode(0);
-    let read = Projection::decode(&encoded).unwrap();
+    let read = Projection::decode(encoded.clone()).unwrap();
     let uid = EventId::parse(&id(2)).unwrap();
     // read back, its history is with its texts, and who ended the claim and how is not
     let issue = read.state().issue(uid).unwrap();
@@ -269,7 +269,7 @@ fn texts_ending_another_claim_than_the_issues_are_never_read_in() {
         true,
     ));
     let (encoded, _) = project(journal(&records)).unwrap().encode(0);
-    let state = Projection::decode(&encoded).unwrap().state().clone();
+    let state = Projection::decode(encoded.clone()).unwrap().state().clone();
     let uid = EventId::parse(&id(2)).unwrap();
     let [(_, place)] = state.wanted_texts([uid])[..] else {
         panic!("its texts are there");

@@ -318,6 +318,9 @@ impl Projection {
             .collect();
         self.heads.sort_unstable();
         self.ids.extend(events.keys().copied());
+        if self.kept.is_some() {
+            self.added.extend(events.keys().copied());
+        }
         for (machine, added) in order {
             if let Some(length) = self.lengths.get_mut(machine) {
                 *length = length.saturating_add(small(added.len()));

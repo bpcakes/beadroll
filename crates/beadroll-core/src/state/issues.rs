@@ -58,6 +58,12 @@ impl Issues {
         self.map.values_mut().map(|issue| &mut **issue)
     }
 
+    /// Room for exactly `n` more issues, so that a state read back is not grown as it is read, nor
+    /// given room it does not use.
+    pub(crate) fn reserve(&mut self, n: usize) {
+        self.map.reserve_exact(n);
+    }
+
     /// Adds `issue` as `uid` after every other; one already there is replaced where it is, marked.
     pub(crate) fn insert(&mut self, uid: EventId, issue: Box<Issue>) {
         let (at, _) = self.map.insert_full(uid, issue);
@@ -95,10 +101,6 @@ impl Issues {
     /// Whether the issue at `at` is to be written again rather than copied as it was read back: it
     /// was not read back, or it changed since, or its texts are to be placed anew, which gives it
     /// a place no bytes read back hold.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the copying encode reads it (roll-lqjj.44)")
-    )]
     pub(crate) fn changed(&self, at: usize) -> bool {
         let marked = (self.marks.get(at / 64)).is_none_or(|word| word & (1 << (at % 64)) != 0);
         at >= self.read

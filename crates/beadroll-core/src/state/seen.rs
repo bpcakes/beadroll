@@ -439,5 +439,7 @@ impl Knowledge {
 mod codec;
 mod compact;
 
+pub(crate) use codec::Arena;
+
 #[cfg(test)]
 mod tests;
