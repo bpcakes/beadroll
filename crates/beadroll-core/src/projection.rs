@@ -237,8 +237,9 @@ impl Projection {
 
     /// [`Projection::encode`], what every event had seen cut down to the events the state names and
     /// the frontier when `compact`, and written as it is otherwise, whatever
-    /// [`Projection::compaction_due`] says: what the tests and the timings compare.
-    pub fn encode_with(
+    /// [`Projection::compaction_due`] says: what the tests compare. Never compacted, a projection
+    /// would keep every event it took in, the count of its last compaction carried forward.
+    pub(crate) fn encode_with(
         &self,
         texts_at: u64,
         compact: bool,

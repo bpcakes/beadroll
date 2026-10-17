@@ -4,11 +4,11 @@
 //! (`Projection::decode`), the fastest of [`RUNS`] runs each; the heap a decoded state holds, as
 //! xtask's allocator counts it; and how many bytes the state part, the index and the texts take.
 //! And what writing it back costs (roll-lqjj.43, X17): the projection read back and extended by a
-//! comment, encoded as a write-back between compactions encodes it and as one that compacts it;
-//! and the same at the worst point, the projection having taken in as many comments as it can
-//! before a write-back compacts it, an eighth of the events it knew ([`COMPACTED`]), none of which
-//! its state names: its index's bytes, its decode, the heap it holds whole and its encode, beside
-//! the heap the projection holds whole as it was made. Replay and the files around a projection
+//! comment, encoded as a write-back between compactions encodes it; the same at the worst point,
+//! the projection having taken in as many comments as it can before a write-back compacts it, an
+//! eighth of the events it knew ([`COMPACTED`]), none of which its state names: its index's bytes,
+//! its decode, the heap it holds whole and its encode, beside the heap the projection holds whole
+//! as it was made; and the encode of the write-back one comment later, which compacts it. Replay and the files around a projection
 //! are not measured: `timing --read N` times the commands themselves. Evidence, never a gate.
 
 use std::time::Instant;
@@ -59,11 +59,10 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
     let state_heap = heap::held().saturating_sub(before);
     drop(state);
     let projection_heap = held_whole(&encoded)?;
-    // a write-back after a comment, as it is and compacted
+    // a write-back after a comment, between compactions
     let read = Projection::decode(&encoded).map_err(unreadable)?;
     let once = taken(read, &encoded.texts, &comments(&projection, 1))?;
     let encode_seconds = fastest(|| Ok(once.encode(0)))?;
-    let compacting_seconds = fastest(|| Ok(once.encode_with(0, true)))?;
     drop(once);
     // the worst point: as many comments as it takes before a write-back compacts it
     let known = projection.known();
@@ -73,7 +72,6 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
         &encoded.texts,
         &comments(&projection, known / COMPACTED),
     )?;
-    drop(projection);
     if worst.compaction_due() {
         return Err(Failure::Failed("the worst point compacts".into()));
     }
@@ -81,6 +79,18 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
     let worst_known = worst.known();
     let worst_encode_seconds = fastest(|| Ok(worst.encode(0)))?;
     drop(worst);
+    // and one comment more: the write-back that compacts it
+    let read = Projection::decode(&encoded).map_err(unreadable)?;
+    let more = comments(&projection, known / COMPACTED + 1);
+    let past = taken(read, &encoded.texts, &more)?;
+    drop(projection);
+    if !past.compaction_due() {
+        return Err(Failure::Failed(
+            "one comment past the worst point does not compact".into(),
+        ));
+    }
+    let compacting_seconds = fastest(|| Ok(past.encode(0)))?;
+    drop(past);
     let worst_seconds = fastest(|| Projection::decode(&worst_encoded).map_err(unreadable))?;
     let worst_heap = held_whole(&worst_encoded)?;
     let label = label.map_or_else(
