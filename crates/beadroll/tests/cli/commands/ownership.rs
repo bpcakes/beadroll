@@ -6,7 +6,8 @@
 //! issues whose description, comments and history they read in (a repeated claim, an update of an
 //! issue already held, a takeover, updates that close). Ids, keys, machines, commits,
 //! times and paths are normalised as the goldens' are (`golden/normal.rs`); a change of output
-//! edits `ownership/transcript.txt` by hand in the same change.
+//! edits `ownership/transcript.txt` by hand in the same change. Beside it, a takeover run again
+//! after its first run died once the remote had accepted it answers with the issue whole.
 
 use std::path::Path;
 
@@ -176,4 +177,40 @@ fn every_end_of_a_claim_prints_as_it_did() {
     }
     again(&mut t, &a);
     t.finish_at(&transcript_path());
+}
+
+/// A takeover whose first run died once the remote had accepted it, run again, finds its takeover
+/// accepted and answers with the issue whole, its description and comment read in from the texts:
+/// the projection the retry's merge saved already holds the takeover, so nothing replays it.
+#[test]
+fn a_retried_takeover_answers_with_the_issue_whole() {
+    let sandbox = crate::sandbox();
+    let a = crate::rust_only(&sandbox, "own-a");
+    let b = crate::rust_only(&sandbox, "own-b");
+    let issues = sandbox.root().join("issues.jsonl");
+    std::fs::write(&issues, ISSUES).expect("the export");
+    let import = issues.display().to_string();
+    a.bead(["init", "--prefix", "ow", "--import", &import]);
+    b.bead(["sync"]);
+    // b has a journal of its own before the takeover, as a's projection knows
+    b.bead(["comments", "add", "ow-1", "b was here"]);
+    a.bead(["sync"]);
+    a.bead(["claim", "ow-2"]);
+    b.bead(["sync"]);
+    b.bead(["list"]);
+    let first = (b.cmd(["takeover", "ow-2", "-r", "a looked dead", "--json"]))
+        .env("BEAD_FAILPOINTS", "ownership.after-publish-ok=exit(99)")
+        .run();
+    assert_eq!(first.returncode(), 99, "{}", first.stderr);
+    let answer = b
+        .bead(["takeover", "ow-2", "-r", "a looked dead"])
+        .expect("an answer");
+    let item = &answer[0];
+    assert_eq!(
+        item["description"].as_str(),
+        Some("Its own text"),
+        "{item:?}"
+    );
+    let comments = item["comments"].as_array().map(|comments| comments.len());
+    assert_eq!(comments, Some(1), "{item:?}");
 }
