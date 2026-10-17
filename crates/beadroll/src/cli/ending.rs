@@ -177,6 +177,32 @@ fn a_write_whose_remote_cannot_be_chosen_keeps_what_it_held_and_says_why() {
     assert_eq!(lines, Some(vec![said]));
 }
 
+/// A write given `--remote` is published there, not to the tracker's own remote, and that choice
+/// decides the free as well: the transaction is let go of first, and a remote that does not answer
+/// leaves the write unpublished and says so, on a tracker with a remote and on one with none.
+#[test]
+fn a_write_given_a_remote_is_published_there_and_lets_go_of_what_it_held_first() {
+    let (sandbox, machine) = tracker();
+    let nowhere = Some(sandbox.root().join("nowhere.git").into_os_string());
+    let said = Line::toned(
+        Tone::Warning,
+        "recorded locally, not yet published (REMOTE_UNREACHABLE)",
+    );
+    let with_origin = workspace(&machine, sandbox.origin(), &[]);
+    for ws in [with_origin, without_origin(&machine, Object::new())] {
+        let (outcome, freed) = holding_a_probe();
+        ws.set_wrote(true);
+        let answer = finish(outcome, Some(&ws), false, &nowhere, true);
+        let (_, lines) = answer.expect("finished").expect("answered");
+        assert_eq!(
+            freed.load(Ordering::SeqCst),
+            1,
+            "freed: a remote was chosen"
+        );
+        assert_eq!(lines, Some(vec![said.clone()]));
+    }
+}
+
 /// The handshake of a `pause-until` failpoint (`crates/beadroll-store/src/failpoint.rs`): the
 /// paused run touches `PATH.ready`, then waits for `PATH.go`. Once it has reached the gate (or
 /// `done` says it will not), runs `step`, then opens the gate, whatever `step` came to.

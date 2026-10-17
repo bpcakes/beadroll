@@ -9,8 +9,8 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 - A write on a tracker with no remote keeps its transaction until the process exits, as an
   offline write does, rather than freeing it first for a publish with nowhere to go (roll-lqjj.50,
   X17): the command line now chooses where a write goes before it lets go of the transaction
-  (`beadroll_sync::destination`, then `publish_soon_at`), and frees it first only for a remote it
-  will reach. A remote that cannot be chosen (`.beadroll.json` naming one where the store
+  (`beadroll_sync::destination`, then `publish_soon_at`), and frees it first only when a remote is
+  chosen, whether or not it answers. A remote that cannot be chosen (`.beadroll.json` naming one where the store
   coordinates through another) keeps it too, and the run still says "recorded locally, not yet
   published (CONFIG)" where it did. At 200,000 events such a write takes 0.174 s rather than
   0.264 s, as an offline write does, and at 20,000 32.0 ms rather than 35.6 ms; its heap peak is

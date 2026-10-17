@@ -439,8 +439,10 @@ pub fn publish_soon(ws: &Workspace, offline: bool, remote: Option<&OsStr>) -> Op
 /// Where [`publish_soon`] would publish: nowhere (`None`) when `offline`, or when the tracker has
 /// no remote to publish to; else the remote, or why it could not be chosen. A command line chooses
 /// it before it lets go of what a write held, so that a write with nowhere to go keeps that to the
-/// end of the process as an offline write does (roll-lqjj.50). Choosing runs git only to read a
-/// remote's name or a relative path, which publishing would have read anyway.
+/// end of the process as an offline write does (roll-lqjj.50). Choosing asks git what choosing
+/// asked it when the publish chose: a remote's URL by its name, the rules that rewrite a local
+/// path, the top of the checkout for a relative one, how an older version saved a remembered
+/// remote; nothing more.
 pub fn destination(
     ws: &Workspace,
     offline: bool,

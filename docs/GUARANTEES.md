@@ -407,9 +407,9 @@ it, and the file is committed again.
   two: at 200,000 events an offline write takes 0.20 s rather than 0.27 s
   and at 20,000 about 32 ms rather than 37 ms, while a write published at
   once and a sync are as they were (roll-lqjj.42; `cargo xtask timing
-  --read N`, `write_seconds`); a write on a tracker with no remote, 0.17 s
-  rather than 0.26 s at 200,000 events, as an offline write does (roll-lqjj.50,
-  `no_remote_write_seconds`).
+  --read N`, `write_seconds`); a write on a tracker with no remote, which
+  freed it too, now keeps it and takes what an offline write takes, about
+  90 ms less at 200,000 events (roll-lqjj.50, `no_remote_write_seconds`).
   A real tracker's state is mostly
   its texts, which only the commands that print them read: on three of the
   largest public Beads trackers (21–47 MB, up to 13,394 issues) a `list` takes
