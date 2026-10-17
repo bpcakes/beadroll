@@ -3,7 +3,8 @@
 //! bead killed as it writes one, or the texts it adds, leaves the last one in place; writes in a
 //! row leave it to the next read ([`deferred`], roll-lqjj.36); dependency edges and their metadata,
 //! kept with the texts, answer alike ([`edges`], roll-lqjj.39); a write-back overtaken by a text
-//! file started again writes nothing or every text anew ([`raced`], roll-lqjj.44). Every machine here runs the `bead`
+//! file started again writes nothing or every text anew ([`raced`], roll-lqjj.44); the read after a write prints what
+//! the journal replayed prints ([`written`], roll-lqjj.51). Every machine here runs the `bead`
 //! this package builds (`rust_only`): the projection is this build's.
 
 use std::os::unix::fs::MetadataExt as _;
@@ -14,6 +15,7 @@ use beadroll_test_support::Machine;
 mod deferred;
 mod edges;
 mod raced;
+mod written;
 
 /// The reading commands whose answers are compared.
 const READS: [&[&str]; 5] = [

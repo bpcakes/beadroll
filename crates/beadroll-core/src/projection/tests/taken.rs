@@ -54,6 +54,7 @@ pub(super) struct Tally {
     pub(super) owned: u64,
     pub(super) seen: owned::Seen,
     pub(super) marked: marked::Exercised,
+    pub(super) written: usize,
 }
 
 impl Tally {
@@ -141,6 +142,8 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -
                 read_in(projection.state_mut(), &file, Some(about.clone()));
                 let histories = owned::histories(projection.state(), &about);
                 let ahead = marked::ahead(&mut projection, &file, &mut coin, held.as_ref());
+                // as the transaction that wrote them holds them (roll-lqjj.51)
+                let writing = (local && counted).then(|| projection.clone());
                 if counted {
                     for (kind, n) in flawed::kinds(full.state()) {
                         let new = n.saturating_sub(before.get(kind).copied().unwrap_or(0));
@@ -155,6 +158,7 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -
                         );
                         let marks = &mut tally.marked;
                         marked::checked(held.as_ref(), ahead, &extended, &records, &about, marks);
+                        tally.written += usize::from(as_written(writing, &records, &extended));
                         if counted {
                             for kind in before.into_keys() {
                                 *tally.past.entry(kind).or_default() += 1;
@@ -205,6 +209,30 @@ impl Tally {
         self.owned = fnv(self.owned, said.as_bytes());
         self.seen.count(world, &state);
     }
+}
+
+/// Whether `writing`, the projection a store's own write extends in its transaction, was there:
+/// extended by `records` as the transaction emitted them, read from no file, it must write back
+/// the bytes `read`, extended by the same records read from the journal, writes (roll-lqjj.51).
+fn as_written(writing: Option<Projection>, records: &[Record], read: &Projection) -> bool {
+    let Some(writing) = writing else {
+        return false;
+    };
+    let emitted = (records.iter().cloned())
+        .map(|record| Record {
+            origin: String::new(),
+            ..record
+        })
+        .collect();
+    let Extended::Applied(written) = writing.extend(emitted).unwrap() else {
+        panic!("a transaction's records declined where the journal's were applied");
+    };
+    let (ours, theirs) = (written.encode(0).0, read.encode(0).0);
+    assert!(
+        ours.state == theirs.state && ours.index == theirs.index && ours.texts == theirs.texts,
+        "a write's write-back differs from a read's"
+    );
+    true
 }
 
 /// The projection a store wrote back last, what it held as it was read back, its text file, and

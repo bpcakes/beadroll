@@ -779,4 +779,6 @@ fn every_extension_is_replays_answer_or_declined() {
     assert!(tally.seen.more_than(5), "{:?}", tally.seen);
     assert_eq!(tally.owned, owned::DIFFERENTIAL, "{:#x}", tally.owned);
     tally.marked.enough();
+    // the store's own writes, extended as their transaction holds them (roll-lqjj.51)
+    assert!(tally.written > 800, "{} writes", tally.written);
 }

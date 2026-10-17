@@ -215,6 +215,9 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
             && let Some(mut projection) = stored.encoded().and_then(|e| Projection::decode(e).ok())
         {
             projection.state_mut().set_texts_file(file);
+            if !records.is_empty() {
+                ws.settings.failpoints.hit("projection.extended");
+            }
             let uids = projection.about(&records);
             // the records applied: the bytes the journal's files grew by, only appended to
             let tail = now.journal_bytes().saturating_sub(was);

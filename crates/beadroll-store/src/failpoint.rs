@@ -39,6 +39,8 @@
 //! read of the store's state through `projection::current` (by `projection`, `state` and the
 //! views, whether it decodes the stored projection or replays the journal because none fits), and
 //! never for the journal a transaction loads and replays itself (`Tx::state` with no projection);
+//! `projection.extended`, where `projection::current` applies records appended after the stored
+//! projection to it, which a test fails to see that a read finds the projection current;
 //! `clock`, every reading of the clock (event times, torn and fork stamps); and
 //! `atomic-write:<path part>` and `atomic-written:<path part>`, before and after the rename of an
 //! atomic write whose target contains that part. In-crate tests pass
@@ -55,7 +57,7 @@ use beadroll_core::code::Code;
 use crate::error::Error;
 
 /// The points bead has, besides `atomic-write:<path part>` and `atomic-written:<path part>`.
-pub const POINTS: [&str; 23] = [
+pub const POINTS: [&str; 24] = [
     "ownership.before-publish",
     "ownership.before-transaction",
     "ownership.after-publish-ok",
@@ -76,6 +78,7 @@ pub const POINTS: [&str; 23] = [
     "projection.before-save",
     "projection.texts-appended",
     "projection.read",
+    "projection.extended",
     "view.before-load-pending",
     "identity.before-link",
     "clock",
