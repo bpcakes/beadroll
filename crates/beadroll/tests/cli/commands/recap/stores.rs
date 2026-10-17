@@ -164,6 +164,39 @@ fn a_tracker_unreadable_when_first_found_is_owed_its_window_until_it_is_shown() 
 }
 
 #[test]
+fn a_store_whose_journal_path_is_unusable_when_first_found_is_owed_its_window() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let (_other, b) = beside(&a, Machine::new);
+    a.bead(["init", "--prefix", "one"]);
+    create(&a, "Seen");
+    recap(&a);
+    b.bead(["init", "--prefix", "two"]);
+    create(&b, "Written before the cursor moved");
+    let store = b.bead(["info"]).unwrap()["path"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    // its journal path is no directory while another tracker moves the cursor on
+    let journals = std::path::Path::new(&store).join("events");
+    let held = journals.with_extension("held");
+    std::fs::rename(&journals, &held).unwrap();
+    std::fs::write(&journals, "").unwrap();
+    create(&a, "Moves the cursor on");
+    assert_eq!(each(&recap(&a), "title"), ["Moves the cursor on"]);
+    let told = a.run(["recap"]).stdout;
+    assert!(told.contains("is not a directory"), "{told}");
+    std::fs::remove_file(&journals).unwrap();
+    std::fs::rename(&held, &journals).unwrap();
+    let repaired = recap(&a);
+    assert_eq!(
+        each(&repaired, "title"),
+        ["Written before the cursor moved"]
+    );
+    assert!(events(&recap(&a)).is_empty());
+}
+
+#[test]
 fn a_tracker_whose_events_all_wait_for_a_cause_stays_owed_its_window() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
