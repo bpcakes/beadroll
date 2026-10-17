@@ -371,7 +371,11 @@ it, and the file is committed again.
   9.45 MB (4.79 MB rather than 8.70 MB on a history heavy in claims) and
   decoded in 36.5 ms rather than 40.7 ms, and `list` took 0.108 s rather than
   0.114 s, `show` 0.100 s rather than 0.106 s and `ready` 0.146 s rather than
-  0.160 s. A write derives the labels its own events
+  0.160 s; measured again on fd5ae9b, with roll-lqjj.39, on a busier machine,
+  the state part is 6.85 MB rather than 7.69 MB (4.79 MB rather than 8.70 MB
+  on the history heavy in claims) and decodes in 57.2 ms rather than 61.1 ms,
+  and `list` takes 81 ms rather than 87 ms, `show` 74 ms rather than 82 ms and
+  `ready` 121 ms rather than 128 ms. A write derives the labels its own events
   changed, each issue's once however many of them changed it, and takes its new
   event ids in wherever they sort among the ids held, so one `bead close`
   naming 8,000 issues of 8,000 takes 0.7 s rather than 19.8 s; a batch that

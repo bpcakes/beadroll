@@ -93,7 +93,9 @@ pub(crate) const BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 /// generator drawing [`World::own`] and [`World::race`]): of the differential tests' histories
 /// (`taken::differential`), plain and flawed, and of the delivery-order property's
 /// (`replay::tests`), plain and flawed. A change to the generator changes them, the failure
-/// printing each: they are then made again on code whose answers are not otherwise changed.
+/// printing each: they are then made again on the commit that changes the generator alone
+/// (2d44707, made from 5a2e6c7 when restacked onto fd5ae9b, or what a later restack makes
+/// of it), never on a later one, whose code would be compared with itself.
 pub(crate) const DIFFERENTIAL: u64 = 0x4034_6c5b_1d6d_a79f;
 /// See [`DIFFERENTIAL`].
 pub(crate) const FLAWED: u64 = 0x83d5_d990_ed33_6b7d;
