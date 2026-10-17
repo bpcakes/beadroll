@@ -2,7 +2,9 @@
 //! over and close, an offline claim that loses to the owner of the time and one settled later, a
 //! close and a release that come too late, and a claim that lost, each write's answer and then the
 //! reading commands on both machines, human and `--json`, as this build printed them at 9cbd60a,
-//! before an issue's ownership history was kept with its texts. Ids, keys, machines, commits,
+//! before an issue's ownership history was kept with its texts; and last, writes that answer with
+//! issues whose description, comments and history they read in (a repeated claim, an update of an
+//! issue already held, a takeover, updates that close). Ids, keys, machines, commits,
 //! times and paths are normalised as the goldens' are (`golden/normal.rs`); a change of output
 //! edits `ownership/transcript.txt` by hand in the same change.
 
@@ -17,12 +19,12 @@ use crate::golden::Transcript;
 /// The issues, imported with keys of their own so that what lists them by key lists them alike on
 /// every run.
 const ISSUES: &str = r#"{"id":"ow-1","title":"Released","description":"A long text","notes":"kept with the texts","status":"open","priority":1,"issue_type":"task","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z","created_by":"seed"}
-{"id":"ow-2","title":"Taken over, closed too late","status":"open","priority":2,"issue_type":"task","created_at":"2026-01-01T01:00:00Z","updated_at":"2026-01-01T01:00:00Z","created_by":"seed"}
+{"id":"ow-2","title":"Taken over, closed too late","description":"Its own text","status":"open","priority":2,"issue_type":"task","created_at":"2026-01-01T01:00:00Z","updated_at":"2026-01-01T01:00:00Z","created_by":"seed","comments":[{"id":21,"issue_id":"ow-2","author":"seed","text":"a comment of its own","created_at":"2026-01-01T01:30:00Z"}]}
 {"id":"ow-3","title":"Closed by its owner","status":"open","priority":2,"issue_type":"bug","created_at":"2026-01-01T02:00:00Z","updated_at":"2026-01-01T02:00:00Z","created_by":"seed"}
 {"id":"ow-4","title":"Offline claim lost","status":"open","priority":2,"issue_type":"task","created_at":"2026-01-01T03:00:00Z","updated_at":"2026-01-01T03:00:00Z","created_by":"seed"}
 {"id":"ow-5","title":"Offline claim settled","status":"open","priority":2,"issue_type":"task","created_at":"2026-01-01T04:00:00Z","updated_at":"2026-01-01T04:00:00Z","created_by":"seed"}
 {"id":"ow-6","title":"Taken over, released too late","status":"open","priority":3,"issue_type":"task","created_at":"2026-01-01T05:00:00Z","updated_at":"2026-01-01T05:00:00Z","created_by":"seed"}
-{"id":"ow-7","title":"Reopened, claimed, lost to","status":"open","priority":2,"issue_type":"feature","created_at":"2026-01-01T06:00:00Z","updated_at":"2026-01-01T06:00:00Z","created_by":"seed"}
+{"id":"ow-7","title":"Reopened, claimed, lost to","description":"Text of its own","status":"open","priority":2,"issue_type":"feature","created_at":"2026-01-01T06:00:00Z","updated_at":"2026-01-01T06:00:00Z","created_by":"seed","comments":[{"id":22,"issue_id":"ow-7","author":"seed","text":"another comment","created_at":"2026-01-01T06:30:00Z"}]}
 {"id":"ow-8","title":"Closed through update","status":"open","priority":2,"issue_type":"task","created_at":"2026-01-01T07:00:00Z","updated_at":"2026-01-01T07:00:00Z","created_by":"seed"}
 "#;
 
@@ -116,6 +118,20 @@ fn work(t: &mut Transcript, sandbox: &beadroll_test_support::Sandbox, a: &Machin
     t.record(a, &["claim", "ow-1", "--offline"]);
 }
 
+/// What a write that reads in the issue's texts to answer prints of issues with a description,
+/// comments and a history (ow-7's lost claim, ow-2's close that came too late): a claim and an
+/// update of an issue its machine already holds, a takeover, and updates that close, each ending
+/// a published claim.
+fn again(t: &mut Transcript, a: &Machine) {
+    t.note("writes that answer with issues whose texts and histories they read in");
+    t.record(a, &["claim", "ow-7", "--json"]);
+    t.record(a, &["update", "ow-7", "--claim", "--json"]);
+    t.record(a, &["sync"]);
+    t.record(a, &["takeover", "ow-2", "-r", "b moved on", "--json"]);
+    t.record(a, &["update", "ow-2", "--status", "closed", "--json"]);
+    t.record(a, &["update", "ow-7", "--status", "closed", "--json"]);
+}
+
 /// Plants in `machine`'s store a third machine's journal holding an online claim of `key` that
 /// saw only its create, placed after the claim `machine` holds: no remote accepts two claims of
 /// one issue, so a journal holds a claim that lost only when one was planted.
@@ -158,5 +174,6 @@ fn every_end_of_a_claim_prints_as_it_did() {
             t.record(machine, args);
         }
     }
+    again(&mut t, &a);
     t.finish_at(&transcript_path());
 }
