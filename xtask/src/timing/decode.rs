@@ -4,9 +4,11 @@
 //! (`Projection::decode`), the fastest of [`RUNS`] runs each; the heap a decoded state holds, as
 //! xtask's allocator counts it; and how many bytes the state part, the index and the texts take.
 //! And what writing it back costs (roll-lqjj.43, X17): the projection read back and extended by a
-//! comment, encoded as a write-back between compactions encodes it; the same at the worst point,
-//! the projection having taken in as many comments as it can before a write-back compacts it, an
-//! eighth of the events it knew ([`COMPACTED`]), none of which its state names: its index's bytes,
+//! comment, encoded as a write-back between compactions encodes it, copying what did not change
+//! since it was read back, and whole, as one that let go of those bytes writes every record
+//! (roll-lqjj.44); the same at the worst point, the projection having taken in as many comments as
+//! it can before a write-back compacts it, an eighth of the events it knew ([`COMPACTED`]), none of
+//! which its state names: its index's bytes,
 //! its decode, the heap it holds whole and its encode, beside the heap the projection holds whole
 //! as it was made; and the encode of the write-back one comment later, which compacts it. Replay
 //! and the files around a projection are not measured: `timing --read N` times the commands
@@ -31,14 +33,34 @@ const RUNS: usize = 7;
 
 /// The fastest of [`RUNS`] runs of `run`, in seconds.
 fn fastest<T>(mut run: impl FnMut() -> Result<T, Failure>) -> Result<f64, Failure> {
+    fastest_of(|| (), |()| run())
+}
+
+/// The fastest of [`RUNS`] runs of `run` on what `given` gives it, made before the clock starts: a
+/// decode of bytes it takes, timed without their copy.
+fn fastest_of<G, T>(
+    mut given: impl FnMut() -> G,
+    mut run: impl FnMut(G) -> Result<T, Failure>,
+) -> Result<f64, Failure> {
     let mut best = f64::INFINITY;
     for _ in 0..RUNS {
+        let input = given();
         let clock = Instant::now();
-        let made = run()?;
+        let made = run(input)?;
         best = best.min(clock.elapsed().as_secs_f64());
         drop(made);
     }
     Ok(best)
+}
+
+/// How long `projection` takes to write back, the fastest of [`RUNS`]: as read back, copying what
+/// did not change since (roll-lqjj.44), and having let go of the bytes it was read from, writing
+/// every record.
+fn encodes(projection: &Projection) -> Result<(f64, f64), Failure> {
+    let copying = fastest(|| Ok(projection.encode(0)))?;
+    let mut whole = projection.clone();
+    whole.let_go();
+    Ok((copying, fastest(|| Ok(whole.encode(0)))?))
 }
 
 /// Measures; returns the beginning of the line to record.
@@ -54,7 +76,10 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
     let (encoded, _) = projection.encode(0);
     let unreadable = |error| Failure::Failed(format!("the projection does not read back: {error}"));
     let state_seconds = fastest(|| decode_state(&encoded.state).map_err(unreadable))?;
-    let projection_seconds = fastest(|| Projection::decode(encoded.clone()).map_err(unreadable))?;
+    let projection_seconds = fastest_of(
+        || encoded.clone(),
+        |bytes| Projection::decode(bytes).map_err(unreadable),
+    )?;
     let before = heap::held();
     let state = decode_state(&encoded.state).map_err(unreadable)?;
     let state_heap = heap::held().saturating_sub(before);
@@ -63,7 +88,7 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
     // a write-back after a comment, between compactions
     let read = Projection::decode(encoded.clone()).map_err(unreadable)?;
     let once = taken(read, &encoded.texts, &comments(&projection, 1))?;
-    let encode_seconds = fastest(|| Ok(once.encode(0)))?;
+    let (encode_seconds, whole_encode_seconds) = encodes(&once)?;
     drop(once);
     // the worst point: as many comments as it takes before a write-back compacts it
     let known = projection.known();
@@ -78,7 +103,7 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
     }
     let (worst_encoded, _) = worst.encode(0);
     let worst_known = worst.known();
-    let worst_encode_seconds = fastest(|| Ok(worst.encode(0)))?;
+    let (worst_encode_seconds, worst_whole_encode_seconds) = encodes(&worst)?;
     drop(worst);
     // and one comment more: the write-back that compacts it
     let read = Projection::decode(encoded.clone()).map_err(unreadable)?;
@@ -92,7 +117,10 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
     }
     let compacting_seconds = fastest(|| Ok(past.encode(0)))?;
     drop(past);
-    let worst_seconds = fastest(|| Projection::decode(worst_encoded.clone()).map_err(unreadable))?;
+    let worst_seconds = fastest_of(
+        || worst_encoded.clone(),
+        |bytes| Projection::decode(bytes).map_err(unreadable),
+    )?;
     let worst_heap = held_whole(&worst_encoded)?;
     let label = label.map_or_else(
         || format!("decode of {count} {}", shape.events()),
@@ -105,11 +133,13 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
          \"state_bytes\": {}, \"index_bytes\": {}, \"texts_bytes\": {}, \
          \"projection_heap_bytes\": {projection_heap}, \"known\": {known}, \
          \"encode_seconds\": {encode_seconds:.4}, \
+         \"whole_encode_seconds\": {whole_encode_seconds:.4}, \
          \"compacting_encode_seconds\": {compacting_seconds:.4}, \
          \"worst_known\": {worst_known}, \"worst_index_bytes\": {}, \
          \"worst_projection_seconds\": {worst_seconds:.4}, \
          \"worst_projection_heap_bytes\": {worst_heap}, \
-         \"worst_encode_seconds\": {worst_encode_seconds:.4}, ",
+         \"worst_encode_seconds\": {worst_encode_seconds:.4}, \
+         \"worst_whole_encode_seconds\": {worst_whole_encode_seconds:.4}, ",
         json_string(&label),
         json_string(shape.name()),
         json_string(profile()),
