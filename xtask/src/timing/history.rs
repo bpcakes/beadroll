@@ -95,6 +95,18 @@ pub(crate) fn history(count: usize, shape: Shape) -> Vec<Files> {
     writer.files
 }
 
+/// The id of a history's event `n`, counted from its first: a UUIDv7 one millisecond after event
+/// `n - 1`'s.
+pub(crate) fn event_id(n: usize) -> String {
+    let millis = 1_791_558_245_123 + u64::try_from(n).unwrap_or(0);
+    format!(
+        "{:08x}-{:04x}-7000-8000-{:012x}",
+        millis >> 16,
+        millis & 0xffff,
+        n
+    )
+}
+
 /// Six machines' files, and what each has seen.
 struct Writer {
     seed: u64,
@@ -133,14 +145,7 @@ impl Writer {
 
     /// The id of the next event: a UUIDv7 one millisecond after the last.
     fn id(&self) -> String {
-        let n = self.written;
-        let millis = 1_791_558_245_123 + u64::try_from(n).unwrap_or(0);
-        format!(
-            "{:08x}-{:04x}-7000-8000-{:012x}",
-            millis >> 16,
-            millis & 0xffff,
-            n
-        )
+        event_id(self.written)
     }
 
     /// Machine `m` learns what machine `other` has seen.

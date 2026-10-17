@@ -35,13 +35,16 @@ consumer on tokio calls through `spawn_blocking`.
   that waits for a key is, by that key (roll-lqjj.18).
 - `src/projection.rs`: `project`, `Projection` (roll-lqjj.2), a replayed state kept to have events
   applied after it: what every event had seen cut to the events the state still names
-  (`state/seen/compact.rs`); `projection/extend.rs`: `Projection::extend`, which applies records
+  (`state/seen/compact.rs`), by `project` and then now and then, by the write-back that finds the
+  events taken in since more than a `COMPACTED`th of those it knew when last cut
+  (`Projection::compaction_due`, roll-lqjj.43); `projection/extend.rs`: `Projection::extend`, which applies records
   appended to its journal when replay would apply them after all of it, and declines otherwise, and
   then finishes only what the batch changed (`replay::finish_some`, roll-lqjj.17);
   `projection/codec.rs`, `projection/state_codec.rs`, `state/seen/codec.rs`: its bytes. Its
   state part (`decode_state`, what a command that only reads decodes) holds of its events only who
   wrote those behind a register with several entries and where journals broke; its index holds
-  every event the state names with its causes, machine and actor (roll-lqjj.35). Its index also
+  every event the state names with its causes, machine and actor (roll-lqjj.35), and between
+  compactions every event taken in since, with how many it knew when last compacted. Its index also
   holds what `bead info` and `bead machines` answer from (roll-lqjj.31): the frontier,
   every event id (`Projection::event_count`), and each machine's journal length and latest event
   (`Projection::journals`), which `project` takes from the journal's order and `extend` advances.
@@ -121,7 +124,12 @@ consumer on tokio calls through `spawn_blocking`.
   its causes, machine and actor, is in the projection's index, which only `Projection::decode`
   reads (roll-lqjj.35, X16). Anything else asked of an event (`State::who` of another, `saw`,
   `holds`, `events`) is asked of a projection or of replay; `read_back` in `projection/tests.rs`
-  checks both parts on every history the differential tests read back.
+  checks both parts on every history the differential tests read back. Between compactions the
+  index also holds events the state no longer names (roll-lqjj.43): nothing a command answers or
+  decides may read them, and `holds` and `events` of a projection's state list them. Every track of
+  the differential tests is kept three ways (`WriteBack`): as the store writes it back, and at every
+  write-back uncompacted or compacted, each compared with replay, who wrote every event the state
+  names and what each head had seen of it included (`answers_alike`).
 - A projection extended is replay: `projection/tests.rs` checks every batch a store takes in on
   histories of machines that write, sync and race, and each batch it must decline. What replay
   reports does not stop it (roll-lqjj.28): `projection/tests/flawed.rs` runs the same on histories

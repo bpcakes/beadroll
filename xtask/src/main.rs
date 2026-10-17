@@ -124,7 +124,11 @@ usage: cargo xtask <command>
       dependency on a key that never comes, the fastest of three runs each; --decode N, the
       projection of N events decoded in this process: its state part alone, as a command that only
       reads decodes it, and whole with its index, as a write does, the fastest of seven runs each,
-      the heap a decoded state holds, and the bytes of the state part, the index and the texts.
+      the heap a decoded state holds, and the bytes of the state part, the index and the texts;
+      and its encode after a comment, as a write-back between compactions of what every event had
+      seen encodes it, at the worst point, an eighth more events taken in than a compaction left,
+      the index's bytes, the decode, the heap held whole and the encode, and one comment past it
+      the encode that compacts.
       Timings are evidence, never a gate.
 
   bead ARG...

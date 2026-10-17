@@ -147,12 +147,15 @@ impl State {
         self.texts_file = file;
     }
 
-    /// Whether `event` was among the events it was replayed from.
+    /// Whether `event` was among the events it was replayed from; of a projection's state, among
+    /// those it knows ([`crate::projection::Projection::known`]), and of a state read alone, among
+    /// those whose writers it holds ([`crate::projection::decode_state`]).
     pub fn holds(&self, event: EventId) -> bool {
         self.knowledge.events.contains_key(&event)
     }
 
-    /// The events it was replayed from, by id, in their journal's order.
+    /// The events it was replayed from, by id, in their journal's order: of a projection's state or
+    /// a state read alone, those [`State::holds`] says.
     pub fn events(&self) -> impl Iterator<Item = EventId> {
         self.knowledge.events.keys().copied()
     }

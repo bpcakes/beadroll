@@ -12,9 +12,12 @@ use crate::state::{Rename, State, asked};
 use crate::time::event_time;
 
 use super::super::{Extended, Record, project};
-use super::hostile::{HERE, event, id, journal, record};
+use super::hostile::{HERE, event, fields, id, journal, record};
 use super::shown::replayed;
-use super::{MACHINES, TextFile, World, equal, load, read_back, read_in, records, same, whole};
+use super::{
+    MACHINES, TextFile, World, WriteBack, answers_alike, equal, load, read_back, read_in, records,
+    same, whole,
+};
 
 /// Another machine.
 const THERE: &str = "0000bb02";
@@ -139,29 +142,36 @@ fn every_way(base: &[Record], rest: &[Record]) -> (State, Taken) {
         Err(error) => panic!("{error}"),
     };
     let mut declined = 0;
-    for reading_back in [false, true] {
+    // never read back, and read back each way it can be written back (roll-lqjj.43)
+    for reading_back in [None].into_iter().chain(WriteBack::EVERY.map(Some)) {
         let (mut file, mut held) = (TextFile::new(), base.to_vec());
         let mut projection = project(journal(base)).unwrap();
         for (n, next) in rest.iter().enumerate() {
             held.push(next.clone());
-            if reading_back {
-                projection = read_back(&projection, &mut file);
+            if let Some(back) = reading_back {
+                projection = read_back(&projection, &mut file, back);
             }
             projection = match projection.extend(vec![next.clone()]).unwrap() {
                 Extended::Applied(extended) => *extended,
                 Extended::Replay => {
-                    declined += usize::from(!reading_back);
+                    declined += usize::from(reading_back.is_none());
                     project(journal(&held)).unwrap()
                 }
             };
             let replayed = replayed(&held);
             assert!(
-                same(whole(&projection, &file).state(), &replayed),
-                "after record {} (read back: {reading_back})",
+                same(whole(&projection, &file).state(), &replayed)
+                    && answers_alike(&projection, &replayed),
+                "after record {} (read back: {reading_back:?})",
                 n + 1
             );
         }
-        read_back(&projection, &mut file); // which holds the bytes to the same state
+        // which holds the bytes to the same state
+        read_back(
+            &projection,
+            &mut file,
+            reading_back.unwrap_or(WriteBack::Encoded),
+        );
     }
     let taken = Taken {
         in_one_batch,
@@ -493,6 +503,54 @@ fn a_removal_by_target_before_the_target_exists_takes_back_only_an_import_it_had
     );
 }
 
+/// What `named` keeps of an issue that its registers no longer name: a knowledge
+/// compacted between an import and its key's arrival, with the frontier past the import, still
+/// knows its create, whose writer the edge is stamped with (roll-lqjj.43). Only the track compacted
+/// at every write-back meets it.
+#[test]
+fn a_compaction_before_the_key_arrives_keeps_the_create_of_an_import_no_register_names() {
+    // the create's title and status written since: no register names it
+    let mut status = Object::new();
+    status.insert("status".into(), Value::from("in_progress"));
+    let mut set_status = Object::new();
+    set_status.insert("fields".into(), Value::from(status));
+    let x = creating("pr-x", vec![on("pr-k", Some("blocks"), &[])]);
+    let rest = vec![
+        at(3, HERE, &[2], "create", 3, x),
+        at(4, HERE, &[3], "set", 3, fields("retitled")),
+        at(5, HERE, &[4], "set", 3, set_status),
+        at(6, HERE, &[5], "create", 6, creating("pr-k", vec![])),
+    ];
+    let (state, taken) = every_way(&base(), &rest);
+    assert_eq!(taken, CHAINED);
+    assert_eq!(edges(&state, 3), [edge("pr-k", "blocks", stamp(3, &[]))]);
+}
+
+/// As `a_removal_by_target_before_the_target_exists_takes_back_only_an_import_it_had_seen`, with a
+/// write elsewhere between the removal and the target's create: a knowledge compacted before the
+/// create has the removal off its frontier, and still knows it from what the issue has taken back
+/// (roll-lqjj.43).
+#[test]
+fn a_compaction_before_the_target_exists_keeps_a_removal_off_the_frontier() {
+    let x = creating(
+        "pr-x",
+        vec![
+            on("pr-k", Some("blocks"), &[]),
+            on("pr-k", Some("related"), &[]),
+        ],
+    );
+    let rest = vec![
+        at(3, HERE, &[2], "create", 3, x),
+        at(4, HERE, &[3], "dep_remove", 3, by_target(6, Some("blocks"))),
+        at(5, HERE, &[4], "set", 2, fields("elsewhere")),
+        at(6, HERE, &[5], "create", 6, creating("pr-k", vec![])),
+    ];
+    let (state, taken) = every_way(&base(), &rest);
+    assert_eq!(taken, CHAINED);
+    assert_eq!(edges(&state, 3), [edge("pr-k", "related", stamp(3, &[]))]);
+    assert!(waiting(&state, 3).is_empty());
+}
+
 #[test]
 fn a_removal_by_key_concurrent_with_the_targets_create_wins_whichever_applies_first() {
     let x = creating("pr-x", vec![on("pr-b", Some("blocks"), &[])]);
@@ -786,30 +844,39 @@ fn histories_heavy_in_imports_that_wait_agree_every_way_and_with_replay_before_t
         data.insert("prefix".into(), Value::from("pr"));
         world.write(0, "init", None, data);
         let mut held: Vec<usize> = vec![0];
-        let mut projection = project(load(&world, &held)).unwrap();
-        let mut file = TextFile::new();
+        let first = project(load(&world, &held)).unwrap();
+        // each way it can be written back (roll-lqjj.43), the figures the store's
+        let mut tracks = WriteBack::EVERY.map(|back| (first.clone(), TextFile::new(), back));
         for _ in 0..50 {
             let batch = next_batch(&mut world);
-            if world.rng.chance(50) {
-                projection = read_back(&projection, &mut file);
-            }
+            let reading_back = world.rng.chance(50);
             held.extend(&batch);
             let full = project(load(&world, &held)).unwrap();
-            assert!(same(full.state(), &replay(load(&world, &held)).unwrap()));
+            let replayed = replay(load(&world, &held)).unwrap();
+            assert!(same(full.state(), &replayed) && answers_alike(&full, &replayed));
             let records = records(&world, &batch);
-            let about = (records.iter())
+            let about: Vec<EventId> = (records.iter())
                 .filter_map(|record| record.value.get("issue").and_then(Value::as_str))
                 .filter_map(EventId::parse)
                 .collect();
-            read_in(projection.state_mut(), &file, Some(about));
-            projection = match projection.extend(records).unwrap() {
-                Extended::Applied(extended) => {
-                    assert!(equal(&whole(&extended, &file), &full), "seed {seed}");
-                    exercised.applied += 1;
-                    *extended
+            tracks = tracks.map(|(mut projection, mut file, back)| {
+                if reading_back {
+                    projection = read_back(&projection, &mut file, back);
                 }
-                Extended::Replay => full,
-            };
+                read_in(projection.state_mut(), &file, Some(about.clone()));
+                let projection = match projection.extend(records.clone()).unwrap() {
+                    Extended::Applied(extended) => {
+                        assert!(
+                            equal(&whole(&extended, &file), &full),
+                            "seed {seed}, {back:?}"
+                        );
+                        exercised.applied += usize::from(back == WriteBack::Encoded);
+                        *extended
+                    }
+                    Extended::Replay => full.clone(),
+                };
+                (projection, file, back)
+            });
         }
         let everything: Vec<usize> = (0..world.events.len()).collect();
         let state = replay(load(&world, &everything)).unwrap();

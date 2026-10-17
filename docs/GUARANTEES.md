@@ -410,6 +410,21 @@ it, and the file is committed again.
   --read N`, `write_seconds`); a write on a tracker with no remote, which
   freed it too, now keeps it and takes what an offline write takes, about
   90 ms less at 200,000 events (roll-lqjj.50, `no_remote_write_seconds`).
+  A write that is not published (`--offline`) keeps its transaction until
+  the process exits, as a read keeps its state, and one that publishes
+  frees it first, so that none holds two: at 200,000 events an offline
+  write takes 0.20 s rather than 0.27 s and at 20,000 about 32 ms rather
+  than 37 ms, while a write published at once and a sync are as they were
+  (roll-lqjj.42; `cargo xtask timing --read N`, `write_seconds`).
+  A write-back of the projection cuts what it keeps of what every event had
+  seen down to the events its state names only once it holds more than an
+  eighth more than it did after the last such cut, not every time, so at
+  200,000 events the read after a write takes 0.22 s rather than 0.26 s;
+  between, it holds up to an eighth more events: at worst there its index is
+  9.65 MB rather than 8.93 MB, and its file larger by as much, and a decoded
+  projection holds 77.1 MB rather than 75.7 MB (roll-lqjj.43; `cargo xtask
+  timing --read N`, `read_after_write_seconds`; `--decode N`,
+  `worst_index_bytes` and `worst_projection_heap_bytes`).
   A real tracker's state is mostly
   its texts, which only the commands that print them read: on three of the
   largest public Beads trackers (21–47 MB, up to 13,394 issues) a `list` takes

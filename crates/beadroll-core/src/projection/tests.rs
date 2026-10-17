@@ -14,6 +14,7 @@ use crate::state::State;
 use super::{Projection, Record, decode_state};
 
 mod awaiting;
+mod compacted;
 mod finished;
 mod flawed;
 mod hostile;
@@ -582,16 +583,51 @@ fn whole(projection: &Projection, file: &[u8]) -> Projection {
     whole
 }
 
-/// The projection read back from its bytes, as the next command reads it, its new texts appended
-/// to `file` and every issue's texts there.
-fn read_back(projection: &Projection, file: &mut TextFile) -> Projection {
-    let (encoded, _) = projection.encode(file.len() as u64);
+/// How a track of the differential tests writes its projection back (roll-lqjj.43): as
+/// [`Projection::encode`] does, or at every write-back with what every event had seen left as it
+/// is, or at every write-back cut down to the events the state names and the frontier.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum WriteBack {
+    Encoded,
+    Uncompacted,
+    Compacted,
+}
+
+impl WriteBack {
+    /// Every way, the one the store takes first.
+    pub(super) const EVERY: [WriteBack; 3] = [
+        WriteBack::Encoded,
+        WriteBack::Uncompacted,
+        WriteBack::Compacted,
+    ];
+
+    /// Whether writing `projection` back cuts what every event had seen down to the events the
+    /// state names and the frontier: as the store writes it, once the events taken in since it was
+    /// last compacted are more than an eighth of those it knew then.
+    fn compacts(self, projection: &Projection) -> bool {
+        let since = projection.known() - projection.compacted();
+        match self {
+            WriteBack::Encoded => since * 8 > projection.compacted(),
+            WriteBack::Compacted => true,
+            WriteBack::Uncompacted => false,
+        }
+    }
+}
+
+/// The projection read back from its bytes, as the next command reads it, written back as `back`
+/// says, its new texts appended to `file` and every issue's texts there.
+fn read_back(projection: &Projection, file: &mut TextFile, back: WriteBack) -> Projection {
+    let compacts = back.compacts(projection);
+    let (encoded, _) = match back {
+        WriteBack::Encoded => projection.encode(file.len() as u64),
+        _ => projection.encode_with(file.len() as u64, compacts),
+    };
     file.extend_from_slice(&encoded.texts);
     let decoded = Projection::decode(&encoded).unwrap();
     assert!(decoded.state().issues().all(|issue| !issue.texts().here()));
     let original = whole(projection, file);
     assert!(same(whole(&decoded, file).state(), original.state()));
-    assert!(known::knows_alike(&decoded, projection));
+    assert!(known::knows_alike(&decoded, projection, compacts));
     let mut state = decode_state(&encoded.state).unwrap();
     assert!(known::knows_writers_alone(&state, projection));
     read_in(&mut state, file, None);
@@ -599,14 +635,29 @@ fn read_back(projection: &Projection, file: &mut TextFile) -> Projection {
     decoded
 }
 
-/// Whether `extended` is what projecting the whole journal (`full`) makes.
+/// Whether `extended` is what projecting the whole journal (`full`) makes, and answers as it does
+/// of every event its state names.
 fn equal(extended: &Projection, full: &Projection) -> bool {
     same(extended.state(), full.state())
+        && answers_alike(extended, full.state())
         && extended.heads == full.heads
         && extended.ids == full.ids
         && extended.lengths == full.lengths
         && extended.lasts == full.lasts
         && extended.open == full.open
+}
+
+/// Whether `projection` answers as `state`, the same journal's, of every event its state names and
+/// its frontier: who wrote each, and whether each head's writer had seen it, what an event applied
+/// after all of them asks (roll-lqjj.43).
+fn answers_alike(projection: &Projection, state: &State) -> bool {
+    let mut named = super::named(projection.state());
+    named.extend(projection.heads.iter().copied());
+    (named.iter()).all(|id| {
+        projection.state().who(*id) == state.who(*id)
+            && (projection.heads.iter())
+                .all(|head| projection.state().saw(*head, *id) == state.saw(*head, *id))
+    })
 }
 
 #[test]
@@ -627,5 +678,20 @@ fn every_extension_is_replays_answer_or_declined() {
         "{} extensions by several batches, {} at most",
         tally.deferred,
         tally.longest
+    );
+    // written back as it was, what every event had seen holds events the state no longer names
+    // (roll-lqjj.43)
+    assert!(
+        tally.uncompacted > 500 && tally.unnamed >= 20,
+        "{} write-backs left events the state no longer names, {} at most",
+        tally.uncompacted,
+        tally.unnamed
+    );
+    // and as the store writes it back, on both sides of an eighth more
+    assert!(
+        tally.left > 200 && tally.cut > 200,
+        "the store's write-backs: {} left such events, {} compacted",
+        tally.left,
+        tally.cut
     );
 }

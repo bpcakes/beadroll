@@ -14,7 +14,9 @@
 //! of N shown in full, its dependents found once for all and for each alone ([`details`]); with
 //! `--renames N`, replay of N copies renamed, against the same creates renamed by nobody
 //! ([`renames`]); with `--decode N`, a projection of N events decoded, its state part alone and
-//! whole ([`decode`]). A timing never decides whether anything passes.
+//! whole, and read back, extended by comments and encoded: after one, at the worst point between
+//! two compactions and one comment past it ([`decode`]). A timing never decides whether anything
+//! passes.
 
 mod contend;
 mod dangling;

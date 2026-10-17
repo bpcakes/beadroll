@@ -2,7 +2,8 @@
 //! parts: what a state answers with alone, the writers of the events behind a register two writers
 //! set without seeing each other ([`crate::state::State::who`], its conflicts' writers) and where
 //! machines' journals broke, which its state part holds (roll-lqjj.35); and in its index, which
-//! only applying more events reads, every event it names with its causes, machine and actor, the
+//! only applying more events reads, every event it knows with its causes, machine and actor (those
+//! the state names, and between compactions every event taken in since, roll-lqjj.43), the
 //! machines, and each machine's applicable positions and each event's place and clock.
 
 use std::collections::{HashMap, HashSet};
