@@ -50,7 +50,10 @@ impl Drop for Prune {
 /// soak (776 prune runs during 200 ops) saw 89 GIT_ERROR ('git mktree: fatal: entry ... is
 /// unavailable') and 2 REMOTE_UNREACHABLE, all transient; final exports and claims identical,
 /// pending [], integrity [], remote fsck 0. Here: 30 create+sync rounds on a while the prune loops,
-/// then b sees all 30 issues.
+/// then b sees all 30 issues. A prune that removes what a fetch brought before bead reads it is
+/// local damage too: the command makes sync.git again, and a second hit in it is
+/// SYNC_REPO_DAMAGED. It answered MANIFEST_MISSING, now and then on macOS CI, until roll-dih8.30,
+/// whose cases `v8_prune_after_a_fetch` makes deterministic.
 #[test]
 fn prune_now_on_the_private_sync_repo_during_syncs_is_transient() {
     let sandbox = crate::sandbox();

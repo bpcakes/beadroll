@@ -1417,7 +1417,19 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - `sync.git` is a cache: when git reports a local read error in it (an empty or corrupt object), bead
   sets it aside as `sync.git.damaged-<time>` and makes it again, once per command, under the store
   lock; the second time in one command is `SYNC_REPO_DAMAGED`. A line the remote relayed is never
-  taken as local damage.
+  taken as local damage. An object a fetch brought can be gone by the time it is read: a prune that
+  began before the fetch's ref existed removes it, and the ref bead keeps (`refs/beads/remote`) then
+  names a tip `sync.git` lacks, which no later fetch brings again. A failed read of the fetched tip
+  (its manifest, the merge's listing and blobs; `link/read.rs`) therefore asks what of the tip is
+  missing or damaged: git's own words (`local_damage`), `cat-file -e` of the tip, and `rev-list
+  --objects --no-walk --missing=print` of it, which names every tree and blob it reaches that is
+  missing and passes over a gitlink, as a fetch does. Any of these is local damage. Only a tip whose
+  objects are all there is the remote's: a tree without a manifest blob is `MANIFEST_MISSING`,
+  something else the merge cannot read `GIT_ERROR`. Asked by object, not by git's message for a
+  path or a missing name, which differs between versions (roll-dih8.30;
+  `hardening::v8::v8_prune_after_a_fetch`, through `fetch.fetched`). A push that lacks new objects
+  of its own a prune took does not go through, and the next round, after a fresh fetch, hashes and
+  publishes again, which needs no such question.
 - `sync.git` hashes like the checkout bead runs in (G26), not like the remote: bead does not ask
   the remote for its format. git before 2.41 clones an *empty* SHA-256 repository in SHA-1; in
   such a checkout the user's own push and bead's are both refused (`REMOTE_UNREACHABLE` carrying

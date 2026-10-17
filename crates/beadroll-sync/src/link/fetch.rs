@@ -32,7 +32,8 @@ impl Link<'_> {
     /// fetch is tried again, `FETCH_ATTEMPTS` times in all.
     ///
     /// Failpoints: `fetch.result` (`error(CODE)` fails the fetch) at its start; `fetch.retry`
-    /// before each wait to try again (`skip` waits not at all).
+    /// before each wait to try again (`skip` waits not at all); `fetch.fetched` once a fetch has
+    /// brought a head, before its tip is read.
     pub fn fetch(&mut self) -> Result<Option<String>, Error> {
         if let Some(Fired::Error(code)) = self.ws.settings.failpoints.hit("fetch.result") {
             return Err(Error::injected(code, "fetch.result"));
@@ -72,6 +73,7 @@ impl Link<'_> {
         if !proc.success() {
             return self.fetch_failed(&proc.stderr);
         }
+        self.ws.settings.failpoints.hit("fetch.fetched");
         let tip = self.fetched_tip(&mine)?;
         // keeps what was fetched reachable
         self.keep_fetched(&tip, &mine)?;

@@ -121,13 +121,13 @@ impl Link<'_> {
                 };
                 self.listed.insert(path.clone(), sha.clone());
                 if attempt_shaped(&path) {
-                    if self.merge_attempt(&path, &sha, &local, &pending)? {
+                    if self.merge_attempt(tip, &path, &sha, &local, &pending)? {
                         pulled += 1;
                     }
                     continue;
                 }
                 if segment_shaped(&path) {
-                    pulled += self.merge_segment(&path, &sha, &local, own.as_deref())?;
+                    pulled += self.merge_segment(tip, &path, &sha, &local, own.as_deref())?;
                 }
             }
         }
@@ -167,10 +167,11 @@ impl Link<'_> {
         self.memo().wrote(path, target, data, blob);
     }
 
-    /// One remote attempt file: confirms a pending attempt of ours, copies a new one, or replaces
-    /// a local copy that differs (kept beside it). Whether it was new here.
+    /// One remote attempt file at `tip`: confirms a pending attempt of ours, copies a new one, or
+    /// replaces a local copy that differs (kept beside it). Whether it was new here.
     fn merge_attempt(
         &mut self,
+        tip: &str,
         path: &str,
         sha: &str,
         local: &BTreeMap<String, String>,
@@ -183,7 +184,7 @@ impl Link<'_> {
         if local.get(path).map(String::as_str) == Some(sha) && ours_pending.is_none() {
             return Ok(false);
         }
-        let theirs = self.blob(sha)?;
+        let theirs = self.blob(tip, sha)?;
         if let Some(pending_path) = ours_pending {
             // the remote has our attempt: it counts, whole
             if read(pending_path)? != theirs {
@@ -224,12 +225,13 @@ impl Link<'_> {
         Ok(new)
     }
 
-    /// One remote segment: ours extended to it (what it lacks appended), or, when neither is a
-    /// prefix of the other, a foreign one replaced (ours kept beside it); our own is a fork. How
-    /// many events came in. A segment whose published blob is ours is not read: its lines are the
-    /// remembered ones.
+    /// One remote segment at `tip`: ours extended to it (what it lacks appended), or, when neither
+    /// is a prefix of the other, a foreign one replaced (ours kept beside it); our own is a fork.
+    /// How many events came in. A segment whose published blob is ours is not read: its lines are
+    /// the remembered ones.
     fn merge_segment(
         &mut self,
+        tip: &str,
         path: &str,
         sha: &str,
         local: &BTreeMap<String, String>,
@@ -247,7 +249,7 @@ impl Link<'_> {
         } else {
             Vec::new()
         };
-        let blob = self.blob(sha)?;
+        let blob = self.blob(tip, sha)?;
         let theirs = complete_prefix(&blob);
         // what is written is the published blob itself unless an interrupted line was cut from it
         let written = (theirs == blob).then_some(sha);
