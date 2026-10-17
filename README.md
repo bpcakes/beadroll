@@ -147,16 +147,25 @@ $ bead log app-zs43
 2026-10-13T19:15:46  laptop     claude 4f1c2a9e  close        app-zs43  (main)
 ```
 
-Every command that writes publishes before it returns. `--offline` keeps a
+Every command that writes tracker events publishes before it returns. `--offline` keeps a
 write local, and a remote that does not answer never fails one: it is
 recorded, every command says what the remote still lacks, and `bead sync`
 carries it. `ready`, `show`, `list` and the other reads never touch the
 network.
 
+From any directory, `bead recap` shows new activity across every tracker on this
+machine, grouped by repository, with the machine, agent, full thread, branch and
+commit of each event. Its first run shows all available activity; each successful
+read advances a local cursor. `bead recap --no-advance` previews without moving
+it; `bead recap --all --no-advance` revisits the full history. `--json` provides
+the same activity as structured records. Recap reads the stores under `BEAD_HOME`
+without contacting remotes: sync each repository first to include other
+machines' latest work. Each repository's last sync is shown.
+
 The commands: `create`, `show`, `update`, `list`, `ready`, `blocked`, `close`,
 `reopen`, `delete`, `dep add|remove|list|tree|cycles`, `comments [add]`,
 `search`, `lint`; `init`, `import`, `export`, `sync`, `claim`, `release`,
-`takeover`, `claims`, `log`, `info`, `machines`; and for agents `help`,
+`takeover`, `claims`, `log`, `recap`, `info`, `machines`; and for agents `help`,
 `prime`, `onboard`. `bead` alone prints the one-screen overview and `bead help
 COMMAND` one command's page. `bead ready EPIC` keeps to an epic's subtree,
 `bead close --recursive EPIC` closes one, children first, in one write, and a

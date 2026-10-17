@@ -285,6 +285,11 @@ pub(super) const MACHINES: &[ArgSpec] = &[opt(&["--name"], "name")
     .metavar("ID=ALIAS")
     .help("give a machine a local display name")];
 
+pub(super) const RECAP: &[ArgSpec] = &[
+    flag(&["--no-advance"], "no_advance").help("read without advancing the local cursor"),
+    flag(&["--all"], "all").help("include activity already seen"),
+];
+
 pub(super) const HELP: &[ArgSpec] = &[positional("command_name", Nargs::Optional)
     .metavar("COMMAND")
     .help("the command to explain")];

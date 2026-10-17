@@ -13,7 +13,7 @@ same thing*) and the variables bead reads (*Configuration*).
 The commands: `create`, `show`, `update`, `list`, `ready`, `blocked`, `close`,
 `reopen`, `delete`, `dep add|remove|list|tree|cycles`, `comments [add]`,
 `search`, `lint`, plus `init`, `import`, `export`, `sync`, `claim`, `release`,
-`takeover`, `claims`, `log`, `info`, `machines`, and for agents `help`, `prime`,
+`takeover`, `claims`, `log`, `recap`, `info`, `machines`, and for agents `help`, `prime`,
 `onboard`. `--json` works anywhere on the command line; `bead` alone prints the
 overview, and `bead help COMMAND` one command's page: what each option takes and,
 for `create`, `dep` and `comments`, their forms and what a dependency type does.
@@ -45,6 +45,60 @@ outside the subtree (of the root, say, or of a second parent) still counts.
 `--parent ID` keeps to ID's direct children, here and in `list`. A scope that
 names no issue is `ISSUE_NOT_FOUND`, never an empty answer, and only one scope
 is taken at a time.
+
+## Recap across repositories
+
+`bead recap` reads every local store directly under `BEAD_HOME`, identified by
+its `events` directory, from any working directory. It needs neither a checkout
+nor git and contacts no remote. `BEAD_WORKSPACE` does not restrict it. The first
+read shows all available events except tracker initialization; later reads show
+events not yet delivered. `--no-advance` reads without writing anything, and
+`--all` includes previously seen events. These flags can be combined. Deleted
+issues remain in the history. Issue keys and titles are the current ones; each
+operation's summary describes the recorded event, not the issue's current state.
+
+Workspaces are ordered by id, events within each in causal order with ties
+broken by event id. A timestamp going backwards, a late sync, a new machine or
+newly discovered store cannot hide an unseen event. Events waiting for missing
+causes are counted and remain unseen until their causes arrive. Unconfirmed
+ownership attempts are not journal events and appear only once confirmed.
+Integrity problems are reported alongside the affected store; its cursor stays
+as it was until repaired, while healthy stores can advance.
+
+One cursor belongs to the local `BEAD_HOME`, shared by its checkouts and callers,
+independent of actor or thread; it is not synced to other machines. Advancing
+recaps serialize on a separate lock that does not block journal writers. The
+cursor records only the events in the answer, after stdout is written and
+flushed. A read or output error leaves it unchanged. A closed pipe exits quietly
+with status 0 and leaves it unchanged too. Saving it can fail after output was
+delivered: that is an `IO` error on stderr and status 1; a retry may repeat
+activity. A crash between delivery and saving has the same repeat-on-retry
+behavior. There is no claim that a downstream process has consumed buffered
+pipe data when the write succeeds.
+
+The private, atomically replaced `$BEAD_HOME/.recap.json` holds the cursor;
+`.recap.lock` is its lock file. An unreadable or unknown cursor is an `IO` error,
+never silently reset. Repair it, or remove `.recap.json` to see all activity
+again. No journal, projection, metadata or identity is written by recap.
+
+`--json` emits one object with `workspaces`, an array (empty when no stores
+exist). Every workspace has `workspace` (id), `name`, `last_sync` (timestamp or
+null), `events` (array), `pending` (number of events waiting for causes), and
+`integrity` (the problem records `bead info` reports). Each event has:
+
+| Members | Meaning |
+|---|---|
+| `event`, `at`, `op` | UUID, UTC timestamp, journal operation name |
+| `issue`, `title` | Current issue key and title; null when unavailable |
+| `summary` | Human-readable operation details; display text, not a parsing interface |
+| `machine`, `alias` | Stable machine id and optional local alias |
+| `agent`, `thread`, `name` | Recorded actor fields, null when absent |
+| `branch`, `commit` | Recorded checkout location, null when absent; full commit id |
+
+All these event members are strings or null. Machine id, event id, operation
+name, timestamp and summary are always strings. Human output retains full
+thread and commit ids and escapes controls in all journal text. Empty stores
+say `No new activity`; no stores says `No local trackers`, both status 0.
 
 ## Claims
 

@@ -26,6 +26,7 @@ Shape work  create TITLE [-t TYPE] [-p 0-4] [--parent P] [--deps blocks:ID]
 Coordinate  sync                   exchange journals with the other machines
             claims                 who holds what, on which branch, since when
             log ID   info   machines
+            recap                  new activity across all local trackers
 Agents      prime                  the workflow to load at the start of a
                                    session
             onboard                a snippet for CLAUDE.md / AGENTS.md
@@ -98,6 +99,9 @@ Coordinate
     who holds what, on which branch,
     since when
   log ID   info   machines
+  recap
+    new activity across all local
+    trackers
 Agents
   prime
     the workflow to load at the start of
@@ -151,6 +155,7 @@ Shape work  create TITLE [-t TYPE] [-p 0-4] [--parent P] [--deps blocks:ID] [-l 
 Coordinate  sync                   exchange journals with the other machines
             claims                 who holds what, on which branch, since when
             log ID   info   machines
+            recap                  new activity across all local trackers
 Agents      prime                  the workflow to load at the start of a session
             onboard                a snippet for CLAUDE.md / AGENTS.md
 Data        init [--prefix P] [--tracked] [--import FILE]   import FILE   export [-o FILE]
@@ -261,6 +266,7 @@ Shape work  create TITLE [-t TYPE] [-p 0-4] [--parent P] [--deps blocks:ID]
 Coordinate  sync                   exchange journals with the other machines
             claims                 who holds what, on which branch, since when
             log ID   info   machines
+            recap                  new activity across all local trackers
 Agents      prime                  the workflow to load at the start of a
                                    session
             onboard                a snippet for CLAUDE.md / AGENTS.md
@@ -308,6 +314,7 @@ Shape work  create TITLE [-t TYPE] [-p 0-4] [--parent P] [--deps blocks:ID]
 Coordinate  sync                   exchange journals with the other machines
             claims                 who holds what, on which branch, since when
             log ID   info   machines
+            recap                  new activity across all local trackers
 Agents      prime                  the workflow to load at the start of a
                                    session
             onboard                a snippet for CLAUDE.md / AGENTS.md
@@ -1541,6 +1548,58 @@ Global options:
                       or never
 exit 0
 
+$ bead recap --help
+new activity across every local tracker
+
+Usage: bead recap [OPTIONS]
+
+Options:
+      --no-advance  read without advancing the local cursor
+      --all         include activity already seen
+  -h, --help        Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
+
+Reads every store under BEAD_HOME, from any directory, without contacting
+remotes. Sync each repository first to include activity from other machines.
+
+The first run shows all available activity; later runs show unseen events. The
+cursor advances only after output is written and flushed. --no-advance previews
+without saving; --all includes previously seen events. Stores with integrity
+problems keep their cursors. Events waiting for causes remain unseen.
+exit 0
+
+$ bead help recap
+new activity across every local tracker
+
+Usage: bead recap [OPTIONS]
+
+Options:
+      --no-advance  read without advancing the local cursor
+      --all         include activity already seen
+  -h, --help        Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
+
+Reads every store under BEAD_HOME, from any directory, without contacting
+remotes. Sync each repository first to include activity from other machines.
+
+The first run shows all available activity; later runs show unseen events. The
+cursor advances only after output is written and flushed. --no-advance previews
+without saving; --all includes previously seen events. Stores with integrity
+problems keep their cursors. Events waiting for causes remain unseen.
+exit 0
+
 $ bead help --help
 this overview, or `help COMMAND` for one command's usage
 
@@ -1827,6 +1886,9 @@ Coordinate
     who holds what, on which branch,
     since when
   log ID   info   machines
+  recap
+    new activity across all local
+    trackers
 Agents
   prime
     the workflow to load at the start of

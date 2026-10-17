@@ -10,6 +10,7 @@ mod layout;
 mod output;
 mod paint;
 mod parse;
+mod recap;
 mod spec;
 mod tempdir;
 mod texts;
@@ -231,6 +232,10 @@ fn execute(request: &Request, colors: Colors, exits: bool) -> Result<Option<Stri
         }
         Parsed::Usage(usage) => return Err(Failure::usage(usage.message, usage.usage)),
     };
+    if ns.spec.name == "recap" {
+        recap::run(Arc::new(settings), &ns, request.as_json, colors.stdout)?;
+        return Ok(None);
+    }
     let free = ns.spec.workspace_free;
     // Select a directory for output files before starting the first git process.
     let tmp = tempdir::temporary_directory(settings.git.vars(), Some(settings.cwd.as_path()))?;

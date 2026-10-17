@@ -6,7 +6,7 @@ use super::layout::Block;
 use super::texts;
 use args::{
     CLAIM, CLOSE, COMMENTS, CREATE, DEP, EXPORT, HELP, IMPORT, INIT, LIST, LOG, MACHINES, READY,
-    RELEASE, SEARCH, SHOW, SYNC, TAKEOVER, TRANSITION, UPDATE,
+    RECAP, RELEASE, SEARCH, SHOW, SYNC, TAKEOVER, TRANSITION, UPDATE,
 };
 
 mod args;
@@ -74,7 +74,7 @@ pub(crate) struct CommandSpec {
     pub(crate) name: &'static str,
     pub(crate) help: &'static str,
     pub(crate) args: &'static [ArgSpec],
-    /// Help, prime and onboard work outside a repository.
+    /// Help, prime, onboard and recap work outside a repository.
     pub(crate) workspace_free: bool,
     /// The forms and rules its options do not tell, after them.
     pub(crate) epilog: Option<&'static [Block]>,
@@ -177,7 +177,7 @@ impl CommandSpec {
 }
 
 /// Every command, in help display order.
-pub(crate) const COMMANDS: [CommandSpec; 27] = [
+pub(crate) const COMMANDS: [CommandSpec; 28] = [
     command("init", "create the tracker for this repository", INIT),
     command("import", "import a Beads JSONL export", IMPORT),
     command("export", "write Beads-compatible JSONL", EXPORT),
@@ -240,6 +240,7 @@ pub(crate) const COMMANDS: [CommandSpec; 27] = [
     ),
     command("info", "where the tracker lives and who you are", &[]),
     command("machines", "machines seen in the journal", MACHINES),
+    free("recap", "new activity across every local tracker", RECAP).epilog(texts::RECAP_EPILOG),
     free(
         "help",
         "this overview, or `help COMMAND` for one command's usage",
