@@ -548,16 +548,21 @@ These were decided deliberately. Report problems *with* them, not their existenc
   0.263 s and takes 0.223 s, at 20,000 29.6 and 27.2 ms; a write after a read 0.172 and 0.174 s, a
   write after a write 0.172 and 0.179 s (32.7 and 31.7 ms, 30.9 and 31.5 ms at 20,000), which write
   nothing back; `--sync N`, best of three, a sync after a local write 0.330 and 0.323 s and a write
-  published at once 0.608 and 0.626 s. In process (`--decode N`), at 200,000 events the projection
-  read back and extended by a comment encodes in 0.048 s where it took 0.103 s (3.6 and 8.1 ms at
-  20,000); one that compacts took 0.105 s and takes 0.122 s, two noisy runs each, once in about
-  11,000 events there. At the worst point, 10,989 events taken in after a compaction that left
-  88,152 (1,076 after 8,849 at 20,000), the index is 9.65 MB where compacted it is 8.93 MB, the file
-  19.12 MB rather than 18.40 MB (1.873 and 1.809 MB at 20,000), a decoded projection holds 77.1 MB
-  rather than 75.7 MB and decodes in 0.069 s rather than 0.062 s, a write's heap peak (`cargo xtask
-  bead`) 100.7 MB rather than 98.5 MB (10.22 and 10.00 MB at 20,000; just after a compaction 98.0
-  and 9.95 MB either way), and the read after a write takes 0.284 s against the base's 0.316 s
-  there.
+  published at once 0.608 and 0.626 s. In process (`--decode N`, best of three alternated), at
+  200,000 events the projection read back and extended by a comment encodes in 0.048 s where it took
+  0.103 s (3.6 and 8.1 ms at 20,000); the write-back that compacts, one comment past the worst
+  point, does the same work and writes one number more, and is unchanged: 0.0996 and 0.0966 s (the
+  review's 0.0995 and 0.1001 s), 6.2 ms either way at 20,000, once in about 11,000 events at
+  200,000. At the worst point, 10,989 events taken in after a compaction that left 88,152 (1,076
+  after 8,849 at 20,000), the index is 9,653,813 bytes where compacted it is 8,926,474 (915,742 and
+  851,510 at 20,000), and the state part and the texts are byte for byte the same, so the file is
+  larger by as much; a decoded projection holds 77.1 MB rather than 75.7 MB and decodes in 0.065 s
+  rather than 0.061 s (the review's; mine 0.069 and 0.062 s). Two figures come from a scratch
+  harness, not committed, that brought a store to the worst point by appending comments to its
+  segment: a write's heap peak there (`cargo xtask bead`, through a wrapper that ran every command
+  of the store by it, so that one build wrote and read the projection) 100.7 MB rather than 98.5 MB
+  (10.22 and 10.00 MB at 20,000; just after a compaction 98.0 and 9.95 MB either way), and the read
+  after a write (`timing --read N`) 0.284 s against the base's 0.316 s.
 - A projection extended finishes only what the batch changed (roll-lqjj.17, Z02). Replay finishes a
   whole journal by deriving each issue's labels from the tags that remain and building the
   parent-child index from every issue's edges; a projection that redid all of that for every batch

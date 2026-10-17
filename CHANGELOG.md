@@ -13,15 +13,17 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   write-back compacts again only once the events taken in since are more than an eighth of those
   (`projection::COMPACTED`, `Projection::compaction_due`); between, it writes the knowledge as it
   is. A projection replay makes is compacted as before. At 200,000 events the read after a write
-  takes 0.223 s rather than 0.263 s, and at 20,000 27.2 ms rather than 29.6 ms; its encode in
-  process 0.048 s rather than 0.103 s. Writes, syncs and reads that write nothing back do not move.
+  takes 0.223 s rather than 0.263 s, and at 20,000 27.2 ms rather than 29.6 ms (`cargo xtask timing
+  --read N`); its encode in process 0.048 s rather than 0.103 s, and the write-back that compacts as
+  long as before (`--decode N`). Writes, syncs and reads that write nothing back do not move.
   Between compactions the projection is up to an eighth larger in events: at the worst point, 10,989
-  events taken in at 200,000, its file is 19.12 MB rather than 18.40 MB, the heap a decoded
-  projection holds 77.1 MB rather than 75.7 MB, a write's heap peak 100.7 MB rather than 98.5 MB
-  (98.0 MB either way just after a compaction), and the read after a write still 0.284 s against the
-  base's 0.316 s there. Output, exit codes and format 1 are unchanged; `projection::ENCODING` is 8.
-  `cargo xtask timing --decode N` also times the encode, as it is and compacting, and the worst
-  point.
+  events taken in at 200,000, its index is 9.65 MB rather than 8.93 MB and its file 0.73 MB larger,
+  and the heap a decoded projection holds 77.1 MB rather than 75.7 MB (`--decode N`). With a store a
+  scratch harness brought to that point, a write's heap peak there was 100.7 MB rather than 98.5 MB
+  (`cargo xtask bead`; 98.0 MB either way just after a compaction), and the read after a write 0.284
+  s against the base's 0.316 s. Output, exit codes and format 1 are unchanged;
+  `projection::ENCODING` is 8. `cargo xtask timing --decode N` also times the encode, between
+  compactions and where one compacts, and the worst point.
 
 - A write on a tracker with no remote keeps its transaction until the process exits, as an
   offline write does, rather than freeing it first for a publish with nowhere to go (roll-lqjj.50,

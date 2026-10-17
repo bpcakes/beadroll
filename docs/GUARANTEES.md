@@ -420,9 +420,11 @@ it, and the file is committed again.
   seen down to the events its state names only once it holds more than an
   eighth more than it did after the last such cut, not every time, so at
   200,000 events the read after a write takes 0.22 s rather than 0.26 s;
-  between, it holds up to an eighth more events: at worst there its file is
-  19.1 MB rather than 18.4 MB and a write peaks at 100.7 MB on the heap rather
-  than 98.5 MB (roll-lqjj.43; `cargo xtask timing --read N`, `--decode N`).
+  between, it holds up to an eighth more events: at worst there its index is
+  9.65 MB rather than 8.93 MB, and its file larger by as much, and a decoded
+  projection holds 77.1 MB rather than 75.7 MB (roll-lqjj.43; `cargo xtask
+  timing --read N`, `read_after_write_seconds`; `--decode N`,
+  `worst_index_bytes` and `worst_projection_heap_bytes`).
   A real tracker's state is mostly
   its texts, which only the commands that print them read: on three of the
   largest public Beads trackers (21–47 MB, up to 13,394 issues) a `list` takes

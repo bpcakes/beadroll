@@ -8,8 +8,9 @@
 //! the projection having taken in as many comments as it can before a write-back compacts it, an
 //! eighth of the events it knew ([`COMPACTED`]), none of which its state names: its index's bytes,
 //! its decode, the heap it holds whole and its encode, beside the heap the projection holds whole
-//! as it was made; and the encode of the write-back one comment later, which compacts it. Replay and the files around a projection
-//! are not measured: `timing --read N` times the commands themselves. Evidence, never a gate.
+//! as it was made; and the encode of the write-back one comment later, which compacts it. Replay
+//! and the files around a projection are not measured: `timing --read N` times the commands
+//! themselves. Evidence, never a gate.
 
 use std::time::Instant;
 
