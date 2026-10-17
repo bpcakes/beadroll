@@ -52,12 +52,14 @@ fn a_save_keeps_what_a_recap_that_saved_meanwhile_did() {
     let second = marks(&[
         ("both-shown", shown(&[2])),
         ("owed-then-shown", shown(&[5])),
+        ("shown-over-owed", Mark::Owed(100)),
         ("both-owed", Mark::Owed(150)),
     ]);
     read.save(&settings, second, Some(200)).unwrap();
     let first = marks(&[
         ("both-shown", shown(&[3])),
         ("owed-then-shown", Mark::Owed(100)),
+        ("shown-over-owed", shown(&[6])),
         ("only-first", shown(&[4])),
         ("both-owed", Mark::Owed(120)),
         ("new", shown(&[7])),
@@ -67,8 +69,9 @@ fn a_save_keeps_what_a_recap_that_saved_meanwhile_did() {
     let expected = marks(&[
         // two reads of one store need not be nested: both frontiers stay
         ("both-shown", shown(&[2, 3])),
-        // a recap that showed the tracker settled the window it was owed
+        // a recap that showed the tracker settled the window it was owed, whichever saved last
         ("owed-then-shown", shown(&[5])),
+        ("shown-over-owed", shown(&[6])),
         // nobody else changed it since it was read: the later save replaces it
         ("only-first", shown(&[4])),
         ("both-owed", Mark::Owed(120)),
