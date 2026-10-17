@@ -274,8 +274,11 @@ fn write_edges(w: &mut Writer, edges: &DepTags) {
 }
 
 /// The edges [`write_edges`] wrote, each addition's metadata not read: an issue read back has its
-/// texts there. Inlined: read for every issue, most of which have no edges, where the call cost the
-/// decode of the ownership-heavy history at 200,000 events about 1 ms of 33.
+/// texts there. Marked `#[inline]`, though it stays a call of its own: without the mark, the
+/// ownership-heavy history at 200,000 events, which has no edges, decoded 0.8 and 1.45 ms slower
+/// (median of 33) in two alternated sets of 8 and 10 rounds, and alike in a review's set, the code
+/// read per issue being the same; what the mark changes is how the code around it is compiled,
+/// which another change may undo.
 #[inline]
 fn read_edges(r: &mut Reader<'_>) -> Result<DepTags, Unreadable> {
     let n = r.count()?;
