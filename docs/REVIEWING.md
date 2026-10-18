@@ -563,7 +563,16 @@ These were decided deliberately. Report problems *with* them, not their existenc
   rest of the design, each step its own issue (the write's free, roll-lqjj.42, landed in the
   bullet on the state a command answered from below; the knowledge compacted now and then, .43,
   landed: the paragraph after this one; copying the bytes of what a write did not touch, .44,
-  landed: the paragraph after that; append-only parts, .45), is on roll-lqjj.36.
+  landed: the paragraph after that), is on roll-lqjj.36, and stops there by the maintainer's
+  decision of 2026-10-18. A write writing back its own projection once it lets go of the store lock
+  (roll-lqjj.51, #38, built and not merged) made the read after a write 77 ms faster at 200,000
+  events, but put the write in the stored projection's frontier: a merge of a peer's event made
+  before it saw that write was then concurrent with the frontier and replayed where the refinement
+  of 2026-10-16 has it extend (a write published at once whose publish brings such an event:
+  3.36–3.57 s where 0.50–0.54 s). Append-only parts (roll-lqjj.45) are deferred: measured on .44's
+  head at 200,000 events they would save about 14 ms (−9%) of the read after a write, for a third
+  file, a new lock and a new format, and would not keep that merge extending, since the frontier
+  moves however the bytes are written.
   What every event had seen is compacted now and then, not at every write-back (roll-lqjj.43, step
   3). Every write-back found every event the state names (`named`, 24 ms of the 94 ms encode at
   200,000 events on ec773f9) and cut the knowledge down to them (`Knowledge::kept`, 29 ms), though a
