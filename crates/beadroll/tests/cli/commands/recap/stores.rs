@@ -81,6 +81,41 @@ fn a_tracker_first_seen_after_a_recap_shows_what_came_since() {
 }
 
 #[test]
+fn a_recap_of_everything_marks_where_a_tracker_first_seen_after_it_starts() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let (_other, b) = beside(&a, crate::rust_only);
+    a.bead(["init", "--prefix", "one"]);
+    create(&a, "Seen");
+    recap(&a);
+    let at = || {
+        let text = std::fs::read_to_string(a.home().join(".recap.json")).unwrap();
+        parse_json(&text).unwrap()["at"].as_i64().unwrap()
+    };
+    let marked = at();
+    // nothing new: --all shows again what was seen, and marks the time all the same
+    let all = a.cmd(["recap", "--all", "--advance"]).json().unwrap();
+    assert_eq!(each(&all, "title"), ["Seen"]);
+    let again = at();
+    assert!(again > marked, "{marked} {again}");
+    // a tracker synced here afterwards, with a history written just before that recap
+    let before = |args: &[&str]| {
+        let clock = format!("clock@always=at({})", (again - 1) * 1_000_000);
+        b.cmd(args).env("BEAD_FAILPOINTS", clock).json()
+    };
+    before(&["init", "--prefix", "two"]);
+    before(&["create", "Older than the recap of everything"]);
+    create(&b, "Newer than it");
+    let shown = recap(&a);
+    assert_eq!(each(&shown, "title"), ["Newer than it"]);
+    let trackers = shown["workspaces"].as_array().unwrap();
+    assert!(
+        trackers.iter().any(|t| t["earlier"] == Json::from(1_i64)),
+        "{shown:?}"
+    );
+}
+
+#[test]
 fn a_tracker_that_cannot_be_read_is_reported_and_the_others_still_show() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");

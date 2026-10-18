@@ -141,6 +141,21 @@ fn a_save_of_owed_windows_alone_keeps_the_time_of_the_last_recap_that_marked_any
 }
 
 #[test]
+fn a_save_of_no_marks_moves_only_the_time() {
+    let home = tempfile::tempdir().unwrap();
+    let settings = settings(home.path());
+    let kept = marks(&[("owed", Mark::Owed(50)), ("shown", shown(&[1]))]);
+    RecapCursor::default()
+        .save(&settings, placing(kept.clone()), Some(100))
+        .unwrap();
+    // a recap of everything that showed only what was seen before changed no mark
+    let read = RecapCursor::read(&settings).unwrap();
+    read.save(&settings, BTreeMap::new(), Some(200)).unwrap();
+    let saved = RecapCursor::read(&settings).unwrap();
+    assert_eq!((saved.marks, saved.at), (kept, Some(200)));
+}
+
+#[test]
 fn a_save_keeps_of_a_frontier_saved_meanwhile_only_what_its_read_did_not_place() {
     let home = tempfile::tempdir().unwrap();
     let settings = settings(home.path());

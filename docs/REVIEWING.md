@@ -155,15 +155,15 @@ These were decided deliberately. Report problems *with* them, not their existenc
   shows, and an id found quarantined after it was shown lets what it was built on show once more.
   The 24 hours are the events' own times, since bead records no arrival time. A tracker never
   shown is owed its window in the cursor, not the shared time of the last recap that marked
-  anything seen, which only a recap that shows or counts an event moves. That window applies
-  once, to what the first recap that shows or counts any of the tracker's events finds in causal
-  order (its init never counts); events placed after that, such as the rest of a first sync that
-  a recap read halfway, are new activity and show whatever their time, as any late sync's do. A
-  recap keeps, of the frontier it read and of one another recap saved meanwhile, the ids its own
-  read did not place, since two reads of a store a sync is writing file by file need not be
-  nested, and replaces the others with its own frontier, even when it has nothing new to show.
-  Recap reads each store as `log` does, the journal whole and the state from the projection. The
-  cursor and its lock are no part of format 1.
+  anything seen, which a recap moves whenever it shows or counts an event, even one `--all` shows
+  again, and only then. That window applies once, to what the first recap that shows or counts any
+  of the tracker's events finds in causal order (its init never counts); events placed after that,
+  such as the rest of a first sync that a recap read halfway, are new activity and show whatever
+  their time, as any late sync's do. A recap keeps, of the frontier it read and of one another recap
+  saved meanwhile, the ids its own read did not place, since two reads of a store a sync is writing
+  file by file need not be nested, and replaces the others with its own frontier, even when it has
+  nothing new to show. Recap reads each store as `log` does, the journal whole and the state from
+  the projection. The cursor and its lock are no part of format 1.
 - Rust APIs describe their role rather than the implementation language bead replaced
   (roll-dih8.17): `op::IntegerField` retains the boolean or integer representation of a format-1
   field, and text and path helpers name their parsing, trimming, casing and normalization

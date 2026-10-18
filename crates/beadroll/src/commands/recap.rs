@@ -43,10 +43,11 @@ pub(crate) struct RecapArgs {
 /// What is new in every tracker under `BEAD_HOME`: for each, the events not below the frontier the
 /// cursor keeps of it, or, for one never shown, those since the window it is owed or else since
 /// the last recap marked anything (the last day, on a machine that never did). With it, when the
-/// recap marks what it shows as seen and that changes the cursor (one with nothing new to show may
-/// still compact a frontier there), what records that once the answer has been written. A tracker
-/// that cannot be read says why and lets the others show; it keeps its frontier, or, never shown,
-/// is owed its window from then on ([`owed`]).
+/// recap marks what it shows as seen and that changes the cursor, what records that once the answer
+/// has been written: each mark that changed (one with nothing new to show may still compact a
+/// frontier), and this recap's time when it showed or counted an event, seen before or not. A
+/// tracker that cannot be read says why and lets the others show; it keeps its frontier, or, never
+/// shown, is owed its window from then on ([`owed`]).
 pub(crate) fn recap(
     settings: &Arc<Settings>,
     args: &RecapArgs,
@@ -85,10 +86,12 @@ pub(crate) fn recap(
         };
         trackers.push(Value::from(part.value));
         lines.extend(part.lines);
+        // what it shows marks the time, events seen before (`--all`) as much as new ones, whether
+        // its mark changes or not
+        seen |= part.seen;
         if let Some((id, mark)) = part.mark
             && cursor.marks.get(&id) != Some(&mark)
         {
-            seen |= part.seen;
             marks.insert(id, (mark, part.placed));
         }
     }
@@ -98,9 +101,9 @@ pub(crate) fn recap(
     let mut result = Object::new();
     result.insert("workspaces".into(), Value::Array(trackers));
     result.insert("advance".into(), Value::from(args.advance));
-    let delivered = (args.advance && !marks.is_empty()).then(|| {
-        // a window owed or a frontier compacted marks nothing seen: the time of the last recap
-        // that showed or counted an event stays
+    let delivered = (args.advance && (seen || !marks.is_empty())).then(|| {
+        // a window owed or a frontier compacted, with nothing shown or counted, marks nothing
+        // seen: the time of the last recap that showed or counted an event stays
         let (settings, at) = (Arc::clone(settings), seen.then_some(args.now));
         Delivered::new(move || Ok(cursor.save(&settings, marks, at)?))
     });

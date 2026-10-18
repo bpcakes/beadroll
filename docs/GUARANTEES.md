@@ -94,11 +94,11 @@ the tracker is then named as its own journal names it.
 The cursor is `$BEAD_HOME/.recap.json`, private and replaced atomically, beside
 its lock file `.recap.lock`; both names start with a dot, which no workspace id
 can. It holds the time of the last recap that marked anything seen, by showing
-or counting an event, and, for each tracker, the frontier of what was shown or
-the start of the window it is owed. It belongs to the home, whoever runs bead
-there, and is never synced. One that cannot be read, or is not one, is an `IO`
-error and is never reset: repair it, or remove it to start again from the last
-24 hours.
+or counting an event, even one `--all` shows again, and, for each tracker, the
+frontier of what was shown or the start of the window it is owed. It belongs to
+the home, whoever runs bead there, and is never synced. One that cannot be read,
+or is not one, is an `IO` error and is never reset: repair it, or remove it to
+start again from the last 24 hours.
 
 `--format` lays the human output out: `events`, the default, one line per event
 as `bead log` prints it, with its issue's title; `issues`, one line per issue,
