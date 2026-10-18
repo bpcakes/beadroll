@@ -71,10 +71,11 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   (`docs/REVIEWING.md` §2); a
   `Remote` trait waits for its second implementation.
 - A link preserves git operation order and failure classification (`Link::git` may find damage,
-  `Link::check` never does). A failed read of the fetched tip (manifest, listing, blob) asks
-  `Link::lost` what of the tip is missing or damaged in `sync.git`, and that is damage: a prune
-  can remove what a fetch brought before it is read, and a tree or blob gone under a commit still
-  there is never fetched again; a blob there but unreadable is damage too (`Link::unreadable`).
+  `Link::run` leaves its output to the caller). A failed read of the fetched tip (manifest,
+  listing, blob) asks `Link::lost` what of the tip is missing or damaged in `sync.git`, and that is
+  damage: a prune can remove what a fetch brought before it is read, and a tree or blob gone under
+  a commit still there is never fetched again; a blob there but unreadable, or a tree git cannot
+  walk, is damage too. A git a signal ended is never damage (`Output::killed`).
   A kept git that has no answer (`beadroll_git::NoAnswer`) falls back to the corresponding
   separate git command. It does not hash a journal file
   that keeps the identity the memo remembers it at: a merge compares the remembered blob with the

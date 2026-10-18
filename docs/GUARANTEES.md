@@ -105,10 +105,11 @@ edits are never held up.
   once per command; `info` lists the copies kept, which hold nothing that is
   not also elsewhere. Damage again after that is `SYNC_REPO_DAMAGED`. A read
   of a fetched tip that fails is local damage when an object of the tip is
-  missing from `sync.git`, when the blob it read is there but unreadable, or
-  when git reports the damage in its own words (a corrupt tree or commit); only
-  a read that fails otherwise is refused for what the remote holds
-  (`MANIFEST_MISSING`, `GIT_ERROR`).
+  missing from `sync.git`, when the blob it read is there but unreadable, when
+  git cannot walk the tip's trees (a corrupt or malformed tree, which no fetch
+  lets in), or when git reports the damage in its own words; a git that a
+  signal ended is never taken as damage. Only a read that fails otherwise is
+  refused for what the remote holds (`MANIFEST_MISSING`, `GIT_ERROR`).
 - git's own maintenance is off in `sync.git` (no detached `gc` racing the next
   command) and what a fetch brings stays in the pack it arrived in. bead repacks
   the repository itself, under the store lock, once loose objects or packs pile

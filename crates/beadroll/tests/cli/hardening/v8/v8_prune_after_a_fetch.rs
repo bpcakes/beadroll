@@ -3,9 +3,10 @@
 //! fetched tip from sync.git, as `git gc --prune=now` racing the fetch likely did on macOS CI
 //! (roll-dih8.30), or damages it as a disk might. An object of the tip missing here, or a blob of
 //! it here but unreadable, is local damage, which the command repairs by making sync.git again,
-//! whichever read finds it: the manifest's, the listing's or a blob's. A tip whose objects are all
-//! here keeps the error that is the remote's: MANIFEST_MISSING for a tree without a manifest blob,
-//! GIT_ERROR for a gitlink where a segment goes.
+//! whichever read finds it: the manifest's, the listing's or a blob's, and so is a tree of it
+//! malformed here, which no fetch lets in. A tip whose objects are all here and readable keeps the
+//! error that is the remote's: MANIFEST_MISSING for a tree without a manifest blob, GIT_ERROR for
+//! a gitlink where a segment goes.
 
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
@@ -35,6 +36,9 @@ enum Harm {
     Flip,
     /// Cuts the last byte off its file: the same.
     Cut,
+    /// Replaces a tree's file by a whole one of a malformed tree, which every read and walk of it
+    /// fails on in no words of damage ("too-short tree object"), and which no fetch lets in.
+    Malformed,
 }
 
 /// `git --git-dir GIT_DIR ARGS`, given `input`: its output, trimmed.
@@ -103,6 +107,15 @@ fn harm(git_dir: &Path, aside: &Path, object: &str, harm: Harm) {
         .join(&object[2..]);
     match harm {
         Harm::Remove => std::fs::remove_file(&loose).expect("the object, loose"),
+        Harm::Malformed => {
+            let entry = "100644 x\0\u{1}\u{1}\u{1}\u{1}\u{1}\u{1}\u{1}";
+            let write = ["hash-object", "-t", "tree", "--literally", "-w", "--stdin"];
+            let made = plumbing(git_dir, &write, Some(entry));
+            let made = git_dir.join("objects").join(&made[..2]).join(&made[2..]);
+            std::fs::set_permissions(&loose, std::fs::Permissions::from_mode(0o644))
+                .expect("the object, loose");
+            std::fs::copy(made, &loose).expect("the object replaced");
+        }
         Harm::Empty | Harm::Flip | Harm::Cut => {
             let mut bytes = std::fs::read(&loose).expect("the object, loose");
             match harm {
@@ -251,6 +264,17 @@ fn a_fetched_segment_git_cannot_read_is_local_damage() {
     for how in [Harm::Cut, Harm::Flip] {
         let sandbox = crate::sandbox();
         let (run, a) = sync_harming(&sandbox, B_SEGMENT, how);
+        assert_rebuilt_and_synced(&run, &a);
+    }
+}
+
+/// A tree of the fetched tip malformed in a's sync.git, b's folder or the root: local damage, found
+/// by the walk over the tip, where it was GIT_ERROR or MANIFEST_MISSING on every sync after.
+#[test]
+fn a_fetched_tree_git_cannot_walk_is_local_damage() {
+    for revision in [B_FOLDER, TREE] {
+        let sandbox = crate::sandbox();
+        let (run, a) = sync_harming(&sandbox, revision, Harm::Malformed);
         assert_rebuilt_and_synced(&run, &a);
     }
 }

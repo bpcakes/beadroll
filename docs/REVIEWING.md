@@ -1422,23 +1422,29 @@ These were decided deliberately. Report problems *with* them, not their existenc
   never fetched again, since the ref bead keeps (`refs/beads/remote`) already names the tip; a
   commit gone costs one error, git refusing to point that ref at it or the next fetch bringing it.
   A blob can also be there and unreadable (a byte changed, a file cut short), which git reports as
-  "unable to stream", in none of the words of damage. A failed read of the fetched tip (its
-  manifest, the merge's listing and blobs; `link/read.rs`) therefore asks what of the tip is
-  missing or damaged: git's own words (`local_damage`); for a blob's read, whether `sync.git` holds
-  that name as a blob, or as an object git cannot tell the type of (`Link::unreadable`: index-pack
-  verified every object a fetch brought and bead wrote whole every object it made, so such an
-  object was damaged here); `cat-file -e` of the tip; and `rev-list --objects --no-walk
-  --missing=print` of it, which names every tree and blob it reaches that is missing and passes over
-  a gitlink, as a fetch does. Any of these is local damage. A failed `rev-list` counts only in
-  git's words of damage: a tree the remote sent malformed fails it too, and fetch, without
-  `transfer.fsckObjects`, does not refuse one. Everything else is the remote's: a tree without a
-  manifest blob (none, a tree or a gitlink by that name) is `MANIFEST_MISSING`, something else the
-  merge cannot read (a gitlink where a segment goes) `GIT_ERROR`. Asked by object, not by git's
-  message for a path or a missing name, which differs between versions (roll-dih8.30;
-  `hardening::v8::v8_prune_after_a_fetch`, through `fetch.fetched`). A loose tree whose content no
-  longer hashes to its name is read for what it holds, and not caught (roll-dih8.31). A push that lacks new objects
-  of its own a prune took does not go through, and the next round, after a fresh fetch, hashes and
-  publishes again, which needs no such question.
+  "unable to stream", in none of the words of damage, and a tree there but malformed ("too-short
+  tree object") likewise. A failed read of the fetched tip (its manifest, the merge's listing and
+  blobs; `link/read.rs`) therefore asks what of the tip is missing or damaged: git's own words
+  (`local_damage`); for a blob's read that git ended by its own exit, whether `sync.git` holds that
+  name and `cat-file -t` calls it a blob (`blob_unreadable`: index-pack verified every object a
+  fetch brought and bead wrote whole every object it made, so such a blob was damaged here);
+  `cat-file -e` of the tip; and `rev-list --objects --no-walk --missing=print` of it, which names
+  every tree and blob it reaches that is missing and passes over a gitlink, as a fetch does. Any of
+  these is local damage, and so is a `rev-list` of the present tip that fails by its own exit
+  (`walk_failed`): no fetch lets in what fails the walk. A fetch refuses a tree too short, with a
+  bad mode or an empty name ("possible repository corruption on the remote side"), and its own
+  connectivity check walks every object it brings, even from a server that sent a malformed tree
+  without walking it; the oddities that pass a fetch (duplicate, zero-padded or unsorted entries)
+  read and walk fine. A git a signal ended (an OOM killer, say) says nothing about `sync.git` and
+  is never damage, nor is a failed `cat-file -t`: damage git names there it names in the read
+  first. Everything else is the remote's: a tree without a manifest blob (none, a tree or a gitlink
+  by that name) is `MANIFEST_MISSING`, something else the merge cannot read (a gitlink where a
+  segment goes) `GIT_ERROR`. Asked by object, not by git's message for a path or a missing name,
+  which differs between versions (roll-dih8.30; `hardening::v8::v8_prune_after_a_fetch`, through
+  `fetch.fetched`). A loose tree whose content no longer hashes to its name is read for what it
+  holds, and not caught (roll-dih8.31). A push that lacks new objects of its own a prune took does
+  not go through, and the next round, after a fresh fetch, hashes and publishes again, which needs
+  no such question.
 - `sync.git` hashes like the checkout bead runs in (G26), not like the remote: bead does not ask
   the remote for its format. git before 2.41 clones an *empty* SHA-256 repository in SHA-1; in
   such a checkout the user's own push and bead's are both refused (`REMOTE_UNREACHABLE` carrying
