@@ -48,7 +48,10 @@ storage, protocol behavior and fault recovery.
 - `tests/cli/main.rs`: the one test binary's root; `sandbox()` hands test support the binary Cargo
   built (`env!("CARGO_BIN_EXE_bead")`), the only place that default can come from.
 - `tests/cli/commands/*.rs`: command behavior, and `commands/setup.rs`, the golden
-  path of setting a tracker up (roll-dih8.13); `tests/cli/golden.rs` and
+  path of setting a tracker up (roll-dih8.13); `commands/ownership.rs`, what two machines that end
+  claims every way print of who held each issue, against the transcript this build recorded in
+  `commands/ownership/transcript.txt` before the ownership history moved to the texts
+  (roll-lqjj.40, normalised as the goldens are); `tests/cli/golden.rs` and
   `golden/normal.rs`: the golden scenarios and their normalisation, against the files in
   `tests/golden/`, fixed reference outputs whose provenance is in `docs/REVIEWING.md` §2.
 - `tests/cli/parity.rs` and `parity/*.rs`: machines converge and export alike, the published tree

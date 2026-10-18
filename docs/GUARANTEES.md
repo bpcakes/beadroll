@@ -169,10 +169,19 @@ edits are never held up.
 - A ref whose manifest is not this version's format is refused untouched
   (`FORMAT_UNSUPPORTED`): an older client never rewrites a newer tracker.
 - A damaged private sync repository (`sync.git` with empty or corrupt objects,
-  which git reports as a local read error) is set aside as
+  which git reports as a local read error, or missing an object of a tip it
+  fetched, as a prune that raced the fetch leaves it) is set aside as
   `sync.git.damaged-<time>` and made again from the remote and `events/`,
   once per command; `info` lists the copies kept, which hold nothing that is
-  not also elsewhere. Damage again after that is `SYNC_REPO_DAMAGED`.
+  not also elsewhere. Damage again after that is `SYNC_REPO_DAMAGED`. A read
+  of a fetched tip that fails is local damage when an object of the tip is
+  missing from `sync.git`, when the blob it read is there but unreadable, when
+  git cannot walk the tip's trees (a corrupt or malformed tree, which no fetch
+  lets in), or when git reports the damage in its own words; a git that a
+  signal ended is never taken as damage. A walk that git ends by its own exit
+  for another reason, a full disk or a memory limit, is taken as damage too, at
+  the cost of one needless rebuild. Only a read that fails otherwise is
+  refused for what the remote holds (`MANIFEST_MISSING`, `GIT_ERROR`).
 - git's own maintenance is off in `sync.git` (no detached `gc` racing the next
   command) and what a fetch brings stays in the pack it arrived in. bead repacks
   the repository itself, under the store lock, once loose objects or packs pile
@@ -232,18 +241,21 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   source: deleting it is always safe, and a damaged one, or one another build
   of bead wrote, is never read.
 - Each issue's texts (descriptions, designs, acceptance criteria, notes,
-  comments, and the metadata its dependencies were added with, which only
-  `export` prints) are kept beside the projection, in `<store>/projection-texts`.
-  To print them, `show`, `comments` and the writes that answer with the issues
-  they wrote (`claim`, `takeover`, `update`) read those issues' alone, and
-  `export`, `search` and `lint` read them all; `list`, `ready`, `claims` and
-  `prime` print none. Any command that takes records into the projection (a
-  write its own, a reading command those written since it was saved, a sync
-  those it merges) first reads in the texts of every issue they are about, since
-  a long field set, a comment, a delete and a dependency added or removed may
-  change them, and of every issue whose import waits for a key a create among
-  them brings, since that create gives it an edge; and appends those that
-  changed to the file when it writes the projection back. It is a cache too:
+  comments, the metadata its dependencies were added with, which only `export`
+  prints, the claims that ended or lost, and the ends that came too late) are
+  kept beside the projection, in `<store>/projection-texts`. To print them,
+  `show`, `comments` and the writes that answer with the issues they wrote
+  (`claim`, `takeover`, `update`) read those issues' alone, and `export`,
+  `search` and `lint` read them all; `list`, `ready`, `claims` and `prime`
+  print none. Any command that takes records into the projection (a write its
+  own, a reading command those written since it was saved, a sync those it
+  merges) first reads in the texts of every issue they are about, since a long
+  field set, a comment, a delete, a dependency added or removed, a claim, a
+  release, a close and a reopen may change them, and of every issue whose
+  import waits for a key a create among them brings, since that create gives
+  it an edge; and appends
+  those that changed to the file when it writes the projection back. It is a
+  cache too:
   texts that cannot be read as written have the journal replayed.
 - Unlike the journal, neither file is flushed to disk: they are written whole
   and renamed into place, not fsynced. A crash or a power loss can leave either
@@ -433,10 +445,21 @@ it, and the file is committed again.
   events is 7.69 MB rather than 9.45 MB and decodes in 33.1 ms rather than
   41.0 ms, holding 43.2 MB rather than 51.4 MB; `list` takes 0.099 s rather
   than 0.111 s, `show` 0.091 s rather than 0.106 s, `ready` 0.146 s rather than
-  0.165 s and a local write 0.162 s rather than 0.184 s. A write derives the labels its own events
-  changed, each issue's once however many of them changed it, and takes its new
-  event ids in wherever they sort among the ids held, so one `bead close`
-  naming 8,000 issues of 8,000 takes 0.7 s rather than 19.8 s; a batch that
+  0.165 s and a local write 0.162 s rather than 0.184 s. Since each issue's
+  ownership history is kept with its texts (roll-lqjj.40), measured the same
+  way on 9cbd60a, before roll-lqjj.39, the state part was 8.63 MB rather than
+  9.45 MB (4.79 MB rather than 8.70 MB on a history heavy in claims) and
+  decoded in 36.5 ms rather than 40.7 ms, and `list` took 0.108 s rather than
+  0.114 s, `show` 0.100 s rather than 0.106 s and `ready` 0.146 s rather than
+  0.160 s; measured again on fd5ae9b, with roll-lqjj.39, on a busier machine,
+  the state part is 6.85 MB rather than 7.69 MB (4.79 MB rather than 8.70 MB
+  on the history heavy in claims) and decodes in 57.2 ms rather than 61.1 ms
+  (58.6 ms rather than 60.0 ms in the review's run), and `list` takes 81 ms
+  rather than 87 ms, `show` 74 ms rather than 82 ms and `ready` 121 ms rather
+  than 128 ms. A write derives the labels its own events changed, each issue's
+  once however many of them changed it, and takes its new event ids in
+  wherever they sort among the ids held, so one `bead close` naming 8,000
+  issues of 8,000 takes 0.7 s rather than 19.8 s; a batch that
   creates an issue, adds a dependency or takes one back still has the whole
   parent-child index built again, since a create gives the imports that waited
   for its key their edges, and that is one pass a command (roll-lqjj.17, V01,
@@ -509,6 +532,12 @@ it, and the file is committed again.
   projection holds 77.1 MB rather than 75.7 MB (roll-lqjj.43; `cargo xtask
   timing --read N`, `read_after_write_seconds`; `--decode N`,
   `worst_index_bytes` and `worst_projection_heap_bytes`).
+  A write-back copies the bytes of every issue and event the write did not
+  touch rather than encoding them again, so at 200,000 events the read after a
+  write takes 0.15 s rather than 0.18 s, and its write-back encodes in 2 ms
+  rather than 40 ms; what a command decodes, and how long it takes, is as it
+  was, and no command holds more (roll-lqjj.44; `cargo xtask timing --read N`,
+  `read_after_write_seconds`; `--decode N`, `encode_seconds`).
   A real tracker's state is mostly
   its texts, which only the commands that print them read: on three of the
   largest public Beads trackers (21–47 MB, up to 13,394 issues) a `list` takes

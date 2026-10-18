@@ -193,7 +193,7 @@ fn damaged_bytes_never_read_as_a_projection() {
             };
             target.truncate(cut);
             assert!(
-                Projection::decode(&damaged).is_err(),
+                Projection::decode(damaged.clone()).is_err(),
                 "{section} cut at {cut}"
             );
         }
@@ -209,7 +209,7 @@ fn damaged_bytes_never_read_as_a_projection() {
                     *byte ^= flip;
                 }
                 // read or refused, never a panic: the store checks the bytes before it reads them
-                let _ = Projection::decode(&damaged);
+                let _ = Projection::decode(damaged.clone());
             }
         }
     }
@@ -235,7 +235,7 @@ fn with_texts() -> (Projection, Vec<u8>) {
         true,
     ));
     let (encoded, _) = project(journal(&records)).unwrap().encode(0);
-    (Projection::decode(&encoded).unwrap(), encoded.texts)
+    (Projection::decode(encoded.clone()).unwrap(), encoded.texts)
 }
 
 /// The bytes of `file` at `place`.

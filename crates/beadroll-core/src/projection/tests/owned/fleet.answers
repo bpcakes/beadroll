@@ -1,0 +1,64 @@
+fl-1	claim	null
+fl-1	generation	0
+fl-1	ended	[]
+fl-1	offline	[]
+fl-1	lost	[]
+fl-1	stale	[]
+fl-1	show	{"id":"fl-1","title":"Crash from B","status":"open","priority":3,"issue_type":"bug","assignee":"bob","estimated_minutes":60,"created_at":"2026-02-01T00:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:33.656Z","external_ref":"gh-2","dependencies":[],"dependents":[{"id":"fl-ufjn","title":"Native","status":"closed","dependency_type":"blocks"}],"comments":[],"blocked":false,"origin":{"machine":"cb50e811","agent":"codex","thread":"fleet-a-thread-0001","where":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"}},"where":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"},"conflicts":{"title":[{"value":"Crash from A","by":"codex:fleet-a-thread-0001@cb50e811","at":"2026-10-16T17:37:33.630Z","event":"01a145ca-61be-79fc-acd0-e7518deacb81"},{"value":"Crash from B","by":"codex:fleet-b-thread-0001@2b1bc1c3","at":"2026-10-16T17:37:33.656Z","event":"01a145ca-61d8-7b1a-8299-e0f7113ccdb0"}],"assignee":[{"value":"alice","by":"codex:fleet-a-thread-0001@cb50e811","at":"2026-10-16T17:37:33.630Z","event":"01a145ca-61be-79fc-acd0-e7518deacb81"},{"value":"bob","by":"codex:fleet-b-thread-0001@2b1bc1c3","at":"2026-10-16T17:37:33.656Z","event":"01a145ca-61d8-7b1a-8299-e0f7113ccdb0"}],"estimated_minutes":[{"value":45,"by":"codex:fleet-a-thread-0001@cb50e811","at":"2026-10-16T17:37:33.630Z","event":"01a145ca-61be-79fc-acd0-e7518deacb81"},{"value":60,"by":"codex:fleet-b-thread-0001@2b1bc1c3","at":"2026-10-16T17:37:33.656Z","event":"01a145ca-61d8-7b1a-8299-e0f7113ccdb0"}]}}
+fl-2	claim	null
+fl-2	generation	0
+fl-2	ended	[]
+fl-2	offline	[]
+fl-2	lost	[]
+fl-2	stale	[]
+fl-2	show	{"id":"fl-2","title":"Shipped","status":"closed","priority":3,"issue_type":"feature","created_at":"2026-02-01T02:00:00Z","updated_at":"2026-10-16T17:37:35.003Z","closed_at":"2026-10-16T17:37:35.003Z","dependencies":[],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"cb50e811","agent":"codex","thread":"fleet-a-thread-0001","where":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"}},"where":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"},"closed_on":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"}}
+fl-3	claim	null
+fl-3	generation	0
+fl-3	ended	[]
+fl-3	offline	[]
+fl-3	lost	[]
+fl-3	stale	[]
+fl-3	show	{"id":"fl-3","title":"Deferred now","status":"deferred","priority":2,"issue_type":"task","created_at":"2026-02-01T03:00:00Z","updated_at":"2026-10-16T17:37:35.088Z","dependencies":[],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"cb50e811","agent":"codex","thread":"fleet-a-thread-0001","where":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"}},"where":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"}}
+fl-4	claim	null
+fl-4	generation	0
+fl-4	ended	[]
+fl-4	offline	[]
+fl-4	lost	[]
+fl-4	stale	[]
+fl-4	show	{"id":"fl-4","title":"Deferred","status":"blocked","priority":4,"issue_type":"chore","estimated_minutes":0,"created_at":"2026-02-01T04:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:33.692Z","dependencies":[],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"cb50e811","agent":"codex","thread":"fleet-a-thread-0001","where":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"}},"where":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"},"closed_on":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"},"conflicts":{"status":[{"value":"closed","by":"codex:fleet-a-thread-0001@cb50e811","at":"2026-10-16T17:37:33.674Z","event":"01a145ca-61ea-7ef0-93ea-60a07cf7ffbd"},{"value":"blocked","by":"codex:fleet-b-thread-0001@2b1bc1c3","at":"2026-10-16T17:37:33.692Z","event":"01a145ca-61fc-7042-b78b-9b78f18d7003"}]}}
+fl-5	claim	null
+fl-5	generation	0
+fl-5	ended	[]
+fl-5	offline	[]
+fl-5	lost	[]
+fl-5	stale	[]
+fl-5	show	{"id":"fl-5","title":"In review","status":"review","priority":0,"issue_type":"task","assignee":"dana","created_at":"2026-02-01T05:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:35.171Z","dependencies":[],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"cb50e811","agent":"codex","thread":"fleet-a-thread-0001","where":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"}},"where":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"}}
+fl-6	claim	null
+fl-6	generation	0
+fl-6	ended	[]
+fl-6	offline	[]
+fl-6	lost	[]
+fl-6	stale	[]
+fl-6	show	{"id":"fl-6","title":"Tombstoned","status":"tombstone","priority":2,"issue_type":"task","created_at":"2026-02-01T06:00:00Z","created_by":"seed","updated_at":"2026-02-05T00:00:00Z","closed_at":"2026-02-05T00:00:00Z","close_reason":"gone","dependencies":[],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"cb50e811","agent":"codex","thread":"fleet-a-thread-0001","where":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"}},"where":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"}}
+fl-ufjn	claim	null
+fl-ufjn	generation	0
+fl-ufjn	ended	[]
+fl-ufjn	offline	[]
+fl-ufjn	lost	[]
+fl-ufjn	stale	[]
+fl-ufjn	show	{"id":"fl-ufjn","title":"Native","description":"body","status":"closed","priority":1,"issue_type":"task","assignee":"carol","estimated_minutes":15,"created_at":"2026-10-16T17:37:33.969Z","created_by":"codex:fleet-a-thread-0001@cb50e811","updated_at":"2026-10-16T17:37:35.254Z","closed_at":"2026-10-16T17:37:34.216Z","close_reason":"second","external_ref":"x-1","dependencies":[{"id":"fl-1","title":"Crash from B","status":"open","dependency_type":"blocks"}],"dependents":[],"comments":[],"blocked":true,"origin":{"machine":"cb50e811","agent":"codex","thread":"fleet-a-thread-0001","where":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"}},"where":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"},"closed_on":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"}}
+fl-o1by	claim	null
+fl-o1by	generation	2
+fl-o1by	ended	[{"id":"01a145ca-6514-7cad-b88b-a1e1b4df88a1","owner":"codex:fleet-b-thread-0001@2b1bc1c3","machine":"2b1bc1c3","agent":"codex","thread":"fleet-b-thread-0001","generation":1,"since":"2026-10-16T17:37:34.484Z","mode":"online","where":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"},"ended":"2026-10-16T17:37:34.573Z","ended_by":"codex:fleet-b-thread-0001@2b1bc1c3","how":"release"},{"id":"01a145ca-65c7-78fa-acd8-08c8c56fa4c5","owner":"codex:fleet-b-thread-0001@2b1bc1c3","machine":"2b1bc1c3","agent":"codex","thread":"fleet-b-thread-0001","generation":2,"since":"2026-10-16T17:37:34.663Z","mode":"online","where":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"},"ended":"2026-10-16T17:37:34.729Z","ended_by":"codex:fleet-b-thread-0001@2b1bc1c3","how":"close"}]
+fl-o1by	offline	[]
+fl-o1by	lost	[]
+fl-o1by	stale	[]
+fl-o1by	show	{"id":"fl-o1by","title":"Worked","status":"closed","priority":2,"issue_type":"task","assignee":"codex:fleet-b-thread-0001@2b1bc1c3","created_at":"2026-10-16T17:37:34.298Z","created_by":"codex:fleet-a-thread-0001@cb50e811","updated_at":"2026-10-16T17:37:34.729Z","closed_at":"2026-10-16T17:37:34.729Z","close_reason":"by b","dependencies":[],"dependents":[],"comments":[],"blocked":false,"origin":{"machine":"cb50e811","agent":"codex","thread":"fleet-a-thread-0001","where":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"}},"where":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"},"closed_on":{"branch":"main","commit":"b4fb274ba4931c8f59ffd2cc25f1000c5dcdfd00"}}
+export	{"id":"fl-1","title":"Crash from B","status":"open","priority":3,"issue_type":"bug","assignee":"bob","estimated_minutes":60,"created_at":"2026-02-01T00:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:33.656Z","external_ref":"gh-2"}
+export	{"id":"fl-2","title":"Shipped","status":"closed","priority":3,"issue_type":"feature","created_at":"2026-02-01T02:00:00Z","updated_at":"2026-10-16T17:37:35.003Z","closed_at":"2026-10-16T17:37:35.003Z","close_reason":""}
+export	{"id":"fl-3","title":"Deferred now","status":"deferred","priority":2,"issue_type":"task","created_at":"2026-02-01T03:00:00Z","updated_at":"2026-10-16T17:37:35.088Z"}
+export	{"id":"fl-4","title":"Deferred","status":"blocked","priority":4,"issue_type":"chore","estimated_minutes":0,"created_at":"2026-02-01T04:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:33.692Z"}
+export	{"id":"fl-5","title":"In review","status":"review","priority":0,"issue_type":"task","assignee":"dana","created_at":"2026-02-01T05:00:00Z","created_by":"seed","updated_at":"2026-10-16T17:37:35.171Z"}
+export	{"id":"fl-6","title":"Tombstoned","status":"tombstone","priority":2,"issue_type":"task","created_at":"2026-02-01T06:00:00Z","created_by":"seed","updated_at":"2026-02-05T00:00:00Z","closed_at":"2026-02-05T00:00:00Z","close_reason":"gone"}
+export	{"id":"fl-o1by","title":"Worked","status":"closed","priority":2,"issue_type":"task","assignee":"codex:fleet-b-thread-0001@2b1bc1c3","created_at":"2026-10-16T17:37:34.298Z","created_by":"codex:fleet-a-thread-0001@cb50e811","updated_at":"2026-10-16T17:37:34.729Z","closed_at":"2026-10-16T17:37:34.729Z","close_reason":"by b"}
+export	{"id":"fl-ufjn","title":"Native","description":"body","status":"closed","priority":1,"issue_type":"task","assignee":"carol","estimated_minutes":15,"created_at":"2026-10-16T17:37:33.969Z","created_by":"codex:fleet-a-thread-0001@cb50e811","updated_at":"2026-10-16T17:37:35.254Z","closed_at":"2026-10-16T17:37:34.216Z","close_reason":"second","external_ref":"x-1","dependencies":[{"issue_id":"fl-ufjn","depends_on_id":"fl-1","type":"blocks","created_at":"2026-10-16T17:37:35.254Z","created_by":"codex:fleet-a-thread-0001@cb50e811","metadata":"{}","thread_id":""}]}

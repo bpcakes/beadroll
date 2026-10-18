@@ -34,10 +34,11 @@
 //! once the cause comes.
 //!
 //! An event that changes an issue's texts (a long field set, a comment, a delete's record, an edge
-//! added or removed, whose additions' metadata is with them, roll-lqjj.39) needs them in the issue,
-//! and a create needs those of each issue that waits for its key, in which it makes an edge: a store
-//! reads them in before it extends ([`Projection::about`], roll-lqjj.6), and when one is not, the
-//! projection declines too. Texts read in that change are written again.
+//! added or removed, whose additions' metadata is with them, roll-lqjj.39), or may (a claim, a
+//! release, a close or a reopen, which can add to the ownership history they hold, roll-lqjj.40),
+//! needs them in the issue, and a create needs those of each issue that waits for its key, in which
+//! it makes an edge: a store reads them in before it extends ([`Projection::about`], roll-lqjj.6),
+//! and when one is not, the projection declines too. Texts read in that change are written again.
 
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap, HashSet};
@@ -171,7 +172,8 @@ impl Projection {
     /// The issues whose texts applying `records` can change, which a store reads in before it
     /// extends ([`Projection::extend`]): each issue a record is about, and each that waits, by an
     /// imported dependency, for the key a create among them brings, which that create makes an edge
-    /// of, its metadata with the issue's texts (roll-lqjj.39).
+    /// of, its metadata with the issue's texts (roll-lqjj.39). Which of them a record needs read in
+    /// is [`Projection::texts_in`]'s to say.
     pub fn about(&self, records: &[Record]) -> Vec<EventId> {
         let mut about = Vec::new();
         for record in records {
@@ -193,30 +195,38 @@ impl Projection {
         about
     }
 
-    /// Whether every issue whose texts `doing` changes has them in it, read in by the store first
-    /// (roll-lqjj.6, [`Projection::about`]): those read in are then to be written again. An edge's
-    /// metadata is with them (roll-lqjj.39), so an edge added or removed changes them, and so does a
-    /// create in each issue that waits for its key.
+    /// Whether every issue whose texts `doing` changes, or may, has them in it, read in by the
+    /// store first (roll-lqjj.6, [`Projection::about`]): those read in that it changes are then to
+    /// be written again. An edge's metadata is with them (roll-lqjj.39), so an edge added or
+    /// removed changes them, and so does a create in each issue that waits for its key. An
+    /// ownership event may add to the issue's ownership history, which they hold too
+    /// (roll-lqjj.40): whether it does, replay knows once it applies it, and marks them then
+    /// (`Issue::ended`, `Issue::lost`, `Issue::ignored`).
     fn texts_in(&mut self, doing: &[Box<Rest>]) -> bool {
         for what in doing {
-            let texts = match &what.op {
-                Op::Set(fields) => fields.iter().any(|(field, _)| is_text(*field)),
-                Op::Comment { .. } | Op::Delete(_) | Op::DepAdd { .. } | Op::DepRemove { .. } => {
-                    true
+            // whether it needs the issue's texts, and whether it changes them whatever it does
+            let (needs, changes) = match &what.op {
+                Op::Set(fields) => {
+                    let texts = fields.iter().any(|(field, _)| is_text(*field));
+                    (texts, texts)
                 }
+                Op::Comment { .. } | Op::Delete(_) | Op::DepAdd { .. } | Op::DepRemove { .. } => {
+                    (true, true)
+                }
+                Op::Claim(_) | Op::Release(_) | Op::Close(_) | Op::Reopen => (true, false),
                 Op::Create(making) if !self.state.by_key.contains_key(&making.key) => {
                     for uid in self.state.awaiting.waiting(&making.key) {
-                        if !self.texts_here(uid) {
+                        if !self.texts_here(uid, true) {
                             return false;
                         }
                     }
-                    false
+                    (false, false)
                 }
-                _ => false,
+                _ => (false, false),
             };
             let issue = (what.issue.as_deref()).and_then(EventId::parse);
-            if let Some(uid) = issue.filter(|_| texts)
-                && !self.texts_here(uid)
+            if let Some(uid) = issue.filter(|_| needs)
+                && !self.texts_here(uid, changes)
             {
                 return false;
             }
@@ -224,18 +234,20 @@ impl Projection {
         true
     }
 
-    /// Whether issue `uid`'s texts are in it, if it is an issue, to be written again: `false` when
-    /// they are only in the text file.
-    fn texts_here(&mut self, uid: EventId) -> bool {
-        let Some(issue) = self.state.issues.get_mut(&uid) else {
-            return true;
-        };
-        match issue.texts {
-            Texts::There(_) => return false,
-            Texts::Read(_) => issue.texts = Texts::Here,
-            Texts::Here => {}
+    /// Whether issue `uid`'s texts are in it, if it is an issue, to be written again when `changes`:
+    /// `false` when they are only in the text file. Texts read in that change are then to be placed
+    /// anew, which marks the issue; otherwise it is left as it is.
+    fn texts_here(&mut self, uid: EventId, changes: bool) -> bool {
+        match self.state.issues.get(&uid).map(|issue| &issue.texts) {
+            None | Some(Texts::Here) => true,
+            Some(Texts::There(_)) => false,
+            Some(Texts::Read(_)) => {
+                if changes && let Some(issue) = self.state.issues.get_mut(&uid) {
+                    issue.texts = Texts::Here;
+                }
+                true
+            }
         }
-        true
     }
 
     /// The new `events` in the order replay applies them after the projection's, when every one
@@ -306,6 +318,9 @@ impl Projection {
             .collect();
         self.heads.sort_unstable();
         self.ids.extend(events.keys().copied());
+        if self.kept.is_some() {
+            self.added.extend(events.keys().copied());
+        }
         for (machine, added) in order {
             if let Some(length) = self.lengths.get_mut(machine) {
                 *length = length.saturating_add(small(added.len()));

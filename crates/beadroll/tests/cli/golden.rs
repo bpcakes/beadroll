@@ -13,14 +13,14 @@ use beadroll_test_support::{Machine, Sandbox};
 use normal::Normaliser;
 
 /// One test's commands and what `bead` printed for them.
-struct Transcript {
+pub(crate) struct Transcript {
     name: &'static str,
     normal: Normaliser,
     text: String,
 }
 
 impl Transcript {
-    fn new(name: &'static str, sandbox: &Sandbox) -> Transcript {
+    pub(crate) fn new(name: &'static str, sandbox: &Sandbox) -> Transcript {
         let root = sandbox.root();
         let mut roots = vec![root.display().to_string()];
         if let Ok(real) = root.canonicalize() {
@@ -35,7 +35,7 @@ impl Transcript {
 
     /// Runs `bead ARGS` on `machine` and records it: the command, its standard output, its
     /// standard error when there is any, and its exit status.
-    fn record(&mut self, machine: &Machine, args: &[&str]) {
+    pub(crate) fn record(&mut self, machine: &Machine, args: &[&str]) {
         self.record_with(machine, args, &[]);
     }
 
@@ -58,7 +58,7 @@ impl Transcript {
     }
 
     /// Records a line of the test's own.
-    fn note(&mut self, line: &str) {
+    pub(crate) fn note(&mut self, line: &str) {
         let line = self.normal.apply(line);
         self.text.push_str(&format!("# {line}\n\n"));
     }
@@ -66,8 +66,13 @@ impl Transcript {
     /// Compares the transcript with its golden file.
     fn finish(self) {
         let path = golden_dir().join(format!("{}.txt", self.name));
+        self.finish_at(&path);
+    }
+
+    /// Compares the transcript with the one recorded at `path`.
+    pub(crate) fn finish_at(self, path: &Path) {
         let expected =
-            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         if self.text != expected {
             let first = self
                 .text

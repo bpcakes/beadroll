@@ -27,13 +27,17 @@
 //! transaction that starts from the projection the merge read, where a test writes the journal to
 //! see that the round reads the store again; `fetch.result`, at the start of a fetch;
 //! `fetch.retry`, before the wait to try again a fetch that lost to another process's;
+//! `fetch.fetched`, after a fetch that brought a head and before its tip and manifest are read,
+//! where a test removes what it brought from `sync.git` as a prune racing the fetch would;
 //! `append.mid`, inside a segment append after a partial line;
 //! `backoff`, the unlocked wait between rounds; `claim.before-push`, between a claim's fetch and
 //! push; `pending.after-list`, between listing and reading `pending/`; `journal.after-enumerate`,
 //! `journal.before-read` (before each segment is read), `view.before-load-pending` and
 //! `identity.before-link`, for readers racing writers; `recap.before-save`, once a recap's answer
 //! is written and before it takes the cursor's lock;
-//! `projection.texts-appended`, after a projection's texts are appended and before the
+//! `projection.before-save`, once a projection to write back is caught up or made and before its
+//! text file is opened, where a test acts as another process would between a read and its
+//! write-back; `projection.texts-appended`, after a projection's texts are appended and before the
 //! projection that places them is written; `projection.read`, which a test counts, once for every
 //! read of the store's state through `projection::current` (by `projection`, `state` and the
 //! views, whether it decodes the stored projection or replays the journal because none fits), and
@@ -54,7 +58,7 @@ use beadroll_core::code::Code;
 use crate::error::Error;
 
 /// The points bead has, besides `atomic-write:<path part>` and `atomic-written:<path part>`.
-pub const POINTS: [&str; 23] = [
+pub const POINTS: [&str; 25] = [
     "ownership.before-publish",
     "ownership.before-transaction",
     "ownership.after-publish-ok",
@@ -66,12 +70,14 @@ pub const POINTS: [&str; 23] = [
     "publish.before",
     "fetch.result",
     "fetch.retry",
+    "fetch.fetched",
     "append.mid",
     "backoff",
     "claim.before-push",
     "pending.after-list",
     "journal.after-enumerate",
     "journal.before-read",
+    "projection.before-save",
     "projection.texts-appended",
     "projection.read",
     "view.before-load-pending",

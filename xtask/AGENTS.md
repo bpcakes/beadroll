@@ -28,7 +28,7 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
   `timing --sync N`, a publishing `bead sync` on a scratch store of the same history, with the
   store's memo of its journal files and its projection, without its projection, and without
   either (roll-lqjj.1, roll-lqjj.2), and a write published at once (roll-lqjj.29); `timing/read.rs`: `timing --read N`, the reading commands
-  there (`log`, `info` and `machines` among them, roll-lqjj.31) with the projection and without it, a local write, and a write cycle (a write after a read, the read after it, which writes the projection back, and a write after a write: roll-lqjj.36), a write after a read once the store has no remote (roll-lqjj.50), and the bytes the projection and its text file hold; `timing/merge.rs`: `timing --merge N`, a sync that
+  there (`log`, `info` and `machines` among them, roll-lqjj.31) with the projection and without it, a local write, a write cycle (a write after a read, the read after it, which writes the projection back, and a write after a write: roll-lqjj.36), a claim and its release, each published at once (the release adds to the issue's ownership history, which its texts hold: roll-lqjj.40), a write after a read once the store has no remote (roll-lqjj.50), and the bytes the projection and its text file hold; `timing/merge.rs`: `timing --merge N`, a sync that
   merges what another machine wrote after the store's frontier; `timing/contend.rs`: `timing
   --contend M`, machines writing one tracker at once (roll-lqjj.7); `timing/import.rs`: `timing
   --import N`, importing a generated Beads export (roll-lqjj.9); `timing/plan.rs`: `timing --plan
@@ -55,9 +55,10 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
   a command that only reads decodes) and whole with its index (what a write decodes), with the heap
   a decoded state holds and the bytes of the state part, the index and the texts (roll-lqjj.35,
   X16), and what writing it back costs: encoded after a comment as a write-back between
-  compactions encodes it, at the worst point, an eighth more events taken in than a compaction
-  left, its index's bytes, its decode, its heap whole and its encode, and one comment past it the
-  encode that compacts (roll-lqjj.43, X17); `timing/growth.rs`: the
+  compactions encodes it, copying what did not change since it was read back and whole, every
+  record written (roll-lqjj.44), at the worst point, an eighth more events taken in than a
+  compaction left, its index's bytes, its decode, its heap whole and its encode, both ways, and one
+  comment past it the encode that compacts (roll-lqjj.43, X17); `timing/growth.rs`: the
   growth guards only time can keep (roll-lqjj.34, X15), tests ignored by every other run that time
   planning an import, its dry run, a re-import, replay of imports that wait for keys, replay of
   copies two machines minted alike (`timing/renames.rs`'s journals; roll-lqjj.38, X03) and a

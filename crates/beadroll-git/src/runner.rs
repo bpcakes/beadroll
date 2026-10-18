@@ -255,6 +255,18 @@ impl Output {
         self.returncode == 0
     }
 
+    /// Whether a signal ended git rather than its own exit: a failure that says nothing of what
+    /// git was reading, since something outside it (an OOM killer, say) cut it short.
+    pub fn killed(&self) -> bool {
+        self.returncode < 0
+    }
+
+    /// The [`Error::Failed`] [`Git::check`] gives when `git ARGS` answered with this output.
+    pub fn failed(&self, args: &[&OsStr]) -> Error {
+        let args: Vec<OsString> = args.iter().map(|arg| arg.to_os_string()).collect();
+        failure(&args, self)
+    }
+
     /// Stdout with surrounding ASCII whitespace removed, decoded with replacement for invalid
     /// UTF-8.
     pub fn stdout_text(&self) -> String {
@@ -462,6 +474,23 @@ mod tests {
             said.contains("SIGKILL") || said.contains("signal"),
             "{said}"
         );
+    }
+
+    #[test]
+    fn a_signal_ends_git_killed_and_its_own_exit_does_not() {
+        let tmp = std::env::temp_dir();
+        let (out, err) = (
+            tempfile::tempfile_in(&tmp).unwrap(),
+            tempfile::tempfile_in(&tmp).unwrap(),
+        );
+        // wait statuses: a signal in the low bits, an exit code in the next byte
+        let killed = finished(ExitStatus::from_raw(libc::SIGKILL), &out, &err).unwrap();
+        assert!(killed.killed() && !killed.success());
+        let exited = finished(ExitStatus::from_raw(128 << 8), &out, &err).unwrap();
+        assert!(!exited.killed() && !exited.success());
+        assert_eq!(exited.returncode, 128);
+        let error = killed.failed(&[OsStr::new("cat-file"), OsStr::new("blob")]);
+        assert_eq!(error.to_string(), "git cat-file blob: killed by SIGKILL");
     }
 
     #[test]

@@ -10,7 +10,7 @@ use crate::op::IntegerField;
 use crate::time::event_time;
 use crate::work::{Work, tally};
 
-use super::claim::{Claim, EndedClaim, LostClaim, Provisional, Stale};
+use super::claim::{Claim, Ended, EndedClaim, LostClaim, Provisional, Stale};
 use super::edges::{DepTags, Deps};
 use super::small::{IdMap, IdSet, VecMap};
 use super::texts::{Texts, is_text};
@@ -36,6 +36,9 @@ pub struct Issue {
     pub(crate) retracted: BTreeMap<(String, Option<String>), IdSet>,
     pub(crate) claim: Option<Box<Claim>>,
     pub(crate) claim_generation: Int,
+    /// The claims that ended, the claims that lost and the ends that came too late: its ownership
+    /// history, kept with its texts (roll-lqjj.40) and added to through [`Issue::ended`],
+    /// [`Issue::lost`] and [`Issue::ignored`] alone.
     pub(crate) claim_history: Vec<EndedClaim>,
     pub(crate) provisional_claims: Vec<Provisional>,
     pub(crate) lost_claims: Vec<LostClaim>,
@@ -44,8 +47,8 @@ pub struct Issue {
     pub(crate) origin: Origin,
     pub(crate) where_: Option<Arc<Value>>,
     pub(crate) closed_on: Option<Arc<Value>>,
-    /// Where its long fields, their registers' values, its comments and its extras are
-    /// (roll-lqjj.6): in it, or only in a projection's text file.
+    /// Where its long fields, their registers' values, its comments, its extras and its ownership
+    /// history are (roll-lqjj.6, roll-lqjj.40): in it, or only in a projection's text file.
     pub(crate) texts: Texts,
 }
 
@@ -113,6 +116,16 @@ pub(crate) struct Origin {
 static NO_EXTRA: LazyLock<Object> = LazyLock::new(Object::new);
 
 impl Issue {
+    /// Derives its labels again: those whose tags remain. No write-back writes them, so this changes
+    /// nothing a projection copies (roll-lqjj.44).
+    pub(crate) fn relabel(&mut self) {
+        tally(Work::Relabel, 1 + self.label_tags.len());
+        self.labels = (self.label_tags.iter())
+            .filter(|(_, tags)| !tags.is_empty())
+            .map(|(label, _)| label.clone())
+            .collect();
+    }
+
     /// Its id: the id of the create that made it.
     pub fn uid(&self) -> EventId {
         self.uid
@@ -257,9 +270,18 @@ impl Issue {
         &self.claim_generation
     }
 
-    /// Claims that ended, oldest first.
+    /// Claims that ended, oldest first: empty until its texts are read in ([`Issue::texts`]), which
+    /// [`Issue::last_ended`] is not.
     pub fn claim_history(&self) -> &[EndedClaim] {
         &self.claim_history
+    }
+
+    /// Who ended its last claim that ended, and how, whether or not its texts are read in.
+    pub fn last_ended(&self) -> Option<Ended> {
+        match &self.texts {
+            Texts::There(stored) => stored.ended.clone(),
+            Texts::Here | Texts::Read(_) => self.claim_history.last().map(EndedClaim::ending),
+        }
     }
 
     /// Offline claims, which never displace a confirmed owner.
@@ -267,14 +289,42 @@ impl Issue {
         &self.provisional_claims
     }
 
-    /// Claims that lost to the owner of the time.
+    /// Claims that lost to the owner of the time: empty until its texts are read in.
     pub fn lost_claims(&self) -> &[LostClaim] {
         &self.lost_claims
     }
 
-    /// Ends of claims that were no longer current, ignored.
+    /// Ends of claims that were no longer current, ignored: empty until its texts are read in.
     pub fn stale(&self) -> &[Stale] {
         &self.stale
+    }
+
+    /// Adds a claim that ended to its ownership history.
+    pub(crate) fn ended(&mut self, ended: EndedClaim) {
+        self.claim_history.push(ended);
+        self.history_changed();
+    }
+
+    /// Adds a claim that lost to its ownership history.
+    pub(crate) fn lost(&mut self, lost: LostClaim) {
+        self.lost_claims.push(lost);
+        self.history_changed();
+    }
+
+    /// Adds an end that came too late, ignored, to its ownership history.
+    pub(crate) fn ignored(&mut self, stale: Stale) {
+        self.stale.push(stale);
+        self.history_changed();
+    }
+
+    /// Its ownership history changed, which its texts hold: texts read in are then to be written
+    /// again, as texts changed are. A projection applies an event that can add to the history only
+    /// to an issue whose texts are in it (`Projection::extend`), so they are never only in a text
+    /// file here.
+    fn history_changed(&mut self) {
+        if let Texts::Read(_) = self.texts {
+            self.texts = Texts::Here;
+        }
     }
 
     /// This machine's ownership attempts the remote has not confirmed (the store fills these).
@@ -316,8 +366,8 @@ impl Issue {
     }
 
     /// Where its texts are: in it, or in a projection's text file, not read; its long fields,
-    /// their registers, its comments and its extras are empty, and its edges' metadata absent,
-    /// until they are read in.
+    /// their registers, its comments, its extras and its ownership history are empty, and its
+    /// edges' metadata absent, until they are read in.
     pub fn texts(&self) -> &Texts {
         &self.texts
     }

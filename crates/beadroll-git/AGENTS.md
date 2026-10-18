@@ -15,7 +15,8 @@ resolution shared with the store.
 
 - `src/runner.rs`: `Env` (a git's whole environment, its directory and where its output files go),
   `Git` (`run`, `check`, `text`, `string`, with `input`, `timeout` and `reap`), `Output`
-  (`checked_text`); the audited `pre_exec` (`setsid`, SIGXFSZ back to default).
+  (`checked_text`, `failed`, and `killed` for a git a signal ended); the audited `pre_exec`
+  (`setsid`, SIGXFSZ back to default).
 - `src/session.rs`: `Session`, one long-lived git spoken to through pipes, started as the runner
   starts every git and killed with its helpers and reaped when dropped; `NoAnswer`.
 - `src/objects.rs`: `Objects` (`cat-file --batch-command`: `name`, `get`, `start`, `stop`),

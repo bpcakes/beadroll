@@ -53,7 +53,11 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   caught up when records were only appended to them, else the journal replayed, and written back
   when the files held still: by a command that reads whatever it caught up, by one that writes only
   once the records it applied hold more than a 64th of the projection's bytes (`kept_for`,
-  roll-lqjj.36); `src/projection/file.rs`: its header, sums and what it was made from;
+  roll-lqjj.36), copying what did not change since it was read (roll-lqjj.44): `current` lets go of
+  the bytes it was read from (`Projection::let_go`) once it has written it back or decided not to,
+  so that a command going on with it never holds them; `src/projection/file.rs`: its header, sums
+  and what it was made from, written before the state and the index as parts (`file::head`,
+  `file::parts`), so that they are not copied behind them first;
   `src/projection/sources.rs`: `Sourced`, a projection with the journal files it was made from
   (`projection_sourced`: each segment's identity as `current` read it, the attempt files by the
   listing and identities the locked phase keeps), and `Sourced::into_current`, which says whether

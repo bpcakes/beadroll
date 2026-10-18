@@ -103,10 +103,10 @@ fn bytes_that_say_more_events_were_compacted_than_are_known_never_read_as_a_proj
     projection.compacted = projection.known() + 1;
     let (encoded, _) = projection.encode_with(0, false);
     assert_eq!(
-        Projection::decode(&encoded).unwrap_err(),
+        Projection::decode(encoded).unwrap_err(),
         Unreadable("the events last compacted")
     );
     projection.compacted = projection.known();
     let (encoded, _) = projection.encode_with(0, false);
-    assert!(Projection::decode(&encoded).is_ok());
+    assert!(Projection::decode(encoded).is_ok());
 }

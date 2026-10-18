@@ -233,11 +233,6 @@ impl<'a> Link<'a> {
         Ok(self.env.git(args).run()?)
     }
 
-    /// `git ARGS` in `sync.git`; a failure is `GIT_ERROR`, never read as damage.
-    fn check(&self, args: &[&OsStr]) -> Result<beadroll_git::Output, Error> {
-        Ok(self.env.git(args).check()?)
-    }
-
     fn damage(&self, said: &str) -> Error {
         Error::SyncRepoDamaged(format!(
             "this machine's sync repository {} is damaged; it holds nothing that is not also in \

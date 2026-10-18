@@ -1,5 +1,7 @@
 //! An issue's ownership records: confirmed owner, ended claims, provisional claims, claims that
-//! lost to a current owner and stale claim endings.
+//! lost to a current owner and stale claim endings. The current claim, its generation and the
+//! provisional claims are what every ownership decision reads; the ended claims, the lost claims
+//! and the stale endings are the issue's ownership history, kept with its texts (roll-lqjj.40).
 
 use std::sync::Arc;
 
@@ -69,6 +71,14 @@ pub struct EndedClaim {
 }
 
 impl EndedClaim {
+    /// Who ended it, and how.
+    pub fn ending(&self) -> Ended {
+        Ended {
+            by: Arc::clone(&self.ended_by),
+            how: self.how,
+        }
+    }
+
     /// When it ended: the time of the event that ended it.
     pub fn ended(&self) -> String {
         event_time(self.ending.millis())
@@ -85,6 +95,17 @@ impl EndedClaim {
         }
         out
     }
+}
+
+/// Who ended a claim, and how: what a command asks of an issue's last ended claim whether or not
+/// the issue's texts, which hold its ownership history, are read in (roll-lqjj.40,
+/// [`crate::state::Issue::last_ended`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Ended {
+    /// Who ended it.
+    pub by: Arc<str>,
+    /// How, as [`EndedClaim::how`] says.
+    pub how: &'static str,
 }
 
 /// An offline claim.

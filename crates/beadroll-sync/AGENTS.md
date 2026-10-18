@@ -24,8 +24,10 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   `ls-remote` that `init` asks before it starts a tracker, as a link asks but from a bare
   repository made aside, writing nothing in the store; `src/link/merge.rs`: `Link::merge`;
   `src/link/publish.rs`: its tree and `Link::publish`; `src/link/read.rs`: the remote's tree read
-  through the link's `cat-file`; `src/link/write.rs`: blobs, trees and the ref after a push through
-  its `hash-object`, `mktree` and `update-ref`, with one ref transaction after a fetch.
+  through the link's `cat-file`, and `Link::lost`, what of a fetched tip a failed read of it finds
+  missing or damaged in `sync.git` (roll-dih8.30); `src/link/write.rs`: blobs, trees and the ref
+  after a push through its `hash-object`, `mktree` and `update-ref`, with one ref transaction
+  after a fetch.
   Each falls back to the corresponding separate git command. `Link::local_blobs` hashes only
   journal files the store's memo (`beadroll_store::Memo`) cannot vouch for, an attempt file by the
   identity its locked phase took of it (`beadroll_store::claim_keys`, roll-lqjj.30); `Link::hashed`
@@ -69,8 +71,13 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   (`docs/REVIEWING.md` §2); a
   `Remote` trait waits for its second implementation.
 - A link preserves git operation order and failure classification (`Link::git` may find damage,
-  `Link::check` never does). A kept git that has no answer (`beadroll_git::NoAnswer`) falls back
-  to the corresponding separate git command. It does not hash a journal file
+  `Link::run` leaves its output to the caller). A failed read of the fetched tip (manifest,
+  listing, blob) asks `Link::lost` what of the tip is missing or damaged in `sync.git`, and that is
+  damage: a prune can remove what a fetch brought before it is read, and a tree or blob gone under
+  a commit still there is never fetched again; a blob there but unreadable, or a tree git cannot
+  walk, is damage too. A git a signal ended is never damage (`Output::killed`).
+  A kept git that has no answer (`beadroll_git::NoAnswer`) falls back to the corresponding
+  separate git command. It does not hash a journal file
   that keeps the identity the memo remembers it at: a merge compares the remembered blob with the
   published one as it is, and a publish names it in a tree only when this link made it or the tree
   of the tip it merged holds it at that path, so that a blob a gc dropped is never named in a

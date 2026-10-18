@@ -28,6 +28,7 @@ use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_core::code::Code;
 use beadroll_core::event::DONE;
+use beadroll_core::id::EventId;
 use beadroll_core::json::{Int, Object, Value};
 use beadroll_core::op::IntegerField;
 use beadroll_core::state::{Issue, State, Target};
@@ -332,10 +333,20 @@ pub(crate) fn view_of_written(
 
 /// `st` with the texts of the issues `keys` name read in; the store's state with every text, when
 /// theirs cannot be.
-fn texts_of(ws: &Workspace, mut st: State, keys: &[impl AsRef<OsStr>]) -> Result<State, Failure> {
+fn texts_of(ws: &Workspace, st: State, keys: &[impl AsRef<OsStr>]) -> Result<State, Failure> {
     let uids: Vec<_> = (keys.iter())
         .filter_map(|key| resolve_arg(&st, key.as_ref()).ok().map(Issue::uid))
         .collect();
+    texts_in(ws, st, uids)
+}
+
+/// `st` with the texts of the issues `uids` names read in; the store's state with every text, when
+/// theirs cannot be.
+pub(crate) fn texts_in(
+    ws: &Workspace,
+    mut st: State,
+    uids: impl IntoIterator<Item = EventId>,
+) -> Result<State, Failure> {
     if read_texts(ws, &mut st, uids) {
         return Ok(st);
     }
@@ -412,12 +423,11 @@ pub(crate) fn read_utf8(path: &OsStr, what: &OsStr) -> Result<String, Failure> {
 }
 
 /// Whether `me` ended the issue's last claim by closing or deleting it. That run may have died
-/// before publishing, so a retry publishes as promptly as the first run.
+/// before publishing, so a retry publishes as promptly as the first run. Asked of issues whose
+/// texts, which hold their ownership history, are not read in (roll-lqjj.40).
 pub(crate) fn ended_by(issue: &Issue, me: &Label) -> bool {
-    issue
-        .claim_history()
-        .last()
-        .is_some_and(|last| me.is(&last.ended_by) && matches!(last.how, "close" | "delete"))
+    (issue.last_ended())
+        .is_some_and(|last| me.is(&last.by) && matches!(last.how, "close" | "delete"))
 }
 
 /// Removes edges from `issue` to `to` that this writer has seen; `kind` set to `None` selects

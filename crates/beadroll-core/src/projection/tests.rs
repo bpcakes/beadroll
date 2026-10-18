@@ -11,15 +11,20 @@ use crate::journal::{Journal, canonical};
 use crate::json::{Object, Value};
 use crate::state::State;
 
+use super::parts::Copying;
 use super::{Projection, Record, decode_state};
 
-mod awaiting;
+pub(crate) mod awaiting;
 mod compacted;
+mod copied;
 mod edges;
 mod finished;
 mod flawed;
+mod forged;
 mod hostile;
 mod known;
+mod marked;
+pub(crate) mod owned;
 mod reported;
 mod shown;
 mod taken;
@@ -153,6 +158,18 @@ impl World {
     /// Machine `m` writes `op` on `issue` (itself, for a create): an attempt file's for a claim
     /// or a release, its journal's otherwise. Returns the event's id.
     fn write(&mut self, m: usize, op: &str, issue: Option<String>, data: Object) -> String {
+        self.write_as(m, None, op, issue, data)
+    }
+
+    /// [`World::write`], by the agent's thread `thread` when given, and one drawn otherwise.
+    fn write_as(
+        &mut self,
+        m: usize,
+        thread: Option<&str>,
+        op: &str,
+        issue: Option<String>,
+        data: Object,
+    ) -> String {
         self.clock += 1 + self.rng.below(3) as u64;
         let id = match self.next_id.take() {
             Some(id) => id,
@@ -166,10 +183,11 @@ impl World {
         event.insert("deps".into(), Value::Array(deps));
         let mut actor = Object::new();
         actor.insert("agent".into(), Value::from("claude"));
-        actor.insert(
-            "thread".into(),
-            Value::from(format!("t{}", self.rng.below(2))),
-        );
+        let thread = match thread {
+            Some(thread) => thread.to_owned(),
+            None => format!("t{}", self.rng.below(2)),
+        };
+        actor.insert("thread".into(), Value::from(thread));
         event.insert("actor".into(), Value::from(actor));
         event.insert("op".into(), Value::from(op));
         event.insert(
@@ -256,6 +274,10 @@ impl World {
             }
             self.write(m, "create", None, data);
             return;
+        }
+        // who holds an issue, half the time drawn as a world heavy in ownership draws it
+        if let Some(issue) = issue.clone().filter(|_| roll >= 70 && self.rng.chance(50)) {
+            return self.own(m, issue);
         }
         let (op, data) = match roll {
             18..=34 => {
@@ -545,6 +567,11 @@ impl World {
             if self.flawed && m == 3 && !self.rng.chance(20) {
                 continue;
             }
+            // two machines now and then claim one issue at once
+            if self.rng.chance(10) {
+                self.race();
+                continue;
+            }
             // Another machine usually takes in the latest before it writes, and publishes after.
             if self.rng.chance(70) {
                 self.sync(m);
@@ -625,16 +652,45 @@ impl WriteBack {
 }
 
 /// The projection read back from its bytes, as the next command reads it, written back as `back`
-/// says, its new texts appended to `file` and every issue's texts there.
+/// says, its new texts appended to `file` and every issue's texts there. Read back with some
+/// issues' texts read in alone, as a command that prints those issues whole reads it, every issue
+/// answers who holds it as it did, and those read in their ownership history too
+/// (`owned::read_alike`). What the write-back copied of the bytes the projection was read back
+/// from is what it writes when it copies nothing, byte for byte (roll-lqjj.44).
 fn read_back(projection: &Projection, file: &mut TextFile, back: WriteBack) -> Projection {
     let compacts = back.compacts(projection);
     let (encoded, _) = match back {
         WriteBack::Encoded => projection.encode(file.len() as u64),
         _ => projection.encode_with(file.len() as u64, compacts),
     };
+    let (written, _) = projection.encode_copying(file.len() as u64, compacts, Copying::Nothing);
+    for (part, copied, written) in [
+        ("state", &encoded.state, &written.state),
+        ("index", &encoded.index, &written.index),
+    ] {
+        let differs = (copied.iter().zip(written.iter())).position(|(a, b)| a != b);
+        assert!(
+            copied == written,
+            "the {part} part copied differs from the one written, at byte {differs:?} of {}",
+            copied.len()
+        );
+    }
     file.extend_from_slice(&encoded.texts);
-    let decoded = Projection::decode(&encoded).unwrap();
+    let decoded = Projection::decode(encoded.clone()).unwrap();
     assert!(decoded.state().issues().all(|issue| !issue.texts().here()));
+    // each name and each value once in each table, however many write-backs added to it
+    let kept = decoded.kept.as_deref().unwrap();
+    for table in [&kept.state_table, &kept.index_table] {
+        let once = |at: usize| !table.names[..at].contains(&table.names[at]);
+        assert!((0..table.names.len()).all(once), "{:?}", table.names);
+        let values: Vec<Vec<u8>> = table
+            .values
+            .iter()
+            .map(|v| super::codec::bytes_of(v))
+            .collect();
+        let once = |at: usize| !values[..at].contains(&values[at]);
+        assert!((0..values.len()).all(once), "{:?}", table.values);
+    }
     let original = whole(projection, file);
     let read = whole(&decoded, file);
     assert!(same(read.state(), original.state()));
@@ -646,6 +702,11 @@ fn read_back(projection: &Projection, file: &mut TextFile, back: WriteBack) -> P
     let mut state = decode_state(&encoded.state).unwrap();
     assert!(known::knows_writers_alone(&state, projection));
     assert_eq!(edges::outline(&state), edges::outline(original.state()));
+    // as a command that prints some issues whole reads in their texts alone
+    let some: Vec<EventId> = state.issues.keys().copied().step_by(2).collect();
+    let mut partly = state.clone();
+    read_in(&mut partly, file, Some(some.clone()));
+    owned::read_alike(&partly, original.state(), &some);
     read_in(&mut state, file, None);
     assert!(same(&state, original.state()));
     assert_eq!(edges::metadata(&state), edges::metadata(original.state()));
@@ -713,4 +774,9 @@ fn every_extension_is_replays_answer_or_declined() {
     );
     edges::pinned("plain", &tally.answers);
     tally.drawn.enough();
+    // every kind of ownership record, a takeover's reason, a lost claim and an end too late among
+    // them, and later events adding to histories a projection read back holds
+    assert!(tally.seen.more_than(5), "{:?}", tally.seen);
+    assert_eq!(tally.owned, owned::DIFFERENTIAL, "{:#x}", tally.owned);
+    tally.marked.enough();
 }

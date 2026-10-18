@@ -15,6 +15,8 @@ use crate::id::EventId;
 use crate::journal::Journal;
 use crate::json::{self, Format, Object, Value};
 use crate::projection::Record;
+use crate::projection::tests::awaiting::fnv;
+use crate::projection::tests::owned::{self, BASIS};
 use crate::projection::tests::{Rng, history};
 use crate::query::{Edges, ReadyScope};
 use crate::state::State;
@@ -261,7 +263,8 @@ fn first_difference(expected: &[(String, String)], got: &[(String, String)]) -> 
 }
 
 /// What [`delivered_alike`] delivered: the most machines a history had, the records, those of
-/// attempt files, the copies renamed and what replay reported.
+/// attempt files, the copies renamed and what replay reported; and the digest of what replay
+/// answers of every issue's ownership in each history (`owned::answers`).
 #[derive(Default)]
 struct Tally {
     machines: usize,
@@ -269,6 +272,7 @@ struct Tally {
     attempts: usize,
     renamed: usize,
     reported: usize,
+    owned: u64,
 }
 
 /// Replays each history of `seeds` in the order written and in other orders, and fails at the
@@ -278,7 +282,10 @@ struct Tally {
 /// records that could not be used are compared as a set, since replay reports them in the order
 /// found.
 fn delivered_alike(seeds: std::ops::Range<u64>, flawed: bool) -> Tally {
-    let mut tally = Tally::default();
+    let mut tally = Tally {
+        owned: BASIS,
+        ..Tally::default()
+    };
     for seed in seeds {
         let records = history(20_261_016 + seed, BATCHES, flawed);
         tally.records += records.len();
@@ -289,6 +296,7 @@ fn delivered_alike(seeds: std::ops::Range<u64>, flawed: bool) -> Tally {
         let first = delivered(&records, &written);
         tally.renamed += first.renames().len();
         tally.reported += first.integrity().len();
+        tally.owned = fnv(tally.owned, owned::answers(&first).as_bytes());
         let expected = answers(&first, flawed);
         let mut rng = Rng(seed);
         let mut orders = vec![("as a store reads", stored(&records))];
@@ -318,6 +326,7 @@ fn replay_answers_alike_in_any_order_the_causes_allow_and_as_a_store_reads() {
     assert!(tally.attempts > 200, "{} attempt records", tally.attempts);
     assert!(tally.renamed > 100, "{} renames", tally.renamed);
     assert_eq!(tally.reported, 0, "{} reported", tally.reported);
+    assert_eq!(tally.owned, owned::DELIVERED, "{:#x}", tally.owned);
 }
 
 #[test]
@@ -325,4 +334,5 @@ fn replay_of_what_it_reports_answers_alike_in_any_order_that_keeps_each_journals
     let tally = delivered_alike(0..SEEDS, true);
     assert!(tally.records > 1_500, "{} records", tally.records);
     assert!(tally.reported > 200, "{} reported", tally.reported);
+    assert_eq!(tally.owned, owned::DELIVERED_FLAWED, "{:#x}", tally.owned);
 }

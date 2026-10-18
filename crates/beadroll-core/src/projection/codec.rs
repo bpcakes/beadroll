@@ -1,6 +1,10 @@
 //! The bytes a projection is kept in: counts and numbers as varints, texts with their length, ids
-//! as their 16 bytes, JSON values with their kind first; a name or a value events share written the
-//! first time and referred to after, so that the state read back shares them as replay's did.
+//! as their 16 bytes, JSON values with their kind first; a name or a value events share held once
+//! and referred to by its number, so that the state read back shares them as replay's did. An
+//! issue's texts, bytes of their own, write each the first time and refer to it after; a part of
+//! records (the state, the index) refers to a table of its own instead, written after its records
+//! and placed by its first eight bytes ([`Writer::tabled`], [`Reader::tabled`]), so that a record's
+//! bytes mean the same wherever they are, and a write-back can copy them (roll-lqjj.44).
 //!
 //! Nothing read is trusted further than the bytes there are: a count is at most the bytes left,
 //! and values nest little deeper than JSON bead reads ([`NESTING`]). A store checks a projection's
@@ -22,15 +26,144 @@ const NESTING: usize = MAX_DEPTH + 8;
 #[error("unreadable projection: {0}")]
 pub struct Unreadable(pub(crate) &'static str);
 
-/// Bytes being written.
+/// The names and the values events share that a part's records refer to by number, each once, in
+/// the order they were first written: the numbers of a table only grow, so a record copied from a
+/// part refers to what it referred to there.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct Table {
+    pub(crate) names: Vec<Arc<str>>,
+    pub(crate) values: Vec<Arc<Value>>,
+}
+
+/// A table being written: its entries, each name's number by its text, and each value's by the
+/// address it is held at and, for one held elsewhere, by its bytes.
+#[derive(Default)]
+struct Numbering {
+    table: Table,
+    names: HashMap<Arc<str>, u32>,
+    addresses: HashMap<usize, u32>,
+    /// Each value's number by its bytes, made the first time a value is not found by its address.
+    contents: Option<HashMap<Vec<u8>, u32>>,
+}
+
+impl Numbering {
+    /// The table `table` with more to come, its entries numbered as they are.
+    fn of(table: Table) -> Numbering {
+        let names = (table.names.iter().enumerate())
+            .map(|(n, name)| (Arc::clone(name), small(n)))
+            .collect();
+        let addresses = (table.values.iter().enumerate())
+            .map(|(n, value)| (Arc::as_ptr(value) as usize, small(n)))
+            .collect();
+        Numbering {
+            table,
+            names,
+            addresses,
+            contents: None,
+        }
+    }
+
+    fn name(&mut self, name: &Arc<str>) -> u32 {
+        if let Some(number) = self.names.get(name) {
+            return *number;
+        }
+        let number = small(self.table.names.len());
+        self.table.names.push(Arc::clone(name));
+        self.names.insert(Arc::clone(name), number);
+        number
+    }
+
+    /// `value`'s number: of the entry held at its address, else of the entry with its bytes, else of
+    /// a new entry. Every address it knows is of a value it holds or that the projection being
+    /// encoded holds, so none is another value's while the table is written.
+    fn value(&mut self, value: &Arc<Value>) -> u32 {
+        let address = Arc::as_ptr(value) as usize;
+        if let Some(number) = self.addresses.get(&address) {
+            return *number;
+        }
+        let values = &self.table.values;
+        let contents = self.contents.get_or_insert_with(|| {
+            (values.iter().enumerate())
+                .map(|(n, value)| (bytes_of(value), small(n)))
+                .collect()
+        });
+        let bytes = bytes_of(value);
+        let number = match contents.get(&bytes) {
+            Some(number) => *number,
+            None => {
+                let number = small(self.table.values.len());
+                contents.insert(bytes, number);
+                self.table.values.push(Arc::clone(value));
+                number
+            }
+        };
+        // found by its address from now on: the encode that asks holds it until the table is written
+        self.addresses.insert(address, number);
+        number
+    }
+}
+
+/// A value's bytes, as a writer writes it: what tells two values apart in a table.
+pub(super) fn bytes_of(value: &Value) -> Vec<u8> {
+    let mut w = Writer::default();
+    w.value(value);
+    w.finish()
+}
+
+/// `n` as a number in a table (a projection holds fewer than 2³² of anything).
+fn small(n: usize) -> u32 {
+    u32::try_from(n).unwrap_or(u32::MAX)
+}
+
+/// Bytes being written: names and shared values each written the first time and referred to after,
+/// or, for a part of records, referred to in its table.
 #[derive(Default)]
 pub(crate) struct Writer {
     out: Vec<u8>,
     names: HashMap<Arc<str>, u32>,
     shared: HashMap<usize, u32>,
+    table: Option<Numbering>,
 }
 
 impl Writer {
+    /// A part of records referring to `table`, and to what is added to it, by number: its first
+    /// eight bytes kept for where the table will be written ([`Writer::table_here`]).
+    pub(crate) fn tabled(table: Table, capacity: usize) -> Writer {
+        let mut out = Vec::with_capacity(capacity);
+        out.extend_from_slice(&[0; 8]);
+        Writer {
+            out,
+            names: HashMap::new(),
+            shared: HashMap::new(),
+            table: Some(Numbering::of(table)),
+        }
+    }
+
+    /// Writes the table here, after the part's records, and says so in its first eight bytes: what
+    /// follows is read with it. What the table is, as written.
+    pub(crate) fn table_here(&mut self) -> Table {
+        let at = (self.out.len() as u64).to_le_bytes();
+        if let Some(head) = self.out.get_mut(..8) {
+            head.copy_from_slice(&at);
+        }
+        let table = self.table.take().map(|numbering| numbering.table);
+        let table = table.unwrap_or_default();
+        self.count(table.names.len());
+        for name in &table.names {
+            self.text(name);
+        }
+        self.count(table.values.len());
+        for value in &table.values {
+            self.value(value);
+        }
+        table
+    }
+
+    /// `bytes` as they are: records copied.
+    pub(crate) fn copy(&mut self, bytes: &[u8]) {
+        self.out.extend_from_slice(bytes);
+    }
+
     /// What was written.
     pub(crate) fn finish(self) -> Vec<u8> {
         self.out
@@ -86,8 +219,14 @@ impl Writer {
         }
     }
 
-    /// A name, written the first time and referred to after: 0 and the text, or its number + 1.
+    /// A name, written the first time and referred to after: 0 and the text, or its number + 1; in
+    /// a part of records, always its number in the part's table + 1, as a reader that has read the
+    /// table first reads it.
     pub(crate) fn name(&mut self, name: &Arc<str>) {
+        if let Some(table) = &mut self.table {
+            let number = table.name(name);
+            return self.number(u64::from(number) + 1);
+        }
         match self.names.get(name) {
             Some(number) => self.number(u64::from(*number) + 1),
             None => {
@@ -108,6 +247,10 @@ impl Writer {
 
     /// A value events share, as [`Writer::name`] writes a name.
     pub(crate) fn shared(&mut self, value: &Arc<Value>) {
+        if let Some(table) = &mut self.table {
+            let number = table.value(value);
+            return self.number(u64::from(number) + 1);
+        }
         let address = Arc::as_ptr(value) as usize;
         match self.shared.get(&address) {
             Some(number) => self.number(u64::from(*number) + 1),
@@ -187,6 +330,8 @@ pub(crate) struct Reader<'a> {
     at: usize,
     names: Vec<Arc<str>>,
     shared: Vec<Arc<Value>>,
+    /// Where `bytes` begin in the part they were taken from.
+    base: usize,
 }
 
 impl<'a> Reader<'a> {
@@ -196,7 +341,44 @@ impl<'a> Reader<'a> {
             at: 0,
             names: Vec::new(),
             shared: Vec::new(),
+            base: 0,
         }
+    }
+
+    /// A part [`Writer::tabled`] wrote: a reader of its records, which refer to its table, and one
+    /// of what follows the table, and the table. The records' reader holds the table's entries as
+    /// it would hold names and values it had read, so it reads their numbers as it reads any.
+    pub(crate) fn tabled(bytes: &'a [u8]) -> Result<(Reader<'a>, Reader<'a>, Table), Unreadable> {
+        let head: [u8; 8] = (bytes.get(..8))
+            .and_then(|head| head.try_into().ok())
+            .ok_or(Unreadable("cut short"))?;
+        let at = usize::try_from(u64::from_le_bytes(head)).map_err(|_| Unreadable("a table"))?;
+        let (records, after) = (bytes.get(8..at), bytes.get(at..));
+        let (Some(records), Some(after)) = (records, after) else {
+            return Err(Unreadable("a table"));
+        };
+        let mut after = Reader::new(after);
+        after.base = at;
+        let mut table = Table::default();
+        for _ in 0..after.count()? {
+            table.names.push(Arc::from(after.text()?));
+        }
+        for _ in 0..after.count()? {
+            table.values.push(Arc::new(after.value()?));
+        }
+        let records = Reader {
+            bytes: records,
+            at: 0,
+            names: table.names.clone(),
+            shared: table.values.clone(),
+            base: 8,
+        };
+        Ok((records, after, table))
+    }
+
+    /// Where it is in the part it reads: what a write-back copies is placed by this.
+    pub(crate) fn at(&self) -> usize {
+        self.base + self.at
     }
 
     /// Whether every byte was read: a projection's sections are read whole.

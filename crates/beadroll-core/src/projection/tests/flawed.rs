@@ -227,7 +227,10 @@ fn every_extension_past_an_integrity_entry_is_replays_answer_or_declined() {
     }
     assert!(tally.deferred > 100, "{tally:?}");
     assert!(tally.uncompacted > 200, "{tally:?}");
+    assert!(tally.marked.checked > 1_000, "{tally:?}");
     super::edges::pinned("flawed", &tally.answers);
+    assert!(tally.seen.more_than(5), "{:?}", tally.seen);
+    assert_eq!(tally.owned, super::owned::FLAWED, "{:#x}", tally.owned);
 }
 
 /// The same over many more seeds, eight threads at a time: `cargo test --release --package
@@ -264,6 +267,7 @@ fn many_seeds_past_integrity_entries() {
         for (kind, n) in each.brought {
             *tally.brought.entry(kind).or_default() += n;
         }
+        tally.marked.add(&each.marked);
     }
     println!("{tally:#?}");
     assert!(tally.declined.is_empty(), "{:?}", tally.declined);

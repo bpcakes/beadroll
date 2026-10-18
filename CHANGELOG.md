@@ -17,6 +17,87 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   Integrity problems are listed under their tracker; a tracker that cannot be read is reported
   while the others show, and one never shown keeps the window it is owed until it can be.
 
+- A write-back of the projection copies the bytes of every issue and event the write did not touch
+  (roll-lqjj.44, X17 step 4; `projection::ENCODING` 11, so the first command of this build replays
+  the journal once): every write-back encoded every issue and every event record, whatever the batch
+  changed, 40 ms of the read after a write at 200,000 events. Each part of the projection is now a
+  part of records referring to the names and values they share by number in a table of its own, an
+  issue's record holding who wrote the events behind its registers with several entries; a
+  projection read back keeps the bytes it read until it is written back, and a state's issues mark
+  what changes them (`state::Issues`), so a write-back copies every issue not marked, the keys,
+  event records, places, clocks and chain positions read back, which between two compactions only
+  grow at their end, and merges the batch's ids into those it read. At 200,000 events (`cargo xtask
+  timing --read N` and `--decode N`, both builds alternated on a shared machine) the read after a
+  write takes 0.150 s where it took 0.184 s (19.9 ms where 22.5 ms at 20,000), its write-back
+  encodes in 1.9 ms where 39.6 ms (4.6 ms where 43.4 ms at the worst point between compactions, 68.4
+  ms where 88.6 ms when it compacts); every other command, the decodes and a write published at once
+  are as they were, and a sync after a local write about 2% slower (0.271 s where 0.265 s, a cause
+  not found), a write's heap peak is 79.4 MB where 81.2 MB and the read after a write's 94.5 MB
+  where 96.3 MB (`cargo xtask bead`). `projection/tests/marked.rs` checks after every extension the
+  differential tests make of a projection read back that every issue whose record changed is marked,
+  and nothing else but issues its records are about or that wait for a key it brings, and every
+  write-back that what it copied is byte for byte what it writes when it copies nothing; a new
+  failpoint, `projection.before-save`, lets a black-box test show that a write-back overtaken by
+  another process starting the text file again writes nothing or every text anew, and one whose text
+  file another process grew under it every record anew. Decode refuses a state part that holds an
+  issue or a key twice, or more entries made anew than its table has, which no bead writes. `cargo
+  xtask timing --decode N` also times the encode whole (`whole_encode_seconds`). Output, exit codes
+  and format 1 are unchanged.
+
+- An issue's ownership history, the claims that ended, the claims that lost and the ends that
+  came too late, is kept with its texts in the projection rather than in the state part a read
+  decodes (roll-lqjj.40, X16; `projection::ENCODING` 10, so the first command of this build replays
+  the journal once): the commands that print issues whole read it in, as they read in descriptions
+  and comments, and the store reads it in before it applies records about the issue. Each issue's
+  claim, generation and offline claims stay in the state part, which `claims`, `prime`, `ready` and
+  every ownership decision read, and so does who ended its last claim and how, which `close`,
+  `delete` and `update` ask of issues whose texts they do not read in; a close or delete that
+  published the claim it ended reads in the texts of the issues it named to tell whether a takeover
+  made it too late. At 200,000 events, measured on 9cbd60a before roll-lqjj.39 and roll-lqjj.43
+  landed, the state part is 8.63 MB rather than 9.45 MB and decodes in 36.5 ms rather than 40.7 ms
+  in process (36.9 ms rather than 39.3 ms in the review's run), holding 45.3 MB rather than 51.4 MB,
+  and the text file is 3.31 MB rather than 2.00 MB; on the ownership-heavy history 4.79 MB rather than 8.70 MB, 20.9 ms
+  rather than 32.8 ms and 26.7 MB rather than 47.1 MB (`cargo xtask timing --decode N`). `list`
+  takes 0.108 s rather than 0.114 s, `show` 0.100 s rather than 0.106 s and `ready` 0.146 s rather
+  than 0.160 s; a claim and a release, each published, cost what they did (0.57 s and 0.58 s,
+  against 0.61 s and 0.60 s; `cargo xtask timing --read N`, which now times them). Measured again
+  on fd5ae9b, with them (both builds alternated, three rounds of the decode and five of the reads,
+  on a busier machine, so slower throughout): the state part is 6.85 MB rather than 7.69 MB and
+  decodes in 57.2 ms rather than 61.1 ms (58.6 ms rather than 60.0 ms, the fastest of the review's
+  six rounds: −2% to −6%), holding 37.1 MB rather than 43.2 MB, and the text file, with each issue's
+  edges' metadata and ownership history, is 4.93 MB rather than 3.62 MB; on the ownership-heavy
+  history 4.79 MB rather than 8.70 MB, 40.4 ms rather than 53.5 ms and 26.7 MB rather than 47.1 MB,
+  the texts 6.44 MB rather than 1.02 MB; `list` takes 81 ms rather than 87 ms, `show` 74 ms rather
+  than 82 ms and `ready` 121 ms rather than 128 ms, the projection file is 15.62 MB rather than
+  16.46 MB, and a published claim and a release take 0.42 s each. Every answer
+  is unchanged, and format 1 too. `Issue::last_ended` is new: who ended the last claim and how,
+  whether or not the issue's texts are read in; `Issue::claim_history`, `lost_claims` and `stale`
+  are empty until they are.
+
+- A sync, claim or other publishing command that finds an object of the fetched tip gone from this
+  machine's `sync.git`, as a prune racing the fetch leaves it, or a blob of it there but unreadable,
+  now makes `sync.git` again and goes on, as it does for any other local damage (roll-dih8.30). It
+  answered `MANIFEST_MISSING` ("has no manifest; refusing to adopt it"), an error about the remote,
+  when the fetched commit, its tree or the manifest's blob was gone or the blob unreadable, and
+  `GIT_ERROR` when a tree or segment blob the merge reads was. A commit gone cost one such error;
+  a tree or blob gone, or a blob unreadable, under a commit still there failed every command after
+  it the same way, since `refs/beads/remote` already named the tip and the next fetch brought
+  nothing. A tree there but malformed, which no fetch lets in, failed every command after it too,
+  with `GIT_ERROR` "too-short tree object" for a subtree or `MANIFEST_MISSING` for the root tree. A
+  failed read of the fetched tip now asks what of it is missing or damaged there (git's own words;
+  for a blob's read, whether `sync.git` holds it as a blob; `cat-file -e` of the tip; `rev-list
+  --objects --no-walk --missing=print`, and whether that walk fails) and reports that as local
+  damage; a git that a signal ended is never taken as damage, a walk git ends by its own exit for
+  another reason (a full disk, a memory limit) is, at the cost of one needless rebuild, and a
+  damaged `sync.git` again in the same command is `SYNC_REPO_DAMAGED`, as before. A
+  tip whose objects are all there and readable and whose tree holds no manifest blob is still
+  `MANIFEST_MISSING`. The failpoint `fetch.fetched`, after a fetch that brought a head and before
+  its tip is read, makes it testable: `hardening::v8::v8_prune_after_a_fetch` removes, corrupts or
+  malforms there the fetched commit, its root tree, the manifest's blob, b's folder, b's segment
+  or a's folder. It is the likely cause of
+  `prune_now_on_the_private_sync_repo_during_syncs_is_transient` failing on macOS CI with
+  `MANIFEST_MISSING`, which no soak here reproduced, until that test has stayed green there.
+
 - A command that reads decodes dependency edges typed (roll-lqjj.39, X16): each edge's target is an
   issue's id, held as its 16 bytes, when its text is an id's spelling, and the text otherwise; its
   kind is one name for every edge of that kind in a state replayed or decoded; and the metadata each
