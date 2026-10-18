@@ -108,7 +108,9 @@ edits are never held up.
   missing from `sync.git`, when the blob it read is there but unreadable, when
   git cannot walk the tip's trees (a corrupt or malformed tree, which no fetch
   lets in), or when git reports the damage in its own words; a git that a
-  signal ended is never taken as damage. Only a read that fails otherwise is
+  signal ended is never taken as damage. A walk that git ends by its own exit
+  for another reason, a full disk or a memory limit, is taken as damage too, at
+  the cost of one needless rebuild. Only a read that fails otherwise is
   refused for what the remote holds (`MANIFEST_MISSING`, `GIT_ERROR`).
 - git's own maintenance is off in `sync.git` (no detached `gc` racing the next
   command) and what a fetch brings stays in the pack it arrived in. bead repacks

@@ -52,9 +52,10 @@ impl Link<'_> {
     /// on it, a read of the blob `object` names if there is one: local damage git named, that blob
     /// here but unreadable ([`Link::unreadable`]), the tip's commit missing, or the trees and blobs
     /// it reaches that are missing or that git cannot walk (`rev-list --missing=print`, which
-    /// passes over a gitlink as a fetch does; [`walk_failed`]). `None` when everything the tip
-    /// reaches is here and walks, and `object` is not a blob here: the read failed for what the
-    /// remote holds, or for no reason that is `sync.git`'s, as when a signal ended it.
+    /// passes over a gitlink as a fetch does; [`walk_failed`], which takes a walk that a full disk
+    /// or a memory limit ended for damage too). `None` when everything the tip reaches is here and
+    /// walks, and `object` is not a blob here: the read failed for what the remote holds, or for no
+    /// reason that is `sync.git`'s, as when a signal ended it.
     pub(super) fn lost(
         &self,
         tip: &str,
@@ -209,8 +210,9 @@ fn blob_unreadable(read: &Output, kind: &Output) -> bool {
 
 /// What a `rev-list` of a fetched tip `sync.git` holds that failed as `listed` says: local damage
 /// when git ended by its own exit, since no fetch lets in what makes the walk fail (a fetch's own
-/// connectivity check walks every object it brings, and refuses a malformed tree), so only damage
-/// here can leave it; nothing when a signal ended it.
+/// connectivity check walks every object it brings, and refuses a malformed tree); nothing when a
+/// signal ended it. A walk git ends by its own exit for a reason that is not the objects', a full
+/// disk or a memory limit, is taken as damage too, at the cost of one needless rebuild.
 fn walk_failed(listed: &Output) -> Option<String> {
     if listed.killed() {
         return None;

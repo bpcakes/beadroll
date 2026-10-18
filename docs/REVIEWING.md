@@ -1435,9 +1435,12 @@ These were decided deliberately. Report problems *with* them, not their existenc
   bad mode or an empty name ("possible repository corruption on the remote side"), and its own
   connectivity check walks every object it brings, even from a server that sent a malformed tree
   without walking it; the oddities that pass a fetch (duplicate, zero-padded or unsorted entries)
-  read and walk fine. A git a signal ended (an OOM killer, say) says nothing about `sync.git` and
-  is never damage, nor is a failed `cat-file -t`: damage git names there it names in the read
-  first. Everything else is the remote's: a tree without a manifest blob (none, a tree or a gitlink
+  read and walk fine. A walk of a whole tip can still end by git's own exit for a reason that is
+  not the objects' (a full disk: "write failure on 'stdout'", exit 128; a memory limit), after a
+  read failed for the remote's own reason (a tip without a manifest blob), and is then taken as
+  damage too, at the cost of one needless rebuild, whose `git init` fails next on a full disk. A
+  git a signal ended (an OOM killer, say) says nothing about `sync.git` and is never damage, nor
+  is a failed `cat-file -t`: damage git names there it names in the read first. Everything else is the remote's: a tree without a manifest blob (none, a tree or a gitlink
   by that name) is `MANIFEST_MISSING`, something else the merge cannot read (a gitlink where a
   segment goes) `GIT_ERROR`. Asked by object, not by git's message for a path or a missing name,
   which differs between versions (roll-dih8.30; `hardening::v8::v8_prune_after_a_fetch`, through

@@ -72,11 +72,13 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   a tree or blob gone, or a blob unreadable, under a commit still there failed every command after
   it the same way, since `refs/beads/remote` already named the tip and the next fetch brought
   nothing. A tree there but malformed, which no fetch lets in, failed every command after it too,
-  with `GIT_ERROR` "too-short tree object". A failed read of the fetched tip now asks what of it is
-  missing or damaged there (git's own words; for a blob's read, whether `sync.git` holds it as a
-  blob; `cat-file -e` of the tip; `rev-list --objects --no-walk --missing=print`, and whether that
-  walk fails) and reports that as local damage; a git that a signal ended is never taken as
-  damage, and a damaged `sync.git` again in the same command is `SYNC_REPO_DAMAGED`, as before. A
+  with `GIT_ERROR` "too-short tree object" for a subtree or `MANIFEST_MISSING` for the root tree. A
+  failed read of the fetched tip now asks what of it is missing or damaged there (git's own words;
+  for a blob's read, whether `sync.git` holds it as a blob; `cat-file -e` of the tip; `rev-list
+  --objects --no-walk --missing=print`, and whether that walk fails) and reports that as local
+  damage; a git that a signal ended is never taken as damage, a walk git ends by its own exit for
+  another reason (a full disk, a memory limit) is, at the cost of one needless rebuild, and a
+  damaged `sync.git` again in the same command is `SYNC_REPO_DAMAGED`, as before. A
   tip whose objects are all there and readable and whose tree holds no manifest blob is still
   `MANIFEST_MISSING`. The failpoint `fetch.fetched`, after a fetch that brought a head and before
   its tip is read, makes it testable: `hardening::v8::v8_prune_after_a_fetch` removes, corrupts or
