@@ -27,6 +27,8 @@
 //! transaction that starts from the projection the merge read, where a test writes the journal to
 //! see that the round reads the store again; `fetch.result`, at the start of a fetch;
 //! `fetch.retry`, before the wait to try again a fetch that lost to another process's;
+//! `fetch.fetched`, after a fetch that brought a head and before its tip and manifest are read,
+//! where a test removes what it brought from `sync.git` as a prune racing the fetch would;
 //! `append.mid`, inside a segment append after a partial line;
 //! `backoff`, the unlocked wait between rounds; `claim.before-push`, between a claim's fetch and
 //! push; `pending.after-list`, between listing and reading `pending/`; `journal.after-enumerate`,
@@ -55,7 +57,7 @@ use beadroll_core::code::Code;
 use crate::error::Error;
 
 /// The points bead has, besides `atomic-write:<path part>` and `atomic-written:<path part>`.
-pub const POINTS: [&str; 23] = [
+pub const POINTS: [&str; 24] = [
     "ownership.before-publish",
     "ownership.before-transaction",
     "ownership.after-publish-ok",
@@ -67,6 +69,7 @@ pub const POINTS: [&str; 23] = [
     "publish.before",
     "fetch.result",
     "fetch.retry",
+    "fetch.fetched",
     "append.mid",
     "backoff",
     "claim.before-push",

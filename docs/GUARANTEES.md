@@ -99,10 +99,19 @@ edits are never held up.
 - A ref whose manifest is not this version's format is refused untouched
   (`FORMAT_UNSUPPORTED`): an older client never rewrites a newer tracker.
 - A damaged private sync repository (`sync.git` with empty or corrupt objects,
-  which git reports as a local read error) is set aside as
+  which git reports as a local read error, or missing an object of a tip it
+  fetched, as a prune that raced the fetch leaves it) is set aside as
   `sync.git.damaged-<time>` and made again from the remote and `events/`,
   once per command; `info` lists the copies kept, which hold nothing that is
-  not also elsewhere. Damage again after that is `SYNC_REPO_DAMAGED`.
+  not also elsewhere. Damage again after that is `SYNC_REPO_DAMAGED`. A read
+  of a fetched tip that fails is local damage when an object of the tip is
+  missing from `sync.git`, when the blob it read is there but unreadable, when
+  git cannot walk the tip's trees (a corrupt or malformed tree, which no fetch
+  lets in), or when git reports the damage in its own words; a git that a
+  signal ended is never taken as damage. A walk that git ends by its own exit
+  for another reason, a full disk or a memory limit, is taken as damage too, at
+  the cost of one needless rebuild. Only a read that fails otherwise is
+  refused for what the remote holds (`MANIFEST_MISSING`, `GIT_ERROR`).
 - git's own maintenance is off in `sync.git` (no detached `gc` racing the next
   command) and what a fetch brings stays in the pack it arrived in. bead repacks
   the repository itself, under the store lock, once loose objects or packs pile

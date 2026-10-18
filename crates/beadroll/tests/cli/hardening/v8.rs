@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 use beadroll_test_support::{Machine, json, parse_json};
 
 mod v8_hangup_of_the_controlling_terminal;
+mod v8_prune_after_a_fetch;
 mod v8_prune_on_the_private_sync_repo;
 mod v8_pty_output_matches_pipe_output;
 mod v8_recovery_from_a_pruned_remote;
