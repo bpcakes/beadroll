@@ -140,27 +140,30 @@ agents and tests match parts of them; `bead prime` lists the codes.
 
 These were decided deliberately. Report problems *with* them, not their existence.
 
-- `bead recap` (roll-dih8.2), as the maintainer settled it in review: one cursor per `BEAD_HOME`
-  that keeps each tracker's frontier of what was shown, not every event id and not a time, so that
-  late syncs and clocks behind cannot hide an event and the cursor does not grow with the history
-  (`beadroll_core::recap`). The walk below a frontier stops at quarantined ids, whose copies
-  disagree and may be placed before a cause one of them names: a late cause then shows, and an id
-  found quarantined after it was shown lets what it was built on show once more. Only output to a
-  terminal advances it; agents, pipes and `--json` only look unless `--advance`. The first recap
-  shows the last 24 hours, by the events' own times, since bead records no arrival time. A tracker
-  with integrity problems still advances, its problems listed; one that cannot be read is reported
-  and the others show, and one never shown is owed its window in the cursor, not the shared time
-  of the last recap that marked anything seen, which a save of owed windows alone leaves as it
-  was. That window applies once, to what the first recap that shows or counts any
-  of the tracker's events finds in causal order (its init never counts); events placed after
-  that, such as the rest of a first sync that a recap read halfway, are new activity and show
-  whatever their time, as any late sync's do. Two recaps at once may both show the same events: no lock is held while an
-  answer is written, and a save that finds a tracker's mark changed since it read the cursor keeps
-  both frontiers, since two reads of a store a sync is writing file by file need not be nested;
-  the next recap replaces the union with a frontier of its own. Recap reads each store as `log`
-  does, the journal whole and the state from the projection, and its event rows are `log`'s with
-  more members. Time windows (`--since`) were left for later. The cursor and its lock are no part
-  of format 1.
+- `bead recap` (roll-dih8.2). The maintainer settled these in the issue's acceptance criteria: one
+  cursor per `BEAD_HOME` that keeps each tracker's frontier of what was shown, not every event id
+  and not a time, so that late syncs and clocks behind cannot hide an event and the cursor does
+  not grow with the history (`beadroll_core::recap`); a first recap that shows the last 24 hours
+  and counts what came before, and `--all` everything; only output to a terminal advancing it,
+  agents, pipes and `--json` only looking unless `--advance`; integrity problems listed under a
+  tracker that still advances, and a tracker that cannot be read reported while the others show;
+  two recaps at once that may both show the same events, neither losing the other's update, with
+  no lock held while an answer is written; the three layouts, and `--json` rows that are `log`'s
+  with more members; and no time windows (`--since`) for now. The rest was chosen in the
+  implementation, where the criteria say nothing. The walk below a frontier stops at quarantined
+  ids, whose copies disagree and may be placed before a cause one of them names: a late cause then
+  shows, and an id found quarantined after it was shown lets what it was built on show once more.
+  The 24 hours are the events' own times, since bead records no arrival time. A tracker never
+  shown is owed its window in the cursor, not the shared time of the last recap that marked
+  anything seen, which only a recap that shows or counts an event moves. That window applies
+  once, to what the first recap that shows or counts any of the tracker's events finds in causal
+  order (its init never counts); events placed after that, such as the rest of a first sync that
+  a recap read halfway, are new activity and show whatever their time, as any late sync's do. A
+  recap keeps, of the frontier it read and of one another recap saved meanwhile, the ids its own
+  read did not place, since two reads of a store a sync is writing file by file need not be
+  nested, and replaces the others with its own frontier, even when it has nothing new to show.
+  Recap reads each store as `log` does, the journal whole and the state from the projection. The
+  cursor and its lock are no part of format 1.
 - Rust APIs describe their role rather than the implementation language bead replaced
   (roll-dih8.17): `op::IntegerField` retains the boolean or integer representation of a format-1
   field, and text and path helpers name their parsing, trimming, casing and normalization

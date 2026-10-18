@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use beadroll_core::id::EventId;
 use beadroll_core::json::{self, Format, Object, Value};
+use beadroll_core::recap::joined;
 use beadroll_core::text::printed_text;
 use beadroll_git::IoError;
 
@@ -100,19 +101,15 @@ pub enum Mark {
 }
 
 impl Mark {
-    /// The mark of a tracker that another recap marked, `theirs`, since this one read the cursor.
-    /// Two frontiers give way to their union: two reads of one store need not be nested, since its
-    /// files are read one by one while a sync writes them one by one, and the union is below
-    /// exactly what both showed, until a recap replaces it with a frontier of its own. A frontier
-    /// settles an owed window, and of two owed windows the earlier stays.
-    fn with(self, theirs: &Mark) -> Mark {
+    /// The mark of a tracker that another recap marked, `theirs`, since this one, whose read of the
+    /// tracker placed `placed` (sorted), read the cursor. Of two frontiers this one's stays, with
+    /// the ids of theirs that this read did not place ([`joined`]): two reads of one store need not
+    /// be nested, since its files are read one by one while a sync writes them one by one, and
+    /// what both showed stays below, until a recap that placed it all keeps its own frontier
+    /// instead. A frontier settles an owed window, and of two owed windows the earlier stays.
+    fn with(self, theirs: &Mark, placed: &[EventId]) -> Mark {
         match (self, theirs) {
-            (Mark::Shown(mut ours), Mark::Shown(theirs)) => {
-                ours.extend(theirs);
-                ours.sort_unstable();
-                ours.dedup();
-                Mark::Shown(ours)
-            }
+            (Mark::Shown(ours), Mark::Shown(theirs)) => Mark::Shown(joined(&ours, placed, theirs)),
             (Mark::Owed(_), shown @ Mark::Shown(_)) => shown.clone(),
             (shown @ Mark::Shown(_), Mark::Owed(_)) => shown,
             (Mark::Owed(ours), Mark::Owed(theirs)) => Mark::Owed(ours.min(*theirs)),
@@ -139,16 +136,17 @@ impl RecapCursor {
         read_cursor(&settings.home()?.join(CURSOR))
     }
 
-    /// Records `marks`, each tracker's once a recap's answer has been delivered, and `at`, the time
-    /// of that recap when it marked activity seen (a recap that only owes trackers their windows
-    /// marked nothing), over the cursor as it is when this runs: read again under the cursor's lock, where a tracker whose
-    /// mark another recap changed since this one read `self` keeps what both recaps did
-    /// ([`Mark::with`]), and the other trackers keep theirs. The lock is held only to read and
-    /// replace the file, never while a journal is read or an answer written.
+    /// Records `marks`, each tracker's once a recap's answer has been delivered, with every event
+    /// the recap's read of it placed (sorted), and `at`, the time of that recap when it marked
+    /// activity seen (one that only owes trackers their windows or compacts their frontiers marked
+    /// nothing), over the cursor as it is when this runs: read again under the cursor's lock, where
+    /// a tracker whose mark another recap changed since this one read `self` keeps what both
+    /// recaps did ([`Mark::with`]), and the other trackers keep theirs. The lock is held only to
+    /// read and replace the file, never while a journal is read or an answer written.
     pub fn save(
         &self,
         settings: &Settings,
-        marks: BTreeMap<String, Mark>,
+        marks: BTreeMap<String, (Mark, Vec<EventId>)>,
         at: Option<u64>,
     ) -> Result<(), Error> {
         settings.failpoints.hit("recap.before-save");
@@ -165,10 +163,10 @@ impl RecapCursor {
         lock.lock().map_err(|e| IoError::at(&e, &path))?;
         let path = home.join(CURSOR);
         let mut now = read_cursor(&path)?;
-        for (id, mark) in marks {
+        for (id, (mark, placed)) in marks {
             let mark = match now.marks.get(&id) {
                 // another recap marked this tracker since `self` was read
-                Some(theirs) if Some(theirs) != self.marks.get(&id) => mark.with(theirs),
+                Some(theirs) if Some(theirs) != self.marks.get(&id) => mark.with(theirs, &placed),
                 _ => mark,
             };
             now.marks.insert(id, mark);

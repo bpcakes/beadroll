@@ -49,6 +49,12 @@ impl Gate {
         Some(step())
     }
 
+    /// Opens the gate now, from within another gate's step: bead, waiting at it or yet to reach
+    /// it, passes it at once.
+    pub(crate) fn open(&self) {
+        let _ = std::fs::write(self.with(".go"), b"");
+    }
+
     /// The gate's path with `suffix` added to its name.
     fn with(&self, suffix: &str) -> PathBuf {
         let mut name = self.path.as_os_str().to_owned();

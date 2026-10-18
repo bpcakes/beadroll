@@ -3,50 +3,30 @@
 //! store at a time, each let go of before the next, and never a checkout, git or the network. What
 //! it shows is marked seen only once the answer has been written ([`Delivered`]).
 
+mod layout;
+
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use beadroll_core::journal::Event;
+use beadroll_core::id::EventId;
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::op::Op;
-use beadroll_core::recap::{Window, unseen};
+use beadroll_core::recap::{Window, joined, unseen};
 use beadroll_core::state::{Integrity, Issue, State};
 use beadroll_core::text::str_of;
 use beadroll_core::time::event_time;
-use beadroll_core::view::icon;
 use beadroll_store::{
     Mark, RecapCursor, Settings, Workspace, home_stores, load_journal, machine_aliases,
     view_outline,
 };
 
+pub(crate) use self::layout::Layout;
+use self::layout::{activity, time};
 use super::history::logged;
 use super::{Delivered, Failure, Line, Outcome, Tone};
 
 /// How far back a machine's first recap reaches: a day, in milliseconds.
 const FIRST: u64 = 86_400_000;
-
-/// How the human output lays the activity out (`--format`); `--json` always lists every event.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Layout {
-    /// One line per event, as `log` prints it, with its issue's title.
-    Events,
-    /// One line per issue: its status, what happened to it, who wrote last and when.
-    Issues,
-    /// Every event with its summary, machine, agent, thread, branch and commit.
-    Full,
-}
-
-impl Layout {
-    /// The layout `name` names: `events`, `issues` or `full`.
-    pub(crate) fn named(name: &str) -> Option<Layout> {
-        match name {
-            "events" => Some(Layout::Events),
-            "issues" => Some(Layout::Issues),
-            "full" => Some(Layout::Full),
-            _ => None,
-        }
-    }
-}
 
 /// `recap`'s arguments, as the command line decided them.
 pub(crate) struct RecapArgs {
@@ -63,9 +43,10 @@ pub(crate) struct RecapArgs {
 /// What is new in every tracker under `BEAD_HOME`: for each, the events not below the frontier the
 /// cursor keeps of it, or, for one never shown, those since the window it is owed or else since
 /// the last recap marked anything (the last day, on a machine that never did). With it, when the
-/// recap marks what it shows as seen and that changes the cursor, what records that once the
-/// answer has been written. A tracker that cannot be read says why and lets the others show; it
-/// keeps its frontier, or, never shown, is owed its window from then on ([`owed`]).
+/// recap marks what it shows as seen and that changes the cursor (one with nothing new to show may
+/// still compact a frontier there), what records that once the answer has been written. A tracker
+/// that cannot be read says why and lets the others show; it keeps its frontier, or, never shown,
+/// is owed its window from then on ([`owed`]).
 pub(crate) fn recap(
     settings: &Arc<Settings>,
     args: &RecapArgs,
@@ -74,6 +55,7 @@ pub(crate) fn recap(
     let aliases = machine_aliases(settings);
     let first = cursor.at.unwrap_or(args.now.saturating_sub(FIRST));
     let (mut trackers, mut lines, mut marks) = (Vec::new(), Vec::new(), BTreeMap::new());
+    let mut seen = false;
     for found in home_stores(settings)? {
         let part = match found {
             Ok(ws) => {
@@ -84,7 +66,12 @@ pub(crate) fn recap(
                     (false, Some(Mark::Owed(since))) => Window::Since(*since),
                     (false, None) => Window::Since(first),
                 };
-                tracker(&ws, window, owed(mark, first), &aliases, args.layout)
+                let kept = match mark {
+                    Some(Mark::Shown(frontier)) => frontier.as_slice(),
+                    Some(Mark::Owed(_)) | None => &[],
+                };
+                let owed = owed(mark, first);
+                tracker(&ws, window, kept, owed, &aliases, args.layout)
             }
             Err(unusable) => {
                 let id = unusable.id.as_deref();
@@ -101,7 +88,8 @@ pub(crate) fn recap(
         if let Some((id, mark)) = part.mark
             && cursor.marks.get(&id) != Some(&mark)
         {
-            marks.insert(id, mark);
+            seen |= part.seen;
+            marks.insert(id, (mark, part.placed));
         }
     }
     if trackers.is_empty() {
@@ -111,9 +99,9 @@ pub(crate) fn recap(
     result.insert("workspaces".into(), Value::Array(trackers));
     result.insert("advance".into(), Value::from(args.advance));
     let delivered = (args.advance && !marks.is_empty()).then(|| {
-        // an owed window marks nothing seen: the time of the last recap that did stays
-        let marked = marks.values().any(|mark| matches!(mark, Mark::Shown(_)));
-        let (settings, at) = (Arc::clone(settings), marked.then_some(args.now));
+        // a window owed or a frontier compacted marks nothing seen: the time of the last recap
+        // that showed or counted an event stays
+        let (settings, at) = (Arc::clone(settings), seen.then_some(args.now));
         Delivered::new(move || Ok(cursor.save(&settings, marks, at)?))
     });
     Ok((Outcome::new(result, lines), delivered))
@@ -133,11 +121,17 @@ fn owed(mark: Option<&Mark>, first: u64) -> Option<u64> {
 }
 
 /// One tracker's part of the answer: its JSON, its lines, and its id and the mark the cursor is to
-/// keep of it: its frontier once shown, the window it is owed while it cannot be read, or none.
+/// keep of it: its frontier once shown, the window it is owed until a recap can show or count any
+/// of its events, or none.
 struct Part {
     value: Object,
     lines: Vec<Line>,
     mark: Option<(String, Mark)>,
+    /// Every event its read placed, sorted: below its frontier, so that a save over a frontier
+    /// another recap saved meanwhile keeps only what this read did not place.
+    placed: Vec<EventId>,
+    /// Whether it showed or counted an event: what marks activity seen.
+    seen: bool,
 }
 
 impl Part {
@@ -166,7 +160,13 @@ impl Part {
                 format!("  cannot be read: {}", failure.printed()),
             ),
         ];
-        Part { value, lines, mark }
+        Part {
+            value,
+            lines,
+            mark,
+            placed: Vec::new(),
+            seen: false,
+        }
     }
 }
 
@@ -182,9 +182,12 @@ fn heading(name: Option<&str>, workspace: &str) -> Line {
 /// reads them, the state after the journal so that every issue an event names is in it, and both
 /// let go of when it returns. Its name is the repository's as this machine last saw it in a
 /// checkout, else the tracker's own; a `meta.json` that cannot be read is no reason to stop here.
+/// With the mark the cursor is to keep of it, given `kept`, the frontier the cursor holds of it,
+/// and the window it is `owed` when it has never been shown.
 fn tracker(
     ws: &Workspace,
     window: Window<'_>,
+    kept: &[EventId],
     owed: Option<u64>,
     aliases: &BTreeMap<String, String>,
     layout: Layout,
@@ -221,15 +224,7 @@ fn tracker(
         rows.push((event, row, line));
     }
     let mut lines = opening(&name, &ws.id, &synced, window, shown.earlier, &st);
-    match layout {
-        _ if rows.is_empty() => lines.push("  No new activity".into()),
-        Layout::Events => lines.extend(
-            rows.iter()
-                .map(|(_, _, line)| Line::toned(Tone::Plain, "  ").then(line.clone())),
-        ),
-        Layout::Issues => lines.extend(issue_lines(&rows, &st)),
-        Layout::Full => lines.extend(rows.iter().flat_map(|(_, row, _)| full_lines(row))),
-    }
+    lines.extend(activity(layout, &rows, &st));
     let mut value = Object::new();
     value.insert("workspace".into(), Value::from(ws.id.as_str()));
     value.insert("name".into(), Value::from(name));
@@ -245,17 +240,22 @@ fn tracker(
     value.insert("pending".into(), number(st.pending().len() as u64));
     let integrity = st.integrity().iter().map(|row| Value::from(row.to_value()));
     value.insert("integrity".into(), Value::Array(integrity.collect()));
-    // the window applies to what a recap shows or counts: one that did neither (nothing of the
-    // tracker but its init in causal order yet, or nothing new) records nothing, so the cursor
-    // keeps what it holds, the window a tracker never shown is owed, or a frontier everything here
-    // is below
-    let mark = if shown.events.is_empty() && shown.earlier == 0 {
-        owed.map(Mark::Owed)
-    } else {
-        Some(Mark::Shown(shown.frontier))
+    // the window applies to what a recap shows or counts: a tracker never shown, of which this one
+    // did neither (nothing but its init in causal order yet), stays owed it; else the cursor keeps
+    // the frontier, with what of the one it held this read did not place, so that a recap with
+    // nothing new replaces the frontiers two recaps at once left with its own
+    let seen = !shown.events.is_empty() || shown.earlier > 0;
+    let mark = match owed {
+        Some(since) if !seen => Mark::Owed(since),
+        _ => Mark::Shown(joined(&shown.frontier, &shown.placed, kept)),
     };
-    let mark = mark.map(|mark| (ws.id.clone(), mark));
-    Part { value, lines, mark }
+    Part {
+        value,
+        lines,
+        mark: Some((ws.id.clone(), mark)),
+        placed: shown.placed,
+        seen,
+    }
 }
 
 /// The lines a readable tracker's part opens with: its heading and its last sync; where a first
@@ -322,11 +322,6 @@ fn number(n: u64) -> Value {
     Value::from(i64::try_from(n).unwrap_or(i64::MAX))
 }
 
-/// A time as `log` prints it: to the second.
-fn time(at: &str) -> String {
-    at.chars().take(19).collect()
-}
-
 /// What an event did, in a few words, as it was recorded: not what its issue is now.
 fn summary(op: &Op, st: &State) -> String {
     let why = |what: &str, reason: Option<&str>| match reason.filter(|r| !r.is_empty()) {
@@ -376,145 +371,4 @@ fn summary(op: &Op, st: &State) -> String {
         }
         _ => op.name().to_owned(),
     }
-}
-
-/// One line for each issue the events of `rows` are about, in the order of each one's last event:
-/// its status now, key and title; what happened to it; and who wrote its last event, where and when.
-fn issue_lines(rows: &[(&Event, Object, Line)], st: &State) -> Vec<Line> {
-    let mut issues: Vec<(Option<&str>, Vec<usize>)> = Vec::new();
-    let mut found: BTreeMap<Option<&str>, usize> = BTreeMap::new();
-    for (at, (event, _, _)) in rows.iter().enumerate() {
-        let index = *found.entry(event.issue()).or_insert_with(|| {
-            issues.push((event.issue(), Vec::new()));
-            issues.len() - 1
-        });
-        if let Some((_, ats)) = issues.get_mut(index) {
-            ats.push(at);
-        }
-    }
-    issues.sort_by_key(|(_, ats)| ats.last().copied());
-    let mut lines = Vec::with_capacity(issues.len());
-    for (uid, ats) in issues {
-        let events: Vec<&Event> = (ats.iter().filter_map(|at| rows.get(*at)))
-            .map(|(event, _, _)| *event)
-            .collect();
-        let issue = uid.and_then(|uid| st.issue_named(uid));
-        let status = issue.map_or("", Issue::status);
-        let key = uid.map_or("-", |uid| st.key_of(uid));
-        let mut line = Line::toned(Tone::Plain, "  ")
-            .with(Tone::of_status(status), icon(status))
-            .with(Tone::Plain, " ")
-            .with(Tone::Id, key)
-            .with(Tone::Plain, format!("  {}", issue.map_or("", Issue::title)))
-            .with(Tone::Plain, format!("  {}", happened(&events)));
-        if let Some((_, row, _)) = ats.last().and_then(|at| rows.get(*at)) {
-            line.push(Tone::Who, format!("  {}", who(row)));
-            line.push(Tone::Dim, format!("  {}", time(&text(row, "at"))));
-        }
-        lines.push(line);
-    }
-    lines
-}
-
-/// What `events`, all about one issue, did to it, in order: its changes of state, then how many
-/// comments, edits and other events.
-fn happened(events: &[&Event]) -> String {
-    let (mut changes, mut comments, mut edits, mut others) = (Vec::new(), 0, 0, 0);
-    for event in events {
-        let change = match event.op() {
-            Op::Create(create) if create.imported => "imported",
-            Op::Create(_) => "created",
-            Op::Claim(claim) if claim.mode.as_deref() == Some("offline") => "claimed provisionally",
-            Op::Claim(claim) if claim.takeover.as_deref().is_some_and(|t| !t.is_empty()) => {
-                "taken over"
-            }
-            Op::Claim(_) => "claimed",
-            Op::Release(_) => "released",
-            Op::Close(_) => "closed",
-            Op::Reopen => "reopened",
-            Op::Delete(_) => "deleted",
-            Op::Comment { .. } => {
-                comments += 1;
-                continue;
-            }
-            Op::Set(_)
-            | Op::DepAdd { .. }
-            | Op::DepRemove { .. }
-            | Op::LabelAdd(_)
-            | Op::LabelRemove(_)
-            | Op::LabelSet(_) => {
-                edits += 1;
-                continue;
-            }
-            _ => {
-                others += 1;
-                continue;
-            }
-        };
-        if changes.last() != Some(&change) {
-            changes.push(change);
-        }
-    }
-    let mut parts: Vec<String> = changes.into_iter().map(str::to_owned).collect();
-    for (n, what) in [
-        (comments, "comment"),
-        (edits, "edit"),
-        (others, "other event"),
-    ] {
-        match n {
-            0 => {}
-            1 => parts.push(format!("1 {what}")),
-            n => parts.push(format!("{n} {what}s")),
-        }
-    }
-    parts.join(", ")
-}
-
-/// Who wrote the event of `row`, a row `log` made of it, as `log` names them: the machine, then the
-/// actor's name, else its agent (`?` when it has none) and the start of its thread.
-fn who(row: &Object) -> String {
-    let named = row.get("name").filter(|name| name.truthy()).map(str_of);
-    let who = named.unwrap_or_else(|| {
-        let agent = (row.get("agent").filter(|agent| agent.truthy()))
-            .map_or_else(|| "?".to_owned(), str_of);
-        let thread: String = text(row, "thread").chars().take(8).collect();
-        format!("{agent} {thread}")
-    });
-    format!("{} {who}", text(row, "machine"))
-}
-
-/// The member `key` of `row` as text, `-` when it is empty or absent.
-fn text(row: &Object, key: &str) -> String {
-    (row.get(key).filter(|value| value.truthy())).map_or_else(|| "-".to_owned(), str_of)
-}
-
-/// An event in full: when, its issue and title; what it did; the machine that wrote it (and its
-/// local name), the agent, thread and actor's name; and the branch and commit it was written on.
-fn full_lines(row: &Object) -> Vec<Line> {
-    let machine = text(row, "machine_id");
-    let alias = match text(row, "machine") {
-        alias if alias != machine => format!(" ({alias})"),
-        _ => String::new(),
-    };
-    vec![
-        Line::new()
-            .with(Tone::Dim, format!("  {}  ", text(row, "at")))
-            .with(Tone::Id, text(row, "issue"))
-            .with(Tone::Plain, format!("  {}", text(row, "title"))),
-        Line::from(format!("    {}", text(row, "summary"))),
-        Line::toned(
-            Tone::Who,
-            format!(
-                "    machine={machine}{alias} agent={} thread={} name={}",
-                text(row, "agent"),
-                text(row, "thread"),
-                text(row, "name")
-            ),
-        ),
-        Line::from(format!(
-            "    branch={} commit={}",
-            text(row, "branch"),
-            text(row, "commit")
-        )),
-    ]
 }

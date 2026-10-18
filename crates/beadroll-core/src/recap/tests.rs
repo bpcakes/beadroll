@@ -1,7 +1,8 @@
 //! The frontier a recap keeps remembers what it showed, no more: on stores that grow as stores
 //! take records in (each machine's journal in its own order, attempt files at any time), every
-//! event is shown once, in causal order, and none is taken for seen before it was shown. Then the
-//! cases that make a frontier enough, each on its own.
+//! event is shown once, in causal order, and none is taken for seen before it was shown, and two
+//! reads that saw different parts of a store, their frontiers joined, mark what both placed. Then
+//! the cases that make a frontier enough, each on its own.
 
 use std::collections::BTreeSet;
 
@@ -13,7 +14,7 @@ use crate::projection::Record;
 use crate::projection::tests::{Rng, history};
 use crate::replay::tests::interleaved;
 
-use super::{Window, unseen};
+use super::{Window, joined, unseen};
 
 /// Histories, each taken in by a store a few records at a time.
 const SEEDS: u64 = 8;
@@ -67,6 +68,12 @@ fn a_growing_store_shows_every_event_once_and_in_causal_order() {
                     _ => Window::After(&frontier),
                 };
                 let got = unseen(&journal, window);
+                assert!(got.placed.is_sorted(), "{at}");
+                let placed: BTreeSet<EventId> = ordered.iter().copied().collect();
+                assert_eq!(got.placed.iter().copied().collect::<BTreeSet<_>>(), placed);
+                // a later read placed all an earlier one did: joining the two adds nothing
+                let kept = joined(&got.frontier, &got.placed, &frontier);
+                assert_eq!(kept, got.frontier, "{at}");
                 let positions: Vec<usize> = (got.events.iter())
                     .map(|id| ordered.iter().position(|o| o == id).unwrap())
                     .collect();
@@ -96,6 +103,59 @@ fn a_growing_store_shows_every_event_once_and_in_causal_order() {
     }
     // the flawed histories reach the one case a frontier treats apart
     assert!(quarantined > 0, "no store held a quarantined id");
+}
+
+#[test]
+fn two_reads_that_saw_different_events_mark_what_both_placed_once_joined() {
+    let (mut exact, mut turned) = (0, 0);
+    for seed in 0..SEEDS {
+        for flawed in [false, true] {
+            let at = format!("seed {seed}, flawed {flawed}");
+            let records = history(20_261_018 + seed, BATCHES, flawed);
+            let mut rng = Rng(seed);
+            // two reads of one store, each part way through its records in an order of its own:
+            // each machine's journal read further by one than by the other, as a sync writing
+            // file after file lets happen
+            let (one, two) = (
+                interleaved(&records, &mut rng),
+                interleaved(&records, &mut rng),
+            );
+            let first = taken_in(&records, &one[..rng.below(one.len() + 1)]);
+            let second = taken_in(&records, &two[..rng.below(two.len() + 1)]);
+            let all = taken_in(&records, &one);
+            let (a, b) = (unseen(&first, Window::All), unseen(&second, Window::All));
+            let kept = joined(&b.frontier, &b.placed, &a.frontier);
+            let later = unseen(&all, Window::After(&kept));
+            let both: BTreeSet<EventId> = a.placed.iter().chain(&b.placed).copied().collect();
+            let (ordered, _) = causal_order(&all);
+            let unread: BTreeSet<EventId> = (ordered.iter().copied())
+                .filter(|id| !both.contains(id))
+                .filter(|id| all.event(*id).is_some_and(|e| e.op_name() != "init"))
+                .collect();
+            let shown: BTreeSet<EventId> = later.events.iter().copied().collect();
+            let hidden: Vec<_> = unread.difference(&shown).collect();
+            assert!(
+                hidden.is_empty(),
+                "{at}: taken for seen unshown: {hidden:?}"
+            );
+            // an id quarantined since a read placed it may let what it was built on show again
+            let quarantined_since = |read: &Journal, placed: &[EventId]| {
+                (placed.iter()).any(|id| {
+                    all.quarantined().contains_key(id) && !read.quarantined().contains_key(id)
+                })
+            };
+            if quarantined_since(&first, &a.placed) || quarantined_since(&second, &b.placed) {
+                turned += 1;
+            } else {
+                assert_eq!(shown, unread, "{at}: shown again");
+                exact += 1;
+            }
+        }
+    }
+    assert!(
+        exact > 0 && turned < exact,
+        "{exact} exact, {turned} turned"
+    );
 }
 
 /// The comment `n`, written by `replica` at `millis` on `deps`, saying `text`: its id and record.
@@ -143,6 +203,25 @@ fn a_linear_history_keeps_its_last_event_and_shows_what_comes_after() {
     let later = unseen(&three, Window::After(&first.frontier));
     assert_eq!((later.events, later.frontier), (vec![c], vec![c]));
     assert!(unseen(&three, Window::After(&[c])).events.is_empty());
+}
+
+#[test]
+fn a_frontier_keeps_what_another_read_saw_and_this_one_did_not() {
+    let (a, ea) = event(1, T, "0000aa", &[], "a");
+    let (b, eb) = event(2, T + 1, "0000aa", &[a], "b");
+    let (x, ex) = event(3, T + 2, "0000bb", &[a], "on another machine");
+    // one read saw b and not x, the other x and not b: neither frontier is below the other
+    let one = unseen(&journal(&[(&ea, false), (&eb, false)]), Window::All);
+    let other = unseen(&journal(&[(&ea, false), (&ex, false)]), Window::All);
+    assert_eq!(one.placed, [a, b]);
+    let kept = joined(&one.frontier, &one.placed, &other.frontier);
+    assert_eq!(kept, [b, x]);
+    // a read that placed both shows what came after them and keeps its own frontier alone
+    let (c, ec) = event(4, T + 3, "0000aa", &[b, x], "c");
+    let all = journal(&[(&ea, false), (&eb, false), (&ex, false), (&ec, false)]);
+    let later = unseen(&all, Window::After(&kept));
+    assert_eq!(later.events, [c]);
+    assert_eq!(joined(&later.frontier, &later.placed, &kept), [c]);
 }
 
 #[test]

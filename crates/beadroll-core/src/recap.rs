@@ -11,6 +11,12 @@
 //! what it was built on instead. A cause that arrives late is then shown, never taken for seen; the
 //! price is that an id found quarantined after it was shown lets what it was built on show again,
 //! once.
+//!
+//! A recap keeps, of a frontier kept before it or saved meanwhile by another recap, the ids its own
+//! read did not place ([`joined`]). Every event a read placed is below its frontier, but two reads
+//! of one store need not be nested, since its files are read one by one while a sync writes them
+//! one by one: an id one read placed and the other did not stands for events the other may not
+//! have seen.
 
 use crate::id::EventId;
 use crate::journal::Journal;
@@ -38,6 +44,8 @@ pub struct Unseen {
     /// The frontier of every event whose causes the journal holds, those shown and those left out:
     /// what a recap keeps once it has shown them.
     pub frontier: Vec<EventId>,
+    /// Every event whose causes the journal holds, sorted: all of them below `frontier`.
+    pub placed: Vec<EventId>,
 }
 
 /// What a recap of `journal`, a settled one, shows through `window`, and what it has seen then.
@@ -61,11 +69,27 @@ pub fn unseen(journal: &Journal, window: Window<'_>) -> Unseen {
             _ => events.push(*id),
         }
     }
+    let heads = frontier(journal, &ordered);
+    let mut placed = ordered;
+    placed.sort_unstable();
     Unseen {
         events,
         earlier,
-        frontier: frontier(journal, &ordered),
+        frontier: heads,
+        placed,
     }
+}
+
+/// `frontier`, which a read that placed `placed` (sorted) gave, joined with `other`, a frontier kept
+/// before it or saved meanwhile by another recap: with the ids of `other` that read did not place,
+/// which stand for events it may not have seen, and without those it placed, which are below
+/// `frontier` already. Sorted.
+pub fn joined(frontier: &[EventId], placed: &[EventId], other: &[EventId]) -> Vec<EventId> {
+    let unplaced = (other.iter()).filter(|id| placed.binary_search(id).is_err());
+    let mut joined: Vec<EventId> = frontier.iter().chain(unplaced).copied().collect();
+    joined.sort_unstable();
+    joined.dedup();
+    joined
 }
 
 /// Which of the journal's events, by index, are below `frontier`: reached from it through the

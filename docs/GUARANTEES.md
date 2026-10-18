@@ -76,9 +76,11 @@ written is an `IO` error with status 1, and the next recap shows the same
 activity again, as it does after one killed before it saved. Two recaps at once
 may show the same events: each saves under a lock held only while it reads and
 replaces the cursor, never while it reads a journal or writes its answer, and
-neither loses the other's mark. When both marked one tracker, the cursor keeps
-both frontiers, since two reads of a store that a sync is writing need not see
-one another's events, until the next recap replaces them with its own.
+neither loses the other's mark. When both marked one tracker, the later save
+keeps, of the other's frontier, only what its own read did not hold, since two
+reads of a store that a sync is writing need not see one another's events; the
+next recap that marks what it shows as seen, even with nothing new to show,
+keeps its own frontier instead, so overlapping recaps do not grow the cursor.
 
 A tracker that cannot be read, its journal or a directory whose name is no
 workspace id, is reported with its error, and the others still show. The
@@ -91,10 +93,12 @@ the tracker is then named as its own journal names it.
 
 The cursor is `$BEAD_HOME/.recap.json`, private and replaced atomically, beside
 its lock file `.recap.lock`; both names start with a dot, which no workspace id
-can. It holds the time of the last recap that marked anything and, for each
-tracker, the frontier of what was shown or the start of the window it is owed. It belongs to the home, whoever runs bead there, and is never synced. One
-that cannot be read, or is not one, is an `IO` error and is never reset: repair
-it, or remove it to start again from the last 24 hours.
+can. It holds the time of the last recap that marked anything seen, by showing
+or counting an event, and, for each tracker, the frontier of what was shown or
+the start of the window it is owed. It belongs to the home, whoever runs bead
+there, and is never synced. One that cannot be read, or is not one, is an `IO`
+error and is never reset: repair it, or remove it to start again from the last
+24 hours.
 
 `--format` lays the human output out: `events`, the default, one line per event
 as `bead log` prints it, with its issue's title; `issues`, one line per issue,

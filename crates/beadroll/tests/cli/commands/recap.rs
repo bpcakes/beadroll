@@ -221,6 +221,34 @@ fn the_three_layouts_show_the_same_activity() {
 }
 
 #[test]
+fn an_issue_row_names_who_wrote_its_last_event_and_when() {
+    let sandbox = crate::sandbox();
+    let a = crate::rust_only(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    // created two hours ago by the machine's agent, and commented on last by Alex, now
+    let created = a
+        .cmd(["create", "Reviewed"])
+        .env("BEAD_FAILPOINTS", "clock@always=offset(-2h)")
+        .json()
+        .unwrap();
+    let key = created["id"].as_str().unwrap();
+    a.cmd(["comments", "add", key, "Looks right", "--actor", "Alex"])
+        .json();
+    let answer = a.bead(["recap"]).unwrap();
+    let rows = events(&answer);
+    assert_eq!(each(&answer, "op"), ["create", "comment"]);
+    let at = |row: &Json| row["at"].as_str().unwrap()[..19].to_owned();
+    let issues = a.run(["recap", "--format", "issues", "--color", "never"]);
+    let line = (issues.stdout.lines())
+        .find(|line| line.contains(key))
+        .unwrap();
+    let machine = rows[1]["machine"].as_str().unwrap();
+    let last = format!("  {machine} Alex  {}", at(rows[1]));
+    assert!(line.ends_with(&last), "{line}\n{last}");
+    assert!(!line.contains(&at(rows[0])), "{line}");
+}
+
+#[test]
 fn an_event_from_a_machine_whose_clock_is_behind_shows_when_it_arrives() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");

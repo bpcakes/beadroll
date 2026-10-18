@@ -1,17 +1,40 @@
 //! When a recap marks what it showed as seen: once its answer is written, and only where a person
 //! reads it, a terminal, unless `--advance` asks; never for a reader that went away, nor before a
-//! failed save it reports. Two recaps at once lose neither's mark, and one waiting on its reader
-//! holds no other up.
+//! failed save it reports. Two recaps at once lose neither's mark, the cursor keeps no more of
+//! them than the next recap needs, and one waiting on its reader holds no other up.
 
 use std::io::Read as _;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use beadroll_test_support::{Machine, code, parse_json};
+use beadroll_test_support::{Json, Machine, Run, code, parse_json};
 
 use super::{create, each, events, recap};
 use crate::hardening::g59::run_on_terminal;
 use crate::hardening::gate::{Gate, beside};
+
+/// The frontier the cursor keeps of `machine`'s one tracker, and the time of the last recap that
+/// marked anything seen.
+fn cursor(machine: &Machine) -> (Vec<Json>, Json) {
+    let text = std::fs::read_to_string(machine.home().join(".recap.json")).unwrap();
+    let cursor = parse_json(&text).unwrap();
+    let marks = cursor["workspaces"].as_object().unwrap();
+    assert_eq!(marks.len(), 1, "{cursor:?}");
+    let (_, mark) = marks.iter().next().unwrap();
+    let frontier = mark["frontier"].as_array().unwrap().to_vec();
+    (frontier, cursor["at"].clone())
+}
+
+/// An advancing `--json` recap on `machine` that stops at `gate` before it saves.
+fn held(machine: &Machine, gate: &Gate) -> Run {
+    machine
+        .cmd(["recap", "--advance", "--json"])
+        .env(
+            "BEAD_FAILPOINTS",
+            format!("recap.before-save={}", gate.action()),
+        )
+        .run()
+}
 
 #[test]
 fn only_output_to_a_terminal_marks_activity_seen_unless_advance_asks() {
@@ -112,13 +135,8 @@ fn two_recaps_at_once_lose_neither_ones_mark() {
     a.bead(["init", "--prefix", "ex"]);
     let key = create(&a, "First answer");
     let gate = Gate::new(&sandbox, "recap-save");
-    let fault = format!("recap.before-save={}", gate.action());
     let (first, second) = beside(
-        || {
-            a.cmd(["recap", "--advance", "--json"])
-                .env("BEAD_FAILPOINTS", &fault)
-                .run()
-        },
+        || held(&a, &gate),
         |finished| {
             // the first has written its answer and has yet to save it
             gate.meet(finished, || {
@@ -136,7 +154,64 @@ fn two_recaps_at_once_lose_neither_ones_mark() {
     assert_eq!(second.returncode(), 0, "{}", second.stderr);
     let saw = parse_json(&second.stdout).unwrap();
     assert_eq!(each(&saw, "op"), ["create", "comment"]);
-    // the first saved last, and kept the second's mark, which saw more
+    // the first saved last, and kept the second's mark, which saw more: its read never placed
+    // the comment, so the cursor keeps both frontiers
+    let (frontier, at) = cursor(&a);
+    assert_eq!(frontier.len(), 2, "{frontier:?}");
+    // the next recap shows nothing, and keeps its own frontier alone without moving the time of
+    // the last recap that marked anything seen
+    assert!(events(&recap(&a)).is_empty());
+    let (compacted, unmoved) = cursor(&a);
+    assert_eq!(compacted.len(), 1, "{compacted:?}");
+    assert!(
+        frontier.contains(&compacted[0]),
+        "{frontier:?} {compacted:?}"
+    );
+    assert_eq!(unmoved, at);
+    assert!(events(&recap(&a)).is_empty());
+}
+
+#[test]
+fn recaps_that_overlap_one_after_another_keep_one_frontier() {
+    let sandbox = crate::sandbox();
+    let a = crate::rust_only(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let key = create(&a, "Busy");
+    let (one, two) = (
+        Gate::new(&sandbox, "first-save"),
+        Gate::new(&sandbox, "second-save"),
+    );
+    let (first, second) = beside(
+        || held(&a, &one),
+        |first_done| {
+            one.meet(first_done, || {
+                a.bead(["comments", "add", &key, "While the first was saving"]);
+                beside(
+                    || held(&a, &two),
+                    |second_done| {
+                        // both have read the cursor and the store; the first saves first
+                        two.meet(second_done, || {
+                            one.open();
+                            while !first_done() {
+                                std::thread::sleep(Duration::from_millis(5));
+                            }
+                        })
+                    },
+                )
+            })
+        },
+    );
+    assert_eq!(first.returncode(), 0, "{}", first.stderr);
+    assert_eq!(each(&parse_json(&first.stdout).unwrap(), "op"), ["create"]);
+    let (second, met) = second.expect("the first recap reached its save");
+    assert!(met.is_some(), "the second recap reached its save");
+    assert_eq!(second.returncode(), 0, "{}", second.stderr);
+    let saw = parse_json(&second.stdout).unwrap();
+    assert_eq!(each(&saw, "op"), ["create", "comment"]);
+    // the second's read placed what the first's frontier names: the cursor keeps its own alone
+    let (frontier, _) = cursor(&a);
+    assert_eq!(frontier.len(), 1, "{frontier:?}");
+    assert_eq!(frontier[0], saw["workspaces"][0]["events"][1]["event"]);
     assert!(events(&recap(&a)).is_empty());
 }
 
