@@ -71,14 +71,17 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   `GIT_ERROR` when a tree or segment blob the merge reads was. A commit gone cost one such error;
   a tree or blob gone, or a blob unreadable, under a commit still there failed every command after
   it the same way, since `refs/beads/remote` already named the tip and the next fetch brought
-  nothing. A failed read of the fetched tip now asks what of it is missing or damaged there (git's
-  own words; for a blob's read, whether `sync.git` holds it as a blob; `cat-file -e` of the tip;
-  `rev-list --objects --no-walk --missing=print`) and reports that as local damage; a damaged
-  `sync.git` again in the same command is `SYNC_REPO_DAMAGED`, as before. A tip whose objects are
-  all there and whose tree holds no manifest blob is still `MANIFEST_MISSING`. The failpoint
-  `fetch.fetched`, after a fetch that brought a head and before its tip is read, makes it
-  testable: `hardening::v8::v8_prune_after_a_fetch` removes or damages there the fetched commit,
-  its root tree, the manifest's blob, b's folder or b's segment. It is the likely cause of
+  nothing. A tree there but malformed, which no fetch lets in, failed every command after it too,
+  with `GIT_ERROR` "too-short tree object". A failed read of the fetched tip now asks what of it is
+  missing or damaged there (git's own words; for a blob's read, whether `sync.git` holds it as a
+  blob; `cat-file -e` of the tip; `rev-list --objects --no-walk --missing=print`, and whether that
+  walk fails) and reports that as local damage; a git that a signal ended is never taken as
+  damage, and a damaged `sync.git` again in the same command is `SYNC_REPO_DAMAGED`, as before. A
+  tip whose objects are all there and readable and whose tree holds no manifest blob is still
+  `MANIFEST_MISSING`. The failpoint `fetch.fetched`, after a fetch that brought a head and before
+  its tip is read, makes it testable: `hardening::v8::v8_prune_after_a_fetch` removes, corrupts or
+  malforms there the fetched commit, its root tree, the manifest's blob, b's folder, b's segment
+  or a's folder. It is the likely cause of
   `prune_now_on_the_private_sync_repo_during_syncs_is_transient` failing on macOS CI with
   `MANIFEST_MISSING`, which no soak here reproduced, until that test has stayed green there.
 
