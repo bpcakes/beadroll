@@ -26,6 +26,7 @@ Shape work  create TITLE [-t TYPE] [-p 0-4] [--parent P] [--deps blocks:ID]
 Coordinate  sync                   exchange journals with the other machines
             claims                 who holds what, on which branch, since when
             log ID   info   machines
+            recap                  new activity across every local tracker
 Agents      prime                  the workflow to load at the start of a
                                    session
             onboard                a snippet for CLAUDE.md / AGENTS.md
@@ -98,6 +99,9 @@ Coordinate
     who holds what, on which branch,
     since when
   log ID   info   machines
+  recap
+    new activity across every local
+    tracker
 Agents
   prime
     the workflow to load at the start of
@@ -151,6 +155,7 @@ Shape work  create TITLE [-t TYPE] [-p 0-4] [--parent P] [--deps blocks:ID] [-l 
 Coordinate  sync                   exchange journals with the other machines
             claims                 who holds what, on which branch, since when
             log ID   info   machines
+            recap                  new activity across every local tracker
 Agents      prime                  the workflow to load at the start of a session
             onboard                a snippet for CLAUDE.md / AGENTS.md
 Data        init [--prefix P] [--tracked] [--import FILE]   import FILE   export [-o FILE]
@@ -261,6 +266,7 @@ Shape work  create TITLE [-t TYPE] [-p 0-4] [--parent P] [--deps blocks:ID]
 Coordinate  sync                   exchange journals with the other machines
             claims                 who holds what, on which branch, since when
             log ID   info   machines
+            recap                  new activity across every local tracker
 Agents      prime                  the workflow to load at the start of a
                                    session
             onboard                a snippet for CLAUDE.md / AGENTS.md
@@ -308,6 +314,7 @@ Shape work  create TITLE [-t TYPE] [-p 0-4] [--parent P] [--deps blocks:ID]
 Coordinate  sync                   exchange journals with the other machines
             claims                 who holds what, on which branch, since when
             log ID   info   machines
+            recap                  new activity across every local tracker
 Agents      prime                  the workflow to load at the start of a
                                    session
             onboard                a snippet for CLAUDE.md / AGENTS.md
@@ -1541,6 +1548,82 @@ Global options:
                       or never
 exit 0
 
+$ bead recap --help
+new activity across every local tracker
+
+Usage: bead recap [OPTIONS]
+
+Options:
+      --format <FORMAT>  events (the default), issues or full: how the activity
+                         is laid out
+      --all              every event, seen or not
+      --advance          mark what it shows as seen even when the output is not
+                         a terminal
+      --no-advance       mark nothing as seen, even on a terminal
+  -h, --help             Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
+
+It reads every tracker under BEAD_HOME, from any directory, without git or the
+network: sync a repository first to see the latest from its other machines.
+
+It shows what is new since a recap last marked activity seen: the first time,
+the last 24 hours, and for a tracker first seen later, what came since that
+recap. Output to a terminal marks what it showed as seen; a pipe, a file or
+--json only shows it, unless --advance.
+
+--format:  events  one line per event, as log prints it, with its issue's title
+           issues  one line per issue: its status, what happened, who wrote last
+                   and when
+           full    every event with its summary, machine, agent, thread, branch
+                   and commit
+
+--json always lists every event in full.
+exit 0
+
+$ bead help recap
+new activity across every local tracker
+
+Usage: bead recap [OPTIONS]
+
+Options:
+      --format <FORMAT>  events (the default), issues or full: how the activity
+                         is laid out
+      --all              every event, seen or not
+      --advance          mark what it shows as seen even when the output is not
+                         a terminal
+      --no-advance       mark nothing as seen, even on a terminal
+  -h, --help             Print help
+
+Global options:
+      --json          machine output: one JSON document; an error as {"error":
+                      {"code", "message"}} on stderr
+      --actor <NAME>  the name to record and hold claims as
+      --color <WHEN>  auto (the default: on a terminal, unless NO_COLOR), always
+                      or never
+
+It reads every tracker under BEAD_HOME, from any directory, without git or the
+network: sync a repository first to see the latest from its other machines.
+
+It shows what is new since a recap last marked activity seen: the first time,
+the last 24 hours, and for a tracker first seen later, what came since that
+recap. Output to a terminal marks what it showed as seen; a pipe, a file or
+--json only shows it, unless --advance.
+
+--format:  events  one line per event, as log prints it, with its issue's title
+           issues  one line per issue: its status, what happened, who wrote last
+                   and when
+           full    every event with its summary, machine, agent, thread, branch
+                   and commit
+
+--json always lists every event in full.
+exit 0
+
 $ bead help --help
 this overview, or `help COMMAND` for one command's usage
 
@@ -1827,6 +1910,9 @@ Coordinate
     who holds what, on which branch,
     since when
   log ID   info   machines
+  recap
+    new activity across every local
+    tracker
 Agents
   prime
     the workflow to load at the start of

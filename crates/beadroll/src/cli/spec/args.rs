@@ -285,6 +285,19 @@ pub(super) const MACHINES: &[ArgSpec] = &[opt(&["--name"], "name")
     .metavar("ID=ALIAS")
     .help("give a machine a local display name")];
 
+pub(super) const RECAP: &[ArgSpec] = &[
+    opt(&["--format"], "format")
+        .metavar("FORMAT")
+        .help("events (the default), issues or full: how the activity is laid out"),
+    flag(&["--all"], "all").help("every event, seen or not"),
+    flag(&["--advance"], "advance")
+        .exclusive()
+        .help("mark what it shows as seen even when the output is not a terminal"),
+    flag(&["--no-advance"], "no_advance")
+        .exclusive()
+        .help("mark nothing as seen, even on a terminal"),
+];
+
 pub(super) const HELP: &[ArgSpec] = &[positional("command_name", Nargs::Optional)
     .metavar("COMMAND")
     .help("the command to explain")];

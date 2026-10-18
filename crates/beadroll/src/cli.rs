@@ -10,6 +10,7 @@ mod layout;
 mod output;
 mod paint;
 mod parse;
+mod recap;
 mod spec;
 mod tempdir;
 mod texts;
@@ -27,10 +28,11 @@ use beadroll_core::text::json_ascii_bytes;
 use beadroll_store::{Settings, detect_actor, find_workspace, nearest_harness};
 use beadroll_sync::publish_soon_at;
 
-use crate::commands::{self, Context, Failure, Held, Line, Outcome, Tone};
+use crate::commands::{self, Context, Delivered, Failure, Held, Line, Outcome, Tone};
 use output::{Stream, Unwritten, emit};
 use paint::{Colors, When};
 use parse::{Namespace, Page, Parsed};
+use spec::Scope;
 
 /// The version this binary reports.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -171,39 +173,58 @@ fn run(argv: Vec<OsString>, exits: bool) -> u8 {
     };
     match execute(&request, colors, exits) {
         Ok(None) => 0,
-        Ok(Some(rendered)) => {
-            match emit(Some(&rendered), Stream::Stdout) {
-                Ok(()) | Err(Unwritten::Gone) => 0,
-                // the answer could not be delivered: say so where it can still be read
-                Err(Unwritten::Failed(error)) => report(
-                    &Failure::new(Code::Io, beadroll_git::IoError::bare(&error).to_string()),
-                    as_json,
-                    colors.stderr,
-                ),
-            }
-        }
+        Ok(Some(printed)) => match emit(Some(&printed.text), Stream::Stdout) {
+            // written: then what follows it (recap marks what it showed as seen), whose failure is
+            // reported where it can still be read
+            Ok(()) => match printed.delivered.map_or(Ok(()), Delivered::done) {
+                Ok(()) => 0,
+                Err(failure) => report(&failure, as_json, colors.stderr),
+            },
+            Err(Unwritten::Gone) => 0,
+            // the answer could not be delivered: say so where it can still be read
+            Err(Unwritten::Failed(error)) => report(
+                &Failure::new(Code::Io, beadroll_git::IoError::bare(&error).to_string()),
+                as_json,
+                colors.stderr,
+            ),
+        },
         Err(failure) => report(&failure, as_json, colors.stderr),
     }
 }
 
-/// Runs the request: the text for standard output, `None` when nothing (more) is to be printed.
+/// What a run prints on standard output, and what it does once that is written.
+struct Printed {
+    text: String,
+    delivered: Option<Delivered>,
+}
+
+impl From<String> for Printed {
+    fn from(text: String) -> Printed {
+        Printed {
+            text,
+            delivered: None,
+        }
+    }
+}
+
+/// Runs the request: what standard output is to show, `None` when nothing (more) is to be printed.
 /// Standard output shows colour when `colors` says so; `exits` is whether the process ends with the
 /// run.
-fn execute(request: &Request, colors: Colors, exits: bool) -> Result<Option<String>, Failure> {
+fn execute(request: &Request, colors: Colors, exits: bool) -> Result<Option<Printed>, Failure> {
     let mut settings = settings()?;
     let args = &request.args;
     if args.len() == 1 && (args[0] == "--version" || args[0] == "-V") {
-        return Ok(Some(if request.as_json {
+        return Ok(Some(Printed::from(if request.as_json {
             let mut out = Object::new();
             out.insert("version".into(), Value::from(VERSION));
             out.insert("format".into(), Value::from(FORMAT));
             write(&Value::from(out), Format::ASCII)?
         } else {
             format!("bead {VERSION}")
-        }));
+        })));
     }
-    let overview = || -> Result<Option<String>, Failure> {
-        Ok(Some(if request.as_json {
+    let overview = || -> Result<Option<Printed>, Failure> {
+        Ok(Some(Printed::from(if request.as_json {
             // laid out for no width: the reader wraps it
             let mut out = Object::new();
             let overview = layout::lay_out(texts::OVERVIEW, None);
@@ -213,7 +234,7 @@ fn execute(request: &Request, colors: Colors, exits: bool) -> Result<Option<Stri
             let width = layout::width(settings.var("COLUMNS"));
             let overview = layout::lay_out_lines(texts::OVERVIEW, width);
             paint::render_all(&overview, colors.stdout)
-        }))
+        })))
     };
     if args.is_empty() || (args.len() == 1 && (args[0] == "-h" || args[0] == "--help")) {
         return overview();
@@ -231,7 +252,14 @@ fn execute(request: &Request, colors: Colors, exits: bool) -> Result<Option<Stri
         }
         Parsed::Usage(usage) => return Err(Failure::usage(usage.message, usage.usage)),
     };
-    let free = ns.spec.workspace_free;
+    if ns.spec.scope == Scope::Home {
+        // every tracker of this machine's and no checkout: none to find, and no git to start
+        let args = recap::args(&ns, request.as_json)?;
+        let (outcome, delivered) = commands::recap(&Arc::new(settings), &args)?;
+        let text = rendered((outcome.result, outcome.lines), request.as_json, colors)?;
+        return Ok(text.map(|text| Printed { text, delivered }));
+    }
+    let free = ns.spec.scope == Scope::Free;
     // Select a directory for output files before starting the first git process.
     let tmp = tempdir::temporary_directory(settings.git.vars(), Some(settings.cwd.as_path()))?;
     settings.git = settings.git.with_tmp(tmp);
@@ -261,20 +289,28 @@ fn execute(request: &Request, colors: Colors, exits: bool) -> Result<Option<Stri
         &remote,
         exits,
     )?;
-    let Some((result, lines)) = finished else {
+    let Some(answer) = finished else {
         return Ok(None);
     };
-    Ok(match (result, lines) {
-        (None, None) => None,
-        (result, _) if request.as_json => {
-            Some(write(&result.unwrap_or(Value::Null), Format::SPACED)?)
-        }
-        (_, lines) => Some(paint::render_all(&lines.unwrap_or_default(), colors.stdout)),
-    })
+    Ok(rendered(answer, request.as_json, colors)?.map(Printed::from))
 }
 
 /// A command's answer: the result `--json` prints and the lines a human reads.
 type Answer = (Option<Value>, Option<Vec<Line>>);
+
+/// `answer` as standard output shows it: its result as JSON with `--json`, else its lines, painted
+/// when `colors` says so; `None` when it has neither.
+fn rendered(
+    (result, lines): Answer,
+    as_json: bool,
+    colors: Colors,
+) -> Result<Option<String>, Failure> {
+    Ok(match (result, lines) {
+        (None, None) => None,
+        (result, _) if as_json => Some(write(&result.unwrap_or(Value::Null), Format::SPACED)?),
+        (_, lines) => Some(paint::render_all(&lines.unwrap_or_default(), colors.stdout)),
+    })
+}
 
 /// What follows a command: its own output written (`export`), what it wrote published unless it
 /// was `--offline` or the tracker has no remote, and the count of events not yet published added;

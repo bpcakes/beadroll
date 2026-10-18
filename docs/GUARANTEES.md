@@ -13,7 +13,7 @@ same thing*) and the variables bead reads (*Configuration*).
 The commands: `create`, `show`, `update`, `list`, `ready`, `blocked`, `close`,
 `reopen`, `delete`, `dep add|remove|list|tree|cycles`, `comments [add]`,
 `search`, `lint`, plus `init`, `import`, `export`, `sync`, `claim`, `release`,
-`takeover`, `claims`, `log`, `info`, `machines`, and for agents `help`, `prime`,
+`takeover`, `claims`, `log`, `recap`, `info`, `machines`, and for agents `help`, `prime`,
 `onboard`. `--json` works anywhere on the command line; `bead` alone prints the
 overview, and `bead help COMMAND` one command's page: what each option takes and,
 for `create`, `dep` and `comments`, their forms and what a dependency type does.
@@ -45,6 +45,76 @@ outside the subtree (of the root, say, or of a second parent) still counts.
 `--parent ID` keeps to ID's direct children, here and in `list`. A scope that
 names no issue is `ISSUE_NOT_FOUND`, never an empty answer, and only one scope
 is taken at a time.
+
+## Recap across trackers
+
+`bead recap` reads every store directly under `BEAD_HOME` that holds an
+`events` directory, from any working directory. It starts no git, needs no
+checkout and contacts no remote; `BEAD_WORKSPACE` does not narrow it.
+
+Of each tracker it shows the events not shown yet, in causal order, `init`
+excepted. An event a late sync brings, or one a machine wrote with its clock
+behind, shows when it arrives, whatever its time. The cursor keeps, for each
+tracker, the frontier of what was shown, never a time, so it does not grow with
+the history. Events waiting for causes not here yet are counted and show once
+they arrive, and a tracker none of whose events can show yet (its init aside)
+keeps the window it is owed; an ownership attempt shows once the remote has
+accepted it. A tracker's window applies once, to what the first recap that shows
+or counts any of its events finds in causal order; whatever is placed after
+that is new activity and shows, whatever its time, as a late sync does. The
+first recap on a machine shows the last 24 hours and counts the events before
+them, and a tracker first seen later shows what came since the last recap that
+marked anything seen, counted the same way. Those hours are the events' own
+times, as their writers' clocks gave them: bead keeps no record of when an event
+arrived. `--all` shows every event.
+
+Only output to a terminal marks what it showed as seen, and only once it is
+written. A pipe, a file and `--json` only show it unless `--advance` is given;
+`--no-advance` marks nothing anywhere, and the two together are a usage error.
+A reader that went away marks nothing. A save that fails once the answer is
+written is an `IO` error with status 1, and the next recap shows the same
+activity again, as it does after one killed before it saved. Two recaps at once
+may show the same events: each saves under a lock held only while it reads and
+replaces the cursor, never while it reads a journal or writes its answer, and
+neither loses the other's mark. When both marked one tracker, the later save
+keeps, of the other's frontier, only what its own read did not hold, since two
+reads of a store that a sync is writing need not see one another's events; the
+next recap that marks what it shows as seen, even with nothing new to show,
+keeps its own frontier instead, so overlapping recaps do not grow the cursor.
+
+A tracker that cannot be read, its journal or a directory whose name is no
+workspace id, is reported with its error, and the others still show. The
+cursor keeps what it held of it: its frontier, or, for a tracker never shown,
+the window it is owed, so that the first recap that can read it shows what came
+since that window rather than since the latest recap. Integrity problems are
+listed under their tracker, each as `bead info` gives it, and its cursor moves
+past them all the same. A `meta.json` that cannot be read does not stop recap;
+the tracker is then named as its own journal names it.
+
+The cursor is `$BEAD_HOME/.recap.json`, private and replaced atomically, beside
+its lock file `.recap.lock`; both names start with a dot, which no workspace id
+can. It holds the time of the last recap that marked anything seen, by showing
+or counting an event, even one `--all` shows again, and, for each tracker, the
+frontier of what was shown or the start of the window it is owed. It belongs to
+the home, whoever runs bead there, and is never synced. One that cannot be read,
+or is not one, is an `IO` error and is never reset: repair it, or remove it to
+start again from the last 24 hours.
+
+`--format` lays the human output out: `events`, the default, one line per event
+as `bead log` prints it, with its issue's title; `issues`, one line per issue,
+in the order of its last event, with its status now, what happened (`created,
+claimed, closed, 2 comments`) and who wrote last, where and when; `full`, every
+event with its summary, machine, agent, whole thread, branch and whole commit.
+Journal text is escaped in all three. `--json` always gives every event: one
+object with `workspaces`, in workspace-id order, and `advance`, whether this
+recap marks what it shows as seen. A tracker has `workspace`, `name`,
+`last_sync`, `since` (where a first recap's window starts, else null), `earlier`
+(the events before it, not shown), `events`, `pending` and `integrity`, or
+`error` (`code`, `message`) when it cannot be read. An event has every member
+`bead log --json` gives it, with the same meaning, and `machine_id` (the
+machine's id, where `machine` is its local name when it has one), `title`,
+`summary` (display text, not to be parsed) and `commit`. With no tracker it
+says `No local trackers`, status 0.
 
 ## Claims
 

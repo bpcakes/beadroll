@@ -33,7 +33,8 @@
 //! `backoff`, the unlocked wait between rounds; `claim.before-push`, between a claim's fetch and
 //! push; `pending.after-list`, between listing and reading `pending/`; `journal.after-enumerate`,
 //! `journal.before-read` (before each segment is read), `view.before-load-pending` and
-//! `identity.before-link`, for readers racing writers;
+//! `identity.before-link`, for readers racing writers; `recap.before-save`, once a recap's answer
+//! is written and before it takes the cursor's lock;
 //! `projection.before-save`, once a projection to write back is caught up or made and before its
 //! text file is opened, where a test acts as another process would between a read and its
 //! write-back; `projection.texts-appended`, after a projection's texts are appended and before the
@@ -57,7 +58,7 @@ use beadroll_core::code::Code;
 use crate::error::Error;
 
 /// The points bead has, besides `atomic-write:<path part>` and `atomic-written:<path part>`.
-pub const POINTS: [&str; 24] = [
+pub const POINTS: [&str; 25] = [
     "ownership.before-publish",
     "ownership.before-transaction",
     "ownership.after-publish-ok",
@@ -81,6 +82,7 @@ pub const POINTS: [&str; 24] = [
     "projection.read",
     "view.before-load-pending",
     "identity.before-link",
+    "recap.before-save",
     "clock",
 ];
 

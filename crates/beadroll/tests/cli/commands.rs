@@ -14,6 +14,7 @@ mod location_review;
 pub(crate) mod ownership;
 mod publish_on_write;
 mod ready_subtree;
+mod recap;
 mod repeats;
 mod review5_cli;
 mod review5_positive_controls;

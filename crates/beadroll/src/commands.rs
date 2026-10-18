@@ -16,6 +16,7 @@ mod line;
 mod list;
 mod ownership;
 mod queries;
+mod recap;
 mod show;
 mod sync;
 mod transition;
@@ -55,6 +56,7 @@ pub(crate) use line::{Line, Tone};
 pub(crate) use list::{FilterArgs, ListArgs, ReadyArgs, list, ready};
 pub(crate) use ownership::{OwnershipArgs, claim, release, takeover};
 pub(crate) use queries::{blocked, lint, search};
+pub(crate) use recap::{Layout, RecapArgs, recap};
 pub(crate) use show::show;
 pub(crate) use sync::sync;
 pub(crate) use transition::{TransitionArgs, transition};
@@ -250,6 +252,22 @@ impl Outcome {
             held: Some(Box::new(spent)),
             ..self
         }
+    }
+}
+
+/// What a command does once its answer has reached standard output, and only then: `recap` marks
+/// what it showed as seen. A run whose answer is never written, to a reader that went away or by a
+/// write that failed, does nothing of it.
+pub(crate) struct Delivered(Box<dyn FnOnce() -> Result<(), Failure>>);
+
+impl Delivered {
+    pub(crate) fn new(then: impl FnOnce() -> Result<(), Failure> + 'static) -> Delivered {
+        Delivered(Box::new(then))
+    }
+
+    /// Does it, the answer written.
+    pub(crate) fn done(self) -> Result<(), Failure> {
+        (self.0)()
     }
 }
 

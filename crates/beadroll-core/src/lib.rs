@@ -5,6 +5,7 @@
 //! - [`id`], [`time`] and [`key`]: event ids, timestamps and issue keys.
 //! - [`event`] and [`op`]: validation and typed operations, including [`op::IntegerField`].
 //! - [`journal`] and [`order`]: journal settling and causal order.
+//! - [`recap`]: what `bead recap` shows of a journal, and the frontier it keeps.
 //! - [`replay`], [`state`] and [`projection`]: current state and incremental replay.
 //! - [`query`] and [`view`]: readiness, conflicts, cycles and issue presentation.
 //! - [`export`] and [`import`]: Beads JSONL conversion.
@@ -24,6 +25,7 @@ pub mod order;
 pub mod projection;
 pub mod published;
 pub mod query;
+pub mod recap;
 pub mod replay;
 pub mod state;
 pub mod text;

@@ -24,6 +24,8 @@ storage, protocol behavior and fault recovery.
     namespace commands read and receipts sign (roll-dih8.23).
   - `src/cli/help.rs`: a command's help page as clap renders it; `src/cli/paint.rs`: whether a
     stream shows colour, and each part of a line escaped, then painted.
+  - `src/cli/recap.rs`: `recap`'s arguments: its layout, and whether what it shows is marked
+    seen (output to a terminal, or `--advance`).
   - `src/cli/free.rs`: `help`, `prime` and `onboard`, which work outside a repository;
     `src/cli/texts.rs`: the overview, `PRIME` and the help pages' epilogs as paragraphs and rows,
     and `ONBOARD` verbatim; `src/cli/layout.rs`: laying those out for the reader's width.
@@ -34,8 +36,12 @@ storage, protocol behavior and fault recovery.
   `Outcome` and the helpers commands share; `src/commands/args.rs`: command-line text with invalid
   UTF-8 preserved through `surrogateescape` (`resolve_arg`, `field_args`, `Payload`, `encodable`);
   `src/commands/*.rs`: one command or a family each (`transition.rs` is close, reopen and delete;
-  `queries.rs` blocked, search and lint; `history.rs` log and machines; `ownership.rs` claim,
-  takeover and release, the claim step `update` shares, and `command_signature`, the receipt).
+  `queries.rs` blocked, search and lint; `history.rs` log and machines, and `logged`, the row and
+  line of an event that `recap.rs` builds on, whose `recap/layout.rs` lays activity out by
+  `--format`; `ownership.rs` claim, takeover and release, the claim step `update` shares, and
+  `command_signature`, the receipt). `recap` is the one command of `Scope::Home` (`cli/spec.rs`):
+  every tracker under `BEAD_HOME`, no checkout and no git; it hands `cli` a `Delivered`, its
+  cursor's save, which `run` does only once the answer is written.
 - `src/cli/ending.rs`, `src/commands/held.rs`: unit tests that run `finish` and the commands in this
   process, on a machine of the sandbox that `src/testing.rs` opens: what a command's outcome holds
   and when the run frees it (roll-lqjj.42).

@@ -6,7 +6,7 @@ use super::layout::Block;
 use super::texts;
 use args::{
     CLAIM, CLOSE, COMMENTS, CREATE, DEP, EXPORT, HELP, IMPORT, INIT, LIST, LOG, MACHINES, READY,
-    RELEASE, SEARCH, SHOW, SYNC, TAKEOVER, TRANSITION, UPDATE,
+    RECAP, RELEASE, SEARCH, SHOW, SYNC, TAKEOVER, TRANSITION, UPDATE,
 };
 
 mod args;
@@ -74,10 +74,21 @@ pub(crate) struct CommandSpec {
     pub(crate) name: &'static str,
     pub(crate) help: &'static str,
     pub(crate) args: &'static [ArgSpec],
-    /// Help, prime and onboard work outside a repository.
-    pub(crate) workspace_free: bool,
+    /// What it runs on: the checkout's tracker, or none.
+    pub(crate) scope: Scope,
     /// The forms and rules its options do not tell, after them.
     pub(crate) epilog: Option<&'static [Block]>,
+}
+
+/// What a command runs on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Scope {
+    /// The tracker of the repository it runs in.
+    Workspace,
+    /// That tracker when there is one, or none: help, prime and onboard work anywhere.
+    Free,
+    /// Every tracker under `BEAD_HOME` and no checkout, so no git either: recap.
+    Home,
 }
 
 const fn opt(flags: &'static [&'static str], dest: &'static str) -> ArgSpec {
@@ -157,14 +168,21 @@ const fn command(name: &'static str, help: &'static str, args: &'static [ArgSpec
         name,
         help,
         args,
-        workspace_free: false,
+        scope: Scope::Workspace,
         epilog: None,
     }
 }
 
 const fn free(name: &'static str, help: &'static str, args: &'static [ArgSpec]) -> CommandSpec {
     CommandSpec {
-        workspace_free: true,
+        scope: Scope::Free,
+        ..command(name, help, args)
+    }
+}
+
+const fn home(name: &'static str, help: &'static str, args: &'static [ArgSpec]) -> CommandSpec {
+    CommandSpec {
+        scope: Scope::Home,
         ..command(name, help, args)
     }
 }
@@ -177,7 +195,7 @@ impl CommandSpec {
 }
 
 /// Every command, in help display order.
-pub(crate) const COMMANDS: [CommandSpec; 27] = [
+pub(crate) const COMMANDS: [CommandSpec; 28] = [
     command("init", "create the tracker for this repository", INIT),
     command("import", "import a Beads JSONL export", IMPORT),
     command("export", "write Beads-compatible JSONL", EXPORT),
@@ -240,6 +258,7 @@ pub(crate) const COMMANDS: [CommandSpec; 27] = [
     ),
     command("info", "where the tracker lives and who you are", &[]),
     command("machines", "machines seen in the journal", MACHINES),
+    home("recap", "new activity across every local tracker", RECAP).epilog(texts::RECAP_EPILOG),
     free(
         "help",
         "this overview, or `help COMMAND` for one command's usage",

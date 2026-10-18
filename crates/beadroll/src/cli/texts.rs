@@ -74,6 +74,7 @@ const COMMANDS: &[Row] = &[
     ),
     row("", "claims", "who holds what, on which branch, since when"),
     row("", "log ID   info   machines", ""),
+    row("", "recap", "new activity across every local tracker"),
     row(
         "Agents",
         "prime",
@@ -230,6 +231,39 @@ pub(crate) const CREATE_EPILOG: &[Block] = &[
          being ready until ISSUE is done: closed or deleted. Another type, such as \
          related:ISSUE or discovered-from:ISSUE, records a link that blocks nothing.",
     ),
+];
+
+/// The end of `bead recap --help`: what it reads, what it shows and when it marks it seen, and its
+/// layouts.
+pub(crate) const RECAP_EPILOG: &[Block] = &[
+    Block::Text(
+        "It reads every tracker under BEAD_HOME, from any directory, without git or the network: \
+         sync a repository first to see the latest from its other machines.",
+    ),
+    Block::Text(
+        "It shows what is new since a recap last marked activity seen: the first time, the last \
+         24 hours, and for a tracker first seen later, what came since that recap. Output to a \
+         terminal marks what it showed as seen; a pipe, a file or --json only shows it, unless \
+         --advance.",
+    ),
+    Block::Rows(&[
+        row(
+            "--format:",
+            "events",
+            "one line per event, as log prints it, with its issue's title",
+        ),
+        row(
+            "",
+            "issues",
+            "one line per issue: its status, what happened, who wrote last and when",
+        ),
+        row(
+            "",
+            "full",
+            "every event with its summary, machine, agent, thread, branch and commit",
+        ),
+    ]),
+    Block::Text("--json always lists every event in full."),
 ];
 
 /// The end of `bead dep --help`: its forms, and what each type of dependency does.
