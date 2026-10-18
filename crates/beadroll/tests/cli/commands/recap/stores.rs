@@ -1,5 +1,7 @@
 //! The trackers a recap reads, every store under `BEAD_HOME` and no checkout, one that cannot be
-//! read among them, and the cursor it keeps of them: a frontier for each, in a file of its own.
+//! read among them, and the cursor it keeps of them: a frontier for each, in a file of its own. A
+//! test that parses or writes that file runs this build's bead: the file's name and what it keeps
+//! are guaranteed, its layout is only this build's.
 
 use std::collections::BTreeSet;
 
@@ -83,7 +85,7 @@ fn a_tracker_first_seen_after_a_recap_shows_what_came_since() {
 #[test]
 fn a_recap_of_everything_marks_where_a_tracker_first_seen_after_it_starts() {
     let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "a");
+    let a = crate::rust_only(&sandbox, "a");
     let (_other, b) = beside(&a, crate::rust_only);
     a.bead(["init", "--prefix", "one"]);
     create(&a, "Seen");
@@ -118,7 +120,7 @@ fn a_recap_of_everything_marks_where_a_tracker_first_seen_after_it_starts() {
 #[test]
 fn a_tracker_that_cannot_be_read_is_reported_and_the_others_still_show() {
     let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "a");
+    let a = crate::rust_only(&sandbox, "a");
     let (_other, b) = beside(&a, Machine::new);
     a.bead(["init", "--prefix", "one"]);
     b.bead(["init", "--prefix", "two"]);
@@ -327,7 +329,7 @@ fn the_cursor_files_cannot_be_taken_for_a_store() {
 #[test]
 fn a_cursor_that_is_not_one_is_reported_and_never_replaced() {
     let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "a");
+    let a = crate::rust_only(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
     create(&a, "Unseen");
     let path = a.home().join(".recap.json");
@@ -362,7 +364,7 @@ fn a_cursor_that_is_not_one_is_reported_and_never_replaced() {
 #[test]
 fn the_cursor_keeps_a_frontier_however_long_the_history() {
     let sandbox = crate::sandbox();
-    let a = Machine::new(&sandbox, "a");
+    let a = crate::rust_only(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
     let key = create(&a, "Busy");
     for n in 0..30 {
