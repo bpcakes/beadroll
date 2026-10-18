@@ -1,7 +1,8 @@
 //! The trackers a recap reads, every store under `BEAD_HOME` and no checkout, one that cannot be
 //! read among them, and the cursor it keeps of them: a frontier for each, in a file of its own. A
-//! test that parses or writes that file runs this build's bead: the file's name and what it keeps
-//! are guaranteed, its layout is only this build's.
+//! test that parses or writes that file, or whose machines' recaps share it, runs this build's bead
+//! on those machines: the file's name and what it keeps are guaranteed, its layout is only this
+//! build's.
 
 use std::collections::BTreeSet;
 
@@ -23,7 +24,7 @@ fn beside(machine: &Machine, make: fn(&Sandbox, &str) -> Machine) -> (Sandbox, M
 fn every_tracker_shows_from_anywhere_without_git_or_the_network() {
     let sandbox = crate::sandbox();
     let a = crate::rust_only(&sandbox, "a");
-    let (_other, b) = beside(&a, Machine::new);
+    let (_other, b) = beside(&a, crate::rust_only);
     a.bead(["init", "--prefix", "one"]);
     b.bead(["init", "--prefix", "two"]);
     let one = create(&a, "First repository");
