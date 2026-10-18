@@ -1,11 +1,11 @@
 //! A prune of a machine's own sync.git between a fetch and the reads of what it brought, made
 //! deterministic: `fetch.fetched` holds the sync there while the test takes one object of the
-//! fetched tip from sync.git, as `git gc --prune=now` racing the fetch did on macOS CI
-//! (roll-dih8.30). An object of the tip missing or unreadable here is local damage, which the
-//! command repairs by making sync.git again, whichever read finds it: the manifest's, the listing's
-//! or a blob's. A tip whose objects are all here keeps the error that is the remote's:
-//! MANIFEST_MISSING for a tree without a manifest blob, GIT_ERROR for a gitlink where a segment
-//! goes.
+//! fetched tip from sync.git, as `git gc --prune=now` racing the fetch likely did on macOS CI
+//! (roll-dih8.30), or damages it as a disk might. An object of the tip missing here, or a blob of
+//! it here but unreadable, is local damage, which the command repairs by making sync.git again,
+//! whichever read finds it: the manifest's, the listing's or a blob's. A tip whose objects are all
+//! here keeps the error that is the remote's: MANIFEST_MISSING for a tree without a manifest blob,
+//! GIT_ERROR for a gitlink where a segment goes.
 
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
@@ -30,6 +30,11 @@ enum Harm {
     Remove,
     /// Leaves it empty: there, and unreadable.
     Empty,
+    /// Changes the byte in the middle of its file: there, and unreadable, in no words git uses
+    /// for damage ("unable to stream" for a blob).
+    Flip,
+    /// Cuts the last byte off its file: the same.
+    Cut,
 }
 
 /// `git --git-dir GIT_DIR ARGS`, given `input`: its output, trimmed.
@@ -98,12 +103,37 @@ fn harm(git_dir: &Path, aside: &Path, object: &str, harm: Harm) {
         .join(&object[2..]);
     match harm {
         Harm::Remove => std::fs::remove_file(&loose).expect("the object, loose"),
-        Harm::Empty => {
+        Harm::Empty | Harm::Flip | Harm::Cut => {
+            let mut bytes = std::fs::read(&loose).expect("the object, loose");
+            match harm {
+                Harm::Flip => {
+                    let middle = bytes.len() / 2;
+                    bytes[middle] ^= 0xff;
+                }
+                Harm::Cut => drop(bytes.pop()),
+                _ => bytes.clear(),
+            }
             std::fs::set_permissions(&loose, std::fs::Permissions::from_mode(0o644))
                 .expect("the object, loose");
-            std::fs::write(&loose, b"").expect("the object emptied");
+            std::fs::write(&loose, bytes).expect("the object harmed");
         }
     }
+}
+
+/// a's `sync --json`, held once its fetch has brought the remote's tip while `harmed` runs. Its
+/// run.
+fn sync_held(sandbox: &Sandbox, a: &Machine, harmed: impl FnOnce()) -> Run {
+    let fetched = Gate::new(sandbox, "fetched");
+    let failpoints = format!("fetch.fetched={}", fetched.action());
+    let (run, met) = beside(
+        || {
+            let sync = a.cmd(["sync", "--json"]);
+            sync.env("BEAD_FAILPOINTS", &failpoints).run()
+        },
+        |finished| fetched.meet(finished, harmed),
+    );
+    assert!(met.is_some(), "the sync never fetched: {}", run.stderr);
+    run
 }
 
 /// Machine a (this build: it stops at `fetch.fetched`) publishes issue x and machine b then
@@ -129,20 +159,9 @@ fn sync_harming(sandbox: &Sandbox, revision: &str, how: Harm) -> (Run, Machine) 
         &["rev-parse", &revision.replace("{b}", &b_folder)],
         None,
     );
-    let fetched = Gate::new(sandbox, "fetched");
-    let failpoints = format!("fetch.fetched={}", fetched.action());
-    let (run, harmed) = beside(
-        || {
-            let sync = a.cmd(["sync", "--json"]);
-            sync.env("BEAD_FAILPOINTS", &failpoints).run()
-        },
-        |finished| {
-            fetched.meet(finished, || {
-                harm(&sync_git, &sandbox.root().join("aside"), &object, how);
-            })
-        },
-    );
-    assert!(harmed.is_some(), "the sync never fetched: {}", run.stderr);
+    let run = sync_held(sandbox, &a, || {
+        harm(&sync_git, &sandbox.root().join("aside"), &object, how);
+    });
     (run, a)
 }
 
@@ -194,12 +213,16 @@ fn a_manifest_blob_the_fetched_tree_lists_but_sync_git_lacks_is_local_damage() {
     assert_rebuilt_and_synced(&run, &a);
 }
 
-/// The manifest's blob there but unreadable (an empty object file): local damage too.
+/// The manifest's blob there but unreadable, its object file emptied, corrupt or cut short: local
+/// damage too, where the last two, which git reports in no words of damage, were MANIFEST_MISSING
+/// on every sync.
 #[test]
 fn a_manifest_blob_git_cannot_read_is_local_damage() {
-    let sandbox = crate::sandbox();
-    let (run, a) = sync_harming(&sandbox, MANIFEST, Harm::Empty);
-    assert_rebuilt_and_synced(&run, &a);
+    for how in [Harm::Empty, Harm::Flip, Harm::Cut] {
+        let sandbox = crate::sandbox();
+        let (run, a) = sync_harming(&sandbox, MANIFEST, how);
+        assert_rebuilt_and_synced(&run, &a);
+    }
 }
 
 /// A subtree of the fetched tip gone, which the merge's listing reads after the manifest: local
@@ -219,6 +242,17 @@ fn a_fetched_segment_pruned_before_the_merge_reads_it_is_local_damage() {
     let sandbox = crate::sandbox();
     let (run, a) = sync_harming(&sandbox, B_SEGMENT, Harm::Remove);
     assert_rebuilt_and_synced(&run, &a);
+}
+
+/// A segment's blob of the fetched tip cut short or corrupt, which the merge reads: local damage,
+/// where it was GIT_ERROR on every sync after.
+#[test]
+fn a_fetched_segment_git_cannot_read_is_local_damage() {
+    for how in [Harm::Cut, Harm::Flip] {
+        let sandbox = crate::sandbox();
+        let (run, a) = sync_harming(&sandbox, B_SEGMENT, how);
+        assert_rebuilt_and_synced(&run, &a);
+    }
 }
 
 /// Machine a (this build) publishes issue x; the remote's tip is then replaced by a commit of the
@@ -243,45 +277,112 @@ fn assert_kept(a: &Machine) {
     assert_eq!(damaged.map_or(0, <[Json]>::len), 0, "{info:?}");
 }
 
-/// A tip whose tree is whole but holds no manifest.json blob, none at all or a tree by that name,
-/// is the remote's: MANIFEST_MISSING, sync.git kept.
+/// What the remote's tree holds by the name manifest.json, in place of a blob.
+#[derive(Clone, Copy)]
+enum NoManifest {
+    /// Nothing.
+    Absent,
+    /// A tree holding the manifest's blob.
+    Tree,
+    /// A gitlink to the tip it replaced, a commit a's sync.git holds.
+    Gitlink,
+}
+
+/// The remote's tree of the tip that replaced its own, holding `events/` and, by the name
+/// manifest.json, what `instead` says.
+fn without_a_manifest(origin: &Path, instead: NoManifest) -> String {
+    let events = plumbing(origin, &["rev-parse", &format!("{TIP}:events")], None);
+    let mut listing = format!("040000 tree {events}\tevents\n");
+    match instead {
+        NoManifest::Absent => {}
+        NoManifest::Tree => {
+            let manifest = plumbing(origin, &["rev-parse", MANIFEST], None);
+            let inside = format!("100644 blob {manifest}\tmanifest.json\n");
+            let inner = plumbing(origin, &["mktree"], Some(&inside));
+            listing.push_str(&format!("040000 tree {inner}\tmanifest.json\n"));
+        }
+        NoManifest::Gitlink => {
+            let tip = plumbing(origin, &["rev-parse", TIP], None);
+            listing.push_str(&format!("160000 commit {tip}\tmanifest.json\n"));
+        }
+    }
+    listing
+}
+
+/// A tip whose tree is whole but holds no manifest.json blob, none at all, a tree by that name or
+/// a gitlink to a commit sync.git holds, is the remote's: MANIFEST_MISSING, sync.git kept.
 #[test]
 fn a_whole_tree_without_a_manifest_blob_is_still_manifest_missing() {
-    for named in [false, true] {
+    for instead in [NoManifest::Absent, NoManifest::Tree, NoManifest::Gitlink] {
         let sandbox = crate::sandbox();
-        let (run, a) = sync_replaced_tip(&sandbox, |origin| {
-            let events = plumbing(origin, &["rev-parse", &format!("{TIP}:events")], None);
-            let mut listing = format!("040000 tree {events}\tevents\n");
-            if named {
-                let manifest = plumbing(origin, &["rev-parse", MANIFEST], None);
-                let inside = format!("100644 blob {manifest}\tmanifest.json\n");
-                let inner = plumbing(origin, &["mktree"], Some(&inside));
-                listing.push_str(&format!("040000 tree {inner}\tmanifest.json\n"));
-            }
-            listing
-        });
+        let (run, a) = sync_replaced_tip(&sandbox, |origin| without_a_manifest(origin, instead));
         assert_eq!(code(&run), "MANIFEST_MISSING", "{}", run.stderr);
         assert_kept(&a);
     }
 }
 
-/// A gitlink where a segment goes is a commit no fetch brings, not an object sync.git lost: the
-/// merge's failed read of it stays GIT_ERROR, sync.git kept.
+/// A tip without a manifest blob read while a tree of it is corrupt in a's sync.git: git's own
+/// words for the tree, which only the walk over the tip reads, tell the damage, so sync.git is
+/// made again, once, and the remote's MANIFEST_MISSING follows.
+#[test]
+fn a_tree_corrupt_beside_a_missing_manifest_is_local_damage_first() {
+    let sandbox = crate::sandbox();
+    let a = crate::rust_only(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    a.bead(["create", "x"]);
+    a.bead(["sync"]);
+    let origin = sandbox.origin();
+    let events = format!("{TIP}:events");
+    let a_folder = format!("{events}/{}", folders(origin, TIP)[0]);
+    let a_folder = plumbing(origin, &["rev-parse", &a_folder], None);
+    let tree = plumbing(
+        origin,
+        &["mktree"],
+        Some(&without_a_manifest(origin, NoManifest::Absent)),
+    );
+    let tip = plumbing(origin, &["rev-parse", TIP], None);
+    let commit = plumbing(origin, &["commit-tree", &tree, "-p", &tip, "-m", "x"], None);
+    plumbing(origin, &["update-ref", TIP, &commit, &tip], None);
+    let sync_git = a.store().join("sync.git");
+    let run = sync_held(&sandbox, &a, || {
+        harm(
+            &sync_git,
+            &sandbox.root().join("aside"),
+            &a_folder,
+            Harm::Flip,
+        );
+    });
+    assert_eq!(code(&run), "MANIFEST_MISSING", "{}", run.stderr);
+    let info = a.bead(["info"]).expect("an info record");
+    let damaged = info.get("damaged_sync_repos").and_then(Json::as_array);
+    assert_eq!(damaged.map_or(0, <[Json]>::len), 1, "{info:?}");
+}
+
+/// A gitlink where a segment goes is a commit no fetch brings, or one sync.git holds for another
+/// reason, not an object sync.git lost or damaged: the merge's failed read of it stays GIT_ERROR,
+/// sync.git kept.
 #[test]
 fn a_gitlink_where_a_segment_goes_is_not_local_damage() {
-    let sandbox = crate::sandbox();
-    let (run, a) = sync_replaced_tip(&sandbox, |origin| {
-        let manifest = plumbing(origin, &["rev-parse", MANIFEST], None);
-        let code_tip = plumbing(origin, &["rev-parse", "main"], None);
-        let link = format!("160000 commit {code_tip}\t000001.jsonl\n");
-        let folder = plumbing(origin, &["mktree"], Some(&link));
-        let events = plumbing(
-            origin,
-            &["mktree"],
-            Some(&format!("040000 tree {folder}\tf00dfeed\n")),
-        );
-        format!("040000 tree {events}\tevents\n100644 blob {manifest}\tmanifest.json\n")
-    });
-    assert_eq!(code(&run), "GIT_ERROR", "{}", run.stderr);
-    assert_kept(&a);
+    for linked in ["main", TIP] {
+        let sandbox = crate::sandbox();
+        let (run, a) = sync_replaced_tip(&sandbox, |origin| gitlink_for_a_segment(origin, linked));
+        assert_eq!(code(&run), "GIT_ERROR", "{}", run.stderr);
+        assert_kept(&a);
+    }
+}
+
+/// The remote's tree of the tip that replaced its own: its manifest, and one folder whose segment
+/// is a gitlink to the commit `linked` names in the remote, `main` (not fetched) or the journal's
+/// tip it replaced (in a's sync.git).
+fn gitlink_for_a_segment(origin: &Path, linked: &str) -> String {
+    let manifest = plumbing(origin, &["rev-parse", MANIFEST], None);
+    let linked = plumbing(origin, &["rev-parse", linked], None);
+    let link = format!("160000 commit {linked}\t000001.jsonl\n");
+    let folder = plumbing(origin, &["mktree"], Some(&link));
+    let events = plumbing(
+        origin,
+        &["mktree"],
+        Some(&format!("040000 tree {folder}\tf00dfeed\n")),
+    );
+    format!("040000 tree {events}\tevents\n100644 blob {manifest}\tmanifest.json\n")
 }
