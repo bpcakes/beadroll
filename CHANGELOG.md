@@ -63,20 +63,24 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   whether or not the issue's texts are read in; `Issue::claim_history`, `lost_claims` and `stale`
   are empty until they are.
 
-- A sync, claim or other publishing command whose fetched objects a prune of this machine's
-  `sync.git` removed before it read them now makes `sync.git` again and goes on, as it does for
-  any other local damage (roll-dih8.30). It answered `MANIFEST_MISSING` ("has no manifest;
-  refusing to adopt it") when the fetched commit, its tree or the manifest's blob was gone, an
-  error about the remote, and `GIT_ERROR` when a tree or segment blob the merge reads was gone, on
-  every command after it too, since the next fetch found the tip already in `sync.git` and brought
-  nothing. A failed read of the fetched tip now asks what of it is missing or damaged there
-  (`cat-file -e` of the tip, `rev-list --objects --no-walk --missing=print`, git's own words) and
-  reports that as local damage; a damaged `sync.git` again in the same command is
-  `SYNC_REPO_DAMAGED`, as before. A tip whose objects are all there and whose tree holds no
-  manifest blob is still `MANIFEST_MISSING`. The failpoint `fetch.fetched`, after a fetch that
-  brought a head and before its tip is read, makes it testable:
-  `hardening::v8::v8_prune_after_a_fetch` takes each object from `sync.git` there. It is what
-  failed `prune_now_on_the_private_sync_repo_during_syncs_is_transient` on macOS CI.
+- A sync, claim or other publishing command that finds an object of the fetched tip gone from this
+  machine's `sync.git`, as a prune racing the fetch leaves it, or a blob of it there but unreadable,
+  now makes `sync.git` again and goes on, as it does for any other local damage (roll-dih8.30). It
+  answered `MANIFEST_MISSING` ("has no manifest; refusing to adopt it"), an error about the remote,
+  when the fetched commit, its tree or the manifest's blob was gone or the blob unreadable, and
+  `GIT_ERROR` when a tree or segment blob the merge reads was. A commit gone cost one such error;
+  a tree or blob gone, or a blob unreadable, under a commit still there failed every command after
+  it the same way, since `refs/beads/remote` already named the tip and the next fetch brought
+  nothing. A failed read of the fetched tip now asks what of it is missing or damaged there (git's
+  own words; for a blob's read, whether `sync.git` holds it as a blob; `cat-file -e` of the tip;
+  `rev-list --objects --no-walk --missing=print`) and reports that as local damage; a damaged
+  `sync.git` again in the same command is `SYNC_REPO_DAMAGED`, as before. A tip whose objects are
+  all there and whose tree holds no manifest blob is still `MANIFEST_MISSING`. The failpoint
+  `fetch.fetched`, after a fetch that brought a head and before its tip is read, makes it
+  testable: `hardening::v8::v8_prune_after_a_fetch` removes or damages there the fetched commit,
+  its root tree, the manifest's blob, b's folder or b's segment. It is the likely cause of
+  `prune_now_on_the_private_sync_repo_during_syncs_is_transient` failing on macOS CI with
+  `MANIFEST_MISSING`, which no soak here reproduced, until that test has stayed green there.
 
 - A command that reads decodes dependency edges typed (roll-lqjj.39, X16): each edge's target is an
   issue's id, held as its 16 bytes, when its text is an id's spelling, and the text otherwise; its
