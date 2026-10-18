@@ -249,6 +249,25 @@ fn an_issue_row_names_who_wrote_its_last_event_and_when() {
 }
 
 #[test]
+fn issue_rows_follow_the_order_of_each_ones_last_event() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    // created first and written to last: by its first event it would come first
+    let busy = create(&a, "Written to last");
+    let quiet = create(&a, "Created after it");
+    a.bead(["comments", "add", &busy, "Still going"]);
+    let shown = a.run(["recap", "--all", "--format", "issues", "--color", "never"]);
+    assert_eq!(shown.returncode(), 0, "{}", shown.stderr);
+    let rows: Vec<&str> = shown.stdout.lines().skip(1).collect();
+    assert_eq!(rows.len(), 2, "{}", shown.stdout);
+    let quiet = format!("○ {quiet}  Created after it  created");
+    assert!(rows[0].contains(&quiet), "{}", shown.stdout);
+    let busy = format!("○ {busy}  Written to last  created, 1 comment");
+    assert!(rows[1].contains(&busy), "{}", shown.stdout);
+}
+
+#[test]
 fn an_event_from_a_machine_whose_clock_is_behind_shows_when_it_arrives() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
@@ -352,6 +371,13 @@ fn an_event_this_bead_cannot_apply_is_reported_and_the_cursor_still_moves() {
     );
     assert!(told.contains(&listed), "{told}");
     assert!(told.contains("No new activity"), "{told}");
+    // among the issues it has a row too: no status or title the state could give, the id it names
+    let issues = a.run(["recap", "--all", "--format", "issues", "--color", "never"]);
+    let row = format!(
+        "  ? {}    1 other event  ",
+        problems[0]["issue"].as_str().unwrap()
+    );
+    assert!(issues.stdout.contains(&row), "{}", issues.stdout);
 }
 
 #[test]

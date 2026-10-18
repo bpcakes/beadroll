@@ -5,6 +5,7 @@
 //! build's.
 
 use std::collections::BTreeSet;
+use std::os::unix::fs::PermissionsExt as _;
 
 use beadroll_test_support::{Json, Machine, Sandbox, code, parse_json};
 
@@ -53,6 +54,21 @@ fn every_tracker_shows_from_anywhere_without_git_or_the_network() {
     assert!(events(&anywhere().json().unwrap()).is_empty());
     // one cursor for the home, whichever checkout asks
     assert!(events(&recap(&b)).is_empty());
+    // to a person, each tracker's events come under a heading that names it, in the same order
+    let told = a.run(["recap", "--all", "--color", "never"]);
+    assert_eq!(told.returncode(), 0, "{}", told.stderr);
+    let lines: Vec<&str> = told.stdout.lines().collect();
+    let trackers = answer["workspaces"].as_array().unwrap();
+    assert_eq!(lines.len(), 2 * trackers.len(), "{}", told.stdout);
+    for (tracker, part) in trackers.iter().zip(lines.chunks(2)) {
+        let name = tracker["name"].as_str().unwrap();
+        let id = tracker["workspace"].as_str().unwrap();
+        let heading = part[0].starts_with(name) && part[0].contains(id);
+        assert!(heading, "{}", told.stdout);
+        let key = tracker["events"][0]["issue"].as_str().unwrap();
+        let event = part[1].starts_with("  ") && part[1].contains(key);
+        assert!(event, "{}", told.stdout);
+    }
 }
 
 #[test]
@@ -170,6 +186,71 @@ fn a_tracker_that_cannot_be_read_is_reported_and_the_others_still_show() {
     std::fs::remove_dir(&segment).unwrap();
     std::fs::write(&segment, original).unwrap();
     assert_eq!(each(&recap(&a), "title"), ["Unseen behind the damage"]);
+}
+
+#[test]
+fn an_entry_of_the_home_bead_cannot_inspect_is_reported_and_the_others_still_show() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "one"]);
+    create(&a, "Shown all the same");
+    // a link to itself: what it is cannot be known, which is not its absence
+    let entry = a.home().join("loop");
+    std::os::unix::fs::symlink("loop", &entry).unwrap();
+    let answer = a.bead(["recap"]).unwrap();
+    assert_eq!(each(&answer, "title"), ["Shown all the same"]);
+    let trackers = answer["workspaces"].as_array().unwrap();
+    let found = trackers
+        .iter()
+        .find(|t| t["workspace"] == Json::from("loop"));
+    let error = &found.unwrap_or_else(|| panic!("{answer:?}"))["error"];
+    assert_eq!(error["code"].as_str(), Some("IO"), "{answer:?}");
+    let message = error["message"].as_str().unwrap();
+    assert!(message.contains(entry.to_str().unwrap()), "{message}");
+}
+
+#[test]
+fn a_store_whose_journal_bead_cannot_inspect_is_reported_and_shows_once_it_can() {
+    // root searches a directory whatever its mode says
+    if rustix::process::geteuid().is_root() {
+        eprintln!("skipped: root ignores directory modes");
+        return;
+    }
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    let (_other, b) = beside(&a, Machine::new);
+    a.bead(["init", "--prefix", "one"]);
+    b.bead(["init", "--prefix", "two"]);
+    create(&a, "Readable");
+    create(&b, "Behind a directory bead cannot search");
+    let path = b.bead(["info"]).unwrap()["path"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let store = std::path::Path::new(&path);
+    // its directory can be listed but not searched, so its journal cannot be looked at; the mode
+    // comes back before anything is asserted
+    let searchable = std::fs::metadata(store).unwrap().permissions();
+    std::fs::set_permissions(store, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let run = a.run(["recap", "--advance", "--json"]);
+    std::fs::set_permissions(store, searchable).unwrap();
+    assert_eq!(run.returncode(), 0, "{}", run.stderr);
+    let answer = parse_json(&run.stdout).unwrap();
+    assert_eq!(each(&answer, "title"), ["Readable"]);
+    let errors: Vec<&Json> = (answer["workspaces"].as_array().unwrap().iter())
+        .map(|tracker| &tracker["error"])
+        .filter(|error| error["code"].as_str().is_some())
+        .collect();
+    assert_eq!(errors.len(), 1, "{answer:?}");
+    assert_eq!(errors[0]["code"].as_str(), Some("IO"), "{answer:?}");
+    let message = errors[0]["message"].as_str().unwrap();
+    let journal = store.join("events");
+    assert!(message.contains(journal.to_str().unwrap()), "{message}");
+    // the window it is owed stays, so once it can be searched what it holds shows
+    assert_eq!(
+        each(&recap(&a), "title"),
+        ["Behind a directory bead cannot search"]
+    );
 }
 
 #[test]
