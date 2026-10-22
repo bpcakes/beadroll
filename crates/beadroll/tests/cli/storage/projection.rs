@@ -215,7 +215,7 @@ fn a_bead_killed_as_it_writes_a_projection_leaves_the_last_one() {
     assert_eq!(killed.returncode(), -9, "{}", killed.stderr);
     assert_eq!(std::fs::read(projection(&a)).unwrap(), last);
     // the copy it was writing stays beside the projection, named with its process id, until the
-    // next write of the projection removes it (roll-lqjj.52)
+    // next atomic replacement of the projection removes it (roll-lqjj.52)
     let left = temporaries(&a);
     assert!(
         left.len() == 1 && left[0].starts_with(".projection."),
@@ -229,8 +229,8 @@ fn a_bead_killed_as_it_writes_a_projection_leaves_the_last_one() {
 }
 
 /// roll-lqjj.52: a bead killed as it starts the text file leaves the copy it was writing beside
-/// it, and the next write of the text file removes it, as a write of the projection removes what a
-/// bead killed writing that left.
+/// it, and the next atomic replacement of the text file removes it, as a replacement of the
+/// projection removes what a bead killed writing that left.
 #[test]
 fn a_bead_killed_as_it_starts_its_text_file_leaves_a_copy_the_next_write_removes() {
     let sandbox = crate::sandbox();

@@ -263,9 +263,13 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   command that cannot read what they hold as written replays the journal once
   and writes them again; no answer ever differs for it. A bead killed as it
   writes either file leaves the copy it was writing beside it, named with its
-  process id; the next command that writes that file removes the copies of
-  every writer no longer running, so the store holds no more of them than the
-  writes under way.
+  process id. Before the next atomic replacement of that particular cache,
+  bead tries to remove its temporary copies whose process id no longer exists.
+  Appending to the text file does not run this cleanup. A process id still
+  present, including one reused by another process, or an error listing or
+  removing files can leave copies behind. The check assumes the store's
+  writers share one host and PID namespace; there is no bound on the copies
+  left behind.
 - There is no history boundary: work written offline merges on the next sync
   however long ago it was written, after days or months away, and nothing is
   refused for its age. Should bead one day publish checkpoints, so that a new

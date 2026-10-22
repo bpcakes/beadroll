@@ -102,7 +102,7 @@ reads, and the published tree is also read by `br`/`bv` through `bead export` an
 | `<ws>/pending/<id>.json`, `<id>.command` | The pending attempt and its receipt | The receipt's signature is below |
 | `<ws>/projection`, `<ws>/projection-texts` | A cache of one build of bead (§2) | No part of format 1: another build never reads them, and deleting them is always safe |
 | `<ws>/sync.git` | `git init --bare --template= --shared=0600 --object-format=<the checkout's>`; git's maintenance off through the environment | Set aside as `sync.git.damaged-<ns>` when damaged |
-| Temporary files | `.<name>.<pid>.tmp` beside the target | Readers and sync ignore them, and every name that is not `.json`/`.jsonl`; the next write of the projection or its text file removes those of its writers that died (§2) |
+| Temporary files | `.<name>.<pid>.tmp` beside the target | Readers and sync ignore them, and every name that is not `.json`/`.jsonl`; each atomic replacement of a cache first tries to remove its dead writers' copies (§2) |
 | Modes | 0700 directories and 0600 files throughout the store, whatever the umask | Files written into a checkout (`.beadroll.json`, `export -o`) follow the umask |
 | `.beadroll.json` | `indent=1` plus `"\n"`, ASCII-escaped; existing keys keep their order, new ones are appended | Committed in users' repositories, so a rewrite must not show a spurious diff |
 
@@ -1876,13 +1876,18 @@ These were decided deliberately. Report problems *with* them, not their existenc
   appends are `O_APPEND` and fsync; the store lock is `File::lock`. A bead killed between the
   write and the rename (a crash, a SIGKILL) leaves its temporary file, which nothing else removed,
   its name holding the dead process's id: beside the projection that is a file as large as the
-  projection for every kill, never read (roll-lqjj.52). The next write of the projection or of its
-  text file removes the temporary files of that file whose process is gone (`fs::abandoned`: a
-  signal of 0, ESRCH), before it writes its own; one of a process still running is a write under
-  way and stays, whatever lock the writer holds or not (a read writes the projection back outside
-  the store lock), and one whose id another process has taken since stays until that ends. The
-  journal's files are not swept: a kill leaves a few hundred bytes beside an attempt or pending
-  file, and listing `claims/` at every attempt written would cost more than it freed.
+  projection for every kill, never read (roll-lqjj.52). Before each atomic replacement of the
+  projection or its text file, bead tries to remove the temporary files of that particular cache
+  whose process id no longer exists (`fs::abandoned`: a signal of 0, ESRCH). A process id still
+  present, including one reused by another process, keeps its file at that check. This assumes
+  the store's writers share one host and PID namespace; the store lock alone would not protect
+  their files, since a read writes the projection back outside it. A directory that cannot be
+  listed or a file that cannot be removed is left alone. Appending to the text file does not
+  sweep its temporary files, so a copy left while another reader completes a rebuild can stay
+  through later appends until another replacement attempts cleanup. There is no bound on the
+  copies left behind. The journal's files are not swept: a kill leaves a few hundred bytes beside
+  an attempt or pending file, and listing `claims/` at every attempt written would cost more than
+  it freed.
   The two checksummed caches are the exception (roll-lqjj.27, X05): the projection and its text file
   are written whole and atomically but not fsynced (`fs::write_cache_parts`; the text file's appends
   too), because flushing them made the command after every write cost as much again as the write:

@@ -1,8 +1,8 @@
 //! The temporary files a cache's writers left beside it when they died (roll-lqjj.52):
 //! `.NAME.PID.tmp` beside NAME, with the id of a process that is gone. A bead killed between the
 //! write of one and its rename into place (a crash, a SIGKILL) leaves it, as large as the file,
-//! and nothing else would ever remove it, since its name is that process's own: the next write of
-//! the file does.
+//! and nothing else would ever remove it, since its name is that process's own. Each atomic
+//! replacement of that cache tries to remove these copies; text-file appends do not.
 
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
@@ -11,10 +11,11 @@ use std::path::Path;
 use rustix::io::Errno;
 use rustix::process::{Pid, test_kill_process};
 
-/// Removes the temporary files beside `path` that writers of it no longer running left. One of a
-/// process still running is a write under way and stays; one whose id another process has taken
-/// since stays until that one ends too. A directory that cannot be listed, or a file that cannot
-/// be removed, is left as it is: what a cache's writers left is no failure of this one.
+/// Tries to remove the temporary files beside `path` whose process id no longer exists. A process
+/// id still present, including one reused by another process, keeps its file at this check. This
+/// assumes the store's writers share one host and PID namespace. A directory that cannot be listed,
+/// or a file that cannot be removed, is left as it is: what a cache's writers left is no failure of
+/// this one.
 pub(super) fn remove(path: &Path) {
     let Some(target) = path.file_name() else {
         return;

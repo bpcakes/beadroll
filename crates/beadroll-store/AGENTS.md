@@ -13,8 +13,8 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   the clock; `home()` with the `BEAD_HOME` rules; `checkout` and `fact`: what checkout-side git says
   of the repository, asked once, `crates/beadroll-git/AGENTS.md`), `Clock`, `normalize_path`,
   `join_path`.
-- `src/fs.rs`: `private_dirs`, `private_dir`, `write_atomic`, `write_cache_parts` (which first
-  removes the temporary files of the cache that writers no longer running left, `src/fs/abandoned.rs`,
+- `src/fs.rs`: `private_dirs`, `private_dir`, `write_atomic`, `write_cache_parts` (which
+  tries to remove that cache's abandoned temporary files before replacing it, `src/fs/abandoned.rs`,
   roll-lqjj.52), `fsync`, `dir_entries`, `glob_ending`,
   `read_json_text`, `read_json_keeping_surrogates` (preserving lone surrogates across whole-file
   rewrites) and file-read diagnostics (`os_error_str`, `utf8_error`).
@@ -107,10 +107,12 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   (`docs/REVIEWING.md` §2); appends use `O_APPEND`. The one exception is `write_cache_parts`, for
   the projection and its text file (and the text file's appends): checksummed caches, renamed in
   whole but not fsynced, whose every reader checks them against their sums (`docs/REVIEWING.md`
-  §2, the durability bullet), and whose write first removes the temporary files of that cache
-  left by processes no longer running, which a kill between write and rename leaves
-  (`fs/abandoned.rs`, roll-lqjj.52); the journal's are never swept. A new file that is read
-  without a sum to check, or that is a source of anything, is written with `write_atomic`.
+  §2, the durability bullet). Before each atomic replacement, bead tries to remove that cache's
+  temporary files whose process id no longer exists (`fs/abandoned.rs`, roll-lqjj.52); appends do
+  not sweep. Live or reused process ids and cleanup errors can leave copies behind, and the check
+  assumes the store's writers share one host and PID namespace. The journal's are never swept.
+  A new file that is read without a sum to check, or that is a source of anything, is written with
+  `write_atomic`.
 - A caller that goes on from a projection it read earlier in a locked phase takes it with
   `projection_sourced` and asks `Sourced::into_current` before it does, and reads the store again
   when that says a file was written since (`Tx::on` does, roll-lqjj.37). Identities suffice

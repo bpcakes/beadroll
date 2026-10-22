@@ -93,10 +93,11 @@ pub(crate) fn write_atomic_keyed(
 /// whole, so that no reader sees it half-written; a crash may leave it lost, cut, zeroed or as it
 /// was before, and each costs a replay (`docs/REVIEWING.md` §2), where flushing it cost the
 /// command after every write as much again as the write (X05). The failpoints fire as for
-/// [`write_atomic`]. The temporary files of the cache that writers no longer running left (a bead
-/// killed between its write and its rename, roll-lqjj.52) are removed first ([`abandoned`]): the
-/// journal's files are not swept, since a kill leaves a few hundred bytes beside one of them, and a
-/// listing of `claims/` at every attempt written would cost more than it freed.
+/// [`write_atomic`]. Before replacing the cache, this tries to remove its temporary files whose
+/// process id no longer exists ([`abandoned`], roll-lqjj.52); appending to the text file does not
+/// call this. Live or reused process ids and cleanup errors can leave copies behind. The journal's
+/// files are not swept, since a kill leaves a few hundred bytes beside one of them, and a listing
+/// of `claims/` at every attempt written would cost more than it freed.
 pub(crate) fn write_cache_parts(
     path: &Path,
     parts: &[&[u8]],
