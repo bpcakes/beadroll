@@ -1,8 +1,10 @@
 //! The temporary files a cache's writers left beside it when they died (roll-lqjj.52):
 //! `.NAME.PID.tmp` beside NAME, with the id of a process that is gone. A bead killed between the
 //! write of one and its rename into place (a crash, a SIGKILL) leaves it, as large as the file,
-//! and nothing else would ever remove it, since its name is that process's own. Each atomic
-//! replacement of that cache tries to remove these copies; text-file appends do not.
+//! and nothing else would ever remove it, since its name is that process's own: the next
+//! write-back of the projection does, both caches' at once, before it writes either
+//! (`projection::save`), since the text file is appended to in place and started again only now
+//! and then, where the projection is written whole every time.
 
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
@@ -11,26 +13,39 @@ use std::path::Path;
 use rustix::io::Errno;
 use rustix::process::{Pid, test_kill_process};
 
-/// Tries to remove the temporary files beside `path` whose process id no longer exists. A process
-/// id still present, including one reused by another process, keeps its file at this check. This
-/// assumes the store's writers share one host and PID namespace. A directory that cannot be listed,
-/// or a file that cannot be removed, is left as it is: what a cache's writers left is no failure of
-/// this one.
-pub(super) fn remove(path: &Path) {
-    let Some(target) = path.file_name() else {
-        return;
-    };
-    let parent = path.parent().unwrap_or(Path::new("."));
-    let Ok(entries) = std::fs::read_dir(parent) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        if let Some(pid) = writer_of(&entry.file_name(), target)
-            && !running(pid)
-        {
-            let _ = std::fs::remove_file(entry.path());
+/// Tries to remove the temporary files beside each of `paths` whose process id no longer exists,
+/// a directory several of them share listed once. A process id still present, including one
+/// reused by another process, keeps its file at this check. This assumes the store's writers
+/// share one host and PID namespace. A directory that cannot be listed, or a file that cannot be
+/// removed, is left as it is: what a cache's writers left is no failure of this one.
+pub(crate) fn remove(paths: &[&Path]) {
+    let mut listed: Vec<&Path> = Vec::new();
+    for dir in paths.iter().map(|path| parent(path)) {
+        if listed.contains(&dir) {
+            continue;
+        }
+        listed.push(dir);
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            continue;
+        };
+        let targets: Vec<&OsStr> = (paths.iter())
+            .filter(|path| parent(path) == dir)
+            .filter_map(|path| path.file_name())
+            .collect();
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let abandoned = (targets.iter())
+                .any(|target| writer_of(&name, target).is_some_and(|pid| !running(pid)));
+            if abandoned {
+                let _ = std::fs::remove_file(entry.path());
+            }
         }
     }
+}
+
+/// The directory `path` is in.
+fn parent(path: &Path) -> &Path {
+    path.parent().unwrap_or(Path::new("."))
 }
 
 /// The process whose temporary file for `target` is named `name`: `.TARGET.PID.tmp`, the id
@@ -55,16 +70,13 @@ fn running(pid: Pid) -> bool {
     test_kill_process(pid) != Err(Errno::SRCH)
 }
 
+/// Processes for the tests to name temporary files after: one running, one ended.
 #[cfg(test)]
-mod tests {
+pub(crate) mod testing {
     use std::process::{Child, Command, Stdio};
 
-    use super::*;
-    use crate::failpoint::Failpoints;
-    use crate::fs::{dir_entries, write_cache_parts};
-
     /// A process that runs until its standard input is closed.
-    fn process() -> Child {
+    pub(crate) fn process() -> Child {
         Command::new("cat")
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
@@ -74,11 +86,18 @@ mod tests {
 
     /// Ends `child`: its standard input closed, and the process waited for, so that its id is no
     /// running process's.
-    fn ended(mut child: Child) -> u32 {
+    pub(crate) fn ended(mut child: Child) -> u32 {
         drop(child.stdin.take());
         child.wait().unwrap();
         child.id()
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::testing::{ended, process};
+    use super::*;
+    use crate::fs::dir_entries;
 
     /// The names in `dir`.
     fn names(dir: &Path) -> Vec<String> {
@@ -87,43 +106,52 @@ mod tests {
             .collect()
     }
 
-    /// A write of a cache removes the temporary files of it whose writer is gone, and nothing
-    /// else: not one of a writer still running, not another file's, not one bead would not have
-    /// named.
+    /// A sweep of the two caches removes the temporary files of either whose writer is gone, and
+    /// nothing else: not one of a writer still running, not another file's, not one bead would
+    /// not have named.
     #[test]
-    fn a_cache_write_removes_what_writers_that_died_left_and_nothing_else() {
+    fn a_sweep_removes_what_writers_that_died_left_and_nothing_else() {
         let dir = tempfile::tempdir().unwrap();
-        let target = dir.path().join("projection-texts");
+        let caches = [
+            dir.path().join("projection"),
+            dir.path().join("projection-texts"),
+        ];
         let running = process();
         let dead = ended(process());
         let live = running.id();
         let kept = [
             format!(".projection-texts.{live}.tmp"),
+            format!(".projection.{live}.tmp"),
             format!(".projection-texts.0{dead}.tmp"),
             format!(".projection-texts.+{dead}.tmp"),
             format!(".projection-texts.{dead}.tmp.old"),
-            format!(".projection.{dead}.tmp"),
+            format!(".meta.json.{dead}.tmp"),
             format!("projection-texts.{dead}.tmp"),
             ".projection-texts.x.tmp".to_owned(),
             ".projection-texts.0.tmp".to_owned(),
             ".projection-texts..tmp".to_owned(),
+            "projection".to_owned(),
+            "projection-texts".to_owned(),
         ];
-        let removed = format!(".projection-texts.{dead}.tmp");
-        for name in kept.iter().chain([&removed]) {
+        let removed = [
+            format!(".projection-texts.{dead}.tmp"),
+            format!(".projection.{dead}.tmp"),
+        ];
+        for name in kept.iter().chain(&removed) {
             std::fs::write(dir.path().join(name), "left behind").unwrap();
         }
-        write_cache_parts(&target, &[b"texts"], &Failpoints::none()).unwrap();
+        remove(&[&caches[0], &caches[1]]);
         let mut expected: Vec<String> = kept.to_vec();
-        expected.push("projection-texts".to_owned());
         expected.sort();
         assert_eq!(names(dir.path()), expected);
-        assert_eq!(std::fs::read(&target).unwrap(), b"texts");
-        // the writer still running ends: the next write removes its file
+        // the writer still running ends: the next sweep removes its files
         let live = ended(running);
-        write_cache_parts(&target, &[b"more"], &Failpoints::none()).unwrap();
-        expected.retain(|name| *name != format!(".projection-texts.{live}.tmp"));
+        remove(&[&caches[0], &caches[1]]);
+        expected.retain(|name| !name.contains(&format!(".{live}.tmp")));
         assert_eq!(names(dir.path()), expected);
-        assert_eq!(std::fs::read(&target).unwrap(), b"more");
+        // a directory that is not there, or a path without a name, is nothing to sweep
+        remove(&[&dir.path().join("gone/projection"), Path::new("/")]);
+        assert_eq!(names(dir.path()), expected);
     }
 
     /// Which names are a process's temporary file for a target: the id as bead writes it, and

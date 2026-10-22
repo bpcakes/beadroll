@@ -322,3 +322,56 @@ fn both_files_pass_the_failpoints_of_an_atomic_write() {
         "{left:?}"
     );
 }
+
+/// roll-lqjj.52: a write-back removes what a bead killed writing either cache left beside it,
+/// both caches' at once, whether it appends to the text file or starts it again; what a writer
+/// still running has is kept.
+#[test]
+fn a_write_back_removes_what_killed_writers_of_either_cache_left() {
+    use std::os::unix::fs::MetadataExt as _;
+
+    use crate::fs::abandoned::testing::{ended, process};
+
+    let home = tempfile::tempdir().unwrap();
+    let ws = store(home.path(), Some("this build"));
+    written(&ws);
+    assert!(replays(&ws));
+    let running = process();
+    let (live, dead) = (running.id(), ended(process()));
+    let left = |pid: u32| {
+        [
+            format!(".projection.{pid}.tmp"),
+            format!(".projection-texts.{pid}.tmp"),
+        ]
+    };
+    for name in left(live).iter().chain(&left(dead)) {
+        std::fs::write(ws.dir.join(name), "left behind").unwrap();
+    }
+    let temporaries = || {
+        let mut names: Vec<String> = (std::fs::read_dir(&ws.dir).unwrap())
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| name.ends_with(".tmp"))
+            .collect();
+        names.sort();
+        names
+    };
+    // a comment appended: the next read takes it in, appends its text to the text file, and writes
+    // the projection back; the dead writer's files go, the running one's stay
+    append_events(&ws, HERE, &[comment(7, &[6], 2, "another")]).unwrap();
+    let before = std::fs::metadata(texts_path(&ws)).unwrap();
+    assert!(replays(&ws));
+    let after = std::fs::metadata(texts_path(&ws)).unwrap();
+    assert!(after.ino() == before.ino() && after.len() > before.len());
+    let mut kept = left(live);
+    kept.sort();
+    assert_eq!(temporaries(), kept);
+    // that writer ends, and the text file is started again: nothing stays
+    ended(running);
+    std::fs::remove_file(projection_path(&ws)).unwrap();
+    assert!(replays(&ws));
+    assert_ne!(
+        std::fs::metadata(texts_path(&ws)).unwrap().ino(),
+        after.ino()
+    );
+    assert_eq!(temporaries(), Vec::<String>::new());
+}
