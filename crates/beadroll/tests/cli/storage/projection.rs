@@ -1,6 +1,7 @@
 //! The store's projection (roll-lqjj.2), from outside: bead answers alike with it, without it and
 //! with a damaged one, its texts kept apart or not (roll-lqjj.6), across machines that sync, and a
-//! bead killed as it writes one, or the texts it adds, leaves the last one in place; writes in a
+//! bead killed as it writes one, or the texts it adds, leaves the last one in place, and the copy
+//! it was writing until the next write of that file removes it (roll-lqjj.52); writes in a
 //! row leave it to the next read ([`deferred`], roll-lqjj.36); dependency edges and their metadata,
 //! kept with the texts, answer alike ([`edges`], roll-lqjj.39); a write-back overtaken by a text
 //! file started again writes nothing or every text anew ([`raced`], roll-lqjj.44). Every machine here runs the `bead`
@@ -38,6 +39,17 @@ fn projection(machine: &Machine) -> PathBuf {
 
 fn texts(machine: &Machine) -> PathBuf {
     machine.store().join("projection-texts")
+}
+
+/// The temporary files in `machine`'s store, by name: what a bead killed as it writes the
+/// projection or its text file leaves beside them.
+fn temporaries(machine: &Machine) -> Vec<String> {
+    let mut names: Vec<String> = (std::fs::read_dir(machine.store()).unwrap())
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name.ends_with(".tmp"))
+        .collect();
+    names.sort();
+    names
 }
 
 /// What `machine` answers to the reading commands, to `show` of each of `keys` (`--json`, and as
@@ -202,9 +214,46 @@ fn a_bead_killed_as_it_writes_a_projection_leaves_the_last_one() {
         .run();
     assert_eq!(killed.returncode(), -9, "{}", killed.stderr);
     assert_eq!(std::fs::read(projection(&a)).unwrap(), last);
+    // the copy it was writing stays beside the projection, named with its process id, until the
+    // next write of the projection removes it (roll-lqjj.52)
+    let left = temporaries(&a);
+    assert!(
+        left.len() == 1 && left[0].starts_with(".projection."),
+        "{left:?}"
+    );
     let listed = a.run(["list", "--json"]);
     assert!(listed.stdout.contains("after"), "{}", listed.stdout);
     assert_ne!(std::fs::read(projection(&a)).unwrap(), last);
+    assert_eq!(temporaries(&a), Vec::<String>::new());
+    assert_eq!(answers(&a, &keys, false), answers(&a, &keys, true));
+}
+
+/// roll-lqjj.52: a bead killed as it starts the text file leaves the copy it was writing beside
+/// it, and the next write of the text file removes it, as a write of the projection removes what a
+/// bead killed writing that left.
+#[test]
+fn a_bead_killed_as_it_starts_its_text_file_leaves_a_copy_the_next_write_removes() {
+    let sandbox = crate::sandbox();
+    let a = crate::rust_only(&sandbox, "kept-a");
+    let keys = tracker(&a);
+    let _ = answers(&a, &keys, false);
+    let last = std::fs::read(texts(&a)).unwrap();
+    // the next read replays, and is killed as it starts the text file again
+    std::fs::remove_file(projection(&a)).unwrap();
+    let killed = (a.cmd(["list", "--json"]))
+        .env("BEAD_FAILPOINTS", "atomic-write:/projection-texts=sigkill")
+        .run();
+    assert_eq!(killed.returncode(), -9, "{}", killed.stderr);
+    assert_eq!(std::fs::read(texts(&a)).unwrap(), last);
+    let left = temporaries(&a);
+    assert!(
+        left.len() == 1 && left[0].starts_with(".projection-texts."),
+        "{left:?}"
+    );
+    let listed = a.run(["list", "--json"]);
+    assert_eq!(listed.returncode(), 0, "{}", listed.stderr);
+    assert!(projection(&a).is_file() && texts(&a).is_file());
+    assert_eq!(temporaries(&a), Vec::<String>::new());
     assert_eq!(answers(&a, &keys, false), answers(&a, &keys, true));
 }
 

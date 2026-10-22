@@ -1,6 +1,8 @@
 //! Store filesystem rules: private permissions regardless of umask, atomic whole-file writes and
 //! directory listings that distinguish absence from unreadability.
 
+mod abandoned;
+
 use std::ffi::OsStr;
 use std::fs::{DirBuilder, File, OpenOptions};
 use std::io::{self, Read as _, Write as _};
@@ -91,12 +93,16 @@ pub(crate) fn write_atomic_keyed(
 /// whole, so that no reader sees it half-written; a crash may leave it lost, cut, zeroed or as it
 /// was before, and each costs a replay (`docs/REVIEWING.md` §2), where flushing it cost the
 /// command after every write as much again as the write (X05). The failpoints fire as for
-/// [`write_atomic`].
+/// [`write_atomic`]. The temporary files of the cache that writers no longer running left (a bead
+/// killed between its write and its rename, roll-lqjj.52) are removed first ([`abandoned`]): the
+/// journal's files are not swept, since a kill leaves a few hundred bytes beside one of them, and a
+/// listing of `claims/` at every attempt written would cost more than it freed.
 pub(crate) fn write_cache_parts(
     path: &Path,
     parts: &[&[u8]],
     failpoints: &Failpoints,
 ) -> Result<(), Error> {
+    abandoned::remove(path);
     written_whole(path, parts, true, false, failpoints).map(drop)
 }
 

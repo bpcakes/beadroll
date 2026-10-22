@@ -261,7 +261,11 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   and renamed into place, not fsynced. A crash or a power loss can leave either
   lost, cut, zeroed, as it was, or out of step with the other, and the next
   command that cannot read what they hold as written replays the journal once
-  and writes them again; no answer ever differs for it.
+  and writes them again; no answer ever differs for it. A bead killed as it
+  writes either file leaves the copy it was writing beside it, named with its
+  process id; the next command that writes that file removes the copies of
+  every writer no longer running, so the store holds no more of them than the
+  writes under way.
 - There is no history boundary: work written offline merges on the next sync
   however long ago it was written, after days or months away, and nothing is
   refused for its age. Should bead one day publish checkpoints, so that a new
