@@ -1,8 +1,9 @@
 //! The store's projection (roll-lqjj.2), from outside: bead answers alike with it, without it and
-//! with a damaged one, its texts kept apart or not (roll-lqjj.6), across machines that sync, and a
-//! bead killed as it writes one, or the texts it adds, leaves the last one in place, and the copy
-//! it was writing until the next write of that file removes it (roll-lqjj.52); writes in a
-//! row leave it to the next read ([`deferred`], roll-lqjj.36); dependency edges and their metadata,
+//! with a damaged one, its texts kept apart or not (roll-lqjj.6), across machines that sync. A bead
+//! killed before a cache's rename leaves the previous file in place and may leave a temporary copy.
+//! Before the next atomic replacement of that cache, bead tries to remove abandoned copies
+//! (roll-lqjj.52); text-file appends do not sweep. Writes in a row leave it to the next read
+//! ([`deferred`], roll-lqjj.36); dependency edges and their metadata,
 //! kept with the texts, answer alike ([`edges`], roll-lqjj.39); a write-back overtaken by a text
 //! file started again writes nothing or every text anew ([`raced`], roll-lqjj.44). Every machine here runs the `bead`
 //! this package builds (`rust_only`): the projection is this build's.
