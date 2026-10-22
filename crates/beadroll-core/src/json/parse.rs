@@ -150,35 +150,101 @@ struct Key {
     raw: Option<Vec<u8>>,
 }
 
-/// An object's members as they are read: by key as written, each with its key's text, its value, and
-/// whether key or value holds a lone surrogate.
-#[derive(Default)]
-struct Members(IndexMap<Vec<u8>, (String, Value, bool)>);
+/// An object's members as they are read. A key without a lone surrogate reads as it was written,
+/// so while every key is such the object is built once, by key as read, as it will be returned;
+/// the first key holding a lone surrogate turns the members into [`Members::Raw`], by key as
+/// written, merged again by key as read once the object closes, since two keys written apart may
+/// read alike (roll-lqjj.49: every object was built by key as written and then again by key as
+/// read, 31 ms of the 52 ms a `meta.json` of 92,000 files took).
+enum Members {
+    /// Every key read so far reads as written: the object itself, and for each member whether
+    /// its value holds a lone surrogate, so that one a repeated key replaced is not reported.
+    Plain {
+        members: Object,
+        surrogates: Vec<bool>,
+    },
+    /// A key held a lone surrogate: by key as written, each with its key's text, its value and
+    /// whether key or value holds a lone surrogate.
+    Raw(IndexMap<Vec<u8>, (String, Value, bool)>),
+}
+
+impl Default for Members {
+    fn default() -> Self {
+        Members::Plain {
+            members: Object::new(),
+            surrogates: Vec::new(),
+        }
+    }
+}
 
 impl Members {
     fn insert(&mut self, key: Key, value: Value, value_surrogate: bool) {
         let surrogate = value_surrogate || key.raw.is_some();
-        let raw = key.raw.unwrap_or_else(|| key.text.as_bytes().to_vec());
-        match self.0.get_mut(&raw) {
-            Some(member) => {
-                member.1 = value;
-                member.2 = surrogate;
+        match self {
+            Members::Plain {
+                members,
+                surrogates,
+            } if key.raw.is_none() => match members.get_full_mut(key.text.as_str()) {
+                Some((at, _, member)) => {
+                    *member = value;
+                    if let Some(flag) = surrogates.get_mut(at) {
+                        *flag = surrogate;
+                    }
+                }
+                None => {
+                    members.insert(key.text, value);
+                    surrogates.push(surrogate);
+                }
+            },
+            Members::Plain { .. } => {
+                // The first key with a lone surrogate: what was read so far is keyed by its text's
+                // bytes, which are its bytes as written, and this key and the rest by theirs.
+                let Members::Plain {
+                    members,
+                    surrogates,
+                } = std::mem::take(self)
+                else {
+                    return;
+                };
+                let mut raw = IndexMap::with_capacity(members.len() + 1);
+                for ((text, value), flag) in members.into_iter().zip(surrogates) {
+                    raw.insert(text.clone().into_bytes(), (text, value, flag));
+                }
+                *self = Members::Raw(raw);
+                self.insert(key, value, value_surrogate);
             }
-            None => {
-                self.0.insert(raw, (key.text, value, surrogate));
+            Members::Raw(raw) => {
+                let bytes = key.raw.unwrap_or_else(|| key.text.as_bytes().to_vec());
+                match raw.get_mut(&bytes) {
+                    Some(member) => {
+                        member.1 = value;
+                        member.2 = surrogate;
+                    }
+                    None => {
+                        raw.insert(bytes, (key.text, value, surrogate));
+                    }
+                }
             }
         }
     }
 
     /// The object as read: members merged again once each lone surrogate reads as U+FFFD.
     fn finish(self) -> (Object, bool) {
-        let mut out = Object::with_capacity(self.0.len());
-        let mut surrogate = false;
-        for (_, (text, value, flag)) in self.0 {
-            surrogate |= flag;
-            out.insert(text, value);
+        match self {
+            Members::Plain {
+                members,
+                surrogates,
+            } => (members, surrogates.into_iter().any(|flag| flag)),
+            Members::Raw(raw) => {
+                let mut out = Object::with_capacity(raw.len());
+                let mut surrogate = false;
+                for (_, (text, value, flag)) in raw {
+                    surrogate |= flag;
+                    out.insert(text, value);
+                }
+                (out, surrogate)
+            }
         }
-        (out, surrogate)
     }
 }
 
@@ -344,12 +410,12 @@ impl Parser<'_> {
         }
         let key = if surrogate {
             Key {
-                text: text(&raw),
+                text: replaced(&raw),
                 raw: Some(raw),
             }
         } else {
             Key {
-                text: text(&raw),
+                text: text(raw),
                 raw: None,
             }
         };
@@ -362,7 +428,8 @@ impl Parser<'_> {
         match self.at(at) {
             Some(b'"') => {
                 let (raw, surrogate, end) = self.string(at + 1)?;
-                Ok((Value::Str(text(&raw)), surrogate, end))
+                let text = if surrogate { replaced(&raw) } else { text(raw) };
+                Ok((Value::Str(text), surrogate, end))
             }
             Some(b'n') if self.starts_with(at, b"null") => Ok((Value::Null, false, at + 4)),
             Some(b't') if self.starts_with(at, b"true") => Ok((Value::Bool(true), false, at + 4)),
@@ -525,8 +592,15 @@ impl Parser<'_> {
     }
 }
 
+/// The text of a string's bytes that hold no lone surrogate: the bytes themselves, which `string`
+/// read as UTF-8, taken as they are rather than copied (roll-lqjj.49).
+fn text(raw: Vec<u8>) -> String {
+    String::from_utf8(raw)
+        .unwrap_or_else(|error| String::from_utf8_lossy(error.as_bytes()).into_owned())
+}
+
 /// The text of a string's bytes, each lone surrogate read as U+FFFD.
-fn text(raw: &[u8]) -> String {
+fn replaced(raw: &[u8]) -> String {
     let mut out = Vec::with_capacity(raw.len());
     let mut at = 0;
     while let Some(&byte) = raw.get(at) {

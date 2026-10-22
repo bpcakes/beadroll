@@ -1776,9 +1776,12 @@ These were decided deliberately. Report problems *with* them, not their existenc
   at 9,132 files the count 14.2-14.5 ms to 8.2 and the command 74-76 ms to 68-69; a sync's count
   98 ms to 31 and an `info`'s 101 ms to 39; the plain history is as it was (1.27 ms to 1.24, 0.31 to
   0.30). What stays is the floor and one residue, each its own issue. `meta.json`'s `published` map
-  has an entry for every journal file (§1, format 1), parsed at 0.6 µs each: 58 ms at 92,000, now
-  more than half of what a reading command spends on the count; core's parser builds every object
-  twice, which is the first place to look (roll-lqjj.49). A write ends with the count after the
+  has an entry for every journal file (§1, format 1), parsed at 0.6 µs each: 58 ms at 92,000, then
+  more than half of what a reading command spent on the count; core's parser built every object
+  twice, by key as written and again by key as read, and builds it once since roll-lqjj.49 (the
+  reader's own bullet below): the map parses in 26 ms rather than 52 in process (`cargo xtask
+  timing --parse N`), 4% of a `list` on that store and within the command's run-to-run spread,
+  while a write there takes 0.68 s rather than 0.75. A write ends with the count after the
   store lock is released, which cleared the attempt names, so it lists them again: 80 ms at 92,000
   files, which keeps a write's count at 175 ms (roll-lqjj.48). A cached answer, a fingerprint of
   `meta.json` and the claims directories written by every sync and read by every command, would
@@ -1862,7 +1865,17 @@ These were decided deliberately. Report problems *with* them, not their existenc
   ASCII-escaped for `meta.json`, `aliases.json`, `moved.json` and `.beadroll.json`; sorted and
   compact to compare quarantined copies. serde_json's `arbitrary_precision` and `preserve_order`
   are features every crate in a build shares, so turning them on would change studio's own
-  serde_json. The parser is iterative, so no depth overflows the stack.
+  serde_json. The parser is iterative, so no depth overflows the stack. An object is built once,
+  by key as read, while every key reads as it was written; the first key holding a lone surrogate
+  turns what was read into a map by key as written, merged again by key as read when the object
+  closes, so that two keys written apart that read alike (`\ud800` and `\udbff`, each U+FFFD) still
+  keep the last value at the first's place, and a value's lone surrogate that a repeated key
+  replaced is still not reported (`parse::tests` pins the merge on both sides of such a key). The
+  parser built every object twice until roll-lqjj.49, 31 ms of the 52 ms a `meta.json` of 92,000
+  files took and a part of the 4.6 µs every journal line took, and copied every string once more
+  into its text: a string without a lone surrogate is now its bytes as read, validated once more
+  rather than copied. `cargo xtask timing --parse N` measures the reader on such a `meta.json` (its
+  members built once and twice beside it) and on every line of a history of N events.
 - git is the git binary, never gix or libgit2: bead's contract is "as git reads it" (`insteadOf`,
   `includeIf`, credential helpers, `core.sshCommand`, translated messages, server hooks, SHA-256
   repositories, reftable), which a reimplementation would have to match, and the hardening tests
