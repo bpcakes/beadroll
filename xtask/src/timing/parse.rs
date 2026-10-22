@@ -201,13 +201,19 @@ mod tests {
     #[test]
     fn the_figures_name_every_measure() {
         let line = measure(4, Shape::Plain, Some("label")).unwrap();
+        let figures = parse(format!("{}}}", line.trim_end_matches(", ")).as_bytes())
+            .unwrap()
+            .value;
         for name in [
             "published_seconds",
             "once_seconds",
             "twice_seconds",
             "lines_seconds",
         ] {
-            assert!(line.contains(&format!("\"{name}\": 0.")), "{line}");
+            assert!(
+                matches!(figures.get(name), Some(Value::Int(_) | Value::Float(_))),
+                "{line}"
+            );
         }
         assert!(line.contains("\"files\": 4"), "{line}");
         assert!(line.contains("\"shape\": \"plain\""), "{line}");

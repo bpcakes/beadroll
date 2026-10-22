@@ -20,6 +20,15 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Review 18: Claude and Codex review of JSON parsing (ids AA)
+
+Reported inline, no file: independent reviews of `d9396a0..4082ed9` on 2026-10-22, the branch for
+roll-lqjj.49. Codex found AA01; neither reviewer found a parser correctness regression.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AA01 | Low | The parse timing output test required durations to start with `0.`, imposing an elapsed-time limit in the ordinary suite | fixed | The test parses the output fields and checks that each duration is a number, without bounding its value; fixture counts and shape assertions remain unchanged (roll-lqjj.49.1). Production behavior is unchanged | `xtask`: `timing::parse::tests::the_figures_name_every_measure`, checked to assert numeric types without a clock threshold |
+
 ## Review 17: Claude and Codex review of abandoned cache temporaries (ids O)
 
 Reported inline, no file: independent reviews of `4c29f43..f7adc8e` on 2026-10-22, the branch for
