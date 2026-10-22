@@ -163,16 +163,21 @@ fn flags_take_no_value_and_short_ones_combine() {
 }
 
 #[test]
-fn numbers_are_read_as_int_reads_them_and_defaults_apply() {
-    let ns = parsed(&["list", "--limit", " 1_0 "]);
+fn numbers_are_whole_numbers_and_defaults_apply() {
+    let ns = parsed(&["list", "--limit", " 10 "]);
     assert_eq!(ns.int("limit"), Some(&Int::from(10)));
     assert_eq!(parsed(&["list"]).int("limit"), Some(&Int::from(50)));
     assert_eq!(parsed(&["ready"]).int("limit"), Some(&Int::from(0)));
     assert_eq!(parsed(&["log"]).int("limit"), Some(&Int::from(30)));
     assert_eq!(parsed(&["create", "t"]).int("estimate"), None);
     assert!(usage(&["list", "-a", "--limit", "x"]).contains("not a whole number"));
-    let many = "1".repeat(4301);
+    let many = "1".repeat(40);
     assert!(usage(&["create", "--estimate", &many]).contains("not a whole number"));
+    assert!(usage(&["list", "-a", "--limit", "1_0"]).contains("not a whole number"));
+    assert_eq!(
+        parsed(&["list", "--limit", " +7 "]).int("limit"),
+        Some(&Int::from(7))
+    );
 }
 
 #[test]

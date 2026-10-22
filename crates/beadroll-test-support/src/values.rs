@@ -107,10 +107,7 @@ impl Rng {
         match self.below(6) {
             0 => Int::from(i64::MIN),
             1 => Int::from(i64::MAX),
-            2 => {
-                let value = self.bits() >> self.below(64);
-                Int::parse(&value.to_string()).expect("digits are an integer")
-            }
+            2 => Int::from_u64(self.bits() >> self.below(64)),
             _ => Int::from(self.bits() as i64 >> self.below(64)),
         }
     }

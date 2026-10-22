@@ -118,7 +118,7 @@ impl Settings {
         let int = |name: &str, default: i128| -> Result<i128, Error> {
             get(name).map_or(Ok(default), |value| {
                 let read = value.to_str().and_then(parse_integer);
-                read.map(|n| n.saturating_i128()).ok_or_else(|| {
+                read.map(|n| n.as_i128()).ok_or_else(|| {
                     Error::Config(format!(
                         "{name} must be a whole number, not {}",
                         repr_str(&value.to_string_lossy())
@@ -306,7 +306,7 @@ mod tests {
     #[test]
     fn numeric_settings_accept_supported_syntax_and_refuse_the_rest() {
         let s = settings(&[
-            ("BEAD_ROTATE_BYTES", " 1_0 "),
+            ("BEAD_ROTATE_BYTES", " 10 "),
             ("BEAD_NET_TIMEOUT", "0.25"),
             ("BEAD_REPACK_LOOSE", ""),
         ])
@@ -318,12 +318,20 @@ mod tests {
         let bad = settings(&[("BEAD_NET_TIMEOUT", "soon")]).unwrap_err();
         assert_eq!(bad.code().as_str(), "CONFIG");
         assert!(settings(&[("BEAD_REPACK_PACKS", "1.5")]).is_err());
-        let wide = "1".repeat(4301);
+        // beyond what bead counts (an i128), a setting is refused as any other unreadable one
+        let wide = "9".repeat(60);
         let refused = settings(&[("BEAD_ROTATE_BYTES", wide.as_str())]).unwrap_err();
         assert_eq!(refused.code().as_str(), "CONFIG");
-        let big = "9".repeat(60);
-        let read = settings(&[("BEAD_ROTATE_BYTES", big.as_str())]).unwrap();
+        let most = i128::MAX.to_string();
+        let read = settings(&[("BEAD_ROTATE_BYTES", most.as_str())]).unwrap();
         assert_eq!(read.rotate_bytes, i128::MAX);
+        assert!(settings(&[("BEAD_ROTATE_BYTES", " 1_0 ")]).is_err());
+        assert_eq!(
+            settings(&[("BEAD_ROTATE_BYTES", " +10 ")])
+                .unwrap()
+                .rotate_bytes,
+            10
+        );
     }
 
     #[test]

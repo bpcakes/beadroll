@@ -10,8 +10,8 @@ use crate::json::{Int, Object, Value};
 
 /// An integer field read from a format-1 event, retaining a legacy boolean representation.
 /// Replay accepts booleans in integer fields of old histories (`docs/REVIEWING.md` §2).
-/// Comparison uses their numeric values (`true` equals 1, `false` equals 0), while JSON keeps
-/// the original type and display keeps the established `True`/`False` spelling (`[PTrue]`).
+/// Comparison and display use their numeric values (`true` is 1, `false` is 0), while JSON keeps
+/// the original type (until roll-lqjj.53.2 a boolean printed as Python's `True` or `False`).
 #[derive(Clone, Debug)]
 pub enum IntegerField {
     /// `true` or `false`.
@@ -80,11 +80,7 @@ impl Ord for IntegerField {
 
 impl fmt::Display for IntegerField {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            IntegerField::Bool(true) => f.write_str("True"),
-            IntegerField::Bool(false) => f.write_str("False"),
-            IntegerField::Int(int) => write!(f, "{int}"),
-        }
+        write!(f, "{}", self.number())
     }
 }
 

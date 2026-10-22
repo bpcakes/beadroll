@@ -19,7 +19,7 @@ tests it builds events, and for the round-trip properties it draws JSON values.
   `Invocation` (a run's directory, thread, agent, environment and input), `Run`, `code`.
 - `src/lib.rs`: `Json` (beadroll-core's `Value`) and `parse_json`, which read `bead --json`.
 - `src/values.rs`: `Rng`, seeded JSON values for the round-trip properties (strings of the
-  characters each writer escapes or passes through, integers to `MAX_DIGITS` digits, floats of
+  characters each writer escapes or passes through, integers to any `u64`, floats of
   every finite bit pattern, nesting to a depth), `identical` (member order and float bits
   compared, which `Value`'s equality does not) and `sorted`, for beadroll-core's integration tests
   and beadroll-store's tests (roll-k2wy.14.4).

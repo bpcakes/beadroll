@@ -5,7 +5,7 @@ use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
 use std::time::Duration;
 
-use beadroll_core::json::{self, Format, Int, MAX_DIGITS, Object, Value};
+use beadroll_core::json::{self, Format, Int, Object, Value};
 use beadroll_core::text::{parse_integer, shell_quote};
 use beadroll_git::PushOutcome;
 use beadroll_store::{
@@ -398,19 +398,26 @@ pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
                 unreadable(format!("the published count of {name} is not a number"))
             })?,
         };
-        let behind = lines.sub(&known);
-        count = count.add(if behind > zero { &behind } else { &zero });
+        let beyond = || {
+            unreadable(
+                "the published counts put the unpublished count beyond what bead counts".to_owned(),
+            )
+        };
+        let behind = lines.sub(&known).ok_or_else(beyond)?;
+        count = count
+            .add(if behind > zero { &behind } else { &zero })
+            .ok_or_else(beyond)?;
     }
     for path in claim_files(ws)?.iter() {
         // its path in the store, as `relative` gives it, without a copy of each
         if !published.contains_key(&*relative_name(ws, path)) {
-            count = count.add(&Int::from(1));
+            count = count.add(&Int::from(1)).ok_or_else(|| {
+                unreadable(
+                    "the attempt files put the unpublished count beyond what bead counts"
+                        .to_owned(),
+                )
+            })?;
         }
-    }
-    if count.digit_count() > MAX_DIGITS {
-        return Err(unreadable(format!(
-            "the published counts put the unpublished count beyond {MAX_DIGITS} digits"
-        )));
     }
     Ok(Some(count))
 }

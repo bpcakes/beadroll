@@ -58,14 +58,8 @@ impl<'de> Visitor<'de> for ValueVisitor {
         Ok(Value::Int(Int::from(value)))
     }
 
-    fn visit_u64<E: serde::de::Error>(self, value: u64) -> Result<Value, E> {
-        match i64::try_from(value) {
-            Ok(value) => Ok(Value::Int(Int::from(value))),
-            // beyond i64: its digits, exact, as the writer prints them
-            Err(_) => Int::parse(&value.to_string())
-                .map(Value::Int)
-                .ok_or_else(|| E::custom("an integer beyond what bead keeps")),
-        }
+    fn visit_u64<E>(self, value: u64) -> Result<Value, E> {
+        Ok(Value::Int(Int::from_u64(value)))
     }
 
     fn visit_f64<E: serde::de::Error>(self, value: f64) -> Result<Value, E> {

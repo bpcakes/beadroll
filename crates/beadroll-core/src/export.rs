@@ -44,7 +44,11 @@ fn exported_legacy_id(comment: &Object, taken: &HashSet<u64>) -> Value {
             .is_some_and(|id| taken.contains(&id))
     };
     while collides(&id) {
-        id = id.plus_one();
+        // Only an id within an i64 collides, so counting on from one never runs out.
+        let Some(next) = id.plus_one() else {
+            break;
+        };
+        id = next;
     }
     Value::Int(id)
 }

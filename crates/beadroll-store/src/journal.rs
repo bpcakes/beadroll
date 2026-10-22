@@ -189,10 +189,9 @@ pub fn active_segment(ws: &Workspace, replica: &str) -> Result<PathBuf, Error> {
             folder.display()
         ))
     };
-    let next = parse_integer(stem).ok_or_else(unnumbered)?.plus_one();
-    if next.digit_count() > beadroll_core::json::MAX_DIGITS {
-        return Err(unnumbered());
-    }
+    let next = parse_integer(stem)
+        .and_then(|number| number.plus_one())
+        .ok_or_else(unnumbered)?;
     Ok(folder.join(format!("{}.jsonl", next.zero_padded(6))))
 }
 

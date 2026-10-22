@@ -141,20 +141,21 @@ fn an_unremovable_invalid_pending_file_is_an_io_error() {
 }
 
 /// Expected unpublished counts for a three-event segment with unusual published counts. Falsy
-/// values read as zero; integer arithmetic is exact within an `i64` or a `u64`, and an integer
-/// beyond reads as a float (roll-lqjj.53; exact to 4,300 digits before); floats truncate and
-/// strings parse as integers. A large negative published count therefore produces a large
-/// unpublished count. Omit the count when nothing is unpublished.
+/// values read as zero; integer arithmetic is exact within an `i128`, an integer beyond a `u64`
+/// or an `i64` reads as a float (roll-lqjj.53; exact to 4,300 digits before) and one beyond an
+/// `i128` is refused (roll-lqjj.53.2); floats truncate and strings parse as whole numbers. A large
+/// negative published count therefore produces a large unpublished count. Omit the count when
+/// nothing is unpublished.
 const COUNTS: [(&str, Option<&str>); 10] = [
     ("-9223372036854775808", Some("9223372036854775811")),
     (
-        // the float -1e44, whole: -100000000000000008821361405306422640701865984
-        "-99999999999999999999999999999999999999999999",
-        Some("100000000000000008821361405306422640701865987"),
+        // the float -1e30, whole: -1000000000000000019884624838656
+        "-999999999999999999999999999999",
+        Some("1000000000000000019884624838659"),
     ),
     ("1e20", None),
     ("-2.5", Some("5")),
-    ("\" 1_0 \"", None),
+    ("\" 10 \"", None),
     ("true", Some("2")),
     ("null", Some("3")),
     ("1", Some("2")),
@@ -207,19 +208,31 @@ fn unpublished_counts_handle_metadata_json_shapes() {
     }
 }
 
-/// A nonnumeric published count returns IO naming the value. This build-specific error check uses
-/// the package's binary regardless of BEAD_UNDER_TEST.
+/// A nonnumeric published count returns IO naming the value: text that is not a whole number
+/// (`" 1_0 "`, which read as 10 until roll-lqjj.53.2), or a number beyond what bead counts (the
+/// 44-digit integer reads as the float -1e44, beyond an `i128`). This build-specific error check
+/// uses the package's binary regardless of BEAD_UNDER_TEST.
 #[test]
 fn a_published_count_that_is_not_a_number_is_an_io_error() {
     let sandbox = crate::sandbox();
     let r = crate::rust_only(&sandbox, "r");
     let (meta, original, segment, published) = published_three(&r);
-    let edited = original.replacen(&published, &format!("\"{segment}\": \"x\""), 1);
-    std::fs::write(&meta, edited).unwrap();
-    let refused = r.run(["list", "--json"]);
-    assert_eq!(code(&refused), "IO", "{}", refused.stderr);
-    let wanted = format!("the published count of {segment} is not a number");
-    assert!(refused.stderr.contains(&wanted), "{}", refused.stderr);
-    let quiet = "an error prints nothing on standard output";
-    assert_eq!(refused.stdout, "", "{quiet}");
+    for count in [
+        "\"x\"",
+        "\" 1_0 \"",
+        "-99999999999999999999999999999999999999999999",
+    ] {
+        let edited = original.replacen(&published, &format!("\"{segment}\": {count}"), 1);
+        std::fs::write(&meta, edited).unwrap();
+        let refused = r.run(["list", "--json"]);
+        assert_eq!(code(&refused), "IO", "{count}: {}", refused.stderr);
+        let wanted = format!("the published count of {segment} is not a number");
+        assert!(
+            refused.stderr.contains(&wanted),
+            "{count}: {}",
+            refused.stderr
+        );
+        let quiet = "an error prints nothing on standard output";
+        assert_eq!(refused.stdout, "", "{count}: {quiet}");
+    }
 }

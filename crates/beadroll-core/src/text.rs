@@ -4,7 +4,7 @@
 mod number;
 mod printable;
 
-pub use number::{decimal_value, is_digits, parse_float, parse_integer};
+pub use number::{is_digits, parse_float, parse_integer};
 
 use std::fmt::Write as _;
 

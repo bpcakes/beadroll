@@ -30,7 +30,9 @@ pub(super) fn claim(c: &Ctx<'_>, issue: &mut Issue, claiming: &Claiming) -> bool
     } else if c.claim.is_none() || takes_over(c.claim, claiming) {
         end_claim(c, issue, "takeover", claiming.reason.as_deref());
         // Choose the greater of the incremented and proposed generations, keeping the first on ties.
-        let next = issue.claim_generation.plus_one();
+        // A generation beyond what bead counts, which no history reaches, stays where it is.
+        let next =
+            (issue.claim_generation.plus_one()).unwrap_or_else(|| issue.claim_generation.clone());
         let given = claiming
             .generation
             .as_ref()

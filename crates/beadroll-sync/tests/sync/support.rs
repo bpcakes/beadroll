@@ -92,7 +92,10 @@ pub(crate) fn claim(tx: &mut Tx<'_>, mode: Mode, key: &str) -> Result<Mode, Erro
         .ok_or_else(|| Error::Validation(format!("Issue not found: {key}")))?;
     let mut data = Object::new();
     data.insert("mode".into(), Value::from(mode.as_str()));
-    let generation = issue.claim_generation().plus_one();
+    let generation = issue
+        .claim_generation()
+        .plus_one()
+        .expect("a generation counts on");
     data.insert("generation".into(), Value::Int(generation));
     tx.emit("claim", Some(&issue.uid().to_string()), data, None)?;
     Ok(mode)

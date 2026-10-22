@@ -539,7 +539,7 @@ pub(crate) fn select<'s>(st: &'s State, filters: &Filters) -> Result<Vec<&'s Iss
 
 /// The first `limit` items; a negative limit leaves that many off the end.
 pub(crate) fn first<T>(items: Vec<T>, limit: &Int) -> Vec<T> {
-    let limit = limit.saturating_i128();
+    let limit = limit.as_i128();
     let len = items.len() as i128;
     let keep = if limit < 0 {
         (len + limit).max(0)

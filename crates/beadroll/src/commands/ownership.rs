@@ -97,9 +97,11 @@ impl ClaimStep<'_> {
             }
             let mut data = Object::new();
             data.insert("mode".into(), Value::from(mode.as_str()));
+            // the next generation, or the one there is where bead counts no further
+            let generation = issue.claim_generation();
             data.insert(
                 "generation".into(),
-                Value::Int(issue.claim_generation().plus_one()),
+                Value::Int(generation.plus_one().unwrap_or_else(|| generation.clone())),
             );
             let mut valid = true;
             if let (Some(reason), Some(held)) = (self.takeover, held) {

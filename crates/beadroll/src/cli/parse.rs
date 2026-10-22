@@ -282,8 +282,9 @@ fn argument(spec: &ArgSpec) -> Arg {
     }
 }
 
-/// A number as Python's `int()` reads it (`" +5 "`, `5_000`); anything else, bytes that are not
-/// UTF-8 included, is refused naming the option and the value.
+/// A whole number: an optional sign and ASCII digits, whitespace around them allowed
+/// (`parse_integer`); anything else, bytes that are not UTF-8 included, is refused naming the
+/// option and the value.
 #[derive(Clone, Copy, Debug)]
 struct Integer;
 

@@ -1496,10 +1496,12 @@ These were decided deliberately. Report problems *with* them, not their existenc
   ever be needed, follows writers-lag-readers through the manifest; none is planned.
 - Events nest at most 100 levels (`MAX_NESTING`); replay keeps looser type rules than writes
   (`write_problem`) so histories written before a rule mean the same on every machine.
-- Integers bead writes have any size up to Python 3.11+'s default 4,300-digit decimal conversion
-  limit (`MAX_DIGITS`), which key minting and the counts keep to; the oracle pinned that default
-  until the cutover. On input an integer is exact within a `u64` or an `i64` and a float beyond,
-  which bead never writes (roll-lqjj.53; any size to 4,300 digits before).
+- An integer is exact within an `i128` (`json::Int`, roll-lqjj.53.2): on input one within a
+  `u64` or an `i64` is exact and one beyond is a float, which bead never writes (roll-lqjj.53), and
+  what bead counts (a segment's number, a claim's generation, the unpublished count) or mints (a
+  key's number) is checked, never wrapped, and refused where it would pass an `i128`. Until
+  roll-lqjj.53.2 integers had any size up to Python 3.11's default 4,300-digit decimal conversion
+  limit, kept for parity with the Python bead, with its own decimal arithmetic.
 - What a journal line, attempt file or manifest means does not depend on the Python reading it
   (U01–U05 in `FINDINGS.md`): JSON is read from bytes as UTF-8 (no byte-order mark, UTF-16 or
   UTF-32 is guessed; a lone surrogate is not UTF-8), at most `MAX_DEPTH` levels deep (127,
@@ -1511,34 +1513,41 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `https://`. This departs from the port plan's recommendation (keep), on the maintainer's decision.
 - Shapes bead never writes, which made Python's replay or a query fail, or answer by interpreter
   version, are refused by validation (U07–U11): a `dep_add` meta that is not an
-  object, a `dep_remove` key that is not a string, a create key whose number has 4,300 digits or
-  more, an imported comment with a `uid` or a `where`, a create clearing `created_at`; a
+  object, a `dep_remove` key that is not a string, a create key whose number bead cannot count on
+  from (beyond an `i128`, or one below it; 4,300 digits or more until roll-lqjj.53.2), an
+  imported comment with a `uid` or a `where`, a create clearing `created_at`; a
   quarantined id's stand-in names its issue only by a string; an import refuses an escaped lone
   surrogate anywhere in a record. Replay has no last resort to reach.
 - A renamed copy that finds every free key taken fails replay with `KEY_SPACE`, as in Python,
   whose replay raised it: beadroll-core's `replay` returns it.
 - Where Python failed with a traceback, Rust answers with a structured error instead, each recorded
-  as it lands. In beadroll-core: `mint_key` under a parent whose children's numbers have
-  more than 4,300 digits, or would count on to 4,301, is `VALIDATION` (`MintError::NumberTooLong`).
+  as it lands. In beadroll-core: `mint_key` under a parent whose children's numbers are beyond
+  what bead counts, or the next would be, is `VALIDATION` (`MintError::NumberTooLong`; more than
+  4,300 digits, or counting on to 4,301, until roll-lqjj.53.2).
   In the store, sync and command line (Phase 2a): a `BEAD_NET_TIMEOUT`, `BEAD_ROTATE_BYTES`,
-  `BEAD_REPACK_LOOSE` or `BEAD_REPACK_PACKS` that Python's `float()` or `int()` cannot read is
+  `BEAD_REPACK_LOOSE` or `BEAD_REPACK_PACKS` that is not a number (`parse_float`,
+  `parse_integer`; what Python's `float()` or `int()` read, until roll-lqjj.53.2) is
   `CONFIG` when bead starts, `--version` included; the last segment of this machine's journal, when
-  its name is not a number (or the next one's would have more than 4,300 digits) and bead appends
-  after it, is `IO`; a `published` count in `meta.json` that is not a number, or counts that make
-  the unpublished count longer than 4,300 digits, is `IO`; a `GIT_CONFIG_COUNT` that `int()` cannot read where Python reads it
-  (it is not digits and nothing was carried over, or its digits are superscripts) is `CONFIG`; an
+  its name is not a number (or the next one's would be beyond what bead counts) and bead appends
+  after it, is `IO`; a `published` count in `meta.json` that is not a number, or counts that put
+  the unpublished count beyond what bead counts, is `IO`; a `GIT_CONFIG_COUNT` that is not a
+  number where git reads one (it is not digits and nothing was carried over) is `CONFIG`; an
   answer standard output refuses (other than a closed pipe or a hung-up terminal) is an `IO` error
   on standard error, exit 1; a `ps` line that names no command ends the nearest-harness walk.
 - The Rust bead keeps CPython's semantics wherever Python's bead had them, as the port plan's
   ledger of them decided (the rows not stated above): replay takes a boolean where an integer is due
-  (`"v": true` is format 1; a `true` priority sorts as 1 and prints as `True`), as histories
+  (`"v": true` is format 1; a `true` priority sorts as 1, keeps its JSON and prints as 1, as
+  Python's `True` until roll-lqjj.53.2), as histories
   written before `write_problem` had it, while writes refuse one; a lone surrogate in a line,
   escaped or raw, is not UTF-8 (until roll-lqjj.53 it read as one U+FFFD and was reported); a
   duplicate key keeps its last value at its first key's place; whitespace,
   `strip()` and lower case are Python's Unicode ones where Python used them (`split_list`, comment
   emptiness, `search`, `normalize_remote`); a path is resolved as `os.path.realpath` resolves it,
-  never by libc; `--estimate` and `--limit` read numbers as `int()` does (`" +5 "`, `5_000`);
-  conflict values print as `repr()` prints them, and `True` as `True`; an OS error reads
+  never by libc; `--estimate`, `--limit` and `COLUMNS` read a whole number as Rust does, an
+  optional sign and ASCII digits with whitespace around them, within an `i128` (as `int()` did
+  until roll-lqjj.53.2: `" +5 "` still, `5_000` and the digits of other scripts no longer);
+  `show` prints a conflict's values as JSON (as `repr()` printed them, `'text'` and `True`, until
+  roll-lqjj.53.2), and `repr` and `repr_str` stay the quoting of every diagnostic; an OS error reads
   `"{strerror}: {path}"`, a rename's naming its target; the JSON of each output and file is the
   `json.dumps` dialect Python wrote it in; the command line was argparse's, its errors and help
   pages included, until clap replaced it (roll-dih8.23, above); SIGXFSZ is ignored, so a file-size limit is an `IO` error, and standard

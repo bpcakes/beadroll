@@ -355,7 +355,8 @@ fn a_legacy_boolean_priority_shows_as_written() {
     for st in [&replayed, &decoded] {
         let issue = st.issue_named(&uid()).unwrap();
         assert_eq!(issue.priority(), IntegerField::Bool(true));
-        assert_eq!(issue.priority().to_string(), "True");
+        // shown as the number it counts as (until roll-lqjj.53.2, as Python's `True`)
+        assert_eq!(issue.priority().to_string(), "1");
     }
     events.push(set(3, json!({"priority": false})));
     assert_eq!(shown(&events, Field::Priority), Some(Json::Bool(false)));

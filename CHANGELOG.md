@@ -6,6 +6,23 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- The CPython-parity rules that cost nothing to keep are gone with the parity (roll-lqjj.53.2,
+  the maintainer's decision of 2026-10-22). An integer is exact within an `i128` (`json::Int`):
+  what bead counts (a segment's number, a claim's generation, the unpublished count) or mints (a
+  key's number) is checked, never wrapped, and refused where it would pass an `i128`, so a key
+  whose number bead cannot count on from is refused at creation (`create event has no valid
+  'key'`), a parent whose children's numbers are beyond that is `VALIDATION`, a segment name or
+  `meta.json` count beyond it `IO`, and `bead export` writes every integer it holds; until now
+  integers had any size up to Python 3.11's default 4,300-digit decimal conversion limit, with
+  bead's own decimal arithmetic behind them. `--estimate`, `--limit`, `COLUMNS` and the `BEAD_*`
+  settings read a number as Rust does, an optional sign and ASCII digits with whitespace around
+  them (`" +5 "` still), where they read as Python's `int()` and `float()` did (`5_000`, `１２`,
+  `1_000.5` are refused now, `inf` and `nan` still read as floats). A legacy boolean priority
+  prints as the number it counts as (`1`, `0`; `True`, `False` before) and keeps its JSON. `bead
+  show` prints a conflict's values as JSON (`"Title from A" by ...`; Python's `repr()`, `'Title
+  from A'`, before). Nothing bead writes changes: format 1 holds no integer beyond a `u64`, and
+  no bead command ever read or printed one of those spellings.
+
 - Core reads JSON with serde_json, into its own value, and its own parser is gone
   (roll-lqjj.53): the parser existed to read exactly as CPython's `json` did, for the diff harness
   that proved the Rust port equal to the Python bead, and the maintainer's decision of 2026-10-22
