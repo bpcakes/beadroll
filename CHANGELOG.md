@@ -6,6 +6,16 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A bead killed between the write of its projection, or of its text file, and the rename into
+  place (a crash, a SIGKILL) left the file it was writing in the store for good, `.projection.<pid>.tmp`
+  beside the projection, as large as the projection and never read (roll-lqjj.52): nothing removed
+  a temporary file but the process that wrote it, on a failure of its own. Before atomically
+  replacing either cache, bead now tries to remove its temporary files whose process id no longer
+  exists. Text-file appends do not sweep. A process id still present, including one reused by
+  another process, or a cleanup error can leave copies behind; the check assumes one host and PID
+  namespace for the store's writers. The journal's files are not swept: a kill leaves a few hundred
+  bytes beside one of them.
+
 - `bead recap` shows what is new in every tracker on the machine since a recap last marked activity
   seen, from any directory and without the network (roll-dih8.2): one line per event as `bead log`
   prints it, with its issue's title, or one line per issue (`--format issues`), or every event with

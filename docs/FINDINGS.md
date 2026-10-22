@@ -20,6 +20,17 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Review 17: Claude and Codex review of abandoned cache temporaries (ids O)
+
+Reported inline, no file: independent reviews of `4c29f43..f7adc8e` on 2026-10-22, the branch for
+roll-lqjj.52. The replacement-time cleanup policy stands; the guarantee described more than it
+does. Codex found O02 in the independent review of the first documentation repair, `f2b9691`.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| O01 | Low | The cleanup guarantee promised removal by the next command writing a cache and no more temporary copies than active writers, but text-file appends do not sweep, reused process ids retain copies, and cleanup errors are ignored | fixed | The guarantee, design decision, changelog, crate guidance and comments describe attempted cleanup before each atomic replacement of that particular cache, its one-host/PID-namespace assumption, and the cases that leave copies behind; the strict bound is removed. Production behavior is unchanged | Documentation, checked against `write_cache_parts`, `fs::abandoned` and `projection::texts::append`; the review's scratch failpoint probe paused a text-cache writer, let another reader rebuild, killed and reaped the first, then observed its temporary survive `comments add` and `list` while the text file grew from 43 to 147 bytes with the same inode. Existing `beadroll-store`: `fs::abandoned::tests`, and `beadroll`: `storage::projection` cover replacement cleanup and replay |
+| O02 | Low | The projection test module's summary still promised cleanup on the next write after O01 corrected the other descriptions | fixed | The summary describes attempted removal before the next atomic replacement of that cache and explicitly excludes text-file appends; executable code and assertions are unchanged | Documentation, checked against `write_cache_parts`, `fs::abandoned` and `projection::texts::append`, as for O01 |
+
 ## Review 16: Claude review of the performance work of roll-lqjj.15 to .20 (`reviews/2026-10-15-16-claude-performance-follow-up.md`, ids X)
 
 A review of `4d7e03e..8683332`, Z01 to Z05 and the cache rule, asked for as a follow-up: it found no bug in that range, and what
