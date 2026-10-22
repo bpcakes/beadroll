@@ -6,6 +6,36 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A journal reads each line straight into what it keeps of the record, with no value built for
+  the line (roll-lqjj.53.1): serde_json reads the envelope into typed members (the id and the
+  causes parsed from their text as it goes, `op`, `replica` and `issue` as text, `actor` and
+  `where` as the small values they are) and only the payload as the object it was written as,
+  which the operation's reader takes apart, moving what replay keeps out of it; the envelope's
+  rules are judged on what was read, and a record built in memory (a transaction's) walks into the
+  same envelope, so there is one reader of events. A record's digest, by which a journal tells two
+  records of one id apart, is of the line's bytes (whitespace around it left out; the compact
+  line bead writes, for a record built in memory): it was of an encoding that ignored member
+  order, as Python's `canonical` compared contents, which cost a walk of the parsed value for every
+  record. Bead writes every record once, compact and with its members in one order, and copies it
+  byte for byte, so the same content is the same bytes; a copy whose members are reordered or
+  spaced otherwise, which bead never writes, counts as another content of its id and is
+  quarantined with it. Everything else is as it was: every line read as an event, every problem
+  reported in its words and at its origin, and replay's answers (`journal/tests.rs` reads the
+  differential tests' histories both ways and compares the journals whole; the segment fuzz
+  target replays its input both ways). In process on this machine, loaded by two virtual
+  machines and pinned to one core (release, fastest of 7, each build alternated with the other):
+  the journal of 200,000 plain events, segments rotated as bead rotates them, loads and settles
+  in 0.85 s rather than 1.44 (the parse of its lines alone being 0.38), 100,000 ownership-heavy
+  events in 0.46 s rather than 0.71 and 50,000 text-heavy events in 0.28 s rather than 0.37;
+  `cargo xtask timing --parse N` now records that load beside the parse (`journal_seconds`,
+  0.75 s at 200,000). End to end (`cargo xtask timing --read 200000`, fastest of 5) every read
+  that replays the journal is a third quicker: a cold `list` 1.96 s rather than 2.8 to 3.1, a
+  cold `show` 1.93 rather than 2.6 to 2.8, a cold `ready` 2.04 rather than 2.8 to 3.3, a cold
+  `info` 2.01 rather than 2.4 to 2.7, a cold `machines` 2.15 rather than 2.7 to 2.9, a cold write
+  2.08 rather than 2.7 to 3.0, the first `list` after a sync 1.99 rather than 3.7; `bead log
+  --limit 1`, which reads the whole journal, 1.25 s rather than 2.0 to 2.7 warm and 3.57 rather
+  than 4.9 to 5.2 cold; a warm read, which decodes the projection, is as it was (0.08 to 0.16 s).
+
 - Core reads JSON with serde_json, into its own value, and its own parser is gone
   (roll-lqjj.53): the parser existed to read exactly as CPython's `json` did, for the diff harness
   that proved the Rust port equal to the Python bead, and the maintainer's decision of 2026-10-22

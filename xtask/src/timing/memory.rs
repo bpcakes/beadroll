@@ -8,7 +8,7 @@ use std::ffi::OsString;
 use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};
 
-use beadroll_core::journal::{Journal, read_attempt, read_segment};
+use beadroll_core::journal::Journal;
 use beadroll_core::replay::replay;
 
 use super::heap;
@@ -54,9 +54,7 @@ pub(crate) fn load(dir: &Path) -> Result<Journal, Failure> {
                 let data = std::fs::read(&path)
                     .map_err(|error| Failure::io("cannot read", &path, &error))?;
                 let origin = path.display().to_string();
-                for event in read_segment(&data, &origin, Some(&mut journal.invalid)) {
-                    journal.add(event, &replica, &origin, true);
-                }
+                journal.add_segment(&data, &replica, &origin);
             }
         }
     }
@@ -67,9 +65,7 @@ pub(crate) fn load(dir: &Path) -> Result<Journal, Failure> {
             let data =
                 std::fs::read(&path).map_err(|error| Failure::io("cannot read", &path, &error))?;
             let origin = path.display().to_string();
-            for event in read_attempt(&data, &origin, Some(&mut journal.invalid)) {
-                journal.add(event, &replica, &origin, false);
-            }
+            journal.add_attempt(&data, &replica, &origin);
         }
     }
     journal.settle();

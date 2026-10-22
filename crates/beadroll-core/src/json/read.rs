@@ -29,9 +29,13 @@ pub struct ParseError(String);
 
 /// Reads `bytes` as one JSON document, whitespace around it allowed, nothing else.
 pub fn parse(bytes: &[u8]) -> Result<Parsed, ParseError> {
-    serde_json::from_slice(bytes)
-        .map(|value| Parsed { value })
-        .map_err(|error| ParseError(error.to_string()))
+    deserialize(bytes).map(|value| Parsed { value })
+}
+
+/// Reads `bytes` as one JSON document straight into a `T`, whitespace around it allowed, nothing
+/// else: what [`parse`] reads, taken by `T`'s own visitor rather than built as a value.
+pub(crate) fn deserialize<'a, T: Deserialize<'a>>(bytes: &'a [u8]) -> Result<T, ParseError> {
+    serde_json::from_slice(bytes).map_err(|error| ParseError(error.to_string()))
 }
 
 impl<'de> Deserialize<'de> for Value {

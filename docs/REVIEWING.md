@@ -1827,15 +1827,29 @@ These were decided deliberately. Report problems *with* them, not their existenc
   still written whole.
 - A journal keeps what replay reads of each event, not its parsed JSON (roll-dih8.11): its id,
   causes, writer, actor, place and typed operation, each text and value events repeat held once,
-  and a digest of its content, by which it tells two records of one id apart. The digest is two
-  SipHash-1-3 hashes under keys drawn at random for each journal, over an encoding in which no two
-  contents are alike (members in key order, lengths before texts and lists, integers by their
-  digits, floats by their bits, as Python's `canonical` compares them). It is not a cryptographic
-  hash and need not be: the keys never leave the process, so nobody can aim at a collision, and
-  two contents share 128 bits by chance once in 2¹²⁸; a collision would apply the first of two
-  contents of one id where both should be quarantined. Replay takes each event's operation from
-  the journal as it applies it, and the state it builds keeps the rest (who wrote each event, what
-  it had seen), not the journal: `State` has no `journal()`.
+  and a digest of its content, by which it tells two records of one id apart. A line is read
+  straight into that (roll-lqjj.53.1): serde_json reads its envelope into typed members
+  (`event::Envelope`, its `Deserialize`), the id and the causes parsed from their text as it goes,
+  `op`, `replica` and `issue` as text, `actor` and `where` as the small values they are, and only
+  the payload as the object it was written as, which the operation's reader takes apart, moving
+  what replay keeps out of it; no value is built for the line, and the envelope's rules are judged
+  on what was read (`Envelope::problem`, which `event_problem` is), the payload's on the payload
+  (`payload_problem`). A record built in memory (a transaction's, a test's) walks into the same
+  envelope (`Envelope::from_value`), so there is one reader of events, and a journal's
+  `add_segment` and `add_attempt` read a file by the rules `read_segment` and `read_attempt`
+  read it into values by (a last line not yet whole skipped, any other unreadable line reported;
+  an attempt whole or not at all). The digest is two SipHash-1-3 hashes under keys drawn at random
+  for each journal, over the bytes of the line, whitespace around it left out, and for a record
+  built in memory over the compact line bead writes of it: the same content is the same bytes,
+  since bead writes every record once, compact and with its members in one order, and copies it
+  byte for byte, so a copy whose members are reordered or spaced otherwise is another content
+  (until roll-lqjj.53.1 the digest was of an encoding that ignored member order, as Python's
+  `canonical` compared contents, which cost a walk of the parsed value for every record). It is
+  not a cryptographic hash and need not be: the keys never leave the process, so nobody can aim
+  at a collision, and two contents share 128 bits by chance once in 2¹²⁸; a collision would apply
+  the first of two contents of one id where both should be quarantined. Replay takes each event's
+  operation from the journal as it applies it, and the state it builds keeps the rest (who wrote
+  each event, what it had seen), not the journal: `State` has no `journal()`.
 - The 150 MB budget for replaying 200,000 events is a heap budget
   (the maintainer's decision of 2026-10-12, roll-dih8.11): `cargo xtask timing --replay N` counts
   the most a fresh process that loads the journal and replays it holds on its heap at once, and
@@ -1883,7 +1897,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `machines --name` kept such bytes in `aliases.json` the same way, where it now refuses a name
   that is not UTF-8, as every text bead writes is refused. `cargo xtask timing --parse N`
   measures the reader on a `meta.json` of N files (its members built once and twice beside it)
-  and on every line of a history of N events. At the change (2026-10-22, release, one machine
+  and on every line of a history of N events, parsed as values and, since roll-lqjj.53.1, read
+  into a journal as a store loads one (`journal_seconds`). At the change (2026-10-22, release, one machine
   with two virtual machines running beside it): `meta.json` of 200,000 files in 39 ms rather than
   67; the probe's 200,000 synthetic lines (53 MB, short titles, no text) in 0.69 s rather than
   0.57, where serde_json's own tree takes 0.58 against the old parser's 0.55 when alternated and
