@@ -32,13 +32,13 @@ use crate::workspace::{self, Failure, json_string};
 const RUNS: usize = 7;
 
 /// The fastest of [`RUNS`] runs of `run`, in seconds.
-fn fastest<T>(mut run: impl FnMut() -> Result<T, Failure>) -> Result<f64, Failure> {
+pub(super) fn fastest<T>(mut run: impl FnMut() -> Result<T, Failure>) -> Result<f64, Failure> {
     fastest_of(|| (), |()| run())
 }
 
 /// The fastest of [`RUNS`] runs of `run` on what `given` gives it, made before the clock starts: a
 /// decode of bytes it takes, timed without their copy.
-fn fastest_of<G, T>(
+pub(super) fn fastest_of<G, T>(
     mut given: impl FnMut() -> G,
     mut run: impl FnMut(G) -> Result<T, Failure>,
 ) -> Result<f64, Failure> {

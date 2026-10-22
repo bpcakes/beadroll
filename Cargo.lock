@@ -607,6 +607,7 @@ dependencies = [
  "beadroll",
  "beadroll-core",
  "beadroll-test-support",
+ "indexmap",
  "regex-lite",
  "sha2",
  "tempfile",

@@ -6,6 +6,22 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- Core's JSON reader builds each object once (roll-lqjj.49): every object was built by key as
+  written and then again by key as read, so that two keys written apart that read alike (lone
+  surrogates, each read as U+FFFD) merge, 31 ms of the 52 ms a `meta.json` of 92,000 files took to
+  parse and a part of the 4.6 µs every journal line took, and every string was copied once more
+  into its text. An object is now built once, by key as read, until a key holds a lone surrogate,
+  which turns it into the map by key as written, merged again at the close as before; a string
+  without one is its bytes as read. Every value read, every repeated key's merge and every lone
+  surrogate reported are as they were. In process (`cargo xtask timing --parse N`, new: `meta.json`
+  of N files, its members built once and twice beside it, and every line of a history of N events)
+  `meta.json` of 92,000 files parses in 26 ms rather than 52, and 200,000 journal lines in 0.58 s
+  rather than 0.93, which a cold replay, `bead log` and an import pay line by line. On the
+  ownership-heavy store at 200,000 events (`--read N --ownership`, one run of each build on a
+  shared machine) a `list` is as it was (0.57 s; the map's share is within the spread), a local
+  write takes 0.68 s rather than 0.75, the read after a write 0.63 s rather than 0.70 and `bead
+  log` 3.5 s rather than 3.9.
+
 - A bead killed between the write of its projection, or of its text file, and the rename into
   place (a crash, a SIGKILL) left the file it was writing in the store for good, `.projection.<pid>.tmp`
   beside the projection, as large as the projection and never read (roll-lqjj.52): nothing removed

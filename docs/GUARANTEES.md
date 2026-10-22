@@ -575,7 +575,14 @@ it, and the file is committed again.
   91,952 attempt files a `list` takes 0.75 s rather than 0.97 s, a local write
   0.93 s rather than 1.26 s, a published write 3.9 s rather than 5.7 s and a
   sync with nothing new 2.9 s rather than 4.0 s (Linux, release, best of three
-  to five against a local bare remote, other work running). A fetch or push that
+  to five against a local bare remote, other work running). Core's JSON reader
+  builds each object once rather than by key as written and again by key as
+  read, and takes a string's bytes as its text when they hold no lone
+  surrogate, so `meta.json` of 92,000 files parses in 26 ms rather than 52 and
+  200,000 journal lines in 0.58 s rather than 0.93 (roll-lqjj.49; `cargo xtask
+  timing --parse N`, release, in process); on that store a local write takes
+  0.68 s rather than 0.75 and `bead log` 3.5 s rather than 3.9, and a `list` is
+  as it was (`--read N --ownership`, one run of each build). A fetch or push that
   gets no answer fails
   after `BEAD_NET_TIMEOUT` seconds (default 45) instead of hanging.
 - Publishing is serialised on one ref. Under heavy contention (four machines

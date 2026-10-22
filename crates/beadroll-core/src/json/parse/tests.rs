@@ -128,3 +128,52 @@ fn lines_are_utf8_and_lone_surrogates_read_as_replacement_characters() {
         (Some(&Value::from("x")), false)
     );
 }
+
+#[test]
+fn keys_merge_as_written_and_then_as_read_whichever_side_of_the_first_surrogate_they_are_on() {
+    // Members are built once, by key as read, until a key holds a lone surrogate; what the
+    // object answers is the same whichever member that key is (roll-lqjj.49).
+    let merged = |text: &[u8]| {
+        let parsed = parse(text).unwrap();
+        (
+            write(&parsed.value, Format::COMPACT).unwrap(),
+            parsed.lone_surrogates,
+        )
+    };
+    // A repeated key keeps its last value in its first position.
+    assert_eq!(
+        merged(b"{\"a\":1,\"b\":2,\"a\":3}"),
+        ("{\"a\":3,\"b\":2}".to_owned(), false)
+    );
+    // A key written as U+FFFD and one that reads as it: one member, the last value, whichever
+    // is written first.
+    assert_eq!(
+        merged(b"{\"\\ufffd\":1,\"\\ud800\":2,\"k\":3}"),
+        ("{\"\u{fffd}\":2,\"k\":3}".to_owned(), true)
+    );
+    assert_eq!(
+        merged(b"{\"\\ud800\":1,\"\\ufffd\":2,\"k\":3}"),
+        ("{\"\u{fffd}\":2,\"k\":3}".to_owned(), true)
+    );
+    // A key repeated on both sides of the first key with a surrogate keeps its first position.
+    assert_eq!(
+        merged(b"{\"a\":1,\"\\ud800\":2,\"a\":3}"),
+        ("{\"a\":3,\"\u{fffd}\":2}".to_owned(), true)
+    );
+    // A value's surrogate a repeated key replaced before that key is not reported; the key's is.
+    assert_eq!(
+        merged(b"{\"a\":\"\\ud800\",\"a\":\"x\",\"\\udbff\":1}"),
+        ("{\"a\":\"x\",\"\u{fffd}\":1}".to_owned(), true)
+    );
+    // Two keys written apart that read alike, written after plain keys, are merged as they are
+    // when written first: the last value, in the first's position.
+    assert_eq!(
+        merged(b"{\"k\":0,\"\\ud800\":1,\"\\udbff\":2}"),
+        ("{\"k\":0,\"\u{fffd}\":2}".to_owned(), true)
+    );
+    // A surrogate in a value replaced after the switch is not reported either.
+    assert_eq!(
+        merged(b"{\"\\ud800\":1,\"a\":\"\\udbff\",\"a\":\"x\"}"),
+        ("{\"\u{fffd}\":1,\"a\":\"x\"}".to_owned(), true)
+    );
+}
