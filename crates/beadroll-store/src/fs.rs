@@ -1,7 +1,7 @@
 //! Store filesystem rules: private permissions regardless of umask, atomic whole-file writes and
 //! directory listings that distinguish absence from unreadability.
 
-mod abandoned;
+pub(crate) mod abandoned;
 
 use std::ffi::OsStr;
 use std::fs::{DirBuilder, File, OpenOptions};
@@ -93,17 +93,16 @@ pub(crate) fn write_atomic_keyed(
 /// whole, so that no reader sees it half-written; a crash may leave it lost, cut, zeroed or as it
 /// was before, and each costs a replay (`docs/REVIEWING.md` §2), where flushing it cost the
 /// command after every write as much again as the write (X05). The failpoints fire as for
-/// [`write_atomic`]. Before replacing the cache, this tries to remove its temporary files whose
-/// process id no longer exists ([`abandoned`], roll-lqjj.52); appending to the text file does not
-/// call this. Live or reused process ids and cleanup errors can leave copies behind. The journal's
-/// files are not swept, since a kill leaves a few hundred bytes beside one of them, and a listing
-/// of `claims/` at every attempt written would cost more than it freed.
+/// [`write_atomic`]. A bead killed between its write and its rename leaves the temporary file,
+/// which the projection's write-back removes, both caches' at once, before it writes either
+/// ([`abandoned`], roll-lqjj.52). The journal's files are not swept, since a kill leaves a few
+/// hundred bytes beside one of them, and a listing of `claims/` at every attempt written would
+/// cost more than it freed.
 pub(crate) fn write_cache_parts(
     path: &Path,
     parts: &[&[u8]],
     failpoints: &Failpoints,
 ) -> Result<(), Error> {
-    abandoned::remove(path);
     written_whole(path, parts, true, false, failpoints).map(drop)
 }
 

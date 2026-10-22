@@ -45,7 +45,7 @@ use beadroll_core::projection::{Extended, Projection, Record, decode_state, proj
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
 
-use crate::fs::{content_sum, read_keyed, write_cache_parts};
+use crate::fs::{abandoned, content_sum, read_keyed, write_cache_parts};
 use crate::journal::{
     ViewError, attempt_events, claim_files_afresh, claim_keys, folder_name, load_journal,
     load_listed, segment_files,
@@ -555,11 +555,15 @@ fn appended(
 /// written is no failure. Its texts written nowhere yet go to the end of the text file its others
 /// are placed in, under that file's lock, and the projection after them; when there is no such
 /// file, or more of it is no longer read than is, every text goes to a new one, when the
-/// projection has them all.
+/// projection has them all. What a bead killed writing either file left beside it is removed
+/// first, whichever of the two this write-back writes whole (roll-lqjj.52).
 fn save(ws: &Workspace, mut made: Made, projection: &mut Projection) {
     if made.files.is_empty() || !ws.events_dir.is_dir() {
         return;
     }
+    // both caches' at once: the text file is appended to in place, and started again only now
+    // and then, so a copy left beside it would otherwise wait for that
+    abandoned::remove(&[&projection_path(ws), &texts_path(ws)]);
     ws.settings.failpoints.hit("projection.before-save");
     let generation = projection.state().texts_file();
     if let Some(generation) = generation

@@ -1,8 +1,8 @@
 //! The store's projection (roll-lqjj.2), from outside: bead answers alike with it, without it and
 //! with a damaged one, its texts kept apart or not (roll-lqjj.6), across machines that sync. A bead
-//! killed before a cache's rename leaves the previous file in place and may leave a temporary copy.
-//! Before the next atomic replacement of that cache, bead tries to remove abandoned copies
-//! (roll-lqjj.52); text-file appends do not sweep. Writes in a row leave it to the next read
+//! killed before a cache's rename leaves the previous file in place and the copy it was writing
+//! beside it, which the next write-back removes, whether it appends to the text file or starts
+//! it again (roll-lqjj.52). Writes in a row leave it to the next read
 //! ([`deferred`], roll-lqjj.36); dependency edges and their metadata,
 //! kept with the texts, answer alike ([`edges`], roll-lqjj.39); a write-back overtaken by a text
 //! file started again writes nothing or every text anew ([`raced`], roll-lqjj.44). Every machine here runs the `bead`
@@ -216,7 +216,7 @@ fn a_bead_killed_as_it_writes_a_projection_leaves_the_last_one() {
     assert_eq!(killed.returncode(), -9, "{}", killed.stderr);
     assert_eq!(std::fs::read(projection(&a)).unwrap(), last);
     // the copy it was writing stays beside the projection, named with its process id, until the
-    // next atomic replacement of the projection removes it (roll-lqjj.52)
+    // next write-back removes it (roll-lqjj.52)
     let left = temporaries(&a);
     assert!(
         left.len() == 1 && left[0].starts_with(".projection."),
@@ -230,30 +230,45 @@ fn a_bead_killed_as_it_writes_a_projection_leaves_the_last_one() {
 }
 
 /// roll-lqjj.52: a bead killed as it starts the text file leaves the copy it was writing beside
-/// it, and the next atomic replacement of the text file removes it, as a replacement of the
-/// projection removes what a bead killed writing that left.
+/// it, and the next write-back removes it, though that write-back appends to the text file rather
+/// than starting it again (O01: a copy left there stayed through every append, until the file was
+/// started again).
 #[test]
-fn a_bead_killed_as_it_starts_its_text_file_leaves_a_copy_the_next_write_removes() {
+fn a_bead_killed_as_it_starts_its_text_file_leaves_a_copy_the_next_write_back_removes() {
+    use std::os::unix::fs::MetadataExt as _;
+
     let sandbox = crate::sandbox();
     let a = crate::rust_only(&sandbox, "kept-a");
     let keys = tracker(&a);
     let _ = answers(&a, &keys, false);
-    let last = std::fs::read(texts(&a)).unwrap();
+    let last = std::fs::read(projection(&a)).unwrap();
+    let texts_before = std::fs::read(texts(&a)).unwrap();
     // the next read replays, and is killed as it starts the text file again
     std::fs::remove_file(projection(&a)).unwrap();
     let killed = (a.cmd(["list", "--json"]))
         .env("BEAD_FAILPOINTS", "atomic-write:/projection-texts=sigkill")
         .run();
     assert_eq!(killed.returncode(), -9, "{}", killed.stderr);
-    assert_eq!(std::fs::read(texts(&a)).unwrap(), last);
+    assert_eq!(std::fs::read(texts(&a)).unwrap(), texts_before);
     let left = temporaries(&a);
     assert!(
         left.len() == 1 && left[0].starts_with(".projection-texts."),
         "{left:?}"
     );
+    // the projection put back as it was, which places its texts in the text file still there: the
+    // next read takes a comment in, appends its text to that file and writes the projection back,
+    // and removes the copy all the same
+    std::fs::write(projection(&a), &last).unwrap();
+    let before = std::fs::metadata(texts(&a)).unwrap();
+    a.bead(["comments", "add", &keys[0], "after the kill", "--offline"]);
     let listed = a.run(["list", "--json"]);
     assert_eq!(listed.returncode(), 0, "{}", listed.stderr);
-    assert!(projection(&a).is_file() && texts(&a).is_file());
+    let after = std::fs::metadata(texts(&a)).unwrap();
+    assert!(
+        after.ino() == before.ino() && after.len() > before.len(),
+        "the text file was started again rather than appended to"
+    );
+    assert_ne!(std::fs::read(projection(&a)).unwrap(), last);
     assert_eq!(temporaries(&a), Vec::<String>::new());
     assert_eq!(answers(&a, &keys, false), answers(&a, &keys, true));
 }
