@@ -4,10 +4,6 @@ cargo-fuzz targets for the code that reads what bead did not write itself (roll-
 target asserts what must hold of any input, so that a wrong answer is a crash as much as a panic
 is, and libFuzzer keeps the input of either:
 
-- `json`: the JSON parser. The value anything reads as nests no deeper than `MAX_DEPTH`, and
-  written in every dialect (the 12 `Format`s) reads back as the same value and writes again as the
-  same text; a text with lone surrogate escapes survives the rewrite the store gives its small
-  files.
 - `segment`: the segment and attempt readers. An attempt read whole holds what the segment reader
   reads; what was read, written again as journal lines, reads back alike; replayed (each record in
   the journal of the machine it names) it answers alike whichever order the journals are read in,
@@ -38,9 +34,8 @@ and the inputs that fail outside the checkout, in `OUT` (here `~/.cache/beadroll
 cargo build --package beadroll                  # in the checkout's root: the bead seed.sh runs
 fuzz/seed.sh ~/.cache/beadroll-fuzz             # in the root: the synthetic corpus, and OUT/artifacts
 cd fuzz
-cargo fuzz build                                # all three targets
+cargo fuzz build                                # both targets
 out=~/.cache/beadroll-fuzz
-cargo fuzz run json "$out/json" -- -max_total_time=300 -artifact_prefix="$out/artifacts/json-"
 cargo fuzz run segment "$out/segment" -- -max_total_time=300 -artifact_prefix="$out/artifacts/segment-"
 cargo fuzz run import "$out/import" -- -max_total_time=300 -artifact_prefix="$out/artifacts/import-"
 ```
@@ -60,7 +55,7 @@ different versions of `beadroll-core`.
 
 ## The corpus
 
-`seed.sh OUT` writes the seeds into `OUT/json`, `OUT/segment` and `OUT/import`, from synthetic data
+`seed.sh OUT` writes the seeds into `OUT/segment` and `OUT/import`, from synthetic data
 only: what a bead (`BEAD`, else `target/debug/bead`) writes in scratch stores, checkouts and bare
 remotes under a temporary directory, and `infra/seed.jsonl` itself. One tracker has one machine,
 which imports `infra/seed.jsonl` and edits with awkward text. On the other, two machines write the

@@ -1,12 +1,12 @@
 //! Seeded JSON values for the round-trip properties (roll-k2wy.14.4): strings of every kind of
 //! character a writer escapes or passes through (controls, quotes, backslashes, DEL, the line
-//! separators JSON allows raw, the private-use characters that stand in for lone surrogates, a
-//! BOM, characters beyond the BMP), integers up to [`MAX_DIGITS`] digits, floats of every bit
+//! separators JSON allows raw, private-use characters, a BOM, characters beyond the BMP),
+//! integers within a `u64` or an `i64`, floats of every bit
 //! pattern that is finite, and arrays and objects nested to a given depth; and [`identical`], the
 //! comparison that tells `0.0` from `-0.0` and one key order from another, which `Value`'s
 //! equality does not. A failure names its seed: the same seed draws the same values on every run.
 
-use beadroll_core::json::{Int, MAX_DIGITS, Object};
+use beadroll_core::json::{Int, Object};
 
 use crate::Json;
 
@@ -101,23 +101,15 @@ impl Rng {
         (0..length).map(|_| self.char()).collect()
     }
 
-    /// An integer: small, an `i64` at its edges, or up to [`MAX_DIGITS`] digits.
+    /// An integer: small, an `i64` at its edges, or any `u64`, the most a reader keeps exact (an
+    /// integer beyond reads as a float, and bead writes none).
     pub fn int(&mut self) -> Int {
         match self.below(6) {
             0 => Int::from(i64::MIN),
             1 => Int::from(i64::MAX),
             2 => {
-                let most = if self.chance(10) { MAX_DIGITS } else { 40 };
-                let digits = 1 + self.below(most);
-                let mut text = String::with_capacity(digits + 1);
-                if self.chance(50) {
-                    text.push('-');
-                }
-                text.push(char::from(b'1' + self.below(9) as u8));
-                for _ in 1..digits {
-                    text.push(char::from(b'0' + self.below(10) as u8));
-                }
-                Int::parse(&text).expect("digits are an integer")
+                let value = self.bits() >> self.below(64);
+                Int::parse(&value.to_string()).expect("digits are an integer")
             }
             _ => Int::from(self.bits() as i64 >> self.below(64)),
         }

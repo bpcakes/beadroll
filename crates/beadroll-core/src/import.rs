@@ -85,18 +85,18 @@ fn fail(message: String) -> ImportError {
 pub fn read_records(text: &str, path: &str) -> Result<Vec<Value>, ImportError> {
     // Records end at "\n" only: U+2028, U+2029 and U+0085 are ordinary text inside a JSON string.
     let mut records = Vec::new();
-    for row in text.split('\n').filter(|row| !strip(row).is_empty()) {
+    for (number, row) in (1..).zip(text.split('\n').filter(|row| !strip(row).is_empty())) {
         let parsed = json::parse(row.as_bytes())
-            .map_err(|error| fail(format!("{path} is not valid JSONL: {error}")))?;
-        records.push(parsed);
+            .map_err(|error| fail(format!("{path}:{number} is not valid JSONL: {error}")))?;
+        records.push(parsed.value);
     }
-    for (number, parsed) in (1..).zip(&records) {
-        check(path, number, parsed)?;
+    for (number, record) in (1..).zip(&records) {
+        check(path, number, record)?;
     }
     // One id is one issue; br refuses a file that repeats one too.
     let mut first: HashMap<&str, usize> = HashMap::new();
-    for (number, parsed) in (1..).zip(&records) {
-        let id = id_of(&parsed.value);
+    for (number, record) in (1..).zip(&records) {
+        let id = id_of(record);
         let earlier = *first.entry(id).or_insert(number);
         if earlier != number {
             return Err(fail(format!(
@@ -105,7 +105,7 @@ pub fn read_records(text: &str, path: &str) -> Result<Vec<Value>, ImportError> {
             )));
         }
     }
-    Ok(records.into_iter().map(|parsed| parsed.value).collect())
+    Ok(records)
 }
 
 /// The events that import `records` (read by [`read_records`]) into `state`.
@@ -206,12 +206,7 @@ fn create_problem(record: &Value, data: &Object) -> Option<ImportError> {
 }
 
 /// The checks every record passes before anything is planned.
-fn check(path: &str, number: usize, parsed: &json::Parsed) -> Result<(), ImportError> {
-    let record = &parsed.value;
-    if parsed.lone_surrogates {
-        // An escaped lone surrogate is not text (U11).
-        return Err(fail(format!("{path}:{number}: text is not valid UTF-8")));
-    }
+fn check(path: &str, number: usize, record: &Value) -> Result<(), ImportError> {
     let Some(id) = record
         .get("id")
         .and_then(Value::as_str)

@@ -125,7 +125,7 @@ impl Namespace {
 
     /// The namespace used in a receipt signature: `command` and every destination with its value
     /// or default, sorted by key and written as spaced, ASCII-escaped JSON. Bytes that are not
-    /// UTF-8 become lone surrogate escapes.
+    /// UTF-8 become U+FFFD.
     pub(crate) fn asked(&self) -> String {
         let mut entries: Vec<(&str, String)> =
             vec![("command", json_ascii_bytes(self.spec.name.as_bytes()))];
@@ -143,8 +143,7 @@ impl Namespace {
     }
 }
 
-/// A namespace value as ASCII-escaped JSON. Bytes that are not UTF-8 become lone surrogate
-/// escapes.
+/// A namespace value as ASCII-escaped JSON. Bytes that are not UTF-8 become U+FFFD.
 fn json_of(value: &Value) -> String {
     match value {
         Value::None => "null".to_owned(),

@@ -172,8 +172,8 @@ the record of it before any test data is written), their tests beside them, and 
   warns above 500 lines; split it long before 800. Each crate's `AGENTS.md` has
   the sections Purpose, Key entrypoints, Edit here for X, Invariants and Common
   commands.
-- **Few dependencies, each for a reason.** No serde or serde_json in the
-  product (beadroll-core reads and writes JSON itself: `docs/REVIEWING.md`
+- **Few dependencies, each for a reason.** serde_json reads JSON into
+  beadroll-core's own value, and the writer is bead's own (`docs/REVIEWING.md`
   §2); no tokio, since nothing is async (a consumer on tokio calls through
   `spawn_blocking`); no chrono or jiff (event times are UUIDv7 milliseconds,
   turned into dates by a small function); no `regex` (hand-written matchers,

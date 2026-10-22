@@ -4,17 +4,14 @@
 //! `CANONICAL` for quarantine and `SORTED_ASCII` for the manifest and receipts, and the other six
 //! combinations of layout, escaping and key order) reads back as the same value, member for member
 //! and float for float, and writes again as the same text; every finite float is written in the
-//! fewest digits that read back as it; lone surrogates survive the rewrite of a store's small
-//! file; and what bead builds on the writer reads back too: export's records through the
+//! fewest digits that read back as it; and what bead builds on the writer reads back too: export's
+//! records through the
 //! importer's reader, the views `--json` prints and the error envelope. The journal's own lines are
 //! the store's (`beadroll-store`'s `storage::journal_lines`). The values are drawn by
 //! `beadroll_test_support::values`, seeded: a failure names its seed.
 
 use beadroll_core::import::{Step, Target, plan_import, read_records};
-use beadroll_core::json::{
-    self, Format, MAX_DEPTH, Object, ParseError, Style, Surrogates, Value, float_repr,
-    lone_surrogate_escapes,
-};
+use beadroll_core::json::{self, Format, MAX_DEPTH, Object, Style, Value, float_repr};
 use beadroll_core::state::State;
 use beadroll_test_support::events::{Event, id, state};
 use beadroll_test_support::json;
@@ -59,7 +56,7 @@ fn round_trip(value: &Value, format: Format) -> Result<String, String> {
     } else {
         value.clone()
     };
-    if read.lone_surrogates || !identical(&read.value, &expected) {
+    if !identical(&read.value, &expected) {
         return Err(format!("read back otherwise: {text}"));
     }
     match json::write(&read.value, format) {
@@ -109,7 +106,8 @@ fn values_nested_as_deep_as_a_reader_takes_read_back() {
     // One level deeper is written, as a value read and wrapped may be, but never read.
     let deeper = Value::Array(vec![deepest]);
     let text = json::write(&deeper, Format::COMPACT).unwrap();
-    assert_eq!(json::parse(text.as_bytes()), Err(ParseError::TooDeep));
+    let error = json::parse(text.as_bytes()).unwrap_err().to_string();
+    assert!(error.starts_with("recursion limit exceeded"), "{error}");
 }
 
 /// The significant digits of a float's text: its mantissa's digits, without the zeros that lead
@@ -144,74 +142,6 @@ fn every_finite_float_is_written_in_the_fewest_digits_that_read_back_as_it() {
             "{float:e} written as {text}"
         );
     }
-}
-
-/// A text the store's small files could hold, written ASCII-escaped and indented as they are, with
-/// lone surrogate escapes where a placeholder character was: each one a code unit of
-/// `D800`–`DFFF`, so that some stay lone and some, beside another, make a pair.
-fn with_lone_surrogates(rng: &mut Rng) -> String {
-    const PLACEHOLDER: char = '\u{f8fe}';
-    fn text(text: &str, rng: &mut Rng) -> String {
-        let mut out: String = text.chars().filter(|c| *c != PLACEHOLDER).collect();
-        for _ in 0..rng.below(3) {
-            let at = rng.below(out.chars().count() + 1);
-            let at = out.char_indices().nth(at).map_or(out.len(), |(at, _)| at);
-            out.insert(at, PLACEHOLDER);
-        }
-        out
-    }
-    fn placed(value: &Value, rng: &mut Rng) -> Value {
-        match value {
-            Value::Str(s) => Value::from(text(s, rng)),
-            Value::Array(items) => Value::Array(items.iter().map(|v| placed(v, rng)).collect()),
-            Value::Object(members) => Value::from(
-                (members.iter())
-                    .map(|(key, item)| (text(key, rng), placed(item, rng)))
-                    .collect::<Object>(),
-            ),
-            other => other.clone(),
-        }
-    }
-    let value = Value::from(rng.object(3));
-    let value = placed(&value, rng);
-    let written = json::write(&value, Format::INDENTED).unwrap();
-    let mut out = String::new();
-    for (at, piece) in written.split("\\uf8fe").enumerate() {
-        if at > 0 {
-            let unit = 0xD800 + rng.below(0x800);
-            out.push_str(&format!("\\u{unit:04x}"));
-        }
-        out.push_str(piece);
-    }
-    out
-}
-
-#[test]
-fn lone_surrogates_survive_the_rewrite_of_a_small_file() {
-    let mut lone = 0;
-    for seed in 0..1_000 {
-        let mut rng = Rng::new(seed);
-        let text = with_lone_surrogates(&mut rng);
-        let units = |text: &str| -> Vec<u16> {
-            lone_surrogate_escapes(text)
-                .into_iter()
-                .map(|(_, unit)| unit)
-                .collect()
-        };
-        lone += units(&text).len();
-        // As the store rewrites such a file: stand-ins read, the value written, the escapes put back.
-        let (stood, surrogates) = Surrogates::stand_in(&text, &[], "").unwrap();
-        let read = json::parse(stood.as_bytes()).unwrap();
-        assert!(!read.lone_surrogates, "seed {seed}: {stood}");
-        let rewritten = surrogates.restore(&json::write(&read.value, Format::INDENTED).unwrap());
-        assert_eq!(units(&rewritten), units(&text), "seed {seed}: {text}");
-        let plain = |text: &str| json::parse(text.as_bytes()).unwrap().value;
-        assert!(
-            identical(&plain(&rewritten), &plain(&text)),
-            "seed {seed}: {text}\n{rewritten}"
-        );
-    }
-    assert!(lone > 500, "{lone} lone surrogates");
 }
 
 const STATUSES: [&str; 7] = [

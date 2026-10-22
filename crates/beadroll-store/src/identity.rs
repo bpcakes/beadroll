@@ -6,7 +6,7 @@ use std::io::{self, Write as _};
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::Path;
 
-use beadroll_core::json::{self, Format, Object, Surrogates, Value};
+use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_git::IoError;
 
 use crate::error::Error;
@@ -119,36 +119,26 @@ fn short_hostname() -> String {
 }
 
 /// Local machine display names, from this machine's replica.json alias then aliases.json. Skip
-/// unreadable or malformed files. Lone surrogates display as `?`; a name containing one cannot
-/// equal a machine id.
+/// unreadable or malformed files and entries.
 pub fn machine_aliases(settings: &Settings) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     let Ok(home) = settings.home() else {
         return out;
     };
-    let read = |name: &str| crate::fs::read_json_keeping_surrogates(&home.join(name), &[], "");
-    let shown = |text: &str, surrogates: &Surrogates| -> String {
-        text.chars()
-            .map(|c| if surrogates.stands_in(c) { '?' } else { c })
-            .collect()
-    };
-    let held = |text: &str, surrogates: &Surrogates| text.chars().any(|c| surrogates.stands_in(c));
-    if let Ok((Value::Object(own), surrogates)) = read("replica.json")
+    let read = |name: &str| crate::fs::read_json_text(&home.join(name));
+    if let Ok(Value::Object(own)) = read("replica.json")
         && let Some(Value::Str(id)) = own.get("id")
-        && !held(id, &surrogates)
     {
         let alias = match own.get("alias") {
-            Some(Value::Str(alias)) => shown(alias, &surrogates),
+            Some(Value::Str(alias)) => alias.clone(),
             _ => id.clone(),
         };
         out.insert(id.clone(), alias);
     }
-    if let Ok((Value::Object(aliases), surrogates)) = read("aliases.json") {
+    if let Ok(Value::Object(aliases)) = read("aliases.json") {
         for (id, alias) in *aliases {
-            if let Value::Str(alias) = alias
-                && !held(&id, &surrogates)
-            {
-                out.insert(id, shown(&alias, &surrogates));
+            if let Value::Str(alias) = alias {
+                out.insert(id, alias);
             }
         }
     }

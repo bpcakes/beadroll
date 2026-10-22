@@ -101,13 +101,13 @@ mod g32_integer_fields_stay_beads_readable {
 }
 
 mod g57_lone_surrogate_in_a_journal_is_scoped {
-    use beadroll_core::json::{Format, write};
     use beadroll_store::read_attempt;
 
-    /// G57: an attempt file whose text holds a lone surrogate reads back as text that can be
-    /// printed and exported (U+FFFD), and the bad text is reported.
+    /// G57: an attempt file whose text holds a lone surrogate is not UTF-8 text, so its line is
+    /// not valid JSON: the attempt is ignored whole and reported, and nothing it holds can reach
+    /// a print or an export (until roll-lqjj.53 the surrogate read as U+FFFD and was reported).
     #[test]
-    fn attempt_file_with_a_lone_surrogate_reads_as_text_that_encodes() {
+    fn attempt_file_with_a_lone_surrogate_is_reported_and_ignored() {
         let millis = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -125,13 +125,11 @@ mod g57_lone_surrogate_in_a_journal_is_scoped {
         std::fs::write(&path, format!("{line}\n")).unwrap();
         let mut problems = Vec::new();
         let events = read_attempt(&path, Some(&mut problems));
-        assert_eq!(events.len(), 1, "{problems:?}");
-        let written = write(&events[0], Format::SPACED);
-        assert!(
-            written.is_ok(),
-            "an attempt event read back holds text that cannot be written"
+        assert!(events.is_empty(), "{events:?}");
+        let reported: Vec<&str> = problems.iter().map(|p| p.problem.as_str()).collect();
+        assert_eq!(
+            reported,
+            ["line is not valid JSON; the whole attempt is ignored"]
         );
-        assert_eq!(events[0]["actor"]["thread"], "t\u{fffd}".into());
-        assert!(!problems.is_empty(), "the bad text was not reported");
     }
 }

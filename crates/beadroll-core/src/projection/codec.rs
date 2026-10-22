@@ -15,11 +15,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::id::EventId;
-use crate::json::{Int, MAX_DEPTH, Object, Value};
+use crate::json::{Int, Object, Value};
 
-/// How deeply a value read back may nest arrays and objects: as deep as JSON bead reads, and the
-/// few levels replay wraps an event's values in (a dependency's metadata, an imported comment).
-const NESTING: usize = MAX_DEPTH + 8;
+/// How deeply a value read back may nest arrays and objects: as deep as JSON bead read when the
+/// projection's format was fixed (512 levels, until roll-lqjj.53), and the few levels replay wraps
+/// an event's values in (a dependency's metadata, an imported comment), so that no projection
+/// written then is unreadable now.
+const NESTING: usize = 512 + 8;
 
 /// Why bytes are no projection: what was being read when they ran out or did not fit.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]

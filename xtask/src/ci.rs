@@ -541,7 +541,7 @@ mod fuzzing {
         let nightly = read(".github/workflows/rust-nightly.yml");
         let manifest = read("fuzz/Cargo.toml");
         let targets = targets(&manifest);
-        assert!(targets.len() >= 3, "fuzz/Cargo.toml declares {targets:?}");
+        assert!(targets.len() >= 2, "fuzz/Cargo.toml declares {targets:?}");
         let (head, steps) = job(&nightly, "fuzz");
         let timeout = number(&head, "timeout-minutes");
         let seconds = number(&head, "FUZZ_SECONDS");

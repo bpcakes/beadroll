@@ -75,7 +75,7 @@ pub fn problems(state: &State, text: &str, path: &str) -> Vec<ImportError> {
             Err(error) => {
                 problems.push(fail(format!("{path}:{number} is not valid JSONL: {error}")))
             }
-            Ok(parsed) => match check(path, number, &parsed) {
+            Ok(parsed) => match check(path, number, &parsed.value) {
                 Err(problem) => problems.push(problem),
                 Ok(()) => accepted.push((number, parsed.value)),
             },

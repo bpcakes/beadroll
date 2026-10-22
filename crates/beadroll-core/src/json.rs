@@ -1,23 +1,21 @@
-//! JSON contracts for stored data and output: bead's own reader and writer, not serde_json
+//! JSON contracts for stored data and output: serde_json reads into bead's own [`Value`], and
+//! bead's own writer prints it in the dialects bead's files and output are written in
 //! (`docs/REVIEWING.md` §2).
 //!
-//! [`parse()`] reads UTF-8, replacing and reporting each lone surrogate as one U+FFFD. Nesting is
-//! bounded by [`MAX_DEPTH`]; non-finite numbers are refused; integers are exact within
-//! [`MAX_DIGITS`]. A repeated key keeps its last value in its first position.
+//! [`parse()`] reads strict JSON: UTF-8 throughout, a lone surrogate refused, nesting bounded by
+//! [`MAX_DEPTH`], non-finite numbers refused, integers exact within a `u64` or an `i64`. A
+//! repeated key keeps its last value in its first position.
 //!
 //! [`write()`] uses the selected [`Format`] and shortest round-tripping float representations.
-//! [`Surrogates`] preserves lone surrogate escapes across whole-file updates.
 
 mod int;
-mod parse;
-mod surrogates;
+mod read;
 mod write;
 
 use indexmap::IndexMap;
 
 pub use int::{Int, MAX_DIGITS};
-pub use parse::{MAX_DEPTH, ParseError, Parsed, nesting, parse};
-pub use surrogates::{Surrogates, lone_surrogate_escapes};
+pub use read::{MAX_DEPTH, ParseError, Parsed, parse};
 pub use write::{Format, Style, WriteError, float_repr, write};
 
 /// A JSON object with members in insertion order.
@@ -164,7 +162,7 @@ impl std::ops::Index<usize> for Value {
     }
 }
 
-/// Reads text as JSON, replacing lone surrogates with U+FFFD.
+/// Reads text as JSON.
 pub fn from_text(text: &str) -> Result<Value, ParseError> {
     parse(text.as_bytes()).map(|parsed| parsed.value)
 }

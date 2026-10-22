@@ -570,7 +570,7 @@ fn write(value: &Value, format: Format) -> Result<String, Failure> {
 /// whatever stderr does.
 fn report(failure: &Failure, as_json: bool, color: bool) -> u8 {
     let text = match (as_json, &failure.raw) {
-        // Escape bytes that are not UTF-8 as lone surrogates.
+        // Bytes that are not UTF-8 become U+FFFD.
         (true, Some(raw)) => format!(
             "{{\"error\": {{\"code\": {}, \"message\": {}}}}}",
             json_ascii_bytes(failure.code.as_str().as_bytes()),

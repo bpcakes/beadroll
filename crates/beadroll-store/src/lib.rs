@@ -31,7 +31,7 @@ pub use error::{Error, git_code};
 pub use failpoint::{Action, Failpoints, Fired, POINTS, Selector, kill_self};
 pub use fs::{
     Unreadable, dir_entries, fsync, glob_ending, has_suffix, json_text, os_error_str, private_dir,
-    private_dirs, read, read_json_keeping_surrogates, read_json_text, utf8_error, write_atomic,
+    private_dirs, read, read_json_text, utf8_error, write_atomic,
 };
 pub use identity::{hex_token, machine_aliases, replica_id, uuid7};
 pub use journal::{

@@ -63,7 +63,7 @@ const REFUSED: [(&[&str], Said, Said); 9] = [
         (1, "Error: {held} is not claimed by ?; it is held by ?"),
         (
             1,
-            r#"{"error": {"code": "NOT_OWNER", "message": "{held} is not claimed by \udcff; it is held by ?"}}"#,
+            r#"{"error": {"code": "NOT_OWNER", "message": "{held} is not claimed by \ufffd; it is held by ?"}}"#,
         ),
     ),
     (
@@ -112,7 +112,7 @@ const REFUSED: [(&[&str], Said, Said); 9] = [
         (1, "Error: {free} is not claimed by ?"),
         (
             1,
-            r#"{"error": {"code": "NOT_OWNER", "message": "{free} is not claimed by \udcff"}}"#,
+            r#"{"error": {"code": "NOT_OWNER", "message": "{free} is not claimed by \ufffd"}}"#,
         ),
     ),
 ];

@@ -15,8 +15,8 @@ consumer on tokio calls through `spawn_blocking`.
 ## Key entrypoints
 
 - `src/lib.rs`: the crate root, listing the modules.
-- `src/json.rs` (`json/parse.rs`, `json/write.rs`, `json/int.rs`): `Value`, `parse`, `write`,
-  `Format`; `json/surrogates.rs`: `Surrogates`, lone surrogates kept through a read and a write.
+- `src/json.rs` (`json/read.rs`, `json/write.rs`, `json/int.rs`): `Value` and its `Deserialize`,
+  `parse` (serde_json), `write`, `Format`.
 - `src/text.rs`: `repr`, `str_of`, `strip`, `b36`, and `surrogateescaped`, `repr_bytes`,
   `printed_text` and `json_ascii_bytes` for bytes `surrogateescape` decodes (command lines,
   paths).
@@ -96,8 +96,8 @@ consumer on tokio calls through `spawn_blocking`.
 
 ## Edit here for X
 
-- Reading or writing JSON with the established format and diagnostics (`docs/REVIEWING.md` §2):
-  `src/json/`.
+- Reading JSON (serde_json into `Value`) or writing it in the established formats
+  (`docs/REVIEWING.md` §2): `src/json/`.
 - What an event may hold: `src/event.rs`, including its validation message. Format 1 is frozen:
   changes are additive, so older versions set unfamiliar records aside rather than misread them.
 - Replay, state, readiness, cycles, views, import planning and export: the module of that name.
@@ -272,7 +272,7 @@ consumer on tokio calls through `spawn_blocking`.
   with several contents and not exactly one copy of its own is placed by the copy found first,
   and with it the issue it names and all that issue answers (roll-k2wy.14.14). Every `Format`
   writes what `json::parse` reads back as the same value and writes again as the same text
-  (`compat::json_round_trip`), and `fuzz/` fuzzes the parser, the segment reader and the importer
+  (`compat::json_round_trip`), and `fuzz/` fuzzes the segment reader and the importer
   nightly (`fuzz/README.md`).
 - `saw` agrees with the reference ancestry bitsets: `state/seen/tests.rs` checks every pair
   on hostile histories. Replay's speed and memory are measured by

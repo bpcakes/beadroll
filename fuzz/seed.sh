@@ -1,5 +1,5 @@
 #!/bin/sh
-# fuzz/seed.sh OUT [EXPORT...] — writes the fuzz targets' seed corpus into OUT/json, OUT/segment
+# fuzz/seed.sh OUT [EXPORT...] — writes the fuzz targets' seed corpus into OUT/segment
 # and OUT/import (roll-k2wy.14.4), OUT being outside this checkout.
 #
 # The corpus is synthetic: what a bead (BEAD, else target/debug/bead: `cargo build --package
@@ -50,7 +50,7 @@ case "$out/" in
 esac
 bead=${BEAD:-$repo/target/debug/bead}
 [ -x "$bead" ] || refuse "no bead at $bead: run cargo build --package beadroll, or set BEAD"
-mkdir -p "$out/json" "$out/segment" "$out/import" "$out/artifacts"
+mkdir -p "$out/segment" "$out/import" "$out/artifacts"
 
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
@@ -153,13 +153,11 @@ n=0
 for file in $(find $stores -type f -name '*.jsonl' | sort); do
     n=$((n + 1))
     cut_into "$file" "$out/segment" "segment-$n" 16
-    split -l 1 -a 5 "$file" "$out/json/segment-$n-"
 done
 # shellcheck disable=SC2086
 for file in $(find $stores -type f -name '*.json' | sort); do
     n=$((n + 1))
     cp "$file" "$out/segment/file-$n"
-    cp "$file" "$out/json/file-$n"
 done
 # Several machines' journals in one input: b's store holds b's and c's, d's its copy of c's.
 journals=$(find "$scratch/store-b" "$scratch/store-d" -type f -name '*.jsonl' | sort)
@@ -171,7 +169,6 @@ backwards=$(printf '%s\n' "$journals" | sort -r)
     cat $journals > "$out/segment/machines-one-after-another"
 }
 cut_into "$scratch/export.jsonl" "$out/import" export 8
-split -l 1 -a 5 "$scratch/export.jsonl" "$out/json/export-"
 cut_into "$repo/infra/seed.jsonl" "$out/import" infra-seed 8
 
 # Real exports, read where they are.
@@ -179,8 +176,7 @@ n=0
 for export in "$@"; do
     n=$((n + 1))
     cut_into "$export" "$out/import" "real-$n" 8
-    split -l 1 -a 6 "$export" "$out/json/real-$n-"
 done
-for target in json segment import; do
+for target in segment import; do
     echo "$out/$target: $(find "$out/$target" -type f | wc -l | tr -d ' ') inputs"
 done

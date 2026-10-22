@@ -6,15 +6,15 @@ use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_core::code::Code;
 use beadroll_core::journal::Event;
-use beadroll_core::json::{self, Format, Int, Object, Surrogates, Value};
+use beadroll_core::json::{self, Format, Int, Object, Value};
 use beadroll_core::op::Op;
 use beadroll_core::order::causal_order;
 use beadroll_core::state::State;
-use beadroll_core::text::{printed_text, str_of, surrogateescaped};
+use beadroll_core::text::{printed_text, str_of};
 use beadroll_core::time::event_time;
 use beadroll_store::{
-    Unreadable, load_journal, machine_aliases, projection, read_json_keeping_surrogates,
-    view_outline, write_atomic,
+    Unreadable, load_journal, machine_aliases, projection, read_json_text, view_outline,
+    write_atomic,
 };
 
 use super::{Context, Failure, Line, Outcome, Tone, resolve_arg};
@@ -184,19 +184,12 @@ pub(crate) fn machines(ctx: &Context<'_>, name: Option<&OsStr>) -> Result<Outcom
 }
 
 /// Records `ID=ALIAS` in `aliases.json`, retaining existing names. An unreadable file is never
-/// replaced. Invalid UTF-8 bytes in the name become lone surrogate escapes, and existing lone
-/// surrogates survive the JSON rewrite.
+/// replaced, and a name that is not UTF-8 is refused, as every text bead writes is.
 fn record_alias(ctx: &Context<'_>, name: &OsStr) -> Result<(), Failure> {
-    let bytes = name.as_bytes();
-    let (ident, alias) = match bytes.iter().position(|b| *b == b'=') {
-        Some(at) => (&bytes[..at], &bytes[at + 1..]),
-        None => (bytes, &b""[..]),
+    let Some(name) = name.to_str() else {
+        return Err(Failure::new(Code::Validation, "text is not valid UTF-8"));
     };
-    let units: Vec<u16> = surrogateescaped(bytes)
-        .into_iter()
-        .filter_map(|unit| unit.err().map(|byte| 0xDC00 | u16::from(byte)))
-        .collect();
-    let avoid = String::from_utf8_lossy(bytes).into_owned();
+    let (ident, alias) = name.split_once('=').unwrap_or((name, ""));
     let path = ctx.ws.settings.home()?.join("aliases.json");
     let shown = printed_text(path.as_os_str().as_bytes());
     let cannot = |problem: &str| {
@@ -205,42 +198,20 @@ fn record_alias(ctx: &Context<'_>, name: &OsStr) -> Result<(), Failure> {
             format!("{shown} cannot be read ({problem}); repair it before adding a name"),
         )
     };
-    let (aliases, surrogates) = match read_json_keeping_surrogates(&path, &units, &avoid) {
-        Ok((Value::Object(aliases), surrogates)) => (*aliases, surrogates),
+    let mut aliases = match read_json_text(&path) {
+        Ok(Value::Object(aliases)) => *aliases,
         Ok(_) => {
             return Err(Failure::new(
                 Code::Io,
                 format!("{shown} does not hold a JSON object; repair it before adding a name"),
             ));
         }
-        Err(Unreadable::Missing) => {
-            let surrogates = Surrogates::stand_in("", &units, &avoid)
-                .map(|(_, surrogates)| surrogates)
-                .ok_or_else(|| cannot("too many lone surrogates to keep apart"))?;
-            (Object::new(), surrogates)
-        }
+        Err(Unreadable::Missing) => Object::new(),
         Err(Unreadable::Other(problem)) => return Err(cannot(&problem)),
     };
-    let text = |part: &[u8]| -> String {
-        surrogateescaped(part)
-            .into_iter()
-            .map(|unit| match unit {
-                Ok(c) => c,
-                Err(byte) => surrogates
-                    .char_for(0xDC00 | u16::from(byte))
-                    .unwrap_or('\u{FFFD}'),
-            })
-            .collect()
-    };
-    let mut aliases = aliases;
-    aliases.insert(text(ident), Value::from(text(alias)));
+    aliases.insert(ident.to_owned(), Value::from(alias));
     let written = json::write(&Value::from(aliases), Format::INDENTED)
         .map_err(|e| Failure::new(Code::Validation, e.to_string()))?;
-    write_atomic(
-        &path,
-        surrogates.restore(&written).as_bytes(),
-        true,
-        &ctx.ws.settings.failpoints,
-    )?;
+    write_atomic(&path, written.as_bytes(), true, &ctx.ws.settings.failpoints)?;
     Ok(())
 }

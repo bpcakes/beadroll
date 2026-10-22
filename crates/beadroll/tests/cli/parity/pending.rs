@@ -141,14 +141,16 @@ fn an_unremovable_invalid_pending_file_is_an_io_error() {
 }
 
 /// Expected unpublished counts for a three-event segment with unusual published counts. Falsy
-/// values read as zero; integer arithmetic is exact; floats truncate and strings parse as
-/// integers. A large negative published count therefore produces a large unpublished count. Omit
-/// the count when nothing is unpublished.
+/// values read as zero; integer arithmetic is exact within an `i64` or a `u64`, and an integer
+/// beyond reads as a float (roll-lqjj.53; exact to 4,300 digits before); floats truncate and
+/// strings parse as integers. A large negative published count therefore produces a large
+/// unpublished count. Omit the count when nothing is unpublished.
 const COUNTS: [(&str, Option<&str>); 10] = [
     ("-9223372036854775808", Some("9223372036854775811")),
     (
+        // the float -1e44, whole: -100000000000000008821361405306422640701865984
         "-99999999999999999999999999999999999999999999",
-        Some("100000000000000000000000000000000000000000002"),
+        Some("100000000000000008821361405306422640701865987"),
     ),
     ("1e20", None),
     ("-2.5", Some("5")),
@@ -187,10 +189,12 @@ fn unpublished_counts_handle_metadata_json_shapes() {
     for (count, unpublished) in COUNTS {
         let edited = original.replacen(&published, &format!("\"{segment}\": {count}"), 1);
         std::fs::write(&meta, edited).unwrap();
-        let listed = json(&r, &["list"]);
-        let said = listed.get("unpublished");
-        let said = said.map(|n| write(n, Format::COMPACT).unwrap());
-        assert_eq!(said.as_deref(), unpublished, "published count {count}");
+        // the text itself: a count beyond a u64 is written whole, which no reader keeps exact
+        let listed = r.run(["list", "--json"]);
+        assert_eq!(listed.returncode(), 0, "{count}: {}", listed.stderr);
+        let said = listed.stdout.split("\"unpublished\": ").nth(1);
+        let said = said.map(|rest| rest.trim_end_matches(['}', '\n', ' ']));
+        assert_eq!(said, unpublished, "published count {count}");
         let human = r.run(["list"]);
         let tail = " events not yet published: bead sync";
         match unpublished {

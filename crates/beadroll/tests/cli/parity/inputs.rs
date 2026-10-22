@@ -5,7 +5,7 @@ use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
 use std::path::Path;
 
-use beadroll_test_support::{Json, Machine};
+use beadroll_test_support::{Json, Machine, parse_json};
 
 use super::{id, json};
 
@@ -74,7 +74,7 @@ const ARGUMENTS: [Case; 14] = [
         (
             2,
             "",
-            r#"{"error": {"code": "USAGE", "message": "unexpected argument 'x\udcff' found"}}"#,
+            r#"{"error": {"code": "USAGE", "message": "unexpected argument 'x\ufffd' found"}}"#,
         ),
     ),
     (
@@ -98,7 +98,7 @@ const ARGUMENTS: [Case; 14] = [
         (
             1,
             "",
-            r#"{"error": {"code": "ISSUE_NOT_FOUND", "message": "Issue not found: ex-\udcff"}}"#,
+            r#"{"error": {"code": "ISSUE_NOT_FOUND", "message": "Issue not found: ex-\ufffd"}}"#,
         ),
     ),
     (
@@ -107,7 +107,7 @@ const ARGUMENTS: [Case; 14] = [
         (
             1,
             "",
-            r#"{"error": {"code": "ISSUE_NOT_FOUND", "message": "Issue not found: \udcff"}}"#,
+            r#"{"error": {"code": "ISSUE_NOT_FOUND", "message": "Issue not found: \ufffd"}}"#,
         ),
     ),
     (
@@ -142,7 +142,7 @@ const ARGUMENTS: [Case; 14] = [
         (
             1,
             "",
-            r#"{"error": {"code": "IO", "message": "No such file or directory: /nonexistent/\udcff"}}"#,
+            r#"{"error": {"code": "IO", "message": "No such file or directory: /nonexistent/\ufffd"}}"#,
         ),
     ),
     (
@@ -165,7 +165,7 @@ const ARGUMENTS: [Case; 14] = [
         (
             2,
             "",
-            r#"{"error": {"code": "USAGE", "message": "invalid value '\udcff' for '--limit <N>': not a whole number"}}"#,
+            r#"{"error": {"code": "USAGE", "message": "invalid value '\ufffd' for '--limit <N>': not a whole number"}}"#,
         ),
     ),
     (
@@ -174,7 +174,7 @@ const ARGUMENTS: [Case; 14] = [
         (
             1,
             "",
-            r#"{"error": {"code": "ISSUE_NOT_FOUND", "message": "Issue not found: ex-\udcff"}}"#,
+            r#"{"error": {"code": "ISSUE_NOT_FOUND", "message": "Issue not found: ex-\ufffd"}}"#,
         ),
     ),
     (
@@ -217,7 +217,7 @@ fn ask(machine: &Machine, dir: Option<&Path>, key: &str, case: &Case) {
 }
 
 /// Invalid UTF-8 arguments match no key and fail only when written, after other validation.
-/// Errors show `?` for each invalid byte in human output and `\udcXX` in JSON. Nothing is
+/// Errors show `?` for each invalid byte in human output and U+FFFD in JSON. Nothing is
 /// written.
 #[test]
 fn arguments_that_are_not_utf8_keep_established_diagnostics() {
@@ -248,11 +248,10 @@ fn arguments_that_are_not_utf8_keep_established_diagnostics() {
     assert_eq!(m.export(), before, "nothing was written");
 }
 
-/// Expected `aliases.json` after renaming, with `<replica>` for this machine. Invalid bytes
-/// remain lone surrogate escapes, and existing members are preserved.
+/// Expected `aliases.json` after renaming, with `<replica>` for this machine: existing members
+/// are preserved, a repeated key keeps its first place and last value, and new names follow.
 const ALIASES: &str = r#"{
  "zz": "new",
- "a\udcff": "again",
  "n": {
   "x": [
    1,
@@ -261,39 +260,64 @@ const ALIASES: &str = r#"{
   ]
  },
  "dup": "last",
- "ab\udcff": "c\udcfed",
- "<replica>": "host\udcff"
+ "a": "again",
+ "<replica>": "host"
 }"#;
 
-/// `machines --name` preserves invalid bytes as lone surrogates along with any already in
-/// `aliases.json`. Human output substitutes `?` for each.
+/// `machines --name` keeps what `aliases.json` already holds and refuses a name that is not
+/// UTF-8, as every text bead writes is refused (until roll-lqjj.53 invalid bytes were kept as
+/// lone surrogate escapes, which only bead's own parser read); a file that holds one cannot be
+/// read, so it is not replaced and names nothing.
 #[test]
-fn aliases_preserve_bytes_that_are_not_utf8() {
-    let seeded = r#"{"zz": "kept", "a\udcff": "lone \udcfe", "n": {"x": [1, 2.50, "\u00e9"]}, "dup": 1, "dup": "last"}"#;
+fn aliases_are_utf8_and_existing_members_survive_a_rename() {
+    let seeded = r#"{"zz": "kept", "n": {"x": [1, 2.50, "\u00e9"]}, "dup": 1, "dup": "last"}"#;
     let sandbox = crate::sandbox();
     let m = Machine::new(&sandbox, "names");
     json(&m, &["init", "--prefix", "ex"]);
-    std::fs::write(m.home().join("aliases.json"), seeded).unwrap();
+    let file = m.home().join("aliases.json");
+    std::fs::write(&file, seeded).unwrap();
     let replica = json(&m, &["info"])["machine"].as_str().unwrap().to_owned();
-    let own = [replica.as_bytes(), b"=host\xff"].concat();
-    for given in [&b"ab\xff=c\xfed"[..], b"zz=new", b"a\xff=again", &own] {
-        let renamed = m
-            .cmd([
-                OsStr::new("machines"),
-                OsStr::new("--name"),
-                OsStr::from_bytes(given),
-            ])
-            .run();
+    let refused = m
+        .cmd([
+            OsStr::new("machines"),
+            OsStr::new("--name"),
+            OsStr::from_bytes(b"ab\xff=c\xfed"),
+            OsStr::new("--json"),
+        ])
+        .run();
+    assert_eq!(refused.returncode(), 1, "{}", refused.stdout);
+    assert_eq!(refused.stderr.trim(), NOT_UTF8_JSON.2, "{}", refused.stderr);
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), seeded);
+    let own = format!("{replica}=host");
+    for given in ["zz=new", "a=again", own.as_str()] {
+        let renamed = m.run(["machines", "--name", given]);
         assert_eq!(renamed.returncode(), 0, "{}", renamed.stderr);
     }
-    let file = std::fs::read_to_string(m.home().join("aliases.json")).unwrap();
-    assert_eq!(file.replace(&replica, "<replica>"), ALIASES);
+    let written = std::fs::read_to_string(&file).unwrap();
+    assert_eq!(written.replace(&replica, "<replica>"), ALIASES);
     let listed = json(&m, &["machines"]);
-    assert_eq!(listed[0]["alias"], Json::from("host?"));
+    assert_eq!(listed[0]["alias"], Json::from("host"));
     let human = m.run(["machines"]);
     let line = human.stdout.replace(&replica, "<replica>");
     let shown = line.split("events").next().unwrap();
-    assert_eq!(shown, "<replica>  host?               1 ");
+    assert_eq!(shown, format!("<replica>  {:<14} {:>6} ", "host", 1));
+    // a file holding a lone surrogate escape is unreadable: kept, named by the error, naming no one
+    std::fs::write(&file, r#"{"zz": "lone \udcfe"}"#).unwrap();
+    let kept = m.run(["machines", "--name", "zz=new", "--json"]);
+    assert_eq!(kept.returncode(), 1, "{}", kept.stdout);
+    let error = parse_json(&kept.stderr).unwrap();
+    assert_eq!(error["error"]["code"], Json::from("IO"));
+    let message = error["error"]["message"].as_str().unwrap_or_default();
+    assert!(
+        message.contains("aliases.json cannot be read (") && message.contains("surrogate"),
+        "{message}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        r#"{"zz": "lone \udcfe"}"#
+    );
+    // this machine's name is its replica.json's, the file naming nobody
+    assert_ne!(json(&m, &["machines"])[0]["alias"], Json::from("new"));
 }
 
 /// Paths named in errors. Test `bad\xff.jsonl` separately because some systems cannot create it.
@@ -312,13 +336,12 @@ const PATHS: [Case; 3] = [
         (
             1,
             "",
-            "Error: ./bad.jsonl/ is not valid JSONL: Expecting property name enclosed in double \
-             quotes: line 1 column 2 (char 1)",
+            "Error: ./bad.jsonl/:1 is not valid JSONL: key must be a string at line 1 column 2",
         ),
         (
             1,
             "",
-            r#"{"error": {"code": "VALIDATION", "message": "./bad.jsonl/ is not valid JSONL: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"}}"#,
+            r#"{"error": {"code": "VALIDATION", "message": "./bad.jsonl/:1 is not valid JSONL: key must be a string at line 1 column 2"}}"#,
         ),
     ),
     (
@@ -364,7 +387,7 @@ fn paths_are_normalized_consistently_for_reads_and_writes() {
         assert!(imported.2.contains("is not valid JSONL"), "{imported:?}");
     } else {
         let error =
-            r#"{"error": {"code": "IO", "message": "No such file or directory: bad\udcff.jsonl"}}"#;
+            r#"{"error": {"code": "IO", "message": "No such file or directory: bad\ufffd.jsonl"}}"#;
         assert_eq!(imported, said(1, "", error, &key));
     }
     let read = answer(
