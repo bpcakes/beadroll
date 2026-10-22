@@ -73,6 +73,7 @@ usage: cargo xtask <command>
   timing --details N [--label NAME] [--out FILE]
   timing --renames N [--label NAME] [--out FILE]
   timing --decode N [--ownership|--churn|--text] [--label NAME] [--out FILE]
+  timing --parse N [--ownership|--churn|--text] [--label NAME] [--out FILE]
   timing --load DIR [--no-replay]
       Run COMMAND and append what it took, one JSON line, to FILE (default
       target/timing.jsonl); or replay a parsed journal of N valid events in-process, the best of
@@ -129,7 +130,11 @@ usage: cargo xtask <command>
       seen encodes it, copying what did not change since it was read back, and whole, every record
       written; at the worst point, an eighth more events taken in than a compaction left, the
       index's bytes, the decode, the heap held whole and the encode, copying and whole; and one
-      comment past it the encode that compacts.
+      comment past it the encode that compacts; --parse N, core's JSON reader in this process on
+      meta.json with a published map of N entries, parsed whole as every command with a remote
+      parses it for its unpublished count, its members put into an object once and twice (by key
+      as written, then by key as read: the reader's own double build on its own), and on every
+      line of a history of N events, the fastest of seven runs each.
       Timings are evidence, never a gate.
 
   bead ARG...

@@ -58,7 +58,11 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
   compactions encodes it, copying what did not change since it was read back and whole, every
   record written (roll-lqjj.44), at the worst point, an eighth more events taken in than a
   compaction left, its index's bytes, its decode, its heap whole and its encode, both ways, and one
-  comment past it the encode that compacts (roll-lqjj.43, X17); `timing/growth.rs`: the
+  comment past it the encode that compacts (roll-lqjj.43, X17); `timing/parse.rs`: `timing
+  --parse N`, core's JSON reader on `meta.json` with a published map of N entries, parsed whole as
+  every command with a remote parses it for its unpublished count, its members put into an object
+  once and twice (by key as written, then by key as read: the reader's own double build on its
+  own), and on every line of a history of N events (roll-lqjj.49); `timing/growth.rs`: the
   growth guards only time can keep (roll-lqjj.34, X15), tests ignored by every other run that time
   planning an import, its dry run, a re-import, replay of imports that wait for keys, replay of
   copies two machines minted alike (`timing/renames.rs`'s journals; roll-lqjj.38, X03) and a
@@ -161,8 +165,9 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
 - `timing --sync` runs `bead` and git on a scratch store, checkout and remote under
   `target/timing/`, which it removes after, as workspace `timing`, never the real store or another
   repository: none of them inherits the shell's `BEAD_*` and `GIT_*` variables.
-- Its dependencies are beadroll-core and the `beadroll` library (for `bead`, which runs bead's code
-  in xtask's process), and for its tests beadroll-test-support (the sandbox `tests/heap` runs bead
+- Its dependencies are beadroll-core, the `beadroll` library (for `bead`, which runs bead's code
+  in xtask's process) and indexmap (`timing --parse` models the reader's members with it), and for
+  its tests beadroll-test-support (the sandbox `tests/heap` runs bead
   in), regex-lite (the hygiene patterns), sha2 (the plain history's digest) and tempfile; it may
   print (its crate root allows it).
 - `tests/heap` counts bytes, not time: the same command peaks at the same heap to within a few
@@ -206,6 +211,9 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
   `--churn` or `--text`: the projection of 200,000 events decoded, its state part alone and whole,
   and read back, extended by comments and encoded: after one, at the worst point between two
   compactions and one comment past it
+- `cargo run --release --package xtask -- timing --parse 92000`, and with `--ownership`, `--churn`
+  or `--text`: core's JSON reader on `meta.json` of 92,000 files, its published map's members put
+  into an object once and twice, and on every line of a history of 92,000 events
 - `cargo test -p xtask`, and `cargo nextest run -p xtask -E 'binary(heap)'` for bead's heap alone
 - `cargo nextest run --release --locked --package xtask --run-ignored only --test-threads 1 -E
   'test(/^timing::growth::/)'`: the growth guards, as the nightly workflow runs them
