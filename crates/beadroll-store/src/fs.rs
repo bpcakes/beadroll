@@ -10,7 +10,7 @@ use std::os::unix::ffi::OsStrExt as _;
 use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _, PermissionsExt as _};
 use std::path::{Path, PathBuf};
 
-use beadroll_core::json::{self, Surrogates, Value};
+use beadroll_core::json::{self, Value};
 use beadroll_git::IoError;
 
 use crate::error::Error;
@@ -275,38 +275,6 @@ pub(crate) fn read_json_keyed(path: &Path) -> (Result<Value, Unreadable>, Option
         Err(error) if error.kind() == io::ErrorKind::NotFound => (Err(Unreadable::Missing), None),
         Err(error) => (Err(Unreadable::Other(os_error_str(&error, path))), None),
     }
-}
-
-/// Reads JSON for a whole-file rewrite, preserving lone surrogates with [`Surrogates`]. Allocate
-/// a distinct stand-in for each code unit in the text or `units`, avoiding characters in `avoid`.
-/// Malformed JSON reports a diagnostic against the original text.
-pub fn read_json_keeping_surrogates(
-    path: &Path,
-    units: &[u16],
-    avoid: &str,
-) -> Result<(Value, Surrogates), Unreadable> {
-    let data = match std::fs::read(path) {
-        Ok(data) => data,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Err(Unreadable::Missing),
-        Err(error) => return Err(Unreadable::Other(os_error_str(&error, path))),
-    };
-    let parsed = json_text(&data).map_err(Unreadable::Other)?;
-    let text = std::str::from_utf8(&data).unwrap_or_default();
-    // There are more required stand-ins than available private-use characters; bead cannot
-    // produce such a file.
-    let Some((stood, surrogates)) = Surrogates::stand_in(text, units, avoid) else {
-        return Err(Unreadable::Other(
-            "it holds more lone surrogates and private-use characters than bead can keep apart"
-                .to_owned(),
-        ));
-    };
-    if stood == text {
-        return Ok((parsed, surrogates));
-    }
-    let value = json::parse(stood.as_bytes())
-        .map(|parsed| parsed.value)
-        .map_err(|error| Unreadable::Other(error.to_string()))?;
-    Ok((value, surrogates))
 }
 
 /// Decodes strict UTF-8 and parses JSON, returning the value or its diagnostic.

@@ -7,7 +7,6 @@ use std::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
 
-use beadroll_core::json::lone_surrogate_escapes;
 use beadroll_test_support::{Json, Machine, code, json, parse_json};
 
 use super::{id, jsonl, machine, record};
@@ -25,8 +24,7 @@ fn f07_non_utf8_input_is_a_structured_error() {
     assert_ne!(created.returncode(), 0, "{}", created.stdout);
     assert!(!created.crashed(), "{}", created.stderr);
     assert_eq!(code(&created), "VALIDATION", "{}", created.stderr);
-    // No title holds U+DCFF. Check the printed listing for its escape, since decoding would
-    // replace a lone surrogate with U+FFFD.
+    // No issue was created: the title is nowhere, as itself, as U+FFFD or as an escape.
     let listed = machine.run(["list", "--all", "--limit", "0", "--json"]);
     assert_eq!(listed.returncode(), 0, "{}", listed.stderr);
     let titles: Vec<_> = parse_json(&listed.stdout).unwrap()["issues"]
@@ -35,10 +33,10 @@ fn f07_non_utf8_input_is_a_structured_error() {
         .iter()
         .map(|issue| issue["title"].clone())
         .collect();
-    let escaped = lone_surrogate_escapes(&listed.stdout);
+    assert_eq!(titles, Vec::<Json>::new());
     assert!(
-        escaped.iter().all(|(_, unit)| *unit != 0xdcff),
-        "a title holds U+DCFF: {titles:?} in {}",
+        !listed.stdout.contains("bad") && !listed.stdout.contains("\\ud"),
+        "{}",
         listed.stdout
     );
 

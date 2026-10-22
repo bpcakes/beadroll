@@ -6,6 +6,38 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- Core reads JSON with serde_json, into its own value, and its own parser is gone
+  (roll-lqjj.53): the parser existed to read exactly as CPython's `json` did, for the diff harness
+  that proved the Rust port equal to the Python bead, and the maintainer's decision of 2026-10-22
+  ended that parity (the Python bead was a proof of concept never used on any project). What
+  changes is only how a line bead never writes is read: a lone surrogate, escaped or as raw bytes,
+  is not UTF-8, so a journal line holding one is "line is not valid JSON" under `integrity` and
+  skipped (it read as U+FFFD and was reported), an attempt file holding one is ignored whole, and
+  an import holding one fails as not valid JSONL, the record named by its line, as any malformed
+  record does (the import's diagnostics are serde_json's words now, `PATH:N is not valid JSONL:
+  key must be a string at line 1 column 2`); an integer beyond a `u64` or an `i64` reads as a
+  float (it was exact to 4,300 digits), which replay refuses where an integer is due; and the
+  nesting ceiling is 127 levels, serde_json's recursion limit (512 before; an event may use 100).
+  Every float reads back bit for bit as the writer printed it (`float_roundtrip`). What bead prints
+  or signs as JSON with a byte that is not UTF-8 in it (an error's message under `--json`, a
+  receipt's request) now writes U+FFFD for the byte, so that any reader takes it (it wrote a lone
+  surrogate escape, which only bead's own parser read); `machines --name` refuses a name that is not
+  UTF-8 (`VALIDATION`, as every text bead writes is refused) rather than keeping its bytes as such
+  escapes in `aliases.json`, and an `aliases.json` holding one cannot be read: it is kept, named by
+  the error, and names nobody. Format 1 and every output are byte for byte as they were, the
+  writer being untouched. The JSON fuzz target is gone with the parser; the segment reader's and
+  the importer's remain. In process (`cargo xtask timing --parse 200000`, release, before and
+  after on one machine with two virtual machines running beside it) `meta.json` of 200,000 files
+  parses in 39 ms rather than 67, and the probe's 200,000 synthetic lines (53 MB: short titles,
+  no text) in 0.69 s rather than 0.57; alternated and pinned to one core, serde_json's own tree
+  reads those lines in 0.58 s against the old parser's 0.55, and the tree bead builds on it costs
+  a tenth more (an `IndexMap` hashed with SipHash, boxed), while this machine's three real
+  trackers' 3,230 lines (6.6 MB, text) read in 14 ms rather than 24 and a `meta.json` of 92,000
+  files in 17 ms rather than 27. The same serde_json read the synthetic lines in 0.34 s on the
+  quieter machine of that morning against the old parser's 0.57, so the synthetic figure is the
+  environment's as much as the reader's; the text figure is bead's data. What remains is the tree
+  itself, which roll-lqjj.53.1 reads past.
+
 - Core's JSON reader builds each object once (roll-lqjj.49): every object was built by key as
   written and then again by key as read, so that two keys written apart that read alike (lone
   surrogates, each read as U+FFFD) merge, 31 ms of the 52 ms a `meta.json` of 92,000 files took to

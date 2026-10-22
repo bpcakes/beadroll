@@ -176,8 +176,16 @@ mod tests {
 
     #[test]
     fn a_value_of_any_depth_has_a_digest() {
-        let deep = format!("{}{}", "[".repeat(500), "]".repeat(500));
-        let deeper = format!("{}{}", "[".repeat(501), "]".repeat(501));
-        assert_ne!(digest(&deep), digest(&deeper));
+        // deeper than any text reads, as a value built in memory may be
+        let nested = |depth: usize| {
+            (0..depth).fold(Value::Array(Vec::new()), |inner, _| {
+                Value::Array(vec![inner])
+            })
+        };
+        let mut digester = Digester::default();
+        assert_ne!(
+            digester.digest(&nested(5_000)),
+            digester.digest(&nested(5_001))
+        );
     }
 }

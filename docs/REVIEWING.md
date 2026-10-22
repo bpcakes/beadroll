@@ -22,7 +22,7 @@ state split between worktrees and machines.
 It is one binary, built from a Cargo workspace (Rust 1.99) whose crates each depend only on the
 ones before them, which the compiler enforces:
 
-- `beadroll-core`: Python-compatible JSON and text, event validation, journals and their settling,
+- `beadroll-core`: strict JSON and text, event validation, journals and their settling,
   causal order, replay into state, readiness and the other queries, issue views, Beads import
   planning and export. No filesystem, processes, clock or environment.
 - `beadroll-git`: the only code that starts git: the runner (its own session, timeouts, output to
@@ -1496,15 +1496,15 @@ These were decided deliberately. Report problems *with* them, not their existenc
   ever be needed, follows writers-lag-readers through the manifest; none is planned.
 - Events nest at most 100 levels (`MAX_NESTING`); replay keeps looser type rules than writes
   (`write_problem`) so histories written before a rule mean the same on every machine.
-- Integers have any size up to Python 3.11+'s default 4,300-digit decimal conversion limit on JSON
-  input and output, not unlimited integer tokens. The oracle pinned that default until
-  the cutover; a machine whose Python ran with another limit had to resolve its store's
-  compatibility before it upgraded.
+- Integers bead writes have any size up to Python 3.11+'s default 4,300-digit decimal conversion
+  limit (`MAX_DIGITS`), which key minting and the counts keep to; the oracle pinned that default
+  until the cutover. On input an integer is exact within a `u64` or an `i64` and a float beyond,
+  which bead never writes (roll-lqjj.53; any size to 4,300 digits before).
 - What a journal line, attempt file or manifest means does not depend on the Python reading it
-  (U01–U05 in `FINDINGS.md`): JSON is read from bytes as UTF-8 with surrogates
-  passed (no byte-order mark, UTF-16 or UTF-32 is guessed), at most 512 levels deep (counted before
-  `json.loads`, below every interpreter's own limit), with NaN, Infinity and numbers beyond a float
-  refused; ids and dependencies match the UUID shape whole; `complete_prefix` and the manifest read
+  (U01–U05 in `FINDINGS.md`): JSON is read from bytes as UTF-8 (no byte-order mark, UTF-16 or
+  UTF-32 is guessed; a lone surrogate is not UTF-8), at most `MAX_DEPTH` levels deep (127,
+  serde_json's recursion limit, since roll-lqjj.53; 512 before, counted before `json.loads`), with
+  NaN, Infinity and numbers beyond a float refused; ids and dependencies match the UUID shape whole; `complete_prefix` and the manifest read
   as strictly as everything else, and the manifest's format must be the integer 1.
 - Key numbers, segment names and URL schemes are ASCII (U06): `\d` and `(?i)[a-z]` are never
   Unicode-aware there, so a renamed copy of `x.٣` keeps its own name and `httpſ://` is not
@@ -1533,8 +1533,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   ledger of them decided (the rows not stated above): replay takes a boolean where an integer is due
   (`"v": true` is format 1; a `true` priority sorts as 1 and prints as `True`), as histories
   written before `write_problem` had it, while writes refuse one; a lone surrogate in a line,
-  escaped or raw, reads as one U+FFFD
-  and is reported; a duplicate key keeps its last value at its first key's place; whitespace,
+  escaped or raw, is not UTF-8 (until roll-lqjj.53 it read as one U+FFFD and was reported); a
+  duplicate key keeps its last value at its first key's place; whitespace,
   `strip()` and lower case are Python's Unicode ones where Python used them (`split_list`, comment
   emptiness, `search`, `normalize_remote`); a path is resolved as `os.path.realpath` resolves it,
   never by libc; `--estimate` and `--limit` read numbers as `int()` does (`" +5 "`, `5_000`);
@@ -1544,7 +1544,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
   pages included, until clap replaced it (roll-dih8.23, above); SIGXFSZ is ignored, so a file-size limit is an `IO` error, and standard
   input closed at exec is no stream, `-` then an `IO` error; a sync or ownership command makes 12
   rounds with `U(0.1, 0.4) × attempt` seconds between them; the names of fetch refs, temporary
-  files and set-aside copies are Python's.
+  files and set-aside copies are Python's. The maintainer's decision of 2026-10-22: the Python
+  bead was a proof of concept never used on any project, so parity with it is no requirement; a
+  rule kept for parity alone is dropped when it costs something, each recorded here and in the
+  changelog with its test rewritten (roll-lqjj.53 dropped the parser; roll-lqjj.53.2 lists the
+  rest).
 - beadroll-core was proven equal to Python by `cargo xtask diff` until the cutover: replay reports
   and JSON, over the journals the Python tests built and generated histories, valid and hostile.
   A difference was fixed in Rust or decided in that ledger; the harness kept no list of expected
@@ -1856,26 +1860,37 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - bead's pushes skip the user's client hooks (`--no-verify`); the remote's hooks still apply.
 - The remote string reaches git after `--`; a tracked workspace id shaped like a URL-derived id
   that is not this origin's is refused.
-- beadroll-core reads and writes JSON with a small parser and writer of its own, not serde_json:
-  journals need integers of any size within the 4,300-digit limit, objects in the order written,
-  a lone surrogate read as one U+FFFD (serde_json refuses the escape, and a lossy decode makes
-  three of the raw bytes), floats as Python's `repr()` printed them (`1e-05`, `1e+16`), and five
-  dialects: compact for journals, attempts and export; spaced for results and, sorted, the
-  manifest; spaced and ASCII-escaped for errors, `--version` and `replica.json`; `indent=1` and
-  ASCII-escaped for `meta.json`, `aliases.json`, `moved.json` and `.beadroll.json`; sorted and
-  compact to compare quarantined copies. serde_json's `arbitrary_precision` and `preserve_order`
-  are features every crate in a build shares, so turning them on would change studio's own
-  serde_json. The parser is iterative, so no depth overflows the stack. An object is built once,
-  by key as read, while every key reads as it was written; the first key holding a lone surrogate
-  turns what was read into a map by key as written, merged again by key as read when the object
-  closes, so that two keys written apart that read alike (`\ud800` and `\udbff`, each U+FFFD) still
-  keep the last value at the first's place, and a value's lone surrogate that a repeated key
-  replaced is still not reported (`parse::tests` pins the merge on both sides of such a key). The
-  parser built every object twice until roll-lqjj.49, 31 ms of the 52 ms a `meta.json` of 92,000
-  files took and a part of the 4.6 µs every journal line took, and copied every string once more
-  into its text: a string without a lone surrogate is now its bytes as read, validated once more
-  rather than copied. `cargo xtask timing --parse N` measures the reader on such a `meta.json` (its
-  members built once and twice beside it) and on every line of a history of N events.
+- beadroll-core reads JSON with serde_json into a `Value` of its own and writes it with a writer
+  of its own (roll-lqjj.53). Until then both were bead's own, kept equal to CPython's `json` for
+  the port's diff harness; the maintainer's decision of 2026-10-22 ended that parity (above), and
+  the parser, its surrogate handling and its fuzz target went with it, 1,200 lines. The reader is
+  serde_json without `preserve_order` or `arbitrary_precision`, features every crate in a build
+  shares (studio builds serde_json too): a `Deserialize` visitor fills the `IndexMap` in the order
+  written, a repeated key keeping its first place and last value, and an integer is exact within
+  a `u64` or an `i64`, a float beyond, which bead never writes. `float_roundtrip` is on, so a
+  float reads back bit for bit as the writer printed it, the one feature studio's build shares
+  (exact floats, slower only on floats). What serde_json refuses is refused: a lone surrogate,
+  escaped or raw, is not UTF-8; nesting beyond `MAX_DEPTH` (127, its recursion limit; an event
+  may use 100) is not JSON; `NaN`, `Infinity` and `1e400` are not numbers. A journal line that
+  fails is reported under `integrity` and skipped, as any unreadable line is. The writer stays
+  bead's own for format 1's bytes: floats as Python's `repr()` printed them (`1e-05`, `1e+16`),
+  and five dialects: compact for journals, attempts and export; spaced for results and, sorted,
+  the manifest; spaced and ASCII-escaped for errors, `--version` and `replica.json`; `indent=1`
+  and ASCII-escaped for `meta.json`, `aliases.json`, `moved.json` and `.beadroll.json`; sorted
+  and compact to compare quarantined copies. A byte that is not UTF-8 in what bead prints or
+  signs as JSON (an error's message, a receipt's request) is U+FFFD, so that any reader takes it;
+  until roll-lqjj.53 it was a lone surrogate escape, which only bead's own parser read, and
+  `machines --name` kept such bytes in `aliases.json` the same way, where it now refuses a name
+  that is not UTF-8, as every text bead writes is refused. `cargo xtask timing --parse N`
+  measures the reader on a `meta.json` of N files (its members built once and twice beside it)
+  and on every line of a history of N events. At the change (2026-10-22, release, one machine
+  with two virtual machines running beside it): `meta.json` of 200,000 files in 39 ms rather than
+  67; the probe's 200,000 synthetic lines (53 MB, short titles, no text) in 0.69 s rather than
+  0.57, where serde_json's own tree takes 0.58 against the old parser's 0.55 when alternated and
+  pinned to one core and bead's `IndexMap` tree a tenth more (SipHash, boxed), though the same
+  serde_json read those lines in 0.34 s on the quieter machine of that morning; this machine's
+  three real trackers' 3,230 lines (6.6 MB, text) in 14 ms rather than 24, and a `meta.json` of
+  92,000 files in 17 ms rather than 27. The tree is what remains (roll-lqjj.53.1).
 - git is the git binary, never gix or libgit2: bead's contract is "as git reads it" (`insteadOf`,
   `includeIf`, credential helpers, `core.sshCommand`, translated messages, server hooks, SHA-256
   repositories, reftable), which a reimplementation would have to match, and the hardening tests

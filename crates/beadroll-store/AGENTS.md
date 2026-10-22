@@ -17,8 +17,7 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   `dir_entries`, `glob_ending`, `abandoned::remove` (the temporary files a killed writer left
   beside the caches, which the projection's write-back removes, `src/fs/abandoned.rs`,
   roll-lqjj.52),
-  `read_json_text`, `read_json_keeping_surrogates` (preserving lone surrogates across whole-file
-  rewrites) and file-read diagnostics (`os_error_str`, `utf8_error`).
+  `read_json_text` and file-read diagnostics (`os_error_str`, `utf8_error`).
 - `src/identity.rs`: `replica_id`, `machine_aliases`, `uuid7`, `hex_token`.
 - `src/recap.rs`: `home_stores`, every store under `BEAD_HOME` without a checkout (an unusable
   one with its workspace id when its name is one), and `RecapCursor`, `bead recap`'s cursor: for

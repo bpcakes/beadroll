@@ -1,4 +1,4 @@
-//! G57: a lone surrogate in a journal is scoped to the text containing it. Attempt-file checks
+//! G57: a lone surrogate in a journal is scoped to the line containing it. Attempt-file checks
 //! read `claims/*.json` in beadroll-store's `tests/store/hardening.rs`.
 
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -52,18 +52,19 @@ fn tail(text: &str) -> &str {
 }
 
 mod g57_lone_surrogate_in_a_journal_is_scoped {
-    use beadroll_core::json::{Format, Surrogates, write};
+    use beadroll_core::json::{Format, write};
     use beadroll_test_support::{Json, Machine, parse_json};
 
     use super::{SURROGATE, create, escaped_line, raw_line, tail};
 
-    /// G57: a journal event whose text holds a lone surrogate (escaped `\ud800`, or the raw bytes
-    /// ED A0 80; bead itself refuses to write one) is reported, and `export -o` and `export` to
-    /// standard output both work and agree, the surrogate read as U+FFFD. Before the fix it
-    /// replayed unreported, then `export -o` died with UnicodeEncodeError and `export` to standard
-    /// output wrote '?'.
+    /// G57: a journal line whose text holds a lone surrogate (escaped `\ud800`, or the raw bytes
+    /// ED A0 80; bead itself refuses to write one) is not UTF-8 text, so it is no event: it is
+    /// reported under `integrity`, its issue is nowhere, and `export -o` and `export` to standard
+    /// output both work and agree. Before the fix it replayed unreported, then `export -o` died
+    /// with UnicodeEncodeError and `export` to standard output wrote '?'; until roll-lqjj.53 the
+    /// surrogate read as U+FFFD and the line was an event.
     #[test]
-    fn export_to_a_file_survives_a_lone_surrogate_in_a_journal() {
+    fn export_survives_a_lone_surrogate_in_a_journal() {
         let sandbox = crate::sandbox();
         let m = Machine::new(&sandbox, "g57");
         m.bead(["init", "--prefix", "ex"]);
@@ -85,52 +86,42 @@ mod g57_lone_surrogate_in_a_journal_is_scoped {
         assert_eq!(proc.returncode(), 0, "{}", proc.stderr);
         let written = std::fs::read(&out).unwrap();
         let text = std::str::from_utf8(&written).expect("export -o wrote UTF-8");
-        // `{r["id"]: r["title"] for r in records}`, in order: a later id wins, as in a dict
         let mut titles: Vec<(Json, Json)> = Vec::new();
         for row in text.split('\n').filter(|row| !row.trim().is_empty()) {
-            // Preserve lone surrogates as distinct private-use characters absent elsewhere in the
-            // row, so the comparison cannot confuse them with U+FFFD.
-            let (row, _) = Surrogates::stand_in(row, &[], "").expect("stand-ins for a row");
-            let record = parse_json(&row).unwrap();
+            let record = parse_json(row).unwrap();
             let id = record.get("id").expect("a record's id").clone();
             let title = record.get("title").expect("a record's title");
             titles.push((id, title.clone()));
         }
-        let title = |key: &str| {
-            let found = titles.iter().rev().find(|(id, _)| id.as_str() == Some(key));
-            found.map(|(_, title)| title)
-        };
         let stdout = m.run(["export"]);
         assert_eq!(
             stdout.stdout.as_bytes(),
             written,
             "export to stdout and export -o disagree"
         );
-        assert_eq!(
-            (title("ex-esc"), title("ex-raw")),
-            (
-                Some(&Json::from("bad\u{fffd}title")),
-                Some(&Json::from("raw\u{fffd}title"))
-            )
-        );
+        let exported: Vec<&str> = titles.iter().filter_map(|(_, t)| t.as_str()).collect();
+        assert_eq!(exported, ["ordinary work"], "{titles:?}");
         let info = m.bead(["info"]).expect("bead info prints a record");
         let integrity = info.get("integrity").expect("info's integrity");
-        let origins: Vec<String> = integrity
+        let rows: Vec<(String, String)> = integrity
             .as_array()
             .expect("a list")
             .iter()
-            .map(|row| match row.as_object().expect("a row").get("origin") {
-                None => "None".to_owned(),
-                Some(Json::Str(origin)) => origin.clone(),
-                Some(other) => write(other, Format::ASCII).unwrap(),
+            .map(|row| {
+                let row = row.as_object().expect("a row");
+                let text = |key: &str| match row.get(key) {
+                    None => "None".to_owned(),
+                    Some(Json::Str(text)) => text.clone(),
+                    Some(other) => write(other, Format::ASCII).unwrap(),
+                };
+                (text("origin"), text("problem"))
             })
             .collect();
         for replica in ["fffffff0", "fffffff1"] {
             let place = format!("{replica}/000001.jsonl:1");
-            assert!(
-                origins.iter().any(|origin| origin.contains(&place)),
-                "{replica} not reported: {origins:?}"
-            );
+            let found = rows.iter().find(|(origin, _)| origin.contains(&place));
+            let (_, problem) = found.unwrap_or_else(|| panic!("{replica} not reported: {rows:?}"));
+            assert_eq!(problem, "line is not valid JSON", "{replica}");
         }
     }
 }

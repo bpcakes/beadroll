@@ -2,7 +2,7 @@
 
 use beadroll_core::event::event_problem;
 use beadroll_core::journal::{Journal, read_segment};
-use beadroll_core::json::{Format, MAX_DEPTH, nesting, parse, write};
+use beadroll_core::json::{Format, MAX_DEPTH, parse, write};
 use beadroll_core::replay::replay;
 use beadroll_test_support::{Json, json};
 
@@ -49,8 +49,7 @@ fn u01_numbers_beyond_a_float_are_not_json_numbers() {
         "{\"x\": NaN}",
         "Infinity",
     ] {
-        let error = parse(text.as_bytes()).unwrap_err().to_string();
-        assert!(error.contains("is not a JSON number"), "{text}: {error}");
+        assert!(parse(text.as_bytes()).is_err(), "{text}");
     }
     let read_back = parse(b"[1e308, -0.0, 5e-324]").unwrap().value;
     assert_eq!(
@@ -90,18 +89,18 @@ fn u02_ids_and_deps_with_a_trailing_newline_are_not_uuids() {
     assert_eq!(problems(&state), ["id is not a UUID"]);
 }
 
-/// U03: readers accept at most 512 nesting levels; brackets inside strings do not count.
+/// U03: readers accept at most `MAX_DEPTH` nesting levels, the same on every machine; brackets
+/// inside strings do not count.
 #[test]
-fn u03_nesting_deeper_than_512_levels_is_unreadable() {
+fn u03_nesting_deeper_than_the_ceiling_is_unreadable() {
     let nested = |depth: usize| format!("{}{}", "[".repeat(depth), "]".repeat(depth));
-    assert_eq!(MAX_DEPTH, 512);
-    let value = parse(nested(512).as_bytes()).unwrap().value;
-    assert_eq!(
-        nesting(write(&value, Format::SPACED).unwrap().as_bytes()),
-        512
-    );
-    let error = parse(nested(513).as_bytes()).unwrap_err().to_string();
-    assert!(error.contains("nested deeper than 512 levels"), "{error}");
+    assert_eq!(MAX_DEPTH, 127);
+    let value = parse(nested(MAX_DEPTH).as_bytes()).unwrap().value;
+    assert!(value.deeper_than(MAX_DEPTH - 1) && !value.deeper_than(MAX_DEPTH));
+    let error = parse(nested(MAX_DEPTH + 1).as_bytes())
+        .unwrap_err()
+        .to_string();
+    assert!(error.starts_with("recursion limit exceeded"), "{error}");
     let brackets = "[{".repeat(600);
     let text = format!("[\"{brackets}\"]");
     assert_eq!(
@@ -109,7 +108,7 @@ fn u03_nesting_deeper_than_512_levels_is_unreadable() {
         json!([(brackets.as_str())])
     );
     // The event's data adds one level.
-    let (deep, fine) = (nested(511), nested(510));
+    let (deep, fine) = (nested(MAX_DEPTH - 1), nested(MAX_DEPTH - 2));
     let first = line(1, json!({})).replace("\"data\":{}", &format!("\"data\":{{\"x\":{deep}}}"));
     let second = line(2, json!({})).replace("\"data\":{}", &format!("\"data\":{{\"x\":{fine}}}"));
     let (events, problems) = read(&[first.into_bytes(), second.into_bytes()]);
@@ -161,8 +160,13 @@ fn u04_journal_lines_are_utf8_whatever_their_first_bytes() {
         assert_eq!(ids(&events), [id_of(&second)], "{name}");
         assert_eq!(problems, ["line is not valid JSON"], "{name}");
     }
-    // Still UTF-8, surrogates and all: a lone surrogate reads as U+FFFD, reported.
-    let (events, problems) = read(&[text.replace("\"test\"", "\"t\\ud800\"").into_bytes()]);
-    assert_eq!(events[0]["actor"]["agent"], json!("t\u{fffd}"));
-    assert_eq!(problems, ["text is not valid UTF-8; it reads as U+FFFD"]);
+    // A lone surrogate, escaped or as the raw bytes ED A0 80, is not UTF-8 text: no event.
+    let raw = text.replace("\"test\"", "\"t\u{f8ff}\"").into_bytes();
+    let at = raw.windows(3).position(|w| w == b"\xef\xa3\xbf").unwrap();
+    let raw = [&raw[..at], b"\xed\xa0\x80", &raw[at + 3..]].concat();
+    for bad in [text.replace("\"test\"", "\"t\\ud800\"").into_bytes(), raw] {
+        let (events, problems) = read(&[bad, line(2, json!({})).into_bytes()]);
+        assert_eq!(ids(&events), [id_of(&second)]);
+        assert_eq!(problems, ["line is not valid JSON"]);
+    }
 }

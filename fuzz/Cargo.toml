@@ -19,13 +19,6 @@ libfuzzer-sys = "0.4"                       # the libFuzzer driver cargo-fuzz bu
 members = ["."]
 
 [[bin]]
-name = "json"
-path = "fuzz_targets/json.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
 name = "segment"
 path = "fuzz_targets/segment.rs"
 test = false

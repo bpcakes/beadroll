@@ -24,6 +24,8 @@ indexmap = "2"
 libc = "0.2"
 nix = { version = "0.31", default-features = false, features = ["user"] }  # ~NAME in BEAD_HOME: getpwnam_r without unsafe code
 regex-lite = "0.1"                          # git message classifiers
+serde = { version = "1", default-features = false, features = ["std"] }  # the Deserialize core's Value implements
+serde_json = { version = "1", features = ["float_roundtrip"] }  # the JSON reader (roll-lqjj.53): floats exact, as the writer prints them; core's writer stays its own
 rustix = { version = "1", features = ["fs", "process", "system", "termios"] }  # termios: the terminal width help pages wrap at
 sha2 = "0.10"                               # the version studio already builds
 tempfile = "3"

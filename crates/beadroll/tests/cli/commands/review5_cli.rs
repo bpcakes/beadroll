@@ -290,8 +290,8 @@ fn u09_a_record_without_a_creation_time_is_not_imported() {
 
 /// U11 (docs/FINDINGS.md): an escaped lone surrogate failed an import only where it reached an
 /// event ("text is not valid UTF-8" when the create was written), and passed where the import
-/// drops it (a known record, source_repo_path); every record is now refused for it, as a raw one
-/// already was.
+/// drops it (a known record, source_repo_path); every record is refused for it, as a raw one
+/// already was: since roll-lqjj.53 the record is not valid JSONL at all, named by its line.
 #[test]
 fn u11_an_escaped_lone_surrogate_fails_the_import_wherever_it_is() {
     let sandbox = crate::sandbox();
@@ -323,12 +323,11 @@ fn u11_an_escaped_lone_surrogate_fails_the_import_wherever_it_is() {
         std::fs::write(&source, format!("{good}\n{bad}\n")).unwrap();
         let imported = machine.run(["import", &source.display().to_string(), "--json"]);
         assert_eq!(imported.returncode(), 1, "{name}: {}", imported.stdout);
-        let message = format!("{}:2: text is not valid UTF-8", source.display());
-        assert_eq!(
-            strict_json(&imported.stderr)["error"],
-            json!({"code": "VALIDATION", "message": (message)}),
-            "{name}"
-        );
+        let error = strict_json(&imported.stderr)["error"].clone();
+        assert_eq!(error["code"], json!("VALIDATION"), "{name}: {error:?}");
+        let message = error["message"].as_str().unwrap_or_default();
+        let expected = format!("{}:2 is not valid JSONL: ", source.display());
+        assert!(message.starts_with(&expected), "{name}: {message}");
     }
     assert_eq!(machine.bead(["list"]).unwrap()["issues"], json!([]));
 }

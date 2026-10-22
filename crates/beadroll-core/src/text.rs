@@ -76,19 +76,14 @@ pub fn printed_text(data: &[u8]) -> String {
 }
 
 /// OS bytes as an ASCII-escaped JSON string, including quotes. Escape controls and characters
-/// outside printable ASCII, use surrogate pairs beyond the BMP and represent invalid UTF-8 bytes
-/// as `\udcXX`.
+/// outside printable ASCII, use surrogate pairs beyond the BMP and represent each invalid UTF-8
+/// byte as U+FFFD (`\ufffd`), so that what bead prints or signs as JSON is JSON any reader takes
+/// (until roll-lqjj.53 it was a lone surrogate escape, which only bead's own parser read).
 pub fn json_ascii_bytes(data: &[u8]) -> String {
     let mut out = String::with_capacity(data.len() + 2);
     out.push('"');
     for unit in surrogateescaped(data) {
-        let c = match unit {
-            Ok(c) => c,
-            Err(byte) => {
-                let _ = write!(out, "\\u{:04x}", 0xDC00 | u32::from(byte));
-                continue;
-            }
-        };
+        let c = unit.unwrap_or('\u{fffd}');
         match c {
             '"' => out.push_str("\\\""),
             '\\' => out.push_str("\\\\"),
@@ -286,21 +281,21 @@ mod tests {
         // Invalid bytes remain separate surrogate escapes beside valid text and quotes.
         assert_eq!(repr_bytes(b"a\xe2\x82b'"), "\"a\\udce2\\udc82b'\"");
         assert_eq!(printed_text(b"a\xffb\xe2\x82"), "a?b??");
-        // ASCII JSON escapes cover controls, Unicode and invalid OS bytes.
+        // ASCII JSON escapes cover controls and Unicode; an invalid OS byte is U+FFFD.
         assert_eq!(
             json_ascii_bytes(b"\"\\\n\x7f\xc3\xa9\xf0\x9f\x98\x80\xff\x08\x0c\x01"),
-            r#""\"\\\n\u007f\u00e9\ud83d\ude00\udcff\b\f\u0001""#
+            r#""\"\\\n\u007f\u00e9\ud83d\ude00\ufffd\b\f\u0001""#
         );
     }
 
     #[test]
     fn repr_and_str_of_json_values() {
-        let value = parse(br#"[null, true, 1.0, {"k": "v"}, 10000000000000000000000]"#)
+        let value = parse(br#"[null, true, 1.0, {"k": "v"}, 18446744073709551615, 1e22]"#)
             .unwrap()
             .value;
         assert_eq!(
             repr(&value),
-            "[None, True, 1.0, {'k': 'v'}, 10000000000000000000000]"
+            "[None, True, 1.0, {'k': 'v'}, 18446744073709551615, 1e+22]"
         );
         assert_eq!(str_of(&Value::from("ex")), "ex");
         assert_eq!(str_of(&Value::Null), "None");
