@@ -359,8 +359,8 @@ pub fn adopt_published(
 
 /// Events not covered by the last successful publication. Returns None without a remote or
 /// without saved counts after publication; before the first publication, all events are
-/// unpublished. Arithmetic is exact. Nonnumeric counts or a total exceeding the decimal output
-/// limit return IO. Memoized line counts avoid rereading unchanged segments on each command.
+/// unpublished. Arithmetic is checked: nonnumeric counts or subtraction, addition or increment
+/// beyond an i128 return IO. Memoized line counts avoid rereading unchanged segments on each command.
 pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
     match ws.remote(None) {
         Ok(Some(remote)) if !remote.is_empty() => {}

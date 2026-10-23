@@ -20,6 +20,16 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Review 26: Claude and Codex branch review (reported inline, ids AI)
+
+The independent reviews cover `b5d5543..571f902`. Claude reported the documentation finding
+below; Codex reported no findings. Both found no runtime defects. The frozen reports remain
+in the external review handoff.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AI01 | Low | `unpublished_count` still documented the removed decimal output limit | fixed | Describe checked i128 subtraction, addition and increment at the public API boundary | Documentation inspection against the checked arithmetic; no runtime change |
+
 ## Review 25: Claude and Codex review of publication-result repairs (ids AH)
 
 The independent reports cover `b5d5543..bf58a27` and are retained in
