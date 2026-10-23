@@ -193,6 +193,8 @@ pub fn coordinated<E: From<Error>>(
                 // it had landed: the work is done, not to be redone
                 drop_pending(ws, std::slice::from_ref(events))?;
                 forget(&stale)?;
+                // The merge confirmed this request without going through confirm_ownership.
+                ws.record_commit();
                 published(ws, &mut link, &remote)?;
                 return Ok(Some(*answer));
             }
@@ -200,6 +202,7 @@ pub fn coordinated<E: From<Error>>(
             stale = settled;
             if done {
                 // an earlier run of this command was accepted
+                ws.record_commit();
                 published(ws, &mut link, &remote)?;
                 return Ok(Some(Mode::Online));
             }

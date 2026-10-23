@@ -20,6 +20,87 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Review 26: Claude and Codex branch review (reported inline, ids AI)
+
+The independent reviews cover `b5d5543..571f902`. Claude reported the documentation finding
+below; Codex reported no findings. Both found no runtime defects. The frozen reports remain
+in the external review handoff.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AI01 | Low | `unpublished_count` still documented the removed decimal output limit | fixed | Describe checked i128 subtraction, addition and increment at the public API boundary | Documentation inspection against the checked arithmetic; no runtime change |
+
+## Review 25: Claude and Codex review of publication-result repairs (ids AH)
+
+The independent reports cover `b5d5543..bf58a27` and are retained in
+`reviews/2026-10-23-25-claude.json` and `reviews/2026-10-23-25-codex.json`. Absolute home
+prefixes use `/home/<name>/`; the frozen originals remain in the external review run.
+Both reviewers found the same remaining receipt-recovery path. Codex and a separate
+scratch probe reproduced it; Claude also identified the resulting overstatement in the docs.
+The continued repair covers matching receipts from earlier invocations as well.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AH01 | Medium | An accepted ownership attempt recovered through merge and its receipt bypassed commitment tracking, so the final count could still report success as failure | fixed | Record this request's commitment at both accepted-receipt returns, covering a lost acknowledgement in the current retry loop and an earlier invocation's matching receipt without marking unrelated merge writes | `beadroll`: `parity::pending::publication::ah01_a_claim_recovered_after_a_lost_reply_keeps_its_result`, `parity::pending::publication::ah01_an_earlier_invocations_accepted_receipt_keeps_its_result` (both fail without the fix) |
+
+## Review 24: Claude and Codex review of command-result repairs (ids AG)
+
+The independent reports cover `b5d5543..719b46d` and are retained in
+`reviews/2026-10-23-24-claude.json` and `reviews/2026-10-23-24-codex.json`. Absolute home
+prefixes use `/home/<name>/`; the frozen originals remain in the external review run.
+Codex reproduced the remaining publication path; Claude reported no findings. Its assumption
+that successful publication also saves the counts was contradicted by the injected save failure.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AG01 | Medium | Successful publication cleared the flag AF01 used to recognize a committed command, so a failed metadata save could still turn success into a count error | fixed | Record commitment after a nonempty journal append or confirmed ownership write and retain it independently of the pending-publication flag; AH01 completes accepted-receipt recovery when confirmation bypasses those writes | `beadroll`: `parity::pending::publication::ag01_a_published_write_keeps_its_result_when_saving_counts_fails` (comment, init, claim; fails without the fix) |
+
+## Review 23: fresh Claude and Codex branch review (ids AF)
+
+The independent reports cover `b5d5543..0815fd5` and are retained in
+`reviews/2026-10-23-23-claude.md` and `reviews/2026-10-23-23-codex.md`. Absolute home
+prefixes use `/home/<name>/`; the frozen originals remain in the external review handoff.
+Codex independently reported both findings; Claude reported none. Its uncertainty about the
+final baseline was resolved by the prior successful validation of that same tip, without
+rewriting its report. Both defects were confirmed against the command callers and scratch probes.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AF01 | Medium | The unpublished count could overflow after a write committed, making a successful mutation look failed | fixed | Preserve the committed command's result and emit an actionable stderr warning, JSON with `--json`; keep read-only count failures as errors. AG01 and AH01 complete this policy after publication and accepted-receipt recovery | `beadroll`: `parity::pending::af01_a_committed_write_keeps_its_result_when_the_unpublished_count_overflows` |
+| AF02 | Low | `show` still printed legacy boolean priorities as `True` and `False` | fixed | Render the priority with `IntegerField` at the show summary boundary, preserving the JSON boolean and general diagnostic quoting | `beadroll`: `commands::format_policy::af02_list_and_show_print_legacy_boolean_priorities_as_numbers` |
+
+## Review 22: Claude and Codex review of the parity repairs (ids AE)
+
+The independent reports cover `b5d5543..672ca86`; their structured results are in
+`reviews/2026-10-23-22-claude.json` and `reviews/2026-10-23-22-codex.json`. Absolute home
+prefixes use `/home/<name>/`; the frozen originals remain in the external review run.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AE01 | Low | Retrying replay after native claim exhaustion lost the flag for another takeover's missing target | fixed | Accumulate the awaiting flag across retries, including takeovers already marked inert, so a late target still forces replay and refreshes the diagnostic | `beadroll-core`: `replay::numeric_limits::ae01_exhaustion_retry_keeps_a_missing_takeover_target_unsettled` |
+| AE02 | Low | U07 still documented the retracted i128 key limit | fixed | Restore the original 4,299-digit admission rule in that row, consistent with AD01, the code and REVIEWING | Documentation inspection; `beadroll-core`: `replay::port_alignment::u07_payloads_that_reached_the_last_resort_are_refused_by_name` |
+
+## Review 21: Claude and Codex review of parity retirement (ids AD)
+
+The independent reports of `9e27e78..3e311d7` are retained in
+`reviews/2026-10-23-21-claude.md` and `reviews/2026-10-23-21-codex.md`, with one absolute home
+prefix in the latter replaced by the repository's `/home/<name>/` placeholder. The frozen
+originals remain in the external review handoff; no finding or validation result was changed.
+The committed hygiene check caught that path; its correction changes only this archive. After
+merging main at `109550d`, all five adjudicated findings were verified again: an old Rust writer reproduced the
+key loss, a native core probe reproduced generation reuse, and the merged source still lacked
+the two boundary test groups and the caller-specific compatibility notes. AD03–AD05 are
+supporting test/documentation obligations; they do not assert production corruption. AD02's
+maximum generation is reachable through the native value API, not ordinary parsed JSON.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AD01 | Medium | Imported long numbered keys disappeared on cold replay | fixed | Preserve the original 4,299-digit create domain and increment duplicate suffixes as decimal text independently of `Int` | `beadroll-core`: `replay::numeric_limits::ad01_a_long_key_written_by_the_old_importer_still_replays`, `replay::port_alignment::u07_payloads_that_reached_the_last_resort_are_refused_by_name`, `key::tests::free_key_counts_on_or_extends_the_key` |
+| AD02 | Low | Native claim-generation overflow silently reused the old generation | fixed | Refuse before ownership mutation or command emission; replay a near-bound native history without an exhausted takeover's supersession | `beadroll-core`: `replay::numeric_limits::ad02_exhausted_reclaim_reports_integrity_without_changing_the_issue`, `ad02_exhausted_takeover_keeps_the_owner_and_does_not_silence_its_release` |
+| AD03 | Low | Unpublished-count arithmetic errors lacked caller-level coverage | fixed | Exercise exact representable metadata counts that overflow subtraction, aggregate addition and the attempt increment; assert IO and unchanged durable files | `beadroll`: `parity::pending::ad03_unpublished_count_arithmetic_overflow_is_an_unchanged_store_error` |
+| AD04 | Low | Segment rotation exhaustion lacked storage-boundary coverage | fixed | Rotate the predecessor into the last segment number; refuse exhaustion without appending or creating a file | `beadroll-store`: `storage::rotation::ad04_rotation_accepts_the_last_number_and_refuses_exhaustion_without_writing` |
+| AD05 | Low | Numeric compatibility notes omitted affected callers and retained a stale digit contract | fixed | Document settings/flag overflow, COLUMNS fallback and the ASCII GIT_CONFIG_COUNT predicate; describe CountRules as caller supplied | CHANGELOG.md, REVIEWING.md §2 and `beadroll-git::CountRules`; source inspection |
+
 ## Review 20: Claude review of the typed-reader repairs (ids AC)
 
 Reported inline: the review of `9e27e78..02d0d82` on 2026-10-23 completed through Claude;
@@ -208,7 +289,7 @@ its Rust port.
 | U04 | Low | `json.loads` on bytes guessed UTF-16 or UTF-32 from a line's first bytes and skipped a UTF-8 byte-order mark, so such a line was an event | fixed | A line is decoded as UTF-8, surrogates passed, before it is parsed (§5 row 22) | `beadroll-core`: `replay::port_alignment::lines::u04_journal_lines_are_utf8_whatever_their_first_bytes` |
 | U05 | Low | `complete_prefix` and the published manifest used plain `json.loads` (NaN read), and the manifest's format was compared with `==`, so `true` and `1.0` passed as format 1 | fixed | Both read strictly; the format must be the integer 1 (§5 row 23) | `beadroll`: `protocol::port_alignment::u05_a_manifest_that_only_equals_format_1_is_refused`, `protocol::port_alignment::u05_a_torn_tail_holding_nan_is_cut_and_kept_aside` |
 | U06 | Low | `\d` and `(?i)[a-z]` were Unicode-aware: a renamed copy of `x.٣` became `x.3`, the merge copied segments numbered in non-ASCII digits, and `httpſ://` named the same workspace as `https://` | fixed | ASCII only in key numbers, `mint_key`, the segment-name filter, `without_password` and `normalize_remote` (§5 row 24) | `beadroll-core`: `replay::port_alignment::u06_key_numbers_are_ascii_digits`; `beadroll`: `protocol::port_alignment::u06_only_segments_numbered_in_ascii_digits_are_merged`; `beadroll-git`: `hardening::u06_url_schemes_are_ascii::a_scheme_is_ascii_whatever_case_folding_would_allow` |
-| U07 | Medium | Three payloads raised inside replay, whose last resort stored Python's exception text, which differs between versions: a `dep_add` meta that is not an object, a `dep_remove` key that is not a string, and a create key whose number a renamed copy could not count on from | fixed | `payload_problem` refuses each by name; a key's number may have at most 4,299 digits, since counting on from 4,300 nines needs one more than Python prints (§5 row 25) | `beadroll-core`: `replay::port_alignment::u07_payloads_that_reached_the_last_resort_are_refused_by_name` |
+| U07 | Medium | Three payloads raised inside replay, whose last resort stored Python's exception text, which differs between versions: a `dep_add` meta that is not an object, a `dep_remove` key that is not a string, and a create key whose number a renamed copy could not count on from | fixed | `payload_problem` refuses each by name; a key's number may have at most 4,299 digits, so a renamed copy can carry into the 4,300th (retained by AD01 through roll-lqjj.53.2; AE02 corrects this row; §5 row 25) | `beadroll-core`: `replay::port_alignment::u07_payloads_that_reached_the_last_resort_are_refused_by_name` |
 | U08 | Low | An imported comment naming a `uid` or a `where`, which only a comment made here has, broke `show` or `export`, or exported as a comment made here | fixed | A create's comments carry neither (§5 row 27) | `beadroll-core`: `replay::port_alignment::u08_imported_comments_carry_neither_a_uid_nor_a_where` |
 | U09 | Medium | A create with `created_at: null`, which an import of such a record wrote, made `list` and `ready` fail comparing creation times | fixed | A create cannot clear `created_at`, so such an import fails whole (§5 row 28) | `beadroll-core`: `replay::port_alignment::u09_a_create_cannot_clear_created_at`; `beadroll`: `commands::review5_cli::u09_a_record_without_a_creation_time_is_not_imported` |
 | U10 | Medium | The stand-in for an id with several contents named the issue of the copy placed first; when no copy was valid that could be a list or an object, and replay, so every command, failed hashing it | fixed | The stand-in names its issue only by a string (§5 row 29) | `beadroll-core`: `replay::port_alignment::u10_a_quarantined_id_names_its_issue_only_by_a_string` |
@@ -249,7 +330,7 @@ is replaced with `<name>` for repository hygiene.
 | Id | Severity | Finding | Status | Resolution | Tests |
 |---|---|---|---|---|---|
 | S01 | High | Sync-before-upgrade leaves accepted receipts the proposed Rust signature would not recognise | plan corrected | `RUST-PORT.md` §§2.3j, 4.2 and 8 preserve Python signature bytes/lifecycle and require same-store upgrade and rollback; `roll-k2wy.5`, `.12`, `.16` | Required: both implementation directions after lost acknowledgement and intervening edit, with retained receipt and no repeated mutation; the mixed fleet's until the cutover, since then `beadroll`: `parity::retries`, with the receipts Python wrote pinned in `parity::receipts` |
-| S02 | Medium | Unlimited integer tokens exceed Python's default JSON digit limit | plan corrected | §§2.3a, 4.2 and 5 preserve the 4,300-digit decimal boundary; oracle pins its limit; §8 checks non-default Python settings; `roll-k2wy.2`, `.16` | Required: positive/negative 4,300/4,301-digit parser, writer, import and replay fixtures |
+| S02 | Medium | Unlimited integer tokens exceed Python's default JSON digit limit | plan corrected | §§2.3a, 4.2 and 5 preserve the 4,300-digit decimal boundary; oracle pins its limit; §8 checks non-default Python settings; `roll-k2wy.2`, `.16`. Retired with the parity: an integer is exact within an `i128` since roll-lqjj.53.2 (within a `u64` or an `i64` on input, a float beyond, since roll-lqjj.53) | Required: positive/negative 4,300/4,301-digit parser, writer, import and replay fixtures (retired with the limit) |
 | S03 | Medium | Proposed process-group isolation retains the controlling terminal | plan corrected | §2.3f uses actual `setsid` in the audited pre-exec path; `roll-k2wy.3`, `.6` | Existing V8 controlling-terminal and fetch/push timeout tests must pass against Rust on Linux and macOS |
 | S04 | Medium | Studio bridge omits persisted source and ancestry transition | plan corrected | §7 includes a new constraint migration, arbitrary-ref fetching and source revision/baseline lifecycle; `roll-k2wy.15` | Required: migrate existing publication, refresh twice, deepen ancestry, reject obsolete refresh work after binding changes |
 | S05 | Medium | Studio discovery omits separate coordination remotes | plan corrected | §7 binds approved endpoint, ref, expected workspace and credentials while retaining the code branch for discovery; `roll-k2wy.15` | Required: distinct code/coordinator repositories, workspace mismatch and unapproved/unsupported redirection |

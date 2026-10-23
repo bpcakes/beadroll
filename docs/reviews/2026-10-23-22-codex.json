@@ -1,0 +1,57 @@
+{
+  "assignmentId": "00025-review",
+  "fingerprint": "c05334678a3107c8552ff0352900741877ccd25d66b7e4bd9e71f8911f328805",
+  "complete": true,
+  "findings": [
+    {
+      "key": "native-replay-loses-awaiting-across-retry",
+      "path": "crates/beadroll-core/src/replay.rs",
+      "severity": "low",
+      "title": "Preserve unresolved takeover state across the exhaustion retry",
+      "evidence": "At lines 92-129 the exhaustion repair calls settle_takeovers repeatedly while retaining its mutated inert map. On the first pass an unrelated takeover naming an absent claim sets awaiting=true and is inserted into inert (lines 258-280). On the next pass line 249 skips it before recording awaiting, so the final Takeovers.awaiting becomes false. project() consequently marks this history extendable (projection.rs:161), although a later arrival can change its integrity report. Demonstrated through the public core APIs: one machine's sequential init/create/claim(generation=i128::MAX)/takeover(previous claim)/takeover(absent event 99), followed by event 99 as an ordinary claim depending on the last event. project() reports extendable=true and extend() returns Applied with 'takeover names a claim that is not a claim on this issue', while a full replay reports 'takeover of a claim its writer had not seen'. This violates the projection/replay equivalence contract in projection/extend.rs:20-34. It affects native near-bound histories and diagnostic correctness; the probe does not demonstrate wrong ownership or a disk-JSON path. Preserve the awaiting condition across retries or recompute it independently of the accumulated inert map, and cover this combination. Reproduction source: /tmp/beadroll-pr46-reverify/native-probe/main.rs. From /home/<name>/Documents/beadroll, compile with `rustc --edition 2024 /tmp/beadroll-pr46-reverify/native-probe/main.rs --extern beadroll_core=target/debug/deps/libbeadroll_core-c37e2b20c8957036.rlib -L dependency=target/debug/deps -o /tmp/beadroll-pr46-reverify/native-probe/probe`, then run `/tmp/beadroll-pr46-reverify/native-probe/probe`. Compilation succeeded; the probe exited 101 on its integrity-equality assertion. Complete stdout/stderr: /tmp/beadroll-pr46-reverify/native-probe/output.log."
+    }
+  ],
+  "acceptance": [
+    {
+      "criterionId": "R1",
+      "status": "unsatisfied",
+      "evidence": "The full pinned range b5d5543da780c7ed71210407fbe709130ab5e4f3..672ca86a89a0d7bcfc14bfdc9672a8f651f80e55 retains checked i128 arithmetic (json/int.rs), Rust/ASCII numeric parsing (text/number.rs and CLI/settings callers), numeric boolean-priority display (op.rs), and JSON conflict output (commands/show.rs and its golden). claims.rs checks the next generation before end_claim or field writes, and ClaimStep checks before its emit. The new replay retry correctly removes exhausted takeover supersession for the covered release cases, but its retained inert map loses unresolved-takeover state and permits stale projection diagnostics, as demonstrated by native-replay-loses-awaiting-across-retry. This remaining regression prevents accepting the native exhaustion repair as complete. The supplied baseline/stress passed; the independent targeted probe fails with exit 101.",
+      "validationIds": [
+        "baseline-stress"
+      ]
+    },
+    {
+      "criterionId": "R2",
+      "status": "satisfied",
+      "evidence": "key.rs:20-58 preserves the original suffix admission boundary (4299 accepted, 4300 rejected) and increments duplicate key suffixes as decimal text, including normalization of leading zeros and a carry into 4300 digits. Its unit tests check a suffix beyond i128::MAX and the 4299-nine carry. replay/numeric_limits.rs:12-27 reads recorded older-import journal bytes containing a 40-digit key through Journal::add_segment and verifies the issue survives without integrity findings. Child minting remains explicitly bounded. The typed metadata, journal and envelope readers have no diff against the pinned base; their existing paths and u64 conversion remain compatible with the bounded Int. Earlier review reports were not used as independent evidence.",
+      "validationIds": [
+        "baseline-stress",
+        "fuzz-clippy",
+        "support-build"
+      ]
+    },
+    {
+      "criterionId": "R3",
+      "status": "satisfied",
+      "evidence": "parity/pending.rs:244-300 constructs representable exact metadata strings causing subtraction, aggregate addition and accepted-attempt increment overflow. Each invokes the CLI, checks structured IO and empty stdout, and compares metadata and all durable event bytes before/after. storage/rotation.rs tests i128::MAX-1 rotating to MAX and MAX refusing append with IO, unchanged original bytes and no extra segment. Core numeric_limits tests legacy byte replay, exhausted reclaim with unchanged issue detail and projection handling, and both directly proposed and incremented MAX takeovers with a later predecessor release still effective. These satisfy the enumerated boundaries; the separate unresolved-takeover combination in the finding is not covered by them. The controller baseline executed 1202 tests successfully, and its stress phase passed both models.",
+      "validationIds": [
+        "baseline-stress"
+      ]
+    },
+    {
+      "criterionId": "R4",
+      "status": "satisfied",
+      "evidence": "CHANGELOG.md and REVIEWING.md document checked counter bounds, retained numbered-key compatibility, changed integer settings/flags, COLUMNS fallback, ASCII GIT_CONFIG_COUNT and native overflow behavior. CountRules now describes its caller-supplied digit predicate, matching link_env's supplied ASCII function. FINDINGS.md records AD01-AD05 and links the reports. Source changes keep core pure and preserve downward dependencies; Cargo.toml, the seeded stress RNG, and diagnostic quoting implementations are unchanged. All supplied exact-fingerprint controller receipts completed successfully: baseline-stress (1202 baseline tests, 14 infra tests, 2 stress tests; zero failing doctests), fmt, clippy, fuzz-fmt, fuzz-clippy, deny, fuzz-deny and support-build. The deny log contains only unused-license-allowance warnings. Those successful checks were not duplicated. The new finding is a source/probe result despite these green receipts.",
+      "validationIds": [
+        "baseline-stress",
+        "fmt",
+        "clippy",
+        "fuzz-fmt",
+        "fuzz-clippy",
+        "deny",
+        "fuzz-deny",
+        "support-build"
+      ]
+    }
+  ]
+}

@@ -10,9 +10,13 @@ use crate::json::Value;
 use crate::op::{Claiming, Ending, IntegerField};
 use crate::state::{Claim, EndedClaim, Issue, LostClaim, Provisional};
 
-use super::{Ctx, Held};
+use super::{CLAIM_GENERATION_EXHAUSTED, Ctx, Held};
 
-pub(super) fn claim(c: &Ctx<'_>, issue: &mut Issue, claiming: &Claiming) -> bool {
+pub(super) fn claim(
+    c: &Ctx<'_>,
+    issue: &mut Issue,
+    claiming: &Claiming,
+) -> Result<bool, &'static str> {
     let who = c.who;
     if claiming.mode.as_deref() == Some("offline") {
         // Provisional: never displaces a confirmed owner.
@@ -28,9 +32,13 @@ pub(super) fn claim(c: &Ctx<'_>, issue: &mut Issue, claiming: &Claiming) -> bool
             }
         }
     } else if c.claim.is_none() || takes_over(c.claim, claiming) {
+        // Refuse exhaustion before ending an owner or changing any of the issue's fields.
+        let next = issue
+            .claim_generation
+            .plus_one()
+            .ok_or(CLAIM_GENERATION_EXHAUSTED)?;
         end_claim(c, issue, "takeover", claiming.reason.as_deref());
         // Choose the greater of the incremented and proposed generations, keeping the first on ties.
-        let next = issue.claim_generation.plus_one();
         let given = claiming
             .generation
             .as_ref()
@@ -62,9 +70,9 @@ pub(super) fn claim(c: &Ctx<'_>, issue: &mut Issue, claiming: &Claiming) -> bool
             held_by,
             event: c.eid,
         });
-        return false;
+        return Ok(false);
     }
-    true
+    Ok(true)
 }
 
 pub(super) fn release(c: &Ctx<'_>, issue: &mut Issue, ending: &Ending) -> bool {

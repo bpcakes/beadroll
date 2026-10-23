@@ -5,7 +5,7 @@ use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
 use std::time::Duration;
 
-use beadroll_core::json::{self, Format, Int, MAX_DIGITS, Object, Value};
+use beadroll_core::json::{self, Format, Int, Object, Value};
 use beadroll_core::metadata::Counts;
 use beadroll_core::text::shell_quote;
 use beadroll_git::PushOutcome;
@@ -359,8 +359,8 @@ pub fn adopt_published(
 
 /// Events not covered by the last successful publication. Returns None without a remote or
 /// without saved counts after publication; before the first publication, all events are
-/// unpublished. Arithmetic is exact. Nonnumeric counts or a total exceeding the decimal output
-/// limit return IO. Memoized line counts avoid rereading unchanged segments on each command.
+/// unpublished. Arithmetic is checked: nonnumeric counts or subtraction, addition or increment
+/// beyond an i128 return IO. Memoized line counts avoid rereading unchanged segments on each command.
 pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
     match ws.remote(None) {
         Ok(Some(remote)) if !remote.is_empty() => {}
@@ -396,19 +396,26 @@ pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
         let known = published
             .count(name)
             .ok_or_else(|| unreadable(format!("the published count of {name} is not a number")))?;
-        let behind = lines.sub(&known);
-        count = count.add(if behind > zero { &behind } else { &zero });
+        let beyond = || {
+            unreadable(
+                "the published counts put the unpublished count beyond what bead counts".to_owned(),
+            )
+        };
+        let behind = lines.sub(&known).ok_or_else(beyond)?;
+        count = count
+            .add(if behind > zero { &behind } else { &zero })
+            .ok_or_else(beyond)?;
     }
     for path in claim_files(ws)?.iter() {
         // its path in the store, as `relative` gives it, without a copy of each
         if !published.contains_key(&relative_name(ws, path)) {
-            count = count.add(&Int::from(1));
+            count = count.add(&Int::from(1)).ok_or_else(|| {
+                unreadable(
+                    "the attempt files put the unpublished count beyond what bead counts"
+                        .to_owned(),
+                )
+            })?;
         }
-    }
-    if count.digit_count() > MAX_DIGITS {
-        return Err(unreadable(format!(
-            "the published counts put the unpublished count beyond {MAX_DIGITS} digits"
-        )));
     }
     Ok(Some(count))
 }

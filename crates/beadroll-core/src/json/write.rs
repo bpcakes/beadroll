@@ -3,7 +3,7 @@
 
 use std::fmt::Write as _;
 
-use super::{MAX_DIGITS, Value};
+use super::Value;
 
 /// How members and items are separated.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -72,12 +72,6 @@ pub enum WriteError {
     /// A float that is not finite, built in memory: no reader would take it back.
     #[error("Out of range float values are not JSON compliant: {0}")]
     NotFinite(&'static str),
-    /// An integer constructed in memory with more than [`MAX_DIGITS`] digits.
-    #[error(
-        "Exceeds the limit ({MAX_DIGITS} digits) for integer string conversion; \
-         use sys.set_int_max_str_digits() to increase the limit"
-    )]
-    IntDigits,
     /// Nesting beyond what any reader takes back.
     #[error("nested deeper than any reader takes back")]
     TooDeep,
@@ -108,9 +102,6 @@ fn write_value(
         Value::Bool(true) => out.push_str("true"),
         Value::Bool(false) => out.push_str("false"),
         Value::Int(int) => {
-            if int.digit_count() > MAX_DIGITS {
-                return Err(WriteError::IntDigits);
-            }
             let _ = write!(out, "{int}");
         }
         Value::Float(float) => out.push_str(&float_repr(*float)?),
@@ -410,11 +401,11 @@ mod tests {
             write(&Value::from(members), Format::COMPACT),
             Err(WriteError::NotFinite("inf"))
         );
-        let widest = Int::parse(&"9".repeat(MAX_DIGITS)).unwrap();
-        assert!(write(&Value::Int(widest.clone()), Format::COMPACT).is_ok());
+        // every integer is written: the widest there is
+        let widest = Int::from_i128(i128::MAX);
         assert_eq!(
-            write(&Value::Int(widest.plus_one()), Format::COMPACT),
-            Err(WriteError::IntDigits)
+            write(&Value::Int(widest), Format::COMPACT).as_deref(),
+            Ok("170141183460469231731687303715884105727")
         );
         let mut deep = Value::Null;
         for _ in 0..=WRITE_DEPTH {

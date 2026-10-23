@@ -338,7 +338,7 @@ $ bead show ex-d
   type task · created <TIME> by seed
   acceptance_criteria: done
   depends on (blocks): ex-zzz (not an issue yet)
-  ⚠ title was changed on two machines at once: 'Title from A' by codex:gold-a-thread-0001@<MACHINE1> | 'Title from B' by codex:gold-b-thread-0001@<MACHINE2>
+  ⚠ title was changed on two machines at once: "Title from A" by codex:gold-a-thread-0001@<MACHINE1> | "Title from B" by codex:gold-b-thread-0001@<MACHINE2>
 exit 0
 
 $ bead list --id ex-d

@@ -60,7 +60,7 @@ pub(crate) fn width(variable: Option<&OsStr>) -> Option<usize> {
     let given = variable
         .and_then(OsStr::to_str)
         .and_then(parse_integer)
-        .map(|number| number.saturating_i128())
+        .map(|number| number.as_i128())
         .filter(|number| *number > 0)
         .map(|number| usize::try_from(number).unwrap_or(usize::MAX));
     let width = given.or_else(|| match rustix::termios::tcgetwinsize(std::io::stdout()) {

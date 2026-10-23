@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use std::io::Write as _;
 use std::path::PathBuf;
 
-use beadroll_core::json::{Format, write};
+use beadroll_core::json::{Format, Value, write};
 use beadroll_store::{Clock, uuid7};
 use beadroll_test_support::{Machine, json, parse_json};
 
@@ -26,6 +26,57 @@ fn first_segment(machine: &Machine) -> PathBuf {
                 .ends_with(".jsonl")
         })
         .expect("a segment in the store")
+}
+
+/// AF02: legacy booleans keep their JSON type, but both human views use numeric priorities.
+#[test]
+fn af02_list_and_show_print_legacy_boolean_priorities_as_numbers() {
+    for (flag, number) in [(true, "1"), (false, "0")] {
+        let sandbox = crate::sandbox();
+        let m = crate::rust_only(&sandbox, "m");
+        m.bead(["init", "--prefix", "ex"]);
+        let created = m.bead(["create", "legacy priority"]).unwrap();
+        let key = created["id"].as_str().unwrap();
+        let path = first_segment(&m);
+        let original = std::fs::read_to_string(&path).unwrap();
+        let legacy: String = original
+            .lines()
+            .map(|line| {
+                let mut event = parse_json(line).unwrap();
+                if event["op"].as_str() == Some("create") {
+                    let Value::Object(body) = &mut event else {
+                        unreachable!()
+                    };
+                    let Some(Value::Object(data)) = body.get_mut("data") else {
+                        unreachable!()
+                    };
+                    let Some(Value::Object(fields)) = data.get_mut("fields") else {
+                        unreachable!()
+                    };
+                    fields.insert("priority".into(), Value::Bool(flag));
+                }
+                write(&event, Format::ASCII).unwrap() + "\n"
+            })
+            .collect();
+        std::fs::write(&path, legacy).unwrap();
+        let listed = m.run(["list", "--color", "never"]);
+        let shown = m.run(["show", key, "--color", "never"]);
+        assert_eq!(listed.returncode(), 0, "{}", listed.stderr);
+        assert_eq!(shown.returncode(), 0, "{}", shown.stderr);
+        assert!(
+            listed.stdout.contains(&format!("[P{number}]")),
+            "{}",
+            listed.stdout
+        );
+        assert!(
+            shown.stdout.contains(&format!("[P{number} · OPEN]")),
+            "{}",
+            shown.stdout
+        );
+        let detail = m.bead(["show", key]).unwrap();
+        assert_eq!(detail[0]["priority"], Value::Bool(flag));
+        assert_eq!(std::fs::read_to_string(&path).unwrap().lines().count(), 2);
+    }
 }
 
 /// An event this bead cannot apply (an unknown operation, a newer format: what a newer bead would

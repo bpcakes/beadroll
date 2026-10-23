@@ -97,10 +97,16 @@ impl ClaimStep<'_> {
             }
             let mut data = Object::new();
             data.insert("mode".into(), Value::from(mode.as_str()));
-            data.insert(
-                "generation".into(),
-                Value::Int(issue.claim_generation().plus_one()),
-            );
+            let generation = issue.claim_generation().plus_one().ok_or_else(|| {
+                Failure::new(
+                    Code::Validation,
+                    format!(
+                        "{}: claim generation is beyond what bead counts",
+                        issue.key()
+                    ),
+                )
+            })?;
+            data.insert("generation".into(), Value::Int(generation));
             let mut valid = true;
             if let (Some(reason), Some(held)) = (self.takeover, held) {
                 let (reason, ok) = arg_text(reason);

@@ -2,9 +2,10 @@
 
 use std::ffi::OsString;
 
-use beadroll_core::json::{Object, Value};
+use beadroll_core::json::{self, Format, Object, Value};
+use beadroll_core::op::IntegerField;
 use beadroll_core::state::Issue;
-use beadroll_core::text::{repr, str_of};
+use beadroll_core::text::str_of;
 use beadroll_core::view::icon;
 use beadroll_store::merged_into_default;
 
@@ -100,7 +101,10 @@ fn lines_of(item: &Object) -> Vec<Line> {
 fn summary(item: &Object) -> (Line, Vec<String>) {
     let mut lines = Vec::new();
     let status = field(item, "status");
-    let priority = field(item, "priority");
+    let priority = item
+        .get("priority")
+        .and_then(IntegerField::read)
+        .map_or_else(String::new, |priority| priority.to_string());
     let first = Line::new()
         .with(Tone::of_status(&status), icon(&status))
         .with(Tone::Plain, " ")
@@ -232,11 +236,11 @@ fn relations(item: &Object) -> Vec<String> {
                 .unwrap_or_default()
                 .iter()
                 .map(|o| {
-                    format!(
-                        "{} by {}",
-                        repr(o.get("value").unwrap_or(&Value::Null)),
-                        text_of(o, "by")
-                    )
+                    // each value as JSON (until roll-lqjj.53.2 as Python's `repr()` printed it)
+                    let value = o.get("value").unwrap_or(&Value::Null);
+                    let shown = json::write(value, Format::COMPACT)
+                        .unwrap_or_else(|_| format!("{value:?}"));
+                    format!("{shown} by {}", text_of(o, "by"))
                 })
                 .collect();
             lines.push(format!(

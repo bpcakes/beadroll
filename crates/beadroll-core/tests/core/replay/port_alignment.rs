@@ -133,7 +133,7 @@ fn u07_payloads_that_reached_the_last_resort_are_refused_by_name() {
         None,
         json!({"key": "ex-t", "fields": {"title": "t"}}),
     );
-    let long = format!("x.{}", "1".repeat(4301));
+    let long = format!("x.{}", "1".repeat(4300));
     let taken = event(
         3,
         "create",
@@ -183,7 +183,7 @@ fn u07_payloads_that_reached_the_last_resort_are_refused_by_name() {
             .iter()
             .any(|problem| problem.contains("could not be applied"))
     );
-    // A renamed copy counts up from its number, and 10**4300 has one digit too many to print.
+    // The original admission limit leaves a digit for a duplicate's carry.
     let nines = format!("x.{}", "9".repeat(4300));
     let refused = event(
         9,

@@ -69,7 +69,10 @@ fn finishing(
 ) -> (Result<Option<Answer>, Failure>, Arc<AtomicUsize>) {
     let (outcome, freed) = holding_a_probe();
     ws.set_wrote(wrote);
-    (finish(outcome, Some(ws), offline, &None, exits), freed)
+    (
+        finish(outcome, Some(ws), offline, &None, exits, |_| {}),
+        freed,
+    )
 }
 
 /// A write that is not published (`--offline`) keeps what it held past `finish`, to the end of the
@@ -192,7 +195,7 @@ fn a_write_given_a_remote_is_published_there_and_lets_go_of_what_it_held_first()
     for ws in [with_origin, without_origin(&machine, Object::new())] {
         let (outcome, freed) = holding_a_probe();
         ws.set_wrote(true);
-        let answer = finish(outcome, Some(&ws), false, &nowhere, true);
+        let answer = finish(outcome, Some(&ws), false, &nowhere, true, |_| {});
         let (_, lines) = answer.expect("finished").expect("answered");
         assert_eq!(
             freed.load(Ordering::SeqCst),
@@ -247,7 +250,7 @@ fn a_write_that_publishes_lets_go_of_what_it_held_before_the_publish_reads_a_sta
             let done = || finished.load(Ordering::SeqCst) > 0;
             meet(&gate, &done, || freed.load(Ordering::SeqCst))
         });
-        let answer = finish(outcome, Some(&ws), false, &None, true);
+        let answer = finish(outcome, Some(&ws), false, &None, true, |_| {});
         finished.store(1, Ordering::SeqCst);
         let met = meeting
             .join()

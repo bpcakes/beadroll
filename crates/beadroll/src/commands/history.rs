@@ -48,7 +48,7 @@ pub(crate) fn log(
         .filter(|e| e.op_name() != "init")
         .filter(|e| wanted.is_none() || e.issue() == wanted.as_deref())
         .collect();
-    let limit = limit.map_or(0, Int::saturating_i128);
+    let limit = limit.map_or(0, Int::as_i128);
     if limit != 0 {
         let len = rows.len() as i128;
         let start = if limit > 0 {

@@ -53,6 +53,7 @@ pub struct Workspace {
     pub settings: Arc<Settings>,
     holding: Cell<bool>,
     wrote: Cell<bool>,
+    committed: Cell<bool>,
     pub(crate) claims: RefCell<Claims>,
     /// What `meta.json` held when this process last read or wrote it, by that file's identity.
     meta_read: RefCell<Option<(FileKey, MetaRead)>>,
@@ -90,6 +91,7 @@ impl Workspace {
             settings,
             holding: Cell::new(false),
             wrote: Cell::new(false),
+            committed: Cell::new(false),
             claims: RefCell::new(Claims::default()),
             meta_read: RefCell::new(None),
         })
@@ -125,6 +127,19 @@ impl Workspace {
     /// Records whether this process appended events the remote does not have yet.
     pub fn set_wrote(&self, wrote: bool) {
         self.wrote.set(wrote);
+    }
+
+    /// Whether this workspace committed a local event or recognized this command's accepted
+    /// ownership attempt, including a matching receipt from an earlier invocation.
+    /// Publication may clear [`Self::wrote`], but cannot undo that effect of the command.
+    pub fn committed(&self) -> bool {
+        self.committed.get()
+    }
+
+    /// Records a successful durable write or this command's accepted receipt, retained for this
+    /// workspace's lifetime so later bookkeeping cannot report the committed request as failed.
+    pub fn record_commit(&self) {
+        self.committed.set(true);
     }
 
     /// A tracked configuration value that is a string.

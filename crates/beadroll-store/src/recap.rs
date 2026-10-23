@@ -267,7 +267,7 @@ fn read_cursor(path: &Path) -> Result<RecapCursor, Error> {
 /// A whole number from zero up, as `value` holds it.
 fn count(value: Option<&Value>) -> Option<u64> {
     match value {
-        Some(Value::Int(int)) => u64::try_from(int.saturating_i128()).ok(),
+        Some(Value::Int(int)) => u64::try_from(int.as_i128()).ok(),
         _ => None,
     }
 }

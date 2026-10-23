@@ -16,9 +16,12 @@ use crate::journal::{Event, Rest};
 use crate::json::{Object, Value};
 use crate::op::Op;
 use crate::state::{
-    Awaiting, Comment, Edge, IdMap, IdSet, Issue, KeySpace, Knowledge, Meta, Stale, State, Target,
+    Awaiting, Comment, Edge, IdMap, IdSet, Integrity, Issue, KeySpace, Knowledge, Meta, Stale,
+    State, Target,
 };
 use crate::text::str_of;
+
+pub(super) const CLAIM_GENERATION_EXHAUSTED: &str = "claim generation is beyond what bead counts";
 
 /// The event replay is applying: its index in the journal, its id, what replay keeps of it, and
 /// what it does.
@@ -99,7 +102,18 @@ pub(super) fn apply_event(
     };
     let applied = match op {
         Op::Set(fields) => set(&c, issue, fields),
-        Op::Claim(claiming) => claims::claim(&c, issue, claiming),
+        Op::Claim(claiming) => match claims::claim(&c, issue, claiming) {
+            Ok(applied) => applied,
+            Err(problem) => {
+                st.integrity.push(Integrity {
+                    event: Some(event.id.to_string()),
+                    issue: Some(issue.key().to_owned()),
+                    problem: problem.to_owned(),
+                    origin: None,
+                });
+                false
+            }
+        },
         Op::Release(ending) => claims::release(&c, issue, ending),
         Op::Close(ending) => claims::close(&c, issue, ending, true),
         Op::Delete(ending) => claims::close(&c, issue, ending, false),

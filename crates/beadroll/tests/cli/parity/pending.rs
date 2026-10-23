@@ -11,6 +11,8 @@ use beadroll_test_support::{Machine, code, parse_json};
 
 use super::{id, json, settings};
 
+mod publication;
+
 /// What settling left of a store's pending attempts: the files in `pending/` by suffix, and whether
 /// the issue is claimed.
 fn settled(machine: &Machine, key: &str) -> (usize, usize, bool) {
@@ -141,20 +143,21 @@ fn an_unremovable_invalid_pending_file_is_an_io_error() {
 }
 
 /// Expected unpublished counts for a three-event segment with unusual published counts. Falsy
-/// values read as zero; integer arithmetic is exact within an `i64` or a `u64`, and an integer
-/// beyond reads as a float (roll-lqjj.53; exact to 4,300 digits before); floats truncate and
-/// strings parse as integers. A large negative published count therefore produces a large
-/// unpublished count. Omit the count when nothing is unpublished.
+/// values read as zero; integer arithmetic is exact within an `i128`, an integer beyond a `u64`
+/// or an `i64` reads as a float (roll-lqjj.53; exact to 4,300 digits before) and one beyond an
+/// `i128` is refused (roll-lqjj.53.2); floats truncate and strings parse as whole numbers. A large
+/// negative published count therefore produces a large unpublished count. Omit the count when
+/// nothing is unpublished.
 const COUNTS: [(&str, Option<&str>); 10] = [
     ("-9223372036854775808", Some("9223372036854775811")),
     (
-        // the float -1e44, whole: -100000000000000008821361405306422640701865984
-        "-99999999999999999999999999999999999999999999",
-        Some("100000000000000008821361405306422640701865987"),
+        // the float -1e30, whole: -1000000000000000019884624838656
+        "-999999999999999999999999999999",
+        Some("1000000000000000019884624838659"),
     ),
     ("1e20", None),
     ("-2.5", Some("5")),
-    ("\" 1_0 \"", None),
+    ("\" 10 \"", None),
     ("true", Some("2")),
     ("null", Some("3")),
     ("1", Some("2")),
@@ -207,19 +210,196 @@ fn unpublished_counts_handle_metadata_json_shapes() {
     }
 }
 
-/// A nonnumeric published count returns IO naming the value. This build-specific error check uses
-/// the package's binary regardless of BEAD_UNDER_TEST.
+/// A nonnumeric published count returns IO naming the value: text that is not a whole number
+/// (`" 1_0 "`, which read as 10 until roll-lqjj.53.2), or a number beyond what bead counts (the
+/// 44-digit integer reads as the float -1e44, beyond an `i128`). This build-specific error check
+/// uses the package's binary regardless of BEAD_UNDER_TEST.
 #[test]
 fn a_published_count_that_is_not_a_number_is_an_io_error() {
     let sandbox = crate::sandbox();
     let r = crate::rust_only(&sandbox, "r");
     let (meta, original, segment, published) = published_three(&r);
-    let edited = original.replacen(&published, &format!("\"{segment}\": \"x\""), 1);
-    std::fs::write(&meta, edited).unwrap();
-    let refused = r.run(["list", "--json"]);
-    assert_eq!(code(&refused), "IO", "{}", refused.stderr);
-    let wanted = format!("the published count of {segment} is not a number");
-    assert!(refused.stderr.contains(&wanted), "{}", refused.stderr);
-    let quiet = "an error prints nothing on standard output";
-    assert_eq!(refused.stdout, "", "{quiet}");
+    for count in [
+        "\"x\"",
+        "\" 1_0 \"",
+        "-99999999999999999999999999999999999999999999",
+    ] {
+        let edited = original.replacen(&published, &format!("\"{segment}\": {count}"), 1);
+        std::fs::write(&meta, edited).unwrap();
+        let refused = r.run(["list", "--json"]);
+        assert_eq!(code(&refused), "IO", "{count}: {}", refused.stderr);
+        let wanted = format!("the published count of {segment} is not a number");
+        assert!(
+            refused.stderr.contains(&wanted),
+            "{count}: {}",
+            refused.stderr
+        );
+        let quiet = "an error prints nothing on standard output";
+        assert_eq!(refused.stdout, "", "{count}: {quiet}");
+    }
+}
+
+/// AD03: valid i128 inputs can still overflow the caller's subtraction, aggregate or final
+/// attempt increment. None may turn into a default count, panic or partial durable write.
+#[test]
+fn ad03_unpublished_count_arithmetic_overflow_is_an_unchanged_store_error() {
+    for boundary in ["subtraction", "aggregate", "attempt"] {
+        let sandbox = crate::sandbox();
+        let r = crate::rust_only(&sandbox, "r");
+        let (meta, original, segment, _) = published_three(&r);
+        let mut edited = parse_json(&original).unwrap().as_object().unwrap().clone();
+        let mut counts = Object::new();
+        let known = match boundary {
+            "subtraction" => i128::MIN,
+            "aggregate" => {
+                let second = segment.replace("000001.jsonl", "000002.jsonl");
+                std::fs::write(r.store().join(&second), b"").unwrap();
+                counts.insert(second, Value::from((-i128::MAX / 2).to_string()));
+                -i128::MAX / 2
+            }
+            "attempt" => {
+                let listed = json(&r, &["list"]);
+                let key = listed["issues"][0]["id"].as_str().unwrap();
+                json(&r, &["claim", key]);
+                // The real accepted attempt is now absent from the edited published map.
+                assert!(
+                    durable_inputs(&r.store().join("events"))
+                        .iter()
+                        .any(|(path, _)| path.parent().unwrap().file_name().unwrap() == "claims")
+                );
+                3 - i128::MAX
+            }
+            _ => unreachable!(),
+        };
+        // Strings preserve the exact i128 values through the JSON reader and typed metadata.
+        counts.insert(segment, Value::from(known.to_string()));
+        edited.insert("published".into(), Value::from(counts));
+        let bytes = write(&Value::from(edited), Format::INDENTED).unwrap();
+        std::fs::write(&meta, &bytes).unwrap();
+        let events = durable_inputs(&r.store().join("events"));
+        let refused = r.run(["list", "--json"]);
+        assert_eq!(code(&refused), "IO", "{boundary}: {}", refused.stderr);
+        let what = if boundary == "attempt" {
+            "attempt files"
+        } else {
+            "published counts"
+        };
+        assert!(
+            refused.stderr.contains(&format!(
+                "the {what} put the unpublished count beyond what bead counts"
+            )),
+            "{boundary}: {}",
+            refused.stderr
+        );
+        assert_eq!(refused.stdout, "", "{boundary}");
+        assert_eq!(std::fs::read_to_string(&meta).unwrap(), bytes, "{boundary}");
+        assert_eq!(
+            durable_inputs(&r.store().join("events")),
+            events,
+            "{boundary}"
+        );
+    }
+}
+
+/// AF01: the count is valid before the write and overflows only after its event is committed.
+/// A warning preserves the success and result shape, so a caller has no false failure to retry.
+#[test]
+fn af01_a_committed_write_keeps_its_result_when_the_unpublished_count_overflows() {
+    for shape in ["object", "array", "silent", "human", "init"] {
+        let sandbox = crate::sandbox();
+        let r = crate::rust_only(&sandbox, "r");
+        let (meta, original, segment, published) = published_three(&r);
+        let listed = json(&r, &["list"]);
+        let key = id(&listed["issues"][0]);
+        let edited = original.replacen(
+            &published,
+            &format!("\"{segment}\": \"{}\"", 3 - i128::MAX),
+            1,
+        );
+        std::fs::write(&meta, &edited).unwrap();
+        let listed = r.run(["list", "--json"]);
+        assert_eq!(listed.returncode(), 0, "{}", listed.stderr);
+        assert!(
+            listed
+                .stdout
+                .contains(&format!("\"unpublished\": {}", i128::MAX))
+        );
+        let path = r.store().join(&segment);
+        let before = std::fs::read_to_string(&path).unwrap();
+        let import = sandbox.root().join("extra.jsonl");
+        std::fs::write(&import, "{\"id\":\"ex-imported\",\"title\":\"imported\"}\n").unwrap();
+        let mut args = match shape {
+            "array" => vec!["update", &key, "--title", "after"],
+            "silent" => vec!["create", "third", "--silent"],
+            "init" => vec![
+                "init",
+                "--remote",
+                "origin",
+                "--import",
+                import.to_str().unwrap(),
+            ],
+            _ => vec!["comments", "add", &key, "once"],
+        };
+        args.push("--offline");
+        if shape != "human" {
+            args.push("--json");
+        }
+        let written = r.run(args);
+        assert_eq!(written.returncode(), 0, "{shape}: {}", written.stderr);
+        assert_count_warning(shape, &written.stdout, &written.stderr);
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert!(after.starts_with(&before));
+        assert_eq!(after.lines().count(), before.lines().count() + 1, "{shape}");
+        // Merely reading the new state still reports the count error and writes no event.
+        let refused = r.run(["list", "--json"]);
+        assert_eq!(code(&refused), "IO");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), after);
+        std::fs::write(&meta, &original).unwrap();
+        if matches!(shape, "object" | "human") {
+            let shown = json(&r, &["show", &key]);
+            let comments = shown[0]["comments"].as_array().unwrap();
+            assert_eq!(comments.len(), 1);
+            assert_eq!(comments[0]["text"].as_str(), Some("once"));
+        }
+    }
+}
+
+/// A committed write's usual result and a separate, actionable count warning.
+fn assert_count_warning(shape: &str, stdout: &str, stderr: &str) {
+    if shape == "human" {
+        assert!(stdout.contains("Comment added"));
+        assert!(stderr.starts_with("Warning: write recorded locally;"));
+    } else {
+        let warning = parse_json(stderr).unwrap();
+        assert_eq!(warning["warning"]["code"].as_str(), Some("IO"));
+        assert!(
+            warning["warning"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("write recorded locally;")
+        );
+        let result = parse_json(stdout).unwrap();
+        match shape {
+            "array" => assert_eq!(result[0]["title"].as_str(), Some("after")),
+            "silent" => assert!(result["id"].as_str().unwrap().starts_with("ex-")),
+            "init" => assert_eq!(result["imported"].as_i64(), Some(1)),
+            _ => assert_eq!(result["text"].as_str(), Some("once")),
+        }
+    }
+    assert!(stderr.contains("repair it, or run"));
+}
+
+fn durable_inputs(dir: &std::path::Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
+    let mut files = Vec::new();
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            files.extend(durable_inputs(&path));
+        } else {
+            let bytes = std::fs::read(&path).unwrap();
+            files.push((path, bytes));
+        }
+    }
+    files.sort();
+    files
 }

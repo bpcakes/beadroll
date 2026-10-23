@@ -189,10 +189,9 @@ pub fn active_segment(ws: &Workspace, replica: &str) -> Result<PathBuf, Error> {
             folder.display()
         ))
     };
-    let next = parse_integer(stem).ok_or_else(unnumbered)?.plus_one();
-    if next.digit_count() > beadroll_core::json::MAX_DIGITS {
-        return Err(unnumbered());
-    }
+    let next = parse_integer(stem)
+        .and_then(|number| number.plus_one())
+        .ok_or_else(unnumbered)?;
     Ok(folder.join(format!("{}.jsonl", next.zero_padded(6))))
 }
 
@@ -236,6 +235,9 @@ pub fn append_events(
     }
     file.write_all(rest).map_err(|e| IoError::bare(&e))?;
     fsync(&file)?;
+    if !data.is_empty() {
+        ws.record_commit();
+    }
     Ok(())
 }
 

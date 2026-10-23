@@ -1,5 +1,7 @@
 //! Storage tests: what the store writes, its readers read back.
 
+mod rotation;
+
 mod metadata {
     use beadroll_core::json::{self, Format, Int, Object, Value};
     use beadroll_store::Workspace;
