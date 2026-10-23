@@ -1835,7 +1835,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
   what replay keeps out of it; no value is built for the line, and the envelope's rules are judged
   on what was read (`Envelope::problem`), the payload's on the payload (`payload_problem`).
   Both use a borrowed envelope view, as do `event_problem` and `payload_problem` on a value:
-  validation never clones or disposes of unrelated members (AB02). A record built in memory
+  validation never clones or disposes of unrelated members (AB02). The value-returning attempt
+  reader also validates by reference, keeping every written member in its result without a
+  temporary owned envelope (AC01). Its non-object check comes before envelope validation, which
+  comes before payload validation, as in the typed reader. A record built in memory
   (a transaction's, a test's) walks into the same
   envelope (`Envelope::from_value`), so there is one reader of events, and a journal's
   `add_segment` and `add_attempt` read a file by the rules `read_segment` and `read_attempt`

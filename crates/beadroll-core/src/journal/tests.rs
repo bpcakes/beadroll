@@ -189,7 +189,10 @@ fn an_attempt_is_read_whole_or_not_at_all() {
             "attempt line is not an event",
         ),
         (
-            segment(&[&line(1, "init", None, "{}"), r#"{"id": "x"}"#]),
+            segment(&[
+                &line(1, "init", None, "{}"),
+                r#"{"id":"x","op":"frobnicate","data":null}"#,
+            ]),
             "id is not a UUID",
         ),
         (
@@ -219,6 +222,29 @@ fn an_attempt_is_read_whole_or_not_at_all() {
         assert!(read_attempt(&data, "events/a/claims/x.json", Some(&mut reported)).is_empty());
         assert_eq!(reported, journal.invalid, "{problem}");
     }
+}
+
+#[test]
+fn an_attempt_keeps_members_it_does_not_validate() {
+    let mut value = parse(line(1, "init", None, r#"{"prefix":"ex"}"#).as_bytes())
+        .unwrap()
+        .value;
+    let Value::Object(object) = &mut value else {
+        panic!("an event is an object");
+    };
+    object.insert(
+        "future".to_owned(),
+        parse(br#"{"nested":[{"text":"kept","count":3}]}"#)
+            .unwrap()
+            .value,
+    );
+    let bytes = json::write(&value, Format::COMPACT).unwrap();
+    let mut reported = Vec::new();
+    assert_eq!(
+        read_attempt(bytes.as_bytes(), "attempt", Some(&mut reported)),
+        vec![value]
+    );
+    assert!(reported.is_empty());
 }
 
 #[test]

@@ -6,6 +6,53 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- The value-returning attempt reader validates each parsed event by reference, without copying
+  it into a temporary envelope (AC01, roll-lqjj.53.1.1). It retains unknown members and the
+  non-object, envelope and payload diagnostic order; a malformed line still rejects the whole
+  attempt.
+
+  The completed typed readers, including metadata and this attempt repair, were measured on
+  2026-10-23 with alternating release base/repaired/base/repaired runs on the same machine,
+  pinned to CPU 3 (AC02). Each round ran `timing --parse 200000`, then `timing --read 200000`,
+  using the matching saved `bead` through `BEAD_UNDER_TEST`. The base is `9e27e78`; the repaired
+  build is `02d0d82` plus the exact source patch in the
+  [raw records](docs/reviews/2026-10-23-20-performance.json). Those records include executable
+  SHA-256s and a reproducible digest of all tracked build inputs, verified unchanged after the
+  measurements and documentation. This identifies the measured code independently of the
+  recorder's runtime `commit`/`dirty` fields. Both executables were built with
+  `cargo build --release --locked --package xtask --package beadroll` in this checkout; the base
+  contents were temporarily restored for its build, then the original source restored before
+  applying the repair. No other checkout was used.
+
+  Parsing, fastest of seven per run, in seconds:
+
+  | Measure | Base 1 | Repaired 1 | Base 2 | Repaired 2 |
+  |---|---:|---:|---:|---:|
+  | Generic metadata | 0.0490 | 0.0409 | 0.0445 | 0.0441 |
+  | Typed metadata | — | 0.0393 | — | 0.0383 |
+  | Generic lines | 0.7161 | 0.7448 | 0.7725 | 0.7597 |
+  | Journal load | — | 0.7636 | — | 0.8214 |
+
+  End-to-end reads, fastest of five per command, in seconds:
+
+  | Command | Base 1 | Repaired 1 | Base 2 | Repaired 2 |
+  |---|---:|---:|---:|---:|
+  | Warm `list` | 0.0864 | 0.0857 | 0.1025 | 0.0865 |
+  | Cold `list` | 2.6822 | 1.8010 | 3.2337 | 1.8628 |
+  | Cold `show` | 3.0167 | 1.7639 | 3.1528 | 1.8834 |
+  | Cold `ready` | 2.7682 | 1.8680 | 3.3208 | 2.0745 |
+  | Cold `info` | 2.5153 | 1.7538 | 3.0931 | 1.7683 |
+  | Cold `machines` | 2.7721 | 1.9281 | 3.1457 | 1.9736 |
+  | Cold write | 2.5988 | 1.8371 | 3.0768 | 1.8162 |
+  | First `list` after sync (one read) | 2.8981 | 1.8461 | 3.6807 | 2.0879 |
+  | Warm `log --limit 1` | 1.9577 | 1.1902 | 2.6470 | 1.2221 |
+  | Cold `log --limit 1` | 4.6204 | 3.1358 | 5.2738 | 3.1749 |
+
+  Machine load varied between runs; these are measurements, not a speed guarantee. The base
+  predates the typed-metadata and journal-load measures, so its missing figures are not zero.
+  The raw record retains every command's figures, including warm reads and ownership commands.
+  The earlier measurements below remain historical evidence for their stated source versions.
+
 - The typed-reader review repairs (roll-lqjj.53.1.1, AB01–AB05) keep in-memory validation
   borrowed and use an iterative digest fallback for values too deep to print; tests cover
   100,000 levels without recursive test cleanup. Metadata now reads its published map straight
@@ -36,7 +83,7 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   existing generic measure. The base has no `journal_seconds`: the earlier 1.44 → 0.85 s pair
   below came from the custom in-process load harness, not that field. The recorded `--read
   200000` comparisons below remain the original same-machine, alternating release measurements;
-  they were not rerun for these repairs.
+  they predate the metadata repairs; the completed readers are measured above.
 
 - A journal reads each line straight into what it keeps of the record, with no value built for
   the line (roll-lqjj.53.1): serde_json reads the envelope into typed members (the id and the

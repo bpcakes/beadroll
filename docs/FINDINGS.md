@@ -20,6 +20,17 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Review 20: Claude review of the typed-reader repairs (ids AC)
+
+Reported inline: the review of `9e27e78..02d0d82` on 2026-10-23 completed through Claude;
+Codex's CLI adapter failed before review. Its frozen report is retained in the repair handoff
+outside the checkout. These are the two findings verified from that completed pass.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AC01 | Low | The value-returning attempt reader cloned each whole event for validation | optimized | The shared attempt helper takes a borrowed validation callback; each reader keeps its original record and diagnostic order | `beadroll-core`: `journal::tests::an_attempt_is_read_whole_or_not_at_all`, `an_attempt_keeps_members_it_does_not_validate`; release measurements in `reviews/2026-10-23-20-performance.json` |
+| AC02 | Low | End-to-end timings predated the metadata-reader repairs | fixed | Alternating release base/final parse and read measurements cover the repaired source, identified by executable hashes, a source patch and a reproducible build-input digest | CHANGELOG.md and raw records in `reviews/2026-10-23-20-performance.json`; source-input verification |
+
 ## Review 19: Claude and Codex review of typed journal lines (ids AB)
 
 Reported inline: independent reviews of `9e27e78..860bd5f` on 2026-10-23, with frozen reports

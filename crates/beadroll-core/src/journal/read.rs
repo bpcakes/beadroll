@@ -3,9 +3,7 @@
 //! [`Journal::add_attempt`], roll-lqjj.53.1); or into values, for a tool that needs a record as
 //! it was written ([`read_segment`], [`read_attempt`]). Both read a file by the same rules.
 
-use std::borrow::Cow;
-
-use crate::event::Envelope;
+use crate::event::{Envelope, event_problem, payload_problem};
 use crate::json::{self, ParseError, Value};
 use crate::text::strip_bytes;
 
@@ -82,24 +80,17 @@ fn attempt_lines<T>(
     out
 }
 
-/// An attempt line's event, judged whole: `read` reads the line, `envelope` what was read of its
-/// envelope.
+/// An attempt line's event, judged whole: `read` reads the line, and `problem` checks it by
+/// reference so a reader that keeps the written value need not copy it for validation.
 fn judged<T>(
     line: &[u8],
     read: impl FnOnce(&[u8]) -> Result<T, ParseError>,
-    envelope: impl FnOnce(&T) -> Cow<'_, Envelope>,
+    problem: impl FnOnce(&T) -> Option<String>,
 ) -> Judged<T> {
     let Ok(record) = read(line) else {
         return Err("line is not valid JSON".to_owned());
     };
-    let problem = {
-        let envelope = envelope(&record);
-        if !envelope.object {
-            return Err("attempt line is not an event".to_owned());
-        }
-        envelope.problem().or_else(|| envelope.payload_problem())
-    };
-    match problem {
+    match problem(&record) {
         None => Ok(record),
         Some(problem) => Err(problem),
     }
@@ -116,7 +107,11 @@ pub fn read_segment(data: &[u8], origin: &str, problems: Option<&mut Vec<Problem
 pub fn read_attempt(data: &[u8], origin: &str, problems: Option<&mut Vec<Problem>>) -> Vec<Value> {
     attempt_lines(data, origin, problems, |line| {
         judged(line, loads_line, |value| {
-            Cow::Owned(Envelope::from_value(value.clone()))
+            if !matches!(value, Value::Object(_)) {
+                Some("attempt line is not an event".to_owned())
+            } else {
+                event_problem(value).or_else(|| payload_problem(value))
+            }
         })
     })
 }
@@ -154,7 +149,13 @@ impl Journal {
             judged(
                 line,
                 |line| self.read_line(line),
-                |(envelope, _)| Cow::Borrowed(envelope),
+                |(envelope, _)| {
+                    if !envelope.object {
+                        Some("attempt line is not an event".to_owned())
+                    } else {
+                        envelope.problem().or_else(|| envelope.payload_problem())
+                    }
+                },
             )
         });
         self.invalid.append(&mut problems);
