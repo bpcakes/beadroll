@@ -20,6 +20,19 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Review 25: Claude and Codex review of publication-result repairs (ids AH)
+
+The independent reports cover `b5d5543..bf58a27` and are retained in
+`reviews/2026-10-23-25-claude.json` and `reviews/2026-10-23-25-codex.json`. Absolute home
+prefixes use `/home/<name>/`; the frozen originals remain in the external review run.
+Both reviewers found the same remaining receipt-recovery path. Codex and a separate
+scratch probe reproduced it; Claude also identified the resulting overstatement in the docs.
+The continued repair covers matching receipts from earlier invocations as well.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AH01 | Medium | An accepted ownership attempt recovered through merge and its receipt bypassed commitment tracking, so the final count could still report success as failure | fixed | Record this request's commitment at both accepted-receipt returns, covering a lost acknowledgement in the current retry loop and an earlier invocation's matching receipt without marking unrelated merge writes | `beadroll`: `parity::pending::publication::ah01_a_claim_recovered_after_a_lost_reply_keeps_its_result`, `parity::pending::publication::ah01_an_earlier_invocations_accepted_receipt_keeps_its_result` (both fail without the fix) |
+
 ## Review 24: Claude and Codex review of command-result repairs (ids AG)
 
 The independent reports cover `b5d5543..719b46d` and are retained in
@@ -30,7 +43,7 @@ that successful publication also saves the counts was contradicted by the inject
 
 | Id | Severity | Finding | Status | Resolution | Tests |
 |---|---|---|---|---|---|
-| AG01 | Medium | Successful publication cleared the flag AF01 used to recognize a committed command, so a failed metadata save could still turn success into a count error | fixed | Record commitment after a nonempty journal append or confirmed ownership write and retain it independently of the pending-publication flag; the shared count helper then preserves results even after publication within a command | `beadroll`: `parity::pending::publication::ag01_a_published_write_keeps_its_result_when_saving_counts_fails` (comment, init, claim; fails without the fix) |
+| AG01 | Medium | Successful publication cleared the flag AF01 used to recognize a committed command, so a failed metadata save could still turn success into a count error | fixed | Record commitment after a nonempty journal append or confirmed ownership write and retain it independently of the pending-publication flag; AH01 completes accepted-receipt recovery when confirmation bypasses those writes | `beadroll`: `parity::pending::publication::ag01_a_published_write_keeps_its_result_when_saving_counts_fails` (comment, init, claim; fails without the fix) |
 
 ## Review 23: fresh Claude and Codex branch review (ids AF)
 
@@ -43,7 +56,7 @@ rewriting its report. Both defects were confirmed against the command callers an
 
 | Id | Severity | Finding | Status | Resolution | Tests |
 |---|---|---|---|---|---|
-| AF01 | Medium | The unpublished count could overflow after a write committed, making a successful mutation look failed | fixed | Preserve the committed command's result and emit an actionable stderr warning, JSON with `--json`; keep read-only count failures as errors. AG01 completes this policy after successful publication | `beadroll`: `parity::pending::af01_a_committed_write_keeps_its_result_when_the_unpublished_count_overflows` |
+| AF01 | Medium | The unpublished count could overflow after a write committed, making a successful mutation look failed | fixed | Preserve the committed command's result and emit an actionable stderr warning, JSON with `--json`; keep read-only count failures as errors. AG01 and AH01 complete this policy after publication and accepted-receipt recovery | `beadroll`: `parity::pending::af01_a_committed_write_keeps_its_result_when_the_unpublished_count_overflows` |
 | AF02 | Low | `show` still printed legacy boolean priorities as `True` and `False` | fixed | Render the priority with `IntegerField` at the show summary boundary, preserving the JSON boolean and general diagnostic quoting | `beadroll`: `commands::format_policy::af02_list_and_show_print_legacy_boolean_priorities_as_numbers` |
 
 ## Review 22: Claude and Codex review of the parity repairs (ids AE)

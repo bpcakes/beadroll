@@ -1550,11 +1550,15 @@ These were decided deliberately. Report problems *with* them, not their existenc
   unavailable: a human warning, or `{"warning": {"code", "message"}}` with `--json`. This keeps
   stdout's object, array or other result shape intact and does not invite retrying a write that
   already happened. The shared command helper applies this rule to `init`'s chosen workspace
-  too; a run that wrote nothing still returns the count error. Count arithmetic remains checked.
+  too; read-only commands still return the count error. Count arithmetic remains checked.
   Commitment is recorded after a nonempty journal append is fsynced or an ownership attempt
   is confirmed, and retained for that workspace's lifetime (AG01). It is independent of the
   pending-write flag: successful publication clears that flag even when saving its counts
   fails. This also covers commands that publish before returning to the CLI.
+  A request recognized through its accepted ownership receipt records commitment too (AH01),
+  whether the next retry round recovered a lost push acknowledgement or an earlier invocation
+  left the receipt. The command recognizes its own accepted request; merging an unrelated
+  attempt does not make a read-only command a committed write.
 - Since roll-lqjj.53.2, integer `BEAD_ROTATE_BYTES`, `BEAD_REPACK_LOOSE` and `BEAD_REPACK_PACKS`
   values beyond an `i128` are `CONFIG`, and out-of-range integer flags are usage errors, rather
   than saturating at that bound (AD05). Unreadable or out-of-range `COLUMNS` falls back to the

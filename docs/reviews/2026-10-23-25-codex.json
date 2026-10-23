@@ -1,0 +1,63 @@
+{
+  "assignmentId": "00038-review",
+  "fingerprint": "6acc2d3518c7c0a6bb806229ed324822b17913aa6f976c037cd0573f90e5ba75",
+  "complete": true,
+  "findings": [
+    {
+      "key": "accepted-recovery-does-not-record-commit",
+      "path": "crates/beadroll-sync/src/tx/writes.rs",
+      "severity": "medium",
+      "title": "Record commitment when an accepted ownership attempt is recovered after a lost acknowledgement",
+      "evidence": "The new record_commit() at tx/writes.rs:54 covers confirm_ownership(), but coordinated() also completes an accepted write through ownership.rs:190-197 after a lost push acknowledgement. That path gets its durable attempt through link/merge.rs:188-208, whose write_journal() does not record commitment, then calls published() and returns success without confirm_ownership(). A failed metadata save leaves the pre-command counts in place and commands.rs:291-293 consequently treats the final count failure as a read-only error. I reproduced this against the pinned final binary with the test-support Sandbox/Machine: initialize and create two issues (three segment events), set the segment published count to the exact string 3-i128::MAX, verify list succeeds with unpublished=i128::MAX, then claim with BEAD_FAILPOINTS=\"push.reply=fail-reply;atomic-write:meta.json=errno(ENOSPC);backoff@always=skip\". The claim exited 1, stdout was empty, stderr was an IO error for the attempt-file increment, and restoring only the original count metadata revealed the durable online claim (generation 1). The probe itself exited 0 with its assertions satisfied. Source: /tmp/beadroll-pr46-command-repairs-1k66p28s/lost_ack_probe.rs; complete output: /tmp/beadroll-pr46-command-repairs-1k66p28s/lost_ack_probe.log. It was compiled with rustc --edition=2024, -L dependency=target/debug/deps and --extern beadroll_test_support=target/debug/libbeadroll_test_support.rlib, and run from /home/<name>/Documents/beadroll using only scratch stores and a local bare remote. Mark commitment when the current command recognizes its accepted attempt, including the recovery/receipt return paths, and add this lost-acknowledgement regression; marking only direct confirmations leaves R1 violated."
+    }
+  ],
+  "acceptance": [
+    {
+      "criterionId": "R1",
+      "status": "unsatisfied",
+      "evidence": "The shared commands::note_unpublished helper preserves stdout shapes and converts count errors to structured stderr warnings only after Workspace::committed is set; cli::finish and init's alternate-workspace boundary both route through it. The AF01 regression starts at a valid maximum count and checks non-idempotent comments, object/array/silent/human/init result shapes, durable append, and unchanged read-only IO behavior. The AG01 regression also covers direct accepted publication with a failed metadata save for comments, init and claim. However the independent lost_ack_probe described in accepted-recovery-does-not-record-commit shows that a successful claim recovered after an unanswered push still returns an error because that accepted path never records commitment. The passed baseline therefore does not establish the complete command-result guarantee.",
+      "validationIds": [
+        "baseline-stress"
+      ]
+    },
+    {
+      "criterionId": "R2",
+      "status": "satisfied",
+      "evidence": "commands/show.rs:104-108 reads the priority through IntegerField and displays its numeric value. IntegerField::Display similarly renders true/false as 1/0, while its original representation remains unchanged for JSON. commands/format_policy.rs::af02_list_and_show_print_legacy_boolean_priorities_as_numbers covers both booleans, list and show human output, and show detail JSON. The generic repr/repr_str diagnostic implementation is unchanged; show conflict values use the separately intended JSON rendering.",
+      "validationIds": [
+        "baseline-stress",
+        "fmt",
+        "clippy"
+      ]
+    },
+    {
+      "criterionId": "R3",
+      "status": "satisfied",
+      "evidence": "Reviewed the accumulated implementation and test diffs across b5d5543da780c7ed71210407fbe709130ab5e4f3..bf58a2703d2e3a857882339a8a9a09b36a8c6ad0, including earlier commits. Int uses checked i128 arithmetic, accepts the full u64 input range, and rejects out-of-range float conversion; numeric text now has the documented ASCII grammar. Stored numbered-key admission remains below 4300 digits and duplicate renaming increments decimal text independently of Int. Native generation exhaustion is refused before issue mutation, replay removes refused takeover supersession and retains missing-target unsettled state across retries, and projection extension rejects takeovers while sharing claim application. Focused numeric_limits, rotation and count tests exercise these boundaries, with the baseline/stress and existing format/projection suites passing. Core changes add no I/O/environment responsibility or upward dependency, and wire encoding remains unchanged. Historical review reports were not used as independent evidence.",
+      "validationIds": [
+        "baseline-stress",
+        "clippy",
+        "fuzz-fmt",
+        "fuzz-clippy",
+        "deny",
+        "fuzz-deny",
+        "support-build"
+      ]
+    },
+    {
+      "criterionId": "R4",
+      "status": "satisfied",
+      "evidence": "README.md, CHANGELOG.md, GUARANTEES.md, REVIEWING.md section 2 and FINDINGS.md record the two command-boundary findings, regression tests and deliberate successful-write/warning policy, including publication bookkeeping. Controller receipts 00029-validate through 00036-validate match this assignment fingerprint and content hash; I inspected their explicitly linked stdout/stderr logs. All eight required checks completed with exit 0: baseline reports 1206 tests passed, 10 skipped, 14 infra tests passed, and both stress models passed; formatting, workspace clippy, fuzz formatting/clippy, both dependency audits and standalone test-support build passed. The workspace dependency audit has only unused license-allowance warnings. The residual behavior defect is separately reported under R1; no successful required check was rerun for receipts.",
+      "validationIds": [
+        "baseline-stress",
+        "fmt",
+        "clippy",
+        "fuzz-fmt",
+        "fuzz-clippy",
+        "deny",
+        "fuzz-deny",
+        "support-build"
+      ]
+    }
+  ]
+}

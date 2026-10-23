@@ -1,0 +1,68 @@
+{
+  "assignmentId": "00040-review",
+  "fingerprint": "6acc2d3518c7c0a6bb806229ed324822b17913aa6f976c037cd0573f90e5ba75",
+  "complete": true,
+  "findings": [
+    {
+      "key": "merge-confirmed-attempt-not-recorded-as-commit",
+      "path": "crates/beadroll-sync/src/link/merge.rs:201",
+      "severity": "low",
+      "title": "An ownership attempt confirmed by the next round's merge never records commitment, so a failed final count still reports a committed claim as an error",
+      "evidence": "Kind: substantive defect (residual AG01 path). The final tip sets Workspace::committed only in append_events (beadroll-store/src/journal.rs:238-240) and in confirm_ownership (beadroll-sync/src/tx/writes.rs:51-55). note_unpublished (beadroll/src/commands.rs:290) turns a count failure into a warning only when ws.committed() is true. The coordinated online path never calls set_wrote(true), so for claim/release/conditional edits this flag is the only thing that keeps a committed result. Trigger: the supported lost-acknowledgement path in coordinated (beadroll-sync/src/ownership.rs). In round N, publish_attempt writes the pending attempt (ownership.rs:301). The push lands, but its answer is lost or RemoteUnreachable, so the result is PushOutcome::Uncertain (ownership.rs:306, 248-251) and confirm_ownership is not called. In round N+1, link.merge finds our pending attempt on the remote. merge_attempt writes it into events/<replica>/claims through write_journal (merge.rs:201-205), which also bypasses confirm_ownership. The receipt branch at ownership.rs:190-197 then returns the answer after published(). If published()'s note_sync save then fails, the scenario AG01 targets (ENOSPC on meta.json), with near-bound counts, or if unpublished_count fails for another reason, committed() is still false. note_unpublished then returns Err and the CLI exits 1 with an IO error, although this command's claim is accepted on the remote and durable locally. This is the false failure R1 forbids, and it invites a retry of a non-idempotent ownership change. FINDINGS AG01 and GUARANTEES say coordinated ownership is covered, but they describe only the confirm_ownership route. The AG01 test (tests/cli/parity/pending/publication.rs, the 'claim' case) uses a push that succeeds directly, so it never reaches this route. I established the mechanism by reading the source; I did not run a probe, because this review was read-only. Exposure needs both an uncertain push that actually landed and a count or save failure in the same run, so it is rare. Recommendation: record commitment where this command's own pending attempt is confirmed. The narrowest fix is ws.record_commit() in the receipt-hit branch at ownership.rs:190-197: that branch is reached only when this invocation's own attempt landed. Alternatively, record it in merge_attempt's ours_pending confirmation, if every caller should treat merge confirmation of a local pending attempt as this process's commit. Extend the AG01 claim case with an uncertain-then-landed push, for example a failpoint after the push lands that reports it unreachable."
+    }
+  ],
+  "acceptance": [
+    {
+      "criterionId": "R1",
+      "status": "unsatisfied",
+      "evidence": "Mostly implemented. note_unpublished (commands.rs:281-312) returns Ok(Some(warning)) for a count failure after a commit and Err otherwise, so read-only commands keep their structured IO error. cli::finish (cli.rs:343-345, 366-368) emits both init's count_warning and its own through warn (cli.rs:577-593): a separate {\"warning\":{code,message}} document under --json, a 'Warning:' line otherwise. warn ignores stderr failures, and stdout's shape is untouched. init's alternate workspace stores the warning in Outcome.count_warning (init.rs:438-440). Commitment is recorded after a fsynced nonempty append (journal.rs:238-240) or confirm_ownership (writes.rs:51-55), and it no longer depends on wrote(), which publication clears. That fixes the AG01 case. af01 covers object, array, silent, human and init offline writes that start from a valid i128::MAX count. It checks one appended line, a later read-only IO error, and that the comment exists exactly once. ag01 covers comment, init and claim with a successful publication followed by a metadata save failure. Residual: a coordinated attempt that this command made, but that was confirmed through link.merge after an uncertain push (merge.rs:201-205; receipt branch at ownership.rs:190-197), never records commitment. A count failure there still reports a committed claim as an IO error (finding merge-confirmed-attempt-not-recorded-as-commit).",
+      "validationIds": [
+        "baseline-stress",
+        "clippy",
+        "fmt"
+      ]
+    },
+    {
+      "criterionId": "R2",
+      "status": "satisfied",
+      "evidence": "show's summary reads the priority through IntegerField::read and its Display (show.rs:104-107), which is now self.number() (op.rs:81-84). true/false therefore print as 1/0, matching list's row path. to_value keeps the boolean in JSON. Generic str_of/repr/repr_str quoting is unchanged. field() still serves the other summary parts, and conflict values use compact JSON only in relations. commands::format_policy::af02_list_and_show_print_legacy_boolean_priorities_as_numbers rewrites a real create to each legacy boolean. It asserts [P1]/[P0] in list, [P1 · OPEN]/[P0 · OPEN] in show, a boolean in show --json, and an unchanged segment. short_fields asserts the core Display output is '1'.",
+      "validationIds": [
+        "baseline-stress",
+        "clippy"
+      ]
+    },
+    {
+      "criterionId": "R3",
+      "status": "satisfied",
+      "evidence": "Int is a checked i128 (json/int.rs): plus_one/add/sub return Option, from_f64 is bounded, and the writer prints every i128. The reader keeps u64 values exact (read.rs:65). parse_integer/parse_float/is_digits read Rust/ASCII syntax. Every former saturating_i128 caller (settings, layout, commands::first, history, recap) now calls as_i128 on values that are already bounded. Keys: number_too_long keeps the 4,299-digit domain, and free_key/next_number increment the suffix as text (key.rs). ad01 replays the recorded legacy 40-digit-key bytes. Claim exhaustion is refused before end_claim (claims.rs), recorded under integrity (apply.rs), and refused with VALIDATION before emission (ownership.rs:100-109). The replay retry makes refused takeovers inert and accumulates awaiting across passes (replay.rs). The ad02 and ae01 tests cover reclaim, both takeover routes, and projection/replay equivalence. Segment rotation and unpublished arithmetic return checked IO errors (ad03, ad04). Export's collision loop is bounded. Core gains no I/O, and no manifests changed.",
+      "validationIds": [
+        "baseline-stress",
+        "fmt",
+        "clippy",
+        "fuzz-fmt",
+        "fuzz-clippy",
+        "deny",
+        "fuzz-deny",
+        "support-build"
+      ]
+    },
+    {
+      "criterionId": "R4",
+      "status": "uncertain",
+      "evidence": "All required checks succeeded at this fingerprint: baseline-stress, fmt, clippy, fuzz-fmt, fuzz-clippy, deny, fuzz-deny and support-build (receipts 00029-00036). FINDINGS records AF01, AF02 and AG01 with their test names. CHANGELOG, README, GUARANTEES and REVIEWING §2 describe the warning policy, read-only errors, and the AF02 display. The earlier review archives were added as new files. However, GUARANTEES and REVIEWING say commitment covers coordinated ownership and holds after successful publication. That overstates the implementation: an attempt confirmed through merge after an uncertain push is not recorded (see the finding).",
+      "validationIds": [
+        "baseline-stress",
+        "fmt",
+        "clippy",
+        "fuzz-fmt",
+        "fuzz-clippy",
+        "deny",
+        "fuzz-deny",
+        "support-build"
+      ]
+    }
+  ],
+  "exitCode": 0,
+  "signal": null,
+  "execution": "completed"
+}

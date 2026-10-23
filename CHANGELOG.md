@@ -11,7 +11,8 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   locally; with `--json` it is `{"warning": {"code": "IO", "message": "..."}}`. Standard output
   keeps the command's usual shape. Read-only commands still fail with `IO` for a bad count.
   Successful publication also retains that result when saving its counts fails (AG01), for
-  local journal writes and coordinated ownership alike.
+  local journal writes and coordinated ownership alike. A retry that recognizes an accepted
+  receipt also keeps its result, within the same run or after a stopped invocation (AH01).
   `show` now prints legacy boolean priorities numerically, matching `list`, while JSON keeps the
   boolean (AF02).
 

@@ -282,7 +282,8 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   warns that the write was recorded locally and the count is unavailable.
   With `--json`, that warning is a separate `{"warning": {"code", "message"}}`
   document; read-only commands still report a count failure as an error. This
-  holds after successful publication too, even if saving its counts failed.
+  holds after successful publication too, even if saving its counts failed,
+  including when a retry recognizes an already accepted request.
 - Human output never hands the terminal a control character: titles, comments
   and names from journals or imports are shown with `\xNN` escapes. JSON output
   and stored data are untouched. Output is UTF-8 whatever the locale.

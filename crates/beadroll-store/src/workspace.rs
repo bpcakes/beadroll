@@ -129,14 +129,15 @@ impl Workspace {
         self.wrote.set(wrote);
     }
 
-    /// Whether a local event or accepted ownership attempt was committed through this workspace.
+    /// Whether this workspace committed a local event or recognized this command's accepted
+    /// ownership attempt, including a matching receipt from an earlier invocation.
     /// Publication may clear [`Self::wrote`], but cannot undo that effect of the command.
     pub fn committed(&self) -> bool {
         self.committed.get()
     }
 
-    /// Records a successful durable write, retained for this workspace's lifetime so later
-    /// bookkeeping cannot mistake an already committed command for one that wrote nothing.
+    /// Records a successful durable write or this command's accepted receipt, retained for this
+    /// workspace's lifetime so later bookkeeping cannot report the committed request as failed.
     pub fn record_commit(&self) {
         self.committed.set(true);
     }
