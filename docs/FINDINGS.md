@@ -20,6 +20,24 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Review 21: Claude and Codex review of parity retirement (ids AD)
+
+The independent reports of `9e27e78..3e311d7` are retained verbatim in
+`reviews/2026-10-23-21-claude.md` and `reviews/2026-10-23-21-codex.md`. After merging main at
+`109550d`, all five adjudicated findings were verified again: an old Rust writer reproduced the
+key loss, a native core probe reproduced generation reuse, and the merged source still lacked
+the two boundary test groups and the caller-specific compatibility notes. AD03–AD05 are
+supporting test/documentation obligations; they do not assert production corruption. AD02's
+maximum generation is reachable through the native value API, not ordinary parsed JSON.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AD01 | Medium | Imported long numbered keys disappeared on cold replay | fixed | Preserve the original 4,299-digit create domain and increment duplicate suffixes as decimal text independently of `Int` | `beadroll-core`: `replay::numeric_limits::ad01_a_long_key_written_by_the_old_importer_still_replays`, `replay::port_alignment::u07_payloads_that_reached_the_last_resort_are_refused_by_name`, `key::tests::free_key_counts_on_or_extends_the_key` |
+| AD02 | Low | Native claim-generation overflow silently reused the old generation | fixed | Refuse before ownership mutation or command emission; replay a near-bound native history without an exhausted takeover's supersession | `beadroll-core`: `replay::numeric_limits::ad02_exhausted_reclaim_reports_integrity_without_changing_the_issue`, `ad02_exhausted_takeover_keeps_the_owner_and_does_not_silence_its_release` |
+| AD03 | Low | Unpublished-count arithmetic errors lacked caller-level coverage | fixed | Exercise exact representable metadata counts that overflow subtraction, aggregate addition and the attempt increment; assert IO and unchanged durable files | `beadroll`: `parity::pending::ad03_unpublished_count_arithmetic_overflow_is_an_unchanged_store_error` |
+| AD04 | Low | Segment rotation exhaustion lacked storage-boundary coverage | fixed | Rotate the predecessor into the last segment number; refuse exhaustion without appending or creating a file | `beadroll-store`: `storage::rotation::ad04_rotation_accepts_the_last_number_and_refuses_exhaustion_without_writing` |
+| AD05 | Low | Numeric compatibility notes omitted affected callers and retained a stale digit contract | fixed | Document settings/flag overflow, COLUMNS fallback and the ASCII GIT_CONFIG_COUNT predicate; describe CountRules as caller supplied | CHANGELOG.md, REVIEWING.md §2 and `beadroll-git::CountRules`; source inspection |
+
 ## Review 20: Claude review of the typed-reader repairs (ids AC)
 
 Reported inline: the review of `9e27e78..02d0d82` on 2026-10-23 completed through Claude;

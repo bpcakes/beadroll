@@ -109,7 +109,7 @@ pub fn transport_config(proc: &Output) -> Vec<(String, String)> {
 /// Rules for the caller's GIT_CONFIG_COUNT: a digit predicate determines whether settings are
 /// present, then exact integer parsing reads their count.
 pub struct CountRules<'a> {
-    /// Whether a string is nonempty and consists entirely of Unicode digits.
+    /// Whether a string is nonempty and consists entirely of the caller's accepted digits.
     pub is_digit: &'a dyn Fn(&str) -> bool,
     /// The exact parsed integer as decimal text, or `None` when unreadable.
     pub int: &'a dyn Fn(&str) -> Option<String>,

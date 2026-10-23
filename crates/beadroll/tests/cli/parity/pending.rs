@@ -236,3 +236,80 @@ fn a_published_count_that_is_not_a_number_is_an_io_error() {
         assert_eq!(refused.stdout, "", "{count}: {quiet}");
     }
 }
+
+/// AD03: valid i128 inputs can still overflow the caller's subtraction, aggregate or final
+/// attempt increment. None may turn into a default count, panic or partial durable write.
+#[test]
+fn ad03_unpublished_count_arithmetic_overflow_is_an_unchanged_store_error() {
+    for boundary in ["subtraction", "aggregate", "attempt"] {
+        let sandbox = crate::sandbox();
+        let r = crate::rust_only(&sandbox, "r");
+        let (meta, original, segment, _) = published_three(&r);
+        let mut edited = parse_json(&original).unwrap().as_object().unwrap().clone();
+        let mut counts = Object::new();
+        let known = match boundary {
+            "subtraction" => i128::MIN,
+            "aggregate" => {
+                let second = segment.replace("000001.jsonl", "000002.jsonl");
+                std::fs::write(r.store().join(&second), b"").unwrap();
+                counts.insert(second, Value::from((-i128::MAX / 2).to_string()));
+                -i128::MAX / 2
+            }
+            "attempt" => {
+                let listed = json(&r, &["list"]);
+                let key = listed["issues"][0]["id"].as_str().unwrap();
+                json(&r, &["claim", key]);
+                // The real accepted attempt is now absent from the edited published map.
+                assert!(
+                    durable_inputs(&r.store().join("events"))
+                        .iter()
+                        .any(|(path, _)| path.parent().unwrap().file_name().unwrap() == "claims")
+                );
+                3 - i128::MAX
+            }
+            _ => unreachable!(),
+        };
+        // Strings preserve the exact i128 values through the JSON reader and typed metadata.
+        counts.insert(segment, Value::from(known.to_string()));
+        edited.insert("published".into(), Value::from(counts));
+        let bytes = write(&Value::from(edited), Format::INDENTED).unwrap();
+        std::fs::write(&meta, &bytes).unwrap();
+        let events = durable_inputs(&r.store().join("events"));
+        let refused = r.run(["list", "--json"]);
+        assert_eq!(code(&refused), "IO", "{boundary}: {}", refused.stderr);
+        let what = if boundary == "attempt" {
+            "attempt files"
+        } else {
+            "published counts"
+        };
+        assert!(
+            refused.stderr.contains(&format!(
+                "the {what} put the unpublished count beyond what bead counts"
+            )),
+            "{boundary}: {}",
+            refused.stderr
+        );
+        assert_eq!(refused.stdout, "", "{boundary}");
+        assert_eq!(std::fs::read_to_string(&meta).unwrap(), bytes, "{boundary}");
+        assert_eq!(
+            durable_inputs(&r.store().join("events")),
+            events,
+            "{boundary}"
+        );
+    }
+}
+
+fn durable_inputs(dir: &std::path::Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
+    let mut files = Vec::new();
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            files.extend(durable_inputs(&path));
+        } else {
+            let bytes = std::fs::read(&path).unwrap();
+            files.push((path, bytes));
+        }
+    }
+    files.sort();
+    files
+}

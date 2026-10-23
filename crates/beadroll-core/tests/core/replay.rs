@@ -3,6 +3,7 @@
 
 mod dependents;
 mod listing_order;
+mod numeric_limits;
 mod port_alignment;
 mod readiness;
 mod replay_audit_bugs;

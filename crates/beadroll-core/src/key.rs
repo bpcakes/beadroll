@@ -17,28 +17,26 @@ pub fn split_number(key: &str) -> Option<(&str, &str)> {
     numbered.then_some((stem, digits))
 }
 
-/// Whether a key's number leaves no room to count on: it is beyond what bead counts (an `i128`),
-/// or one below it. A key with such a number is refused at creation so a duplicate can still be
-/// renamed (U07 in `docs/FINDINGS.md`).
+/// Whether a key exceeds format 1's original admission limit. Older imports wrote numbered keys
+/// with up to 4,299 digits; they remain valid even though ordinary counters now use an `i128`.
 pub fn number_too_long(key: &str) -> bool {
-    split_number(key).is_some_and(|(_, digits)| {
-        Int::parse(digits)
-            .and_then(|number| number.plus_one())
-            .is_none()
-    })
+    split_number(key).is_some_and(|(_, digits)| digits.len() >= 4300)
 }
 
 /// A free key for a duplicate: numbered keys count upward; others take the shortest free prefix
-/// of the create's base-36 digest. Returns `None` if every prefix is taken, or the numbers run out.
+/// of the create's base-36 digest. Returns `None` if every digest prefix is taken.
 pub fn free_key(key: &str, uid: &str, taken: &dyn Fn(&str) -> bool) -> Option<String> {
     if let Some((stem, digits)) = split_number(key) {
-        let mut number = Int::parse(digits)?;
+        // Keys are stored text, not integer values. Count their suffix directly so a duplicate
+        // of a key an older importer wrote never depends on the current counter's range.
+        let trimmed = digits.trim_start_matches('0');
+        let mut number = if trimmed.is_empty() { "0" } else { trimmed }.to_owned();
         loop {
             let candidate = format!("{stem}.{number}");
             if !taken(&candidate) {
                 return Some(candidate);
             }
-            number = number.plus_one()?;
+            number = next_number(&number);
         }
     }
     let digest = b36(&Sha256::digest(uid.as_bytes()));
@@ -46,6 +44,20 @@ pub fn free_key(key: &str, uid: &str, taken: &dyn Fn(&str) -> bool) -> Option<St
         let candidate = format!("{key}{}", digest.get(..size)?);
         (!taken(&candidate)).then_some(candidate)
     })
+}
+
+/// Adds one to a nonempty string of ASCII digits, including a carry past its first digit.
+fn next_number(number: &str) -> String {
+    let mut digits = number.as_bytes().to_vec();
+    for digit in digits.iter_mut().rev() {
+        if *digit < b'9' {
+            *digit += 1;
+            return digits.into_iter().map(char::from).collect();
+        }
+        *digit = b'0';
+    }
+    digits.insert(0, b'1');
+    digits.into_iter().map(char::from).collect()
 }
 
 /// Why a key cannot be minted.
@@ -118,8 +130,9 @@ mod tests {
         for none in ["ex-1", "ex.", ".5", "a\nb.5", "x.\u{663}", "x.1a", "x.-1"] {
             assert_eq!(split_number(none), None, "{none:?}");
         }
-        assert!(number_too_long(&format!("x.{MOST}")));
-        assert!(number_too_long(&format!("x.{}", "1".repeat(40))));
+        assert!(!number_too_long(&format!("x.{MOST}")));
+        assert!(!number_too_long(&format!("x.{}", "1".repeat(4299))));
+        assert!(number_too_long(&format!("x.{}", "1".repeat(4300))));
         assert!(!number_too_long(&format!("x.{BELOW}")));
         assert!(!number_too_long("x.7"));
         assert!(!number_too_long("ex-1"));
@@ -134,9 +147,21 @@ mod tests {
             renamed.starts_with("ex-y") && renamed.len() > 4,
             "{renamed}"
         );
-        // The numbers run out where bead stops counting, instead of looping.
+        // AD01: stored key suffixes count beyond the ordinary integer's range.
         let most = format!("x.{MOST}");
-        assert_eq!(free_key(&most, "u", &|k| k == most), None);
+        assert_eq!(
+            free_key(&most, "u", &|k| k == most).as_deref(),
+            Some("x.170141183460469231731687303715884105728")
+        );
+        let nines = format!("x.{}", "9".repeat(4299));
+        assert_eq!(
+            free_key(&nines, "u", &|k| k == nines),
+            Some(format!("x.1{}", "0".repeat(4299)))
+        );
+        assert_eq!(
+            free_key("x.000", "u", &|k| k == "x.0").as_deref(),
+            Some("x.1")
+        );
         assert_eq!(
             free_key(&format!("x.{BELOW}"), "u", &taken).as_deref(),
             Some(&*format!("x.{BELOW}"))

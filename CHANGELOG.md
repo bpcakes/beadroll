@@ -9,9 +9,8 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 - The CPython-parity rules that cost nothing to keep are gone with the parity (roll-lqjj.53.2,
   the maintainer's decision of 2026-10-22). An integer is exact within an `i128` (`json::Int`):
   what bead counts (a segment's number, a claim's generation, the unpublished count) or mints (a
-  key's number) is checked, never wrapped, and refused where it would pass an `i128`, so a key
-  whose number bead cannot count on from is refused at creation (`create event has no valid
-  'key'`), a parent whose children's numbers are beyond that is `VALIDATION`, a segment name or
+  new child key's number) is checked, never wrapped, and refused where it would pass an `i128`:
+  a parent whose children's numbers are beyond that is `VALIDATION`, a segment name or
   `meta.json` count beyond it `IO`, and `bead export` writes every integer it holds; until now
   integers had any size up to Python 3.11's default 4,300-digit decimal conversion limit, with
   bead's own decimal arithmetic behind them. `--estimate`, `--limit`, `COLUMNS` and the `BEAD_*`
@@ -20,8 +19,25 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   `1_000.5` are refused now, `inf` and `nan` still read as floats). A legacy boolean priority
   prints as the number it counts as (`1`, `0`; `True`, `False` before) and keeps its JSON. `bead
   show` prints a conflict's values as JSON (`"Title from A" by ...`; Python's `repr()`, `'Title
-  from A'`, before). Nothing bead writes changes: format 1 holds no integer beyond a `u64`, and
-  no bead command ever read or printed one of those spellings.
+  from A'`, before). Format 1's encoding is unchanged; ordinary journal integers remain within
+  a `u64` or an `i64`. Numbered keys are text:
+  existing imported keys with up to 4,299 digits remain valid, and duplicate renaming increments
+  their suffix as text, including a carry to 4,300 digits (AD01).
+
+  Integer settings (`BEAD_ROTATE_BYTES`, `BEAD_REPACK_LOOSE`, `BEAD_REPACK_PACKS`) outside an
+  `i128` now return `CONFIG`, and out-of-range integer flags return a usage error; they previously
+  saturated at the bound. An unreadable or out-of-range `COLUMNS` falls back to the terminal width,
+  or no wrapping on a nonterminal. `GIT_CONFIG_COUNT`'s digit predicate now accepts ASCII digits
+  only: a nondigit count is treated as zero when transport settings are carried, and otherwise
+  must parse as an integer or returns `CONFIG`. Its digits-only form also returns `CONFIG` if
+  it exceeds an `i128` (AD05).
+
+  A native core caller can supply a claim generation at the `i128` bound, beyond ordinary JSON
+  integers. A further claim is reported under `integrity` without changing the issue; a refused
+  takeover also leaves its predecessor's release effective. Commands refuse exhausted generations
+  with `VALIDATION` before emitting an event (AD02). Subject tests cover unpublished-count
+  arithmetic and segment rotation at their bounds, including unchanged durable files on error
+  (AD03–AD04).
 
 - The value-returning attempt reader validates each parsed event by reference, without copying
   it into a temporary envelope (AC01, roll-lqjj.53.1.1). It retains unknown members and the

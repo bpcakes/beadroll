@@ -1499,9 +1499,19 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - An integer is exact within an `i128` (`json::Int`, roll-lqjj.53.2): on input one within a
   `u64` or an `i64` is exact and one beyond is a float, which bead never writes (roll-lqjj.53), and
   what bead counts (a segment's number, a claim's generation, the unpublished count) or mints (a
-  key's number) is checked, never wrapped, and refused where it would pass an `i128`. Until
+  new child key's number) is checked, never wrapped, and refused where it would pass an `i128`. Until
   roll-lqjj.53.2 integers had any size up to Python 3.11's default 4,300-digit decimal conversion
   limit, kept for parity with the Python bead, with its own decimal arithmetic.
+- Numbered keys are stored text, including keys older Rust imports wrote beyond an `i128` (AD01).
+  Creates retain the original limit of fewer than 4,300 suffix digits. Duplicate renaming
+  increments decimal text directly, so it can carry into the next digit without depending on
+  the integer counter's range. New child minting still reports `VALIDATION` when the highest
+  child's number cannot be incremented within an `i128`.
+- A native claim generation at the `i128` bound cannot advance (AD02). Replay reports the new
+  claim under `integrity` before ending an owner or changing the issue. A refused takeover must
+  not supersede the old owner's release either: only histories with a native generation close
+  enough to exhaust the counter retain their payloads for reapplication without that takeover.
+  Parsed JSON integers cannot reach that range. Commands return `VALIDATION` before emission.
 - What a journal line, attempt file or manifest means does not depend on the Python reading it
   (U01–U05 in `FINDINGS.md`): JSON is read from bytes as UTF-8 (no byte-order mark, UTF-16 or
   UTF-32 is guessed; a lone surrogate is not UTF-8), at most `MAX_DEPTH` levels deep (127,
@@ -1513,8 +1523,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `https://`. This departs from the port plan's recommendation (keep), on the maintainer's decision.
 - Shapes bead never writes, which made Python's replay or a query fail, or answer by interpreter
   version, are refused by validation (U07–U11): a `dep_add` meta that is not an
-  object, a `dep_remove` key that is not a string, a create key whose number bead cannot count on
-  from (beyond an `i128`, or one below it; 4,300 digits or more until roll-lqjj.53.2), an
+  object, a `dep_remove` key that is not a string, a create key whose suffix has 4,300 digits or
+  more (the original admission limit retained by AD01), an
   imported comment with a `uid` or a `where`, a create clearing `created_at`; a
   quarantined id's stand-in names its issue only by a string; an import refuses an escaped lone
   surrogate anywhere in a record. Replay has no last resort to reach.
@@ -1534,6 +1544,14 @@ These were decided deliberately. Report problems *with* them, not their existenc
   number where git reads one (it is not digits and nothing was carried over) is `CONFIG`; an
   answer standard output refuses (other than a closed pipe or a hung-up terminal) is an `IO` error
   on standard error, exit 1; a `ps` line that names no command ends the nearest-harness walk.
+- Since roll-lqjj.53.2, integer `BEAD_ROTATE_BYTES`, `BEAD_REPACK_LOOSE` and `BEAD_REPACK_PACKS`
+  values beyond an `i128` are `CONFIG`, and out-of-range integer flags are usage errors, rather
+  than saturating at that bound (AD05). Unreadable or out-of-range `COLUMNS` falls back to the
+  terminal width, or no wrapping when output is not a terminal. `GIT_CONFIG_COUNT`'s predicate
+  now recognises ASCII digits only. A nondigit count is zero when settings are carried; without
+  carried settings it must still parse as an integer. A digits-only count must fit an `i128`;
+  failure is `CONFIG`. The git crate takes these rules from its caller, so its `CountRules`
+  contract describes the supplied predicate.
 - The Rust bead keeps CPython's semantics wherever Python's bead had them, as the port plan's
   ledger of them decided (the rows not stated above): replay takes a boolean where an integer is due
   (`"v": true` is format 1; a `true` priority sorts as 1, keeps its JSON and prints as 1, as

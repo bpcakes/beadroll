@@ -133,7 +133,7 @@ fn u07_payloads_that_reached_the_last_resort_are_refused_by_name() {
         None,
         json!({"key": "ex-t", "fields": {"title": "t"}}),
     );
-    let long = format!("x.{}", "1".repeat(40));
+    let long = format!("x.{}", "1".repeat(4300));
     let taken = event(
         3,
         "create",
@@ -183,8 +183,8 @@ fn u07_payloads_that_reached_the_last_resort_are_refused_by_name() {
             .iter()
             .any(|problem| problem.contains("could not be applied"))
     );
-    // A renamed copy counts up from its number, and bead counts no further than an i128.
-    let nines = format!("x.{}", i128::MAX);
+    // The original admission limit leaves a digit for a duplicate's carry.
+    let nines = format!("x.{}", "9".repeat(4300));
     let refused = event(
         9,
         "create",
@@ -197,7 +197,7 @@ fn u07_payloads_that_reached_the_last_resort_are_refused_by_name() {
         payload_problem(&refused).as_deref(),
         Some("create event has no valid 'key'")
     );
-    let nines = format!("x.{}", i128::MAX - 1);
+    let nines = format!("x.{}", "9".repeat(4299));
     let mut journal = Journal::new();
     for (number, replica) in [(10, "a"), (11, "b")] {
         journal.add(
@@ -216,7 +216,7 @@ fn u07_payloads_that_reached_the_last_resort_are_refused_by_name() {
     }
     let state = replay(journal).unwrap();
     let keys: Vec<&str> = state.issues().map(Issue::key).collect();
-    assert_eq!(keys, [nines, format!("x.{}", i128::MAX)]);
+    assert_eq!(keys, [nines, format!("x.1{}", "0".repeat(4299))]);
     assert!(state.integrity().is_empty());
 }
 

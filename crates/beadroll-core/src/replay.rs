@@ -79,18 +79,56 @@ pub(crate) fn replayed(mut journal: Journal) -> Result<(State, Replayed), KeySpa
     }
     let mut inert = observe(&mut st.knowledge, &order, &applying, &quarantined);
     order.forget_causes(); // what follows needs the order alone
-    let takeovers = settle_takeovers(&st.knowledge, &order.ordered, &applying, &mut inert);
     let knowledge = std::mem::take(&mut st.knowledge);
-    let applied = apply_all(
-        &mut st,
-        &knowledge,
-        &order.ordered,
-        &mut applying,
-        &inert,
-        &takeovers.superseded,
-    );
+    // Only native values can approach i128 exhaustion: parsed JSON integers fit in a u64.
+    // Keep those rare histories to replay without a refused takeover's supersession. Otherwise
+    // that takeover could still silence its predecessor's release even though it acquired nothing.
+    let count = i128::try_from(applying.len()).unwrap_or(i128::MAX);
+    let may_exhaust = applying.iter().flatten().any(|event| {
+        matches!(&event.op, Op::Claim(claiming) if claiming.generation.as_ref().is_some_and(|g|
+            g.number().as_i128().checked_add(count).is_none()))
+    });
+    let saved = may_exhaust.then(|| (st.clone(), applying.clone()));
+    let takeovers = loop {
+        let takeovers = settle_takeovers(&knowledge, &order.ordered, &applying, &mut inert);
+        apply_all(
+            &mut st,
+            &knowledge,
+            &order.ordered,
+            &mut applying,
+            &inert,
+            &takeovers.superseded,
+        )?;
+        let Some((initial, events)) = &saved else {
+            break takeovers;
+        };
+        let mut refused = false;
+        for entry in &st.integrity {
+            if entry.problem != apply::CLAIM_GENERATION_EXHAUSTED {
+                continue;
+            }
+            let at = entry
+                .event
+                .as_deref()
+                .and_then(EventId::parse)
+                .and_then(|id| knowledge.events.get_index_of(&id));
+            let Some(at) = at.filter(|at| !inert.contains_key(at)) else {
+                continue;
+            };
+            if events.get(at).and_then(Option::as_deref).is_some_and(|event| {
+                matches!(&event.op, Op::Claim(claiming) if claiming.takeover.as_deref().is_some_and(|t| !t.is_empty()))
+            }) {
+                inert.insert(at, entry.problem.clone());
+                refused = true;
+            }
+        }
+        if !refused {
+            break takeovers;
+        }
+        st = initial.clone();
+        applying = events.clone();
+    };
     st.knowledge = knowledge;
-    applied?;
     finish(&mut st);
     let replayed = Replayed {
         superseded: takeovers.superseded,
