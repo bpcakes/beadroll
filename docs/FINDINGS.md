@@ -20,6 +20,17 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Review 22: Claude and Codex review of the parity repairs (ids AE)
+
+The independent reports cover `b5d5543..672ca86`; their structured results are in
+`reviews/2026-10-23-22-claude.json` and `reviews/2026-10-23-22-codex.json`. Absolute home
+prefixes use `/home/<name>/`; the frozen originals remain in the external review run.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AE01 | Low | Retrying replay after native claim exhaustion lost the flag for another takeover's missing target | fixed | Accumulate the awaiting flag across retries, including takeovers already marked inert, so a late target still forces replay and refreshes the diagnostic | `beadroll-core`: `replay::numeric_limits::ae01_exhaustion_retry_keeps_a_missing_takeover_target_unsettled` |
+| AE02 | Low | U07 still documented the retracted i128 key limit | fixed | Restore the original 4,299-digit admission rule in that row, consistent with AD01, the code and REVIEWING | Documentation inspection; `beadroll-core`: `replay::port_alignment::u07_payloads_that_reached_the_last_resort_are_refused_by_name` |
+
 ## Review 21: Claude and Codex review of parity retirement (ids AD)
 
 The independent reports of `9e27e78..3e311d7` are retained in
@@ -229,7 +240,7 @@ its Rust port.
 | U04 | Low | `json.loads` on bytes guessed UTF-16 or UTF-32 from a line's first bytes and skipped a UTF-8 byte-order mark, so such a line was an event | fixed | A line is decoded as UTF-8, surrogates passed, before it is parsed (§5 row 22) | `beadroll-core`: `replay::port_alignment::lines::u04_journal_lines_are_utf8_whatever_their_first_bytes` |
 | U05 | Low | `complete_prefix` and the published manifest used plain `json.loads` (NaN read), and the manifest's format was compared with `==`, so `true` and `1.0` passed as format 1 | fixed | Both read strictly; the format must be the integer 1 (§5 row 23) | `beadroll`: `protocol::port_alignment::u05_a_manifest_that_only_equals_format_1_is_refused`, `protocol::port_alignment::u05_a_torn_tail_holding_nan_is_cut_and_kept_aside` |
 | U06 | Low | `\d` and `(?i)[a-z]` were Unicode-aware: a renamed copy of `x.٣` became `x.3`, the merge copied segments numbered in non-ASCII digits, and `httpſ://` named the same workspace as `https://` | fixed | ASCII only in key numbers, `mint_key`, the segment-name filter, `without_password` and `normalize_remote` (§5 row 24) | `beadroll-core`: `replay::port_alignment::u06_key_numbers_are_ascii_digits`; `beadroll`: `protocol::port_alignment::u06_only_segments_numbered_in_ascii_digits_are_merged`; `beadroll-git`: `hardening::u06_url_schemes_are_ascii::a_scheme_is_ascii_whatever_case_folding_would_allow` |
-| U07 | Medium | Three payloads raised inside replay, whose last resort stored Python's exception text, which differs between versions: a `dep_add` meta that is not an object, a `dep_remove` key that is not a string, and a create key whose number a renamed copy could not count on from | fixed | `payload_problem` refuses each by name; a key's number must leave room to count on within an `i128` since roll-lqjj.53.2 (at most 4,299 digits before, since counting on from 4,300 nines needed one more than Python printed; §5 row 25) | `beadroll-core`: `replay::port_alignment::u07_payloads_that_reached_the_last_resort_are_refused_by_name` |
+| U07 | Medium | Three payloads raised inside replay, whose last resort stored Python's exception text, which differs between versions: a `dep_add` meta that is not an object, a `dep_remove` key that is not a string, and a create key whose number a renamed copy could not count on from | fixed | `payload_problem` refuses each by name; a key's number may have at most 4,299 digits, so a renamed copy can carry into the 4,300th (retained by AD01 through roll-lqjj.53.2; AE02 corrects this row; §5 row 25) | `beadroll-core`: `replay::port_alignment::u07_payloads_that_reached_the_last_resort_are_refused_by_name` |
 | U08 | Low | An imported comment naming a `uid` or a `where`, which only a comment made here has, broke `show` or `export`, or exported as a comment made here | fixed | A create's comments carry neither (§5 row 27) | `beadroll-core`: `replay::port_alignment::u08_imported_comments_carry_neither_a_uid_nor_a_where` |
 | U09 | Medium | A create with `created_at: null`, which an import of such a record wrote, made `list` and `ready` fail comparing creation times | fixed | A create cannot clear `created_at`, so such an import fails whole (§5 row 28) | `beadroll-core`: `replay::port_alignment::u09_a_create_cannot_clear_created_at`; `beadroll`: `commands::review5_cli::u09_a_record_without_a_creation_time_is_not_imported` |
 | U10 | Medium | The stand-in for an id with several contents named the issue of the copy placed first; when no copy was valid that could be a list or an object, and replay, so every command, failed hashing it | fixed | The stand-in names its issue only by a string (§5 row 29) | `beadroll-core`: `replay::port_alignment::u10_a_quarantined_id_names_its_issue_only_by_a_string` |

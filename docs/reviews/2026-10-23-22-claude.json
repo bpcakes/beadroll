@@ -1,0 +1,60 @@
+{
+  "assignmentId": "00024-review",
+  "fingerprint": "c05334678a3107c8552ff0352900741877ccd25d66b7e4bd9e71f8911f328805",
+  "complete": true,
+  "findings": [
+    {
+      "key": "findings-u07-stale-key-boundary",
+      "path": "docs/FINDINGS.md:232",
+      "severity": "low",
+      "title": "The U07 resolution still gives the retracted i128 key-number limit, which contradicts AD01",
+      "evidence": "Kind: supporting obligation (documentation). Trigger: the branch rewrote the U07 resolution to say that a key's number 'must leave room to count on within an `i128` since roll-lqjj.53.2'. That text describes the first-round restriction that AD01 then reverted. In the final tip, `number_too_long` (crates/beadroll-core/src/key.rs:22-24) refuses only suffixes of 4,300 digits or more. `free_key` (key.rs:29-40, `next_number` at key.rs:50-61) increments the suffix as text, with no i128 dependency. CHANGELOG.md:22-25 and REVIEWING.md §2 ('Numbered keys are stored text… Creates retain the original limit of fewer than 4,300 suffix digits') both state the 4,299-digit domain. port_alignment.rs:136,187,200 also pins 4,300 as refused and 4,299 as accepted. Violated requirement: R4 asks that the docs record the actual numeric boundaries and the retained key compatibility. Impact: the findings ledger contradicts the code and the other two documents. A maintainer who reads U07 could reintroduce the i128 key restriction, which is the AD01 regression that drops imported issues on replay. No runtime effect. Recommendation: restore the U07 resolution to the 4,299-digit rule, for example 'a key's number may have at most 4,299 digits, so a renamed copy can carry into the 4,300th (retained by AD01 through roll-lqjj.53.2)'. Leave the row's tests as they are."
+    }
+  ],
+  "acceptance": [
+    {
+      "criterionId": "R1",
+      "status": "satisfied",
+      "evidence": "`Int` is a checked i128 (json/int.rs): `plus_one`, `add` and `sub` return Option, and `from_f64` is bounded. `parse_integer` and `is_digits` accept only an optional sign and ASCII digits, with whitespace allowed around them (text/number.rs). Boolean priority displays as `self.number()` (op.rs:83), and short_fields.rs asserts \"1\". `show` prints conflict values as compact JSON (show.rs:235-239), and the golden tracker.txt is updated. Claim exhaustion is checked in claims.rs:35-39 before `end_claim` and before any field changes. apply.rs records it as an integrity entry and returns not-applied, so no stamps change. replay.rs:83-130 re-runs histories near the bound with the refused takeover inert, and settle_takeovers (replay.rs:249) then skips it, so the predecessor's release is not superseded. ownership.rs:100-109 returns VALIDATION before `tx.emit`. numeric_limits.rs covers reclaim, and takeover both by direct proposal and by increment. Ordinary ownership is unaffected: the re-run path only engages when a parsed generation is within the event count of i128::MAX, which parsed JSON (at most u64) cannot reach. The projection's extend declines every takeover (extend.rs:118-122). The command-side refusal has no subject test; the native-only reachability documented in REVIEWING explains this. All required checks passed.",
+      "validationIds": [
+        "baseline-stress",
+        "clippy",
+        "fmt"
+      ]
+    },
+    {
+      "criterionId": "R2",
+      "status": "satisfied",
+      "evidence": "`number_too_long` again refuses only suffixes of 4,300 digits or more (key.rs:22-24). `free_key` counts the suffix as text: leading zeros are trimmed as the old `Int::from_parts` did, and the carry can reach 4,300 digits. key.rs unit tests cover MOST+1, the 4,299-nines carry and 'x.000'. ad01 replays unmodified legacy import bytes with a 40-digit key, with empty integrity. port_alignment u07 still refuses 4,300 digits and renames a duplicate of the 4,299-nines key. The JSON reader keeps its u64/i64 inputs exact (read.rs visit_u64), and the writer emits every i128. The typed journal and metadata readers from main are untouched apart from recap.rs `count` (`as_i128`, same semantics). Baseline and stress checks pass.",
+      "validationIds": [
+        "baseline-stress"
+      ]
+    },
+    {
+      "criterionId": "R3",
+      "status": "satisfied",
+      "evidence": "pending.rs ad03 covers subtraction (a published count of i128::MIN), aggregation (two -MAX/2 counts) and the attempt increment (a real accepted claim file with a subtotal of MAX). It asserts IO, the specific diagnostic, empty stdout, and byte-identical meta.json and events tree. storage/rotation.rs ad04 covers a predecessor of MAX-1 rotating into a MAX segment (asserts the target, its contents and two files). It also covers MAX exhaustion: IO, the 'not a numbered journal segment' message, one file, and the original bytes unchanged. Legacy key replay is covered by ad01 and native claim boundaries by both ad02 tests. Minor optional weakness: ad02's projection comparison is conditional on `Extended::Applied`, but replay-level assertions already establish the behavior. All suites pass under the baseline stress check.",
+      "validationIds": [
+        "baseline-stress"
+      ]
+    },
+    {
+      "criterionId": "R4",
+      "status": "uncertain",
+      "evidence": "CHANGELOG.md:9-41 and REVIEWING.md §2 document i128 checking, the ASCII numeric inputs, overflow of settings and flags, the COLUMNS fallback, the ASCII-only GIT_CONFIG_COUNT predicate, key text compatibility and AD02. The `CountRules` doc (beadroll-git/src/env.rs:112) now describes the caller-supplied predicate. FINDINGS adds the AD01-AD05 rows. However, the FINDINGS U07 row still gives the retracted i128 key limit (finding findings-u07-stale-key-boundary), so the recorded boundaries are not fully consistent. Core gains no I/O or dependencies, and no manifest changes. fmt, clippy, deny, fuzz-fmt, fuzz-clippy, fuzz-deny, support-build and baseline-stress all succeeded.",
+      "validationIds": [
+        "baseline-stress",
+        "fmt",
+        "clippy",
+        "fuzz-fmt",
+        "fuzz-clippy",
+        "deny",
+        "fuzz-deny",
+        "support-build"
+      ]
+    }
+  ],
+  "exitCode": 0,
+  "signal": null,
+  "execution": "completed"
+}

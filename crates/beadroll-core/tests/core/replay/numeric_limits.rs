@@ -136,3 +136,48 @@ fn ad02_exhausted_takeover_keeps_the_owner_and_does_not_silence_its_release() {
         assert_eq!(released.integrity().len(), 1);
     }
 }
+
+#[test]
+fn ae01_exhaustion_retry_keeps_a_missing_takeover_target_unsettled() {
+    let mut events = claimed(i128::MAX);
+    events.push(next(4, "claim", json!({"takeover": (id(3))})));
+    events.push(next(5, "claim", json!({"takeover": (id(99))})));
+    let saved = project(journal(&events)).unwrap();
+    assert!(!saved.extendable());
+    let problem = |state: &beadroll_core::state::State| {
+        state
+            .integrity()
+            .iter()
+            .find(|entry| entry.event.as_deref() == Some(id(5).as_str()))
+            .unwrap()
+            .problem
+            .clone()
+    };
+    assert_eq!(
+        problem(saved.state()),
+        "takeover names a claim that is not a claim on this issue"
+    );
+    // Arrival changes why the takeover was refused. The projection must ask for replay rather
+    // than keep the earlier diagnostic alongside an otherwise successfully applied record.
+    let arrived = Event::new(&id(99), "claim")
+        .deps(&[&id(5)])
+        .issue(&id(2))
+        .json();
+    events.push(arrived.clone());
+    let full = replay(journal(&events)).unwrap();
+    assert_eq!(
+        problem(&full),
+        "takeover of a claim its writer had not seen"
+    );
+    assert!(matches!(
+        saved
+            .extend(vec![Record {
+                value: arrived,
+                replica: "a".into(),
+                origin: "native".into(),
+                sequenced: true,
+            }])
+            .unwrap(),
+        Extended::Replay
+    ));
+}

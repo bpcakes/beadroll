@@ -89,8 +89,12 @@ pub(crate) fn replayed(mut journal: Journal) -> Result<(State, Replayed), KeySpa
             g.number().as_i128().checked_add(count).is_none()))
     });
     let saved = may_exhaust.then(|| (st.clone(), applying.clone()));
+    let mut awaiting = false;
     let takeovers = loop {
         let takeovers = settle_takeovers(&knowledge, &order.ordered, &applying, &mut inert);
+        // A later pass skips takeovers already marked inert. A missing target can still arrive
+        // and change their diagnostic, so the projection must keep waiting across those passes.
+        awaiting |= takeovers.awaiting;
         apply_all(
             &mut st,
             &knowledge,
@@ -132,7 +136,7 @@ pub(crate) fn replayed(mut journal: Journal) -> Result<(State, Replayed), KeySpa
     finish(&mut st);
     let replayed = Replayed {
         superseded: takeovers.superseded,
-        unsettled: takeovers.awaiting || order.loose,
+        unsettled: awaiting || order.loose,
     };
     Ok((st, replayed))
 }
