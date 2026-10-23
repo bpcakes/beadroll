@@ -11,6 +11,8 @@ use beadroll_test_support::{Machine, code, parse_json};
 
 use super::{id, json, settings};
 
+mod publication;
+
 /// What settling left of a store's pending attempts: the files in `pending/` by suffix, and whether
 /// the issue is claimed.
 fn settled(machine: &Machine, key: &str) -> (usize, usize, bool) {

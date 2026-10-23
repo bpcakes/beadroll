@@ -10,6 +10,8 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   read or would overflow (AF01). Standard error carries a warning saying the write was recorded
   locally; with `--json` it is `{"warning": {"code": "IO", "message": "..."}}`. Standard output
   keeps the command's usual shape. Read-only commands still fail with `IO` for a bad count.
+  Successful publication also retains that result when saving its counts fails (AG01), for
+  local journal writes and coordinated ownership alike.
   `show` now prints legacy boolean priorities numerically, matching `list`, while JSON keeps the
   boolean (AF02).
 

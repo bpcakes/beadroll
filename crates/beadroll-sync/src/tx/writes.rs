@@ -51,6 +51,7 @@ fn take_lock(ws: &Workspace) -> Result<std::fs::File, Error> {
 pub fn confirm_ownership(ws: &Workspace, events: &[Value]) -> Result<(), Error> {
     if !events.is_empty() {
         write_attempt_file(ws, &attempt_path(ws, events), events)?;
+        ws.record_commit();
     }
     Ok(())
 }

@@ -287,7 +287,7 @@ pub(crate) fn note_unpublished(
         Ok(counted) => counted,
         Err(error) => {
             let failure = Failure::from(error);
-            if !ws.wrote() {
+            if !ws.committed() {
                 return Err(failure);
             }
             let mut raw = b"write recorded locally; unpublished count unavailable: ".to_vec();

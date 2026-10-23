@@ -1,0 +1,58 @@
+{
+  "assignmentId": "00026-review",
+  "fingerprint": "c6d3491170b63c42cdc20d55b40c2c3dd8b911bb428fead5863b58e8a12de490",
+  "complete": true,
+  "findings": [
+    {
+      "key": "post_publish_count_loses_committed_state",
+      "path": "crates/beadroll/src/commands.rs:290",
+      "severity": "medium",
+      "title": "Preserve committed-write status after successful publication",
+      "evidence": "The new warning branch tests Workspace::wrote(), whose contract is events the remote does not have yet (crates/beadroll-store/src/workspace.rs:120-127), not whether this command committed. cli::finish publishes before calling note_unpublished (cli.rs:360-366); a successful exchange calls note_sync and then set_wrote(false) (beadroll-sync/src/synchronise.rs:193-195). note_sync deliberately ignores metadata-save errors (workspace.rs:233-240), leaving the old count available. Demonstrated on the pinned tip in a scratch repository and local bare remote: initialize and create one issue (two journal lines), set that segment's published count to the string 2-i128::MAX, verify list --json succeeds with unpublished=i128::MAX, then run comments add KEY \"exactly once\" --json without --offline and with BEAD_FAILPOINTS=atomic-write:meta.json=errno(ENOSPC). The comment is durably appended and published, but the final count exits 1, emits no stdout and returns {\"error\":{\"code\":\"IO\",...}} instead of the successful result and warning. /tmp/beadroll-review-publish-3elp89ar/result.json records the actual command result, journal growth from 2 to 3, remote_contains_comment=true, and the one persisted comment. This violates R1 and can induce a duplicate retry of a non-idempotent write. Preserve whether the command committed independently of the mutable unpublished-write flag, including callers which publish within the command, and add a regression for successful publication followed by failed count bookkeeping. The existing AF01 test always appends --offline and therefore does not exercise this path."
+    }
+  ],
+  "acceptance": [
+    {
+      "criterionId": "R1",
+      "status": "unsatisfied",
+      "evidence": "Reviewed both note_unpublished callers (cli::finish and commands::init), Outcome::count_warning delivery, stderr JSON rendering, read-only error handling, and the AF01 object/array/silent/human/init cases. The offline crossing regression correctly starts at a valid i128::MAX count, makes one durable write, retains stdout, and preserves subsequent read-only IO errors. However, the demonstrated online publication/metadata-save failure in post_publish_count_loses_committed_state still converts a committed, remotely published comment into failure. Controller baseline-stress passed, but its AF01 test does not cover this supported path.",
+      "validationIds": [
+        "baseline-stress"
+      ]
+    },
+    {
+      "criterionId": "R2",
+      "status": "satisfied",
+      "evidence": "commands/show.rs:104-107 reads priority through IntegerField, whose Display is numeric (core/op.rs:81-84) while to_value retains booleans (op.rs:41-46). The list path already uses this numeric Display. commands/format_policy.rs:33-80 covers true and false in human list and show and verifies detail JSON remains boolean. The rendering change is local; generic repr/repr_str diagnostic quoting is unchanged. The controller baseline passed these CLI tests.",
+      "validationIds": [
+        "baseline-stress"
+      ]
+    },
+    {
+      "criterionId": "R3",
+      "status": "satisfied",
+      "evidence": "Inspected the complete accumulated source/test diff b5d5543da780c7ed71210407fbe709130ab5e4f3..719b46d8a5d253342b1748d661efe14d9d591794, including Int parsing/arithmetic/float bounds and every changed consumer, ASCII numeric inputs, conflict JSON presentation, export collision increments, segment rotation, metadata count arithmetic, key admission/renaming/minting, and ownership application/replay. Numbered-key admission remains below 4300 digits and duplicate renaming increments text beyond i128. Native exhausted claims refuse before issue mutation; replay removes exhausted takeover supersession, preserves awaiting across retries, and projection extension either shares application or requests replay for takeovers. Numeric-limit/legacy-fixture, projection, rotation, pending-count, parser/settings and golden tests substantiate these boundaries. No format-1 writer encoding, core I/O boundary, dependency edge or general diagnostic quoting changed. Historical review reports were not used as independent review inputs, as required by this assignment.",
+      "validationIds": [
+        "baseline-stress",
+        "clippy",
+        "fuzz-clippy",
+        "support-build"
+      ]
+    },
+    {
+      "criterionId": "R4",
+      "status": "satisfied",
+      "evidence": "AF01 and AF02 ledger entries name their focused regressions in docs/FINDINGS.md:34-35; README, CHANGELOG, GUARANTEES and REVIEWING describe the committed-result warning policy and boolean display policy. Inspected every explicitly supplied validation log: controller baseline-stress receipt 00017 reports 1205/1205 tests, 14 infra tests and 2/2 stress tests passed; receipts 00018 through 00024 record exit 0 for formatting, workspace lint, fuzz formatting/lint, both dependency checks and support build at this fingerprint/content hash. Dependency-check warnings are only unused license allowances. These execution facts do not cure the R1 behavior defect. Source/index remained unchanged and HEAD remains the pinned tip.",
+      "validationIds": [
+        "baseline-stress",
+        "fmt",
+        "clippy",
+        "fuzz-fmt",
+        "fuzz-clippy",
+        "deny",
+        "fuzz-deny",
+        "support-build"
+      ]
+    }
+  ]
+}

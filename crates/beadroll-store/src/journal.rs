@@ -235,6 +235,9 @@ pub fn append_events(
     }
     file.write_all(rest).map_err(|e| IoError::bare(&e))?;
     fsync(&file)?;
+    if !data.is_empty() {
+        ws.record_commit();
+    }
     Ok(())
 }
 

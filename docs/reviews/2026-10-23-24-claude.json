@@ -1,0 +1,60 @@
+{
+  "assignmentId": "00025-review",
+  "fingerprint": "c6d3491170b63c42cdc20d55b40c2c3dd8b911bb428fead5863b58e8a12de490",
+  "complete": true,
+  "findings": [],
+  "acceptance": [
+    {
+      "criterionId": "R1",
+      "status": "satisfied",
+      "evidence": "`unpublished_count` (synchronise.rs:364) has one production caller, `commands::note_unpublished` (commands.rs:281-312). When the count fails and `ws.wrote()` is true, that helper now returns `Ok(Some(Failure))` carrying 'write recorded locally; unpublished count unavailable: …'. When nothing was written it still returns `Err`, so read-only commands keep their structured IO error. Its two callers both send the warning to stderr. (1) `cli::finish` (cli.rs:366-368) passes it to `warn` (cli.rs:577-593), which writes a separate `{\"warning\": {\"code\", \"message\"}}` document under --json, or a 'Warning:' line otherwise. It ignores stderr failures and leaves stdout's result/lines untouched. (2) `init`'s chosen/live-workspace path (init.rs:434-441) stores it in `Outcome.count_warning`, which `finish` emits (cli.rs:343-345) before returning, because `settled` skips the second count. `wrote` is set only after `append_events`/`confirm_ownership` commit (tx/writes.rs:141-154). It is cleared only after a successful publish, which first rewrites the published counts through `note_sync` (synchronise.rs:193-195, ownership.rs:342-346). So a write that committed and remains unpublished takes the warning branch. In the coordinated online path (ownership.rs:229-236), events are appended without setting `wrote` only when the ownership list is empty. Claim, release and conditional edits always populate that list, so no committed write reaches the error branch in practice. `parity::pending::af01_…` starts from a successful `list` that reports unpublished = i128::MAX. It then runs non-idempotent offline writes: comments add in --json and human output, update (array result), create --silent, and init --remote --import, which covers the alternate init workspace. It asserts exit 0, the usual stdout shape, the warning on stderr, exactly one appended journal line, a later `list` failing with IO and no new write, and (for the comment cases) that the comment exists exactly once. ad03 still covers read-only IO with unchanged durable files. The `ending.rs` unit tests were updated for the new `finish` parameter. baseline-stress passed: 1205 tests and 2 stress tests.",
+      "validationIds": [
+        "baseline-stress",
+        "clippy",
+        "fmt"
+      ]
+    },
+    {
+      "criterionId": "R2",
+      "status": "satisfied",
+      "evidence": "`show`'s summary now builds the priority as `IntegerField::read(item[\"priority\"])` printed through Display (show.rs:104-107, 115). Display is now `self.number()` (op.rs:81-84), so `true`/`false` print as 1/0, the same as `list`'s `State::row` path (commands.rs:579-580). Validation types priority as Int, which accepts only Int or Bool (event.rs:152, 210-213), and the field is required, so the empty fallback cannot be reached for a replayed issue. Generic diagnostic quoting is unchanged: `str_of`, `repr` and `repr_str` are untouched, and `field()` is still used for the other summary parts. `commands::format_policy::af02_…` rewrites a real create's priority to each legacy boolean. It asserts `[P1]`/`[P0]` in `list`, `[P1 · OPEN]`/`[P0 · OPEN]` in `show`, a JSON boolean in `show --json`, and an unchanged segment. `short_fields` asserts the core Display output, '1'.",
+      "validationIds": [
+        "baseline-stress",
+        "clippy"
+      ]
+    },
+    {
+      "criterionId": "R3",
+      "status": "satisfied",
+      "evidence": "Integers: `Int` is a checked i128 (json/int.rs), with Option-returning `plus_one`/`add`/`sub`, a bounded `from_f64`, and a writer that prints every i128. `parse_integer`/`parse_float`/`is_digits` read Rust/ASCII syntax. Every former `saturating_i128` caller now uses `as_i128` on already-bounded values. Keys: `number_too_long` keeps the 4,299-digit domain and `free_key` increments the suffix as text (key.rs:20-61). The `ad01` test replays the recorded legacy-import bytes with a 40-digit key. Claim exhaustion: it is refused in claims.rs:35-39 before `end_claim`, recorded as integrity in apply.rs:105-116, and refused with VALIDATION before emission in ownership.rs:100-109. In the replay retry (replay.rs:83-134), a refused takeover is made inert and the `awaiting` flag accumulates across passes. The ad02 tests cover reclaim and takeover (direct and incremented), and ae01 covers projection/replay equivalence. Format 1: the reader keeps u64 values exact (read.rs:65). The writer's dialects are unchanged and export's collision loop is bounded. Core gains no I/O, and no manifests changed. Conflict values in `show` print as compact JSON (golden tracker.txt). Every required check passed at this fingerprint.",
+      "validationIds": [
+        "baseline-stress",
+        "fmt",
+        "clippy",
+        "fuzz-fmt",
+        "fuzz-clippy",
+        "deny",
+        "fuzz-deny",
+        "support-build"
+      ]
+    },
+    {
+      "criterionId": "R4",
+      "status": "satisfied",
+      "evidence": "FINDINGS.md Review 23 records AF01 and AF02 with their resolutions and test names. GUARANTEES.md (the unpublished-count bullet), REVIEWING.md §2 (the AF01 command-result policy, including init's chosen workspace and read-only errors, plus AF02 numeric display in list and show), README.md and CHANGELOG.md describe the warning policy and the shape of the --json warning document. The earlier review archives are added as new files and not rewritten. Controller receipts for this exact fingerprint all succeeded: baseline-stress (1205 tests passed, 10 skipped; 14 infra tests; 2 stress tests passed), fmt, clippy, fuzz-fmt, fuzz-clippy, deny, fuzz-deny and support-build.",
+      "validationIds": [
+        "baseline-stress",
+        "fmt",
+        "clippy",
+        "fuzz-fmt",
+        "fuzz-clippy",
+        "deny",
+        "fuzz-deny",
+        "support-build"
+      ]
+    }
+  ],
+  "exitCode": 0,
+  "signal": null,
+  "execution": "completed"
+}
