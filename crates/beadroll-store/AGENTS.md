@@ -32,7 +32,8 @@ remote resolution, actor detection, `view`, and the failpoint registry.
 - `src/failpoint.rs`: `Failpoints`, the registry `Settings` carries (`BEAD_FAILPOINTS` and the two
   crash hooks): `hit`, `hit_path` for `atomic-write:`/`atomic-written:`, `has`, and `hits`, which
   in-crate tests read to check that a fault fired; `POINTS`, every point bead has.
-- `src/workspace.rs`: `Workspace` (`meta`, read once a command while the file keeps its identity,
+- `src/workspace.rs`: `Workspace` (`metadata`, typed counts read once a command while the file keeps its identity;
+  `meta`, the generic compatibility view,
   `save_meta`, `note_sync`, `ref_name`), `stamp`, `relative` and `relative_name` (`relative`
   borrowed from the path when the path is the workspace directory and a UTF-8 name, as the store's
   listings make them, roll-lqjj.47);

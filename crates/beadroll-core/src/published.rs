@@ -4,7 +4,7 @@
 
 use crate::code::Code;
 use crate::event::FORMAT;
-use crate::journal::{Journal, read_attempt, read_segment};
+use crate::journal::Journal;
 use crate::json::{self, Value};
 use crate::text::{repr, str_of};
 
@@ -133,13 +133,10 @@ impl Tree {
     pub fn journal(&self) -> Journal {
         let mut journal = Journal::new();
         for (path, replica, attempt, bytes) in &self.files {
-            let events = if *attempt {
-                read_attempt(bytes, path, Some(&mut journal.invalid))
+            if *attempt {
+                journal.add_attempt(bytes, replica, path);
             } else {
-                read_segment(bytes, path, Some(&mut journal.invalid))
-            };
-            for event in events {
-                journal.add(event, replica, path, !*attempt);
+                journal.add_segment(bytes, replica, path);
             }
         }
         journal.settle();

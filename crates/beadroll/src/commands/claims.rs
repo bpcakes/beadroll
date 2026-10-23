@@ -78,7 +78,7 @@ pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
             rows.push(entry);
         }
     }
-    let synced = ctx.ws.meta(false)?.get("last_sync").cloned();
+    let synced = ctx.ws.metadata(false)?.value("last_sync").cloned();
     let mut lines: Vec<Line> = rows.iter().map(line).collect();
     if lines.is_empty() {
         lines.push("Nothing is claimed".into());

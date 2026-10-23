@@ -20,6 +20,31 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Review 20: Claude review of the typed-reader repairs (ids AC)
+
+Reported inline: the review of `9e27e78..02d0d82` on 2026-10-23 completed through Claude;
+Codex's CLI adapter failed before review. Its frozen report is retained in the repair handoff
+outside the checkout. These are the two findings verified from that completed pass.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AC01 | Low | The value-returning attempt reader cloned each whole event for validation | optimized | The shared attempt helper takes a borrowed validation callback; each reader keeps its original record and diagnostic order | `beadroll-core`: `journal::tests::an_attempt_is_read_whole_or_not_at_all`, `an_attempt_keeps_members_it_does_not_validate`; release measurements in `reviews/2026-10-23-20-performance.json` |
+| AC02 | Low | End-to-end timings predated the metadata-reader repairs | fixed | Alternating release base/final parse and read measurements cover the repaired source, identified by executable hashes, a source patch and a reproducible build-input digest | CHANGELOG.md and raw records in `reviews/2026-10-23-20-performance.json`; source-input verification |
+
+## Review 19: Claude and Codex review of typed journal lines (ids AB)
+
+Reported inline: independent reviews of `9e27e78..860bd5f` on 2026-10-23, with frozen reports
+retained in the repair handoff outside the checkout. The parent reproduced AB01 and AB02 with
+100,000-level values before repairing them. The raw-byte digest decision stands.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AB01 | Medium | The digest's Debug fallback recursed without a depth bound | fixed | An iterative typed encoding handles unprintable values; compact-byte hashing stays unchanged | `beadroll-core`: `journal::content::tests::a_value_of_any_depth_has_a_digest`, `unprintable_contents_keep_types_lengths_and_member_order` |
+| AB02 | Medium | Validation cloned whole values before checking their envelopes | fixed | Both entry points and typed envelopes share borrowed validation rules, without owning irrelevant values | `beadroll-core`: `event::borrowed::tests::deeply_nested_non_object_is_reported_without_copying_it`, `validation_borrows_past_deep_unused_members` |
+| AB03 | Low | The task's typed metadata and configuration readers were absent | optimized | Typed published counts reach ordinary callers; configuration reads known members by type; legacy shapes preserve generic semantics and rewrites | `beadroll-core`: `metadata::tests`, `configuration::tests`; `beadroll-store`: `storage::metadata`; existing configuration and unpublished-count suites; paired release measurements in CHANGELOG.md |
+| AB04 | Low | Paired `--parse 200000` measurements were not recorded | fixed | CHANGELOG.md records all four alternating release runs and separates the new metrics from the original load harness; raw records retained | `xtask`: `timing::parse::tests::the_figures_name_every_measure`; `reviews/2026-10-23-19-parse.json` |
+| AB05 | Low | Two documentation sites still described canonical quarantine comparison | fixed | The reviewing guide and `canonical` API documentation distinguish the utility from line-byte digests | Documentation inspection; `beadroll-core`: `journal::content::tests::contents_written_otherwise_have_different_digests` |
+
 ## Review 18: Claude and Codex review of JSON parsing (ids AA)
 
 Reported inline, no file: independent reviews of `d9396a0..4082ed9` on 2026-10-22, the branch for

@@ -190,33 +190,55 @@ pub enum Op {
     Unknown(String),
 }
 
-fn text(data: &Object, key: &str) -> Option<String> {
-    data.get(key).and_then(Value::as_str).map(str::to_owned)
+/// The member `key` of `data`, taken out of it: a payload is read once, so nothing is copied.
+fn take(data: &mut Object, key: &str) -> Option<Value> {
+    data.swap_remove(key)
+}
+
+/// The text at `key`, taken out.
+fn text(data: &mut Object, key: &str) -> Option<String> {
+    match take(data, key) {
+        Some(Value::Str(text)) => Some(text),
+        _ => None,
+    }
+}
+
+/// The object at `key`, taken out, or an empty one when no object is present.
+fn object(data: &mut Object, key: &str) -> Object {
+    match take(data, key) {
+        Some(Value::Object(members)) => *members,
+        _ => Object::new(),
+    }
+}
+
+/// The items of the array at `key`, taken out, or none when no array is present.
+fn items(data: &mut Object, key: &str) -> Vec<Value> {
+    match take(data, key) {
+        Some(Value::Array(items)) => items,
+        _ => Vec::new(),
+    }
 }
 
 /// The string members of the array at `key`, or none when no array is present.
-fn strings(data: &Object, key: &str) -> Vec<String> {
-    let items = data.get(key).and_then(Value::as_array).unwrap_or_default();
-    items
-        .iter()
-        .filter_map(Value::as_str)
-        .map(str::to_owned)
-        .collect()
-}
-
-/// The recognized fields in the `fields` object, or none when no object is present.
-fn fields(data: &Object) -> Vec<(Field, Value)> {
-    let members = data
-        .get("fields")
-        .and_then(Value::as_object)
+fn strings(data: &mut Object, key: &str) -> Vec<String> {
+    items(data, key)
         .into_iter()
-        .flatten();
-    members
-        .filter_map(|(name, value)| Some((Field::from_name(name)?, value.clone())))
+        .filter_map(|item| match item {
+            Value::Str(text) => Some(text),
+            _ => None,
+        })
         .collect()
 }
 
-fn ending(data: &Object) -> Ending {
+/// The recognized fields in the `fields` object, in its order, or none when no object is present.
+fn fields(data: &mut Object) -> Vec<(Field, Value)> {
+    object(data, "fields")
+        .into_iter()
+        .filter_map(|(name, value)| Some((Field::from_name(&name)?, value)))
+        .collect()
+}
+
+fn ending(data: &mut Object) -> Ending {
     Ending {
         claim: text(data, "claim"),
         reason: text(data, "reason"),
@@ -247,39 +269,31 @@ impl Op {
         }
     }
 
-    /// The operation `name` asks for, its payload read from `data`.
-    pub fn read(name: &str, data: &Object) -> Op {
-        let present = |key: &str| {
-            data.get(key)
-                .filter(|v| **v != Value::Null)
-                .map(|v| Box::new(v.clone()))
+    /// The operation `name` asks for, its payload read from `data`, which it takes apart: what
+    /// replay keeps of a payload is moved out of it, never copied (roll-lqjj.53.1).
+    pub fn read(name: &str, mut data: Object) -> Op {
+        let data = &mut data;
+        let present = |data: &mut Object, key: &str| {
+            take(data, key).filter(|v| *v != Value::Null).map(Box::new)
         };
         match name {
             "init" => Op::Init {
-                prefix: present("prefix"),
-                name: present("name"),
+                prefix: present(data, "prefix"),
+                name: present(data, "name"),
             },
             "create" => Op::Create(Box::new(Create {
                 key: text(data, "key").unwrap_or_default(),
                 fields: fields(data),
                 labels: strings(data, "labels"),
-                extra: data
-                    .get("extra")
-                    .and_then(Value::as_object)
-                    .cloned()
-                    .unwrap_or_default(),
-                comments: data
-                    .get("comments")
-                    .and_then(Value::as_array)
-                    .unwrap_or_default()
-                    .iter()
-                    .filter_map(|c| c.as_object().cloned())
+                extra: object(data, "extra"),
+                comments: items(data, "comments")
+                    .into_iter()
+                    .filter_map(|c| match c {
+                        Value::Object(members) => Some(*members),
+                        _ => None,
+                    })
                     .collect(),
-                dangling: data
-                    .get("dangling")
-                    .and_then(Value::as_array)
-                    .unwrap_or_default()
-                    .to_vec(),
+                dangling: items(data, "dangling"),
                 imported: data.get("imported").is_some_and(Value::truthy),
             })),
             "set" => Op::Set(fields(data)),
@@ -300,12 +314,7 @@ impl Op {
             "dep_add" => Op::DepAdd {
                 to: text(data, "to").unwrap_or_default(),
                 kind: text(data, "type"),
-                meta: Box::new(
-                    data.get("meta")
-                        .and_then(Value::as_object)
-                        .cloned()
-                        .unwrap_or_default(),
-                ),
+                meta: Box::new(object(data, "meta")),
             },
             "dep_remove" => Op::DepRemove {
                 to: text(data, "to"),

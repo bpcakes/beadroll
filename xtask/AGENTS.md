@@ -59,8 +59,8 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
   record written (roll-lqjj.44), at the worst point, an eighth more events taken in than a
   compaction left, its index's bytes, its decode, its heap whole and its encode, both ways, and one
   comment past it the encode that compacts (roll-lqjj.43, X17); `timing/parse.rs`: `timing
-  --parse N`, core's JSON reader on `meta.json` with a published map of N entries, parsed whole as
-  every command with a remote parses it for its unpublished count, its members put into an object
+  --parse N`, core's JSON reader on `meta.json` with a published map of N entries, parsed both as
+  a value and as typed metadata, its members put into an object
   once and twice (by key as written, then by key as read: the reader's own double build on its
   own), and on every line of a history of N events (roll-lqjj.49); `timing/growth.rs`: the
   growth guards only time can keep (roll-lqjj.34, X15), tests ignored by every other run that time

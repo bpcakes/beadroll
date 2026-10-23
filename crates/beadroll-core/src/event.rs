@@ -1,13 +1,19 @@
 //! Event validation: the shared envelope (`event_problem`), each operation's payload
 //! (`payload_problem`) and stricter rules for new writes (`write_problem`). Each returns a
-//! diagnostic or `None`.
+//! diagnostic or `None`. The envelope's rules are judged on what was read of it ([`Envelope`],
+//! roll-lqjj.53.1), which a journal line is read straight into and an event built in memory walks
+//! into.
+
+mod borrowed;
+mod envelope;
 
 use crate::id::EventId;
 use crate::json::{Int, Object, Value, member};
 use crate::key::number_too_long;
 use crate::op::IntegerField;
 use crate::text::repr_str;
-use crate::time::MAX_MILLIS;
+
+pub(crate) use envelope::{Data, Envelope};
 
 /// The format of events this bead reads and writes.
 pub const FORMAT: i64 = 1;
@@ -221,66 +227,10 @@ fn object_or_none(value: Option<&Value>) -> bool {
     matches!(value, None | Some(Value::Null | Value::Object(_)))
 }
 
-/// Why an event's envelope cannot be used, or `None`.
+/// Why an event's envelope cannot be used, or `None`: [`Envelope::problem`] of what is read of
+/// `event`.
 pub fn event_problem(event: &Value) -> Option<String> {
-    let Value::Object(event) = event else {
-        return Some("event is not an object".into());
-    };
-    let id = event
-        .get("id")
-        .and_then(Value::as_str)
-        .and_then(EventId::parse);
-    let Some(id) = id else {
-        return Some("id is not a UUID".into());
-    };
-    if id.millis() > MAX_MILLIS {
-        return Some("id carries an impossible timestamp".into());
-    }
-    if !matches!(event.get("op"), Some(Value::Str(_)))
-        || !matches!(event.get("replica"), Some(Value::Str(_)))
-    {
-        return Some("op or replica missing".into());
-    }
-    let deps_valid = match event.get("deps") {
-        None => true,
-        Some(Value::Array(deps)) => deps
-            .iter()
-            .all(|dep| dep.as_str().and_then(EventId::parse).is_some()),
-        Some(_) => false,
-    };
-    if !deps_valid {
-        return Some("deps is not a list of event ids".into());
-    }
-    if !object_or_none(event.get("data")) {
-        return Some("data is not an object".into());
-    }
-    if !event.get("v").is_none_or(is_int) {
-        return Some("v is not an integer".into());
-    }
-    if !str_or_none(event.get("issue")) {
-        return Some("issue is not an id".into());
-    }
-    let actor_valid = match event.get("actor") {
-        None | Some(Value::Null) => true,
-        Some(Value::Object(actor)) => ["agent", "thread", "name"]
-            .iter()
-            .all(|key| str_or_none(actor.get(*key))),
-        Some(_) => false,
-    };
-    if !actor_valid {
-        return Some("actor is malformed".into());
-    }
-    let where_valid = match event.get("where") {
-        None | Some(Value::Null) => true,
-        Some(Value::Object(place)) => {
-            str_or_none(place.get("branch")) && str_or_none(place.get("commit"))
-        }
-        Some(_) => false,
-    };
-    if !where_valid {
-        return Some("where is malformed".into());
-    }
-    None
+    borrowed::Borrowed::of(event).problem()
 }
 
 /// Why `fields` cannot be written, or `None`. `bookkeeping` permits `created_at`, `updated_at`
@@ -340,8 +290,17 @@ pub fn data_of(event: &Value) -> Option<&Object> {
 
 /// Why an event's content cannot be applied, or `None`. Called only after envelope validation.
 pub fn payload_problem(event: &Value) -> Option<String> {
-    let op = event.get("op").and_then(Value::as_str).unwrap_or_default();
-    let data = data_of(event);
+    borrowed::Borrowed::of(event).payload_problem()
+}
+
+/// Why the payload `data` of the operation `op` cannot be applied, or `None`, for the event `id`
+/// about `issue` (a create must name itself). Called only after envelope validation.
+pub(crate) fn payload_problem_of(
+    op: &str,
+    data: Option<&Object>,
+    id: Option<EventId>,
+    issue: Option<&str>,
+) -> Option<String> {
     let get = |key: &str| data.and_then(|d| member(d, key));
     if !KNOWN_OPS.contains(&op) {
         return Some(format!("unknown operation {}", repr_str(op)));
@@ -352,7 +311,11 @@ pub fn payload_problem(event: &Value) -> Option<String> {
         Some(_) => false,
     };
     match op {
-        "create" => create_problem(event, data, &strings),
+        "create" => {
+            // An id's spelling is exact, so the issue names it exactly when it spells it.
+            let names_itself = id.is_some() && issue.and_then(EventId::parse) == id;
+            create_problem(names_itself, data, &strings)
+        }
         "set" => match get("fields") {
             None => Some("fields is not an object".into()),
             Some(fields) => fields_problem(fields, false),
@@ -398,12 +361,12 @@ pub fn payload_problem(event: &Value) -> Option<String> {
 }
 
 fn create_problem(
-    event: &Value,
+    names_itself: bool,
     data: Option<&Object>,
     strings: &dyn Fn(&str) -> bool,
 ) -> Option<String> {
     let get = |key: &str| data.and_then(|d| member(d, key));
-    if event.get("issue") != event.get("id") {
+    if !names_itself {
         return Some("create event does not name itself as the issue".into());
     }
     match get("key") {

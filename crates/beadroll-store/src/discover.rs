@@ -11,7 +11,7 @@ use beadroll_git::{Fact, Git, Output, is_local_path, normalize_remote, realpath}
 use sha2::{Digest as _, Sha256};
 
 use crate::error::Error;
-use crate::fs::{Unreadable, json_text, read_json_text};
+use crate::fs::{json_text, read_json_text};
 use crate::settings::{Settings, join_path, normalize_path};
 use crate::workspace::{Workspace, configured_url, listed_url};
 
@@ -98,7 +98,7 @@ fn committed_config(answer: Result<Output, beadroll_git::Error>) -> Result<Objec
         out = out.get(size + 1..).unwrap_or_default();
         if fields.get(1) == Some(&&b"blob"[..]) {
             let origin = format!("{name}:.beadroll.json");
-            let config = json_text(body)
+            let config = beadroll_core::configuration::read(body)
                 .map_err(|_| Error::Config(format!("{origin} is not valid JSON")))?;
             return checked_config(config, &origin);
         }
@@ -247,11 +247,23 @@ pub fn workspaces_named(
     let mut found: Vec<String> = entries
         .flatten()
         .filter(|entry| entry.path().is_dir())
-        .map(|entry| (entry.file_name().to_string_lossy().into_owned(), entry.path()))
+        .map(|entry| {
+            (
+                entry.file_name().to_string_lossy().into_owned(),
+                entry.path(),
+            )
+        })
         .filter(|(id, _)| id != except)
         .filter(|(_, path)| {
-            matches!(read_json_text(&path.join("meta.json")),
-                Ok(Value::Object(meta)) if matches!(meta.get("name"), Some(Value::Str(n)) if *n == wanted))
+            let meta = std::fs::read(path.join("meta.json"))
+                .ok()
+                .and_then(|bytes| {
+                    beadroll_core::metadata::Metadata::read(&bytes)
+                        .ok()
+                        .flatten()
+                });
+            matches!(meta.as_ref().and_then(|meta| meta.value("name")),
+                Some(Value::Str(n)) if *n == wanted)
         })
         .map(|(id, _)| id)
         .collect();
@@ -352,9 +364,12 @@ pub fn find_workspace(settings: &Arc<Settings>) -> Result<Workspace, Error> {
     let config = match &tracked_file {
         Some(file) if file.exists() => {
             let shown = file.display().to_string();
-            let config = match read_json_text(file) {
-                Ok(value) => value,
-                Err(Unreadable::Missing | Unreadable::Other(_)) => {
+            let config = match std::fs::read(file)
+                .ok()
+                .and_then(|bytes| beadroll_core::configuration::read(&bytes).ok())
+            {
+                Some(value) => value,
+                None => {
                     return Err(Error::Config(format!("{shown} is not valid JSON")));
                 }
             };

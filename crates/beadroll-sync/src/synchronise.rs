@@ -6,7 +6,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use beadroll_core::json::{self, Format, Int, Object, Value};
-use beadroll_core::text::{parse_integer, shell_quote};
+use beadroll_core::metadata::Counts;
+use beadroll_core::text::shell_quote;
 use beadroll_git::PushOutcome;
 use beadroll_store::{
     Endpoint, Failpoints, Fired, Memo, Workspace, claim_files, load_pending, moved_workspaces,
@@ -365,11 +366,11 @@ pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
         Ok(Some(remote)) if !remote.is_empty() => {}
         _ => return Ok(None),
     }
-    let meta = ws.meta(false)?;
-    let none = Object::new();
-    let published = match meta.get("published") {
-        Some(Value::Object(published)) => &**published,
-        _ if meta.get("last_sync").is_some_and(Value::truthy) => return Ok(None),
+    let meta = ws.metadata(false)?;
+    let none = Counts::default();
+    let published = match meta.published() {
+        Some(published) => published,
+        _ if meta.value("last_sync").is_some_and(Value::truthy) => return Ok(None),
         _ => &none,
     };
     let unreadable = |what: String| {
@@ -392,12 +393,9 @@ pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
     let mut memo = Memo::load_only(ws, &|name| name.ends_with(".jsonl") && names.contains(name));
     for (path, name) in &segments {
         let lines = Int::from(memo.lines(name, path)? as i64);
-        let known = match published.get(name) {
-            None => Int::from(0),
-            Some(value) => count_of(value).ok_or_else(|| {
-                unreadable(format!("the published count of {name} is not a number"))
-            })?,
-        };
+        let known = published
+            .count(name)
+            .ok_or_else(|| unreadable(format!("the published count of {name} is not a number")))?;
         let beyond = || {
             unreadable(
                 "the published counts put the unpublished count beyond what bead counts".to_owned(),
@@ -410,7 +408,7 @@ pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
     }
     for path in claim_files(ws)?.iter() {
         // its path in the store, as `relative` gives it, without a copy of each
-        if !published.contains_key(&*relative_name(ws, path)) {
+        if !published.contains_key(&relative_name(ws, path)) {
             count = count.add(&Int::from(1)).ok_or_else(|| {
                 unreadable(
                     "the attempt files put the unpublished count beyond what bead counts"
@@ -420,21 +418,6 @@ pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
         }
     }
     Ok(Some(count))
-}
-
-/// Coerces a published count: falsy values become zero, integers stay exact, finite floats
-/// truncate toward zero and strings use integer parsing. Other values fail.
-fn count_of(value: &Value) -> Option<Int> {
-    if !value.truthy() {
-        return Some(Int::from(0));
-    }
-    match value {
-        Value::Bool(true) => Some(Int::from(1)),
-        Value::Int(n) => Some(n.clone()),
-        Value::Float(f) => Int::from_f64(*f),
-        Value::Str(text) => parse_integer(text),
-        _ => None,
-    }
 }
 
 /// Ownership ended or a local write happened: tell the other machines now rather than at the next

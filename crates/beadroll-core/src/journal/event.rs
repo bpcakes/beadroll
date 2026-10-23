@@ -7,9 +7,9 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, LazyLock};
 
-use crate::event::{FORMAT, event_problem, payload_problem};
+use crate::event::{Data, Envelope, FORMAT};
 use crate::id::EventId;
-use crate::json::{self, Format, Object, Value};
+use crate::json::{self, Format, Value};
 use crate::op::{IntegerField, Op};
 use crate::text::str_of;
 
@@ -106,60 +106,56 @@ impl Rest {
 }
 
 impl Event {
-    /// What `value`, the `counter`-th record added and found in `source`, holds under `id`.
+    /// What the record read as `envelope`, the `counter`-th added and found in `source`, holds
+    /// under `id`, its content's digest being `digest`.
     pub(crate) fn read(
         id: EventId,
-        value: &Value,
+        envelope: Envelope,
+        digest: Digest,
         source: &Arc<Source>,
         counter: u64,
         shared: &mut Shared,
     ) -> Event {
-        let deps = value
-            .get("deps")
-            .and_then(Value::as_array)
-            .unwrap_or_default()
-            .iter()
-            .filter_map(|dep| dep.as_str().and_then(EventId::parse))
-            .collect();
-        let name = value.get("op").and_then(Value::as_str).unwrap_or_default();
-        let empty = Object::new();
-        let data = value
-            .get("data")
-            .and_then(Value::as_object)
-            .unwrap_or(&empty);
-        let trouble = match event_problem(value) {
+        let trouble = match envelope.problem() {
             Some(problem) => Some(Trouble::Invalid(problem)),
-            None => match value.get("v").filter(|v| !same_int(v, FORMAT)) {
+            None => match envelope.v.as_ref().filter(|v| !same_int(v, FORMAT)) {
                 Some(version) => Some(format!(
                     "event format v{} is not one this version of bead reads",
                     str_of(version)
                 )),
-                None => payload_problem(value),
+                None => envelope.payload_problem(),
             }
             .map(Trouble::Flaw),
         };
-        let replica = value
-            .get("replica")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
+        let Envelope {
+            deps,
+            op,
+            replica,
+            data,
+            issue,
+            actor,
+            place,
+            ..
+        } = envelope;
+        let data = match data {
+            Data::Object(data) => data,
+            _ => Default::default(),
+        };
         let rest = Rest {
-            op: Op::read(name, data),
-            issue: value
-                .get("issue")
-                .and_then(Value::as_str)
-                .map(|issue| shared.text(issue)),
-            place: value.get("where").map(|place| shared.value(place)),
             imported: data.get("imported").is_some_and(Value::truthy),
+            op: Op::read(op.as_deref().unwrap_or_default(), data),
+            issue: issue.as_str().map(|issue| shared.text(issue)),
+            place: place.as_ref().map(|place| shared.value(place)),
             trouble: trouble.map(Box::new),
-            digest: shared.digester.digest(value),
+            digest,
             source: Arc::clone(source),
             counter,
         };
         Event(Arc::new(Read {
             id,
-            deps,
-            replica: shared.text(replica),
-            actor: value.get("actor").map(|actor| shared.value(actor)),
+            deps: deps.into_boxed_slice(),
+            replica: shared.text(replica.as_deref().unwrap_or_default()),
+            actor: actor.as_ref().map(|actor| shared.value(actor)),
             rest: Some(Box::new(rest)),
         }))
     }
@@ -317,7 +313,7 @@ pub(crate) struct Shared {
     values: HashMap<String, Arc<Value>>,
     /// The values held last: an event most often names the actor and the place the one before did.
     recent: VecDeque<Arc<Value>>,
-    digester: Digester,
+    pub(super) digester: Digester,
 }
 
 /// Whether `value` holds no other value.

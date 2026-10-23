@@ -51,8 +51,8 @@ impl Workspace {
     /// remembered (older versions saved its URL too): it is looked up each time, so `git remote
     /// set-url origin` is followed.
     pub fn remembered_remote(&self) -> Result<Option<OsString>, Error> {
-        let meta = self.meta(true)?;
-        Ok(match meta.get("remote") {
+        let meta = self.metadata(true)?;
+        Ok(match meta.value("remote") {
             Some(Value::Str(remote)) if !self.is_origin_chosen(OsStr::new(remote))? => {
                 Some(OsString::from(remote))
             }

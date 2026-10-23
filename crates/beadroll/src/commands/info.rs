@@ -66,7 +66,7 @@ pub(crate) fn info(ctx: &Context<'_>) -> Result<Outcome, Failure> {
     let label = ctx.actor.label(replica.as_deref().unwrap_or("?"));
     result.insert("actor_label".into(), Value::from(label.shown()));
     numbers(ws, &projection, &mut result)?;
-    let synced = ws.meta(false)?.get("last_sync").cloned();
+    let synced = ws.metadata(false)?.value("last_sync").cloned();
     result.insert("last_sync".into(), synced.unwrap_or(Value::Null));
     // set aside by a rebuild; nothing in them is the only copy of anything, delete at leisure
     let damaged: Vec<Value> = dir_entries(&ws.dir)?
