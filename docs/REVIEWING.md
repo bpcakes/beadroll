@@ -1833,8 +1833,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `op`, `replica` and `issue` as text, `actor` and `where` as the small values they are, and only
   the payload as the object it was written as, which the operation's reader takes apart, moving
   what replay keeps out of it; no value is built for the line, and the envelope's rules are judged
-  on what was read (`Envelope::problem`, which `event_problem` is), the payload's on the payload
-  (`payload_problem`). A record built in memory (a transaction's, a test's) walks into the same
+  on what was read (`Envelope::problem`), the payload's on the payload (`payload_problem`).
+  Both use a borrowed envelope view, as do `event_problem` and `payload_problem` on a value:
+  validation never clones or disposes of unrelated members (AB02). A record built in memory
+  (a transaction's, a test's) walks into the same
   envelope (`Envelope::from_value`), so there is one reader of events, and a journal's
   `add_segment` and `add_attempt` read a file by the rules `read_segment` and `read_attempt`
   read it into values by (a last line not yet whole skipped, any other unreadable line reported;
@@ -1844,12 +1846,26 @@ These were decided deliberately. Report problems *with* them, not their existenc
   since bead writes every record once, compact and with its members in one order, and copies it
   byte for byte, so a copy whose members are reordered or spaced otherwise is another content
   (until roll-lqjj.53.1 the digest was of an encoding that ignored member order, as Python's
-  `canonical` compared contents, which cost a walk of the parsed value for every record). It is
+  `canonical` compared contents, which cost a walk of the parsed value for every record).
+  When a value built in memory cannot be printed, its fallback digest walks a typed,
+  length-delimited encoding with an explicit stack, preserving member order; recursive debug
+  formatting would overflow before validation could report a deeply nested value (AB01). It is
   not a cryptographic hash and need not be: the keys never leave the process, so nobody can aim
   at a collision, and two contents share 128 bits by chance once in 2¹²⁸; a collision would apply
   the first of two contents of one id where both should be quarantined. Replay takes each event's
   operation from the journal as it applies it, and the state it builds keeps the rest (who wrote
   each event, what it had seen), not the journal: `State` has no `journal()`.
+- `meta.json`'s published map is read directly into integer counts (`metadata::Metadata`, AB03),
+  kept with the file identity already used to cache it. A legacy noninteger count or a nonmap
+  `published` value takes the generic reader, preserving its values and diagnostics, including
+  duplicate keys' last values in their first positions. Counts are coerced only when asked for:
+  attempt files use membership alone, and a bad unused count does not invalidate other counts.
+  Ordinary metadata fields and unknown members remain generic. A rewrite reconstructs the
+  original object in order; `Workspace::meta` keeps its generic public API, while ordinary
+  callers use `metadata` without reconstructing the published map. `.beadroll.json` reads its
+  known string and boolean members by type into its existing public map, unknown members kept;
+  type mismatches use the generic reader so validation precedence, diagnostics, and last-wins
+  duplicates remain unchanged. Both the working file and committed fallback use this reader.
 - The 150 MB budget for replaying 200,000 events is a heap budget
   (the maintainer's decision of 2026-10-12, roll-dih8.11): `cargo xtask timing --replay N` counts
   the most a fresh process that loads the journal and replays it holds on its heap at once, and
@@ -1891,21 +1907,24 @@ These were decided deliberately. Report problems *with* them, not their existenc
   and five dialects: compact for journals, attempts and export; spaced for results and, sorted,
   the manifest; spaced and ASCII-escaped for errors, `--version` and `replica.json`; `indent=1`
   and ASCII-escaped for `meta.json`, `aliases.json`, `moved.json` and `.beadroll.json`; sorted
-  and compact to compare quarantined copies. A byte that is not UTF-8 in what bead prints or
+  and compact for tests and tools comparing values; quarantine compares line-byte digests.
+  A byte that is not UTF-8 in what bead prints or
   signs as JSON (an error's message, a receipt's request) is U+FFFD, so that any reader takes it;
   until roll-lqjj.53 it was a lone surrogate escape, which only bead's own parser read, and
   `machines --name` kept such bytes in `aliases.json` the same way, where it now refuses a name
   that is not UTF-8, as every text bead writes is refused. `cargo xtask timing --parse N`
   measures the reader on a `meta.json` of N files (its members built once and twice beside it)
   and on every line of a history of N events, parsed as values and, since roll-lqjj.53.1, read
-  into a journal as a store loads one (`journal_seconds`). At the change (2026-10-22, release, one machine
+  into a journal as a store loads one (`journal_seconds`); `metadata_seconds` measures the typed
+  metadata reader beside the generic `published_seconds`. At the change (2026-10-22, release, one machine
   with two virtual machines running beside it): `meta.json` of 200,000 files in 39 ms rather than
   67; the probe's 200,000 synthetic lines (53 MB, short titles, no text) in 0.69 s rather than
   0.57, where serde_json's own tree takes 0.58 against the old parser's 0.55 when alternated and
   pinned to one core and bead's `IndexMap` tree a tenth more (SipHash, boxed), though the same
   serde_json read those lines in 0.34 s on the quieter machine of that morning; this machine's
   three real trackers' 3,230 lines (6.6 MB, text) in 14 ms rather than 24, and a `meta.json` of
-  92,000 files in 17 ms rather than 27. The tree is what remains (roll-lqjj.53.1).
+  92,000 files in 17 ms rather than 27. The typed journal and metadata readers followed in
+  roll-lqjj.53.1; the paired measurements are in CHANGELOG.md.
 - git is the git binary, never gix or libgit2: bead's contract is "as git reads it" (`insteadOf`,
   `includeIf`, credential helpers, `core.sshCommand`, translated messages, server hooks, SHA-256
   repositories, reftable), which a reimplementation would have to match, and the hardening tests

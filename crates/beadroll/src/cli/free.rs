@@ -170,9 +170,9 @@ fn standing(ws: &Workspace, me: &Label) -> Result<(String, State), Failure> {
             ", {waiting} attempt(s) of this machine awaiting the remote"
         ));
     }
-    let meta = ws.meta(false)?;
+    let meta = ws.metadata(false)?;
     let synced = meta
-        .get("last_sync")
+        .value("last_sync")
         .filter(|v| v.truthy())
         .map_or_else(|| "never".to_owned(), str_of);
     line.push_str(&format!(". Last sync: {synced}."));

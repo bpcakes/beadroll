@@ -13,6 +13,7 @@
 //! - [`code`]: wire error codes.
 
 pub mod code;
+pub mod configuration;
 pub mod event;
 pub mod export;
 pub mod id;
@@ -20,6 +21,7 @@ pub mod import;
 pub mod journal;
 pub mod json;
 pub mod key;
+pub mod metadata;
 pub mod op;
 pub mod order;
 pub mod projection;

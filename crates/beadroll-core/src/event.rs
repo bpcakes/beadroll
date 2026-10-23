@@ -4,6 +4,7 @@
 //! roll-lqjj.53.1), which a journal line is read straight into and an event built in memory walks
 //! into.
 
+mod borrowed;
 mod envelope;
 
 use crate::id::EventId;
@@ -229,7 +230,7 @@ fn object_or_none(value: Option<&Value>) -> bool {
 /// Why an event's envelope cannot be used, or `None`: [`Envelope::problem`] of what is read of
 /// `event`.
 pub fn event_problem(event: &Value) -> Option<String> {
-    Envelope::from_value(event.clone()).problem()
+    borrowed::Borrowed::of(event).problem()
 }
 
 /// Why `fields` cannot be written, or `None`. `bookkeeping` permits `created_at`, `updated_at`
@@ -289,7 +290,7 @@ pub fn data_of(event: &Value) -> Option<&Object> {
 
 /// Why an event's content cannot be applied, or `None`. Called only after envelope validation.
 pub fn payload_problem(event: &Value) -> Option<String> {
-    Envelope::from_value(event.clone()).payload_problem()
+    borrowed::Borrowed::of(event).payload_problem()
 }
 
 /// Why the payload `data` of the operation `op` cannot be applied, or `None`, for the event `id`

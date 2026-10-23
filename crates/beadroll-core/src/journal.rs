@@ -341,7 +341,8 @@ impl Journal {
     }
 }
 
-/// The canonical event content used by quarantine: compact JSON with sorted keys.
+/// Compact JSON with sorted keys, for tests and tools comparing values independently of member
+/// order. Quarantine compares line-byte digests instead.
 pub fn canonical(event: &Value) -> String {
     // Only a value built in memory fails to print (an integer too long, nesting too deep); its
     // debug form still tells contents apart.

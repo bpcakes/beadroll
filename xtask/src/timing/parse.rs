@@ -1,6 +1,7 @@
 //! `timing --parse N`: what core's JSON reader takes in this process on what bead reads most often
 //! at a size (roll-lqjj.49): `meta.json` with a `published` map of N entries, one for every journal
-//! file, which every command with a remote parses whole for its unpublished count; and the lines
+//! file, parsed generically (`published_seconds`) and as typed metadata (`metadata_seconds`);
+//! and the lines
 //! of a history of N events, every segment's and every attempt file's, parsed as values
 //! (`lines_seconds`) and read into a journal as a store loads one, each segment rotated as bead
 //! rotates it, straight into what the journal keeps of each record and settled
@@ -11,6 +12,7 @@
 
 use beadroll_core::journal::Journal;
 use beadroll_core::json::{Format, Object, ParseError, Value, parse, write};
+use beadroll_core::metadata::Metadata;
 use indexmap::IndexMap;
 
 use super::decode::{fastest, fastest_of};
@@ -150,6 +152,7 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
         |error: ParseError| Failure::Failed(format!("the text does not parse: {error}"));
     let meta = meta(count)?;
     let published_seconds = fastest(|| parse(&meta).map_err(unreadable))?;
+    let metadata_seconds = fastest(|| Metadata::read(&meta).map_err(unreadable))?;
     let parsed = parse(&meta).map_err(unreadable)?;
     let members = members(&parsed.value)?;
     let once_seconds = fastest_of(|| members.clone(), |members| Ok(once(members)))?;
@@ -175,7 +178,7 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
     );
     Ok(format!(
         "{{\"label\": {}, \"files\": {count}, \"shape\": {}, \"profile\": {}, \"runs\": {RUNS}, \
-         \"published_seconds\": {published_seconds:.4}, \"published_bytes\": {}, \
+         \"published_seconds\": {published_seconds:.4}, \"metadata_seconds\": {metadata_seconds:.4}, \"published_bytes\": {}, \
          \"published_members\": {}, \"once_seconds\": {once_seconds:.4}, \
          \"twice_seconds\": {twice_seconds:.4}, \"lines_seconds\": {lines_seconds:.4}, \
          \"journal_seconds\": {journal_seconds:.4}, \"lines\": {}, \"lines_bytes\": {lines_bytes}, ",
@@ -248,6 +251,7 @@ mod tests {
             .value;
         for name in [
             "published_seconds",
+            "metadata_seconds",
             "once_seconds",
             "twice_seconds",
             "lines_seconds",

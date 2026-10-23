@@ -14,6 +14,10 @@ consumer on tokio calls through `spawn_blocking`.
 
 ## Key entrypoints
 
+- `src/metadata.rs`: `Metadata`, the typed published-count map with ordered unknown fields kept
+  for rewrites; `src/configuration.rs`: known configuration fields read by type into the existing
+  public map, with legacy shapes left to the established validators.
+
 - `src/lib.rs`: the crate root, listing the modules.
 - `src/json.rs` (`json/read.rs`, `json/write.rs`, `json/int.rs`): `Value` and its `Deserialize`,
   `parse` (serde_json), `write`, `Format`.

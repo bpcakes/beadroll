@@ -9,9 +9,9 @@ use std::fmt;
 
 use serde::de::{Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 
+use super::borrowed::Borrowed;
 use crate::id::EventId;
 use crate::json::{Object, Value};
-use crate::time::MAX_MILLIS;
 
 /// A member that is text, null, absent, or something else.
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -156,68 +156,31 @@ impl Envelope {
 
     /// Why this envelope cannot be used, or `None`: the rules of `event_problem`, in its order.
     pub(crate) fn problem(&self) -> Option<String> {
-        if !self.object {
-            return Some("event is not an object".into());
-        }
-        let Some(id) = self.id else {
-            return Some("id is not a UUID".into());
-        };
-        if id.millis() > MAX_MILLIS {
-            return Some("id carries an impossible timestamp".into());
-        }
-        if self.op.is_none() || self.replica.is_none() {
-            return Some("op or replica missing".into());
-        }
-        if !self.deps_valid {
-            return Some("deps is not a list of event ids".into());
-        }
-        if self.data == Data::Other {
-            return Some("data is not an object".into());
-        }
-        if !self.v.as_ref().is_none_or(super::is_int) {
-            return Some("v is not an integer".into());
-        }
-        if self.issue == Text::Other {
-            return Some("issue is not an id".into());
-        }
-        let actor_valid = match &self.actor {
-            None | Some(Value::Null) => true,
-            Some(Value::Object(actor)) => ["agent", "thread", "name"]
-                .iter()
-                .all(|key| str_or_none(actor.get(*key))),
-            Some(_) => false,
-        };
-        if !actor_valid {
-            return Some("actor is malformed".into());
-        }
-        let where_valid = match &self.place {
-            None | Some(Value::Null) => true,
-            Some(Value::Object(place)) => {
-                str_or_none(place.get("branch")) && str_or_none(place.get("commit"))
-            }
-            Some(_) => false,
-        };
-        if !where_valid {
-            return Some("where is malformed".into());
-        }
-        None
+        self.borrowed().problem()
     }
 
     /// Why its payload cannot be applied, or `None` (`payload_problem`). Asked only of an
     /// envelope [`Envelope::problem`] passes.
     pub(crate) fn payload_problem(&self) -> Option<String> {
-        super::payload_problem_of(
-            self.op.as_deref().unwrap_or_default(),
-            self.data.as_object(),
-            self.id,
-            self.issue.as_str(),
-        )
+        self.borrowed().payload_problem()
     }
-}
 
-/// Whether `value` is absent, null or text.
-fn str_or_none(value: Option<&Value>) -> bool {
-    matches!(value, None | Some(Value::Null | Value::Str(_)))
+    fn borrowed(&self) -> Borrowed<'_> {
+        Borrowed {
+            object: self.object,
+            id: self.id,
+            op: self.op.as_deref(),
+            replica: self.replica.as_deref(),
+            deps_valid: self.deps_valid,
+            data_valid: !matches!(self.data, Data::Other),
+            data: self.data.as_object(),
+            v: self.v.as_ref(),
+            issue_valid: !matches!(self.issue, Text::Other),
+            issue: self.issue.as_str(),
+            actor: self.actor.as_ref(),
+            place: self.place.as_ref(),
+        }
+    }
 }
 
 /// The members read, by name.

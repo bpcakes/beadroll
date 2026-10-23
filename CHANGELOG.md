@@ -6,6 +6,38 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- The typed-reader review repairs (roll-lqjj.53.1.1, AB01–AB05) keep in-memory validation
+  borrowed and use an iterative digest fallback for values too deep to print; tests cover
+  100,000 levels without recursive test cleanup. Metadata now reads its published map straight
+  into counts, preserving legacy coercions, unknown fields, duplicate-key order and rewrite
+  bytes; ordinary callers retain those counts rather than reconstructing a generic map.
+  Both `.beadroll.json` read paths read known fields by type into the existing public map,
+  retaining the generic reader for legacy shapes and the established validation diagnostics.
+  Quarantine's documentation consistently describes byte digests.
+
+  Paired `cargo xtask timing --parse 200000` measurements, built with
+  `cargo build --release --locked --package xtask`, on this machine on 2026-10-23, pinned to CPU 3:
+  base `9e27e78`, repair of `860bd5f`, base, repair, in that order. Each command reports the
+  fastest of seven runs. The base executable was built from that revision's tracked contents
+  temporarily restored in this same checkout; the reviewed files were restored before repairs.
+  The recorder's `commit` field identifies the checkout at execution, not the saved executable;
+  the [raw records](docs/reviews/2026-10-23-19-parse.json) identify both executables by hash and
+  record their source provenance separately.
+
+  | Run | Source | Generic metadata (`published_seconds`) | Typed metadata (`metadata_seconds`) | Generic lines (`lines_seconds`) | Journal load (`journal_seconds`) |
+  |---|---|---:|---:|---:|---:|
+  | 1 | base | 0.0451 | — | 0.7391 | — |
+  | 2 | repair | 0.0434 | 0.0392 | 0.7720 | 0.8025 |
+  | 3 | base | 0.0400 | — | 0.7235 | — |
+  | 4 | repair | 0.0393 | 0.0370 | 0.8062 | 0.7997 |
+
+  All times are seconds. The generic reader is unchanged in this branch; its synthetic-line
+  times were higher in these repair runs. The new typed metadata measure is separate from the
+  existing generic measure. The base has no `journal_seconds`: the earlier 1.44 → 0.85 s pair
+  below came from the custom in-process load harness, not that field. The recorded `--read
+  200000` comparisons below remain the original same-machine, alternating release measurements;
+  they were not rerun for these repairs.
+
 - A journal reads each line straight into what it keeps of the record, with no value built for
   the line (roll-lqjj.53.1): serde_json reads the envelope into typed members (the id and the
   causes parsed from their text as it goes, `op`, `replica` and `issue` as text, `actor` and
