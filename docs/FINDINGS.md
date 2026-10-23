@@ -22,9 +22,12 @@ Reviewers: propose new rows in your report using the next free id for your revie
 
 ## Review 21: Claude and Codex review of parity retirement (ids AD)
 
-The independent reports of `9e27e78..3e311d7` are retained verbatim in
-`reviews/2026-10-23-21-claude.md` and `reviews/2026-10-23-21-codex.md`. After merging main at
-`109550d`, all five adjudicated findings were verified again: an old Rust writer reproduced the
+The independent reports of `9e27e78..3e311d7` are retained in
+`reviews/2026-10-23-21-claude.md` and `reviews/2026-10-23-21-codex.md`, with one absolute home
+prefix in the latter replaced by the repository's `/home/<name>/` placeholder. The frozen
+originals remain in the external review handoff; no finding or validation result was changed.
+The committed hygiene check caught that path; its correction changes only this archive. After
+merging main at `109550d`, all five adjudicated findings were verified again: an old Rust writer reproduced the
 key loss, a native core probe reproduced generation reuse, and the merged source still lacked
 the two boundary test groups and the caller-specific compatibility notes. AD03–AD05 are
 supporting test/documentation obligations; they do not assert production corruption. AD02's
