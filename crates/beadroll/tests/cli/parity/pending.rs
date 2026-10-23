@@ -344,31 +344,7 @@ fn af01_a_committed_write_keeps_its_result_when_the_unpublished_count_overflows(
         }
         let written = r.run(args);
         assert_eq!(written.returncode(), 0, "{shape}: {}", written.stderr);
-        if shape == "human" {
-            assert!(written.stdout.contains("Comment added"));
-            assert!(
-                written
-                    .stderr
-                    .starts_with("Warning: write recorded locally;")
-            );
-        } else {
-            let warning = parse_json(&written.stderr).unwrap();
-            assert_eq!(warning["warning"]["code"].as_str(), Some("IO"));
-            assert!(
-                warning["warning"]["message"]
-                    .as_str()
-                    .unwrap()
-                    .contains("write recorded locally;")
-            );
-            let result = parse_json(&written.stdout).unwrap();
-            match shape {
-                "array" => assert_eq!(result[0]["title"].as_str(), Some("after")),
-                "silent" => assert!(result["id"].as_str().unwrap().starts_with("ex-")),
-                "init" => assert_eq!(result["imported"].as_i64(), Some(1)),
-                _ => assert_eq!(result["text"].as_str(), Some("once")),
-            }
-        }
-        assert!(written.stderr.contains("repair it, or run"));
+        assert_count_warning(shape, &written.stdout, &written.stderr);
         let after = std::fs::read_to_string(&path).unwrap();
         assert!(after.starts_with(&before));
         assert_eq!(after.lines().count(), before.lines().count() + 1, "{shape}");
@@ -384,6 +360,31 @@ fn af01_a_committed_write_keeps_its_result_when_the_unpublished_count_overflows(
             assert_eq!(comments[0]["text"].as_str(), Some("once"));
         }
     }
+}
+
+/// A committed write's usual result and a separate, actionable count warning.
+fn assert_count_warning(shape: &str, stdout: &str, stderr: &str) {
+    if shape == "human" {
+        assert!(stdout.contains("Comment added"));
+        assert!(stderr.starts_with("Warning: write recorded locally;"));
+    } else {
+        let warning = parse_json(stderr).unwrap();
+        assert_eq!(warning["warning"]["code"].as_str(), Some("IO"));
+        assert!(
+            warning["warning"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("write recorded locally;")
+        );
+        let result = parse_json(stdout).unwrap();
+        match shape {
+            "array" => assert_eq!(result[0]["title"].as_str(), Some("after")),
+            "silent" => assert!(result["id"].as_str().unwrap().starts_with("ex-")),
+            "init" => assert_eq!(result["imported"].as_i64(), Some(1)),
+            _ => assert_eq!(result["text"].as_str(), Some("once")),
+        }
+    }
+    assert!(stderr.contains("repair it, or run"));
 }
 
 fn durable_inputs(dir: &std::path::Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
