@@ -1,17 +1,22 @@
 //! `timing --parse N`: what core's JSON reader takes in this process on what bead reads most often
 //! at a size (roll-lqjj.49): `meta.json` with a `published` map of N entries, one for every journal
-//! file, which every command with a remote parses whole for its unpublished count; and the lines
-//! of a history of N events, every segment's and every attempt file's, as the journal reader parses
-//! them. Beside the map, what building its members costs on its own: the N members put into an
-//! object once, as a reader that builds each object once pays, and twice, by key as written and
-//! again by key as read, as the reader built every object. The fastest of [`RUNS`] runs counts.
-//! Evidence, never a gate.
+//! file, parsed generically (`published_seconds`) and as typed metadata (`metadata_seconds`);
+//! and the lines
+//! of a history of N events, every segment's and every attempt file's, parsed as values
+//! (`lines_seconds`) and read into a journal as a store loads one, each segment rotated as bead
+//! rotates it, straight into what the journal keeps of each record and settled
+//! (`journal_seconds`, roll-lqjj.53.1). Beside the map, what building its members costs on its
+//! own: the N members put into an object once, as a reader that builds each object once pays, and
+//! twice, by key as written and again by key as read, as the reader built every object. The
+//! fastest of [`RUNS`] runs counts. Evidence, never a gate.
 
+use beadroll_core::journal::Journal;
 use beadroll_core::json::{Format, Object, ParseError, Value, parse, write};
+use beadroll_core::metadata::Metadata;
 use indexmap::IndexMap;
 
 use super::decode::{fastest, fastest_of};
-use super::history::{Files, Shape, event_id, history};
+use super::history::{Files, ROTATE_BYTES, Shape, event_id, history, segments};
 use super::world::profile;
 use crate::workspace::{Failure, json_string};
 
@@ -114,12 +119,40 @@ fn lines(files: &[Files]) -> Vec<&[u8]> {
         .collect()
 }
 
+/// The journal of `files`, read as a store loads one: each machine's segments, rotated as bead
+/// rotates them, then each machine's attempt files, each line read straight into what the journal
+/// keeps of it, and settled. Fails when any line was not read as an event.
+fn journal(files: &[Files]) -> Result<Journal, Failure> {
+    let mut journal = Journal::new();
+    for file in files {
+        for (n, segment) in segments(&file.segment, ROTATE_BYTES).iter().enumerate() {
+            let origin = format!("events/{}/{:06}.jsonl", file.replica, n + 1);
+            journal.add_segment(segment, &file.replica, &origin);
+        }
+    }
+    for file in files {
+        for (name, data) in &file.attempts {
+            let origin = format!("events/{}/claims/{name}", file.replica);
+            journal.add_attempt(data, &file.replica, &origin);
+        }
+    }
+    journal.settle();
+    match journal.invalid.first() {
+        None => Ok(journal),
+        Some(problem) => Err(Failure::Failed(format!(
+            "a line of the history is not read as an event: {} at {}",
+            problem.problem, problem.origin
+        ))),
+    }
+}
+
 /// Measures; returns the beginning of the line to record.
 pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result<String, Failure> {
     let unreadable =
         |error: ParseError| Failure::Failed(format!("the text does not parse: {error}"));
     let meta = meta(count)?;
     let published_seconds = fastest(|| parse(&meta).map_err(unreadable))?;
+    let metadata_seconds = fastest(|| Metadata::read(&meta).map_err(unreadable))?;
     let parsed = parse(&meta).map_err(unreadable)?;
     let members = members(&parsed.value)?;
     let once_seconds = fastest_of(|| members.clone(), |members| Ok(once(members)))?;
@@ -133,6 +166,7 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
             .map(|line| parse(line).map(|parsed| parsed.value).map_err(unreadable))
             .collect::<Result<Vec<Value>, Failure>>()
     })?;
+    let journal_seconds = fastest(|| journal(&files))?;
     let label = label.map_or_else(
         || {
             format!(
@@ -144,10 +178,10 @@ pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result
     );
     Ok(format!(
         "{{\"label\": {}, \"files\": {count}, \"shape\": {}, \"profile\": {}, \"runs\": {RUNS}, \
-         \"published_seconds\": {published_seconds:.4}, \"published_bytes\": {}, \
+         \"published_seconds\": {published_seconds:.4}, \"metadata_seconds\": {metadata_seconds:.4}, \"published_bytes\": {}, \
          \"published_members\": {}, \"once_seconds\": {once_seconds:.4}, \
          \"twice_seconds\": {twice_seconds:.4}, \"lines_seconds\": {lines_seconds:.4}, \
-         \"lines\": {}, \"lines_bytes\": {lines_bytes}, ",
+         \"journal_seconds\": {journal_seconds:.4}, \"lines\": {}, \"lines_bytes\": {lines_bytes}, ",
         json_string(&label),
         json_string(shape.name()),
         json_string(profile()),
@@ -199,6 +233,17 @@ mod tests {
     }
 
     #[test]
+    fn every_line_of_every_file_is_read_into_the_journal() {
+        let ownership = history(40, Shape::Ownership);
+        let loaded = journal(&ownership).unwrap();
+        assert_eq!(loaded.events().len(), 40);
+        assert!(loaded.invalid.is_empty());
+        let mut broken = history(40, Shape::Plain);
+        broken[0].segment.extend_from_slice(b"{\"id\": 1}\n");
+        assert!(journal(&broken).is_err());
+    }
+
+    #[test]
     fn the_figures_name_every_measure() {
         let line = measure(4, Shape::Plain, Some("label")).unwrap();
         let figures = parse(format!("{}}}", line.trim_end_matches(", ")).as_bytes())
@@ -206,9 +251,11 @@ mod tests {
             .value;
         for name in [
             "published_seconds",
+            "metadata_seconds",
             "once_seconds",
             "twice_seconds",
             "lines_seconds",
+            "journal_seconds",
         ] {
             assert!(
                 matches!(figures.get(name), Some(Value::Int(_) | Value::Float(_))),

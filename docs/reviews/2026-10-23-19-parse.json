@@ -1,0 +1,179 @@
+{
+  "method": "Release xtask executables run in A/B/A/B order on CPU 3, same machine. Each measure is the fastest of seven. The base source tree was temporarily restored in the original checkout for compilation, then the reviewed source was restored before repairs. Runtime commit/dirty fields describe the checkout during execution, not the executable source.",
+  "baseBuild": {
+    "sourceRevision": "9e27e78f1bcb874b1b491dfeeb62c4c27f726f38",
+    "headDuringBuild": "860bd5fa170a59ee242a48745edade1858878b96",
+    "method": "Base tracked contents restored temporarily into the original checkout; index and HEAD unchanged; original files restored immediately after build.",
+    "command": [
+      "cargo",
+      "build",
+      "--release",
+      "--locked",
+      "--package",
+      "xtask"
+    ],
+    "binarySha256": "bf903d77923080ea934be5a1dfbd0b04f0aa2a69221dd7f886a51ea18b61a424"
+  },
+  "runs": [
+    {
+      "run": 1,
+      "source": "base",
+      "cpu": 3,
+      "argv": [
+        "taskset",
+        "-c",
+        "3",
+        "/tmp/beadroll-panel-y6ph83i8/xtask-base",
+        "timing",
+        "--parse",
+        "200000"
+      ],
+      "binarySha256": "bf903d77923080ea934be5a1dfbd0b04f0aa2a69221dd7f886a51ea18b61a424",
+      "figures": [
+        {
+          "label": "parsing meta.json of 200000 files, and the lines of 200000 events",
+          "files": 200000,
+          "shape": "plain",
+          "profile": "release",
+          "runs": 7,
+          "published_seconds": 0.0451,
+          "published_bytes": 14600333,
+          "published_members": 200006,
+          "once_seconds": 0.0236,
+          "twice_seconds": 0.0689,
+          "lines_seconds": 0.7391,
+          "lines": 200000,
+          "lines_bytes": 53342524,
+          "started": "2026-10-23T08:13:10Z",
+          "commit": "860bd5fa170a59ee242a48745edade1858878b96",
+          "dirty": true,
+          "os": "linux",
+          "arch": "x86_64",
+          "cpus": 1
+        }
+      ],
+      "sourceRevision": "9e27e78f1bcb874b1b491dfeeb62c4c27f726f38"
+    },
+    {
+      "run": 2,
+      "source": "repaired",
+      "cpu": 3,
+      "argv": [
+        "taskset",
+        "-c",
+        "3",
+        "/tmp/beadroll-panel-y6ph83i8/xtask-repaired",
+        "timing",
+        "--parse",
+        "200000"
+      ],
+      "binarySha256": "f2fd1d7e180ea944ceada2c4cc3b93c404e40e7d31e5c4fa5bfa5607a72840f3",
+      "figures": [
+        {
+          "label": "parsing meta.json of 200000 files, and the lines of 200000 events",
+          "files": 200000,
+          "shape": "plain",
+          "profile": "release",
+          "runs": 7,
+          "published_seconds": 0.0434,
+          "metadata_seconds": 0.0392,
+          "published_bytes": 14600333,
+          "published_members": 200006,
+          "once_seconds": 0.0229,
+          "twice_seconds": 0.085,
+          "lines_seconds": 0.772,
+          "journal_seconds": 0.8025,
+          "lines": 200000,
+          "lines_bytes": 53342524,
+          "started": "2026-10-23T08:13:23Z",
+          "commit": "860bd5fa170a59ee242a48745edade1858878b96",
+          "dirty": true,
+          "os": "linux",
+          "arch": "x86_64",
+          "cpus": 1
+        }
+      ],
+      "sourceRevision": "repair of 860bd5fa170a59ee242a48745edade1858878b96"
+    },
+    {
+      "run": 3,
+      "source": "base",
+      "cpu": 3,
+      "argv": [
+        "taskset",
+        "-c",
+        "3",
+        "/tmp/beadroll-panel-y6ph83i8/xtask-base",
+        "timing",
+        "--parse",
+        "200000"
+      ],
+      "binarySha256": "bf903d77923080ea934be5a1dfbd0b04f0aa2a69221dd7f886a51ea18b61a424",
+      "figures": [
+        {
+          "label": "parsing meta.json of 200000 files, and the lines of 200000 events",
+          "files": 200000,
+          "shape": "plain",
+          "profile": "release",
+          "runs": 7,
+          "published_seconds": 0.04,
+          "published_bytes": 14600333,
+          "published_members": 200006,
+          "once_seconds": 0.0222,
+          "twice_seconds": 0.067,
+          "lines_seconds": 0.7235,
+          "lines": 200000,
+          "lines_bytes": 53342524,
+          "started": "2026-10-23T08:13:44Z",
+          "commit": "860bd5fa170a59ee242a48745edade1858878b96",
+          "dirty": true,
+          "os": "linux",
+          "arch": "x86_64",
+          "cpus": 1
+        }
+      ],
+      "sourceRevision": "9e27e78f1bcb874b1b491dfeeb62c4c27f726f38"
+    },
+    {
+      "run": 4,
+      "source": "repaired",
+      "cpu": 3,
+      "argv": [
+        "taskset",
+        "-c",
+        "3",
+        "/tmp/beadroll-panel-y6ph83i8/xtask-repaired",
+        "timing",
+        "--parse",
+        "200000"
+      ],
+      "binarySha256": "f2fd1d7e180ea944ceada2c4cc3b93c404e40e7d31e5c4fa5bfa5607a72840f3",
+      "figures": [
+        {
+          "label": "parsing meta.json of 200000 files, and the lines of 200000 events",
+          "files": 200000,
+          "shape": "plain",
+          "profile": "release",
+          "runs": 7,
+          "published_seconds": 0.0393,
+          "metadata_seconds": 0.037,
+          "published_bytes": 14600333,
+          "published_members": 200006,
+          "once_seconds": 0.0242,
+          "twice_seconds": 0.1023,
+          "lines_seconds": 0.8062,
+          "journal_seconds": 0.7997,
+          "lines": 200000,
+          "lines_bytes": 53342524,
+          "started": "2026-10-23T08:13:56Z",
+          "commit": "860bd5fa170a59ee242a48745edade1858878b96",
+          "dirty": true,
+          "os": "linux",
+          "arch": "x86_64",
+          "cpus": 1
+        }
+      ],
+      "sourceRevision": "repair of 860bd5fa170a59ee242a48745edade1858878b96"
+    }
+  ]
+}

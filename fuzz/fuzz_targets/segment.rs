@@ -119,6 +119,32 @@ fuzz_target!(|data: &[u8]| {
         return; // a renamed copy found no free key: reported as KEY_SPACE
     };
     let said = answers(&state);
+
+    // The same records as a store's files hold them, each machine's lines a segment and the
+    // attempt's an attempt file, read straight into the journal (roll-lqjj.53.1): what the journal
+    // keeps of a line is what it keeps of the value read from it.
+    let mut typed = Journal::new();
+    for (machine, records) in &machines {
+        let mut segment = String::new();
+        for record in records {
+            segment
+                .push_str(&json::write(record, Format::COMPACT).expect("a value read is written"));
+            segment.push('\n');
+        }
+        let origin = format!("events/{machine}/000001.jsonl");
+        typed.add_segment(segment.as_bytes(), machine, &origin);
+    }
+    let mut file = String::new();
+    for record in &attempt {
+        file.push_str(&json::write(record, Format::COMPACT).expect("a value read is written"));
+        file.push('\n');
+    }
+    typed.add_attempt(file.as_bytes(), HERE, "events/0000aa01/claims/a.json");
+    let typed = replay(typed).expect("replay is alike read either way");
+    if let Some(difference) = first_difference(&said, &answers(&typed)) {
+        panic!("the journal read from the lines answers otherwise: {difference}");
+    }
+
     if !placed_by_order(&read) {
         machines.reverse();
         let other = replay(journal(&machines)).expect("replay is alike in any order");

@@ -15,6 +15,7 @@ mod write;
 use indexmap::IndexMap;
 
 pub use int::{Int, MAX_DIGITS};
+pub(crate) use read::deserialize;
 pub use read::{MAX_DEPTH, ParseError, Parsed, parse};
 pub use write::{Format, Style, WriteError, float_repr, write};
 

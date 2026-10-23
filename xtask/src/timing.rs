@@ -86,7 +86,7 @@ struct Options {
     /// Time decoding a projection of this many events instead of a command.
     decode: Option<usize>,
     /// Time core's JSON reader on `meta.json` of this many files, and on the lines of a history
-    /// of as many events, instead of a command.
+    /// of as many events, parsed as values and read into a journal, instead of a command.
     parse: Option<usize>,
     /// How many writes each `--contend` machine makes.
     writes: Option<usize>,

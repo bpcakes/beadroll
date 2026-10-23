@@ -283,14 +283,19 @@ pub(crate) fn attempt_events(
         Some(data) => journal::read_attempt(data, &origin, problems),
         None => {
             if let Some(problems) = problems {
-                problems.push(Problem {
-                    event: None,
-                    origin,
-                    problem: "attempt file is unreadable".to_owned(),
-                });
+                problems.push(unreadable_attempt(origin));
             }
             Vec::new()
         }
+    }
+}
+
+/// What replay reports of an attempt file at `origin` that could not be read.
+fn unreadable_attempt(origin: String) -> Problem {
+    Problem {
+        event: None,
+        origin,
+        problem: "attempt file is unreadable".to_owned(),
     }
 }
 
@@ -336,10 +341,7 @@ pub(crate) fn load_listed(
         held.push((key, summed.then(|| content_sum(&data))));
         let origin = path.display().to_string();
         let replica = folder_name(path, 1);
-        let events = journal::read_segment(&data, &origin, Some(&mut journal.invalid));
-        for event in events {
-            journal.add(event, &replica, &origin, true);
-        }
+        journal.add_segment(&data, &replica, &origin);
     }
     let mut attempts = Vec::new();
     let listing = claim_files_afresh(ws)?;
@@ -349,8 +351,9 @@ pub(crate) fn load_listed(
         let read = read_keyed(path).ok();
         let data = read.as_ref().map(|(data, _)| data.as_slice());
         let sum = data.filter(|_| summed).map(content_sum);
-        for event in attempt_events(path, data, Some(&mut journal.invalid)) {
-            journal.add(event, &replica, &origin, false);
+        match data {
+            Some(data) => journal.add_attempt(data, &replica, &origin),
+            None => journal.invalid.push(unreadable_attempt(origin)),
         }
         attempts.push((path.clone(), read.and_then(|(_, key)| key), sum));
     }

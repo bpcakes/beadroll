@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use beadroll_core::json::{self, Format, Object, Value};
+use beadroll_core::metadata::Metadata;
 use beadroll_core::text::repr_str;
 
 use crate::error::Error;
@@ -58,7 +59,7 @@ pub struct Workspace {
 }
 
 /// `meta.json` as an object with a string remote, or what is wrong with it.
-type MetaRead = Result<Arc<Object>, String>;
+type MetaRead = Result<Arc<Metadata>, String>;
 
 impl Workspace {
     /// The workspace `id` (an opaque token, never a path) of a checkout named `name` with `origin`
@@ -139,6 +140,13 @@ impl Workspace {
     /// that cannot be read or parsed, or whose remote is not a string, is an error, never a
     /// silent switch to origin.
     pub fn meta(&self, strict: bool) -> Result<Arc<Object>, Error> {
+        self.metadata(strict)
+            .map(|meta| Arc::new((*meta).clone().into_object()))
+    }
+
+    /// Metadata with its published map kept as typed counts. Ordinary reads borrow only the
+    /// fields they need; [`Self::meta`] retains the generic public API for compatibility.
+    pub fn metadata(&self, strict: bool) -> Result<Arc<Metadata>, Error> {
         let path = self.dir.join("meta.json");
         let problem = match self.read_meta(&path) {
             Ok(meta) => return Ok(meta),
@@ -166,11 +174,13 @@ impl Workspace {
         {
             return read.clone();
         }
-        let (read, key) = read_json_keyed(path);
+        let (read, key) = read_json_keyed(path, |bytes| {
+            Metadata::read(bytes).map_err(|error| error.to_string())
+        });
         let read = match read {
             Err(Unreadable::Missing) => Ok(Arc::default()),
-            Ok(Value::Object(meta)) if matches!(meta.get("remote"), None | Some(Value::Str(_))) => {
-                Ok(Arc::new(*meta))
+            Ok(Some(meta)) if matches!(meta.value("remote"), None | Some(Value::Str(_))) => {
+                Ok(Arc::new(meta))
             }
             Ok(_) => Err("not an object with a string remote".to_owned()),
             Err(Unreadable::Other(problem)) => Err(problem),
@@ -184,11 +194,11 @@ impl Workspace {
     /// to report, unless a remote is being recorded: that repairs it. Origin is never recorded: it
     /// is looked up each time.
     pub fn save_meta(&self, values: &[(&str, Value)]) -> Result<(), Error> {
-        let mut meta = match self.meta(true) {
+        let mut meta = match self.metadata(true) {
             Ok(meta) => {
                 // let go of, so that what was read is changed rather than copied
                 self.meta_read.replace(None);
-                Arc::unwrap_or_clone(meta)
+                Arc::unwrap_or_clone(meta).into_object()
             }
             Err(_) => {
                 let remote = values.iter().find(|(key, _)| *key == "remote");
@@ -216,7 +226,7 @@ impl Workspace {
         let path = self.dir.join("meta.json");
         let key = write_atomic_keyed(&path, text.as_bytes(), &self.settings.failpoints)?;
         if let (Some(key), Value::Object(meta)) = (key, meta) {
-            *self.meta_read.borrow_mut() = Some((key, Ok(Arc::new(*meta))));
+            *self.meta_read.borrow_mut() = Some((key, Ok(Arc::new(Metadata::from_object(*meta)))));
         }
         Ok(())
     }

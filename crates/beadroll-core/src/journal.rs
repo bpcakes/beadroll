@@ -1,16 +1,21 @@
-//! Parses and settles records from all journal files together, so duplicate and malformed records
+//! Reads and settles records from all journal files together, so duplicate and malformed records
 //! are judged independently of file-read order. Keeps only what replay needs from each record
-//! ([`Event`], roll-dih8.11).
+//! ([`Event`], roll-dih8.11): a line is read straight into that, with no value built for it
+//! ([`Journal::add_segment`], [`Journal::add_attempt`], roll-lqjj.53.1), and a record built in
+//! memory is read as a line of it would be ([`Journal::add`]).
 
 mod content;
 mod event;
 mod read;
+#[cfg(test)]
+mod tests;
 
 use std::collections::HashSet;
 use std::sync::Arc;
 
 use indexmap::IndexMap;
 
+use crate::event::Envelope;
 use crate::id::EventId;
 use crate::json::{self, Format, Value};
 use crate::op::Op;
@@ -19,6 +24,7 @@ pub use event::Event;
 pub(crate) use event::Rest;
 pub use read::{loads_line, read_attempt, read_segment};
 
+use content::Digest;
 use event::{Shared, Source};
 
 /// Something a reader could not use: an unreadable line or file, an event that fails validation, a
@@ -98,16 +104,34 @@ impl Journal {
         }
     }
 
-    /// Adds a record found in `replica`'s journal at `origin`; `sequenced` is false for an attempt
-    /// file's events, which have no place in the journal's order. Anything without a readable id is
-    /// reported at once; the rest is judged when the journal settles.
+    /// Adds a record built in memory, found in `replica`'s journal at `origin`; `sequenced` is
+    /// false for an attempt file's events, which have no place in the journal's order. It is read
+    /// as the line bead writes of it would be. Anything without a readable id is reported at once;
+    /// the rest is judged when the journal settles.
     pub fn add(&mut self, event: Value, replica: &str, origin: &str, sequenced: bool) {
-        let id = event
-            .get("id")
-            .and_then(Value::as_str)
-            .and_then(EventId::parse);
-        let Some(id) = id else {
-            let problem = crate::event::event_problem(&event)
+        let digest = self.shared.digester.digest_of(&event);
+        self.add_read(
+            Envelope::from_value(event),
+            digest,
+            replica,
+            origin,
+            sequenced,
+        );
+    }
+
+    /// Adds what was read of a record found in `replica`'s journal at `origin`, its content's
+    /// digest being `digest`.
+    fn add_read(
+        &mut self,
+        envelope: Envelope,
+        digest: Digest,
+        replica: &str,
+        origin: &str,
+        sequenced: bool,
+    ) {
+        let Some(id) = envelope.id else {
+            let problem = envelope
+                .problem()
                 .unwrap_or_else(|| "id is not a UUID".to_owned());
             self.invalid
                 .push(Problem::new(None, origin.to_owned(), problem));
@@ -115,7 +139,14 @@ impl Journal {
         };
         self.counter += 1;
         let source = self.source(replica, origin, sequenced);
-        let record = Event::read(id, &event, &source, self.counter, &mut self.shared);
+        let record = Event::read(
+            id,
+            envelope,
+            digest,
+            &source,
+            self.counter,
+            &mut self.shared,
+        );
         // The first record of an id is the common case: a fresh, valid event, installed at once.
         let first = !self.events.contains_key(&id) && !self.unplaced.contains(&id);
         let fresh = first && record.own();
@@ -310,7 +341,8 @@ impl Journal {
     }
 }
 
-/// The canonical event content used by quarantine: compact JSON with sorted keys.
+/// Compact JSON with sorted keys, for tests and tools comparing values independently of member
+/// order. Quarantine compares line-byte digests instead.
 pub fn canonical(event: &Value) -> String {
     // Only a value built in memory fails to print (an integer too long, nesting too deep); its
     // debug form still tells contents apart.

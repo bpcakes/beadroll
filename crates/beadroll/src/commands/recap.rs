@@ -195,9 +195,9 @@ fn tracker(
     aliases: &BTreeMap<String, String>,
     layout: Layout,
 ) -> Part {
-    let meta = ws.meta(false).unwrap_or_default();
-    let synced = meta.get("last_sync").cloned().unwrap_or(Value::Null);
-    let named = meta.get("name").filter(|name| name.truthy()).cloned();
+    let meta = ws.metadata(false).unwrap_or_default();
+    let synced = meta.value("last_sync").cloned().unwrap_or(Value::Null);
+    let named = meta.value("name").filter(|name| name.truthy()).cloned();
     let read = load_journal(ws)
         .map_err(Failure::from)
         .and_then(|journal| Ok((view_outline(ws)?, journal)));

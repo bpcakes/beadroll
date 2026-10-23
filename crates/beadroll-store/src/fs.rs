@@ -262,7 +262,10 @@ pub fn read_json_text(path: &Path) -> Result<Value, Unreadable> {
 
 /// [`read_json_text`], with the identity of the file read, from the descriptor it was read
 /// through: a file renamed over it meanwhile is never taken for the one read.
-pub(crate) fn read_json_keyed(path: &Path) -> (Result<Value, Unreadable>, Option<FileKey>) {
+pub(crate) fn read_json_keyed<T>(
+    path: &Path,
+    parse: impl FnOnce(&[u8]) -> Result<T, String>,
+) -> (Result<T, Unreadable>, Option<FileKey>) {
     let read = File::open(path).and_then(|mut file| {
         let meta = file.metadata()?;
         let mut data = Vec::new();
@@ -271,7 +274,13 @@ pub(crate) fn read_json_keyed(path: &Path) -> (Result<Value, Unreadable>, Option
         Ok((data, key))
     });
     match read {
-        Ok((data, key)) => (json_text(&data).map_err(Unreadable::Other), key),
+        Ok((data, key)) => {
+            let read = match std::str::from_utf8(&data) {
+                Ok(_) => parse(&data),
+                Err(error) => Err(utf8_error(&data, &error)),
+            };
+            (read.map_err(Unreadable::Other), key)
+        }
         Err(error) if error.kind() == io::ErrorKind::NotFound => (Err(Unreadable::Missing), None),
         Err(error) => (Err(Unreadable::Other(os_error_str(&error, path))), None),
     }

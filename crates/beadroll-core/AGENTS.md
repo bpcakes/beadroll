@@ -14,18 +14,29 @@ consumer on tokio calls through `spawn_blocking`.
 
 ## Key entrypoints
 
+- `src/metadata.rs`: `Metadata`, the typed published-count map with ordered unknown fields kept
+  for rewrites; `src/configuration.rs`: known configuration fields read by type into the existing
+  public map, with legacy shapes left to the established validators.
+
 - `src/lib.rs`: the crate root, listing the modules.
 - `src/json.rs` (`json/read.rs`, `json/write.rs`, `json/int.rs`): `Value` and its `Deserialize`,
   `parse` (serde_json), `write`, `Format`.
 - `src/text.rs`: `repr`, `str_of`, `strip`, `b36`, and `surrogateescaped`, `repr_bytes`,
   `printed_text` and `json_ascii_bytes` for bytes `surrogateescape` decodes (command lines,
   paths).
-- `src/event.rs`: `event_problem`, `payload_problem`, `write_problem`, `Field`; `src/op.rs`: `Op`,
-  an event's operation with its typed payload, and `IntegerField`.
-- `src/journal.rs` (`journal/read.rs`): `read_segment`, `read_attempt`, `Journal`;
-  `journal/event.rs`: `Event`, what replay reads of a record (its id, causes, writer, actor, place
-  and typed operation) and the digest of its content, with the texts and values events repeat held
-  once (`Shared`); `journal/content.rs`: the digest. `src/order.rs`: `causal_order`, and `Order`,
+- `src/event.rs`: `event_problem`, `payload_problem`, `write_problem`, `Field`;
+  `event/envelope.rs`: `Envelope`, an event's envelope as read, which a journal line is read
+  straight into by serde_json and a value built in memory walks into, and whose rules
+  `event_problem` judges (roll-lqjj.53.1); `src/op.rs`: `Op`, an event's operation with its typed
+  payload, read out of the payload's object, and `IntegerField`.
+- `src/journal.rs` (`journal/read.rs`): `Journal`, with `add_segment` and `add_attempt`, which
+  read a file's lines straight into what the journal keeps, and `add` for a record built in
+  memory; `read_segment` and `read_attempt`, the same files read into values for a tool that
+  needs the records as written; `journal/event.rs`: `Event`, what replay reads of a record (its
+  id, causes, writer, actor, place and typed operation) and the digest of its content, with the
+  texts and values events repeat held once (`Shared`); `journal/content.rs`: the digest, of the
+  line's bytes; `journal/tests.rs`: a journal read from lines is the journal of the values read
+  from them, on the differential tests' histories. `src/order.rs`: `causal_order`, and `Order`,
   the same by event index. `src/recap.rs`: `unseen`, what `bead recap` shows of a journal below
   the frontier it kept, the frontier it keeps then and the events its read placed, and `joined`,
   a frontier with the ids of another that its read did not place (roll-dih8.2); its tests deliver

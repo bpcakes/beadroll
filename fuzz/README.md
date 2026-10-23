@@ -7,7 +7,9 @@ is, and libFuzzer keeps the input of either:
 - `segment`: the segment and attempt readers. An attempt read whole holds what the segment reader
   reads; what was read, written again as journal lines, reads back alike; replayed (each record in
   the journal of the machine it names) it answers alike whichever order the journals are read in,
-  what replay reports compared as a set. An input with an id that has several contents, not
+  what replay reports compared as a set, and alike when the same lines are read straight into the
+  journal, a segment and an attempt file at a time, as a store loads them (roll-lqjj.53.1). An
+  input with an id that has several contents, not
   exactly one copy of its own, in two journals or more is not compared across orders at all: the
   copy read first decides that id's stand-in and its issue, and so everything that issue answers
   (roll-k2wy.14.14). Its export is read back by the importer's reader, and its projection, encoded
