@@ -288,6 +288,7 @@ fn execute(request: &Request, colors: Colors, exits: bool) -> Result<Option<Prin
         offline,
         &remote,
         exits,
+        |warning| warn(&warning, request.as_json, colors.stderr),
     )?;
     let Some(answer) = finished else {
         return Ok(None);
@@ -322,6 +323,7 @@ fn finish(
     offline: bool,
     remote: &Option<OsString>,
     exits: bool,
+    mut warning: impl FnMut(Failure),
 ) -> Result<Option<Answer>, Failure> {
     let Outcome {
         mut result,
@@ -329,6 +331,7 @@ fn finish(
         raw,
         settled,
         held,
+        count_warning,
     } = outcome;
     let ws = ws.filter(|_| !settled);
     // where what the command wrote goes, chosen before what it held is let go of: a write with no
@@ -337,6 +340,9 @@ fn finish(
         .filter(|ws| ws.wrote())
         .and_then(|ws| beadroll_sync::destination(ws, offline, remote.as_deref()));
     ended_with(held, matches!(destination, Some(Ok(_))), exits);
+    if let Some(count_warning) = count_warning {
+        warning(count_warning);
+    }
     if let Some(raw) = raw {
         // the command's own output (`export`): written as the command runs, so a reader that went
         // away ends the run there, and a failed write is the command's IO error
@@ -357,7 +363,9 @@ fn finish(
             lines.push(Line::toned(Tone::Warning, warning));
         }
     }
-    commands::note_unpublished(ws, &mut result, &mut lines)?;
+    if let Some(count_warning) = commands::note_unpublished(ws, &mut result, &mut lines)? {
+        warning(count_warning);
+    }
     Ok(Some((result, lines)))
 }
 
@@ -563,6 +571,25 @@ fn run_ps(pid: u32) -> Option<(i32, String)> {
 
 fn write(value: &Value, format: Format) -> Result<String, Failure> {
     json::write(value, format).map_err(|e| Failure::new(Code::Validation, e.to_string()))
+}
+
+/// Reports a post-commit count warning separately, preserving every command's stdout shape.
+fn warn(failure: &Failure, as_json: bool, color: bool) {
+    let text = if as_json {
+        let raw = failure.raw.as_deref().unwrap_or(failure.message.as_bytes());
+        format!(
+            "{{\"warning\": {{\"code\": {}, \"message\": {}}}}}",
+            json_ascii_bytes(failure.code.as_str().as_bytes()),
+            json_ascii_bytes(raw)
+        )
+    } else {
+        let line = Line::toned(Tone::Warning, "Warning:")
+            .with(Tone::Plain, " ")
+            .with(Tone::Plain, failure.printed());
+        paint::render_all(&[line], color)
+    };
+    // A warning cannot turn an already committed command into a failure, even if stderr is gone.
+    let _ = emit(Some(&text), Stream::Stderr);
 }
 
 /// Reports `failure` on standard error: `{"error": {"code", "message"}}` with `--json`, else

@@ -190,6 +190,8 @@ pub(crate) struct Outcome {
     /// The command published and counted what it left unpublished itself ([`note_unpublished`]),
     /// as `init` does when it wrote through another workspace than the one it was given.
     pub(crate) settled: bool,
+    /// A failed count after a committed write: the result stands, and CLI reports this on stderr.
+    pub(crate) count_warning: Option<Failure>,
     /// What the command made and is done with ([`Outcome::answered_from`], [`Outcome::wrote_in`]):
     /// one thing. That limits what the outcome carries, not what the command holds on the way to
     /// it: a command that publishes or reads a state of its own before it answers has to let go of
@@ -217,6 +219,7 @@ impl Outcome {
             lines: Some(lines.into_iter().map(Into::into).collect()),
             raw: None,
             settled: false,
+            count_warning: None,
             held: None,
         }
     }
@@ -228,6 +231,7 @@ impl Outcome {
             lines: None,
             raw: Some(text),
             settled: false,
+            count_warning: None,
             held: None,
         }
     }
@@ -273,13 +277,26 @@ impl Delivered {
 
 /// What `ws` has not published, said in `result` (`unpublished`) and `lines`, when there is any:
 /// after `--offline`, a remote that did not answer, or on a store that has never published.
+/// A count failure after a write is a warning, not a failed command: the write already committed.
 pub(crate) fn note_unpublished(
     ws: &Workspace,
     result: &mut Option<Value>,
     lines: &mut Option<Vec<Line>>,
-) -> Result<(), Failure> {
-    let Some(behind) = unpublished_count(ws)?.filter(|n| *n != Int::from(0)) else {
-        return Ok(());
+) -> Result<Option<Failure>, Failure> {
+    let counted = match unpublished_count(ws) {
+        Ok(counted) => counted,
+        Err(error) => {
+            let failure = Failure::from(error);
+            if !ws.wrote() {
+                return Err(failure);
+            }
+            let mut raw = b"write recorded locally; unpublished count unavailable: ".to_vec();
+            raw.extend_from_slice(failure.raw.as_deref().unwrap_or(failure.message.as_bytes()));
+            return Ok(Some(Failure::bytes(failure.code, raw)));
+        }
+    };
+    let Some(behind) = counted.filter(|n| *n != Int::from(0)) else {
+        return Ok(None);
     };
     if let Some(Value::Object(result)) = result {
         result.insert("unpublished".into(), Value::Int(behind.clone()));
@@ -291,7 +308,7 @@ pub(crate) fn note_unpublished(
             format!("{behind} event{plural} not yet published: bead sync"),
         ));
     }
-    Ok(())
+    Ok(None)
 }
 
 /// What every command is given: the workspace (when there is one), the actor, and the settings.

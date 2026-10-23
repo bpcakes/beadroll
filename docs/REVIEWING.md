@@ -1544,6 +1544,13 @@ These were decided deliberately. Report problems *with* them, not their existenc
   number where git reads one (it is not digits and nothing was carried over) is `CONFIG`; an
   answer standard output refuses (other than a closed pipe or a hung-up terminal) is an `IO` error
   on standard error, exit 1; a `ps` line that names no command ends the nearest-harness walk.
+- The final unpublished count is bookkeeping after a command, not part of its commit (AF01).
+  If it fails after a local write committed, the command keeps its successful result and exit
+  status. Standard error reports that the write was recorded locally and why the count is
+  unavailable: a human warning, or `{"warning": {"code", "message"}}` with `--json`. This keeps
+  stdout's object, array or other result shape intact and does not invite retrying a write that
+  already happened. The shared command helper applies this rule to `init`'s chosen workspace
+  too; a run that wrote nothing still returns the count error. Count arithmetic remains checked.
 - Since roll-lqjj.53.2, integer `BEAD_ROTATE_BYTES`, `BEAD_REPACK_LOOSE` and `BEAD_REPACK_PACKS`
   values beyond an `i128` are `CONFIG`, and out-of-range integer flags are usage errors, rather
   than saturating at that bound (AD05). Unreadable or out-of-range `COLUMNS` falls back to the
@@ -1554,7 +1561,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   contract describes the supplied predicate.
 - The Rust bead keeps CPython's semantics wherever Python's bead had them, as the port plan's
   ledger of them decided (the rows not stated above): replay takes a boolean where an integer is due
-  (`"v": true` is format 1; a `true` priority sorts as 1, keeps its JSON and prints as 1, as
+  (`"v": true` is format 1; a `true` priority sorts as 1, keeps its JSON and prints as 1 in both
+  `list` and `show` (AF02), as
   Python's `True` until roll-lqjj.53.2), as histories
   written before `write_problem` had it, while writes refuse one; a lone surrogate in a line,
   escaped or raw, is not UTF-8 (until roll-lqjj.53 it read as one U+FFFD and was reported); a

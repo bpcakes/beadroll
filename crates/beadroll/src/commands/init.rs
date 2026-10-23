@@ -435,7 +435,8 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
         // written through another workspace than the one the command was given, or published to
         // the endpoint init chose (origin's own URL reached as origin): its own count, and no
         // publish after it through the remote as typed, which may lead elsewhere
-        super::note_unpublished(ws, &mut outcome.result, &mut outcome.lines)?;
+        outcome.count_warning =
+            super::note_unpublished(ws, &mut outcome.result, &mut outcome.lines)?;
         outcome.settled = true;
     }
     Ok(outcome)

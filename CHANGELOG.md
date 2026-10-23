@@ -6,6 +6,13 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A write that committed keeps its successful result when the final unpublished count cannot be
+  read or would overflow (AF01). Standard error carries a warning saying the write was recorded
+  locally; with `--json` it is `{"warning": {"code": "IO", "message": "..."}}`. Standard output
+  keeps the command's usual shape. Read-only commands still fail with `IO` for a bad count.
+  `show` now prints legacy boolean priorities numerically, matching `list`, while JSON keeps the
+  boolean (AF02).
+
 - The CPython-parity rules that cost nothing to keep are gone with the parity (roll-lqjj.53.2,
   the maintainer's decision of 2026-10-22). An integer is exact within an `i128` (`json::Int`):
   what bead counts (a segment's number, a claim's generation, the unpublished count) or mints (a
@@ -36,7 +43,7 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   integers. A further claim is reported under `integrity` without changing the issue; a refused
   takeover also leaves its predecessor's release effective. Commands refuse exhausted generations
   with `VALIDATION` before emitting an event (AD02). Subject tests cover unpublished-count
-  arithmetic and segment rotation at their bounds, including unchanged durable files on error
+  arithmetic on reads and segment rotation at their bounds, including unchanged durable files on error
   (AD03–AD04).
 
 - The value-returning attempt reader validates each parsed event by reference, without copying

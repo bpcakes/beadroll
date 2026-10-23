@@ -20,6 +20,20 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Review 23: fresh Claude and Codex branch review (ids AF)
+
+The independent reports cover `b5d5543..0815fd5` and are retained in
+`reviews/2026-10-23-23-claude.md` and `reviews/2026-10-23-23-codex.md`. Absolute home
+prefixes use `/home/<name>/`; the frozen originals remain in the external review handoff.
+Codex independently reported both findings; Claude reported none. Its uncertainty about the
+final baseline was resolved by the prior successful validation of that same tip, without
+rewriting its report. Both defects were confirmed against the command callers and scratch probes.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AF01 | Medium | The unpublished count could overflow after a write committed, making a successful mutation look failed | fixed | Preserve the committed command's result and emit an actionable stderr warning, JSON with `--json`; keep read-only count failures as errors | `beadroll`: `parity::pending::af01_a_committed_write_keeps_its_result_when_the_unpublished_count_overflows` |
+| AF02 | Low | `show` still printed legacy boolean priorities as `True` and `False` | fixed | Render the priority with `IntegerField` at the show summary boundary, preserving the JSON boolean and general diagnostic quoting | `beadroll`: `commands::format_policy::af02_list_and_show_print_legacy_boolean_priorities_as_numbers` |
+
 ## Review 22: Claude and Codex review of the parity repairs (ids AE)
 
 The independent reports cover `b5d5543..672ca86`; their structured results are in

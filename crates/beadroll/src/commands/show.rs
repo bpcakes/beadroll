@@ -3,6 +3,7 @@
 use std::ffi::OsString;
 
 use beadroll_core::json::{self, Format, Object, Value};
+use beadroll_core::op::IntegerField;
 use beadroll_core::state::Issue;
 use beadroll_core::text::str_of;
 use beadroll_core::view::icon;
@@ -100,7 +101,10 @@ fn lines_of(item: &Object) -> Vec<Line> {
 fn summary(item: &Object) -> (Line, Vec<String>) {
     let mut lines = Vec::new();
     let status = field(item, "status");
-    let priority = field(item, "priority");
+    let priority = item
+        .get("priority")
+        .and_then(IntegerField::read)
+        .map_or_else(String::new, |priority| priority.to_string());
     let first = Line::new()
         .with(Tone::of_status(&status), icon(&status))
         .with(Tone::Plain, " ")

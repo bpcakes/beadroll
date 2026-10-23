@@ -195,6 +195,11 @@ $ bead claim app-zs43 --json
 {"error": {"code": "ALREADY_CLAIMED", "message": "app-zs43 is claimed by claude:4f1c2a9e@3f761b2d (generation 1, since 2026-10-13T19:15:45.853Z)"}}
 ```
 
+If a write committed but bead cannot count its unpublished events, the command
+still succeeds. Its result stays on stdout; stderr warns that the write was
+recorded locally and says what needs repair. With `--json`, the warning is a
+separate `{"warning": {"code", "message"}}` document. Do not repeat that write.
+
 Several bead processes on one machine, agents in different worktrees, run at
 once without colliding. Output into a pipe or a file is plain text, and what
 an issue says is escaped before anything is coloured, so a title never carries

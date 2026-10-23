@@ -299,6 +299,93 @@ fn ad03_unpublished_count_arithmetic_overflow_is_an_unchanged_store_error() {
     }
 }
 
+/// AF01: the count is valid before the write and overflows only after its event is committed.
+/// A warning preserves the success and result shape, so a caller has no false failure to retry.
+#[test]
+fn af01_a_committed_write_keeps_its_result_when_the_unpublished_count_overflows() {
+    for shape in ["object", "array", "silent", "human", "init"] {
+        let sandbox = crate::sandbox();
+        let r = crate::rust_only(&sandbox, "r");
+        let (meta, original, segment, published) = published_three(&r);
+        let listed = json(&r, &["list"]);
+        let key = id(&listed["issues"][0]);
+        let edited = original.replacen(
+            &published,
+            &format!("\"{segment}\": \"{}\"", 3 - i128::MAX),
+            1,
+        );
+        std::fs::write(&meta, &edited).unwrap();
+        let listed = r.run(["list", "--json"]);
+        assert_eq!(listed.returncode(), 0, "{}", listed.stderr);
+        assert!(
+            listed
+                .stdout
+                .contains(&format!("\"unpublished\": {}", i128::MAX))
+        );
+        let path = r.store().join(&segment);
+        let before = std::fs::read_to_string(&path).unwrap();
+        let import = sandbox.root().join("extra.jsonl");
+        std::fs::write(&import, "{\"id\":\"ex-imported\",\"title\":\"imported\"}\n").unwrap();
+        let mut args = match shape {
+            "array" => vec!["update", &key, "--title", "after"],
+            "silent" => vec!["create", "third", "--silent"],
+            "init" => vec![
+                "init",
+                "--remote",
+                "origin",
+                "--import",
+                import.to_str().unwrap(),
+            ],
+            _ => vec!["comments", "add", &key, "once"],
+        };
+        args.push("--offline");
+        if shape != "human" {
+            args.push("--json");
+        }
+        let written = r.run(args);
+        assert_eq!(written.returncode(), 0, "{shape}: {}", written.stderr);
+        if shape == "human" {
+            assert!(written.stdout.contains("Comment added"));
+            assert!(
+                written
+                    .stderr
+                    .starts_with("Warning: write recorded locally;")
+            );
+        } else {
+            let warning = parse_json(&written.stderr).unwrap();
+            assert_eq!(warning["warning"]["code"].as_str(), Some("IO"));
+            assert!(
+                warning["warning"]["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("write recorded locally;")
+            );
+            let result = parse_json(&written.stdout).unwrap();
+            match shape {
+                "array" => assert_eq!(result[0]["title"].as_str(), Some("after")),
+                "silent" => assert!(result["id"].as_str().unwrap().starts_with("ex-")),
+                "init" => assert_eq!(result["imported"].as_i64(), Some(1)),
+                _ => assert_eq!(result["text"].as_str(), Some("once")),
+            }
+        }
+        assert!(written.stderr.contains("repair it, or run"));
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert!(after.starts_with(&before));
+        assert_eq!(after.lines().count(), before.lines().count() + 1, "{shape}");
+        // Merely reading the new state still reports the count error and writes no event.
+        let refused = r.run(["list", "--json"]);
+        assert_eq!(code(&refused), "IO");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), after);
+        std::fs::write(&meta, &original).unwrap();
+        if matches!(shape, "object" | "human") {
+            let shown = json(&r, &["show", &key]);
+            let comments = shown[0]["comments"].as_array().unwrap();
+            assert_eq!(comments.len(), 1);
+            assert_eq!(comments[0]["text"].as_str(), Some("once"));
+        }
+    }
+}
+
 fn durable_inputs(dir: &std::path::Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
     let mut files = Vec::new();
     for entry in std::fs::read_dir(dir).unwrap() {
