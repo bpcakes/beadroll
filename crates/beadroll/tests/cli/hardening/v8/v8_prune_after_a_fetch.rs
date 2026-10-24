@@ -43,6 +43,8 @@ enum Harm {
     Malformed,
     /// Replaces a tree's file with a different, well-formed tree, empty or holding one blob.
     OtherTree { empty: bool },
+    /// Keeps the root's manifest, so reading it succeeds before the listing finds the mismatch.
+    OnlyManifest,
 }
 
 /// `git --git-dir GIT_DIR ARGS`, given `input`: its output, trimmed.
@@ -111,8 +113,20 @@ fn harm(git_dir: &Path, aside: &Path, object: &str, harm: Harm) {
         .join(&object[2..]);
     match harm {
         Harm::Remove => std::fs::remove_file(&loose).expect("the object, loose"),
-        Harm::Malformed | Harm::OtherTree { .. } => {
+        Harm::Malformed | Harm::OtherTree { .. } | Harm::OnlyManifest => {
             let made = match harm {
+                Harm::OnlyManifest => {
+                    let manifest = plumbing(
+                        git_dir,
+                        &["rev-parse", &format!("{object}:manifest.json")],
+                        None,
+                    );
+                    plumbing(
+                        git_dir,
+                        &["mktree"],
+                        Some(&format!("100644 blob {manifest}\tmanifest.json\n")),
+                    )
+                }
                 Harm::OtherTree { empty: true } => plumbing(git_dir, &["mktree"], Some("")),
                 Harm::OtherTree { empty: false } => {
                     let blob = plumbing(git_dir, &["hash-object", "-w", "--stdin"], Some("x"));

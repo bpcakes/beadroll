@@ -79,6 +79,9 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   is local damage even when git can read it. The standalone ls-tree fallback includes trees,
   including empty ones, and verifies their hashes too (roll-dih8.31). A git a signal ended is never
   damage (`Output::killed`).
+  Failed reads also check the root's hash: a wrong-name root may hide the manifest or prevent
+  ls-tree while rev-list still walks it. `rev-parse TIP:` names it without the content check
+  that makes `TIP^{tree}` fail, then `cat-file tree` supplies the bytes, even without a kept reader.
   A kept git that has no answer (`beadroll_git::NoAnswer`) falls back to the corresponding
   separate git command. It does not hash a journal file
   that keeps the identity the memo remembers it at: a merge compares the remembered blob with the

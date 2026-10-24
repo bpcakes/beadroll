@@ -1486,7 +1486,13 @@ These were decided deliberately. Report problems *with* them, not their existenc
   valid empty tree under another tree's name silently remove a machine's journal from the next
   published tip. The fallback checks even when the in-process walk stopped for another reason,
   before reaching the damaged subtree. This changes no valid tree's entries or order, and all
-  checks finish before the merge takes in any listed file. A push that lacks new objects of its
+  checks finish before the merge takes in any listed file. A root holding another tree's bytes
+  can hide the manifest or make ls-tree refuse it with a hash mismatch, while rev-list still
+  walks it. Failed-read diagnosis therefore also checks the root: `rev-parse --verify TIP:`
+  resolves its name without checking the content, unlike `TIP^{tree}`, then `cat-file tree`
+  reads the bytes for hashing. This uses standalone git so it also works without a kept reader,
+  only after a failed read, and neither a signal-ended read nor a failed diagnostic proves a
+  mismatch (AJ02). A push that lacks new objects of its
   own a prune took does not go through, and the next round, after a fresh fetch, hashes and
   publishes again, which needs no such question.
 - `sync.git` hashes like the checkout bead runs in (G26), not like the remote: bead does not ask

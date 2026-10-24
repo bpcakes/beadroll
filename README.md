@@ -243,6 +243,7 @@ the middle of a command, a remote that lost objects, a damaged local
 repository, a torn write) is in [docs/GUARANTEES.md](docs/GUARANTEES.md).
 Sync checks tree contents against their object names and rebuilds a damaged local
 sync repository before it can publish a tree that silently drops another machine's journal.
+A damaged root tree is rebuilt even when it hides the manifest or prevents listing the journal.
 
 ## When two machines edit the same thing
 

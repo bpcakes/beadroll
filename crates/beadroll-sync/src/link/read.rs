@@ -51,8 +51,9 @@ impl Link<'_> {
 
     /// What of the fetched `tip` is missing from `sync.git` or damaged there, `read` having failed
     /// on it, a read of the blob `object` names if there is one: local damage git named, that blob
-    /// here but unreadable ([`Link::unreadable`]), the tip's commit missing, or the trees and blobs
-    /// it reaches that are missing or that git cannot walk (`rev-list --missing=print`, which
+    /// here but unreadable ([`Link::unreadable`]), the tip's root holding another tree's content,
+    /// the tip's commit missing, or the trees and blobs it reaches that are missing or that git
+    /// cannot walk (`rev-list --missing=print`, which
     /// passes over a gitlink as a fetch does; [`walk_failed`], which takes a walk that a full disk
     /// or a memory limit ended for damage too). `None` when everything the tip reaches is here and
     /// walks, and `object` is not a blob here: the read failed for what the remote holds, or for no
@@ -80,6 +81,11 @@ impl Link<'_> {
         if !present.success() {
             return Ok(None);
         }
+        if !read.killed()
+            && let Some(mismatch) = self.mismatched_root(tip)?
+        {
+            return Ok(Some(mismatch));
+        }
         let args = ["rev-list", "--objects", "--no-walk", "--missing=print", tip].map(OsStr::new);
         let listed = self.run(&args)?;
         if !listed.success() {
@@ -97,6 +103,30 @@ impl Link<'_> {
             "objects the fetched commit {tip} reaches are missing: {}",
             missing.join(", ")
         )))
+    }
+
+    /// A readable root under the wrong name can hide the manifest or make ls-tree fail, while
+    /// rev-list still walks it successfully. Ask only after a failed read. `tip:` resolves the
+    /// root's name without checking its content, unlike `tip^{tree}`, which rejects the mismatch
+    /// before giving its name. Standalone git also works when the persistent reader cannot answer.
+    fn mismatched_root(&self, tip: &str) -> Result<Option<String>, Error> {
+        let root = format!("{tip}:");
+        let name = self.run(&[OsStr::new("rev-parse"), "--verify".as_ref(), root.as_ref()])?;
+        if !name.success() {
+            return Ok(None);
+        }
+        let oid = name.stdout_text();
+        let tree = self.run(&[OsStr::new("cat-file"), "tree".as_ref(), oid.as_ref()])?;
+        if !tree.success() {
+            return Ok(None);
+        }
+        let object = Object {
+            oid,
+            kind: "tree".to_owned(),
+            data: tree.stdout,
+        };
+        Ok((!object.matches_name())
+            .then(|| format!("root tree {} does not hash to its name", object.oid)))
     }
 
     /// `object`, whose read as a blob failed as `read`, as damage here when [`blob_unreadable`]

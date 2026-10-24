@@ -10,6 +10,8 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   standalone git fallback. A private sync repository holding another tree's valid content under
   the wrong name is rebuilt before merging or publishing, so it cannot silently drop another
   machine's journal. The normal sync path starts no additional git processes.
+  A mismatched root tree also rebuilds when it hides the manifest or prevents listing, instead
+  of repeating `MANIFEST_MISSING` or `GIT_ERROR` on every sync.
 
 - A write that committed keeps its successful result when the final unpublished count cannot be
   read or would overflow (AF01). Standard error carries a warning saying the write was recorded

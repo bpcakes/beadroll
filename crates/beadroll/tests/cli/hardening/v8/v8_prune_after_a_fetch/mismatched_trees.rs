@@ -3,6 +3,44 @@
 
 use super::*;
 
+/// AJ02: a mismatched root fails either the manifest read or the listing. Both failures must
+/// rebuild, even when the persistent reader is unavailable, and leave b's journal for a fresh c.
+#[test]
+fn a_mismatched_root_is_local_damage_with_or_without_its_manifest() {
+    for how in [Harm::OtherTree { empty: true }, Harm::OnlyManifest] {
+        for kept_reader in [true, false] {
+            let sandbox = crate::sandbox();
+            let log = sandbox.root().join("root-reads.log");
+            let mut tree = String::new();
+            let (run, a) = sync_harming_with(&sandbox, TREE, how, |origin, a| {
+                tree = plumbing(origin, &["rev-parse", TREE], None);
+                if !kept_reader {
+                    refuse_kept_reader(&sandbox, a, &log);
+                }
+            });
+            if !kept_reader {
+                let reads = std::fs::read_to_string(&log).expect("the tree reader's calls");
+                assert!(
+                    reads
+                        .lines()
+                        .any(|line| line == "refused cat-file --batch-command"),
+                    "{reads}"
+                );
+                assert!(
+                    reads
+                        .lines()
+                        .any(|line| line == format!("cat-file tree {tree}")),
+                    "{reads}"
+                );
+            }
+            assert_rebuilt_and_synced(&run, &a);
+            let c = Machine::new(&sandbox, "c");
+            c.bead(["sync"]);
+            assert_eq!(a.export(), c.export());
+        }
+    }
+}
+
 #[test]
 fn a_mismatched_subtree_is_rebuilt_before_a_fresh_machine_syncs() {
     for empty in [true, false] {
