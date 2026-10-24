@@ -173,9 +173,14 @@ edits are never held up.
   fetched, as a prune that raced the fetch leaves it) is set aside as
   `sync.git.damaged-<time>` and made again from the remote and `events/`,
   once per command; `info` lists the copies kept, which hold nothing that is
-  not also elsewhere. Damage again after that is `SYNC_REPO_DAMAGED`. A read
-  of a fetched tip that fails is local damage when an object of the tip is
-  missing from `sync.git`, when the blob it read is there but unreadable, when
+  not also elsewhere. Damage again after that is `SYNC_REPO_DAMAGED`. Before
+  merging, every tree in the listing is checked against its object name, including
+  through the standalone git fallback. A tree holding another tree's well-formed
+  content is local damage too: it cannot silently drop a machine's journal from
+  the published tip. A mismatched root is rebuilt even when its changed content
+  hides the manifest or prevents a listing. A read of a fetched tip that fails is
+  local damage when an object of the tip is missing from `sync.git`, when the
+  blob it read is there but unreadable, when
   git cannot walk the tip's trees (a corrupt or malformed tree, which no fetch
   lets in), or when git reports the damage in its own words; a git that a
   signal ended is never taken as damage. A walk that git ends by its own exit

@@ -20,6 +20,28 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## PR #47 branch review (ids AJ)
+
+Claude reviewed `c5a04d2..73bac3a`; Codex could not start because its CLI isolation preflight
+rejected the installed skills listing. The frozen report and adjudication remain in the external
+review handoff. No runtime defect was found; the required test combination below was missing.
+Claude's subsequent review of `c5a04d2..73654c2` found AJ02; Codex again failed the same preflight.
+Disposable Git and black-box sync probes confirmed both root failure paths before the repair.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AJ01 | Low | Corrupt subtree recovery was tested with a working persistent reader, and standalone reads only with healthy trees | fixed | Combine refusal of the persistent reader with an empty or nonempty tree stored under another tree's name at `fetch.fetched`. Assert the refusal and the standalone read of that exact object, then rebuilding and recovery on a fresh third machine without the publisher syncing again. Production behavior is unchanged | `beadroll`: `hardening::v8::v8_prune_after_a_fetch::mismatched_trees::a_mismatched_subtree_without_a_kept_reader_is_local_damage` |
+| AJ02 | Low | A readable root under another tree's name repeatedly returned MANIFEST_MISSING or GIT_ERROR instead of rebuilding; this pre-existing gap contradicted the new recovery guarantee | fixed | Failed-read diagnosis checks the root's content against its name even when the manifest is hidden or ls-tree refuses the root. Use the shared rebuild policy, preserve genuine remote-content errors, and add no Git processes to healthy syncs | `beadroll`: `hardening::v8::v8_prune_after_a_fetch::mismatched_trees::a_mismatched_root_is_local_damage_with_or_without_its_manifest` (with and without a kept reader; rebuild and fresh third-machine recovery); `a_whole_tree_without_a_manifest_blob_is_still_manifest_missing`, `a_gitlink_where_a_segment_goes_is_not_local_damage`; `children::a_command_starts_the_consolidated_gits_and_no_others` |
+
+## PR #37 review follow-up (roll-dih8.31)
+
+Reported as item 6 in the independent review of PR #37 and tracked separately as roll-dih8.31,
+which preserves the scenario and the later three-machine reproduction.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| roll-dih8.31 | Medium | A readable subtree whose content did not hash to its name silently removed another machine's journal from the published tip | fixed | Check each subtree's hash before walking it; the standalone listing includes and verifies trees too, even empty ones. A mismatch rebuilds the private sync repository through the existing local-damage recovery. The normal sync path starts no extra git processes | `beadroll-git`: `objects::tests::a_subtree_with_another_trees_content_is_never_listed` (SHA-1 and SHA-256, three depths, empty and nonempty replacements); `beadroll`: `hardening::v8::v8_prune_after_a_fetch::mismatched_trees` (rebuild and a fresh third machine without the original publisher syncing again, including a listing left to git before reading subtrees; the original two regressions fail without the fix); `children::a_command_starts_the_consolidated_gits_and_no_others`, `children::with_no_kept_git_every_question_uses_a_separate_git_call` |
+
 ## Review 26: Claude and Codex branch review (reported inline, ids AI)
 
 The independent reviews cover `b5d5543..571f902`. Claude reported the documentation finding

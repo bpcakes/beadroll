@@ -23,8 +23,8 @@ resolution shared with the store.
   `Object`, `list_tree` (what `ls-tree -r -z COMMIT` lists) and `root_tree` (what `rev-parse
   COMMIT^{tree}` finds), and `list_tree_with_subtrees` (also retaining subtree names), with git's
   own checks: tree entries as `decode_tree_entry` reads them, commits as `parse_commit_buffer`
-  does, the commit's and the root tree's names checked against
-  their contents.
+  does, the commit's and every tree's names checked against their contents (`Object::matches_name`).
+  A caller's standalone listing must also verify subtree hashes, which ls-tree does not check.
 - `src/tree.rs`: `blob_tree_id`, the canonical name of an ordinary blob-only tree, to compare
   desired entries against a reachable subtree before reusing it; no reachability claim of its own.
 - `src/writers.rs`: `Hasher` (`hash-object -w --no-filters --stdin-paths`), `Trees` (`mktree
@@ -71,7 +71,8 @@ resolution shared with the store.
   Anything this code cannot answer with certainty (`NoAnswer`: missing, damaged, unusual, a
   name it would have to quote, no git) falls back to that command,
   whose answer or failure is the one bead gives. Code that reads git's formats mirrors git's own
-  checks and is at least as strict.
+  checks and is at least as strict. Tree listings also check subtree hashes: unlike ls-tree, they
+  decline a well-formed tree whose content does not hash to its name (roll-dih8.31).
 - `Checkout` caches only the top, common directory and object format, which do not change while
   bead runs. Mutable facts are read afresh: origin URLs whenever the workspace is found, transport
   settings whenever a link is made, and HEAD and its branch at transaction start under the store
