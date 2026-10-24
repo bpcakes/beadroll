@@ -2,7 +2,8 @@
 //! (`crates/beadroll-git/AGENTS.md`). Resolves the fetch ref, manifest, file listing, blobs and
 //! commit tree with the same results as the corresponding git commands. Missing, damaged or
 //! unusual answers return NoAnswer and fall back to standalone git with the same error
-//! classification.
+//! classification. Tree contents are also checked against their names: neither cat-file nor
+//! ls-tree verifies subtrees, so a successful listing alone cannot rule out damage.
 //!
 //! What a fetch brought can be gone from `sync.git` by the time it is read: a prune that began
 //! before the fetch's ref existed removes it (roll-dih8.30). A read of the fetched tip that fails
@@ -13,7 +14,7 @@
 use std::ffi::OsStr;
 
 use beadroll_core::text::strip;
-use beadroll_git::{Output, list_tree_with_subtrees, local_damage, root_tree};
+use beadroll_git::{Object, Output, list_tree_with_subtrees, local_damage, root_tree};
 
 use super::Link;
 use crate::error::Error;
@@ -143,7 +144,9 @@ impl Link<'_> {
             self.listed_trees = listing.subtrees;
             return Ok(listing.files);
         }
-        let args = ["ls-tree", "-r", "-z", tip].map(OsStr::new);
+        // Include trees, even empty ones: ls-tree accepts a subtree holding another tree's bytes.
+        // The in-process walk checks those bytes; every fallback must check them too.
+        let args = ["ls-tree", "-r", "-t", "-z", tip].map(OsStr::new);
         let listing = self.run(&args)?;
         if !listing.success() {
             return Err(self.read_failed(tip, None, &args, &listing)?);
@@ -156,12 +159,43 @@ impl Link<'_> {
                 continue; // the empty tail
             };
             let meta = String::from_utf8_lossy(&row[..tab]);
-            let Some(sha) = meta.split_whitespace().nth(2) else {
+            let mut fields = meta.split_whitespace();
+            let kind = fields.nth(1);
+            let Some(sha) = fields.next() else {
                 continue;
             };
+            if kind == Some("tree") {
+                self.verify_tree(tip, sha)?;
+                continue;
+            }
             rows.push((row[tab + 1..].to_vec(), sha.to_owned()));
         }
         Ok(rows)
+    }
+
+    /// Verifies a subtree from the standalone listing before the merge can trust it as empty or
+    /// complete. This runs only when the in-process listing could not answer; healthy syncs hash
+    /// the bytes they already read without starting any extra git.
+    fn verify_tree(&mut self, tip: &str, sha: &str) -> Result<(), Error> {
+        let object = match self.objects.get(sha) {
+            Ok(object) => object,
+            Err(_) => {
+                let args = ["cat-file", "tree", sha].map(OsStr::new);
+                let tree = self.run(&args)?;
+                if !tree.success() {
+                    return Err(self.read_failed(tip, None, &args, &tree)?);
+                }
+                Object {
+                    oid: sha.to_owned(),
+                    kind: "tree".to_owned(),
+                    data: tree.stdout,
+                }
+            }
+        };
+        if object.kind != "tree" || object.oid != sha || !object.matches_name() {
+            return Err(self.damage(&format!("tree {sha} does not hash to its name")));
+        }
+        Ok(())
     }
 
     /// The blob named by `sha`, which the fetched `tip` holds; failure returns GIT_ERROR, or local

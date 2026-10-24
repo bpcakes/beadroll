@@ -1477,10 +1477,18 @@ These were decided deliberately. Report problems *with* them, not their existenc
   by that name) is `MANIFEST_MISSING`, something else the merge cannot read (a gitlink where a
   segment goes) `GIT_ERROR`. Asked by object, not by git's message for a path or a missing name,
   which differs between versions (roll-dih8.30; `hardening::v8::v8_prune_after_a_fetch`, through
-  `fetch.fetched`). A loose tree whose content no longer hashes to its name is read for what it
-  holds, and not caught (roll-dih8.31). A push that lacks new objects of its own a prune took does
-  not go through, and the next round, after a fresh fetch, hashes and publishes again, which needs
-  no such question.
+  `fetch.fetched`). A loose tree whose content no longer hashes to its name is local damage too
+  (roll-dih8.31): the in-process listing hashes each distinct subtree's bytes before walking it,
+  as it already did the commit and root tree. This adds no git to the normal sync path. When that walk
+  cannot answer, the fallback asks `ls-tree -r -t -z` for trees as well as files, including empty
+  trees, and verifies each tree through the persistent reader or a standalone `cat-file tree`.
+  Neither cat-file nor ls-tree alone checks subtree hashes; accepting their listing would let a
+  valid empty tree under another tree's name silently remove a machine's journal from the next
+  published tip. The fallback checks even when the in-process walk stopped for another reason,
+  before reaching the damaged subtree. This changes no valid tree's entries or order, and all
+  checks finish before the merge takes in any listed file. A push that lacks new objects of its
+  own a prune took does not go through, and the next round, after a fresh fetch, hashes and
+  publishes again, which needs no such question.
 - `sync.git` hashes like the checkout bead runs in (G26), not like the remote: bead does not ask
   the remote for its format. git before 2.41 clones an *empty* SHA-256 repository in SHA-1; in
   such a checkout the user's own push and bead's are both refused (`REMOTE_UNREACHABLE` carrying
@@ -1619,8 +1627,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `sync.git` a long-lived `cat-file --batch-command`, `hash-object --stdin-paths` and `mktree
   --batch`, and an `update-ref --stdin` for refs after fetches and pushes, with the listing and
   `TIP^{tree}` worked out in-process as git works them out. Whatever is not certain goes to the
-  git Python runs for it, and its answer or failure is the one given; `sync.git` gets the same objects and refs. What can
-  change while bead runs is asked by Python's own call where Python asks it: origin's URLs each
+  git Python runs for it, and its answer or failure is the one given, with subtree hashes also
+  checked before a listing is trusted (roll-dih8.31, above); `sync.git` gets the same objects and
+  refs. What can change while bead runs is asked by Python's own call where Python asks it: origin's URLs each
   time the workspace is found, the transport settings each time a link is made, HEAD and its
   branch (one `rev-parse` where its answer is certain) each time a transaction starts, under the
   store lock and so not with discovery's gits: a branch switched while a write waits for the lock

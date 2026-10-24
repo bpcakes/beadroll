@@ -241,6 +241,8 @@ a control code into an agent's transcript.
 What the protocol does at every boundary (a lost acknowledgement, a crash in
 the middle of a command, a remote that lost objects, a damaged local
 repository, a torn write) is in [docs/GUARANTEES.md](docs/GUARANTEES.md).
+Sync checks tree contents against their object names and rebuilds a damaged local
+sync repository before it can publish a tree that silently drops another machine's journal.
 
 ## When two machines edit the same thing
 

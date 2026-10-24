@@ -6,6 +6,11 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- Sync checks every tree it lists against its object name (roll-dih8.31), including through the
+  standalone git fallback. A private sync repository holding another tree's valid content under
+  the wrong name is rebuilt before merging or publishing, so it cannot silently drop another
+  machine's journal. The normal sync path starts no additional git processes.
+
 - A write that committed keeps its successful result when the final unpublished count cannot be
   read or would overflow (AF01). Standard error carries a warning saying the write was recorded
   locally; with `--json` it is `{"warning": {"code": "IO", "message": "..."}}`. Standard output

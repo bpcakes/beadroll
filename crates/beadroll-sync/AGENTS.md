@@ -75,7 +75,10 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   listing, blob) asks `Link::lost` what of the tip is missing or damaged in `sync.git`, and that is
   damage: a prune can remove what a fetch brought before it is read, and a tree or blob gone under
   a commit still there is never fetched again; a blob there but unreadable, or a tree git cannot
-  walk, is damage too. A git a signal ended is never damage (`Output::killed`).
+  walk, is damage too. Every tree in the merge's listing is checked against its name; a mismatch
+  is local damage even when git can read it. The standalone ls-tree fallback includes trees,
+  including empty ones, and verifies their hashes too (roll-dih8.31). A git a signal ended is never
+  damage (`Output::killed`).
   A kept git that has no answer (`beadroll_git::NoAnswer`) falls back to the corresponding
   separate git command. It does not hash a journal file
   that keeps the identity the memo remembers it at: a merge compares the remembered blob with the

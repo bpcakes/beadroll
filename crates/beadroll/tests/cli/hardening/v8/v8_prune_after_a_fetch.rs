@@ -16,6 +16,8 @@ use beadroll_test_support::{Json, Machine, Run, Sandbox, code, parse_json};
 
 use crate::hardening::gate::{Gate, beside};
 
+mod mismatched_trees;
+
 /// The remote's tip, and in it, as revisions, its tree and its manifest's blob; `{b}` stands for
 /// machine b's folder under `events/`.
 const TIP: &str = "refs/beads/journal";
@@ -39,6 +41,8 @@ enum Harm {
     /// Replaces a tree's file by a whole one of a malformed tree, which every read and walk of it
     /// fails on in no words of damage ("too-short tree object"), and which no fetch lets in.
     Malformed,
+    /// Replaces a tree's file with a different, well-formed tree, empty or holding one blob.
+    OtherTree { empty: bool },
 }
 
 /// `git --git-dir GIT_DIR ARGS`, given `input`: its output, trimmed.
@@ -107,10 +111,23 @@ fn harm(git_dir: &Path, aside: &Path, object: &str, harm: Harm) {
         .join(&object[2..]);
     match harm {
         Harm::Remove => std::fs::remove_file(&loose).expect("the object, loose"),
-        Harm::Malformed => {
-            let entry = "100644 x\0\u{1}\u{1}\u{1}\u{1}\u{1}\u{1}\u{1}";
-            let write = ["hash-object", "-t", "tree", "--literally", "-w", "--stdin"];
-            let made = plumbing(git_dir, &write, Some(entry));
+        Harm::Malformed | Harm::OtherTree { .. } => {
+            let made = match harm {
+                Harm::OtherTree { empty: true } => plumbing(git_dir, &["mktree"], Some("")),
+                Harm::OtherTree { empty: false } => {
+                    let blob = plumbing(git_dir, &["hash-object", "-w", "--stdin"], Some("x"));
+                    plumbing(
+                        git_dir,
+                        &["mktree"],
+                        Some(&format!("100644 blob {blob}\tother\n")),
+                    )
+                }
+                _ => {
+                    let entry = "100644 x\0\u{1}\u{1}\u{1}\u{1}\u{1}\u{1}\u{1}";
+                    let write = ["hash-object", "-t", "tree", "--literally", "-w", "--stdin"];
+                    plumbing(git_dir, &write, Some(entry))
+                }
+            };
             let made = git_dir.join("objects").join(&made[..2]).join(&made[2..]);
             std::fs::set_permissions(&loose, std::fs::Permissions::from_mode(0o644))
                 .expect("the object, loose");
@@ -153,6 +170,16 @@ fn sync_held(sandbox: &Sandbox, a: &Machine, harmed: impl FnOnce()) -> Run {
 /// publishes "from b"; a syncs, held once its fetch has brought b's tip while the object
 /// `revision` names there is harmed in a's sync.git. That sync's run, and a.
 fn sync_harming(sandbox: &Sandbox, revision: &str, how: Harm) -> (Run, Machine) {
+    sync_harming_with(sandbox, revision, how, |_| {})
+}
+
+/// [`sync_harming`], after `before_fetch` has changed the remote's tip.
+fn sync_harming_with(
+    sandbox: &Sandbox,
+    revision: &str,
+    how: Harm,
+    before_fetch: impl FnOnce(&Path),
+) -> (Run, Machine) {
     let a = crate::rust_only(sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
     a.bead(["create", "x"]);
@@ -172,6 +199,7 @@ fn sync_harming(sandbox: &Sandbox, revision: &str, how: Harm) -> (Run, Machine) 
         &["rev-parse", &revision.replace("{b}", &b_folder)],
         None,
     );
+    before_fetch(origin);
     let run = sync_held(sandbox, &a, || {
         harm(&sync_git, &sandbox.root().join("aside"), &object, how);
     });
