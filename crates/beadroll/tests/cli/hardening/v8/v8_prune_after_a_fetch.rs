@@ -170,17 +170,17 @@ fn sync_held(sandbox: &Sandbox, a: &Machine, harmed: impl FnOnce()) -> Run {
 /// publishes "from b"; a syncs, held once its fetch has brought b's tip while the object
 /// `revision` names there is harmed in a's sync.git. That sync's run, and a.
 fn sync_harming(sandbox: &Sandbox, revision: &str, how: Harm) -> (Run, Machine) {
-    sync_harming_with(sandbox, revision, how, |_| {})
+    sync_harming_with(sandbox, revision, how, |_, _| {})
 }
 
-/// [`sync_harming`], after `before_fetch` has changed the remote's tip.
+/// [`sync_harming`], after `before_fetch` has prepared the remote's tip and machine a's run.
 fn sync_harming_with(
     sandbox: &Sandbox,
     revision: &str,
     how: Harm,
-    before_fetch: impl FnOnce(&Path),
+    before_fetch: impl FnOnce(&Path, &mut Machine),
 ) -> (Run, Machine) {
-    let a = crate::rust_only(sandbox, "a");
+    let mut a = crate::rust_only(sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
     a.bead(["create", "x"]);
     a.bead(["sync"]);
@@ -199,7 +199,7 @@ fn sync_harming_with(
         &["rev-parse", &revision.replace("{b}", &b_folder)],
         None,
     );
-    before_fetch(origin);
+    before_fetch(origin, &mut a);
     let run = sync_held(sandbox, &a, || {
         harm(&sync_git, &sandbox.root().join("aside"), &object, how);
     });
