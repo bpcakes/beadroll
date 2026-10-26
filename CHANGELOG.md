@@ -6,6 +6,19 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- One issue given many dependency edges costs in proportion to them (roll-lqjj.21, AK01). An issue's
+  edges were a vector that every addition and lookup searched in order, so an issue given N edges,
+  by an import naming keys that exist, by the keys an import waits for arriving one at a time, or by
+  `bead dep add`, cost N². Once an issue has more than 16 edges they are also indexed by target,
+  from its first change after that, or its thirteenth once read back from the projection, so that a
+  command changing such an issue a few times searches as before: 16,000 edges replay in 0.08 s
+  rather than 0.21 s. Many kinds of edge on one target are still compared with each other. The order
+  of edges, removals, metadata, the projection's bytes and format 1 are unchanged. Each issue holds
+  a pointer more for its index, 0.9% of a decoded 200,000-event state. In `beadroll-core`, `DepTags`
+  is a type of its own rather than a `VecMap`: `get` takes a target and a kind, and it no longer
+  offers `contains_key` or `FromIterator`; beadroll-core depends on hashbrown, the table indexmap is
+  built on, at the version indexmap already brings in.
+
 - Sync checks every tree it lists against its object name (roll-dih8.31), including through the
   standalone git fallback. A private sync repository holding another tree's valid content under
   the wrong name is rebuilt before merging or publishing, so it cannot silently drop another

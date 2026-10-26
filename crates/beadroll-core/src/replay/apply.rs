@@ -246,10 +246,7 @@ fn dep_add(c: &Ctx<'_>, issue: &mut Issue, to: &str, kind: Option<&str>, meta: &
         meta.iter()
             .map(|(name, value)| (name.clone(), value.clone())),
     );
-    issue
-        .dep_tags
-        .get_or_insert_with(edge, IdMap::default)
-        .insert(c.eid, Meta::of(stamp));
+    issue.dep_tags.added(edge).insert(c.eid, Meta::of(stamp));
     true
 }
 
@@ -270,21 +267,22 @@ fn dep_remove(
         awaiting.retract(issue, key, |dep| matches(&dangling_type(dep)));
         // A concurrent create of the key that sorted first bound it already.
         if let Some(bound) = by_key.get(key).filter(|_| c.k.saw_at(c.at, c.uid)) {
-            let bound = Target::Id(*bound);
-            for (edge, tags) in issue.dep_tags.iter_mut() {
-                if edge.to == bound && matches(&edge.kind) {
-                    tags.remove(&c.uid); // the import's own tag only: an explicit `dep add` keeps its edge
-                }
-            }
+            issue
+                .dep_tags
+                .for_each_to(&Target::Id(*bound), |edge, tags| {
+                    if matches(&edge.kind) {
+                        // the import's own tag only: an explicit `dep add` keeps its edge
+                        tags.remove(&c.uid);
+                    }
+                });
         }
     } else {
         let to = to.unwrap_or_default();
-        let target = Target::of(to);
-        for (edge, tags) in issue.dep_tags.iter_mut() {
-            if edge.to == target && matches(&edge.kind) {
+        issue.dep_tags.for_each_to(&Target::of(to), |edge, tags| {
+            if matches(&edge.kind) {
                 tags.retain(|tag, _| !c.k.saw_at(c.at, *tag));
             }
-        }
+        });
         let removed = (to.to_owned(), wanted.map(str::to_owned));
         issue.retracted.entry(removed).or_default().insert(c.eid);
     }

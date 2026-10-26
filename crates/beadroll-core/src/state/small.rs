@@ -1,8 +1,9 @@
-//! The small maps and sets an issue keeps (roll-dih8.11): registers, tag sets and dependencies.
-//! Each holds a few entries, mostly one, where a `BTreeMap` takes a node of eleven and an
-//! `IndexMap` a hash table, so they are vectors, searched in order: [`VecMap`] keeps the order
-//! entries were first made in, as the `IndexMap`s did; [`IdMap`] and [`IdSet`] keep event ids in
-//! order, as the `BTreeMap`s and `BTreeSet`s did.
+//! The small maps and sets an issue keeps (roll-dih8.11): registers and tag sets. Each holds a
+//! few entries, mostly one, where a `BTreeMap` takes a node of eleven and an `IndexMap` a hash
+//! table, so they are vectors, searched in order: [`VecMap`] keeps the order entries were first
+//! made in, as the `IndexMap`s did; [`IdMap`] and [`IdSet`] keep event ids in order, as the
+//! `BTreeMap`s and `BTreeSet`s did. An issue's edges are held the same way while they are few, and
+//! indexed once they are many (`state::edges::DepTags`, roll-lqjj.21).
 
 use crate::id::EventId;
 
@@ -103,16 +104,6 @@ impl<K, V> VecMap<K, V> {
     /// Its values, in order.
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.0.iter().map(|(_, v)| v)
-    }
-
-    /// Its entries, in order, the values to change.
-    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut V)> {
-        self.0.iter_mut().map(|(k, v)| (&*k, v))
-    }
-
-    /// Its values, in order, to change.
-    pub(crate) fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
-        self.0.iter_mut().map(|(_, v)| v)
     }
 }
 

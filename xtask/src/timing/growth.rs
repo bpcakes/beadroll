@@ -3,10 +3,11 @@
 //! the input; a count cannot see work done some other way, such as a lookup turned back into a scan
 //! of a vector, or a merge into a vector that moves its tail. These time the core calls whose work
 //! that can hide in — planning an import, validating it for a dry run, re-importing an issue whose
-//! dependencies wait, replaying imports that wait for keys, replaying copies two machines minted
-//! alike, which are renamed, and a projection taking ids that sort before every id it holds — on
-//! the shapes their `timing` probes measure, at a size and at [`LARGER`] times it, and fail when
-//! the larger takes more than [`BOUND`] times as long.
+//! dependencies wait, replaying imports that wait for keys, replaying one issue given an edge on
+//! every other and the same edges removed, by target and by key (roll-lqjj.21), replaying copies
+//! two machines minted alike, which are renamed, and a projection taking ids that sort before every
+//! id it holds — on the shapes their `timing` probes measure, at a size and at [`LARGER`] times it,
+//! and fail when the larger takes more than [`BOUND`] times as long.
 //!
 //! The one exception to "timings never gate" (`xtask/AGENTS.md`): each test is ignored, because a
 //! debug build's figures say nothing and a loaded machine's little more, and the nightly workflow
@@ -117,6 +118,39 @@ fn replaying_imports_that_wait_for_keys_takes_time_growing_with_them() {
             |journal| replay(journal).unwrap(),
         );
     }
+}
+
+#[test]
+#[ignore = "a ratio of release timings: the nightly workflow runs it"]
+fn replaying_one_issue_given_an_edge_on_every_other_takes_time_growing_with_them() {
+    // an issue's edges are indexed once they are many (roll-lqjj.21); a count sees each edge looked
+    // at, not whether a lookup reads every edge before it some other way
+    for shape in [dangling::Shape::OneHasMany, dangling::Shape::OneAwaitsMany] {
+        grows_linearly(
+            &format!("replaying one issue given an edge on every other, {shape:?}"),
+            4_000,
+            |issues| dangling::journal(shape, issues),
+            |journal| replay(journal).unwrap(),
+        );
+    }
+    grows_linearly(
+        "replaying one issue given an edge on every other by dep add, one event each",
+        4_000,
+        dangling::added,
+        |journal| replay(journal).unwrap(),
+    );
+    grows_linearly(
+        "replaying the same, and then each edge removed by dep remove, one event each",
+        4_000,
+        dangling::removed,
+        |journal| replay(journal).unwrap(),
+    );
+    grows_linearly(
+        "replaying an import naming every other issue's key, each then removed by its key",
+        4_000,
+        dangling::unbound,
+        |journal| replay(journal).unwrap(),
+    );
 }
 
 #[test]

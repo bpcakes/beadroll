@@ -49,7 +49,9 @@ consumer on tokio calls through `spawn_blocking`.
   entry at a time while short; `state/awaiting.rs`: `Awaiting`, where every imported dependency
   that waits for a key is, by that key (roll-lqjj.18); `state/edges.rs`: `Edge` (a `Target`, an
   issue's id or the text of one that is no id, and its kind), `Meta`, the metadata an addition of
-  an edge carries, and `Deps`, what `Issue::deps` hands out (roll-lqjj.39); `state/issues.rs`:
+  an edge carries, and `Deps`, what `Issue::deps` hands out (roll-lqjj.39); `state/edges/tags.rs`:
+  `DepTags`, an issue's edges and the additions behind each, a vector searched in order while they
+  are few and indexed by target besides once they are many (roll-lqjj.21); `state/issues.rs`:
   `Issues`, a state's issues in replay order and which of those read back from a projection
   changed since (roll-lqjj.44).
 - `src/projection.rs`: `project`, `Projection` (roll-lqjj.2), a replayed state kept to have events
@@ -94,11 +96,11 @@ consumer on tokio calls through `spawn_blocking`.
   show`, `update`, `claim` and `takeover` make their details from (roll-lqjj.24).
 - `src/import/dry_run.rs`: `problems` (every problem an import would be refused for, empty exactly
   when it goes through) and `preview` (what it would bring), for `--dry-run`.
-- `src/work.rs`: `tally`, the work the algorithms of roll-lqjj.15 to .20 do, counted in this crate's
+- `src/work.rs`: `tally`, the work the algorithms of roll-lqjj.15 to .21 do, counted in this crate's
   own tests alone (`cfg(test)`; it does nothing in any other build), and `work/tests/`, the guards
   that fail when that work grows with the square of its input (roll-lqjj.34, X15), among them the
-  blockers and details of several issues (X01, X02) and the keys a renamed copy asks of (X03,
-  roll-lqjj.38).
+  blockers and details of several issues (X01, X02), the keys a renamed copy asks of (X03,
+  roll-lqjj.38), and the edges looked at to give one issue many (`degree`, roll-lqjj.21).
 - `tests/core/`: integration tests of replay, storage compatibility and validation;
   `tests/core/compat/json_round_trip.rs`: JSON round-trips in every dialect bead writes, on seeded
   values (roll-k2wy.14.4).
@@ -185,9 +187,22 @@ consumer on tokio calls through `spawn_blocking`.
   only an export (and applying more events) needs. So an edge added or removed changes an issue's texts, and so does a create of a
   key another issue's import waits for, which makes that issue an edge: `Projection::extend`
   declines when such an issue's texts are not in, and `Projection::about` lists them for a store to
-  read in first. Read an edge through `Issue::deps` and `Issue::dep_tags`, never the field: what an
-  issue's edges are held in may change (roll-lqjj.21). `projection/tests/edges.rs` pins what every
-  issue's edges answered when they were held as strings (edges, tags and metadata in order,
+  read in first. Read an edge through `Issue::deps` and `Issue::dep_tags`, never the field; add an
+  edge through `DepTags::added` alone, and change an edge's additions through it, or through
+  `DepTags::for_each_to` or `DepTags::values_mut`, which never add or move an edge (roll-lqjj.21):
+  an issue's edges are a vector, in the order first added, searched in order while there are at most
+  `state::edges::tags::LISTED` (16), and from the first change past that also indexed, a table of
+  their places hashed by target, which finds an edge, or every edge on a target, looking at the
+  edges on that target alone. The index is derived and never written: a projection's bytes are what
+  they were, a state read back with more than 16 edges on an issue holds them unindexed until the
+  thirteenth change to them (`SEARCHES`), so a command, which changes an issue a few times, builds
+  none, and equality and `Debug` see the edges alone. Core's own tests index an issue's edges at a
+  change once it has two, and those read back at their second change (`LISTED` and `SEARCHES` are 1
+  under `cfg(test)`), so every differential history takes the indexed path where its issues have a
+  few edges, and `state/edges/tags/tests.rs` compares it with the vector searched in order on seeded
+  draws; the integration tests, which build the crate as bead does, take the bound bead runs with
+  (`tests/core/replay/many_edges.rs`). `projection/tests/edges.rs` pins what
+  every issue's edges answered when they were held as strings (edges, tags and metadata in order,
   readiness, blockers, dependents, cycles, details and the export, as digests of every state the
   differential histories pass through and in full on three bead-built journals), and checks export
   and show alike with the metadata read from the texts; `projection/tests/edges/drawn.rs` is what
@@ -266,13 +281,14 @@ consumer on tokio calls through `spawn_blocking`.
   parent-child index built (`State::index_children`), a waiting import's key read
   (`state::awaited`, which replay reads it through and nowhere else) and the entries `Awaiting`
   hands out, examines or makes whole, an import's record or dependency key read (`id_of`,
-  `target`), and the keys `State::claims_key` is asked of and `State::claimed_keys` collects. Read
-  an edge, a waiting key or an import key through those, never around them, and collect the
-  claimed keys through `claimed_keys`, or a guard stops seeing the work. `blocker_lists` counts the
-  rows it walks (`Rows::row`, `Rows::item`), and the test-only check that each `claims_key` ask
-  agrees with the keys claimed (`state/asked.rs`) reads them directly, so that it counts nothing.
-  What a count cannot see, a lookup turned back into a scan, is timed by `xtask`'s growth tests,
-  nightly in release.
+  `target`), the keys `State::claims_key` is asked of and `State::claimed_keys` collects, and each
+  edge `DepTags` compares, each search of its index and each edge an index is built of
+  (`Work::Probe`). Read an edge, a waiting key or an import key through those, never around them,
+  and collect the claimed keys through `claimed_keys`, or a guard stops seeing the work.
+  `blocker_lists` counts the rows it walks (`Rows::row`, `Rows::item`), and the test-only check that
+  each `claims_key` ask agrees with the keys claimed (`state/asked.rs`) reads them directly, so that
+  it counts nothing. What a count cannot see, a lookup turned back into a scan, is timed by
+  `xtask`'s growth tests, nightly in release.
 - Replay answers alike whatever order a journal is given its records in, as long as each
   journal keeps its own: `replay::tests` delivers each generated history in random causal orders,
   random interleavings of its journals and a store's order, and compares every answer the public

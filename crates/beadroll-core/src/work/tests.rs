@@ -1,17 +1,19 @@
-//! The guards: the work each algorithm roll-lqjj.15 to .20 made linear does on an input and on one
+//! The guards: the work each algorithm roll-lqjj.15 to .21 made linear does on an input and on one
 //! [`LARGER`] times its size, counted, grows with the input and not with its square (X15). Each
 //! input is the shape the algorithm was quadratic on before, the shape its `cargo xtask timing`
 //! probe measures, built outside the count; only the call is counted. A module for each:
 //! `import` (roll-lqjj.15), `finished` (.17), `awaiting` (.18), and `edges`, readiness (.19) and
 //! the dependents of the issues shown (.20) with the blockers and readiness of several issues
-//! (.24), and `renamed`, the key of a copy two machines minted alike (roll-lqjj.25).
+//! (.24), `degree`, the edges of one issue given many (.21), and `renamed`, the key of a copy two
+//! machines minted alike (roll-lqjj.25).
 //!
 //! Shapes whose cost still grows faster than their input by design are not guarded, and
 //! `docs/REVIEWING.md` §2 says why for each: a batch that changes an edge builds the parent-child
-//! index again over the whole state (roll-lqjj.17), one issue that gains N edges, or waits for
-//! N keys that come one batch at a time, searches or copies its own growing list (roll-lqjj.18),
-//! and a copy of a numbered key (`ex-1.1`), which counts upward past every number taken, so that N
-//! copies two machines minted alike ask N² keys (roll-lqjj.46).
+//! index again over the whole state (roll-lqjj.17), one issue that waits for N keys that come one
+//! batch at a time copies its own growing list (roll-lqjj.18), many kinds of edge on one target are
+//! compared with each other (roll-lqjj.21), and a copy of a numbered key
+//! (`ex-1.1`), which counts upward past every number taken, so that N copies two machines minted
+//! alike ask N² keys (roll-lqjj.46).
 
 use crate::id::EventId;
 use crate::journal::Journal;
@@ -23,6 +25,7 @@ use crate::state::State;
 use super::{Work, counted};
 
 mod awaiting;
+mod degree;
 mod edges;
 mod finished;
 mod import;

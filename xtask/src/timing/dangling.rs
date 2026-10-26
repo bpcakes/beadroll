@@ -5,12 +5,15 @@
 //! arrive one create at a time; and, its control, the last issue naming the key of every other,
 //! which all have their issues already, so that it gets the same edges at once and nothing waits.
 //! Replay used to visit every issue still waiting, and each waiting issue's whole list, on every
-//! create, so the middle three grew with the square of N. One issue's edges are a vector searched
-//! in order (`state::small`, roll-dih8.11), so its N edges cost what the last control measures
-//! however they come. It also measures a projection of the first issue waiting for every other's
-//! key taking the creates that bring them one create a batch, as a store takes them a command at a
-//! time, against the same creates when it waits for nothing: each batch makes the issue's list whole
-//! again (W01). The fastest of [`RUNS`] runs counts. Evidence, never a gate.
+//! create, so the middle three grew with the square of N. One issue's N edges cost N² too while
+//! they were a vector searched in order (`state::small`, roll-dih8.11), however they came; they
+//! are indexed once they are many (`state::edges::DepTags`, roll-lqjj.21), and the probe measures
+//! the same edges given by `dep add` besides, one event each, as a third way they come. It also
+//! measures a projection of the first issue waiting for every other's key taking the creates that
+//! bring them one create a batch, as a store takes them a command at a time, against the same
+//! creates when it waits for nothing: each batch makes the issue's list whole again (W01) and
+//! builds the parent-child index again, which edges indexed leave as they were. The fastest of
+//! [`RUNS`] runs counts. Evidence, never a gate.
 
 use std::time::Instant;
 
@@ -99,6 +102,11 @@ fn id(n: u64) -> String {
 /// An event as `Tx.emit` writes it: numbered `n`, doing `op` on itself, built on the event before
 /// it, as the events of one machine's journal are.
 fn event(n: u64, op: &str, data: Object) -> Value {
+    event_on(n, op, &id(n), data)
+}
+
+/// The same, doing `op` on `issue`.
+fn event_on(n: u64, op: &str, issue: &str, data: Object) -> Value {
     let mut actor = Object::new();
     actor.insert("agent".into(), Value::from("timing"));
     actor.insert("thread".into(), Value::from("a"));
@@ -113,7 +121,7 @@ fn event(n: u64, op: &str, data: Object) -> Value {
     members.insert("deps".into(), Value::Array(deps));
     members.insert("actor".into(), Value::from(actor));
     members.insert("op".into(), Value::from(op));
-    members.insert("issue".into(), Value::from(id(n)));
+    members.insert("issue".into(), Value::from(issue));
     members.insert("data".into(), Value::from(data));
     Value::from(members)
 }
@@ -155,6 +163,67 @@ fn events(shape: Shape, issues: usize) -> Vec<Value> {
 pub(super) fn journal(shape: Shape, issues: usize) -> Journal {
     let mut journal = Journal::new();
     for value in events(shape, issues) {
+        journal.add(value, MACHINE, "", true);
+    }
+    journal
+}
+
+/// The journal of `issues` creates, after an `init`, naming no key, and then the first issue given
+/// a `blocks` edge on every other by `dep add`, one event each, as `bead dep add` writes them: the
+/// edges [`Shape::OneAwaitsMany`] gives the same issue, one at a time.
+pub(super) fn added(issues: usize) -> Journal {
+    journal_of(dep_events(issues, false))
+}
+
+/// The same, and then each of those edges removed by `dep remove`, one event each, every other one
+/// of its type and the rest of any (roll-lqjj.21): what the nightly growth guard times of removals.
+#[cfg(test)]
+pub(super) fn removed(issues: usize) -> Journal {
+    journal_of(dep_events(issues, true))
+}
+
+/// The journal of [`Shape::OneHasMany`]'s creates, and then each of the last issue's imported
+/// edges removed by the key it named, of its type, one event each, as `bead dep remove` removes an
+/// imported edge (roll-lqjj.21): what the nightly growth guard times of removals by key.
+#[cfg(test)]
+pub(super) fn unbound(issues: usize) -> Journal {
+    let mut values = events(Shape::OneHasMany, issues);
+    let last = id(issues as u64 + 1);
+    for n in 1..issues {
+        let mut data = Object::new();
+        data.insert("key".into(), Value::from(key(n)));
+        data.insert("type".into(), Value::from("blocks"));
+        values.push(event_on(values.len() as u64 + 1, "dep_remove", &last, data));
+    }
+    journal_of(values)
+}
+
+/// The events of [`added`], and of [`removed`] when `removing`.
+fn dep_events(issues: usize, removing: bool) -> Vec<Value> {
+    let mut values = events(Shape::Plain, issues);
+    let first = id(2);
+    let ops: &[&str] = if removing {
+        &["dep_add", "dep_remove"]
+    } else {
+        &["dep_add"]
+    };
+    for op in ops {
+        for n in 2..=issues {
+            let mut data = Object::new();
+            data.insert("to".into(), Value::from(id(n as u64 + 1)));
+            if *op == "dep_add" || n % 2 == 0 {
+                data.insert("type".into(), Value::from("blocks"));
+            }
+            values.push(event_on(values.len() as u64 + 1, op, &first, data));
+        }
+    }
+    values
+}
+
+/// The journal of `values`, in their order.
+fn journal_of(values: Vec<Value>) -> Journal {
+    let mut journal = Journal::new();
+    for value in values {
         journal.add(value, MACHINE, "", true);
     }
     journal
@@ -239,6 +308,11 @@ pub(crate) fn measure(issues: usize, label: Option<&str>) -> Result<String, Fail
              \"{name}_waiting\": {waiting}, "
         ));
     }
+    let (seconds, (edges, waiting)) = fastest(&added(issues))?;
+    figures.push_str(&format!(
+        "\"one_added_many_seconds\": {seconds:.4}, \"one_added_many_edges\": {edges}, \
+         \"one_added_many_waiting\": {waiting}, "
+    ));
     for shape in [Shape::Plain, Shape::OneAwaitsMany] {
         let (seed, records) = extension(shape, issues)?;
         let (seconds, (edges, waiting)) = fastest_taken(&seed, &records)?;
@@ -356,6 +430,43 @@ mod tests {
             counted(seed.state()),
             (0, 5),
             "it waits for every other's key"
+        );
+    }
+
+    #[test]
+    fn dep_add_gives_the_first_issue_the_same_edges_one_event_each() {
+        let state = replay(added(6)).unwrap();
+        assert_eq!(counted(&state), (5, 0));
+        let first = state.issues().next().unwrap();
+        let to: Vec<String> = (first.deps().keys())
+            .map(|edge| state.target_key(edge.to()).into_owned())
+            .collect();
+        assert_eq!(first.key(), "ex-1");
+        assert_eq!(to, ["ex-2", "ex-3", "ex-4", "ex-5", "ex-6"]);
+    }
+
+    #[test]
+    fn dep_remove_by_key_takes_every_edge_the_import_gave_back() {
+        let state = replay(unbound(6)).unwrap();
+        assert_eq!(counted(&state), (0, 0));
+        let last = state.issues().last().unwrap();
+        assert_eq!(last.key(), "ex-6");
+        assert_eq!(
+            last.dep_tags().len(),
+            5,
+            "each edge keeps its place, emptied"
+        );
+    }
+
+    #[test]
+    fn dep_remove_takes_every_edge_dep_add_gave_back() {
+        let state = replay(removed(6)).unwrap();
+        assert_eq!(counted(&state), (0, 0));
+        let first = state.issues().next().unwrap();
+        assert_eq!(
+            first.dep_tags().len(),
+            5,
+            "each edge keeps its place, emptied"
         );
     }
 

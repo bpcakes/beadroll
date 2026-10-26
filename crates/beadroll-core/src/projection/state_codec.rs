@@ -435,7 +435,7 @@ fn read_edges(r: &mut Reader<'_>) -> Result<DepTags, Unreadable> {
         let tags = IdMap::from_ascending(tags.collect()).ok_or(Unreadable("an edge's tags"))?;
         edges.push((edge, tags));
     }
-    Ok(VecMap::from_distinct(edges))
+    Ok(DepTags::from_entries(edges))
 }
 
 /// Who holds an issue and how many times it was claimed, as [`Issue`] records it: what every

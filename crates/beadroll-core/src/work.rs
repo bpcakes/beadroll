@@ -1,4 +1,4 @@
-//! The work done by the algorithms that roll-lqjj.15 to .20 made grow with their input rather than
+//! The work done by the algorithms that roll-lqjj.15 to .21 made grow with their input rather than
 //! with its square, counted where it is done, so that a change making one of them quadratic again
 //! fails a test rather than passing every test that compares answers (roll-lqjj.34, X15). Each
 //! [`tally`] is a call that does nothing outside this crate's own tests: only `cfg(test)` compiles
@@ -8,11 +8,11 @@
 //! sixty-four.
 //!
 //! A count sees only the work that passes the place it is kept, which is chosen as the one every
-//! way of doing that work passes: the edges an issue holds when they are asked for, an imported
-//! dependency's key when it is read, the key of an import's record or dependency, the key a renamed
-//! copy asks the state of. A change that does the work some other way, a lookup turned back into a
-//! scan of a vector, is seen by time alone: `xtask`'s growth tests time those in release, every
-//! night.
+//! way of doing that work passes: the edges an issue holds when they are asked for, the edges an
+//! issue's edge set looks at to find one of them, an imported dependency's key when it is read, the
+//! key of an import's record or dependency, the key a renamed copy asks the state of. A change that
+//! does the work some other way, a lookup turned back into a scan of a vector, is seen by time
+//! alone: `xtask`'s growth tests time those in release, every night.
 
 /// A kind of work counted.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,6 +31,10 @@ pub(crate) enum Work {
     /// The key of an import's record, or the key one of its dependencies names, read; a key asked
     /// of whether an issue or an import claims it, and each key collected as claimed.
     Key,
+    /// A look at an issue's edges to find, add or remove one of them (roll-lqjj.21): an edge
+    /// compared with what is asked for, a search of their index, which compares the edges it finds
+    /// besides, and an edge placed in an index built of them.
+    Probe,
 }
 
 /// Counts `n` units of `work`, in this crate's tests; anywhere else it does nothing.
@@ -54,7 +58,7 @@ mod counter {
     use super::Work;
 
     /// How many kinds of work there are.
-    const KINDS: usize = 5;
+    const KINDS: usize = 6;
 
     thread_local! {
         static COUNTS: [Cell<usize>; KINDS] = const { [const { Cell::new(0) }; KINDS] };
@@ -68,6 +72,7 @@ mod counter {
             Work::Index => 2,
             Work::Waiting => 3,
             Work::Key => 4,
+            Work::Probe => 5,
         }
     }
 

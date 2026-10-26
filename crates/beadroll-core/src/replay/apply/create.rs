@@ -8,8 +8,8 @@ use crate::id::EventId;
 use crate::json::{Int, Object, Value};
 use crate::op::Create;
 use crate::state::{
-    Comment, Edge, IdMap, IdSet, Issue, KeySpace, Knowledge, Meta, Origin, Rename, Stamps, State,
-    Target, VecMap, awaited,
+    Comment, DepTags, Edge, IdMap, IdSet, Issue, KeySpace, Knowledge, Meta, Origin, Rename, Stamps,
+    State, Target, VecMap, awaited,
 };
 use crate::time::event_time;
 
@@ -126,7 +126,7 @@ fn new_issue(event: &Doing<'_>, create: &Create, key: String, who: &str, when: &
             .iter()
             .map(|label| (label.clone(), IdSet::of(eid)))
             .collect(),
-        dep_tags: VecMap::default(),
+        dep_tags: DepTags::default(),
         labels: BTreeSet::new(),
         comments: create.comments.iter().map(imported_comment).collect(),
         extra: (!create.extra.is_empty()).then(|| Box::new(create.extra.clone())),
@@ -189,6 +189,6 @@ fn bind(k: &Knowledge, names: &Names, issue: &mut Issue, dep: &Value, target: Ev
     };
     issue
         .dep_tags
-        .get_or_insert_with(edge, IdMap::default)
+        .added(edge)
         .insert_if_absent(uid, Meta::of(meta));
 }

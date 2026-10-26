@@ -499,6 +499,12 @@ it, and the file is committed again.
   each waiting for a key that never comes replay in 0.09 s rather than 30 s,
   and one issue waiting for 16,000 keys costs about what the same 16,000 edges
   cost it given at once (roll-lqjj.18; `cargo xtask timing --dangling N`).
+  One issue's edges are indexed by target once it has more than 16, so an
+  issue given 16,000 edges, by an import at once, as the keys it waits for
+  come, or by `dep add` one at a time, replays in 0.08 to 0.11 s rather than
+  0.21 to 0.24 s, in proportion to them (roll-lqjj.21), unless they are many
+  kinds of edge on one target; a projection taking those keys one create a
+  batch still builds the parent-child index again each batch.
   `bead ready`, `bead blocked` and `bead prime` judge what is held once for
   every issue rather than issue by issue, so a chain of 4,000 issues under one
   held root is judged in 2 ms where listing each one's blockers took 1.7 s, and
