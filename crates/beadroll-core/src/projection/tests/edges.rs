@@ -430,7 +430,7 @@ fn texts_whose_edges_differ_from_the_issues_are_never_read_in() {
                 to: crate::state::Target::Id(later),
                 kind: "related".into(),
             };
-            edges.insert(edge, crate::state::IdMap::of(later, Meta::default()));
+            *edges.added(edge) = crate::state::IdMap::of(later, Meta::default());
         },
     ];
     for change in changes {

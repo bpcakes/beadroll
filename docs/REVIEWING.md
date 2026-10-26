@@ -786,18 +786,112 @@ These were decided deliberately. Report problems *with* them, not their existenc
   waiting for a key that never comes, 4.50 s and 30.28 s before, 0.044 s and 0.093 s after; the
   first half waiting for keys the second half brings, 2.02 s and 7.94 s before, 0.038 s and 0.084 s
   after; one issue waiting for every other's key, which come one create at a time, 1.57 s and 9.05 s
-  before, 0.24 s and 0.78 s after. That last still grows with the square of N, and its control says
-  why: one issue given the same N edges at once, by an import naming keys that have their issues,
-  takes 0.145 s and 0.500 s before and 0.141 s and 0.498 s after. An issue's edges are a vector
-  searched in order (`state::small`, roll-dih8.11), so its N-th edge costs N whichever way it comes,
-  `dep_add` included; with that insertion left out, as an experiment in a quieter run that morning
+  before, 0.24 s and 0.78 s after. That last still grew with the square of N then, and its
+  control said why: one issue given the same N edges at once, by an import naming keys that have
+  their issues, takes 0.145 s and 0.500 s before and 0.141 s and 0.498 s after. An issue's edges
+  were then a vector searched in order (`state::small`, roll-dih8.11), so its N-th edge cost N
+  whichever way it came, `dep_add` included, until roll-lqjj.21 indexed them (the next bullet); with
+  that insertion left out, as an experiment in a quieter run that morning
   (12.41 s before and 0.056 s after for keys that never come at 16,000), the shape took 0.034 s and
   0.066 s. It measures a projection taking that issue's keys one create a batch too, as a store
   takes them a command at a time: 1.26 s and 5.08 s before, 10.13 s and 50.68 s with entries listed
   by place (W01), and 0.38 s and 1.52 s after, against 0.137 s and 0.450 s for the same creates with
-  nothing waiting, which is the parent-child index built again each batch; what remains is the
-  issue's growing edges and a copy of its list's tail once a batch. The fastest of three runs each,
-  2026-10-15, Rust 1.99.0, 64 cores.
+  nothing waiting, which is the parent-child index built again each batch; what remained was the
+  issue's growing edges, which roll-lqjj.21 indexes, and a copy of its list's tail once a batch.
+  The fastest of three runs each, 2026-10-15, Rust 1.99.0, 64 cores.
+- One issue's edges are indexed once it has many (roll-lqjj.21, AK01). They were a vector searched
+  in order (`state::small`, roll-dih8.11), so each edge added or asked for was compared with every
+  edge before it, and one issue given N edges cost N² whichever way they came: an import naming N
+  keys that have their issues and an import whose N keys come one create at a time (`bind`), and N
+  `dep add`s (`dep_add`). `state::DepTags` (`state/edges/tags.rs`) keeps that vector, which every
+  reader iterates as before, in the order the edges were first added, a removed edge keeping its
+  place with its additions emptied; once an issue has more than 16 edges (`LISTED`), a change
+  indexes them besides: a `hashbrown::HashTable` of each edge's place in the vector, hashed by the
+  edge's target through the vector. `added` (`bind`, `dep_add`) finds an edge by its target and
+  kind, `for_each_to` (`dep_remove`, by target or by key, of one kind or of any) every edge on a
+  target, and `Deps::get` asks the same way, each looking at the edges on that target alone. The
+  choices:
+  - The places, not the edges: a map of the edges themselves (`HashMap<Edge, _>`, `IndexMap`,
+    `BTreeMap`) would hold a second copy of every edge, a text target's string included, or be a
+    second structure for every reader to iterate, and a `BTreeMap` compares an id with a text by
+    spelling the id out. hashbrown's table hashes through another collection; it is the table
+    indexmap is built on, already in the build at the same version, so the direct dependency brings
+    in no other code.
+  - By target alone, so that one search finds the edges a removal of any kind takes, and the few
+    kinds an issue gives one target are told apart by comparing them. Many kinds of edge on one
+    target are the shape this leaves quadratic: they are compared with each other as they were, and
+    through the table, where every one of them hashes alike, rather than along the vector, about
+    three times as slowly (1,000 and 4,000 kinds on one target, 5 and 70 ms where they took 1.7 and
+    24 ms, measured in the review of this change). Kinds are free text, but trackers use a handful;
+    hashing the kind too would leave a removal of any kind with no way to find the edges on its
+    target but a search.
+  - The first place that matches is the one, as the search in order found it, even of an edge listed
+    twice, which only bytes bead did not write can hold, and `for_each_to` hands the edges over in
+    their order: nothing reads the table's own order.
+  - Past 16: this repository's tracker has at most seven edges on any issue (2026-10-25), and a few
+    compared in order are found sooner than one hashed, as `json::member` scans an object of up to
+    twelve members.
+  - Not when read, and not for a few changes after: a projection reads an issue's edges back into
+    the vector (`DepTags::from_entries`), with an index not built yet when there are more than 16,
+    which the first twelve changes search in order and the thirteenth builds (`SEARCHES`). Building
+    an index reads every edge and hashes and places each, which costs six to twenty searches, a text
+    target's nearer six and an id's nearer twenty (measured in the review of this change), and a
+    command reads the projection back and changes an issue once or a few times, so it never builds
+    one, while a merge that changes the issue many times pays at most about three times what
+    knowing in advance would have (about two and a half when its targets are issues). Building at
+    the first change instead made a command's change to a hub of 16,000 edges read back cost 0.4 to
+    0.5 ms more than the search before this change (`dep add`, `dep remove` and two `dep add`s:
+    1.47, 1.05 and 1.22 ms, where the code before took 1.05, 0.52 and 0.71 ms and the rule kept
+    takes 1.07, 0.56 and 0.68 ms, the extension each makes, fastest of three interleaved runs; a
+    scratch probe, not kept).
+  - Derived and never written: a projection's bytes, `projection::ENCODING` and format 1 are
+    unchanged (at 200,000 events `timing --decode` counts the same bytes of state part, index and
+    texts before and after), and equality and `Debug` see the edges alone, so a state replayed and
+    one read back compare as before.
+  - Keys drawn for each index (`RandomState`), so that no targets chosen in advance make one issue's
+    edges collide.
+  - The vector in place and the index boxed beside it, a pointer more for every issue: 16 bytes more
+    of each issue's allocation, 0.32 MB of a state decoded at 200,000 events (36.75 MB where it held
+    36.43 MB, 0.9%), with replay's heap peak there 104.8 MB before and after, within its 150 MB
+    budget (`timing --replay`). Holding the vector inside a choice of two forms, listed or listed
+    and indexed, kept the issue's size, but every pass over the whole state's edges then chose
+    between them for every issue, and in a projection taking 16,000 creates one a batch, which
+    builds the parent-child index again each batch, that cost 6.5% with no edge at all and 13% with
+    one issue awaiting every other's key over the code before (516 and 1,167 ms, where the vector
+    in place takes 493 and 905 ms and the code before took 485 and 1,031 ms, the fastest of five
+    interleaved runs, 2026-10-25), and `timing --extend 8000`'s dependency additions one at a time
+    4.5%; an iterator of its own won back part of it.
+  - Tested: core's own tests index an issue's edges at a change once it has two (`LISTED` is 1 under
+    `cfg(test)`) and build an index read back at its second change (`SEARCHES` is 1), so every
+    differential, delivery-order and awaiting history takes the indexed path wherever an issue is
+    changed with a few edges, against the digests `projection::tests::edges` pinned before
+    roll-lqjj.39; `state/edges/tags/tests.rs` compares edges listed and indexed with a vector
+    searched in order on seeded additions, removals, read-backs and copies, and an edge listed
+    twice, read back and in a hundred indexes grown past it; `tests/core/replay/many_edges.rs`,
+    which builds the crate as bead does, gives one issue 43 edges every way an edge comes and goes
+    and compares replay with a projection taking the history a record at a time from seven points,
+    and with the same read back from its bytes and extended, in one batch and a record at a time,
+    and checks the bounds bead runs with: 17 edges searched, an 18th added through an index, and a
+    hub read back searched by twelve changes and indexed by the thirteenth. `work::tests::degree`
+    counts each edge `DepTags` looks at (`Work::Probe`), and the nightly times replay of one issue
+    given an edge on every other and those edges removed, by target and by key (`timing::growth`),
+    below.
+  - Measured: `cargo xtask timing --dangling N`, replay of N creates at 8,000 and 16,000, the
+    fastest of five interleaved runs before and after (2026-10-25, Rust 1.99.0, pinned to one CPU of
+    a shared 64-core machine): one issue given an edge on every other at once, 0.063 s and 0.210 s
+    before, 0.035 s and 0.084 s after; as the keys it awaits come one create at a time, 0.073 s and
+    0.239 s before, 0.043 s and 0.110 s after; by `dep add`, one event each (`one_added_many`, a
+    figure new with this change), 0.063 s and 0.205 s before, 0.036 s and 0.080 s after; against the
+    control of the same creates with no edge, 0.017 s and 0.045 s before and after. From 8,000 to
+    16,000 those grew 3.2 to 3.3 times before, and 2.3 to 2.5 times after, as the control does (2.6
+    and 2.7). What it leaves is the cost of one-record batches, which is the parent-child index
+    built again each batch and the waiting list's tail copied once a batch (roll-lqjj.17,
+    roll-lqjj.18, W01), not the edges: a projection taking that issue's awaited keys one create a
+    batch takes 0.277 s and 0.977 s before, 0.240 s and 0.847 s after, against 0.136 s and 0.460 s
+    before and 0.136 s and 0.455 s after for the same creates with nothing awaited. At 200,000
+    events replay takes 0.53 to 0.54 s before and after (`timing --replay`), a state part decodes in
+    0.054 to 0.056 s (`timing --decode`), and `timing --extend 8000`'s dependency additions one at a
+    time take 3.04 to 3.06 s before and 2.98 to 2.99 s after.
 - A copy two machines minted alike is renamed by asking of each key it tries (roll-lqjj.25, X03).
   `State::free_key` collected `claimed_keys()`, every issue's key and every key an import still
   waits for, once for each copy replay renamed, so that N copies cost N times the tracker: two
@@ -957,20 +1051,23 @@ These were decided deliberately. Report problems *with* them, not their existenc
   took 2.1 ms. The fastest of three runs each (of forty for the sort), 2026-10-15, Rust 1.99.0, on
   a 64-core machine ten other builds and measurements shared, so the absolute figures are inflated
   and each pair was taken back to back.
-- What roll-lqjj.15 to .20 made grow with its input is guarded by counting its work, and by time
+- What roll-lqjj.15 to .21 made grow with its input is guarded by counting its work, and by time
   only where a count cannot see it (roll-lqjj.34, X15). Their tests compare answers, which a
   quadratic implementation gives as well, so beadroll-core counts the work where every way of
   doing it passes (`work::tally`, compiled into this crate's own tests alone, `cfg(test)`, so no
   build of bead carries it): an issue's edges when they are handed out, the parents and blockers
   `State::blocker_lists` reads from its rows, a parent's children, an issue relabelled, the
   parent-child index built, a waiting import's key read and the entries the waiting index hands
-  out, examines or makes whole, an import's record and dependency keys read, and the keys replay
-  asks of (`State::claims_key`) or collects (`State::claimed_keys`) to rename a copy. A guard for
-  each algorithm (`work::tests::import`, `finished`, `awaiting`, `edges`, `renamed`) counts its
+  out, examines or makes whole, an import's record and dependency keys read, the keys replay
+  asks of (`State::claims_key`) or collects (`State::claimed_keys`) to rename a copy, and each edge
+  an issue's edge set compares, each search of its index and each edge an index is built of
+  (`Work::Probe`, roll-lqjj.21). A guard for each algorithm (`work::tests::import`, `finished`,
+  `awaiting`, `edges`, `renamed`, `degree`) counts its
   work on the shape its `timing` probe measures, at 250 and at 2,000, and fails above sixteen
   times as much: twice what linear work does, a quarter of what quadratic work does. Counting
   rather than timing makes the guards exact, fast (under half a second for all of them, debug) and
-  the same on every machine, so they run on every push. Fourteen quadratic versions — `Readiness`
+  the same on every machine, but for `degree`'s counts, which move by a few between runs, as below,
+  so they run on every push. Fourteen quadratic versions — `Readiness`
   and `ready` asking `is_blocked` of each issue, a detail finding its own dependents,
   `dependents_of` passing once per issue asked about, `finish_some` finishing the whole state,
   building the index for every batch or relabelling once per event, a create reading every waiting
@@ -979,19 +1076,21 @@ These were decided deliberately. Report problems *with* them, not their existenc
   to 64 times the work where the code on main does 8. A count sees only work that passes the place
   it is kept: a lookup turned back into a scan of a vector reads nothing counted. Those are timed:
   `xtask`'s growth tests time planning an import, its dry run, a re-import, replaying imports that
-  wait for keys, replaying copies two machines minted alike and a projection taking ids that sort
-  before every id it holds, the fastest of five runs at a size and at eight times it, and fail
-  when the larger takes more than 24 times as long, about three times what linear work takes and
-  well under the 64 of quadratic. They are the one exception to "timings never gate"
+  wait for keys, replaying one issue given an edge on every other, replaying copies two machines
+  minted alike and a projection taking ids that sort before every id it holds, the fastest of five
+  runs at a size and at eight times it, and fail when the larger takes more than 24 times as long,
+  about three times what linear work takes and well under the 64 of quadratic. They are the one
+  exception to "timings never gate"
   (`xtask/AGENTS.md`): ignored by every other run, so that no pull request or `./check.sh` waits
   on a timing, and run by the nightly workflow in release, one at a time (`ci::x15_growth_guards`
   keeps the step). On main they measure 8.4 to 13.6 times; the scans of roll-lqjj.15 restored
   measure 30 to 60, a create that reads every waiting list's keys inline 84, and every id moved on
   each batch, as the merged vector of V02 moved them, 59 (64 cores, shared with ten other builds,
   2026-10-15). Not guarded, since they grow faster than their input by design, as the bullets
-  above say: a batch that changes an edge builds the parent-child index again, and one issue that
-  gains N edges, or waits for N keys that come one batch at a time, searches its own edges and
-  copies its list's tail; and a copy of a numbered key, since two machines that both mint the
+  above say: a batch that changes an edge builds the parent-child index again, one issue that waits
+  for N keys that come one batch at a time copies its list's tail, and many kinds of edge on one
+  target are compared with each other (roll-lqjj.21); and a copy of a numbered
+  key, since two machines that both mint the
   children `ex-1.1` to `ex-1.N` of one parent have each copy count upward past every number taken,
   so that 40 and 320 copies ask 1,640 and 102,720 keys, 62.6 times as many (roll-lqjj.46, which
   the `renamed` guard's plain keys leave out). What X01 to X03 found still quadratic (`bead
@@ -1020,7 +1119,23 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `claims_key` asking `by_key` by a scan of the issues 54.2 (0.027 s and 1.44 s), and the scan of
   the issues' waiting lists 39.8 (0.018 s and 0.70 s) and, with imports waiting, 150 (0.092 s and
   13.8 s); a scan of the waiting index's entries measured 40.8 times on the waiting shape in the
-  review of this change.
+  review of this change. One issue given N edges (roll-lqjj.21) is guarded both ways: `degree`
+  counts every edge `DepTags` compares, every search of its index and every edge an index is
+  built of, on one issue given an edge on every other by an import at once and by an import whose
+  keys come one create at a time, on one given edges on N targets, issues and references in turn, by
+  `dep add`, `dep remove` (of one kind and of any) and `dep add` again, on an import's edges each
+  removed by the key it named, and on a
+  projection read back from its bytes taking as many edges again in one batch and a record at a
+  time. At 250 and 2,000 they count 7.8 to 8.3 times as much (about 270 and 2,180 for the import at
+  once; a count moves by a few between runs, since a search also counts the edges whose hashes
+  merely resemble its own, and each index draws its keys anew); the vector searched in order,
+  restored, counts 64.0 to 64.7 times (30,876 and 1,997,001; 125,000
+  and 8,000,000 for the adds and removals; 93,625 and 5,999,000 for the projection), and every one
+  fails. The nightly times replay of five shapes at 4,000 and 32,000 (`timing::growth`): the three
+  ways of giving one issue an edge on every other, and those edges removed by target and by key.
+  With the edges indexed they take 11.0 to 12.7 times as long, where the vector searched in order
+  took 34.9 to 48.4 (0.018 s and 0.687 s for the import at once; release, the fastest of five,
+  pinned to one CPU of a shared machine, 2026-10-25), and they fail above 24.
 - The coverage report of the suites (roll-k2wy.14.5; `cargo xtask coverage`,
   `xtask/src/coverage.rs`) is evidence, never a gate: no minimum, no `--fail-under`, no comparison
   with an earlier report. It covers the fast suite on every run, and the stress models (`--stress`)

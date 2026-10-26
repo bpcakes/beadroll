@@ -11,7 +11,11 @@ use std::sync::Arc;
 use crate::id::EventId;
 use crate::json::Object;
 
-use super::small::{IdMap, VecMap};
+use super::small::IdMap;
+
+mod tags;
+
+pub use tags::DepTags;
 
 /// What a dependency names: an issue's id, held as the id, when the text is an id's spelling (the
 /// issue it names may not be there, or not yet), and the text otherwise, which names no issue (a
@@ -126,10 +130,6 @@ impl Meta {
     }
 }
 
-/// The additions behind each of an issue's edges, by the event that added it, in the order the
-/// edges were first added: empty once an edge is removed.
-pub type DepTags = VecMap<Edge, IdMap<Meta>>;
-
 /// An issue's dependencies ([`super::Issue::deps`]), read from the additions behind them, which
 /// hold the metadata each was added with: a removed dependency has none left.
 #[derive(Clone, Copy)]
@@ -150,7 +150,7 @@ impl<'a> Deps<'a> {
     /// The metadata of the earliest addition of the dependency on `to` of `kind`, if the issue has
     /// it.
     pub fn get(self, to: &Target, kind: &str) -> Option<&'a Meta> {
-        let (_, tags) = self.0.iter().find(|(edge, _)| edge.is(to, kind))?;
+        let tags = self.0.get(to, kind)?;
         tags.first().map(|(_, meta)| meta)
     }
 

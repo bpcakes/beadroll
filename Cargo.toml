@@ -20,6 +20,7 @@ beadroll       = { path = "crates/beadroll" }         # xtask runs bead to count
 beadroll-test-support = { path = "crates/beadroll-test-support" }
 clap = { version = "4.6", default-features = false, features = ["std", "color", "help", "usage", "error-context", "suggestions", "string", "wrap_help"] }  # the command line, built from cli/spec.rs
 fastrand = "2"
+hashbrown = { version = "0.17", default-features = false }  # an issue's many edges indexed by their places (roll-lqjj.21): the table indexmap is built on
 indexmap = "2"
 libc = "0.2"
 nix = { version = "0.31", default-features = false, features = ["user"] }  # ~NAME in BEAD_HOME: getpwnam_r without unsafe code

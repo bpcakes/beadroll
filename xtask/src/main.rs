@@ -108,9 +108,10 @@ usage: cargo xtask <command>
       operation a newer bead writes, the fastest of three runs each; --dangling N, replay in this
       process of N creates whose imports name keys no issue has yet: none (the control), keys that
       never come, keys of issues created later, the first issue naming every other's key as they
-      come one create at a time, and the last naming them once they all exist (its control), and
-      a projection of that first issue taking those creates a batch at a time against the same
-      creates waiting for nothing, the fastest of three runs each; --ready N,
+      come one create at a time, and the last naming them once they all exist (its control), the
+      first given the same edges by dep add, one event each, and a projection of that first
+      issue taking those creates a batch at a time against the same creates waiting for nothing,
+      the fastest of three runs each; --ready N,
       readiness judged in this process on N issues in a chain held by its root's prerequisite, the
       same chain free, a lattice whose rows share their ancestors, and that lattice beneath gates
       of its own for its first rows: for every issue at once (the analysis alone, and bead

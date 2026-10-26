@@ -38,8 +38,9 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
   labels over and over, writes whose ids sort before every id held (roll-lqjj.17, V01 and V02),
   and closes after an event of an operation a newer bead writes (roll-lqjj.28);
   `timing/dangling.rs`: `timing --dangling N`, replay of N creates whose imports name keys no issue
-  has yet, never, later, or one issue every other's, and the controls, and a projection taking one
-  issue's keys one create a batch (roll-lqjj.18, W01); `timing/ready.rs`: `timing --ready N`,
+  has yet, never, later, or one issue every other's, and the controls, one issue given an edge on
+  every other by `dep add` (roll-lqjj.21), and a projection taking one issue's keys one create a
+  batch (roll-lqjj.18, W01); `timing/ready.rs`: `timing --ready N`,
   readiness judged on N issues in a chain held by its root's prerequisite, the same chain free, a
   lattice whose rows share their ancestors, and that lattice beneath gates of its own for its first
   rows, for every issue at once (the analysis alone, and `State::ready` with its sort), issue by
@@ -65,9 +66,10 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
   own), and on every line of a history of N events (roll-lqjj.49); `timing/growth.rs`: the
   growth guards only time can keep (roll-lqjj.34, X15), tests ignored by every other run that time
   planning an import, its dry run, a re-import, replay of imports that wait for keys, replay of
-  copies two machines minted alike (`timing/renames.rs`'s journals; roll-lqjj.38, X03) and a
-  projection taking ids before every id it holds, at a size and eight times it, on the probes'
-  shapes, and fail above 24 times as long;
+  one issue given an edge on every other, at once, as its keys come and by `dep add`, and those
+  edges removed by target and by key (roll-lqjj.21), replay of copies two machines minted alike
+  (`timing/renames.rs`'s journals; roll-lqjj.38, X03) and a projection taking ids before every id
+  it holds, at a size and eight times it, on the probes' shapes, and fail above 24 times as long;
   `timing/world.rs`: the scratch
   store, checkout and remote they run `bead` on; `timing/history.rs`: the histories it replays
   (`--ownership`: heavy in claims, takeovers and releases in attempt files; `--churn`: a thousand
