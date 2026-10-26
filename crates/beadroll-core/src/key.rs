@@ -29,8 +29,7 @@ pub fn free_key(key: &str, uid: &str, taken: &dyn Fn(&str) -> bool) -> Option<St
     if let Some((stem, digits)) = split_number(key) {
         // Keys are stored text, not integer values. Count their suffix directly so a duplicate
         // of a key an older importer wrote never depends on the current counter's range.
-        let trimmed = digits.trim_start_matches('0');
-        let mut number = if trimmed.is_empty() { "0" } else { trimmed }.to_owned();
+        let mut number = counted_from(digits).to_owned();
         loop {
             let candidate = format!("{stem}.{number}");
             if !taken(&candidate) {
@@ -46,8 +45,15 @@ pub fn free_key(key: &str, uid: &str, taken: &dyn Fn(&str) -> bool) -> Option<St
     })
 }
 
+/// The number a copy of a key ending in `digits` counts from: its ASCII digits without leading
+/// zeros, `0` when they are all zeros (`x.007` counts from 7, `x.000` from 0).
+pub(crate) fn counted_from(digits: &str) -> &str {
+    let trimmed = digits.trim_start_matches('0');
+    if trimmed.is_empty() { "0" } else { trimmed }
+}
+
 /// Adds one to a nonempty string of ASCII digits, including a carry past its first digit.
-fn next_number(number: &str) -> String {
+pub(crate) fn next_number(number: &str) -> String {
     let mut digits = number.as_bytes().to_vec();
     for digit in digits.iter_mut().rev() {
         if *digit < b'9' {

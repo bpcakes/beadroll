@@ -53,7 +53,8 @@ consumer on tokio calls through `spawn_blocking`.
   `DepTags`, an issue's edges and the additions behind each, a vector searched in order while they
   are few and indexed by target besides once they are many (roll-lqjj.21); `state/issues.rs`:
   `Issues`, a state's issues in replay order and which of those read back from a projection
-  changed since (roll-lqjj.44).
+  changed since (roll-lqjj.44); `state/runs.rs`: `Runs`, the runs of numbers renamed copies found
+  claimed under each stem, which the next copy of a numbered key skips (roll-lqjj.46).
 - `src/projection.rs`: `project`, `Projection` (roll-lqjj.2), a replayed state kept to have events
   applied after it: what every event had seen cut to the events the state still names
   (`state/seen/compact.rs`), by `project` and then now and then, by the write-back that finds the
@@ -100,7 +101,8 @@ consumer on tokio calls through `spawn_blocking`.
   own tests alone (`cfg(test)`; it does nothing in any other build), and `work/tests/`, the guards
   that fail when that work grows with the square of its input (roll-lqjj.34, X15), among them the
   blockers and details of several issues (X01, X02), the keys a renamed copy asks of (X03,
-  roll-lqjj.38), and the edges looked at to give one issue many (`degree`, roll-lqjj.21).
+  roll-lqjj.38), of numbered keys too (roll-lqjj.46), and the edges looked at to give one issue
+  many (`degree`, roll-lqjj.21).
 - `tests/core/`: integration tests of replay, storage compatibility and validation;
   `tests/core/compat/json_round_trip.rs`: JSON round-trips in every dialect bead writes, on seeded
   values (roll-k2wy.14.4).
@@ -251,6 +253,17 @@ consumer on tokio calls through `spawn_blocking`.
   and keeps its answer, and `mint_key` still collects it, once a command. Under test every
   `claims_key` answer is checked against `claimed_keys` and kept (`state/asked.rs`), so replay and
   projection tests that rename copies prove the two agree.
+- A copy of a numbered key skips the runs of numbers earlier copies found claimed (`State::runs`,
+  `state/runs.rs`, roll-lqjj.46): it takes `key::free_key`'s key, the first number at or above its
+  own whose key nothing claims, but asks only of the number after each run it meets, so the N copies
+  two machines make of one parent's children ask of about 3N keys rather than N². Every number in a
+  run is claimed. A key stops being claimed only when an import that waited for it is taken back by
+  key (`Awaiting::retract`), and `dep_remove` then takes it out of its run (`Runs::forget`); any new
+  way to take an entry out of `Awaiting` must do the same. The runs are derived and never written,
+  so a state read back starts with none. Under test every key `State::free_key` picks is checked
+  against `key::free_key` asked one number at a time (`runs::agrees`, whole up to 512 numbers), and
+  `projection/tests/numbered.rs` keeps replay, a projection extended and one read back picking what
+  replay picked before the runs.
 - Readiness is one rule, the one `State::open_blockers` lists blockers by, and whether anything
   holds an issue is answered three ways that must agree: judged for every issue at once
   (`State::readiness`, each issue, edge and child visited once, a merged cycle once, nothing
@@ -281,7 +294,8 @@ consumer on tokio calls through `spawn_blocking`.
   parent-child index built (`State::index_children`), a waiting import's key read
   (`state::awaited`, which replay reads it through and nowhere else) and the entries `Awaiting`
   hands out, examines or makes whole, an import's record or dependency key read (`id_of`,
-  `target`), the keys `State::claims_key` is asked of and `State::claimed_keys` collects, and each
+  `target`), the keys `State::claims_key` is asked of and `State::claimed_keys` collects, each run
+  `state::Runs` looks up, extends or splits, and each
   edge `DepTags` compares, each search of its index and each edge an index is built of
   (`Work::Probe`). Read an edge, a waiting key or an import key through those, never around them,
   and collect the claimed keys through `claimed_keys`, or a guard stops seeing the work.

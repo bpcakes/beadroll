@@ -505,6 +505,11 @@ it, and the file is committed again.
   0.21 to 0.24 s, in proportion to them (roll-lqjj.21), unless they are many
   kinds of edge on one target; a projection taking those keys one create a
   batch still builds the parent-child index again each batch.
+  Copies two machines minted alike are renamed in proportion to them, copies
+  of numbered keys too: each skips the runs of numbers copies before it found
+  taken, so 8,000 copies of the children `ex-1.1` to `ex-1.8000` replay in
+  0.04 s rather than 11.5 s, and take the keys they took before (roll-lqjj.25,
+  roll-lqjj.46; `cargo xtask timing --renames N`).
   `bead ready`, `bead blocked` and `bead prime` judge what is held once for
   every issue rather than issue by issue, so a chain of 4,000 issues under one
   held root is judged in 2 ms where listing each one's blockers took 1.7 s, and

@@ -51,6 +51,8 @@ pub(super) fn create(
     }
     // An import may have named this key before it existed: the entries that wait for it become
     // edges, and nothing else waiting is visited (roll-lqjj.18). Each touches its own issue alone.
+    // The key is an issue's now, so it stays claimed, and a run that holds it stays true
+    // (`state::Runs`).
     for (uid, number) in st.awaiting.arrived(&key) {
         let Some(other) = st.issues.get_mut(&uid) else {
             continue;

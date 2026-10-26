@@ -51,7 +51,11 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
   one issue's detail and lookup both ways as a control (roll-lqjj.20); `timing/renames.rs`:
   `timing --renames N`, replay of two machines each creating the same N keys, so that N copies are
   renamed, against the same creates renamed by nobody, and each with the first machine's issues
-  importing a dependency on a key that never comes (roll-lqjj.25, X03); `timing/decode.rs`:
+  importing a dependency on a key that never comes (roll-lqjj.25, X03), and the same with the
+  numbered keys `ex-1.1` to `ex-1.N`, whose copies count upward past the numbers taken and, when
+  the first machine's imports wait for the next N numbers, past those too, or, of every other
+  number, leave N runs of one among which each looks its number up (roll-lqjj.46);
+  `timing/decode.rs`:
   `timing --decode N`, a projection of N events decoded in this process, its state part alone (what
   a command that only reads decodes) and whole with its index (what a write decodes), with the heap
   a decoded state holds and the bytes of the state part, the index and the texts (roll-lqjj.35,
@@ -67,8 +71,9 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
   growth guards only time can keep (roll-lqjj.34, X15), tests ignored by every other run that time
   planning an import, its dry run, a re-import, replay of imports that wait for keys, replay of
   one issue given an edge on every other, at once, as its keys come and by `dep add`, and those
-  edges removed by target and by key (roll-lqjj.21), replay of copies two machines minted alike
-  (`timing/renames.rs`'s journals; roll-lqjj.38, X03) and a projection taking ids before every id
+  edges removed by target and by key (roll-lqjj.21), replay of copies two machines minted alike,
+  of plain keys and of numbered ones (`timing/renames.rs`'s journals; roll-lqjj.38, X03;
+  roll-lqjj.46) and a projection taking ids before every id
   it holds, at a size and eight times it, on the probes' shapes, and fail above 24 times as long;
   `timing/world.rs`: the scratch
   store, checkout and remote they run `bead` on; `timing/history.rs`: the histories it replays
@@ -208,7 +213,8 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
 - `cargo run --release --package xtask -- timing --details 8000`: every issue of 8,000 shown in
   full, its dependents found once for all of them and for each alone, and one issue's as a control
 - `cargo run --release --package xtask -- timing --renames 8000`: replay renaming 8,000 copies two
-  machines minted alike, against 16,000 creates renamed by nobody
+  machines minted alike, of plain keys and of the numbered `ex-1.1` to `ex-1.8000`, against 16,000
+  creates renamed by nobody
 - `cargo run --release --package xtask -- timing --decode 200000`, and with `--ownership`,
   `--churn` or `--text`: the projection of 200,000 events decoded, its state part alone and whole,
   and read back, extended by comments and encoded: after one, at the worst point between two

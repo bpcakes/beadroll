@@ -16,7 +16,10 @@ use super::Issue;
 /// place, and [`Awaiting::settle`] makes each such list whole again, in its order, once the events
 /// have applied, dropping the numbers of the entries taken with them, so that nothing listed is
 /// listed again however many entries go from a list over however many batches. Ordered, so that what
-/// one key settles is one range and nothing a hash would order reaches the state.
+/// one key settles is one range and nothing a hash would order reaches the state. An entry leaves
+/// the index when its key arrives, which an issue then has, or when it is taken back
+/// ([`Awaiting::retract`]): the one way a key stops being claimed, after which the key must leave
+/// the runs of numbers renamed copies skip ([`super::Runs::forget`]).
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Awaiting {
     /// Key, issue and number.

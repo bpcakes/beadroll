@@ -6,7 +6,14 @@
 //! importing a dependency on a key that never arrives, so that the claimed keys are the issues'
 //! and the keys waited for together. Choosing a copy's key used to collect every key claimed for
 //! each copy, so replay with copies renamed grew with the square of N while its control grew with
-//! N. The fastest of [`RUNS`] runs counts. Evidence, never a gate.
+//! N. The same four are measured on numbered keys (roll-lqjj.46): both machines create the
+//! children `ex-1.1` to `ex-1.N`, each copy counting upward past every number taken, and the keys
+//! the first machine's issues wait for are the next N numbers, `ex-1.N+1` to `ex-1.2N`, which the
+//! copies must count past too. Counting past every number taken one number at a time made N copies
+//! ask about N² keys. A fifth numbered shape has the first machine create every other number, so
+//! that each copy takes the number after its own and the numbers taken make N runs of one, among
+//! which every copy looks its own up. Each numbered control creates, under the second machine, the
+//! keys its copies end up with. The fastest of [`RUNS`] runs counts. Evidence, never a gate.
 
 use std::time::Instant;
 
@@ -36,14 +43,38 @@ pub(super) enum Shape {
     RenamedWaiting,
     /// [`Shape::Control`], with the same dependencies on keys that never come.
     ControlWaiting,
+    /// Both create `ex-1.1` to `ex-1.N`: the second machine's N copies count upward, to `ex-1.N+1`
+    /// to `ex-1.2N`.
+    Numbered,
+    /// The first creates `ex-1.1` to `ex-1.N`, the second `ex-1.N+1` to `ex-1.2N`, the keys
+    /// [`Shape::Numbered`]'s copies end up with: nothing is renamed.
+    NumberedControl,
+    /// [`Shape::Numbered`], first-machine issue n also importing a dependency on `ex-1.N+n`, which
+    /// never comes: the copies count past those too, to `ex-1.2N+1` to `ex-1.3N`.
+    NumberedWaiting,
+    /// The same first machine, the second creating `ex-1.2N+1` to `ex-1.3N`, the keys
+    /// [`Shape::NumberedWaiting`]'s copies end up with: nothing is renamed, and nothing arrives.
+    NumberedControlWaiting,
+    /// Both create every other number, `ex-1.1`, `ex-1.3` to `ex-1.2N-1`: each copy takes the
+    /// even number after its own, so that the numbers copies find taken are N runs of one.
+    NumberedGaps,
+    /// The first machine of [`Shape::NumberedGaps`], the second creating the even numbers its
+    /// copies end up with: nothing is renamed.
+    NumberedGapsControl,
 }
 
 impl Shape {
-    const ALL: [Shape; 4] = [
+    const ALL: [Shape; 10] = [
         Shape::Renamed,
         Shape::Control,
         Shape::RenamedWaiting,
         Shape::ControlWaiting,
+        Shape::Numbered,
+        Shape::NumberedControl,
+        Shape::NumberedWaiting,
+        Shape::NumberedControlWaiting,
+        Shape::NumberedGaps,
+        Shape::NumberedGapsControl,
     ];
 
     /// The name its figure is recorded under.
@@ -53,23 +84,96 @@ impl Shape {
             Shape::Control => "control",
             Shape::RenamedWaiting => "renamed_waiting",
             Shape::ControlWaiting => "control_waiting",
+            Shape::Numbered => "numbered",
+            Shape::NumberedControl => "numbered_control",
+            Shape::NumberedWaiting => "numbered_waiting",
+            Shape::NumberedControlWaiting => "numbered_control_waiting",
+            Shape::NumberedGaps => "numbered_gaps",
+            Shape::NumberedGapsControl => "numbered_gaps_control",
         }
     }
 
     /// Whether the second machine creates the first's keys.
     fn copies(self) -> bool {
-        matches!(self, Shape::Renamed | Shape::RenamedWaiting)
+        matches!(
+            self,
+            Shape::Renamed
+                | Shape::RenamedWaiting
+                | Shape::Numbered
+                | Shape::NumberedWaiting
+                | Shape::NumberedGaps
+        )
     }
 
     /// Whether the first machine's issues import a dependency on a key that never comes.
     fn waits(self) -> bool {
-        matches!(self, Shape::RenamedWaiting | Shape::ControlWaiting)
+        matches!(
+            self,
+            Shape::RenamedWaiting
+                | Shape::ControlWaiting
+                | Shape::NumberedWaiting
+                | Shape::NumberedControlWaiting
+        )
     }
-}
 
-/// The key of issue `n`.
-fn key(n: usize) -> String {
-    format!("ex-{n}")
+    /// Whether its keys are the numbered children of `ex-1`.
+    fn numbered(self) -> bool {
+        matches!(
+            self,
+            Shape::Numbered
+                | Shape::NumberedControl
+                | Shape::NumberedWaiting
+                | Shape::NumberedControlWaiting
+                | Shape::NumberedGaps
+                | Shape::NumberedGapsControl
+        )
+    }
+
+    /// Whether the first machine creates every other number.
+    fn gaps(self) -> bool {
+        matches!(self, Shape::NumberedGaps | Shape::NumberedGapsControl)
+    }
+
+    /// Key number `n`: `ex-n`, or `ex-1.n` when numbered.
+    fn key(self, n: usize) -> String {
+        if self.numbered() {
+            format!("ex-1.{n}")
+        } else {
+            format!("ex-{n}")
+        }
+    }
+
+    /// The key machine `turn`'s create number `n` of `issues` names: the first's own numbers; the
+    /// second's the same when it copies them, and otherwise the numbers after the first's and,
+    /// when numbered keys wait, after the keys they wait for too; with gaps, the first's are the
+    /// odd numbers and the second's control the even ones.
+    fn named(self, turn: usize, n: usize, issues: usize) -> String {
+        if self.gaps() {
+            let odd = turn == 0 || self.copies();
+            return self.key(if odd { 2 * n - 1 } else { 2 * n });
+        }
+        let skipped = if self.numbered() && self.waits() {
+            issues
+        } else {
+            0
+        };
+        let number = if turn == 0 || self.copies() {
+            n
+        } else {
+            issues + skipped + n
+        };
+        self.key(number)
+    }
+
+    /// The key first-machine issue `n` of `issues` waits for, which never comes: `ex-gone-n`, or
+    /// when numbered `ex-1.N+n`, among the numbers the copies count past.
+    fn awaited(self, n: usize, issues: usize) -> String {
+        if self.numbered() {
+            self.key(issues + n)
+        } else {
+            format!("ex-gone-{n}")
+        }
+    }
 }
 
 /// The id of the probe's event number `n`: a UUIDv7, ids in the order of their numbers.
@@ -139,9 +243,8 @@ pub(super) fn journal(shape: Shape, issues: usize) -> Journal {
             let number = turn * issues + n;
             let id = number as u64 + 1;
             let after = if n > 1 { id - 1 } else { 1 };
-            let named = if shape.copies() { n } else { number };
-            let awaited = (shape.waits() && turn == 0).then(|| format!("ex-gone-{n}"));
-            let create = create(&key(named), awaited);
+            let awaited = (shape.waits() && turn == 0).then(|| shape.awaited(n, issues));
+            let create = create(&shape.named(turn, n, issues), awaited);
             journal.add(
                 event(id, machine, Some(after), "create", create),
                 machine,
@@ -189,7 +292,12 @@ pub(crate) fn measure(issues: usize, label: Option<&str>) -> Result<String, Fail
         ));
     }
     let label = label.map_or_else(
-        || format!("replay of {issues} copies renamed, and of the same creates renamed by nobody"),
+        || {
+            format!(
+                "replay of {issues} copies renamed, of plain and of numbered keys, and of the same \
+                 creates renamed by nobody"
+            )
+        },
         str::to_owned,
     );
     Ok(format!(
@@ -230,7 +338,60 @@ mod tests {
         assert!(state.renames().is_empty());
         assert_eq!(waiting(&state), 0);
         let keys: Vec<String> = state.issues().map(|issue| issue.key().to_owned()).collect();
-        assert_eq!(keys, (1..=12).map(key).collect::<Vec<_>>());
+        assert_eq!(
+            keys,
+            (1..=12).map(|n| format!("ex-{n}")).collect::<Vec<_>>()
+        );
+    }
+
+    /// The keys of `state`'s issues, in the order replay created them.
+    fn keys(state: &State) -> Vec<String> {
+        state.issues().map(|issue| issue.key().to_owned()).collect()
+    }
+
+    #[test]
+    fn numbered_copies_count_upward_past_every_number_taken_to_the_controls_keys() {
+        let numbered = |from: usize, to: usize| -> Vec<String> {
+            (from..=to).map(|n| format!("ex-1.{n}")).collect()
+        };
+        // the copies end up with the keys the second machine of each control creates
+        for (shape, control, waits) in [
+            (Shape::Numbered, Shape::NumberedControl, 0),
+            (Shape::NumberedWaiting, Shape::NumberedControlWaiting, 6),
+        ] {
+            let state = replayed(shape, 6);
+            let last = 6 + waits;
+            let mut expected = numbered(1, 6);
+            expected.extend(numbered(last + 1, last + 6));
+            assert_eq!(keys(&state), expected, "{shape:?}");
+            assert_eq!(state.renames().len(), 6, "{shape:?}");
+            for (n, rename) in state.renames().iter().enumerate() {
+                assert_eq!(rename.from, format!("ex-1.{}", n + 1), "{shape:?}");
+                assert_eq!(rename.to, format!("ex-1.{}", last + n + 1), "{shape:?}");
+            }
+            assert_eq!(waiting(&state), waits, "{shape:?}");
+            let state = replayed(control, 6);
+            assert_eq!(keys(&state), expected, "{control:?}");
+            assert!(state.renames().is_empty(), "{control:?}");
+            assert_eq!(
+                waiting(&state),
+                waits,
+                "{control:?}: nothing it waits for arrives"
+            );
+        }
+        // with gaps, each copy takes the even number after its own, the control's keys
+        let state = replayed(Shape::NumberedGaps, 6);
+        let odd: Vec<String> = (1..=6).map(|n| format!("ex-1.{}", 2 * n - 1)).collect();
+        let even: Vec<String> = (1..=6).map(|n| format!("ex-1.{}", 2 * n)).collect();
+        assert_eq!(keys(&state), [odd.clone(), even.clone()].concat());
+        assert_eq!(state.renames().len(), 6);
+        let control = replayed(Shape::NumberedGapsControl, 6);
+        assert_eq!(keys(&control), [odd, even].concat());
+        assert!(control.renames().is_empty());
+        // what the first machine's issues wait for is claimed, though no issue has it
+        let state = replayed(Shape::NumberedWaiting, 6);
+        assert!(state.claimed_keys().contains("ex-1.7"));
+        assert!(!state.claimed_keys().contains("ex-1.19"));
     }
 
     #[test]
@@ -263,6 +424,14 @@ mod tests {
         assert!(line.contains("\"renamed_renamed\": 4"), "{line}");
         assert!(line.contains("\"control_renamed\": 0"), "{line}");
         assert!(line.contains("\"renamed_waiting_waiting\": 4"), "{line}");
+        assert!(line.contains("\"numbered_renamed\": 4"), "{line}");
+        assert!(line.contains("\"numbered_control_renamed\": 0"), "{line}");
+        assert!(line.contains("\"numbered_waiting_waiting\": 4"), "{line}");
+        assert!(line.contains("\"numbered_gaps_renamed\": 4"), "{line}");
+        assert!(
+            line.contains("\"numbered_gaps_control_renamed\": 0"),
+            "{line}"
+        );
         assert!(line.contains("\"copies\": 4"), "{line}");
     }
 }

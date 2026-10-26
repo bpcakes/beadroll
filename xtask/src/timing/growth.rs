@@ -5,9 +5,10 @@
 //! that can hide in — planning an import, validating it for a dry run, re-importing an issue whose
 //! dependencies wait, replaying imports that wait for keys, replaying one issue given an edge on
 //! every other and the same edges removed, by target and by key (roll-lqjj.21), replaying copies
-//! two machines minted alike, which are renamed, and a projection taking ids that sort before every
-//! id it holds — on the shapes their `timing` probes measure, at a size and at [`LARGER`] times it,
-//! and fail when the larger takes more than [`BOUND`] times as long.
+//! two machines minted alike, which are renamed, of plain keys and of numbered ones (roll-lqjj.46),
+//! and a projection taking ids that sort before every id it holds — on the shapes their `timing`
+//! probes measure, at a size and at [`LARGER`] times it, and fail when the larger takes more than
+//! [`BOUND`] times as long.
 //!
 //! The one exception to "timings never gate" (`xtask/AGENTS.md`): each test is ignored, because a
 //! debug build's figures say nothing and a loaded machine's little more, and the nightly workflow
@@ -172,8 +173,17 @@ fn a_projection_taking_ids_before_every_id_it_holds_takes_time_growing_with_them
 #[ignore = "a ratio of release timings: the nightly workflow runs it"]
 fn replaying_copies_two_machines_minted_alike_takes_time_growing_with_them() {
     // renaming a copy asks of each key it tries whether an issue has it or an import waits for it
-    // (roll-lqjj.25, X03); a count sees the asks, not whether one is a lookup or a scan
-    for shape in [renames::Shape::Renamed, renames::Shape::RenamedWaiting] {
+    // (roll-lqjj.25, X03), and a copy of a numbered key skips the runs of numbers earlier copies
+    // found taken (roll-lqjj.46); a count sees the asks and the runs looked up, not whether one is
+    // a lookup or a scan, which the copies with gaps, each looking its number up among N runs,
+    // would show
+    for shape in [
+        renames::Shape::Renamed,
+        renames::Shape::RenamedWaiting,
+        renames::Shape::Numbered,
+        renames::Shape::NumberedWaiting,
+        renames::Shape::NumberedGaps,
+    ] {
         grows_linearly(
             &format!("replaying two machines' creates of the same keys, {shape:?}"),
             2_000,
