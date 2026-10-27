@@ -5,15 +5,13 @@
 //! `import` (roll-lqjj.15), `finished` (.17), `awaiting` (.18), and `edges`, readiness (.19) and
 //! the dependents of the issues shown (.20) with the blockers and readiness of several issues
 //! (.24), `degree`, the edges of one issue given many (.21), and `renamed`, the key of a copy two
-//! machines minted alike (roll-lqjj.25).
+//! machines minted alike (roll-lqjj.25), of a numbered key too (.46).
 //!
 //! Shapes whose cost still grows faster than their input by design are not guarded, and
 //! `docs/REVIEWING.md` §2 says why for each: a batch that changes an edge builds the parent-child
 //! index again over the whole state (roll-lqjj.17), one issue that waits for N keys that come one
-//! batch at a time copies its own growing list (roll-lqjj.18), many kinds of edge on one target are
-//! compared with each other (roll-lqjj.21), and a copy of a numbered key
-//! (`ex-1.1`), which counts upward past every number taken, so that N copies two machines minted
-//! alike ask N² keys (roll-lqjj.46).
+//! batch at a time copies its own growing list (roll-lqjj.18), and many kinds of edge on one target
+//! are compared with each other (roll-lqjj.21).
 
 use crate::id::EventId;
 use crate::journal::Journal;

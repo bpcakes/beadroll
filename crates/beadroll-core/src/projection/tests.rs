@@ -24,6 +24,7 @@ mod forged;
 mod hostile;
 mod known;
 mod marked;
+mod numbered;
 pub(crate) mod owned;
 mod reported;
 mod shown;

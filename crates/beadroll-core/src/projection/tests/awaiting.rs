@@ -20,10 +20,10 @@ use super::{
 };
 
 /// Another machine.
-const THERE: &str = "0000bb02";
+pub(super) const THERE: &str = "0000bb02";
 
 /// An imported dependency on `key`, of `kind` when given, with the members `extra` adds.
-fn on(key: &str, kind: Option<&str>, extra: &[(&str, &str)]) -> Value {
+pub(super) fn on(key: &str, kind: Option<&str>, extra: &[(&str, &str)]) -> Value {
     let mut dep = Object::new();
     dep.insert("depends_on_id".into(), Value::from(key));
     if let Some(kind) = kind {
@@ -36,7 +36,7 @@ fn on(key: &str, kind: Option<&str>, extra: &[(&str, &str)]) -> Value {
 }
 
 /// The create of an issue under `key`, imported, with the dependencies `named`.
-fn creating(key: &str, named: Vec<Value>) -> Object {
+pub(super) fn creating(key: &str, named: Vec<Value>) -> Object {
     let mut fields = Object::new();
     fields.insert("title".into(), Value::from(key));
     let mut data = Object::new();
@@ -50,7 +50,7 @@ fn creating(key: &str, named: Vec<Value>) -> Object {
 }
 
 /// A removal of what an issue's import named of `key`, of `kind` or of any type.
-fn by_key(key: &str, kind: Option<&str>) -> Object {
+pub(super) fn by_key(key: &str, kind: Option<&str>) -> Object {
     let mut data = Object::new();
     data.insert("key".into(), Value::from(key));
     data.insert("type".into(), kind.map_or(Value::Null, Value::from));
@@ -66,13 +66,20 @@ fn by_target(to: u128, kind: Option<&str>) -> Object {
 }
 
 /// Event `n` of `replica`, built on `deps`, as a record of that machine's journal.
-fn at(n: u128, replica: &str, deps: &[u128], op: &str, issue: u128, data: Object) -> Record {
+pub(super) fn at(
+    n: u128,
+    replica: &str,
+    deps: &[u128],
+    op: &str,
+    issue: u128,
+    data: Object,
+) -> Record {
     record(event(n, replica, deps, op, issue, data), replica, true)
 }
 
 /// What every scenario starts from: an `init`, and an issue the other machine made after it, so that
 /// a projection knows both machines' journals. Its records build on event 2.
-fn base() -> Vec<Record> {
+pub(super) fn base() -> Vec<Record> {
     let mut data = Object::new();
     data.insert("prefix".into(), Value::from("pr"));
     vec![
@@ -121,18 +128,18 @@ fn edge(key: &str, kind: &str, meta: Value) -> (String, String, Value) {
 
 /// How a scenario's records were taken in besides replay.
 #[derive(Debug, PartialEq)]
-struct Taken {
+pub(super) struct Taken {
     /// Whether a projection of `base` took them all in one batch.
-    in_one_batch: bool,
+    pub(super) in_one_batch: bool,
     /// How many a projection taking them one at a time declined, replaying instead.
-    declined: usize,
+    pub(super) declined: usize,
 }
 
 /// What replay makes of `base` and then `rest`, once every way a projection can take `rest` in
 /// agrees with replay of what it holds after each record: one at a time, never read back and read
 /// back from its bytes before each, and in one batch. A projection declines a record it cannot
 /// apply after everything it holds, as a merge of concurrent events is, and is then made again.
-fn every_way(base: &[Record], rest: &[Record]) -> (State, Taken) {
+pub(super) fn every_way(base: &[Record], rest: &[Record]) -> (State, Taken) {
     let mut all = base.to_vec();
     all.extend_from_slice(rest);
     let full = replayed(&all);
@@ -185,7 +192,7 @@ fn every_way(base: &[Record], rest: &[Record]) -> (State, Taken) {
 
 /// One machine's records, each built on the one before it, the first on `base`'s `init`: what a
 /// projection takes in one at a time.
-const CHAINED: Taken = Taken {
+pub(super) const CHAINED: Taken = Taken {
     in_one_batch: true,
     declined: 0,
 };
@@ -344,7 +351,7 @@ fn a_copy_renamed_for_a_key_two_machines_made_takes_a_key_nothing_waits_for() {
 /// The asks of [`State::claims_key`] made while `make` makes a state, each as its key, whether it is
 /// claimed, by a dependency that waits alone, and while an entry taken out holds its place. Every
 /// ask answered as collecting every key would, or the hook that keeps them fails.
-fn asks_making(make: impl FnOnce() -> State) -> Vec<(String, bool, bool, bool)> {
+pub(super) fn asks_making(make: impl FnOnce() -> State) -> Vec<(String, bool, bool, bool)> {
     asked::taken();
     make();
     (asked::taken().into_iter())
@@ -741,7 +748,7 @@ fn next_batch(world: &mut World) -> Vec<usize> {
 
 /// What replay makes of imports that wait, in its order: each issue's key, its edges with their
 /// metadata and its entries still waiting, and every rename, as text.
-fn rendered(state: &State) -> String {
+pub(super) fn rendered(state: &State) -> String {
     let text = |value: &Value| write(value, Format::COMPACT).unwrap_or_default();
     let mut out = String::new();
     for issue in state.issues() {

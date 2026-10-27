@@ -16,8 +16,8 @@ use crate::journal::{Event, Rest};
 use crate::json::{Object, Value};
 use crate::op::Op;
 use crate::state::{
-    Awaiting, Comment, Edge, IdMap, IdSet, Integrity, Issue, KeySpace, Knowledge, Meta, Stale,
-    State, Target,
+    Awaiting, Comment, Edge, IdMap, IdSet, Integrity, Issue, KeySpace, Knowledge, Meta, Runs,
+    Stale, State, Target,
 };
 use crate::text::str_of;
 
@@ -126,7 +126,7 @@ pub(super) fn apply_event(
         Op::DepRemove { to, key, kind } => dep_remove(
             &c,
             issue,
-            (&st.by_key, &mut st.awaiting),
+            (&st.by_key, &mut st.awaiting, &mut st.runs),
             to.as_deref(),
             key.as_deref(),
             kind.as_deref(),
@@ -255,7 +255,7 @@ fn dep_add(c: &Ctx<'_>, issue: &mut Issue, to: &str, kind: Option<&str>, meta: &
 fn dep_remove(
     c: &Ctx<'_>,
     issue: &mut Issue,
-    (by_key, awaiting): (&IndexMap<String, EventId>, &mut Awaiting),
+    (by_key, awaiting, runs): (&IndexMap<String, EventId>, &mut Awaiting, &mut Runs),
     to: Option<&str>,
     key: Option<&str>,
     wanted: Option<&str>,
@@ -265,6 +265,8 @@ fn dep_remove(
         // the entries that wait for `key`, found where they are listed rather than by reading the
         // issue's whole list
         awaiting.retract(issue, key, |dep| matches(&dangling_type(dep)));
+        // which may leave the key claimed by nothing: no run may hold it (roll-lqjj.46)
+        runs.forget(key);
         // A concurrent create of the key that sorted first bound it already.
         if let Some(bound) = by_key.get(key).filter(|_| c.k.saw_at(c.at, c.uid)) {
             issue

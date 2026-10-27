@@ -29,7 +29,8 @@ pub(crate) enum Work {
     /// create its key settles or examined for a removal, or kept when its list is made whole.
     Waiting,
     /// The key of an import's record, or the key one of its dependencies names, read; a key asked
-    /// of whether an issue or an import claims it, and each key collected as claimed.
+    /// of whether an issue or an import claims it, and each key collected as claimed; and a run of
+    /// claimed numbers a renamed copy looks up, extends or splits (`state::Runs`, roll-lqjj.46).
     Key,
     /// A look at an issue's edges to find, add or remove one of them (roll-lqjj.21): an edge
     /// compared with what is asked for, a search of their index, which compares the edges it finds

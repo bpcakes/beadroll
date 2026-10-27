@@ -7,6 +7,7 @@ mod claim;
 mod edges;
 mod issue;
 mod issues;
+mod runs;
 mod seen;
 mod small;
 mod texts;
@@ -26,6 +27,9 @@ pub use edges::{DepTags, Deps, DepsIter, Edge, Meta, Target};
 pub use issue::{Comment, Issue};
 pub(crate) use issue::{Origin, Stamps};
 pub(crate) use issues::Issues;
+pub(crate) use runs::Runs;
+#[cfg(test)]
+pub(crate) use runs::used;
 pub(crate) use seen::{Arena, Knowledge, Place, raise, reached};
 pub use small::{IdMap, IdSet, VecMap};
 pub use texts::{Stored, TEXT_FIELDS, TextPlace, Texts, is_text};
@@ -116,6 +120,10 @@ pub struct State {
     /// key visits the entries that wait for it and no others (roll-lqjj.18). Derived from the
     /// issues' lists, so a state read back builds it again rather than reading it.
     pub(crate) awaiting: Awaiting,
+    /// The numbers renamed copies found claimed, in runs under each stem, which the next copy of a
+    /// numbered key skips (roll-lqjj.46). Derived from what copies asked, and never written: a
+    /// state read back starts with none.
+    pub(crate) runs: Runs,
     /// The text file its issues' texts are placed in, as the store that read it names it
     /// (roll-lqjj.6); `None` for a state replayed.
     pub(crate) texts_file: Option<[u8; 16]>,
@@ -137,6 +145,7 @@ impl State {
             last_by_thread: IndexMap::new(),
             children: std::collections::HashMap::new(),
             awaiting: Awaiting::default(),
+            runs: Runs::default(),
             texts_file: None,
         }
     }
@@ -291,12 +300,27 @@ impl State {
         taken
     }
 
-    /// The key assigned to duplicate issue `uid` when `key` is taken.
-    pub fn free_key(&self, key: &str, uid: EventId) -> Result<String, KeySpace> {
-        key::free_key(key, &uid.to_string(), &|candidate| {
-            self.claims_key(candidate)
-        })
-        .ok_or_else(|| KeySpace {
+    /// The key assigned to duplicate issue `uid` when `key` is taken: the one [`key::free_key`]
+    /// picks. A numbered key's copy counts upward past the runs of numbers earlier copies found
+    /// claimed, a run at a time ([`Runs`], roll-lqjj.46), and keeps the numbers it finds claimed
+    /// for the next; so the N copies two machines make of `ex-1.1` to `ex-1.N` ask of 3N−1 keys,
+    /// not N(N+1). In this crate's tests every key it picks is checked against the rule counting
+    /// one number at a time.
+    pub(crate) fn free_key(&mut self, key: &str, uid: EventId) -> Result<String, KeySpace> {
+        let free = match key::split_number(key) {
+            Some((stem, digits)) => {
+                let mut runs = std::mem::take(&mut self.runs);
+                let free = runs.free(stem, digits, |candidate| self.claims_key(candidate));
+                self.runs = runs;
+                Some(free)
+            }
+            None => key::free_key(key, &uid.to_string(), &|candidate| {
+                self.claims_key(candidate)
+            }),
+        };
+        #[cfg(test)]
+        runs::agrees(self, key, uid, free.as_deref());
+        free.ok_or_else(|| KeySpace {
             key: key.to_owned(),
         })
     }

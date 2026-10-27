@@ -923,6 +923,73 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `export` are byte for byte the same (3,000 copies, both bead builds on one store). Measured on a
   machine shared with ten other builds, so every figure is inflated; those compared were taken
   together.
+- A copy of a numbered key skips the runs of numbers copies before it found taken (roll-lqjj.46,
+  AL01). The rule is `key::free_key`'s, unchanged: the first number at or above the copy's own,
+  leading zeros not counted (`x.007` counts from 7), whose key no issue has and no import waits for,
+  counted as decimal text (AD01). Asked one number at a time, two machines that both mint the
+  children `ex-1.1` to `ex-1.N` of one parent gave N copies that asked N(N+1) keys, each counting
+  past nearly every number the others had: 62,750 at 250 copies, 4,002,000 at 2,000. `State::runs`
+  (`state::Runs`) keeps, for each stem, the runs of consecutive numbers copies asked of and found
+  claimed, each from its first number to the number after its last, no two touching, ordered as
+  numbers (by length, then digits) rather than as text. A copy skips the run its own number is in,
+  in one lookup, and asks of the number after it; each number it finds claimed joins the runs on
+  either side, so the next number it asks of is again in no run: the first copy asks of every number
+  it counts past and each after it of two, 3N−1 keys for the copies of `ex-1.1` to `ex-1.N`. A
+  high-water mark for each stem would not do: a later copy of a smaller number may find a gap below
+  every key copies took (`x.4` after `x.8`), and an import taken back opens one. Every number in a
+  run is claimed, and stays so because a key stops being claimed in one way only: an import that
+  waited for it is taken back by key (`Awaiting::retract`, from `dep_remove`), and `dep_remove` then
+  takes the key's number out of its run (`Runs::forget`, whether or not another import still waits
+  for it, which the next copy asks again). An issue keeps its key for good, and a key an import
+  waited for that arrives is the arriving issue's. The runs are derived and never written: a state
+  starts without them, one read back too, whose first copy asks of each number as copies did before,
+  so decoding costs nothing more and the projection's bytes, `projection::ENCODING` and format 1 are
+  unchanged; a projection extended without being read back keeps them from batch to batch. Weighed
+  and not chosen: an index of every claimed numbered key built when a state is read back, which
+  every reading command would pay for, or at its first copy, which would cost a single copy the
+  whole tracker where it costs its own count; and next-free pointers, which a key taken back
+  invalidates beyond its own number, so that copies after keys taken back one at a time count far
+  again. A copy still counts once past the numbers taken in each command that reads its state back,
+  as before. Under this crate's tests `State::free_key` checks every key it picks against
+  `key::free_key` asked of each number directly, which counts nothing (`state::runs::agrees`): whole
+  when that rule counts 512 numbers or fewer, and otherwise that the key is past every number it
+  counted. `projection::tests::numbered` runs the scenarios through replay, a projection extended in
+  one batch, and one extended a record at a time, read back each way and never (gaps, a lower gap
+  after a higher copy, runs joined, stems that are each other's keys and dotted ones, leading zeros,
+  a newline in a stem, imports waiting and taken back from a run's start, middle and end, a key two
+  imports wait for, a key with a leading zero taken back inside a run, numbers past an `i128` and
+  4,299 nines with their carry; one machine's chain, so that runs are kept between batches; and the
+  keys asked of, pinned), and 20 seeded histories of numbered keys written by three machines, whose
+  digest is what replay made of them at 3ae3604, before the runs: 1,603 renames, 53,170 keys checked
+  whole, 32,640 runs skipped and 18,889 split; `state::runs::tests` checks the runs against the rule
+  on 300 seeded models of issues, imports waiting and imports taken back. `work::tests::renamed`
+  counts the keys asked of and the runs looked up, extended and split: at 250 and 2,000 copies 1,498
+  and 11,998 (8.0 times), and with imports waiting for the next N numbers 1,998 and 15,998, where
+  asking one number at a time counted 62,750 and 4,002,000, and 125,250 and 8,002,000 (63.8 and
+  63.9 times); and a copy after each key an import waited for is taken back from inside a run, 2,250
+  and 18,000 (8.0 times), where clearing a stem's runs at each key taken back counts 189,002 and
+  12,012,002 and asking one number at a time 94,376 and 6,005,001 (63.6 times each). Six deliberate
+  breakages each fail at least two of these tests: asking one number at a time, clearing a stem's
+  runs at a key taken back, a run not joined with the one after it (the pinned asks), no `forget`, a
+  `forget` of a number with a leading zero, and numbers ordered as text. `cargo xtask timing
+  --renames N` replays them in release, before and after run in turn, the fastest of three and of
+  two rounds, on one CPU of a 64-core machine shared with other builds (load 22 to 30, 2026-10-26),
+  so every figure is inflated and those compared were taken together: at 250, 2,000 and 8,000 copies
+  of numbered keys, 10.1 ms, 0.658 s and 11.5 s before, 0.9 ms, 8.3 ms and 0.039 s after, against
+  0.7 ms, 6.2 ms and 0.028 s for the control that creates the keys the copies end up with; with
+  imports waiting for the next N numbers, 27.3 ms, 2.00 s and 39.5 s before, 1.3 ms, 14.5 ms and
+  0.073 s after, against 1.0 ms, 10.9 ms and 0.053 s. Copies of plain keys take what they took
+  (0.012 s and 0.071 s at 2,000 and 8,000 before, 0.014 s and 0.061 s after). The nightly
+  `timing::growth` replays numbered copies too: 2,000 and 16,000 take 10.5 to 11.1 times as long,
+  and 12.3 to 12.9 with imports waiting, where asking one number at a time grew 17.5 and 19.7 times
+  from 2,000 to 8,000 copies, a quarter of the size. A count sees a run looked up, not how: with one
+  run, as those shapes leave, a lookup turned into a scan of the runs costs nothing more, so the
+  nightly also replays copies of every other number, `ex-1.1`, `ex-1.3` and on, each taking the
+  number after its own and leaving N runs of one (`timing --renames`'s `numbered_gaps`: 8.6 ms and
+  0.044 s at 2,000 and 8,000, against 5.8 ms and 0.029 s for its control; asking one number at a
+  time it was linear too, each copy asking of two keys). It takes 10.3 times as long at 16,000 as at
+  2,000, and 54.5 with `skip` scanning the runs in order, where the shapes of one run took 9.0 to
+  13.1.
 - Readiness is judged once for every issue (roll-lqjj.19, Z04). `bead ready`, `bead blocked` and
   `bead prime` asked of each issue whether anything holds it, and the answer was the blocker list
   `open_blockers` builds — the issue's own prerequisites, an epic's unfinished children, and the
@@ -1089,18 +1156,19 @@ These were decided deliberately. Report problems *with* them, not their existenc
   2026-10-15). Not guarded, since they grow faster than their input by design, as the bullets
   above say: a batch that changes an edge builds the parent-child index again, one issue that waits
   for N keys that come one batch at a time copies its list's tail, and many kinds of edge on one
-  target are compared with each other (roll-lqjj.21); and a copy of a numbered
-  key, since two machines that both mint the
-  children `ex-1.1` to `ex-1.N` of one parent have each copy count upward past every number taken,
-  so that 40 and 320 copies ask 1,640 and 102,720 keys, 62.6 times as many (roll-lqjj.46, which
-  the `renamed` guard's plain keys leave out). What X01 to X03 found still quadratic (`bead
+  target are compared with each other (roll-lqjj.21). A copy of a numbered key, which counted
+  upward past every number taken, was a fourth until roll-lqjj.46 had it skip the runs of numbers
+  copies found taken; `renamed` guards it now (below). What X01 to X03 found still quadratic (`bead
   blocked`'s lists, `blocked` in each of several details, a renamed copy's free key) is guarded as
   well, now that roll-lqjj.24 and .25 have landed (roll-lqjj.38): `edges` counts the edges
   `State::blocker_lists` reads, building its rows and walking up them, over the four shapes
   `timing --ready` measures, and those `State::details_of` reads for the details of every issue of
   those shapes and of the sparse graph, and `renamed` counts the keys, and the waiting entries, replay reads to
   rename the N copies of two machines that each minted `ex-1` to `ex-N`, with and without imports waiting for
-  keys that never come. At 250 and at 2,000 issues each reads 8.0 to 10.1 times as much (the gated
+  keys that never come, and since roll-lqjj.46 the copies of `ex-1.1` to `ex-1.N`, with and
+  without imports waiting for the next N numbers, and a copy after each of those is taken back
+  (the runs looked up, extended and split counted with the keys).
+  At 250 and at 2,000 issues each reads 8.0 to 10.1 times as much (the gated
   lattice has a fixed 64 gates, so it grows a little faster below 2,000); the code before the
   changes, run the same way, reads 62 to 67 times as much (a held chain's `blocked` lists 62,995
   and 4,003,995 edges (63.6 times) and a held lattice's 119,618 and 7,956,118 (66.5), both with
