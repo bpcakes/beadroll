@@ -2332,7 +2332,8 @@ xtask's `check::check_script`, the sweep's `sweep_failure_reporting` and
 `infra/test_roundtrip.py` exercise these failure paths with synthetic results in the fast
 baseline. Record the baseline output in your report.
 The real-infrastructure scripts (four machines, a throwaway GitHub repository) are
-under `infra/`; their last results are summarised in `README.md`, *Status*.
+under `infra/`; their measured limits are recorded in
+[docs/GUARANTEES.md](GUARANTEES.md#known-limits), *Known limits*.
 
 ## 4. Rules
 

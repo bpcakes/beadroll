@@ -1,361 +1,291 @@
 # beadroll
 
-[![rust](https://github.com/bpcakes/beadroll/actions/workflows/rust.yml/badge.svg)](https://github.com/bpcakes/beadroll/actions/workflows/rust.yml)
+[![CI](https://github.com/bpcakes/beadroll/actions/workflows/rust.yml/badge.svg)](https://github.com/bpcakes/beadroll/actions/workflows/rust.yml)
 
-**An issue tracker for coding agents: one tracker for every worktree, clone
-and machine of a repository, claims that are exclusive, and nothing committed
-on your branches. Reads and writes Beads JSONL.**
+An issue tracker for coding agents working across Git worktrees, clones, and
+machines. beadroll provides the `bead` command: a shared tracker with exclusive
+task claims, dependency tracking, and Beads JSONL import and export.
 
-Several agents, and the people directing them, work on one repository at once,
-each in its own worktree, often on more than one machine. A tracker kept in a
-file on a code branch gives each of them a different copy: a worktree on a
-feature branch does not see what `main` closed, two agents take the same issue
-because a claim is only a status field, and every sync is tracker commits
-merged into code history. beadroll gives them one tracker:
+- Every worktree and clone of a repository uses the same tracker.
+- Claims are confirmed by the remote, so two agents cannot hold the same task.
+- Tracker data lives outside your checkout and syncs through a dedicated Git
+  ref. Your code branches stay free of tracker commits.
+- One Rust binary uses your existing Git remote and credentials. No server,
+  daemon, or database to set up.
 
-- **The same issues everywhere.** Every worktree, clone and machine of the
-  repository resolves to the one tracker, which lives outside the working tree.
-- **A claim that is exclusive.** `bead claim` is accepted by the remote or
-  refused. Once accepted, nobody else's claim on that issue goes through until
-  release, close or takeover, and `bead ready` never offers it.
-- **Nothing on your branches.** The tracker travels through one dedicated git
-  ref, `refs/beads/journal`, on the repository's own remote. No commits, no
-  merges, no server, no daemon, no database.
-
-With one machine, one worktree and no agents, Beads serves you well. beadroll
-earns its place at the second worktree or the second machine.
-
-## Coming from Beads
-
-beadroll is not a fork of [Beads](https://github.com/steveyegge/beads) and
-does not use its database. It keeps the JSONL record format, the issue model
-(ids, parent-child keys, dependencies, comments, labels, statuses) and the
-verbs agents use, so a tracker kept with `br` or `bd` imports in one command
-and exports back for `bv` or any Beads reader, history intact.
-[MIGRATING.md](MIGRATING.md) is the procedure, both ways.
-
-| | Beads (`br`, `bd`) | beadroll (`bead`) |
-|---|---|---|
-| Where the tracker lives | `.beads/issues.jsonl` on every branch, and a local database | journals outside the checkout, published to one git ref |
-| What a worktree sees | its branch's copy | the one tracker |
-| `in_progress` | a status field anyone sets | a claim the remote accepted, held by one agent thread |
-| Syncing | tracker commits, merged like code | append-only journals: nothing to merge, ever |
-
-Not implemented: `stats`, `count`, `epic status`, `graph`, saved queries,
-templates, external-project dependencies and `bv`-style ranking. A leftover
-`.beads/` directory is history: nothing in bead reads or writes it after the
-import.
-
-## Status
-
-Alpha, in daily use by its author. What has been exercised:
-
-- This repository tracks its own work with it, across several machines.
-- Real Beads trackers, the largest 227 issues and 1.9 MB of JSONL, have been
-  imported and published through their repositories. Import, export, `ready`
-  and `blocked` agree with `br` 0.5.7 on 48 real trackers, and `bv` reads
-  bead's export. Upstream `bd` has not been tested.
-- The cross-machine protocol is driven by script over four machines against
-  GitHub, and enumerated in the tests: three machines, nine operations at
-  seven fault boundaries, every ordered pair of follow-ups.
-- Twelve independent reviews have been run against the code. Every finding
-  and how it was closed is in [docs/FINDINGS.md](docs/FINDINGS.md); the
-  reports are kept verbatim under `docs/reviews/`.
-
-The on-disk and published format is frozen at version 1 and changes only
-additively, so machines upgrade in any order (*How it works*).
+[Install](#install) · [Quick start](#quick-start) · [For agents](#for-agents) ·
+[Migration guide](MIGRATING.md) · [Contributing](CONTRIBUTING.md)
 
 ## Install
 
-macOS or Linux, git 2.40+, and [rustup](https://rustup.rs), which fetches the
-pinned toolchain (Rust 1.99.0, `rust-toolchain.toml`) on first use. bead is
-built from source; there is no package to download. From a checkout's root:
+Requirements: Linux or macOS, git 2.40+, and [rustup](https://rustup.rs).
+beadroll builds from source. From a new checkout:
 
 ```sh
+git clone https://github.com/bpcakes/beadroll.git
+cd beadroll
 cargo install --locked --force --path crates/beadroll --root ~/.local
+export PATH="$HOME/.local/bin:$PATH"
 bead --version
 ```
 
-That puts `bead` in `~/.local/bin`, and run again it upgrades it. Run it from
-the root: rustup reads `rust-toolchain.toml` from the current directory, and
-elsewhere the build fails `rust-version`. Without a checkout, given read access
-to the repository:
+Run the install command from the repository root so rustup picks up
+[rust-toolchain.toml](rust-toolchain.toml) and installs Rust 1.99.0. The binary
+goes in `~/.local/bin`; keep that directory on your `PATH`. To upgrade, pull
+the latest source and run the install command again.
+
+<details>
+<summary>Install directly from Git without a checkout</summary>
 
 ```sh
+rustup toolchain install 1.99.0 --profile minimal
 cargo +1.99.0 install --locked --force --config net.git-fetch-with-cli=true \
-  --git ssh://git@github.com/bpcakes/beadroll.git beadroll --root ~/.local
+  --git https://github.com/bpcakes/beadroll.git beadroll --root ~/.local
 ```
 
-`+1.99.0` because a `--git` install never reads the toolchain file; `ssh://`
-because cargo refuses the `git@github.com:…` form; fetching through git uses
-your own SSH setup. In a checkout, `cargo build --package beadroll` builds the
-working copy as `target/debug/bead`. Start-up is about 2 ms, and a read
-(`show`, `list`, `ready`) about 15 ms.
+The explicit toolchain is required because `cargo install --git` does not
+read the repository's toolchain file. Add `~/.local/bin` to your `PATH` as above.
 
-## A session
+</details>
 
-Set a repository up once, from any checkout. `--import` brings a Beads tracker
-in, and `--dry-run` first says what it would bring and writes nothing:
+## Quick start
 
-```
-$ cd app                                  # any worktree or clone
-$ bead init --prefix app                  # or: bead init --import .beads/issues.jsonl
-Tracker 'app' at ~/.local/state/beadroll/c9acf05de07c7939
-Published to git@github.com:acme/app.git (refs/beads/journal)
+In a Git repository whose `origin` you can push to, initialize a tracker once:
+
+```sh
+cd your-project
+bead init --prefix app
+bead prime
+bead create "Fix the rate limiter after a restart" -t bug -p 1
 ```
 
-Nothing was committed. The tracker is found from the origin URL, so every
-worktree, clone and machine of the repository shares it; on another machine,
-`bead sync` fetches it, and an `init` there joins it rather than starting a
-second one. Then the loop an agent runs:
+`init` publishes the tracker to `refs/beads/journal` on `origin`. It writes
+no files in your checkout and makes no commits on your code branches. The
+origin URL identifies the tracker across worktrees, clones, and machines.
 
-```
-$ bead create "Rate limiter drops the first request after a restart" -t bug -p 1
-✓ Created app-zs43: Rate limiter drops the first request after a restart
-$ bead ready
-○ app-zs43 [P1] [bug] - Rate limiter drops the first request after a restart (main)
-$ bead claim app-zs43
-Claimed app-zs43: Rate limiter drops the first request after a restart (confirmed)
-$ bead comments add app-zs43 "the counter is reset before the first tick"
-Comment added to app-zs43
-$ bead close app-zs43 -r "counter now survives a restart"
-✓ Closed app-zs43: Rate limiter drops the first request after a restart
+Use the issue ID printed by `create` in place of `app-zs43` below:
+
+```sh
+bead ready
+bead claim app-zs43
+bead comments add app-zs43 "The counter resets before the first tick."
+# Make and verify the fix, then record the outcome.
+bead close app-zs43 -r "The counter now survives a restart."
+bead show app-zs43
 ```
 
-While it is held, from any other worktree, machine or session:
+A confirmed claim belongs to its owner until release, close, or takeover.
+Other agents cannot claim it, and `bead ready` excludes it while held.
 
-```
-$ bead claim app-zs43
-Error: app-zs43 is claimed by claude:4f1c2a9e@3f761b2d (generation 1, since 2026-10-13T19:15:45.853Z)
-$ bead claims
-app-zs43  confirmed   claude:4f1c2a9e@3f761b2d  since 2026-10-13T19:15  gen 1  last activity 2026-10-13T19:15  on main
-```
+On another machine, run these commands in any clone of the same repository:
 
-Afterwards, anywhere:
-
-```
-$ bead show app-zs43
-✓ app-zs43 · Rate limiter drops the first request after a restart   [P1 · CLOSED]
-  closed on main at d80871914bf5 · merged into the default branch
-  type bug · created 2026-10-13 by human@3f761b2d · assignee claude:4f1c2a9e@3f761b2d
-  close_reason: counter now survives a restart
-  [2026-10-13T19:15] claude:4f1c2a9e@3f761b2d: the counter is reset before the first tick
-$ bead log app-zs43
-2026-10-13T19:15:45  laptop     human  -         create       app-zs43  (main)
-2026-10-13T19:15:45  laptop     claude 4f1c2a9e  claim        app-zs43  (main)
-2026-10-13T19:15:45  laptop     claude 4f1c2a9e  comment      app-zs43  (main)
-2026-10-13T19:15:46  laptop     claude 4f1c2a9e  close        app-zs43  (main)
+```sh
+bead sync
+bead ready
 ```
 
-Every command that writes publishes before it returns. `--offline` keeps a
-write local, and a remote that does not answer never fails one: it is
-recorded, every command says what the remote still lacks, and `bead sync`
-carries it. `ready`, `show`, `list` and the other reads never touch the
-network.
+Writes publish automatically. With `--offline`, or when the remote does not
+answer, changes remain local and bead reports what is unpublished. Run
+`bead sync` to publish them and fetch other machines' work. Reads such as
+`ready`, `show`, and `list` use local state and never contact the network;
+sync first when you need the latest changes.
 
-`bead recap`, from any directory, shows what is new in every tracker on the
-machine since you last looked: one line per event as `bead log` prints it, with
-its issue's title, who wrote it, on which machine and branch (`--format issues`
-gives one line per issue, `--format full` each event's thread and commit). It
-never touches the network, so sync a repository first to see its other
-machines' latest work. The first recap shows the last 24 hours; after that,
-each one on a terminal marks what it showed as seen, while a pipe, a file or
-`--json`, an agent's run, only looks unless given `--advance`.
+## Common commands
 
-The commands: `create`, `show`, `update`, `list`, `ready`, `blocked`, `close`,
-`reopen`, `delete`, `dep add|remove|list|tree|cycles`, `comments [add]`,
-`search`, `lint`; `init`, `import`, `export`, `sync`, `claim`, `release`,
-`takeover`, `claims`, `log`, `recap`, `info`, `machines`; and for agents `help`,
-`prime`, `onboard`. `bead` alone prints the one-screen overview and `bead help
-COMMAND` one command's page. `bead ready EPIC` keeps to an epic's subtree,
-`bead close --recursive EPIC` closes one, children first, in one write, and a
-command that would change nothing says so instead of writing. The rest of the
-command line, colour included, is in [docs/GUARANTEES.md](docs/GUARANTEES.md).
+| Task | Command |
+|---|---|
+| Find available work | `bead ready`, or `bead ready EPIC` for an epic's subtree |
+| Inspect an issue and its history | `bead show ID`, `bead log ID` |
+| List or search issues | `bead list`, `bead search "query"` |
+| See who is working on what | `bead claims` |
+| Hand back unfinished work | `bead release ID` |
+| Create a child task | `bead create "Title" --parent ID` |
+| Inspect blockers | `bead blocked`, `bead dep tree ID` |
+| Review activity across local trackers | `bead recap` |
+| Inspect the store and remote | `bead info` |
+
+Run `bead` for the command overview and `bead help COMMAND` for usage and
+options. Add `--json` for machine-readable output.
+
+`bead recap` works from any directory and reads all local trackers without
+syncing. The first recap shows the last 24 hours. Terminal output marks
+activity as seen; pipes, files, and `--json` only read it unless you pass
+`--advance`.
 
 ## For agents
 
-bead is the tracker the agents run themselves; nothing else is set up.
+Add the workflow to your repository's agent instructions:
 
-1. `bead onboard >> AGENTS.md` (or `CLAUDE.md`) appends the block that tells an
-   agent how this repository tracks its work; fill in the project specifics at
-   its end.
-2. An agent starts every session with `bead prime`: the workflow on one screen,
-   who it is, what it holds, and every error code with what to do about it.
-3. Who acts is read from the harness, `CLAUDE_CODE_SESSION_ID` for Claude Code
-   and `CODEX_THREAD_ID` for Codex, so a claim belongs to the agent thread that
-   made it, and a new session continues its own earlier work with `bead
-   takeover ID -r "same task, new session"`. `--actor NAME` or `BEAD_ACTOR`
-   names a person, or a stable identity, instead.
-
-`--json` works anywhere on the command line, and an error is structured, with
-a code an agent can act on:
-
-```
-$ bead claim app-zs43 --json
-{"error": {"code": "ALREADY_CLAIMED", "message": "app-zs43 is claimed by claude:4f1c2a9e@3f761b2d (generation 1, since 2026-10-13T19:15:45.853Z)"}}
+```sh
+bead onboard >> AGENTS.md
 ```
 
-If a write committed but bead cannot count its unpublished events, the command
-still succeeds. Its result stays on stdout; stderr warns that the write was
-recorded locally and says what needs repair. With `--json`, the warning is a
-separate `{"warning": {"code", "message"}}` document. Do not repeat that write.
+Use `CLAUDE.md` instead if that is where your agent reads instructions. Fill
+in the project specifics at the end of the generated block. Each agent then
+starts a session with `bead prime`, which reports its identity, held issues,
+workflow, and error codes.
 
-Several bead processes on one machine, agents in different worktrees, run at
-once without colliding. Output into a pipe or a file is plain text, and what
-an issue says is escaped before anything is coloured, so a title never carries
-a control code into an agent's transcript.
+bead detects Claude Code and Codex session identities from their environments.
+A claim belongs to the agent thread that made it. To continue your own work
+in a new session:
+
+```sh
+bead takeover ID -r "same task, new session"
+```
+
+Use `--actor NAME` or `BEAD_ACTOR` for an explicit identity. Verify who owns a
+task before taking it over; claims never expire automatically.
+
+For automation, use `--json` and inspect structured error codes such as
+`ALREADY_CLAIMED`. If a write succeeds but bead cannot count unpublished
+events, the result stays on stdout and a warning goes to stderr. With
+`--json`, the warning is a separate JSON document. Do not repeat a successful
+write because of that warning; follow its repair instructions. See the
+[command guarantees](docs/GUARANTEES.md) for error and recovery details.
+
+## Coming from Beads
+
+beadroll reads and writes [Beads](https://github.com/steveyegge/beads) JSONL,
+including issue IDs, parent-child keys, dependencies, comments, labels,
+statuses, and timestamps. Preview an import, then apply it:
+
+```sh
+bead init --import .beads/issues.jsonl --dry-run
+bead init --import .beads/issues.jsonl
+```
+
+After migration, use `bead` for tracker changes. The old `.beads/` directory
+is no longer read or updated automatically. Export when a Beads reader such
+as `bv` needs a copy:
+
+```sh
+bead export -o issues.jsonl
+```
+
+Imported `in_progress` issues have no owner until someone claims them.
+beadroll's claims have no Beads equivalent and are not exported. The
+[migration guide](MIGRATING.md) covers preparation, validation, and moving back.
+
+Compatibility checks cover import, export, `ready`, and `blocked` against
+`br` 0.5.7 on 48 real trackers, plus reading exports with `bv`. Upstream `bd`
+has not been tested. Imports containing memory records (`_type: memory`)
+are rejected. Commands and features not implemented include `stats`, `count`,
+`epic status`, `graph`, saved queries, templates, external-project
+dependencies, and `bv`-style ranking.
 
 ## How it works
 
-- **One journal per machine**, in append-only segment files. A machine only
-  appends to its own journal; a full segment is never rewritten.
-- **Every event names what its writer had seen** (UUIDv7 ids, explicit causal
-  dependencies). Current state is the replay of all journals in causal order,
-  so there is nothing to merge: two edits are ordered or concurrent, and a
-  concurrent pair is kept whole and reported (below).
-- **One store per repository per machine**, outside every working tree
-  (`~/.local/state/beadroll/<workspace>/`, or `$BEAD_HOME`). Every worktree and
-  clone resolves to it; nothing is written in a checkout.
-- **Sync through one dedicated git ref** (`refs/beads/journal`) on one
-  coordination remote, origin by default. The pushed history holds a manifest
-  and the journals, and no code.
-- **Claims are settled online.** A claim is a conditional update of that ref:
-  fetched, checked against who holds what, pushed as a fast-forward. Accepted,
-  it is exclusive until release, close or takeover; refused, the decision is
-  made again against the new head; unanswered, it counts for nothing until the
-  next contact with the remote settles it. A claim never expires and there is
-  no heartbeat: `bead claims` shows each owner's branch and last activity.
-- **Every write is published at once**, about 1.7 s against GitHub, like a
-  claim. `--offline` keeps it local; a remote that does not answer leaves it
-  recorded and reported as unpublished until `bead sync` or the next online
-  command carries it.
-- **Identity and place on every event**: machine, agent type and thread id,
-  and the branch and commit the command ran on, so a claim says where the work
-  is happening and a close whether it is merged.
-- **Format 1 is frozen; changes are additive.** An older bead sets aside what
-  it cannot apply, reports it under `integrity`, carries it through sync
-  untouched and applies it once upgraded, so a mixed fleet is safe and machines
-  upgrade in any order.
-- **Beads JSONL is an import and export format**, not the store.
+Each machine appends events to its own journal under
+`~/.local/state/beadroll/<workspace>/`. Worktrees and clones on that machine
+share the store. Sync exchanges journals through `refs/beads/journal` on the
+coordination remote, which defaults to `origin`. Events record what their
+writer had seen, allowing every machine to reconstruct the same issue state.
 
-What the protocol does at every boundary (a lost acknowledgement, a crash in
-the middle of a command, a remote that lost objects, a damaged local
-repository, a torn write) is in [docs/GUARANTEES.md](docs/GUARANTEES.md).
-Sync checks tree contents against their object names and rebuilds a damaged local
-sync repository before it can publish a tree that silently drops another machine's journal.
-A damaged root tree is rebuilt even when it hides the manifest or prevents listing the journal.
+Claims use a conditional update of the remote ref. A claim is exclusive only
+after the remote accepts it; an offline or unanswered claim is provisional.
+Publishing is serialized on that ref, so heavy contention and network latency
+can delay writes.
 
-## When two machines edit the same thing
+The stored and published format is frozen at version 1, with additive changes
+only. Machines can upgrade in any order. Older versions preserve and report
+events they cannot apply until upgraded. The [guarantees](docs/GUARANTEES.md)
+describe recovery after interrupted writes, lost acknowledgements, and damaged
+stores, along with measured performance and known limits.
 
-| Two machines, before syncing, both… | Result on every machine |
+### When two machines edit the same thing
+
+| Concurrent changes | Result after sync |
 |---|---|
-| edit different fields of one issue | both edits kept |
-| edit the same field | both values kept and listed under `conflicts`; the newer one is shown; any later write that has seen both settles it |
-| set different statuses | as above, and until settled the issue is not ready, cannot be claimed, and does not unblock others |
-| add comments | all kept |
-| add and remove a label or dependency | a removal removes only the additions its writer had seen |
-| create a child of the same parent | the later one is renumbered (`x.1` → `x.2`) and `sync` reports it |
-| add dependencies that form a loop | kept, reported by `dep cycles`, never `ready` |
+| Edit different fields | Both edits are kept. |
+| Edit the same field | Both values are kept under `conflicts`; the newer one is shown. A later write that has seen both settles the conflict. |
+| Set different statuses | The conflict also prevents readiness, claims, and unblocking other issues until settled. |
+| Add comments | All comments are kept. |
+| Add and remove a label or dependency | A removal affects only additions its writer had seen. |
+| Create children of the same parent | A colliding child key is renumbered, for example `app-x.1` to `app-x.2`, and sync reports it. |
+| Add dependencies that form a blocking cycle | Dependencies are kept and reported by `bead dep cycles`; affected issues are not ready. |
 
-An edit made after seeing another is never a conflict, whatever the clocks say.
-A `close`, `reopen` or `delete` is judged on what this machine has seen: repeated
-on an issue already in that status, with no claim to end and its status
-undisputed, it writes nothing, so a change another machine made meanwhile stands;
-a disputed status still takes the repeat that settles it.
-
-## What gets published
-
-Everything bead publishes goes to `refs/beads/journal` on the coordination
-remote (origin by default), and only there: never to a branch, never into a
-commit of yours. Anyone who can read that repository can read the tracker. A
-journal holds, for every event: the issue data you wrote (titles, descriptions,
-comments), who wrote it (an opaque machine id, the agent type and its session
-or thread id, `claude:<session>` or `codex:<thread>`, or the `--actor` name you
-chose), the branch and commit the command ran on, and a timestamp. It never
-holds hostnames, user names, paths, or the password of a remote URL (those are
-dropped before anything is stored or shown; git's credential helpers are the
-place for secrets). `"where": false` in `.beadroll.json` stops events from
-recording the branch and commit; `bead machines --name` keeps hostnames as
-local aliases only. On a public repository, the ref is public: treat issue text
-as you would a public issue tracker.
+An edit made after seeing another is not a conflict, regardless of clock
+differences. Child keys can change after concurrent creation; a key copied
+into a commit message before sync may then refer to another issue.
 
 ## Configuration
 
-The golden path needs none. The workspace is derived from the origin URL
-(`git@host:org/repo` and `https://host/org/repo` are one workspace) and the
-coordination remote is origin, looked up each time, so nothing is committed
-and every checkout finds the same tracker. A tracked `.beadroll.json` is the
-exception, for a coordination remote other than origin or for `"where":
-false`: `bead init --tracked [--remote NAME_OR_URL]` writes it, and it is
-committed on the default branch. What it holds, how a remote is named, and
-what happens when a repository moves to a new URL are in
-[docs/GUARANTEES.md](docs/GUARANTEES.md).
+Most repositories need no configuration. bead derives the workspace from the
+origin URL; SSH and HTTPS URLs for the same host and repository resolve to
+the same workspace. A repository with neither a remote nor a `.beadroll.json`
+gets a machine-local tracker that cannot sync.
 
-bead's own git runs in a private bare repository with the checkout's transport
-settings carried over (credential helpers, `core.sshCommand`,
-`http.*.extraheader`, `includeIf` includes), so whatever lets you push lets
-bead publish.
+For a different coordination remote, create a tracked configuration:
 
-The variables bead reads, every one optional:
+```sh
+bead init --tracked --remote NAME_OR_URL
+```
 
-| Variable | Meaning |
+Commit the generated `.beadroll.json` on the default branch so other
+checkouts can find it. bead uses your checkout's Git transport settings,
+including credential helpers and SSH configuration. See
+[configuration](docs/GUARANTEES.md#configuration) and
+[moving a repository](docs/GUARANTEES.md#moving-a-repository) for details.
+
+All environment variables are optional:
+
+| Variable | Purpose / default |
 |---|---|
-| `BEAD_HOME` | The store's root, absolute after `~` expansion; default `~/.local/state/beadroll` |
-| `BEAD_WORKSPACE` | The workspace id, overriding the derived one and its check (*Moving a repository* in `docs/GUARANTEES.md`) |
-| `BEAD_REMOTE` | The coordination remote for this call: a remote's name, a URL or a path |
-| `BEAD_AGENT`, `BEAD_THREAD`, `BEAD_ACTOR` | Who is acting, over what the harness says; `--actor` wins over all of them |
-| `CLAUDE_CODE_SESSION_ID`, `CLAUDECODE`, `CODEX_THREAD_ID`, `CODEX_SESSION_ID` | The harness and its thread (*For agents*) |
-| `BEAD_NET_TIMEOUT` | Seconds, a decimal, that one fetch or push may take; default 45 |
-| `BEAD_ROTATE_BYTES` | The size at which this machine's journal starts a new segment; default 262,144 |
-| `BEAD_REPACK_LOOSE`, `BEAD_REPACK_PACKS` | `sync.git` is repacked beyond this many loose objects or packs; defaults 1,000 and 40 |
-| `NO_COLOR`, `CLICOLOR`, `CLICOLOR_FORCE`, `TERM` | Colour on a terminal (*The command line* in `docs/GUARANTEES.md`) |
-| `COLUMNS` | The width bead's own texts wrap at, else the terminal's, at most 100 |
+| `BEAD_HOME` | Store root; must be absolute after `~` expansion. Default: `~/.local/state/beadroll`. |
+| `BEAD_WORKSPACE` | Override the derived workspace ID and its check; see the repository move guide above. |
+| `BEAD_REMOTE` | Coordination remote for this call: a remote name, URL, or path. |
+| `BEAD_AGENT`, `BEAD_THREAD`, `BEAD_ACTOR` | Override detected identity. `--actor` takes precedence. |
+| `CLAUDE_CODE_SESSION_ID`, `CLAUDECODE`, `CODEX_THREAD_ID`, `CODEX_SESSION_ID` | Agent harness and session detection. |
+| `BEAD_NET_TIMEOUT` | Fetch or push timeout in seconds, including decimals. Default: 45. |
+| `BEAD_ROTATE_BYTES` | Journal segment rotation size. Default: 262,144 bytes. |
+| `BEAD_REPACK_LOOSE`, `BEAD_REPACK_PACKS` | Repack thresholds for loose objects and packs. Defaults: 1,000 and 40. |
+| `NO_COLOR`, `CLICOLOR`, `CLICOLOR_FORCE`, `TERM` | Terminal color; see the [command-line reference](docs/GUARANTEES.md#the-command-line). |
+| `COLUMNS` | Text wrapping width; otherwise the terminal width, capped at 100. |
 
-A number bead cannot read is a `CONFIG` error, even for `--version`. The tests'
-and the `infra/` drivers' own variables are in `CONTRIBUTING.md`.
+Invalid numeric settings produce a `CONFIG` error, even for `--version`.
+Variables used by tests and infrastructure scripts are listed in
+[CONTRIBUTING.md](CONTRIBUTING.md#variables-the-tests-and-drivers-read).
 
-## Known limits
+## Published data
 
-- The owner of a claim is the agent thread. A later session is a different
-  owner and has to `takeover` (or use a stable `--actor`) to continue the work.
-- Publishing is serialised on one ref, and the store lock is held while a
-  claim or a sync pushes, so other local writes wait a round trip or two.
-  Under heavy contention (four machines syncing continuously) claims took 9 s
-  at the median and 27 s at p90, and a write up to 23 s; every machine
-  converged with nothing left unpublished.
-- A read costs what the state does, tens of milliseconds for a thousand
-  issues; a published write a few hundred milliseconds plus the remote's round
-  trip. A merge of events another machine wrote concurrently replays the
-  journal, 1 to 2 s at 200,000 events, which is more than the largest public
-  Beads trackers hold.
-- A renumbered child key (`x.1` → `x.2`, after two machines created children of
-  one parent offline) changes under the machine that created it; a key written
-  into a commit message before the sync names the other issue.
-- A repository with neither a remote nor a `.beadroll.json` gets a
-  machine-local tracker that cannot sync.
-- A Beads export that holds memory records (`{"_type": "memory", ...}`) is
-  refused whole by `import`. Comments made in bead export with integer ids from
-  a range Beads never mints.
+Anyone who can read the coordination repository can read its tracker. On a
+public repository, issue text and history are public too.
 
-Every limit, with its measurement, is under *Known limits* in
-[docs/GUARANTEES.md](docs/GUARANTEES.md).
+Published events contain issue data, an opaque machine ID, the agent type and
+thread or explicit actor name, a timestamp, and the branch and commit where
+the command ran. Set `"where": false` in `.beadroll.json` to omit the branch
+and commit from future events. Hostnames used as machine aliases stay local;
+remote URL credentials are removed before storage or display.
 
-## Reading on
+## Documentation and support
 
-- [MIGRATING.md](MIGRATING.md): moving a Beads tracker to bead, and back.
-- [docs/GUARANTEES.md](docs/GUARANTEES.md): every guarantee bead keeps: the
-  claims protocol at each boundary, what the journals tolerate, the format,
-  configuration in full, moving a repository, and every limit measured.
-- [docs/REVIEWING.md](docs/REVIEWING.md): the map of the design and the
-  decisions that are not findings; [docs/FINDINGS.md](docs/FINDINGS.md): every
-  review finding and how it was closed.
-- [CHANGELOG.md](CHANGELOG.md): what changed in each version.
-- [CONTRIBUTING.md](CONTRIBUTING.md): the setup, the one rule about stores,
-  the layout, the tests and how a change is made. `AGENTS.md` is the same for
-  an agent working in this repository. Unless you say otherwise, a
-  contribution is licensed as the project is.
+- [Migration guide](MIGRATING.md): move a Beads tracker to beadroll or export it back.
+- [Guarantees](docs/GUARANTEES.md): behavior, recovery, configuration, and known limits.
+- [Design and review guide](docs/REVIEWING.md): architecture, format, and design decisions.
+- [Review findings](docs/FINDINGS.md): findings and their resolutions.
+- [Changelog](CHANGELOG.md): changes by version.
 
-## Licence
+To report a problem, [open an issue](https://github.com/bpcakes/beadroll/issues)
+with the command you ran, its `--json` output, `bead info --json`, and your
+Git version. Check the output for private information before posting it.
 
-Licensed under either of the [Apache License, Version 2.0](LICENSE-APACHE) or
-the [MIT license](LICENSE-MIT), at your option.
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, crate boundaries,
+and test requirements. From the checkout root:
+
+```sh
+cargo build --package beadroll
+./check.sh
+```
+
+The build produces `target/debug/bead`. The baseline requires cargo-nextest
+and Python 3 in addition to the install prerequisites. Tests use temporary
+stores; for manual experiments, set `BEAD_HOME` to a scratch directory and
+work in a disposable repository to keep real trackers untouched.
+
+## License
+
+Licensed under either the [Apache License, Version 2.0](LICENSE-APACHE) or the
+[MIT license](LICENSE-MIT), at your option. Contributions use the same terms
+unless stated otherwise.
