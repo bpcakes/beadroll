@@ -4,6 +4,7 @@
 //! second `beadroll_core`, whose types do not match.
 
 use beadroll_core::journal::Journal;
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::json::Object;
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
@@ -137,7 +138,7 @@ pub fn journal(events: &[Json]) -> Journal {
     let mut journal = Journal::new();
     for event in events {
         let replica = replica_of(event);
-        journal.add(event.clone(), &replica, "", true);
+        journal.add(event.clone(), &replica, "", JournalOrder::Sequenced);
     }
     journal
 }

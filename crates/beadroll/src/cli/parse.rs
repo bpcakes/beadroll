@@ -19,6 +19,7 @@ use clap::{Arg, ArgAction, ArgGroup, ArgMatches, Command};
 use super::layout::lay_out_lines;
 use super::paint::render_all;
 use super::spec::{Action, ArgSpec, COMMANDS, CommandSpec, DESCRIPTION, Kind, Nargs, find};
+use crate::cli::paint::Color;
 
 /// The options every command takes, which bead reads before clap does (`read_request`): clap
 /// shows them on every page, and refuses them when they reach it, abbreviated.
@@ -225,7 +226,7 @@ fn subcommand(spec: &'static CommandSpec, width: Option<usize>) -> Command {
     if let Some(epilog) = spec.epilog {
         // clap wraps nothing it is given at the width it was laid out for, and shows its colour
         // only on a page it paints
-        command = command.after_help(render_all(&lay_out_lines(epilog, width), true));
+        command = command.after_help(render_all(&lay_out_lines(epilog, width), Color::Ansi));
     }
     command
 }

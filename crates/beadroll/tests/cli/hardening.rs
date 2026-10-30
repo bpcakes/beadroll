@@ -77,3 +77,12 @@ mod v6;
 mod v7;
 mod v8;
 mod v9;
+
+/// How a test machine first opens its tracker.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TrackerSetup {
+    /// Sync.
+    Sync,
+    /// Init.
+    Init,
+}

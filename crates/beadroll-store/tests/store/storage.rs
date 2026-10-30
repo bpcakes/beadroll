@@ -22,13 +22,16 @@ mod metadata {
         let path = ws.dir.join("meta.json");
         let original = br#"{"unknown":{"keep":[1]},"published":{"a":2,"legacy":"3","bad":[1]},"name":"before"}"#;
         std::fs::write(&path, original).unwrap();
-        let before = ws.metadata(true).unwrap();
+        let before = ws.metadata(beadroll_store::MetadataRead::Strict).unwrap();
         assert_eq!(
             before.published().unwrap().count("legacy"),
             Some(Int::from(3))
         );
         assert_eq!(before.published().unwrap().count("bad"), None);
-        assert!(std::sync::Arc::ptr_eq(&before, &ws.metadata(true).unwrap()));
+        assert!(std::sync::Arc::ptr_eq(
+            &before,
+            &ws.metadata(beadroll_store::MetadataRead::Strict).unwrap()
+        ));
 
         ws.save_meta(&[("name", Value::from("after"))]).unwrap();
         let Value::Object(mut expected) = json::parse(original).unwrap().value else {
@@ -40,7 +43,9 @@ mod metadata {
             json::write(&Value::Object(expected), Format::INDENTED).unwrap()
         );
         assert_eq!(
-            ws.metadata(true).unwrap().value("name"),
+            ws.metadata(beadroll_store::MetadataRead::Strict)
+                .unwrap()
+                .value("name"),
             Some(&Value::from("after"))
         );
         // A replacement must invalidate the cached typed map, just as it invalidated the old map.
@@ -48,11 +53,17 @@ mod metadata {
         std::fs::write(&replacement, br#"{"published":{"a":9},"name":"next"}"#).unwrap();
         std::fs::rename(replacement, path).unwrap();
         assert_eq!(
-            ws.metadata(true).unwrap().published().unwrap().count("a"),
+            ws.metadata(beadroll_store::MetadataRead::Strict)
+                .unwrap()
+                .published()
+                .unwrap()
+                .count("a"),
             Some(Int::from(9))
         );
         assert_eq!(
-            ws.meta(true).unwrap().get("name"),
+            ws.meta(beadroll_store::MetadataRead::Strict)
+                .unwrap()
+                .get("name"),
             Some(&Value::from("next"))
         );
         assert_eq!(before.value("name"), Some(&Value::from("before")));
@@ -76,14 +87,21 @@ mod metadata {
             let temp = ws.dir.join("replacement");
             std::fs::write(&temp, bytes).unwrap();
             std::fs::rename(temp, ws.dir.join("meta.json")).unwrap();
-            let error = ws.metadata(true).unwrap_err().to_string();
+            let error = ws
+                .metadata(beadroll_store::MetadataRead::Strict)
+                .unwrap_err()
+                .to_string();
             let diagnostic = if bytes.contains(&255) {
                 beadroll_store::json_text(bytes).unwrap_err()
             } else {
                 "not an object with a string remote".to_owned()
             };
             assert!(error.contains(&diagnostic), "{error}");
-            assert!(ws.meta(false).unwrap().is_empty());
+            assert!(
+                ws.meta(beadroll_store::MetadataRead::Lenient)
+                    .unwrap()
+                    .is_empty()
+            );
         }
     }
 }

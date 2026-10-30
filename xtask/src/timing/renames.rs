@@ -18,6 +18,7 @@
 use std::time::Instant;
 
 use beadroll_core::journal::Journal;
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
@@ -236,7 +237,7 @@ pub(super) fn journal(shape: Shape, issues: usize) -> Journal {
         event(1, MACHINES[0], None, "init", data),
         MACHINES[0],
         "",
-        true,
+        JournalOrder::Sequenced,
     );
     for (turn, machine) in MACHINES.iter().enumerate() {
         for n in 1..=issues {
@@ -249,7 +250,7 @@ pub(super) fn journal(shape: Shape, issues: usize) -> Journal {
                 event(id, machine, Some(after), "create", create),
                 machine,
                 "",
-                true,
+                JournalOrder::Sequenced,
             );
         }
     }

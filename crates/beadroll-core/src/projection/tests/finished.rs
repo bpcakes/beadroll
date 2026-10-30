@@ -6,14 +6,14 @@
 //! an edge, changes the index. A batch derives each issue's labels from what it holds once every
 //! one of its events has applied, however many of them change that issue.
 
-use crate::id::EventId;
-use crate::json::{Object, Value};
-use crate::text::str_of;
-
 use super::super::{Extended, Projection, Record, project};
 use super::hostile::{HERE, event, id, journal, record};
 use super::same;
 use super::shown::replayed;
+use crate::id::EventId;
+use crate::journal::JournalOrder;
+use crate::json::{Object, Value};
+use crate::text::str_of;
 
 /// `rest` applied to a projection of `base` one event at a time, as a command that writes one
 /// event per issue and reads the state between them does: each time, what the projection derives
@@ -107,16 +107,20 @@ fn edge(to: u128, kind: &str) -> Object {
 /// An `init` and two issues, each with a label: the frontier is event 3.
 fn base() -> Vec<Record> {
     vec![
-        record(event(1, HERE, &[], "init", 1, Object::new()), HERE, true),
+        record(
+            event(1, HERE, &[], "init", 1, Object::new()),
+            HERE,
+            JournalOrder::Sequenced,
+        ),
         record(
             event(2, HERE, &[1], "create", 2, creating("pr-a1", &["ui"], &[])),
             HERE,
-            true,
+            JournalOrder::Sequenced,
         ),
         record(
             event(3, HERE, &[2], "create", 3, creating("pr-b2", &["ui"], &[])),
             HERE,
-            true,
+            JournalOrder::Sequenced,
         ),
     ]
 }
@@ -125,10 +129,26 @@ fn base() -> Vec<Record> {
 fn a_close_one_event_at_a_time_leaves_the_labels_and_the_index_as_replay_does() {
     let base = base();
     let closes = vec![
-        record(event(4, HERE, &[3], "close", 2, Object::new()), HERE, true),
-        record(event(5, HERE, &[4], "close", 3, Object::new()), HERE, true),
-        record(event(6, HERE, &[5], "reopen", 2, Object::new()), HERE, true),
-        record(event(7, HERE, &[6], "delete", 3, Object::new()), HERE, true),
+        record(
+            event(4, HERE, &[3], "close", 2, Object::new()),
+            HERE,
+            JournalOrder::Sequenced,
+        ),
+        record(
+            event(5, HERE, &[4], "close", 3, Object::new()),
+            HERE,
+            JournalOrder::Sequenced,
+        ),
+        record(
+            event(6, HERE, &[5], "reopen", 2, Object::new()),
+            HERE,
+            JournalOrder::Sequenced,
+        ),
+        record(
+            event(7, HERE, &[6], "delete", 3, Object::new()),
+            HERE,
+            JournalOrder::Sequenced,
+        ),
     ];
     one_at_a_time(&base, &closes);
 }
@@ -141,28 +161,28 @@ fn every_label_operation_one_event_at_a_time_leaves_the_labels_as_replay_does() 
         record(
             event(4, HERE, &[3], "label_add", 2, labels(&["db", "ops"])),
             HERE,
-            true,
+            JournalOrder::Sequenced,
         ),
         record(
             event(5, HERE, &[4], "label_remove", 2, labels(&["ui"])),
             HERE,
-            true,
+            JournalOrder::Sequenced,
         ),
         record(
             event(6, HERE, &[5], "label_set", 2, labels(&["only"])),
             HERE,
-            true,
+            JournalOrder::Sequenced,
         ),
         record(
             event(7, HERE, &[6], "label_set", 3, labels(&[])),
             HERE,
-            true,
+            JournalOrder::Sequenced,
         ),
         // a create carries the labels an import brought
         record(
             event(8, HERE, &[7], "create", 8, creating("pr-c3", &["new"], &[])),
             HERE,
-            true,
+            JournalOrder::Sequenced,
         ),
     ];
     one_at_a_time(&base, &written);
@@ -178,27 +198,27 @@ fn a_batch_that_changes_one_issues_labels_over_and_over_derives_them_from_what_i
         record(
             event(4, HERE, &[3], "label_add", 2, labels(&["db"])),
             HERE,
-            true,
+            JournalOrder::Sequenced,
         ),
         record(
             event(5, HERE, &[4], "label_add", 2, labels(&["ops"])),
             HERE,
-            true,
+            JournalOrder::Sequenced,
         ),
         record(
             event(6, HERE, &[5], "label_remove", 2, labels(&["ui"])),
             HERE,
-            true,
+            JournalOrder::Sequenced,
         ),
         record(
             event(7, HERE, &[6], "label_set", 2, labels(&["final"])),
             HERE,
-            true,
+            JournalOrder::Sequenced,
         ),
         record(
             event(8, HERE, &[7], "label_add", 3, labels(&["x"])),
             HERE,
-            true,
+            JournalOrder::Sequenced,
         ),
     ];
     let batched = in_one_batch(&base, &churn);
@@ -219,18 +239,18 @@ fn every_dependency_written_one_event_at_a_time_leaves_the_index_as_replay_does(
         record(
             event(4, HERE, &[3], "dep_add", 3, edge(2, "parent-child")),
             HERE,
-            true,
+            JournalOrder::Sequenced,
         ),
         record(
             event(5, HERE, &[4], "dep_add", 3, edge(2, "blocks")),
             HERE,
-            true,
+            JournalOrder::Sequenced,
         ),
         // taken back by target and type, which leaves the edge with no addition behind it
         record(
             event(6, HERE, &[5], "dep_remove", 3, edge(2, "parent-child")),
             HERE,
-            true,
+            JournalOrder::Sequenced,
         ),
         // a create whose imported dependency is on a key that has its issue already
         record(
@@ -243,7 +263,7 @@ fn every_dependency_written_one_event_at_a_time_leaves_the_index_as_replay_does(
                 creating("pr-c3", &[], &[("pr-a1", "parent-child")]),
             ),
             HERE,
-            true,
+            JournalOrder::Sequenced,
         ),
     ];
     one_at_a_time(&base, &written);
@@ -264,7 +284,7 @@ fn a_create_that_gives_a_waiting_import_its_edge_leaves_the_index_as_replay_does
             creating("pr-c3", &[], &[("pr-d4", "parent-child")]),
         ),
         HERE,
-        true,
+        JournalOrder::Sequenced,
     ));
     let waiting = project(journal(&base)).unwrap();
     let waits = EventId::parse(&id(4)).unwrap();
@@ -275,7 +295,7 @@ fn a_create_that_gives_a_waiting_import_its_edge_leaves_the_index_as_replay_does
     let written = vec![record(
         event(5, HERE, &[4], "create", 5, creating("pr-d4", &[], &[])),
         HERE,
-        true,
+        JournalOrder::Sequenced,
     )];
     one_at_a_time(&base, &written);
 }
@@ -297,8 +317,16 @@ fn the_ids_a_projection_holds_stay_ascending_however_the_events_sort() {
     let base = base();
     // The second event comes before the first by id, as two writes of one millisecond can.
     let out_of_order = vec![
-        record(event(9, HERE, &[3], "close", 2, Object::new()), HERE, true),
-        record(event(4, HERE, &[9], "close", 3, Object::new()), HERE, true),
+        record(
+            event(9, HERE, &[3], "close", 2, Object::new()),
+            HERE,
+            JournalOrder::Sequenced,
+        ),
+        record(
+            event(4, HERE, &[9], "close", 3, Object::new()),
+            HERE,
+            JournalOrder::Sequenced,
+        ),
     ];
     let projection = extended(&base, out_of_order.clone());
     let mut every: Vec<String> = (base.iter().chain(&out_of_order))
@@ -320,8 +348,16 @@ fn ids_that_interleave_with_the_ones_held_go_in_where_they_belong_in_one_batch()
     // decoder requires, so the set cannot hide a wrong order.
     let base = base();
     let interleaved = vec![
-        record(event(9, HERE, &[3], "close", 2, Object::new()), HERE, true),
-        record(event(4, HERE, &[9], "close", 3, Object::new()), HERE, true),
+        record(
+            event(9, HERE, &[3], "close", 2, Object::new()),
+            HERE,
+            JournalOrder::Sequenced,
+        ),
+        record(
+            event(4, HERE, &[9], "close", 3, Object::new()),
+            HERE,
+            JournalOrder::Sequenced,
+        ),
     ];
     let batched = in_one_batch(&base, &interleaved);
     let held: Vec<String> = (batched.ids.iter()).map(EventId::to_string).collect();
@@ -343,8 +379,16 @@ fn each_machines_latest_event_is_its_greatest_id_however_its_records_sort() {
     // journal does.
     let base = base();
     let out_of_order = vec![
-        record(event(9, HERE, &[3], "close", 2, Object::new()), HERE, true),
-        record(event(4, HERE, &[9], "close", 3, Object::new()), HERE, true),
+        record(
+            event(9, HERE, &[3], "close", 2, Object::new()),
+            HERE,
+            JournalOrder::Sequenced,
+        ),
+        record(
+            event(4, HERE, &[9], "close", 3, Object::new()),
+            HERE,
+            JournalOrder::Sequenced,
+        ),
     ];
     let mut held = base.clone();
     held.extend(out_of_order.clone());

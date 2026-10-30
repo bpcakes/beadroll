@@ -1,16 +1,25 @@
 //! The imported dependencies that wait for keys (roll-lqjj.18): a create visits the entries its key
 //! settles and a removal by key the entries for that key, and nothing else waiting.
 
+use super::super::Work;
+use super::{History, grows_linearly, key, one_at_a_time};
 use crate::json::{Object, Value};
 use crate::replay::replay;
 
-use super::super::Work;
-use super::{History, grows_linearly, key, one_at_a_time};
+/// Whether generated dependencies name keys later brought by the history.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AwaitedKeys {
+    /// Missing.
+    Missing,
+    /// Brought.
+    Brought,
+}
 
 /// The history of `issues` creates whose imports each wait for a key no issue has: the first
 /// half's for the keys the second half brings when `brought`, and for keys that never come
 /// otherwise.
-fn waiting(issues: usize, brought: bool) -> History {
+fn waiting(issues: usize, brought: AwaitedKeys) -> History {
+    let brought = matches!(brought, AwaitedKeys::Brought);
     let mut history = History::new();
     let half = issues / 2;
     for n in 0..issues {
@@ -29,13 +38,13 @@ fn creates_whose_imports_wait_for_keys_visit_their_own_entries_alone() {
     grows_linearly(
         "replaying creates each waiting for a key that never comes",
         &[Work::Waiting],
-        |issues| waiting(issues, false).journal(),
+        |issues| waiting(issues, AwaitedKeys::Missing).journal(),
         |journal| drop(replay(journal).unwrap()),
     );
     grows_linearly(
         "replaying creates, half waiting for the keys the other half brings",
         &[Work::Waiting],
-        |issues| waiting(issues, true).journal(),
+        |issues| waiting(issues, AwaitedKeys::Brought).journal(),
         |journal| drop(replay(journal).unwrap()),
     );
 }

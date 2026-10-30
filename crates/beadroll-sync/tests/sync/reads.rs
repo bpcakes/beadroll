@@ -8,6 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use beadroll_core::json::{Format, Object, Value, write};
+use beadroll_store::IdentityMode;
 use beadroll_store::{Endpoint, Workspace, glob_ending, json_text, read_attempt, replica_id};
 use beadroll_sync::{publish_soon, synchronise, writing};
 use beadroll_test_support::{Machine, Sandbox, json};
@@ -95,7 +96,10 @@ fn a_published_write_reads_the_state_for_its_transaction_and_its_merge() {
     })
     .expect("a comment");
     assert_eq!(reads(&ws), 1);
-    assert_eq!(publish_soon(&ws, false, None), None);
+    assert_eq!(
+        publish_soon(&ws, beadroll_sync::NetworkMode::Online, None),
+        None
+    );
     assert_eq!(reads(&ws), 2);
     let shown = a.show(&key);
     assert_eq!(shown["comments"][0]["text"].as_str(), Some("noted"));
@@ -241,7 +245,7 @@ impl Window {
 
     /// The causes of the claim `a` made: the events its event builds on.
     fn causes(&self, ws: &Workspace) -> Vec<String> {
-        let replica = replica_id(&ws.settings, false).expect("an identity");
+        let replica = replica_id(&ws.settings, IdentityMode::Existing).expect("an identity");
         let claims = ws
             .events_dir
             .join(replica.expect("a replica"))

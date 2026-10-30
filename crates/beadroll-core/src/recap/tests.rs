@@ -6,15 +6,16 @@
 
 use std::collections::BTreeSet;
 
+use super::{Window, joined, unseen};
 use crate::id::EventId;
 use crate::journal::Journal;
+use crate::journal::JournalOrder;
 use crate::json::{Object, Value};
 use crate::order::causal_order;
 use crate::projection::Record;
+use crate::projection::tests::HistoryKind;
 use crate::projection::tests::{Rng, history};
 use crate::replay::tests::interleaved;
-
-use super::{Window, joined, unseen};
 
 /// Histories, each taken in by a store a few records at a time.
 const SEEDS: u64 = 8;
@@ -35,7 +36,11 @@ fn taken_in(records: &[Record], order: &[usize]) -> Journal {
             record.value,
             &record.replica,
             &record.origin,
-            record.sequenced,
+            if record.sequenced {
+                JournalOrder::Sequenced
+            } else {
+                JournalOrder::Attempt
+            },
         );
     }
     journal.settle();
@@ -47,7 +52,15 @@ fn a_growing_store_shows_every_event_once_and_in_causal_order() {
     let mut quarantined = 0;
     for seed in 0..SEEDS {
         for flawed in [false, true] {
-            let records = history(20_261_017 + seed, BATCHES, flawed);
+            let records = history(
+                20_261_017 + seed,
+                BATCHES,
+                if flawed {
+                    HistoryKind::Flawed
+                } else {
+                    HistoryKind::Valid
+                },
+            );
             let mut rng = Rng(seed);
             let order = interleaved(&records, &mut rng);
             let mut cuts: Vec<usize> = (0..STEPS).map(|_| rng.below(order.len() + 1)).collect();
@@ -111,7 +124,15 @@ fn two_reads_that_saw_different_events_mark_what_both_placed_once_joined() {
     for seed in 0..SEEDS {
         for flawed in [false, true] {
             let at = format!("seed {seed}, flawed {flawed}");
-            let records = history(20_261_018 + seed, BATCHES, flawed);
+            let records = history(
+                20_261_018 + seed,
+                BATCHES,
+                if flawed {
+                    HistoryKind::Flawed
+                } else {
+                    HistoryKind::Valid
+                },
+            );
             let mut rng = Rng(seed);
             // two reads of one store, each part way through its records in an order of its own:
             // each machine's journal read further by one than by the other, as a sync writing
@@ -186,7 +207,16 @@ fn journal(records: &[(&Value, bool)]) -> Journal {
     for (value, attempt) in records {
         let replica = value.get("replica").and_then(Value::as_str).unwrap();
         let origin = if *attempt { "claims" } else { "000001.jsonl" };
-        journal.add((*value).clone(), replica, origin, !attempt);
+        journal.add(
+            (*value).clone(),
+            replica,
+            origin,
+            if !attempt {
+                JournalOrder::Sequenced
+            } else {
+                JournalOrder::Attempt
+            },
+        );
     }
     journal.settle();
     journal

@@ -15,6 +15,15 @@ use super::heap;
 use super::history::{Files, ROTATE_BYTES, segments};
 use crate::workspace::Failure;
 
+/// How much of a journal a memory probe loads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LoadMode {
+    /// Journal.
+    Journal,
+    /// Replay.
+    Replay,
+}
+
 /// Writes `files` under `dir` as a store holds them: `REPLICA/000001.jsonl` on, rotated as bead
 /// rotates its journal, and `REPLICA/claims/ID.json`, replacing whatever was there. The process
 /// that loads them then reads a segment at a time, as bead does.
@@ -94,7 +103,8 @@ fn sorted(dir: &Path) -> Result<Vec<std::path::PathBuf>, Failure> {
 /// `timing --load DIR [--no-replay]`: loads the journal in `dir` and replays it once, or with
 /// `--no-replay` only loads it, and says how many events and issues there were, and the most the
 /// process held on its heap at once ([`heap::peak`]).
-pub(crate) fn main(dir: &Path, replaying: bool) -> Result<ExitCode, Failure> {
+pub(crate) fn main(dir: &Path, replaying: LoadMode) -> Result<ExitCode, Failure> {
+    let replaying = matches!(replaying, LoadMode::Replay);
     let journal = load(dir)?;
     let events = journal.events().len();
     if replaying {

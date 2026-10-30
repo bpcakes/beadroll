@@ -5,9 +5,12 @@
 
 use beadroll_test_support::{Machine, Sandbox};
 
+use crate::hardening::TrackerSetup;
+
 /// `_g08_machine`: a machine `name` that initialised the tracker (prefix `ex`), or, with `init`
 /// false, synced the one already published.
-fn machine(sandbox: &Sandbox, name: &str, init: bool) -> Machine {
+fn machine(sandbox: &Sandbox, name: &str, init: TrackerSetup) -> Machine {
+    let init = matches!(init, TrackerSetup::Init);
     let machine = Machine::new(sandbox, name);
     if init {
         machine.bead(["init", "--prefix", "ex"]);
@@ -22,6 +25,8 @@ fn machine(sandbox: &Sandbox, name: &str, init: bool) -> Machine {
 /// accepted command is no longer recognised, although REVIEWING section 2 says a receipt survives
 /// a failed later command by the same actor.
 mod g08_stale_receipts_dropped_before_the_command_goes_through {
+    use crate::hardening::TrackerSetup;
+
     use std::fs::Permissions;
     use std::os::unix::fs::PermissionsExt as _;
     use std::time::Duration;
@@ -51,7 +56,7 @@ mod g08_stale_receipts_dropped_before_the_command_goes_through {
     #[test]
     fn crash_before_push_of_a_later_command_keeps_the_accepted_close() {
         let sandbox = crate::sandbox();
-        let a = machine(&sandbox, "g08-crash", true);
+        let a = machine(&sandbox, "g08-crash", TrackerSetup::Init);
         let x = id(a.bead(["create", "X"]));
         let y = id(a.bead(["create", "Y"]));
         a.bead(["sync"]);
@@ -75,7 +80,7 @@ mod g08_stale_receipts_dropped_before_the_command_goes_through {
     #[test]
     fn unresolved_later_command_keeps_the_accepted_release() {
         let sandbox = crate::sandbox();
-        let a = machine(&sandbox, "g08-unresolved", true);
+        let a = machine(&sandbox, "g08-unresolved", TrackerSetup::Init);
         let x = id(a.bead(["create", "X"]));
         let y = id(a.bead(["create", "Y"]));
         a.bead(["claim", &x]);
@@ -116,11 +121,11 @@ mod g08_stale_receipts_dropped_before_the_command_goes_through {
     #[test]
     fn failed_later_command_does_not_make_the_retry_reapply_edits() {
         let sandbox = crate::sandbox();
-        let a = machine(&sandbox, "g08-overwrite", true);
+        let a = machine(&sandbox, "g08-overwrite", TrackerSetup::Init);
         let x = id(a.bead(["create", "X"]));
         let y = id(a.bead(["create", "Y"]));
         a.bead(["sync"]);
-        let b = machine(&sandbox, "g08-overwrite-b", false);
+        let b = machine(&sandbox, "g08-overwrite-b", TrackerSetup::Sync);
         let retitle = ["update", &x, "--claim", "--title", "from-A", "--json"];
         let crashed = crashing_after_push(&a, &retitle).run();
         assert_eq!(crashed.returncode(), 99, "{}", crashed.stderr);

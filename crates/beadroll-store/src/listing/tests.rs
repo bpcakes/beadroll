@@ -8,9 +8,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use crate::memo::FileKey;
-
 use super::{Claims, DirectoryKey};
+use crate::LockState;
+use crate::memo::FileKey;
 
 /// Puts `dir`'s modification time back where the listing it was taken for cannot have seen it,
 /// so that a change made here is seen whatever the clock an inode's times come from has done: a
@@ -197,7 +197,7 @@ fn identities_are_kept_across_listings_but_for_what_bead_writes() {
     std::fs::write(&two, b"two").unwrap();
     let mut claims = Claims::default();
     let files = claims.files(home.path()).unwrap();
-    let first = claims.keys(&files, true);
+    let first = claims.keys(&files, LockState::Locked);
     assert_eq!(&*first, &[FileKey::of(&one), FileKey::of(&two)]);
     // something other than bead moves both files' times: kept, the identities taken stand
     for path in [&one, &two] {
@@ -207,9 +207,9 @@ fn identities_are_kept_across_listings_but_for_what_bead_writes() {
             .set_times(FileTimes::new().set_modified(earlier))
             .unwrap();
     }
-    assert!(Arc::ptr_eq(&first, &claims.keys(&files, true)));
+    assert!(Arc::ptr_eq(&first, &claims.keys(&files, LockState::Locked)));
     assert_ne!(
-        claims.keys(&files, false)[0],
+        claims.keys(&files, LockState::Unlocked)[0],
         first[0],
         "stat-ed outside the lock"
     );
@@ -219,7 +219,7 @@ fn identities_are_kept_across_listings_but_for_what_bead_writes() {
     std::fs::write(&three, b"three").unwrap();
     claims.forget(&three);
     let files = claims.files(home.path()).unwrap();
-    let keys = claims.keys(&files, true);
+    let keys = claims.keys(&files, LockState::Locked);
     assert_eq!(
         &*keys,
         &[FileKey::of(&one), first[1], FileKey::of(&three)],

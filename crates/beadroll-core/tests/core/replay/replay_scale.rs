@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 use beadroll_core::id::EventId;
 use beadroll_core::journal::Journal;
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::replay::replay;
 use beadroll_test_support::events::id_at;
 use beadroll_test_support::{Json, json};
@@ -51,7 +52,16 @@ fn ownership_ancestry_stays_small_on_a_long_claim_release_history() {
     let mut journal = Journal::new();
     for event in &events {
         let sequenced = matches!(event["op"].as_str(), Some("init" | "create"));
-        journal.add(event.clone(), "m", "", sequenced);
+        journal.add(
+            event.clone(),
+            "m",
+            "",
+            if sequenced {
+                JournalOrder::Sequenced
+            } else {
+                JournalOrder::Attempt
+            },
+        );
     }
     let started = Instant::now();
     let state = replay(journal).unwrap();

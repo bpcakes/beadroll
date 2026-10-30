@@ -5,6 +5,7 @@ use std::ffi::OsString;
 
 use super::{COMMANDS, find};
 use crate::cli::help::page;
+use crate::cli::paint::Color;
 use crate::cli::parse::{Page, Parsed, parse};
 
 /// `HelpAndPrime.test_every_command_has_help` over the table: more
@@ -21,7 +22,7 @@ fn every_command_has_help() {
             Parsed::Help(Page::Command(spec)) if spec.name == name => spec,
             other => panic!("{name} --help: {other:?}"),
         };
-        let text = page(spec, Some(80), false);
+        let text = page(spec, Some(80), Color::Plain);
         assert!(text.contains(&format!("Usage: bead {name}")), "{text}");
     }
 }

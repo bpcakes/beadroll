@@ -18,13 +18,14 @@ use super::{
     Context, Failure, Line, Outcome, Tone, arg_text, encodable, need_tracker, remove_edge,
     resolve_arg, row,
 };
+use crate::commands::args::TextValidity;
 
 /// Runs `dep ACTION ...`; without a known action word, `list`.
 pub(crate) fn dep(
     ctx: &Context<'_>,
     words: &[OsString],
     kind: Option<&OsStr>,
-    blocking_only: bool,
+    edges: Edges,
 ) -> Result<Outcome, Failure> {
     let known = ["add", "remove", "rm", "list", "tree", "cycles"];
     let (action, words) = match words.split_first() {
@@ -39,11 +40,7 @@ pub(crate) fn dep(
     let st = view_outline(ctx.ws)?;
     need_tracker(&st)?;
     if action == "cycles" {
-        let cycles = st.cycles(if blocking_only {
-            Edges::Blocking
-        } else {
-            Edges::WaitsFor
-        });
+        let cycles = st.cycles(edges);
         let mut lines: Vec<String> = cycles
             .iter()
             .map(|cycle| {
@@ -164,6 +161,11 @@ fn change(
         }
         None => (None, true),
     };
+    let validity = if kind_valid {
+        TextValidity::Utf8
+    } else {
+        TextValidity::Invalid
+    };
     let ((issue_key, shown), spent) = writing_spent(ctx.ws, ctx.actor, |tx| {
         // read as it was before anything is emitted, without a copy (roll-lqjj.29)
         let (st, mut tx) = tx.lend()?;
@@ -208,7 +210,7 @@ fn change(
                 data.insert("to".into(), Value::from(target.uid().to_string()));
                 data.insert("type".into(), Value::from(kind));
                 tx.emit("dep_add", Some(&uid), data, None)?;
-                encodable(kind_valid)?;
+                encodable(validity)?;
                 target.key().to_owned()
             }
             (_, None) => {
@@ -217,7 +219,7 @@ fn change(
                 data.insert("key".into(), Value::from(key.as_str()));
                 data.insert("type".into(), kind.clone().map_or(Value::Null, Value::from));
                 tx.emit("dep_remove", Some(&uid), data, None)?;
-                encodable(kind_valid)?;
+                encodable(validity)?;
                 key
             }
             (_, Some(target)) => {
@@ -228,7 +230,7 @@ fn change(
                     &Target::Id(target.uid()),
                     kind.as_deref(),
                 )?;
-                encodable(kind_valid)?;
+                encodable(validity)?;
                 target.key().to_owned()
             }
         };

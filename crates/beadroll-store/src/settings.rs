@@ -11,6 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use beadroll_core::text::{parse_float, parse_integer, repr_str};
 use beadroll_git::{Checkout, Env, Fact, Output};
 
+use crate::CrashHooks;
 use crate::error::Error;
 use crate::failpoint::{Failpoints, Fired};
 
@@ -138,8 +139,10 @@ impl Settings {
             get("BEAD_HOME").map(|value| (value.clone(), expand_user(value, &user_home, home_of)));
         let failpoints = Arc::new(Failpoints::from_env(
             get("BEAD_FAILPOINTS").map(OsString::as_os_str),
-            get("BEAD_TEST_CRASH_BEFORE_PUSH").is_some(),
-            get("BEAD_TEST_CRASH_AFTER_PUSH").is_some(),
+            CrashHooks {
+                before_push: get("BEAD_TEST_CRASH_BEFORE_PUSH").is_some(),
+                after_push: get("BEAD_TEST_CRASH_AFTER_PUSH").is_some(),
+            },
         )?);
         Ok(Settings {
             bead_home,

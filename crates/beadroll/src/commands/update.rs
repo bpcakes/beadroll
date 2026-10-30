@@ -13,6 +13,7 @@ use beadroll_core::json::{Object, Value};
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::str_of;
 use beadroll_store::{Actor, Label};
+use beadroll_sync::NetworkMode;
 use beadroll_sync::{Emitter, Mode, Tx, coordinated, publish_soon, writing_state};
 
 use super::ownership::{ClaimStep, command_signature, details, still_held};
@@ -20,6 +21,16 @@ use super::{
     ContentArgs, Context, Failure, Line, Outcome, Payload, Tone, arg_texts, encodable, ended_by,
     field_args, need_tracker, remove_edge, resolve_arg, split_args, view_of, view_of_written,
 };
+use crate::commands::args::TextValidity;
+
+/// Whether an update requested any changes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum UpdateKind {
+    /// Changed.
+    Changed,
+    /// Empty.
+    Empty,
+}
 
 /// `update`'s arguments.
 pub(crate) struct UpdateArgs {
@@ -78,7 +89,11 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
         let mode = coordinated(
             ctx.ws,
             ctx.actor,
-            args.offline,
+            if args.offline {
+                NetworkMode::Offline
+            } else {
+                NetworkMode::Online
+            },
             args.remote.as_deref(),
             &signature,
             |tx, mode| -> Result<Mode, Failure> {
@@ -106,7 +121,15 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
         None
     } else {
         written = None; // the publish may bring in what other machines wrote: read after it
-        publish_soon(ctx.ws, args.offline, args.remote.as_deref())
+        publish_soon(
+            ctx.ws,
+            if args.offline {
+                NetworkMode::Offline
+            } else {
+                NetworkMode::Online
+            },
+            args.remote.as_deref(),
+        )
     };
     let st = match written {
         Some(written) => view_of_written(ctx.ws, written, &args.ids)?,
@@ -116,7 +139,16 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
         still_held(ctx, &st, &args.ids)?;
     }
     let mut result = details(&st, &args.ids)?;
-    let lines = answer(&mut result, asked_nothing, notes, warning);
+    let lines = answer(
+        &mut result,
+        if asked_nothing {
+            UpdateKind::Empty
+        } else {
+            UpdateKind::Changed
+        },
+        notes,
+        warning,
+    );
     let result = Value::Array(result.into_iter().map(Value::from).collect());
     Ok(Outcome::new(result, lines).answered_from(st))
 }
@@ -125,10 +157,11 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
 /// `notes` and `warning`, which `result` carries too, as warnings.
 fn answer(
     result: &mut [Object],
-    asked_nothing: bool,
+    asked_nothing: UpdateKind,
     mut notes: Vec<String>,
     warning: Option<String>,
 ) -> Vec<Line> {
+    let asked_nothing = matches!(asked_nothing, UpdateKind::Empty);
     if asked_nothing {
         for item in result.iter_mut() {
             item.insert(
@@ -273,7 +306,11 @@ fn edit(
             with("fields", fields.values.clone()),
             None,
         )?;
-        encodable(fields.valid)?;
+        encodable(if fields.valid {
+            TextValidity::Utf8
+        } else {
+            TextValidity::Invalid
+        })?;
     }
     match status {
         Some("closed") => {
@@ -340,5 +377,9 @@ fn labels(tx: &mut Emitter<'_>, op: &str, uid: &str, items: &[OsString]) -> Resu
         Value::Array(items.into_iter().map(Value::from).collect()),
     );
     tx.emit(op, Some(uid), data, None)?;
-    encodable(valid)
+    encodable(if valid {
+        TextValidity::Utf8
+    } else {
+        TextValidity::Invalid
+    })
 }

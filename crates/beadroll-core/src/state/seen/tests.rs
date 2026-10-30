@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::id::EventId;
 use crate::journal::Journal;
+use crate::journal::JournalOrder;
 use crate::json::{Object, Value};
 use crate::order::{causal_order, effective_deps};
 use crate::replay::replay;
@@ -101,11 +102,11 @@ fn history(rng: &mut Rng, count: usize) -> (Journal, Vec<EventId>) {
     let mut journal = Journal::new();
     for (replica, events) in segments.into_iter().enumerate() {
         for value in events {
-            journal.add(value, REPLICAS[replica], "segment", true);
+            journal.add(value, REPLICAS[replica], "segment", JournalOrder::Sequenced);
         }
     }
     for (replica, value) in attempts {
-        journal.add(value, REPLICAS[replica], "attempt", false);
+        journal.add(value, REPLICAS[replica], "attempt", JournalOrder::Attempt);
     }
     journal.settle();
     (journal, missing)
@@ -221,7 +222,16 @@ fn a_valid_history_needs_a_chain_per_machine_that_writes_attempts() {
         let replica = REPLICAS[n % REPLICAS.len()];
         let name = id(n, 1_700_000_000_000 + n as u64);
         let value = event(&name, replica, &heads, "x");
-        journal.add(value, replica, "f", n % 3 != 0);
+        journal.add(
+            value,
+            replica,
+            "f",
+            if n % 3 != 0 {
+                JournalOrder::Sequenced
+            } else {
+                JournalOrder::Attempt
+            },
+        );
         heads = vec![name];
     }
     let st = replay(journal).unwrap();

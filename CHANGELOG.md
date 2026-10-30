@@ -6,6 +6,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- Clippy now rejects boolean function parameters across the workspace, tests and tooling. Rust
+  callers use named modes such as `JournalOrder`, `FileMode`, `NetworkMode` and `PublishMode`
+  in place of boolean switches; command behavior and stored formats are unchanged.
+
 - Copies of numbered keys two machines minted alike are renamed in time that grows with them, not
   with their square (roll-lqjj.46, AL01). A copy counts upward from its own number to the first
   whose key no issue has and no import waits for. It asked about every number on the way, so two

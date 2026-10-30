@@ -10,9 +10,12 @@ fn a_part_is_escaped_then_painted() {
         .with(Tone::Id, "ex-1")
         .with(Tone::Plain, " ")
         .with(Tone::Strong, "esc\u{1b}[31mRED");
-    assert_eq!(render(&line, false), "ex-1 esc\\x1b[31mRED");
     assert_eq!(
-        render(&line, true),
+        render(&line, crate::cli::paint::Color::Plain),
+        "ex-1 esc\\x1b[31mRED"
+    );
+    assert_eq!(
+        render(&line, crate::cli::paint::Color::Ansi),
         "\u{1b}[36mex-1\u{1b}[0m \u{1b}[1mesc\\x1b[31mRED\u{1b}[0m"
     );
 }
@@ -20,9 +23,12 @@ fn a_part_is_escaped_then_painted() {
 #[test]
 fn a_plain_line_with_a_check_mark_has_the_mark_painted() {
     let line = Line::from("✓ Closed ex-1: done");
-    assert_eq!(render(&line, false), "✓ Closed ex-1: done");
     assert_eq!(
-        render(&line, true),
+        render(&line, crate::cli::paint::Color::Plain),
+        "✓ Closed ex-1: done"
+    );
+    assert_eq!(
+        render(&line, crate::cli::paint::Color::Ansi),
         "\u{1b}[32m✓\u{1b}[0m Closed ex-1: done"
     );
 }
@@ -38,8 +44,8 @@ fn colour_follows_the_flag_then_the_conventions() {
     };
     let shows_on = |when, pairs: &[(&str, &str)]| colors(when, &with(pairs));
     let all = Colors {
-        stdout: true,
-        stderr: true,
+        stdout: Color::Ansi,
+        stderr: Color::Ansi,
     };
     assert_eq!(shows_on(When::Always, &[("NO_COLOR", "1")]), all);
     assert_eq!(
@@ -56,7 +62,10 @@ fn colour_follows_the_flag_then_the_conventions() {
         shows_on(When::Auto, &[("NO_COLOR", ""), ("CLICOLOR_FORCE", "1")]),
         all
     );
-    assert!(!shows_on(When::Auto, &[("CLICOLOR_FORCE", "0")]).stdout);
+    assert_eq!(
+        shows_on(When::Auto, &[("CLICOLOR_FORCE", "0")]).stdout,
+        Color::Plain
+    );
     assert_eq!(When::named(OsStr::new("always")), Some(When::Always));
     assert_eq!(When::named(OsStr::new("yes")), None);
 }

@@ -8,11 +8,11 @@ use std::collections::BTreeSet;
 
 use beadroll_core::event::{Field, REGISTERS, REQUIRED_FIELDS};
 use beadroll_core::journal::Journal;
+use beadroll_core::journal::JournalOrder::Sequenced;
 use beadroll_core::op::IntegerField;
 use beadroll_core::query::Edges;
 use beadroll_core::state::{State, Target};
 use beadroll_test_support::{Json, json};
-
 use fixture::{Fixture, MISSING, conflict, fields, issue, snapshot};
 
 /// A seeded SplitMix64 generator for reproducible property checks.
@@ -117,7 +117,7 @@ fn six_machine_3000_event_replay_all_720_enumerations() {
         let mut j = Journal::new();
         for &replica in order.iter().chain(order.iter().rev()) {
             for event in &grouped[replica] {
-                j.add((*event).clone(), replicas[replica], "", true);
+                j.add((*event).clone(), replicas[replica], "", Sequenced);
             }
         }
         assert_eq!(snapshot(j), expected, "{order:?}");
@@ -133,9 +133,9 @@ fn six_machine_3000_event_replay_all_720_enumerations() {
                 continue;
             };
             remaining[at].1 += 1;
-            j.add((*event).clone(), replicas[replica], "", true);
+            j.add((*event).clone(), replicas[replica], "", Sequenced);
             if rng.below(2) == 1 {
-                j.add((*event).clone(), replicas[replica], "", true);
+                j.add((*event).clone(), replicas[replica], "", Sequenced);
             }
         }
         assert_eq!(snapshot(j), expected);

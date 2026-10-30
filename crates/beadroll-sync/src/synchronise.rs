@@ -9,14 +9,37 @@ use beadroll_core::json::{self, Format, Int, Object, Value};
 use beadroll_core::metadata::Counts;
 use beadroll_core::text::shell_quote;
 use beadroll_git::PushOutcome;
+use beadroll_store::FileMode;
+use beadroll_store::MetadataRead;
+use beadroll_store::PublicationState;
+use beadroll_store::RemoteSource;
 use beadroll_store::{
     Endpoint, Failpoints, Fired, Memo, Workspace, claim_files, load_pending, moved_workspaces,
     pending_files, relative, relative_name, segment_files, workspaces_named, write_atomic,
 };
 
+use crate::PublishMode;
 use crate::error::Error;
 use crate::link::Link;
 use crate::tx::{drop_pending, locked};
+
+/// Whether a command may reach its coordination remote.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NetworkMode {
+    /// Online.
+    Online,
+    /// Offline.
+    Offline,
+}
+
+/// Whether a synchronization collects counts for its report.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SyncReport {
+    /// Skip.
+    Skip,
+    /// Collect.
+    Collect,
+}
 
 /// Maximum sync or ownership rounds before giving up, allowing retries under concurrent writers
 /// (roll-lqjj.7).
@@ -134,7 +157,8 @@ impl Synced {
 /// before they are dropped. A damaged `sync.git` is rebuilt once. A URL-derived workspace that finds
 /// this checkout's origin holding a tracker under another id adopts it (`moved.json`).
 pub fn synchronise(ws: &Workspace, remote: &Endpoint) -> Result<Synced, Error> {
-    exchange(ws, remote, true)?.ok_or_else(|| Error::Validation("no report".to_owned()))
+    exchange(ws, remote, SyncReport::Collect)?
+        .ok_or_else(|| Error::Validation("no report".to_owned()))
 }
 
 /// [`synchronise`], and what it did when `report` asks for it: a write published at once is not
@@ -142,7 +166,12 @@ pub fn synchronise(ws: &Workspace, remote: &Endpoint) -> Result<Synced, Error> {
 /// state the last merge left (roll-lqjj.29); the keys renamed before the sync are counted by the
 /// first merge, from the projection it reads before it merges, which is the one it goes on with
 /// when nothing comes in.
-fn exchange(ws: &Workspace, remote: &Endpoint, report: bool) -> Result<Option<Synced>, Error> {
+fn exchange(
+    ws: &Workspace,
+    remote: &Endpoint,
+    sync_report: SyncReport,
+) -> Result<Option<Synced>, Error> {
+    let report = matches!(sync_report, SyncReport::Collect);
     let mut link = Link::new(ws, remote)?;
     let (mut pulled, mut pushed) = (0i64, 0i64);
     let mut repacked = false;
@@ -151,7 +180,7 @@ fn exchange(ws: &Workspace, remote: &Endpoint, report: bool) -> Result<Option<Sy
         let round = sync_round(
             ws,
             &mut link,
-            report,
+            sync_report,
             &mut pulled,
             &mut pushed,
             &mut repacked,
@@ -175,7 +204,7 @@ fn exchange(ws: &Workspace, remote: &Endpoint, report: bool) -> Result<Option<Sy
                 let Some(adopted) = adopted else {
                     return Err(error);
                 };
-                return exchange(&adopted, remote, report);
+                return exchange(&adopted, remote, sync_report);
             }
         }
         pause(attempt, &ws.settings.failpoints);
@@ -192,7 +221,7 @@ fn exchange(ws: &Workspace, remote: &Endpoint, report: bool) -> Result<Option<Sy
     }
     values.push(("published", Value::from(link.published_counts()?)));
     ws.note_sync(remote, &values);
-    ws.set_wrote(false);
+    ws.set_wrote(PublicationState::Published);
     if !report {
         return Ok(None);
     }
@@ -261,7 +290,7 @@ fn nothing_published(ws: &Workspace, remote: &Endpoint) -> Error {
 fn sync_round(
     ws: &Workspace,
     link: &mut Link<'_>,
-    report: bool,
+    sync_report: SyncReport,
     pulled: &mut i64,
     pushed: &mut i64,
     repacked: &mut bool,
@@ -273,13 +302,22 @@ fn sync_round(
             // current head, not a snapshot
             tip = link.fetch()?;
         }
-        *pulled += link.merge_from(tip.as_deref(), report)?;
+        *pulled += link.merge_from(tip.as_deref(), sync_report)?;
         if tip.is_none() && segment_files(ws)?.is_empty() {
             return Err(nothing_published(ws, &link.endpoint()));
         }
         *pushed = link.unpublished()?;
         let fence = !load_pending(ws)?.is_empty();
-        match link.publish(tip.as_deref(), "sync", &[], fence)? {
+        match link.publish(
+            tip.as_deref(),
+            "sync",
+            &[],
+            if fence {
+                PublishMode::Fence
+            } else {
+                PublishMode::IfChanged
+            },
+        )? {
             PushOutcome::Ok => {
                 // absent at a head we just advanced: they can never land
                 drop_pending(ws, &load_pending(ws)?)?;
@@ -322,7 +360,7 @@ pub fn adopt_published(
     // this checkout's origin, chosen by its name or given as its very URL
     let origin = match &remote.name {
         Some(name) => name == "origin",
-        None => ws.is_origin_url(&remote.url, false),
+        None => ws.is_origin_url(&remote.url, RemoteSource::Remembered),
     };
     if !origin {
         return Ok(None);
@@ -351,7 +389,7 @@ pub fn adopt_published(
     write_atomic(
         &ws.settings.home()?.join("moved.json"),
         text.as_bytes(),
-        true,
+        FileMode::Private,
         &ws.settings.failpoints,
     )?;
     Ok(Some(adopted))
@@ -366,7 +404,7 @@ pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
         Ok(Some(remote)) if !remote.is_empty() => {}
         _ => return Ok(None),
     }
-    let meta = ws.metadata(false)?;
+    let meta = ws.metadata(MetadataRead::Lenient)?;
     let none = Counts::default();
     let published = match meta.published() {
         Some(published) => published,
@@ -422,8 +460,12 @@ pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
 
 /// Ownership ended or a local write happened: tell the other machines now rather than at the next
 /// routine sync. A failure leaves the local write standing, and says so.
-pub fn publish_soon(ws: &Workspace, offline: bool, remote: Option<&OsStr>) -> Option<String> {
-    publish_soon_at(ws, destination(ws, offline, remote))
+pub fn publish_soon(
+    ws: &Workspace,
+    network_mode: NetworkMode,
+    remote: Option<&OsStr>,
+) -> Option<String> {
+    publish_soon_at(ws, destination(ws, network_mode, remote))
 }
 
 /// Where [`publish_soon`] would publish: nowhere (`None`) when `offline`, or when the tracker has
@@ -435,9 +477,10 @@ pub fn publish_soon(ws: &Workspace, offline: bool, remote: Option<&OsStr>) -> Op
 /// remote; nothing more.
 pub fn destination(
     ws: &Workspace,
-    offline: bool,
+    offline: NetworkMode,
     remote: Option<&OsStr>,
 ) -> Option<Result<Endpoint, Error>> {
+    let offline = matches!(offline, NetworkMode::Offline);
     if offline {
         return None;
     }
@@ -471,7 +514,7 @@ fn publish_to(ws: &Workspace, remote: &Endpoint) -> Result<(), Error> {
     if remote.url.is_empty() {
         return Ok(());
     }
-    exchange(ws, remote, false).map(drop)
+    exchange(ws, remote, SyncReport::Skip).map(drop)
 }
 
 /// What a failed publish says: the local write stands, not yet published.

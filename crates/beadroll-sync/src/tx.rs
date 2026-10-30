@@ -6,10 +6,12 @@ mod writes;
 
 use beadroll_core::event::{FORMAT, MAX_NESTING, event_problem, payload_problem, write_problem};
 use beadroll_core::id::EventId;
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::projection::{Extended, Projection, Record};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
+use beadroll_store::IdentityMode;
 use beadroll_store::{
     Actor, Sourced, Workspace, capture_where, encode_events, load_journal, projection, read_texts,
     replica_id, uuid7,
@@ -83,7 +85,7 @@ impl<'a> Tx<'a> {
 
     /// A transaction on `projection`, the store's as it is now.
     fn from(ws: &'a Workspace, actor: &Actor, projection: Projection) -> Result<Tx<'a>, Error> {
-        let replica = replica_id(&ws.settings, true)?.unwrap_or_default();
+        let replica = replica_id(&ws.settings, IdentityMode::Create)?.unwrap_or_default();
         let place = capture_where(ws)?;
         Ok(Tx {
             ws,
@@ -150,7 +152,16 @@ impl<'a> Tx<'a> {
                 let Record {
                     value, sequenced, ..
                 } = record;
-                journal.add(value.clone(), &self.replica, "", *sequenced);
+                journal.add(
+                    value.clone(),
+                    &self.replica,
+                    "",
+                    if *sequenced {
+                        JournalOrder::Sequenced
+                    } else {
+                        JournalOrder::Attempt
+                    },
+                );
             }
             self.state = Some(replay(journal)?);
             self.replayed = self.emitted.len();

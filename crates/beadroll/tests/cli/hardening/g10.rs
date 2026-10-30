@@ -5,9 +5,12 @@
 
 use beadroll_test_support::{Machine, Sandbox};
 
+use crate::hardening::TrackerSetup;
+
 /// `_g10_machine`: a machine `name` that initialised the tracker (prefix `ex`), or, with `init`
 /// false, synced the one already published.
-fn machine(sandbox: &Sandbox, name: &str, init: bool) -> Machine {
+fn machine(sandbox: &Sandbox, name: &str, init: TrackerSetup) -> Machine {
+    let init = matches!(init, TrackerSetup::Init);
     let machine = Machine::new(sandbox, name);
     if init {
         machine.bead(["init", "--prefix", "ex"]);
@@ -22,6 +25,8 @@ fn machine(sandbox: &Sandbox, name: &str, init: bool) -> Machine {
 /// X; `update X --claim` answers "Updated"; `takeover X` crashes with KeyError when the claim has
 /// since ended.
 mod g10_recognised_retry_reports_a_claim_that_moved_on {
+    use crate::hardening::TrackerSetup;
+
     use beadroll_test_support::{Invocation, Json, Machine};
 
     use super::machine;
@@ -54,10 +59,10 @@ mod g10_recognised_retry_reports_a_claim_that_moved_on {
     #[test]
     fn claim_retry_after_a_takeover_does_not_say_claimed() {
         let sandbox = crate::sandbox();
-        let a = machine(&sandbox, "g10-moved", true);
+        let a = machine(&sandbox, "g10-moved", TrackerSetup::Init);
         let x = id(a.bead(["create", "X"]));
         a.bead(["sync"]);
-        let b = machine(&sandbox, "g10-moved-b", false);
+        let b = machine(&sandbox, "g10-moved-b", TrackerSetup::Sync);
         let crashed = crashing_after_push(&a, &["claim", &x]).run();
         assert_eq!(crashed.returncode(), 99, "{}", crashed.stderr);
         let taken = b.run(["takeover", &x, "--reason", "a looked dead"]);
@@ -79,10 +84,10 @@ mod g10_recognised_retry_reports_a_claim_that_moved_on {
     #[test]
     fn claiming_update_retry_after_a_takeover_does_not_succeed() {
         let sandbox = crate::sandbox();
-        let a = machine(&sandbox, "g10-update", true);
+        let a = machine(&sandbox, "g10-update", TrackerSetup::Init);
         let x = id(a.bead(["create", "X"]));
         a.bead(["sync"]);
-        let b = machine(&sandbox, "g10-update-b", false);
+        let b = machine(&sandbox, "g10-update-b", TrackerSetup::Sync);
         let label = ["update", &x, "--claim", "--add-label", "mine"];
         let crashed = crashing_after_push(&a, &label).run();
         assert_eq!(crashed.returncode(), 99, "{}", crashed.stderr);
@@ -104,10 +109,10 @@ mod g10_recognised_retry_reports_a_claim_that_moved_on {
     #[test]
     fn takeover_retry_after_the_claim_ended_is_not_a_traceback() {
         let sandbox = crate::sandbox();
-        let a = machine(&sandbox, "g10-ended", true);
+        let a = machine(&sandbox, "g10-ended", TrackerSetup::Init);
         let x = id(a.bead(["create", "X"]));
         a.bead(["sync"]);
-        let b = machine(&sandbox, "g10-ended-b", false);
+        let b = machine(&sandbox, "g10-ended-b", TrackerSetup::Sync);
         b.bead(["claim", &x]);
         a.bead(["sync"]);
         let crashed = crashing_after_push(&a, &["takeover", &x, "--reason", "idle"]).run();

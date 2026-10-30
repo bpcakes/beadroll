@@ -13,21 +13,21 @@
 //! batch at a time copies its own growing list (roll-lqjj.18), and many kinds of edge on one target
 //! are compared with each other (roll-lqjj.21).
 
-use crate::id::EventId;
-use crate::journal::Journal;
-use crate::json::{Object, Value};
-use crate::projection::{Extended, Projection, Record, project};
-use crate::replay::replay;
-use crate::state::State;
-
-use super::{Work, counted};
-
 mod awaiting;
 mod degree;
 mod edges;
 mod finished;
 mod import;
 mod renamed;
+
+use super::{Work, counted};
+use crate::id::EventId;
+use crate::journal::Journal;
+use crate::journal::JournalOrder;
+use crate::json::{Object, Value};
+use crate::projection::{Extended, Projection, Record, project};
+use crate::replay::replay;
+use crate::state::State;
 
 /// The size of the smaller input.
 const SMALL: usize = 250;
@@ -141,7 +141,7 @@ impl History {
     fn journal(&self) -> Journal {
         let mut journal = Journal::new();
         for event in &self.events {
-            journal.add(event.clone(), MACHINE, "", true);
+            journal.add(event.clone(), MACHINE, "", JournalOrder::Sequenced);
         }
         journal
     }

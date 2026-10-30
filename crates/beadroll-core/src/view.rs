@@ -104,12 +104,12 @@ impl State {
     /// `dependents` (roll-lqjj.20): found there when they were found in this state and it was asked
     /// about, and for it alone otherwise. Whether anything holds it is judged for it alone.
     pub fn detail_with(&self, issue: &Issue, dependents: &Dependents<'_>) -> Object {
-        self.detail_judged(issue, dependents, self.is_blocked(issue))
+        self.detail_judged(issue, dependents, Value::Bool(self.is_blocked(issue)))
     }
 
     /// Full issue details as [`State::detail_with`] gives them, `blocked` being whether anything
     /// holds the issue, as [`State::is_blocked`] answers.
-    fn detail_judged(&self, issue: &Issue, dependents: &Dependents<'_>, blocked: bool) -> Object {
+    fn detail_judged(&self, issue: &Issue, dependents: &Dependents<'_>, blocked: Value) -> Object {
         let mut out = Object::new();
         out.insert("id".into(), Value::from(issue.key()));
         for name in EXPORT_FIELDS {
@@ -151,7 +151,7 @@ impl State {
             .iter()
             .map(|comment| Value::from(shown_comment(comment)));
         out.insert("comments".into(), comments.collect::<Vec<_>>().into());
-        out.insert("blocked".into(), Value::from(blocked));
+        out.insert("blocked".into(), blocked);
         out.insert("origin".into(), Value::from(issue.origin()));
         if let Some(place) = issue.where_().filter(|place| place.truthy()) {
             out.insert("where".into(), place.clone());

@@ -6,6 +6,7 @@ use std::ffi::OsStr;
 
 use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Format, Object, Value};
+use beadroll_git::KillScope;
 use beadroll_git::{PushOutcome, Trees, blob_tree_id, push_outcome};
 use beadroll_store::{
     Fired, attempt_path, encode_events, hex_token, relative, repair_tail, segment_files,
@@ -13,6 +14,16 @@ use beadroll_store::{
 
 use super::Link;
 use crate::error::Error;
+use crate::link::write::BlobUse;
+
+/// Whether publication skips an unchanged tree or fences earlier pushes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PublishMode {
+    /// IfChanged.
+    IfChanged,
+    /// Fence.
+    Fence,
+}
 
 /// Filenames and blob names in a directory, in filename order.
 type BlobEntries<'a> = Vec<(&'a str, &'a str)>;
@@ -63,7 +74,7 @@ impl Link<'_> {
     /// it will live if accepted; and whether any was remembered rather than hashed now.
     fn blobs(&mut self, pending: &[Value]) -> Result<(BTreeMap<String, String>, bool), Error> {
         let hashed = self.hashed.len();
-        let mut blobs = self.local_blobs(true)?;
+        let mut blobs = self.local_blobs(BlobUse::Publication)?;
         self.save_memo();
         let remembered = self.hashed.len() - hashed < blobs.len();
         if !pending.is_empty() {
@@ -126,8 +137,9 @@ impl Link<'_> {
         tip: Option<&str>,
         note: &str,
         pending: &[Value],
-        fence: bool,
+        fence: PublishMode,
     ) -> Result<PushOutcome, Error> {
+        let fence = matches!(fence, PublishMode::Fence);
         let failpoints = std::sync::Arc::clone(&self.ws.settings.failpoints);
         failpoints.hit("publish.before");
         if let Some(Fired::Error(code)) = failpoints.hit("publish.result") {
@@ -168,7 +180,7 @@ impl Link<'_> {
                 refspec.as_ref(),
             ])
             .timeout(self.ws.settings.net_timeout)
-            .reap(false)
+            .reap(KillScope::Client)
             .run();
         let mut push = match pushed {
             Ok(push) => push,

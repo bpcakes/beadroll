@@ -11,13 +11,23 @@ use beadroll_core::time::event_time;
 use beadroll_test_support::events::{Event, id, id_at, journal};
 use beadroll_test_support::{Json, json};
 
+/// Whether a create imports an issue.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CreateOrigin {
+    /// Local.
+    Local,
+    /// Imported.
+    Imported,
+}
+
 /// The issue every test is about: created by event 2.
 fn uid() -> String {
     id(2)
 }
 
 /// An `init`, and a create of `fields`, on machine `a` (with `imported` when it is an import).
-fn created(fields: Json, imported: bool) -> Vec<Json> {
+fn created(fields: Json, imported: CreateOrigin) -> Vec<Json> {
+    let imported = matches!(imported, CreateOrigin::Imported);
     let mut data = json!({"key": "sf-a", "fields": fields});
     if imported && let Json::Object(members) = &mut data {
         members.insert("imported".into(), Json::Bool(true));
@@ -76,7 +86,7 @@ fn time(n: u64) -> Json {
 fn a_creates_null_shows_null_and_a_later_writes_null_shows_nothing() {
     let mut events = created(
         json!({"title": "t", "assignee": null, "estimated_minutes": null, "external_ref": null}),
-        false,
+        CreateOrigin::Local,
     );
     for field in [Field::Assignee, Field::EstimatedMinutes, Field::ExternalRef] {
         assert_eq!(shown(&events, field), Some(Json::Null), "{}", field.name());
@@ -101,7 +111,10 @@ fn a_creates_null_a_write_that_had_not_seen_it_leaves_largest_shows_nothing() {
     // nothing, as replay showed it once a write had touched the register; a long field the
     // create's null (roll-lqjj.10).
     let late = id_at(1_762_400_000_000, 9);
-    let mut events = created(json!({"assignee": null, "notes": null}), false);
+    let mut events = created(
+        json!({"assignee": null, "notes": null}),
+        CreateOrigin::Local,
+    );
     events[1] = Event::new(&id_at(1_762_400_000_001, 2), "create")
         .deps(&[&id(1)])
         .data(json!({"key": "sf-a", "fields": {"assignee": null, "notes": null}}))
@@ -136,7 +149,7 @@ fn a_creates_null_a_write_that_had_not_seen_it_leaves_largest_shows_nothing() {
 
 #[test]
 fn a_create_that_gives_nothing_shows_its_defaults_until_a_write() {
-    let mut events = created(json!({}), false);
+    let mut events = created(json!({}), CreateOrigin::Local);
     assert_eq!(shown(&events, Field::Title), Some(json!("")));
     assert_eq!(shown(&events, Field::Status), Some(json!("open")));
     assert_eq!(shown(&events, Field::Priority), Some(json!(2)));
@@ -180,7 +193,7 @@ fn an_import_shows_the_stamps_and_close_it_gives_and_an_unknown_author() {
         "created_at": "2026-01-01T00:00:00Z",
         "updated_at": "2026-01-02T00:00:00Z"
     });
-    let mut events = created(record, true);
+    let mut events = created(record, CreateOrigin::Imported);
     assert_eq!(shown(&events, Field::Status), Some(json!("closed")));
     assert_eq!(
         shown(&events, Field::ClosedAt),
@@ -199,11 +212,14 @@ fn an_import_shows_the_stamps_and_close_it_gives_and_an_unknown_author() {
     assert_eq!(shown(&events, Field::CreatedBy), Some(Json::Null));
     // an import that says null, or someone
     for (given, expected) in [(Json::Null, Json::Null), (json!("seed"), json!("seed"))] {
-        let events = created(json!({"title": "t", "created_by": given}), true);
+        let events = created(
+            json!({"title": "t", "created_by": given}),
+            CreateOrigin::Imported,
+        );
         assert_eq!(shown(&events, Field::CreatedBy), Some(expected));
     }
     // a create made here that gives no author is its writer's
-    let native = created(json!({"title": "t"}), false);
+    let native = created(json!({"title": "t"}), CreateOrigin::Local);
     assert_eq!(shown(&native, Field::CreatedBy), Some(json!("test:a@a")));
     // a later event stamps the time it touched the issue; a reopen ends the close it gave
     events.push(on(3, "a", &[2], "reopen", json!({})));
@@ -219,7 +235,7 @@ fn an_import_shows_the_stamps_and_close_it_gives_and_an_unknown_author() {
 
 #[test]
 fn a_close_a_reopen_and_a_close_again_show_the_status_registers_members() {
-    let mut events = created(json!({"title": "t"}), false);
+    let mut events = created(json!({"title": "t"}), CreateOrigin::Local);
     events.push(on(3, "a", &[2], "close", json!({"reason": "first"})));
     assert_eq!(shown(&events, Field::Status), Some(json!("closed")));
     assert_eq!(shown(&events, Field::ClosedAt), Some(time(3)));
@@ -254,7 +270,7 @@ fn a_close_a_reopen_and_a_close_again_show_the_status_registers_members() {
 fn a_status_member_given_null_shows_null() {
     let events = created(
         json!({"title": "t", "status": "closed", "closed_at": null, "close_reason": null}),
-        true,
+        CreateOrigin::Imported,
     );
     assert_eq!(shown(&events, Field::Status), Some(json!("closed")));
     assert_eq!(shown(&events, Field::ClosedAt), Some(Json::Null));
@@ -263,7 +279,7 @@ fn a_status_member_given_null_shows_null() {
 
 #[test]
 fn a_set_of_closed_at_or_close_reason_shows_until_a_status_is_written_after_it() {
-    let mut events = created(json!({"title": "t"}), false);
+    let mut events = created(json!({"title": "t"}), CreateOrigin::Local);
     events.push(on(3, "a", &[2], "close", json!({"reason": "done"})));
     events.push(set(4, json!({"closed_at": "2026-05-05T00:00:00Z"})));
     assert_eq!(
@@ -302,7 +318,10 @@ fn a_set_of_closed_at_or_close_reason_shows_until_a_status_is_written_after_it()
 
 #[test]
 fn a_register_concurrent_writes_left_with_several_entries_shows_the_largest_id() {
-    let mut events = created(json!({"title": "t", "estimated_minutes": 10}), false);
+    let mut events = created(
+        json!({"title": "t", "estimated_minutes": 10}),
+        CreateOrigin::Local,
+    );
     // machines b and c each write without seeing the other; c's event has the larger id
     for (n, replica) in [(3_u64, "b"), (4, "c")] {
         let value = format!("from {replica}");
@@ -349,7 +368,10 @@ fn a_register_concurrent_writes_left_with_several_entries_shows_the_largest_id()
 
 #[test]
 fn a_legacy_boolean_priority_shows_as_written() {
-    let mut events = created(json!({"title": "t", "priority": true}), true);
+    let mut events = created(
+        json!({"title": "t", "priority": true}),
+        CreateOrigin::Imported,
+    );
     assert_eq!(shown(&events, Field::Priority), Some(Json::Bool(true)));
     let [replayed, decoded] = both(&events);
     for st in [&replayed, &decoded] {
@@ -366,7 +388,7 @@ fn a_legacy_boolean_priority_shows_as_written() {
 fn an_estimate_and_a_reference_show_what_was_given_set_and_cleared() {
     let mut events = created(
         json!({"title": "t", "estimated_minutes": 0, "external_ref": "gh-1"}),
-        false,
+        CreateOrigin::Local,
     );
     assert_eq!(shown(&events, Field::EstimatedMinutes), Some(json!(0)));
     assert_eq!(shown(&events, Field::ExternalRef), Some(json!("gh-1")));
@@ -380,7 +402,7 @@ fn an_estimate_and_a_reference_show_what_was_given_set_and_cleared() {
     assert_eq!(shown(&events, Field::EstimatedMinutes), None);
     assert_eq!(shown(&events, Field::ExternalRef), Some(json!("gh-2")));
     // never given: absent, and nothing for a reader to dispute
-    let bare = created(json!({"title": "t"}), false);
+    let bare = created(json!({"title": "t"}), CreateOrigin::Local);
     assert_eq!(shown(&bare, Field::EstimatedMinutes), None);
     assert_eq!(shown(&bare, Field::ExternalRef), None);
 }

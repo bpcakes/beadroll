@@ -175,10 +175,6 @@ impl Writer {
         self.out.push(byte);
     }
 
-    pub(crate) fn flag(&mut self, flag: bool) {
-        self.byte(u8::from(flag));
-    }
-
     /// `n`, seven bits a byte, the last byte's high bit clear.
     pub(crate) fn number(&mut self, mut n: u64) {
         while n >= 0x80 {
@@ -215,7 +211,7 @@ impl Writer {
     }
 
     pub(crate) fn optional_text(&mut self, text: Option<&str>) {
-        self.flag(text.is_some());
+        self.byte(u8::from(text.is_some()));
         if let Some(text) = text {
             self.text(text);
         }
@@ -241,7 +237,7 @@ impl Writer {
     }
 
     pub(crate) fn optional_name(&mut self, name: Option<&Arc<str>>) {
-        self.flag(name.is_some());
+        self.byte(u8::from(name.is_some()));
         if let Some(name) = name {
             self.name(name);
         }
@@ -266,7 +262,7 @@ impl Writer {
     }
 
     pub(crate) fn optional_shared(&mut self, value: Option<&Arc<Value>>) {
-        self.flag(value.is_some());
+        self.byte(u8::from(value.is_some()));
         if let Some(value) = value {
             self.shared(value);
         }
@@ -319,7 +315,7 @@ impl Writer {
     }
 
     pub(crate) fn optional_value(&mut self, value: Option<&Value>) {
-        self.flag(value.is_some());
+        self.byte(u8::from(value.is_some()));
         if let Some(value) = value {
             self.value(value);
         }

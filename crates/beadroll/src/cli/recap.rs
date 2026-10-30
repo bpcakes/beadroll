@@ -2,11 +2,13 @@
 //! what it shows is marked seen, and now, which only the command line reads.
 
 use super::parse::Namespace;
+use crate::cli::OutputMode;
 use crate::commands::{Failure, Layout, RecapArgs};
 
 /// `recap`'s arguments. What a person reads on a terminal is marked seen once it is written; what
 /// a pipe, a file or `--json` takes in (an agent's run, a `| head`) only when `--advance` asks.
-pub(super) fn args(ns: &Namespace, as_json: bool) -> Result<RecapArgs, Failure> {
+pub(super) fn args(ns: &Namespace, as_json: OutputMode) -> Result<RecapArgs, Failure> {
+    let as_json = matches!(as_json, OutputMode::Json);
     let layout = match ns.text("format") {
         None => Layout::Events,
         Some(name) => (name.to_str().and_then(Layout::named)).ok_or_else(|| {

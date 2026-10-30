@@ -6,6 +6,7 @@
 mod import_dry_run;
 
 mod compat_custom_statuses {
+
     use std::collections::{BTreeMap, BTreeSet};
 
     use beadroll_core::json::{Format, Object, write};
@@ -120,6 +121,8 @@ mod compat_custom_statuses {
 }
 
 mod compat_audit_real_compatibility {
+    use crate::compat::CheckResult;
+
     use std::ffi::OsString;
     use std::io::Read;
     use std::os::unix::ffi::OsStringExt as _;
@@ -252,30 +255,70 @@ mod compat_audit_real_compatibility {
     }
 
     /// Nothing when `holds`, else the failure `what` that ends the subtest.
-    fn check(holds: bool, what: &str) -> Result<(), String> {
+    fn check(holds: CheckResult, what: &str) -> Result<(), String> {
+        let holds = matches!(holds, CheckResult::Passed);
         if holds { Ok(()) } else { Err(what.to_owned()) }
     }
 
     /// The first check that one tracker's result row fails, or `Ok` if all checks pass.
     fn verdict(row: &Json) -> Result<(), String> {
         let zero = json!(0);
-        check(field(row, "bp_import_rc")? == &zero, "bp_import_rc != 0")?;
         check(
-            field(row, "roundtrip_equal")?.truthy(),
+            if field(row, "bp_import_rc")? == &zero {
+                CheckResult::Passed
+            } else {
+                CheckResult::Failed
+            },
+            "bp_import_rc != 0",
+        )?;
+        check(
+            if field(row, "roundtrip_equal")?.truthy() {
+                CheckResult::Passed
+            } else {
+                CheckResult::Failed
+            },
             "not roundtrip_equal",
         )?;
         if field(row, "br_source_import_rc")? == &zero {
-            check(field(row, "ready_equal")?.truthy(), "not ready_equal")?;
-            check(field(row, "blocked_equal")?.truthy(), "not blocked_equal")?;
+            check(
+                if field(row, "ready_equal")?.truthy() {
+                    CheckResult::Passed
+                } else {
+                    CheckResult::Failed
+                },
+                "not ready_equal",
+            )?;
+            check(
+                if field(row, "blocked_equal")?.truthy() {
+                    CheckResult::Passed
+                } else {
+                    CheckResult::Failed
+                },
+                "not blocked_equal",
+            )?;
         } else {
             let rc = field(row, "br_bp_export_import_rc")?;
-            check(rc != &zero, "br_bp_export_import_rc == 0")?;
+            check(
+                if rc != &zero {
+                    CheckResult::Passed
+                } else {
+                    CheckResult::Failed
+                },
+                "br_bp_export_import_rc == 0",
+            )?;
         }
         let passed = json!({"rc": 0, "valid_json": true});
         for mode in ["triage", "plan", "insights"] {
             let outcome = field(field(row, "bv")?, mode)?;
             let what = format!("bv[{mode:?}] != {{'rc': 0, 'valid_json': True}}");
-            check(outcome == &passed, &what)?;
+            check(
+                if outcome == &passed {
+                    CheckResult::Passed
+                } else {
+                    CheckResult::Failed
+                },
+                &what,
+            )?;
         }
         Ok(())
     }
@@ -347,4 +390,13 @@ mod compat_audit_real_compatibility {
             failures.join("\n")
         );
     }
+}
+
+/// Whether a round-trip comparison passed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CheckResult {
+    /// Failed.
+    Failed,
+    /// Passed.
+    Passed,
 }

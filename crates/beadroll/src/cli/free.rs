@@ -7,6 +7,8 @@ use beadroll_core::event::Field;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::state::State;
 use beadroll_core::text::{repr, repr_bytes, str_of};
+use beadroll_store::IdentityMode;
+use beadroll_store::MetadataRead;
 use beadroll_store::{
     Actor, Label, Settings, Workspace, replica_id, tracked_config_warning, view_outline,
 };
@@ -16,6 +18,7 @@ use super::layout::{self, lay_out, lay_out_lines, paragraph, paragraph_lines};
 use super::parse::Namespace;
 use super::spec::find;
 use super::texts::{ONBOARD, OVERVIEW, PRIME, PRIME_TITLE};
+use crate::cli::paint::Color;
 use crate::commands::{Failure, Line, Outcome, Tone, need_tracker};
 
 /// Runs `help`, `prime` or `onboard`; `ws` is the workspace when there is one. A help page is
@@ -25,10 +28,10 @@ pub(crate) fn run(
     ws: Option<&Workspace>,
     actor: &Actor,
     settings: &Settings,
-    color: bool,
+    color_mode: Color,
 ) -> Result<Outcome, Failure> {
     match ns.spec.name {
-        "help" => help_page(ns.text("command_name"), settings, color),
+        "help" => help_page(ns.text("command_name"), settings, color_mode),
         "prime" => prime(ws, actor, settings),
         _ => Ok(text_outcome("onboard", ONBOARD)),
     }
@@ -53,7 +56,11 @@ fn laid_out(name: &str, text: &str, shown: Vec<Line>) -> Outcome {
 }
 
 /// The overview, or one command's help page.
-fn help_page(name: Option<&OsStr>, settings: &Settings, color: bool) -> Result<Outcome, Failure> {
+fn help_page(
+    name: Option<&OsStr>,
+    settings: &Settings,
+    color_mode: Color,
+) -> Result<Outcome, Failure> {
     let Some(name) = name.filter(|n| !n.is_empty()) else {
         let width = layout::width(settings.var("COLUMNS"));
         return Ok(laid_out(
@@ -73,11 +80,11 @@ fn help_page(name: Option<&OsStr>, settings: &Settings, color: bool) -> Result<O
     };
     let width = layout::width(settings.var("COLUMNS"));
     // clap's page, painted already
-    let shown = help::page(spec, width, color);
+    let shown = help::page(spec, width, color_mode);
     let shown = Line::toned(Tone::Verbatim, shown.trim_end_matches('\n'));
     Ok(laid_out(
         "help",
-        &help::page(spec, None, false),
+        &help::page(spec, None, Color::Plain),
         vec![shown],
     ))
 }
@@ -85,7 +92,7 @@ fn help_page(name: Option<&OsStr>, settings: &Settings, color: bool) -> Result<O
 /// The workflow, with where this agent stands: who it is, and in a repository with a tracker how
 /// many issues are ready, which it holds and when this machine last synced.
 fn prime(ws: Option<&Workspace>, actor: &Actor, settings: &Settings) -> Result<Outcome, Failure> {
-    let replica = replica_id(settings, false)?;
+    let replica = replica_id(settings, IdentityMode::Existing)?;
     let me = actor.label(replica.as_deref().unwrap_or("?"));
     let mut context = vec![format!("You are {} (machine, agent, thread).", me.shown())];
     let mut state = None;
@@ -170,7 +177,7 @@ fn standing(ws: &Workspace, me: &Label) -> Result<(String, State), Failure> {
             ", {waiting} attempt(s) of this machine awaiting the remote"
         ));
     }
-    let meta = ws.metadata(false)?;
+    let meta = ws.metadata(MetadataRead::Lenient)?;
     let synced = meta
         .value("last_sync")
         .filter(|v| v.truthy())

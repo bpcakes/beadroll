@@ -15,6 +15,7 @@ use beadroll_core::recap::joined;
 use beadroll_core::text::printed_text;
 use beadroll_git::IoError;
 
+use crate::FileMode;
 use crate::{Error, Settings, Unreadable, Workspace, dir_entries, private_dir, read_json_text};
 
 /// The cursor's file, in `BEAD_HOME`. Its name starts with a dot, which no workspace id can, so no
@@ -177,15 +178,19 @@ impl RecapCursor {
         let text = json::write(&now.to_value(), Format::COMPACT)
             .map_err(|e| Error::Validation(e.to_string()))?;
         // a write that fails says so without the file, as a full volume does: name the cursor
-        crate::write_atomic(&path, text.as_bytes(), true, &settings.failpoints).map_err(
-            |error| match error {
-                Error::Io(mut error) if error.path.is_none() => {
-                    error.path = Some(path);
-                    Error::Io(error)
-                }
-                error => error,
-            },
-        )?;
+        crate::write_atomic(
+            &path,
+            text.as_bytes(),
+            FileMode::Private,
+            &settings.failpoints,
+        )
+        .map_err(|error| match error {
+            Error::Io(mut error) if error.path.is_none() => {
+                error.path = Some(path);
+                Error::Io(error)
+            }
+            error => error,
+        })?;
         drop(lock);
         Ok(())
     }

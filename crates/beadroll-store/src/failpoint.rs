@@ -156,6 +156,15 @@ struct Spec {
     action: Action,
 }
 
+/// Legacy crash hooks selected by the caller.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CrashHooks {
+    /// Exit before publishing an ownership attempt.
+    pub before_push: bool,
+    /// Exit after its push is accepted.
+    pub after_push: bool,
+}
+
 /// The failpoints of one invocation, with how often each point has been hit.
 #[derive(Debug, Default)]
 pub struct Failpoints {
@@ -171,11 +180,11 @@ impl Failpoints {
 
     /// The failpoints of `spec` (`BEAD_FAILPOINTS`) and of the crash hooks set (non-empty)
     /// `BEAD_TEST_CRASH_BEFORE_PUSH` and `BEAD_TEST_CRASH_AFTER_PUSH`.
-    pub fn from_env(
-        spec: Option<&OsStr>,
-        crash_before: bool,
-        crash_after: bool,
-    ) -> Result<Failpoints, Error> {
+    pub fn from_env(spec: Option<&OsStr>, hooks: CrashHooks) -> Result<Failpoints, Error> {
+        let CrashHooks {
+            before_push: crash_before,
+            after_push: crash_after,
+        } = hooks;
         let text = match spec {
             Some(spec) => spec
                 .to_str()

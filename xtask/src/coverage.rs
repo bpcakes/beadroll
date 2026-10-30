@@ -36,6 +36,15 @@ use std::process::{Command, ExitCode};
 use crate::check::{self, Kind, Setup, Step};
 use crate::workspace::{self, Failure};
 
+/// Whether all coverage steps succeeded.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RunResult {
+    /// Failed.
+    Failed,
+    /// Passed.
+    Passed,
+}
+
 /// The cargo-llvm-cov the nightly workflow installs (`ci::coverage_report` keeps them alike): the
 /// version this command was tried with. Another one runs, and is named in the report.
 pub(crate) const CARGO_LLVM_COV: &str = "0.8.7";
@@ -102,11 +111,16 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
     let (root, out) = (workspace::root(), workspace::output_dir("coverage")?);
     let (mut stdout, mut stderr) = (io::stdout(), io::stderr());
     let passed = make(&tools, &root, &out, options, &mut stdout, &mut stderr)?;
-    Ok(exit_code(passed))
+    Ok(exit_code(if passed {
+        RunResult::Passed
+    } else {
+        RunResult::Failed
+    }))
 }
 
 /// The exit status of a run that `passed`, or did not.
-fn exit_code(passed: bool) -> ExitCode {
+fn exit_code(passed: RunResult) -> ExitCode {
+    let passed = matches!(passed, RunResult::Passed);
     if passed {
         ExitCode::SUCCESS
     } else {

@@ -1,5 +1,7 @@
 //! One tracker's store on this machine, its checkout configuration and coordination remote.
 
+mod remote;
+
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::ffi::{OsStr, OsString};
@@ -17,10 +19,35 @@ use crate::listing::Claims;
 use crate::memo::FileKey;
 use crate::settings::Settings;
 
-mod remote;
-
-pub use remote::Endpoint;
+pub use remote::{Endpoint, RemoteSource};
 pub(crate) use remote::{configured_url, listed_url};
+
+/// How unreadable local metadata is handled.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MetadataRead {
+    /// Lenient.
+    Lenient,
+    /// Strict.
+    Strict,
+}
+
+/// Whether this process has events still to publish.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PublicationState {
+    /// Published.
+    Published,
+    /// Unpublished.
+    Unpublished,
+}
+
+/// Whether this process currently holds the store lock.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LockState {
+    /// Unlocked.
+    Unlocked,
+    /// Locked.
+    Locked,
+}
 
 /// The coordination ref when the tracked configuration names none.
 pub const DEFAULT_REF: &str = "refs/beads/journal";
@@ -105,7 +132,8 @@ impl Workspace {
     /// Records whether this process holds the store lock. A new locked or unlocked phase lists
     /// attempts afresh and stats each again: another command may write while a sync fetches
     /// outside the lock.
-    pub fn set_holding(&self, holding: bool) {
+    pub fn set_holding(&self, holding: LockState) {
+        let holding = matches!(holding, LockState::Locked);
         if self.holding.replace(holding) != holding {
             *self.claims.borrow_mut() = Claims::default();
         }
@@ -125,7 +153,8 @@ impl Workspace {
     }
 
     /// Records whether this process appended events the remote does not have yet.
-    pub fn set_wrote(&self, wrote: bool) {
+    pub fn set_wrote(&self, wrote: PublicationState) {
+        let wrote = matches!(wrote, PublicationState::Unpublished);
         self.wrote.set(wrote);
     }
 
@@ -154,14 +183,15 @@ impl Workspace {
     /// [`Workspace::remote`]), the file may be the only record of the coordination remote: one
     /// that cannot be read or parsed, or whose remote is not a string, is an error, never a
     /// silent switch to origin.
-    pub fn meta(&self, strict: bool) -> Result<Arc<Object>, Error> {
-        self.metadata(strict)
+    pub fn meta(&self, metadata_read: MetadataRead) -> Result<Arc<Object>, Error> {
+        self.metadata(metadata_read)
             .map(|meta| Arc::new((*meta).clone().into_object()))
     }
 
     /// Metadata with its published map kept as typed counts. Ordinary reads borrow only the
     /// fields they need; [`Self::meta`] retains the generic public API for compatibility.
-    pub fn metadata(&self, strict: bool) -> Result<Arc<Metadata>, Error> {
+    pub fn metadata(&self, strict: MetadataRead) -> Result<Arc<Metadata>, Error> {
+        let strict = matches!(strict, MetadataRead::Strict);
         let path = self.dir.join("meta.json");
         let problem = match self.read_meta(&path) {
             Ok(meta) => return Ok(meta),
@@ -209,7 +239,7 @@ impl Workspace {
     /// to report, unless a remote is being recorded: that repairs it. Origin is never recorded: it
     /// is looked up each time.
     pub fn save_meta(&self, values: &[(&str, Value)]) -> Result<(), Error> {
-        let mut meta = match self.metadata(true) {
+        let mut meta = match self.metadata(MetadataRead::Strict) {
             Ok(meta) => {
                 // let go of, so that what was read is changed rather than copied
                 self.meta_read.replace(None);

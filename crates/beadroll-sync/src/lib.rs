@@ -13,11 +13,11 @@ mod tx;
 
 pub use beadroll_git::PushOutcome;
 pub use error::Error;
-pub use link::Link;
+pub use link::{Link, PublishMode};
 pub use ownership::{Mode, Settled, coordinated, forget, settle_commands, settle_pending};
 pub use synchronise::{
-    ROUNDS, Synced, adopt_published, conflict_detail, destination, pause, publish_soon,
-    publish_soon_at, publish_soon_to, refused, synchronise, unpublished_count,
+    NetworkMode, ROUNDS, Synced, adopt_published, conflict_detail, destination, pause,
+    publish_soon, publish_soon_at, publish_soon_to, refused, synchronise, unpublished_count,
 };
 pub use tx::{
     Emitter, OWNERSHIP, Spent, Tx, confirm_ownership, drop_pending, forget_receipts, locked,

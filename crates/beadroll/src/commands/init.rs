@@ -9,16 +9,28 @@ use beadroll_core::code::Code;
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::text::repr;
 use beadroll_git::{Fact, is_local_path, realpath, without_password};
+use beadroll_store::FileMode;
+use beadroll_store::RemoteSource;
 use beadroll_store::{
     Endpoint, Workspace, derived_shaped, find_workspace, remembered, uuid7, view_outline,
     write_atomic,
 };
+use beadroll_sync::NetworkMode;
 use beadroll_sync::{
     Error as SyncError, Link, publish_soon, publish_soon_to, synchronise, writing,
 };
 
 use super::import::{answer_dry_run, import_records, read_only};
 use super::{Context, Failure, Outcome, text};
+
+/// Which workspace id a tracked file records.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WorkspaceId {
+    /// Mint.
+    Mint,
+    /// Keep.
+    Keep,
+}
 
 /// `init`'s arguments.
 pub(crate) struct InitArgs {
@@ -138,8 +150,9 @@ enum Published {
 fn join_published(
     ws: &Workspace,
     remote: Option<&Endpoint>,
-    offline: bool,
+    offline: NetworkMode,
 ) -> Result<Published, Failure> {
+    let offline = matches!(offline, NetworkMode::Offline);
     if offline || view_outline(ws)?.prefix().is_some() {
         return Ok(Published::Nothing);
     }
@@ -176,7 +189,8 @@ fn join_published(
 /// kept), a workspace id (this tracker's when `keep`, as when it is already here or the remote
 /// published it, else minted) unless it names one, and `remote`, or the configured remote without a password:
 /// none is ever written back, even a hand-set one.
-fn write_tracked(ws: &Workspace, remote: Option<&OsStr>, keep: bool) -> Result<(), Failure> {
+fn write_tracked(ws: &Workspace, remote: Option<&OsStr>, keep: WorkspaceId) -> Result<(), Failure> {
+    let keep = matches!(keep, WorkspaceId::Keep);
     let settings = &ws.settings;
     let top = settings
         .fact(Fact::Toplevel)?
@@ -200,7 +214,7 @@ fn write_tracked(ws: &Workspace, remote: Option<&OsStr>, keep: bool) -> Result<(
     write_atomic(
         &Path::new(&top).join(".beadroll.json"),
         body.as_bytes(),
-        false,
+        FileMode::Checkout,
         &settings.failpoints,
     )?;
     Ok(())
@@ -218,14 +232,20 @@ struct Chosen {
 /// `origin` (`names_origin`).
 fn workspace_for(
     ctx: &Context<'_>,
-    remote: Option<&OsStr>,
-    live: Option<&Endpoint>,
-    names_origin: bool,
-    tracked: bool,
-    offline: bool,
+    given: Option<&Given>,
+    args: &InitArgs,
 ) -> Result<Chosen, Failure> {
+    let remote = given.map(|given| given.stored.as_os_str());
+    let live = given.map(|given| &given.live);
+    let names_origin = given.is_some_and(|given| given.names_origin);
+    let tracked = args.tracked;
+    let network_mode = if args.offline {
+        NetworkMode::Offline
+    } else {
+        NetworkMode::Online
+    };
     let settings = &ctx.ws.settings;
-    let (ws, joined) = match join_published(ctx.ws, live, offline)? {
+    let (ws, joined) = match join_published(ctx.ws, live, network_mode)? {
         Published::Joined(joined) => (Some(find_workspace(settings)?), Some(joined)),
         Published::Nothing => (None, None),
     };
@@ -257,7 +277,15 @@ fn workspace_for(
     } else {
         remote
     };
-    write_tracked(base, stored, has_tracker)?;
+    write_tracked(
+        base,
+        stored,
+        if has_tracker {
+            WorkspaceId::Keep
+        } else {
+            WorkspaceId::Mint
+        },
+    )?;
     Ok(Chosen {
         ws: Some(find_workspace(settings)?),
         joined,
@@ -287,7 +315,7 @@ fn given_remote(
     // a configured remote's name wins over a same-named path, origin's included; origin's own
     // URL is origin, reached as origin is (its own push URL included), as every command after
     // reaches it, whether the file stores it by name or no file is written
-    let live = ctx.ws.resolve_endpoint(&typed, true)?;
+    let live = ctx.ws.resolve_endpoint(&typed, RemoteSource::Typed)?;
     let names_origin = live.name.as_deref() == Some(OsStr::new("origin"));
     let stored = if args.tracked {
         stored_remote(ctx.ws, &typed, &live)?
@@ -315,7 +343,7 @@ struct Given {
 fn publication_note(ws: &Workspace, live: Option<&Endpoint>) -> Result<Option<String>, Failure> {
     let warning = match live {
         Some(remote) => publish_soon_to(ws, remote),
-        None => publish_soon(ws, false, None),
+        None => publish_soon(ws, NetworkMode::Online, None),
     };
     if warning.is_some() {
         return Ok(warning);
@@ -345,14 +373,7 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
     let mut notes = Vec::new();
     let given = given_remote(ctx, &args, &mut notes)?;
     let live = given.as_ref().map(|given| given.live.clone());
-    let Chosen { ws: chosen, joined } = workspace_for(
-        ctx,
-        given.as_ref().map(|given| given.stored.as_os_str()),
-        live.as_ref(),
-        given.as_ref().is_some_and(|given| given.names_origin),
-        args.tracked,
-        args.offline,
-    )?;
+    let Chosen { ws: chosen, joined } = workspace_for(ctx, given.as_ref(), &args)?;
     let ws: &Workspace = chosen.as_ref().unwrap_or(ctx.ws);
     let prefix_flag = args.prefix.as_deref().map(text).transpose()?;
     let (prefix, imported) = writing(ws, ctx.actor, |tx| -> Result<_, Failure> {

@@ -11,6 +11,7 @@ use beadroll_sync::writing_spent;
 use super::{
     Context, Failure, Outcome, arg_text, encodable, need_tracker, read_utf8, resolve_arg, view_of,
 };
+use crate::commands::args::TextValidity;
 
 /// `comments`' arguments.
 pub(crate) struct CommentArgs {
@@ -106,7 +107,11 @@ fn add(
             data.insert("author".into(), Value::from(author.as_str()));
         }
         let event = tx.emit("comment", Some(&uid), data, None)?;
-        encodable(valid && author.as_ref().is_none_or(|(_, ok)| *ok))?;
+        encodable(if valid && author.as_ref().is_none_or(|(_, ok)| *ok) {
+            TextValidity::Utf8
+        } else {
+            TextValidity::Invalid
+        })?;
         let id = event.get("id").map(str_of).unwrap_or_default();
         Ok::<_, Failure>((id, issue_key))
     })?;

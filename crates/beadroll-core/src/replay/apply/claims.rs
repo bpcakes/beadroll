@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use super::{CLAIM_GENERATION_EXHAUSTED, Ctx, Held};
 use crate::event::Field;
 use crate::id::EventId;
 use crate::journal::Event;
@@ -10,7 +11,14 @@ use crate::json::Value;
 use crate::op::{Claiming, Ending, IntegerField};
 use crate::state::{Claim, EndedClaim, Issue, LostClaim, Provisional};
 
-use super::{CLAIM_GENERATION_EXHAUSTED, Ctx, Held};
+/// How an issue and its claim end.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum EndingKind {
+    /// Delete.
+    Delete,
+    /// Close.
+    Close,
+}
 
 pub(super) fn claim(
     c: &Ctx<'_>,
@@ -97,7 +105,8 @@ pub(super) fn release(c: &Ctx<'_>, issue: &mut Issue, ending: &Ending) -> bool {
 }
 
 /// `close` (`closing`) and `delete`: both may name the claim they end.
-pub(super) fn close(c: &Ctx<'_>, issue: &mut Issue, ending: &Ending, closing: bool) -> bool {
+pub(super) fn close(c: &Ctx<'_>, issue: &mut Issue, ending: &Ending, closing: EndingKind) -> bool {
+    let closing = matches!(closing, EndingKind::Close);
     let named = ending.claim.as_deref().filter(|named| !named.is_empty());
     let named_id = named.and_then(EventId::parse);
     let current = c.claim.is_some_and(|held| Some(held.id) == named_id);

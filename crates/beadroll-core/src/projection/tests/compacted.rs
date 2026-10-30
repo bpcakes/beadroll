@@ -4,19 +4,20 @@
 //! knew when it was last compacted, and the write-back that finds them so compacts it again. Read
 //! back on either side, it answers as replay.
 
-use crate::json::{Object, Value};
-
 use super::super::{COMPACTED, Extended, Projection, Record, Unreadable, project};
 use super::hostile::{HERE, event, fields, journal, record};
 use super::shown::replayed;
 use super::{TextFile, WriteBack, answers_alike, read_back, same, whole};
+use crate::journal::JournalOrder;
+use crate::json::{Object, Value};
+use crate::projection::parts::Compaction;
 
 /// An `init`, then issues 2 to `last` created one after another by this machine.
 fn created(last: u128) -> Vec<Record> {
     let mut records = vec![record(
         event(1, HERE, &[], "init", 1, Object::new()),
         HERE,
-        true,
+        JournalOrder::Sequenced,
     )];
     for n in 2..=last {
         let mut create = fields("first");
@@ -24,7 +25,7 @@ fn created(last: u128) -> Vec<Record> {
         records.push(record(
             event(n, HERE, &[n - 1], "create", n, create),
             HERE,
-            true,
+            JournalOrder::Sequenced,
         ));
     }
     records
@@ -35,7 +36,7 @@ fn retitle(n: u128) -> Record {
     record(
         event(n, HERE, &[n - 1], "set", 2, fields(&format!("title {n}"))),
         HERE,
-        true,
+        JournalOrder::Sequenced,
     )
 }
 
@@ -101,12 +102,12 @@ fn a_projection_of_one_event_compacts_at_the_next_and_one_of_none_has_nothing_to
 fn bytes_that_say_more_events_were_compacted_than_are_known_never_read_as_a_projection() {
     let mut projection = project(journal(&created(9))).unwrap();
     projection.compacted = projection.known() + 1;
-    let (encoded, _) = projection.encode_with(0, false);
+    let (encoded, _) = projection.encode_with(0, Compaction::Keep);
     assert_eq!(
         Projection::decode(encoded).unwrap_err(),
         Unreadable("the events last compacted")
     );
     projection.compacted = projection.known();
-    let (encoded, _) = projection.encode_with(0, false);
+    let (encoded, _) = projection.encode_with(0, Compaction::Keep);
     assert!(Projection::decode(encoded).is_ok());
 }

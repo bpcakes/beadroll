@@ -8,12 +8,6 @@
 //! whose machines do little but claim, release, take over, close and reopen ([`next_batch`]); each
 //! as replay makes it and as a projection read back from its bytes, its texts read in, makes it.
 
-use crate::id::EventId;
-use crate::journal::Journal;
-use crate::json::{Format, Object, Value, write};
-use crate::replay::replay;
-use crate::state::{Ended, EndedClaim, LostClaim, Provisional, Stale, State, Texts};
-
 use super::super::{Extended, Projection, project};
 use super::awaiting::fnv;
 use super::hostile::{HERE, base, event, id, journal, record};
@@ -22,6 +16,12 @@ use super::{
     MACHINES, TextFile, World, WriteBack, equal, load, read_back, read_in, records, same, str_of,
     whole,
 };
+use crate::id::EventId;
+use crate::journal::Journal;
+use crate::journal::JournalOrder;
+use crate::json::{Format, Object, Value, write};
+use crate::replay::replay;
+use crate::state::{Ended, EndedClaim, LostClaim, Provisional, Stale, State, Texts};
 
 /// What `state` answers of each issue's ownership, a line each: its claim, its generation, the
 /// claims that ended, its offline claims, the claims that lost, the ends that came too late and its
@@ -200,14 +200,14 @@ fn an_event_that_can_add_to_an_issues_history_waits_for_its_texts_and_has_them_w
     records.push(record(
         event(4, HERE, &[3], "claim", 2, online.clone()),
         HERE,
-        true,
+        JournalOrder::Sequenced,
     ));
     let mut naming = Object::new();
     naming.insert("claim".into(), Value::from(id(4)));
     records.push(record(
         event(5, HERE, &[4], "release", 2, naming.clone()),
         HERE,
-        true,
+        JournalOrder::Sequenced,
     ));
     let (encoded, _) = project(journal(&records)).unwrap().encode(0);
     let read = Projection::decode(encoded.clone()).unwrap();
@@ -228,7 +228,11 @@ fn an_event_that_can_add_to_an_issues_history_waits_for_its_texts_and_has_them_w
         ("close", closing, true),
         ("delete", Object::new(), true),
     ] {
-        let batch = vec![record(event(6, HERE, &[5], op, 2, data), HERE, true)];
+        let batch = vec![record(
+            event(6, HERE, &[5], op, 2, data),
+            HERE,
+            JournalOrder::Sequenced,
+        )];
         let declined = read.clone().extend(batch.clone()).unwrap();
         assert!(matches!(declined, Extended::Replay), "{op}");
         let mut texts = read.clone();
@@ -260,13 +264,17 @@ fn texts_ending_another_claim_than_the_issues_are_never_read_in() {
     let mut records = base();
     let mut online = Object::new();
     online.insert("mode".into(), Value::from("online"));
-    records.push(record(event(4, HERE, &[3], "claim", 2, online), HERE, true));
+    records.push(record(
+        event(4, HERE, &[3], "claim", 2, online),
+        HERE,
+        JournalOrder::Sequenced,
+    ));
     let mut naming = Object::new();
     naming.insert("claim".into(), Value::from(id(4)));
     records.push(record(
         event(5, HERE, &[4], "release", 2, naming),
         HERE,
-        true,
+        JournalOrder::Sequenced,
     ));
     let (encoded, _) = project(journal(&records)).unwrap().encode(0);
     let state = Projection::decode(encoded.clone()).unwrap().state().clone();

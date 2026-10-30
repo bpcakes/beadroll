@@ -12,6 +12,7 @@ use beadroll_core::order::causal_order;
 use beadroll_core::state::State;
 use beadroll_core::text::{printed_text, str_of};
 use beadroll_core::time::event_time;
+use beadroll_store::FileMode;
 use beadroll_store::{
     Unreadable, load_journal, machine_aliases, projection, read_json_text, view_outline,
     write_atomic,
@@ -212,6 +213,11 @@ fn record_alias(ctx: &Context<'_>, name: &OsStr) -> Result<(), Failure> {
     aliases.insert(ident.to_owned(), Value::from(alias));
     let written = json::write(&Value::from(aliases), Format::INDENTED)
         .map_err(|e| Failure::new(Code::Validation, e.to_string()))?;
-    write_atomic(&path, written.as_bytes(), true, &ctx.ws.settings.failpoints)?;
+    write_atomic(
+        &path,
+        written.as_bytes(),
+        FileMode::Private,
+        &ctx.ws.settings.failpoints,
+    )?;
     Ok(())
 }

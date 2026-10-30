@@ -5,6 +5,7 @@
 //! added again.
 
 use super::{answers, projection};
+use crate::storage::projection::ReadPath;
 
 /// The reads that answer from edges beside those `answers` makes: the children of a parent, a
 /// subtree's readiness, a tree of dependencies and the cycles.
@@ -40,7 +41,7 @@ fn edges_and_their_metadata_answer_alike_from_the_texts_and_from_the_journal() {
     std::fs::write(&first, records.join("\n") + "\n").unwrap();
     a.bead(["import", first.to_str().unwrap()]);
     let keys: Vec<String> = ["ex-e", "ex-c", "ex-d"].map(str::to_owned).to_vec();
-    let _ = answers(&a, &keys, false);
+    let _ = answers(&a, &keys, ReadPath::Projection);
     assert!(projection(&a).is_file(), "a read keeps a projection");
     // the key ex-c waits for arrives after the projection was written: its edge is made in ex-c,
     // whose texts are only in the text file
@@ -52,9 +53,9 @@ fn edges_and_their_metadata_answer_alike_from_the_texts_and_from_the_journal() {
     a.bead(["dep", "add", "ex-e", "ex-d", "--type", "related"]);
     a.bead(["dep", "remove", "ex-d", "ex-c", "--type", "tracks"]);
     a.bead(["dep", "add", "ex-d", "ex-c", "--type", "tracks"]);
-    let kept = (answers(&a, &keys, false), edge_reads(&a));
+    let kept = (answers(&a, &keys, ReadPath::Projection), edge_reads(&a));
     let _ = std::fs::remove_file(projection(&a));
-    let replayed = (answers(&a, &keys, true), edge_reads(&a));
+    let replayed = (answers(&a, &keys, ReadPath::Replay), edge_reads(&a));
     assert_eq!(kept, replayed);
     let export = &kept.0[4];
     for member in [

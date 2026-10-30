@@ -10,6 +10,7 @@ use std::fs::File;
 use std::io;
 use std::process::Child;
 
+use crate::KillScope;
 use crate::error::{Error, IoError};
 use crate::runner::{Git, Output, finished, kill};
 
@@ -68,7 +69,7 @@ impl Running {
 impl Drop for Running {
     fn drop(&mut self) {
         if let Some(mut child) = self.child.take() {
-            kill(child.id(), true);
+            kill(child.id(), KillScope::ProcessGroup);
             let _ = child.wait();
         }
     }

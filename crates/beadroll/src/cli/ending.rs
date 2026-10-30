@@ -10,11 +10,15 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use beadroll_core::json::{Object, Value};
+use beadroll_store::PublicationState;
 use beadroll_store::Workspace;
+use beadroll_sync::NetworkMode;
 use beadroll_sync::Spent;
 use beadroll_test_support::{Machine, Sandbox, built_bead, git};
 
 use super::{Answer, Failure, Held, Line, Outcome, Tone, ended_with, finish};
+use crate::cli::AfterCommand;
+use crate::cli::RunLifetime;
 use crate::testing::{settings, tracker, workspace};
 
 /// Something a command held, which counts how often it was freed.
@@ -38,9 +42,9 @@ fn holding_a_probe() -> (Outcome, Arc<AtomicUsize>) {
 }
 
 /// How often the probe was freed by the time `ended_with` returned, and whether it said it kept it.
-fn ending(publishing: bool, exits: bool) -> (bool, usize) {
+fn ending(after_command: AfterCommand, run_lifetime: RunLifetime) -> (bool, usize) {
     let (outcome, freed) = holding_a_probe();
-    let kept = ended_with(outcome.held, publishing, exits);
+    let kept = ended_with(outcome.held, after_command, run_lifetime);
     (kept, freed.load(Ordering::SeqCst))
 }
 
@@ -49,28 +53,48 @@ fn ending(publishing: bool, exits: bool) -> (bool, usize) {
 /// whatever the run does next.
 #[test]
 fn what_a_command_held_is_kept_only_by_a_process_that_ends_with_it_and_publishes_nothing() {
-    assert_eq!(ending(false, true), (true, 0));
-    assert_eq!(ending(true, true), (false, 1));
-    assert_eq!(ending(false, false), (false, 1));
-    assert_eq!(ending(true, false), (false, 1));
-    assert!(!ended_with(None, false, true));
+    assert_eq!(
+        ending(AfterCommand::Return, RunLifetime::Process),
+        (true, 0)
+    );
+    assert_eq!(
+        ending(AfterCommand::Publish, RunLifetime::Process),
+        (false, 1)
+    );
+    assert_eq!(
+        ending(AfterCommand::Return, RunLifetime::Embedded),
+        (false, 1)
+    );
+    assert_eq!(
+        ending(AfterCommand::Publish, RunLifetime::Embedded),
+        (false, 1)
+    );
+    assert!(!ended_with(
+        None,
+        crate::cli::AfterCommand::Return,
+        crate::cli::RunLifetime::Process
+    ));
     // a transaction is held as a state is
     let spent: Option<Box<dyn Held>> = Some(Box::new(Spent::default()));
-    assert!(ended_with(spent, false, true));
+    assert!(ended_with(
+        spent,
+        crate::cli::AfterCommand::Return,
+        crate::cli::RunLifetime::Process
+    ));
 }
 
 /// Runs `finish` on an outcome holding a probe, for a command that wrote (`wrote`) or did not, as
 /// the process ends with it when `exits`: what it answered, and how often the probe was freed.
 fn finishing(
     ws: &Workspace,
-    wrote: bool,
-    offline: bool,
-    exits: bool,
+    publication_state: PublicationState,
+    network_mode: NetworkMode,
+    run_lifetime: RunLifetime,
 ) -> (Result<Option<Answer>, Failure>, Arc<AtomicUsize>) {
     let (outcome, freed) = holding_a_probe();
-    ws.set_wrote(wrote);
+    ws.set_wrote(publication_state);
     (
-        finish(outcome, Some(ws), offline, &None, exits, |_| {}),
+        finish(outcome, Some(ws), network_mode, &None, run_lifetime, |_| {}),
         freed,
     )
 }
@@ -81,10 +105,20 @@ fn finishing(
 fn a_write_that_is_not_published_keeps_what_it_held_when_the_process_ends_with_it() {
     let (sandbox, machine) = tracker();
     let ws = workspace(&machine, sandbox.origin(), &[]);
-    let (answer, freed) = finishing(&ws, true, true, true);
+    let (answer, freed) = finishing(
+        &ws,
+        PublicationState::Unpublished,
+        NetworkMode::Offline,
+        RunLifetime::Process,
+    );
     assert!(answer.is_ok_and(|answer| answer.is_some()));
     assert_eq!(freed.load(Ordering::SeqCst), 0, "kept: the process ends");
-    let (answer, freed) = finishing(&ws, true, true, false);
+    let (answer, freed) = finishing(
+        &ws,
+        PublicationState::Unpublished,
+        NetworkMode::Offline,
+        RunLifetime::Embedded,
+    );
     assert!(answer.is_ok_and(|answer| answer.is_some()));
     assert_eq!(
         freed.load(Ordering::SeqCst),
@@ -101,10 +135,20 @@ fn a_write_that_is_not_published_keeps_what_it_held_when_the_process_ends_with_i
 fn a_command_that_wrote_nothing_keeps_what_it_held_though_it_is_not_offline() {
     let (sandbox, machine) = tracker();
     let ws = workspace(&machine, sandbox.origin(), &[]);
-    let (answer, freed) = finishing(&ws, false, false, true);
+    let (answer, freed) = finishing(
+        &ws,
+        PublicationState::Published,
+        NetworkMode::Online,
+        RunLifetime::Process,
+    );
     assert!(answer.is_ok_and(|answer| answer.is_some()));
     assert_eq!(freed.load(Ordering::SeqCst), 0, "kept: nothing to publish");
-    let (answer, freed) = finishing(&ws, false, false, false);
+    let (answer, freed) = finishing(
+        &ws,
+        PublicationState::Published,
+        NetworkMode::Online,
+        RunLifetime::Embedded,
+    );
     assert!(answer.is_ok_and(|answer| answer.is_some()));
     assert_eq!(
         freed.load(Ordering::SeqCst),
@@ -139,11 +183,21 @@ fn a_write_on_a_tracker_with_no_remote_keeps_what_it_held_when_the_process_ends_
         matches!(ws.endpoint(None), Ok(None)),
         "a tracker with no remote"
     );
-    let (answer, freed) = finishing(&ws, true, false, true);
+    let (answer, freed) = finishing(
+        &ws,
+        PublicationState::Unpublished,
+        NetworkMode::Online,
+        RunLifetime::Process,
+    );
     let (_, lines) = answer.expect("finished").expect("answered");
     assert_eq!(freed.load(Ordering::SeqCst), 0, "kept: the process ends");
     assert_eq!(lines, Some(Vec::new()), "nothing to say of publishing");
-    let (answer, freed) = finishing(&ws, true, false, false);
+    let (answer, freed) = finishing(
+        &ws,
+        PublicationState::Unpublished,
+        NetworkMode::Online,
+        RunLifetime::Embedded,
+    );
     assert!(answer.is_ok_and(|answer| answer.is_some()));
     assert_eq!(
         freed.load(Ordering::SeqCst),
@@ -166,7 +220,12 @@ fn a_write_whose_remote_cannot_be_chosen_keeps_what_it_held_and_says_why() {
     config.insert("remote".into(), Value::from(elsewhere));
     let ws = without_origin(&machine, config);
     assert!(ws.endpoint(None).is_err(), "two remotes chosen");
-    let (answer, freed) = finishing(&ws, true, false, true);
+    let (answer, freed) = finishing(
+        &ws,
+        PublicationState::Unpublished,
+        NetworkMode::Online,
+        RunLifetime::Process,
+    );
     let (_, lines) = answer.expect("finished").expect("answered");
     assert_eq!(
         freed.load(Ordering::SeqCst),
@@ -194,8 +253,15 @@ fn a_write_given_a_remote_is_published_there_and_lets_go_of_what_it_held_first()
     let with_origin = workspace(&machine, sandbox.origin(), &[]);
     for ws in [with_origin, without_origin(&machine, Object::new())] {
         let (outcome, freed) = holding_a_probe();
-        ws.set_wrote(true);
-        let answer = finish(outcome, Some(&ws), false, &nowhere, true, |_| {});
+        ws.set_wrote(PublicationState::Unpublished);
+        let answer = finish(
+            outcome,
+            Some(&ws),
+            NetworkMode::Online,
+            &nowhere,
+            RunLifetime::Process,
+            |_| {},
+        );
         let (_, lines) = answer.expect("finished").expect("answered");
         assert_eq!(
             freed.load(Ordering::SeqCst),
@@ -243,14 +309,21 @@ fn a_write_that_publishes_lets_go_of_what_it_held_before_the_publish_reads_a_sta
     let held = format!("projection.read=pause-until({})", gate.display());
     let ws = workspace(&machine, sandbox.origin(), &[("BEAD_FAILPOINTS", &held)]);
     let (outcome, freed) = holding_a_probe();
-    ws.set_wrote(true);
+    ws.set_wrote(PublicationState::Unpublished);
     let finished = AtomicUsize::new(0);
     let (answer, met) = std::thread::scope(|scope| {
         let meeting = scope.spawn(|| {
             let done = || finished.load(Ordering::SeqCst) > 0;
             meet(&gate, &done, || freed.load(Ordering::SeqCst))
         });
-        let answer = finish(outcome, Some(&ws), false, &None, true, |_| {});
+        let answer = finish(
+            outcome,
+            Some(&ws),
+            NetworkMode::Online,
+            &None,
+            RunLifetime::Process,
+            |_| {},
+        );
         finished.store(1, Ordering::SeqCst);
         let met = meeting
             .join()

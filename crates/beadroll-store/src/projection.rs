@@ -44,21 +44,31 @@ use beadroll_core::journal::{self, Problem};
 use beadroll_core::projection::{Extended, Projection, Record, decode_state, project};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
+use file::{Held, Made};
+use sources::Sources;
 
 use crate::fs::{abandoned, content_sum, read_keyed, write_cache_parts};
+use crate::journal::ContentSums;
 use crate::journal::{
     ViewError, attempt_events, claim_files_afresh, claim_keys, folder_name, load_journal,
     load_listed, segment_files,
 };
 use crate::listing::{Keys, Stamp};
 use crate::memo::FileKey;
+use crate::projection::texts::TextFileAccess;
 use crate::workspace::Workspace;
-
-use file::{Held, Made};
-use sources::Sources;
 
 pub use sources::Sourced;
 pub use texts::texts_path;
+
+/// The kind of journal file a projection records.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum JournalFile {
+    /// Attempt.
+    Attempt,
+    /// Segment.
+    Segment,
+}
 
 /// How many bytes of texts no longer read a text file may hold beyond as many as are read, before
 /// a projection writes its texts to a new one.
@@ -144,7 +154,7 @@ fn read_wanted(
     }
     let file = state
         .texts_file()
-        .and_then(|generation| texts::open(ws, generation, false));
+        .and_then(|generation| texts::open(ws, generation, TextFileAccess::Read));
     file.is_some_and(|file| texts::read_in(&file, state, wanted))
 }
 
@@ -171,7 +181,7 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
     let segments = segment_files(ws)?;
     ws.settings.failpoints.hit("journal.after-enumerate");
     let Some(build) = ws.settings.build.as_deref() else {
-        let loaded = load_listed(ws, &segments, false)?;
+        let loaded = load_listed(ws, &segments, ContentSums::Skip)?;
         return Ok(if want == Want::Projection {
             let sources = Sources::read(ws, &segments, &loaded);
             Now::Projection(Box::new(project(loaded.journal)?), sources)
@@ -180,7 +190,7 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
         });
     };
     let stored = file::read(&projection_path(ws)).filter(|stored| stored.made.build == build);
-    if let (Some(stored), Some(seen)) = (stored, held(ws, &segments, true))
+    if let (Some(stored), Some(seen)) = (stored, held(ws, &segments, JournalFile::Segment))
         && let Some(tails) = grown(&stored.made, &seen, stored.written)
         && let Some((mut records, read)) = read_tails(ws, &tails)
         // listed once the segments are read: an attempt file is in place before a record built on
@@ -232,17 +242,17 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
             }
         }
     }
-    let loaded = load_listed(ws, &segments, true)?;
+    let loaded = load_listed(ws, &segments, ContentSums::Compute)?;
     let sources = Sources::read(ws, &segments, &loaded);
     let mut projection = project(loaded.journal)?;
     // each file as it was read: the projection is theirs
     let read = (segments.iter().zip(loaded.segments))
-        .map(|(path, (key, sum))| kept(ws, path, key, true, sum))
+        .map(|(path, (key, sum))| kept(ws, path, key, JournalFile::Segment, sum))
         .chain(
             loaded
                 .attempts
                 .iter()
-                .map(|(path, key, sum)| kept(ws, path, *key, false, *sum)),
+                .map(|(path, key, sum)| kept(ws, path, *key, JournalFile::Attempt, *sum)),
         )
         .collect::<Option<Vec<Held>>>();
     if let Some(files) = read.filter(|_| loaded.whole) {
@@ -276,9 +286,9 @@ fn kept_for(want: Want, tail: u64, size: u64) -> bool {
 
 /// The identities of `paths` now, by their paths under the store's `events`; `None` when one
 /// cannot be had (a file gone, a name that is not UTF-8): nothing is then kept of them.
-fn held(ws: &Workspace, paths: &[PathBuf], segment: bool) -> Option<Vec<Held>> {
+fn held(ws: &Workspace, paths: &[PathBuf], journal_file: JournalFile) -> Option<Vec<Held>> {
     (paths.iter())
-        .map(|path| kept(ws, path, FileKey::of(path), segment, None))
+        .map(|path| kept(ws, path, FileKey::of(path), journal_file, None))
         .collect()
 }
 
@@ -289,9 +299,10 @@ fn kept(
     ws: &Workspace,
     path: &Path,
     key: Option<FileKey>,
-    segment: bool,
+    segment: JournalFile,
     sum: Option<[u8; 16]>,
 ) -> Option<Held> {
+    let segment = matches!(segment, JournalFile::Segment);
     let path = path.strip_prefix(&ws.events_dir).ok()?.to_str()?.to_owned();
     Some(Held {
         path,
@@ -396,7 +407,7 @@ fn resummed(ws: &Workspace, path: &Path, was: &Held, now: &Held) -> Option<Held>
     if was.sum != Some(content_sum(&data)) {
         return None;
     }
-    kept(ws, path, Some(key), false, was.sum)
+    kept(ws, path, Some(key), JournalFile::Attempt, was.sum)
 }
 
 /// The machine whose folder holds the file at `path` (`<machine>/...`).
@@ -436,7 +447,13 @@ fn read_tails(ws: &Workspace, tails: &[Tail]) -> Option<(Vec<Record>, Vec<Held>)
                 sequenced: true,
             });
         }
-        read.push(kept(ws, &path, Some(key), true, Some(content_sum(&data)))?);
+        read.push(kept(
+            ws,
+            &path,
+            Some(key),
+            JournalFile::Segment,
+            Some(content_sum(&data)),
+        )?);
     }
     problems.is_empty().then_some((records, read))
 }
@@ -457,7 +474,7 @@ fn attempts(ws: &Workspace) -> Result<Option<Listed>, ViewError> {
     let (paths, stamp) = claim_files_afresh(ws)?;
     let keys = claim_keys(ws, &paths);
     let held = (paths.iter().zip(keys.iter().copied()))
-        .map(|(path, key)| kept(ws, path, key, false, None))
+        .map(|(path, key)| kept(ws, path, key, JournalFile::Attempt, None))
         .collect::<Option<Vec<Held>>>();
     Ok(held.map(|held| Listed {
         paths,
@@ -523,7 +540,13 @@ fn appended(
                 sequenced: false,
             });
         }
-        files.extend(kept(ws, path, Some(key), false, Some(content_sum(&data))));
+        files.extend(kept(
+            ws,
+            path,
+            Some(key),
+            JournalFile::Attempt,
+            Some(content_sum(&data)),
+        ));
     }
     if !problems.is_empty() {
         return None;
@@ -567,7 +590,7 @@ fn save(ws: &Workspace, mut made: Made, projection: &mut Projection) {
     ws.settings.failpoints.hit("projection.before-save");
     let generation = projection.state().texts_file();
     if let Some(generation) = generation
-        && let Some(file) = texts::open(ws, generation, true)
+        && let Some(file) = texts::open(ws, generation, TextFileAccess::Append)
         && file.lock().is_ok()
         && let Ok(len) = file.metadata().map(|meta| meta.len())
     {

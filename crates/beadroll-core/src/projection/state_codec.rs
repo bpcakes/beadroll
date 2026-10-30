@@ -23,6 +23,8 @@
 
 use std::collections::HashMap;
 
+use super::codec::{Reader, Unreadable, Writer};
+use super::text_codec::summary;
 use crate::event::Field;
 use crate::id::EventId;
 use crate::json::{Int, Value};
@@ -31,9 +33,6 @@ use crate::state::{
     Awaiting, Claim, DepTags, Edge, Ended, IdMap, IdSet, Integrity, Issue, Knowledge, Meta, Origin,
     Provisional, Rename, Stamps, State, Stored, Target, TextPlace, Texts, VecMap, is_text,
 };
-
-use super::codec::{Reader, Unreadable, Writer};
-use super::text_codec::summary;
 
 /// The place of texts written nowhere: no texts' sum, so never read as an issue's.
 const NOWHERE: TextPlace = TextPlace {
@@ -238,8 +237,8 @@ pub(super) fn write_issue(w: &mut Writer, issue: &Issue, place: TextPlace, knowl
     w.value(&stamps.created_at);
     w.value(&stamps.created_by);
     w.value(&stamps.updated_at);
-    w.flag(stamps.own_closed_at);
-    w.flag(stamps.own_close_reason);
+    w.byte(u8::from(stamps.own_closed_at));
+    w.byte(u8::from(stamps.own_close_reason));
     let registers: Vec<_> = (issue.reg.iter())
         .filter(|(field, _)| !is_text(**field))
         .collect();
@@ -285,7 +284,7 @@ pub(super) fn write_issue(w: &mut Writer, issue: &Issue, place: TextPlace, knowl
     for field in &stored.disputed {
         w.count(field.index());
     }
-    w.flag(stored.ended.is_some());
+    w.byte(u8::from(stored.ended.is_some()));
     if let Some(ended) = &stored.ended {
         w.name(&ended.by);
         write_how(w, ended.how);
@@ -447,7 +446,7 @@ struct Ownership {
 }
 
 fn write_ownership(w: &mut Writer, issue: &Issue) {
-    w.flag(issue.claim.is_some());
+    w.byte(u8::from(issue.claim.is_some()));
     if let Some(claim) = &issue.claim {
         write_claim(w, claim);
     }

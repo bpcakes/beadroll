@@ -13,6 +13,15 @@ use crate::error::Error;
 use crate::fs::{fsync, json_text, private_dir};
 use crate::settings::{Clock, Settings};
 
+/// Whether a missing machine identity may be created.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IdentityMode {
+    /// Existing.
+    Existing,
+    /// Create.
+    Create,
+}
+
 /// A UUIDv7 event id: clock milliseconds followed by random bits. Clock order is for display;
 /// deps determine causality.
 pub fn uuid7(clock: &Clock) -> String {
@@ -40,7 +49,8 @@ pub fn hex_token(n: usize) -> String {
 /// use. The hostname stays in a local alias, never in events. The file is written whole under a
 /// temporary name and then linked into place, so it is never seen half done, and the first writer
 /// wins.
-pub fn replica_id(settings: &Settings, create: bool) -> Result<Option<String>, Error> {
+pub fn replica_id(settings: &Settings, create: IdentityMode) -> Result<Option<String>, Error> {
+    let create = matches!(create, IdentityMode::Create);
     let home = settings.home()?;
     let path = home.join("replica.json");
     if !path.exists() {

@@ -5,6 +5,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::PathBuf;
 
 use beadroll_store::Endpoint;
+use beadroll_sync::PublishMode;
 use beadroll_sync::{Error, Link, PushOutcome, locked};
 use beadroll_test_support::{Machine, git};
 
@@ -67,7 +68,7 @@ fn a_lost_reply_drops_acceptance_whatever_the_exit_status() {
             let mut link = Link::new(&ws, &Endpoint::at(origin))?;
             let fetched = link.fetch()?;
             link.merge(fetched.as_deref())?;
-            link.publish(fetched.as_deref(), "fence", &[], true)
+            link.publish(fetched.as_deref(), "fence", &[], PublishMode::Fence)
         })
         .unwrap();
         assert_eq!(outcome, answer, "{failpoints:?}");

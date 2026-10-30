@@ -37,7 +37,7 @@ pub use error::{Error, IoError, strerror};
 pub use format::{StoredFormat, stored_format};
 pub use objects::{Object, Objects, TreeListing, list_tree, list_tree_with_subtrees, root_tree};
 pub use path::{exists, realpath};
-pub use runner::{Env, Git, Output};
+pub use runner::{Env, Git, KillScope, Output};
 pub use session::NoAnswer;
 pub use signal::signal_name;
 pub use text::path_arg;

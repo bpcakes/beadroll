@@ -45,14 +45,24 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 
 use indexmap::IndexMap;
 
+use super::{Projection, Record, small};
 use crate::id::EventId;
+use crate::journal::JournalOrder;
 use crate::journal::{Event, Journal, Parts, Rest};
 use crate::json::Value;
 use crate::op::Op;
+use crate::replay::Contents;
 use crate::replay::{Names, Room, apply_one, finish_some, observe_one};
 use crate::state::{KeySpace, Texts, is_text};
 
-use super::{Projection, Record, small};
+/// How an operation uses issue texts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TextAccess {
+    /// Read.
+    Read,
+    /// Change.
+    Change,
+}
 
 /// What became of a projection that events were applied to.
 #[derive(Debug)]
@@ -77,17 +87,7 @@ impl Projection {
         // Read and judged as a journal reads and judges them: every record a new, valid event of
         // the machine whose folder held it.
         let count = records.len();
-        let mut journal = Journal::new();
-        for record in records {
-            let Record {
-                value,
-                replica,
-                origin,
-                sequenced,
-            } = record;
-            journal.add(value, &replica, &origin, sequenced);
-        }
-        journal.settle();
+        let journal = read_batch(records);
         // an id replay reported a record of, held or not (found only in another machine's journal)
         let reported: HashSet<EventId> = (self.state.integrity.iter())
             .filter_map(|entry| entry.event.as_deref().and_then(EventId::parse))
@@ -150,7 +150,16 @@ impl Projection {
                 .filter_map(|dep| knowledge.events.get_index_of(dep))
                 .map(small)
                 .collect();
-            if observe_one(&mut knowledge, placed, &causes, what, false, &mut room).is_some() {
+            if observe_one(
+                &mut knowledge,
+                placed,
+                &causes,
+                what,
+                Contents::Unique,
+                &mut room,
+            )
+            .is_some()
+            {
                 return Ok(Extended::Replay);
             }
             apply_one(
@@ -216,7 +225,7 @@ impl Projection {
                 Op::Claim(_) | Op::Release(_) | Op::Close(_) | Op::Reopen => (true, false),
                 Op::Create(making) if !self.state.by_key.contains_key(&making.key) => {
                     for uid in self.state.awaiting.waiting(&making.key) {
-                        if !self.texts_here(uid, true) {
+                        if !self.texts_here(uid, TextAccess::Change) {
                             return false;
                         }
                     }
@@ -226,7 +235,14 @@ impl Projection {
             };
             let issue = (what.issue.as_deref()).and_then(EventId::parse);
             if let Some(uid) = issue.filter(|_| needs)
-                && !self.texts_here(uid, changes)
+                && !self.texts_here(
+                    uid,
+                    if changes {
+                        TextAccess::Change
+                    } else {
+                        TextAccess::Read
+                    },
+                )
             {
                 return false;
             }
@@ -237,7 +253,8 @@ impl Projection {
     /// Whether issue `uid`'s texts are in it, if it is an issue, to be written again when `changes`:
     /// `false` when they are only in the text file. Texts read in that change are then to be placed
     /// anew, which marks the issue; otherwise it is left as it is.
-    fn texts_here(&mut self, uid: EventId, changes: bool) -> bool {
+    fn texts_here(&mut self, uid: EventId, changes: TextAccess) -> bool {
+        let changes = matches!(changes, TextAccess::Change);
         match self.state.issues.get(&uid).map(|issue| &issue.texts) {
             None | Some(Texts::Here) => true,
             Some(Texts::There(_)) => false,
@@ -331,4 +348,29 @@ impl Projection {
             }
         }
     }
+}
+
+/// Reads a candidate batch by the same validation and ordering rules as a journal.
+fn read_batch(records: Vec<Record>) -> Journal {
+    let mut journal = Journal::new();
+    for record in records {
+        let Record {
+            value,
+            replica,
+            origin,
+            sequenced,
+        } = record;
+        journal.add(
+            value,
+            &replica,
+            &origin,
+            if sequenced {
+                JournalOrder::Sequenced
+            } else {
+                JournalOrder::Attempt
+            },
+        );
+    }
+    journal.settle();
+    journal
 }

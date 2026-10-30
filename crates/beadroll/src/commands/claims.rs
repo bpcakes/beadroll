@@ -6,6 +6,7 @@ use beadroll_core::json::{Int, Object, Value};
 use beadroll_core::state::Issue;
 use beadroll_core::text::str_of;
 use beadroll_core::time::event_time;
+use beadroll_store::MetadataRead;
 use beadroll_store::{machine_aliases, view_outline};
 
 use super::{Context, Failure, Line, Outcome, Tone, need_tracker};
@@ -78,7 +79,11 @@ pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
             rows.push(entry);
         }
     }
-    let synced = ctx.ws.metadata(false)?.value("last_sync").cloned();
+    let synced = ctx
+        .ws
+        .metadata(MetadataRead::Lenient)?
+        .value("last_sync")
+        .cloned();
     let mut lines: Vec<Line> = rows.iter().map(line).collect();
     if lines.is_empty() {
         lines.push("Nothing is claimed".into());

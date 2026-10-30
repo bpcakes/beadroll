@@ -8,8 +8,6 @@
 
 mod apply;
 
-pub(crate) use apply::Names;
-
 use std::collections::{HashMap, HashSet};
 
 use crate::id::EventId;
@@ -19,6 +17,17 @@ use crate::op::Op;
 use crate::order::Order;
 use crate::state::{Integrity, KeySpace, Knowledge, Place, State, actor_label, raise, reached};
 use crate::time::event_time;
+
+pub(crate) use apply::Names;
+
+/// Whether one event id was found with several contents.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Contents {
+    /// Unique.
+    Unique,
+    /// Doubled.
+    Doubled,
+}
 
 /// Folds `journal` into state. Returns KEY_SPACE only when a renamed duplicate has no free key.
 pub fn replay(journal: Journal) -> Result<State, KeySpace> {
@@ -160,7 +169,18 @@ fn observe(
             continue;
         };
         let doubled = quarantined.contains(&id);
-        if let Some(reason) = observe_one(k, at, order.causes(at), what, doubled, &mut room) {
+        if let Some(reason) = observe_one(
+            k,
+            at,
+            order.causes(at),
+            what,
+            if doubled {
+                Contents::Doubled
+            } else {
+                Contents::Unique
+            },
+            &mut room,
+        ) {
             inert.insert(at, reason);
         }
     }
@@ -182,9 +202,10 @@ pub(crate) fn observe_one(
     at: usize,
     causes: &[u32],
     what: &Rest,
-    doubled: bool,
+    doubled: Contents,
     room: &mut Room,
 ) -> Option<String> {
+    let doubled = matches!(doubled, Contents::Doubled);
     let Knowledge {
         events,
         replicas,

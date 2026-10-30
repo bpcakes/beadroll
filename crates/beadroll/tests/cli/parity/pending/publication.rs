@@ -6,6 +6,15 @@ use beadroll_test_support::{code, parse_json};
 use super::super::on_remote;
 use super::{durable_inputs, id, json, published_three};
 
+/// How a lost ownership acknowledgement is recovered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Recovery {
+    /// RetryRound.
+    RetryRound,
+    /// Restart.
+    Restart,
+}
+
 /// AG01: publication clears the pending-write flag even when saving its counts fails. Local
 /// appends, init's own publication and coordinated ownership must all retain committed success.
 #[test]
@@ -102,16 +111,17 @@ fn assert_result(command: &str, result: &Value, key: &str) {
 /// direct confirmation path. Its successful result survives a failed count save too.
 #[test]
 fn ah01_a_claim_recovered_after_a_lost_reply_keeps_its_result() {
-    recovered_claim_keeps_result(false);
+    recovered_claim_keeps_result(Recovery::RetryRound);
 }
 
 /// The matching receipt of a stopped invocation is the other accepted recovery path.
 #[test]
 fn ah01_an_earlier_invocations_accepted_receipt_keeps_its_result() {
-    recovered_claim_keeps_result(true);
+    recovered_claim_keeps_result(Recovery::Restart);
 }
 
-fn recovered_claim_keeps_result(restart: bool) {
+fn recovered_claim_keeps_result(restart: Recovery) {
+    let restart = matches!(restart, Recovery::Restart);
     let sandbox = crate::sandbox();
     let r = crate::rust_only(&sandbox, "r");
     let (meta, original, segment, published) = published_three(&r);

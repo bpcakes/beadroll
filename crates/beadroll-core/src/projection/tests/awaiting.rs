@@ -5,12 +5,6 @@
 //! scenario expects, and the digest of the seeded histories, are what replay made of them before
 //! the index, at cdf311f: the index changes the work and nothing it makes.
 
-use crate::id::EventId;
-use crate::json::{Format, Object, Value, write};
-use crate::replay::replay;
-use crate::state::{Rename, State, asked};
-use crate::time::event_time;
-
 use super::super::{Extended, Record, project};
 use super::hostile::{HERE, event, fields, id, journal, record};
 use super::shown::replayed;
@@ -18,6 +12,13 @@ use super::{
     MACHINES, TextFile, World, WriteBack, answers_alike, edges, equal, load, read_back, read_in,
     records, same, whole,
 };
+use crate::id::EventId;
+use crate::journal::JournalOrder;
+use crate::json::{Format, Object, Value, write};
+use crate::projection::tests::edges::AnswerCoverage;
+use crate::replay::replay;
+use crate::state::{Rename, State, asked};
+use crate::time::event_time;
 
 /// Another machine.
 pub(super) const THERE: &str = "0000bb02";
@@ -74,7 +75,11 @@ pub(super) fn at(
     issue: u128,
     data: Object,
 ) -> Record {
-    record(event(n, replica, deps, op, issue, data), replica, true)
+    record(
+        event(n, replica, deps, op, issue, data),
+        replica,
+        JournalOrder::Sequenced,
+    )
 }
 
 /// What every scenario starts from: an `init`, and an issue the other machine made after it, so that
@@ -868,7 +873,15 @@ fn histories_heavy_in_imports_that_wait_agree_every_way_and_with_replay_before_t
             let full = project(load(&world, &held)).unwrap();
             let replayed = replay(load(&world, &held)).unwrap();
             assert!(same(full.state(), &replayed) && answers_alike(&full, &replayed));
-            answered = edges::fold(answered, full.state(), n == 49);
+            answered = edges::fold(
+                answered,
+                full.state(),
+                if n == 49 {
+                    AnswerCoverage::EveryWay
+                } else {
+                    AnswerCoverage::Direct
+                },
+            );
             let records = records(&world, &batch);
             tracks = tracks.map(|(mut projection, mut file, back)| {
                 if reading_back {

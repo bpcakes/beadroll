@@ -8,14 +8,23 @@
 //! file started again writes nothing or every text anew ([`raced`], roll-lqjj.44). Every machine here runs the `bead`
 //! this package builds (`rust_only`): the projection is this build's.
 
+mod deferred;
+mod edges;
+mod raced;
+
 use std::os::unix::fs::MetadataExt as _;
 use std::path::PathBuf;
 
 use beadroll_test_support::Machine;
 
-mod deferred;
-mod edges;
-mod raced;
+/// Which read path a projection test observes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ReadPath {
+    /// Projection.
+    Projection,
+    /// Replay.
+    Replay,
+}
 
 /// The reading commands whose answers are compared.
 const READS: [&[&str]; 5] = [
@@ -56,7 +65,8 @@ fn temporaries(machine: &Machine) -> Vec<String> {
 /// What `machine` answers to the reading commands, to `show` of each of `keys` (`--json`, and as
 /// a human reads it), then to the history's; with `replaying`, its projection is removed before
 /// each, so that each replays the journal.
-fn answers(machine: &Machine, keys: &[String], replaying: bool) -> Vec<String> {
+fn answers(machine: &Machine, keys: &[String], replaying: ReadPath) -> Vec<String> {
+    let replaying = matches!(replaying, ReadPath::Replay);
     let mut out = Vec::new();
     let shows: Vec<Vec<&str>> = (keys.iter())
         .flat_map(|key| [vec!["show", key, "--json"], vec!["show", key]])
@@ -108,28 +118,28 @@ fn bead_answers_alike_with_and_without_its_projection() {
     let sandbox = crate::sandbox();
     let a = crate::rust_only(&sandbox, "kept-a");
     let keys = tracker(&a);
-    let kept = answers(&a, &keys, false);
+    let kept = answers(&a, &keys, ReadPath::Projection);
     assert!(projection(&a).is_file(), "a read keeps a projection");
-    assert_eq!(answers(&a, &keys, true), kept);
+    assert_eq!(answers(&a, &keys, ReadPath::Replay), kept);
     // a damaged projection is no projection: a read replays, and writes it again
     std::fs::write(projection(&a), b"bead projection\ndamaged").unwrap();
-    assert_eq!(answers(&a, &keys, false), kept);
+    assert_eq!(answers(&a, &keys, ReadPath::Projection), kept);
     let bytes = std::fs::read(projection(&a)).unwrap();
     let made = u64::from_le_bytes(bytes[24..32].try_into().unwrap()) as usize;
     let mut flipped = bytes.clone();
     flipped[96 + made + 5] ^= 0x01; // in the state
     std::fs::write(projection(&a), &flipped).unwrap();
-    assert_eq!(answers(&a, &keys, false), kept);
+    assert_eq!(answers(&a, &keys, ReadPath::Projection), kept);
     assert_eq!(std::fs::read(projection(&a)).unwrap(), bytes);
     // damage where only a write reads: the reads answer from the state, the write replays
     let mut flipped = bytes;
     let last = flipped.len() - 1;
     flipped[last] ^= 0x01;
     std::fs::write(projection(&a), &flipped).unwrap();
-    assert_eq!(answers(&a, &keys, false), kept);
+    assert_eq!(answers(&a, &keys, ReadPath::Projection), kept);
     a.bead(["comments", "add", &keys[2], "after the damage"]);
-    let kept = answers(&a, &keys, false);
-    assert_eq!(answers(&a, &keys, true), kept);
+    let kept = answers(&a, &keys, ReadPath::Projection);
+    assert_eq!(answers(&a, &keys, ReadPath::Replay), kept);
 }
 
 #[test]
@@ -140,7 +150,7 @@ fn machines_that_sync_answer_alike_with_and_without_their_projections() {
     a.bead(["sync"]);
     let b = crate::rust_only(&sandbox, "kept-b");
     b.bead(["sync"]);
-    let _ = answers(&b, &keys, false);
+    let _ = answers(&b, &keys, ReadPath::Projection);
     // each writes and syncs in turn, and once both at once
     let created = b.bead(["create", "from b"]).expect("an issue");
     keys.push(created["id"].as_str().expect("its key").to_owned());
@@ -152,11 +162,19 @@ fn machines_that_sync_answer_alike_with_and_without_their_projections() {
     b.bead(["sync"]);
     a.bead(["sync"]);
     for machine in [&a, &b] {
-        let kept = answers(machine, &keys, false);
-        assert_eq!(answers(machine, &keys, true), kept, "{}", machine.name());
+        let kept = answers(machine, &keys, ReadPath::Projection);
+        assert_eq!(
+            answers(machine, &keys, ReadPath::Replay),
+            kept,
+            "{}",
+            machine.name()
+        );
     }
     // the same tracker, each machine naming itself in its history's answers
-    let (mut of_a, mut of_b) = (answers(&a, &keys, false), answers(&b, &keys, false));
+    let (mut of_a, mut of_b) = (
+        answers(&a, &keys, ReadPath::Projection),
+        answers(&b, &keys, ReadPath::Projection),
+    );
     of_a.truncate(of_a.len() - HISTORY.len());
     of_b.truncate(of_b.len() - HISTORY.len());
     assert_eq!(of_a, of_b);
@@ -188,17 +206,22 @@ fn ownership_histories_print_alike_with_and_without_the_projection() {
     crate::commands::ownership::plant_lost_claim(&a, first);
     a.bead(["update", first, "--notes", "a later text"]);
     for machine in [&a, &b] {
-        let kept = answers(machine, &keys, false);
-        assert_eq!(answers(machine, &keys, true), kept, "{}", machine.name());
+        let kept = answers(machine, &keys, ReadPath::Projection);
+        assert_eq!(
+            answers(machine, &keys, ReadPath::Replay),
+            kept,
+            "{}",
+            machine.name()
+        );
     }
     let shown = |key: &str| a.show(key);
     assert!(shown(first)["lost_claims"].truthy(), "{:?}", shown(first));
     assert!(shown(third)["stale"].truthy(), "{:?}", shown(third));
     // the projection a read wrote back answers the same, its histories read in from its texts
     assert!(projection(&a).is_file() && texts(&a).is_file());
-    let kept = answers(&a, &keys, false);
-    assert_eq!(answers(&a, &keys, false), kept);
-    assert_eq!(answers(&a, &keys, true), kept);
+    let kept = answers(&a, &keys, ReadPath::Projection);
+    assert_eq!(answers(&a, &keys, ReadPath::Projection), kept);
+    assert_eq!(answers(&a, &keys, ReadPath::Replay), kept);
 }
 
 #[test]
@@ -206,7 +229,7 @@ fn a_bead_killed_as_it_writes_a_projection_leaves_the_last_one() {
     let sandbox = crate::sandbox();
     let a = crate::rust_only(&sandbox, "kept-a");
     let keys = tracker(&a);
-    let _ = answers(&a, &keys, false);
+    let _ = answers(&a, &keys, ReadPath::Projection);
     let last = std::fs::read(projection(&a)).unwrap();
     a.bead(["create", "after", "--offline"]);
     // the next read takes the new record in, and is killed as it writes the projection with it
@@ -226,7 +249,10 @@ fn a_bead_killed_as_it_writes_a_projection_leaves_the_last_one() {
     assert!(listed.stdout.contains("after"), "{}", listed.stdout);
     assert_ne!(std::fs::read(projection(&a)).unwrap(), last);
     assert_eq!(temporaries(&a), Vec::<String>::new());
-    assert_eq!(answers(&a, &keys, false), answers(&a, &keys, true));
+    assert_eq!(
+        answers(&a, &keys, ReadPath::Projection),
+        answers(&a, &keys, ReadPath::Replay)
+    );
 }
 
 /// roll-lqjj.52: a bead killed as it starts the text file leaves the copy it was writing beside
@@ -240,7 +266,7 @@ fn a_bead_killed_as_it_starts_its_text_file_leaves_a_copy_the_next_write_back_re
     let sandbox = crate::sandbox();
     let a = crate::rust_only(&sandbox, "kept-a");
     let keys = tracker(&a);
-    let _ = answers(&a, &keys, false);
+    let _ = answers(&a, &keys, ReadPath::Projection);
     let last = std::fs::read(projection(&a)).unwrap();
     let texts_before = std::fs::read(texts(&a)).unwrap();
     // the next read replays, and is killed as it starts the text file again
@@ -270,7 +296,10 @@ fn a_bead_killed_as_it_starts_its_text_file_leaves_a_copy_the_next_write_back_re
     );
     assert_ne!(std::fs::read(projection(&a)).unwrap(), last);
     assert_eq!(temporaries(&a), Vec::<String>::new());
-    assert_eq!(answers(&a, &keys, false), answers(&a, &keys, true));
+    assert_eq!(
+        answers(&a, &keys, ReadPath::Projection),
+        answers(&a, &keys, ReadPath::Replay)
+    );
 }
 
 #[test]
@@ -293,8 +322,8 @@ fn a_merge_appends_what_another_machines_segment_lacks() {
     // the same file, longer: the projection takes in the lines appended alone
     assert_eq!((after.dev(), after.ino()), (before.dev(), before.ino()));
     assert!(after.len() > before.len());
-    let kept = answers(&a, &keys, false);
-    assert_eq!(answers(&a, &keys, true), kept);
+    let kept = answers(&a, &keys, ReadPath::Projection);
+    assert_eq!(answers(&a, &keys, ReadPath::Replay), kept);
 }
 
 #[test]
@@ -310,7 +339,7 @@ fn bead_answers_alike_with_its_texts_cut_damaged_or_gone() {
         "--notes",
         "and what was tried",
     ]);
-    let kept = answers(&a, &keys, false);
+    let kept = answers(&a, &keys, ReadPath::Projection);
     assert!(texts(&a).is_file(), "a read keeps the texts apart");
     let good = std::fs::read(texts(&a)).unwrap();
     let mut flipped = good.clone();
@@ -324,15 +353,15 @@ fn bead_answers_alike_with_its_texts_cut_damaged_or_gone() {
             Some(bytes) => std::fs::write(texts(&a), bytes).unwrap(),
             None => std::fs::remove_file(texts(&a)).unwrap(),
         }
-        assert_eq!(answers(&a, &keys, false), kept);
+        assert_eq!(answers(&a, &keys, ReadPath::Projection), kept);
         let now = std::fs::read(texts(&a)).unwrap();
         assert_eq!(rebuilt.get_or_insert_with(|| now.clone()), &now);
     }
     // a write about texts that cannot be read in replays
     std::fs::write(texts(&a), &good[..40]).unwrap();
     a.bead(["comments", "add", &keys[0], "after the damage"]);
-    let kept = answers(&a, &keys, false);
-    assert_eq!(answers(&a, &keys, true), kept);
+    let kept = answers(&a, &keys, ReadPath::Projection);
+    assert_eq!(answers(&a, &keys, ReadPath::Replay), kept);
 }
 
 #[test]
@@ -340,7 +369,7 @@ fn a_bead_killed_as_it_adds_texts_leaves_the_last_projection() {
     let sandbox = crate::sandbox();
     let a = crate::rust_only(&sandbox, "kept-a");
     let keys = tracker(&a);
-    let _ = answers(&a, &keys, false);
+    let _ = answers(&a, &keys, ReadPath::Projection);
     let last = std::fs::read(projection(&a)).unwrap();
     a.bead(["comments", "add", &keys[0], "written offline", "--offline"]);
     // the next read takes it in, adds its texts, and is killed before the projection is written
@@ -352,7 +381,10 @@ fn a_bead_killed_as_it_adds_texts_leaves_the_last_projection() {
     // what it added belongs to no projection: the next read takes the record in again
     let shown = a.run(["show", &keys[0], "--json"]);
     assert!(shown.stdout.contains("written offline"), "{}", shown.stdout);
-    assert_eq!(answers(&a, &keys, false), answers(&a, &keys, true));
+    assert_eq!(
+        answers(&a, &keys, ReadPath::Projection),
+        answers(&a, &keys, ReadPath::Replay)
+    );
 }
 
 /// roll-lqjj.10: a long text is kept once, in its register, which the field shows, so the text
@@ -389,7 +421,10 @@ fn a_long_description_is_written_to_the_text_file_once() {
         "{grown} bytes added for one 100,000-byte text"
     );
     let keys = [key];
-    assert_eq!(answers(&a, &keys, false), answers(&a, &keys, true));
+    assert_eq!(
+        answers(&a, &keys, ReadPath::Projection),
+        answers(&a, &keys, ReadPath::Replay)
+    );
     let shown = a.show(&keys[0]);
     assert_eq!(shown["description"].as_str().map(str::len), Some(100_000));
 }

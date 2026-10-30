@@ -5,10 +5,20 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use beadroll_core::journal::Journal;
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::json::Value;
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
 use beadroll_test_support::json;
+
+/// Whether the generated history includes a copied machine identity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Identities {
+    /// Unique.
+    Unique,
+    /// Twins.
+    Twins,
+}
 
 const SEEDS: u64 = 1000;
 const ORDERS: usize = 4;
@@ -65,7 +75,12 @@ fn eid(n: u64) -> String {
 fn replayed(events: &[Value]) -> State {
     let mut journal = Journal::new();
     for event in events {
-        journal.add(event.clone(), event["replica"].as_str().unwrap(), "", true);
+        journal.add(
+            event.clone(),
+            event["replica"].as_str().unwrap(),
+            "",
+            JournalOrder::Sequenced,
+        );
     }
     replay(journal).unwrap()
 }
@@ -208,7 +223,8 @@ fn pool() -> Vec<String> {
 
 /// A CLI-shaped history on three replicas, each acting on its own replayed knowledge. With
 /// duplicates enabled, two replicas may mint the same key.
-fn generate(stream: &mut Stream, twins: bool) -> Vec<Value> {
+fn generate(stream: &mut Stream, twins: Identities) -> Vec<Value> {
+    let twins = matches!(twins, Identities::Twins);
     let known = REPLICAS.iter().map(|r| (*r, BTreeSet::new())).collect();
     let mut history = History {
         stream,
@@ -271,11 +287,12 @@ struct Stats {
     twin_seeds: usize,
 }
 
-fn check(twins: bool) {
+fn check(identities: Identities) {
+    let twins = matches!(identities, Identities::Twins);
     let mut stats = Stats::default();
     for seed in 0..SEEDS {
         let mut stream = Stream(seed * 7919 + if twins { 104_729 } else { 0 });
-        let events = generate(&mut stream, twins);
+        let events = generate(&mut stream, identities);
         stats.events += events.len();
         let op = |e: &Value| e["op"].as_str().unwrap().to_owned();
         stats.key_removals += events
@@ -342,12 +359,12 @@ fn check(twins: bool) {
 /// over 1000 seeds × 4 orders of the generator.
 #[test]
 fn unique_key_histories_replay_identically_under_any_delivery_order() {
-    check(false);
+    check(Identities::Unique);
 }
 
 /// Verified (V4): the same determinism holds when a key may be minted on two replicas (twin keys,
 /// so one copy is renamed).
 #[test]
 fn twin_key_histories_replay_identically_under_any_delivery_order() {
-    check(true);
+    check(Identities::Twins);
 }

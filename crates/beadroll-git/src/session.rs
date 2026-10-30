@@ -8,6 +8,7 @@ use std::ffi::OsStr;
 use std::io::{BufRead as _, BufReader, Read as _, Write as _};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
+use crate::KillScope;
 use crate::runner::{Env, detach, kill};
 
 /// The longest line a protocol answer may have: an object's header, a name, `commit: ok`.
@@ -105,7 +106,7 @@ impl Drop for Session {
 
 /// Kills git with every helper it started (its own session is its process group) and reaps it.
 fn end(child: &mut Child) {
-    kill(child.id(), true);
+    kill(child.id(), KillScope::ProcessGroup);
     let _ = child.wait();
 }
 

@@ -13,6 +13,8 @@ mod tests;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use content::Digest;
+use event::{Shared, Source};
 use indexmap::IndexMap;
 
 use crate::event::Envelope;
@@ -20,12 +22,18 @@ use crate::id::EventId;
 use crate::json::{self, Format, Value};
 use crate::op::Op;
 
+/// Whether a record belongs to the machine journal order or an ownership attempt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum JournalOrder {
+    /// Attempt.
+    Attempt,
+    /// Sequenced.
+    Sequenced,
+}
+
 pub use event::Event;
 pub(crate) use event::Rest;
 pub use read::{loads_line, read_attempt, read_segment};
-
-use content::Digest;
-use event::{Shared, Source};
 
 /// Something a reader could not use: an unreadable line or file, an event that fails validation, a
 /// copy in the wrong journal. Replay reports each as an integrity row.
@@ -104,18 +112,18 @@ impl Journal {
         }
     }
 
-    /// Adds a record built in memory, found in `replica`'s journal at `origin`; `sequenced` is
-    /// false for an attempt file's events, which have no place in the journal's order. It is read
+    /// Adds a record built in memory, found in `replica`'s journal at `origin`;
+    /// [`JournalOrder::Attempt`] events have no place in the journal's order. It is read
     /// as the line bead writes of it would be. Anything without a readable id is reported at once;
     /// the rest is judged when the journal settles.
-    pub fn add(&mut self, event: Value, replica: &str, origin: &str, sequenced: bool) {
+    pub fn add(&mut self, event: Value, replica: &str, origin: &str, journal_order: JournalOrder) {
         let digest = self.shared.digester.digest_of(&event);
         self.add_read(
             Envelope::from_value(event),
             digest,
             replica,
             origin,
-            sequenced,
+            journal_order,
         );
     }
 
@@ -127,7 +135,7 @@ impl Journal {
         digest: Digest,
         replica: &str,
         origin: &str,
-        sequenced: bool,
+        journal_order: JournalOrder,
     ) {
         let Some(id) = envelope.id else {
             let problem = envelope
@@ -138,7 +146,7 @@ impl Journal {
             return;
         };
         self.counter += 1;
-        let source = self.source(replica, origin, sequenced);
+        let source = self.source(replica, origin, journal_order);
         let record = Event::read(
             id,
             envelope,
@@ -160,7 +168,8 @@ impl Journal {
 
     /// Where a record of `replica`'s journal at `origin` was found, shared with the records before
     /// it from the same file.
-    fn source(&mut self, replica: &str, origin: &str, sequenced: bool) -> Arc<Source> {
+    fn source(&mut self, replica: &str, origin: &str, sequenced: JournalOrder) -> Arc<Source> {
+        let sequenced = matches!(sequenced, JournalOrder::Sequenced);
         if let Some(last) = &self.last_source
             && *last.replica == *replica
             && *last.origin == *origin

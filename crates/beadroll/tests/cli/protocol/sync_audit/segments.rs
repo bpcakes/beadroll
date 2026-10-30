@@ -12,6 +12,7 @@ use std::time::Duration;
 use beadroll_test_support::{Json, Machine, UNPROFILED, parse_json};
 
 use super::{Worker, jsonl, own_segment, setup, setup_with, wait_marker};
+use crate::protocol::sync_audit::ProcessSession;
 
 /// The unterminated fragment an append interrupted mid-line leaves at the end of a segment.
 const TORN: &[u8] = br#"{"v":1,"id":"interrupted"#;
@@ -190,7 +191,7 @@ fn bug_kill_mid_append_then_successful_write_must_stay_readable() {
     let marker = sandbox.root().join("append-started");
     let spec = format!("append.mid@always=pause-until({})", marker.display());
     let writing = a.cmd(["create", "killed writer", "--json"]);
-    let mut worker = Worker::start(writing.env("BEAD_FAILPOINTS", spec), true);
+    let mut worker = Worker::start(writing.env("BEAD_FAILPOINTS", spec), ProcessSession::New);
     wait_marker(&sandbox.root().join("append-started.ready"), &mut worker);
     assert_eq!(a.show(&key)["title"].as_str(), Some("Original issue"));
     worker.kill().expect("the writer's process group");

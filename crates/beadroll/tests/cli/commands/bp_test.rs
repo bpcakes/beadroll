@@ -1,21 +1,6 @@
 //! `BpTest`: the core behaviours, end to end. Its tests are grouped by subject in the modules
 //! below; the replay test and the helpers they share are here.
 
-use std::collections::BTreeMap;
-use std::ffi::OsString;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-use beadroll_core::id::EventId;
-use beadroll_core::journal::{Journal, read_segment};
-use beadroll_core::json::{Format, Value, write};
-use beadroll_core::replay::replay;
-use beadroll_store::{
-    Settings, Workspace, claim_files, load_journal, read_attempt, replica_id, segment_files,
-};
-use beadroll_test_support::{Json, Machine, Run, Sandbox};
-
 mod checkouts;
 mod claims;
 mod compat;
@@ -24,6 +9,23 @@ mod graph;
 mod integrity;
 mod merges;
 mod remotes;
+
+use std::collections::BTreeMap;
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use beadroll_core::id::EventId;
+use beadroll_core::journal::JournalOrder;
+use beadroll_core::journal::{Journal, read_segment};
+use beadroll_core::json::{Format, Value, write};
+use beadroll_core::replay::replay;
+use beadroll_store::IdentityMode;
+use beadroll_store::{
+    Settings, Workspace, claim_files, load_journal, read_attempt, replica_id, segment_files,
+};
+use beadroll_test_support::{Json, Machine, Run, Sandbox};
 
 /// Machine a owns an initialised tracker with issues X and Y; machine b has synced it.
 pub(crate) fn two_machines(sandbox: &Sandbox) -> (Machine, Machine, String, String) {
@@ -240,20 +242,22 @@ fn replay_does_not_depend_on_delivery_order() {
         for replica in order.iter().chain(&order) {
             // every event delivered twice
             for id in &journal.order()[replica] {
-                shuffled.add(written[id].clone(), replica, "", true);
+                shuffled.add(written[id].clone(), replica, "", JournalOrder::Sequenced);
             }
             for event in &ownership {
                 if event["replica"].as_str() == Some(replica.as_str()) {
-                    shuffled.add(event.clone(), replica, "", false);
+                    shuffled.add(event.clone(), replica, "", JournalOrder::Attempt);
                 }
             }
         }
         assert_eq!(view(shuffled), expected);
     }
-    let own = replica_id(&settings, true).unwrap().unwrap();
+    let own = replica_id(&settings, IdentityMode::Create)
+        .unwrap()
+        .unwrap();
     let mut partial = Journal::new();
     for id in &journal.order()[&own] {
-        partial.add(written[id].clone(), &own, "", true);
+        partial.add(written[id].clone(), &own, "", JournalOrder::Sequenced);
     }
     let st = replay(partial).unwrap();
     assert!(!st.pending().is_empty());

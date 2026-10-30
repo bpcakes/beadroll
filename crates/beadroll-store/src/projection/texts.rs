@@ -16,6 +16,15 @@ use beadroll_core::state::{State, TextPlace};
 use crate::fs::write_cache_parts;
 use crate::workspace::Workspace;
 
+/// How the projection text file is opened.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum TextFileAccess {
+    /// Read.
+    Read,
+    /// Append.
+    Append,
+}
+
 /// The first bytes of a text file.
 const MAGIC: &[u8; 16] = b"bead texts 2\n\0\0\0";
 
@@ -35,7 +44,8 @@ pub(super) fn generation(texts: &[u8]) -> [u8; 16] {
 
 /// The text file of `generation`, open to read, and to append to when `append`: `None` when there
 /// is none, or it is another's.
-pub(super) fn open(ws: &Workspace, generation: [u8; 16], append: bool) -> Option<File> {
+pub(super) fn open(ws: &Workspace, generation: [u8; 16], append: TextFileAccess) -> Option<File> {
+    let append = matches!(append, TextFileAccess::Append);
     let file = (OpenOptions::new().read(true).write(append))
         .open(texts_path(ws))
         .ok()?;

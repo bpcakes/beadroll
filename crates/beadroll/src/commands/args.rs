@@ -13,6 +13,15 @@ use beadroll_core::text::{is_space, repr_bytes};
 
 use super::{Failure, parse_priority, read_utf8, resolve};
 
+/// Whether command-line text can be encoded in an event.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TextValidity {
+    /// Invalid.
+    Invalid,
+    /// Utf8.
+    Utf8,
+}
+
 /// Command-line text and its UTF-8 validity. Invalid bytes are represented by U+FFFD and a false
 /// flag; they match no key, status or name and cause a write to fail when encoded.
 pub(crate) fn arg_text(value: &OsStr) -> (String, bool) {
@@ -62,7 +71,8 @@ impl Payload {
 
 /// Checks that an emitted event can be encoded: command-line text that is not valid UTF-8 fails
 /// after all other validation. A failed transaction writes nothing.
-pub(crate) fn encodable(valid: bool) -> Result<(), Failure> {
+pub(crate) fn encodable(valid: TextValidity) -> Result<(), Failure> {
+    let valid = matches!(valid, TextValidity::Utf8);
     if valid {
         return Ok(());
     }

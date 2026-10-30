@@ -15,15 +15,17 @@ use beadroll_core::recap::{Window, joined, unseen};
 use beadroll_core::state::{Integrity, Issue, State};
 use beadroll_core::text::str_of;
 use beadroll_core::time::event_time;
+use beadroll_store::MetadataRead;
 use beadroll_store::{
     Mark, RecapCursor, Settings, Workspace, home_stores, load_journal, machine_aliases,
     view_outline,
 };
 
-pub(crate) use self::layout::Layout;
 use self::layout::{activity, time};
 use super::history::logged;
 use super::{Delivered, Failure, Line, Outcome, Tone};
+
+pub(crate) use self::layout::Layout;
 
 /// How far back a machine's first recap reaches: a day, in milliseconds.
 const FIRST: u64 = 86_400_000;
@@ -195,7 +197,7 @@ fn tracker(
     aliases: &BTreeMap<String, String>,
     layout: Layout,
 ) -> Part {
-    let meta = ws.metadata(false).unwrap_or_default();
+    let meta = ws.metadata(MetadataRead::Lenient).unwrap_or_default();
     let synced = meta.value("last_sync").cloned().unwrap_or(Value::Null);
     let named = meta.value("name").filter(|name| name.truthy()).cloned();
     let read = load_journal(ws)

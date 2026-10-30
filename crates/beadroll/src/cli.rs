@@ -24,15 +24,50 @@ use std::sync::Arc;
 use beadroll_core::code::Code;
 use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Format, Int, Object, Value};
+use beadroll_core::query::Edges;
 use beadroll_core::text::json_ascii_bytes;
 use beadroll_store::{Settings, detect_actor, find_workspace, nearest_harness};
+use beadroll_sync::NetworkMode;
 use beadroll_sync::publish_soon_at;
-
-use crate::commands::{self, Context, Delivered, Failure, Held, Line, Outcome, Tone};
 use output::{Stream, Unwritten, emit};
 use paint::{Colors, When};
 use parse::{Namespace, Page, Parsed};
 use spec::Scope;
+
+use crate::cli::paint::Color;
+use crate::commands::ImportMode;
+use crate::commands::SearchScope;
+use crate::commands::{self, Context, Delivered, Failure, Held, Line, Outcome, Tone};
+
+/// Whether another state will be read to publish the command.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AfterCommand {
+    /// Return.
+    Return,
+    /// Publish.
+    Publish,
+}
+
+/// Whether the process ends with the command.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RunLifetime {
+    /// Embedded.
+    Embedded,
+    /// Process.
+    Process,
+}
+
+/// The representation requested for command output.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum OutputMode {
+    /// Human.
+    Human,
+    /// Json.
+    Json,
+}
+
+#[cfg(test)]
+mod tests;
 
 /// The version this binary reports.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -42,14 +77,17 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// answered from or the transaction it wrote in, is never freed ([`Outcome::answered_from`],
 /// [`Outcome::wrote_in`]).
 pub(crate) fn main() -> ExitCode {
-    ExitCode::from(run(std::env::args_os().skip(1).collect(), true))
+    ExitCode::from(run(
+        std::env::args_os().skip(1).collect(),
+        RunLifetime::Process,
+    ))
 }
 
 /// Runs `bead` with `argv`, the arguments after the program's name, as [`main`] runs it, in a
 /// process that goes on afterwards: nothing the run made is kept, so that a caller that runs bead
 /// again (a test in process) does not pile one command's state on another's.
 pub(crate) fn main_with(argv: Vec<OsString>) -> ExitCode {
-    ExitCode::from(run(argv, false))
+    ExitCode::from(run(argv, RunLifetime::Embedded))
 }
 
 /// What the command line asked for once `--json`, `--actor`, `--color` and `--` are read:
@@ -164,31 +202,61 @@ fn home_of(name: &std::ffi::OsStr) -> Option<OsString> {
     Some(user.dir.into_os_string())
 }
 
-fn run(argv: Vec<OsString>, exits: bool) -> u8 {
+fn run(argv: Vec<OsString>, run_lifetime: RunLifetime) -> u8 {
     let request = read_request(argv);
     let as_json = request.as_json;
     let colors = match colors_for(&request) {
         Ok(colors) => colors,
-        Err(failure) => return report(&failure, as_json, false),
+        Err(failure) => {
+            return report(
+                &failure,
+                if as_json {
+                    OutputMode::Json
+                } else {
+                    OutputMode::Human
+                },
+                Color::Plain,
+            );
+        }
     };
-    match execute(&request, colors, exits) {
+    match execute(&request, colors, run_lifetime) {
         Ok(None) => 0,
         Ok(Some(printed)) => match emit(Some(&printed.text), Stream::Stdout) {
             // written: then what follows it (recap marks what it showed as seen), whose failure is
             // reported where it can still be read
             Ok(()) => match printed.delivered.map_or(Ok(()), Delivered::done) {
                 Ok(()) => 0,
-                Err(failure) => report(&failure, as_json, colors.stderr),
+                Err(failure) => report(
+                    &failure,
+                    if as_json {
+                        OutputMode::Json
+                    } else {
+                        OutputMode::Human
+                    },
+                    colors.stderr,
+                ),
             },
             Err(Unwritten::Gone) => 0,
             // the answer could not be delivered: say so where it can still be read
             Err(Unwritten::Failed(error)) => report(
                 &Failure::new(Code::Io, beadroll_git::IoError::bare(&error).to_string()),
-                as_json,
+                if as_json {
+                    OutputMode::Json
+                } else {
+                    OutputMode::Human
+                },
                 colors.stderr,
             ),
         },
-        Err(failure) => report(&failure, as_json, colors.stderr),
+        Err(failure) => report(
+            &failure,
+            if as_json {
+                OutputMode::Json
+            } else {
+                OutputMode::Human
+            },
+            colors.stderr,
+        ),
     }
 }
 
@@ -210,7 +278,16 @@ impl From<String> for Printed {
 /// Runs the request: what standard output is to show, `None` when nothing (more) is to be printed.
 /// Standard output shows colour when `colors` says so; `exits` is whether the process ends with the
 /// run.
-fn execute(request: &Request, colors: Colors, exits: bool) -> Result<Option<Printed>, Failure> {
+fn execute(
+    request: &Request,
+    colors: Colors,
+    run_lifetime: RunLifetime,
+) -> Result<Option<Printed>, Failure> {
+    let output_mode = if request.as_json {
+        OutputMode::Json
+    } else {
+        OutputMode::Human
+    };
     let mut settings = settings()?;
     let args = &request.args;
     if args.len() == 1 && (args[0] == "--version" || args[0] == "-V") {
@@ -254,9 +331,9 @@ fn execute(request: &Request, colors: Colors, exits: bool) -> Result<Option<Prin
     };
     if ns.spec.scope == Scope::Home {
         // every tracker of this machine's and no checkout: none to find, and no git to start
-        let args = recap::args(&ns, request.as_json)?;
+        let args = recap::args(&ns, output_mode)?;
         let (outcome, delivered) = commands::recap(&Arc::new(settings), &args)?;
-        let text = rendered((outcome.result, outcome.lines), request.as_json, colors)?;
+        let text = rendered((outcome.result, outcome.lines), output_mode, colors)?;
         return Ok(text.map(|text| Printed { text, delivered }));
     }
     let free = ns.spec.scope == Scope::Free;
@@ -285,15 +362,19 @@ fn execute(request: &Request, colors: Colors, exits: bool) -> Result<Option<Prin
     let finished = finish(
         outcome,
         ws.as_ref().filter(|_| !free),
-        offline,
+        if offline {
+            NetworkMode::Offline
+        } else {
+            NetworkMode::Online
+        },
         &remote,
-        exits,
-        |warning| warn(&warning, request.as_json, colors.stderr),
+        run_lifetime,
+        |warning| warn(&warning, output_mode, colors.stderr),
     )?;
     let Some(answer) = finished else {
         return Ok(None);
     };
-    Ok(rendered(answer, request.as_json, colors)?.map(Printed::from))
+    Ok(rendered(answer, output_mode, colors)?.map(Printed::from))
 }
 
 /// A command's answer: the result `--json` prints and the lines a human reads.
@@ -303,9 +384,10 @@ type Answer = (Option<Value>, Option<Vec<Line>>);
 /// when `colors` says so; `None` when it has neither.
 fn rendered(
     (result, lines): Answer,
-    as_json: bool,
+    as_json: OutputMode,
     colors: Colors,
 ) -> Result<Option<String>, Failure> {
+    let as_json = matches!(as_json, OutputMode::Json);
     Ok(match (result, lines) {
         (None, None) => None,
         (result, _) if as_json => Some(write(&result.unwrap_or(Value::Null), Format::SPACED)?),
@@ -320,9 +402,9 @@ fn rendered(
 fn finish(
     outcome: Outcome,
     ws: Option<&beadroll_store::Workspace>,
-    offline: bool,
+    network_mode: NetworkMode,
     remote: &Option<OsString>,
-    exits: bool,
+    run_lifetime: RunLifetime,
     mut warning: impl FnMut(Failure),
 ) -> Result<Option<Answer>, Failure> {
     let Outcome {
@@ -338,8 +420,16 @@ fn finish(
     // remote to reach keeps it, as an offline write does (roll-lqjj.50)
     let destination = ws
         .filter(|ws| ws.wrote())
-        .and_then(|ws| beadroll_sync::destination(ws, offline, remote.as_deref()));
-    ended_with(held, matches!(destination, Some(Ok(_))), exits);
+        .and_then(|ws| beadroll_sync::destination(ws, network_mode, remote.as_deref()));
+    ended_with(
+        held,
+        if matches!(destination, Some(Ok(_))) {
+            AfterCommand::Publish
+        } else {
+            AfterCommand::Return
+        },
+        run_lifetime,
+    );
     if let Some(count_warning) = count_warning {
         warning(count_warning);
     }
@@ -376,7 +466,9 @@ fn finish(
 /// a reading command's time on a large tracker (roll-lqjj.32), and about 83 ms of a write's at
 /// 200,000 events (roll-lqjj.42). Freed instead when the run `publishing` what the command wrote,
 /// which reads a state of its own, so that none is held beside another.
-fn ended_with(held: Option<Box<dyn Held>>, publishing: bool, exits: bool) -> bool {
+fn ended_with(held: Option<Box<dyn Held>>, publishing: AfterCommand, exits: RunLifetime) -> bool {
+    let publishing = matches!(publishing, AfterCommand::Publish);
+    let exits = matches!(exits, RunLifetime::Process);
     match held {
         Some(held) if exits && !publishing => {
             // never freed: the process ends once the answer is written
@@ -407,7 +499,15 @@ fn dispatch(
                 dry_run: ns.flag("dry_run"),
             },
         )?,
-        "import" => commands::import(ctx, ns.text("path").unwrap_or_default(), ns.flag("dry_run"))?,
+        "import" => commands::import(
+            ctx,
+            ns.text("path").unwrap_or_default(),
+            if ns.flag("dry_run") {
+                ImportMode::DryRun
+            } else {
+                ImportMode::Apply
+            },
+        )?,
         "export" => commands::export(ctx, ns.text("output"))?,
         "create" => commands::create(ctx, &create_args(ns))?,
         "update" => commands::update(ctx, &update_args(ns))?,
@@ -424,18 +524,7 @@ fn dispatch(
             },
         )?,
         "show" => commands::show(ctx, ns.texts("ids"))?,
-        "list" => commands::list(
-            ctx,
-            &commands::ListArgs {
-                status: ns.texts("status").to_vec(),
-                all: ns.flag("all"),
-                deferred: ns.flag("deferred"),
-                title_contains: owned(ns, "title_contains"),
-                id: ns.texts("id").to_vec(),
-                parent: owned(ns, "parent"),
-                filters: filters(ns),
-            },
-        )?,
+        "list" => commands::list(ctx, &list_args(ns))?,
         "ready" => commands::ready(
             ctx,
             &commands::ReadyArgs {
@@ -446,12 +535,24 @@ fn dispatch(
             },
         )?,
         "blocked" => commands::blocked(ctx)?,
-        "search" => commands::search(ctx, ns.text("query").unwrap_or_default(), ns.flag("all"))?,
+        "search" => commands::search(
+            ctx,
+            ns.text("query").unwrap_or_default(),
+            if ns.flag("all") {
+                SearchScope::All
+            } else {
+                SearchScope::Open
+            },
+        )?,
         "dep" => commands::dep(
             ctx,
             ns.texts("words"),
             ns.text("type"),
-            ns.flag("blocking_only"),
+            if ns.flag("blocking_only") {
+                Edges::Blocking
+            } else {
+                Edges::WaitsFor
+            },
         )?,
         "comments" => commands::comments(
             ctx,
@@ -492,6 +593,19 @@ fn real_time() -> f64 {
     match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
         Ok(since) => since.as_nanos() as f64 / 1e9,
         Err(before) => -(before.duration().as_nanos() as f64) / 1e9,
+    }
+}
+
+/// `list`'s arguments.
+fn list_args(ns: &Namespace) -> commands::ListArgs {
+    commands::ListArgs {
+        status: ns.texts("status").to_vec(),
+        all: ns.flag("all"),
+        deferred: ns.flag("deferred"),
+        title_contains: owned(ns, "title_contains"),
+        id: ns.texts("id").to_vec(),
+        parent: owned(ns, "parent"),
+        filters: filters(ns),
     }
 }
 
@@ -574,7 +688,8 @@ fn write(value: &Value, format: Format) -> Result<String, Failure> {
 }
 
 /// Reports a post-commit count warning separately, preserving every command's stdout shape.
-fn warn(failure: &Failure, as_json: bool, color: bool) {
+fn warn(failure: &Failure, as_json: OutputMode, color_mode: Color) {
+    let as_json = matches!(as_json, OutputMode::Json);
     let text = if as_json {
         let raw = failure.raw.as_deref().unwrap_or(failure.message.as_bytes());
         format!(
@@ -586,7 +701,7 @@ fn warn(failure: &Failure, as_json: bool, color: bool) {
         let line = Line::toned(Tone::Warning, "Warning:")
             .with(Tone::Plain, " ")
             .with(Tone::Plain, failure.printed());
-        paint::render_all(&[line], color)
+        paint::render_all(&[line], color_mode)
     };
     // A warning cannot turn an already committed command into a failure, even if stderr is gone.
     let _ = emit(Some(&text), Stream::Stderr);
@@ -595,7 +710,8 @@ fn warn(failure: &Failure, as_json: bool, color: bool) {
 /// Reports `failure` on standard error: `{"error": {"code", "message"}}` with `--json`, else
 /// `Error: message`, painted when `color`. The status is the command's (2 for `USAGE`, else 1),
 /// whatever stderr does.
-fn report(failure: &Failure, as_json: bool, color: bool) -> u8 {
+fn report(failure: &Failure, as_json: OutputMode, color_mode: Color) -> u8 {
+    let as_json = matches!(as_json, OutputMode::Json);
     let text = match (as_json, &failure.raw) {
         // Bytes that are not UTF-8 become U+FFFD.
         (true, Some(raw)) => format!(
@@ -630,50 +746,9 @@ fn report(failure: &Failure, as_json: bool, color: bool) -> u8 {
                         }),
                 );
             }
-            paint::render_all(&lines, color)
+            paint::render_all(&lines, color_mode)
         }
     };
     let _ = emit(Some(&text), Stream::Stderr);
     if failure.code == Code::Usage { 2 } else { 1 }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A state with no issues, to be kept or freed.
-    fn state() -> Option<Box<dyn Held>> {
-        let journal = beadroll_core::journal::Journal::new();
-        let state = beadroll_core::replay::replay(journal).expect("an empty journal replays");
-        Some(Box::new(state))
-    }
-
-    #[test]
-    fn the_state_a_command_answered_from_is_kept_only_by_a_process_that_ends_with_it() {
-        // roll-lqjj.32 (X10): kept, never freed, when the process ends with the run
-        assert!(ended_with(state(), false, true));
-        // freed before a publish, which reads a state of its own: never two at once
-        assert!(!ended_with(state(), true, true));
-        // freed by a caller that runs bead again in its process (xtask, a test), or no state
-        assert!(!ended_with(state(), false, false));
-        assert!(!ended_with(state(), true, false));
-        assert!(!ended_with(None, false, true));
-    }
-
-    #[test]
-    fn another_users_home_comes_from_the_password_database() {
-        // root has an entry everywhere, even where the user running the tests has none (a
-        // container's arbitrary uid).
-        let root = nix::unistd::User::from_uid(nix::unistd::Uid::from_raw(0))
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            home_of(std::ffi::OsStr::new(&root.name)),
-            Some(root.dir.into_os_string())
-        );
-        assert_eq!(
-            home_of(std::ffi::OsStr::new("no-such-user-bead-test")),
-            None
-        );
-    }
 }

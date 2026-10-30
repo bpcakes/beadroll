@@ -12,6 +12,7 @@ use super::{
     ContentArgs, Context, Failure, Outcome, Payload, arg_text, arg_texts, encodable, field_args,
     need_tracker, resolve_arg, rpartition, split_args,
 };
+use crate::commands::args::TextValidity;
 
 /// `create`'s arguments.
 #[derive(Default)]
@@ -106,7 +107,11 @@ fn write_issue(
         Value::Array(labels.into_iter().map(Value::from).collect()),
     );
     tx.emit("create", None, data, Some(uid.clone()))?;
-    encodable(fields.valid && labels_valid)?;
+    encodable(if fields.valid && labels_valid {
+        TextValidity::Utf8
+    } else {
+        TextValidity::Invalid
+    })?;
     if let Some(parent) = &parent_uid {
         let mut edge = Object::new();
         edge.insert("to".into(), Value::from(parent.as_str()));
@@ -118,7 +123,11 @@ fn write_issue(
         edge.insert("to".into(), Value::from(target.to_string()));
         edge.insert("type".into(), Value::from(kind));
         tx.emit("dep_add", Some(&uid), edge, None)?;
-        encodable(valid)?;
+        encodable(if valid {
+            TextValidity::Utf8
+        } else {
+            TextValidity::Invalid
+        })?;
     }
     let st = tx.state()?;
     let issue = st

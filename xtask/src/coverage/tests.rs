@@ -4,6 +4,16 @@
 use std::path::PathBuf;
 
 use super::*;
+use crate::coverage::RunResult;
+
+/// Whether a test toolchain contains the LLVM binaries.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LlvmTools {
+    /// Missing.
+    Missing,
+    /// Installed.
+    Installed,
+}
 
 fn args(list: &[&str]) -> Vec<OsString> {
     list.iter().map(OsString::from).collect()
@@ -239,7 +249,16 @@ error: not a warning about /t/y.profraw: but an error
 
 #[test]
 fn the_exit_status_says_whether_the_run_passed() {
-    let shown = |passed| format!("{:?}", exit_code(passed));
+    let shown = |passed| {
+        format!(
+            "{:?}",
+            exit_code(if passed {
+                RunResult::Passed
+            } else {
+                RunResult::Failed
+            })
+        )
+    };
     assert_eq!(shown(true), format!("{:?}", ExitCode::SUCCESS));
     assert_eq!(shown(false), format!("{:?}", ExitCode::FAILURE));
     assert_ne!(shown(true), shown(false));
@@ -251,7 +270,8 @@ const NO_SUBCOMMAND: &str = "echo 'error: no such command: `llvm-cov`' >&2\nexit
 
 /// A toolchain whose libraries are in `dir/lib` and whose LLVM tools, when `llvm_tools`, are in
 /// `dir/bin`, as `rustup component add llvm-tools` puts them.
-fn rustc(dir: &Path, llvm_tools: bool) -> OsString {
+fn rustc(dir: &Path, llvm_tools: LlvmTools) -> OsString {
+    let llvm_tools = matches!(llvm_tools, LlvmTools::Installed);
     std::fs::create_dir_all(dir.join("lib")).expect("the libraries");
     std::fs::create_dir_all(dir.join("bin")).expect("the binaries");
     if llvm_tools {
@@ -264,12 +284,12 @@ fn rustc(dir: &Path, llvm_tools: bool) -> OsString {
 }
 
 /// Tools in a directory of their own under `base`, `name`, so that each case has its toolchain.
-fn tools(base: &Path, name: &str, cargo_body: &str, llvm_tools: bool) -> Tools {
+fn tools(base: &Path, name: &str, cargo_body: &str, llvm_tools_mode: LlvmTools) -> Tools {
     let dir = base.join(name);
     std::fs::create_dir_all(&dir).expect("the tools' directory");
     Tools {
         cargo: script(&dir, "cargo", cargo_body),
-        rustc: rustc(&dir, llvm_tools),
+        rustc: rustc(&dir, llvm_tools_mode),
         llvm_from_env: false,
     }
 }
@@ -278,20 +298,30 @@ fn tools(base: &Path, name: &str, cargo_body: &str, llvm_tools: bool) -> Tools {
 fn the_tools_are_checked_and_each_missing_one_says_how_to_install_it() {
     let dir = tempfile::tempdir().expect("a scratch directory");
     let root = dir.path();
-    let installed = tools(root, "installed", "echo 'cargo-llvm-cov 0.8.7'\n", true);
+    let installed = tools(
+        root,
+        "installed",
+        "echo 'cargo-llvm-cov 0.8.7'\n",
+        LlvmTools::Installed,
+    );
     assert_eq!(
         installed.require(root).unwrap(),
         "cargo-llvm-cov 0.8.7, llvm-tools"
     );
 
-    let newer = tools(root, "newer", "echo 'cargo-llvm-cov 0.9.1'\n", true);
+    let newer = tools(
+        root,
+        "newer",
+        "echo 'cargo-llvm-cov 0.9.1'\n",
+        LlvmTools::Installed,
+    );
     let line = newer.require(root).unwrap();
     assert!(
         line.starts_with("cargo-llvm-cov 0.9.1 (the nightly job pins 0.8.7)"),
         "{line}"
     );
 
-    let none_installed = tools(root, "none", NO_SUBCOMMAND, false);
+    let none_installed = tools(root, "none", NO_SUBCOMMAND, LlvmTools::Missing);
     let Err(Failure::Failed(message)) = none_installed.require(root) else {
         panic!("tools that are not installed passed");
     };
@@ -301,7 +331,12 @@ fn the_tools_are_checked_and_each_missing_one_says_how_to_install_it() {
          llvm-tools is not installed for this toolchain: rustup component add llvm-tools"
     );
 
-    let no_llvm = tools(root, "no-llvm", "echo 'cargo-llvm-cov 0.8.7'\n", false);
+    let no_llvm = tools(
+        root,
+        "no-llvm",
+        "echo 'cargo-llvm-cov 0.8.7'\n",
+        LlvmTools::Missing,
+    );
     let Err(Failure::Failed(message)) = no_llvm.require(root) else {
         panic!("a toolchain without llvm-tools passed");
     };
@@ -314,7 +349,12 @@ fn the_tools_are_checked_and_each_missing_one_says_how_to_install_it() {
     // LLVM_COV and LLVM_PROFDATA stand in for the toolchain's: its libraries are not looked at.
     let own_llvm = Tools {
         llvm_from_env: true,
-        ..tools(root, "own", "echo 'cargo-llvm-cov 0.8.7'\n", false)
+        ..tools(
+            root,
+            "own",
+            "echo 'cargo-llvm-cov 0.8.7'\n",
+            LlvmTools::Missing,
+        )
     };
     assert_eq!(
         own_llvm.require(root).unwrap(),
@@ -327,7 +367,7 @@ fn a_cargo_that_cannot_run_is_not_one_without_llvm_cov() {
     let dir = tempfile::tempdir().expect("a scratch directory");
     let missing = Tools {
         cargo: dir.path().join("no-such-cargo").into_os_string(),
-        rustc: rustc(dir.path(), true),
+        rustc: rustc(dir.path(), LlvmTools::Installed),
         llvm_from_env: false,
     };
     let Err(Failure::Failed(message)) = missing.require(dir.path()) else {

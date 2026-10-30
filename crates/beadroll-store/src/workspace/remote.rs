@@ -14,7 +14,17 @@ use beadroll_core::json::Value;
 use beadroll_git::{Fact, is_local_path, normalize_remote, realpath, without_password};
 
 use super::Workspace;
+use crate::MetadataRead;
 use crate::error::Error;
+
+/// Where a remote spelling came from, for resolving relative paths.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RemoteSource {
+    /// Remembered.
+    Remembered,
+    /// Typed.
+    Typed,
+}
 
 /// The coordination remote as it was chosen ([`Workspace::endpoint`]) and as git is given it: the
 /// URL a link defines a remote at, whether that is the remote's own push URL (which git pushes to
@@ -51,7 +61,7 @@ impl Workspace {
     /// remembered (older versions saved its URL too): it is looked up each time, so `git remote
     /// set-url origin` is followed.
     pub fn remembered_remote(&self) -> Result<Option<OsString>, Error> {
-        let meta = self.metadata(true)?;
+        let meta = self.metadata(MetadataRead::Strict)?;
         Ok(match meta.value("remote") {
             Some(Value::Str(remote)) if !self.is_origin_chosen(OsStr::new(remote))? => {
                 Some(OsString::from(remote))
@@ -75,7 +85,7 @@ impl Workspace {
         if chosen.is_empty() || self.names_remote(chosen)? {
             return Ok(false);
         }
-        if self.is_origin_url(chosen, false) {
+        if self.is_origin_url(chosen, RemoteSource::Remembered) {
             return Ok(true);
         }
         let url = without_password(chosen).0;
@@ -91,7 +101,8 @@ impl Workspace {
     /// configured, a password dropped from each, which git reaches alike, rules and all; never two
     /// spellings taken for one place. A relative path typed just now (`typed`) is read from where
     /// it was typed, a path of its own.
-    pub fn is_origin_url(&self, value: &OsStr, typed: bool) -> bool {
+    pub fn is_origin_url(&self, value: &OsStr, typed: RemoteSource) -> bool {
+        let typed = matches!(typed, RemoteSource::Typed);
         let Some(origin) = self.origin.as_deref().filter(|origin| !origin.is_empty()) else {
             return false;
         };
@@ -101,8 +112,12 @@ impl Workspace {
 
     /// One remote spelling (a configured remote's name, a URL, a path) reduced to the URL bead
     /// uses ([`Workspace::resolve_endpoint`]).
-    pub fn resolve_remote(&self, value: &OsStr, typed: bool) -> Result<OsString, Error> {
-        Ok(self.resolve_endpoint(value, typed)?.url)
+    pub fn resolve_remote(
+        &self,
+        value: &OsStr,
+        remote_source: RemoteSource,
+    ) -> Result<OsString, Error> {
+        Ok(self.resolve_endpoint(value, remote_source)?.url)
     }
 
     /// One remote spelling as bead reads it: a configured remote's name wins over a same-named
@@ -111,7 +126,11 @@ impl Workspace {
     /// from the top of the checkout, where bead runs it); anything else is a URL or a path
     /// ([`Workspace::endpoint_at`]), and origin's own URL so spelled is origin, reached as origin
     /// is, its own push URL included. A password is dropped.
-    pub fn resolve_endpoint(&self, value: &OsStr, typed: bool) -> Result<Endpoint, Error> {
+    pub fn resolve_endpoint(
+        &self,
+        value: &OsStr,
+        remote_source: RemoteSource,
+    ) -> Result<Endpoint, Error> {
         if name_shaped(value)
             && let Some(Configured { url, push }) = configured_remote(&self.settings.git, value)?
         {
@@ -121,12 +140,12 @@ impl Workspace {
                 name: Some(value.to_owned()),
             });
         }
-        if self.is_origin_url(value, typed)
+        if self.is_origin_url(value, remote_source)
             && let Some(origin) = self.origin_endpoint()
         {
             return Ok(origin);
         }
-        self.endpoint_at(value, typed)
+        self.endpoint_at(value, remote_source)
     }
 
     /// Whether `value` names a remote configured here, which wins over a same-named path.
@@ -144,7 +163,8 @@ impl Workspace {
     /// checkout when it is stored, from the cwd when it was typed just now (`typed`), and a path
     /// through its symbolic links, whether it exists or not; except a spelling git rewrites
     /// (`insteadOf`), kept as written for git to rewrite. A password is dropped.
-    fn endpoint_at(&self, value: &OsStr, typed: bool) -> Result<Endpoint, Error> {
+    fn endpoint_at(&self, value: &OsStr, typed: RemoteSource) -> Result<Endpoint, Error> {
+        let typed = matches!(typed, RemoteSource::Typed);
         let git = &self.settings.git;
         let mut value = without_password(value).0;
         if is_local_path(&value) {
@@ -189,7 +209,7 @@ impl Workspace {
             .filter(|value| !value.is_empty())
             .or_else(|| self.settings.var("BEAD_REMOTE"));
         if let Some(typed) = typed {
-            return self.resolve_endpoint(typed, true).map(Some);
+            return self.resolve_endpoint(typed, RemoteSource::Typed).map(Some);
         }
         let tracked = self
             .config_str("remote")
@@ -212,7 +232,9 @@ impl Workspace {
             )));
         }
         match tracked.or(used) {
-            Some(chosen) => self.resolve_endpoint(&chosen, false).map(Some),
+            Some(chosen) => self
+                .resolve_endpoint(&chosen, RemoteSource::Remembered)
+                .map(Some),
             None => Ok(self.origin_endpoint()),
         }
     }
@@ -234,8 +256,8 @@ impl Workspace {
     /// as they were chosen: the same name, or the same URL. A name and a URL are the same only as
     /// an older version saved a name, as git expanded it ([`Workspace::saved_for`]).
     fn same_choice(&self, tracked: &OsStr, used: &OsStr) -> Result<bool, Error> {
-        let tracked = self.resolve_endpoint(tracked, false)?;
-        let used = self.resolve_endpoint(used, false)?;
+        let tracked = self.resolve_endpoint(tracked, RemoteSource::Remembered)?;
+        let used = self.resolve_endpoint(used, RemoteSource::Remembered)?;
         match (&tracked.name, &used.name) {
             (Some(tracked), Some(used)) => Ok(tracked == used),
             (None, None) => Ok(tracked.url == used.url),

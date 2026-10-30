@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use beadroll_core::json::{Format, Object, Value, write};
 use beadroll_store::{Actor, Settings, Workspace, pending_files, read_attempt};
+use beadroll_sync::NetworkMode;
 use beadroll_sync::{Error, Mode, Tx, coordinated};
 use beadroll_test_support::{Json, Machine, Sandbox, built_bead, json};
 
@@ -105,9 +106,14 @@ pub(crate) fn claim(tx: &mut Tx<'_>, mode: Mode, key: &str) -> Result<Mode, Erro
 pub(crate) fn claim_command(ws: &Workspace, actor: &Actor, key: &str) -> Result<Mode, Error> {
     let asked = json!({"command": "claim", "ids": [key], "offline": false, "remote": null});
     let signature = signature(actor, asked, Json::Null);
-    coordinated(ws, actor, false, None, &signature, |tx, mode| {
-        claim(tx, mode, key)
-    })
+    coordinated(
+        ws,
+        actor,
+        NetworkMode::Online,
+        None,
+        &signature,
+        |tx, mode| claim(tx, mode, key),
+    )
 }
 
 /// A claiming title update, optionally adding a label. The actor's claim and edits land together
@@ -129,27 +135,34 @@ pub(crate) fn claiming_update(
     });
     let request = json!({"fields": {"title": title}, "status": null});
     let signature = signature(actor, asked, request);
-    coordinated(ws, actor, false, None, &signature, |tx, mode| {
-        let mode = claim(tx, mode, key)?;
-        // every edit joins the attempt: it lands with the claim or not at all
-        tx.conditional = true;
-        let uid = tx
-            .state()?
-            .resolve(key)
-            .map(|issue| issue.uid().to_string());
-        let uid = uid.unwrap_or_default();
-        let mut fields = Object::new();
-        fields.insert("title".into(), Value::from(title));
-        let mut data = Object::new();
-        data.insert("fields".into(), Value::from(fields));
-        tx.emit("set", Some(&uid), data, None)?;
-        if let Some(label) = label {
+    coordinated(
+        ws,
+        actor,
+        NetworkMode::Online,
+        None,
+        &signature,
+        |tx, mode| {
+            let mode = claim(tx, mode, key)?;
+            // every edit joins the attempt: it lands with the claim or not at all
+            tx.conditional = true;
+            let uid = tx
+                .state()?
+                .resolve(key)
+                .map(|issue| issue.uid().to_string());
+            let uid = uid.unwrap_or_default();
+            let mut fields = Object::new();
+            fields.insert("title".into(), Value::from(title));
             let mut data = Object::new();
-            data.insert("labels".into(), json!([label]));
-            tx.emit("label_add", Some(&uid), data, None)?;
-        }
-        Ok(mode)
-    })
+            data.insert("fields".into(), Value::from(fields));
+            tx.emit("set", Some(&uid), data, None)?;
+            if let Some(label) = label {
+                let mut data = Object::new();
+                data.insert("labels".into(), json!([label]));
+                tx.emit("label_add", Some(&uid), data, None)?;
+            }
+            Ok(mode)
+        },
+    )
 }
 
 /// `bead release KEY` by `actor`, who holds its claim.
@@ -158,20 +171,27 @@ pub(crate) fn release_command(ws: &Workspace, actor: &Actor, key: &str) -> Resul
         "command": "release", "ids": [key], "offline": false, "reason": null, "remote": null
     });
     let signature = signature(actor, asked, Json::Null);
-    coordinated(ws, actor, false, None, &signature, |tx, mode| {
-        let st = tx.state()?.clone();
-        let issue = st.resolve(key);
-        let held = issue.and_then(|issue| {
-            let claim = issue.claim()?.id.to_string();
-            Some((issue.uid().to_string(), claim))
-        });
-        let (uid, claim) =
-            held.ok_or_else(|| Error::Validation(format!("{key} is not claimed")))?;
-        let mut data = Object::new();
-        data.insert("claim".into(), Value::from(claim));
-        tx.emit("release", Some(&uid), data, None)?;
-        Ok(mode)
-    })
+    coordinated(
+        ws,
+        actor,
+        NetworkMode::Online,
+        None,
+        &signature,
+        |tx, mode| {
+            let st = tx.state()?.clone();
+            let issue = st.resolve(key);
+            let held = issue.and_then(|issue| {
+                let claim = issue.claim()?.id.to_string();
+                Some((issue.uid().to_string(), claim))
+            });
+            let (uid, claim) =
+                held.ok_or_else(|| Error::Validation(format!("{key} is not claimed")))?;
+            let mut data = Object::new();
+            data.insert("claim".into(), Value::from(claim));
+            tx.emit("release", Some(&uid), data, None)?;
+            Ok(mode)
+        },
+    )
 }
 
 /// The handshake of a `pause-until` failpoint: the paused process touches `PATH.ready`, then waits

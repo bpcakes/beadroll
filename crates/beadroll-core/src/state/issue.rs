@@ -3,17 +3,16 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, LazyLock};
 
+use super::claim::{Claim, Ended, EndedClaim, LostClaim, Provisional, Stale};
+use super::edges::{DepTags, Deps};
+use super::small::{IdMap, IdSet, VecMap};
+use super::texts::{Texts, is_text};
 use crate::event::Field;
 use crate::id::EventId;
 use crate::json::{Int, Object, Value};
 use crate::op::IntegerField;
 use crate::time::event_time;
 use crate::work::{Work, tally};
-
-use super::claim::{Claim, Ended, EndedClaim, LostClaim, Provisional, Stale};
-use super::edges::{DepTags, Deps};
-use super::small::{IdMap, IdSet, VecMap};
-use super::texts::{Texts, is_text};
 
 /// An issue.
 #[derive(Clone, Debug, PartialEq)]
@@ -78,8 +77,9 @@ impl Stamps {
         }
     }
 
-    /// Records which register of `field` was written last: its own (`own`) or the status's.
-    pub(crate) fn wrote(&mut self, field: Field, own: bool) {
+    /// Records which register last supplied `field`: itself, or [`Field::Status`].
+    pub(crate) fn wrote(&mut self, field: Field, source: Field) {
+        let own = source == field;
         match field {
             Field::ClosedAt => self.own_closed_at = own,
             Field::CloseReason => self.own_close_reason = own,

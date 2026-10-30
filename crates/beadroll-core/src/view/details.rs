@@ -5,11 +5,10 @@
 //! all of the issues, as `bead ready` judges readiness ([`State::readiness`]), and a detail of one
 //! issue is still made as [`State::detail`] makes it.
 
+use super::Dependents;
 use crate::json::Object;
 use crate::query::Readiness;
 use crate::state::{Issue, State};
-
-use super::Dependents;
 
 /// What the details of some issues share, found once for all of them: the issues that depend on
 /// each ([`Dependents`]) and, when there are several, whether anything holds each issue
@@ -31,7 +30,7 @@ impl Details<'_> {
             Some(readiness) => readiness.is_blocked(issue),
             None => self.state.is_blocked(issue),
         };
-        (self.state).detail_judged(issue, &self.dependents, blocked)
+        (self.state).detail_judged(issue, &self.dependents, crate::json::Value::Bool(blocked))
     }
 }
 

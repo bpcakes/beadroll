@@ -39,6 +39,24 @@ use beadroll_store::{
 };
 use beadroll_sync::{Emitter, Spent, unpublished_count};
 
+/// Which issues a search considers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SearchScope {
+    /// Open.
+    Open,
+    /// All.
+    All,
+}
+
+/// Whether an import is applied or previewed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ImportMode {
+    /// Apply.
+    Apply,
+    /// DryRun.
+    DryRun,
+}
+
 pub(crate) use args::{
     ContentArgs, Payload, arg_text, arg_texts, encodable, field_args, resolve_arg, rpartition,
     split_args,

@@ -6,6 +6,12 @@
 //! are `rust_only`: they stop the Rust `bead` at its `append.mid` failpoint, and skip its waits
 //! between rounds at `backoff`.
 
+mod forks;
+mod lost_acks;
+mod remote_ref;
+mod segments;
+mod stalls;
+
 use std::ffi::{OsStr, OsString};
 use std::fs::Permissions;
 use std::io::Read;
@@ -19,11 +25,23 @@ use std::time::{Duration, Instant};
 use beadroll_test_support::{Invocation, Machine, Run, Sandbox, git};
 use rustix::process::{Pid, Signal, kill_process, kill_process_group};
 
-mod forks;
-mod lost_acks;
-mod remote_ref;
-mod segments;
-mod stalls;
+/// Whether a worker starts in a separate process session.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ProcessSession {
+    /// Inherited.
+    Inherited,
+    /// New.
+    New,
+}
+
+/// Where a test wrapper pauses relative to its git command.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum HookPosition {
+    /// Before.
+    Before,
+    /// After.
+    After,
+}
 
 /// How a test makes its machines: `Machine::new`, or `crate::rust_only` for a test that injects its
 /// fault through a failpoint.
@@ -108,7 +126,8 @@ fn wait_marker(marker: &Path, worker: &mut Worker) {
 /// creating `marker` and waiting, simulating a lost acknowledgement; otherwise mark and wait
 /// first. Other git calls pass through. The shell's sleep child can outlive the client killed on
 /// push timeout and finishes after its 20 seconds.
-fn git_wrapper(sandbox: &Sandbox, action: &str, marker: &Path, after: bool) -> OsString {
+fn git_wrapper(sandbox: &Sandbox, action: &str, marker: &Path, after: HookPosition) -> OsString {
+    let after = matches!(after, HookPosition::After);
     let folder = sandbox.root().join(format!("wrapper-{action}"));
     std::fs::create_dir_all(&folder).unwrap();
     let (git, marker) = (quoted(&real_git()), quoted(marker));
@@ -164,7 +183,8 @@ type Drained = Receiver<Vec<u8>>;
 
 impl Worker {
     /// Starts `invocation`.
-    fn start(invocation: Invocation<'_>, alone: bool) -> Worker {
+    fn start(invocation: Invocation<'_>, alone: ProcessSession) -> Worker {
+        let alone = matches!(alone, ProcessSession::New);
         let mut command = invocation.command();
         command
             .stdin(Stdio::null())

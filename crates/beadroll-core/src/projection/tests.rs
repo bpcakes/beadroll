@@ -3,21 +3,11 @@
 //! through a remote and race (colliding keys, concurrent edits, claims, takeovers, imports that
 //! wait for a key).
 
-use std::collections::{BTreeMap, HashSet};
-
-use crate::event::event_problem;
-use crate::id::EventId;
-use crate::journal::{Journal, canonical};
-use crate::json::{Object, Value};
-use crate::state::State;
-
-use super::parts::Copying;
-use super::{Projection, Record, decode_state};
-
 pub(crate) mod awaiting;
 mod compacted;
 mod copied;
 mod edges;
+mod fields;
 mod finished;
 mod flawed;
 mod forged;
@@ -31,7 +21,29 @@ mod shown;
 mod taken;
 mod texts_once;
 
+use std::collections::{BTreeMap, HashSet};
+
+use fields::{CreateOrigin, created, written};
 use taken::differential;
+
+use super::parts::Copying;
+use super::{Projection, Record, decode_state};
+use crate::event::event_problem;
+use crate::id::EventId;
+use crate::journal::JournalOrder;
+use crate::journal::{Journal, canonical};
+use crate::json::{Object, Value};
+use crate::projection::parts::Compaction;
+use crate::state::State;
+
+/// Whether generated histories include malformed or conflicting records.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum HistoryKind {
+    /// Valid.
+    Valid,
+    /// Flawed.
+    Flawed,
+}
 
 /// A seeded generator (SplitMix64): the same draws on every run.
 pub(crate) struct Rng(pub(crate) u64);
@@ -246,6 +258,32 @@ impl World {
         (issues, claims)
     }
 
+    /// Creates an issue, optionally with imported fields and unresolved dependencies.
+    fn create_issue(&mut self, m: usize, roll: usize, mut data: Object) {
+        let key = format!("pr-{}", ["a1", "b2", "c3", "d4", "e5"][self.rng.below(5)]);
+        data.insert("key".into(), Value::from(key));
+        let origin = if self.rng.chance(20) {
+            CreateOrigin::Imported
+        } else {
+            CreateOrigin::Local
+        };
+        let fields = created(&mut self.rng, roll, origin);
+        data.insert("fields".into(), Value::from(fields));
+        if origin == CreateOrigin::Imported {
+            let mut dep = Object::new();
+            let key = format!("pr-{}", ["a1", "b2", "f6"][self.rng.below(3)]);
+            dep.insert("depends_on_id".into(), Value::from(key));
+            dep.insert("type".into(), Value::from("blocks"));
+            let mut dangling = vec![Value::from(dep)];
+            if self.rng.chance(50) {
+                dangling.extend(self.awaited(roll));
+            }
+            data.insert("dangling".into(), Value::Array(dangling));
+            data.insert("imported".into(), Value::from(true));
+        }
+        self.write(m, "create", None, data);
+    }
+
     /// One thing machine `m` does.
     fn act(&mut self, m: usize) {
         let (issues, claims) = self.issues(m);
@@ -256,24 +294,7 @@ impl World {
         let label = || Value::Array(vec![Value::from(["ui", "db", "ops"][roll % 3])]);
         let mut data = Object::new();
         if issue.is_none() || roll < 18 {
-            let key = format!("pr-{}", ["a1", "b2", "c3", "d4", "e5"][self.rng.below(5)]);
-            data.insert("key".into(), Value::from(key));
-            let imported = self.rng.chance(20);
-            let fields = created(&mut self.rng, roll, imported);
-            data.insert("fields".into(), Value::from(fields));
-            if imported {
-                let mut dep = Object::new();
-                let key = format!("pr-{}", ["a1", "b2", "f6"][self.rng.below(3)]);
-                dep.insert("depends_on_id".into(), Value::from(key));
-                dep.insert("type".into(), Value::from("blocks"));
-                let mut dangling = vec![Value::from(dep)];
-                if self.rng.chance(50) {
-                    dangling.extend(self.awaited(roll));
-                }
-                data.insert("dangling".into(), Value::Array(dangling));
-                data.insert("imported".into(), Value::from(true));
-            }
-            self.write(m, "create", None, data);
+            self.create_issue(m, roll, data);
             return;
         }
         // who holds an issue, half the time drawn as a world heavy in ownership draws it
@@ -352,97 +373,6 @@ impl World {
     }
 }
 
-/// The fields of a generated create, which now and then leaves a field to its default, gives one
-/// null or a legacy boolean priority, or makes an issue closed with what it gives of the close;
-/// an import's, now and then the times and the author its record gives, the author null included.
-fn created(r: &mut Rng, roll: usize, imported: bool) -> Object {
-    let mut fields = Object::new();
-    for field in ["title", "priority", "issue_type"] {
-        if !r.chance(10) {
-            fields.insert(field.into(), drawn(r, field, roll, false));
-        }
-    }
-    match r.below(10) {
-        0 => {}
-        1 => {
-            fields.insert("status".into(), Value::from("closed"));
-            for field in ["closed_at", "close_reason"] {
-                let value = match r.below(3) {
-                    0 => continue,
-                    1 => Value::Null,
-                    _ => drawn(r, field, roll, false),
-                };
-                fields.insert(field.into(), value);
-            }
-        }
-        _ => {
-            fields.insert("status".into(), Value::from("open"));
-        }
-    }
-    for field in ["assignee", "estimated_minutes", "external_ref"] {
-        if r.chance(40) {
-            fields.insert(field.into(), drawn(r, field, roll, true));
-        }
-    }
-    for field in ["created_at", "updated_at", "created_by"] {
-        if imported && r.chance(50) {
-            let value = match field {
-                "created_by" if r.chance(30) => Value::Null,
-                "created_by" => Value::from(format!("v{roll}")),
-                _ => Value::from(format!("2025-12-{:02}T00:00:00Z", 1 + r.below(28))),
-            };
-            fields.insert(field.into(), value);
-        }
-    }
-    fields
-}
-
-/// The fields of a generated set: one to three, in the order drawn, so that a status comes before
-/// or after a closed_at or close_reason, which a set writes into registers of their own.
-fn written(r: &mut Rng, roll: usize) -> Object {
-    let mut fields = Object::new();
-    for _ in 0..=r.below(3) {
-        let field = *r.pick(&SET).expect("fields");
-        if !fields.contains_key(field) {
-            let value = drawn(r, field, roll, true);
-            fields.insert(field.into(), value);
-        }
-    }
-    fields
-}
-
-/// The fields a generated set writes.
-const SET: [&str; 10] = [
-    "title",
-    "assignee",
-    "description",
-    "priority",
-    "estimated_minutes",
-    "external_ref",
-    "status",
-    "closed_at",
-    "close_reason",
-    "notes",
-];
-
-/// A value of `field` for an event of `roll` to write: null now and then where `nullable` and the
-/// field may be cleared, and a legacy boolean priority now and then.
-fn drawn(r: &mut Rng, field: &str, roll: usize, nullable: bool) -> Value {
-    let required = matches!(field, "title" | "priority" | "issue_type" | "status");
-    if nullable && !required && r.chance(30) {
-        return Value::Null;
-    }
-    match field {
-        "priority" if r.chance(15) => Value::Bool(r.chance(50)),
-        "priority" => Value::from(r.below(5) as i64),
-        "estimated_minutes" => Value::from(roll as i64),
-        "issue_type" => Value::from(["task", "bug"][r.below(2)]),
-        "status" => Value::from(["open", "in_progress", "closed"][r.below(3)]),
-        "closed_at" => Value::from(format!("2026-01-{:02}T00:00:00Z", 1 + roll % 28)),
-        _ => Value::from(format!("v{roll}")),
-    }
-}
-
 fn str_of(value: Option<&Value>) -> String {
     value.and_then(Value::as_str).unwrap_or_default().to_owned()
 }
@@ -484,13 +414,23 @@ fn load(world: &World, held: &[usize]) -> Journal {
                 continue;
             }
             for record in records(world, &[*at]) {
-                journal.add(record.value, &record.replica, &record.origin, true);
+                journal.add(
+                    record.value,
+                    &record.replica,
+                    &record.origin,
+                    JournalOrder::Sequenced,
+                );
             }
         }
     }
     for at in attempts.into_values() {
         for record in records(world, &[at]) {
-            journal.add(record.value, &record.replica, &record.origin, false);
+            journal.add(
+                record.value,
+                &record.replica,
+                &record.origin,
+                JournalOrder::Attempt,
+            );
         }
     }
     journal
@@ -500,7 +440,8 @@ fn load(world: &World, held: &[usize]) -> Journal {
 /// `batches` batches, in the order they were written, each as a store holds it: the histories the
 /// properties of replay deliver in other orders (`replay::tests`). A world `flawed` also writes
 /// what replay reports.
-pub(crate) fn history(seed: u64, batches: usize, flawed: bool) -> Vec<Record> {
+pub(crate) fn history(seed: u64, batches: usize, flawed: HistoryKind) -> Vec<Record> {
+    let flawed = matches!(flawed, HistoryKind::Flawed);
     let mut world = if flawed {
         World::flawed(seed)
     } else {
@@ -662,9 +603,24 @@ fn read_back(projection: &Projection, file: &mut TextFile, back: WriteBack) -> P
     let compacts = back.compacts(projection);
     let (encoded, _) = match back {
         WriteBack::Encoded => projection.encode(file.len() as u64),
-        _ => projection.encode_with(file.len() as u64, compacts),
+        _ => projection.encode_with(
+            file.len() as u64,
+            if compacts {
+                Compaction::Compact
+            } else {
+                Compaction::Keep
+            },
+        ),
     };
-    let (written, _) = projection.encode_copying(file.len() as u64, compacts, Copying::Nothing);
+    let (written, _) = projection.encode_copying(
+        file.len() as u64,
+        if compacts {
+            Compaction::Compact
+        } else {
+            Compaction::Keep
+        },
+        Copying::Nothing,
+    );
     for (part, copied, written) in [
         ("state", &encoded.state, &written.state),
         ("index", &encoded.index, &written.index),
@@ -699,7 +655,15 @@ fn read_back(projection: &Projection, file: &mut TextFile, back: WriteBack) -> P
         edges::metadata(read.state()),
         edges::metadata(original.state())
     );
-    assert!(known::knows_alike(&decoded, projection, compacts));
+    assert!(known::knows_alike(
+        &decoded,
+        projection,
+        if compacts {
+            Compaction::Compact
+        } else {
+            Compaction::Keep
+        }
+    ));
     let mut state = decode_state(&encoded.state).unwrap();
     assert!(known::knows_writers_alone(&state, projection));
     assert_eq!(edges::outline(&state), edges::outline(original.state()));
@@ -741,7 +705,7 @@ fn answers_alike(projection: &Projection, state: &State) -> bool {
 
 #[test]
 fn every_extension_is_replays_answer_or_declined() {
-    let tally = differential(0..40, false);
+    let tally = differential(0..40, HistoryKind::Valid);
     // A local write builds on the frontier: the projection takes it, a takeover's excepted. A
     // merge it takes when the merged events build on it.
     assert!(

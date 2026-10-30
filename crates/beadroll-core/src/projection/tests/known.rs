@@ -5,15 +5,16 @@
 
 use std::collections::HashSet;
 
-use crate::event::Field;
-use crate::id::EventId;
-use crate::json::{Object, Value};
-use crate::state::State;
-
 use super::super::{Extended, Projection, asked, decode_state, named, project};
 use super::hostile::{HERE, base, event, fields, id, journal, record};
 use super::read_in;
 use super::shown::replayed;
+use crate::event::Field;
+use crate::id::EventId;
+use crate::journal::JournalOrder;
+use crate::json::{Object, Value};
+use crate::projection::parts::Compaction;
+use crate::state::State;
 
 /// The machine that writes beside this one in the tests below.
 const THERE: &str = "0000bb02";
@@ -22,7 +23,12 @@ const THERE: &str = "0000bb02";
 /// and the frontier, in the journal's order, each with its causes, machine and actor as
 /// `projection` has them: those alone when what every event had seen was `compacted`, and every
 /// event `projection` knows otherwise (roll-lqjj.43).
-pub(super) fn knows_alike(decoded: &Projection, projection: &Projection, compacted: bool) -> bool {
+pub(super) fn knows_alike(
+    decoded: &Projection,
+    projection: &Projection,
+    compacted: Compaction,
+) -> bool {
+    let compacted = matches!(compacted, Compaction::Compact);
     let read = &decoded.state.knowledge.events;
     let held = &projection.state.knowledge.events;
     let mut kept = named(projection.state());
@@ -56,8 +62,16 @@ fn a_state_read_alone_knows_who_wrote_what_its_conflicts_name_and_the_index_ever
     // two machines retitle issue 2, neither seeing the other: its title register holds both
     let mut records = base();
     let (theirs, ours) = (fields("theirs"), fields("ours"));
-    records.push(record(event(4, THERE, &[3], "set", 2, theirs), THERE, true));
-    records.push(record(event(5, HERE, &[3], "set", 2, ours), HERE, true));
+    records.push(record(
+        event(4, THERE, &[3], "set", 2, theirs),
+        THERE,
+        JournalOrder::Sequenced,
+    ));
+    records.push(record(
+        event(5, HERE, &[3], "set", 2, ours),
+        HERE,
+        JournalOrder::Sequenced,
+    ));
     let projection = project(journal(&records)).unwrap();
     let (encoded, _) = projection.encode(0);
     let state = decode_state(&encoded.state).unwrap();
@@ -74,7 +88,7 @@ fn a_state_read_alone_knows_who_wrote_what_its_conflicts_name_and_the_index_ever
     );
     // the index holds what the state names, the create and the two titles, with their causes
     let decoded = Projection::decode(encoded).unwrap();
-    assert!(knows_alike(&decoded, &projection, true));
+    assert!(knows_alike(&decoded, &projection, Compaction::Compact));
     assert_eq!(decoded.state.knowledge.events.len(), 3);
     let causes = |n| (decoded.state.knowledge.events.get(&both[n])).map(|event| event.deps());
     let three = EventId::parse(&id(3)).unwrap();
@@ -93,11 +107,19 @@ fn a_state_read_alone_knows_who_wrote_a_long_field_whose_texts_were_not_read_in(
         set.insert("design".into(), Value::from(design));
         let mut data = Object::new();
         data.insert("fields".into(), Value::from(set));
-        records.push(record(event(n, folder, &[3], "set", 2, data), folder, true));
+        records.push(record(
+            event(n, folder, &[3], "set", 2, data),
+            folder,
+            JournalOrder::Sequenced,
+        ));
     }
     let (encoded, _) = project(journal(&records)).unwrap().encode(0);
     let mut file = encoded.texts.clone();
-    let retitle = record(event(6, HERE, &[4, 5], "set", 2, fields("t")), HERE, true);
+    let retitle = record(
+        event(6, HERE, &[4, 5], "set", 2, fields("t")),
+        HERE,
+        JournalOrder::Sequenced,
+    );
     records.push(retitle.clone());
     let read = Projection::decode(encoded).unwrap();
     let Extended::Applied(extended) = read.extend(vec![retitle]).unwrap() else {

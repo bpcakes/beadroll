@@ -1,6 +1,9 @@
 //! One schedule: a sandbox, three machines, a read-only remote observer, their shared tracker,
 //! the commands and all violations found.
 
+mod observe;
+mod settle;
+
 use std::collections::BTreeMap;
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
@@ -17,9 +20,7 @@ use super::{
     A1, A2, B1, C1, Keys, OPS, Op, Pre, STALL, STALL_FENCED, STALL_LANDED, Schedule, Variant,
     fault_env, fault_fired,
 };
-
-mod observe;
-mod settle;
+use crate::sweep::FaultProgress;
 
 /// The observer's thread.
 pub(super) const OBS: &str = "obs-thread";
@@ -285,7 +286,15 @@ impl Run {
     /// ([`fault_fired`]): the stall hook's mark stays after the hook is taken away.
     fn fired(&self, op: &Step) {
         let stalled = self.sandbox.root().join("hook-started").exists();
-        if !fault_fired(self.schedule.fault, op.rc, stalled) {
+        if !fault_fired(
+            self.schedule.fault,
+            op.rc,
+            if stalled {
+                FaultProgress::Stalled
+            } else {
+                FaultProgress::Continued
+            },
+        ) {
             let code = op.code.as_deref().unwrap_or("-");
             self.violation(format!(
                 "op: {} never fired: bead {} -> rc {} {code} ({} ms)",

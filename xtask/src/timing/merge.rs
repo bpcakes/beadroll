@@ -13,6 +13,15 @@ use super::history::{ROTATE_BYTES, Shape, history};
 use super::world::{RUNS, World, bead, profile, write_store};
 use crate::workspace::{self, Failure, json_string};
 
+/// Whether the timing history makes concurrent local writes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MergeHistory {
+    /// Sequential.
+    Sequential,
+    /// Concurrent.
+    Concurrent,
+}
+
 /// How many events each merge brings when `--batch` does not say.
 pub(crate) const BATCH: usize = 10;
 
@@ -21,9 +30,10 @@ pub(crate) fn measure(
     count: usize,
     shape: Shape,
     batch: usize,
-    concurrent: bool,
+    concurrent: MergeHistory,
     label: Option<&str>,
 ) -> Result<String, Failure> {
+    let concurrent = matches!(concurrent, MergeHistory::Concurrent);
     let bead = bead()?;
     let dir = workspace::output_dir("timing")?.join(format!("merge-{}-{count}", shape.name()));
     if dir.exists() {

@@ -15,6 +15,7 @@ use beadroll_store::{Elsewhere, ViewError, Workspace, elsewhere, load_journal};
 use beadroll_sync::{Tx, writing_spent};
 
 use super::{Context, Failure, Line, Outcome, Tone, need_tracker, read_utf8};
+use crate::commands::ImportMode;
 
 /// The file Beads keeps its tracker in, on every branch.
 const BEADS_FILE: &str = ".beads/issues.jsonl";
@@ -24,7 +25,12 @@ const SHOWN: usize = 20;
 
 /// `bead import PATH`: the export's records brought into this tracker, published at once; with
 /// `dry_run`, what that would do, nothing imported.
-pub(crate) fn import(ctx: &Context<'_>, path: &OsStr, dry_run: bool) -> Result<Outcome, Failure> {
+pub(crate) fn import(
+    ctx: &Context<'_>,
+    path: &OsStr,
+    dry_run: ImportMode,
+) -> Result<Outcome, Failure> {
+    let dry_run = matches!(dry_run, ImportMode::DryRun);
     if dry_run {
         let state = read_only(ctx.ws)?;
         need_tracker(&state)?;

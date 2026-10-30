@@ -5,11 +5,11 @@
 
 use std::collections::BTreeMap;
 
-use crate::json::{Object, Value};
-use crate::state::{Integrity, State};
-
 use super::taken::{Tally, differential};
 use super::{MACHINES, Machine, World, Written, str_of};
+use crate::json::{Object, Value};
+use crate::projection::tests::HistoryKind;
+use crate::state::{Integrity, State};
 
 impl World {
     /// A world of [`MACHINES`] and a fourth machine, a copy of the second's identity: it writes
@@ -48,7 +48,7 @@ impl World {
             3 => {
                 let mut line = Object::new();
                 line.insert("op".into(), Value::from("set"));
-                self.push(m, Value::from(line), false);
+                self.push(m, Value::from(line));
             }
             4 => {
                 let own: Vec<usize> = (self.machines[m].known.iter().copied())
@@ -58,7 +58,7 @@ impl World {
                 if let Some(&at) = self.rng.pick(&own) {
                     let value = self.events[at].value.clone();
                     let changed = self.rng.chance(70);
-                    self.push(m, if changed { altered(&value) } else { value }, false);
+                    self.push(m, if changed { altered(&value) } else { value });
                 }
             }
             5 => {
@@ -87,7 +87,7 @@ impl World {
                         value = altered(&value);
                         value = with(&value, "deps", Value::Array(deps));
                     }
-                    self.push(m, value, false);
+                    self.push(m, value);
                 }
             }
             7 => {
@@ -135,11 +135,11 @@ impl World {
     }
 
     /// Machine `m` appends `value` to its journal (or, `attempt`, writes it as an attempt file).
-    fn push(&mut self, m: usize, value: Value, attempt: bool) {
+    fn push(&mut self, m: usize, value: Value) {
         self.events.push(Written {
             value,
             machine: m,
-            attempt,
+            attempt: false,
         });
         self.learn(m, self.events.len() - 1);
     }
@@ -215,7 +215,7 @@ const KEEPS_OUT: [u64; 4] = [44, 90, 182, 1451];
 
 #[test]
 fn every_extension_past_an_integrity_entry_is_replays_answer_or_declined() {
-    let tally = differential((0..40).chain(KEEPS_OUT), true);
+    let tally = differential((0..40).chain(KEEPS_OUT), HistoryKind::Flawed);
     assert!(
         tally.declined.is_empty(),
         "local writes declined in seeds {:?}",
@@ -244,7 +244,7 @@ fn many_seeds_past_integrity_entries() {
         let runs: Vec<_> = (0..THREADS)
             .map(|n| {
                 let seeds = n * SEEDS / THREADS..(n + 1) * SEEDS / THREADS;
-                scope.spawn(move || differential(seeds, true))
+                scope.spawn(move || differential(seeds, HistoryKind::Flawed))
             })
             .collect();
         runs.into_iter().map(|run| run.join().unwrap()).collect()

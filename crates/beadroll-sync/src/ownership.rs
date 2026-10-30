@@ -10,11 +10,16 @@ use std::path::{Path, PathBuf};
 use beadroll_core::code::Code;
 use beadroll_core::json::Value;
 use beadroll_git::PushOutcome;
+use beadroll_store::FileMode;
+use beadroll_store::IdentityMode;
+use beadroll_store::PublicationState;
 use beadroll_store::{
     Actor, Endpoint, Fired, Workspace, append_events, attempt_path, glob_ending, json_text,
     load_pending, private_dirs, read, replica_id, write_atomic, write_attempt_file,
 };
 
+use crate::NetworkMode;
+use crate::PublishMode;
 use crate::error::Error;
 use crate::link::Link;
 use crate::synchronise::{ROUNDS, conflict_detail, pause, refused};
@@ -124,7 +129,7 @@ pub fn settle_pending(
     if pending.is_empty() {
         return Ok(Settled::Clear);
     }
-    match link.publish(tip, "fence", &[], true)? {
+    match link.publish(tip, "fence", &[], PublishMode::Fence)? {
         PushOutcome::Ok => {
             drop_pending(ws, &pending)?;
             Ok(Settled::Clear)
@@ -153,7 +158,7 @@ pub fn forget(receipts: &[PathBuf]) -> Result<(), Error> {
 pub fn coordinated<E: From<Error>>(
     ws: &Workspace,
     actor: &Actor,
-    offline: bool,
+    network_mode: NetworkMode,
     remote: Option<&OsStr>,
     signature: &str,
     mut build: impl FnMut(&mut Tx<'_>, Mode) -> Result<Mode, E>,
@@ -161,7 +166,7 @@ pub fn coordinated<E: From<Error>>(
     let remote = ws.endpoint(remote).map_err(|e| E::from(e.into()))?;
     let remote = remote.filter(|remote| !remote.url.is_empty());
     let remote = match remote {
-        Some(remote) if !offline => remote,
+        Some(remote) if network_mode == NetworkMode::Online => remote,
         known => {
             let mode = if known.is_some() {
                 Mode::Offline
@@ -172,7 +177,7 @@ pub fn coordinated<E: From<Error>>(
         }
     };
     let mut link = Link::new(ws, &remote).map_err(E::from)?;
-    let replica = replica_id(&ws.settings, true)
+    let replica = replica_id(&ws.settings, IdentityMode::Create)
         .map_err(|e| E::from(e.into()))?
         .unwrap_or_default();
     // a push of ours that got no answer, with what it answered: it may still have landed
@@ -298,13 +303,13 @@ fn publish_attempt(
     write_atomic(
         &folder.join(format!("{id}.command")),
         signature.as_bytes(),
-        true,
+        FileMode::Private,
         failpoints,
     )?;
     write_attempt_file(ws, &folder.join(format!("{id}.json")), events)?;
     failpoints.hit("ownership.before-publish");
     failpoints.hit("claim.before-push");
-    let outcome = match link.publish(tip, "claim", events, false) {
+    let outcome = match link.publish(tip, "claim", events, PublishMode::IfChanged) {
         Ok(outcome) => outcome,
         Err(error) if error.code() == Code::RemoteUnreachable => PushOutcome::Uncertain,
         Err(error) => return Err(error),
@@ -345,6 +350,6 @@ impl<E> From<Error> for Round<E> {
 fn published(ws: &Workspace, link: &mut Link<'_>, remote: &Endpoint) -> Result<(), Error> {
     let counts = link.published_counts()?;
     ws.note_sync(remote, &[("published", Value::from(counts))]);
-    ws.set_wrote(false);
+    ws.set_wrote(PublicationState::Published);
     Ok(())
 }

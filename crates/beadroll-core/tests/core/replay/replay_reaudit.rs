@@ -6,6 +6,7 @@ mod scale;
 
 use beadroll_core::event::{Field, FieldType, REGISTERS, REQUIRED_FIELDS};
 use beadroll_core::journal::Journal;
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::json::{Format, Int, write};
 use beadroll_core::replay::replay;
 use beadroll_core::state::{Integrity, State};
@@ -123,14 +124,14 @@ fn malformed_duplicate_order_does_not_change_projection() {
     let malformed = with(&create, "op", json!(["create"]));
     let build = |variant_first: bool| {
         let mut j = Journal::new();
-        j.add(init.clone(), "a", "", true);
+        j.add(init.clone(), "a", "", JournalOrder::Sequenced);
         // Corruption in another machine's copy; valid envelope cannot be checked for placement.
         let mut rows = vec![(malformed.clone(), "b"), (create.clone(), "a")];
         if !variant_first {
             rows.reverse();
         }
         for (event, machine) in rows {
-            j.add(event, machine, "", true);
+            j.add(event, machine, "", JournalOrder::Sequenced);
         }
         j
     };
@@ -368,7 +369,7 @@ fn all_registers_preserve_none_against_concurrent_value() {
         Some(&uid),
         fields(&|_| Json::Null),
     );
-    j.add(settled, "d", "", true);
+    j.add(settled, "d", "", JournalOrder::Sequenced);
     let st = replay(j).unwrap();
     assert!(st.conflicts(issue(&st, &create)).is_empty());
 }
@@ -400,7 +401,7 @@ fn missing_predecessor_holds_claim_and_close_then_recovers() {
     expected.sort();
     assert_eq!(pending, expected);
     assert_eq!(st.issues().count(), 0);
-    j.add(create.clone(), "a", "", true);
+    j.add(create.clone(), "a", "", JournalOrder::Sequenced);
     let st = replay(j).unwrap();
     assert!(st.pending().is_empty());
     assert_eq!(issue(&st, &create).status(), "closed");

@@ -32,7 +32,12 @@ mod review6 {
         ];
         let mut journal = Journal::new();
         for event in events {
-            journal.add(event.json(), "m", "", true);
+            journal.add(
+                event.json(),
+                "m",
+                "",
+                beadroll_core::journal::JournalOrder::Sequenced,
+            );
         }
         let state = replay(journal).unwrap();
         let a = state.issue_named(create_a).unwrap();

@@ -3,6 +3,8 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
+use beadroll_store::FileMode;
+use beadroll_store::IdentityMode;
 use beadroll_store::{
     Memo, complete_prefix, extend_segment, pending_files, projection_sourced, read, read_attempt,
     repair_tail, replica_id, segment_files, write_atomic,
@@ -10,6 +12,8 @@ use beadroll_store::{
 
 use super::{Link, newlines};
 use crate::error::Error;
+use crate::link::write::BlobUse;
+use crate::synchronise::SyncReport;
 
 const OWN_FORK: &str = "this machine's journal differs from the published one: the same machine \
                         identity is being used from two places. Give one of them a new identity.";
@@ -78,14 +82,19 @@ impl Link<'_> {
     /// that follows ([`Link::local_blobs`]). The store's projection as the merge leaves it is kept
     /// too, with the journal files it was made from ([`Link::merged`]).
     pub fn merge(&mut self, tip: Option<&str>) -> Result<i64, Error> {
-        self.merge_from(tip, false)
+        self.merge_from(tip, SyncReport::Skip)
     }
 
     /// [`Link::merge`], and with `count`, unless this link counted them already, how many keys the
     /// store's state had renamed before anything came in ([`Link::renames_before`]): the projection
     /// read for it is the one the merge leaves when it writes no journal file, so that a sync that
     /// brings nothing reads the projection once (roll-lqjj.29).
-    pub(crate) fn merge_from(&mut self, tip: Option<&str>, count: bool) -> Result<i64, Error> {
+    pub(crate) fn merge_from(
+        &mut self,
+        tip: Option<&str>,
+        count: SyncReport,
+    ) -> Result<i64, Error> {
+        let count = matches!(count, SyncReport::Collect);
         self.merged = None;
         self.wrote = false;
         self.remote_counts.clear();
@@ -108,13 +117,13 @@ impl Link<'_> {
         } else {
             None
         };
-        let own = replica_id(&self.ws.settings, false)?;
+        let own = replica_id(&self.ws.settings, IdentityMode::Existing)?;
         let pending: HashMap<String, PathBuf> = pending_files(self.ws)
             .into_iter()
             .map(|path| (stem(&path), path))
             .collect();
         if let Some(tip) = tip {
-            let local = self.local_blobs(false)?;
+            let local = self.local_blobs(BlobUse::Comparison)?;
             for (path, sha) in self.listing(tip)? {
                 let Ok(path) = String::from_utf8(path) else {
                     continue; // a name no bead writes
@@ -155,7 +164,12 @@ impl Link<'_> {
         data: &[u8],
         blob: Option<&str>,
     ) -> Result<(), Error> {
-        write_atomic(target, data, true, &self.ws.settings.failpoints)?;
+        write_atomic(
+            target,
+            data,
+            FileMode::Private,
+            &self.ws.settings.failpoints,
+        )?;
         self.wrote(path, target, data, blob);
         Ok(())
     }
@@ -212,7 +226,7 @@ impl Link<'_> {
             write_atomic(
                 &fork_path(self, &target),
                 &read(&target)?,
-                true,
+                FileMode::Private,
                 &self.ws.settings.failpoints,
             )?;
             self.forks.push(path.to_owned());
@@ -276,7 +290,7 @@ impl Link<'_> {
         write_atomic(
             &fork_path(self, &target),
             &ours,
-            true,
+            FileMode::Private,
             &self.ws.settings.failpoints,
         )?;
         self.write_journal(path, &target, &theirs, written)?;

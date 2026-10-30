@@ -3,9 +3,16 @@
 use std::ffi::OsStr;
 
 use super::*;
+use crate::CrashHooks;
 
 fn points(spec: &str) -> Result<Failpoints, Error> {
-    Failpoints::from_env(Some(OsStr::new(spec)), false, false)
+    Failpoints::from_env(
+        Some(OsStr::new(spec)),
+        CrashHooks {
+            before_push: false,
+            after_push: false,
+        },
+    )
 }
 
 fn refused(spec: &str) -> String {
@@ -101,14 +108,23 @@ fn what_cannot_fire_as_written_is_refused() {
 
 #[test]
 fn the_crash_hooks_are_failpoints() {
-    let fp = Failpoints::from_env(None, true, true).unwrap();
+    let fp = Failpoints::from_env(
+        None,
+        CrashHooks {
+            before_push: true,
+            after_push: true,
+        },
+    )
+    .unwrap();
     assert_eq!(fp.specs.len(), 2);
     assert_eq!(fp.specs[0].action, Action::Exit(98));
     assert_eq!(fp.specs[1].point, "ownership.after-publish-ok");
     let both = Failpoints::from_env(
         Some(OsStr::new("ownership.before-publish=sigkill")),
-        true,
-        false,
+        CrashHooks {
+            before_push: true,
+            after_push: false,
+        },
     );
     assert!(matches!(both, Err(Error::Config(_))));
 }

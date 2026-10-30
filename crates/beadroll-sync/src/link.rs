@@ -17,6 +17,8 @@ mod publish;
 mod read;
 mod write;
 
+pub use publish::PublishMode;
+
 use std::collections::{HashMap, HashSet};
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStrExt as _;
@@ -33,6 +35,15 @@ use beadroll_store::{
 };
 
 use crate::error::Error;
+
+/// Whether a remote has its own configured push URL.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PushUrl {
+    /// Rewrite.
+    Rewrite,
+    /// Explicit.
+    Explicit,
+}
 
 /// The coordination ref on one remote, and what the last exchange with it found.
 #[derive(Debug)]
@@ -134,7 +145,8 @@ fn link_env(ws: &Workspace) -> Result<Env, Error> {
 /// remote's (`insteadOf`, and for a push `pushInsteadOf` unless it is the remote's own push URL),
 /// as for `git fetch NAME` and `git push NAME`. `name` is made for the link, so that no
 /// configuration defines that remote already: its URLs would be added to.
-pub(crate) fn defining_remote(env: &Env, name: &str, url: &OsStr, own_push_url: bool) -> Env {
+pub(crate) fn defining_remote(env: &Env, name: &str, url: &OsStr, own_push_url: PushUrl) -> Env {
+    let own_push_url = matches!(own_push_url, PushUrl::Explicit);
     let keys: &[&str] = if own_push_url {
         &["url", "pushurl"]
     } else {
@@ -196,7 +208,16 @@ impl<'a> Link<'a> {
     /// This link's environment with its remote defined ([`defining_remote`]), for the gits that
     /// reach it.
     fn remote_env(&self) -> Env {
-        defining_remote(&self.env, &self.remote_name, &self.url, self.own_push_url)
+        defining_remote(
+            &self.env,
+            &self.remote_name,
+            &self.url,
+            if self.own_push_url {
+                PushUrl::Explicit
+            } else {
+                PushUrl::Rewrite
+            },
+        )
     }
 
     /// The endpoint this link reaches, as it was chosen.
