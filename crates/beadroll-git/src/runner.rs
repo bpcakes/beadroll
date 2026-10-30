@@ -1,7 +1,7 @@
 //! Runs every git process bead starts. Capture output in unlinked files and wait for git's exit
 //! rather than output EOF: hooks and transports may leave background processes holding stderr
 //! open. Each git has its own session, away from the caller's terminal. On fetch timeout, kill
-//! the process group; a push uses `reap(false)` to kill only the client, allowing the receiver to
+//! the process group; a push uses `reap(KillScope::Client)` to kill only the client, allowing the receiver to
 //! finish. Ownership settling resolves that uncertain outcome.
 
 use std::collections::BTreeMap;
@@ -19,6 +19,15 @@ use std::time::Duration;
 use crate::error::{Error, IoError};
 use crate::signal::signal_name;
 use crate::text::{strip, strip_ascii};
+
+/// Which processes are killed when a git invocation ends.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KillScope {
+    /// Client.
+    Client,
+    /// ProcessGroup.
+    ProcessGroup,
+}
 
 /// A git process's explicit environment, working directory (`None` inherits the caller's) and
 /// output-file directory. The CLI builds the initial environment; [`crate::sync_env`] derives the
@@ -132,9 +141,10 @@ impl Git<'_> {
         self
     }
 
-    /// Whether a timeout kills git's whole process group (`true`, the default, for a fetch) or the
-    /// client alone (`false`, for a push).
-    pub fn reap(mut self, reap: bool) -> Self {
+    /// What a timeout kills: the whole process group by default (for a fetch), or
+    /// [`KillScope::Client`] alone for a push.
+    pub fn reap(mut self, reap: KillScope) -> Self {
+        let reap = matches!(reap, KillScope::ProcessGroup);
         self.reap = reap;
         self
     }
@@ -173,7 +183,15 @@ impl Git<'_> {
 
     fn execute(self) -> Result<(Output, Vec<OsString>), Error> {
         let (command, out, err) = self.prepare()?;
-        let waited = wait_for(command, self.timeout, self.reap)?;
+        let waited = wait_for(
+            command,
+            self.timeout,
+            if self.reap {
+                KillScope::ProcessGroup
+            } else {
+                KillScope::Client
+            },
+        )?;
         let Some(status) = waited else {
             let first = self.args.first().map(|a| a.to_string_lossy());
             return Err(Error::Timeout {
@@ -313,7 +331,7 @@ fn failure(args: &[OsString], output: &Output) -> Error {
 fn wait_for(
     mut command: Command,
     timeout: Option<f64>,
-    reap: bool,
+    kill_scope: KillScope,
 ) -> Result<Option<ExitStatus>, Error> {
     // The waiter exists before git does, so that a git is never started without someone to reap it:
     // a blocking wait on its own thread, not a loop of sleeps.
@@ -351,7 +369,7 @@ fn wait_for(
                 Some(Ok(status)) => Ok(status),
                 Some(Err(mpsc::RecvTimeoutError::Disconnected)) => Err(mpsc::RecvError),
                 Some(Err(mpsc::RecvTimeoutError::Timeout)) => {
-                    kill(pid, reap);
+                    kill(pid, kill_scope);
                     let _ = done.recv(); // dead now: reaped, so it leaves no zombie
                     let _ = waiter.join();
                     return Ok(None);
@@ -370,7 +388,8 @@ fn wait_for(
 
 /// Kills git (with `reap`, its whole process group: git and every helper it started) after a
 /// timeout. Already gone is fine.
-pub(crate) fn kill(pid: u32, reap: bool) {
+pub(crate) fn kill(pid: u32, reap: KillScope) {
+    let reap = matches!(reap, KillScope::ProcessGroup);
     let Some(pid) = i32::try_from(pid)
         .ok()
         .and_then(rustix::process::Pid::from_raw)

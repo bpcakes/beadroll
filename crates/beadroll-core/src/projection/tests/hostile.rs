@@ -1,13 +1,13 @@
 //! What a projection declines, and bytes it cannot read: each way a batch can be one replay would
 //! apply otherwise than after everything, and damaged bytes, which never read as a projection.
 
-use crate::id::EventId;
-use crate::journal::Journal;
-use crate::json::{Object, Value};
-
 use super::super::{Extended, Projection, Record, project};
 use super::same;
 use super::shown::replayed;
+use crate::id::EventId;
+use crate::journal::Journal;
+use crate::journal::JournalOrder;
+use crate::json::{Object, Value};
 
 pub(super) const HERE: &str = "0000aa01";
 
@@ -45,7 +45,8 @@ pub(super) fn fields(title: &str) -> Object {
 }
 
 /// A record of the journal of `folder`.
-pub(super) fn record(value: Value, folder: &str, sequenced: bool) -> Record {
+pub(super) fn record(value: Value, folder: &str, sequenced: JournalOrder) -> Record {
+    let sequenced = matches!(sequenced, JournalOrder::Sequenced);
     Record {
         value,
         replica: folder.to_owned(),
@@ -59,16 +60,37 @@ pub(super) fn base() -> Vec<Record> {
     let mut create = fields("first");
     create.insert("key".into(), Value::from("pr-a1"));
     vec![
-        record(event(1, HERE, &[], "init", 1, Object::new()), HERE, true),
-        record(event(2, HERE, &[1], "create", 2, create), HERE, true),
-        record(event(3, HERE, &[2], "set", 2, fields("second")), HERE, true),
+        record(
+            event(1, HERE, &[], "init", 1, Object::new()),
+            HERE,
+            JournalOrder::Sequenced,
+        ),
+        record(
+            event(2, HERE, &[1], "create", 2, create),
+            HERE,
+            JournalOrder::Sequenced,
+        ),
+        record(
+            event(3, HERE, &[2], "set", 2, fields("second")),
+            HERE,
+            JournalOrder::Sequenced,
+        ),
     ]
 }
 
 pub(super) fn journal(records: &[Record]) -> Journal {
     let mut journal = Journal::new();
     for r in records {
-        journal.add(r.value.clone(), &r.replica, &r.origin, r.sequenced);
+        journal.add(
+            r.value.clone(),
+            &r.replica,
+            &r.origin,
+            if r.sequenced {
+                JournalOrder::Sequenced
+            } else {
+                JournalOrder::Attempt
+            },
+        );
     }
     journal
 }
@@ -92,7 +114,7 @@ fn a_write_on_the_frontier_is_taken() {
     let batch = vec![record(
         event(4, HERE, &[3], "set", 2, fields("third")),
         HERE,
-        true,
+        JournalOrder::Sequenced,
     )];
     assert!(!declines(batch));
 }
@@ -107,22 +129,22 @@ fn every_batch_replay_applies_otherwise_is_declined() {
     let cases: Vec<(&str, Vec<Record>)> = vec![
         (
             "a record of an event held",
-            vec![record(set(3, &[2]), HERE, true)],
+            vec![record(set(3, &[2]), HERE, JournalOrder::Sequenced)],
         ),
         (
             "another machine's record",
-            vec![record(set(4, &[3]), "0000bb02", true)],
+            vec![record(set(4, &[3]), "0000bb02", JournalOrder::Sequenced)],
         ),
         (
             "a record with no id",
-            vec![record(Value::from(no_id), HERE, true)],
+            vec![record(Value::from(no_id), HERE, JournalOrder::Sequenced)],
         ),
         (
             "a takeover",
             vec![record(
                 event(4, HERE, &[3], "claim", 2, takeover),
                 HERE,
-                false,
+                JournalOrder::Attempt,
             )],
         ),
         (
@@ -130,48 +152,52 @@ fn every_batch_replay_applies_otherwise_is_declined() {
             vec![record(
                 event(4, "0000ff09", &[3], "set", 2, fields("x")),
                 "0000ff09",
-                true,
+                JournalOrder::Sequenced,
             )],
         ),
         (
             "a cause behind the frontier",
-            vec![record(set(4, &[2]), HERE, true)],
+            vec![record(set(4, &[2]), HERE, JournalOrder::Sequenced)],
         ),
         (
             "a cause no one holds",
-            vec![record(set(4, &[3, 99]), HERE, true)],
+            vec![record(set(4, &[3, 99]), HERE, JournalOrder::Sequenced)],
         ),
         (
             "an event that saw nothing",
-            vec![record(set(4, &[]), HERE, true)],
+            vec![record(set(4, &[]), HERE, JournalOrder::Sequenced)],
         ),
         (
             "a malformed payload",
             vec![record(
                 event(4, HERE, &[3], "set", 2, Object::new()),
                 HERE,
-                true,
+                JournalOrder::Sequenced,
             )],
         ),
         (
             "one id with two contents",
             vec![
-                record(set(4, &[3]), HERE, true),
-                record(event(4, HERE, &[3], "set", 2, fields("y")), HERE, true),
+                record(set(4, &[3]), HERE, JournalOrder::Sequenced),
+                record(
+                    event(4, HERE, &[3], "set", 2, fields("y")),
+                    HERE,
+                    JournalOrder::Sequenced,
+                ),
             ],
         ),
         (
             "a record that does not build on its predecessor",
             vec![
-                record(set(4, &[3]), HERE, true),
-                record(set(5, &[3]), HERE, true),
+                record(set(4, &[3]), HERE, JournalOrder::Sequenced),
+                record(set(5, &[3]), HERE, JournalOrder::Sequenced),
             ],
         ),
         (
             "a record that does not build on its predecessor, which sorts after it",
             vec![
-                record(set(5, &[3]), HERE, true),
-                record(set(4, &[3]), HERE, true),
+                record(set(5, &[3]), HERE, JournalOrder::Sequenced),
+                record(set(4, &[3]), HERE, JournalOrder::Sequenced),
             ],
         ),
     ];
@@ -228,11 +254,15 @@ fn with_texts() -> (Projection, Vec<u8>) {
     let mut create = fields("other");
     create.insert("key".into(), Value::from("pr-b2"));
     let mut records = base();
-    records.push(record(event(4, HERE, &[3], "set", 2, data), HERE, true));
+    records.push(record(
+        event(4, HERE, &[3], "set", 2, data),
+        HERE,
+        JournalOrder::Sequenced,
+    ));
     records.push(record(
         event(5, HERE, &[4], "create", 5, create),
         HERE,
-        true,
+        JournalOrder::Sequenced,
     ));
     let (encoded, _) = project(journal(&records)).unwrap().encode(0);
     (Projection::decode(encoded.clone()).unwrap(), encoded.texts)
@@ -249,7 +279,11 @@ fn a_change_to_texts_not_read_in_is_declined_until_they_are() {
     let comment = || {
         let mut data = Object::new();
         data.insert("text".into(), Value::from("noted"));
-        vec![record(event(6, HERE, &[5], "comment", 2, data), HERE, true)]
+        vec![record(
+            event(6, HERE, &[5], "comment", 2, data),
+            HERE,
+            JournalOrder::Sequenced,
+        )]
     };
     let (projection, file) = with_texts();
     assert!(matches!(
@@ -260,7 +294,7 @@ fn a_change_to_texts_not_read_in_is_declined_until_they_are() {
     let retitle = vec![record(
         event(6, HERE, &[5], "set", 2, fields("t")),
         HERE,
-        true,
+        JournalOrder::Sequenced,
     )];
     assert!(matches!(
         projection.clone().extend(retitle).unwrap(),

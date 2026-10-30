@@ -12,14 +12,15 @@ use beadroll_core::json::{Object, Value};
 use beadroll_core::replay::replay;
 use beadroll_core::state::{Issue, State};
 
+use super::file::{Held, Made};
+use super::{file, grown, kept, projection, projection_path, read_texts, resummed, same};
+use crate::LockState;
 use crate::fs::content_sum;
 use crate::journal::{append_events, load_journal, view, write_attempt_file};
 use crate::memo::FileKey;
+use crate::projection::JournalFile;
 use crate::settings::Settings;
 use crate::workspace::Workspace;
-
-use super::file::{Held, Made};
-use super::{file, grown, kept, projection, projection_path, read_texts, resummed, same};
 
 const HERE: &str = "0000aa01";
 
@@ -248,7 +249,7 @@ fn an_attempt_of_the_projections_own_tick_is_read_against_its_sum() {
         .join(format!("{}.json", id(5)));
     write_attempt_file(&ws, &path, &[title(5, &[4], 2, "before")]).unwrap();
     let bytes = std::fs::read(&path).unwrap();
-    let now = kept(&ws, &path, FileKey::of(&path), false, None).unwrap();
+    let now = kept(&ws, &path, FileKey::of(&path), JournalFile::Attempt, None).unwrap();
     let was = |sum| Held { sum, ..now.clone() };
     let summed = was(Some(content_sum(&bytes)));
     // the bytes it was made from: the file stands, and what is kept of it keeps that sum
@@ -268,7 +269,7 @@ fn an_attempt_of_the_projections_own_tick_is_read_against_its_sum() {
         .replace("before", "AFTER!");
     std::fs::write(&path, &changed).unwrap();
     assert_eq!(resummed(&ws, &path, &summed, &now), None);
-    let now = kept(&ws, &path, FileKey::of(&path), false, None).unwrap();
+    let now = kept(&ws, &path, FileKey::of(&path), JournalFile::Attempt, None).unwrap();
     let after = was(Some(content_sum(changed.as_bytes())));
     assert_eq!(
         resummed(&ws, &path, &after, &now),
@@ -314,14 +315,14 @@ fn a_new_lock_phase_lists_attempts_afresh() {
         .join("claims")
         .join(format!("{}.json", id(5)));
     write_attempt_file(&ws, &path, &[title(5, &[4], 2, "before")]).unwrap();
-    ws.set_holding(true);
+    ws.set_holding(LockState::Locked);
     let first = crate::claim_files(&ws).unwrap();
     assert!(std::sync::Arc::ptr_eq(
         &first,
         &crate::claim_files(&ws).unwrap()
     ));
-    ws.set_holding(false);
-    ws.set_holding(true);
+    ws.set_holding(LockState::Unlocked);
+    ws.set_holding(LockState::Locked);
     let again = crate::claim_files(&ws).unwrap();
     assert_eq!(first, again);
     assert!(!std::sync::Arc::ptr_eq(&first, &again));
@@ -337,7 +338,7 @@ fn an_attempt_written_here_is_listed_whatever_the_times_say() {
     let claims = ws.events_dir.join(HERE).join("claims");
     let attempt = |n: u128| claims.join(format!("{}.json", id(n)));
     write_attempt_file(&ws, &attempt(5), &[title(5, &[4], 2, "before")]).unwrap();
-    ws.set_holding(true);
+    ws.set_holding(LockState::Locked);
     let listed = crate::claim_files(&ws).unwrap();
     assert_eq!(&*listed, &[attempt(5)]);
     assert_eq!(ws.claims.borrow().listed(), 1, "the directory's names");

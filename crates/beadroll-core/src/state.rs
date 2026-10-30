@@ -18,6 +18,8 @@ use crate::id::EventId;
 use crate::journal::{Event, Journal};
 use crate::json::Value;
 use crate::key;
+#[cfg(test)]
+use crate::state::asked::KeyClaim;
 use crate::text::str_of;
 use crate::work::{Work, tally};
 
@@ -333,7 +335,15 @@ impl State {
         tally(Work::Key, 1);
         let claimed = self.by_key.contains_key(key) || self.awaiting.names(key);
         #[cfg(test)]
-        asked::agrees(self, key, claimed);
+        asked::agrees(
+            self,
+            key,
+            if claimed {
+                KeyClaim::Claimed
+            } else {
+                KeyClaim::Free
+            },
+        );
         claimed
     }
 

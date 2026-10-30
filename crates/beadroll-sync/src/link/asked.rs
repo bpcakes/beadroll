@@ -6,6 +6,7 @@ use beadroll_store::{Endpoint, Workspace, hex_token};
 
 use super::{Link, defining_remote, link_env};
 use crate::error::Error;
+use crate::link::PushUrl;
 
 impl Link<'_> {
     /// Whether `remote` publishes a tracker at `ws`'s coordination ref, asked with `git ls-remote`
@@ -24,7 +25,11 @@ impl Link<'_> {
             &env.with_vars(vars),
             &name,
             &remote.url,
-            remote.own_push_url,
+            if remote.own_push_url {
+                PushUrl::Explicit
+            } else {
+                PushUrl::Rewrite
+            },
         )
         .git([
             OsStr::new("ls-remote"),

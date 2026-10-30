@@ -7,12 +7,21 @@
 //! of every number it counts past and each after it of a bounded number, whether the numbers are
 //! taken by issues or waited for, and however many keys taken back open gaps in the runs.
 
+use super::super::Work;
+use super::{MACHINE, grows_linearly, id, key};
 use crate::journal::Journal;
+use crate::journal::JournalOrder;
 use crate::json::{Object, Value};
 use crate::replay::replay;
 
-use super::super::Work;
-use super::{MACHINE, grows_linearly, id, key};
+/// Whether copied issues import unresolved dependencies.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Dependencies {
+    /// Absent.
+    Absent,
+    /// Waiting.
+    Waiting,
+}
 
 /// The machine whose creates sort second, and are the copies.
 const OTHER: &str = "b";
@@ -70,13 +79,19 @@ enum Keys {
 /// are renamed. When `waiting`, every issue of the first also imports a dependency on a key that
 /// never comes, so that the keys claimed are the issues' and the keys waited for together: of
 /// numbered keys, the next N numbers, `ex-1.N+1` to `ex-1.2N`, which the copies count past too.
-fn minted_twice(issues: usize, keys: Keys, waiting: bool) -> Journal {
+fn minted_twice(issues: usize, keys: Keys, waiting: Dependencies) -> Journal {
+    let waiting = matches!(waiting, Dependencies::Waiting);
     let named = |n: usize| match keys {
         Keys::Plain => key(n),
         Keys::Numbered => format!("ex-1.{n}"),
     };
     let mut journal = Journal::new();
-    journal.add(event(1, MACHINE, None, None, None), MACHINE, "", true);
+    journal.add(
+        event(1, MACHINE, None, None, None),
+        MACHINE,
+        "",
+        JournalOrder::Sequenced,
+    );
     for (turn, machine) in [MACHINE, OTHER].into_iter().enumerate() {
         for n in 1..=issues {
             let number = (turn * issues + n) as u64 + 1;
@@ -86,7 +101,7 @@ fn minted_twice(issues: usize, keys: Keys, waiting: bool) -> Journal {
                 Keys::Numbered => named(issues + n),
             });
             let created = event(number, machine, Some(after), Some(&named(n)), awaited);
-            journal.add(created, machine, "", true);
+            journal.add(created, machine, "", JournalOrder::Sequenced);
         }
     }
     journal
@@ -102,7 +117,20 @@ fn renaming_every_copy_of_keys_two_machines_minted_reads_a_bounded_number_of_key
                      {waiting}"
                 ),
                 &[Work::Key, Work::Waiting],
-                |issues| (minted_twice(issues, keys, waiting), issues),
+                |issues| {
+                    (
+                        minted_twice(
+                            issues,
+                            keys,
+                            if waiting {
+                                Dependencies::Waiting
+                            } else {
+                                Dependencies::Absent
+                            },
+                        ),
+                        issues,
+                    )
+                },
                 |(journal, issues)| {
                     let state = replay(journal).unwrap();
                     // every copy of the second machine was kept, renamed, and what is asserted
@@ -144,7 +172,12 @@ fn doing(n: u64, machine: &str, deps: &[u64], op: &str, issue: u64, data: Object
 /// back the one key out of the run keeps a step away.
 fn taken_back_one_at_a_time(issues: usize) -> Journal {
     let mut journal = Journal::new();
-    journal.add(event(1, MACHINE, None, None, None), MACHINE, "", true);
+    journal.add(
+        event(1, MACHINE, None, None, None),
+        MACHINE,
+        "",
+        JournalOrder::Sequenced,
+    );
     let mut n = 1;
     for number in 1..=issues {
         n += 1;
@@ -158,7 +191,7 @@ fn taken_back_one_at_a_time(issues: usize) -> Journal {
             ),
             MACHINE,
             "",
-            true,
+            JournalOrder::Sequenced,
         );
     }
     let named = (issues + 1..=2 * issues).map(|number| {
@@ -179,7 +212,7 @@ fn taken_back_one_at_a_time(issues: usize) -> Journal {
         doing(n, MACHINE, &[n - 1], "create", n, data),
         MACHINE,
         "",
-        true,
+        JournalOrder::Sequenced,
     );
     let copy = |n: u64, deps: &[u64]| {
         let mut data = Object::new();
@@ -189,7 +222,7 @@ fn taken_back_one_at_a_time(issues: usize) -> Journal {
     };
     n += 1;
     let mut second = n;
-    journal.add(copy(n, &[1]), OTHER, "", true);
+    journal.add(copy(n, &[1]), OTHER, "", JournalOrder::Sequenced);
     for number in issues + 1..=2 * issues {
         n += 1;
         let mut data = Object::new();
@@ -199,11 +232,16 @@ fn taken_back_one_at_a_time(issues: usize) -> Journal {
             doing(n, MACHINE, &[first], "dep_remove", waits, data),
             MACHINE,
             "",
-            true,
+            JournalOrder::Sequenced,
         );
         first = n;
         n += 1;
-        journal.add(copy(n, &[second, first]), OTHER, "", true);
+        journal.add(
+            copy(n, &[second, first]),
+            OTHER,
+            "",
+            JournalOrder::Sequenced,
+        );
         second = n;
     }
     journal

@@ -4,9 +4,12 @@
 
 use beadroll_test_support::{Machine, Sandbox};
 
+use crate::hardening::TrackerSetup;
+
 /// `_g09_machine`: a machine `name` running the Rust `bead`, that initialised the tracker (prefix
 /// `ex`), or, with `init` false, synced the one already published.
-fn machine(sandbox: &Sandbox, name: &str, init: bool) -> Machine {
+fn machine(sandbox: &Sandbox, name: &str, init: TrackerSetup) -> Machine {
+    let init = matches!(init, TrackerSetup::Init);
     let machine = crate::rust_only(sandbox, name);
     if init {
         machine.bead(["init", "--prefix", "ex"]);
@@ -20,6 +23,8 @@ fn machine(sandbox: &Sandbox, name: &str, init: bool) -> Machine {
 /// a Path. When the push is then refused because another machine published first, the next round
 /// evaluates `receipt[0]` on a PosixPath: TypeError, a traceback instead of another round.
 mod g09_receipt_loop_variable_shadows_the_in_flight_receipt {
+    use crate::hardening::TrackerSetup;
+
     use beadroll_store::glob_ending;
     use beadroll_test_support::Json;
 
@@ -38,11 +43,11 @@ mod g09_receipt_loop_variable_shadows_the_in_flight_receipt {
     #[test]
     fn ordinary_contention_after_a_settled_receipt_retries_the_claim() {
         let sandbox = crate::sandbox();
-        let a = machine(&sandbox, "g09-contend", true);
+        let a = machine(&sandbox, "g09-contend", TrackerSetup::Init);
         let x = id(a.bead(["create", "X"]));
         let y = id(a.bead(["create", "Y"]));
         a.bead(["sync"]);
-        let b = machine(&sandbox, "g09-contend-b", false);
+        let b = machine(&sandbox, "g09-contend-b", TrackerSetup::Sync);
         let lost = a
             .cmd(["claim", &x])
             .env("BEAD_TEST_CRASH_AFTER_PUSH", "1")

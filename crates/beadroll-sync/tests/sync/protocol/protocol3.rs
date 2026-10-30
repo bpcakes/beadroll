@@ -6,6 +6,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::time::{Duration, Instant};
 
 use beadroll_store::{Endpoint, Workspace, write_attempt_file};
+use beadroll_sync::PublishMode;
 use beadroll_sync::{Error, Link, Mode, PushOutcome, Tx, locked, synchronise};
 use beadroll_test_support::{Json, Machine, Sandbox, git};
 
@@ -105,7 +106,7 @@ fn fence_wins_against_a_real_push_still_running_after_timeout() {
             tip.as_deref(),
             "claim",
             &tx.ownership,
-            false,
+            PublishMode::IfChanged,
         )
     })
     .unwrap();

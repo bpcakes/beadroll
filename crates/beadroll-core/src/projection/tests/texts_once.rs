@@ -1,14 +1,14 @@
 //! Each long text is held once (roll-lqjj.10): in its register, which the field shows, both in a
 //! state and in the projection's text file; and the field shows what replay always showed.
 
-use crate::event::Field;
-use crate::id::EventId;
-use crate::json::{Object, Value};
-use crate::state::State;
-
 use super::super::{Projection, Record, project};
 use super::hostile::{HERE, event, id, journal, record};
 use super::shown::replayed;
+use crate::event::Field;
+use crate::id::EventId;
+use crate::journal::JournalOrder;
+use crate::json::{Object, Value};
+use crate::state::State;
 
 const THERE: &str = "0000bb02";
 
@@ -18,7 +18,11 @@ fn describe(n: u128, replica: &str, deps: &[u128], value: Value) -> Record {
     fields.insert("description".into(), value);
     let mut data = Object::new();
     data.insert("fields".into(), Value::from(fields));
-    record(event(n, replica, deps, "set", 2, data), replica, true)
+    record(
+        event(n, replica, deps, "set", 2, data),
+        replica,
+        JournalOrder::Sequenced,
+    )
 }
 
 /// An `init` and issue 2, created with `description` when given (null clears it).
@@ -32,8 +36,16 @@ fn created(description: Option<Value>) -> Vec<Record> {
     create.insert("key".into(), Value::from("pr-a1"));
     create.insert("fields".into(), Value::from(fields));
     vec![
-        record(event(1, HERE, &[], "init", 1, Object::new()), HERE, true),
-        record(event(2, HERE, &[1], "create", 2, create), HERE, true),
+        record(
+            event(1, HERE, &[], "init", 1, Object::new()),
+            HERE,
+            JournalOrder::Sequenced,
+        ),
+        record(
+            event(2, HERE, &[1], "create", 2, create),
+            HERE,
+            JournalOrder::Sequenced,
+        ),
     ]
 }
 

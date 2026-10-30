@@ -47,6 +47,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use crate::timing::memory::LoadMode;
+use crate::timing::merge::MergeHistory;
 use crate::workspace::{self, Failure, json_string};
 
 struct Options {
@@ -263,7 +265,12 @@ fn check(options: &Options) -> Result<(), Failure> {
 pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
     let options = parse(args)?;
     if let Some(dir) = &options.load {
-        return memory::main(dir, !options.no_replay);
+        let mode = if options.no_replay {
+            LoadMode::Journal
+        } else {
+            LoadMode::Replay
+        };
+        return memory::main(dir, mode);
     }
     let out = match options.out {
         Some(out) => out,
@@ -284,14 +291,12 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
         Some(read::measure(count, options.shape, label)?)
     } else if let Some(count) = options.merge {
         let batch = options.batch.unwrap_or(merge::BATCH);
-        let concurrent = options.concurrent;
-        Some(merge::measure(
-            count,
-            options.shape,
-            batch,
-            concurrent,
-            label,
-        )?)
+        let history = if options.concurrent {
+            MergeHistory::Concurrent
+        } else {
+            MergeHistory::Sequential
+        };
+        Some(merge::measure(count, options.shape, batch, history, label)?)
     } else if let Some(machines) = options.contend {
         let writes = options.writes.unwrap_or(contend::WRITES);
         let latency = options.latency.map_or(contend::LATENCY, |ms| ms as u64);

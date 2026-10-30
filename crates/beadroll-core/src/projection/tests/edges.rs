@@ -12,16 +12,26 @@
 
 pub(super) mod drawn;
 
+use super::super::{Extended, decode_state, project};
+use super::TextFile;
+use super::shown::{FIXTURES as SHOWN, fixture};
 use crate::id::EventId;
 use crate::journal::Journal;
+use crate::journal::JournalOrder;
 use crate::json::{Format, Object, Value, write};
+use crate::projection::tests::HistoryKind;
 use crate::query::{Edges, ReadyScope};
 use crate::replay::replay;
 use crate::state::{Issue, Meta, State};
 
-use super::super::{Extended, decode_state, project};
-use super::TextFile;
-use super::shown::{FIXTURES as SHOWN, fixture};
+/// Which equivalent public answers a digest checks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AnswerCoverage {
+    /// Direct.
+    Direct,
+    /// EveryWay.
+    EveryWay,
+}
 
 /// The digests of every state the differential tests' histories pass through, by shape and seed,
 /// as [`fold`] makes them: written by the code that held edges as strings.
@@ -204,7 +214,8 @@ pub(super) const START: u64 = 0xcbf2_9ce4_8422_2325;
 
 /// `digest` with what `state` [`answers`] folded in, or for the last state of a history, what it
 /// answers [`every_way`].
-pub(super) fn fold(digest: u64, state: &State, last: bool) -> u64 {
+pub(super) fn fold(digest: u64, state: &State, last: AnswerCoverage) -> u64 {
+    let last = matches!(last, AnswerCoverage::EveryWay);
     let answered = if last {
         every_way(state)
     } else {
@@ -231,20 +242,24 @@ pub(super) fn pinned(shape: &str, digests: &[(u64, u64)]) {
 
 /// Every history the delivery-order property replays (`replay::tests`), each as replay makes the
 /// whole of it.
-fn delivered(flawed: bool) -> Vec<(u64, u64)> {
+fn delivered(history_kind: HistoryKind) -> Vec<(u64, u64)> {
     (0..crate::replay::tests::SEEDS)
         .map(|seed| {
-            let records = super::history(20_261_016 + seed, crate::replay::tests::BATCHES, flawed);
+            let records = super::history(
+                20_261_016 + seed,
+                crate::replay::tests::BATCHES,
+                history_kind,
+            );
             let state = replay(super::hostile::journal(&records)).unwrap();
-            (seed, fold(START, &state, true))
+            (seed, fold(START, &state, AnswerCoverage::EveryWay))
         })
         .collect()
 }
 
 #[test]
 fn the_histories_replay_orders_answer_of_their_edges_what_they_did() {
-    pinned("delivered", &delivered(false));
-    pinned("delivered-flawed", &delivered(true));
+    pinned("delivered", &delivered(HistoryKind::Valid));
+    pinned("delivered-flawed", &delivered(HistoryKind::Flawed));
 }
 
 #[test]
@@ -282,7 +297,15 @@ fn export_and_show_print_the_same_with_edges_metadata_read_from_the_texts_as_fro
         .collect();
     for flawed in [false, true] {
         for seed in 0..crate::replay::tests::SEEDS {
-            let records = super::history(20_261_016 + seed, crate::replay::tests::BATCHES, flawed);
+            let records = super::history(
+                20_261_016 + seed,
+                crate::replay::tests::BATCHES,
+                if flawed {
+                    HistoryKind::Flawed
+                } else {
+                    HistoryKind::Valid
+                },
+            );
             journals.push(super::hostile::journal(&records));
         }
     }
@@ -350,17 +373,21 @@ fn a_create_of_an_awaited_key_extends_once_the_waiting_issues_texts_are_read_in(
     dep.insert("type".into(), Value::from("tracks"));
     dep.insert("metadata".into(), Value::from("{\"why\":\"later\"}"));
     let held = vec![
-        record(event(1, HERE, &[], "init", 1, init), HERE, true),
+        record(
+            event(1, HERE, &[], "init", 1, init),
+            HERE,
+            JournalOrder::Sequenced,
+        ),
         record(
             event(2, HERE, &[1], "create", 2, create("pr-x", Some(dep.into()))),
             HERE,
-            true,
+            JournalOrder::Sequenced,
         ),
     ];
     let batch = vec![record(
         event(3, HERE, &[2], "create", 3, create("pr-later", None)),
         HERE,
-        true,
+        JournalOrder::Sequenced,
     )];
     let mut file = TextFile::new();
     let stored = super::read_back(

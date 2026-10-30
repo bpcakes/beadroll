@@ -4,12 +4,12 @@
 //! adds to, made anew while issues it does not change are there to be copied. [`super::read_back`] checks each write-back here as it checks the histories': what it
 //! copied is what it writes when it copies nothing, byte for byte, and it reads back as written.
 
-use crate::json::{Object, Value};
-
 use super::super::parts::TABLE_SLACK;
 use super::super::{Extended, Projection, Record, project};
 use super::hostile::{HERE, event, fields, journal, record};
 use super::{TextFile, WriteBack, equal, read_back};
+use crate::journal::JournalOrder;
+use crate::json::{Object, Value};
 
 /// An `init` and issue 101 made by `HERE` as events 100 and 101, then titles set on it as the even
 /// events 102 to 120, each after the one before, ids ascending.
@@ -20,9 +20,13 @@ fn held() -> Vec<Record> {
         record(
             event(100, HERE, &[], "init", 100, Object::new()),
             HERE,
-            true,
+            JournalOrder::Sequenced,
         ),
-        record(event(101, HERE, &[100], "create", 101, create), HERE, true),
+        record(
+            event(101, HERE, &[100], "create", 101, create),
+            HERE,
+            JournalOrder::Sequenced,
+        ),
     ];
     for n in (102..=120).step_by(2) {
         let before = if n == 102 { 101 } else { n - 2 };
@@ -34,7 +38,7 @@ fn held() -> Vec<Record> {
             101,
             fields(&format!("title {n}")),
         );
-        records.push(record(set, HERE, true));
+        records.push(record(set, HERE, JournalOrder::Sequenced));
     }
     records
 }
@@ -60,7 +64,7 @@ fn ids_taken_in_before_and_among_those_held_are_merged_where_they_sort() {
         .into_iter()
         .map(|(n, after)| {
             let set = event(n, HERE, &[after], "set", 101, fields(&format!("again {n}")));
-            record(set, HERE, true)
+            record(set, HERE, JournalOrder::Sequenced)
         })
         .collect();
     records.extend(batch.iter().cloned());
@@ -88,7 +92,7 @@ fn a_state_part_table_is_made_anew_once_it_holds_an_eighth_more_entries_and_a_fe
         if let Value::Object(members) = &mut set {
             members.insert("where".into(), Value::from(place));
         }
-        let set = record(set, HERE, true);
+        let set = record(set, HERE, JournalOrder::Sequenced);
         records.push(set.clone());
         projection = taken(&projection, &mut file, vec![set]);
         let kept = projection.kept.as_deref().unwrap();
@@ -133,16 +137,20 @@ fn a_table_made_anew_has_every_record_written_again_those_unchanged_too() {
     let still = placed_on(event(101, HERE, &[100], "create", 101, still), "home");
     let moving = event(103, HERE, &[101], "create", 103, moving);
     let mut records = vec![
-        record(init, HERE, true),
-        record(still, HERE, true),
-        record(moving, HERE, true),
+        record(init, HERE, JournalOrder::Sequenced),
+        record(still, HERE, JournalOrder::Sequenced),
+        record(moving, HERE, JournalOrder::Sequenced),
     ];
     let mut projection = project(journal(&records)).unwrap();
     let mut file = TextFile::new();
     let mut made_anew = 0;
     for n in 104..=500 {
         let set = event(n, HERE, &[n - 1], "set", 103, fields("moved"));
-        let set = record(placed_on(set, &format!("b{n}")), HERE, true);
+        let set = record(
+            placed_on(set, &format!("b{n}")),
+            HERE,
+            JournalOrder::Sequenced,
+        );
         records.push(set.clone());
         projection = taken(&projection, &mut file, vec![set]);
         let kept = projection.kept.as_deref().unwrap();

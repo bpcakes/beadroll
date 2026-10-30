@@ -15,6 +15,15 @@ use rustix::process::{Pid, Signal, kill_process};
 
 use super::{Drained, drain, quoted, script, wait_for};
 
+/// Which terminal output style the test requests.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ColorMode {
+    /// Plain.
+    Plain,
+    /// Colored.
+    Colored,
+}
+
 /// A pseudo-terminal not controlled by bead. `script` owns the master and a placeholder sleep is
 /// session leader; bead runs on the slave outside that session. A thread drains script's stdout.
 /// Keep script's stdin pipe open to avoid an echoed end-of-file on the terminal.
@@ -270,22 +279,21 @@ fn pty_output_matches_pipe_output_and_escapes_hostile_text() {
     ];
     // with colour off a terminal shows what a pipe does, byte for byte; with it on, the same once
     // bead's own colour codes are taken out, and nothing else raw (roll-dih8.23)
+    let modes = [ColorMode::Plain, ColorMode::Colored];
     let runs = commands
         .iter()
         .enumerate()
-        .flat_map(|(index, args)| [(index, args, false), (index, args, true)]);
-    for (index, args, coloured) in runs {
+        .flat_map(|(index, args)| modes.map(|mode| (index, args, mode)));
+    for (index, args, mode) in runs {
+        let coloured = mode == ColorMode::Colored;
         let label = format!("{:?} coloured={coloured}", &args[..args.len().min(2)]);
-        let env = environment(&a, coloured);
+        let env = environment(&a, mode);
         let (pipe_status, pipe_stdout, pipe_stderr) = piped(&a, args, &env);
-        let terminals = [
+        let terminals = ["stdout", "stderr"].map(|stream| {
             sandbox
                 .root()
-                .join(format!("stdout-{index}-{coloured}.tty")),
-            sandbox
-                .root()
-                .join(format!("stderr-{index}-{coloured}.tty")),
-        ];
+                .join(format!("{stream}-{index}-{coloured}.tty"))
+        });
         let (status, out, err) = on_terminals(&a, args, &env, &terminals);
         if coloured && args[0] == "list" {
             assert!(out.contains(&0x1b), "{label}: not coloured on a terminal");
@@ -331,7 +339,8 @@ fn pty_output_matches_pipe_output_and_escapes_hostile_text() {
 }
 
 /// `machine`'s environment on a colour terminal, with colour on or turned off (`NO_COLOR`).
-fn environment(machine: &Machine, coloured: bool) -> BTreeMap<OsString, OsString> {
+fn environment(machine: &Machine, coloured: ColorMode) -> BTreeMap<OsString, OsString> {
+    let coloured = matches!(coloured, ColorMode::Colored);
     let mut env = machine.env(None, "codex");
     for colour in ["NO_COLOR", "CLICOLOR", "CLICOLOR_FORCE", "TERM"] {
         env.remove(OsStr::new(colour));

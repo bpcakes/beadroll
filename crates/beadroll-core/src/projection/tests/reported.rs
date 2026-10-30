@@ -2,12 +2,12 @@
 //! extended past it as replay applies what comes after, and what a record still to come can change
 //! keeps it from extending, or has the batch declined.
 
-use crate::json::{Object, Value};
-
 use super::super::{Extended, Record, project};
 use super::hostile::{HERE, base, event, fields, id, journal, record};
 use super::same;
 use super::shown::replayed;
+use crate::journal::JournalOrder;
+use crate::json::{Object, Value};
 
 /// Whether the projection of `base()` and `flawed`, which replay reports `problem` of, takes `batch`
 /// as replay applies it after them.
@@ -41,7 +41,11 @@ fn claim(n: u128, replica: &str, deps: &[u128], claim: Option<u128>) -> Record {
     if let Some(claim) = claim {
         data.insert("takeover".into(), Value::from(id(claim)));
     }
-    record(event(n, replica, deps, "claim", 2, data), replica, false)
+    record(
+        event(n, replica, deps, "claim", 2, data),
+        replica,
+        JournalOrder::Attempt,
+    )
 }
 
 #[test]
@@ -60,7 +64,7 @@ fn a_journal_with_what_replay_reports_is_extended_past_it() {
             vec![record(
                 event(4, HERE, &[3], "future_op", 2, Object::new()),
                 HERE,
-                true,
+                JournalOrder::Sequenced,
             )],
         ),
         (
@@ -68,32 +72,32 @@ fn a_journal_with_what_replay_reports_is_extended_past_it() {
             vec![record(
                 event(4, HERE, &[3], "set", 2, bad_fields),
                 HERE,
-                true,
+                JournalOrder::Sequenced,
             )],
         ),
         (
             "data is not an object",
-            vec![record(Value::from(no_data), HERE, true)],
+            vec![record(Value::from(no_data), HERE, JournalOrder::Sequenced)],
         ),
         (
             "event is not an object",
             vec![
-                record(Value::from(7), HERE, true),
-                record(set(4, HERE, &[3]), HERE, true),
+                record(Value::from(7), HERE, JournalOrder::Sequenced),
+                record(set(4, HERE, &[3]), HERE, JournalOrder::Sequenced),
             ],
         ),
         (
             "one event id with different contents",
             vec![
-                record(set(4, HERE, &[3]), HERE, true),
-                record(Value::from(changed), HERE, true),
+                record(set(4, HERE, &[3]), HERE, JournalOrder::Sequenced),
+                record(Value::from(changed), HERE, JournalOrder::Sequenced),
             ],
         ),
         (
             "journal chain broken at position 1 of machine 0000bb02",
             vec![
-                record(set(4, THERE, &[3]), THERE, true),
-                record(set(5, THERE, &[3]), THERE, true),
+                record(set(4, THERE, &[3]), THERE, JournalOrder::Sequenced),
+                record(set(5, THERE, &[3]), THERE, JournalOrder::Sequenced),
             ],
         ),
         (
@@ -114,7 +118,7 @@ fn a_journal_with_what_replay_reports_is_extended_past_it() {
                     .any(|r| r.value.get("id") == Some(&Value::from(id(*n))))
             })
             .collect();
-        let write = vec![record(set(6, HERE, &deps), HERE, true)];
+        let write = vec![record(set(6, HERE, &deps), HERE, JournalOrder::Sequenced)];
         assert!(taken_after(&flawed, problem, write), "{problem}");
     }
 }
@@ -154,7 +158,7 @@ fn a_takeover_of_an_id_no_event_has_keeps_the_projection_from_extending() {
     let write = vec![record(
         event(5, HERE, &[4], "set", 2, fields("x")),
         HERE,
-        true,
+        JournalOrder::Sequenced,
     )];
     assert!(!taken_after(&held[3..], "not a claim", write));
 }
@@ -167,8 +171,8 @@ fn an_id_with_two_contents_placed_by_less_than_its_causes_keeps_the_projection_f
         let mut second = first.as_object().cloned().unwrap();
         second.insert("note".into(), Value::from("another content"));
         vec![
-            record(first, THERE, true),
-            record(Value::from(second), THERE, true),
+            record(first, THERE, JournalOrder::Sequenced),
+            record(Value::from(second), THERE, JournalOrder::Sequenced),
         ]
     };
     // its causes loop back onto it: released after every other event, and so after events still
@@ -179,10 +183,10 @@ fn an_id_with_two_contents_placed_by_less_than_its_causes_keeps_the_projection_f
     looped.push(record(
         event(5, HERE, &[4], "set", 2, fields("y")),
         HERE,
-        true,
+        JournalOrder::Sequenced,
     ));
     let foreign = (two(&[3, 99]).into_iter())
-        .map(|copy| record(copy.value, HERE, true))
+        .map(|copy| record(copy.value, HERE, JournalOrder::Sequenced))
         .collect();
     for flawed in [looped, two(&[3, 99]), foreign] {
         let mut held = base();
@@ -196,7 +200,7 @@ fn an_id_with_two_contents_placed_by_less_than_its_causes_keeps_the_projection_f
     let write = vec![record(
         event(5, HERE, &[4], "set", 2, fields("y")),
         HERE,
-        true,
+        JournalOrder::Sequenced,
     )];
     assert!(taken_after(&two(&[3]), "different contents", write));
 }
@@ -208,17 +212,17 @@ fn a_record_of_an_id_found_only_in_another_machines_journal_is_declined() {
     let mut flawed = vec![record(
         event(4, THERE, &[3], "set", 2, fields("x")),
         THERE,
-        true,
+        JournalOrder::Sequenced,
     )];
     let copied = event(5, THERE, &[4], "set", 2, fields("y"));
-    flawed.push(record(copied.clone(), HERE, true));
+    flawed.push(record(copied.clone(), HERE, JournalOrder::Sequenced));
     let mut other = copied.as_object().cloned().unwrap();
     other.insert("note".into(), Value::from("another content"));
     // its own record arrives, built on that machine's journal: as it is, or another content
     for own in [copied, Value::from(other)] {
         let mut held = base();
         held.extend(flawed.iter().cloned());
-        let batch = vec![record(own, THERE, true)];
+        let batch = vec![record(own, THERE, JournalOrder::Sequenced)];
         held.extend(batch.iter().cloned());
         // replay settles the id anew, an event or one with two contents: either way it no longer
         // reports a record found in one journal alone

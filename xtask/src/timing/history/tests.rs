@@ -1,19 +1,20 @@
-use super::*;
-
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::journal::{Journal, read_attempt, read_segment};
 use beadroll_core::replay::replay;
+
+use super::*;
 
 fn journal(files: &[Files]) -> Journal {
     let mut journal = Journal::new();
     for machine in files {
         for event in read_segment(&machine.segment, "segment", Some(&mut journal.invalid)) {
-            journal.add(event, &machine.replica, "segment", true);
+            journal.add(event, &machine.replica, "segment", JournalOrder::Sequenced);
         }
     }
     for machine in files {
         for (name, data) in &machine.attempts {
             for event in read_attempt(data, name, Some(&mut journal.invalid)) {
-                journal.add(event, &machine.replica, name, false);
+                journal.add(event, &machine.replica, name, JournalOrder::Attempt);
             }
         }
     }

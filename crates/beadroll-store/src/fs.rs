@@ -13,9 +13,29 @@ use std::path::{Path, PathBuf};
 use beadroll_core::json::{self, Value};
 use beadroll_git::IoError;
 
+#[cfg(test)]
+use crate::CrashHooks;
 use crate::error::Error;
 use crate::failpoint::{Failpoints, Fired};
 use crate::memo::FileKey;
+
+/// Whether an atomic write must be flushed before rename.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Durability {
+    /// Cache.
+    Cache,
+    /// Durable.
+    Durable,
+}
+
+/// Permissions for an atomic write.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FileMode {
+    /// Checkout.
+    Checkout,
+    /// Private.
+    Private,
+}
 
 /// `path` and any missing parents made as 0700 (less the umask, as `mkdir` gives it); a race loser
 /// is fine, a file in the way is an error.
@@ -51,17 +71,17 @@ pub fn private_dir(path: &Path) -> Result<(), Error> {
 }
 
 /// `data` written whole to a temporary file beside `path` (`.NAME.PID.tmp`), fsynced, then renamed
-/// into place. Store files are 0600; a file written into the caller's checkout (`private` false)
+/// into place. Store files are 0600; a file written with [`FileMode::Checkout`]
 /// follows the caller's umask like any other file there. A write that fails leaves nothing behind.
 /// The failpoints `atomic-write:<part>` (before the rename) and `atomic-written:<part>` (after
 /// it) fire for a target whose path holds `<part>`.
 pub fn write_atomic(
     path: &Path,
     data: &[u8],
-    private: bool,
+    file_mode: FileMode,
     failpoints: &Failpoints,
 ) -> Result<(), Error> {
-    write_atomic_parts(path, &[data], private, failpoints)
+    write_atomic_parts(path, &[data], file_mode, failpoints)
 }
 
 /// [`write_atomic`] of `parts`, one after the other, as one file: a large file made of a few parts
@@ -69,10 +89,10 @@ pub fn write_atomic(
 pub(crate) fn write_atomic_parts(
     path: &Path,
     parts: &[&[u8]],
-    private: bool,
+    file_mode: FileMode,
     failpoints: &Failpoints,
 ) -> Result<(), Error> {
-    written_whole(path, parts, private, true, failpoints).map(drop)
+    written_whole(path, parts, file_mode, Durability::Durable, failpoints).map(drop)
 }
 
 /// [`write_atomic`] of a store file, with the identity of the file written, taken from its own
@@ -83,7 +103,13 @@ pub(crate) fn write_atomic_keyed(
     data: &[u8],
     failpoints: &Failpoints,
 ) -> Result<Option<FileKey>, Error> {
-    let file = written_whole(path, &[data], true, true, failpoints)?;
+    let file = written_whole(
+        path,
+        &[data],
+        FileMode::Private,
+        Durability::Durable,
+        failpoints,
+    )?;
     Ok(file.metadata().ok().as_ref().and_then(FileKey::of_meta))
 }
 
@@ -103,7 +129,14 @@ pub(crate) fn write_cache_parts(
     parts: &[&[u8]],
     failpoints: &Failpoints,
 ) -> Result<(), Error> {
-    written_whole(path, parts, true, false, failpoints).map(drop)
+    written_whole(
+        path,
+        parts,
+        FileMode::Private,
+        Durability::Cache,
+        failpoints,
+    )
+    .map(drop)
 }
 
 /// `parts` written to a temporary file beside `path`, fsynced when `durable`, and renamed into
@@ -112,10 +145,12 @@ pub(crate) fn write_cache_parts(
 fn written_whole(
     path: &Path,
     parts: &[&[u8]],
-    private: bool,
-    durable: bool,
+    private: FileMode,
+    durable: Durability,
     failpoints: &Failpoints,
 ) -> Result<File, Error> {
+    let durable = matches!(durable, Durability::Durable);
+    let private = matches!(private, FileMode::Private);
     let parent = path.parent().unwrap_or(Path::new("."));
     if private {
         private_dirs(parent)?;
@@ -430,7 +465,7 @@ mod tests {
     fn atomic_writes_leave_nothing_behind_and_keep_private_modes() {
         let dir = tempfile::tempdir().unwrap();
         let target = dir.path().join("a/b/file.json");
-        write_atomic(&target, b"{}", true, &Failpoints::none()).unwrap();
+        write_atomic(&target, b"{}", FileMode::Private, &Failpoints::none()).unwrap();
         let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
         assert_eq!(std::fs::read(&target).unwrap(), b"{}");
@@ -438,7 +473,13 @@ mod tests {
         assert_eq!(names, std::slice::from_ref(&target));
         let blocked = dir.path().join("file-not-dir");
         std::fs::write(&blocked, "").unwrap();
-        let error = write_atomic(&blocked.join("x"), b"", true, &Failpoints::none()).unwrap_err();
+        let error = write_atomic(
+            &blocked.join("x"),
+            b"",
+            FileMode::Private,
+            &Failpoints::none(),
+        )
+        .unwrap_err();
         assert_eq!(error.code().as_str(), "IO");
     }
 
@@ -449,7 +490,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let target = dir.path().join("texts");
         let parts: [&[u8]; 3] = [b"head", b"", b"texts\n"];
-        write_atomic_parts(&target, &parts, true, &Failpoints::none()).unwrap();
+        write_atomic_parts(&target, &parts, FileMode::Private, &Failpoints::none()).unwrap();
         assert_eq!(std::fs::read(&target).unwrap(), b"headtexts\n");
         let names: Vec<_> = dir_entries(dir.path()).unwrap();
         assert_eq!(names, std::slice::from_ref(&target));
@@ -468,7 +509,14 @@ mod tests {
         assert_eq!(mode, 0o600);
         // the volume full as it is written again: the one there stays, and nothing else
         let spec = "atomic-write:-texts=errno(ENOSPC);atomic-written:-texts@always=sleep(0)";
-        let failpoints = Failpoints::from_env(Some(OsStr::new(spec)), false, false).unwrap();
+        let failpoints = Failpoints::from_env(
+            Some(OsStr::new(spec)),
+            CrashHooks {
+                before_push: false,
+                after_push: false,
+            },
+        )
+        .unwrap();
         let error = write_cache_parts(&target, &[b"other"], &failpoints).unwrap_err();
         assert_eq!(error.code().as_str(), "IO");
         assert_eq!(failpoints.hits("atomic-write:-texts"), 1);

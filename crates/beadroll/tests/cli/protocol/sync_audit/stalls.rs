@@ -4,6 +4,8 @@
 use std::time::Duration;
 
 use super::{Worker, git_wrapper, setup, two, wait_marker};
+use crate::protocol::sync_audit::HookPosition;
+use crate::protocol::sync_audit::ProcessSession;
 
 /// How long a process the test waits for may take: `communicate(timeout=5)`, `run(timeout=5)`.
 const FIVE_SECONDS: Option<Duration> = Some(Duration::from_secs(5));
@@ -17,11 +19,14 @@ fn slow_push_holds_lock_then_local_writer_completes_without_loss() {
     two(&sandbox, &a);
     let marker = sandbox.root().join("slow-push");
     a.bead(["create", "before slow push", "--offline"]);
-    let path = git_wrapper(&sandbox, "push", &marker, true);
-    let mut sync = Worker::start(a.cmd(["sync", "--json"]).env("PATH", path), true);
+    let path = git_wrapper(&sandbox, "push", &marker, HookPosition::After);
+    let mut sync = Worker::start(
+        a.cmd(["sync", "--json"]).env("PATH", path),
+        ProcessSession::New,
+    );
     wait_marker(&marker, &mut sync);
     let writing = a.cmd(["create", "during push", "--offline", "--json"]);
-    let mut writer = Worker::start(writing, false);
+    let mut writer = Worker::start(writing, ProcessSession::Inherited);
     std::thread::sleep(Duration::from_millis(300));
     assert!(
         writer.poll().is_none(),
@@ -47,11 +52,14 @@ fn killed_slow_fetch_does_not_block_local_writer() {
     let (a, _) = setup(&sandbox);
     two(&sandbox, &a);
     let marker = sandbox.root().join("fetching");
-    let path = git_wrapper(&sandbox, "fetch", &marker, false);
-    let mut worker = Worker::start(a.cmd(["sync", "--json"]).env("PATH", path), true);
+    let path = git_wrapper(&sandbox, "fetch", &marker, HookPosition::Before);
+    let mut worker = Worker::start(
+        a.cmd(["sync", "--json"]).env("PATH", path),
+        ProcessSession::New,
+    );
     wait_marker(&marker, &mut worker);
     let writing = a.cmd(["create", "during stalled fetch", "--json"]);
-    let result = Worker::start(writing, false).communicate(FIVE_SECONDS);
+    let result = Worker::start(writing, ProcessSession::Inherited).communicate(FIVE_SECONDS);
     assert_eq!(result.returncode(), 0, "{}", result.stderr);
     worker.kill().expect("the sync's process group");
     worker.communicate(FIVE_SECONDS);

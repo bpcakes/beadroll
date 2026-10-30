@@ -87,10 +87,10 @@ pub(crate) fn segments(journal: &[u8], rotate: usize) -> Vec<&[u8]> {
 pub(crate) fn history(count: usize, shape: Shape) -> Vec<Files> {
     let mut writer = Writer::new();
     match shape {
-        Shape::Plain => plain(&mut writer, count, false),
+        Shape::Plain => plain(&mut writer, count, Shape::Plain),
         Shape::Ownership => ownership(&mut writer, count),
         Shape::Churn => churn(&mut writer, count),
-        Shape::Text => plain(&mut writer, count, true),
+        Shape::Text => plain(&mut writer, count, Shape::Text),
     }
     writer.files
 }
@@ -219,7 +219,8 @@ impl Writer {
 
 /// The history `timing --replay` has always measured, draw for draw; with `texts`, the same
 /// operations carrying prose (`Shape::Text`), which takes draws of its own.
-fn plain(w: &mut Writer, count: usize, texts: bool) {
+fn plain(w: &mut Writer, count: usize, texts: Shape) {
+    let texts = matches!(texts, Shape::Text);
     let mut issues: Vec<String> = Vec::new();
     let mut claims: Vec<(String, String)> = Vec::new();
     for n in 0..count {

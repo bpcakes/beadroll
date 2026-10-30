@@ -1,17 +1,28 @@
 //! State retained between commands: pending attempts and receipts settled by sync, invalid
 //! pending files and published counts in `meta.json` (`docs/REVIEWING.md` §1).
 
+mod publication;
+
 use std::os::unix::fs::PermissionsExt as _;
 
 use beadroll_core::json::{Format, Object, Value, write};
 use beadroll_core::replay::replay;
+use beadroll_store::FileMode;
 use beadroll_store::{Workspace, find_workspace, load_journal, write_atomic, write_attempt_file};
+use beadroll_sync::PublishMode;
 use beadroll_sync::{Link, PushOutcome, Tx, locked};
 use beadroll_test_support::{Machine, code, parse_json};
 
 use super::{id, json, settings};
 
-mod publication;
+/// Whether the pending attempt is also published by its fixture.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PendingSetup {
+    /// Local.
+    Local,
+    /// Published.
+    Published,
+}
 
 /// What settling left of a store's pending attempts: the files in `pending/` by suffix, and whether
 /// the issue is claimed.
@@ -58,7 +69,8 @@ fn pending_attempts_a_stopped_claim_left_are_settled_by_sync() {
 /// A claim of `issue` by `ws`'s actor written as an ownership command writes it, in-process: the
 /// receipt first, then the pending attempt; with `publish`, pushed with the journal, its answer
 /// lost (the attempt stays pending).
-fn leave_pending(ws: &Workspace, actor: &Value, issue: &str, publish: bool) {
+fn leave_pending(ws: &Workspace, actor: &Value, issue: &str, publish: PendingSetup) {
+    let publish = matches!(publish, PendingSetup::Published);
     let remote = ws.endpoint(None).unwrap().unwrap();
     let mut link = Link::new(ws, &remote).unwrap();
     locked(ws, || -> Result<(), beadroll_sync::Error> {
@@ -78,12 +90,17 @@ fn leave_pending(ws: &Workspace, actor: &Value, issue: &str, publish: bool) {
         write_atomic(
             &folder.join(format!("{first}.command")),
             receipt.as_bytes(),
-            true,
+            FileMode::Private,
             &ws.settings.failpoints,
         )?;
         write_attempt_file(ws, &folder.join(format!("{first}.json")), &tx.ownership)?;
         if publish {
-            let outcome = link.publish(tip.as_deref(), "claim", &tx.ownership, false)?;
+            let outcome = link.publish(
+                tip.as_deref(),
+                "claim",
+                &tx.ownership,
+                PublishMode::IfChanged,
+            )?;
             assert_eq!(outcome, PushOutcome::Ok);
         }
         Ok(())
@@ -106,7 +123,16 @@ fn pending_attempts_left_in_process_are_settled_by_sync() {
         let st = replay(load_journal(&ws).unwrap()).unwrap();
         let uid = st.resolve(&x).unwrap().uid().to_string();
         let actor = beadroll_test_support::json!({"agent": "codex", "thread": "r-thread-0001"});
-        leave_pending(&ws, &actor, &uid, publish);
+        leave_pending(
+            &ws,
+            &actor,
+            &uid,
+            if publish {
+                PendingSetup::Published
+            } else {
+                PendingSetup::Local
+            },
+        );
         assert_eq!(settled(&r, &x), (1, 1, false), "before settling");
         json(&r, &["sync"]);
         assert_eq!(settled(&r, &x), expected, "published={publish}, settled");

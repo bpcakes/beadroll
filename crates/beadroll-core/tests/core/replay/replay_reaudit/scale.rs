@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use beadroll_core::event::{Field, REGISTERS};
 use beadroll_core::id::EventId;
 use beadroll_core::journal::Journal;
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::query::Edges;
 use beadroll_core::replay::replay;
 use beadroll_test_support::Json;
@@ -71,7 +72,7 @@ fn build(rows: &[(Json, &str)], order: &[&str]) -> Journal {
     let mut j = Journal::new();
     for machine in order {
         for (event, owner) in rows.iter().filter(|(_, owner)| owner == machine) {
-            j.add(event.clone(), owner, "", true);
+            j.add(event.clone(), owner, "", JournalOrder::Sequenced);
         }
     }
     j
@@ -316,8 +317,8 @@ fn valid_six_machine_6000_events_converge_and_ancestry_is_exact() {
                 .unwrap_or_default()
             {
                 let event = written[eid].clone();
-                j.add(event.clone(), machine, "", true);
-                j.add(event, machine, "", true);
+                j.add(event.clone(), machine, "", JournalOrder::Sequenced);
+                j.add(event, machine, "", JournalOrder::Sequenced);
             }
         }
         assert_eq!(projection(j), expected, "{order:?}");

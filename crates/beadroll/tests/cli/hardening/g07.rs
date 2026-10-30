@@ -5,9 +5,12 @@
 
 use beadroll_test_support::{Machine, Sandbox};
 
+use crate::hardening::TrackerSetup;
+
 /// `_g07_machine`: a machine `name` that initialised the tracker (prefix `ex`), or, with `init`
 /// false, synced the one already published.
-fn machine(sandbox: &Sandbox, name: &str, init: bool) -> Machine {
+fn machine(sandbox: &Sandbox, name: &str, init: TrackerSetup) -> Machine {
+    let init = matches!(init, TrackerSetup::Init);
     let machine = Machine::new(sandbox, name);
     if init {
         machine.bead(["init", "--prefix", "ex"]);
@@ -22,6 +25,8 @@ fn machine(sandbox: &Sandbox, name: &str, init: bool) -> Machine {
 /// deliberate repeat of the same command is answered from the old receipt and does nothing,
 /// exit 0.
 mod g07_receipt_survives_later_local_writes {
+    use crate::hardening::TrackerSetup;
+
     use beadroll_test_support::{Json, Machine};
 
     use super::machine;
@@ -48,7 +53,7 @@ mod g07_receipt_survives_later_local_writes {
     #[test]
     fn new_claim_after_close_and_reopen_claims() {
         let sandbox = crate::sandbox();
-        let a = machine(&sandbox, "g07-again", true);
+        let a = machine(&sandbox, "g07-again", TrackerSetup::Init);
         let x = id(a.bead(["create", "X"]));
         a.bead(["sync"]);
         let crashed = a
@@ -74,7 +79,7 @@ mod g07_receipt_survives_later_local_writes {
     #[test]
     fn new_claiming_close_after_reopen_closes() {
         let sandbox = crate::sandbox();
-        let a = machine(&sandbox, "g07-again-close", true);
+        let a = machine(&sandbox, "g07-again-close", TrackerSetup::Init);
         let x = id(a.bead(["create", "X"]));
         a.bead(["sync"]);
         let crashed = a
@@ -99,7 +104,7 @@ mod g07_receipt_survives_later_local_writes {
     #[test]
     fn write_made_while_the_attempt_was_pending_also_moves_the_actor_on() {
         let sandbox = crate::sandbox();
-        let a = machine(&sandbox, "g07-pending-write", true);
+        let a = machine(&sandbox, "g07-pending-write", TrackerSetup::Init);
         let x = id(a.bead(["create", "X"]));
         a.bead(["sync"]);
         let crashed = a
@@ -109,7 +114,7 @@ mod g07_receipt_survives_later_local_writes {
         assert_eq!(crashed.returncode(), 99, "{}", crashed.stderr);
         succeeds(&a, &["comments", "add", &x, "work continues"]);
         succeeds(&a, &["sync"]); // settles the attempt: a holds X
-        let b = machine(&sandbox, "g07-pending-write-b", false);
+        let b = machine(&sandbox, "g07-pending-write-b", TrackerSetup::Sync);
         succeeds(&b, &["takeover", &x, "--reason", "a went quiet"]);
         succeeds(&b, &["release", &x]);
         succeeds(&a, &["sync"]);

@@ -10,18 +10,18 @@
 
 use std::collections::HashMap;
 
+use super::super::Record;
+use super::hostile::journal;
 use crate::event::Field;
 use crate::id::EventId;
 use crate::journal::Journal;
+use crate::journal::JournalOrder;
 use crate::json::{Format, Value, from_text, write};
 use crate::op::Op;
 use crate::order::causal_order;
 use crate::replay::replay;
 use crate::state::{Issue, State, actor_label, is_text};
 use crate::time::event_time;
-
-use super::super::Record;
-use super::hostile::journal;
 
 /// What a field shows, by the model: exactly one value or none, or for `updated_at`, which every
 /// event that touches the issue writes and no register holds, one of the times it can have.
@@ -192,7 +192,16 @@ pub(super) fn fixture(lines: &str) -> Journal {
         let (file, record) = line.split_once('\t').expect("a file and a record");
         let replica = file.split('/').nth(1).expect("a machine's folder");
         let record = from_text(record).expect("a record");
-        journal.add(record, replica, file, file.ends_with(".jsonl"));
+        journal.add(
+            record,
+            replica,
+            file,
+            if file.ends_with(".jsonl") {
+                JournalOrder::Sequenced
+            } else {
+                JournalOrder::Attempt
+            },
+        );
     }
     journal
 }

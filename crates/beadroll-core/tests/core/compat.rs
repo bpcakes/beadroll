@@ -64,7 +64,12 @@ mod compat_audit_comment_ids {
                 .issue(&create)
                 .actor(json!({"agent": "audit"}))
                 .data(data);
-            journal.add(event.json(), "a", "", true);
+            journal.add(
+                event.json(),
+                "a",
+                "",
+                beadroll_core::journal::JournalOrder::Sequenced,
+            );
         }
         assert_eq!(
             Some(exported(&journal, "first")),
@@ -103,7 +108,12 @@ mod import_dry_run {
         ];
         let mut journal = Journal::new();
         for event in events {
-            journal.add(event.json(), "m", "", true);
+            journal.add(
+                event.json(),
+                "m",
+                "",
+                beadroll_core::journal::JournalOrder::Sequenced,
+            );
         }
         replay(journal).unwrap()
     }

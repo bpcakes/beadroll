@@ -11,6 +11,7 @@
 
 use beadroll_core::id::EventId;
 use beadroll_core::journal::Journal;
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::json::Object;
 use beadroll_core::projection::{Extended, Projection, Record, decode_state, project};
 use beadroll_core::replay::replay;
@@ -70,7 +71,7 @@ impl History {
     fn journal(&self, held: usize) -> Journal {
         let mut journal = Journal::new();
         for event in &self.0[..held] {
-            journal.add(event.clone(), "a", "", true);
+            journal.add(event.clone(), "a", "", JournalOrder::Sequenced);
         }
         journal
     }

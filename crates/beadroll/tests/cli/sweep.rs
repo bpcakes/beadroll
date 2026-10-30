@@ -9,13 +9,23 @@
 //! separate sandboxes. Build-specific failpoints require [`crate::rust_only`]; [`fault_env`] maps
 //! boundaries to their controls.
 
+mod call;
+mod judge;
+mod run;
+
 use std::collections::BTreeMap;
 
 use call::Rc;
 
-mod call;
-mod judge;
-mod run;
+/// Whether an injected pause held the command.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FaultProgress {
+    /// Continued.
+    Continued,
+    /// Stalled.
+    Stalled,
+}
+
 #[allow(
     clippy::module_inception,
     reason = "Keep sweep::sweep::sweep stable for test filters and findings references"
@@ -260,7 +270,8 @@ fn fault_env(op: &str, fault: &str) -> (&'static str, &'static str) {
 /// its failpoint gives (98 before the push, 99 once the remote accepted it), a SIGKILL (-9), or,
 /// for a timeout, the remote's stall hook started (`stalled`) by the operation's push, which the
 /// client then waited on past its timeout. Any other end means the operation never got there.
-fn fault_fired(fault: &str, rc: Rc, stalled: bool) -> bool {
+fn fault_fired(fault: &str, rc: Rc, stalled: FaultProgress) -> bool {
+    let stalled = matches!(stalled, FaultProgress::Stalled);
     match fault {
         "crash-before-push" => rc.is(98),
         "crash-after-push" => rc.is(99),

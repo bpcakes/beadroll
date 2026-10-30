@@ -65,7 +65,7 @@ impl Fake {
              esac\n",
             source = source.display()
         );
-        let tools = tools(root, "fake", &cargo, true);
+        let tools = tools(root, "fake", &cargo, super::LlvmTools::Installed);
         let (mut out, mut err) = (Vec::new(), Vec::new());
         let passed = make(&tools, root, &self.out, options, &mut out, &mut err);
         let text = |bytes: Vec<u8>| String::from_utf8(bytes).expect("UTF-8");
@@ -199,7 +199,7 @@ fn the_slow_suites_are_run_when_asked() {
 fn missing_tools_stop_the_run_before_anything_runs() {
     let dir = tempfile::tempdir().expect("a scratch directory");
     let out = dir.path().join("coverage");
-    let tools = tools(dir.path(), "none", NO_SUBCOMMAND, false);
+    let tools = tools(dir.path(), "none", NO_SUBCOMMAND, super::LlvmTools::Missing);
     let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
     let made = make(
         &tools,
@@ -257,7 +257,7 @@ fn a_step_that_fails_is_reported_failed_with_what_it_printed_and_never_as_done()
     let dir = tempfile::tempdir().expect("a scratch directory");
     let cargo = "if [ \"$2\" = --version ]; then echo 'cargo-llvm-cov 0.8.7'; exit 0; fi\n\
                  echo 'error: boom' >&2\nexit 1\n";
-    let tools = tools(dir.path(), "boom", cargo, true);
+    let tools = tools(dir.path(), "boom", cargo, super::LlvmTools::Installed);
     let out = dir.path().join("coverage");
     let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
     let made = make(

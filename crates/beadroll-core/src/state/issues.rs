@@ -10,10 +10,13 @@ use std::ops::Deref;
 
 use indexmap::IndexMap;
 
-use crate::id::EventId;
-
 use super::issue::Issue;
 use super::texts::Texts;
+use crate::id::EventId;
+#[cfg(test)]
+use crate::journal::JournalOrder;
+#[cfg(test)]
+use crate::projection::tests::HistoryKind;
 
 /// The issues, by id, in the order replay created them, with which of those read back changed.
 #[derive(Clone, Debug, Default)]
@@ -119,12 +122,16 @@ mod tests {
     /// The issues of a clean differential history, held as read back.
     fn read_back() -> Issues {
         let mut journal = Journal::new();
-        for record in history(3, 30, false) {
+        for record in history(3, 30, HistoryKind::Valid) {
             journal.add(
                 record.value,
                 &record.replica,
                 &record.origin,
-                record.sequenced,
+                if record.sequenced {
+                    JournalOrder::Sequenced
+                } else {
+                    JournalOrder::Attempt
+                },
             );
         }
         let mut issues = replay(journal).unwrap().issues;
@@ -187,12 +194,16 @@ mod tests {
     #[test]
     fn a_state_replay_made_has_every_issue_changed() {
         let mut journal = Journal::new();
-        for record in history(3, 10, false) {
+        for record in history(3, 10, HistoryKind::Valid) {
             journal.add(
                 record.value,
                 &record.replica,
                 &record.origin,
-                record.sequenced,
+                if record.sequenced {
+                    JournalOrder::Sequenced
+                } else {
+                    JournalOrder::Attempt
+                },
             );
         }
         let issues = replay(journal).unwrap().issues;

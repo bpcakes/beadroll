@@ -5,8 +5,10 @@
 use std::collections::BTreeSet;
 
 use super::*;
+use crate::journal::JournalOrder;
 use crate::json::parse;
 use crate::projection::Record;
+use crate::projection::tests::HistoryKind;
 use crate::projection::tests::history;
 
 /// Event `n` by machine `a`, as one line without its newline.
@@ -60,7 +62,16 @@ fn both_ways(records: &[Record]) -> Parts {
         let mut text = Vec::new();
         for record in &of_file {
             assert_eq!(record.sequenced, sequenced);
-            values.add(record.value.clone(), replica, origin, sequenced);
+            values.add(
+                record.value.clone(),
+                replica,
+                origin,
+                if sequenced {
+                    JournalOrder::Sequenced
+                } else {
+                    JournalOrder::Attempt
+                },
+            );
             text.extend(
                 json::write(&record.value, Format::COMPACT)
                     .unwrap()
@@ -86,7 +97,7 @@ fn both_ways(records: &[Record]) -> Parts {
 #[test]
 fn a_journal_read_from_lines_is_the_journal_of_the_values_read_from_them() {
     for seed in 0..6 {
-        let parts = both_ways(&history(20_261_022 + seed, 12, false));
+        let parts = both_ways(&history(20_261_022 + seed, 12, HistoryKind::Valid));
         assert!(parts.events.len() > 12, "seed {seed}");
         assert!(parts.invalid.is_empty(), "seed {seed}");
     }
@@ -96,7 +107,7 @@ fn a_journal_read_from_lines_is_the_journal_of_the_values_read_from_them() {
 fn a_journal_of_what_replay_reports_reads_alike_either_way() {
     let mut reported = 0;
     for seed in 0..6 {
-        let parts = both_ways(&history(20_261_022 + seed, 12, true));
+        let parts = both_ways(&history(20_261_022 + seed, 12, HistoryKind::Flawed));
         reported += parts.invalid.len() + parts.quarantined.len();
     }
     assert!(reported > 0, "the flawed histories report nothing");
@@ -261,7 +272,7 @@ fn a_line_is_one_content_whatever_the_whitespace_around_it() {
         parse(text.as_bytes()).unwrap().value,
         "a",
         "events/a/000003.jsonl",
-        true,
+        JournalOrder::Sequenced,
     );
     journal.settle();
     assert!(journal.quarantined().is_empty());

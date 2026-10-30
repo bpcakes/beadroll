@@ -7,6 +7,8 @@
 //! which an issue's edges' metadata read in must match, as its long fields' registers must match
 //! [`Stored::tags`] and its last ended claim [`Stored::ended`].
 
+use super::codec::{Reader, Unreadable, Writer};
+use super::state_codec::{read_claim, read_how, read_tags, write_claim, write_how, write_tags};
 use crate::event::Field;
 use crate::id::EventId;
 use crate::json::Object;
@@ -15,9 +17,6 @@ use crate::state::{
     Comment, DepTags, EndedClaim, Issue, LostClaim, Meta, Stale, Stored, TextPlace, Texts, VecMap,
     is_text,
 };
-
-use super::codec::{Reader, Unreadable, Writer};
-use super::state_codec::{read_claim, read_how, read_tags, write_claim, write_how, write_tags};
 
 /// The metadata of an addition whose issue's texts are not in it: never written, since only texts
 /// in their issue are.
@@ -50,7 +49,7 @@ pub(crate) fn write_texts(issue: &Issue) -> Vec<u8> {
     w.count(issue.reg.len());
     for (field, tags) in &issue.reg {
         w.count(field.index());
-        w.flag(is_text(*field));
+        w.byte(u8::from(is_text(*field)));
         if is_text(*field) {
             write_tags(&mut w, tags);
         }
@@ -78,7 +77,7 @@ pub(crate) fn write_texts(issue: &Issue) -> Vec<u8> {
             }
         }
     }
-    w.flag(issue.extra.is_some());
+    w.byte(u8::from(issue.extra.is_some()));
     if let Some(extra) = &issue.extra {
         w.object(extra);
     }

@@ -9,6 +9,7 @@ use beadroll_core::text::str_of;
 use beadroll_store::{view, view_outline};
 
 use super::{Context, Failure, Line, Outcome, Tone, need_tracker, row};
+use crate::commands::SearchScope;
 
 /// Open issues something holds back, by key, each with the issues blocking it: every issue's
 /// blockers are listed once for all of them (`State::blocker_lists`, roll-lqjj.24), so that a deep
@@ -47,7 +48,12 @@ pub(crate) fn blocked(ctx: &Context<'_>) -> Result<Outcome, Failure> {
 
 /// Issues whose key, title, texts or comments contain `query`, ignoring case; open issues unless
 /// `all` is set. A query that is not UTF-8 matches nothing.
-pub(crate) fn search(ctx: &Context<'_>, query: &OsStr, all: bool) -> Result<Outcome, Failure> {
+pub(crate) fn search(
+    ctx: &Context<'_>,
+    query: &OsStr,
+    all: SearchScope,
+) -> Result<Outcome, Failure> {
+    let all = matches!(all, SearchScope::All);
     let st = view(ctx.ws)?;
     need_tracker(&st)?;
     let needle = query.to_str().map(str::to_lowercase);

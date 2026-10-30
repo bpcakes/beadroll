@@ -19,9 +19,19 @@ use std::collections::BTreeMap;
 use std::os::unix::fs::MetadataExt as _;
 use std::path::{Path, PathBuf};
 
+use crate::FileMode;
 use crate::error::Error;
 use crate::fs::{read, read_keyed, write_atomic};
 use crate::workspace::Workspace;
+
+/// Which entries are kept when reading the journal memo.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MemoRead {
+    /// Whole.
+    Whole,
+    /// Partial.
+    Partial,
+}
 
 /// The memo's first line: what it is, and the version of its layout. Each file follows as its path
 /// in the store, a NUL, then its identity, its lines and its blob (`-` when not known), separated
@@ -154,7 +164,7 @@ impl Memo {
     /// rename a newer memo over this one between two looks at the path: the moment the one we
     /// read was written is the only one its files may be settled before.
     pub fn load(ws: &Workspace) -> Memo {
-        Memo::load_of(ws, &|_| true, false)
+        Memo::load_of(ws, &|_| true, MemoRead::Whole)
     }
 
     /// [`Memo::load`], keeping only the files `wanted` names by their paths in the store: what one
@@ -162,10 +172,11 @@ impl Memo {
     /// (roll-lqjj.30: an attempt file's entry is otherwise paid for by every command). Never
     /// written back.
     pub fn load_only(ws: &Workspace, wanted: &dyn Fn(&str) -> bool) -> Memo {
-        Memo::load_of(ws, wanted, true)
+        Memo::load_of(ws, wanted, MemoRead::Partial)
     }
 
-    fn load_of(ws: &Workspace, wanted: &dyn Fn(&str) -> bool, partial: bool) -> Memo {
+    fn load_of(ws: &Workspace, wanted: &dyn Fn(&str) -> bool, partial: MemoRead) -> Memo {
+        let partial = matches!(partial, MemoRead::Partial);
         let (data, key) = read_keyed(&memo_path(ws)).unwrap_or_default();
         let mut files = parse(&data, wanted).unwrap_or_default();
         settled(&mut files, key.map(|memo| memo.written()));
@@ -246,7 +257,14 @@ impl Memo {
             return;
         }
         let failpoints = &ws.settings.failpoints;
-        if write_atomic(&memo_path(ws), &self.render(), true, failpoints).is_ok() {
+        if write_atomic(
+            &memo_path(ws),
+            &self.render(),
+            FileMode::Private,
+            failpoints,
+        )
+        .is_ok()
+        {
             self.changed = false;
         }
     }

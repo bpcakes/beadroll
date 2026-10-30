@@ -8,6 +8,17 @@
 use beadroll_store::glob_ending;
 use beadroll_test_support::{Json, Machine, Sandbox};
 
+use crate::hardening::TrackerSetup;
+
+/// Whether the in-flight push lands before the competing action.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PushOrder {
+    /// Later.
+    Later,
+    /// First.
+    First,
+}
+
 /// `_v2_machine`: machine `name`, its tracker initialised with the prefix `ex` and kept local until
 /// its first claim or sync (`--offline`).
 fn machine(sandbox: &Sandbox, name: &str) -> Machine {
@@ -18,7 +29,8 @@ fn machine(sandbox: &Sandbox, name: &str) -> Machine {
 
 /// `_v2_machine` for a `rust_only` test: machine `name` running the Rust `bead`, its tracker
 /// initialised as [`machine`] does, or, with `init` false, the published tracker synced.
-fn rust_machine(sandbox: &Sandbox, name: &str, init: bool) -> Machine {
+fn rust_machine(sandbox: &Sandbox, name: &str, init: TrackerSetup) -> Machine {
+    let init = matches!(init, TrackerSetup::Init);
     let machine = crate::rust_only(sandbox, name);
     if init {
         machine.bead(["init", "--prefix", "ex", "--offline"]);
@@ -159,10 +171,11 @@ mod v2_in_flight_attempt_across_actors {
     /// same machine claims Y while A waits between rounds. With `lands_first`, A's push lands
     /// before B's command. Pause every backoff at a gate: the first waits for B, later waits pass
     /// through it. Returns the pending filenames left by B.
-    fn in_flight(lands_first: bool) -> Vec<String> {
+    fn in_flight(lands_first: PushOrder) -> Vec<String> {
+        let lands_first = matches!(lands_first, PushOrder::First);
         let sandbox = crate::sandbox();
         let n = u8::from(lands_first);
-        let m = rust_machine(&sandbox, &format!("v2-flight-{n}"), true);
+        let m = rust_machine(&sandbox, &format!("v2-flight-{n}"), TrackerSetup::Init);
         // the claim below is the first push the hook sees
         let x = id(m.bead(["create", "X", "--offline"]));
         let y = id(m.bead(["create", "Y", "--offline"]));
@@ -217,7 +230,7 @@ mod v2_in_flight_attempt_across_actors {
         );
         assert_eq!(pending(&m), Vec::<String>::new());
         m.bead(["sync"]);
-        let peer = rust_machine(&sandbox, &format!("v2-flight-peer-{n}"), false);
+        let peer = rust_machine(&sandbox, &format!("v2-flight-peer-{n}"), TrackerSetup::Sync);
         for machine in [&m, &peer] {
             assert_eq!(machine.show(&x)["status"].as_str(), Some("open"));
             let shown = machine.show(&x);
@@ -245,7 +258,7 @@ mod v2_in_flight_attempt_across_actors {
     #[test]
     fn another_actor_fences_an_in_flight_release_during_the_unlocked_sleep() {
         // B dropped A's attempt and its receipt
-        assert_eq!(in_flight(false), Vec::<String>::new());
+        assert_eq!(in_flight(PushOrder::Later), Vec::<String>::new());
     }
 
     /// V2: if A's release lands before B's command, B confirms it while retaining A's receipt.
@@ -253,7 +266,7 @@ mod v2_in_flight_attempt_across_actors {
     /// in_flight controls the interleaving.
     #[test]
     fn in_flight_release_lands_before_another_actors_command() {
-        let pending_after_b = in_flight(true);
+        let pending_after_b = in_flight(PushOrder::First);
         assert_eq!(pending_after_b.len(), 1, "{pending_after_b:?}");
         assert!(
             pending_after_b[0].ends_with(".command"),
@@ -271,7 +284,7 @@ mod v2_confirmed_twin_keeps_the_retry_recognised {
     #[test]
     fn identical_pending_twin_confirms_and_the_retry_is_recognised() {
         let sandbox = crate::sandbox();
-        let a = rust_machine(&sandbox, "v2-twin", true);
+        let a = rust_machine(&sandbox, "v2-twin", TrackerSetup::Init);
         let x = id(a.bead(["create", "X"]));
         a.bead(["claim", &x]);
         let crashed = a

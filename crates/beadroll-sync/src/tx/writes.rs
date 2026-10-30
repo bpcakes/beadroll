@@ -8,6 +8,8 @@ use std::path::Path;
 use beadroll_core::json::Value;
 use beadroll_core::state::State;
 use beadroll_git::IoError;
+use beadroll_store::LockState;
+use beadroll_store::PublicationState;
 use beadroll_store::{
     Actor, Workspace, append_events, attempt_path, glob_ending, json_text, private_dir,
     private_dirs, write_attempt_file,
@@ -16,6 +18,15 @@ use beadroll_store::{
 use super::{Spent, Tx};
 use crate::error::Error;
 
+/// Whether the transaction must apply its emitted events for its caller.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WriteResult {
+    /// DiscardState.
+    DiscardState,
+    /// KeepState.
+    KeepState,
+}
+
 /// Runs `body` holding the store lock (`<ws>/lock`, `flock(2)` exclusive), the store's directories
 /// made private first.
 pub fn locked<T, E: From<Error>>(
@@ -23,9 +34,9 @@ pub fn locked<T, E: From<Error>>(
     body: impl FnOnce() -> Result<T, E>,
 ) -> Result<T, E> {
     let lock = take_lock(ws).map_err(E::from)?;
-    ws.set_holding(true);
+    ws.set_holding(LockState::Locked);
     let result = body();
-    ws.set_holding(false);
+    ws.set_holding(LockState::Unlocked);
     drop(lock);
     result
 }
@@ -69,7 +80,7 @@ pub fn writing<T, E: From<Error>>(
     actor: &Actor,
     body: impl FnOnce(&mut Tx<'_>) -> Result<T, E>,
 ) -> Result<T, E> {
-    written(ws, actor, false, body).map(|done| done.result)
+    written(ws, actor, WriteResult::DiscardState, body).map(|done| done.result)
 }
 
 /// [`writing`], and the state it leaves the store's journal in: the transaction's, with every
@@ -80,7 +91,7 @@ pub fn writing_state<T, E: From<Error>>(
     actor: &Actor,
     body: impl FnOnce(&mut Tx<'_>) -> Result<T, E>,
 ) -> Result<(T, Option<State>), E> {
-    written(ws, actor, true, body).map(|done| {
+    written(ws, actor, WriteResult::KeepState, body).map(|done| {
         let state = done
             .tx
             .filter(|_| done.applied)
@@ -98,7 +109,7 @@ pub fn writing_spent<T, E: From<Error>>(
     actor: &Actor,
     body: impl FnOnce(&mut Tx<'_>) -> Result<T, E>,
 ) -> Result<(T, Spent), E> {
-    written(ws, actor, false, body).map(|done| {
+    written(ws, actor, WriteResult::DiscardState, body).map(|done| {
         let spent = done.tx.map_or_else(Spent::default, Tx::into_spent);
         (done.result, spent)
     })
@@ -119,9 +130,10 @@ struct Written<'w, T> {
 fn written<'w, T, E: From<Error>>(
     ws: &'w Workspace,
     actor: &Actor,
-    keep: bool,
+    keep: WriteResult,
     body: impl FnOnce(&mut Tx<'_>) -> Result<T, E>,
 ) -> Result<Written<'w, T>, E> {
+    let keep = matches!(keep, WriteResult::KeepState);
     let mut made = None;
     let result = locked(ws, || -> Result<(T, bool), E> {
         let tx = made.insert(Tx::new(ws, actor)?);
@@ -148,7 +160,7 @@ fn written<'w, T, E: From<Error>>(
             }
             if sequenced || !tx.ownership.is_empty() {
                 forget_receipts(ws, &actor.value)?;
-                ws.set_wrote(true);
+                ws.set_wrote(PublicationState::Unpublished);
             }
             Ok(())
         };

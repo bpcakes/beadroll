@@ -2,16 +2,17 @@
 //! Journal interpretation must be deterministic, and no accepted create payload may break a
 //! query.
 
+mod lines;
+
 use beadroll_core::event::payload_problem;
 use beadroll_core::id::EventId;
 use beadroll_core::journal::Journal;
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::json::Object;
 use beadroll_core::replay::replay;
 use beadroll_core::state::{Integrity, Issue, Rename, State};
 use beadroll_test_support::events::Event;
 use beadroll_test_support::{Json, json};
-
-mod lines;
 
 /// Event `number`: id `019a5555-5555-7000-8000-<number>`, about `issue` (itself when
 /// `None`).
@@ -101,7 +102,7 @@ fn u06_key_numbers_are_ascii_digits() {
     let mut journal = Journal::new();
     for event in [&init, &parent, &child, &first, &second] {
         let replica = event["replica"].as_str().unwrap().to_owned();
-        journal.add(event.clone(), &replica, "", true);
+        journal.add(event.clone(), &replica, "", JournalOrder::Sequenced);
     }
     let state = replay(journal).unwrap();
     let renamed = state.issue(uid(&second)).unwrap().key().to_owned();
@@ -154,7 +155,7 @@ fn u07_payloads_that_reached_the_last_resort_are_refused_by_name() {
     ];
     let mut journal = Journal::new();
     for event in [&init, &target, &taken] {
-        journal.add(event.clone(), "seed", "", true);
+        journal.add(event.clone(), "seed", "", JournalOrder::Sequenced);
     }
     let mut previous = id_of(&taken).to_owned();
     for (number, (problem, data)) in (4..).zip(&rows) {
@@ -170,7 +171,7 @@ fn u07_payloads_that_reached_the_last_resort_are_refused_by_name() {
         );
         assert_eq!(payload_problem(&event).as_deref(), Some(*problem));
         previous = id_of(&event).to_owned();
-        journal.add(event, "seed", "", true);
+        journal.add(event, "seed", "", JournalOrder::Sequenced);
     }
     let state = replay(journal).unwrap();
     let mut found = problems(&state);
@@ -211,7 +212,7 @@ fn u07_payloads_that_reached_the_last_resort_are_refused_by_name() {
             ),
             replica,
             "",
-            true,
+            JournalOrder::Sequenced,
         );
     }
     let state = replay(journal).unwrap();
@@ -269,7 +270,7 @@ fn u08_imported_comments_carry_neither_a_uid_nor_a_where() {
     );
     let mut journal = Journal::new();
     for event in [&init, &kept, &refused] {
-        journal.add(event.clone(), "a", "", true);
+        journal.add(event.clone(), "a", "", JournalOrder::Sequenced);
     }
     let state = replay(journal).unwrap();
     assert_eq!(
@@ -313,7 +314,7 @@ fn u10_a_quarantined_id_names_its_issue_only_by_a_string() {
         );
         let mut journal = Journal::new();
         for data in [json!({}), json!({"x": 1})] {
-            journal.add(with(&first, "data", data), "a", "", true);
+            journal.add(with(&first, "data", data), "a", "", JournalOrder::Sequenced);
         }
         let state = replay(journal).unwrap();
         let row = Integrity {

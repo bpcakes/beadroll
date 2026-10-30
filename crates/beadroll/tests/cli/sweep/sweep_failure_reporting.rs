@@ -6,6 +6,18 @@
 use super::call::Rc;
 use super::sweep::{Report, selected, verdict};
 use super::{FAULTS, SLICE, Schedule, Variant, fault_fired, schedule};
+use crate::sweep::FaultProgress;
+use crate::sweep::sweep::Execution;
+use crate::sweep::sweep::ScheduleSet;
+
+/// Whether a synthetic sweep report contains a failure.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ScheduleResult {
+    /// Failed.
+    Failed,
+    /// Passed.
+    Passed,
+}
 
 /// The pairs that retry first, or after another actor or machine: G12's interrupted closes and
 /// deletes, retried.
@@ -13,8 +25,9 @@ const RETRIES: [&str; 5] = ["RD", "RO", "RS", "OR", "SR"];
 
 /// The verdict of a sweep whose only schedule is `only`, reporting `injected failure` unless
 /// `ok`: the full sweep's list with `full`, else the slice, as `BEAD_SWEEP` picks them.
-fn sweep_of(only: Schedule, ok: bool, full: bool) -> Result<(), String> {
-    let chosen = selected(full, false, vec![only], &[only]);
+fn sweep_of(only: Schedule, ok: ScheduleResult, schedule_set: ScheduleSet) -> Result<(), String> {
+    let ok = matches!(ok, ScheduleResult::Passed);
+    let chosen = selected(schedule_set, Execution::Sequential, vec![only], &[only]);
     let sequential = Variant {
         gc: false,
         concurrent: false,
@@ -41,7 +54,15 @@ fn every_failed_schedule_fails_the_sweep() {
     failing.push(schedule("claim", "crash-after-push", "RO"));
     for full in [false, true] {
         for only in &failing {
-            let failed = sweep_of(*only, false, full);
+            let failed = sweep_of(
+                *only,
+                ScheduleResult::Failed,
+                if full {
+                    ScheduleSet::Full
+                } else {
+                    ScheduleSet::Slice
+                },
+            );
             let message = failed.expect_err("a failed schedule fails the sweep");
             assert!(message.starts_with("1 of 1 schedules failed"), "{message}");
             assert!(message.contains("injected failure"), "{message}");
@@ -53,7 +74,19 @@ fn every_failed_schedule_fails_the_sweep() {
 fn successful_schedules_pass() {
     for full in [false, true] {
         let passing = schedule("close", "crash-before-push", "RS");
-        assert_eq!(sweep_of(passing, true, full), Ok(()), "full: {full}");
+        assert_eq!(
+            sweep_of(
+                passing,
+                ScheduleResult::Passed,
+                if full {
+                    ScheduleSet::Full
+                } else {
+                    ScheduleSet::Slice
+                }
+            ),
+            Ok(()),
+            "full: {full}"
+        );
     }
 }
 
@@ -77,22 +110,53 @@ fn default_slice_retries_crashed_owner_close_and_delete() {
 fn a_fault_that_never_fired_fails_its_schedule() {
     for fault in FAULTS {
         assert!(
-            !fault_fired(fault, Rc::Exit(0), false),
+            !fault_fired(fault, Rc::Exit(0), FaultProgress::Continued),
             "{fault} after exit 0"
         );
-        assert!(!fault_fired(fault, Rc::Hang, false), "{fault} after a hang");
+        assert!(
+            !fault_fired(fault, Rc::Hang, FaultProgress::Continued),
+            "{fault} after a hang"
+        );
     }
-    assert!(fault_fired("crash-before-push", Rc::Exit(98), false));
-    assert!(!fault_fired("crash-before-push", Rc::Exit(99), false));
-    assert!(fault_fired("crash-after-push", Rc::Exit(99), false));
-    assert!(!fault_fired("crash-after-push", Rc::Exit(98), false));
+    assert!(fault_fired(
+        "crash-before-push",
+        Rc::Exit(98),
+        FaultProgress::Continued
+    ));
+    assert!(!fault_fired(
+        "crash-before-push",
+        Rc::Exit(99),
+        FaultProgress::Continued
+    ));
+    assert!(fault_fired(
+        "crash-after-push",
+        Rc::Exit(99),
+        FaultProgress::Continued
+    ));
+    assert!(!fault_fired(
+        "crash-after-push",
+        Rc::Exit(98),
+        FaultProgress::Continued
+    ));
     for fault in ["kill-confirm", "kill-write-pending", "kill-write-confirm"] {
-        assert!(fault_fired(fault, Rc::Exit(-9), false), "{fault}");
-        assert!(!fault_fired(fault, Rc::Exit(1), false), "{fault}");
+        assert!(
+            fault_fired(fault, Rc::Exit(-9), FaultProgress::Continued),
+            "{fault}"
+        );
+        assert!(
+            !fault_fired(fault, Rc::Exit(1), FaultProgress::Continued),
+            "{fault}"
+        );
     }
     for fault in ["timeout-fenced", "timeout-landed"] {
-        assert!(fault_fired(fault, Rc::Exit(1), true), "{fault}");
-        assert!(fault_fired(fault, Rc::Exit(0), true), "{fault}");
+        assert!(
+            fault_fired(fault, Rc::Exit(1), FaultProgress::Stalled),
+            "{fault}"
+        );
+        assert!(
+            fault_fired(fault, Rc::Exit(0), FaultProgress::Stalled),
+            "{fault}"
+        );
     }
 }
 

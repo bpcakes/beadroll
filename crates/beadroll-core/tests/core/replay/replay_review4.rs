@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 use beadroll_core::event::Field;
 use beadroll_core::id::EventId;
 use beadroll_core::journal::Journal;
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::op::IntegerField;
 use beadroll_core::query::find_cycles;
 use beadroll_core::replay::replay;
@@ -43,7 +44,7 @@ fn journal(events: &[&Json]) -> Journal {
     let mut journal = Journal::new();
     for event in events {
         let replica = event["replica"].as_str().unwrap().to_owned();
-        journal.add((*event).clone(), &replica, "", true);
+        journal.add((*event).clone(), &replica, "", JournalOrder::Sequenced);
     }
     journal
 }

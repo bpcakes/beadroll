@@ -15,6 +15,15 @@ use crate::text::repr_str;
 
 pub(crate) use envelope::{Data, Envelope};
 
+/// Which fields an operation may write.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FieldScope {
+    /// Editable.
+    Editable,
+    /// Create.
+    Create,
+}
+
 /// The format of events this bead reads and writes.
 pub const FORMAT: i64 = 1;
 
@@ -235,7 +244,8 @@ pub fn event_problem(event: &Value) -> Option<String> {
 
 /// Why `fields` cannot be written, or `None`. `bookkeeping` permits `created_at`, `updated_at`
 /// and `created_by` on a create.
-pub fn fields_problem(fields: &Value, bookkeeping: bool) -> Option<String> {
+pub fn fields_problem(fields: &Value, bookkeeping: FieldScope) -> Option<String> {
+    let bookkeeping = matches!(bookkeeping, FieldScope::Create);
     let Value::Object(fields) = fields else {
         return Some("fields is not an object".into());
     };
@@ -314,11 +324,15 @@ pub(crate) fn payload_problem_of(
         "create" => {
             // An id's spelling is exact, so the issue names it exactly when it spells it.
             let names_itself = id.is_some() && issue.and_then(EventId::parse) == id;
-            create_problem(names_itself, data, &strings)
+            if !names_itself {
+                Some("create event does not name itself as the issue".into())
+            } else {
+                create_problem(data, &strings)
+            }
         }
         "set" => match get("fields") {
             None => Some("fields is not an object".into()),
-            Some(fields) => fields_problem(fields, false),
+            Some(fields) => fields_problem(fields, FieldScope::Editable),
         },
         "dep_add" | "dep_remove" => {
             let has_to = data.is_some_and(|d| member(d, "to").is_some());
@@ -360,21 +374,14 @@ pub(crate) fn payload_problem_of(
     }
 }
 
-fn create_problem(
-    names_itself: bool,
-    data: Option<&Object>,
-    strings: &dyn Fn(&str) -> bool,
-) -> Option<String> {
+fn create_problem(data: Option<&Object>, strings: &dyn Fn(&str) -> bool) -> Option<String> {
     let get = |key: &str| data.and_then(|d| member(d, key));
-    if !names_itself {
-        return Some("create event does not name itself as the issue".into());
-    }
     match get("key") {
         Some(Value::Str(key)) if !key.is_empty() && !number_too_long(key) => {}
         _ => return Some("create event has no valid 'key'".into()),
     }
     if let Some(fields) = get("fields")
-        && let Some(problem) = fields_problem(fields, true)
+        && let Some(problem) = fields_problem(fields, FieldScope::Create)
     {
         return Some(problem);
     }

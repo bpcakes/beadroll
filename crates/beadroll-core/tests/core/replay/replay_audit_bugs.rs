@@ -6,6 +6,7 @@
 use beadroll_core::event::Field;
 use beadroll_core::id::EventId;
 use beadroll_core::journal::Journal;
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::replay::replay;
 use beadroll_test_support::events::journal;
 use beadroll_test_support::{Json, json};
@@ -104,7 +105,7 @@ fn identical_id_in_different_machine_journals_is_order_independent() {
                 vec![a.clone(), b.clone()]
             };
             for event in events {
-                j.add(event, replica, "", true);
+                j.add(event, replica, "", JournalOrder::Sequenced);
             }
         }
         views.push(snapshot(j));
@@ -161,7 +162,7 @@ fn quarantined_takeover_cannot_supersede_a_valid_close() {
     for variants in [[&original, &alternate], [&alternate, &original]] {
         let mut j = journal(&others);
         for variant in variants {
-            j.add(variant.clone(), "b", "", true);
+            j.add(variant.clone(), "b", "", JournalOrder::Sequenced);
         }
         journals.push(j);
     }
@@ -205,7 +206,7 @@ fn quarantined_event_with_missing_cause_does_not_hold_descendants() {
         members.insert("deps".into(), json!([(uid.as_str())]));
         members.insert("data".into(), json!({"text": "second payload"}));
     }
-    j.add(variant, "b", "", true);
+    j.add(variant, "b", "", JournalOrder::Sequenced);
     let st = replay(j).unwrap();
     assert!(
         st.pending().is_empty(),

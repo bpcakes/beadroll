@@ -16,6 +16,7 @@
 use std::time::Instant;
 
 use beadroll_core::journal::Journal;
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::query::ReadyScope;
 use beadroll_core::replay::replay;
@@ -178,10 +179,15 @@ fn state(shape: Shape, issues: usize) -> Result<State, Failure> {
     let mut data = Object::new();
     data.insert("prefix".into(), Value::from("ex"));
     let mut journal = Journal::new();
-    journal.add(event(1, "init", data), MACHINE, "", true);
+    journal.add(event(1, "init", data), MACHINE, "", JournalOrder::Sequenced);
     for n in 1..=issues {
         let create = create(n, &shape.linked(n));
-        journal.add(event(n as u64 + 1, "create", create), MACHINE, "", true);
+        journal.add(
+            event(n as u64 + 1, "create", create),
+            MACHINE,
+            "",
+            JournalOrder::Sequenced,
+        );
     }
     replay(journal).map_err(|_| Failure::Failed("the probe needs a key".into()))
 }

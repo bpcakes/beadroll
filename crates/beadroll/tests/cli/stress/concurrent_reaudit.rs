@@ -9,6 +9,8 @@
 //! remain visible. Worker seeds are `20261007 + wave * 101 + machine * 907`; each worker has its
 //! own deterministic random stream and command interleaving.
 
+mod oracle;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
@@ -20,7 +22,14 @@ use super::{
     sorted, viewed, words,
 };
 
-mod oracle;
+/// Whether a stress worker is isolated from the remote.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Connectivity {
+    /// Connected.
+    Connected,
+    /// Partitioned.
+    Partitioned,
+}
 
 /// What a worker's step does.
 #[derive(Clone, Copy, Debug)]
@@ -165,7 +174,16 @@ fn work(
     let partitioned = mi == wave % 6 || mi == (wave + 2) % 6;
     let mut done = Done::default();
     for step in 0..per_wave {
-        let args = command(&mut rng, (mi, wave, step), partitioned, keys);
+        let args = command(
+            &mut rng,
+            (mi, wave, step),
+            if partitioned {
+                Connectivity::Partitioned
+            } else {
+                Connectivity::Connected
+            },
+            keys,
+        );
         let run = run_json(machine, &args);
         let exit = run.returncode();
         let mut row = Row {
@@ -194,9 +212,10 @@ fn work(
 fn command(
     rng: &mut Rng,
     (mi, wave, step): (usize, usize, usize),
-    partitioned: bool,
+    partitioned: Connectivity,
     keys: &Keys,
 ) -> Vec<String> {
+    let partitioned = matches!(partitioned, Connectivity::Partitioned);
     let action = rng.weighted(&ACTIONS);
     let key = rng.choice(&keys.editable).as_str();
     let tag = format!("{wave}/{mi}/{step}");

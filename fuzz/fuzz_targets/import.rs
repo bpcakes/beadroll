@@ -13,6 +13,7 @@ use beadroll_core::event::{MAX_NESTING, event_problem, payload_problem, write_pr
 use beadroll_core::import::dry_run::{preview, problems};
 use beadroll_core::import::{Step, Target, plan_import, read_records};
 use beadroll_core::journal::Journal;
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
@@ -65,7 +66,7 @@ fn tracker(events: &[Value]) -> State {
             event.clone(),
             "0000aa01",
             "events/0000aa01/000001.jsonl",
-            true,
+            JournalOrder::Sequenced,
         );
     }
     replay(journal).expect("the tracker replays")

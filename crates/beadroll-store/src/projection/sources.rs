@@ -22,13 +22,13 @@ use std::sync::Arc;
 use beadroll_core::projection::Projection;
 use beadroll_core::state::State;
 
+use super::file::Made;
+use super::kept;
 use crate::journal::{Loaded, claim_files_afresh, claim_keys, segment_files};
 use crate::listing::{Keys, Stamp};
 use crate::memo::FileKey;
+use crate::projection::JournalFile;
 use crate::workspace::Workspace;
-
-use super::file::Made;
-use super::kept;
 
 /// The store's projection and the journal files it was made from.
 #[derive(Debug)]
@@ -106,7 +106,7 @@ impl Sources {
     pub(super) fn read(ws: &Workspace, segments: &[PathBuf], loaded: &Loaded) -> Option<Sources> {
         let held = (segments.iter().zip(&loaded.segments))
             .map(|(path, (key, _))| {
-                let held = kept(ws, path, *key, true, None)?;
+                let held = kept(ws, path, *key, JournalFile::Segment, None)?;
                 Some((held.path, held.key))
             })
             .collect::<Option<Vec<_>>>()?;

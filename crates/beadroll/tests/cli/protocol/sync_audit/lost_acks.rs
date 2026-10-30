@@ -7,6 +7,8 @@ use std::time::Duration;
 use beadroll_test_support::{Json, code, parse_json};
 
 use super::{Worker, git_wrapper, setup, two, wait_marker};
+use crate::protocol::sync_audit::HookPosition;
+use crate::protocol::sync_audit::ProcessSession;
 
 /// The claim on `issue`; absence fails the test.
 fn claim(issue: &Json) -> Json {
@@ -37,8 +39,11 @@ fn claim_lost_ack_after_real_push_kill_is_recovered() {
     let (a, key) = setup(&sandbox);
     let b = two(&sandbox, &a);
     let marker = sandbox.root().join("pushed");
-    let path = git_wrapper(&sandbox, "push", &marker, true);
-    let mut worker = Worker::start(a.cmd(["claim", &key, "--json"]).env("PATH", path), true);
+    let path = git_wrapper(&sandbox, "push", &marker, HookPosition::After);
+    let mut worker = Worker::start(
+        a.cmd(["claim", &key, "--json"]).env("PATH", path),
+        ProcessSession::New,
+    );
     wait_marker(&marker, &mut worker);
     worker.kill().expect("the claim's process group");
     worker.communicate(Some(Duration::from_secs(5)));
@@ -91,7 +96,7 @@ fn claim_timeout_after_real_applied_push_is_recovered() {
     let (a, key) = setup(&sandbox);
     let b = two(&sandbox, &a);
     let marker = sandbox.root().join("pushed");
-    let path = git_wrapper(&sandbox, "push", &marker, true);
+    let path = git_wrapper(&sandbox, "push", &marker, HookPosition::After);
     let claiming = a.cmd(["claim", &key, "--json"]).env("PATH", path);
     let result = claiming.env("BEAD_NET_TIMEOUT", "0.4").run();
     assert!(marker.exists());

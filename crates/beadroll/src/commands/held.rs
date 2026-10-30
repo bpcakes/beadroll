@@ -5,6 +5,7 @@
 
 use std::ffi::OsString;
 
+use beadroll_sync::NetworkMode;
 use beadroll_test_support::Machine;
 
 use super::{
@@ -25,7 +26,13 @@ fn words(words: &[&str]) -> Vec<OsString> {
 }
 
 /// `close`, `reopen` or `delete` of `key`, published at once unless `offline`.
-fn transit(ctx: &Context<'_>, op: &str, key: &OsString, offline: bool) -> Result<Outcome, Failure> {
+fn transit(
+    ctx: &Context<'_>,
+    op: &str,
+    key: &OsString,
+    offline: NetworkMode,
+) -> Result<Outcome, Failure> {
+    let offline = matches!(offline, NetworkMode::Offline);
     let args = TransitionArgs {
         ids: vec![key.clone()],
         reason: None,
@@ -72,10 +79,18 @@ fn a_write_hands_the_command_line_its_transaction_to_keep() {
     assert!(holds(comments(&ctx, &said)), "comments add");
     for action in ["add", "remove"] {
         let edge = [words(&[action]), vec![one.clone(), two.clone()]].concat();
-        assert!(holds(dep(&ctx, &edge, None, false)), "dep {action}");
+        assert!(
+            holds(dep(
+                &ctx,
+                &edge,
+                None,
+                beadroll_core::query::Edges::WaitsFor
+            )),
+            "dep {action}"
+        );
     }
     for op in ["close", "reopen", "delete"] {
-        assert!(holds(transit(&ctx, op, &two, true)), "{op}");
+        assert!(holds(transit(&ctx, op, &two, NetworkMode::Offline)), "{op}");
     }
     let file = sandbox.root().join("issues.jsonl");
     std::fs::write(
@@ -83,7 +98,14 @@ fn a_write_hands_the_command_line_its_transaction_to_keep() {
         "{\"id\":\"ex-90\",\"title\":\"imported\",\"status\":\"open\"}\n",
     )
     .expect("an export");
-    assert!(holds(import(&ctx, file.as_os_str(), false)), "import");
+    assert!(
+        holds(import(
+            &ctx,
+            file.as_os_str(),
+            crate::commands::ImportMode::Apply
+        )),
+        "import"
+    );
     let retitle = UpdateArgs {
         ids: vec![one],
         title: Some("retitled".into()),
@@ -121,7 +143,8 @@ fn a_write_that_publishes_or_fails_hands_over_nothing() {
         asked: "{}".to_owned(),
     };
     claim(&ctx, &taking).expect("a claim");
-    let ended = transit(&ctx, "close", &key, false).expect("a close that ends the claim");
+    let ended =
+        transit(&ctx, "close", &key, NetworkMode::Online).expect("a close that ends the claim");
     assert!(
         ended.held.is_none(),
         "it held its transaction through the publish"

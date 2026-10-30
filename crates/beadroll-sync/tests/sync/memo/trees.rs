@@ -1,6 +1,7 @@
 //! Subtree reuse changes neither the published bytes nor which local attempts get published.
 
 use beadroll_store::{attempt_path, encode_events};
+use beadroll_sync::PublishMode;
 
 use super::*;
 
@@ -9,7 +10,10 @@ use super::*;
 fn rebuilt_tree(ws: &Workspace, origin: &Path) -> String {
     let mut link = Link::new(ws, &Endpoint::at(origin)).unwrap();
     let tip = link.fetch().unwrap();
-    locked(ws, || link.publish(tip.as_deref(), "sync", &[], false)).unwrap();
+    locked(ws, || {
+        link.publish(tip.as_deref(), "sync", &[], PublishMode::IfChanged)
+    })
+    .unwrap();
     assert!(link.reused_trees.is_empty());
     link.env
         .git([
@@ -76,7 +80,12 @@ fn a_pending_attempt_changes_the_tree_even_when_all_accepted_files_are_unchanged
     locked(&ws, || -> Result<(), Error> {
         link.merge(tip.as_deref())?;
         assert_eq!(
-            link.publish(tip.as_deref(), "claim", &pending, false)?,
+            link.publish(
+                tip.as_deref(),
+                "claim",
+                &pending,
+                beadroll_sync::PublishMode::IfChanged
+            )?,
             PushOutcome::Ok
         );
         Ok(())
@@ -144,7 +153,12 @@ fn a_new_merge_forgets_subtrees_no_longer_reachable_from_its_tip() {
                 .success()
         );
         assert_eq!(
-            link.publish(tip.as_deref(), "sync", &[], false)?,
+            link.publish(
+                tip.as_deref(),
+                "sync",
+                &[],
+                beadroll_sync::PublishMode::IfChanged
+            )?,
             PushOutcome::Ok
         );
         Ok(())
@@ -185,7 +199,12 @@ fn a_missing_reused_tree_is_rebuilt_from_local_files() {
             .join(&tree[2..]);
         std::fs::remove_file(&loose).unwrap();
         assert_eq!(
-            link.publish(tip.as_deref(), "sync", &[], false)?,
+            link.publish(
+                tip.as_deref(),
+                "sync",
+                &[],
+                beadroll_sync::PublishMode::IfChanged
+            )?,
             PushOutcome::Ok
         );
         assert!(loose.exists(), "the claims tree was made again");

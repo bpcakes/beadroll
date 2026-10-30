@@ -9,10 +9,13 @@ use beadroll_core::event::Field;
 use beadroll_core::json::{Format, Object, Value, write};
 use beadroll_core::state::State;
 use beadroll_core::text::str_of;
+use beadroll_store::IdentityMode;
 use beadroll_store::{Actor, replica_id, view_outline};
+use beadroll_sync::NetworkMode;
 use beadroll_sync::{Mode, Tx, coordinated};
 
 use super::{Context, Failure, Outcome, arg_text, encodable, need_tracker, resolve_arg, view_of};
+use crate::commands::args::TextValidity;
 
 /// The arguments the coordinated commands share.
 pub(crate) struct OwnershipArgs {
@@ -115,7 +118,11 @@ impl ClaimStep<'_> {
                 data.insert("reason".into(), Value::from(reason));
             }
             tx.emit("claim", Some(&issue.uid().to_string()), data, None)?;
-            encodable(valid)?;
+            encodable(if valid {
+                TextValidity::Utf8
+            } else {
+                TextValidity::Invalid
+            })?;
         }
         Ok(mode)
     }
@@ -124,7 +131,7 @@ impl ClaimStep<'_> {
 /// A retry recognised from its receipt may refer to a claim that has since changed hands. Report
 /// that change rather than reporting a claim the actor no longer holds.
 pub(crate) fn still_held(ctx: &Context<'_>, st: &State, keys: &[OsString]) -> Result<(), Failure> {
-    let replica = replica_id(&ctx.ws.settings, true)?.unwrap_or_default();
+    let replica = replica_id(&ctx.ws.settings, IdentityMode::Create)?.unwrap_or_default();
     let me = ctx.actor.label(&replica);
     for key in keys {
         let issue = resolve_arg(st, key)?;
@@ -177,7 +184,11 @@ pub(crate) fn claim(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome, 
     let mode = coordinated(
         ctx.ws,
         ctx.actor,
-        args.offline,
+        if args.offline {
+            NetworkMode::Offline
+        } else {
+            NetworkMode::Online
+        },
         args.remote.as_deref(),
         &signature,
         |tx, mode| step.run(tx, mode),
@@ -224,7 +235,11 @@ pub(crate) fn takeover(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcom
     coordinated(
         ctx.ws,
         ctx.actor,
-        args.offline,
+        if args.offline {
+            NetworkMode::Offline
+        } else {
+            NetworkMode::Online
+        },
         args.remote.as_deref(),
         &signature,
         |tx, mode| step.run(tx, mode),
@@ -255,7 +270,11 @@ pub(crate) fn release(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome
     coordinated(
         ctx.ws,
         ctx.actor,
-        args.offline,
+        if args.offline {
+            NetworkMode::Offline
+        } else {
+            NetworkMode::Online
+        },
         args.remote.as_deref(),
         &signature,
         |tx, mode| -> Result<Mode, Failure> {
@@ -277,7 +296,11 @@ pub(crate) fn release(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome
                         data.insert("reason".into(), Value::from(reason));
                     }
                     tx.emit("release", Some(&uid), data, None)?;
-                    encodable(valid)?;
+                    encodable(if valid {
+                        TextValidity::Utf8
+                    } else {
+                        TextValidity::Invalid
+                    })?;
                 } else if issue.provisional_claims().iter().any(|p| me.is(&p.owner)) {
                     tx.emit("release", Some(&uid), Object::new(), None)?;
                 } else {

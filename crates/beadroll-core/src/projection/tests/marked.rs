@@ -10,15 +10,16 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use crate::id::EventId;
-use crate::journal::{Event, Journal};
-use crate::json::Value;
-use crate::state::{Issue, Knowledge, TextPlace, Texts};
-
 use super::super::codec::Writer;
 use super::super::state_codec::write_issue;
 use super::super::{Projection, Record, project};
 use super::history;
+use crate::id::EventId;
+use crate::journal::JournalOrder;
+use crate::journal::{Event, Journal};
+use crate::json::Value;
+use crate::projection::tests::HistoryKind;
+use crate::state::{Issue, Knowledge, TextPlace, Texts};
 
 /// The place a record gives texts written nowhere yet: no texts written have it, so an issue whose
 /// texts are to be placed anew always has a record of its own.
@@ -305,12 +306,16 @@ pub(super) fn checked(
 /// A projection of the clean history of `seed`, read back.
 fn read_back(seed: u64) -> Projection {
     let mut journal = Journal::new();
-    for record in history(seed, 30, false) {
+    for record in history(seed, 30, HistoryKind::Valid) {
         journal.add(
             record.value,
             &record.replica,
             &record.origin,
-            record.sequenced,
+            if record.sequenced {
+                JournalOrder::Sequenced
+            } else {
+                JournalOrder::Attempt
+            },
         );
     }
     let (encoded, _) = project(journal).unwrap().encode(0);
@@ -351,12 +356,16 @@ fn an_issue_changed_moved_or_an_event_changed_is_seen() {
 #[test]
 fn reading_texts_in_changes_no_record() {
     let mut journal = Journal::new();
-    for record in history(7, 30, false) {
+    for record in history(7, 30, HistoryKind::Valid) {
         journal.add(
             record.value,
             &record.replica,
             &record.origin,
-            record.sequenced,
+            if record.sequenced {
+                JournalOrder::Sequenced
+            } else {
+                JournalOrder::Attempt
+            },
         );
     }
     let (encoded, _) = project(journal).unwrap().encode(0);

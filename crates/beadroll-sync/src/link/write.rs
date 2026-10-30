@@ -13,6 +13,15 @@ use beadroll_store::{FileKey, Memo, REMOTE_REF, claim_files, claim_keys, relativ
 use super::Link;
 use crate::error::Error;
 
+/// What local journal blob names are needed for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum BlobUse {
+    /// Comparison.
+    Comparison,
+    /// Publication.
+    Publication,
+}
+
 impl Link<'_> {
     /// Local journal blobs by store path, under the lock. Reuse a memoized hash while the file
     /// identity matches: an attempt file's is the one taken in this locked phase, each stat-ed
@@ -22,8 +31,9 @@ impl Link<'_> {
     /// remember other files; failures may indicate local damage.
     pub(super) fn local_blobs(
         &mut self,
-        for_tree: bool,
+        for_tree: BlobUse,
     ) -> Result<BTreeMap<String, String>, Error> {
+        let for_tree = matches!(for_tree, BlobUse::Publication);
         let ws = self.ws;
         let segments = segment_files(ws)?;
         let attempts = claim_files(ws)?;

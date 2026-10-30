@@ -13,6 +13,7 @@ use std::time::Instant;
 use beadroll_core::import::dry_run::problems;
 use beadroll_core::import::{plan_import, read_records};
 use beadroll_core::journal::Journal;
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::json::{Format, Object, Value, write};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
@@ -88,7 +89,7 @@ pub(super) fn tracker(waiting: usize) -> Result<State, Failure> {
         event(1, "init", &id(1), Value::from(data)),
         event(2, "create", &id(2), Value::from(create)),
     ] {
-        journal.add(event, "a", PATH, true);
+        journal.add(event, "a", PATH, JournalOrder::Sequenced);
     }
     replay(journal).map_err(|_| Failure::Failed("the probe's own tracker does not replay".into()))
 }

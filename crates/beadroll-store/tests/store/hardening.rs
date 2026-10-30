@@ -77,7 +77,12 @@ mod g32_integer_fields_stay_beads_readable {
                 "op": "create", "issue": (id.as_str()),
                 "data": {"key": (format!("ex-{n}")), "fields": all}
             });
-            journal.add(event, "a", "", true);
+            journal.add(
+                event,
+                "a",
+                "",
+                beadroll_core::journal::JournalOrder::Sequenced,
+            );
         }
         let st = replay(journal).unwrap();
         let mut keys: Vec<&str> = st.issues().map(|i| i.key()).collect();

@@ -9,9 +9,6 @@
 
 use std::collections::BTreeMap;
 
-use crate::json::{Object, Value};
-use crate::replay::replay;
-
 use super::super::{Extended, Projection, Record, named, project};
 use super::awaiting::fnv;
 use super::marked::{self, Records};
@@ -19,6 +16,10 @@ use super::{
     MACHINES, Rng, TextFile, World, WriteBack, answers_alike, edges, equal, flawed, load, owned,
     read_back, read_in, records, same, shown, whole,
 };
+use crate::json::{Object, Value};
+use crate::projection::tests::HistoryKind;
+use crate::projection::tests::edges::AnswerCoverage;
+use crate::replay::replay;
 
 /// What [`differential`] saw: the batches taken in, the merges among them, the batches that came to
 /// a projection that could not be extended, and the local writes declined by one that could that are
@@ -82,7 +83,8 @@ impl Tally {
 /// declined; every extension must be what projecting the whole journal makes, and answer as replay
 /// does of every event the state names, whichever way the projection was written back. A world
 /// `flawed` has machines that also write what replay reports, and one whose identity was copied.
-pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -> Tally {
+pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: HistoryKind) -> Tally {
+    let flawed = matches!(flawed, HistoryKind::Flawed);
     let mut tally = Tally {
         owned: owned::BASIS,
         ..Tally::default()
@@ -117,7 +119,15 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: bool) -
             assert!(same(full.state(), &replayed));
             assert!(answers_alike(&full, &replayed), "seed {seed}");
             shown::agree(&load(&world, &held), full.state());
-            answers = edges::fold(answers, full.state(), n == 59);
+            answers = edges::fold(
+                answers,
+                full.state(),
+                if n == 59 {
+                    AnswerCoverage::EveryWay
+                } else {
+                    AnswerCoverage::Direct
+                },
+            );
             tally.drawn.count(full.state());
             for each in &mut stored {
                 each.take(&world, &batch, &full, seed, &mut tally);

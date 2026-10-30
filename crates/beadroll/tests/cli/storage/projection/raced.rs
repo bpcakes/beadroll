@@ -12,6 +12,7 @@ use beadroll_test_support::{Machine, Run, Sandbox};
 
 use super::{answers, projection, texts, tracker};
 use crate::hardening::gate::{Gate, beside};
+use crate::storage::projection::ReadPath;
 
 /// The generation the text file was started with: its header's second sixteen bytes.
 fn generation(machine: &Machine) -> Vec<u8> {
@@ -73,9 +74,9 @@ fn a_write_back_overtaken_by_a_text_file_started_again_writes_nothing_or_every_t
     let keys = tracker(&a);
     let (list, left) = overtaken(&sandbox, &a, &keys[0], "raced-a");
     assert_eq!(files(&a), left, "the overtaken write-back wrote nothing");
-    let replayed = answers(&a, &keys, true);
+    let replayed = answers(&a, &keys, ReadPath::Replay);
     assert_eq!(list.stdout, replayed[0]);
-    assert_eq!(answers(&a, &keys, false), replayed);
+    assert_eq!(answers(&a, &keys, ReadPath::Projection), replayed);
     // Every text in it: one issue, which the list reads in, on a remote of its own. It starts a
     // text file of its own.
     let sandbox = crate::sandbox();
@@ -86,9 +87,9 @@ fn a_write_back_overtaken_by_a_text_file_started_again_writes_nothing_or_every_t
     let (list, left) = overtaken(&sandbox, &b, &only[0], "raced-b");
     let now = files(&b);
     assert_ne!((now.2, now.3), (left.2, left.3), "both files written again");
-    let replayed = answers(&b, &only, true);
+    let replayed = answers(&b, &only, ReadPath::Replay);
     assert_eq!(list.stdout, replayed[0]);
-    assert_eq!(answers(&b, &only, false), replayed);
+    assert_eq!(answers(&b, &only, ReadPath::Projection), replayed);
 }
 
 /// A write-back whose text file another process grew under it, past what it reads of it by more
@@ -144,6 +145,6 @@ fn a_write_back_whose_text_file_grew_under_it_writes_every_record_anew() {
         started.3,
         "the texts read where the write-back placed them"
     );
-    let replayed = answers(&c, &keys, true);
-    assert_eq!(answers(&c, &keys, false), replayed);
+    let replayed = answers(&c, &keys, ReadPath::Replay);
+    assert_eq!(answers(&c, &keys, ReadPath::Projection), replayed);
 }

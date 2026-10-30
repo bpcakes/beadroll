@@ -4,6 +4,7 @@
 use std::collections::BTreeSet;
 
 use beadroll_core::journal::Journal;
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::query::Edges;
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
@@ -71,7 +72,12 @@ impl Fixture {
 fn add_all(rows: &[(&Json, &str)]) -> Journal {
     let mut journal = Journal::new();
     for (event, physical_replica) in rows {
-        journal.add((*event).clone(), physical_replica, "", true);
+        journal.add(
+            (*event).clone(),
+            physical_replica,
+            "",
+            JournalOrder::Sequenced,
+        );
     }
     journal
 }

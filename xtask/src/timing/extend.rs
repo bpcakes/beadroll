@@ -16,6 +16,7 @@
 use std::time::Instant;
 
 use beadroll_core::journal::Journal;
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::projection::{Extended, Projection, Record, project};
 
@@ -131,11 +132,16 @@ fn journal(issues: usize) -> Journal {
     let mut data = Object::new();
     data.insert("prefix".into(), Value::from("ex"));
     let mut journal = Journal::new();
-    journal.add(event(1, "init", &id(1), None, data), MACHINE, "", true);
+    journal.add(
+        event(1, "init", &id(1), None, data),
+        MACHINE,
+        "",
+        JournalOrder::Sequenced,
+    );
     for n in 1..=issues {
         let number = created(n);
         let value = event(number, "create", &id(number), Some(number - 1), create(n));
-        journal.add(value, MACHINE, "", true);
+        journal.add(value, MACHINE, "", JournalOrder::Sequenced);
     }
     journal
 }
@@ -157,7 +163,7 @@ fn tracker_past_newer(issues: usize) -> Result<Projection, Failure> {
         Some(number - 1),
         Object::new(),
     );
-    journal.add(value, MACHINE, "", true);
+    journal.add(value, MACHINE, "", JournalOrder::Sequenced);
     replayed(journal)
 }
 

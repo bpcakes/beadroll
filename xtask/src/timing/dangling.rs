@@ -18,6 +18,7 @@
 use std::time::Instant;
 
 use beadroll_core::journal::Journal;
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::projection::{Extended, Projection, Record, project};
 use beadroll_core::replay::replay;
@@ -163,7 +164,7 @@ fn events(shape: Shape, issues: usize) -> Vec<Value> {
 pub(super) fn journal(shape: Shape, issues: usize) -> Journal {
     let mut journal = Journal::new();
     for value in events(shape, issues) {
-        journal.add(value, MACHINE, "", true);
+        journal.add(value, MACHINE, "", JournalOrder::Sequenced);
     }
     journal
 }
@@ -172,14 +173,14 @@ pub(super) fn journal(shape: Shape, issues: usize) -> Journal {
 /// a `blocks` edge on every other by `dep add`, one event each, as `bead dep add` writes them: the
 /// edges [`Shape::OneAwaitsMany`] gives the same issue, one at a time.
 pub(super) fn added(issues: usize) -> Journal {
-    journal_of(dep_events(issues, false))
+    journal_of(dep_events(issues, &["dep_add"]))
 }
 
 /// The same, and then each of those edges removed by `dep remove`, one event each, every other one
 /// of its type and the rest of any (roll-lqjj.21): what the nightly growth guard times of removals.
 #[cfg(test)]
 pub(super) fn removed(issues: usize) -> Journal {
-    journal_of(dep_events(issues, true))
+    journal_of(dep_events(issues, &["dep_add", "dep_remove"]))
 }
 
 /// The journal of [`Shape::OneHasMany`]'s creates, and then each of the last issue's imported
@@ -199,14 +200,9 @@ pub(super) fn unbound(issues: usize) -> Journal {
 }
 
 /// The events of [`added`], and of [`removed`] when `removing`.
-fn dep_events(issues: usize, removing: bool) -> Vec<Value> {
+fn dep_events(issues: usize, ops: &[&str]) -> Vec<Value> {
     let mut values = events(Shape::Plain, issues);
     let first = id(2);
-    let ops: &[&str] = if removing {
-        &["dep_add", "dep_remove"]
-    } else {
-        &["dep_add"]
-    };
     for op in ops {
         for n in 2..=issues {
             let mut data = Object::new();
@@ -224,7 +220,7 @@ fn dep_events(issues: usize, removing: bool) -> Vec<Value> {
 fn journal_of(values: Vec<Value>) -> Journal {
     let mut journal = Journal::new();
     for value in values {
-        journal.add(value, MACHINE, "", true);
+        journal.add(value, MACHINE, "", JournalOrder::Sequenced);
     }
     journal
 }
@@ -236,7 +232,7 @@ fn extension(shape: Shape, issues: usize) -> Result<(Projection, Vec<Record>), F
     let rest = events.split_off(events.len().min(2));
     let mut first = Journal::new();
     for value in events {
-        first.add(value, MACHINE, "", true);
+        first.add(value, MACHINE, "", JournalOrder::Sequenced);
     }
     let seed = project(first).map_err(|_| Failure::Failed("the probe needs a key".into()))?;
     let records = (rest.into_iter())
@@ -406,9 +402,14 @@ mod tests {
         let mut data = Object::new();
         data.insert("prefix".into(), Value::from("ex"));
         let mut alone = Journal::new();
-        alone.add(event(1, "init", data), MACHINE, "", true);
+        alone.add(event(1, "init", data), MACHINE, "", JournalOrder::Sequenced);
         let waiting = create(1, &Shape::OneAwaitsMany.named(1, 6));
-        alone.add(event(2, "create", waiting), MACHINE, "", true);
+        alone.add(
+            event(2, "create", waiting),
+            MACHINE,
+            "",
+            JournalOrder::Sequenced,
+        );
         assert_eq!(counted(&replay(alone).unwrap()), (0, 5));
     }
 

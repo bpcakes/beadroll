@@ -4,9 +4,17 @@
 
 use std::cell::RefCell;
 
+use super::State;
 use crate::json::Value;
 
-use super::State;
+/// Whether a key lookup found an existing claim.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum KeyClaim {
+    /// Free.
+    Free,
+    /// Claimed.
+    Claimed,
+}
 
 /// One ask of [`State::claims_key`].
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -40,7 +48,8 @@ fn holds(state: &State, key: &str) -> bool {
 
 /// Fails unless `claimed`, what [`State::claims_key`] answered of `key`, is whether
 /// [`State::claimed_keys`] would hold it; keeps the ask.
-pub(super) fn agrees(state: &State, key: &str, claimed: bool) {
+pub(super) fn agrees(state: &State, key: &str, claimed: KeyClaim) {
+    let claimed = matches!(claimed, KeyClaim::Claimed);
     assert_eq!(
         claimed,
         holds(state, key),

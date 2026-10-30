@@ -18,6 +18,24 @@ use super::call::{Step, tail};
 use super::run::Run;
 use super::{SLICE, Schedule, Variant, schedules};
 
+/// How a sweep executes each pair of follow-ups.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Execution {
+    /// Sequential.
+    Sequential,
+    /// Concurrent.
+    Concurrent,
+}
+
+/// Which schedules a sweep selects.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ScheduleSet {
+    /// Slice.
+    Slice,
+    /// Full.
+    Full,
+}
+
 /// What one schedule came to: its violations, and its steps but the setup and the views.
 pub(super) struct Report {
     pub(super) schedule: Schedule,
@@ -119,11 +137,13 @@ fn set(name: &str, value: &str) -> bool {
 /// `slice`; in the concurrent variant only the pairs whose letters are in order, each unordered
 /// pair once.
 pub(super) fn selected(
-    full: bool,
-    concurrent: bool,
+    full: ScheduleSet,
+    concurrent: Execution,
     every: Vec<Schedule>,
     slice: &[Schedule],
 ) -> Vec<Schedule> {
+    let concurrent = matches!(concurrent, Execution::Concurrent);
+    let full = matches!(full, ScheduleSet::Full);
     let mut chosen = if full { every } else { slice.to_vec() };
     if concurrent {
         chosen.retain(|schedule| {
@@ -174,7 +194,20 @@ fn sweep() {
         gc: set("BEAD_SWEEP_GC", "1"),
         concurrent: set("BEAD_SWEEP_CONCURRENT", "1"),
     };
-    let chosen = selected(set("BEAD_SWEEP", "full"), variant.concurrent, every, &SLICE);
+    let chosen = selected(
+        if set("BEAD_SWEEP", "full") {
+            ScheduleSet::Full
+        } else {
+            ScheduleSet::Slice
+        },
+        if variant.concurrent {
+            Execution::Concurrent
+        } else {
+            Execution::Sequential
+        },
+        every,
+        &SLICE,
+    );
     if let Err(failures) = verdict(&chosen, variant, &|schedule| {
         run_schedule(schedule, variant)
     }) {

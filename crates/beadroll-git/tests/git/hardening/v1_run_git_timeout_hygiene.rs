@@ -5,6 +5,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::process::Command;
 use std::time::Duration;
 
+use beadroll_git::KillScope;
 use beadroll_git::{Env, Error};
 
 fn alive(pid: i32) -> bool {
@@ -74,7 +75,11 @@ fn timeouts_leak_nothing_and_reap_as_documented() {
             let error = env
                 .git(&args)
                 .timeout(0.2)
-                .reap(reap)
+                .reap(if reap {
+                    KillScope::ProcessGroup
+                } else {
+                    KillScope::Client
+                })
                 .run()
                 .expect_err("the alias outlives its time");
             assert!(matches!(error, Error::Timeout { .. }), "{error:?}");

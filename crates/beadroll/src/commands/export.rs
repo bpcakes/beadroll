@@ -6,6 +6,7 @@ use std::os::unix::ffi::OsStrExt as _;
 use beadroll_core::code::Code;
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::text::printed_text;
+use beadroll_store::FileMode;
 use beadroll_store::{normalize_path, view, write_atomic};
 
 use super::{Context, Failure, Outcome};
@@ -28,7 +29,7 @@ pub(crate) fn export(ctx: &Context<'_>, output: Option<&OsStr>) -> Result<Outcom
     write_atomic(
         &normalize_path(output),
         text.as_bytes(),
-        false,
+        FileMode::Checkout,
         &ctx.ws.settings.failpoints,
     )?;
     let count = st.issues().count();

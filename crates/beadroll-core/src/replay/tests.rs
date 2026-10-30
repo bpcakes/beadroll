@@ -10,18 +10,19 @@
 
 use std::collections::BTreeSet;
 
+use super::replay;
 use crate::event::Field;
 use crate::id::EventId;
 use crate::journal::Journal;
+use crate::journal::JournalOrder;
 use crate::json::{self, Format, Object, Value};
 use crate::projection::Record;
+use crate::projection::tests::HistoryKind;
 use crate::projection::tests::awaiting::fnv;
 use crate::projection::tests::owned::{self, BASIS};
 use crate::projection::tests::{Rng, history};
 use crate::query::{Edges, ReadyScope};
 use crate::state::State;
-
-use super::replay;
 
 /// Histories, each delivered in several orders.
 pub(crate) const SEEDS: u64 = 12;
@@ -32,7 +33,8 @@ const ORDERS: usize = 6;
 
 /// What `state` answers, in order, each answer with what was asked; with the records that could not
 /// be used sorted, when `flawed`.
-fn answers(state: &State, flawed: bool) -> Vec<(String, String)> {
+fn answers(state: &State, flawed: HistoryKind) -> Vec<(String, String)> {
+    let flawed = matches!(flawed, HistoryKind::Flawed);
     let mut said: Vec<(String, String)> = Vec::new();
     let mut say = |asked: String, answer: String| said.push((asked, answer));
     let shown = |object: Object| written(&Value::from(object));
@@ -147,7 +149,11 @@ fn delivered(records: &[Record], order: &[usize]) -> State {
             record.value.clone(),
             &record.replica,
             &record.origin,
-            record.sequenced,
+            if record.sequenced {
+                JournalOrder::Sequenced
+            } else {
+                JournalOrder::Attempt
+            },
         );
     }
     replay(journal).unwrap()
@@ -281,13 +287,14 @@ struct Tally {
 /// in orders that keep each journal's own order, a journal's order being its file's, and the
 /// records that could not be used are compared as a set, since replay reports them in the order
 /// found.
-fn delivered_alike(seeds: std::ops::Range<u64>, flawed: bool) -> Tally {
+fn delivered_alike(seeds: std::ops::Range<u64>, history_kind: HistoryKind) -> Tally {
+    let flawed = matches!(history_kind, HistoryKind::Flawed);
     let mut tally = Tally {
         owned: BASIS,
         ..Tally::default()
     };
     for seed in seeds {
-        let records = history(20_261_016 + seed, BATCHES, flawed);
+        let records = history(20_261_016 + seed, BATCHES, history_kind);
         tally.records += records.len();
         let machines: BTreeSet<&str> = records.iter().map(|r| r.replica.as_str()).collect();
         tally.machines = tally.machines.max(machines.len());
@@ -297,7 +304,7 @@ fn delivered_alike(seeds: std::ops::Range<u64>, flawed: bool) -> Tally {
         tally.renamed += first.renames().len();
         tally.reported += first.integrity().len();
         tally.owned = fnv(tally.owned, owned::answers(&first).as_bytes());
-        let expected = answers(&first, flawed);
+        let expected = answers(&first, history_kind);
         let mut rng = Rng(seed);
         let mut orders = vec![("as a store reads", stored(&records))];
         for _ in 0..ORDERS {
@@ -307,7 +314,7 @@ fn delivered_alike(seeds: std::ops::Range<u64>, flawed: bool) -> Tally {
             orders.push(("interleaved", interleaved(&records, &mut rng)));
         }
         for (kind, order) in orders {
-            let got = answers(&delivered(&records, &order), flawed);
+            let got = answers(&delivered(&records, &order), history_kind);
             if let Some(difference) = first_difference(&expected, &got) {
                 panic!("seed {seed}, {kind}: {difference}");
             }
@@ -318,7 +325,7 @@ fn delivered_alike(seeds: std::ops::Range<u64>, flawed: bool) -> Tally {
 
 #[test]
 fn replay_answers_alike_in_any_order_the_causes_allow_and_as_a_store_reads() {
-    let tally = delivered_alike(0..SEEDS, false);
+    let tally = delivered_alike(0..SEEDS, HistoryKind::Valid);
     // The histories hold what the property is about: events of three machines, attempt files,
     // and copies two machines minted alike, renamed; and nothing replay reports.
     assert_eq!(tally.machines, 3, "records of {} machines", tally.machines);
@@ -331,7 +338,7 @@ fn replay_answers_alike_in_any_order_the_causes_allow_and_as_a_store_reads() {
 
 #[test]
 fn replay_of_what_it_reports_answers_alike_in_any_order_that_keeps_each_journals() {
-    let tally = delivered_alike(0..SEEDS, true);
+    let tally = delivered_alike(0..SEEDS, HistoryKind::Flawed);
     assert!(tally.records > 1_500, "{} records", tally.records);
     assert!(tally.reported > 200, "{} reported", tally.reported);
     assert_eq!(tally.owned, owned::DELIVERED_FLAWED, "{:#x}", tally.owned);

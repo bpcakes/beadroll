@@ -105,7 +105,7 @@ fn write_value(
             let _ = write!(out, "{int}");
         }
         Value::Float(float) => out.push_str(&float_repr(*float)?),
-        Value::Str(text) => write_str(out, text, format.ascii),
+        Value::Str(text) => write_str(out, text, format),
         Value::Array(items) => {
             if items.is_empty() {
                 out.push_str("[]");
@@ -130,7 +130,7 @@ fn write_value(
             }
             for (index, (key, item)) in entries.into_iter().enumerate() {
                 separate(out, format.style, index, level + 1);
-                write_str(out, key, format.ascii);
+                write_str(out, key, format);
                 out.push_str(if format.style == Style::Compact {
                     ":"
                 } else {
@@ -170,7 +170,7 @@ fn close(out: &mut String, style: Style, level: usize, bracket: char) {
 
 /// Quotes a JSON string, escaping delimiters, backslashes and control characters. ASCII mode also
 /// escapes all characters outside space through tilde, using surrogate pairs beyond the BMP.
-pub(crate) fn write_str(out: &mut String, text: &str, ascii: bool) {
+pub(crate) fn write_str(out: &mut String, text: &str, format: Format) {
     out.push('"');
     for c in text.chars() {
         match c {
@@ -181,7 +181,7 @@ pub(crate) fn write_str(out: &mut String, text: &str, ascii: bool) {
             '\t' => out.push_str("\\t"),
             '\u{8}' => out.push_str("\\b"),
             '\u{c}' => out.push_str("\\f"),
-            c if c < ' ' || (ascii && c > '~') => {
+            c if c < ' ' || (format.ascii && c > '~') => {
                 let mut units = [0u16; 2];
                 for unit in c.encode_utf16(&mut units) {
                     let _ = write!(out, "\\u{unit:04x}");
@@ -357,13 +357,13 @@ mod tests {
     fn strings_escape_controls_and_follow_the_selected_unicode_mode() {
         let text = "\u{7f}\u{0}\u{2028}é😀\"\\/\u{8}\u{c}\n\r\t";
         let mut ascii = String::new();
-        write_str(&mut ascii, text, true);
+        write_str(&mut ascii, text, Format::ASCII);
         assert_eq!(
             ascii,
             r#""\u007f\u0000\u2028\u00e9\ud83d\ude00\"\\/\b\f\n\r\t""#
         );
         let mut raw = String::new();
-        write_str(&mut raw, text, false);
+        write_str(&mut raw, text, Format::COMPACT);
         assert_eq!(raw, "\"\u{7f}\\u0000\u{2028}é😀\\\"\\\\/\\b\\f\\n\\r\\t\"");
     }
 

@@ -2,7 +2,8 @@
 //! was read, it is the store's current projection until bead writes a journal file, and not after.
 
 use super::*;
-
+use crate::FileMode;
+use crate::LockState;
 use crate::fs::write_atomic;
 use crate::listing::Keys;
 use crate::projection::{Sourced, Sources, projection_sourced};
@@ -21,7 +22,7 @@ enum How {
 }
 
 /// A store with a segment and an attempt file, and a projection of it read as `how`.
-fn read_as(home: &Path, how: How, locked: bool) -> (Workspace, Sourced) {
+fn read_as(home: &Path, how: How, lock_state: LockState) -> (Workspace, Sourced) {
     let build = (!matches!(how, How::Uncached)).then_some("this build");
     let ws = store(home, build);
     begun(&ws);
@@ -35,7 +36,7 @@ fn read_as(home: &Path, how: How, locked: bool) -> (Workspace, Sourced) {
     if matches!(how, How::Appended) {
         append_events(&ws, HERE, &[title(6, &[5], 2, "later")]).unwrap();
     }
-    ws.set_holding(locked);
+    ws.set_holding(lock_state);
     let read = projection_sourced(&ws).unwrap();
     (ws, read)
 }
@@ -50,7 +51,7 @@ fn claimed(ws: &Workspace, n: u128) -> PathBuf {
 /// into place.
 fn replaced(ws: &Workspace, path: &Path) {
     let bytes = std::fs::read(path).unwrap();
-    write_atomic(path, &bytes, true, &ws.settings.failpoints).unwrap();
+    write_atomic(path, &bytes, FileMode::Private, &ws.settings.failpoints).unwrap();
 }
 
 /// Puts the modification time of the directory `dir` back a minute, so that a change made in it
@@ -147,7 +148,15 @@ fn a_projection_is_current_while_the_journal_is_the_one_it_was_made_from() {
     for how in [How::Replayed, How::Stored, How::Appended, How::Uncached] {
         for locked in [false, true] {
             let home = tempfile::tempdir().unwrap();
-            let (ws, read) = read_as(home.path(), how, locked);
+            let (ws, read) = read_as(
+                home.path(),
+                how,
+                if locked {
+                    LockState::Locked
+                } else {
+                    LockState::Unlocked
+                },
+            );
             let state = answers(read.state());
             let projection = read.into_current(&ws);
             let message = format!("{how:?}, locked {locked}");
@@ -168,7 +177,15 @@ fn a_projection_is_not_current_once_a_journal_file_is_written() {
         for locked in [false, true] {
             for (what, write) in writes() {
                 let home = tempfile::tempdir().unwrap();
-                let (ws, read) = read_as(home.path(), how, locked);
+                let (ws, read) = read_as(
+                    home.path(),
+                    how,
+                    if locked {
+                        LockState::Locked
+                    } else {
+                        LockState::Unlocked
+                    },
+                );
                 write(&ws);
                 let message = format!("{how:?}, locked {locked}: {what}");
                 assert!(read.into_current(&ws).is_none(), "{message}");
@@ -183,7 +200,7 @@ fn a_projection_is_not_current_once_a_journal_file_is_written() {
 #[test]
 fn a_projection_read_after_the_write_is_current() {
     let home = tempfile::tempdir().unwrap();
-    let (ws, read) = read_as(home.path(), How::Stored, true);
+    let (ws, read) = read_as(home.path(), How::Stored, LockState::Locked);
     append_events(&ws, HERE, &[title(7, &[5], 2, "window")]).unwrap();
     assert!(read.into_current(&ws).is_none());
     let again = projection_sourced(&ws).unwrap();
@@ -198,7 +215,7 @@ fn a_projection_read_after_the_write_is_current() {
 #[test]
 fn a_projection_that_cannot_name_its_files_is_not_current() {
     let home = tempfile::tempdir().unwrap();
-    let (ws, read) = read_as(home.path(), How::Stored, true);
+    let (ws, read) = read_as(home.path(), How::Stored, LockState::Locked);
     let projection = read.into_projection();
     assert!(Sourced::new(projection, None).into_current(&ws).is_none());
     let nameless: Keys = Arc::from([None]);
@@ -243,7 +260,15 @@ fn each_comparison_of_the_sources_is_made() {
         for locked in [false, true] {
             for (what, alter) in alterations {
                 let home = tempfile::tempdir().unwrap();
-                let (ws, mut read) = read_as(home.path(), how, locked);
+                let (ws, mut read) = read_as(
+                    home.path(),
+                    how,
+                    if locked {
+                        LockState::Locked
+                    } else {
+                        LockState::Unlocked
+                    },
+                );
                 alter(read.sources.as_mut().expect("sources"));
                 let message = format!("{how:?}, locked {locked}: {what}");
                 assert!(read.into_current(&ws).is_none(), "{message}");

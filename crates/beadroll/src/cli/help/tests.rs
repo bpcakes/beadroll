@@ -1,13 +1,14 @@
 //! Help pages: every command's, plain unless coloured.
 
 use super::*;
+use crate::cli::paint::Color;
 use crate::cli::spec::COMMANDS;
 
 #[test]
 fn every_page_says_what_its_command_does_and_how_to_call_it() {
     for spec in &COMMANDS {
         for width in [None, Some(40), Some(100)] {
-            let text = page(spec, width, false);
+            let text = page(spec, width, Color::Plain);
             let words = text.split_whitespace().collect::<Vec<_>>().join(" ");
             assert!(words.starts_with(spec.help), "{text}");
             assert!(
@@ -22,7 +23,7 @@ fn every_page_says_what_its_command_does_and_how_to_call_it() {
 #[test]
 fn a_coloured_page_differs_only_by_its_colour_codes() {
     let spec = &COMMANDS[3];
-    let coloured = page(spec, Some(80), true);
+    let coloured = page(spec, Some(80), Color::Ansi);
     assert!(coloured.contains("\u{1b}["), "{coloured}");
     let mut plain = String::new();
     let mut escape = false;
@@ -34,5 +35,5 @@ fn a_coloured_page_differs_only_by_its_colour_codes() {
             _ => {}
         }
     }
-    assert_eq!(plain, page(spec, Some(80), false));
+    assert_eq!(plain, page(spec, Some(80), crate::cli::paint::Color::Plain));
 }

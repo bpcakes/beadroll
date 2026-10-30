@@ -2,6 +2,7 @@
 
 use beadroll_core::event::payload_problem;
 use beadroll_core::journal::Journal;
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::replay::replay;
 use beadroll_test_support::json;
 
@@ -27,8 +28,8 @@ fn e10_extra_cannot_override_canonical_export_fields() {
         }
     });
     let mut journal = Journal::new();
-    journal.add(init, "peer", "", true);
-    journal.add(create.clone(), "peer", "", true);
+    journal.add(init, "peer", "", JournalOrder::Sequenced);
+    journal.add(create.clone(), "peer", "", JournalOrder::Sequenced);
     if payload_problem(&create).is_some() {
         return;
     }

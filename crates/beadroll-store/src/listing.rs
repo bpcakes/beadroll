@@ -8,6 +8,7 @@ use std::os::unix::fs::MetadataExt as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::LockState;
 use crate::error::Error;
 use crate::fs::{dir_entries, has_suffix};
 use crate::memo::FileKey;
@@ -129,7 +130,8 @@ impl Claims {
     /// one this phase took, each file stat-ed once; else each stat-ed now. Identities are kept by
     /// the listing they were taken for, and carried over to a new one file by file, since both are
     /// in the order of their paths.
-    pub(crate) fn keys(&mut self, files: &Arc<[PathBuf]>, keep: bool) -> Keys {
+    pub(crate) fn keys(&mut self, files: &Arc<[PathBuf]>, keep: LockState) -> Keys {
+        let keep = matches!(keep, LockState::Locked);
         if !keep {
             return files.iter().map(|file| FileKey::of(file)).collect();
         }

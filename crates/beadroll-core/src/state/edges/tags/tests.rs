@@ -5,14 +5,22 @@
 
 use std::sync::Arc;
 
+use super::super::super::small::IdMap;
+use super::super::{Edge, Meta, Target};
+use super::{DepTags, Entry, LISTED, SEARCHES};
 use crate::id::EventId;
 use crate::json::{Object, Value};
 use crate::projection::tests::Rng;
 use crate::work::{Work, counted};
 
-use super::super::super::small::IdMap;
-use super::super::{Edge, Meta, Target};
-use super::{DepTags, Entry, LISTED, SEARCHES};
+/// Which edge kinds a test removal affects.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RemovalScope {
+    /// Kind.
+    Kind,
+    /// Any.
+    Any,
+}
 
 /// The edges as they were held before: a vector, searched in order.
 #[derive(Clone, Default)]
@@ -82,11 +90,12 @@ fn target(rng: &mut Rng, targets: usize) -> Target {
 /// What a removal of the edges on a target does to each: when `any`, or when it is of `kind`, it
 /// is listed in `seen` and loses its additions before `below`.
 fn removal<'a>(
-    any: bool,
+    any: RemovalScope,
     kind: &'a str,
     below: EventId,
     seen: &'a mut Vec<Edge>,
 ) -> impl FnMut(&Edge, &mut IdMap<Meta>) + 'a {
+    let any = matches!(any, RemovalScope::Any);
     move |edge, tags| {
         if any || *edge.kind == *kind {
             seen.push(edge.clone());
@@ -148,8 +157,32 @@ fn edges_answer_what_a_vector_searched_in_order_answered_listed_or_indexed() {
                     let any = rng.below(2) == 0;
                     let below = id(rng.below(n as usize + 1) as u64);
                     let (mut held, mut modelled) = (Vec::new(), Vec::new());
-                    edges.for_each_to(&to, removal(any, &kind, below, &mut held));
-                    model.for_each_to(&to, removal(any, &kind, below, &mut modelled));
+                    edges.for_each_to(
+                        &to,
+                        removal(
+                            if any {
+                                RemovalScope::Any
+                            } else {
+                                RemovalScope::Kind
+                            },
+                            &kind,
+                            below,
+                            &mut held,
+                        ),
+                    );
+                    model.for_each_to(
+                        &to,
+                        removal(
+                            if any {
+                                RemovalScope::Any
+                            } else {
+                                RemovalScope::Kind
+                            },
+                            &kind,
+                            below,
+                            &mut modelled,
+                        ),
+                    );
                     assert_eq!(held, modelled, "{what}: the edges removed, in order");
                 }
                 // read back, as a projection decodes it: listed until its next change

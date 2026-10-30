@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use beadroll_core::event::event_problem;
 use beadroll_core::import::read_records;
-use beadroll_core::journal::{Journal, read_attempt, read_segment};
+use beadroll_core::journal::{Journal, JournalOrder, read_attempt, read_segment};
 use beadroll_core::json::{self, Format, Value};
 use beadroll_core::projection::{Projection, project};
 use beadroll_core::replay::replay;
@@ -106,11 +106,16 @@ fuzz_target!(|data: &[u8]| {
         for (machine, records) in machines {
             let origin = format!("events/{machine}/000001.jsonl");
             for record in records {
-                journal.add((*record).clone(), machine, &origin, true);
+                journal.add((*record).clone(), machine, &origin, JournalOrder::Sequenced);
             }
         }
         for record in &attempt {
-            journal.add(record.clone(), HERE, "events/0000aa01/claims/a.json", false);
+            journal.add(
+                record.clone(),
+                HERE,
+                "events/0000aa01/claims/a.json",
+                JournalOrder::Attempt,
+            );
         }
         journal
     };

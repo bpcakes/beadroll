@@ -43,6 +43,7 @@ unknown_lints = { level = "deny", priority = -10 }              # -D warnings do
 renamed_and_removed_lints = { level = "deny", priority = -10 }  # name in these tables; these do
 
 [workspace.lints.clippy]
+fn_params_excessive_bools = "deny"
 cognitive_complexity = "warn"
 mod_module_files = "warn"                   # CI adds -D clippy::mod_module_files
 too_many_lines = "warn"

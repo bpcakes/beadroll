@@ -13,10 +13,9 @@ use std::ops::Range;
 
 use indexmap::IndexSet;
 
+use super::{Clock, Knowledge, Place, UNOBSERVED};
 use crate::journal::Event;
 use crate::projection::codec::{Reader, Unreadable, Writer};
-
-use super::{Clock, Knowledge, Place, UNOBSERVED};
 
 impl Knowledge {
     /// The record of every event from the `from`th on, in the journal's order (roll-lqjj.44): its
@@ -82,7 +81,7 @@ impl Knowledge {
     /// [`Knowledge::write_arena`] writes.
     pub(crate) fn write_clocks(&self, w: &mut Writer, from: usize) {
         for clock in self.ancestry.clocks.iter().skip(from) {
-            w.flag(*clock != UNOBSERVED);
+            w.byte(u8::from(*clock != UNOBSERVED));
             if *clock != UNOBSERVED {
                 w.number(u64::from(clock.set));
                 w.count(clock.start);

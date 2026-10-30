@@ -28,12 +28,12 @@ pub use discover::{
 };
 pub use elsewhere::{Elsewhere, elsewhere};
 pub use error::{Error, git_code};
-pub use failpoint::{Action, Failpoints, Fired, POINTS, Selector, kill_self};
+pub use failpoint::{Action, CrashHooks, Failpoints, Fired, POINTS, Selector, kill_self};
 pub use fs::{
-    Unreadable, dir_entries, fsync, glob_ending, has_suffix, json_text, os_error_str, private_dir,
-    private_dirs, read, read_json_text, utf8_error, write_atomic,
+    FileMode, Unreadable, dir_entries, fsync, glob_ending, has_suffix, json_text, os_error_str,
+    private_dir, private_dirs, read, read_json_text, utf8_error, write_atomic,
 };
-pub use identity::{hex_token, machine_aliases, replica_id, uuid7};
+pub use identity::{IdentityMode, hex_token, machine_aliases, replica_id, uuid7};
 pub use journal::{
     ViewError, active_segment, append_events, attempt_path, claim_files, claim_keys,
     complete_prefix, encode_events, extend_segment, load_journal, load_pending, pending_files,
@@ -51,7 +51,8 @@ pub use settings::{
     normalize_path,
 };
 pub use workspace::{
-    DEFAULT_REF, Endpoint, REMOTE_REF, Workspace, relative, relative_name, remembered, stamp,
+    DEFAULT_REF, Endpoint, LockState, MetadataRead, PublicationState, REMOTE_REF, RemoteSource,
+    Workspace, relative, relative_name, remembered, stamp,
 };
 
 /// The bytes without the ASCII whitespace at either end.

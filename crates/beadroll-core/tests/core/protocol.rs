@@ -86,7 +86,11 @@ mod protocol3 {
                         event.clone(),
                         replica,
                         "",
-                        !matches!(op, "claim" | "release"),
+                        if !matches!(op, "claim" | "release") {
+                            beadroll_core::journal::JournalOrder::Sequenced
+                        } else {
+                            beadroll_core::journal::JournalOrder::Attempt
+                        },
                     );
                 }
             }

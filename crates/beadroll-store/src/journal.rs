@@ -14,6 +14,8 @@ use beadroll_core::state::{KeySpace, State};
 use beadroll_core::text::parse_integer;
 use beadroll_git::IoError;
 
+use crate::FileMode;
+use crate::LockState;
 use crate::error::Error;
 use crate::failpoint::{Fired, kill_self};
 use crate::fs::{
@@ -23,6 +25,15 @@ use crate::fs::{
 use crate::listing::Stamp;
 use crate::memo::FileKey;
 use crate::workspace::Workspace;
+
+/// Whether a journal read also computes file content sums.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ContentSums {
+    /// Skip.
+    Skip,
+    /// Compute.
+    Compute,
+}
 
 /// Every segment of every journal in the store, journal by journal, in name order.
 pub fn segment_files(ws: &Workspace) -> Result<Vec<PathBuf>, Error> {
@@ -67,7 +78,14 @@ pub(crate) fn claim_files_afresh(ws: &Workspace) -> Result<(Arc<[PathBuf]>, Opti
 /// it, each stat-ed now. A directory's identity never vouches for its files (roll-lqjj.12), and
 /// what bead writes is stat-ed again ([`Workspace::forget_claims`]).
 pub fn claim_keys(ws: &Workspace, files: &Arc<[PathBuf]>) -> Arc<[Option<FileKey>]> {
-    ws.claims.borrow_mut().keys(files, ws.holding())
+    ws.claims.borrow_mut().keys(
+        files,
+        if ws.holding() {
+            LockState::Locked
+        } else {
+            LockState::Unlocked
+        },
+    )
 }
 
 /// This machine's own ownership attempts the remote has not confirmed. Never read as events.
@@ -141,9 +159,14 @@ pub fn repair_tail(ws: &Workspace, path: &Path) -> Result<(), Error> {
         // an incomplete fragment, not just a missing newline
         let name = path.file_name().unwrap_or_default().to_string_lossy();
         let torn = path.with_file_name(format!("{name}.torn-{}", ws.settings.clock.now_ns()));
-        write_atomic(&torn, &data[fixed.len()..], true, &ws.settings.failpoints)?;
+        write_atomic(
+            &torn,
+            &data[fixed.len()..],
+            FileMode::Private,
+            &ws.settings.failpoints,
+        )?;
     }
-    write_atomic(path, &fixed, true, &ws.settings.failpoints)
+    write_atomic(path, &fixed, FileMode::Private, &ws.settings.failpoints)
 }
 
 /// Whether the file at `path` is empty or ends with a newline, from its last byte alone; a file
@@ -262,7 +285,7 @@ pub fn extend_segment(path: &Path, more: &[u8]) -> Result<(), Error> {
 /// keeps its identity, and so is the identity taken of the file ([`Workspace::forget_claims`]).
 pub fn write_attempt_file(ws: &Workspace, path: &Path, events: &[Value]) -> Result<(), Error> {
     let data = encode_events(events)?;
-    write_atomic(path, &data, true, &ws.settings.failpoints)?;
+    write_atomic(path, &data, FileMode::Private, &ws.settings.failpoints)?;
     ws.forget_claims(path);
     Ok(())
 }
@@ -305,7 +328,7 @@ fn unreadable_attempt(origin: String) -> Problem {
 pub fn load_journal(ws: &Workspace) -> Result<Journal, Error> {
     let segments = segment_files(ws)?;
     ws.settings.failpoints.hit("journal.after-enumerate");
-    Ok(load_listed(ws, &segments, false)?.journal)
+    Ok(load_listed(ws, &segments, ContentSums::Skip)?.journal)
 }
 
 /// What [`load_listed`] read.
@@ -331,8 +354,9 @@ pub(crate) struct Loaded {
 pub(crate) fn load_listed(
     ws: &Workspace,
     segments: &[PathBuf],
-    summed: bool,
+    summed: ContentSums,
 ) -> Result<Loaded, Error> {
+    let summed = matches!(summed, ContentSums::Compute);
     let mut journal = Journal::new();
     let mut whole = true;
     let mut held = Vec::with_capacity(segments.len());

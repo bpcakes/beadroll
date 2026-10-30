@@ -4,10 +4,13 @@
 //! stay queryable, a cycle left after a partial removal is reported, and the ancestry of mixed
 //! sequenced and attempt-file events is exact.
 
+mod ancestry;
+
 use std::collections::{BTreeSet, HashMap};
 
 use beadroll_core::id::EventId;
 use beadroll_core::journal::Journal;
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::json::Value;
 use beadroll_core::query::Edges;
 use beadroll_core::replay::replay;
@@ -15,8 +18,6 @@ use beadroll_core::state::State;
 use beadroll_test_support::events::Event;
 use beadroll_test_support::{Json, json};
 use sha2::{Digest, Sha256};
-
-mod ancestry;
 
 /// Events with ids `019a1111-1111-7000-8000-<serial>`, numbered as they are made.
 struct Fixture {
@@ -103,7 +104,16 @@ fn journal(events: &[Json], detached: &BTreeSet<String>) -> Journal {
     for event in events {
         let replica = event["replica"].as_str().unwrap().to_owned();
         let sequenced = !detached.contains(id_of(event));
-        journal.add(event.clone(), &replica, "", sequenced);
+        journal.add(
+            event.clone(),
+            &replica,
+            "",
+            if sequenced {
+                JournalOrder::Sequenced
+            } else {
+                JournalOrder::Attempt
+            },
+        );
     }
     journal.settle();
     journal
@@ -284,15 +294,15 @@ fn identical_misplaced_duplicate_does_not_reorder_own_journal() {
     let mut results = Vec::new();
     for misplaced_first in [false, true] {
         let mut journal = Journal::new();
-        journal.add(init.clone(), "a", "", true);
-        journal.add(create.clone(), "a", "", true);
+        journal.add(init.clone(), "a", "", JournalOrder::Sequenced);
+        journal.add(create.clone(), "a", "", JournalOrder::Sequenced);
         if misplaced_first {
-            journal.add(second.clone(), "b", "", true);
+            journal.add(second.clone(), "b", "", JournalOrder::Sequenced);
         }
-        journal.add(first.clone(), "z", "", true);
-        journal.add(second.clone(), "z", "", true);
+        journal.add(first.clone(), "z", "", JournalOrder::Sequenced);
+        journal.add(second.clone(), "z", "", JournalOrder::Sequenced);
         if !misplaced_first {
-            journal.add(second.clone(), "b", "", true);
+            journal.add(second.clone(), "b", "", JournalOrder::Sequenced);
         }
         journal.settle();
         let state = replay(journal).unwrap();

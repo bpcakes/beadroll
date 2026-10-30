@@ -11,6 +11,7 @@ use beadroll_test_support::Machine;
 
 use super::{answers, projection};
 use crate::hardening::gate::{Gate, beside};
+use crate::storage::projection::ReadPath;
 
 /// How many times the records after the stored projection may go into its bytes before a write
 /// writes it back (`TAIL` in `beadroll-store`'s projection).
@@ -32,7 +33,7 @@ fn imported(machine: &Machine, n: usize) -> Vec<String> {
     std::fs::write(&export, lines.join("\n") + "\n").unwrap();
     machine.bead(["import", export.to_str().unwrap(), "--offline"]);
     let keys = vec!["ex-1".to_owned(), "ex-2".to_owned(), format!("ex-{n}")];
-    let _ = answers(machine, &keys, false);
+    let _ = answers(machine, &keys, ReadPath::Projection);
     assert!(projection(machine).is_file(), "a read keeps a projection");
     keys
 }
@@ -130,13 +131,13 @@ fn writes_in_a_row_leave_the_projection_until_the_records_after_it_are_many() {
         journal_bytes(&a) > made,
         "records after the stored projection"
     );
-    let read = answers(&a, &keys, false);
+    let read = answers(&a, &keys, ReadPath::Projection);
     assert_ne!(
         std::fs::read(projection(&a)).unwrap(),
         stored,
         "the read wrote it back"
     );
-    assert_eq!(answers(&a, &keys, true), read);
+    assert_eq!(answers(&a, &keys, ReadPath::Replay), read);
     let shown = a.run(["show", &keys[0], "--json"]);
     assert!(shown.stdout.contains("note 15"), "{}", shown.stdout);
 }
@@ -162,7 +163,7 @@ fn a_write_killed_between_its_steps_leaves_the_projection_it_found() {
             comment(&a, &keys[0], "left to the next read");
             if long {
                 // written back, then three quarters of what a write leaves to the next read
-                let _ = answers(&a, &keys, false);
+                let _ = answers(&a, &keys, ReadPath::Projection);
                 let (written, made) = (std::fs::read(projection(&a)).unwrap(), journal_bytes(&a));
                 while (journal_bytes(&a) - made) * TAIL * 4 <= written.len() as u64 * 3 {
                     comment(&a, &keys[0], "one more");
@@ -184,8 +185,8 @@ fn a_write_killed_between_its_steps_leaves_the_projection_it_found() {
                 "{failpoints}, long {long}"
             );
             assert_eq!(
-                answers(&a, &keys, false),
-                answers(&a, &keys, true),
+                answers(&a, &keys, ReadPath::Projection),
+                answers(&a, &keys, ReadPath::Replay),
                 "{failpoints}, long {long}"
             );
         }
@@ -193,7 +194,7 @@ fn a_write_killed_between_its_steps_leaves_the_projection_it_found() {
     // records after the stored projection many enough that the next write writes it back, which is
     // killed as it does; the first of them cuts the half line left above
     comment(&a, &keys[0], "after the torn line");
-    let _ = answers(&a, &keys, false);
+    let _ = answers(&a, &keys, ReadPath::Projection);
     let (stored, made) = (std::fs::read(projection(&a)).unwrap(), journal_bytes(&a));
     while (journal_bytes(&a) - made) * TAIL <= stored.len() as u64 {
         comment(&a, &keys[0], "one more");
@@ -206,8 +207,8 @@ fn a_write_killed_between_its_steps_leaves_the_projection_it_found() {
     assert_eq!(std::fs::read(projection(&a)).unwrap(), stored);
     assert_eq!(journal_bytes(&a), segments, "killed before its own record");
     comment(&a, &keys[1], "after the kills");
-    let read = answers(&a, &keys, false);
-    assert_eq!(answers(&a, &keys, true), read);
+    let read = answers(&a, &keys, ReadPath::Projection);
+    assert_eq!(answers(&a, &keys, ReadPath::Replay), read);
     let shown = a.run(["show", &keys[1], "--json"]);
     assert!(shown.stdout.contains("after the kills"), "{}", shown.stdout);
     assert!(
@@ -250,9 +251,9 @@ fn writes_while_a_read_writes_the_projection_back_are_taken_in_by_the_next_read(
     assert_eq!(during, stored, "the writes left the stored projection");
     let written = std::fs::read(projection(&a)).unwrap();
     assert_ne!(written, stored, "the read's, made before the writes");
-    let answered = answers(&a, &keys, false);
+    let answered = answers(&a, &keys, ReadPath::Projection);
     assert_ne!(std::fs::read(projection(&a)).unwrap(), written);
-    assert_eq!(answers(&a, &keys, true), answered);
+    assert_eq!(answers(&a, &keys, ReadPath::Replay), answered);
     for (key, text) in [
         (&keys[1], "while the read waits"),
         (&keys[2], "this one too"),
@@ -288,7 +289,7 @@ fn a_merge_concurrent_only_with_writes_left_after_the_projection_extends_it() {
         comment(&b, &keys[0], "b's first");
         b.bead(["sync"]);
         a.bead(["sync"]);
-        let _ = answers(&b, &keys, false);
+        let _ = answers(&b, &keys, ReadPath::Projection);
         let stored = std::fs::read(projection(&b)).unwrap();
         for n in 0..3 {
             comment(&b, &keys[1], &format!("b's note {n}"));
@@ -300,7 +301,7 @@ fn a_merge_concurrent_only_with_writes_left_after_the_projection_extends_it() {
         a.bead(["update", &keys[2], "--title", "a's title", "--offline"]);
         a.bead(["sync"]);
         if written_back {
-            let _ = answers(&b, &keys, false);
+            let _ = answers(&b, &keys, ReadPath::Projection);
             let written = std::fs::read(projection(&b)).unwrap() != stored;
             assert!(written, "b's notes left by a read");
         }
@@ -318,9 +319,9 @@ fn a_merge_concurrent_only_with_writes_left_after_the_projection_extends_it() {
             "written back {written_back}: {}",
             synced.stderr
         );
-        let read = answers(&b, &keys, false);
+        let read = answers(&b, &keys, ReadPath::Projection);
         assert_eq!(
-            answers(&b, &keys, true),
+            answers(&b, &keys, ReadPath::Replay),
             read,
             "written back {written_back}"
         );

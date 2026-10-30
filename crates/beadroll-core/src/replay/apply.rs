@@ -15,6 +15,7 @@ use crate::id::EventId;
 use crate::journal::{Event, Rest};
 use crate::json::{Object, Value};
 use crate::op::Op;
+use crate::replay::apply::claims::EndingKind;
 use crate::state::{
     Awaiting, Comment, Edge, IdMap, IdSet, Integrity, Issue, KeySpace, Knowledge, Meta, Runs,
     Stale, State, Target,
@@ -115,8 +116,8 @@ pub(super) fn apply_event(
             }
         },
         Op::Release(ending) => claims::release(&c, issue, ending),
-        Op::Close(ending) => claims::close(&c, issue, ending, true),
-        Op::Delete(ending) => claims::close(&c, issue, ending, false),
+        Op::Close(ending) => claims::close(&c, issue, ending, EndingKind::Close),
+        Op::Delete(ending) => claims::close(&c, issue, ending, EndingKind::Delete),
         Op::Reopen => claims::reopen(&c, issue),
         Op::Comment { text, author } => {
             st.comment_count += 1;
@@ -351,10 +352,10 @@ fn write_register(
     // last.
     match field {
         Field::Status => {
-            issue.stamps.wrote(Field::ClosedAt, false);
-            issue.stamps.wrote(Field::CloseReason, false);
+            issue.stamps.wrote(Field::ClosedAt, Field::Status);
+            issue.stamps.wrote(Field::CloseReason, Field::Status);
         }
-        Field::ClosedAt | Field::CloseReason => issue.stamps.wrote(field, true),
+        Field::ClosedAt | Field::CloseReason => issue.stamps.wrote(field, field),
         _ => {}
     }
 }

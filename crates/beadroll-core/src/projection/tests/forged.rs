@@ -4,21 +4,29 @@
 //! entries its table had when it was made anew beyond those it holds, which the write-back adds to.
 //! Each is refused, as a part that cannot be read is, and the journal is replayed.
 
-use crate::id::EventId;
-use crate::json::{Object, Value};
-
 use super::super::{Encoded, Projection, Record, decode_state, project};
 use super::hostile::{HERE, event, fields, id, journal, record};
+use crate::id::EventId;
+use crate::journal::JournalOrder;
+use crate::json::{Object, Value};
 
 /// `init`, then issues 2, 4 and 6 (keys pr-a, pr-b and pr-c), each created after the one before.
 fn three() -> Vec<Record> {
     let create = |n: u128, key: &str, after: u128| {
         let mut data = fields(&format!("issue {n}"));
         data.insert("key".into(), Value::from(key));
-        record(event(n, HERE, &[after], "create", n, data), HERE, true)
+        record(
+            event(n, HERE, &[after], "create", n, data),
+            HERE,
+            JournalOrder::Sequenced,
+        )
     };
     vec![
-        record(event(1, HERE, &[], "init", 1, Object::new()), HERE, true),
+        record(
+            event(1, HERE, &[], "init", 1, Object::new()),
+            HERE,
+            JournalOrder::Sequenced,
+        ),
         create(2, "pr-a", 1),
         create(4, "pr-b", 2),
         create(6, "pr-c", 4),

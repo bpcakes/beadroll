@@ -3,9 +3,11 @@
 
 use super::parse::command;
 use super::spec::CommandSpec;
+use crate::cli::paint::Color;
 
 /// `spec`'s help page, `width` wide (none: unwrapped), coloured when `color`.
-pub(crate) fn page(spec: &CommandSpec, width: Option<usize>, color: bool) -> String {
+pub(crate) fn page(spec: &CommandSpec, width: Option<usize>, color: Color) -> String {
+    let color = matches!(color, Color::Ansi);
     let mut root = command(width);
     root.build();
     let rendered = match root.find_subcommand_mut(spec.name) {

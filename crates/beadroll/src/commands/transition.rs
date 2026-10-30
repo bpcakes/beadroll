@@ -4,7 +4,7 @@
 //! each one too, children first, in the same transaction.
 
 use std::collections::HashSet;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 
 use beadroll_core::code::Code;
 use beadroll_core::event::Field;
@@ -13,6 +13,7 @@ use beadroll_core::json::{Object, Value};
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::str_of;
 use beadroll_store::{Label, view_outline};
+use beadroll_sync::NetworkMode;
 use beadroll_sync::{publish_soon, writing_spent};
 
 use super::{
@@ -130,7 +131,15 @@ pub(crate) fn transition(
     // reads (no claim of its own to name), and frees it all the same, which is harmless.
     let spent = (!ended).then_some(spent);
     let warning = if ended {
-        publish_soon(ctx.ws, args.offline, args.remote.as_deref())
+        publish_soon(
+            ctx.ws,
+            if args.offline {
+                NetworkMode::Offline
+            } else {
+                NetworkMode::Online
+            },
+            args.remote.as_deref(),
+        )
     } else {
         None
     };
@@ -145,8 +154,13 @@ pub(crate) fn transition(
         // published: answer with what the remote made of it
         superseded(ctx, op, &plan.issues, &named, &mut result, &mut notes)?;
     }
-    let reason_given = args.reason.as_deref().is_some_and(|r| !r.is_empty());
-    let mut lines = answer(&mut result, &unchanged, (verb, said), reason_given, notes);
+    let mut lines = answer(
+        &mut result,
+        &unchanged,
+        (verb, said),
+        args.reason.as_deref(),
+        notes,
+    );
     if !plan.left.is_empty() {
         // after the issues' lines, before the notes
         lines.insert(result.len(), Line::from(left_as_they_are(plan.left.len())));
@@ -314,12 +328,12 @@ fn answer(
     result: &mut [Object],
     unchanged: &[bool],
     (verb, said): (&str, &str),
-    reason_given: bool,
+    reason: Option<&OsStr>,
     mut notes: Vec<String>,
 ) -> Vec<Line> {
     for (item, _) in result.iter_mut().zip(unchanged).filter(|(_, u)| **u) {
         item.insert("unchanged".into(), Value::from(format!("already {said}")));
-        if reason_given {
+        if reason.is_some_and(|r| !r.is_empty()) {
             let key = item.get("id").map(str_of).unwrap_or_default();
             notes.push(format!(
                 "{key} was already {said}: the reason given is not recorded"

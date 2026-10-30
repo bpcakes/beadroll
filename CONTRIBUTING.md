@@ -138,6 +138,11 @@ the record of it before any test data is written), their tests beside them, and 
   closed set `bead prime` lists. An OS error is wrapped with its path where it
   happens and reads `"{strerror}: {path}"`, without Rust's `(os error N)`; a
   failed rename names its target.
+- **No boolean function parameters.** Clippy denies `fn_params_excessive_bools` with
+  `max-fn-params-bools = 0`, including test helpers and tooling. Use named modes for choices,
+  reuse existing argument types, and remove switches that every caller supplies alike. Booleans
+  can remain stored data and return values; implementations of external traits keep their
+  required signatures.
 - **No panics outside tests.** Libraries deny `unwrap_used`, `expect_used`,
   `panic`, `todo` and `unimplemented`; indexing that cannot be shown safe uses
   `get`. Replay is total: every input is applied or reported, never an abort.

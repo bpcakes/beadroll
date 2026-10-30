@@ -3,6 +3,7 @@
 //! event id, replay had already turned the entry into an edge, so the retraction was lost.
 
 use beadroll_core::journal::Journal;
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::json::Value;
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
@@ -25,7 +26,7 @@ fn replayed(events: Vec<Event>) -> State {
     for event in events {
         let event = event.without("actor").json();
         let replica = event["replica"].as_str().unwrap().to_owned();
-        journal.add(event, &replica, "", true);
+        journal.add(event, &replica, "", JournalOrder::Sequenced);
     }
     replay(journal).unwrap()
 }

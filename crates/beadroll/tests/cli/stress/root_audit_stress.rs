@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
 use beadroll_core::id::EventId;
+use beadroll_sync::NetworkMode;
 use beadroll_test_support::{Json, Machine, Run};
 
 use super::{
@@ -193,7 +194,16 @@ impl Soak {
         }
         let mi = rng.below(6);
         let offline = self.partitions.get(&mi).is_some_and(|&end| end >= step);
-        let args = self.command(rng, step, mi, offline);
+        let args = self.command(
+            rng,
+            step,
+            mi,
+            if offline {
+                NetworkMode::Offline
+            } else {
+                NetworkMode::Online
+            },
+        );
         *self.counts.entry(args[0].clone()).or_default() += 1;
         let run = run_json(&self.machines[mi], &args);
         let row = Row {
@@ -214,7 +224,8 @@ impl Soak {
     }
 
     /// The action applied to a randomly selected key at this step.
-    fn command(&self, rng: &mut Rng, step: usize, mi: usize, offline: bool) -> Vec<String> {
+    fn command(&self, rng: &mut Rng, step: usize, mi: usize, offline: NetworkMode) -> Vec<String> {
+        let offline = matches!(offline, NetworkMode::Offline);
         let action = rng.weighted(&ACTIONS);
         let key = rng.choice(&self.keys).as_str();
         match action {

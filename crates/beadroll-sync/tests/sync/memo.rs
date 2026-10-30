@@ -7,6 +7,8 @@
 //! from need not have left. A test that measures what a publish hashes therefore moves the memo's
 //! own time past every file first ([`settled_round`]), so that what is measured is change alone.
 
+mod trees;
+
 use std::fs::{FileTimes, OpenOptions};
 use std::io::Write as _;
 use std::path::Path;
@@ -14,15 +16,24 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime};
 
 use beadroll_core::json::{Object, Value};
+use beadroll_store::IdentityMode;
 use beadroll_store::{
     Endpoint, Workspace, claim_files, memo_path, relative, replica_id, segment_files,
 };
+use beadroll_sync::PublishMode;
 use beadroll_sync::{Error, Link, PushOutcome, locked, writing};
 use beadroll_test_support::{Machine, Sandbox, git};
 
 use crate::support::{actor, claim_command, sandbox, workspace};
 
-mod trees;
+/// Which side of the current time a memo timestamp is set to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TimeDirection {
+    /// Earlier.
+    Earlier,
+    /// Later.
+    Later,
+}
 
 /// What one round did: the files its link hashed, the paths it found forked, and the tree the
 /// remote holds after it.
@@ -40,7 +51,7 @@ fn round(ws: &Workspace, origin: &Path) -> Round {
     let tip = link.fetch().expect("a fetch");
     let outcome = locked(ws, || -> Result<PushOutcome, Error> {
         link.merge(tip.as_deref())?;
-        link.publish(tip.as_deref(), "sync", &[], false)
+        link.publish(tip.as_deref(), "sync", &[], PublishMode::IfChanged)
     })
     .expect("a round");
     assert_eq!(outcome, PushOutcome::Ok);
@@ -58,7 +69,8 @@ fn round(ws: &Workspace, origin: &Path) -> Round {
 
 /// Sets the memo's own modification time `from_now` from now: a memo written after every file it
 /// remembers vouches for them all, one written before a file for none of what it says of that file.
-fn memo_time(ws: &Workspace, from_now: Duration, later: bool) {
+fn memo_time(ws: &Workspace, from_now: Duration, later: TimeDirection) {
+    let later = matches!(later, TimeDirection::Later);
     let file = OpenOptions::new()
         .write(true)
         .open(memo_path(ws))
@@ -76,7 +88,7 @@ fn memo_time(ws: &Workspace, from_now: Duration, later: bool) {
 /// A round with the memo's own time moved past every file it remembers, so that it is trusted for
 /// each and what the round hashes is what changed ([`memo_time`]).
 fn settled_round(ws: &Workspace, origin: &Path) -> Round {
-    memo_time(ws, Duration::from_secs(60), true);
+    memo_time(ws, Duration::from_secs(60), TimeDirection::Later);
     round(ws, origin)
 }
 
@@ -133,7 +145,7 @@ fn set_up(sandbox: &Sandbox) -> (Machine, Workspace, String, Machine) {
 
 /// This machine's segment `n`, by its path in the store.
 fn own_segment(ws: &Workspace, n: u32) -> String {
-    let me = replica_id(&ws.settings, false)
+    let me = replica_id(&ws.settings, IdentityMode::Existing)
         .expect("an identity")
         .expect("this machine's identity");
     format!("events/{me}/{n:06}.jsonl")
@@ -314,7 +326,7 @@ fn a_memo_written_before_a_file_says_nothing_of_it() {
     let quiet = settled_round(&ws, origin);
     assert_eq!(quiet.hashed, Vec::<String>::new(), "every file settled");
 
-    memo_time(&ws, Duration::from_secs(60), false);
+    memo_time(&ws, Duration::from_secs(60), TimeDirection::Earlier);
     let racy = round(&ws, origin);
     assert_eq!(racy.hashed, all, "a memo older than the files it names");
     assert_eq!(racy.tree, quiet.tree, "the tree hashing every file makes");
@@ -327,7 +339,7 @@ fn a_memo_written_before_a_file_says_nothing_of_it() {
 
 /// This machine's identity.
 fn own_machine(ws: &Workspace) -> String {
-    replica_id(&ws.settings, false)
+    replica_id(&ws.settings, IdentityMode::Existing)
         .expect("an identity")
         .expect("this machine's identity")
 }
@@ -343,7 +355,7 @@ fn a_remembered_blob_sync_git_lost_is_hashed_again() {
     comment(&ws, &a, &key, "unpublished");
     let first = own_segment(&ws, 1);
     // the memo trusted for every file but the one just appended to, which grew
-    memo_time(&ws, Duration::from_secs(60), true);
+    memo_time(&ws, Duration::from_secs(60), TimeDirection::Later);
     let mut link = Link::new(&ws, &Endpoint::at(origin)).expect("a link");
     let tip = link.fetch().expect("a fetch");
     locked(&ws, || link.merge(tip.as_deref())).expect("a merge");

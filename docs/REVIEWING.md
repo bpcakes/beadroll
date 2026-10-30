@@ -170,6 +170,13 @@ These were decided deliberately. Report problems *with* them, not their existenc
   operations. These names do not relax the format or command-line contracts: old boolean integer
   fields, exact integers, Unicode text rules and receipt bytes still have their established
   meaning. Tests pin the reference values; where their fixtures came from is below.
+- Rust function parameters carry named choices rather than boolean switches (roll-47cs).
+  The workspace denies `clippy::fn_params_excessive_bools` at a threshold of zero, for tests and
+  developer tools too. Existing argument records are reused where they describe the operation;
+  constant switches are removed. Booleans remain data in fields and return values, and external
+  trait implementations retain their required signatures. This changes Rust API signatures,
+  including `Journal::add`, atomic writes and synchronization entrypoints; CLI behavior and
+  the bytes of journals, receipts and projections retain their established contracts.
 - Claims never expire; a missing owner needs a human `takeover`. No heartbeats.
 - The owner of a claim is the agent thread; a later session must `takeover` to continue.
 - `update --status in_progress` is a claim, and `create --status in_progress` is refused;

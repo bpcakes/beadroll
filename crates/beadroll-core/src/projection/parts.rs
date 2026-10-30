@@ -17,13 +17,21 @@ use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::Arc;
 
-use crate::id::EventId;
-use crate::state::{Knowledge, State, TextPlace, Texts};
-
 use super::codec::{Reader, Table, Unreadable, Writer};
 use super::state_codec::{Records, read_state, write_state};
 use super::text_codec::write_texts;
 use super::{Encoded, Projection, named, sum};
+use crate::id::EventId;
+use crate::state::{Knowledge, State, TextPlace, Texts};
+
+/// Whether encoding retains the full known event index or compacts it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Compaction {
+    /// Keep.
+    Keep,
+    /// Compact.
+    Compact,
+}
 
 /// What a projection read back keeps of the bytes it was read from, to copy from when it is written
 /// back: its two parts, where each issue's record begins in the state part, and where its event
@@ -88,7 +96,14 @@ impl Projection {
     /// compacted, and every event taken in since (roll-lqjj.43). What did not change since it was
     /// read back is copied as it was read (roll-lqjj.44).
     pub fn encode(&self, texts_at: u64) -> (Encoded, Vec<(EventId, TextPlace)>) {
-        self.encode_with(texts_at, self.compaction_due())
+        self.encode_with(
+            texts_at,
+            if self.compaction_due() {
+                Compaction::Compact
+            } else {
+                Compaction::Keep
+            },
+        )
     }
 
     /// [`Projection::encode`], what every event had seen cut down to the events the state names and
@@ -98,18 +113,19 @@ impl Projection {
     pub(crate) fn encode_with(
         &self,
         texts_at: u64,
-        compact: bool,
+        compaction: Compaction,
     ) -> (Encoded, Vec<(EventId, TextPlace)>) {
-        self.encode_copying(texts_at, compact, Copying::Unchanged)
+        self.encode_copying(texts_at, compaction, Copying::Unchanged)
     }
 
     /// [`Projection::encode_with`], copying what `copying` says from what it was read back from.
     pub(crate) fn encode_copying(
         &self,
         texts_at: u64,
-        compact: bool,
+        compact: Compaction,
         copying: Copying,
     ) -> (Encoded, Vec<(EventId, TextPlace)>) {
+        let compact = matches!(compact, Compaction::Compact);
         let (mut texts, mut places) = (Vec::new(), Vec::new());
         for issue in self.state.issues.values() {
             if matches!(issue.texts, Texts::Here) {
@@ -254,7 +270,7 @@ impl Projection {
         let mut superseded: Vec<EventId> = self.superseded.iter().copied().collect();
         superseded.sort_unstable();
         w.ids(superseded.iter());
-        w.flag(self.open);
+        w.byte(u8::from(self.open));
         w.table_here();
         let arena = copied.map(|kept| crate::state::Arena {
             counts: (kept.sets.1, kept.positions.1),

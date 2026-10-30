@@ -12,6 +12,16 @@ use clap::builder::styling::{AnsiColor, Style};
 use super::output::visible;
 use crate::commands::{Line, Tone};
 
+/// Resolved colour output for one stream.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Color {
+    #[default]
+    /// Plain.
+    Plain,
+    /// Ansi.
+    Ansi,
+}
+
 /// What `--color` asks for.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum When {
@@ -36,8 +46,8 @@ impl When {
 /// Whether standard output and standard error show colour.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Colors {
-    pub(crate) stdout: bool,
-    pub(crate) stderr: bool,
+    pub(crate) stdout: Color,
+    pub(crate) stderr: Color,
 }
 
 /// Which streams show colour for `when`, the environment read through `var`.
@@ -49,9 +59,9 @@ pub(crate) fn colors(when: When, var: &dyn Fn(&str) -> Option<OsString>) -> Colo
 }
 
 /// Whether `stream` shows colour.
-fn shows(when: When, var: &dyn Fn(&str) -> Option<OsString>, stream: impl AsFd) -> bool {
+fn shows(when: When, var: &dyn Fn(&str) -> Option<OsString>, stream: impl AsFd) -> Color {
     let set = |key: &str| var(key).filter(|value| !value.is_empty());
-    match when {
+    let colored = match when {
         When::Always => true,
         When::Never => false,
         When::Auto if set("NO_COLOR").is_some() => false,
@@ -59,7 +69,8 @@ fn shows(when: When, var: &dyn Fn(&str) -> Option<OsString>, stream: impl AsFd) 
         When::Auto if set("CLICOLOR").is_some_and(|value| value == "0") => false,
         When::Auto if set("TERM").is_some_and(|value| value == "dumb") => false,
         When::Auto => rustix::termios::isatty(stream),
-    }
+    };
+    if colored { Color::Ansi } else { Color::Plain }
 }
 
 /// How `tone` looks.
@@ -82,7 +93,8 @@ fn style(tone: Tone) -> Style {
 
 /// `line` for a reader: each part escaped, and painted when `color`. A plain line that starts
 /// with a check mark (`✓ Closed …`) has the mark painted as done.
-pub(crate) fn render(line: &Line, color: bool) -> String {
+pub(crate) fn render(line: &Line, color: Color) -> String {
+    let color = matches!(color, Color::Ansi);
     let marked;
     let parts = match line.parts() {
         [(Tone::Plain, text)] if text.starts_with("✓ ") => {
@@ -113,8 +125,8 @@ pub(crate) fn render(line: &Line, color: bool) -> String {
 }
 
 /// `lines` for a reader, one to a line.
-pub(crate) fn render_all(lines: &[Line], color: bool) -> String {
-    let rendered: Vec<String> = lines.iter().map(|line| render(line, color)).collect();
+pub(crate) fn render_all(lines: &[Line], color_mode: Color) -> String {
+    let rendered: Vec<String> = lines.iter().map(|line| render(line, color_mode)).collect();
     rendered.join("\n")
 }
 

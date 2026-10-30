@@ -3,12 +3,12 @@
 //! [`Journal::add_attempt`], roll-lqjj.53.1); or into values, for a tool that needs a record as
 //! it was written ([`read_segment`], [`read_attempt`]). Both read a file by the same rules.
 
-use crate::event::{Envelope, event_problem, payload_problem};
-use crate::json::{self, ParseError, Value};
-use crate::text::strip_bytes;
-
 use super::content::Digest;
 use super::{Journal, Problem};
+use crate::event::{Envelope, event_problem, payload_problem};
+use crate::journal::JournalOrder;
+use crate::json::{self, ParseError, Value};
+use crate::text::strip_bytes;
 
 /// Reads one journal or attempt line. A line that is not strict JSON (not UTF-8, a lone
 /// surrogate, a number beyond a float, nesting beyond [`json::MAX_DEPTH`]) is an error the
@@ -136,7 +136,7 @@ impl Journal {
         });
         self.invalid.append(&mut problems);
         for (envelope, digest) in lines {
-            self.add_read(envelope, digest, replica, origin, true);
+            self.add_read(envelope, digest, replica, origin, JournalOrder::Sequenced);
         }
     }
 
@@ -160,7 +160,7 @@ impl Journal {
         });
         self.invalid.append(&mut problems);
         for (envelope, digest) in lines {
-            self.add_read(envelope, digest, replica, origin, false);
+            self.add_read(envelope, digest, replica, origin, JournalOrder::Attempt);
         }
     }
 }

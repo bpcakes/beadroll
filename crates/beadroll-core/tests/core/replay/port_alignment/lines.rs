@@ -1,6 +1,7 @@
 //! `PortAlignment`, journal lines: what bytes a line may hold and still be an event (U01 to U04).
 
 use beadroll_core::event::event_problem;
+use beadroll_core::journal::JournalOrder;
 use beadroll_core::journal::{Journal, read_segment};
 use beadroll_core::json::{Format, MAX_DEPTH, parse, write};
 use beadroll_core::replay::replay;
@@ -83,7 +84,7 @@ fn u02_ids_and_deps_with_a_trailing_newline_are_not_uuids() {
         Some("deps is not a list of event ids")
     );
     let mut journal = Journal::new();
-    journal.add(renamed, "a", "", true);
+    journal.add(renamed, "a", "", JournalOrder::Sequenced);
     let state = replay(journal).unwrap();
     assert!(state.prefix().is_none());
     assert_eq!(problems(&state), ["id is not a UUID"]);

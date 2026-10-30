@@ -4,6 +4,7 @@
 use std::time::{Duration, Instant};
 
 use super::*;
+use crate::LockState;
 
 /// A reader outside the lock lists the attempt files once it has read the segments, whatever it
 /// listed before: a claims directory that gains a file within one tick of a listing keeps its
@@ -132,7 +133,7 @@ fn an_attempt_is_stat_ed_once_a_locked_phase_and_again_once_bead_writes_it() {
     write_attempt_file(&ws, &path, &[title(5, &[4], 2, "before")]).unwrap();
     assert!(replays(&ws));
     assert_eq!(ws.claims.borrow().identities(), 0, "kept outside the lock");
-    ws.set_holding(true);
+    ws.set_holding(LockState::Locked);
     assert!(replays(&ws));
     assert_eq!(ws.claims.borrow().identities(), 1);
     settle(&ws);
@@ -142,7 +143,7 @@ fn an_attempt_is_stat_ed_once_a_locked_phase_and_again_once_bead_writes_it() {
     let state = projection(&ws).unwrap().into_state();
     assert!(answers(&state).contains("AFTER!"));
     assert!(replays(&ws));
-    ws.set_holding(false);
+    ws.set_holding(LockState::Unlocked);
     assert_eq!(
         ws.claims.borrow().identities(),
         0,
