@@ -2,26 +2,24 @@
 //! and what it emits are here; the store lock and the writes that run a body in one, with what they
 //! hand back of it, are in `tx/writes.rs`.
 
+mod materialized;
 mod writes;
 
 use beadroll_core::event::{FORMAT, MAX_NESTING, event_problem, payload_problem, write_problem};
 use beadroll_core::id::EventId;
-use beadroll_core::journal::JournalOrder;
 use beadroll_core::json::{Object, Value};
-use beadroll_core::projection::{Extended, Projection, Record};
-use beadroll_core::replay::replay;
+use beadroll_core::projection::{Projection, Record};
 use beadroll_core::state::State;
 use beadroll_store::IdentityMode;
 use beadroll_store::{
-    Actor, Sourced, Workspace, capture_where, encode_events, load_journal, projection, read_texts,
-    replica_id, uuid7,
+    Actor, Sourced, Workspace, capture_where, encode_events, projection, replica_id, uuid7,
 };
 
 use crate::error::Error;
+use materialized::Materialized;
 
 pub use writes::{
-    confirm_ownership, drop_pending, forget_receipts, locked, remove, writing, writing_spent,
-    writing_state,
+    confirm_ownership, drop_pending, locked, remove, writing, writing_spent, writing_state,
 };
 
 /// Ownership events: settled with the remote, and kept one attempt per file.
@@ -39,17 +37,12 @@ pub struct Tx<'a> {
     pub actor: Value,
     /// This machine's id.
     pub replica: String,
-    /// The store's projection, the events emitted applied to it up to `applied`; `None` once one
-    /// was emitted that it could not take as replay would apply it (a takeover, a machine's first
-    /// record): the state is then the journal replayed with them.
-    projection: Option<Projection>,
+    /// The projection or replay, with the prefix of emitted events it contains.
+    materialized: Materialized,
     /// The frontier, with the events emitted so far: what a new event builds on.
     heads: Vec<EventId>,
     /// Every event emitted so far, as a journal records it.
     emitted: Vec<Record>,
-    /// How many of them the projection has: the rest are applied when the state is asked for,
-    /// together, as a command that emits many before it asks would have them.
-    applied: usize,
     /// The checkout's branch and commit, recorded on each event.
     pub place: Option<Value>,
     /// The attempt's events emitted, to settle with the remote.
@@ -58,10 +51,6 @@ pub struct Tx<'a> {
     pub conditional: bool,
     /// Whether the actor's text can be written ([`Actor::writable`]).
     writable: bool,
-    /// The state replayed, once the projection is gone.
-    state: Option<State>,
-    /// How many of the events emitted the state replayed has: it is replayed again once more are.
-    replayed: usize,
 }
 
 impl<'a> Tx<'a> {
@@ -92,15 +81,12 @@ impl<'a> Tx<'a> {
             actor: actor.value.clone(),
             replica,
             heads: projection.heads().to_vec(),
-            projection: Some(projection),
+            materialized: Materialized::projected(projection),
             emitted: Vec::new(),
-            applied: 0,
             place,
             ownership: Vec::new(),
             conditional: false,
             writable: actor.writable,
-            state: None,
-            replayed: 0,
         })
     }
 
@@ -123,53 +109,9 @@ impl<'a> Tx<'a> {
     /// those of the issues the events emitted can change are in it (roll-lqjj.6,
     /// `Projection::about`); a command reads in any other it prints.
     pub fn state(&mut self) -> Result<&State, Error> {
-        if self.applied < self.emitted.len()
-            && let Some(mut projection) = self.projection.take()
-        {
-            let records = self
-                .emitted
-                .get(self.applied..)
-                .unwrap_or_default()
-                .to_vec();
-            self.applied = self.emitted.len();
-            let about = projection.about(&records);
-            // texts that cannot be read in have the journal replayed
-            if read_texts(self.ws, projection.state_mut(), about)
-                && let Extended::Applied(projection) = projection.extend(records)?
-            {
-                self.projection = Some(*projection);
-            }
-        }
-        if let Some(projection) = &self.projection {
-            return Ok(projection.state());
-        }
-        if self.replayed < self.emitted.len() {
-            self.state = None;
-        }
-        if self.state.is_none() {
-            let mut journal = load_journal(self.ws)?;
-            for record in &self.emitted {
-                let Record {
-                    value, sequenced, ..
-                } = record;
-                journal.add(
-                    value.clone(),
-                    &self.replica,
-                    "",
-                    if *sequenced {
-                        JournalOrder::Sequenced
-                    } else {
-                        JournalOrder::Attempt
-                    },
-                );
-            }
-            self.state = Some(replay(journal)?);
-            self.replayed = self.emitted.len();
-        }
-        match &self.state {
-            Some(state) => Ok(state),
-            None => Err(Error::Validation("no state".to_owned())),
-        }
+        self.materialized
+            .ensure(self.ws, &self.replica, &self.emitted)?;
+        self.materialized.state()
     }
 
     /// Emits op on issue, defaulting issue to the event itself, with data and a supplied or fresh
@@ -209,21 +151,16 @@ impl<'a> Tx<'a> {
             ws,
             actor,
             replica,
-            projection,
+            materialized,
             heads,
             emitted,
             place,
             ownership,
             conditional,
             writable,
-            state,
             ..
         } = self;
-        let state = match (projection, state) {
-            (Some(projection), _) => projection.state(),
-            (None, Some(state)) => state,
-            (None, None) => return Err(Error::Validation("no state".to_owned())),
-        };
+        let state = materialized.state()?;
         let emitter = Emitter {
             ws,
             actor,
@@ -242,19 +179,14 @@ impl<'a> Tx<'a> {
     /// the store holds once they are written.
     pub fn into_state(mut self) -> Result<State, Error> {
         self.state()?;
-        match (self.projection, self.state) {
-            (Some(projection), _) => Ok(projection.into_state()),
-            (None, Some(state)) => Ok(state),
-            (None, None) => Err(Error::Validation("no state".to_owned())),
-        }
+        self.materialized.into_state()
     }
 
     /// What the transaction held that costs to free, taken out of it, which is done with, as it
     /// stands: the events it emitted are in it only if its state was asked for since.
     fn into_spent(self) -> Spent {
         Spent {
-            projection: self.projection,
-            state: self.state,
+            materialized: self.materialized,
         }
     }
 }
@@ -267,17 +199,14 @@ impl<'a> Tx<'a> {
 /// does not know that drops it, which frees it.
 #[derive(Debug, Default)]
 pub struct Spent {
-    /// The store's projection, the events applied that the transaction asked its state for.
-    projection: Option<Projection>,
-    /// The journal replayed with the events emitted, once the projection was gone.
-    state: Option<State>,
+    materialized: Materialized,
 }
 
 impl Spent {
     /// Whether it holds nothing: the transaction had let go of its projection and had not
     /// replayed the journal.
     pub fn is_empty(&self) -> bool {
-        self.projection.is_none() && self.state.is_none()
+        matches!(self.materialized, Materialized::ReplayNeeded)
     }
 }
 

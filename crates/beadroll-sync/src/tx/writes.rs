@@ -11,12 +11,12 @@ use beadroll_git::IoError;
 use beadroll_store::LockState;
 use beadroll_store::PublicationState;
 use beadroll_store::{
-    Actor, Workspace, append_events, attempt_path, glob_ending, json_text, private_dir,
-    private_dirs, write_attempt_file,
+    Actor, Workspace, append_events, attempt_path, private_dir, private_dirs, write_attempt_file,
 };
 
 use super::{Spent, Tx};
 use crate::error::Error;
+use crate::receipts::forget_receipts;
 
 /// Whether the transaction must apply its emitted events for its caller.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -173,23 +173,6 @@ fn written<'w, T, E: From<Error>>(
         applied,
         tx: made,
     })
-}
-
-/// A later command of this actor went through: the receipts that would answer a repeat of an
-/// earlier command go. Attempts still pending stay for sync to settle.
-pub fn forget_receipts(ws: &Workspace, actor: &Value) -> Result<(), Error> {
-    for receipt in glob_ending(&ws.dir.join("pending"), ".command") {
-        let Ok(data) = std::fs::read(&receipt) else {
-            continue;
-        };
-        let Ok(Value::Object(recorded)) = json_text(&data) else {
-            continue;
-        };
-        if recorded.get("actor") == Some(actor) {
-            remove(&receipt)?;
-        }
-    }
-    Ok(())
 }
 
 /// Removes these attempts' pending files and their receipts.

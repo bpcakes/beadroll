@@ -1633,6 +1633,29 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - A command receipt survives a *failed* later command by the same actor and is dropped only when
   a later command by that actor goes through: the remote accepted it, or it was a local write that
   was appended. A recognised retry still reports the claim as it is now.
+- Attempt recovery, receipt retirement, transaction materialization and command publication have
+  explicit internal states (roll-jg0k). These types change no format-1 bytes, public entrypoints,
+  failpoints or ordering of durable writes:
+  - `ownership/attempt.rs`: a `PendingAttempt` exists after its receipt and pending file are
+    written. Publication confirms it, rejects or refuses it, or returns it as uncertain with its
+    saved answer. `Recovery::Awaiting` retains that answer across rounds; a merge can recover it,
+    and only settlement permits a new build. Dropping a value does not remove its files.
+  - `receipts.rs`: malformed, foreign, pending and settled receipts are distinct. Settled receipts
+    are accepted or unaccepted; retirement is immediate for older receipts, on recognition of the
+    matching accepted request, or deferred until this command succeeds. Sync retains accepted
+    receipts. A successful local write still retires its actor's receipts even when their attempts
+    remain pending; unreadable receipts are left alone by that local-write cleanup.
+  - `tx/materialized.rs`: a transaction holds a projection and its applied prefix, needs replay,
+    or holds a replayed state and its applied prefix. An extension that cannot apply falls back to
+    replay; an error leaves replay needed, so the next state request can retry. Later emissions
+    invalidate the replayed view. Draining a completed write preserves the state already computed.
+  - `Workspace::command`: durable effect and publication are independent. Commitment is monotone;
+    publication may be scheduled and cleared repeatedly. A durable write followed by a bookkeeping
+    error remains committed even if publication was not scheduled. A fresh workspace starts with
+    no command effect and no scheduled publication, without claiming that the remote has its store.
+  The transaction tests cover both materialization paths and the handoff after draining. Receipt,
+  parity and fault tests cover confirmation before cleanup, lost acknowledgements, fencing, failed
+  later commands and actor isolation; the CLI count-warning tests retain the commitment contract.
 - A push's outcome is git's own status line (`--porcelain`); a `[remote rejected]` that is the
   remote's verdict (a hook, a rule) is `REMOTE_REFUSED` and is not retried; one the remote could not
   take (`unpacker error`, `missing necessary objects`) is retried after a fresh fetch; a
@@ -2302,6 +2325,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
   this public repository, pinned to a commit (the maintainer's decision of 2026-10-10,
   roll-k2wy.15), so none of its builds needs credentials. `infra/` stays stdlib Python driving any
   `bead`, until there is a reason to move it into xtask.
+
+- A test executable that symlinks a system utility keeps that utility's basename. Multicall
+  coreutils dispatches by `argv[0]`: an `echo` symlink named `own-bead` fails on the Ubuntu 26.04
+  CI image. The executable-selection test still uses its own sandbox path, named `echo`, to
+  verify the machine override (roll-jg0k.1).
 
 Decisions that changed while building, each with its reason:
 
