@@ -8,20 +8,22 @@ use std::time::Duration;
 use beadroll_core::json::{self, Format, Int, Object, Value};
 use beadroll_core::metadata::Counts;
 use beadroll_core::text::shell_quote;
-use beadroll_git::PushOutcome;
 use beadroll_store::FileMode;
 use beadroll_store::MetadataRead;
 use beadroll_store::PublicationState;
 use beadroll_store::RemoteSource;
 use beadroll_store::{
-    Endpoint, Failpoints, Fired, Memo, Workspace, claim_files, load_pending, moved_workspaces,
-    pending_files, relative, relative_name, segment_files, workspaces_named, write_atomic,
+    Endpoint, Failpoints, Fired, Memo, Workspace, claim_files, moved_workspaces, pending_files,
+    relative, relative_name, segment_files, workspaces_named, write_atomic,
 };
 
-use crate::PublishMode;
 use crate::error::Error;
 use crate::link::Link;
-use crate::tx::{drop_pending, locked};
+use crate::tx::locked;
+
+use self::round::{AfterError, Outcome, Rebuild, sync_round};
+
+mod round;
 
 /// Whether a command may reach its coordination remote.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -173,47 +175,32 @@ fn exchange(
 ) -> Result<Option<Synced>, Error> {
     let report = matches!(sync_report, SyncReport::Collect);
     let mut link = Link::new(ws, remote)?;
-    let (mut pulled, mut pushed) = (0i64, 0i64);
-    let mut repacked = false;
-    let mut settled = None;
-    for attempt in 1..=ROUNDS {
-        let round = sync_round(
-            ws,
-            &mut link,
-            sync_report,
-            &mut pulled,
-            &mut pushed,
-            &mut repacked,
-        );
-        match round {
-            Ok(true) => {
-                settled = Some(attempt);
-                break;
-            }
-            Ok(false) => {}
-            Err(error) => {
-                if matches!(error, Error::SyncRepoDamaged(_)) && link.rebuilt.is_none() {
-                    locked(ws, || link.rebuild())?;
-                    continue;
+    let mut pulled = 0;
+    let mut rebuild = Rebuild::Available;
+    let mut rounds = 1..=ROUNDS;
+    let (attempts, published) = loop {
+        let Some(attempt) = rounds.next() else {
+            return Err(Error::SyncConflict(format!(
+                "the remote journal kept moving; run sync again{}",
+                conflict_detail(&link)
+            )));
+        };
+        let round = sync_round(ws, &mut link, sync_report);
+        pulled += round.pulled;
+        match round.outcome {
+            Ok(Outcome::Published(published)) => break (attempt, published),
+            Ok(Outcome::Contended) => pause(attempt, &ws.settings.failpoints),
+            Err(error) => match rebuild.after_error(attempt, &error) {
+                AfterError::Rebuild => locked(ws, || link.rebuild())?,
+                AfterError::ConsiderAdoption => {
+                    let Some(adopted) = adopt_published(ws, remote, &error)? else {
+                        return Err(error);
+                    };
+                    return exchange(&adopted, remote, sync_report);
                 }
-                let adopted = if attempt == 1 {
-                    adopt_published(ws, remote, &error)?
-                } else {
-                    None
-                };
-                let Some(adopted) = adopted else {
-                    return Err(error);
-                };
-                return exchange(&adopted, remote, sync_report);
-            }
+                AfterError::Stop => return Err(error),
+            },
         }
-        pause(attempt, &ws.settings.failpoints);
-    }
-    let Some(attempts) = settled else {
-        return Err(Error::SyncConflict(format!(
-            "the remote journal kept moving; run sync again{}",
-            conflict_detail(&link)
-        )));
     };
     let mut values = Vec::new();
     if let Some(name) = &ws.name {
@@ -231,12 +218,12 @@ fn exchange(
     let state = merged.state();
     Ok(Some(Synced {
         pulled,
-        pushed,
+        pushed: published.pushed,
         attempts,
         tip: link.last_commit.clone(),
         remote: remote.url.clone(),
         sync_repo_rebuilt: link.rebuilt.clone(),
-        repacked,
+        repacked: published.repacked,
         issues: state.issues().count(),
         renamed: state
             .renames()
@@ -283,56 +270,6 @@ fn nothing_published(ws: &Workspace, remote: &Endpoint) -> Error {
         ));
     }
     Error::NotInitialized(message)
-}
-
-/// One round: whether it went through (the remote took the publish). With `report`, the first merge
-/// counts the keys renamed before it ([`Link::merge_from`]).
-fn sync_round(
-    ws: &Workspace,
-    link: &mut Link<'_>,
-    sync_report: SyncReport,
-    pulled: &mut i64,
-    pushed: &mut i64,
-    repacked: &mut bool,
-) -> Result<bool, Error> {
-    let mut tip = link.fetch()?;
-    locked(ws, || {
-        if !load_pending(ws)?.is_empty() {
-            // also sweeps pending files that are not attempts; settling our own attempts needs the
-            // current head, not a snapshot
-            tip = link.fetch()?;
-        }
-        *pulled += link.merge_from(tip.as_deref(), sync_report)?;
-        if tip.is_none() && segment_files(ws)?.is_empty() {
-            return Err(nothing_published(ws, &link.endpoint()));
-        }
-        *pushed = link.unpublished()?;
-        let fence = !load_pending(ws)?.is_empty();
-        match link.publish(
-            tip.as_deref(),
-            "sync",
-            &[],
-            if fence {
-                PublishMode::Fence
-            } else {
-                PublishMode::IfChanged
-            },
-        )? {
-            PushOutcome::Ok => {
-                // absent at a head we just advanced: they can never land
-                drop_pending(ws, &load_pending(ws)?)?;
-                *repacked = link.maintain()?;
-                Ok(true)
-            }
-            PushOutcome::Refused => Err(refused(link)),
-            PushOutcome::Uncertain => Err(Error::RemoteUnreachable(format!(
-                "the push did not complete; nothing was lost, run sync again once the cause is \
-                 fixed: {}",
-                link.last_error
-            ))),
-            PushOutcome::Rejected => Ok(false), // another machine pushed first: merge again
-        }
-    })
 }
 
 /// A URL-derived id that finds this checkout's own origin already holding a tracker under another
