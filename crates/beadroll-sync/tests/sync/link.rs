@@ -2,7 +2,7 @@
 //! it, killed and reaped, on every path out, an error's included.
 
 use beadroll_store::{Endpoint, REMOTE_REF};
-use beadroll_sync::{Link, synchronise};
+use beadroll_sync::{Error, Link, PublishMode, PushOutcome, locked, synchronise};
 use beadroll_test_support::Machine;
 use rustix::io::Errno;
 use rustix::process::{WaitOptions, wait};
@@ -78,4 +78,45 @@ fn fetched_heads_are_kept_and_temporary_refs_removed_even_after_a_failed_transac
     );
     std::fs::remove_file(lock).expect("unblock bookkeeping");
     assert!(link.fetch().expect("a fresh ref writer").is_some());
+}
+
+/// Replacing the repository must end every old helper even while the Link remains alive. The
+/// same Link can then fetch and publish through new helpers without retaining children or FDs.
+#[test]
+fn rebuilding_a_live_link_ends_its_helpers_and_it_can_publish_again() {
+    let sandbox = sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    a.bead(["create", "x"]);
+    let ws = workspace(&a, sandbox.origin(), &[]);
+    let mut link = Link::new(&ws, &Endpoint::at(sandbox.origin())).unwrap();
+    let before = open_descriptors();
+    let tip = link.fetch().unwrap();
+    locked(&ws, || -> Result<(), Error> {
+        link.merge(tip.as_deref())?;
+        assert_eq!(
+            link.publish(tip.as_deref(), "sync", &[], PublishMode::Fence)?,
+            PushOutcome::Ok
+        );
+        Ok(())
+    })
+    .unwrap();
+    // Warm the next tree batch as well as the reader, hasher and reused ref writer.
+    let published = link.fetch().unwrap();
+    assert!(matches!(wait(WaitOptions::NOHANG), Ok(None)));
+    locked(&ws, || link.rebuild()).unwrap();
+    let children = wait(WaitOptions::NOHANG);
+    assert!(matches!(children, Err(Errno::CHILD)), "{children:?}");
+    assert_eq!(open_descriptors(), before);
+    let tip = link.fetch().unwrap();
+    assert_eq!(tip, published);
+    locked(&ws, || {
+        link.publish(tip.as_deref(), "sync", &[], PublishMode::Fence)
+    })
+    .unwrap();
+    assert_ne!(link.last_commit, published);
+    drop(link);
+    let children = wait(WaitOptions::NOHANG);
+    assert!(matches!(children, Err(Errno::CHILD)), "{children:?}");
+    assert_eq!(open_descriptors(), before);
 }

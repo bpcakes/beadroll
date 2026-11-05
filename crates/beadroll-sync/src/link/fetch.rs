@@ -12,8 +12,8 @@ use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Value};
 use beadroll_core::text::{repr, str_of, strip};
 use beadroll_git::{
-    Hasher, IoError, Output, StoredFormat, Trees, local_damage, lost_to_other_fetch,
-    remote_lacks_objects, stored_format,
+    IoError, Output, StoredFormat, local_damage, lost_to_other_fetch, remote_lacks_objects,
+    stored_format,
 };
 use beadroll_store::{Failpoints, Fired, hex_token, object_format};
 
@@ -40,12 +40,11 @@ impl Link<'_> {
         }
         // what this fetch brings may be in a pack a `hash-object` or `mktree` started earlier
         // would not see
-        self.hasher = None;
-        self.trees = None;
+        self.helpers.before_fetch();
         self.prepare_repository()?;
         // the reader starts while the fetch runs, ready when it is done: it finds names and
         // objects afresh at each question
-        self.objects.start();
+        self.helpers.objects.start();
         let mut attempt = 1;
         let (proc, mine) = loop {
             // Into a ref of this process's own: git fetch updates its destination only if it still
@@ -67,8 +66,7 @@ impl Link<'_> {
         let nothing = !proc.success() && found_nothing(&proc.stderr);
         if proc.success() || nothing {
             // the writers start once the fetch's pack is in place, ready when the round writes
-            self.hasher = Hasher::start(&self.env).ok();
-            self.trees = Trees::start(&self.env).ok();
+            self.helpers.after_fetch(&self.env);
         }
         if !proc.success() {
             return self.fetch_failed(&proc.stderr);
@@ -125,7 +123,7 @@ impl Link<'_> {
             if !wanted.is_empty() && self.stored_format_differs(&wanted)? {
                 // made in another format it can never exchange objects with the remote; it holds
                 // nothing that is not also in events/ or on the remote, so it is made again
-                self.stop_gits();
+                self.before_replacement();
                 let stale = self
                     .git_dir
                     .with_file_name(format!(".sync.{}.stale", hex_token(32)));

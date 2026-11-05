@@ -12,6 +12,8 @@
 
 mod asked;
 mod fetch;
+mod helpers;
+mod known;
 mod merge;
 mod publish;
 mod read;
@@ -19,15 +21,15 @@ mod write;
 
 pub use publish::PublishMode;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStrExt as _;
 use std::path::PathBuf;
 
 use beadroll_core::json::{Object, Value};
 use beadroll_git::{
-    CountRules, Env, Fact, Hasher, IoError, Objects, Refs, Trees, local_damage, sync_env,
-    transport_config, transport_settings, with_settings,
+    CountRules, Env, Fact, IoError, local_damage, sync_env, transport_config, transport_settings,
+    with_settings,
 };
 use beadroll_store::{
     Endpoint, Memo, Sourced, Workspace, claim_files, dir_entries, has_suffix, hex_token,
@@ -35,6 +37,9 @@ use beadroll_store::{
 };
 
 use crate::error::Error;
+
+use self::helpers::Helpers;
+use self::known::KnownObjects;
 
 /// Whether a remote has its own configured push URL.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -79,25 +84,13 @@ pub struct Link<'a> {
     pub rebuilt: Option<String>,
     /// The commit the last publish left the remote at.
     pub last_commit: Option<String>,
-    /// `cat-file --batch-command` in `sync.git`: every object read.
-    objects: Objects,
-    /// `hash-object --stdin-paths` in `sync.git`, started after a fetch and ended by the next: one
-    /// kept across a fetch would not look in the pack the fetch brought.
-    hasher: Option<Hasher>,
-    /// `mktree --batch` for the next publish's trees, started after a fetch as `hasher` is.
-    trees: Option<Trees>,
-    /// `update-ref --stdin` in `sync.git`, started after the first successful fetch and reused
-    /// after a push, or started before the push when there was no head to fetch.
-    refs: Option<Refs>,
+    /// Independent reader, fetch-writer, publication-batch and ref-writer lifetimes.
+    helpers: Helpers,
     /// What is remembered of the store's journal files: read again by each merge, under the store
     /// lock, added to as files are hashed, counted and written, and written back when it changed.
     memo: Option<Memo>,
-    /// The blobs this link has made in `sync.git` itself since it was made or last set aside.
-    made: HashSet<String>,
-    /// The blob the tree of the last merged tip holds at each path.
-    listed: HashMap<String, String>,
-    /// Subtree objects reachable from the last merged tip, by their full path.
-    listed_trees: HashMap<Vec<u8>, String>,
+    /// Object-presence evidence from this repository and the last merged tip.
+    known: KnownObjects,
     /// The store's journal files this link has handed to `hash-object`, by path, in order: a file
     /// whose remembered blob it could use is not among them.
     pub hashed: Vec<String>,
@@ -175,7 +168,7 @@ impl<'a> Link<'a> {
             name: remote.name.clone(),
             ref_name,
             git_dir,
-            objects: Objects::new(&env),
+            helpers: Helpers::new(&env),
             env,
             object_format: None,
             last_error: String::new(),
@@ -185,13 +178,8 @@ impl<'a> Link<'a> {
             confirmed_events: Vec::new(),
             rebuilt: None,
             last_commit: None,
-            hasher: None,
-            trees: None,
-            refs: None,
             memo: None,
-            made: HashSet::new(),
-            listed: HashMap::new(),
-            listed_trees: HashMap::new(),
+            known: KnownObjects::default(),
             hashed: Vec::new(),
             reused_trees: Vec::new(),
             merged: None,
@@ -266,15 +254,10 @@ impl<'a> Link<'a> {
 
     /// Ends the gits this link keeps in `sync.git`, and forgets which blobs it holds and the memo
     /// kept there: it is being set aside.
-    fn stop_gits(&mut self) {
-        self.objects.stop();
-        self.hasher = None;
-        self.trees = None;
-        self.refs = None;
+    fn before_replacement(&mut self) {
+        self.helpers.stop();
         self.memo = None;
-        self.made.clear();
-        self.listed.clear();
-        self.listed_trees.clear();
+        self.known.before_replacement();
     }
 
     /// What is remembered of the store's journal files, read when first needed.
@@ -286,7 +269,7 @@ impl<'a> Link<'a> {
     /// Forgets every blob remembered and made: each file is hashed again when next needed.
     fn forget_blobs(&mut self) {
         self.memo().forget_blobs();
-        self.made.clear();
+        self.known.forget_made();
     }
 
     /// Writes the memo back if it changed. Lock held.
@@ -299,7 +282,7 @@ impl<'a> Link<'a> {
     /// `sync.git` is a cache of what the remote holds and of `events/`: a damaged one is set aside,
     /// kept for a look, and made again by the next fetch. Lock held.
     pub fn rebuild(&mut self) -> Result<(), Error> {
-        self.stop_gits();
+        self.before_replacement();
         let aside = self.git_dir.with_file_name(format!(
             "sync.git.damaged-{}",
             self.ws.settings.clock.now_ns()
@@ -340,7 +323,7 @@ impl<'a> Link<'a> {
             "-q".as_ref(),
         ])?;
         self.run(&[OsStr::new("prune"), "--expire=1.hour.ago".as_ref()])?;
-        self.made.clear();
+        self.known.forget_made();
         Ok(true)
     }
 

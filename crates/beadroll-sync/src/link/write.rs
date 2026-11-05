@@ -7,10 +7,11 @@ use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
 use std::path::{Path, PathBuf};
 
-use beadroll_git::{Hasher, NoAnswer, Refs, Trees};
+use beadroll_git::NoAnswer;
 use beadroll_store::{FileKey, Memo, REMOTE_REF, claim_files, claim_keys, relative, segment_files};
 
 use super::Link;
+use super::helpers::TreeBatch;
 use crate::error::Error;
 
 /// What local journal blob names are needed for.
@@ -51,11 +52,7 @@ impl Link<'_> {
             let remembered = key
                 .as_ref()
                 .and_then(|key| memo.blob(name, key))
-                .filter(|blob| {
-                    !for_tree
-                        || self.made.contains(*blob)
-                        || self.listed.get(name).is_some_and(|listed| listed == blob)
-                });
+                .filter(|blob| !for_tree || self.known.contains_blob(name, blob));
             match remembered {
                 Some(blob) => {
                     blobs.insert(name.clone(), blob.to_owned());
@@ -73,7 +70,7 @@ impl Link<'_> {
             if let Some(key) = key {
                 self.memo().hashed(name, key, &sha);
             }
-            self.made.insert(sha.clone());
+            self.known.made_blob(sha.clone());
             blobs.insert(name.clone(), sha);
         }
         Ok(blobs)
@@ -82,10 +79,9 @@ impl Link<'_> {
     /// Blobs for `paths`, in order, through persistent hash-object or standalone fallback.
     /// Failures may indicate local damage.
     fn hash_files(&mut self, paths: &[&Path]) -> Result<Vec<String>, Error> {
-        match self.hasher().and_then(|hasher| hasher.hash(paths)) {
+        match self.helpers.hash(&self.env, paths) {
             Ok(shas) => Ok(shas),
             Err(NoAnswer) => {
-                self.hasher = None;
                 let mut input = Vec::new();
                 for path in paths {
                     input.extend_from_slice(path.as_os_str().as_bytes());
@@ -100,25 +96,12 @@ impl Link<'_> {
 
     /// Writes `data` as a blob using hash-object -w --stdin. Failure may indicate local damage.
     pub(super) fn blob_of(&mut self, data: Vec<u8>) -> Result<String, Error> {
-        let tmp = self.env.tmp().to_path_buf();
-        match self
-            .hasher()
-            .and_then(|hasher| hasher.hash_data(&data, &tmp))
-        {
+        match self.helpers.hash_data(&self.env, &data) {
             Ok(sha) => Ok(sha),
             Err(NoAnswer) => {
-                self.hasher = None;
                 let args = ["hash-object", "-w", "--stdin"].map(OsStr::new);
                 self.git(&args, Some(data))
             }
-        }
-    }
-
-    /// The link's `hash-object`, started when first needed after a fetch.
-    fn hasher(&mut self) -> Result<&mut Hasher, NoAnswer> {
-        match &mut self.hasher {
-            Some(hasher) => Ok(hasher),
-            slot @ None => Ok(slot.insert(Hasher::start(&self.env)?)),
         }
     }
 
@@ -126,14 +109,11 @@ impl Link<'_> {
     /// available. Failure may indicate local damage.
     pub(super) fn make_tree(
         &self,
-        trees: &mut Option<Trees>,
+        trees: &mut TreeBatch,
         entries: String,
     ) -> Result<String, Error> {
-        if let Some(batch) = trees {
-            match batch.make(entries.as_bytes()) {
-                Ok(tree) => return Ok(tree),
-                Err(NoAnswer) => *trees = None,
-            }
+        if let Ok(tree) = trees.make(entries.as_bytes()) {
+            return Ok(tree);
         }
         self.git(&[OsStr::new("mktree")], Some(entries.into_bytes()))
     }
@@ -162,9 +142,7 @@ impl Link<'_> {
     /// Starts the link's `update-ref` if the fetch did not, once a publish knows it will push:
     /// it is ready when the push is done.
     pub(super) fn ready_refs(&mut self) {
-        if self.refs.is_none() {
-            self.refs = Refs::start(&self.env).ok();
-        }
+        self.helpers.ready_refs(&self.env);
     }
 
     /// Updates refs/beads/remote to the accepted commit. Failure may indicate local damage.
@@ -182,14 +160,6 @@ impl Link<'_> {
     /// `commands` as one transaction of the link's `update-ref`, started when first needed;
     /// one that does not go through ends it.
     fn transaction(&mut self, commands: &[String]) -> Result<(), NoAnswer> {
-        let refs = match &mut self.refs {
-            Some(refs) => refs,
-            slot @ None => slot.insert(Refs::start(&self.env)?),
-        };
-        let applied = refs.apply(commands);
-        if applied.is_err() {
-            self.refs = None;
-        }
-        applied
+        self.helpers.transaction(&self.env, commands)
     }
 }

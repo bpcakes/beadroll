@@ -1668,6 +1668,19 @@ These were decided deliberately. Report problems *with* them, not their existenc
   retirement, maintenance and metadata retain their order, public APIs and format-1 bytes unchanged.
   Fault tests cover progress before rebuild, a second damage error, and adoption after recovery;
   the existing protocol tests cover contention exhaustion, refusal, fencing and lost replies.
+- Link helper lifetimes and object-presence evidence have separate owners (roll-8r2b).
+  `link/helpers.rs` keeps hash and ref writers either running or needing a start; a failed answer
+  ends that process before the standalone fallback, with a new start allowed on the next request.
+  A publication owns its `TreeBatch`, whose failed state stays on standalone mktree until the
+  existing rehash retry or the next publication. Fetch ends hash and tree writers before preparing
+  the repository and warms them after a successful or missing-head fetch; the reader and ref
+  writer retain their lifetimes across fetches. Repository replacement stops every helper before
+  renaming, on failure too. `link/known.rs` owns created-blob and merged-tree evidence: merge
+  clears the previous listing, rehash clears created blobs and subtree candidates, maintenance
+  clears created blobs, and repository replacement clears all evidence. These transitions retain
+  operation order, fallback commands, error classification, public APIs and published bytes.
+  Tests check helper cleanup while the link remains alive and publication into a rebuilt repository
+  with no fetched head, alongside the existing ref failure, tree reuse, prune and format tests.
 - A push's outcome is git's own status line (`--porcelain`); a `[remote rejected]` that is the
   remote's verdict (a hook, a rule) is `REMOTE_REFUSED` and is not retried; one the remote could not
   take (`unpacker error`, `missing necessary objects`) is retried after a fresh fetch; a

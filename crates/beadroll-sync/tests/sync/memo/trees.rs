@@ -213,3 +213,46 @@ fn a_missing_reused_tree_is_rebuilt_from_local_files() {
     .unwrap();
     assert_eq!(quiet.tree, rebuilt_tree(&ws, origin));
 }
+
+/// A rebuilt repository cannot reuse evidence from the old one, even if the journal memo still
+/// vouches for every file. With no fetched head, publication must make all local objects anew.
+#[test]
+fn a_rebuild_forgets_created_blobs_and_merged_subtrees() {
+    let sandbox = sandbox();
+    let origin = sandbox.origin();
+    let (a, ws, key, _b) = set_up(&sandbox);
+    claim_command(&ws, &actor(&a), &key).unwrap();
+    comment(&ws, &a, &key, "only in the old cache");
+    let mut link = Link::new(&ws, &Endpoint::at(origin)).unwrap();
+    let tip = link.fetch().unwrap();
+    locked(&ws, || link.merge(tip.as_deref())).unwrap();
+    assert!(!link.hashed.is_empty(), "the old cache made local blobs");
+    memo_time(&ws, Duration::from_secs(60), TimeDirection::Later);
+    let already_hashed = link.hashed.len();
+    locked(&ws, || link.rebuild()).unwrap();
+    git(
+        [
+            "--git-dir",
+            origin.to_str().unwrap(),
+            "update-ref",
+            "-d",
+            &link.ref_name,
+        ],
+        None,
+    );
+    assert_eq!(link.fetch().unwrap(), None);
+    let result = locked(&ws, || {
+        link.publish(None, "sync", &[], PublishMode::IfChanged)
+    })
+    .unwrap();
+    assert_eq!(result, PushOutcome::Ok);
+    assert_eq!(&link.hashed[already_hashed..], journal_files(&ws));
+    assert!(link.reused_trees.is_empty());
+    let commit = link.last_commit.as_ref().unwrap();
+    let tree = link
+        .env
+        .git(["rev-parse", &format!("{commit}^{{tree}}")])
+        .string()
+        .unwrap();
+    assert_eq!(tree, rebuilt_tree(&ws, origin));
+}

@@ -7,12 +7,13 @@ use std::ffi::OsStr;
 use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_git::KillScope;
-use beadroll_git::{PushOutcome, Trees, blob_tree_id, push_outcome};
+use beadroll_git::{PushOutcome, blob_tree_id, push_outcome};
 use beadroll_store::{
     Fired, attempt_path, encode_events, hex_token, relative, repair_tail, segment_files,
 };
 
 use super::Link;
+use super::helpers::TreeBatch;
 use crate::error::Error;
 use crate::link::write::BlobUse;
 
@@ -34,7 +35,7 @@ impl Link<'_> {
     /// by one `mktree --batch`: the one the last fetch started, or one started now, ready when the
     /// blobs are.
     fn tree(&mut self, pending: &[Value]) -> Result<String, Error> {
-        let mut trees = self.trees.take().or_else(|| Trees::start(&self.env).ok());
+        let mut trees = self.helpers.trees(&self.env);
         for path in segment_files(self.ws)? {
             repair_tail(self.ws, &path)?;
         }
@@ -49,11 +50,9 @@ impl Link<'_> {
                     && !matches!(error, Error::SyncRepoDamaged(_)) =>
             {
                 self.forget_blobs();
-                self.listed_trees.clear();
+                self.known.forget_trees();
                 let (blobs, _) = self.blobs(pending)?;
-                if trees.is_none() {
-                    trees = Trees::start(&self.env).ok();
-                }
+                trees.retry(&self.env);
                 self.events_tree(&mut trees, &blobs)?
             }
             built => built?,
@@ -87,7 +86,7 @@ impl Link<'_> {
     /// The tree of `events/` that `blobs` make, by path in the store.
     fn events_tree(
         &mut self,
-        trees: &mut Option<Trees>,
+        trees: &mut TreeBatch,
         blobs: &BTreeMap<String, String>,
     ) -> Result<String, Error> {
         let mut folders: BTreeMap<&str, BTreeMap<&str, BlobEntries<'_>>> = BTreeMap::new();
@@ -107,8 +106,8 @@ impl Link<'_> {
             if let Some(claims) = groups.get("claims") {
                 let path = format!("events/{replica}/claims");
                 let known = self
-                    .listed_trees
-                    .get(path.as_bytes())
+                    .known
+                    .tree(path.as_bytes())
                     .filter(|oid| blob_tree_id(claims, oid.len()).as_ref() == Some(oid));
                 let tree = if let Some(oid) = known {
                     self.reused_trees.push(path);
