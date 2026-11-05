@@ -5,7 +5,9 @@
 
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
-use beadroll_sync::{Error, Tx, locked, writing, writing_spent};
+use beadroll_sync::{
+    Error, NetworkMode, Tx, locked, publish_soon, writing, writing_spent, writing_state,
+};
 use beadroll_test_support::Machine;
 
 use crate::support::{actor, comments, sandbox, text, workspace};
@@ -112,4 +114,44 @@ fn a_write_hands_over_its_transaction_where_it_is_asked_to() {
     assert!(writing_spent(&ws, &actor, failing).is_err());
     assert!(writing(&ws, &actor, failing).is_err());
     assert_eq!(comments(&a.show(&key)), ["kept", "freed"]);
+}
+
+/// Returning the state happens after the write drains the emitted records. Both incremental
+/// application and first-record replay must retain the final view through that handoff.
+#[test]
+fn a_written_state_survives_draining_and_publication_preserves_commitment() {
+    let sandbox = sandbox();
+    let (a, b) = (Machine::new(&sandbox, "a"), Machine::new(&sandbox, "b"));
+    a.bead(["init", "--prefix", "ex"]);
+    let key = text(&a.bead(["create", "x"]).expect("an issue")["id"]);
+    for machine in [&a, &b] {
+        machine.bead(["sync"]);
+        let ws = workspace(machine, sandbox.origin(), &[]);
+        let actor = actor(machine);
+        assert!(!ws.committed());
+        assert!(!ws.wrote());
+        let failed = writing(&ws, &actor, |tx| -> Result<(), Error> {
+            comment_on(&key, "discarded")(tx)?;
+            Err(Error::Validation("refused".to_owned()))
+        });
+        assert!(failed.is_err());
+        assert!(!ws.committed(), "a failed body has no durable effect");
+        assert!(!ws.wrote());
+
+        let (said, state) = writing_state(&ws, &actor, |tx| -> Result<String, Error> {
+            let uid = tx.state()?.resolve(&key).expect("the issue").uid();
+            tx.emit("set", Some(&uid.to_string()), titled(machine.name()), None)?;
+            Ok(machine.name().to_owned())
+        })
+        .expect("a write with its state");
+        let state = state.expect("the final view survives draining");
+        assert_eq!(state.resolve(&key).expect("the issue").title(), said);
+        assert!(ws.committed());
+        assert!(ws.wrote());
+        assert_eq!(publish_soon(&ws, NetworkMode::Online, None), None);
+        assert!(!ws.wrote(), "publication clears the scheduled work");
+        assert!(ws.committed(), "publication cannot undo the durable effect");
+        assert_eq!(machine.show(&key)["title"].as_str(), Some(said.as_str()));
+        assert!(comments(&machine.show(&key)).is_empty());
+    }
 }

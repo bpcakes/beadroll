@@ -18,5 +18,6 @@ mod link;
 mod memo;
 mod protocol;
 mod reads;
+mod receipts;
 mod support;
 mod tx;

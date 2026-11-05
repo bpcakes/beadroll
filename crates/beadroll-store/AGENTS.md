@@ -36,7 +36,8 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   `meta`, the generic compatibility view,
   `save_meta`, `note_sync`, `ref_name`), `stamp`, `relative` and `relative_name` (`relative`
   borrowed from the path when the path is the workspace directory and a UTF-8 name, as the store's
-  listings make them, roll-lqjj.47);
+  listings make them, roll-lqjj.47). Its `CommandState` keeps durable commitment separate from
+  publication scheduling: publishing clears scheduled work without clearing the command's effect;
   `src/workspace/remote.rs`: what a remote given to bead means (`resolve_endpoint`, `endpoint`,
   an `Endpoint` being the URL, whether it is a remote's own push URL and the name it was chosen
   by; `Endpoint::chosen`, the remote as it was chosen, which a store remembers and compares and

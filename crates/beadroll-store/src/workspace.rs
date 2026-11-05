@@ -40,6 +40,42 @@ pub enum PublicationState {
     Unpublished,
 }
 
+/// The command's durable effect is monotone; publication can be scheduled and cleared many
+/// times. In particular, receipt retirement can fail after a commit but before publication is
+/// scheduled. Neither axis can be inferred from the other.
+#[derive(Clone, Copy, Debug)]
+struct CommandState {
+    effect: CommitState,
+    publication: PublicationState,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CommitState {
+    Unchanged,
+    Committed,
+}
+
+impl CommandState {
+    const NEW: Self = Self {
+        effect: CommitState::Unchanged,
+        publication: PublicationState::Published,
+    };
+
+    fn committed(self) -> Self {
+        Self {
+            effect: CommitState::Committed,
+            ..self
+        }
+    }
+
+    fn publication(self, publication: PublicationState) -> Self {
+        Self {
+            publication,
+            ..self
+        }
+    }
+}
+
 /// Whether this process currently holds the store lock.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LockState {
@@ -79,8 +115,7 @@ pub struct Workspace {
     /// The settings it was found with.
     pub settings: Arc<Settings>,
     holding: Cell<bool>,
-    wrote: Cell<bool>,
-    committed: Cell<bool>,
+    command: Cell<CommandState>,
     pub(crate) claims: RefCell<Claims>,
     /// What `meta.json` held when this process last read or wrote it, by that file's identity.
     meta_read: RefCell<Option<(FileKey, MetaRead)>>,
@@ -117,8 +152,7 @@ impl Workspace {
             dir,
             settings,
             holding: Cell::new(false),
-            wrote: Cell::new(false),
-            committed: Cell::new(false),
+            command: Cell::new(CommandState::NEW),
             claims: RefCell::new(Claims::default()),
             meta_read: RefCell::new(None),
         })
@@ -149,26 +183,25 @@ impl Workspace {
 
     /// Whether this process appended events the remote does not have yet.
     pub fn wrote(&self) -> bool {
-        self.wrote.get()
+        self.command.get().publication == PublicationState::Unpublished
     }
 
     /// Records whether this process appended events the remote does not have yet.
     pub fn set_wrote(&self, wrote: PublicationState) {
-        let wrote = matches!(wrote, PublicationState::Unpublished);
-        self.wrote.set(wrote);
+        self.command.set(self.command.get().publication(wrote));
     }
 
     /// Whether this workspace committed a local event or recognized this command's accepted
     /// ownership attempt, including a matching receipt from an earlier invocation.
     /// Publication may clear [`Self::wrote`], but cannot undo that effect of the command.
     pub fn committed(&self) -> bool {
-        self.committed.get()
+        self.command.get().effect == CommitState::Committed
     }
 
     /// Records a successful durable write or this command's accepted receipt, retained for this
     /// workspace's lifetime so later bookkeeping cannot report the committed request as failed.
     pub fn record_commit(&self) {
-        self.committed.set(true);
+        self.command.set(self.command.get().committed());
     }
 
     /// A tracked configuration value that is a string.

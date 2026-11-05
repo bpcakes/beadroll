@@ -17,7 +17,8 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   reads it while it emits, without a copy (roll-lqjj.29). `src/tx/writes.rs`: `locked`, `writing`,
   `writing_state`, which hands back the state a write leaves, `writing_spent`, which hands back
   what its transaction held (`Spent`), for a caller whose process ends with its command to keep
-  (roll-lqjj.42), `forget_receipts` and `drop_pending`.
+  (roll-lqjj.42), and `drop_pending`. `src/tx/materialized.rs` keeps the projection, replay-needed
+  and replayed states mutually exclusive, each cached view with its applied event prefix.
 - `src/link.rs`: `Link` (`unpublished`, `maintain`, `rebuild`) and the gits it keeps in
   `sync.git` (`crates/beadroll-git/AGENTS.md`); `src/link/fetch.rs`: `Link::fetch`, which tries
   again a fetch that lost to another process's fetch of the store; `src/link/asked.rs`: `Link::publishes`, the
@@ -39,9 +40,13 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   attempt files named by their bytes with `relative_name`; roll-lqjj.30 and roll-lqjj.47),
   `pause`, `ROUNDS`.
 - `src/ownership.rs`: `coordinated` (up to 24 rounds of a claim, takeover, release or claiming
-  update), `settle_commands` (receipts), `settle_pending` (fences), `forget`, `Mode`, `Settled`;
+  update), `settle_pending` (fences), `Mode`, `Settled`;
   the failpoint `ownership.before-transaction` sits between a round's merge (and what settles after
-  it) and its transaction, where nothing writes the journal.
+  it) and its transaction, where nothing writes the journal. `src/ownership/attempt.rs` owns the
+  prepared attempt, its publication outcome and the answer recovery retains across rounds.
+- `src/receipts.rs`: `settle_commands`, `forget`, `forget_receipts`; receipt classification and
+  immediate, recognised-retry or deferred retirement. Public compatibility entrypoints retain
+  their signatures; `coordinated` uses the named request result and deferred retirement batch.
 - `src/error.rs`: `Error`, each variant with its code.
 - `tests/sync/`: in-crate protocol tests (`count.rs` and `count_foreign.rs`: the unpublished count
   against a count of the journal the slow way, on one machine and on two, on every path and

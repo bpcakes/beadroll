@@ -235,6 +235,11 @@ fn release_recovers_a_successful_push_with_lost_acknowledgement() {
     assert!(s.a.show(&s.key).get("claim").is_none());
     assert_eq!(pending_ids(&ws), Vec::<String>::new());
     assert!(
+        ws.committed(),
+        "recovering our accepted release records its effect"
+    );
+    assert!(!ws.wrote(), "the recovered release is already published");
+    assert!(
         result.is_ok(),
         "accepted release recovered from remote but command reports {result:?}"
     );

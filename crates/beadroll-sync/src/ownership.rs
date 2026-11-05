@@ -5,25 +5,23 @@
 //! applying twice. Backoff never holds the store lock.
 
 use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
 
-use beadroll_core::code::Code;
 use beadroll_core::json::Value;
 use beadroll_git::PushOutcome;
-use beadroll_store::FileMode;
 use beadroll_store::IdentityMode;
 use beadroll_store::PublicationState;
-use beadroll_store::{
-    Actor, Endpoint, Fired, Workspace, append_events, attempt_path, glob_ending, json_text,
-    load_pending, private_dirs, read, replica_id, write_atomic, write_attempt_file,
-};
+use beadroll_store::{Actor, Endpoint, Workspace, append_events, load_pending, replica_id};
 
 use crate::NetworkMode;
 use crate::PublishMode;
 use crate::error::Error;
 use crate::link::Link;
+use crate::receipts::{Request, RetireAfterSuccess, settle};
 use crate::synchronise::{ROUNDS, conflict_detail, pause, refused};
-use crate::tx::{Tx, confirm_ownership, drop_pending, locked, remove, writing};
+use crate::tx::{Tx, drop_pending, locked, writing};
+
+mod attempt;
+use attempt::{AttemptOutcome, PendingAttempt, Recovery};
 
 /// How an ownership change was made.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -58,65 +56,6 @@ pub enum Settled {
     Unresolved,
 }
 
-/// Examines the actor's receipts under the lock. A matching accepted signature means this request
-/// is already done. Other settled receipts become stale when the new command succeeds. Keep
-/// pending receipts; drop malformed receipts and those older than an accepted attempt by this
-/// actor.
-pub fn settle_commands(
-    ws: &Workspace,
-    replica: &str,
-    actor: &Actor,
-    signature: &str,
-) -> Result<(bool, Vec<PathBuf>), Error> {
-    let mut settled = Vec::new();
-    for receipt in glob_ending(&ws.dir.join("pending"), ".command") {
-        let recorded = read(&receipt).ok().and_then(|data| json_text(&data).ok());
-        let Some(Value::Object(recorded)) = recorded else {
-            // unreadable, or not a receipt bead wrote: it can answer nothing
-            remove(&receipt)?;
-            continue;
-        };
-        // An actor containing invalid UTF-8 cannot have written a receipt.
-        if !actor.writable || recorded.get("actor") != Some(&actor.value) {
-            continue;
-        }
-        if receipt.with_extension("json").exists() {
-            continue; // still pending: nothing to conclude yet
-        }
-        settled.push(receipt);
-    }
-    let claims = ws.events_dir.join(replica).join("claims");
-    let accepted: Vec<&PathBuf> = settled
-        .iter()
-        .filter(|receipt| claims.join(attempt_name(receipt)).exists())
-        .collect();
-    let latest = accepted.last().map(|receipt| receipt.file_name());
-    let (mut done, mut stale) = (false, Vec::new());
-    // named by attempt id (UUIDv7), so in time order
-    for receipt in &settled {
-        if latest.is_some_and(|latest| receipt.file_name() < latest) {
-            // a later command of this actor was accepted: it has moved on
-            remove(receipt)?;
-        } else if accepted.contains(&receipt) && read(receipt)? == signature.as_bytes() {
-            done = true;
-            remove(receipt)?;
-        } else {
-            stale.push(receipt.clone());
-        }
-    }
-    Ok((done, stale))
-}
-
-/// The attempt file a receipt answers for: its name with `.json`.
-fn attempt_name(receipt: &Path) -> PathBuf {
-    PathBuf::from(
-        receipt
-            .with_extension("json")
-            .file_name()
-            .unwrap_or_default(),
-    )
-}
-
 /// Settles unknown local attempts after merging tip has confirmed accepted ones. Fence remaining
 /// attempts, which were absent at tip, with a commit on that head before dropping them, so an
 /// in-flight push cannot land later. Requires the store lock.
@@ -139,11 +78,6 @@ pub fn settle_pending(
         PushOutcome::Rejected => Ok(Settled::Moved),
         PushOutcome::Uncertain => Ok(Settled::Unresolved),
     }
-}
-
-/// Removes these receipts: the actor has moved on from them.
-pub fn forget(receipts: &[PathBuf]) -> Result<(), Error> {
-    receipts.iter().try_for_each(|receipt| remove(receipt))
 }
 
 /// Builds and conditionally publishes an ownership change against the current remote head.
@@ -181,9 +115,9 @@ pub fn coordinated<E: From<Error>>(
         .map_err(|e| E::from(e.into()))?
         .unwrap_or_default();
     // a push of ours that got no answer, with what it answered: it may still have landed
-    let mut receipt: Option<(Vec<Value>, Mode)> = None;
+    let mut recovery = Recovery::Ready;
     // this actor's settled receipts: dropped only once this command has gone through
-    let mut stale: Vec<PathBuf> = Vec::new();
+    let mut stale = RetireAfterSuccess::default();
     // a round's transaction, which holds the store's whole projection: let go of once the round
     // has let go of the lock, as `writing` lets go of its own
     let mut made = None;
@@ -192,20 +126,17 @@ pub fn coordinated<E: From<Error>>(
             // under the lock: ownership is decided against the head as it is now
             let tip = link.fetch()?;
             link.merge(tip.as_deref())?;
-            if let Some((events, answer)) = &receipt
-                && attempt_path(ws, events).exists()
-            {
+            if let Some(answer) = recovery.confirmed(ws)? {
                 // it had landed: the work is done, not to be redone
-                drop_pending(ws, std::slice::from_ref(events))?;
-                forget(&stale)?;
+                stale.retire()?;
                 // The merge confirmed this request without going through confirm_ownership.
                 ws.record_commit();
                 published(ws, &mut link, &remote)?;
-                return Ok(Some(*answer));
+                return Ok(Some(answer));
             }
-            let (done, settled) = settle_commands(ws, &replica, actor, signature)?;
-            stale = settled;
-            if done {
+            let settled = settle(ws, &replica, actor, signature)?;
+            stale = settled.retire;
+            if settled.request == Request::Accepted {
                 // an earlier run of this command was accepted
                 ws.record_commit();
                 published(ws, &mut link, &remote)?;
@@ -224,7 +155,7 @@ pub fn coordinated<E: From<Error>>(
                 Settled::Clear => {}
             }
             // whatever this command had in flight is settled one way or the other
-            receipt = None;
+            recovery = Recovery::Ready;
             // nothing between the merge and here writes the journal, so the projection the merge
             // left is the store's (roll-lqjj.29); `Tx::on` reads the store again if something did
             // (roll-lqjj.37)
@@ -239,23 +170,24 @@ pub fn coordinated<E: From<Error>>(
                 append_events(ws, &tx.replica, pending).map_err(Error::from)?;
             }
             if tx.ownership.is_empty() {
-                forget(&stale)?; // nothing to settle: this command went through
+                stale.retire()?; // nothing to settle: this command went through
                 return Ok(Some(answer));
             }
-            let outcome = publish_attempt(ws, &mut link, tip.as_deref(), &tx.ownership, signature)?;
+            let pending =
+                PendingAttempt::prepare(ws, std::mem::take(&mut tx.ownership), signature, answer)?;
+            let outcome = pending.publish(ws, &mut link, tip.as_deref())?;
             match outcome {
-                PushOutcome::Ok => {
+                AttemptOutcome::Confirmed(answer) => {
                     // this command went through: the actor has moved on from those
-                    forget(&stale)?;
+                    stale.retire()?;
                     published(ws, &mut link, &remote)?;
                     Ok(Some(answer))
                 }
-                PushOutcome::Refused => Err(refused(&link).into()),
+                AttemptOutcome::Refused => Err(refused(&link).into()),
                 // someone else got there first; decide again against the new head
-                PushOutcome::Rejected => Ok(None),
-                PushOutcome::Uncertain => {
-                    // the attempt stays pending; keep its answer in case the push did land
-                    receipt = Some((std::mem::take(&mut tx.ownership), answer));
+                AttemptOutcome::Rejected => Ok(None),
+                AttemptOutcome::Uncertain(pending) => {
+                    recovery = Recovery::Awaiting(pending);
                     Ok(None)
                 }
             }
@@ -279,58 +211,6 @@ pub fn coordinated<E: From<Error>>(
         conflict_detail(&link)
     ))
     .into())
-}
-
-/// Writes the attempt (`events`) as pending, its receipt (`signature`) first, and publishes it on
-/// `tip`. Accepted, it counts here at once; definitely refused or rejected, it is dropped;
-/// uncertain, it stays pending for the next round or `sync` to settle. Lock held.
-fn publish_attempt(
-    ws: &Workspace,
-    link: &mut Link<'_>,
-    tip: Option<&str>,
-    events: &[Value],
-    signature: &str,
-) -> Result<PushOutcome, Error> {
-    let failpoints = &ws.settings.failpoints;
-    let id = events
-        .first()
-        .and_then(|e| e.get("id"))
-        .map(beadroll_core::text::str_of)
-        .unwrap_or_default();
-    let folder = ws.dir.join("pending");
-    private_dirs(&folder)?;
-    // the receipt first
-    write_atomic(
-        &folder.join(format!("{id}.command")),
-        signature.as_bytes(),
-        FileMode::Private,
-        failpoints,
-    )?;
-    write_attempt_file(ws, &folder.join(format!("{id}.json")), events)?;
-    failpoints.hit("ownership.before-publish");
-    failpoints.hit("claim.before-push");
-    let outcome = match link.publish(tip, "claim", events, PublishMode::IfChanged) {
-        Ok(outcome) => outcome,
-        Err(error) if error.code() == Code::RemoteUnreachable => PushOutcome::Uncertain,
-        Err(error) => return Err(error),
-    };
-    let attempt = [events.to_vec()];
-    match outcome {
-        PushOutcome::Ok => {
-            // the remote accepted; the acknowledgement may yet be lost
-            failpoints.hit("ownership.after-publish-ok");
-            confirm_ownership(ws, events)?;
-            if let Some(Fired::Error(code)) = failpoints.hit("ownership.after-confirm") {
-                // confirmed here, its pending twin not yet removed
-                return Err(Error::injected(code, "ownership.after-confirm"));
-            }
-            drop_pending(ws, &attempt)?;
-        }
-        // it definitely did not land: refused, it will not on a retry either
-        PushOutcome::Refused | PushOutcome::Rejected => drop_pending(ws, &attempt)?,
-        PushOutcome::Uncertain => {}
-    }
-    Ok(outcome)
 }
 
 /// Why a round of [`coordinated`] stopped: the protocol's own failure, which one rebuild of a
