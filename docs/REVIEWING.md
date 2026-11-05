@@ -1656,6 +1656,18 @@ These were decided deliberately. Report problems *with* them, not their existenc
   The transaction tests cover both materialization paths and the handoff after draining. Receipt,
   parity and fault tests cover confirmation before cleanup, lost acknowledgements, fencing, failed
   later commands and actor isolation; the CLI count-warning tests retain the commitment contract.
+- Sync round orchestration separates incoming progress from publication outcome (roll-gxa1).
+  `synchronise/round.rs` returns a published result, contention, or an error, keeping the count
+  from a completed merge even when publication later fails. A successful report sums incoming
+  events across rounds and takes outgoing events and maintenance from the successful round.
+  The controller names rebuild, adoption consideration and stop decisions; its rebuild allowance
+  is independent of `Link::rebuilt`, which supplies the report's path. Contention waits outside
+  the lock; rebuilding runs under the lock and consumes a round without backoff. Only the first
+  round may adopt another workspace, restarting the exchange there as before. Exhaustion after
+  24 rounds remains `SYNC_CONFLICT`, including a rebuild in the last round. Publication, pending
+  retirement, maintenance and metadata retain their order, public APIs and format-1 bytes unchanged.
+  Fault tests cover progress before rebuild, a second damage error, and adoption after recovery;
+  the existing protocol tests cover contention exhaustion, refusal, fencing and lost replies.
 - A push's outcome is git's own status line (`--porcelain`); a `[remote rejected]` that is the
   remote's verdict (a hook, a rule) is `REMOTE_REFUSED` and is not retried; one the remote could not
   take (`unpacker error`, `missing necessary objects`) is retried after a fresh fetch; a

@@ -38,7 +38,8 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   two halves, `destination`, where a write would go, and `publish_soon_at`; roll-lqjj.50),
   `unpublished_count` (the memo's segment entries alone, `meta.json` as the command read it, the
   attempt files named by their bytes with `relative_name`; roll-lqjj.30 and roll-lqjj.47),
-  `pause`, `ROUNDS`.
+  `pause`, `ROUNDS`. `src/synchronise/round.rs` returns each round's incoming progress beside
+  its publication or contention outcome, even on failure, and names the recovery decisions.
 - `src/ownership.rs`: `coordinated` (up to 24 rounds of a claim, takeover, release or claiming
   update), `settle_pending` (fences), `Mode`, `Settled`;
   the failpoint `ownership.before-transaction` sits between a round's merge (and what settles after
@@ -72,6 +73,10 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
 - Up to 24 rounds per command, with a uniformly sampled pause from zero up to
   `min(0.1 × 2^(attempt − 1), 2)` seconds after a failed round, outside the store lock
   (roll-lqjj.7; `docs/REVIEWING.md` §2).
+- Sync retries contention after releasing the lock; a damaged round spends its single rebuild
+  allowance under the lock and proceeds without backoff. Adoption is considered only on round
+  one. Incoming counts survive a failed publication and rebuild; outgoing counts and maintenance
+  come from the successful round. The rebuild allowance is independent of the path in the report.
 - The protocol depends on fetch, read-tree and push, never on `sync.git`'s internals
   (`docs/REVIEWING.md` §2); a
   `Remote` trait waits for its second implementation.
