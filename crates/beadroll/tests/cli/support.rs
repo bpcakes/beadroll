@@ -18,15 +18,20 @@ fn machines_run_bead_under_test_or_else_the_binary_cargo_built() {
 #[test]
 fn a_machine_with_its_own_binary_runs_it_beside_the_others() {
     let sandbox = crate::sandbox();
-    // A stand-in that shows it ran: echo prints its arguments.
-    let own = sandbox.root().join("own-bead");
+    // Keep the utility name: multicall coreutils selects echo from argv[0].
+    let own = sandbox.root().join("echo");
     std::os::unix::fs::symlink("/bin/echo", &own).unwrap();
     let usual = Machine::new(&sandbox, "usual");
     let other = Machine::new(&sandbox, "other").with_bead(&own);
     assert_eq!(other.executable(), own);
     assert_eq!(usual.executable(), sandbox.bead());
     let run = other.run(["show", "ex-1"]);
-    assert_eq!((run.returncode(), run.stdout.as_str()), (0, "show ex-1\n"));
+    assert_eq!(
+        (run.returncode(), run.stdout.as_str()),
+        (0, "show ex-1\n"),
+        "{}",
+        run.stderr
+    );
 }
 
 #[test]

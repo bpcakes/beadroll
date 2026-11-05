@@ -2326,6 +2326,11 @@ These were decided deliberately. Report problems *with* them, not their existenc
   roll-k2wy.15), so none of its builds needs credentials. `infra/` stays stdlib Python driving any
   `bead`, until there is a reason to move it into xtask.
 
+- A test executable that symlinks a system utility keeps that utility's basename. Multicall
+  coreutils dispatches by `argv[0]`: an `echo` symlink named `own-bead` fails on the Ubuntu 26.04
+  CI image. The executable-selection test still uses its own sandbox path, named `echo`, to
+  verify the machine override (roll-jg0k.1).
+
 Decisions that changed while building, each with its reason:
 
 | First design | Now | Why |
