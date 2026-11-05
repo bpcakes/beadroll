@@ -103,8 +103,7 @@ impl Link<'_> {
         self.confirmed_events.clear();
         // the memo as it is now: another bead process may have written it since this link last did
         self.memo = Some(Memo::load(self.ws));
-        self.listed.clear();
-        self.listed_trees.clear();
+        self.known.before_merge();
         let mut pulled: i64 = 0;
         for path in segment_files(self.ws)? {
             repair_tail(self.ws, &path)?;
@@ -128,7 +127,7 @@ impl Link<'_> {
                 let Ok(path) = String::from_utf8(path) else {
                     continue; // a name no bead writes
                 };
-                self.listed.insert(path.clone(), sha.clone());
+                self.known.listed_blob(path.clone(), sha.clone());
                 if attempt_shaped(&path) {
                     if self.merge_attempt(tip, &path, &sha, &local, &pending)? {
                         pulled += 1;

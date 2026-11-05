@@ -22,7 +22,7 @@ use crate::error::Error;
 impl Link<'_> {
     /// The commit named by fetch ref `mine`. A failed rev-parse may indicate local damage.
     pub(super) fn fetched_tip(&mut self, mine: &str) -> Result<String, Error> {
-        match self.objects.name(mine) {
+        match self.helpers.objects.name(mine) {
             Ok(tip) => Ok(tip),
             Err(_) => self.git(&[OsStr::new("rev-parse"), mine.as_ref()], None),
         }
@@ -34,7 +34,7 @@ impl Link<'_> {
     /// damage ([`Link::lost`]).
     pub(super) fn manifest(&mut self, tip: &str) -> Result<Option<Vec<u8>>, Error> {
         let name = format!("{tip}:manifest.json");
-        if let Ok(object) = self.objects.get(&name)
+        if let Ok(object) = self.helpers.objects.get(&name)
             && object.kind == "blob"
         {
             return Ok(Some(object.data));
@@ -168,10 +168,10 @@ impl Link<'_> {
     /// Nontree entries under `tip`, with path and object name in git's ls-tree order. Failure
     /// returns GIT_ERROR, or local damage when a tree of the tip is missing or damaged here.
     pub(super) fn listing(&mut self, tip: &str) -> Result<Vec<(Vec<u8>, String)>, Error> {
-        if let Ok(commit) = self.objects.get(tip)
-            && let Ok(listing) = list_tree_with_subtrees(&mut self.objects, &commit)
+        if let Ok(commit) = self.helpers.objects.get(tip)
+            && let Ok(listing) = list_tree_with_subtrees(&mut self.helpers.objects, &commit)
         {
-            self.listed_trees = listing.subtrees;
+            self.known.listed_trees(listing.subtrees);
             return Ok(listing.files);
         }
         // Include trees, even empty ones: ls-tree accepts a subtree holding another tree's bytes.
@@ -207,7 +207,7 @@ impl Link<'_> {
     /// complete. This runs only when the in-process listing could not answer; healthy syncs hash
     /// the bytes they already read without starting any extra git.
     fn verify_tree(&mut self, tip: &str, sha: &str) -> Result<(), Error> {
-        let object = match self.objects.get(sha) {
+        let object = match self.helpers.objects.get(sha) {
             Ok(object) => object,
             Err(_) => {
                 let args = ["cat-file", "tree", sha].map(OsStr::new);
@@ -231,7 +231,7 @@ impl Link<'_> {
     /// The blob named by `sha`, which the fetched `tip` holds; failure returns GIT_ERROR, or local
     /// damage when it is unreadable here or an object of the tip is missing or damaged here.
     pub(super) fn blob(&mut self, tip: &str, sha: &str) -> Result<Vec<u8>, Error> {
-        if let Ok(object) = self.objects.get(sha)
+        if let Ok(object) = self.helpers.objects.get(sha)
             && object.kind == "blob"
         {
             return Ok(object.data);
@@ -246,8 +246,8 @@ impl Link<'_> {
 
     /// The tree of commit `tip`. A failed lookup may indicate local damage.
     pub(super) fn tip_tree(&mut self, tip: &str) -> Result<String, Error> {
-        if let Ok(commit) = self.objects.get(tip)
-            && let Ok(tree) = root_tree(&mut self.objects, &commit)
+        if let Ok(commit) = self.helpers.objects.get(tip)
+            && let Ok(tree) = root_tree(&mut self.helpers.objects, &commit)
         {
             return Ok(tree.oid);
         }

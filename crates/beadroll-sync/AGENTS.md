@@ -34,6 +34,9 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   identity its locked phase took of it (`beadroll_store::claim_keys`, roll-lqjj.30); `Link::hashed`
   lists them (roll-lqjj.1); `Link::unpublished` and `Link::published_counts` take a segment's
   lines from the memo while the segment is unchanged.
+- `src/link/helpers.rs`: the reader, restartable hash/ref writers and publication-owned tree
+  batches, with fetch and repository replacement boundaries. `src/link/known.rs`: object-presence
+  evidence and its invalidation by merge, rehash, maintenance and repository replacement.
 - `src/synchronise.rs`: `synchronise` and `Synced`, `adopt_published`, `publish_soon` (and its
   two halves, `destination`, where a write would go, and `publish_soon_at`; roll-lqjj.50),
   `unpublished_count` (the memo's segment entries alone, `meta.json` as the command read it, the
@@ -100,6 +103,9 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   tree. Its `cat-file` starts before a fetch, its `hash-object` and `mktree` after it, its
   `update-ref` after a successful fetch (before `commit-tree` if no head was fetched), and all
   end with the link or when `sync.git` is set aside (`rebuild`, a stale format).
+  Hash and ref writers that cannot answer restart on their next request; a failed tree batch
+  stays on standalone mktree for the rest of that publication unless the rehash fallback explicitly
+  retries it. Ending helpers happens before a repository rename, including one that fails.
 - One `update-ref` transaction keeps the fetched head in `refs/beads/remote` and deletes the
   fetch's private ref, reusing that git after a push (roll-dih8.14). A failed transaction falls
   back to the established separate calls. Deleting the private ref can race another fetch's
