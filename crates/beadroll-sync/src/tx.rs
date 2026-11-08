@@ -2,12 +2,15 @@
 //! and what it emits are here; the store lock and the writes that run a body in one, with what they
 //! hand back of it, are in `tx/writes.rs`.
 
+mod attempt;
 mod materialized;
 mod prepared;
 mod writes;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+pub(crate) use tests::DropProbe;
 
 use beadroll_core::event::{FORMAT, MAX_NESTING, event_problem, payload_problem, write_problem};
 use beadroll_core::id::EventId;
@@ -20,6 +23,8 @@ use beadroll_store::{
 };
 
 use crate::error::Error;
+pub use attempt::Attempt;
+use attempt::Route;
 use materialized::Materialized;
 
 pub use writes::{
@@ -31,7 +36,7 @@ pub const OWNERSHIP: [&str; 2] = ["claim", "release"];
 
 /// One locked read-modify-append on this machine's own journal. Sequential events go to the
 /// journal. Ownership events (`claim`, `release`) form an attempt that is settled with the remote
-/// as one unit, and so does anything emitted after them with `conditional` set: an edit made
+/// as one unit, and so does anything emitted through [`Tx::attempt`]: an edit made
 /// together with a claim lands with the claim or not at all.
 #[derive(Debug)]
 pub struct Tx<'a> {
@@ -52,6 +57,7 @@ pub struct Tx<'a> {
     /// The attempt's events emitted, to settle with the remote.
     pub ownership: Vec<Value>,
     /// Whether later events belong to the attempt.
+    /// Compatibility switch for manual routing. Prefer [`Tx::attempt`] for scoped routing.
     pub conditional: bool,
     /// Whether the actor's text can be written ([`Actor::writable`]).
     writable: bool,
@@ -130,7 +136,11 @@ impl<'a> Tx<'a> {
             emitted: &mut self.emitted,
             place: &self.place,
             ownership: &mut self.ownership,
-            conditional: self.conditional,
+            route: if self.conditional {
+                Route::Attempt
+            } else {
+                Route::Journal
+            },
             writable: self.writable,
         }
     }
@@ -163,7 +173,11 @@ impl<'a> Tx<'a> {
             emitted,
             place,
             ownership,
-            conditional: *conditional,
+            route: if *conditional {
+                Route::Attempt
+            } else {
+                Route::Journal
+            },
             writable: *writable,
         };
         Ok((state, emitter))
@@ -189,6 +203,13 @@ pub struct Spent {
 }
 
 impl Spent {
+    /// Keep a completed view alive without exposing it as a source for another operation.
+    pub(crate) fn from_projection(projection: Projection) -> Self {
+        Self {
+            materialized: Materialized::projected(projection),
+        }
+    }
+
     /// Whether it holds nothing: the transaction had let go of its projection and had not
     /// replayed the journal.
     pub fn is_empty(&self) -> bool {
@@ -206,7 +227,7 @@ pub struct Emitter<'t> {
     emitted: &'t mut Vec<Record>,
     place: &'t Option<Value>,
     ownership: &'t mut Vec<Value>,
-    conditional: bool,
+    route: Route,
     writable: bool,
 }
 
@@ -258,7 +279,7 @@ impl Emitter<'_> {
             // Invalid UTF-8 actor text cannot be encoded in an event.
             return Err(Error::Validation("text is not valid UTF-8".to_owned()));
         }
-        let sequenced = !(OWNERSHIP.contains(&op) || self.conditional);
+        let sequenced = !OWNERSHIP.contains(&op) && self.route == Route::Journal;
         if !sequenced {
             self.ownership.push(event.clone());
         }

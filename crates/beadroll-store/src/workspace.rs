@@ -1,5 +1,6 @@
 //! One tracker's store on this machine, its checkout configuration and coordination remote.
 
+mod lock;
 mod remote;
 
 use std::borrow::Cow;
@@ -19,6 +20,7 @@ use crate::listing::Claims;
 use crate::memo::FileKey;
 use crate::settings::Settings;
 
+pub use lock::WorkspaceLock;
 pub use remote::{Endpoint, RemoteSource};
 pub(crate) use remote::{configured_url, listed_url};
 
@@ -165,7 +167,8 @@ impl Workspace {
 
     /// Records whether this process holds the store lock. A new locked or unlocked phase lists
     /// attempts afresh and stats each again: another command may write while a sync fetches
-    /// outside the lock.
+    /// outside the lock. Prefer [`Workspace::lock`], which pairs this phase with the file lock.
+    /// This setter remains for callers that manage their own lock.
     pub fn set_holding(&self, holding: LockState) {
         let holding = matches!(holding, LockState::Locked);
         if self.holding.replace(holding) != holding {

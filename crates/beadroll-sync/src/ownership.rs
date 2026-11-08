@@ -97,18 +97,9 @@ pub fn coordinated<E: From<Error>>(
     signature: &str,
     mut build: impl FnMut(&mut Tx<'_>, Mode) -> Result<Mode, E>,
 ) -> Result<Mode, E> {
-    let remote = ws.endpoint(remote).map_err(|e| E::from(e.into()))?;
-    let remote = remote.filter(|remote| !remote.url.is_empty());
-    let remote = match remote {
-        Some(remote) if network_mode == NetworkMode::Online => remote,
-        known => {
-            let mode = if known.is_some() {
-                Mode::Offline
-            } else {
-                Mode::Local
-            };
-            return writing(ws, actor, |tx| build(tx, mode));
-        }
+    let remote = match connection(ws, network_mode, remote).map_err(E::from)? {
+        Connection::Remote(remote) => remote,
+        Connection::Local(mode) => return writing(ws, actor, |tx| build(tx, mode)),
     };
     let mut link = Link::new(ws, &remote).map_err(E::from)?;
     let replica = replica_id(&ws.settings, IdentityMode::Create)
@@ -123,30 +114,45 @@ pub fn coordinated<E: From<Error>>(
     let mut spent = Spent::default();
     let mut pending_write = None;
     for attempt in 1..=ROUNDS {
+        let mut unused_merge = None;
         let round = locked(ws, || -> Result<Option<Mode>, Round<E>> {
             // under the lock: ownership is decided against the head as it is now
             let tip = link.fetch()?;
-            link.merge(tip.as_deref())?;
-            if let Some(answer) = recovery.confirmed(ws)? {
-                // it had landed: the work is done, not to be redone
-                stale.retire()?;
-                // The merge confirmed this request without going through confirm_ownership.
-                ws.record_commit();
-                published(ws, &mut link, &remote)?;
-                return Ok(Some(answer));
-            }
-            let settled = settle(ws, &replica, actor, signature)?;
-            stale = settled.retire;
-            if settled.request == Request::Accepted {
-                // an earlier run of this command was accepted
-                ws.record_commit();
-                published(ws, &mut link, &remote)?;
-                return Ok(Some(Mode::Online));
-            }
-            match settle_pending(ws, &mut link, tip.as_deref())? {
-                Settled::Unresolved => return Err(unresolved(&link).into()),
-                Settled::Moved => return Ok(None),
-                Settled::Clear => {}
+            let merged = link.merge_from(tip.as_deref(), crate::synchronise::SyncReport::Skip)?;
+            let before = (|| -> Result<BeforeBuild, Round<E>> {
+                if let Some(answer) = recovery.confirmed(ws)? {
+                    // it had landed: the work is done, not to be redone
+                    stale.retire()?;
+                    // The merge confirmed this request without going through confirm_ownership.
+                    ws.record_commit();
+                    published(ws, &mut link, &remote)?;
+                    return Ok(BeforeBuild::Done(Some(answer)));
+                }
+                let settled = settle(ws, &replica, actor, signature)?;
+                stale = settled.retire;
+                if settled.request == Request::Accepted {
+                    // an earlier run of this command was accepted
+                    ws.record_commit();
+                    published(ws, &mut link, &remote)?;
+                    return Ok(BeforeBuild::Done(Some(Mode::Online)));
+                }
+                match settle_pending(ws, &mut link, tip.as_deref())? {
+                    Settled::Unresolved => return Err(unresolved(&link).into()),
+                    Settled::Moved => return Ok(BeforeBuild::Done(None)),
+                    Settled::Clear => {}
+                }
+                Ok(BeforeBuild::Build)
+            })();
+            match before {
+                Ok(BeforeBuild::Build) => {}
+                Ok(BeforeBuild::Done(answer)) => {
+                    unused_merge = Some(merged);
+                    return Ok(answer);
+                }
+                Err(error) => {
+                    unused_merge = Some(merged);
+                    return Err(error);
+                }
             }
             // whatever this command had in flight is settled one way or the other
             recovery = Recovery::Ready;
@@ -154,10 +160,7 @@ pub fn coordinated<E: From<Error>>(
             // left is the store's (roll-lqjj.29); `Tx::on` reads the store again if something did
             // (roll-lqjj.37)
             ws.settings.failpoints.hit("ownership.before-transaction");
-            let mut tx = match link.merged.take() {
-                Some(merged) => Tx::on(ws, actor, merged)?,
-                None => Tx::new(ws, actor)?,
-            };
+            let mut tx = Tx::on(ws, actor, merged.state)?;
             let built = build(&mut tx, Mode::Online).map_err(Round::Build);
             let (prepared, retained) = tx.prepare();
             spent = retained;
@@ -206,11 +209,7 @@ pub fn coordinated<E: From<Error>>(
         }
         pause(attempt, &ws.settings.failpoints);
     }
-    Err(Error::SyncConflict(format!(
-        "the remote journal kept moving; try again{}",
-        conflict_detail(&link)
-    ))
-    .into())
+    Err(contended(&link).into())
 }
 
 /// Why a round of [`coordinated`] stopped: the protocol's own failure, which one rebuild of a
@@ -218,6 +217,13 @@ pub fn coordinated<E: From<Error>>(
 enum Round<E> {
     Sync(Error),
     Build(E),
+}
+
+fn contended(link: &Link<'_>) -> Error {
+    Error::SyncConflict(format!(
+        "the remote journal kept moving; try again{}",
+        conflict_detail(link)
+    ))
 }
 
 fn unresolved(link: &Link<'_>) -> Error {
@@ -240,4 +246,29 @@ fn published(ws: &Workspace, link: &mut Link<'_>, remote: &Endpoint) -> Result<(
     ws.note_sync(remote, &[("published", Value::from(counts))]);
     ws.set_wrote(PublicationState::Published);
     Ok(())
+}
+
+/// Settlement either allows a fresh transaction or finishes this round (retrying on `None`).
+enum BeforeBuild {
+    Build,
+    Done(Option<Mode>),
+}
+
+/// Whether this request reaches a coordination remote or writes provisionally on this machine.
+enum Connection {
+    Remote(Endpoint),
+    Local(Mode),
+}
+
+fn connection(
+    ws: &Workspace,
+    network_mode: NetworkMode,
+    remote: Option<&OsStr>,
+) -> Result<Connection, Error> {
+    let remote = ws.endpoint(remote)?.filter(|remote| !remote.url.is_empty());
+    Ok(match remote {
+        Some(remote) if network_mode == NetworkMode::Online => Connection::Remote(remote),
+        Some(_) => Connection::Local(Mode::Offline),
+        None => Connection::Local(Mode::Local),
+    })
 }

@@ -1,5 +1,7 @@
 //! Sync recovery keeps progress, spends one rebuild, and stops without retrying other errors.
 
+mod reports;
+
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 use std::process::{Command, Stdio};

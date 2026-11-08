@@ -9,6 +9,10 @@ remote resolution, actor detection, `view`, and the failpoint registry.
 
 ## Key entrypoints
 
+- `src/workspace/lock.rs`: `Workspace::lock` returns a `WorkspaceLock` owning the OS lock and
+  cache phase. Drop invalidates claim identities before releasing the file lock, including unwind.
+  External callers managing their own locks retain the `set_holding` compatibility interface.
+
 - `src/settings.rs`: `Settings` (the variables, the environment git inherits, the working directory,
   the clock; `home()` with the `BEAD_HOME` rules; `checkout` and `fact`: what checkout-side git says
   of the repository, asked once, `crates/beadroll-git/AGENTS.md`), `Clock`, `normalize_path`,

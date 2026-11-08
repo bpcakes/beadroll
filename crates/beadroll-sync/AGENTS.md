@@ -9,6 +9,16 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
 
 ## Key entrypoints
 
+- `src/tx/attempt.rs`: `Tx::attempt` lends an `Attempt` writer that routes edits with the claim
+  without changing the ordinary transaction's mode. `Tx::conditional` remains a compatibility
+  switch. `locked` uses the store's `WorkspaceLock` guard for both the OS lock and cache phase.
+- `src/link/merge.rs`: `Merging` owns incomplete per-round facts; only a successful merge yields
+  `Merged` (checked state, incoming count and report facts). Internal callers consume it; public
+  `Link::merge` retains its count and report-field interface. Rename baseline and recovery remain
+  on the command's link/loop, while the report consumes the successful round's snapshot. The public
+  wrapper keeps only opaque `Spent` until the next merge or link destruction, deferring disposal
+  when its caller keeps the link outside the lock.
+
 - `src/tx/prepared.rs`: consuming `Tx::prepare` separates `PreparedWrite` (events to persist,
   with no emitter or applied prefix) from `Spent` (the retained materialized view). Both local
   and coordinated paths retain these outside the lock on errors as well as success.
@@ -81,6 +91,9 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   Its test-only probe follows the view through preparation; a locked-drop control checks that the
   probe detects the forbidden order. It is attached after the body's final state read, so it does
   not observe replacement during event application.
+  `src/link/merge/drop_tests.rs` observes unused completed merges on failed sync and accepted-receipt
+  exits, with its own locked-drop control. Its test-only observer is scoped to a thread and store;
+  it does not follow a merge's state once moved into `Tx`, which the transaction probes cover.
 - Up to 24 rounds per command, with a uniformly sampled pause from zero up to
   `min(0.1 × 2^(attempt − 1), 2)` seconds after a failed round, outside the store lock
   (roll-lqjj.7; `docs/REVIEWING.md` §2).
@@ -88,6 +101,8 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   allowance under the lock and proceeds without backoff. Adoption is considered only on round
   one. Incoming counts survive a failed publication and rebuild; outgoing counts and maintenance
   come from the successful round. The rebuild allowance is independent of the path in the report.
+  `tests/sync/rounds/reports.rs` gates a rejected push between distinct confirmations: only the
+  final round's confirmation is reported, while incoming events from both rounds are counted.
 - The protocol depends on fetch, read-tree and push, never on `sync.git`'s internals
   (`docs/REVIEWING.md` §2); a
   `Remote` trait waits for its second implementation.
@@ -125,7 +140,7 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
 - A transaction reads where the caller works (`capture_where`) when it starts, under the store
   lock, and an ownership command makes a new one each round: the `where` an
   event records is HEAD as it is then.
-- A round reads the store's state once, by its merge, which keeps it (`Link::merged`, a
+- A round reads the store's state once, by its merge, which returns it (`Merged::state`, a
   `Sourced`: the projection and the journal files it was made from): an ownership round's
   transaction starts from it, and a sync's report is made of the last one. A transaction starts from
   it only while those files are the store's (`Tx::on` asks `Sourced::into_current` and falls back to

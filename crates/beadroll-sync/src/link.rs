@@ -19,6 +19,7 @@ mod publish;
 mod read;
 mod write;
 
+pub(crate) use merge::Merged;
 pub use publish::PublishMode;
 
 use std::collections::HashMap;
@@ -32,11 +33,12 @@ use beadroll_git::{
     with_settings,
 };
 use beadroll_store::{
-    Endpoint, Memo, Sourced, Workspace, claim_files, dir_entries, has_suffix, hex_token,
-    private_dir, relative, segment_files,
+    Endpoint, Memo, Workspace, claim_files, dir_entries, has_suffix, hex_token, private_dir,
+    relative, segment_files,
 };
 
 use crate::error::Error;
+use crate::tx::Spent;
 
 use self::helpers::Helpers;
 use self::known::KnownObjects;
@@ -96,16 +98,12 @@ pub struct Link<'a> {
     pub hashed: Vec<String>,
     /// Unchanged claims directories named directly in publication trees, without mktree input.
     pub reused_trees: Vec<String>,
-    /// The store's projection as the last merge left it, this machine's own chain checked in it,
-    /// with the journal files it was made from: what the round goes on from, so that nothing in it
-    /// reads the projection again (roll-lqjj.29), unless a file was written since
-    /// (`Tx::on`, roll-lqjj.37).
-    pub(crate) merged: Option<Sourced>,
     /// How many keys the store's state had renamed when a merge that was asked to count them
     /// first read it ([`Link::merge_from`]).
     pub(crate) renames_before: Option<usize>,
-    /// Whether the merge under way has written a journal file.
-    wrote: bool,
+    /// The public merge API cannot return its view. Retain only disposable state until the next
+    /// merge or this link's destruction; internal rounds never read or reuse it.
+    retained: Spent,
 }
 
 /// The environment a link to `ws`'s remote runs git in ([`sync_env`], with `GIT_DIR` its
@@ -182,9 +180,8 @@ impl<'a> Link<'a> {
             known: KnownObjects::default(),
             hashed: Vec::new(),
             reused_trees: Vec::new(),
-            merged: None,
             renames_before: None,
-            wrote: false,
+            retained: Spent::default(),
         })
     }
 
@@ -332,19 +329,13 @@ impl<'a> Link<'a> {
     /// only when the memo does not know them.
     pub fn unpublished(&mut self) -> Result<i64, Error> {
         let ws = self.ws;
-        let mut count: i64 = 0;
-        for path in segment_files(ws)? {
-            let name = relative(ws, &path);
-            let lines = self.memo().lines(&name, &path)?;
-            let known = self.remote_counts.get(&name).copied().unwrap_or(0);
-            count += lines as i64 - known as i64;
-        }
-        for path in claim_files(ws)?.iter() {
-            if !self.remote_counts.contains_key(&relative(ws, path)) {
-                count += 1;
-            }
-        }
-        Ok(count)
+        let memo = self.memo.get_or_insert_with(|| Memo::load(ws));
+        count_unpublished(ws, memo, &self.remote_counts)
+    }
+
+    pub(crate) fn unpublished_after(&mut self, merged: &Merged) -> Result<i64, Error> {
+        let ws = self.ws;
+        count_unpublished(ws, self.memo(), &merged.facts.remote_counts)
     }
 
     /// Published counts by path: lines per segment and one per attempt. Use memoized line counts
@@ -367,4 +358,25 @@ impl<'a> Link<'a> {
 /// The number of newline bytes in `data`.
 pub(crate) fn newlines(data: &[u8]) -> usize {
     data.iter().filter(|b| **b == b'\n').count()
+}
+
+/// Counts local records against the remote observed by a particular merge.
+fn count_unpublished(
+    ws: &Workspace,
+    memo: &mut Memo,
+    remote_counts: &HashMap<String, usize>,
+) -> Result<i64, Error> {
+    let mut count: i64 = 0;
+    for path in segment_files(ws)? {
+        let name = relative(ws, &path);
+        let lines = memo.lines(&name, &path)?;
+        let known = remote_counts.get(&name).copied().unwrap_or(0);
+        count += lines as i64 - known as i64;
+    }
+    for path in claim_files(ws)?.iter() {
+        if !remote_counts.contains_key(&relative(ws, path)) {
+            count += 1;
+        }
+    }
+    Ok(count)
 }

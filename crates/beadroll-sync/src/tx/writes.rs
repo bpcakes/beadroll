@@ -1,18 +1,13 @@
 //! The writes that go through a transaction: the store lock, a local write that appends what its
 //! body emitted, and what each hands back of the transaction (nothing, its state, or what it held).
 
-use std::fs::OpenOptions;
-use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::Path;
 
 use beadroll_core::json::Value;
 use beadroll_core::state::State;
 use beadroll_git::IoError;
-use beadroll_store::LockState;
 use beadroll_store::PublicationState;
-use beadroll_store::{
-    Actor, Workspace, attempt_path, private_dir, private_dirs, write_attempt_file,
-};
+use beadroll_store::{Actor, Workspace, attempt_path, write_attempt_file};
 
 use super::{Spent, Tx};
 use crate::error::Error;
@@ -33,29 +28,8 @@ pub fn locked<T, E: From<Error>>(
     ws: &Workspace,
     body: impl FnOnce() -> Result<T, E>,
 ) -> Result<T, E> {
-    let lock = take_lock(ws).map_err(E::from)?;
-    ws.set_holding(LockState::Locked);
-    let result = body();
-    ws.set_holding(LockState::Unlocked);
-    drop(lock);
-    result
-}
-
-/// The store's lock file, held exclusively, the store's directories made private first.
-fn take_lock(ws: &Workspace) -> Result<std::fs::File, Error> {
-    private_dir(&ws.settings.home()?)?;
-    private_dir(&ws.dir)?;
-    private_dirs(&ws.events_dir)?;
-    let path = ws.dir.join("lock");
-    let lock = OpenOptions::new()
-        .read(true)
-        .append(true)
-        .create(true)
-        .mode(0o600)
-        .open(&path)
-        .map_err(|e| IoError::at(&e, &path))?;
-    lock.lock().map_err(|e| IoError::at(&e, &path))?;
-    Ok(lock)
+    let _lock = ws.lock().map_err(Error::from).map_err(E::from)?;
+    body()
 }
 
 /// The attempt counts: written, as one file, where every machine reads it.
