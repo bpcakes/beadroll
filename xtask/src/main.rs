@@ -49,8 +49,8 @@ usage: cargo xtask <command>
       the lines no test reaches, and whether the black-box tests' bead processes are in the
       count. It runs the workspace's tests through nextest, as check does, the sweep's slice among
       them; --stress adds the stress models and --sweep all 660 schedules of the ownership sweep,
-      the slow suites, which the nightly workflow runs. The doctests (the workspace has none) and
-      the growth guards are left out, and BEAD_UNDER_TEST is ignored: the bead counted is the one
+      the slow suites, which the nightly workflow runs. The doctests and the growth guards are
+      left out, and BEAD_UNDER_TEST is ignored: the bead counted is the one
       the build makes. It needs cargo-llvm-cov and the toolchain's llvm-tools, which it asks you
       to install when they are missing (rust-toolchain.toml has neither). Fails when a suite
       fails, the report still made; when a profile could not be merged into the report, so that

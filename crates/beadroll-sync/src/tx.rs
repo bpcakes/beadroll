@@ -6,6 +6,9 @@ mod materialized;
 mod prepared;
 mod writes;
 
+#[cfg(test)]
+mod tests;
+
 use beadroll_core::event::{FORMAT, MAX_NESTING, event_problem, payload_problem, write_problem};
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
