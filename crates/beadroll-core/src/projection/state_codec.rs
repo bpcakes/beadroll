@@ -28,7 +28,7 @@ use super::text_codec::summary;
 use crate::event::Field;
 use crate::id::EventId;
 use crate::json::{Int, Value};
-use crate::replay::finish;
+use crate::replay::Batch;
 use crate::state::{
     Awaiting, Claim, DepTags, Edge, Ended, IdMap, IdSet, Integrity, Issue, Knowledge, Meta, Origin,
     Provisional, Rename, Stamps, State, Stored, Target, TextPlace, Texts, VecMap, is_text,
@@ -204,7 +204,8 @@ pub(crate) fn read_state(
         st.knowledge.chain_breaks.insert(replica, positions);
     }
     st.awaiting = Awaiting::of(st.issues.values().map(|issue| &**issue));
-    finish(&mut st);
+    let knowledge = std::mem::take(&mut st.knowledge);
+    let mut st = Batch::new(st).finish(knowledge);
     st.issues.hold_as_read();
     Ok((st, keys))
 }

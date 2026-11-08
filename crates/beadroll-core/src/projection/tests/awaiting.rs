@@ -629,12 +629,24 @@ fn an_entry_keeps_its_number_however_many_before_it_go_batch_after_batch() {
             Extended::Replay => panic!("a projection applies {key}'s batch"),
         };
         listed.retain(|(named, ..)| named != key);
+        let replayed = replayed(&held);
+        for state in [projection.state(), &replayed] {
+            let issue = state.issue(uid).expect("the waiting issue");
+            assert!(
+                issue
+                    .dangling()
+                    .iter()
+                    .all(|dep| !matches!(dep, Value::Null)),
+                "finished batch after {key} must expose no temporary holes"
+            );
+            assert_eq!(issue.dangling().len(), listed.len());
+        }
         assert_eq!(
             projection.state().awaiting.numbered(),
             listed,
             "after {key}"
         );
-        assert!(same(projection.state(), &replayed(&held)));
+        assert!(same(projection.state(), &replayed));
     }
     assert!(waiting(projection.state(), 3).is_empty());
     assert_eq!(edges(projection.state(), 3).len(), 4);

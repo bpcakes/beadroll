@@ -9,6 +9,10 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
 
 ## Key entrypoints
 
+- `src/tx/prepared.rs`: consuming `Tx::prepare` separates `PreparedWrite` (events to persist,
+  with no emitter or applied prefix) from `Spent` (the retained materialized view). Both local
+  and coordinated paths retain these outside the lock on errors as well as success.
+
 - `src/tx.rs`: `Tx` (`emit`, `state`, `lend`, `on`), `Emitter` and `Spent`. A `Tx` starts from the
   store's projection (`on`: one the caller read under the lock it holds, with the journal files it
   was made from (`Sourced`); read again, as `new` does, when a file was written since,

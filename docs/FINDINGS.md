@@ -20,6 +20,18 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Explicit state boundaries (roll-y14g, ids AM)
+
+Three design observations from the 2026-11-08 chat review, not demonstrated CLI bugs. Existing
+behavior is retained while the internal interfaces enforce the transitions. Shared journal
+compatibility readers also settle a private copy when given an unsettled journal.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AM01 | Low | Internal ordering could read derived journal collections before settlement | by design | `SettledJournal` is borrowed only after settlement and is required by internal ordering and recap readers; compatibility entrypoints retain their signatures | `journal::tests::settled_views_include_records_added_after_a_duplicate`; `Journal::settled_view` compile-fail example |
+| AM02 | Low | Draining a transaction left its emitter callable with an old applied-event index | by design | Consuming `Tx::prepare` separates `PreparedWrite` from retained `Spent`; both survive the lock on errors | `tx::preparing_a_write_keeps_sequential_and_conditional_events_together`, `tx::a_written_state_survives_draining_and_publication_preserves_commitment`; existing heap and ownership fault tests |
+| AM03 | Low | Dependency removals left temporary holes in an ordinary readable state until a separate finishing call | by design | `replay::Batch` owns the unfinished state and returns it only through full or changed-record finishing | `projection::tests::awaiting::an_entry_keeps_its_number_however_many_before_it_go_batch_after_batch`; awaiting differential histories and work-count guards |
+
 ## Found while guarding X03 (roll-lqjj.46, ids AL)
 
 Found by the review of PR #18, which guarded X01 to X03 (roll-lqjj.38): a copy of a numbered key

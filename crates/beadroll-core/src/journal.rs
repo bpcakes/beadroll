@@ -7,6 +7,7 @@
 mod content;
 mod event;
 mod read;
+mod settled;
 #[cfg(test)]
 mod tests;
 
@@ -34,6 +35,7 @@ pub enum JournalOrder {
 pub use event::Event;
 pub(crate) use event::Rest;
 pub use read::{loads_line, read_attempt, read_segment};
+pub use settled::SettledJournal;
 
 /// Something a reader could not use: an unreadable line or file, an event that fails validation, a
 /// copy in the wrong journal. Replay reports each as an integrity row.
@@ -96,6 +98,31 @@ impl Default for Journal {
 }
 
 impl Journal {
+    /// Settles every record and borrows the resulting collections. While this view is in use,
+    /// records cannot be added to invalidate them.
+    ///
+    /// ```compile_fail,E0499
+    /// use beadroll_core::journal::Journal;
+    /// let mut journal = Journal::new();
+    /// let settled = journal.settled_view();
+    /// journal.add_segment(b"", "a", "segment");
+    /// let _ = settled.events();
+    /// ```
+    pub fn settled_view(&mut self) -> SettledJournal<'_> {
+        self.settle();
+        SettledJournal::new(self)
+    }
+
+    /// Compatibility readers accept a shared journal. A dirty one is settled in a copy;
+    /// the normal, already settled path borrows without cloning any records.
+    pub(crate) fn with_settled<T>(&self, read: impl FnOnce(SettledJournal<'_>) -> T) -> T {
+        if self.settled {
+            read(SettledJournal::new(self))
+        } else {
+            read(self.clone().settled_view())
+        }
+    }
+
     /// An empty journal.
     pub fn new() -> Journal {
         Journal {

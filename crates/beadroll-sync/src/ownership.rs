@@ -10,7 +10,7 @@ use beadroll_core::json::Value;
 use beadroll_git::PushOutcome;
 use beadroll_store::IdentityMode;
 use beadroll_store::PublicationState;
-use beadroll_store::{Actor, Endpoint, Workspace, append_events, load_pending, replica_id};
+use beadroll_store::{Actor, Endpoint, Workspace, load_pending, replica_id};
 
 use crate::NetworkMode;
 use crate::PublishMode;
@@ -18,7 +18,7 @@ use crate::error::Error;
 use crate::link::Link;
 use crate::receipts::{Request, RetireAfterSuccess, settle};
 use crate::synchronise::{ROUNDS, conflict_detail, pause, refused};
-use crate::tx::{Tx, drop_pending, locked, writing};
+use crate::tx::{Spent, Tx, drop_pending, locked, writing};
 
 mod attempt;
 use attempt::{AttemptOutcome, PendingAttempt, Recovery};
@@ -118,9 +118,10 @@ pub fn coordinated<E: From<Error>>(
     let mut recovery = Recovery::Ready;
     // this actor's settled receipts: dropped only once this command has gone through
     let mut stale = RetireAfterSuccess::default();
-    // a round's transaction, which holds the store's whole projection: let go of once the round
-    // has let go of the lock, as `writing` lets go of its own
-    let mut made = None;
+    // Preparing consumes each round's transaction. Its view and any unwritten events are let go
+    // of after the lock, as `writing` lets go of its own, including on a failed build.
+    let mut spent = Spent::default();
+    let mut pending_write = None;
     for attempt in 1..=ROUNDS {
         let round = locked(ws, || -> Result<Option<Mode>, Round<E>> {
             // under the lock: ownership is decided against the head as it is now
@@ -143,14 +144,7 @@ pub fn coordinated<E: From<Error>>(
                 return Ok(Some(Mode::Online));
             }
             match settle_pending(ws, &mut link, tip.as_deref())? {
-                Settled::Unresolved => {
-                    return Err(Error::Unresolved(format!(
-                        "an ownership attempt is unsettled and the push that would settle it did \
-                         not complete ({}); it counts for nothing until `bead sync` can settle it",
-                        link.last_error
-                    ))
-                    .into());
-                }
+                Settled::Unresolved => return Err(unresolved(&link).into()),
                 Settled::Moved => return Ok(None),
                 Settled::Clear => {}
             }
@@ -160,21 +154,26 @@ pub fn coordinated<E: From<Error>>(
             // left is the store's (roll-lqjj.29); `Tx::on` reads the store again if something did
             // (roll-lqjj.37)
             ws.settings.failpoints.hit("ownership.before-transaction");
-            let tx = made.insert(match link.merged.take() {
+            let mut tx = match link.merged.take() {
                 Some(merged) => Tx::on(ws, actor, merged)?,
                 None => Tx::new(ws, actor)?,
-            });
-            let answer = build(tx, Mode::Online).map_err(Round::Build)?;
-            if tx.has_pending() {
-                let pending = tx.take_pending();
-                append_events(ws, &tx.replica, pending).map_err(Error::from)?;
-            }
-            if tx.ownership.is_empty() {
+            };
+            let built = build(&mut tx, Mode::Online).map_err(Round::Build);
+            let (prepared, retained) = tx.prepare();
+            spent = retained;
+            let prepared = pending_write.insert(prepared);
+            let answer = built?;
+            prepared.append(ws)?;
+            if prepared.ownership.is_empty() {
                 stale.retire()?; // nothing to settle: this command went through
                 return Ok(Some(answer));
             }
-            let pending =
-                PendingAttempt::prepare(ws, std::mem::take(&mut tx.ownership), signature, answer)?;
+            let pending = PendingAttempt::prepare(
+                ws,
+                std::mem::take(&mut prepared.ownership),
+                signature,
+                answer,
+            )?;
             let outcome = pending.publish(ws, &mut link, tip.as_deref())?;
             match outcome {
                 AttemptOutcome::Confirmed(answer) => {
@@ -192,7 +191,8 @@ pub fn coordinated<E: From<Error>>(
                 }
             }
         });
-        drop(made.take());
+        drop(std::mem::take(&mut spent));
+        drop(pending_write.take());
         match round {
             Ok(Some(answer)) => return Ok(answer),
             Ok(None) => {}
@@ -218,6 +218,14 @@ pub fn coordinated<E: From<Error>>(
 enum Round<E> {
     Sync(Error),
     Build(E),
+}
+
+fn unresolved(link: &Link<'_>) -> Error {
+    Error::Unresolved(format!(
+        "an ownership attempt is unsettled and the push that would settle it did \
+         not complete ({}); it counts for nothing until `bead sync` can settle it",
+        link.last_error
+    ))
 }
 
 impl<E> From<Error> for Round<E> {
