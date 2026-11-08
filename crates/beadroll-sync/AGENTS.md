@@ -48,6 +48,14 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   identity its locked phase took of it (`beadroll_store::claim_keys`, roll-lqjj.30); `Link::hashed`
   lists them (roll-lqjj.1); `Link::unpublished` and `Link::published_counts` take a segment's
   lines from the memo while the segment is unchanged.
+- `src/link/merge/bootstrap.rs`: only when no local journal or pending attempts exist, prepare
+  and flush up to eight downloads concurrently, then install in listing order. Batches stop
+  after eight files or four MiB of payload; one file can exceed that byte budget. All workers
+  are joined before installation or error return. Each installed file has completed fsync,
+  failures discard remaining prepared files, and retry can use the ordinary merge path.
+  Targets must be distinct and absent, parent directories unaliased, and remote machine names
+  canonical lowercase hex. Empty directories created by the store lock are allowed; symlinks,
+  duplicate paths and noncanonical names retain the serial path.
 - `src/link/helpers.rs`: the reader, restartable hash/ref writers and publication-owned tree
   batches, with fetch and repository replacement boundaries. `src/link/known.rs`: object-presence
   evidence and its invalidation by merge, rehash, maintenance and repository replacement.

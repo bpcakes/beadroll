@@ -22,6 +22,12 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   beside the caches, which the projection's write-back removes, `src/fs/abandoned.rs`,
   roll-lqjj.52),
   `read_json_text` and file-read diagnostics (`os_error_str`, `utf8_error`).
+- `src/fs/prepared.rs`: `prepare_atomic` writes and flushes a private temporary file;
+  `PreparedAtomic::install` consumes it to rename it, and dropping it discards it. The writer
+  must exclude overlapping preparations for the same target throughout both phases.
+- `src/history.rs`: `history`, causal display metadata cached under `history`, with the build,
+  every source file's settled identity and a content checksum checked on each hit. A miss
+  loads and settles the journal. Pending attempts, current issue keys and aliases are not cached.
 - `src/identity.rs`: `replica_id`, `machine_aliases`, `uuid7`, `hex_token`.
 - `src/recap.rs`: `home_stores`, every store under `BEAD_HOME` without a checkout (an unusable
   one with its workspace id when its name is one), and `RecapCursor`, `bead recap`'s cursor: for
@@ -111,13 +117,14 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   checkout follow the umask.
 - Atomic writes use the established temporary names and `fsync(2)` through `rustix`, not `sync_all`
   (`docs/REVIEWING.md` §2); appends use `O_APPEND`. The one exception is `write_cache_parts`, for
-  the projection and its text file (and the text file's appends): checksummed caches, renamed in
+  the projection, its text file and history metadata (and the text file's appends): checksummed caches, renamed in
   whole but not fsynced, whose every reader checks them against their sums (`docs/REVIEWING.md`
   §2, the durability bullet). Before it writes either, the projection's write-back (`save`)
   removes both caches' temporary files whose process id no longer exists (`fs/abandoned.rs`,
   roll-lqjj.52), the text file's too, though it may only append to that. Live or reused process
   ids and cleanup errors can leave copies behind, and the check assumes the store's writers share
-  one host and PID namespace. The journal's are never swept. A new file that is read without a
+  one host and PID namespace. History write-back sweeps its own abandoned temporary files by the
+  same rule. The journal's are never swept. A new file that is read without a
   sum to check, or that is a source of anything, is written with `write_atomic`.
 - A caller that goes on from a projection it read earlier in a locked phase takes it with
   `projection_sourced` and asks `Sourced::into_current` before it does, and reads the store again

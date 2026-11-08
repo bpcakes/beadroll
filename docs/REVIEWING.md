@@ -101,6 +101,7 @@ reads, and the published tree is also read by `br`/`bv` through `bead export` an
 | `<ws>/events/<machine>/claims/<event-id>.json` | The attempt's events, compact lines, written atomically | Immutable; on a mismatch the local copy is kept as `*.fork-<ns>` |
 | `<ws>/pending/<id>.json`, `<id>.command` | The pending attempt and its receipt | The receipt's signature is below |
 | `<ws>/projection`, `<ws>/projection-texts` | A cache of one build of bead (§2) | No part of format 1: another build never reads them, and deleting them is always safe |
+| `<ws>/history` | Checksummed causal history metadata of one build, validated against every journal file's settled identity | Disposable, outside format 1; current issue keys and machine aliases are resolved after reading it |
 | `<ws>/sync.git` | `git init --bare --template= --shared=0600 --object-format=<the checkout's>`; git's maintenance off through the environment | Set aside as `sync.git.damaged-<ns>` when damaged |
 | Temporary files | `.<name>.<pid>.tmp` beside the target | Readers and sync ignore them, and every name that is not `.json`/`.jsonl`; a write-back of the projection first removes those its dead writers left beside either cache (§2) |
 | Modes | 0700 directories and 0600 files throughout the store, whatever the umask | Files written into a checkout (`.beadroll.json`, `export -o`) follow the umask |
@@ -434,8 +435,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `machines` also says when each machine last wrote, its greatest event id, which its last record
   need not have since ids are minted from a clock that can go back (V02): the index keeps it
   beside the journal length, taken from the journal's order by `project` as the lengths are and
-  advanced with them by `extend` (`projection::ENCODING` 5). `log` reads the whole journal still,
-  since it lists every event in causal order, but takes the keys it names issues by from the
+  advanced with them by `extend` (`projection::ENCODING` 5). That change left `log` reading the whole journal,
+  since it lists every event in causal order, but taking the keys it names issues by from the
   store's state (`view_outline`), read after the journal so that every issue an event names is
   there, where it replayed a clone of the journal; the two can come from two moments when a
   writer appends between them, which shows a newer key and nothing else. Every output is the
@@ -2288,6 +2289,36 @@ These were decided deliberately. Report problems *with* them, not their existenc
   build and only experimental SHA-256. Writing blobs, trees and commits in-process would save
   about three processes a publish and is not done: it needs zlib for git's loose objects, git's
   date and signing rules, and git's existence checks against packs.
+- Repeated `log` reads now use `store::history`: settled causal display metadata, with no
+  operation payloads or replay authority (`core::history::HistoryEntry`). A hit checks the build,
+  ordered source paths and complete `FileKey`s, requires each identity to be settled before the
+  cache's own modification time, and checks the payload sum. File bytes and their timestamp come
+  from the same open handle. Segments are checked before a fresh attempt listing, retaining the
+  journal reader's ordering; pending attempts never enter it. A miss uses `load_listed` and
+  `causal_order`, fingerprinting the identities actually read, never later stats that could bless
+  old rows as a replacement's. Missing, damaged, foreign or stale caches rebuild, and failed cache
+  writes do not fail the command. Cache writes use private atomic replacement without fsync,
+  sweep their own abandoned temporaries, and never create an absent store. The current outline
+  and aliases are read afterwards, keeping the earlier two-moment display behavior. Any journal
+  change invalidates the entire cache. Hits still decode all metadata: a small limit saves
+  payload parsing and ordering, not all work proportional to events. The frozen-snapshot probe,
+  output hashes and measurements are in [the evidence](evidence/hotspots-2026-11-08.md).
+- An empty store's initial merge prepares at most eight independent files concurrently
+  (`link::merge::bootstrap`), stopping a payload batch once it reaches four MiB; a single file
+  may exceed that bound. `prepare_atomic` writes and fsyncs the temporary file, returning an
+  opaque `PreparedAtomic` consumed by installation. Every worker is joined, including on spawn,
+  write or flush failure; installation and bookkeeping retain listing order. A preparation error
+  stays at its position: preceding prepared files can install, later ones are discarded. A blob
+  read failure can leave less installed than the serial path, and retry remains idempotent.
+  No existing target or pending attempt enters this path, so conflicts, extensions and pending
+  confirmation keep the ordinary merge. Every installed journal file still completes its own
+  fsync; no worker outlives the call and no acknowledgement precedes installation. A kill can
+  leave up to eight prepared temporary files in the interrupted batch; readers ignore them and
+  retry uses the ordinary merge if any journal file was installed. The format is unchanged.
+  Eligibility also requires distinct absent targets, unaliased parent directories and canonical
+  eight-digit lowercase hexadecimal machine names, excluding duplicate paths, symlink aliases,
+  dot components and case aliases between destinations. The empty events directory the store
+  lock creates is allowed. Other inputs retain the serial path.
 - Durability is `fsync(2)`, never `F_FULLFSYNC`, which Rust's `File::sync_all` and `sync_data` are
   on Apple platforms: 5.3 ms a call against 0.03 ms on APFS, about 40 ms a write. The remote is
   the durable copy. Atomic writes are a temporary file, fsync and rename, cleaned up on failure;
@@ -2307,7 +2338,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   nothing back (a write after a write, `kept_for`) sweeps nothing. The journal's files are not
   swept: a kill leaves a few hundred bytes beside an attempt or pending file, and listing
   `claims/` at every attempt written would cost more than it freed.
-  The two checksummed caches are the exception (roll-lqjj.27, X05): the projection and its text file
+  The checksummed caches are the exception (roll-lqjj.27, X05): the projection, its text file and
+  the history metadata described above
   are written whole and atomically but not fsynced (`fs::write_cache_parts`; the text file's appends
   too), because flushing them made the command after every write cost as much again as the write:
   its read 39 ms against 9.5 ms on 300 issues, 72 ms against 46 ms on 5,000 (medians of 30

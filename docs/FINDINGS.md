@@ -20,6 +20,17 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Frozen-snapshot performance investigation (2026-11-08, ids AO)
+
+Measured on the same 3,135-event snapshot before and after the changes. The
+[evidence](evidence/hotspots-2026-11-08.md) records isolation, executable hashes, output checks,
+measurements and limitations. The live tracker was not used as a test store.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AO01 | Low | `log --limit 1` parsed and ordered all journal payloads on every invocation | optimized | Cache checksummed causal display metadata, validate every source identity on hits, and resolve current keys and aliases afterwards. A changed journal still requires a full read; format 1 and output are unchanged. The snapshot trace opens 0 journal files on a hit, where it opened 250 | `beadroll-store`: `history::tests`; `beadroll`: `storage::history`, `commands::history`; release comparison with `infra/hotspots.py` |
+| AO02 | Low | First sync flushed each newly downloaded journal file serially | optimized | For an empty journal with no pending attempts, prepare and fsync up to eight independent files concurrently, then install in listing order, joining every worker and retaining all flushes. Existing journals and aliased or duplicate destinations retain the ordinary merge. The snapshot still makes 255 fsync calls | `beadroll-store`: `fs::prepared::tests`; `beadroll-sync`: `link::merge::bootstrap::tests`; `beadroll`: `protocol::bootstrap`; the baseline and sync stress models; release comparison with `infra/hotspots.py` |
+
 ## Lock, attempt and merge boundaries (roll-lih9, ids AN)
 
 Three observations from the follow-up 2026-11-08 chat review. The latter two preserve behavior;

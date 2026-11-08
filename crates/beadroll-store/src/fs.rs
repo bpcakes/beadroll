@@ -2,12 +2,15 @@
 //! directory listings that distinguish absence from unreadability.
 
 pub(crate) mod abandoned;
+mod prepared;
+
+pub use prepared::{PreparedAtomic, prepare_atomic};
 
 use std::ffi::OsStr;
-use std::fs::{DirBuilder, File, OpenOptions};
-use std::io::{self, Read as _, Write as _};
+use std::fs::{DirBuilder, File};
+use std::io::{self, Read as _};
 use std::os::unix::ffi::OsStrExt as _;
-use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _, PermissionsExt as _};
+use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _};
 use std::path::{Path, PathBuf};
 
 use beadroll_core::json::{self, Value};
@@ -16,7 +19,7 @@ use beadroll_git::IoError;
 #[cfg(test)]
 use crate::CrashHooks;
 use crate::error::Error;
-use crate::failpoint::{Failpoints, Fired};
+use crate::failpoint::Failpoints;
 use crate::memo::FileKey;
 
 /// Whether an atomic write must be flushed before rename.
@@ -149,40 +152,7 @@ fn written_whole(
     durable: Durability,
     failpoints: &Failpoints,
 ) -> Result<File, Error> {
-    let durable = matches!(durable, Durability::Durable);
-    let private = matches!(private, FileMode::Private);
-    let parent = path.parent().unwrap_or(Path::new("."));
-    if private {
-        private_dirs(parent)?;
-    } else {
-        std::fs::create_dir_all(parent).map_err(|e| Error::Io(IoError::at(&e, parent)))?;
-    }
-    let tmp = temporary(path);
-    let mode = if private { 0o600 } else { 0o666 };
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(mode)
-        .open(&tmp)
-        .map_err(|e| Error::Io(IoError::at(&e, &tmp)))?;
-    let written = (parts.iter())
-        .try_for_each(|part| file.write_all(part))
-        .map_err(|e| IoError::bare(&e))
-        .and_then(|()| if durable { fsync(&file) } else { Ok(()) })
-        .and_then(|()| match failpoints.hit_path("atomic-write", path) {
-            // the write fails as a full volume fails it
-            Some(Fired::Errno(errno)) => Err(IoError::bare(&io::Error::from_raw_os_error(errno))),
-            _ => Ok(()),
-        })
-        .and_then(|()| std::fs::rename(&tmp, path).map_err(|e| IoError::at(&e, path)));
-    if let Err(error) = written {
-        drop(file);
-        let _ = std::fs::remove_file(&tmp);
-        return Err(Error::Io(error));
-    }
-    failpoints.hit_path("atomic-written", path);
-    Ok(file)
+    prepared::parts(path, parts, private, durable)?.install_file(failpoints)
 }
 
 /// `.NAME.PID.tmp` beside `path`, its name's bytes kept as they are.
