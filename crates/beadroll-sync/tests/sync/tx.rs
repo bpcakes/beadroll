@@ -26,13 +26,13 @@ fn preparing_a_write_keeps_sequential_and_conditional_events_together() {
         comment_on(&key, "before the claim")(tx)?;
         let uid = tx.state()?.resolve(&key).expect("the issue").uid();
         crate::support::claim(tx, beadroll_sync::Mode::Local, &key)?;
-        tx.conditional = true;
-        tx.emit(
+        tx.attempt().emit(
             "set",
             Some(&uid.to_string()),
             titled("with the claim"),
             None,
         )?;
+        comment_on(&key, "after the attempt")(tx)?;
         Ok(())
     })
     .expect("the mixed write");
@@ -42,7 +42,7 @@ fn preparing_a_write_keeps_sequential_and_conditional_events_together() {
     assert!(issue.claim().is_some());
     let shown = a.show(&key);
     assert_eq!(shown["title"].as_str(), Some("with the claim"));
-    assert_eq!(comments(&shown), ["before the claim"]);
+    assert_eq!(comments(&shown), ["before the claim", "after the attempt"]);
     assert!(shown["claim"].as_object().is_some());
 }
 

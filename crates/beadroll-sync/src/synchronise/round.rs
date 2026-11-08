@@ -6,7 +6,7 @@ use beadroll_store::{Workspace, load_pending, segment_files};
 use super::{SyncReport, nothing_published, refused};
 use crate::PublishMode;
 use crate::error::Error;
-use crate::link::Link;
+use crate::link::{Link, Merged};
 use crate::tx::{drop_pending, locked};
 
 /// A merge can bring events in before publication fails. Keep that progress on every outcome
@@ -25,6 +25,7 @@ pub(super) enum Outcome {
 pub(super) struct Published {
     pub pushed: i64,
     pub repacked: bool,
+    pub merged: Box<Merged>,
 }
 
 /// Independent of the path Link keeps for the report: recovery spends this allowance once.
@@ -56,6 +57,7 @@ impl Rebuild {
 /// head. All merge, fence, retirement and maintenance work stays under that same lock.
 pub(super) fn sync_round(ws: &Workspace, link: &mut Link<'_>, report: SyncReport) -> Round {
     let mut pulled = 0;
+    let mut discarded = None;
     let outcome = (|| {
         let mut tip = link.fetch()?;
         locked(ws, || {
@@ -64,30 +66,45 @@ pub(super) fn sync_round(ws: &Workspace, link: &mut Link<'_>, report: SyncReport
                 // needs the current head, not a snapshot.
                 tip = link.fetch()?;
             }
-            pulled = link.merge_from(tip.as_deref(), report)?;
-            if tip.is_none() && segment_files(ws)?.is_empty() {
-                return Err(nothing_published(ws, &link.endpoint()));
-            }
-            let pushed = link.unpublished()?;
-            let fence = if load_pending(ws)?.is_empty() {
-                PublishMode::IfChanged
-            } else {
-                PublishMode::Fence
-            };
-            match link.publish(tip.as_deref(), "sync", &[], fence)? {
-                PushOutcome::Ok => {
-                    // Absent at a head we just advanced: they can never land.
-                    drop_pending(ws, &load_pending(ws)?)?;
-                    let repacked = link.maintain()?;
-                    Ok(Outcome::Published(Published { pushed, repacked }))
+            let merged = link.merge_from(tip.as_deref(), report)?;
+            pulled = merged.pulled;
+            let publication = (|| {
+                if tip.is_none() && segment_files(ws)?.is_empty() {
+                    return Err(nothing_published(ws, &link.endpoint()));
                 }
-                PushOutcome::Refused => Err(refused(link)),
-                PushOutcome::Uncertain => Err(Error::RemoteUnreachable(format!(
-                    "the push did not complete; nothing was lost, run sync again once the cause is \
+                let pushed = link.unpublished_after(&merged)?;
+                let fence = if load_pending(ws)?.is_empty() {
+                    PublishMode::IfChanged
+                } else {
+                    PublishMode::Fence
+                };
+                match link.publish(tip.as_deref(), "sync", &[], fence)? {
+                    PushOutcome::Ok => {
+                        // Absent at a head we just advanced: they can never land.
+                        drop_pending(ws, &load_pending(ws)?)?;
+                        let repacked = link.maintain()?;
+                        Ok(Some((pushed, repacked)))
+                    }
+                    PushOutcome::Refused => Err(refused(link)),
+                    PushOutcome::Uncertain => Err(Error::RemoteUnreachable(format!(
+                        "the push did not complete; nothing was lost, run sync again once the cause is \
                      fixed: {}",
-                    link.last_error
-                ))),
-                PushOutcome::Rejected => Ok(Outcome::Contended),
+                        link.last_error
+                    ))),
+                    PushOutcome::Rejected => Ok(None),
+                }
+            })();
+            match publication {
+                Ok(Some((pushed, repacked))) => Ok(Outcome::Published(Published {
+                    pushed,
+                    repacked,
+                    merged: Box::new(merged),
+                })),
+                other => {
+                    // A failed or contended round also frees its view after unlocking.
+                    discarded = Some(merged);
+                    other.map(|_| Outcome::Contended)
+                }
             }
         })
     })();

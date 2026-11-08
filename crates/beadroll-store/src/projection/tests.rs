@@ -315,17 +315,58 @@ fn a_new_lock_phase_lists_attempts_afresh() {
         .join("claims")
         .join(format!("{}.json", id(5)));
     write_attempt_file(&ws, &path, &[title(5, &[4], 2, "before")]).unwrap();
-    ws.set_holding(LockState::Locked);
+    let guard = ws.lock().unwrap();
     let first = crate::claim_files(&ws).unwrap();
     assert!(std::sync::Arc::ptr_eq(
         &first,
         &crate::claim_files(&ws).unwrap()
     ));
-    ws.set_holding(LockState::Unlocked);
-    ws.set_holding(LockState::Locked);
+    drop(guard);
+    let _guard = ws.lock().unwrap();
     let again = crate::claim_files(&ws).unwrap();
     assert_eq!(first, again);
     assert!(!std::sync::Arc::ptr_eq(&first, &again));
+}
+
+/// Both a returned error and an unwinding caller release the OS lock and end cache reuse.
+#[test]
+fn leaving_a_lock_guard_ends_the_cache_phase_on_error_and_unwind() {
+    let home = tempfile::tempdir().unwrap();
+    let ws = store(home.path(), Some("this build"));
+    let mut before = None;
+    let mut fail = || -> Result<(), &'static str> {
+        let _guard = ws.lock().unwrap();
+        assert!(ws.holding());
+        before = Some(crate::claim_files(&ws).unwrap());
+        Err("caller failed")
+    };
+    let error = fail();
+    assert_eq!(error, Err("caller failed"));
+    assert!(!ws.holding());
+    let probe = std::fs::File::options()
+        .read(true)
+        .write(true)
+        .open(ws.dir.join("lock"))
+        .unwrap();
+    probe.try_lock().expect("released after error");
+    probe.unlock().unwrap();
+    let after = crate::claim_files(&ws).unwrap();
+    assert!(!Arc::ptr_eq(before.as_ref().unwrap(), &after));
+
+    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _guard = ws.lock().unwrap();
+        before = Some(crate::claim_files(&ws).unwrap());
+        panic!("caller unwinds");
+    }));
+    assert!(panic.is_err());
+    assert!(!ws.holding());
+    probe.try_lock().expect("released after unwind");
+    probe.unlock().unwrap();
+    let _guard = ws.lock().unwrap();
+    assert!(!Arc::ptr_eq(
+        before.as_ref().unwrap(),
+        &crate::claim_files(&ws).unwrap()
+    ));
 }
 
 /// An attempt bead writes is listed again whatever the claims directory's times say: one that

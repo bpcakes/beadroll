@@ -212,10 +212,7 @@ fn exchange(
     if !report {
         return Ok(None);
     }
-    let Some(merged) = link.merged.take() else {
-        return Err(Error::Validation("no state".to_owned()));
-    };
-    let state = merged.state();
+    let state = published.merged.state.state();
     Ok(Some(Synced {
         pulled,
         pushed: published.pushed,
@@ -231,8 +228,8 @@ fn exchange(
             .skip(link.renames_before.unwrap_or_default())
             .map(|r| Value::from(r.to_value()))
             .collect(),
-        forked_journals: link.forks.clone(),
-        confirmed: link.confirmed.clone(),
+        forked_journals: published.merged.facts.forks,
+        confirmed: published.merged.facts.confirmed,
         waiting_events: state.pending().len(),
         integrity: state.integrity().len(),
     }))

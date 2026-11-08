@@ -3,8 +3,9 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
-use beadroll_store::FileMode;
+use beadroll_core::json::Value;
 use beadroll_store::IdentityMode;
+use beadroll_store::{FileMode, Sourced};
 use beadroll_store::{
     Memo, complete_prefix, extend_segment, pending_files, projection_sourced, read, read_attempt,
     repair_tail, replica_id, segment_files, write_atomic,
@@ -68,66 +69,99 @@ fn stem(path: &Path) -> String {
     }
 }
 
+/// A completed merge owns the checked state and the facts from that same round.
+pub(crate) struct Merged {
+    pub state: Sourced,
+    pub pulled: i64,
+    pub facts: MergeFacts,
+}
+
+#[derive(Default)]
+pub(crate) struct MergeFacts {
+    pub remote_counts: HashMap<String, usize>,
+    pub forks: Vec<String>,
+    pub confirmed: Vec<String>,
+    pub confirmed_events: Vec<Value>,
+}
+
+/// Only a running merge can hold partial facts or remember journal writes.
+struct Merging<'l, 'w> {
+    link: &'l mut Link<'w>,
+    facts: MergeFacts,
+    wrote: bool,
+}
+
 impl Link<'_> {
-    /// Brings the remote's journals in, at `tip`. Each segment has one writer, so one side is
-    /// always a prefix of the other. A foreign segment that is not a prefix either way was damaged
-    /// here (no machine writes another's journal): the published copy replaces it and ours is kept
-    /// beside it. Our own segment in that state, or our own journal no longer forming one chain,
-    /// means this machine's identity is in use somewhere else. Attempt files are immutable: a remote
-    /// one we lack is copied, and one of our own pending attempts found on the remote is thereby
-    /// confirmed. Returns how many events came in. Called with the store lock held.
-    ///
-    /// A file whose identity is the one the memo remembers is not hashed, and not read when its
-    /// remembered blob is the published one. The published tree's blobs are kept for the publish
-    /// that follows ([`Link::local_blobs`]). The store's projection as the merge leaves it is kept
-    /// too, with the journal files it was made from ([`Link::merged`]).
+    /// Brings in the journals at `tip`, checking this machine's chain, and returns the number of
+    /// events received. Foreign forks are preserved beside their published replacements; an own
+    /// fork fails. Pending attempts found published are confirmed. Call with the store lock held.
+    /// The public report fields retain this operation's facts, including progress before an error.
     pub fn merge(&mut self, tip: Option<&str>) -> Result<i64, Error> {
-        self.merge_from(tip, SyncReport::Skip)
+        let mut merging = Merging::new(self);
+        let result = merging.run(tip, SyncReport::Skip);
+        let facts = merging.facts;
+        self.remote_counts = facts.remote_counts;
+        self.forks = facts.forks;
+        self.confirmed = facts.confirmed;
+        self.confirmed_events = facts.confirmed_events;
+        result.map(|(_, pulled)| pulled)
     }
 
-    /// [`Link::merge`], and with `count`, unless this link counted them already, how many keys the
-    /// store's state had renamed before anything came in ([`Link::renames_before`]): the projection
-    /// read for it is the one the merge leaves when it writes no journal file, so that a sync that
-    /// brings nothing reads the projection once (roll-lqjj.29).
+    /// Internal rounds receive a completed merge rather than reading report slots on the link.
+    /// The first requested rename count remains command-wide, even across a failed round.
     pub(crate) fn merge_from(
         &mut self,
         tip: Option<&str>,
         count: SyncReport,
-    ) -> Result<i64, Error> {
+    ) -> Result<Merged, Error> {
+        let mut merging = Merging::new(self);
+        let (state, pulled) = merging.run(tip, count)?;
+        Ok(Merged {
+            state,
+            pulled,
+            facts: merging.facts,
+        })
+    }
+}
+
+impl<'l, 'w> Merging<'l, 'w> {
+    fn new(link: &'l mut Link<'w>) -> Self {
+        Self {
+            link,
+            facts: MergeFacts::default(),
+            wrote: false,
+        }
+    }
+
+    fn run(&mut self, tip: Option<&str>, count: SyncReport) -> Result<(Sourced, i64), Error> {
         let count = matches!(count, SyncReport::Collect);
-        self.merged = None;
-        self.wrote = false;
-        self.remote_counts.clear();
-        self.forks.clear();
-        self.confirmed.clear();
-        self.confirmed_events.clear();
         // the memo as it is now: another bead process may have written it since this link last did
-        self.memo = Some(Memo::load(self.ws));
-        self.known.before_merge();
+        self.link.memo = Some(Memo::load(self.link.ws));
+        self.link.known.before_merge();
         let mut pulled: i64 = 0;
-        for path in segment_files(self.ws)? {
-            repair_tail(self.ws, &path)?;
+        for path in segment_files(self.link.ws)? {
+            repair_tail(self.link.ws, &path)?;
         }
         // the store's projection, with every whole line its segments hold
-        let found = if count && self.renames_before.is_none() {
-            let found = projection_sourced(self.ws)?;
-            self.renames_before = Some(found.state().renames().len());
+        let found = if count && self.link.renames_before.is_none() {
+            let found = projection_sourced(self.link.ws)?;
+            self.link.renames_before = Some(found.state().renames().len());
             Some(found)
         } else {
             None
         };
-        let own = replica_id(&self.ws.settings, IdentityMode::Existing)?;
-        let pending: HashMap<String, PathBuf> = pending_files(self.ws)
+        let own = replica_id(&self.link.ws.settings, IdentityMode::Existing)?;
+        let pending: HashMap<String, PathBuf> = pending_files(self.link.ws)
             .into_iter()
             .map(|path| (stem(&path), path))
             .collect();
         if let Some(tip) = tip {
-            let local = self.local_blobs(BlobUse::Comparison)?;
-            for (path, sha) in self.listing(tip)? {
+            let local = self.link.local_blobs(BlobUse::Comparison)?;
+            for (path, sha) in self.link.listing(tip)? {
                 let Ok(path) = String::from_utf8(path) else {
                     continue; // a name no bead writes
                 };
-                self.known.listed_blob(path.clone(), sha.clone());
+                self.link.known.listed_blob(path.clone(), sha.clone());
                 if attempt_shaped(&path) {
                     if self.merge_attempt(tip, &path, &sha, &local, &pending)? {
                         pulled += 1;
@@ -139,19 +173,18 @@ impl Link<'_> {
                 }
             }
         }
-        self.save_memo();
+        self.link.save_memo();
         // the store's projection, the records merged applied to it, or the journal replayed
         let merged = match found {
             Some(found) if !self.wrote => found,
-            _ => projection_sourced(self.ws)?,
+            _ => projection_sourced(self.link.ws)?,
         };
         if let Some(own) = &own
             && merged.state().chain_breaks().contains_key(own)
         {
             return Err(Error::JournalFork(OWN_CHAIN.to_owned()));
         }
-        self.merged = Some(merged);
-        Ok(pulled)
+        Ok((merged, pulled))
     }
 
     /// Writes `data` to the journal file at `target` (`path` under the store) as published: the
@@ -167,7 +200,7 @@ impl Link<'_> {
             target,
             data,
             FileMode::Private,
-            &self.ws.settings.failpoints,
+            &self.link.ws.settings.failpoints,
         )?;
         self.wrote(path, target, data, blob);
         Ok(())
@@ -177,7 +210,7 @@ impl Link<'_> {
     /// remembers it, and the merge has written.
     fn wrote(&mut self, path: &str, target: &Path, data: &[u8], blob: Option<&str>) {
         self.wrote = true;
-        self.memo().wrote(path, target, data, blob);
+        self.link.memo().wrote(path, target, data, blob);
     }
 
     /// One remote attempt file at `tip`: confirms a pending attempt of ours, copies a new one, or
@@ -190,14 +223,14 @@ impl Link<'_> {
         local: &BTreeMap<String, String>,
         pending: &HashMap<String, PathBuf>,
     ) -> Result<bool, Error> {
-        self.remote_counts.insert(path.to_owned(), 1);
+        self.facts.remote_counts.insert(path.to_owned(), 1);
         let attempt_id = stem(Path::new(path));
-        let target = self.ws.dir.join(path);
+        let target = self.link.ws.dir.join(path);
         let ours_pending = pending.get(&attempt_id);
         if local.get(path).map(String::as_str) == Some(sha) && ours_pending.is_none() {
             return Ok(false);
         }
-        let theirs = self.blob(tip, sha)?;
+        let theirs = self.link.blob(tip, sha)?;
         if let Some(pending_path) = ours_pending {
             // the remote has our attempt: it counts, whole
             if read(pending_path)? != theirs {
@@ -213,28 +246,30 @@ impl Link<'_> {
             }
             if local.get(path).map(String::as_str) != Some(sha) {
                 self.write_journal(path, &target, &theirs, Some(sha))?;
-                self.ws.forget_claims(&target);
+                self.link.ws.forget_claims(&target);
             }
             crate::tx::remove(pending_path)?;
-            self.confirmed.push(attempt_id);
-            self.confirmed_events.extend(read_attempt(&target, None));
+            self.facts.confirmed.push(attempt_id);
+            self.facts
+                .confirmed_events
+                .extend(read_attempt(&target, None));
             return Ok(false);
         }
         let new = if target.exists() {
             // an immutable file that differs from the accepted copy was damaged here
             write_atomic(
-                &fork_path(self, &target),
+                &fork_path(self.link, &target),
                 &read(&target)?,
                 FileMode::Private,
-                &self.ws.settings.failpoints,
+                &self.link.ws.settings.failpoints,
             )?;
-            self.forks.push(path.to_owned());
+            self.facts.forks.push(path.to_owned());
             false
         } else {
             true
         };
         self.write_journal(path, &target, &theirs, Some(sha))?;
-        self.ws.forget_claims(&target);
+        self.link.ws.forget_claims(&target);
         Ok(new)
     }
 
@@ -251,10 +286,10 @@ impl Link<'_> {
         own: Option<&str>,
     ) -> Result<i64, Error> {
         let replica = path.split('/').nth(1).unwrap_or_default();
-        let target = self.ws.dir.join(path);
+        let target = self.link.ws.dir.join(path);
         if local.get(path).map(String::as_str) == Some(sha) {
-            let lines = self.memo().lines(path, &target)?;
-            self.remote_counts.insert(path.to_owned(), lines);
+            let lines = self.link.memo().lines(path, &target)?;
+            self.facts.remote_counts.insert(path.to_owned(), lines);
             return Ok(0);
         }
         let ours = if target.exists() {
@@ -262,11 +297,12 @@ impl Link<'_> {
         } else {
             Vec::new()
         };
-        let blob = self.blob(tip, sha)?;
+        let blob = self.link.blob(tip, sha)?;
         let theirs = complete_prefix(&blob);
         // what is written is the published blob itself unless an interrupted line was cut from it
         let written = (theirs == blob).then_some(sha);
-        self.remote_counts
+        self.facts
+            .remote_counts
             .insert(path.to_owned(), newlines(&theirs));
         if theirs == ours || ours.starts_with(&theirs) {
             return Ok(0);
@@ -287,31 +323,16 @@ impl Link<'_> {
             return Err(Error::JournalFork(OWN_FORK.to_owned()));
         }
         write_atomic(
-            &fork_path(self, &target),
+            &fork_path(self.link, &target),
             &ours,
             FileMode::Private,
-            &self.ws.settings.failpoints,
+            &self.link.ws.settings.failpoints,
         )?;
         self.write_journal(path, &target, &theirs, written)?;
-        self.forks.push(path.to_owned());
+        self.facts.forks.push(path.to_owned());
         Ok(0)
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn published_paths_are_told_apart_by_their_shape() {
-        assert!(attempt_shaped("events/ab12cd34/claims/0190-ab.json"));
-        assert!(!attempt_shaped("events/ab12cd34/claims/0190-AB.json"));
-        assert!(!attempt_shaped("events/ab12cd34/claims/.json"));
-        assert!(!attempt_shaped("events//claims/x.json"));
-        assert!(segment_shaped("events/ab12cd34/000001.jsonl"));
-        assert!(!segment_shaped("events/ab12cd34/00a001.jsonl"));
-        assert!(!segment_shaped("events/ab12cd34/claims/000001.jsonl"));
-        assert_eq!(stem(Path::new("a/0190-ab.json")), "0190-ab");
-        assert_eq!(stem(Path::new("a/.json")), ".json");
-    }
-}
+mod tests;

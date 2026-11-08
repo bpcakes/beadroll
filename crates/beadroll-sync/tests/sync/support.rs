@@ -144,7 +144,7 @@ pub(crate) fn claiming_update(
         |tx, mode| {
             let mode = claim(tx, mode, key)?;
             // every edit joins the attempt: it lands with the claim or not at all
-            tx.conditional = true;
+            let mut tx = tx.attempt();
             let uid = tx
                 .state()?
                 .resolve(key)

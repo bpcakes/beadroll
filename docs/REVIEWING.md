@@ -1633,6 +1633,24 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - A command receipt survives a *failed* later command by the same actor and is dropped only when
   a later command by that actor goes through: the remote accepted it, or it was a local write that
   was appended. A recognised retry still reports the claim as it is now.
+- Lock phases, attempt emission and completed merges have explicit boundaries (roll-lih9).
+  `Workspace::lock` owns the OS file lock and the cache phase; dropping its guard clears cached
+  claim identities before releasing the lock, including on unwind. `set_holding` remains a
+  compatibility interface for external lock managers, not the internal locking path.
+  `Tx::attempt` borrows a writer that routes ordinary edits into the ownership attempt. Its
+  lifetime cannot leak that routing into later sequential writes; the public `conditional`
+  switch remains compatible. Claim and release events are always attempt events. Mixed writes
+  still append sequential events first and then settle the attempt as one unit.
+  A running `Merging` owns partial report facts and its wrote-journal flag. Only completion
+  produces `Merged`, containing its checked `Sourced` state, pulled count and report facts.
+  Internal sync and ownership rounds consume this result; no optional last-merge state or
+  fallback transaction is involved. Public `Link::merge` still returns a count and updates its
+  compatibility report fields, including partial progress on errors. The initial rename count,
+  accumulated pulls and recovery allowance remain command-wide. Failed rounds discard their
+  report facts, while completed pulls survive publication failure. A successful report uses
+  only its final round's forks and confirmations. Unused merge views are freed after unlocking.
+  Coverage includes real-lock error/unwind and cache-phase tests, scoped and mixed emission,
+  owned snapshots across failed merges, existing retry/rebuild reports and projection-read counts.
 - Journal readers, write preparation and replay batches have explicit boundaries (roll-y14g):
   - `Journal::settled_view` settles the records and borrows their derived collections. Internal
     causal ordering, replay/projection preparation and recap helpers take this evidence; adding

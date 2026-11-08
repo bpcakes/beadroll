@@ -9,6 +9,14 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
 
 ## Key entrypoints
 
+- `src/tx/attempt.rs`: `Tx::attempt` lends an `Attempt` writer that routes edits with the claim
+  without changing the ordinary transaction's mode. `Tx::conditional` remains a compatibility
+  switch. `locked` uses the store's `WorkspaceLock` guard for both the OS lock and cache phase.
+- `src/link/merge.rs`: `Merging` owns incomplete per-round facts; only a successful merge yields
+  `Merged` (checked state, incoming count and report facts). Internal callers consume it; public
+  `Link::merge` retains its count and report-field interface. Rename baseline and recovery remain
+  on the command's link/loop, while the report consumes the successful round's snapshot.
+
 - `src/tx/prepared.rs`: consuming `Tx::prepare` separates `PreparedWrite` (events to persist,
   with no emitter or applied prefix) from `Spent` (the retained materialized view). Both local
   and coordinated paths retain these outside the lock on errors as well as success.

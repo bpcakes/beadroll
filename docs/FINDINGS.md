@@ -20,6 +20,17 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Lock, attempt and merge boundaries (roll-lih9, ids AN)
+
+Three observations from the follow-up 2026-11-08 chat review. The latter two preserve behavior;
+the lock guard also repairs cache-phase cleanup when a library caller catches an unwind.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AN01 | Low | OS lock lifetime and cached claim identities were paired manually; unwind skipped cache cleanup | fixed | `WorkspaceLock` clears the phase before releasing its file lock on every drop | `beadroll-store`: `projection::tests::a_new_lock_phase_lists_attempts_afresh`, `projection::tests::leaving_a_lock_guard_ends_the_cache_phase_on_error_and_unwind`; existing sync materialized-view drop probes |
+| AN02 | Low | Claiming updates toggled a persistent flag to route ordinary edits into an attempt | by design | `Tx::attempt` scopes that routing to a borrowed writer; legacy `conditional` remains compatible | `beadroll-sync`: `tx::tests::attempt_emission_is_scoped_even_after_an_error`, `tx::preparing_a_write_keeps_sequential_and_conditional_events_together`; existing claiming-update atomicity and lost-ack tests |
+| AN03 | Low | Partial merge facts and optional completed state shared the reusable link | by design | `Merging` owns partial facts; `Merged` carries checked state and facts into the successful round; command progress remains separate | `beadroll-sync`: `link::merge::tests::completed_merges_keep_their_state_and_counts_across_failed_rounds`, `rounds::a_rebuild_after_merging_keeps_the_pulled_count`, projection-read tests |
+
 ## Explicit state boundaries (roll-y14g, ids AM)
 
 Three design observations from the 2026-11-08 chat review, not demonstrated CLI bugs. Existing

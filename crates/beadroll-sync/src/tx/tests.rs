@@ -193,3 +193,45 @@ fn failed_persistence_destroys_the_view_after_unlocking() {
         }
     }
 }
+
+/// An attempt scope routes ordinary edits with the claim and never changes later emission.
+#[test]
+fn attempt_emission_is_scoped_even_after_an_error() {
+    let fixture = Fixture::new("");
+    locked(&fixture.ws, || -> Result<(), Error> {
+        let mut tx = Tx::new(&fixture.ws, &fixture.actor)?;
+        let uid = tx.state()?.resolve(&fixture.key).unwrap().uid().to_string();
+        let comment = || {
+            let mut data = Object::new();
+            data.insert("text".into(), Value::from("comment"));
+            data
+        };
+        tx.emit("comment", Some(&uid), comment(), None)?;
+        {
+            let mut attempt = tx.attempt();
+            attempt.emit("comment", Some(&uid), comment(), None)?;
+            let (_, mut emitter) = attempt.lend()?;
+            emitter.emit("comment", Some(&uid), comment(), None)?;
+            assert!(
+                emitter
+                    .emit("not-an-operation", Some(&uid), Object::new(), None)
+                    .is_err()
+            );
+        }
+        tx.emit("comment", Some(&uid), comment(), None)?;
+        assert_eq!(
+            tx.emitted
+                .iter()
+                .map(|record| record.sequenced)
+                .collect::<Vec<_>>(),
+            [true, false, false, true]
+        );
+        assert_eq!(
+            tx.ownership,
+            [tx.emitted[1].value.clone(), tx.emitted[2].value.clone()]
+        );
+        assert!(!tx.conditional);
+        Ok(())
+    })
+    .unwrap();
+}

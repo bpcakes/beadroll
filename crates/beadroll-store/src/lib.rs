@@ -52,7 +52,7 @@ pub use settings::{
 };
 pub use workspace::{
     DEFAULT_REF, Endpoint, LockState, MetadataRead, PublicationState, REMOTE_REF, RemoteSource,
-    Workspace, relative, relative_name, remembered, stamp,
+    Workspace, WorkspaceLock, relative, relative_name, remembered, stamp,
 };
 
 /// The bytes without the ASCII whitespace at either end.

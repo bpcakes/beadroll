@@ -12,9 +12,9 @@ use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::str_of;
-use beadroll_store::{Actor, Label};
+use beadroll_store::Label;
 use beadroll_sync::NetworkMode;
-use beadroll_sync::{Emitter, Mode, Tx, coordinated, publish_soon, writing_state};
+use beadroll_sync::{Emitter, Mode, coordinated, publish_soon, writing_state};
 
 use super::ownership::{ClaimStep, command_signature, details, still_held};
 use super::{
@@ -60,6 +60,11 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
     }
     // in_progress is reached only through a claim
     let wants_claim = args.claim || status.as_deref() == Some("in_progress");
+    let network_mode = if args.offline {
+        NetworkMode::Offline
+    } else {
+        NetworkMode::Online
+    };
     let status = status.filter(|status| status != "in_progress");
     let asked_nothing = fields.values.is_empty()
         && status.is_none()
@@ -89,17 +94,20 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
         let mode = coordinated(
             ctx.ws,
             ctx.actor,
-            if args.offline {
-                NetworkMode::Offline
-            } else {
-                NetworkMode::Online
-            },
+            network_mode,
             args.remote.as_deref(),
             &signature,
             |tx, mode| -> Result<Mode, Failure> {
                 let mode = step.run(tx, mode)?;
-                tx.conditional = true;
-                ended.extend(edits(tx, ctx.actor, args, &fields, status.as_deref())?);
+                let me = ctx.actor.label(&tx.replica);
+                let mut attempt = tx.attempt();
+                ended.extend(edits(
+                    attempt.lend()?,
+                    &me,
+                    args,
+                    &fields,
+                    status.as_deref(),
+                )?);
                 Ok(mode)
             },
         )?;
@@ -111,7 +119,8 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
         ended
     } else {
         let (ended, state) = writing_state(ctx.ws, ctx.actor, |tx| {
-            edits(tx, ctx.actor, args, &fields, status.as_deref())
+            let me = ctx.actor.label(&tx.replica);
+            edits(tx.lend()?, &me, args, &fields, status.as_deref())
         })?;
         written = state;
         ended
@@ -121,15 +130,7 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
         None
     } else {
         written = None; // the publish may bring in what other machines wrote: read after it
-        publish_soon(
-            ctx.ws,
-            if args.offline {
-                NetworkMode::Offline
-            } else {
-                NetworkMode::Online
-            },
-            args.remote.as_deref(),
-        )
+        publish_soon(ctx.ws, network_mode, args.remote.as_deref())
     };
     let st = match written {
         Some(written) => view_of_written(ctx.ws, written, &args.ids)?,
@@ -205,15 +206,12 @@ fn answer(
 /// Validates every target first, then emits; nothing is written if any part is wrong. The keys of
 /// the issues whose claim a close ends.
 fn edits(
-    tx: &mut Tx<'_>,
-    actor: &Actor,
+    (st, mut tx): (&State, Emitter<'_>),
+    me: &Label,
     args: &UpdateArgs,
     fields: &Payload,
     status: Option<&str>,
 ) -> Result<Vec<String>, Failure> {
-    let me = actor.label(&tx.replica);
-    // read as it was before anything is emitted, without a copy (roll-lqjj.29)
-    let (st, mut tx) = tx.lend()?;
     need_tracker(st)?;
     let targets = args
         .ids
@@ -227,13 +225,13 @@ fn edits(
     };
     let mut ended = Vec::new();
     for issue in &targets {
-        check(st, issue, args, &me, status, new_parent)?;
-        if status == Some("closed") && (issue.claim().is_some() || ended_by(issue, &me)) {
+        check(st, issue, args, me, status, new_parent)?;
+        if status == Some("closed") && (issue.claim().is_some() || ended_by(issue, me)) {
             ended.push(issue.key().to_owned());
         }
     }
     for issue in &targets {
-        edit(&mut tx, st, issue, args, fields, status, new_parent, &me)?;
+        edit(&mut tx, st, issue, args, fields, status, new_parent, me)?;
     }
     Ok(ended)
 }
