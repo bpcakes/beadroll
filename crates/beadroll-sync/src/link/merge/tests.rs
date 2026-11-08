@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use beadroll_core::json::Object;
-use beadroll_store::{Endpoint, Settings, Workspace};
+use beadroll_store::{Endpoint, LockState, Settings, Workspace};
 use beadroll_test_support::{Machine, Sandbox, built_bead};
 
 use super::{Link, attempt_shaped, segment_shaped, stem};
@@ -12,8 +12,7 @@ use crate::locked;
 use crate::synchronise::SyncReport;
 use std::path::Path;
 
-#[test]
-fn completed_merges_keep_their_state_and_counts_across_failed_rounds() {
+fn fixture() -> (Sandbox, Workspace) {
     let sandbox = Sandbox::new(built_bead());
     let a = Machine::new(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
@@ -35,6 +34,12 @@ fn completed_merges_keep_their_state_and_counts_across_failed_rounds() {
         Object::new(),
     )
     .unwrap();
+    (sandbox, ws)
+}
+
+#[test]
+fn completed_merges_keep_their_state_and_counts_across_failed_rounds() {
+    let (sandbox, ws) = fixture();
     let mut link = Link::new(&ws, &Endpoint::at(sandbox.origin())).unwrap();
     let first = locked(&ws, || -> Result<_, Error> {
         let tip = link.fetch()?;
@@ -70,6 +75,29 @@ fn completed_merges_keep_their_state_and_counts_across_failed_rounds() {
         Ok(())
     })
     .unwrap();
+}
+
+/// Public merge callers keep Link outside the lock; its retained projection must follow it.
+/// Dropping the retained view under the lock is the negative control for the same probe.
+#[test]
+fn public_merge_keeps_its_view_until_the_link_is_dropped() {
+    let (sandbox, ws) = fixture();
+    for expected in [LockState::Locked, LockState::Unlocked] {
+        let mut link = Link::new(&ws, &Endpoint::at(sandbox.origin())).unwrap();
+        let observed = locked(&ws, || -> Result<_, Error> {
+            let tip = link.fetch()?;
+            link.merge(tip.as_deref())?;
+            let observed = link.retained.observe_drop(ws.dir.join("lock"));
+            assert!(observed.lock().unwrap().is_empty());
+            if expected == LockState::Locked {
+                drop(std::mem::take(&mut link.retained));
+            }
+            Ok(observed)
+        })
+        .unwrap();
+        drop(link);
+        assert_eq!(*observed.lock().unwrap(), [expected]);
+    }
 }
 
 #[test]

@@ -1645,12 +1645,16 @@ These were decided deliberately. Report problems *with* them, not their existenc
   produces `Merged`, containing its checked `Sourced` state, pulled count and report facts.
   Internal sync and ownership rounds consume this result; no optional last-merge state or
   fallback transaction is involved. Public `Link::merge` still returns a count and updates its
-  compatibility report fields, including partial progress on errors. The initial rename count,
+  compatibility report fields, including partial progress on errors. Its completed projection is
+  retained as an opaque `Spent` on the caller-owned link, until the next merge or link destruction;
+  it cannot be reused as an internal merge result. The initial rename count,
   accumulated pulls and recovery allowance remain command-wide. Failed rounds discard their
   report facts, while completed pulls survive publication failure. A successful report uses
   only its final round's forks and confirmations. Unused merge views are freed after unlocking.
   Coverage includes real-lock error/unwind and cache-phase tests, scoped and mixed emission,
   owned snapshots across failed merges, existing retry/rebuild reports and projection-read counts.
+  The public wrapper has its own real-lock destruction probe and locked-drop control, and legacy
+  `conditional = true` has destination coverage through both emitters and across an attempt scope.
 - Journal readers, write preparation and replay batches have explicit boundaries (roll-y14g):
   - `Journal::settled_view` settles the records and borrows their derived collections. Internal
     causal ordering, replay/projection preparation and recap helpers take this evidence; adding

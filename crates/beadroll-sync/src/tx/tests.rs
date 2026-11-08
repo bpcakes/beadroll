@@ -11,7 +11,7 @@ use beadroll_store::{Actor, LockState, Settings, Workspace};
 use beadroll_test_support::{Machine, Sandbox, built_bead, json};
 
 use super::materialized::Materialized;
-use super::{Tx, locked, writing};
+use super::{Spent, Tx, locked, writing};
 use crate::{Error, Mode, NetworkMode, coordinated};
 
 /// The enum drops the view before this field, so this records its actual destruction boundary.
@@ -34,6 +34,23 @@ impl Drop for DropProbe {
             Err(TryLockError::Error(error)) => panic!("probe the store lock: {error}"),
         };
         self.observed.lock().expect("observations").push(state);
+    }
+}
+
+impl Spent {
+    /// Observe this retained view's real destruction, for compatibility merge tests too.
+    pub(crate) fn observe_drop(&mut self, lock: PathBuf) -> Arc<Mutex<Vec<LockState>>> {
+        let observed = Arc::new(Mutex::new(Vec::new()));
+        let slot = match &mut self.materialized {
+            Materialized::Projected { drop_probe, .. }
+            | Materialized::Replayed { drop_probe, .. } => drop_probe,
+            Materialized::ReplayNeeded => panic!("no retained view to observe"),
+        };
+        *slot = Some(DropProbe {
+            lock,
+            observed: Arc::clone(&observed),
+        });
+        observed
     }
 }
 
@@ -231,6 +248,53 @@ fn attempt_emission_is_scoped_even_after_an_error() {
             [tx.emitted[1].value.clone(), tx.emitted[2].value.clone()]
         );
         assert!(!tx.conditional);
+        Ok(())
+    })
+    .unwrap();
+}
+
+/// Legacy callers may keep conditional routing enabled before and after an attempt scope.
+#[test]
+fn legacy_conditional_routing_survives_an_attempt_scope() {
+    let fixture = Fixture::new("");
+    locked(&fixture.ws, || -> Result<(), Error> {
+        let mut tx = Tx::new(&fixture.ws, &fixture.actor)?;
+        let uid = tx.state()?.resolve(&fixture.key).unwrap().uid().to_string();
+        let comment = || {
+            let mut data = Object::new();
+            data.insert("text".into(), Value::from("legacy comment"));
+            data
+        };
+        tx.conditional = true;
+        tx.emit("comment", Some(&uid), comment(), None)?;
+        tx.lend()?.1.emit("comment", Some(&uid), comment(), None)?;
+        {
+            let mut attempt = tx.attempt();
+            attempt.emit("comment", Some(&uid), comment(), None)?;
+            attempt
+                .lend()?
+                .1
+                .emit("comment", Some(&uid), comment(), None)?;
+        }
+        tx.emit("comment", Some(&uid), comment(), None)?;
+        tx.lend()?.1.emit("comment", Some(&uid), comment(), None)?;
+        tx.conditional = false;
+        tx.emit("comment", Some(&uid), comment(), None)?;
+        tx.lend()?.1.emit("comment", Some(&uid), comment(), None)?;
+        assert_eq!(
+            tx.emitted
+                .iter()
+                .map(|record| record.sequenced)
+                .collect::<Vec<_>>(),
+            [false, false, false, false, false, false, true, true]
+        );
+        assert_eq!(
+            tx.ownership,
+            tx.emitted[..6]
+                .iter()
+                .map(|record| record.value.clone())
+                .collect::<Vec<_>>()
+        );
         Ok(())
     })
     .unwrap();

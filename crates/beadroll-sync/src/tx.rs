@@ -201,6 +201,13 @@ pub struct Spent {
 }
 
 impl Spent {
+    /// Keep a completed view alive without exposing it as a source for another operation.
+    pub(crate) fn from_projection(projection: Projection) -> Self {
+        Self {
+            materialized: Materialized::projected(projection),
+        }
+    }
+
     /// Whether it holds nothing: the transaction had let go of its projection and had not
     /// replayed the journal.
     pub fn is_empty(&self) -> bool {

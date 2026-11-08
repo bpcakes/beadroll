@@ -38,6 +38,7 @@ use beadroll_store::{
 };
 
 use crate::error::Error;
+use crate::tx::Spent;
 
 use self::helpers::Helpers;
 use self::known::KnownObjects;
@@ -100,6 +101,9 @@ pub struct Link<'a> {
     /// How many keys the store's state had renamed when a merge that was asked to count them
     /// first read it ([`Link::merge_from`]).
     pub(crate) renames_before: Option<usize>,
+    /// The public merge API cannot return its view. Retain only disposable state until the next
+    /// merge or this link's destruction; internal rounds never read or reuse it.
+    retained: Spent,
 }
 
 /// The environment a link to `ws`'s remote runs git in ([`sync_env`], with `GIT_DIR` its
@@ -177,6 +181,7 @@ impl<'a> Link<'a> {
             hashed: Vec::new(),
             reused_trees: Vec::new(),
             renames_before: None,
+            retained: Spent::default(),
         })
     }
 

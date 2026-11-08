@@ -15,6 +15,7 @@ use super::{Link, newlines};
 use crate::error::Error;
 use crate::link::write::BlobUse;
 use crate::synchronise::SyncReport;
+use crate::tx::Spent;
 
 const OWN_FORK: &str = "this machine's journal differs from the published one: the same machine \
                         identity is being used from two places. Give one of them a new identity.";
@@ -96,6 +97,8 @@ impl Link<'_> {
     /// events received. Foreign forks are preserved beside their published replacements; an own
     /// fork fails. Pending attempts found published are confirmed. Call with the store lock held.
     /// The public report fields retain this operation's facts, including progress before an error.
+    /// Keep this link outside the lock scope: it retains the completed view until its next merge
+    /// or destruction, so freeing a large projection need not hold up other writers.
     pub fn merge(&mut self, tip: Option<&str>) -> Result<i64, Error> {
         let mut merging = Merging::new(self);
         let result = merging.run(tip, SyncReport::Skip);
@@ -104,7 +107,9 @@ impl Link<'_> {
         self.forks = facts.forks;
         self.confirmed = facts.confirmed;
         self.confirmed_events = facts.confirmed_events;
-        result.map(|(_, pulled)| pulled)
+        let (state, pulled) = result?;
+        self.retained = Spent::from_projection(state.into_projection());
+        Ok(pulled)
     }
 
     /// Internal rounds receive a completed merge rather than reading report slots on the link.
@@ -126,6 +131,7 @@ impl Link<'_> {
 
 impl<'l, 'w> Merging<'l, 'w> {
     fn new(link: &'l mut Link<'w>) -> Self {
+        link.retained = Spent::default();
         Self {
             link,
             facts: MergeFacts::default(),
