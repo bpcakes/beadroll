@@ -148,13 +148,13 @@ pub struct Projection {
 
 /// Replays `journal` into a projection. Fails only as [`crate::replay::replay`] does.
 pub fn project(mut journal: Journal) -> Result<Projection, KeySpace> {
-    journal.settle();
-    let heads = journal.frontier();
-    let ids: BTreeSet<EventId> = journal.events().keys().copied().collect();
-    let lengths = (journal.order().iter())
+    let settled = journal.settled_view();
+    let heads = settled.frontier();
+    let ids: BTreeSet<EventId> = settled.events().keys().copied().collect();
+    let lengths = (settled.order().iter())
         .map(|(machine, ids)| (machine.clone(), small(ids.len())))
         .collect();
-    let lasts = (journal.order().iter())
+    let lasts = (settled.order().iter())
         .filter_map(|(machine, ids)| Some((machine.clone(), *ids.iter().max()?)))
         .collect();
     let (mut state, replayed) = replayed(journal)?;

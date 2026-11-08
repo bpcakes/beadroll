@@ -9,6 +9,10 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
 
 ## Key entrypoints
 
+- `src/tx/prepared.rs`: consuming `Tx::prepare` separates `PreparedWrite` (events to persist,
+  with no emitter or applied prefix) from `Spent` (the retained materialized view). Both local
+  and coordinated paths retain these outside the lock on errors as well as success.
+
 - `src/tx.rs`: `Tx` (`emit`, `state`, `lend`, `on`), `Emitter` and `Spent`. A `Tx` starts from the
   store's projection (`on`: one the caller read under the lock it holds, with the journal files it
   was made from (`Sourced`); read again, as `new` does, when a file was written since,
@@ -72,7 +76,11 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   it when it returns (roll-lqjj.32). `writing_spent` hands what it held to its caller instead, who
   keeps it or frees it; this crate never leaks it, on a write that fails either (roll-lqjj.42;
   `xtask/tests/heap` sees `run_with` return holding none of it after `writing`, a failed write and
-  a round of `coordinated`).
+  a round of `coordinated`). `src/tx/tests.rs` observes the real file lock at materialized-view
+  destruction on failed builds and persistence, with projection and replay, for both write paths.
+  Its test-only probe follows the view through preparation; a locked-drop control checks that the
+  probe detects the forbidden order. It is attached after the body's final state read, so it does
+  not observe replacement during event application.
 - Up to 24 rounds per command, with a uniformly sampled pause from zero up to
   `min(0.1 × 2^(attempt − 1), 2)` seconds after a failed round, outside the store lock
   (roll-lqjj.7; `docs/REVIEWING.md` §2).

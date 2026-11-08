@@ -7,6 +7,9 @@
 //! need not coexist.
 
 mod apply;
+mod batch;
+
+pub(crate) use batch::Batch;
 
 use std::collections::{HashMap, HashSet};
 
@@ -54,8 +57,7 @@ struct Takeovers {
 
 /// [`replay`], with what a projection keeps besides the state.
 pub(crate) fn replayed(mut journal: Journal) -> Result<(State, Replayed), KeySpace> {
-    journal.settle();
-    let mut order = Order::of(&journal);
+    let mut order = Order::of(journal.settled_view());
     let Parts {
         mut events,
         order: chains,
@@ -98,6 +100,7 @@ pub(crate) fn replayed(mut journal: Journal) -> Result<(State, Replayed), KeySpa
             g.number().as_i128().checked_add(count).is_none()))
     });
     let saved = may_exhaust.then(|| (st.clone(), applying.clone()));
+    let mut batch = Batch::new(st);
     let mut awaiting = false;
     let takeovers = loop {
         let takeovers = settle_takeovers(&knowledge, &order.ordered, &applying, &mut inert);
@@ -105,7 +108,7 @@ pub(crate) fn replayed(mut journal: Journal) -> Result<(State, Replayed), KeySpa
         // and change their diagnostic, so the projection must keep waiting across those passes.
         awaiting |= takeovers.awaiting;
         apply_all(
-            &mut st,
+            &mut batch,
             &knowledge,
             &order.ordered,
             &mut applying,
@@ -116,7 +119,7 @@ pub(crate) fn replayed(mut journal: Journal) -> Result<(State, Replayed), KeySpa
             break takeovers;
         };
         let mut refused = false;
-        for entry in &st.integrity {
+        for entry in batch.integrity() {
             if entry.problem != apply::CLAIM_GENERATION_EXHAUSTED {
                 continue;
             }
@@ -138,11 +141,10 @@ pub(crate) fn replayed(mut journal: Journal) -> Result<(State, Replayed), KeySpa
         if !refused {
             break takeovers;
         }
-        st = initial.clone();
+        batch = Batch::new(initial.clone());
         applying = events.clone();
     };
-    st.knowledge = knowledge;
-    finish(&mut st);
+    let st = batch.finish(knowledge);
     let replayed = Replayed {
         superseded: takeovers.superseded,
         unsettled: awaiting || order.loose,
@@ -313,7 +315,7 @@ fn settle_takeovers(
 
 /// Phase 3: every event applied, or reported.
 fn apply_all(
-    st: &mut State,
+    batch: &mut Batch,
     k: &Knowledge,
     ordered: &[usize],
     applying: &mut [Option<Box<Rest>>],
@@ -326,14 +328,14 @@ fn apply_all(
         let Some(event) = applying.get_mut(at).and_then(Option::take) else {
             continue;
         };
-        apply_one(st, k, at, &event, inert.get(&at), superseded, &names)?;
+        batch.apply(k, at, &event, inert.get(&at), superseded, &names)?;
     }
     Ok(())
 }
 
 /// The event at `at`, doing `event`, applied; or reported, when it cannot apply (`inert`, with its
 /// integrity text: empty when it was reported as it was loaded).
-pub(crate) fn apply_one(
+fn apply_one(
     st: &mut State,
     k: &Knowledge,
     at: usize,
@@ -391,7 +393,7 @@ pub(crate) fn apply_one(
 /// What replay finishes with once every event has applied: each list of imported dependencies an
 /// entry was taken from made whole, each issue's labels, the labels whose tags remain, and the
 /// parent-child index.
-pub(crate) fn finish(st: &mut State) {
+fn finish(st: &mut State) {
     st.settle_awaiting();
     st.issues.relabel_all();
     st.index_children();
@@ -405,7 +407,7 @@ pub(crate) fn finish(st: &mut State) {
 /// touches. Each issue is relabelled once however many of the batch's events change its labels, as
 /// only the labels it has once they have all applied are derived from. The lists of imported
 /// dependencies an entry was taken from are made whole, as replay makes them.
-pub(crate) fn finish_some(st: &mut State, doing: &[Box<Rest>]) {
+fn finish_some(st: &mut State, doing: &[Box<Rest>]) {
     st.settle_awaiting();
     let mut relabelled: Vec<EventId> = (doing.iter())
         .filter(|what| relabels(&what.op))

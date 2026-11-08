@@ -52,7 +52,7 @@ use crate::journal::{Event, Journal, Parts, Rest};
 use crate::json::Value;
 use crate::op::Op;
 use crate::replay::Contents;
-use crate::replay::{Names, Room, apply_one, finish_some, observe_one};
+use crate::replay::{Batch, Names, Room, observe_one};
 use crate::state::{KeySpace, Texts, is_text};
 
 /// How an operation uses issue texts.
@@ -87,15 +87,16 @@ impl Projection {
         // Read and judged as a journal reads and judges them: every record a new, valid event of
         // the machine whose folder held it.
         let count = records.len();
-        let journal = read_batch(records);
+        let mut journal = read_batch(records);
+        let settled = journal.settled_view();
         // an id replay reported a record of, held or not (found only in another machine's journal)
         let reported: HashSet<EventId> = (self.state.integrity.iter())
             .filter_map(|entry| entry.event.as_deref().and_then(EventId::parse))
             .collect();
-        if !journal.invalid.is_empty()
-            || !journal.quarantined().is_empty()
-            || journal.events().len() != count
-            || (journal.events().keys()).any(|id| self.ids.contains(id) || reported.contains(id))
+        if !settled.invalid().is_empty()
+            || !settled.quarantined().is_empty()
+            || settled.events().len() != count
+            || (settled.events().keys()).any(|id| self.ids.contains(id) || reported.contains(id))
         {
             return Ok(Extended::Replay);
         }
@@ -140,6 +141,7 @@ impl Projection {
             placed.push(at);
         }
         let (mut room, names) = (Room::default(), Names::default());
+        let mut batch = Batch::new(self.state);
         for at in ordered {
             let (Some((_, event)), Some(what), Some(&placed)) =
                 (events.get_index(at), doing.get(at), placed.get(at))
@@ -162,18 +164,9 @@ impl Projection {
             {
                 return Ok(Extended::Replay);
             }
-            apply_one(
-                &mut self.state,
-                &knowledge,
-                placed,
-                what,
-                None,
-                &self.superseded,
-                &names,
-            )?;
+            batch.apply(&knowledge, placed, what, None, &self.superseded, &names)?;
         }
-        self.state.knowledge = knowledge;
-        finish_some(&mut self.state, &doing);
+        self.state = batch.finish_some(knowledge, &doing);
         self.advance(&events, &order);
         Ok(Extended::Applied(Box::new(self)))
     }

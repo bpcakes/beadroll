@@ -14,12 +14,17 @@ pub(super) enum Materialized {
     Projected {
         projection: Box<Projection>,
         applied: usize,
+        // Dropped after the actual view; present only in unit tests of lock lifetimes.
+        #[cfg(test)]
+        drop_probe: Option<super::tests::DropProbe>,
     },
     #[default]
     ReplayNeeded,
     Replayed {
         state: Box<State>,
         applied: usize,
+        #[cfg(test)]
+        drop_probe: Option<super::tests::DropProbe>,
     },
 }
 
@@ -28,6 +33,8 @@ impl Materialized {
         Self::Projected {
             projection: Box::new(projection),
             applied: 0,
+            #[cfg(test)]
+            drop_probe: None,
         }
     }
 
@@ -50,6 +57,7 @@ impl Materialized {
         if let Self::Projected {
             mut projection,
             applied,
+            ..
         } = std::mem::take(self)
         {
             let records = emitted.get(applied..).unwrap_or_default().to_vec();
@@ -60,6 +68,8 @@ impl Materialized {
                 *self = Self::Projected {
                     projection,
                     applied: emitted.len(),
+                    #[cfg(test)]
+                    drop_probe: None,
                 };
                 return Ok(());
             }
@@ -80,6 +90,8 @@ impl Materialized {
         *self = Self::Replayed {
             state: Box::new(replay(journal)?),
             applied: emitted.len(),
+            #[cfg(test)]
+            drop_probe: None,
         };
         Ok(())
     }

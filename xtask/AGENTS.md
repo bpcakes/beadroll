@@ -159,8 +159,7 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
   `coverage::tests::limits` finds the runs under `ulimit` in the tracked test files (a string
   literal in code with `ulimit ` and `exec `, however it is written) and wants a use of it in code
   for each. The steps set `BEAD_UNDER_TEST` empty: a `bead` the build did not make has no counters.
-  The doctests are left out: the workspace has none, and cargo-llvm-cov covers them only on a
-  nightly toolchain.
+  The doctests are left out: cargo-llvm-cov covers them only on a nightly toolchain.
 - Timings are evidence and never gate anything, with one exception, the growth guards
   (`timing/growth.rs`, X15): a ratio of two timings of one core call, the larger input eight times
   the smaller, may not exceed 24, where growing with the input gives about 8 and with its square

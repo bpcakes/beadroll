@@ -14,6 +14,12 @@ consumer on tokio calls through `spawn_blocking`.
 
 ## Key entrypoints
 
+- `journal/settled.rs`: `SettledJournal`, borrowed through `Journal::settled_view`; internal
+  ordering and recap readers require this proof. Shared compatibility readers use `with_settled`,
+  borrowing a settled journal or settling a copy of a dirty one.
+- `replay/batch.rs`: `Batch` owns state during event application. Only consuming full or
+  changed-record finishing returns it, after dependency holes and derived indexes are settled.
+
 - `src/metadata.rs`: `Metadata`, the typed published-count map with ordered unknown fields kept
   for rewrites; `src/configuration.rs`: known configuration fields read by type into the existing
   public map, with legacy shapes left to the established validators.

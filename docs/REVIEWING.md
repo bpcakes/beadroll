@@ -1633,6 +1633,33 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - A command receipt survives a *failed* later command by the same actor and is dropped only when
   a later command by that actor goes through: the remote accepted it, or it was a local write that
   was appended. A recognised retry still reports the claim as it is now.
+- Journal readers, write preparation and replay batches have explicit boundaries (roll-y14g):
+  - `Journal::settled_view` settles the records and borrows their derived collections. Internal
+    causal ordering, replay/projection preparation and recap helpers take this evidence; adding
+    another record cannot coexist with the borrow. Fresh own records still install immediately.
+    Shared compatibility entrypoints (`causal_order`, `effective_deps`, `unseen`) borrow a settled
+    journal without copying; a dirty one is settled in a copy. Existing raw collection accessors
+    keep their signatures and their settle-first contract.
+  - `Tx::prepare` consumes the building transaction into `PreparedWrite` and `Spent`. Only the
+    former can drain events, and it has neither an emitter nor an applied-event index. The latter
+    holds the materialized view; a requested final state is applied before preparation and taken
+    directly from that view afterward. Local and coordinated writes retain both outside the lock,
+    including failed builds and failed persistence. Sequential events still append before attempt
+    confirmation or publication; receipt retirement and every failpoint keep their order.
+  - `replay::Batch` owns the state while events apply, including the null slots that keep imported
+    dependency numbers stable. It exposes application and integrity diagnostics, not the state.
+    Consuming completion restores knowledge and runs either full finishing or the existing
+    changed-record finishing before returning state. Projection decoding uses full finishing too.
+    No entry representation, numbering, edge order, or once-per-batch compaction changes.
+  Coverage: the journal's duplicate-then-fresh-record test and borrowed-view compile-fail example;
+  sync's mixed sequential/conditional write and final-state tests; a test-only probe dropped after
+  the materialized view checks the real file lock on failed local and coordinated builds and
+  persistence, for both projection and replay. A locked-drop control proves the probe detects the
+  forbidden order, without timing or sleeps. The probe is attached after the body's final state
+  read; it observes final destruction, not replacement during event application. The awaiting batch
+  test's explicit no-hole assertions, differential histories, and work-count guards cover finishing.
+  These are internal
+  ownership changes, not new format-1 fields or user-facing workflow rules.
 - Attempt recovery, receipt retirement, transaction materialization and command publication have
   explicit internal states (roll-jg0k). These types change no format-1 bytes, public entrypoints,
   failpoints or ordering of durable writes:

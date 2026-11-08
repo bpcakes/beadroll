@@ -3,7 +3,11 @@
 //! hand back of it, are in `tx/writes.rs`.
 
 mod materialized;
+mod prepared;
 mod writes;
+
+#[cfg(test)]
+mod tests;
 
 use beadroll_core::event::{FORMAT, MAX_NESTING, event_problem, payload_problem, write_problem};
 use beadroll_core::id::EventId;
@@ -90,16 +94,6 @@ impl<'a> Tx<'a> {
         })
     }
 
-    /// The sequential events emitted, taken out of the transaction to be appended: the journal's
-    /// records among those emitted, kept once and each let go of once encoded, so that a write of
-    /// many (an import emits one or more for each of its export's records) never holds them twice
-    /// (roll-lqjj.9). The transaction is done with once they are taken.
-    pub(crate) fn take_pending(&mut self) -> impl Iterator<Item = Value> + use<> {
-        (std::mem::take(&mut self.emitted).into_iter())
-            .filter(|record| record.sequenced)
-            .map(|record| record.value)
-    }
-
     /// Whether any sequential event was emitted.
     pub fn has_pending(&self) -> bool {
         self.emitted.iter().any(|record| record.sequenced)
@@ -180,14 +174,6 @@ impl<'a> Tx<'a> {
     pub fn into_state(mut self) -> Result<State, Error> {
         self.state()?;
         self.materialized.into_state()
-    }
-
-    /// What the transaction held that costs to free, taken out of it, which is done with, as it
-    /// stands: the events it emitted are in it only if its state was asked for since.
-    fn into_spent(self) -> Spent {
-        Spent {
-            materialized: self.materialized,
-        }
     }
 }
 

@@ -4,13 +4,17 @@ use std::cmp::Reverse;
 use std::collections::{BTreeSet, BinaryHeap};
 
 use crate::id::EventId;
-use crate::journal::{Event, Journal};
+use crate::journal::{Event, Journal, SettledJournal};
 
 /// What an event waits for. A quarantined id is inert anyway, so it waits only for causes that
 /// exist: those its own journal's copy names (that copy is as trustworthy as the journal's other
 /// events), or, lacking one, those every variant agrees on, so one bad variant cannot hold
 /// everything after it.
 pub fn effective_deps(journal: &Journal, event: &Event) -> Vec<EventId> {
+    journal.with_settled(|journal| settled_deps(journal, event))
+}
+
+fn settled_deps(journal: SettledJournal<'_>, event: &Event) -> Vec<EventId> {
     let Some(variants) = journal.quarantined().get(&event.id()) else {
         return event.deps().to_vec();
     };
@@ -39,6 +43,10 @@ pub fn effective_deps(journal: &Journal, event: &Event) -> Vec<EventId> {
 /// causes, in journal order. A quarantined id whose remaining causes loop back onto it is released:
 /// it applies nothing.
 pub fn causal_order(journal: &Journal) -> (Vec<EventId>, Vec<EventId>) {
+    journal.with_settled(settled_order)
+}
+
+pub(crate) fn settled_order(journal: SettledJournal<'_>) -> (Vec<EventId>, Vec<EventId>) {
     let order = Order::of(journal);
     let ids = |at: &[usize]| -> Vec<EventId> {
         at.iter()
@@ -135,7 +143,7 @@ impl Order {
     }
 
     /// Kahn's algorithm over effective causes, with ready events held in a heap ordered by id.
-    pub(crate) fn of(journal: &Journal) -> Order {
+    pub(crate) fn of(journal: SettledJournal<'_>) -> Order {
         let events = journal.events();
         let count = events.len();
         // Signed counts are needed because a released id's cause count can fall below zero.
@@ -164,7 +172,7 @@ impl Order {
             causes.starts.push(causes.items.len());
             let listed = journal.quarantined().contains_key(&event.id());
             let deps = if listed {
-                effective_deps(journal, event)
+                settled_deps(journal, event)
             } else {
                 Vec::new()
             };

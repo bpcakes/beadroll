@@ -12,6 +12,40 @@ use beadroll_test_support::Machine;
 
 use crate::support::{actor, comments, sandbox, text, workspace};
 
+/// Preparation preserves both destinations, including events emitted after the last cached
+/// state read. The returned state and the persisted journal must contain the same whole write.
+#[test]
+fn preparing_a_write_keeps_sequential_and_conditional_events_together() {
+    let sandbox = sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let key = text(&a.bead(["create", "x"]).expect("an issue")["id"]);
+    let ws = workspace(&a, sandbox.origin(), &[]);
+    let actor = actor(&a);
+    let (_, state) = writing_state(&ws, &actor, |tx| -> Result<(), Error> {
+        comment_on(&key, "before the claim")(tx)?;
+        let uid = tx.state()?.resolve(&key).expect("the issue").uid();
+        crate::support::claim(tx, beadroll_sync::Mode::Local, &key)?;
+        tx.conditional = true;
+        tx.emit(
+            "set",
+            Some(&uid.to_string()),
+            titled("with the claim"),
+            None,
+        )?;
+        Ok(())
+    })
+    .expect("the mixed write");
+    let state = state.expect("the prepared final state");
+    let issue = state.resolve(&key).expect("the issue");
+    assert_eq!(issue.title(), "with the claim");
+    assert!(issue.claim().is_some());
+    let shown = a.show(&key);
+    assert_eq!(shown["title"].as_str(), Some("with the claim"));
+    assert_eq!(comments(&shown), ["before the claim"]);
+    assert!(shown["claim"].as_object().is_some());
+}
+
 /// `{"fields": {"title": title}}`.
 fn titled(title: &str) -> Object {
     let mut fields = Object::new();

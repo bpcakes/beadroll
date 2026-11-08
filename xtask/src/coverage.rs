@@ -8,9 +8,8 @@
 //!   counts too ([`CHILD_ONLY`] shows it, and the command fails when it does not);
 //! - with `--stress`, the ignored stress models; with `--sweep`, all 660 schedules of the
 //!   ownership sweep (`BEAD_SWEEP=full`), which the nightly workflow does;
-//! - not the doctests, of which the workspace has none and which cargo-llvm-cov covers only on a
-//!   nightly toolchain, and not the growth guards, whose timings an instrumented build would
-//!   spoil;
+//! - not the doctests, which cargo-llvm-cov covers only on a nightly toolchain, and not the growth
+//!   guards, whose timings an instrumented build would spoil;
 //! - always the `bead` this build makes, whatever `BEAD_UNDER_TEST` names in the shell: another
 //!   `bead` has no counters.
 //!

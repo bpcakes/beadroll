@@ -11,7 +11,7 @@ use beadroll_git::IoError;
 use beadroll_store::LockState;
 use beadroll_store::PublicationState;
 use beadroll_store::{
-    Actor, Workspace, append_events, attempt_path, private_dir, private_dirs, write_attempt_file,
+    Actor, Workspace, attempt_path, private_dir, private_dirs, write_attempt_file,
 };
 
 use super::{Spent, Tx};
@@ -93,9 +93,9 @@ pub fn writing_state<T, E: From<Error>>(
 ) -> Result<(T, Option<State>), E> {
     written(ws, actor, WriteResult::KeepState, body).map(|done| {
         let state = done
-            .tx
-            .filter(|_| done.applied)
-            .and_then(|tx| tx.into_state().ok());
+            .applied
+            .then(|| done.spent.materialized.into_state().ok())
+            .flatten();
         (done.result, state)
     })
 }
@@ -109,56 +109,55 @@ pub fn writing_spent<T, E: From<Error>>(
     actor: &Actor,
     body: impl FnOnce(&mut Tx<'_>) -> Result<T, E>,
 ) -> Result<(T, Spent), E> {
-    written(ws, actor, WriteResult::DiscardState, body).map(|done| {
-        let spent = done.tx.map_or_else(Spent::default, Tx::into_spent);
-        (done.result, spent)
-    })
+    written(ws, actor, WriteResult::DiscardState, body).map(|done| (done.result, done.spent))
 }
 
-/// A write that went through: what its body returned, whether the transaction has the events it
-/// emitted applied (when [`written`] was asked to), and the transaction, which the lock no longer
-/// protects and no one has let go of yet.
-struct Written<'w, T> {
+/// A write that went through: what its body returned, whether its retained view has every event
+/// applied (when [`written`] was asked to), and that view, kept beyond the lock's lifetime.
+struct Written<T> {
     result: T,
     applied: bool,
-    tx: Option<Tx<'w>>,
+    spent: Spent,
 }
 
-/// [`writing`], with the transaction's state at the end when `keep` asks for it. The transaction
-/// is given back with the result, to be let go of, or made into that state, once the lock is
-/// (roll-lqjj.32); it is let go of here when the write fails.
-fn written<'w, T, E: From<Error>>(
-    ws: &'w Workspace,
+/// [`writing`], with the transaction's state at the end when `keep` asks for it. Preparing consumes
+/// the transaction. Its view and any unwritten events survive the lock on failure too
+/// (roll-lqjj.32); successful writes return the view for extraction or retention.
+fn written<T, E: From<Error>>(
+    ws: &Workspace,
     actor: &Actor,
     keep: WriteResult,
     body: impl FnOnce(&mut Tx<'_>) -> Result<T, E>,
-) -> Result<Written<'w, T>, E> {
+) -> Result<Written<T>, E> {
     let keep = matches!(keep, WriteResult::KeepState);
-    let mut made = None;
+    let mut spent = Spent::default();
+    let mut pending_write = None;
     let result = locked(ws, || -> Result<(T, bool), E> {
-        let tx = made.insert(Tx::new(ws, actor)?);
-        let replica = tx.replica.clone();
-        if tx.state()?.chain_breaks().contains_key(&replica) {
-            return Err(Error::JournalFork(
-                "this machine's journal no longer forms one chain: the same machine identity has \
-                 written from two places. Give one of them a new identity."
-                    .to_owned(),
-            )
-            .into());
-        }
-        let result = body(tx)?;
+        let mut tx = Tx::new(ws, actor)?;
+        let built = (|| {
+            let replica = tx.replica.clone();
+            if tx.state()?.chain_breaks().contains_key(&replica) {
+                return Err(Error::JournalFork(
+                    "this machine's journal no longer forms one chain: the same machine identity has \
+                     written from two places. Give one of them a new identity."
+                        .to_owned(),
+                ).into());
+            }
+            body(&mut tx)
+        })();
         // the events emitted applied while the transaction still has them
-        let applied = keep && tx.state().is_ok();
-        let sequenced = tx.has_pending();
-        let pending = tx.take_pending();
-        let finish = || -> Result<(), Error> {
-            if sequenced {
-                append_events(ws, &tx.replica, pending)?;
+        let applied = built.is_ok() && keep && tx.state().is_ok();
+        let (prepared, retained) = tx.prepare();
+        spent = retained;
+        let prepared = pending_write.insert(prepared);
+        // Even a failed body releases its large view only after the lock is gone.
+        let result = built?;
+        let mut finish = || -> Result<(), Error> {
+            let sequenced = prepared.append(ws)?;
+            if !prepared.ownership.is_empty() {
+                confirm_ownership(ws, &prepared.ownership)?;
             }
-            if !tx.ownership.is_empty() {
-                confirm_ownership(ws, &tx.ownership)?;
-            }
-            if sequenced || !tx.ownership.is_empty() {
+            if sequenced || !prepared.ownership.is_empty() {
                 forget_receipts(ws, &actor.value)?;
                 ws.set_wrote(PublicationState::Unpublished);
             }
@@ -171,7 +170,7 @@ fn written<'w, T, E: From<Error>>(
     Ok(Written {
         result,
         applied,
-        tx: made,
+        spent,
     })
 }
 

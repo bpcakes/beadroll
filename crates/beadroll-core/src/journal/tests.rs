@@ -113,6 +113,55 @@ fn a_journal_of_what_replay_reports_reads_alike_either_way() {
     assert!(reported > 0, "the flawed histories report nothing");
 }
 
+/// A duplicate invalidates derived collections, including fresh records that follow it. Both
+/// borrowed and compatibility readers must see the entire settled journal.
+#[test]
+fn settled_views_include_records_added_after_a_duplicate() {
+    let mut journal = Journal::new();
+    journal.add_segment(
+        &segment(&[&line(1, "init", None, r#"{"prefix":"ex"}"#)]),
+        "a",
+        "first",
+    );
+    assert!(
+        journal.is_settled(),
+        "a fresh own record installs immediately"
+    );
+    journal.add_segment(
+        &segment(&[
+            &line(1, "init", None, r#"{"prefix":"other"}"#),
+            &line(
+                2,
+                "create",
+                None,
+                r#"{"key":"ex-two","fields":{"title":"two"}}"#,
+            ),
+        ]),
+        "a",
+        "later",
+    );
+    assert!(!journal.is_settled());
+    let mut expected = journal.clone();
+    expected.settle();
+    assert_eq!(
+        crate::order::causal_order(&journal),
+        crate::order::causal_order(&expected)
+    );
+    assert_eq!(
+        crate::recap::unseen(&journal, crate::recap::Window::All),
+        crate::recap::unseen(&expected, crate::recap::Window::All),
+    );
+    assert!(
+        !journal.is_settled(),
+        "shared readers leave the original untouched"
+    );
+    let view = journal.settled_view();
+    assert_eq!(view.events().len(), 2);
+    assert_eq!(view.quarantined().len(), 1);
+    assert_eq!(view.frontier(), expected.frontier());
+    assert!(journal.is_settled());
+}
+
 #[test]
 fn a_segment_skips_a_last_line_not_yet_whole_and_reports_any_other() {
     let mut data = segment(&[

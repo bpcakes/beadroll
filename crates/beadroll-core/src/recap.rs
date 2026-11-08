@@ -19,8 +19,8 @@
 //! have seen.
 
 use crate::id::EventId;
-use crate::journal::Journal;
-use crate::order::causal_order;
+use crate::journal::{Journal, SettledJournal};
+use crate::order::settled_order;
 
 /// Which of a journal's events a recap shows.
 #[derive(Clone, Copy, Debug)]
@@ -50,7 +50,11 @@ pub struct Unseen {
 
 /// What a recap of `journal`, a settled one, shows through `window`, and what it has seen then.
 pub fn unseen(journal: &Journal, window: Window<'_>) -> Unseen {
-    let (ordered, _) = causal_order(journal);
+    journal.with_settled(|journal| settled_unseen(journal, window))
+}
+
+fn settled_unseen(journal: SettledJournal<'_>, window: Window<'_>) -> Unseen {
+    let (ordered, _) = settled_order(journal);
     let seen = match window {
         Window::After(frontier) => below(journal, frontier),
         Window::Since(_) | Window::All => Vec::new(),
@@ -95,7 +99,7 @@ pub fn joined(frontier: &[EventId], placed: &[EventId], other: &[EventId]) -> Ve
 /// Which of the journal's events, by index, are below `frontier`: reached from it through the
 /// causes each event names, the walk stopping at quarantined ids. An id of `frontier` the journal
 /// does not hold is passed over.
-fn below(journal: &Journal, frontier: &[EventId]) -> Vec<bool> {
+fn below(journal: SettledJournal<'_>, frontier: &[EventId]) -> Vec<bool> {
     let events = journal.events();
     let mut seen = vec![false; events.len()];
     let mut next: Vec<usize> = (frontier.iter())
@@ -123,7 +127,7 @@ fn below(journal: &Journal, frontier: &[EventId]) -> Vec<bool> {
 
 /// The frontier of `ordered`, events in causal order: those none of the others builds on, the
 /// causes a quarantined id names not counted as built on. Sorted.
-fn frontier(journal: &Journal, ordered: &[EventId]) -> Vec<EventId> {
+fn frontier(journal: SettledJournal<'_>, ordered: &[EventId]) -> Vec<EventId> {
     let events = journal.events();
     let mut built_on = vec![false; events.len()];
     for id in ordered {
