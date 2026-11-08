@@ -9,6 +9,8 @@ mod writes;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+pub(crate) use tests::DropProbe;
 
 use beadroll_core::event::{FORMAT, MAX_NESTING, event_problem, payload_problem, write_problem};
 use beadroll_core::id::EventId;

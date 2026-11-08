@@ -12,13 +12,15 @@ use crate::locked;
 use crate::synchronise::SyncReport;
 use std::path::Path;
 
-fn fixture() -> (Sandbox, Workspace) {
+pub(super) fn fixture(faults: &str) -> (Sandbox, Workspace) {
     let sandbox = Sandbox::new(built_bead());
     let a = Machine::new(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
     a.bead(["create", "first"]);
+    let mut env = a.env(None, "codex");
+    env.insert("BEAD_FAILPOINTS".into(), faults.into());
     let settings = Settings::from_process(
-        a.env(None, "codex"),
+        env,
         Some(a.checkout().to_path_buf()),
         std::env::var_os("HOME").unwrap_or_default(),
         std::env::temp_dir(),
@@ -39,7 +41,7 @@ fn fixture() -> (Sandbox, Workspace) {
 
 #[test]
 fn completed_merges_keep_their_state_and_counts_across_failed_rounds() {
-    let (sandbox, ws) = fixture();
+    let (sandbox, ws) = fixture("");
     let mut link = Link::new(&ws, &Endpoint::at(sandbox.origin())).unwrap();
     let first = locked(&ws, || -> Result<_, Error> {
         let tip = link.fetch()?;
@@ -81,7 +83,7 @@ fn completed_merges_keep_their_state_and_counts_across_failed_rounds() {
 /// Dropping the retained view under the lock is the negative control for the same probe.
 #[test]
 fn public_merge_keeps_its_view_until_the_link_is_dropped() {
-    let (sandbox, ws) = fixture();
+    let (sandbox, ws) = fixture("");
     for expected in [LockState::Locked, LockState::Unlocked] {
         let mut link = Link::new(&ws, &Endpoint::at(sandbox.origin())).unwrap();
         let observed = locked(&ws, || -> Result<_, Error> {

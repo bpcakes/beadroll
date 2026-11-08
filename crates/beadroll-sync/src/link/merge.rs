@@ -75,6 +75,9 @@ pub(crate) struct Merged {
     pub state: Sourced,
     pub pulled: i64,
     pub facts: MergeFacts,
+    // Last field: observes destruction after the unused sourced projection, in unit tests only.
+    #[cfg(test)]
+    _drop_probe: Option<crate::tx::DropProbe>,
 }
 
 #[derive(Default)]
@@ -125,6 +128,8 @@ impl Link<'_> {
             state,
             pulled,
             facts: merging.facts,
+            #[cfg(test)]
+            _drop_probe: drop_tests::probe(self.ws),
         })
     }
 }
@@ -340,5 +345,7 @@ impl<'l, 'w> Merging<'l, 'w> {
     }
 }
 
+#[cfg(test)]
+mod drop_tests;
 #[cfg(test)]
 mod tests;

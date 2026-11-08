@@ -1637,6 +1637,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `Workspace::lock` owns the OS file lock and the cache phase; dropping its guard clears cached
   claim identities before releasing the lock, including on unwind. `set_holding` remains a
   compatibility interface for external lock managers, not the internal locking path.
+  The guard is `must_use`: a bare `ws.lock()?;` warns that it releases the lock immediately;
+  explicitly discarding it remains possible.
   `Tx::attempt` borrows a writer that routes ordinary edits into the ownership attempt. Its
   lifetime cannot leak that routing into later sequential writes; the public `conditional`
   switch remains compatible. Claim and release events are always attempt events. Mixed writes
@@ -1655,6 +1657,12 @@ These were decided deliberately. Report problems *with* them, not their existenc
   owned snapshots across failed merges, existing retry/rebuild reports and projection-read counts.
   The public wrapper has its own real-lock destruction probe and locked-drop control, and legacy
   `conditional = true` has destination coverage through both emitters and across an attempt scope.
+  Internal unused merges have a probe after their state field in unit-test builds, attached only
+  for the observing thread's selected workspace. A failed sync and an accepted-receipt return
+  exercise the production exits without moving the projection into a transaction; a locked-drop
+  control checks the probe. The transaction probes separately cover views consumed by `Tx`.
+  A gated rejected push gives the first and final rounds different pending confirmations and one
+  incoming event each: the report keeps only the final confirmation but counts both events.
 - Journal readers, write preparation and replay batches have explicit boundaries (roll-y14g):
   - `Journal::settled_view` settles the records and borrows their derived collections. Internal
     causal ordering, replay/projection preparation and recap helpers take this evidence; adding

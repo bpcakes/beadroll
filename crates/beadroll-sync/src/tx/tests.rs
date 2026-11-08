@@ -16,9 +16,15 @@ use crate::{Error, Mode, NetworkMode, coordinated};
 
 /// The enum drops the view before this field, so this records its actual destruction boundary.
 #[derive(Debug)]
-pub(super) struct DropProbe {
+pub(crate) struct DropProbe {
     lock: PathBuf,
     observed: Arc<Mutex<Vec<LockState>>>,
+}
+
+impl DropProbe {
+    pub(crate) fn new(lock: PathBuf, observed: Arc<Mutex<Vec<LockState>>>) -> Self {
+        Self { lock, observed }
+    }
 }
 
 impl Drop for DropProbe {

@@ -11,6 +11,7 @@ use crate::{Error, private_dir, private_dirs};
 /// An exclusive store lock. Dropping it invalidates the phase's cached identities before
 /// releasing the file lock, including when a caller unwinds.
 #[derive(Debug)]
+#[must_use = "dropping the guard releases the store lock"]
 pub struct WorkspaceLock<'a> {
     workspace: &'a Workspace,
     _file: File,
@@ -19,6 +20,15 @@ pub struct WorkspaceLock<'a> {
 impl Workspace {
     /// Locks this store and begins a fresh cache phase. The guard must outlive all work in that
     /// phase. Like the underlying file lock, this is not a reentrant lock.
+    /// Bind the returned guard: discarding it immediately releases the lock and warns.
+    ///
+    /// ```compile_fail
+    /// #![deny(unused_must_use)]
+    /// # fn discarded(ws: &beadroll_store::Workspace) -> Result<(), beadroll_store::Error> {
+    /// ws.lock()?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn lock(&self) -> Result<WorkspaceLock<'_>, Error> {
         private_dir(&self.settings.home()?)?;
         private_dir(&self.dir)?;
