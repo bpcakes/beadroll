@@ -1,0 +1,1 @@
+{"v":1,"id":"01a1bfbe-1dbe-7561-9413-9d7ba055f6f8","replica":"194cc432","deps":["01a1bfbe-07a4-75c8-8bd7-ca9267299cbd"],"actor":{"agent":"codex","thread":"01a1bfbd-46f1-7082-8ab3-d021c48b4b9b"},"op":"claim","issue":"01a1bfbe-07a4-75c8-8bd7-ca9267299cbd","data":{"mode":"online","generation":1},"where":{"branch":"main","commit":"ebd060d3e7269932143d82e7d60762c230b272d7"}}
