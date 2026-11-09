@@ -271,6 +271,8 @@ and `recap::unseen` require `journal.settled_view()` (or a checked `journal.sett
 export requires `state.hydrated()?`, and whole-journal ancestry requires `state.full_knowledge()`.
 A projection retains only part of the history; loading its texts enables export but does not
 recover full ancestry. `Tree::snapshot()` supplies both capabilities from one replay.
+Pending events are included in its knowledge, but `saw` recognizes only their direct causes;
+check `state().pending()` before treating a false ancestry answer as ruling out an ancestor.
 These are source API changes; CLI output and format 1 are unchanged.
 
 ## Documentation and support

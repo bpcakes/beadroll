@@ -25,12 +25,14 @@ Reviewers: propose new rows in your report using the next free id for your revie
 The 2026-11-09 source-consumer audit (roll-bdfc), followed by the requested public API changes.
 The first two observations were reproduced through the public API; the third is a construction
 hazard addressed without changing replay or recap semantics.
+The follow-up panel review found the pending-ancestry contract mismatch in AO04.
 
 | Id | Severity | Finding | Status | Resolution | Tests |
 |---|---|---|---|---|---|
 | AO01 | Medium | Raw journal getters could disagree with recap after duplicate and fresh records | fixed | Public collections, ordering and recap require a borrowed settled view; effective causes are looked up in that view | `beadroll-core`: `snapshots::dirty_journals_expose_no_settled_read_until_all_records_are_judged`; `Journal` and `Journal::settled_view` compile-fail examples |
 | AO02 | Medium | Decoded state silently exported missing texts and answered complete ancestry from partial knowledge | fixed | `HydratedState` checks all texts for export; `FullKnowledge` is issued only by full replay, independently of hydration | `beadroll-core`: `snapshots::complete_export_requires_every_issues_texts_and_failed_loading_grants_nothing`, `snapshots::projections_never_claim_full_history_even_when_hydrated_or_extended`; capability compile-fail examples |
 | AO03 | Low | Consumers manually paired journal, state and recap from potentially different reads | by design | `Tree::snapshot` supplies an immutable aggregate with bound event and recap readers | `beadroll-core`: `snapshots::tree_snapshot_binds_activity_export_and_issue_resolution_to_one_read`, `snapshots::bound_recap_keeps_pending_and_quarantined_events_in_its_own_read`; `Snapshot` compile-fail example |
+| AO04 | Low | The new full-knowledge contract promised transitive ancestry for pending events whose clocks replay has not computed | fixed | Qualify the public contract: pending records have membership and authorship, but `saw` recognizes only named causes; preserve replay semantics | `beadroll-core`: `snapshots::pending_ancestry_recognizes_only_named_causes_until_the_event_is_placed`; existing `state::seen::tests::every_answer_is_the_bitsets_answer_on_hostile_histories` |
 
 ## Lock, attempt and merge boundaries (roll-lih9, ids AN)
 

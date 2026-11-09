@@ -238,6 +238,53 @@ fn tree_snapshot_binds_activity_export_and_issue_resolution_to_one_read() {
 }
 
 #[test]
+fn pending_ancestry_recognizes_only_named_causes_until_the_event_is_placed() {
+    let mut events = records();
+    events.push(
+        Event::new(&id(6), "comment")
+            .deps(&[&id(4), &id(5)])
+            .issue(&id(1))
+            .data(json!({"text": "waiting for a cause"}))
+            .json(),
+    );
+    let pending = Snapshot::from_journal(journal(&events)).unwrap();
+    let knowledge = pending.knowledge();
+    assert_eq!(pending.state().pending(), [eid(6)]);
+    assert!(knowledge.holds(eid(6)));
+    assert!(knowledge.events().any(|id| id == eid(6)));
+    assert!(!knowledge.who(eid(6)).is_empty());
+    assert_eq!(knowledge.who(eid(6)), knowledge.who(eid(4)));
+    assert!(knowledge.saw(eid(6), eid(4)));
+    assert!(
+        knowledge.saw(eid(6), eid(5)),
+        "a named cause need not be held"
+    );
+    assert!(!knowledge.holds(eid(5)));
+    assert!(knowledge.saw(eid(4), eid(3)));
+    assert!(
+        !knowledge.saw(eid(6), eid(3)),
+        "a pending event has no clock for its transitive ancestry"
+    );
+
+    events.push(
+        Event::new(&id(5), "comment")
+            .replica("b")
+            .deps(&[&id(4)])
+            .issue(&id(1))
+            .data(json!({"text": "the missing cause"}))
+            .json(),
+    );
+    let placed = Snapshot::from_journal(journal(&events)).unwrap();
+    assert!(placed.state().pending().is_empty());
+    assert!(placed.knowledge().saw(eid(6), eid(3)));
+    assert!(placed.knowledge().saw(eid(6), eid(5)));
+    assert!(
+        !knowledge.saw(eid(6), eid(3)),
+        "the earlier read stays pending"
+    );
+}
+
+#[test]
 fn bound_recap_keeps_pending_and_quarantined_events_in_its_own_read() {
     let mut events = records();
     // The cause arrives after a read that already holds the effect.

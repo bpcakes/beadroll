@@ -18,6 +18,9 @@ same thing*) and the variables bead reads (*Configuration*).
   Selective issue/detail readers still check `Issue::texts` and load the selected texts; they do
   not require loading the whole tracker.
 - `FullKnowledge` answers membership, event iteration, ancestry and authorship for a full replay.
+  Membership, iteration and authorship include pending events. For a pending event, `saw`
+  recognizes only explicitly named causes, including missing ones: `false` does not rule out
+  transitive ancestry. That ancestry becomes available when a later replay can place the event.
   Projections expose their retained scope, and decoded state parts expose summary scope. Neither
   can acquire full knowledge by loading texts. `Projection::retains` means retained ancestry,
   not membership in the original journal.

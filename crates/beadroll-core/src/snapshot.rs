@@ -40,7 +40,8 @@ impl Snapshot {
         HydratedState::replayed(&self.state)
     }
 
-    /// The full ancestry of this journal, pending events included.
+    /// The journal-wide event knowledge from this replay. Pending events are included,
+    /// but their ancestry queries recognize only direct causes ([`FullKnowledge::saw`]).
     pub fn knowledge(&self) -> FullKnowledge<'_> {
         FullKnowledge::replayed(&self.state)
     }

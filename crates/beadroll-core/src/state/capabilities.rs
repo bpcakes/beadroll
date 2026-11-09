@@ -8,10 +8,11 @@ use crate::json::Object;
 
 use super::State;
 
-/// Which events a state knows about. This is independent of text hydration.
+/// Which event records a state knows about. This is independent of text hydration and
+/// does not imply complete transitive ancestry for pending events ([`FullKnowledge::saw`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KnowledgeScope {
-    /// Every event in the replayed journal, with its ancestry.
+    /// Every event in the replayed journal, with replay's ancestry judgments.
     Full,
     /// The events a projection retains to apply later records, with their ancestry.
     Retained,
@@ -64,8 +65,9 @@ impl Deref for HydratedState<'_> {
     }
 }
 
-/// Every event and its ancestry from a full replay, never a projection's retained subset
-/// or a decoded summary. Obtain it through [`State::full_knowledge`].
+/// Every event from a full replay, never a projection's retained subset or a decoded
+/// summary. Obtain it through [`State::full_knowledge`]. Membership, iteration and authorship
+/// include pending events; their ancestry is limited as [`Self::saw`] describes.
 ///
 /// ```compile_fail,E0624
 /// use beadroll_core::{state::State, id::EventId};
@@ -90,6 +92,11 @@ impl<'a> FullKnowledge<'a> {
     }
 
     /// Whether the writer of `event` had seen `other`.
+    ///
+    /// For an event in [`State::pending`], only explicitly named causes are recognized,
+    /// even if a named cause is itself missing. A `false` answer does not rule out transitive
+    /// ancestry: replay has not computed that event's clock. Once the missing causes arrive
+    /// and a new replay places the event, its transitive ancestry is available too.
     pub fn saw(self, event: EventId, other: EventId) -> bool {
         self.0.saw(event, other)
     }
@@ -101,18 +108,19 @@ impl<'a> FullKnowledge<'a> {
 }
 
 impl State {
-    /// Whether ancestry covers the whole journal, a retained subset, or only conflict writers.
+    /// Whether event records cover the whole journal, a retained subset, or only conflict writers.
     pub fn knowledge_scope(&self) -> KnowledgeScope {
         self.knowledge_scope
     }
 
-    /// Complete ancestry is available only from replay. Loading texts does not recover it.
+    /// Journal-wide event knowledge is available only from replay. Loading texts does not
+    /// recover it. Pending ancestry still has the limits described by [`FullKnowledge::saw`].
     pub fn full_knowledge(&self) -> Option<FullKnowledge<'_>> {
         (self.knowledge_scope == KnowledgeScope::Full).then_some(FullKnowledge(self))
     }
 
     /// Borrows the state for complete export, or identifies texts the caller must load first.
-    /// Summary and retained states may become hydrated without acquiring complete ancestry.
+    /// Summary and retained states may become hydrated without acquiring journal-wide knowledge.
     pub fn hydrated(&self) -> Result<HydratedState<'_>, MissingTexts> {
         match self.issues().find(|issue| !issue.texts().here()) {
             Some(issue) => Err(MissingTexts { issue: issue.uid() }),

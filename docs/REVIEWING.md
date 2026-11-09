@@ -1700,6 +1700,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
     issue/detail readers and summary queries keep their cost and their text-loading contract.
     `State::full_knowledge` grants whole-history queries only after full replay; project and
     projection decoding mark retained knowledge, and state-only decoding marks summary knowledge.
+    Full replay still includes pending records: their membership and authorship are known, but
+    `saw` recognizes only explicitly named causes, even missing ones, until a later replay places
+    them. A false answer for a pending record does not exclude transitive ancestry (AO04); the
+    public capability preserves this existing replay rule rather than computing pending clocks.
     These scopes describe provenance even for an empty history. Hydrating, cloning or extending
     a projection cannot promote it. `Projection::retains` inspects its explicitly partial index.
     Scope is derived, not serialized: projection encoding 11 and its bytes remain unchanged.

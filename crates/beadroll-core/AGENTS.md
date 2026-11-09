@@ -21,8 +21,9 @@ consumer on tokio calls through `spawn_blocking`.
   `Journal` is the builder; `Journal::report` adds file diagnostics without exposing collections.
 - `state/capabilities.rs`: `HydratedState` gates complete export; `FullKnowledge` gates whole-journal
   event and ancestry queries. `KnowledgeScope` is derived at replay/projection/decode, never stored
-  in cache bytes. Loading texts does not recover ancestry. Selective issue reads still use
-  `wanted_texts`/`read_texts` and `Issue::texts`.
+  in cache bytes. Pending records are included, but `FullKnowledge::saw` recognizes only their
+  direct causes until a later replay places them. Loading texts does not recover ancestry.
+  Selective issue reads still use `wanted_texts`/`read_texts` and `Issue::texts`.
 - `snapshot.rs`: `Snapshot` owns one settled journal and its replay. Its events resolve issues
   against that state; its `Recap` keeps the selection, frontier and placed set together.
 - `replay/batch.rs`: `Batch` owns state during event application. Only consuming full or
