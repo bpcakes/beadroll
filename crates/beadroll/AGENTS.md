@@ -42,6 +42,8 @@ storage, protocol behavior and fault recovery.
   `command_signature`, the receipt). `recap` is the one command of `Scope::Home` (`cli/spec.rs`):
   every tracker under `BEAD_HOME`, no checkout and no git; it hands `cli` a `Delivered`, its
   cursor's save, which `run` does only once the answer is written.
+  `log` uses the store's validated history metadata cache, then reads the current outline and
+  aliases; the cache does not capture display keys or names. `recap` retains its journal reader.
 - `src/cli/ending.rs`, `src/commands/held.rs`: unit tests that run `finish` and the commands in this
   process, on a machine of the sandbox that `src/testing.rs` opens: what a command's outcome holds
   and when the run frees it (roll-lqjj.42).

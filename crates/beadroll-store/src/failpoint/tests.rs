@@ -46,7 +46,8 @@ fn every_action_reads_as_its_point_takes_it() {
     let fp = points(
         " push.reply@always=fail-reply ; publish.result=error(REMOTE_UNREACHABLE);\
          atomic-write:pending/=errno(ENOSPC);append.mid=torn-sigkill;clock@always=offset(-48h);\
-         push.before=sleep(0);ownership.after-confirm=error(IO)",
+         push.before=sleep(0);ownership.after-confirm=error(IO);\
+         atomic-flush:pending/=errno(ENOSPC);atomic-flushed:pending/=sleep(0)",
     )
     .unwrap();
     assert_eq!(
@@ -66,6 +67,12 @@ fn every_action_reads_as_its_point_takes_it() {
     assert_eq!(fp.hit("push.before"), None);
     let written = Path::new("/s/ws/pending/x.json");
     assert_eq!(fp.hit_path("atomic-written", written), None);
+    assert!(matches!(
+        fp.hit_path("atomic-flush", written),
+        Some(Fired::Errno(_))
+    ));
+    assert_eq!(fp.hit_path("atomic-flushed", written), None);
+    assert_eq!(fp.hits("atomic-flushed:pending/"), 1);
     assert_eq!(
         fp.hit_path("atomic-write", Path::new("/s/ws/meta.json")),
         None
@@ -95,6 +102,8 @@ fn what_cannot_fire_as_written_is_refused() {
         "clock=exit(1)",
         "atomic-write:=sigkill",
         "atomic-written:x=errno(ENOSPC)",
+        "atomic-flush:=sigkill",
+        "atomic-flushed:x=errno(ENOSPC)",
         "publish.result=error(NO_SUCH_CODE)",
         "push.before=error(IO)",
         "backoff=exit(nine)",

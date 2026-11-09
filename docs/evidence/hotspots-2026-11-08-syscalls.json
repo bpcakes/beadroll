@@ -1,0 +1,33 @@
+{
+  "before": {
+    "sha256": "8fa71ebce48231b926de94bcab4b310ea82ff62f990981322b550d7780544418",
+    "log_one_rss_kib": 15220,
+    "log_all_rss_kib": 21516,
+    "cache_bytes": {
+      "projection-texts": 2365460,
+      "projection": 693246
+    },
+    "warm_log_one_journal_files_opened": 250,
+    "fsync_calls": 255
+  },
+  "after": {
+    "fsync_calls": 255,
+    "threads_calling_fsync": 252,
+    "sha256": "e6058102e1750660b8ea7af91259626b113ac7b50f24b0c9204b2fed62ef9416",
+    "log_one_rss_kib": 9740,
+    "log_all_rss_kib": 15716,
+    "warm_log_one_journal_files_opened": 0,
+    "cache_bytes": {
+      "projection-texts": 2365460,
+      "projection": 693246,
+      "history": 545992
+    }
+  },
+  "method": {
+    "before_fsync": "strace -f -c -e trace=fsync",
+    "after_fsync": "strace -f -ttt -y -e trace=fsync,rename",
+    "warm_log_open": "strace -f -e trace=openat",
+    "memory": "single /usr/bin/time -f RSS_KIB=%M sample after warming each command",
+    "maximum_concurrent_download_workers": 8
+  }
+}

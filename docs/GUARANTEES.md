@@ -27,7 +27,8 @@ same thing*) and the variables bead reads (*Configuration*).
   can acquire full knowledge by loading texts. `Projection::retains` means retained ancestry,
   not membership in the original journal.
 - `Snapshot` owns a settled journal and the state replayed from that exact read. It accepts no
-  independently supplied state. Its event readers resolve issues in that state, and its immutable
+  independently supplied state. Its event readers resolve issues in that state, including valid
+  creation events, which name their own ids as the issue. Its immutable
   recap results carry the same snapshot and their own placed set for joining frontiers. A later
   read does not change an existing snapshot. `Tree::snapshot` reads one supplied git tree; it does
   not fetch or claim that a mutable store's files were read atomically.
@@ -565,9 +566,24 @@ it, and the file is committed again.
   `cargo xtask timing --sync N`, `online_seconds`).
   `bead info` and `bead machines` answer from the projection as `list` does,
   0.23 s at 200,000 events where they loaded the journal in 3.30 and 2.40 s;
-  `bead log` still reads the whole journal for its events and their order,
-  3.21 s there, but replays none of it (roll-lqjj.31; `cargo xtask timing
-  --read N`). A write after a write takes the records before it in without
+  `bead log` caches settled history metadata in causal order. A repeat read
+  checks every source file's identity and reads the metadata without parsing
+  journal payloads. A changed journal, missing or damaged cache, different
+  build or unsettled file timestamp rebuilds it from the whole journal. Keys
+  and machine aliases are resolved afresh. This remains work proportional to
+  the history's metadata, even for `--limit 1`; it is not a history boundary.
+  First sync into an empty store flushes up to eight independent journal files
+  concurrently, then installs them in listing order. Every file is still
+  fsynced before its rename. After an interruption, retry uses the ordinary
+  merge if any journal file was installed; otherwise the empty store can take
+  the parallel path again. Payload batches stop after eight files or once
+  their bytes reach four MiB; the last file can exceed that threshold by any
+  amount. A killed process can leave up to eight prepared temporary files
+  from its interrupted batch. Readers ignore them, but no journal temporary
+  sweep removes them, so leftovers from successive processes can accumulate.
+  Existing journals and pending attempts use the ordinary merge path. See
+  the [before/after evidence](evidence/hotspots-2026-11-08.md).
+  A write after a write takes the records before it in without
   writing the projection back until they hold more than a 64th of its bytes, so
   at 200,000 events it takes 0.26 s rather than 0.38 s, and a sync after a local
   write 0.34 s rather than 0.51 s; the read after a write still writes it back

@@ -1,5 +1,7 @@
 //! Merges the remote journals into the local store.
 
+mod bootstrap;
+
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
@@ -168,19 +170,24 @@ impl<'l, 'w> Merging<'l, 'w> {
             .collect();
         if let Some(tip) = tip {
             let local = self.link.local_blobs(BlobUse::Comparison)?;
-            for (path, sha) in self.link.listing(tip)? {
-                let Ok(path) = String::from_utf8(path) else {
-                    continue; // a name no bead writes
-                };
-                self.link.known.listed_blob(path.clone(), sha.clone());
-                if attempt_shaped(&path) {
-                    if self.merge_attempt(tip, &path, &sha, &local, &pending)? {
-                        pulled += 1;
+            let listing = self.link.listing(tip)?;
+            if local.is_empty() && pending.is_empty() && self.can_bootstrap(&listing) {
+                pulled += self.bootstrap(tip, &listing)?;
+            } else {
+                for (path, sha) in listing {
+                    let Ok(path) = String::from_utf8(path) else {
+                        continue; // a name no bead writes
+                    };
+                    self.link.known.listed_blob(path.clone(), sha.clone());
+                    if attempt_shaped(&path) {
+                        if self.merge_attempt(tip, &path, &sha, &local, &pending)? {
+                            pulled += 1;
+                        }
+                        continue;
                     }
-                    continue;
-                }
-                if segment_shaped(&path) {
-                    pulled += self.merge_segment(tip, &path, &sha, &local, own.as_deref())?;
+                    if segment_shaped(&path) {
+                        pulled += self.merge_segment(tip, &path, &sha, &local, own.as_deref())?;
+                    }
                 }
             }
         }

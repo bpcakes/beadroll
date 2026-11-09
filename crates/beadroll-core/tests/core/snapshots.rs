@@ -217,6 +217,14 @@ fn tree_snapshot_binds_activity_export_and_issue_resolution_to_one_read() {
             .json(),
     );
     let new = tree(&events).snapshot().unwrap();
+    let created = selected
+        .events()
+        .find(|event| event.event().id() == eid(1))
+        .unwrap();
+    assert_eq!(created.event().issue(), Some(id(1).as_str()));
+    assert_eq!(created.issue().unwrap().title(), "before");
+    let later_create = new.event(eid(1)).unwrap();
+    assert_eq!(later_create.issue().unwrap().title(), "after");
     let activity = selected
         .events()
         .find(|event| event.event().id() == eid(3))

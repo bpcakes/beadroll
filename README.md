@@ -192,6 +192,11 @@ events they cannot apply until upgraded. The [guarantees](docs/GUARANTEES.md)
 describe recovery after interrupted writes, lost acknowledgements, and damaged
 stores, along with measured performance and known limits.
 
+`log` keeps a disposable history metadata cache for repeated reads, and first sync into an
+empty store flushes independent journal files in bounded parallel batches. The
+[3,135-event before/after probe](docs/evidence/hotspots-2026-11-08.md) records the measurements,
+output equivalence and remaining first-read cost.
+
 ### When two machines edit the same thing
 
 | Concurrent changes | Result after sync |
@@ -263,7 +268,9 @@ remote URL credentials are removed before storage or display.
 `published::Tree::read(entries, expected_workspace)`, then call `tree.snapshot()?`.
 The snapshot supplies `state().export_records()`, `journal()`, `knowledge()` and
 `recap(Window::After(saved_frontier))`. Iterate the recap's `events()` and resolve each event's
-`issue()` through that same snapshot. Save the recap's frontier only after delivery; use
+`issue()` through that same snapshot. Valid creation events name themselves as the issue and
+resolve here too; the issue reflects the snapshot, including later edits captured in that read.
+Save the recap's frontier only after delivery; use
 `recap.joined(other_frontier)` when another read may have advanced the cursor meanwhile.
 
 Source-pinned consumers must migrate the older direct readers: journal collections, causal order

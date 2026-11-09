@@ -77,7 +77,9 @@ impl<'a> SnapshotEvent<'a> {
         self.event
     }
 
-    /// Its issue, only when the same snapshot's replay created it.
+    /// The issue named by the event, if this snapshot's replay created it.
+    /// A valid `create` names its own event id as the issue, so it resolves here too.
+    /// The returned issue reflects this snapshot, including later edits in the same read.
     pub fn issue(self) -> Option<&'a Issue> {
         self.event
             .issue()
