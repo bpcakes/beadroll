@@ -144,7 +144,8 @@ pub(crate) fn replayed(mut journal: Journal) -> Result<(State, Replayed), KeySpa
         batch = Batch::new(initial.clone());
         applying = events.clone();
     };
-    let st = batch.finish(knowledge);
+    let mut st = batch.finish(knowledge);
+    st.knowledge_scope = crate::state::KnowledgeScope::Full;
     let replayed = Replayed {
         superseded: takeovers.superseded,
         unsettled: awaiting || order.loose,

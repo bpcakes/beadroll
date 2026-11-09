@@ -60,8 +60,9 @@ fn event(n: u128, parent: Option<u128>) -> Value {
 }
 
 fn oracle(ws: &Workspace) -> Vec<HistoryEntry> {
-    let journal = load_journal(ws).unwrap();
-    causal_order(&journal)
+    let mut journal = load_journal(ws).unwrap();
+    let journal = journal.settled_view();
+    causal_order(journal)
         .0
         .iter()
         .filter_map(|id| journal.event(*id))

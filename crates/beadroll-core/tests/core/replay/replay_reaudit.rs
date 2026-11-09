@@ -85,7 +85,14 @@ pub(crate) fn row(row: &Integrity) -> Json {
 pub(crate) fn projection(journal: Journal) -> String {
     let st = replay(journal).unwrap();
     let canonical = |value: &Json| write(value, Format::CANONICAL).unwrap();
-    let records = Json::Array(st.export_records().into_iter().map(Json::from).collect());
+    let records = Json::Array(
+        st.hydrated()
+            .unwrap()
+            .export_records()
+            .into_iter()
+            .map(Json::from)
+            .collect(),
+    );
     let details = Json::Array(
         st.issues()
             .map(|issue| Json::from(st.detail(issue)))
@@ -136,7 +143,10 @@ fn malformed_duplicate_order_does_not_change_projection() {
         j
     };
     let (left, right) = (replay(build(true)).unwrap(), replay(build(false)).unwrap());
-    assert_eq!(left.export_records(), right.export_records());
+    assert_eq!(
+        left.hydrated().unwrap().export_records(),
+        right.hydrated().unwrap().export_records()
+    );
     assert!(
         left.issue_named(&id(&create)).is_none(),
         "ambiguous event must be ignored in either order"

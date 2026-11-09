@@ -133,7 +133,13 @@ pub fn answers(state: &State) -> Vec<(String, String)> {
             format!("{:?}", state.cycles(edges)),
         );
     }
-    let export: Vec<String> = state.export_records().into_iter().map(shown).collect();
+    let export: Vec<String> = state
+        .hydrated()
+        .unwrap()
+        .export_records()
+        .into_iter()
+        .map(shown)
+        .collect();
     say("export".into(), export.join("\n"));
     say("renames".into(), format!("{:?}", state.renames()));
     let mut integrity: Vec<String> = state.integrity().iter().map(|r| format!("{r:?}")).collect();

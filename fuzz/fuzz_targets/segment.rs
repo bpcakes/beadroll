@@ -159,7 +159,7 @@ fuzz_target!(|data: &[u8]| {
     }
 
     let mut export = String::new();
-    for record in state.export_records() {
+    for record in state.hydrated().unwrap().export_records() {
         let line = json::write(&Value::from(record), Format::COMPACT).expect("export is written");
         export.push_str(&line);
         export.push('\n');

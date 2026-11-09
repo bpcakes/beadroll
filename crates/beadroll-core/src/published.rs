@@ -128,6 +128,11 @@ impl Tree {
         &self.workspace
     }
 
+    /// The journal, its full state and bound recap/event readers from this one tree.
+    pub fn snapshot(&self) -> Result<crate::snapshot::Snapshot, crate::state::KeySpace> {
+        crate::snapshot::Snapshot::from_journal(self.journal())
+    }
+
     /// Its journal, read and settled as `load_journal` reads a store: a torn segment tail skipped,
     /// every unreadable line, attempt and record reported.
     pub fn journal(&self) -> Journal {

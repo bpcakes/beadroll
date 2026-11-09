@@ -6,6 +6,13 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- Rust readers now require a settled journal for collections, ordering and recap, a `HydratedState`
+  for complete export, and `FullKnowledge` for whole-journal ancestry. `Tree::snapshot()` binds
+  one journal to its replayed state and event/recap readers. Source-pinned consumers must migrate
+  these calls (see *Reading from Rust* in the README); CLI output and stored formats are unchanged.
+  Pending records remain queryable, but their ancestry queries recognize only direct causes until
+  a later replay can place them.
+
 - Repeated `log` reads use a checksummed cache of causal history metadata. Every journal file's
   identity is checked; journal changes or cache damage rebuild it. Keys and machine aliases
   remain current, and history output is unchanged. A first read still parses the whole journal.

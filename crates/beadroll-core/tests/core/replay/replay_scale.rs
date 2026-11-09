@@ -72,8 +72,18 @@ fn ownership_ancestry_stays_small_on_a_long_claim_release_history() {
     );
     assert!(state.integrity().is_empty());
     let at = |n: usize| EventId::parse(events[n]["id"].as_str().unwrap()).unwrap();
-    assert!(state.saw(at(events.len() - 1), at(2)));
-    assert!(!state.saw(at(2), at(events.len() - 1)));
+    assert!(
+        state
+            .full_knowledge()
+            .unwrap()
+            .saw(at(events.len() - 1), at(2))
+    );
+    assert!(
+        !state
+            .full_knowledge()
+            .unwrap()
+            .saw(at(2), at(events.len() - 1))
+    );
     let issue = state.issue(EventId::parse(&uid).unwrap()).unwrap();
     assert!(issue.claim().is_none()); // the history ends on a release
 }

@@ -4,14 +4,14 @@ use std::cmp::Reverse;
 use std::collections::{BTreeSet, BinaryHeap};
 
 use crate::id::EventId;
-use crate::journal::{Event, Journal, SettledJournal};
+use crate::journal::{Event, SettledJournal};
 
 /// What an event waits for. A quarantined id is inert anyway, so it waits only for causes that
 /// exist: those its own journal's copy names (that copy is as trustworthy as the journal's other
 /// events), or, lacking one, those every variant agrees on, so one bad variant cannot hold
-/// everything after it.
-pub fn effective_deps(journal: &Journal, event: &Event) -> Vec<EventId> {
-    journal.with_settled(|journal| settled_deps(journal, event))
+/// everything after it. Returns `None` when the settled journal does not hold the id.
+pub fn effective_deps(journal: SettledJournal<'_>, id: EventId) -> Option<Vec<EventId>> {
+    journal.event(id).map(|event| settled_deps(journal, event))
 }
 
 fn settled_deps(journal: SettledJournal<'_>, event: &Event) -> Vec<EventId> {
@@ -42,8 +42,8 @@ fn settled_deps(journal: SettledJournal<'_>, event: &Event) -> Vec<EventId> {
 /// Events with all their causes first, ties broken by id; and the rest, which wait for missing
 /// causes, in journal order. A quarantined id whose remaining causes loop back onto it is released:
 /// it applies nothing.
-pub fn causal_order(journal: &Journal) -> (Vec<EventId>, Vec<EventId>) {
-    journal.with_settled(settled_order)
+pub fn causal_order(journal: SettledJournal<'_>) -> (Vec<EventId>, Vec<EventId>) {
+    settled_order(journal)
 }
 
 pub(crate) fn settled_order(journal: SettledJournal<'_>) -> (Vec<EventId>, Vec<EventId>) {

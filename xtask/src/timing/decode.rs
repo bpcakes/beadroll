@@ -258,8 +258,8 @@ mod tests {
             .collect();
         let (last, earlier) = ids.split_last().unwrap();
         assert_eq!(compacted.heads(), [*last]);
-        assert!(compacted.state().holds(*last));
-        assert!(earlier.iter().all(|id| !compacted.state().holds(*id)));
+        assert!(compacted.retains(*last));
+        assert!(earlier.iter().all(|id| !compacted.retains(*id)));
         assert!(compacted.known() <= known + 1);
     }
 

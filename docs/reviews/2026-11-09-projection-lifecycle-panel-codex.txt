@@ -1,0 +1,17 @@
+Repository-local copy; absolute checkout prefixes in links were removed for repository hygiene.
+
+No actionable findings in `ebd060d3e7269932143d82e7d60762c230b272d7..bbc3f3a0a936fadd0483ed6aa743486598babb77`.
+
+Requirement coverage, based on read-only implementation and test inspection:
+
+- **R1: satisfied.** Journal collections require settled views; export and ancestry have independent capability checks. [Snapshot tests](crates/beadroll-core/tests/core/snapshots.rs:61) cover dirty journals, incomplete hydration, and retained versus full knowledge.
+- **R2: satisfied.** [Snapshot construction](crates/beadroll-core/src/snapshot.rs:27) replays its own captured journal and binds event resolution and recap to it. Tests cover separate snapshots, pending events, quarantine, and frontier joining. Existing [transaction tests](crates/beadroll-sync/tests/sync/tx.rs:68) cover borrowed-state freshness. The documented CLI journal-then-outline behavior remains unchanged.
+- **R3: satisfied.** [Issue capabilities](crates/beadroll-core/src/state/hydrated.rs:84) distinguish unavailable texts from returned values without checking other issues. [Hydration tests](crates/beadroll-core/tests/core/hydration.rs:37) cover selective loading, failed reads, details, conflicts, and empty/absent values; existing short-field tests cover explicit nulls. Dependency summaries remain available from unloaded outlines.
+- **R4: satisfied.** [Extension preparation](crates/beadroll-core/src/projection/extension.rs:31) owns the projection and batch, validates requested locations, and refuses incomplete loading. Store and sync share the generation-checked loader. Core lifecycle and store corruption/replacement tests cover refusal and replay fallback.
+- **R5: satisfied.** Writeback exclusively borrows its source and carries its encoded bytes, locations, and generation. [Store acknowledgement](crates/beadroll-store/src/projection/writeback.rs:39) occurs only after both writes succeed. [Failpoint tests](crates/beadroll-store/src/projection/tests/lifecycle.rs:24) exercise failed persistence and retry for append and rewrite.
+- **R6: satisfied in inspected implementation and coverage.** [Public lifecycle tests](crates/beadroll-core/tests/core/lifecycle.rs:64) compare reload against replay and exercise abandoned writes and rewrite refusal. Existing differential, copied-record, corruption-pair, race, and work-count coverage remains applicable.
+- **R7: satisfied in inspected scope.** Format 1, encoding 11, codec layout, durability primitives, and dependency layering remain unchanged. Callers are migrated, including the outline-only dependency reader. [README migration guidance](README.md:260) and repository contracts document the deliberate API changes.
+
+Test gaps: No actionable missing coverage established. Tests and build checks were not executed under the shell-inspection-only constraint; this review does not certify that they pass.
+
+No unresolved material questions remain.

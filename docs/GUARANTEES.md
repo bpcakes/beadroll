@@ -8,6 +8,29 @@ is recorded here (`AGENTS.md`, *Making a change*). Two things stay in the README
 user needs them first: how two machines' concurrent edits resolve (*When two machines edit the
 same thing*) and the variables bead reads (*Configuration*).
 
+## Rust readers
+
+- Journal collections, ordering and recap are read through `SettledJournal`. Its borrow prevents
+  adding records while the view is in use; obtaining it settles all records or reports that the
+  builder is still dirty. A reader cannot observe an old quarantine map beside newly added records.
+- Complete Beads export requires `HydratedState`. A decoded cache cannot export until every
+  issue's texts have been loaded and checked, including comments, extras and dependency metadata.
+  Selective issue/detail readers still check `Issue::texts` and load the selected texts; they do
+  not require loading the whole tracker.
+- `FullKnowledge` answers membership, event iteration, ancestry and authorship for a full replay.
+  Membership, iteration and authorship include pending events. For a pending event, `saw`
+  recognizes only explicitly named causes, including missing ones: `false` does not rule out
+  transitive ancestry. That ancestry becomes available when a later replay can place the event.
+  Projections expose their retained scope, and decoded state parts expose summary scope. Neither
+  can acquire full knowledge by loading texts. `Projection::retains` means retained ancestry,
+  not membership in the original journal.
+- `Snapshot` owns a settled journal and the state replayed from that exact read. It accepts no
+  independently supplied state. Its event readers resolve issues in that state, including valid
+  creation events, which name their own ids as the issue. Its immutable
+  recap results carry the same snapshot and their own placed set for joining frontiers. A later
+  read does not change an existing snapshot. `Tree::snapshot` reads one supplied git tree; it does
+  not fetch or claim that a mutable store's files were read atomically.
+
 ## The command line
 
 The commands: `create`, `show`, `update`, `list`, `ready`, `blocked`, `close`,

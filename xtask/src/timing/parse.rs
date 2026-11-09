@@ -136,8 +136,7 @@ fn journal(files: &[Files]) -> Result<Journal, Failure> {
             journal.add_attempt(data, &file.replica, &origin);
         }
     }
-    journal.settle();
-    match journal.invalid.first() {
+    match journal.settled_view().invalid().first() {
         None => Ok(journal),
         Some(problem) => Err(Failure::Failed(format!(
             "a line of the history is not read as an event: {} at {}",
@@ -236,8 +235,8 @@ mod tests {
     fn every_line_of_every_file_is_read_into_the_journal() {
         let ownership = history(40, Shape::Ownership);
         let loaded = journal(&ownership).unwrap();
-        assert_eq!(loaded.events().len(), 40);
-        assert!(loaded.invalid.is_empty());
+        assert_eq!(loaded.settled().unwrap().events().len(), 40);
+        assert!(loaded.settled().unwrap().invalid().is_empty());
         let mut broken = history(40, Shape::Plain);
         broken[0].segment.extend_from_slice(b"{\"id\": 1}\n");
         assert!(journal(&broken).is_err());

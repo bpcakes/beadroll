@@ -262,6 +262,26 @@ the command ran. Set `"where": false` in `.beadroll.json` to omit the branch
 and commit from future events. Hostnames used as machine aliases stay local;
 remote URL credentials are removed before storage or display.
 
+## Reading from Rust
+
+`beadroll-core` reads a coordination ref's tree without I/O. Pass its paths and bytes to
+`published::Tree::read(entries, expected_workspace)`, then call `tree.snapshot()?`.
+The snapshot supplies `state().export_records()`, `journal()`, `knowledge()` and
+`recap(Window::After(saved_frontier))`. Iterate the recap's `events()` and resolve each event's
+`issue()` through that same snapshot. Valid creation events name themselves as the issue and
+resolve here too; the issue reflects the snapshot, including later edits captured in that read.
+Save the recap's frontier only after delivery; use
+`recap.joined(other_frontier)` when another read may have advanced the cursor meanwhile.
+
+Source-pinned consumers must migrate the older direct readers: journal collections, causal order
+and `recap::unseen` require `journal.settled_view()` (or a checked `journal.settled()`), complete
+export requires `state.hydrated()?`, and whole-journal ancestry requires `state.full_knowledge()`.
+A projection retains only part of the history; loading its texts enables export but does not
+recover full ancestry. `Tree::snapshot()` supplies both capabilities from one replay.
+Pending events are included in its knowledge, but `saw` recognizes only their direct causes;
+check `state().pending()` before treating a false ancestry answer as ruling out an ancestor.
+These are source API changes; CLI output and format 1 are unchanged.
+
 ## Documentation and support
 
 - [Migration guide](MIGRATING.md): move a Beads tracker to beadroll or export it back.

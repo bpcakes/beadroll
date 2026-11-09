@@ -135,7 +135,7 @@ fn texts(state: &State, create: &Json) -> Vec<String> {
 
 /// The exported id of the comment that says `text`, on the record `key`.
 fn exported_comment(state: &State, key: &str, text: &str) -> Value {
-    let records = state.export_records();
+    let records = state.hydrated().unwrap().export_records();
     let record = records
         .iter()
         .find(|r| r["id"].as_str() == Some(key))
@@ -212,7 +212,7 @@ fn malformed_imported_comment_does_not_break_queries() {
         json!([{"text": "missing author and timestamp"}]),
     );
     let state = replayed(&[init, create.clone()]);
-    state.export_records();
+    state.hydrated().unwrap().export_records();
     for issue in state.issues() {
         state.detail(issue);
     }
@@ -254,12 +254,13 @@ fn new_comment_integer_survives_collision_with_later_legacy_import() {
         json!({"text": "existing"}),
     );
     let events = vec![init, create, comment.clone()];
-    let before = replayed(&events).export_records()[0]["comments"][0]["id"].clone();
+    let before =
+        replayed(&events).hydrated().unwrap().export_records()[0]["comments"][0]["id"].clone();
     let legacy = json!({"legacy_id": (before.clone()), "author": "legacy", "text": "legacy", "created_at": "2020-01-01T00:00:00Z"});
     let data = json!({"key": "ex-two", "fields": {"title": "imported"}, "comments": [legacy], "imported": true});
     let other = f.event("create", "a", &[id_of(&comment)], None, data);
     let after = replayed(&[events, vec![other]].concat());
-    let records = after.export_records();
+    let records = after.hydrated().unwrap().export_records();
     let record = records
         .iter()
         .find(|r| r["id"].as_str() == Some("ex-one"))
@@ -356,7 +357,7 @@ fn valid_colliding_comments_keep_exported_ids_when_other_machine_arrives() {
         json!({"text": "already exported"}),
     );
     let state = replayed(&[init.clone(), create.clone(), later.clone()]);
-    let before = state.export_records()[0]["comments"][0]["id"].clone();
+    let before = state.hydrated().unwrap().export_records()[0]["comments"][0]["id"].clone();
     let state = replayed(&[init, create, later, earlier]);
     assert!(state.integrity().is_empty());
     let after = exported_comment(&state, "ex-one", "already exported");
@@ -381,7 +382,7 @@ fn optional_register_clears_remain_queryable() {
     );
     let state = replayed(&[init, create.clone(), clear]);
     assert!(state.integrity().is_empty());
-    state.export_records();
+    state.hydrated().unwrap().export_records();
     let issue = state.issue(uid(&create)).unwrap();
     state.detail(issue);
     assert_eq!(issue.title(), "survivor");

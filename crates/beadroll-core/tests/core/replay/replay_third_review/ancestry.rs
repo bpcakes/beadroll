@@ -85,12 +85,15 @@ fn mixed_detached_ownership_ancestry_matches_exact_graph() {
         let a = rng.below(events.len());
         let b = (a + 1 + rng.below(events.len() - 1)) % events.len();
         assert_eq!(
-            state.saw(uid(&events[a]), uid(&events[b])),
+            state
+                .full_knowledge()
+                .unwrap()
+                .saw(uid(&events[a]), uid(&events[b])),
             ancestors[a].contains(&b),
             "{a} saw {b}"
         );
     }
-    let expected = state.export_records();
+    let expected = state.hydrated().unwrap().export_records();
     for _ in 0..12 {
         let mut order: Vec<char> = "abcdef".chars().collect();
         for at in (1..order.len()).rev() {
@@ -108,6 +111,8 @@ fn mixed_detached_ownership_ancestry_matches_exact_graph() {
             .collect();
         assert_eq!(
             replay(journal(&variant, &detached))
+                .unwrap()
+                .hydrated()
                 .unwrap()
                 .export_records(),
             expected

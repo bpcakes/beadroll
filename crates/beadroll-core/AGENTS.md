@@ -7,16 +7,25 @@ and times, event validation, journal settling, causal order, replay into state, 
 other queries, issue views, Beads import planning and export, key minting, and reading a published
 tree. pancake-studio links this crate alone, as a git dependency pinned to a commit: it reads a
 coordination ref's tree with `published::Tree::read(entries, expected_workspace)`, which refuses
-a tree without a readable manifest, of another workspace or in another format, replays
-`tree.journal()` with `replay::replay`, and takes `State::export_records` for its Beads reader.
-A `State` is immutable and `Send + Sync`, to share behind an `Arc`; nothing is async, so a
+a tree without a readable manifest, of another workspace or in another format. Consumers use
+`tree.snapshot()` for a settled journal, its full state and bound event/recap readers, and
+`snapshot.state().export_records()` for Beads records. Older source pins used `tree.journal()`
+with `replay::replay`; standalone replay now exports through `state.hydrated()?`.
+A `Snapshot` is immutable and `Send + Sync`, to share behind an `Arc`; nothing is async, so a
 consumer on tokio calls through `spawn_blocking`.
 
 ## Key entrypoints
 
-- `journal/settled.rs`: `SettledJournal`, borrowed through `Journal::settled_view`; internal
-  ordering and recap readers require this proof. Shared compatibility readers use `with_settled`,
-  borrowing a settled journal or settling a copy of a dirty one.
+- `journal/settled.rs`: `SettledJournal`, borrowed through `Journal::settled_view` or the checked
+  `Journal::settled`; all public collection, ordering and recap readers require this proof.
+  `Journal` is the builder; `Journal::report` adds file diagnostics without exposing collections.
+- `state/capabilities.rs`: `HydratedState` gates complete export; `FullKnowledge` gates whole-journal
+  event and ancestry queries. `KnowledgeScope` is derived at replay/projection/decode, never stored
+  in cache bytes. Pending records are included, but `FullKnowledge::saw` recognizes only their
+  direct causes until a later replay places them. Loading texts does not recover ancestry.
+  Selective issue reads still use `wanted_texts`/`read_texts` and `Issue::texts`.
+- `snapshot.rs`: `Snapshot` owns one settled journal and its replay. Its events resolve issues
+  against that state; its `Recap` keeps the selection, frontier and placed set together.
 - `replay/batch.rs`: `Batch` owns state during event application. Only consuming full or
   changed-record finishing returns it, after dependency holes and derived indexes are settled.
 
@@ -125,7 +134,7 @@ consumer on tokio calls through `spawn_blocking`.
 - What an event may hold: `src/event.rs`, including its validation message. Format 1 is frozen:
   changes are additive, so older versions set unfamiliar records aside rather than misread them.
 - Replay, state, readiness, cycles, views, import planning and export: the module of that name.
-  A change to what replay keeps in a `State` or an `Issue` changes a projection's bytes: write and
+  A change to persisted data in a `State` or an `Issue` changes a projection's bytes: write and
   read it in `projection/state_codec.rs`, and bump `projection::ENCODING`.
   Tests in `tests/core/` and the black-box tests of the `beadroll` crate keep these contracts.
 - Anything that reads a file, starts a process, or asks the clock or the environment: not here,

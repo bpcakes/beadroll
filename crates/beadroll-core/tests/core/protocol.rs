@@ -108,7 +108,7 @@ mod protocol3 {
                     second += 1;
                 }
                 assert_eq!(
-                    state.saw(ids[first], ids[second]),
+                    state.full_knowledge().unwrap().saw(ids[first], ids[second]),
                     first > second,
                     "{first} saw {second}"
                 );

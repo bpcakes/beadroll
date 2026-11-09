@@ -381,7 +381,9 @@ impl Soak {
     fn check_store(&self, step: usize, machine: &Machine) {
         let state = replayed(machine);
         let lost: Vec<&String> = (self.model.accepted.iter())
-            .filter(|claim| !EventId::parse(claim).is_some_and(|e| state.holds(e)))
+            .filter(|claim| {
+                !EventId::parse(claim).is_some_and(|e| state.full_knowledge().unwrap().holds(e))
+            })
             .collect();
         assert!(lost.is_empty(), "{step}: lost accepted event {lost:?}");
         let gone = missing(&self.model.accepted, &realized(&state));

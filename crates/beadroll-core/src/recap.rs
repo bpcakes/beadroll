@@ -19,7 +19,7 @@
 //! have seen.
 
 use crate::id::EventId;
-use crate::journal::{Journal, SettledJournal};
+use crate::journal::SettledJournal;
 use crate::order::settled_order;
 
 /// Which of a journal's events a recap shows.
@@ -49,8 +49,8 @@ pub struct Unseen {
 }
 
 /// What a recap of `journal`, a settled one, shows through `window`, and what it has seen then.
-pub fn unseen(journal: &Journal, window: Window<'_>) -> Unseen {
-    journal.with_settled(|journal| settled_unseen(journal, window))
+pub fn unseen(journal: SettledJournal<'_>, window: Window<'_>) -> Unseen {
+    settled_unseen(journal, window)
 }
 
 fn settled_unseen(journal: SettledJournal<'_>, window: Window<'_>) -> Unseen {

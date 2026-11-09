@@ -71,7 +71,7 @@ fn a_growing_store_shows_every_event_once_and_in_causal_order() {
             for (step, cut) in cuts.into_iter().enumerate() {
                 let at = format!("seed {seed}, flawed {flawed}, step {step}");
                 let journal = taken_in(&records, &order[..cut]);
-                let (ordered, _) = causal_order(&journal);
+                let (ordered, _) = causal_order(journal.settled().unwrap());
                 let now: BTreeSet<EventId> = (ordered.iter().copied())
                     .filter(|id| journal.event(*id).is_some_and(|e| e.op_name() != "init"))
                     .collect();
@@ -80,7 +80,7 @@ fn a_growing_store_shows_every_event_once_and_in_causal_order() {
                     0 => Window::All,
                     _ => Window::After(&frontier),
                 };
-                let got = unseen(&journal, window);
+                let got = unseen(journal.settled().unwrap(), window);
                 assert!(got.placed.is_sorted(), "{at}");
                 let placed: BTreeSet<EventId> = ordered.iter().copied().collect();
                 assert_eq!(got.placed.iter().copied().collect::<BTreeSet<_>>(), placed);
@@ -144,11 +144,14 @@ fn two_reads_that_saw_different_events_mark_what_both_placed_once_joined() {
             let first = taken_in(&records, &one[..rng.below(one.len() + 1)]);
             let second = taken_in(&records, &two[..rng.below(two.len() + 1)]);
             let all = taken_in(&records, &one);
-            let (a, b) = (unseen(&first, Window::All), unseen(&second, Window::All));
+            let (a, b) = (
+                unseen(first.settled().unwrap(), Window::All),
+                unseen(second.settled().unwrap(), Window::All),
+            );
             let kept = joined(&b.frontier, &b.placed, &a.frontier);
-            let later = unseen(&all, Window::After(&kept));
+            let later = unseen(all.settled().unwrap(), Window::After(&kept));
             let both: BTreeSet<EventId> = a.placed.iter().chain(&b.placed).copied().collect();
-            let (ordered, _) = causal_order(&all);
+            let (ordered, _) = causal_order(all.settled().unwrap());
             let unread: BTreeSet<EventId> = (ordered.iter().copied())
                 .filter(|id| !both.contains(id))
                 .filter(|id| all.event(*id).is_some_and(|e| e.op_name() != "init"))
@@ -226,13 +229,20 @@ fn journal(records: &[(&Value, bool)]) -> Journal {
 fn a_linear_history_keeps_its_last_event_and_shows_what_comes_after() {
     let (a, ea) = event(1, T, "0000aa", &[], "a");
     let (b, eb) = event(2, T + 1, "0000aa", &[a], "b");
-    let first = unseen(&journal(&[(&ea, false), (&eb, false)]), Window::All);
+    let first = unseen(
+        journal(&[(&ea, false), (&eb, false)]).settled().unwrap(),
+        Window::All,
+    );
     assert_eq!((first.events, &first.frontier), (vec![a, b], &vec![b]));
     let (c, ec) = event(3, T + 2, "0000aa", &[b], "c");
     let three = journal(&[(&ea, false), (&eb, false), (&ec, false)]);
-    let later = unseen(&three, Window::After(&first.frontier));
+    let later = unseen(three.settled().unwrap(), Window::After(&first.frontier));
     assert_eq!((later.events, later.frontier), (vec![c], vec![c]));
-    assert!(unseen(&three, Window::After(&[c])).events.is_empty());
+    assert!(
+        unseen(three.settled().unwrap(), Window::After(&[c]))
+            .events
+            .is_empty()
+    );
 }
 
 #[test]
@@ -241,15 +251,21 @@ fn a_frontier_keeps_what_another_read_saw_and_this_one_did_not() {
     let (b, eb) = event(2, T + 1, "0000aa", &[a], "b");
     let (x, ex) = event(3, T + 2, "0000bb", &[a], "on another machine");
     // one read saw b and not x, the other x and not b: neither frontier is below the other
-    let one = unseen(&journal(&[(&ea, false), (&eb, false)]), Window::All);
-    let other = unseen(&journal(&[(&ea, false), (&ex, false)]), Window::All);
+    let one = unseen(
+        journal(&[(&ea, false), (&eb, false)]).settled().unwrap(),
+        Window::All,
+    );
+    let other = unseen(
+        journal(&[(&ea, false), (&ex, false)]).settled().unwrap(),
+        Window::All,
+    );
     assert_eq!(one.placed, [a, b]);
     let kept = joined(&one.frontier, &one.placed, &other.frontier);
     assert_eq!(kept, [b, x]);
     // a read that placed both shows what came after them and keeps its own frontier alone
     let (c, ec) = event(4, T + 3, "0000aa", &[b, x], "c");
     let all = journal(&[(&ea, false), (&eb, false), (&ex, false), (&ec, false)]);
-    let later = unseen(&all, Window::After(&kept));
+    let later = unseen(all.settled().unwrap(), Window::After(&kept));
     assert_eq!(later.events, [c]);
     assert_eq!(joined(&later.frontier, &later.placed, &kept), [c]);
 }
@@ -258,11 +274,14 @@ fn a_frontier_keeps_what_another_read_saw_and_this_one_did_not() {
 fn an_event_that_arrives_late_shows_whatever_its_clock_said() {
     let (a, ea) = event(1, T, "0000aa", &[], "a");
     let (b, eb) = event(2, T + 10, "0000aa", &[a], "b");
-    let first = unseen(&journal(&[(&ea, false), (&eb, false)]), Window::All);
+    let first = unseen(
+        journal(&[(&ea, false), (&eb, false)]).settled().unwrap(),
+        Window::All,
+    );
     // written on another machine before b, by a clock a week behind, and synced since
     let (x, ex) = event(3, T - 604_800_000, "0000bb", &[a], "late");
     let all = journal(&[(&ea, false), (&eb, false), (&ex, false)]);
-    let later = unseen(&all, Window::After(&first.frontier));
+    let later = unseen(all.settled().unwrap(), Window::After(&first.frontier));
     assert_eq!((later.events, later.frontier), (vec![x], vec![x, b]));
 }
 
@@ -271,10 +290,13 @@ fn an_event_waiting_for_a_cause_shows_once_the_cause_arrives() {
     let (a, ea) = event(1, T, "0000aa", &[], "a");
     let (b, eb) = event(2, T + 1, "0000bb", &[a], "cause");
     let (c, ec) = event(3, T + 2, "0000bb", &[a, b], "effect");
-    let first = unseen(&journal(&[(&ea, false), (&ec, false)]), Window::All);
+    let first = unseen(
+        journal(&[(&ea, false), (&ec, false)]).settled().unwrap(),
+        Window::All,
+    );
     assert_eq!((first.events, &first.frontier), (vec![a], &vec![a]));
     let all = journal(&[(&ea, false), (&eb, false), (&ec, false)]);
-    let later = unseen(&all, Window::After(&first.frontier));
+    let later = unseen(all.settled().unwrap(), Window::After(&first.frontier));
     assert_eq!((later.events, later.frontier), (vec![b, c], vec![c]));
 }
 
@@ -287,10 +309,10 @@ fn a_cause_a_quarantined_id_names_is_shown_when_it_arrives_late() {
     // q's copies disagree: placed on the cause it names that is here, before x has come
     let first = journal(&[(&ea, false), (&eq, false), (&other, true)]);
     assert!(first.quarantined().contains_key(&q));
-    let shown = unseen(&first, Window::All);
+    let shown = unseen(first.settled().unwrap(), Window::All);
     assert_eq!((shown.events, &shown.frontier), (vec![a, q], &vec![a, q]));
     let all = journal(&[(&ea, false), (&ex, false), (&eq, false), (&other, true)]);
-    let later = unseen(&all, Window::After(&shown.frontier));
+    let later = unseen(all.settled().unwrap(), Window::After(&shown.frontier));
     assert_eq!(later.events, [x], "x was never shown");
 }
 
@@ -303,11 +325,11 @@ fn a_first_window_shows_what_is_recent_and_counts_the_rest() {
     let (a, ea) = event(2, T - 2_000_000, "0000aa", &[init], "old");
     let (b, eb) = event(3, T, "0000aa", &[a], "recent");
     let all = journal(&[(&ei, false), (&ea, false), (&eb, false)]);
-    let window = unseen(&all, Window::Since(T - 1_000_000));
+    let window = unseen(all.settled().unwrap(), Window::Since(T - 1_000_000));
     assert_eq!((window.events, window.earlier), (vec![b], 1));
     assert_eq!(window.frontier, [b]);
     assert_eq!(
-        unseen(&all, Window::All).events,
+        unseen(all.settled().unwrap(), Window::All).events,
         [a, b],
         "init is never shown"
     );

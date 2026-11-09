@@ -378,6 +378,7 @@ impl Projection {
         after.done()?;
         let arena = knowledge.arena();
         read.knowledge = knowledge;
+        read.knowledge_scope = crate::state::KnowledgeScope::Retained;
         let kept = Kept {
             issues: starts,
             keys,
@@ -418,7 +419,7 @@ impl Projection {
 
 /// The state [`Projection::encode`] wrote as `bytes` ([`Encoded::state`]): all a command that only
 /// reads needs. Of its events it knows only who wrote those behind a register with several
-/// entries, which its conflicts name ([`State::who`]), and where machines' journals broke: not
+/// entries, which [`State::conflicts`] names, and where machines' journals broke: not
 /// their causes, nor what each had seen, nor any other event it names, which only applying more
 /// events reads (roll-lqjj.35).
 pub fn decode_state(bytes: &[u8]) -> Result<State, Unreadable> {

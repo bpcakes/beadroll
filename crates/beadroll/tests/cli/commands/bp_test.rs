@@ -182,7 +182,14 @@ fn view(journal: Journal) -> String {
     let st = replay(journal).unwrap();
     let mut issues: Vec<_> = st.issues().collect();
     issues.sort_by(|a, b| a.key().cmp(b.key()));
-    let export = Value::Array(st.export_records().into_iter().map(Value::from).collect());
+    let export = Value::Array(
+        st.hydrated()
+            .unwrap()
+            .export_records()
+            .into_iter()
+            .map(Value::from)
+            .collect(),
+    );
     let details = Value::Array(issues.iter().map(|i| Value::from(st.detail(i))).collect());
     write(&Value::Array(vec![export, details]), Format::SORTED_ASCII).unwrap()
 }
@@ -233,7 +240,7 @@ fn replay_does_not_depend_on_delivery_order() {
     let ownership: Vec<Value> = (claim_files(&ws).unwrap().iter())
         .flat_map(|path| read_attempt(path, None))
         .collect();
-    let mut replicas: Vec<String> = journal.order().keys().cloned().collect();
+    let mut replicas: Vec<String> = journal.settled().unwrap().order().keys().cloned().collect();
     let mut orders = Vec::new();
     permutations(&mut replicas, 0, &mut orders);
     assert_eq!(orders.len(), 6);
@@ -241,7 +248,7 @@ fn replay_does_not_depend_on_delivery_order() {
         let mut shuffled = Journal::new();
         for replica in order.iter().chain(&order) {
             // every event delivered twice
-            for id in &journal.order()[replica] {
+            for id in &journal.settled().unwrap().order()[replica] {
                 shuffled.add(written[id].clone(), replica, "", JournalOrder::Sequenced);
             }
             for event in &ownership {
@@ -256,7 +263,7 @@ fn replay_does_not_depend_on_delivery_order() {
         .unwrap()
         .unwrap();
     let mut partial = Journal::new();
-    for id in &journal.order()[&own] {
+    for id in &journal.settled().unwrap().order()[&own] {
         partial.add(written[id].clone(), &own, "", JournalOrder::Sequenced);
     }
     let st = replay(partial).unwrap();

@@ -7,3 +7,4 @@ mod compat;
 mod hardening;
 mod protocol;
 mod replay;
+mod snapshots;

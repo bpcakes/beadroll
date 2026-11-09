@@ -25,11 +25,12 @@ pub fn history(ws: &Workspace) -> Result<Vec<HistoryEntry>, Error> {
     if let Some(rows) = cached(ws, &path, &segments) {
         return Ok(rows);
     }
-    let loaded = load_listed(ws, &segments, ContentSums::Skip)?;
-    let (order, _) = causal_order(&loaded.journal);
+    let mut loaded = load_listed(ws, &segments, ContentSums::Skip)?;
+    let journal = loaded.journal.settled_view();
+    let (order, _) = causal_order(journal);
     let rows: Vec<_> = order
         .iter()
-        .filter_map(|id| loaded.journal.event(*id))
+        .filter_map(|id| journal.event(*id))
         .map(HistoryEntry::from)
         .collect();
     if ws.dir.is_dir()

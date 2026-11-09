@@ -1,0 +1,48 @@
+**Review: ebd060d..bbc3f3a (consumer read capabilities and cached projection lifecycle)**
+
+I found no substantive defects in this branch. There is one low-severity documentation gap.
+
+## Findings
+
+- [low] [crates/beadroll-core/src/snapshot.rs:79-84] and [README.md:265-266] Create events in a snapshot recap have no `issue()`, but the README suggests they do
+  - **Root cause:** `SnapshotEvent::issue` calls `self.event.issue()` and then `issue_named`. `Event::issue` (`journal/event.rs:249`) reads the event's `issue` field, and create events don't set it: the CLI writes `tx.emit("create", None, …)` (`commands/create.rs:109`, `commands/import.rs:72`), and the test fixtures do the same. So a create event's `issue()` is always `None`, even though this snapshot's replay made that issue. The issue's uid is the create's own id (`state/issue.rs:129`).
+  - **Impact:** The README says to "iterate the recap's `events()` and resolve each event's `issue()` through that same snapshot". The `issue()` doc says "only when the same snapshot's replay created it". A consumer following that guidance (pancake-studio) will find no issue for every creation event, which is one of the most common activity kinds. Nothing breaks: the CLI recap (`commands/recap.rs:219`) also leaves create titles null, so CLI output is unchanged. The new test `tree_snapshot_binds_activity_export_and_issue_resolution_to_one_read` only resolves a comment event (`eid(3)`), so nothing covers this case.
+  - **Kind:** supporting obligation (contract documentation)
+  - **Recommendation:** Pick one at the snapshot boundary:
+    - Make `SnapshotEvent::issue` fall back to `state.issue(event.id())` when the op is a create.
+    - Or keep the behaviour and say in the `issue()` doc and the README that create events must be resolved by their own id.
+
+    Either way, add a create event to the snapshot test.
+
+## Requirement coverage
+
+- **R1: satisfied.**
+  - Journal collections, `causal_order`, `effective_deps` and `unseen` now need a `SettledJournal`. The raw getters are `pub(crate)`. `Journal::settled()` returns `None` while the journal is dirty (`journal.rs:124`). This is tested in `snapshots::dirty_journals…` plus compile-fail examples.
+  - `HydratedState` checks every issue's texts, and its check matches `write_texts_anew`'s own `here()` check (`projection.rs:305`).
+  - `FullKnowledge` is only issued when the scope is `Full`. Scope is set to `Full` only in `replayed`. It is set to `Retained` in `project` and in decode (`parts.rs:381`). `decode_state` defaults to `Summary`. Tests cover hydration, extension and cloning without promotion.
+  - CLI callers that now call `hydrated()?` all read from states that are fully loaded or fall back to replay: `view` reads all texts or replays (`store/projection.rs:214,241`), and `texts_in` falls back to `view` (`commands.rs:391-394`). So the new `MissingTexts` error can't be reached from the CLI, and output is unchanged.
+- **R2: satisfied.** `Snapshot` has private fields and is built by `from_journal`, which settles the journal and then replays a clone of it. Sharing events through the clone is safe: `take_rest` copies when the event is shared (`event.rs:216-220`). `Recap` keeps the snapshot together with its own `Unseen` result. Freshness, pending and quarantine cases are tested. The only gap is create-event resolution, covered in the finding above.
+- **R3: satisfied.**
+  - `Issue::hydrated` checks only that issue.
+  - `read_field` refuses only the four long fields (`TEXT_FIELDS`) when unloaded.
+  - `brief`, `line` and the readiness and topology readers use only short or retained data (checked in `view.rs:51-92`).
+  - `dependency_summary` keeps `dep list` working from an outline. It's tested against full detail in `hydration::dependency_summaries…`.
+- **R4: satisfied.**
+  - `Extension` owns the projection and its batch.
+  - `read_texts` refuses locations it didn't request.
+  - `apply` asks for replay if any requested text is still unloaded.
+  - The store's `extend_projection` asks for replay when the text file is missing or belongs to another generation. Corrupted content always changes the generation, which `a_text_file_damaged_cut_gone_or_anothers_is_never_trusted` already exercises.
+  - Sync and cache reads both go through this one path.
+- **R5: satisfied.**
+  - `Writeback` exclusively borrows the projection and carries its own places and generation.
+  - `written` is the only way to acknowledge, and `placed` is now private.
+  - The store calls `written()` only after both writes succeed, keeping the previous lock and write order (`store/projection/writeback.rs`).
+  - `prepare_rewrite` gives the same result as the old `write_texts_anew` guard.
+  - Failpoint retry is tested for both the append and rewrite paths.
+- **R6: satisfied.** The lifecycle tests compare the reloaded export with full replay. The replay comparison and work-count tests were migrated without weakening them. The only added cost is a sort of the wanted texts.
+- **R7: satisfied.** Format 1, projection encoding 11 and the cache layout are unchanged; knowledge scope is not serialized. All in-repository callers (store, sync, CLI, fuzz, xtask) are migrated. The API breaks are recorded in the CHANGELOG, README, GUARANTEES and REVIEWING docs. Crate layering is respected.
+
+## Test gaps
+
+- Snapshot recap resolution of create events, as in the finding above. The only test resolves a comment, so a create-event regression in either direction would go unnoticed.
+- I found no other required gaps. One possible extra: the text-file append failure (`texts::append` returning false) has no failpoint test, but it shares the same `&&` guard as the projection-write failure that is tested, so a separate test is optional.

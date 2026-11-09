@@ -3,6 +3,7 @@
 #[cfg(test)]
 pub(crate) mod asked;
 mod awaiting;
+mod capabilities;
 mod claim;
 mod edges;
 mod issue;
@@ -24,6 +25,7 @@ use crate::text::str_of;
 use crate::work::{Work, tally};
 
 pub(crate) use awaiting::{Awaiting, named as awaited};
+pub use capabilities::{FullKnowledge, HydratedState, KnowledgeScope, MissingTexts};
 pub use claim::{Claim, Ended, EndedClaim, LostClaim, Provisional, Stale};
 pub use edges::{DepTags, Deps, DepsIter, Edge, Meta, Target};
 pub use issue::{Comment, Issue};
@@ -103,6 +105,8 @@ pub struct KeySpace {
 #[derive(Clone, Debug)]
 pub struct State {
     pub(crate) knowledge: Knowledge,
+    /// Derived from how this state was made, never encoded in the projection.
+    pub(crate) knowledge_scope: KnowledgeScope,
     pub(crate) prefix: Option<Value>,
     pub(crate) name: Option<Value>,
     /// In the order replay created them, with which changed since they were read back
@@ -135,6 +139,7 @@ impl State {
     pub(crate) fn new(knowledge: Knowledge) -> State {
         State {
             knowledge,
+            knowledge_scope: KnowledgeScope::Summary,
             prefix: None,
             name: None,
             issues: Issues::default(),
@@ -166,13 +171,13 @@ impl State {
     /// Whether `event` was among the events it was replayed from; of a projection's state, among
     /// those it knows ([`crate::projection::Projection::known`]), and of a state read alone, among
     /// those whose writers it holds ([`crate::projection::decode_state`]).
-    pub fn holds(&self, event: EventId) -> bool {
+    pub(crate) fn holds(&self, event: EventId) -> bool {
         self.knowledge.events.contains_key(&event)
     }
 
     /// The events it was replayed from, by id, in their journal's order: of a projection's state or
     /// a state read alone, those [`State::holds`] says.
-    pub fn events(&self) -> impl Iterator<Item = EventId> {
+    pub(crate) fn events(&self) -> impl Iterator<Item = EventId> {
         self.knowledge.events.keys().copied()
     }
 
@@ -255,7 +260,7 @@ impl State {
     }
 
     /// Whether the writer of `event` had already seen `other`.
-    pub fn saw(&self, event: EventId, other: EventId) -> bool {
+    pub(crate) fn saw(&self, event: EventId, other: EventId) -> bool {
         self.knowledge.saw(event, other)
     }
 
@@ -285,7 +290,7 @@ impl State {
     }
 
     /// The actor who wrote `event`, formatted as an actor label.
-    pub fn who(&self, event: EventId) -> String {
+    pub(crate) fn who(&self, event: EventId) -> String {
         self.knowledge.who(event).unwrap_or_default()
     }
 
