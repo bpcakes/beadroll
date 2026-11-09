@@ -34,6 +34,9 @@ consumer on tokio calls through `spawn_blocking`.
   public map, with legacy shapes left to the established validators.
 
 - `src/lib.rs`: the crate root, listing the modules.
+- `src/history.rs`: `HistoryEntry`, display metadata derived from a settled event, and its
+  disposable cache encoding. It has no operation payload or authority to enter replay; issue
+  and machine ids stay unresolved for the caller's current keys and aliases.
 - `src/json.rs` (`json/read.rs`, `json/write.rs`, `json/int.rs`): `Value` and its `Deserialize`,
   `parse` (serde_json), `write`, `Format`.
 - `src/text.rs`: `repr`, `str_of`, `strip`, `b36`, and `surrogateescaped`, `repr_bytes`,

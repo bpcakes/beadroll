@@ -5,17 +5,15 @@ use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_core::code::Code;
+use beadroll_core::history::HistoryEntry;
 use beadroll_core::journal::Event;
 use beadroll_core::json::{self, Format, Int, Object, Value};
-use beadroll_core::op::Op;
-use beadroll_core::order::causal_order;
 use beadroll_core::state::State;
 use beadroll_core::text::{printed_text, str_of};
 use beadroll_core::time::event_time;
 use beadroll_store::FileMode;
 use beadroll_store::{
-    Unreadable, load_journal, machine_aliases, projection, read_json_text, view_outline,
-    write_atomic,
+    Unreadable, history, machine_aliases, projection, read_json_text, view_outline, write_atomic,
 };
 
 use super::{Context, Failure, Line, Outcome, Tone, resolve_arg};
@@ -25,29 +23,26 @@ use super::{Context, Failure, Line, Outcome, Tone, resolve_arg};
 /// thread), operation (with the fields a `set` changed) and issue. A positive `limit` keeps the
 /// last that many; a negative limit leaves that many off the start.
 ///
-/// The events and their order are the journal's, which it reads whole; the keys it names issues
-/// by are the store's state's, read after it so that every issue an event names is there
-/// (roll-lqjj.31). It replays nothing of its own: the journal is replayed only when the
-/// projection is not the journal's, to make it, as for every command.
+/// The metadata and order come from the journal or its validated history cache. Issue keys
+/// come from the state, read afterwards so every issue an event names is there (roll-lqjj.31).
+/// A cache miss reads the whole journal; a hit checks source identities and reads only metadata.
+/// Replay is needed only to rebuild a stale projection, as for every command.
 pub(crate) fn log(
     ctx: &Context<'_>,
     key: Option<&OsStr>,
     limit: Option<&Int>,
 ) -> Result<Outcome, Failure> {
-    let mut journal = load_journal(ctx.ws)?;
-    let journal = journal.settled_view();
+    let history = history(ctx.ws)?;
     let st = view_outline(ctx.ws)?;
-    let (order, _) = causal_order(journal);
     let aliases = machine_aliases(&ctx.ws.settings);
     let wanted = match key.filter(|k| !k.is_empty()) {
         Some(key) => Some(resolve_arg(&st, key)?.uid().to_string()),
         None => None,
     };
-    let mut rows: Vec<_> = order
+    let mut rows: Vec<_> = history
         .iter()
-        .filter_map(|id| journal.event(*id))
-        .filter(|e| e.op_name() != "init")
-        .filter(|e| wanted.is_none() || e.issue() == wanted.as_deref())
+        .filter(|e| e.operation != "init")
+        .filter(|e| wanted.is_none() || e.issue.as_deref() == wanted.as_deref())
         .collect();
     let limit = limit.map_or(0, Int::as_i128);
     if limit != 0 {
@@ -62,7 +57,7 @@ pub(crate) fn log(
     let mut result = Vec::new();
     let mut lines = Vec::new();
     for event in rows {
-        let (row, line) = logged(event, &st, &aliases, None);
+        let (row, line) = logged_summary(event, &st, &aliases, None);
         lines.push(line);
         result.push(Value::from(row));
     }
@@ -82,36 +77,38 @@ pub(crate) fn logged(
     aliases: &BTreeMap<String, String>,
     title: Option<&str>,
 ) -> (Object, Line) {
-    let actor = |key: &str| {
-        event
-            .actor()
-            .filter(|a| a.truthy())
-            .and_then(|a| a.get(key))
-            .cloned()
-            .unwrap_or(Value::Null)
+    logged_summary(&HistoryEntry::from(event), st, aliases, title)
+}
+
+fn logged_summary(
+    event: &HistoryEntry,
+    st: &State,
+    aliases: &BTreeMap<String, String>,
+    title: Option<&str>,
+) -> (Object, Line) {
+    let actor = |key: &str| match key {
+        "agent" => event.agent.clone(),
+        "thread" => event.thread.clone(),
+        "name" => event.name.clone(),
+        _ => Value::Null,
     };
-    let at = event_time(event.id().millis());
-    let replica = event.replica();
+    let at = event_time(event.id.millis());
+    let replica = event.machine.as_str();
     let machine = aliases.get(replica).map_or(replica, String::as_str);
-    let issue = match event.issue() {
+    let issue = match event.issue.as_deref() {
         Some(uid) => Value::from(st.key_of(uid)),
         None => Value::Null,
     };
-    let branch = event
-        .place()
-        .filter(|w| w.truthy())
-        .and_then(|w| w.get("branch"))
-        .cloned()
-        .unwrap_or(Value::Null);
+    let branch = event.branch.clone();
     let mut row = Object::new();
     row.insert("at".into(), Value::from(at.as_str()));
     row.insert("machine".into(), Value::from(machine));
     row.insert("agent".into(), actor("agent"));
     row.insert("thread".into(), actor("thread"));
     row.insert("name".into(), actor("name"));
-    row.insert("op".into(), Value::from(event.op_name()));
+    row.insert("op".into(), Value::from(event.operation.as_str()));
     row.insert("issue".into(), issue.clone());
-    row.insert("event".into(), Value::from(event.id().to_string()));
+    row.insert("event".into(), Value::from(event.id.to_string()));
     row.insert("branch".into(), branch.clone());
     let or = |value: Value, default: &str| {
         if value.truthy() {
@@ -126,12 +123,10 @@ pub(crate) fn logged(
         let thread: String = or(actor("thread"), "-").chars().take(8).collect();
         format!("{:<6} {thread:<8}", or(actor("agent"), "?"))
     };
-    let op = match event.op() {
-        Op::Set(fields) if !fields.is_empty() => {
-            let names: Vec<&str> = fields.iter().map(|(field, _)| field.name()).collect();
-            format!("set {}", names.join(","))
-        }
-        op => op.name().to_owned(),
+    let op = if event.operation == "set" && !event.changed_fields.is_empty() {
+        format!("set {}", event.changed_fields.join(","))
+    } else {
+        event.operation.clone()
     };
     let mut line = Line::new()
         .with(Tone::Dim, at.chars().take(19).collect::<String>())

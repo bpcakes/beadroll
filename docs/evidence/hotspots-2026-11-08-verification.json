@@ -1,0 +1,42 @@
+{
+  "baseline_source_commit": "33a6de608f64aebe68bfd16167a8a9849bd482cb",
+  "candidate_committed": false,
+  "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+  "candidate_executable_sha256": "e6058102e1750660b8ea7af91259626b113ac7b50f24b0c9204b2fed62ef9416",
+  "changed_rust_sources": {
+    "crates/beadroll-core/src/history.rs": "faaaadee74164ab1a201a196e2ae2f525544756ae9c1b216234c01ab824eeb92",
+    "crates/beadroll-core/src/lib.rs": "a1a12261fc2cdcf898e40f99bf2fcc92e420f019347c26d006e5cf08cc1581c6",
+    "crates/beadroll-store/src/fs.rs": "f3f15d1b2f231b13807f6feb1df4decce03ef527d3a1110b4f94ac4d2d2328a9",
+    "crates/beadroll-store/src/fs/prepared.rs": "a92bfabbe0308c5ee41219a09d2ac2c35b330a41fd10a4c96fd5bdab237f1706",
+    "crates/beadroll-store/src/history.rs": "e910401c3c8f2a0d19a6484ab672b2e6bbf5290a40ce53b38a511cda6b9b36d7",
+    "crates/beadroll-store/src/history/tests.rs": "83c48216799c565ee1af68e4579fc7459bcdce59e118ae85d95fe71cf5a34490",
+    "crates/beadroll-store/src/lib.rs": "b228fcdf8d18f60f65e28bb9d910bb908cdeeed2d8db282fbd31eb3a819e3d1d",
+    "crates/beadroll-sync/src/link/merge.rs": "99b0f8b883597691881bbe06ece5a7920e2fa097916d2f2f6331e9a1fca3acfc",
+    "crates/beadroll-sync/src/link/merge/bootstrap.rs": "4f8fa8c1ddd9cff1b639b85f42816f67288d7eda6cb3740f3029c30833f16aab",
+    "crates/beadroll/src/commands/history.rs": "7d8597bd8b4b4764c526ec1ec189fe0040d00ff4ea42be937d5fba26d95f3771",
+    "crates/beadroll/tests/cli/protocol.rs": "5ceb4debb2d2c39fc70288e3c9312395e4658a88afbe0ca8717f123e6627868d",
+    "crates/beadroll/tests/cli/protocol/bootstrap.rs": "f1c4d116b6f11d785b9b1ec8635d5447e63793a9b597d82d0c49b8da5b6dbd95",
+    "crates/beadroll/tests/cli/storage.rs": "1bc7706386c7e2c7ad5bd583bc1c831bdb6f698a1da842a989befbade2c7fc5f",
+    "crates/beadroll/tests/cli/storage/history.rs": "9c75e442849cca532ee948d0d06aaf5bdb3b86aaa7647595d016bc94ad0c38d0"
+  },
+  "checks": {
+    "./check.sh --stress": {
+      "exit_code": 0,
+      "baseline_tests_passed": 1257,
+      "baseline_skipped": 11,
+      "stress_models_passed": 2,
+      "infra_tests_passed": 14,
+      "doctests": 0
+    },
+    "cargo fmt --all -- --check": {
+      "exit_code": 0
+    },
+    "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D clippy::mod_module_files": {
+      "exit_code": 0
+    },
+    "git diff --check": {
+      "exit_code": 0
+    }
+  },
+  "scope": "Linux x86-64 local execution; no hosted CI or macOS execution claimed"
+}

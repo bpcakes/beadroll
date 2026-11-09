@@ -13,6 +13,14 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   Pending records remain queryable, but their ancestry queries recognize only direct causes until
   a later replay can place them.
 
+- Repeated `log` reads use a checksummed cache of causal history metadata. Every journal file's
+  identity is checked; journal changes or cache damage rebuild it. Keys and machine aliases
+  remain current, and history output is unchanged. A first read still parses the whole journal.
+- First sync into an empty store prepares and fsyncs up to eight independent journal files at
+  once, then installs them in their original order. Every journal file remains flushed before
+  installation; existing stores and pending attempts retain the ordinary merge path. The
+  reproducible before/after probe is `infra/hotspots.py`.
+
 - Clippy now rejects boolean function parameters across the workspace, tests and tooling. Rust
   callers use named modes such as `JournalOrder`, `FileMode`, `NetworkMode` and `PublishMode`
   in place of boolean switches; command behavior and stored formats are unchanged.

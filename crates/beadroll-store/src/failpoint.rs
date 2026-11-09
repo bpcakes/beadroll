@@ -11,8 +11,8 @@
 //! Actions. Every point but `clock` takes `exit(N)`, `sigkill` (a real SIGKILL), `sleep(MS)` and
 //! `pause-until(PATH)`, which touches `PATH.ready` and waits up to 300 seconds for `PATH.go`.
 //! `torn-sigkill` (`append.mid`) writes half a line, fsyncs it and dies; `errno(NAME)`
-//! (`atomic-write:`) fails the write with ENOSPC, EFBIG, EIO, EACCES, EPERM, EROFS, EDQUOT,
-//! EMFILE, ENFILE, ENOENT or EINTR; `fail-reply` (`push.reply`) reports a push that succeeded as
+//! (`atomic-write:`, `atomic-flush:`) fails the write with ENOSPC, EFBIG, EIO, EACCES, EPERM,
+//! EROFS, EDQUOT, EMFILE, ENFILE, ENOENT or EINTR; `fail-reply` (`push.reply`) reports a push that succeeded as
 //! failed and drops git's status line with it, the lost acknowledgement; `error(CODE)` fails
 //! `publish.result` or `fetch.result` with that code, and the command at
 //! `ownership.after-confirm`, leaving its attempt confirmed and its pending twin in place; `skip`
@@ -44,7 +44,9 @@
 //! never for the journal a transaction loads and replays itself (`Tx::state` with no projection);
 //! `clock`, every reading of the clock (event times, torn and fork stamps); and
 //! `atomic-write:<path part>` and `atomic-written:<path part>`, before and after the rename of an
-//! atomic write whose target contains that part. In-crate tests pass
+//! atomic write whose target contains that part; `atomic-flush:<path part>` after writing a
+//! durable temporary file and before its fsync, and `atomic-flushed:<path part>` only after that
+//! fsync succeeds, before installation. Cache writes reach neither flush point. In-crate tests pass
 //! the registry in `Settings` and read [`Failpoints::hits`] to see that a fault was reached.
 
 use std::collections::BTreeMap;
@@ -57,7 +59,7 @@ use beadroll_core::code::Code;
 
 use crate::error::Error;
 
-/// The points bead has, besides `atomic-write:<path part>` and `atomic-written:<path part>`.
+/// The points bead has, besides the path-qualified atomic write and flush points above.
 pub const POINTS: [&str; 25] = [
     "ownership.before-publish",
     "ownership.before-transaction",
@@ -109,7 +111,7 @@ pub enum Action {
     Sigkill,
     /// At `append.mid`: half the line written and fsynced, then `SIGKILL`.
     TornSigkill,
-    /// At `atomic-write`: the write fails with this error number.
+    /// At `atomic-write` or `atomic-flush`: the write fails with this error number.
     Errno(i32),
     /// At `push.reply`: a push the remote accepted is reported as failed, its status line dropped.
     FailReply,
@@ -250,8 +252,9 @@ impl Failpoints {
         self.fire(index)
     }
 
-    /// Passes the atomic write of `target` (`kind` is `atomic-write`, before the rename, or
-    /// `atomic-written`, after it): the first spec whose path part `target` holds.
+    /// Passes a path-qualified point of `target`: `atomic-flush`/`atomic-flushed` around its
+    /// durable flush, or `atomic-write`/`atomic-written` around its rename. Uses the first spec
+    /// whose path part `target` holds.
     pub fn hit_path(&self, kind: &str, target: &Path) -> Option<Fired> {
         let shown = target.to_string_lossy();
         let index = self.specs.iter().position(|s| {
@@ -358,7 +361,14 @@ fn parse(text: &str) -> Result<Vec<Spec>, String> {
 }
 
 fn known(point: &str) -> Result<(), String> {
-    let path_point = ["atomic-write:", "atomic-written:"].iter().any(|kind| {
+    let path_point = [
+        "atomic-write:",
+        "atomic-written:",
+        "atomic-flush:",
+        "atomic-flushed:",
+    ]
+    .iter()
+    .any(|kind| {
         point
             .strip_prefix(kind)
             .is_some_and(|part| !part.is_empty())
@@ -377,7 +387,9 @@ fn allowed(point: &str, action: &Action) -> Result<(), String> {
             point != "clock"
         }
         Action::TornSigkill => point == "append.mid",
-        Action::Errno(_) => point.starts_with("atomic-write:"),
+        Action::Errno(_) => {
+            point.starts_with("atomic-write:") || point.starts_with("atomic-flush:")
+        }
         Action::FailReply => point == "push.reply",
         Action::Error(_) => matches!(
             point,
