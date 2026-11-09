@@ -159,7 +159,7 @@ pub(super) fn answers(state: &State) -> String {
                 out.push_str(&format!("  tag {to} {kind} {id} {}\n", text(&shown(meta))));
             }
         }
-        let detail = Value::from(details.of(issue));
+        let detail = Value::from(details.of(issue.hydrated().unwrap()));
         out.push_str(&format!("  details {}\n", text(&detail)));
     }
     for record in state.export_records() {
@@ -186,7 +186,7 @@ pub(super) fn every_way(state: &State) -> String {
             "  blockers {}\n",
             keys(state.open_blockers(issue))
         ));
-        let detail = Value::from(state.detail(issue));
+        let detail = Value::from(state.detail(issue.hydrated().unwrap()));
         out.push_str(&format!("  detail {}\n", text(&detail)));
         let ready = state.ready(ReadyScope::Subtree(issue.uid()));
         out.push_str(&format!("  ready {}\n", keys(ready)));
@@ -283,7 +283,7 @@ fn printed(state: &State) -> String {
     for issue in state.issues() {
         out.push_str(&format!(
             "show {}\n",
-            text(&Value::from(state.detail(issue)))
+            text(&Value::from(state.detail(issue.hydrated().unwrap())))
         ));
     }
     out
@@ -328,10 +328,10 @@ fn export_and_show_print_the_same_with_edges_metadata_read_from_the_texts_as_fro
         for issue in replayed.issues().filter(|issue| !issue.deps().is_empty()) {
             let mut one = state.clone();
             super::read_in(&mut one, &file, Some(vec![issue.uid()]));
-            let shown = one.detail(one.issue(issue.uid()).unwrap());
+            let shown = one.detail(one.issue(issue.uid()).unwrap().hydrated().unwrap());
             assert_eq!(
                 text(&Value::from(shown)),
-                text(&replayed.detail(issue).into())
+                text(&replayed.detail(issue.hydrated().unwrap()).into())
             );
             let read = one.issue(issue.uid()).unwrap();
             assert_eq!(read.dep_tags(), issue.dep_tags());

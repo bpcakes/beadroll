@@ -8,7 +8,7 @@
 use super::Dependents;
 use crate::json::Object;
 use crate::query::Readiness;
-use crate::state::{Issue, State};
+use crate::state::{HydratedIssue, Issue, State};
 
 /// What the details of some issues share, found once for all of them: the issues that depend on
 /// each ([`Dependents`]) and, when there are several, whether anything holds each issue
@@ -25,10 +25,10 @@ pub struct Details<'s> {
 impl Details<'_> {
     /// The detail of `issue`, as [`State::detail`] gives it: an issue it was not made for has its
     /// dependents found on its own, as [`State::detail_with`] finds them.
-    pub fn of(&self, issue: &Issue) -> Object {
+    pub fn of(&self, issue: HydratedIssue<'_>) -> Object {
         let blocked = match &self.readiness {
-            Some(readiness) => readiness.is_blocked(issue),
-            None => self.state.is_blocked(issue),
+            Some(readiness) => readiness.is_blocked(issue.as_issue()),
+            None => self.state.is_blocked(issue.as_issue()),
         };
         (self.state).detail_judged(issue, &self.dependents, crate::json::Value::Bool(blocked))
     }

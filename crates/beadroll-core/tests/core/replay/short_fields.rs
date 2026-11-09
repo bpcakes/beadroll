@@ -68,10 +68,37 @@ fn both(events: &[Json]) -> [State; 2] {
     [replayed, decode_state(&encoded.state).unwrap()]
 }
 
+/// Load texts when an assertion needs complete registers or a long field's value.
+fn hydrate(state: &mut State, events: &[Json]) {
+    let (encoded, _) = project(journal(events)).unwrap().encode(0);
+    for (uid, place) in state.all_wanted_texts() {
+        let at = place.at as usize;
+        state
+            .read_texts(uid, place, &encoded.texts[at..at + place.len as usize])
+            .unwrap();
+    }
+}
+
 /// What `field` of the issue shows, in both states alike.
 fn shown(events: &[Json], field: Field) -> Option<Json> {
-    let [replayed, decoded] = both(events);
-    let of = |st: &State| st.issue_named(&uid()).unwrap().field(field).cloned();
+    let [replayed, mut decoded] = both(events);
+    if beadroll_core::state::is_text(field) {
+        assert!(
+            decoded
+                .issue_named(&uid())
+                .unwrap()
+                .read_field(field)
+                .is_err()
+        );
+        hydrate(&mut decoded, events);
+    }
+    let of = |st: &State| {
+        st.issue_named(&uid())
+            .unwrap()
+            .read_field(field)
+            .unwrap()
+            .cloned()
+    };
     assert_eq!(of(&replayed), of(&decoded), "{}", field.name());
     of(&replayed)
 }
@@ -137,14 +164,24 @@ fn a_creates_null_a_write_that_had_not_seen_it_leaves_largest_shows_nothing() {
             .data(json!({"fields": {"assignee": "ann", "notes": "n"}}))
             .json(),
     );
-    let [replayed, decoded] = both(&events);
+    let [replayed, mut decoded] = both(&events);
+    hydrate(&mut decoded, &events);
     for st in [&replayed, &decoded] {
         let issue = st.issue_named(&uid).unwrap();
-        assert_eq!(issue.registers().get(&Field::Assignee).unwrap().len(), 2);
-        assert_eq!(issue.field(Field::Assignee), None);
+        assert_eq!(
+            issue
+                .hydrated()
+                .unwrap()
+                .registers()
+                .get(&Field::Assignee)
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(issue.read_field(Field::Assignee).unwrap(), None);
     }
     let issue = replayed.issue_named(&uid).unwrap();
-    assert_eq!(issue.field(Field::Notes), Some(&Json::Null));
+    assert_eq!(issue.read_field(Field::Notes).unwrap(), Some(&Json::Null));
 }
 
 #[test]
@@ -171,7 +208,7 @@ fn a_create_that_gives_nothing_shows_its_defaults_until_a_write() {
     let issue = replayed.issue_named(&uid()).unwrap();
     assert_eq!(issue.priority(), IntegerField::from(2));
     // a default is no register: nothing is disputed, and a write gives the field its register
-    assert_eq!(issue.registers().len(), 1);
+    assert_eq!(issue.hydrated().unwrap().registers().len(), 1);
     events.push(set(
         3,
         json!({"title": "named", "priority": 0, "issue_type": "bug"}),
@@ -257,6 +294,8 @@ fn a_close_a_reopen_and_a_close_again_show_the_status_registers_members() {
     let [replayed, _] = both(&events);
     let issue = replayed.issue_named(&uid()).unwrap();
     let (_, status) = issue
+        .hydrated()
+        .unwrap()
         .registers()
         .get(&Field::Status)
         .unwrap()
@@ -337,7 +376,8 @@ fn a_register_concurrent_writes_left_with_several_entries_shows_the_largest_id()
         "set",
         json!({"fields": {"status": "blocked"}}),
     ));
-    let [replayed, decoded] = both(&events);
+    let [replayed, mut decoded] = both(&events);
+    hydrate(&mut decoded, &events);
     for st in [&replayed, &decoded] {
         let issue = st.issue_named(&uid()).unwrap();
         for field in [
@@ -349,20 +389,35 @@ fn a_register_concurrent_writes_left_with_several_entries_shows_the_largest_id()
             Field::Status,
         ] {
             assert_eq!(
-                issue.registers().get(&field).unwrap().len(),
+                issue
+                    .hydrated()
+                    .unwrap()
+                    .registers()
+                    .get(&field)
+                    .unwrap()
+                    .len(),
                 2,
                 "{}",
                 field.name()
             );
         }
         assert_eq!(issue.title(), "from c");
-        assert_eq!(issue.field(Field::Assignee), Some(&json!("from c")));
+        assert_eq!(
+            issue.read_field(Field::Assignee).unwrap(),
+            Some(&json!("from c"))
+        );
         assert_eq!(issue.priority(), IntegerField::from(2));
-        assert_eq!(issue.field(Field::EstimatedMinutes), Some(&json!(40)));
-        assert_eq!(issue.field(Field::ExternalRef), Some(&json!("from c")));
+        assert_eq!(
+            issue.read_field(Field::EstimatedMinutes).unwrap(),
+            Some(&json!(40))
+        );
+        assert_eq!(
+            issue.read_field(Field::ExternalRef).unwrap(),
+            Some(&json!("from c"))
+        );
         assert_eq!(issue.status(), "blocked");
-        assert_eq!(issue.field(Field::ClosedAt), None);
-        assert_eq!(st.conflicts(issue).len(), 6);
+        assert_eq!(issue.read_field(Field::ClosedAt).unwrap(), None);
+        assert_eq!(st.conflicts(issue.hydrated().unwrap()).len(), 6);
     }
 }
 

@@ -462,7 +462,7 @@ pub(crate) fn history(seed: u64, batches: usize, flawed: HistoryKind) -> Vec<Rec
 fn same(a: &State, b: &State) -> bool {
     let conflicts = |st: &State| -> Vec<String> {
         (st.issues.values())
-            .map(|issue| format!("{:?}", st.conflicts(issue)))
+            .map(|issue| format!("{:?}", st.conflicts(issue.hydrated().unwrap())))
             .collect()
     };
     conflicts(a) == conflicts(b)

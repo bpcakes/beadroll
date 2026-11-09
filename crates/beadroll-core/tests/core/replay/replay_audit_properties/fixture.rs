@@ -126,7 +126,7 @@ pub(crate) fn issue<'a>(st: &'a State, uid: &str) -> &'a Issue {
 
 /// The alternatives of a disputed field, if it is disputed.
 pub(crate) fn conflict(st: &State, issue: &Issue, field: Field) -> Option<Vec<Alternative>> {
-    st.conflicts(issue)
+    st.conflicts(issue.hydrated().unwrap())
         .into_iter()
         .find(|(f, _)| *f == field)
         .map(|(_, alternatives)| alternatives)
@@ -152,7 +152,10 @@ pub(crate) fn snapshot(journal: Journal) -> String {
         .into_iter()
         .map(Json::from)
         .collect();
-    let details: Vec<Json> = issues.iter().map(|i| Json::from(st.detail(i))).collect();
+    let details: Vec<Json> = issues
+        .iter()
+        .map(|i| Json::from(st.detail(i.hydrated().unwrap())))
+        .collect();
     let ready: Vec<Json> = issues
         .iter()
         .filter(|i| i.status() == "open" && !st.is_blocked(i) && !st.disputed(i, Field::Status))

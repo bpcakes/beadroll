@@ -185,7 +185,11 @@ fn all_registers_keep_concurrent_clear_and_value_then_settle() {
         let uid = f.issue.clone();
         if REQUIRED_FIELDS.contains(&field) {
             // Q09: clearing a required field is a validation error, not a write.
-            let before = issue(&f.state(), &uid).field(field).cloned();
+            let before = issue(&f.state(), &uid)
+                .hydrated()
+                .unwrap()
+                .field(field)
+                .cloned();
             let bad = f.event("set", Some(&uid), "a", &[&uid], fields(field, Json::Null));
             let st = f.state();
             assert!(
@@ -194,7 +198,11 @@ fn all_registers_keep_concurrent_clear_and_value_then_settle() {
                     .any(|row| row.event.as_deref() == Some(bad.as_str())),
                 "{field:?}"
             );
-            assert_eq!(issue(&st, &uid).field(field).cloned(), before, "{field:?}");
+            assert_eq!(
+                issue(&st, &uid).hydrated().unwrap().field(field).cloned(),
+                before,
+                "{field:?}"
+            );
             continue;
         }
         let a = f.event("set", Some(&uid), "a", &[&uid], fields(field, Json::Null));
@@ -210,7 +218,12 @@ fn all_registers_keep_concurrent_clear_and_value_then_settle() {
             Some(2),
             "{field:?}"
         );
-        let register = issue(&st, &uid).registers().get(&field).unwrap();
+        let register = issue(&st, &uid)
+            .hydrated()
+            .unwrap()
+            .registers()
+            .get(&field)
+            .unwrap();
         assert!(register.values().any(|v| *v == Json::Null), "{field:?}");
         f.event("set", Some(&uid), "a", &[&a, &b], fields(field, Json::Null));
         let st = f.state();
@@ -218,7 +231,10 @@ fn all_registers_keep_concurrent_clear_and_value_then_settle() {
             conflict(&st, issue(&st, &uid), field).is_none(),
             "{field:?}"
         );
-        assert!(issue(&st, &uid).field(field).is_none(), "{field:?}");
+        assert!(
+            issue(&st, &uid).hydrated().unwrap().field(field).is_none(),
+            "{field:?}"
+        );
     }
 }
 
@@ -339,7 +355,7 @@ fn handwritten_offline_takeover_does_not_fence_confirmed_owner() {
     let issue = issue(&st, &uid);
     assert!(issue.claim().is_none());
     assert_eq!(issue.status(), "closed");
-    assert!(issue.stale().is_empty());
+    assert!(issue.hydrated().unwrap().stale().is_empty());
 }
 
 #[test]

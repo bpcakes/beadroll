@@ -6,7 +6,7 @@ mod details;
 use crate::event::{EXPORT_FIELDS, Field};
 use crate::json::{Object, Value};
 use crate::query::Alternative;
-use crate::state::{Comment, Edge, Issue, State};
+use crate::state::{Comment, Edge, HydratedIssue, Issue, State};
 use crate::text::str_of;
 
 pub use dependents::Dependents;
@@ -92,24 +92,34 @@ impl State {
         out
     }
 
-    /// Full issue details. The CLI adds the git-dependent `merged` field after `closed_on`. The
-    /// issues that depend on it are found by reading every issue's edges, once, and whether
+    /// Full details of a hydrated issue. The CLI adds the git-dependent `merged` field after
+    /// `closed_on`. The issues that depend on it are found by reading every issue's edges, once, and whether
     /// anything holds it by walking its ancestors; a reader that shows several issues makes what
     /// their details share once for all of them with [`State::details_of`].
-    pub fn detail(&self, issue: &Issue) -> Object {
-        self.detail_with(issue, &self.dependents_of([issue]))
+    pub fn detail(&self, issue: HydratedIssue<'_>) -> Object {
+        self.detail_with(issue, &self.dependents_of([issue.as_issue()]))
     }
 
     /// Full issue details as [`State::detail`] gives them, the issues that depend on it taken from
     /// `dependents` (roll-lqjj.20): found there when they were found in this state and it was asked
     /// about, and for it alone otherwise. Whether anything holds it is judged for it alone.
-    pub fn detail_with(&self, issue: &Issue, dependents: &Dependents<'_>) -> Object {
-        self.detail_judged(issue, dependents, Value::Bool(self.is_blocked(issue)))
+    pub fn detail_with(&self, issue: HydratedIssue<'_>, dependents: &Dependents<'_>) -> Object {
+        self.detail_judged(
+            issue,
+            dependents,
+            Value::Bool(self.is_blocked(issue.as_issue())),
+        )
     }
 
     /// Full issue details as [`State::detail_with`] gives them, `blocked` being whether anything
     /// holds the issue, as [`State::is_blocked`] answers.
-    fn detail_judged(&self, issue: &Issue, dependents: &Dependents<'_>, blocked: Value) -> Object {
+    fn detail_judged(
+        &self,
+        hydrated: HydratedIssue<'_>,
+        dependents: &Dependents<'_>,
+        blocked: Value,
+    ) -> Object {
+        let issue = hydrated.as_issue();
         let mut out = Object::new();
         out.insert("id".into(), Value::from(issue.key()));
         for name in EXPORT_FIELDS {
@@ -189,7 +199,7 @@ impl State {
                 out.insert(name.into(), items.into());
             }
         }
-        let conflicts = self.conflicts(issue);
+        let conflicts = self.conflicts(hydrated);
         if !conflicts.is_empty() {
             let conflicts = conflicts.into_iter().map(|(field, alternatives)| {
                 let alternatives =
@@ -200,6 +210,23 @@ impl State {
                 "conflicts".into(),
                 Value::from(conflicts.collect::<Object>()),
             );
+        }
+        out
+    }
+
+    /// Dependency and dependent rows, with unresolved imported keys when present. These use
+    /// retained topology and short fields only, so a cached outline needs no text loading.
+    /// The rows contain no edge metadata, comments or other text-bearing detail fields.
+    pub fn dependency_summary(&self, issue: &Issue) -> Object {
+        let mut out = Object::new();
+        out.insert("dependencies".into(), self.dependencies_shown(issue));
+        let dependents = self.dependents_of([issue]);
+        out.insert(
+            "dependents".into(),
+            dependents_shown(dependents.of(issue).unwrap_or_default()),
+        );
+        if !issue.dangling().is_empty() {
+            out.insert("unresolved_dependencies".into(), unresolved(issue));
         }
         out
     }

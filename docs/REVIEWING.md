@@ -1696,8 +1696,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
     only checks. `effective_deps` looks up an id in that view, so a foreign event cannot supply
     its causes. Raw collection readers are crate-private for replay's implementation.
   - `State::hydrated` checks every issue's text location before returning `HydratedState`, the
-    public complete-export interface. The shared borrow keeps the proof valid. Existing selective
-    issue/detail readers and summary queries keep their cost and their text-loading contract.
+    public complete-export interface. The shared borrow keeps the proof valid. Selective
+    issue/detail reads are further gated by roll-9445 below; summary queries keep their cost.
     `State::full_knowledge` grants whole-history queries only after full replay; project and
     projection decoding mark retained knowledge, and state-only decoding marks summary knowledge.
     Full replay still includes pending records: their membership and authorship are known, but
@@ -1717,6 +1717,36 @@ These were decided deliberately. Report problems *with* them, not their existenc
   for forbidden reads/construction and `core::snapshots` tests of hydration, retained knowledge,
   dirty journals, different snapshots, pending causes and quarantine. They change neither format 1
   nor existing command output; this does not migrate a downstream repository's dependency pin.
+- Projection lifecycle capabilities (roll-9445):
+  - `Issue::hydrated` checks one issue and lends `HydratedIssue`. Text-bearing getters,
+    `State::detail`, `detail_with`, `Details::of` and complete conflict alternatives require it.
+    `Issue::read_field` checks long fields and returns short fields without hydration. Summary
+    fields, readiness, disputed field names, dependency topology and last-ended-claim decisions
+    still use retained data. Dependency metadata already distinguishes unloaded `None` from
+    loaded `Some(empty)` through `Meta::members`; this representation is unchanged.
+    `State::dependency_summary` supplies the dependency-only rows `dep list` needs without
+    building a full detail or loading texts. The existing golden and projection edge tests
+    caught that caller's reliance on the old partial-detail behavior during migration.
+  - `Projection::prepare_extension` owns a projection and its record batch as `Extension`.
+    Its requested locations are derived once from that pair. Only requested locations can be
+    loaded; `apply` consumes both and requests replay if loading is incomplete or the existing
+    extension checks decline. `beadroll_store::extend_projection` is the shared loading path
+    for cached reads and transaction materialization. The transaction retains its existing
+    replay-needed fallback on errors, applied prefix and destruction ordering.
+  - `Projection::prepare_append` borrows a projection for a write in its current text generation.
+    `prepare_rewrite` first requires every text, marks them for writing and derives a new
+    generation from their encoded bytes. Both return `Writeback`, holding the exclusive borrow,
+    encoded parts, places and generation. Only consuming `written` acknowledges its own places;
+    the raw `placed` helper is private. `encode` remains a pure serializer for codec consumers
+    and measurements, with no acknowledgement. The core cannot establish that I/O succeeded:
+    `written` is the writer's explicit assertion. Store writeback calls it only after both writes
+    succeed, under the same text-file lock and in the same order as before. Dropping a preparation
+    does not acknowledge new places; a failed rewrite leaves texts loaded and marked for retry.
+  - Cache file layout, projection encoding 11, compaction thresholds, copied-record tracking,
+    format 1 and command output are unchanged. Successful individual text loads remain after a
+    later load fails; they cannot grant a capability for another unloaded issue or complete an
+    extension with outstanding requested texts. Existing replay differential, byte-copying,
+    crash-pair and work-count tests apply alongside public lifecycle and failpoint retry tests.
 - Attempt recovery, receipt retirement, transaction materialization and command publication have
   explicit internal states (roll-jg0k). These types change no format-1 bytes, public entrypoints,
   failpoints or ordering of durable writes:

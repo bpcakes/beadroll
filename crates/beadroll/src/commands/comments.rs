@@ -41,7 +41,7 @@ pub(crate) fn comments(ctx: &Context<'_>, args: &CommentArgs) -> Result<Outcome,
     }
     let st = view_of(ctx.ws, &[key])?;
     need_tracker(&st)?;
-    let detail = st.detail(resolve_arg(&st, key)?);
+    let detail = st.detail(resolve_arg(&st, key)?.hydrated()?);
     let comments = match detail.get("comments") {
         Some(Value::Array(items)) => items.clone(),
         _ => Vec::new(),

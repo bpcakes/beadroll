@@ -136,6 +136,6 @@ fn write_issue(
     Ok((
         issue.key().to_owned(),
         issue.title().to_owned(),
-        st.detail(issue),
+        st.detail(issue.hydrated()?),
     ))
 }

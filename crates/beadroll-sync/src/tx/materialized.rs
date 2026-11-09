@@ -5,7 +5,7 @@ use beadroll_core::journal::JournalOrder;
 use beadroll_core::projection::{Extended, Projection, Record};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
-use beadroll_store::{Workspace, load_journal, read_texts};
+use beadroll_store::{Workspace, extend_projection, load_journal};
 
 use crate::error::Error;
 
@@ -55,16 +55,13 @@ impl Materialized {
         // Application consumes the projection. On any error the next request must replay,
         // rather than reuse a view that may contain only part of the emitted prefix.
         if let Self::Projected {
-            mut projection,
+            projection,
             applied,
             ..
         } = std::mem::take(self)
         {
             let records = emitted.get(applied..).unwrap_or_default().to_vec();
-            let about = projection.about(&records);
-            if read_texts(ws, projection.state_mut(), about)
-                && let Extended::Applied(projection) = projection.extend(records)?
-            {
+            if let Extended::Applied(projection) = extend_projection(ws, *projection, records)? {
                 *self = Self::Projected {
                     projection,
                     applied: emitted.len(),

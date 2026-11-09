@@ -102,7 +102,16 @@ fn complete_export_requires_every_issues_texts_and_failed_loading_grants_nothing
         .unwrap();
     assert_eq!(summary.hydrated().unwrap_err().issue, eid(2));
     // Selective readers still have the first issue's detail before the rest are loaded.
-    assert_eq!(summary.resolve("ex-one").unwrap().comments().len(), 1);
+    assert_eq!(
+        summary
+            .resolve("ex-one")
+            .unwrap()
+            .hydrated()
+            .unwrap()
+            .comments()
+            .len(),
+        1
+    );
     load_texts(&mut summary, &encoded.texts);
     assert_eq!(summary.hydrated().unwrap().export_records(), expected);
     assert!(
@@ -158,12 +167,13 @@ fn projections_never_claim_full_history_even_when_hydrated_or_extended() {
         .data(json!({"text": "next"}))
         .json();
     let extended = decoded
-        .extend(vec![Record {
+        .prepare_extension(vec![Record {
             value: next,
             replica: "a".into(),
             origin: "next".into(),
             sequenced: true,
         }])
+        .apply()
         .unwrap();
     let Extended::Applied(extended) = extended else {
         panic!("sequential extension declined")

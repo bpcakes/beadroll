@@ -62,8 +62,8 @@ fn ad02_exhausted_reclaim_reports_integrity_without_changing_the_issue() {
     let after = replay(journal(&events)).unwrap();
     let uid = EventId::parse(&id(2)).unwrap();
     assert_eq!(
-        before.detail(before.issue(uid).unwrap()),
-        after.detail(after.issue(uid).unwrap())
+        before.detail(before.issue(uid).unwrap().hydrated().unwrap()),
+        after.detail(after.issue(uid).unwrap().hydrated().unwrap())
     );
     assert_eq!(after.integrity().len(), 1);
     assert_eq!(after.integrity()[0].event.as_deref(), Some(id(5).as_str()));
@@ -73,20 +73,21 @@ fn ad02_exhausted_reclaim_reports_integrity_without_changing_the_issue() {
     );
     // The projection's shared application path must give the same refusal, or ask for replay.
     if let Extended::Applied(extended) = saved
-        .extend(vec![Record {
+        .prepare_extension(vec![Record {
             value: events[4].clone(),
             replica: "a".into(),
             origin: "native".into(),
             sequenced: true,
         }])
+        .apply()
         .unwrap()
     {
         assert_eq!(extended.state().integrity(), after.integrity());
         assert_eq!(
             extended
                 .state()
-                .detail(extended.state().issue(uid).unwrap()),
-            after.detail(after.issue(uid).unwrap())
+                .detail(extended.state().issue(uid).unwrap().hydrated().unwrap()),
+            after.detail(after.issue(uid).unwrap().hydrated().unwrap())
         );
     }
 }
@@ -115,8 +116,8 @@ fn ad02_exhausted_takeover_keeps_the_owner_and_does_not_silence_its_release() {
         let after = replay(journal(&events)).unwrap();
         let uid = EventId::parse(&id(2)).unwrap();
         assert_eq!(
-            before.detail(before.issue(uid).unwrap()),
-            after.detail(after.issue(uid).unwrap())
+            before.detail(before.issue(uid).unwrap().hydrated().unwrap()),
+            after.detail(after.issue(uid).unwrap().hydrated().unwrap())
         );
         assert_eq!(after.integrity().len(), 1);
         // The old owner's later release did not see the takeover. A valid takeover would
@@ -132,7 +133,16 @@ fn ad02_exhausted_takeover_keeps_the_owner_and_does_not_silence_its_release() {
         let issue = released.issue(uid).unwrap();
         assert!(issue.claim().is_none());
         assert_eq!(issue.status(), "open");
-        assert_eq!(issue.claim_history().last().unwrap().how, "release");
+        assert_eq!(
+            issue
+                .hydrated()
+                .unwrap()
+                .claim_history()
+                .last()
+                .unwrap()
+                .how,
+            "release"
+        );
         assert_eq!(released.integrity().len(), 1);
     }
 }
@@ -171,12 +181,13 @@ fn ae01_exhaustion_retry_keeps_a_missing_takeover_target_unsettled() {
     );
     assert!(matches!(
         saved
-            .extend(vec![Record {
+            .prepare_extension(vec![Record {
                 value: arrived,
                 replica: "a".into(),
                 origin: "native".into(),
                 sequenced: true,
             }])
+            .apply()
             .unwrap(),
         Extended::Replay
     ));

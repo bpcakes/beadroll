@@ -1,0 +1,12 @@
+Focused review of the projection lifecycle working diff based on 6838b42.
+Reviewer: lifecycle_review, separate Codex agent. Report retained verbatim below.
+
+No findings in the reviewed diff from `6838b42`.
+
+Verified extension ownership, selective hydration, writeback acknowledgment ordering, failed-write retry, and missing/replaced-text replay fallback. Existing codec and cache fast paths remain intact.
+
+Six focused tests passed: three core lifecycle, one hydration, two store lifecycle. No files edited; full baseline left to the parent.
+
+Follow-up review of the dep-list correction after the full suite exposed AP04:
+
+No findings in the correction. It preserves JSON and text ordering, uses the existing row builders, and needs no hydration. The new test covers dependency, dependent, and unresolved rows from an unloaded outline. No tests rerun or files edited.

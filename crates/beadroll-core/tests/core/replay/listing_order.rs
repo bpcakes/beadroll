@@ -14,6 +14,8 @@ use super::replay_audit_properties::fixture::{Fixture, fields};
 fn reference(items: &mut [&Issue]) {
     let created = |issue: &Issue| {
         issue
+            .hydrated()
+            .unwrap()
             .get(Field::CreatedAt)
             .and_then(Value::as_str)
             .unwrap_or_default()

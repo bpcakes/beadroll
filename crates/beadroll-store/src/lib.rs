@@ -43,7 +43,8 @@ pub use journal::{
 pub use memo::{FileKey, Memo, memo_path};
 pub use place::{capture_where, merged_into_default, object_format};
 pub use projection::{
-    Sourced, projection, projection_path, projection_sourced, read_texts, texts_path,
+    Sourced, extend_projection, projection, projection_path, projection_sourced, read_texts,
+    texts_path,
 };
 pub use recap::{Found, Mark, RecapCursor, Unusable, home_stores};
 pub use settings::{

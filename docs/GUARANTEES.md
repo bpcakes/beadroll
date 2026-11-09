@@ -15,8 +15,10 @@ same thing*) and the variables bead reads (*Configuration*).
   builder is still dirty. A reader cannot observe an old quarantine map beside newly added records.
 - Complete Beads export requires `HydratedState`. A decoded cache cannot export until every
   issue's texts have been loaded and checked, including comments, extras and dependency metadata.
-  Selective issue/detail readers still check `Issue::texts` and load the selected texts; they do
-  not require loading the whole tracker.
+  Selective issue/detail readers require `HydratedIssue`, obtained by checking only that issue.
+  Text-bearing fields, comments, extras, ownership history and conflict alternatives cannot be
+  read as complete while unloaded. `read_field` can read short fields without hydration and
+  reports unavailable long fields distinctly from absent, null or empty values.
 - `FullKnowledge` answers membership, event iteration, ancestry and authorship for a full replay.
   Membership, iteration and authorship include pending events. For a pending event, `saw`
   recognizes only explicitly named causes, including missing ones: `false` does not rule out
@@ -29,6 +31,15 @@ same thing*) and the variables bead reads (*Configuration*).
   recap results carry the same snapshot and their own placed set for joining frontiers. A later
   read does not change an existing snapshot. `Tree::snapshot` reads one supplied git tree; it does
   not fetch or claim that a mutable store's files were read atomically.
+- A prepared projection extension owns its projection and exact record batch, and selects the
+  texts to load from that state. Application consumes the preparation; incomplete loading or an
+  unsafe batch requests replay. Store reads and sync transactions use the same loading path.
+- A prepared writeback holds an exclusive borrow of its projection, its encoded bytes, text
+  locations and text-file generation. Acknowledgement consumes that preparation and updates
+  only its source projection. The store acknowledges after both writes succeed. A failed write
+  leaves new locations unacknowledged and texts available to retry; rewriting requires all texts.
+  The pure core cannot verify I/O, so other writers must honour `Writeback::written`'s successful
+  persistence precondition. Cache durability and replay fallback are unchanged.
 
 ## The command line
 

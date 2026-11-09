@@ -38,7 +38,7 @@ pub(crate) fn show(ctx: &Context<'_>, ids: &[OsString]) -> Result<Outcome, Failu
     let mut result = Vec::new();
     for (at, issue) in issues.into_iter().enumerate() {
         let issue = issue?;
-        let mut detail = details.of(issue);
+        let mut detail = details.of(issue.hydrated()?);
         if closing[at].is_some()
             && let Some(at) = detail.get_index_of("closed_on")
         {

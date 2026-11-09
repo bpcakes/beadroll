@@ -143,7 +143,7 @@ fn the_details_of_every_issue_read_each_edge_a_bounded_number_of_times() {
         |state| {
             let dependents = state.dependents_of(state.issues());
             for issue in state.issues() {
-                drop(state.detail_with(issue, &dependents));
+                drop(state.detail_with(issue.hydrated().unwrap(), &dependents));
             }
         },
     );
@@ -181,7 +181,7 @@ fn the_details_of_every_issue_judge_readiness_reading_each_edge_a_bounded_number
             |state| {
                 let details = state.details_of(state.issues());
                 for issue in state.issues() {
-                    drop(details.of(issue));
+                    drop(details.of(issue.hydrated().unwrap()));
                 }
             },
         );
@@ -193,7 +193,7 @@ fn the_details_of_every_issue_judge_readiness_reading_each_edge_a_bounded_number
         |state| {
             let details = state.details_of(state.issues());
             for issue in state.issues() {
-                drop(details.of(issue));
+                drop(details.of(issue.hydrated().unwrap()));
             }
         },
     );

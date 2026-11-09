@@ -104,19 +104,20 @@ pub fn answers(state: &State) -> Vec<(String, String)> {
     say("keys".into(), format!("{:?}", state.keys()));
     let blockers = state.blocker_lists();
     for issue in state.issues() {
+        let hydrated = issue.hydrated().unwrap();
         let key = issue.key();
         for field in Field::ALL {
             say(
                 format!("{key} {field:?}"),
-                format!("{:?}", issue.field(field)),
+                format!("{:?}", hydrated.field(field)),
             );
         }
         say(format!("{key} brief"), shown(state.brief(issue)));
-        say(format!("{key} detail"), shown(state.detail(issue)));
+        say(format!("{key} detail"), shown(state.detail(hydrated)));
         say(format!("{key} line"), state.line(issue));
         say(
             format!("{key} conflicts"),
-            format!("{:?}", state.conflicts(issue)),
+            format!("{:?}", state.conflicts(hydrated)),
         );
         let held: Vec<&str> = blockers.of(issue).iter().map(|i| i.key()).collect();
         say(format!("{key} blockers"), format!("{held:?}"));

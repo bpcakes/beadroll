@@ -11,7 +11,7 @@ use std::hash::Hash;
 use crate::event::{DONE, Field};
 use crate::id::EventId;
 use crate::json::{self, Format, Object, Value};
-use crate::state::{Edge, IdMap, Issue, State, Texts};
+use crate::state::{Edge, HydratedIssue, IdMap, Issue, State, Texts};
 use crate::time::event_time;
 
 pub use blockers::BlockerLists;
@@ -70,8 +70,9 @@ pub enum ReadyScope {
 
 impl State {
     /// Fields two writers changed without seeing each other, with every alternative, in the order
-    /// the issue's registers were made.
-    pub fn conflicts(&self, issue: &Issue) -> Vec<(Field, Vec<Alternative>)> {
+    /// the issue's registers were made. The issue must be hydrated so long-field alternatives
+    /// cannot disappear from the answer; [`State::disputed_fields`] needs no texts.
+    pub fn conflicts(&self, issue: HydratedIssue<'_>) -> Vec<(Field, Vec<Alternative>)> {
         let mut out = Vec::new();
         for (field, register) in issue.registers() {
             if split(*field, register) {

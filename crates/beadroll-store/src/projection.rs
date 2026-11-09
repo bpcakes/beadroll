@@ -31,9 +31,11 @@
 //! text file, and a projection made whole, or whose text file holds more texts no longer read than
 //! read, writes them all to a new one.
 
+mod extension;
 mod file;
 mod sources;
 mod texts;
+mod writeback;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -47,7 +49,7 @@ use beadroll_core::state::State;
 use file::{Held, Made};
 use sources::Sources;
 
-use crate::fs::{abandoned, content_sum, read_keyed, write_cache_parts};
+use crate::fs::{content_sum, read_keyed};
 use crate::journal::ContentSums;
 use crate::journal::{
     ViewError, attempt_events, claim_files_afresh, claim_keys, folder_name, load_journal,
@@ -58,8 +60,10 @@ use crate::memo::FileKey;
 use crate::projection::texts::TextFileAccess;
 use crate::workspace::Workspace;
 
+pub use extension::extend_projection;
 pub use sources::Sourced;
 pub use texts::texts_path;
+use writeback::save;
 
 /// The kind of journal file a projection records.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -128,7 +132,8 @@ pub(crate) fn outline(ws: &Workspace) -> Result<State, ViewError> {
 }
 
 /// Reads into `state` the texts of the issues `uids` names that it has there: `false` when they
-/// cannot be read as written, its text file gone or changed, and nothing then read.
+/// cannot all be read as written, its text file gone or changed. Texts already loaded remain;
+/// callers must not treat a partial load as completion of the requested selection.
 pub fn read_texts(
     ws: &Workspace,
     state: &mut State,
@@ -225,12 +230,9 @@ fn current(ws: &Workspace, want: Want) -> Result<Now, ViewError> {
             && let Some(mut projection) = stored.encoded().and_then(|e| Projection::decode(e).ok())
         {
             projection.state_mut().set_texts_file(file);
-            let uids = projection.about(&records);
             // the records applied: the bytes the journal's files grew by, only appended to
             let tail = now.journal_bytes().saturating_sub(was);
-            if read_texts(ws, projection.state_mut(), uids)
-                && let Extended::Applied(mut projection) = projection.extend(records)?
-            {
+            if let Extended::Applied(mut projection) = extend_projection(ws, projection, records)? {
                 if kept_for(want, tail, size) {
                     save(ws, now, &mut projection);
                 }
@@ -572,68 +574,6 @@ fn appended(
     };
     let sources = Sources::made(&made, listed.paths, listed.keys, listed.stamp);
     Some((made, sources))
-}
-
-/// Writes `projection` back as made from `made`, when the store is there; a cache that cannot be
-/// written is no failure. Its texts written nowhere yet go to the end of the text file its others
-/// are placed in, under that file's lock, and the projection after them; when there is no such
-/// file, or more of it is no longer read than is, every text goes to a new one, when the
-/// projection has them all. What a bead killed writing either file left beside it is removed
-/// first, whichever of the two this write-back writes whole (roll-lqjj.52).
-fn save(ws: &Workspace, mut made: Made, projection: &mut Projection) {
-    if made.files.is_empty() || !ws.events_dir.is_dir() {
-        return;
-    }
-    // both caches' at once: the text file is appended to in place, and started again only now
-    // and then, so a copy left beside it would otherwise wait for that
-    abandoned::remove(&[&projection_path(ws), &texts_path(ws)]);
-    ws.settings.failpoints.hit("projection.before-save");
-    let generation = projection.state().texts_file();
-    if let Some(generation) = generation
-        && let Some(file) = texts::open(ws, generation, TextFileAccess::Append)
-        && file.lock().is_ok()
-        && let Ok(len) = file.metadata().map(|meta| meta.len())
-    {
-        let read = projection.state().placed_text_bytes();
-        // more of the file no longer read than read: every text read in, to write them all again
-        let anew = len > texts::START + 2 * read + SLACK && {
-            let wanted = projection.state().all_wanted_texts();
-            texts::read_in(&file, projection.state_mut(), &wanted)
-                && projection.state_mut().write_texts_anew()
-        };
-        if !anew {
-            let (encoded, places) = projection.encode(len);
-            made.texts = generation;
-            if texts::append(ws, &file, len, &encoded.texts)
-                && write_cache_parts(
-                    &projection_path(ws),
-                    &file::parts(&file::head(&made, &encoded), &encoded),
-                    &ws.settings.failpoints,
-                )
-                .is_ok()
-            {
-                projection.placed(&places);
-            }
-            return;
-        }
-    }
-    if !projection.state_mut().write_texts_anew() {
-        return; // texts placed in a text file no longer there, and not read in
-    }
-    let (encoded, places) = projection.encode(texts::START);
-    let generation = texts::generation(&encoded.texts);
-    made.texts = generation;
-    if texts::start(ws, generation, &encoded.texts)
-        && write_cache_parts(
-            &projection_path(ws),
-            &file::parts(&file::head(&made, &encoded), &encoded),
-            &ws.settings.failpoints,
-        )
-        .is_ok()
-    {
-        projection.placed(&places);
-        projection.state_mut().set_texts_file(Some(generation));
-    }
 }
 
 #[cfg(test)]

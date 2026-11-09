@@ -80,21 +80,28 @@ type Question<'s> = (&'static str, Box<dyn Fn() -> usize + 's>);
 fn questions(state: &State) -> Result<[Question<'_>; 7], Failure> {
     let one = (state.issues().nth(state.issues().count() / 4))
         .ok_or_else(|| Failure::Failed("the probe needs an issue".into()))?;
+    let hydrated_one = one.hydrated().map_err(|e| Failure::Failed(e.to_string()))?;
+    let together = state
+        .issues()
+        .map(Issue::hydrated)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| Failure::Failed(e.to_string()))?;
+    let each = together.clone();
     Ok([
         (
             "together",
-            Box::new(|| {
+            Box::new(move || {
                 let details = state.details_of(state.issues());
-                (state.issues())
-                    .map(|issue| listed(&details.of(issue)))
+                (together.iter())
+                    .map(|issue| listed(&details.of(*issue)))
                     .sum()
             }),
         ),
         (
             "each",
-            Box::new(|| {
-                (state.issues())
-                    .map(|issue| listed(&state.detail(issue)))
+            Box::new(move || {
+                (each.iter())
+                    .map(|issue| listed(&state.detail(*issue)))
                     .sum()
             }),
         ),
@@ -111,7 +118,10 @@ fn questions(state: &State) -> Result<[Question<'_>; 7], Failure> {
             "scan",
             Box::new(|| (state.issues()).map(|issue| scanned(state, issue)).sum()),
         ),
-        ("single", Box::new(move || listed(&state.detail(one)))),
+        (
+            "single",
+            Box::new(move || listed(&state.detail(hydrated_one))),
+        ),
         (
             "single_lookup",
             Box::new(move || {
@@ -157,7 +167,7 @@ mod tests {
             assert!(state.parents_of(issue).is_empty(), "{}", issue.key());
         }
         let dependents = |n: usize| -> Vec<String> {
-            let shown = state.detail(state.resolve(&key(n)).unwrap());
+            let shown = state.detail(state.resolve(&key(n)).unwrap().hydrated().unwrap());
             (shown["dependents"].as_array().unwrap().iter())
                 .map(|dep| {
                     let part = |name: &str| dep[name].as_str().unwrap().to_owned();

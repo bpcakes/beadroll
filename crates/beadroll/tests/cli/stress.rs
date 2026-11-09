@@ -142,7 +142,14 @@ pub(crate) fn viewed(machine: &Machine) -> State {
 pub(crate) fn realized(state: &State) -> BTreeSet<String> {
     let mut ids = BTreeSet::new();
     for issue in state.issues() {
-        ids.extend(issue.claim_history().iter().map(|e| e.claim.id.to_string()));
+        ids.extend(
+            issue
+                .hydrated()
+                .unwrap()
+                .claim_history()
+                .iter()
+                .map(|e| e.claim.id.to_string()),
+        );
         ids.extend(issue.claim().map(|claim| claim.id.to_string()));
     }
     ids

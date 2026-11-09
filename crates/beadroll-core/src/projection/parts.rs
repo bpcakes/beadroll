@@ -88,13 +88,13 @@ pub(super) const TABLE_SLACK: usize = 64;
 const SPARE: usize = 64;
 
 impl Projection {
-    /// The projection as bytes, the texts written nowhere yet placed from `texts_at`, the length of
-    /// the text file they are to be appended to, and the places it gave them: once both are written,
-    /// [`Projection::placed`] has the issues know. Of what every event had seen it keeps, when it is
-    /// compacted ([`Projection::compaction_due`]), the events the state still names and the
-    /// frontier, and otherwise every event it knows: those, as they were when it was last
-    /// compacted, and every event taken in since (roll-lqjj.43). What did not change since it was
-    /// read back is copied as it was read (roll-lqjj.44).
+    /// The projection as bytes, its new texts placed from `texts_at`, and their locations.
+    /// This pure serializer does not acknowledge storage. Writers use a borrowed
+    /// [`super::Writeback`] to acknowledge its own locations after both parts are written.
+    /// What every event had seen is compacted when [`Projection::compaction_due`] says so:
+    /// the events the state still names and the frontier are kept, and otherwise every event
+    /// known since the last compaction (roll-lqjj.43). Records unchanged since decoding are
+    /// copied from their existing bytes (roll-lqjj.44).
     pub fn encode(&self, texts_at: u64) -> (Encoded, Vec<(EventId, TextPlace)>) {
         self.encode_with(
             texts_at,

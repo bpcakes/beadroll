@@ -373,17 +373,18 @@ fn superseded(
     // the ends that came too late are in each issue's ownership history, with its texts
     let uids = named.iter().map(|(uid, _)| *uid);
     let st = texts_in(ctx.ws, view_outline(ctx.ws)?, uids)?;
-    let lost: Vec<EventId> = named
-        .iter()
-        .filter(|(uid, claim)| {
-            st.issue(*uid).is_some_and(|issue| {
-                issue.stale().iter().any(|stale| {
-                    stale.op == op && stale.claim.as_deref() == Some(&claim.to_string())
-                })
-            })
-        })
-        .map(|(uid, _)| *uid)
-        .collect();
+    let mut lost = Vec::new();
+    for (uid, claim) in named {
+        if let Some(issue) = st.issue(*uid)
+            && issue
+                .hydrated()?
+                .stale()
+                .iter()
+                .any(|stale| stale.op == op && stale.claim.as_deref() == Some(&claim.to_string()))
+        {
+            lost.push(*uid);
+        }
+    }
     if lost.is_empty() {
         return Ok(());
     }

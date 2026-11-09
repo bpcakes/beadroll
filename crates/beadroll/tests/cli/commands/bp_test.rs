@@ -190,7 +190,12 @@ fn view(journal: Journal) -> String {
             .map(Value::from)
             .collect(),
     );
-    let details = Value::Array(issues.iter().map(|i| Value::from(st.detail(i))).collect());
+    let details = Value::Array(
+        issues
+            .iter()
+            .map(|i| Value::from(st.detail(i.hydrated().unwrap())))
+            .collect(),
+    );
     write(&Value::Array(vec![export, details]), Format::SORTED_ASCII).unwrap()
 }
 

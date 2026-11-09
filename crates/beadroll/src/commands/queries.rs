@@ -65,6 +65,7 @@ pub(crate) fn search(
         let Some(needle) = &needle else {
             continue;
         };
+        let hydrated = issue.hydrated()?;
         let mut haystack: Vec<String> = vec![issue.key().to_owned(), issue.title().to_owned()];
         for field in [
             Field::Description,
@@ -73,14 +74,14 @@ pub(crate) fn search(
             Field::Design,
             Field::ExternalRef,
         ] {
-            let text = issue
+            let text = hydrated
                 .get(field)
                 .filter(|v| v.truthy())
                 .map(str_of)
                 .unwrap_or_default();
             haystack.push(text);
         }
-        for comment in issue.comments() {
+        for comment in hydrated.comments() {
             haystack.push(comment.get("text").map(|t| str_of(&t)).unwrap_or_default());
         }
         if haystack
@@ -107,14 +108,21 @@ pub(crate) fn search(
 pub(crate) fn lint(ctx: &Context<'_>) -> Result<Outcome, Failure> {
     let st = view(ctx.ws)?;
     need_tracker(&st)?;
-    let mut missing: Vec<&Issue> = st
-        .issues()
-        .filter(|i| {
-            !DONE.contains(&i.status())
-                && matches!(i.issue_type(), "task" | "bug" | "feature")
-                && !i.get(Field::AcceptanceCriteria).is_some_and(Value::truthy)
-        })
-        .collect();
+    let mut missing = Vec::new();
+    for issue in st.issues() {
+        if DONE.contains(&issue.status())
+            || !matches!(issue.issue_type(), "task" | "bug" | "feature")
+        {
+            continue;
+        }
+        let issue = issue.hydrated()?;
+        if !issue
+            .get(Field::AcceptanceCriteria)
+            .is_some_and(Value::truthy)
+        {
+            missing.push(issue);
+        }
+    }
     missing.sort_by(|a, b| a.key().cmp(b.key()));
     let problem = "missing acceptance criteria";
     let findings: Vec<Value> = missing

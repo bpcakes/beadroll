@@ -36,12 +36,6 @@ pub fn texts_path(ws: &Workspace) -> PathBuf {
     ws.dir.join("projection-texts")
 }
 
-/// The generation of a text file started with `texts`: their sum, so that the same texts make the
-/// same file.
-pub(super) fn generation(texts: &[u8]) -> [u8; 16] {
-    beadroll_core::projection::sum(texts)
-}
-
 /// The text file of `generation`, open to read, and to append to when `append`: `None` when there
 /// is none, or it is another's.
 pub(super) fn open(ws: &Workspace, generation: [u8; 16], append: TextFileAccess) -> Option<File> {
@@ -56,12 +50,21 @@ pub(super) fn open(ws: &Workspace, generation: [u8; 16], append: TextFileAccess)
 
 /// Reads into `state` the texts at `wanted` from `file`: `false` as soon as one is not as written.
 pub(super) fn read_in(file: &File, state: &mut State, wanted: &[(EventId, TextPlace)]) -> bool {
+    read_with(file, wanted, |uid, place, bytes| {
+        state.read_texts(uid, place, bytes).is_ok()
+    })
+}
+
+/// Reads selected locations into the state or prepared extension that requested them.
+pub(super) fn read_with(
+    file: &File,
+    wanted: &[(EventId, TextPlace)],
+    mut load: impl FnMut(EventId, TextPlace, &[u8]) -> bool,
+) -> bool {
     let mut bytes = Vec::new();
     for (uid, place) in wanted {
         bytes.resize(place.len as usize, 0);
-        if file.read_exact_at(&mut bytes, place.at).is_err()
-            || state.read_texts(*uid, *place, &bytes).is_err()
-        {
+        if file.read_exact_at(&mut bytes, place.at).is_err() || !load(*uid, *place, &bytes) {
             return false;
         }
     }
