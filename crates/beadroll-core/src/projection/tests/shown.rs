@@ -36,7 +36,7 @@ enum Shown {
 pub(super) fn agree(journal: &Journal, state: &State) {
     let mut journal = journal.clone();
     journal.settle();
-    let (ordered, _) = causal_order(&journal);
+    let (ordered, _) = causal_order(journal.settled().unwrap());
     let place: HashMap<EventId, usize> = (ordered.iter().enumerate())
         .map(|(at, id)| (*id, at))
         .collect();

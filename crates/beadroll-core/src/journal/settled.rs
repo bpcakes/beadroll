@@ -10,28 +10,28 @@ use crate::id::EventId;
 pub struct SettledJournal<'a>(&'a Journal);
 
 impl<'a> SettledJournal<'a> {
-    pub(super) fn new(journal: &'a Journal) -> Self {
+    pub(crate) fn new(journal: &'a Journal) -> Self {
         Self(journal)
     }
 
     /// The events, in installation order.
     pub fn events(self) -> &'a IndexMap<EventId, Event> {
-        &self.0.events
+        self.0.events()
     }
 
     /// The event with this id, if it has a place in the journal.
     pub fn event(self, id: EventId) -> Option<&'a Event> {
-        self.0.events.get(&id)
+        self.0.event(id)
     }
 
     /// Each machine's append order.
     pub fn order(self) -> &'a IndexMap<String, Vec<EventId>> {
-        &self.0.order
+        self.0.order()
     }
 
     /// Every id found with several contents.
     pub fn quarantined(self) -> &'a IndexMap<EventId, Vec<Event>> {
-        &self.0.quarantined
+        self.0.quarantined()
     }
 
     /// Records and files that could not be used.

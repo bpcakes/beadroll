@@ -211,7 +211,12 @@ fn takeover_must_causally_see_the_claim_it_supersedes() {
         (&close, "a"),
     ]);
     let event = |e: &Json| beadroll_core::id::EventId::parse(&id(e)).unwrap();
-    assert!(!state.saw(event(&takeover), event(&claim)));
+    assert!(
+        !state
+            .full_knowledge()
+            .unwrap()
+            .saw(event(&takeover), event(&claim))
+    );
     let issue = state.issue_named(&uid).unwrap();
     assert_eq!(issue.status(), "closed");
     assert!(issue.claim().is_none());
@@ -283,7 +288,7 @@ fn malformed_embedded_create_comment_is_scoped() {
     let state = replayed(&[(&init, "a"), (&create, "a"), (&malformed, "b")]);
     // A rejected malformed issue is acceptable; so is a fully normalized one. In either case, one
     // bad embedded comment cannot disable global export/detail.
-    let records = state.export_records();
+    let records = state.hydrated().unwrap().export_records();
     assert!(
         records
             .iter()

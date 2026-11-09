@@ -16,7 +16,11 @@ use super::{Context, Failure, Outcome};
 pub(crate) fn export(ctx: &Context<'_>, output: Option<&OsStr>) -> Result<Outcome, Failure> {
     let st = view(ctx.ws)?;
     let mut text = String::new();
-    for record in st.export_records() {
+    for record in st
+        .hydrated()
+        .map_err(|e| Failure::new(e.code(), e.to_string()))?
+        .export_records()
+    {
         let line = json::write(&Value::from(record), Format::COMPACT)
             .map_err(|e| Failure::new(Code::Validation, e.to_string()))?;
         text.push_str(&line);

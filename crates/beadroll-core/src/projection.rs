@@ -162,6 +162,7 @@ pub fn project(mut journal: Journal) -> Result<Projection, KeySpace> {
     let mut kept = named(&state);
     kept.extend(heads.iter().copied());
     state.knowledge = state.knowledge.kept(&kept);
+    state.knowledge_scope = crate::state::KnowledgeScope::Retained;
     let compacted = state.knowledge.events.len();
     Ok(Projection {
         state,
@@ -212,6 +213,12 @@ impl Projection {
     /// names and the frontier, as it was when last compacted, and every event taken in since.
     pub fn known(&self) -> usize {
         self.state.knowledge.events.len()
+    }
+
+    /// Whether the ancestry index still retains this event. Compaction may discard an
+    /// event that the journal held; this is not a complete-history membership query.
+    pub fn retains(&self, event: EventId) -> bool {
+        self.state.holds(event)
     }
 
     /// How many events it knew of what every event had seen when that was last compacted.

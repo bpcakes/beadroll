@@ -44,7 +44,7 @@ fn non_chain_same_journal_must_not_invent_ancestry() {
     );
     let st = f.state();
     assert!(
-        !st.saw(event_id(&b), event_id(&a)),
+        !st.full_knowledge().unwrap().saw(event_id(&b), event_id(&a)),
         "same-journal position invents a causal dependency and erases a concurrent value"
     );
     assert!(conflict(&st, issue(&st, &uid), Field::Priority).is_some());

@@ -24,9 +24,10 @@ fn bytes(peak: Option<u64>) -> String {
 pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result<String, Failure> {
     let dir = workspace::output_dir("timing")?.join(format!("replay-{}-{count}", shape.name()));
     memory::write_files(&dir, &history(count, shape))?;
-    let parsed = memory::load(&dir)?;
-    let events = parsed.events().len();
-    let attempted = events.saturating_sub(parsed.order().values().map(Vec::len).sum());
+    let mut parsed = memory::load(&dir)?;
+    let settled = parsed.settled_view();
+    let events = settled.events().len();
+    let attempted = events.saturating_sub(settled.order().values().map(Vec::len).sum());
     let mut best = f64::INFINITY;
     let mut issues = 0;
     for _ in 0..RUNS {

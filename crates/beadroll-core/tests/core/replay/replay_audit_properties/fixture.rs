@@ -145,7 +145,13 @@ fn integrity_row(row: &Integrity) -> Json {
 pub(crate) fn snapshot(journal: Journal) -> String {
     let st = replay(journal).unwrap();
     let issues = st.issues_by_key();
-    let export: Vec<Json> = st.export_records().into_iter().map(Json::from).collect();
+    let export: Vec<Json> = st
+        .hydrated()
+        .unwrap()
+        .export_records()
+        .into_iter()
+        .map(Json::from)
+        .collect();
     let details: Vec<Json> = issues.iter().map(|i| Json::from(st.detail(i))).collect();
     let ready: Vec<Json> = issues
         .iter()

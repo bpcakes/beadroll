@@ -14,7 +14,7 @@ mod compat_audit_comment_ids {
     /// The exported id of a comment, by its text.
     fn exported(journal: &Journal, text: &str) -> Value {
         let state = replay(journal.clone()).unwrap();
-        let records = state.export_records();
+        let records = state.hydrated().unwrap().export_records();
         let comments = records
             .first()
             .and_then(|record| record.get("comments"))

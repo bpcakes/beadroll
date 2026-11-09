@@ -6,6 +6,11 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- Rust readers now require a settled journal for collections, ordering and recap, a `HydratedState`
+  for complete export, and `FullKnowledge` for whole-journal ancestry. `Tree::snapshot()` binds
+  one journal to its replayed state and event/recap readers. Source-pinned consumers must migrate
+  these calls (see *Reading from Rust* in the README); CLI output and stored formats are unchanged.
+
 - Clippy now rejects boolean function parameters across the workspace, tests and tooling. Rust
   callers use named modes such as `JournalOrder`, `FileMode`, `NetworkMode` and `PublishMode`
   in place of boolean switches; command behavior and stored formats are unchanged.

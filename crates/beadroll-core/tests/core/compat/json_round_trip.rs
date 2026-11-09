@@ -250,7 +250,7 @@ fn exports_views_and_errors_read_back_as_bead_wrote_them() {
         let records = export_of(&mut rng, count);
         let st = imported(&records);
         // `bead export`: a compact line a record, which the importer's reader takes back whole.
-        let export = st.export_records();
+        let export = st.hydrated().unwrap().export_records();
         let mut text = String::new();
         for record in &export {
             text.push_str(&json::write(&Value::from(record.clone()), Format::COMPACT).unwrap());

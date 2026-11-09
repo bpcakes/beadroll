@@ -55,7 +55,7 @@ fn exported_legacy_id(comment: &Object, taken: &HashSet<u64>) -> Value {
 
 impl State {
     /// Beads-compatible records, one per issue, by key.
-    pub fn export_records(&self) -> Vec<Object> {
+    pub(crate) fn export_records(&self) -> Vec<Object> {
         // A comment made here exports an integer derived from its event id. The range (2^47 upwards,
         // 48 bits) makes two comments sharing a number a one-in-10^14 event; should it happen, the tie
         // is broken by the ids alone, never by arrival order. An imported id is kept as it came unless

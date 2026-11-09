@@ -92,7 +92,12 @@ fn q07_invalid_placeholder_cannot_bridge_a_broken_machine_chain() {
         json!({"fields": {"priority": 4}}),
     );
     let state = replay(journal(&[&init, &create, &first, &malformed, &later])).unwrap();
-    assert!(!state.saw(uid(&later), uid(&first)));
+    assert!(
+        !state
+            .full_knowledge()
+            .unwrap()
+            .saw(uid(&later), uid(&first))
+    );
     assert_eq!(
         state.issue(uid(&create)).unwrap().priority(),
         IntegerField::from(1)
@@ -141,7 +146,7 @@ fn q09_required_register_clears_remain_queryable() {
         // The accepted clear must stay query-safe.
         state.brief(issue);
         state.line(issue);
-        state.export_records();
+        state.hydrated().unwrap().export_records();
     }
 }
 

@@ -29,6 +29,7 @@ pub mod published;
 pub mod query;
 pub mod recap;
 pub mod replay;
+pub mod snapshot;
 pub mod state;
 pub mod text;
 pub mod time;

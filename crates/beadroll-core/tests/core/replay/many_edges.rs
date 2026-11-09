@@ -167,7 +167,11 @@ fn alike(state: &State, replayed: &State, uid: &str, what: &str) {
         hub(replayed, uid).dep_tags(),
         "{what}"
     );
-    assert_eq!(state.export_records(), replayed.export_records(), "{what}");
+    assert_eq!(
+        state.hydrated().unwrap().export_records(),
+        replayed.hydrated().unwrap().export_records(),
+        "{what}"
+    );
 }
 
 /// `projection` with `records` applied one at a time.
@@ -237,7 +241,7 @@ fn one_issue_given_many_edges_every_way_answers_alike_replayed_extended_and_read
         hub(&replayed, &uid).dangling().is_empty(),
         "ex-never removed"
     );
-    let exported = (replayed.export_records().into_iter())
+    let exported = (replayed.hydrated().unwrap().export_records().into_iter())
         .find(|record| record["id"].as_str() == Some("ex-hub"))
         .unwrap();
     let dependencies = exported["dependencies"].as_array().unwrap();

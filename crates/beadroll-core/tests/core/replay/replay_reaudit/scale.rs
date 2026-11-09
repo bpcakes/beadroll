@@ -298,7 +298,7 @@ fn valid_six_machine_6000_events_converge_and_ancestry_is_exact() {
         let later = 1 + rng.below(events.len() - 1);
         let earlier = rng.below(later);
         assert_eq!(
-            st.saw(uuid(later), uuid(earlier)),
+            st.full_knowledge().unwrap().saw(uuid(later), uuid(earlier)),
             ancestry[later].contains(earlier),
             "{later} saw {earlier}"
         );
@@ -311,6 +311,8 @@ fn valid_six_machine_6000_events_converge_and_ancestry_is_exact() {
         let mut j = Journal::new();
         for machine in &order {
             for eid in base
+                .settled()
+                .unwrap()
                 .order()
                 .get(*machine)
                 .map(Vec::as_slice)

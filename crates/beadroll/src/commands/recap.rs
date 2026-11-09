@@ -203,7 +203,7 @@ fn tracker(
     let read = load_journal(ws)
         .map_err(Failure::from)
         .and_then(|journal| Ok((view_outline(ws)?, journal)));
-    let (st, journal) = match read {
+    let (st, mut journal) = match read {
         Ok(read) => read,
         Err(failure) => {
             let mark = owed.map(|since| (ws.id.clone(), Mark::Owed(since)));
@@ -212,7 +212,8 @@ fn tracker(
     };
     let name = (named.or_else(|| st.name().filter(|name| name.truthy()).cloned()))
         .map_or_else(|| ws.id.clone(), |name| str_of(&name));
-    let shown = unseen(&journal, window);
+    let journal = journal.settled_view();
+    let shown = unseen(journal, window);
     let mut rows = Vec::with_capacity(shown.events.len());
     for event in shown.events.iter().filter_map(|id| journal.event(*id)) {
         let title = (event.issue().and_then(|uid| st.issue_named(uid)))

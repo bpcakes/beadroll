@@ -379,7 +379,7 @@ pub(crate) fn load_listed(
         let sum = data.filter(|_| summed).map(content_sum);
         match data {
             Some(data) => journal.add_attempt(data, &replica, &origin),
-            None => journal.invalid.push(unreadable_attempt(origin)),
+            None => journal.report(unreadable_attempt(origin)),
         }
         attempts.push((path.clone(), read.and_then(|(_, key)| key), sum));
     }

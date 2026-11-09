@@ -105,8 +105,8 @@ fn sorted(dir: &Path) -> Result<Vec<std::path::PathBuf>, Failure> {
 /// process held on its heap at once ([`heap::peak`]).
 pub(crate) fn main(dir: &Path, replaying: LoadMode) -> Result<ExitCode, Failure> {
     let replaying = matches!(replaying, LoadMode::Replay);
-    let journal = load(dir)?;
-    let events = journal.events().len();
+    let mut journal = load(dir)?;
+    let events = journal.settled_view().events().len();
     if replaying {
         let state =
             replay(journal).map_err(|error| Failure::Failed(format!("replay failed: {error}")))?;
@@ -228,9 +228,15 @@ mod tests {
         let files = history(500, Shape::Ownership);
         write_files(dir.path(), &files).unwrap();
         let loaded = load(dir.path()).unwrap();
-        assert_eq!(loaded.events().len(), 500);
-        assert!(loaded.invalid.is_empty());
-        let sequenced: usize = loaded.order().values().map(Vec::len).sum();
+        assert_eq!(loaded.settled().unwrap().events().len(), 500);
+        assert!(loaded.settled().unwrap().invalid().is_empty());
+        let sequenced: usize = loaded
+            .settled()
+            .unwrap()
+            .order()
+            .values()
+            .map(Vec::len)
+            .sum();
         let attempted: usize = files
             .iter()
             .flat_map(|machine| &machine.attempts)

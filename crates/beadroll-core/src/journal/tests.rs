@@ -141,21 +141,21 @@ fn settled_views_include_records_added_after_a_duplicate() {
         "later",
     );
     assert!(!journal.is_settled());
-    let mut expected = journal.clone();
-    expected.settle();
-    assert_eq!(
-        crate::order::causal_order(&journal),
-        crate::order::causal_order(&expected)
-    );
-    assert_eq!(
-        crate::recap::unseen(&journal, crate::recap::Window::All),
-        crate::recap::unseen(&expected, crate::recap::Window::All),
-    );
     assert!(
-        !journal.is_settled(),
-        "shared readers leave the original untouched"
+        journal.settled().is_none(),
+        "dirty collections cannot be borrowed"
     );
+    let mut expected = journal.clone();
+    let expected = expected.settled_view();
     let view = journal.settled_view();
+    assert_eq!(
+        crate::order::causal_order(view),
+        crate::order::causal_order(expected)
+    );
+    assert_eq!(
+        crate::recap::unseen(view, crate::recap::Window::All),
+        crate::recap::unseen(expected, crate::recap::Window::All),
+    );
     assert_eq!(view.events().len(), 2);
     assert_eq!(view.quarantined().len(), 1);
     assert_eq!(view.frontier(), expected.frontier());

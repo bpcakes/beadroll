@@ -35,9 +35,9 @@ pub(crate) fn log(
     limit: Option<&Int>,
 ) -> Result<Outcome, Failure> {
     let mut journal = load_journal(ctx.ws)?;
-    journal.settle();
+    let journal = journal.settled_view();
     let st = view_outline(ctx.ws)?;
-    let (order, _) = causal_order(&journal);
+    let (order, _) = causal_order(journal);
     let aliases = machine_aliases(&ctx.ws.settings);
     let wanted = match key.filter(|k| !k.is_empty()) {
         Some(key) => Some(resolve_arg(&st, key)?.uid().to_string()),

@@ -115,7 +115,7 @@ fn history(rng: &mut Rng, count: usize) -> (Journal, Vec<EventId>) {
 /// `saw` as the bitsets answered it: every event's furthest position in each machine's journal, and
 /// the set of unsequenced events in its past, built in causal order as the old replay did.
 fn bitset_saw(journal: &Journal) -> impl Fn(EventId, EventId) -> bool + '_ {
-    let (ordered, _) = causal_order(journal);
+    let (ordered, _) = causal_order(journal.settled().unwrap());
     let mut seq: HashMap<EventId, (usize, usize)> = HashMap::new();
     let mut applicable: Vec<Vec<usize>> = Vec::new();
     for (replica, ids) in journal.order().values().enumerate() {
@@ -138,9 +138,8 @@ fn bitset_saw(journal: &Journal) -> impl Fn(EventId, EventId) -> bool + '_ {
     let mut seen: HashMap<EventId, BTreeMap<usize, i64>> = HashMap::new();
     let mut anc: HashMap<EventId, BTreeSet<EventId>> = HashMap::new();
     for id in ordered {
-        let event = journal.event(id).unwrap();
         let (mut sees, mut past) = (BTreeMap::new(), BTreeSet::new());
-        for dep in effective_deps(journal, event) {
+        for dep in effective_deps(journal.settled().unwrap(), id).unwrap() {
             let Some(theirs) = seen.get(&dep) else {
                 continue;
             };

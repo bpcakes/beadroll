@@ -286,7 +286,7 @@ fn u08_imported_comments_carry_neither_a_uid_nor_a_where() {
         .map(|c| &c["id"])
         .collect();
     assert_eq!(shown, [&Json::Null, &json!(7)]);
-    let records = state.export_records();
+    let records = state.hydrated().unwrap().export_records();
     let exported: Vec<&Json> = records[0]["comments"]
         .as_array()
         .unwrap()

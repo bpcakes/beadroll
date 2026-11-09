@@ -61,13 +61,19 @@ impl Problem {
 
 /// All events held by a machine, retaining each writer's append order. Raw records are collected
 /// before settling.
+///
+/// ```compile_fail,E0624
+/// use beadroll_core::journal::Journal;
+/// let journal = Journal::new();
+/// let _ = journal.events(); // Readers require journal.settled_view().
+/// ```
 #[derive(Clone, Debug)]
 pub struct Journal {
     events: IndexMap<EventId, Event>,
     order: IndexMap<String, Vec<EventId>>,
     quarantined: IndexMap<EventId, Vec<Event>>,
     /// What could not be used, in the order found; replay reports each.
-    pub invalid: Vec<Problem>,
+    pub(crate) invalid: Vec<Problem>,
     /// Every record with a readable id, in the order added.
     raw: Vec<Event>,
     /// Ids that have records but no event: every record of them was found in another machine's
@@ -113,14 +119,15 @@ impl Journal {
         SettledJournal::new(self)
     }
 
-    /// Compatibility readers accept a shared journal. A dirty one is settled in a copy;
-    /// the normal, already settled path borrows without cloning any records.
-    pub(crate) fn with_settled<T>(&self, read: impl FnOnce(SettledJournal<'_>) -> T) -> T {
-        if self.settled {
-            read(SettledJournal::new(self))
-        } else {
-            read(self.clone().settled_view())
-        }
+    /// Borrows collections only when every record has been judged. Use
+    /// [`Self::settled_view`] to settle a dirty journal first.
+    pub fn settled(&self) -> Option<SettledJournal<'_>> {
+        self.settled.then(|| SettledJournal::new(self))
+    }
+
+    /// Records an unreadable file or line supplied by the caller.
+    pub fn report(&mut self, problem: Problem) {
+        self.invalid.push(problem);
     }
 
     /// An empty journal.
@@ -328,7 +335,7 @@ impl Journal {
     }
 
     /// The frontier of a settled journal (what [`Journal::heads`] answers once it has settled).
-    pub fn frontier(&self) -> Vec<EventId> {
+    pub(crate) fn frontier(&self) -> Vec<EventId> {
         // The events another one builds on, by index: worked out when asked, since a write asks
         // once, where a set kept as events arrive would hold every id again.
         let mut referenced = vec![false; self.events.len()];
@@ -352,22 +359,22 @@ impl Journal {
     }
 
     /// The events, in the order they were installed. Settle first.
-    pub fn events(&self) -> &IndexMap<EventId, Event> {
+    pub(crate) fn events(&self) -> &IndexMap<EventId, Event> {
         &self.events
     }
 
     /// The event `id`, if this journal holds it.
-    pub fn event(&self, id: EventId) -> Option<&Event> {
+    pub(crate) fn event(&self, id: EventId) -> Option<&Event> {
         self.events.get(&id)
     }
 
     /// Each machine's events, in its append order.
-    pub fn order(&self) -> &IndexMap<String, Vec<EventId>> {
+    pub(crate) fn order(&self) -> &IndexMap<String, Vec<EventId>> {
         &self.order
     }
 
     /// Ids found with several contents: a record of each content, in the order found.
-    pub fn quarantined(&self) -> &IndexMap<EventId, Vec<Event>> {
+    pub(crate) fn quarantined(&self) -> &IndexMap<EventId, Vec<Event>> {
         &self.quarantined
     }
 

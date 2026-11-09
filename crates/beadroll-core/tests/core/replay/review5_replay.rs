@@ -35,7 +35,7 @@ fn e10_extra_cannot_override_canonical_export_fields() {
     }
     let state = replay(journal).unwrap();
     assert!(state.integrity().is_empty());
-    let records = state.export_records();
+    let records = state.hydrated().unwrap().export_records();
     let exported = &records[0];
     assert_eq!(exported["id"], json!("ex-real"));
     assert_eq!(exported["status"], json!("tombstone"));

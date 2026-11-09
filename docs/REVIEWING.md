@@ -1667,9 +1667,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   - `Journal::settled_view` settles the records and borrows their derived collections. Internal
     causal ordering, replay/projection preparation and recap helpers take this evidence; adding
     another record cannot coexist with the borrow. Fresh own records still install immediately.
-    Shared compatibility entrypoints (`causal_order`, `effective_deps`, `unseen`) borrow a settled
-    journal without copying; a dirty one is settled in a copy. Existing raw collection accessors
-    keep their signatures and their settle-first contract.
+    The original compatibility entrypoints settled a private copy of a dirty journal and left
+    raw collection accessors with a settle-first contract. roll-sb21 replaces that public contract
+    with the same required proof as the internal readers (below).
   - `Tx::prepare` consumes the building transaction into `PreparedWrite` and `Spent`. Only the
     former can drain events, and it has neither an emitter nor an applied-event index. The latter
     holds the materialized view; a requested final state is applied before preparation and taken
@@ -1690,6 +1690,29 @@ These were decided deliberately. Report problems *with* them, not their existenc
   test's explicit no-hole assertions, differential histories, and work-count guards cover finishing.
   These are internal
   ownership changes, not new format-1 fields or user-facing workflow rules.
+- Source consumers have explicit read capabilities (roll-sb21):
+  - `Journal` collects records and file diagnostics. Public collections, causal ordering and
+    `recap::unseen` require `SettledJournal`; `settled_view` settles and borrows, while `settled`
+    only checks. `effective_deps` looks up an id in that view, so a foreign event cannot supply
+    its causes. Raw collection readers are crate-private for replay's implementation.
+  - `State::hydrated` checks every issue's text location before returning `HydratedState`, the
+    public complete-export interface. The shared borrow keeps the proof valid. Existing selective
+    issue/detail readers and summary queries keep their cost and their text-loading contract.
+    `State::full_knowledge` grants whole-history queries only after full replay; project and
+    projection decoding mark retained knowledge, and state-only decoding marks summary knowledge.
+    These scopes describe provenance even for an empty history. Hydrating, cloning or extending
+    a projection cannot promote it. `Projection::retains` inspects its explicitly partial index.
+    Scope is derived, not serialized: projection encoding 11 and its bytes remain unchanged.
+  - `Snapshot::from_journal` settles and replays one owned journal; `Tree::snapshot` supplies that
+    read directly. It exposes no mutable parts or constructor accepting a separate state.
+    `SnapshotEvent` binds issue resolution to that replay. `snapshot::Recap` owns its immutable
+    selection and borrows that snapshot; frontier joining uses its own sorted placed set.
+    Lower-level recap functions remain available for callers needing only journal ids. The CLI's
+    log and recap retain their documented journal-then-outline reads and cached-state cost.
+  These are deliberate source API breaks for pinned Rust consumers, with compile-fail examples
+  for forbidden reads/construction and `core::snapshots` tests of hydration, retained knowledge,
+  dirty journals, different snapshots, pending causes and quarantine. They change neither format 1
+  nor existing command output; this does not migrate a downstream repository's dependency pin.
 - Attempt recovery, receipt retirement, transaction materialization and command publication have
   explicit internal states (roll-jg0k). These types change no format-1 bytes, public entrypoints,
   failpoints or ordering of durable writes:

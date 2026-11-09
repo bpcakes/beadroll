@@ -1,5 +1,4 @@
-use beadroll_core::journal::JournalOrder;
-use beadroll_core::journal::{Journal, read_attempt, read_segment};
+use beadroll_core::journal::Journal;
 use beadroll_core::replay::replay;
 
 use super::*;
@@ -7,15 +6,11 @@ use super::*;
 fn journal(files: &[Files]) -> Journal {
     let mut journal = Journal::new();
     for machine in files {
-        for event in read_segment(&machine.segment, "segment", Some(&mut journal.invalid)) {
-            journal.add(event, &machine.replica, "segment", JournalOrder::Sequenced);
-        }
+        journal.add_segment(&machine.segment, &machine.replica, "segment");
     }
     for machine in files {
         for (name, data) in &machine.attempts {
-            for event in read_attempt(data, name, Some(&mut journal.invalid)) {
-                journal.add(event, &machine.replica, name, JournalOrder::Attempt);
-            }
+            journal.add_attempt(data, &machine.replica, name);
         }
     }
     journal.settle();
@@ -27,7 +22,7 @@ fn every_event_of_every_shape_applies() {
     for shape in [Shape::Plain, Shape::Ownership, Shape::Churn, Shape::Text] {
         let files = history(3000, shape);
         let journal = journal(&files);
-        assert_eq!(journal.events().len(), 3000, "{shape:?}");
+        assert_eq!(journal.settled().unwrap().events().len(), 3000, "{shape:?}");
         let st = replay(journal).unwrap();
         assert!(st.integrity().is_empty(), "{shape:?}: {:?}", st.integrity());
         assert!(st.pending().is_empty(), "{shape:?}");
