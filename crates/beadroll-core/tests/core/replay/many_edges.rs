@@ -177,7 +177,7 @@ fn alike(state: &State, replayed: &State, uid: &str, what: &str) {
 /// `projection` with `records` applied one at a time.
 fn one_at_a_time(mut projection: Projection, records: Vec<Record>) -> Projection {
     for record in records {
-        projection = match projection.extend(vec![record]).unwrap() {
+        projection = match projection.prepare_extension(vec![record]).apply().unwrap() {
             Extended::Applied(extended) => *extended,
             Extended::Replay => panic!("a record of one machine's journal declined"),
         };
@@ -274,7 +274,7 @@ fn one_issue_given_many_edges_every_way_answers_alike_replayed_extended_and_read
         let mut file = Vec::new();
         let records = history.after(held);
         let read = read_back(&projection, &mut file);
-        let Extended::Applied(batch) = read.extend(records).unwrap() else {
+        let Extended::Applied(batch) = read.prepare_extension(records).apply().unwrap() else {
             panic!("{what}: one machine's records declined");
         };
         alike(

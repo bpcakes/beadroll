@@ -58,7 +58,7 @@ fn texts_are_read_in_only_where_a_command_needs_them() {
     assert!(read_texts(&ws, &mut one, [uid(2)]));
     let first = one.issue(uid(2)).unwrap();
     assert!(first.texts().here());
-    assert_eq!(first.comments().len(), 1);
+    assert_eq!(first.hydrated().unwrap().comments().len(), 1);
     assert_eq!(first, whole.issue(uid(2)).unwrap());
     assert!(!one.issue(uid(3)).unwrap().texts().here());
 }

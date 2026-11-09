@@ -278,7 +278,7 @@ pub(super) fn one_at_a_time(seed: Projection, records: Vec<Record>) -> Result<Pr
 
 /// `records` applied to `projection`, which must take them.
 fn applied(projection: Projection, records: Vec<Record>) -> Result<Projection, Failure> {
-    match projection.extend(records) {
+    match projection.prepare_extension(records).apply() {
         Ok(Extended::Applied(extended)) => Ok(*extended),
         Ok(Extended::Replay) => Err(Failure::Failed(
             "the probe's own events are declined, so nothing was measured".into(),

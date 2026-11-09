@@ -279,7 +279,7 @@ fn exports_views_and_errors_read_back_as_bead_wrote_them() {
         assert_eq!(plan_import(&st, &back).unwrap().imported, 0, "seed {seed}");
         // `--json`: the views, spaced and raw, and the error envelope, ASCII-escaped
         for issue in st.issues() {
-            for view in [st.brief(issue), st.detail(issue)] {
+            for view in [st.brief(issue), st.detail(issue.hydrated().unwrap())] {
                 round_trip(&Value::from(view), Format::SPACED).unwrap();
             }
         }

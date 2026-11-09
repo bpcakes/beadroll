@@ -45,7 +45,7 @@ fn the_ownership_shape_is_heavy_in_attempts() {
     let st = replay(journal(&files)).unwrap();
     let taken_over = st
         .issues()
-        .flat_map(|issue| issue.claim_history())
+        .flat_map(|issue| issue.hydrated().unwrap().claim_history())
         .filter(|ended| ended.how == "takeover")
         .count();
     assert!(taken_over > 50, "{taken_over} takeovers");
@@ -63,6 +63,8 @@ fn the_churn_shape_keeps_its_state_the_size_it_is() {
         (st.issues())
             .map(|issue| {
                 issue
+                    .hydrated()
+                    .unwrap()
                     .registers()
                     .values()
                     .map(|tags| tags.len())
@@ -82,10 +84,16 @@ fn the_text_shape_is_mostly_text() {
         .map(|issue| {
             let fields: usize = [Field::Description, Field::Notes]
                 .into_iter()
-                .filter_map(|field| issue.get(field).and_then(|value| value.as_str()))
+                .filter_map(|field| {
+                    issue
+                        .hydrated()
+                        .unwrap()
+                        .get(field)
+                        .and_then(|value| value.as_str())
+                })
                 .map(str::len)
                 .sum();
-            let comments: usize = (issue.comments().iter())
+            let comments: usize = (issue.hydrated().unwrap().comments().iter())
                 .filter_map(|comment| comment.get("text"))
                 .filter_map(|text| text.as_str().map(str::len))
                 .sum();

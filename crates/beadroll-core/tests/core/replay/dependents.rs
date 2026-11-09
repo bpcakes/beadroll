@@ -98,7 +98,14 @@ fn reference(st: &State, issue: &Issue) -> Json {
             .collect();
         edges.sort();
         for (_, kind) in edges.into_iter().filter(|(to, _)| *to == uid) {
-            let field = |name| other.field(name).cloned().unwrap_or(Json::Null);
+            let field = |name| {
+                other
+                    .hydrated()
+                    .unwrap()
+                    .field(name)
+                    .cloned()
+                    .unwrap_or(Json::Null)
+            };
             found.push(json!({
                 "id": (other.key()),
                 "title": (field(Field::Title)),
@@ -118,10 +125,10 @@ fn agree(st: &State, asked: &[&Issue]) -> Vec<Vec<String>> {
     let details = st.details_of(asked.iter().copied());
     (asked.iter())
         .map(|issue| {
-            let together = Json::from(st.detail_with(issue, &dependents));
-            let alone = Json::from(st.detail(issue));
+            let together = Json::from(st.detail_with(issue.hydrated().unwrap(), &dependents));
+            let alone = Json::from(st.detail(issue.hydrated().unwrap()));
             assert_eq!(text(&together), text(&alone), "{}", issue.key());
-            let shared = Json::from(details.of(issue));
+            let shared = Json::from(details.of(issue.hydrated().unwrap()));
             assert_eq!(text(&shared), text(&alone), "{}", issue.key());
             let listed = &together["dependents"];
             assert_eq!(text(listed), text(&reference(st, issue)), "{}", issue.key());
@@ -235,7 +242,8 @@ fn closed_and_deleted_sources_are_listed_with_their_status() {
     h.add(10, "a", "delete", Some(&deleted), json!({}));
     let st = h.state();
     let dependents = st.dependents_of([named(&st, "dd-target")]);
-    let detail = Json::from(st.detail_with(named(&st, "dd-target"), &dependents));
+    let detail =
+        Json::from(st.detail_with(named(&st, "dd-target").hydrated().unwrap(), &dependents));
     let statuses: Vec<&str> = (detail["dependents"].as_array().unwrap().iter())
         .map(|dep| dep["status"].as_str().unwrap())
         .collect();
@@ -259,7 +267,7 @@ fn dependencies_on_what_is_no_issue_list_nobody_and_an_import_binds_when_its_key
     let stray = id(1_000);
     h.link(3, &waiting, &stray, "blocks");
     let st = h.state();
-    let shown = Json::from(st.detail(named(&st, "dd-waiting")));
+    let shown = Json::from(st.detail(named(&st, "dd-waiting").hydrated().unwrap()));
     assert_eq!(
         shown["unresolved_dependencies"].as_array().unwrap().len(),
         2
@@ -272,7 +280,7 @@ fn dependencies_on_what_is_no_issue_list_nobody_and_an_import_binds_when_its_key
         agree(&st, &[named(&st, "dd-later"), named(&st, "dd-waiting")]),
         [vec!["dd-waiting related"], vec![]]
     );
-    let shown = Json::from(st.detail(named(&st, "dd-waiting")));
+    let shown = Json::from(st.detail(named(&st, "dd-waiting").hydrated().unwrap()));
     assert_eq!(
         shown["unresolved_dependencies"].as_array().unwrap().len(),
         1
@@ -344,16 +352,18 @@ fn issues_asked_twice_or_not_at_all_get_the_detail_they_would_alone() {
     // an issue the lookup was not made for is found on its own
     let made = st.dependents_of([source]);
     assert_eq!(
-        text(&Json::from(st.detail_with(target, &made))),
-        text(&Json::from(st.detail(target)))
+        text(&Json::from(
+            st.detail_with(target.hydrated().unwrap(), &made)
+        )),
+        text(&Json::from(st.detail(target.hydrated().unwrap())))
     );
     // and so is its readiness, however many issues the details were made for
     for asked in [vec![source, other], vec![source], vec![]] {
         let details = st.details_of(asked.iter().copied());
         for issue in [target, other, source] {
             assert_eq!(
-                text(&Json::from(details.of(issue))),
-                text(&Json::from(st.detail(issue))),
+                text(&Json::from(details.of(issue.hydrated().unwrap()))),
+                text(&Json::from(st.detail(issue.hydrated().unwrap()))),
                 "{} among {} asked",
                 issue.key(),
                 asked.len()
@@ -370,8 +380,10 @@ fn issues_asked_twice_or_not_at_all_get_the_detail_they_would_alone() {
     let later = h.state();
     let found = later.dependents_of(later.issues());
     assert_eq!(
-        text(&Json::from(st.detail_with(target, &found))),
-        text(&Json::from(st.detail(target)))
+        text(&Json::from(
+            st.detail_with(target.hydrated().unwrap(), &found)
+        )),
+        text(&Json::from(st.detail(target.hydrated().unwrap())))
     );
     let target_later = named(&later, "dd-target");
     assert_eq!(
@@ -385,8 +397,10 @@ fn issues_asked_twice_or_not_at_all_get_the_detail_they_would_alone() {
     let none = st.dependents_of([]);
     for issue in [target, other, source] {
         assert_eq!(
-            text(&Json::from(st.detail_with(issue, &none))),
-            text(&Json::from(st.detail(issue)))
+            text(&Json::from(
+                st.detail_with(issue.hydrated().unwrap(), &none)
+            )),
+            text(&Json::from(st.detail(issue.hydrated().unwrap())))
         );
     }
 }

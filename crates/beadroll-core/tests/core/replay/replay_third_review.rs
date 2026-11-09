@@ -127,6 +127,8 @@ fn replayed(events: &[Json]) -> State {
 fn texts(state: &State, create: &Json) -> Vec<String> {
     let issue = state.issue(uid(create)).unwrap();
     issue
+        .hydrated()
+        .unwrap()
         .comments()
         .iter()
         .map(|c| c.get("text").unwrap().as_str().unwrap().to_owned())
@@ -214,7 +216,7 @@ fn malformed_imported_comment_does_not_break_queries() {
     let state = replayed(&[init, create.clone()]);
     state.hydrated().unwrap().export_records();
     for issue in state.issues() {
-        state.detail(issue);
+        state.detail(issue.hydrated().unwrap());
     }
     assert!(
         !state.integrity().is_empty(),
@@ -384,7 +386,7 @@ fn optional_register_clears_remain_queryable() {
     assert!(state.integrity().is_empty());
     state.hydrated().unwrap().export_records();
     let issue = state.issue(uid(&create)).unwrap();
-    state.detail(issue);
+    state.detail(issue.hydrated().unwrap());
     assert_eq!(issue.title(), "survivor");
 }
 

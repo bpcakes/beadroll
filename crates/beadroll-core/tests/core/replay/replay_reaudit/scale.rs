@@ -149,7 +149,12 @@ fn six_machine_3600_mixed_envelope_events_are_scoped_and_deterministic() {
     assert!(st.chain_breaks().is_empty());
     assert_eq!(st.integrity().len(), 3000);
     assert_eq!(
-        st.issue_named(&uid).unwrap().comments().len(),
+        st.issue_named(&uid)
+            .unwrap()
+            .hydrated()
+            .unwrap()
+            .comments()
+            .len(),
         valid_comments
     );
     let expected = projection(base);

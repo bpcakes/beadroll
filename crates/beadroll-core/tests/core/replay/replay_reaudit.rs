@@ -95,7 +95,7 @@ pub(crate) fn projection(journal: Journal) -> String {
     );
     let details = Json::Array(
         st.issues()
-            .map(|issue| Json::from(st.detail(issue)))
+            .map(|issue| Json::from(st.detail(issue.hydrated().unwrap())))
             .collect(),
     );
     let mut integrity: Vec<Json> = st.integrity().iter().map(row).collect();
@@ -206,7 +206,13 @@ fn non_scalar_actor_thread_is_scoped() {
         json!({"agent": "codex", "thread": ["not", "scalar"]}),
     );
     let st = replayed(&[init, create.clone(), invalid]);
-    assert!(issue(&st, &create).comments().is_empty());
+    assert!(
+        issue(&st, &create)
+            .hydrated()
+            .unwrap()
+            .comments()
+            .is_empty()
+    );
     assert!(!st.integrity().is_empty());
 }
 
@@ -227,6 +233,8 @@ fn malformed_set_is_atomic_and_cannot_overwrite_internal_state() {
     // The create's registers remain unchanged.
     assert_eq!(
         survivor
+            .hydrated()
+            .unwrap()
             .registers()
             .get(&Field::Title)
             .map(|register| register.len()),
@@ -281,7 +289,7 @@ fn offline_forged_takeover_stays_provisional_and_does_not_fence_close() {
     let issue = issue(&st, &create);
     assert_eq!(issue.status(), "closed");
     assert!(issue.claim().is_none());
-    assert!(issue.stale().is_empty());
+    assert!(issue.hydrated().unwrap().stale().is_empty());
     assert_eq!(*issue.claim_generation(), Int::from(1));
 }
 
@@ -315,7 +323,7 @@ fn orphan_takeover_does_not_fence_another_issues_close() {
     let issue = issue(&st, &create);
     assert_eq!(issue.status(), "closed");
     assert!(issue.claim().is_none());
-    assert!(issue.stale().is_empty());
+    assert!(issue.hydrated().unwrap().stale().is_empty());
 }
 
 #[test]
@@ -366,7 +374,7 @@ fn all_registers_preserve_none_against_concurrent_value() {
     let mut j = journal(&[init, create.clone(), left.clone(), right.clone()]);
     let st = replay(j.clone()).unwrap();
     let mut disputed: Vec<Field> = st
-        .conflicts(issue(&st, &create))
+        .conflicts(issue(&st, &create).hydrated().unwrap())
         .into_iter()
         .map(|(field, _)| field)
         .collect();
@@ -381,7 +389,10 @@ fn all_registers_preserve_none_against_concurrent_value() {
     );
     j.add(settled, "d", "", JournalOrder::Sequenced);
     let st = replay(j).unwrap();
-    assert!(st.conflicts(issue(&st, &create)).is_empty());
+    assert!(
+        st.conflicts(issue(&st, &create).hydrated().unwrap())
+            .is_empty()
+    );
 }
 
 #[test]
@@ -434,6 +445,8 @@ fn ignored_op_with_valid_id_does_not_hold_descendant() {
     assert!(st.pending().is_empty());
     assert_eq!(st.integrity().len(), 1);
     let texts: Vec<Json> = issue(&st, &create)
+        .hydrated()
+        .unwrap()
         .comments()
         .iter()
         .filter_map(|c| c.get("text"))

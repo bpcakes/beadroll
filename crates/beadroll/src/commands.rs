@@ -192,6 +192,12 @@ impl From<beadroll_core::key::MintError> for Failure {
     }
 }
 
+impl From<beadroll_core::state::MissingTexts> for Failure {
+    fn from(error: beadroll_core::state::MissingTexts) -> Self {
+        Self::new(error.code(), error.to_string())
+    }
+}
+
 impl From<beadroll_core::import::ImportError> for Failure {
     fn from(error: beadroll_core::import::ImportError) -> Failure {
         Failure::new(error.code(), error.to_string())
@@ -545,7 +551,9 @@ pub(crate) fn select<'s>(st: &'s State, filters: &Filters) -> Result<Vec<&'s Iss
             continue;
         }
         if let Some(assignee) = filters.assignee.as_ref().filter(|a| !a.is_empty()) {
-            let held = issue.get(beadroll_core::event::Field::Assignee);
+            let held = issue
+                .read_field(beadroll_core::event::Field::Assignee)?
+                .filter(|value| **value != Value::Null);
             if held != Some(&Value::from(assignee.as_str())) {
                 continue;
             }

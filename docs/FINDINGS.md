@@ -20,6 +20,20 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Projection lifecycle (roll-9445, ids AR)
+
+The follow-up to the source-consumer audit covers selective reading, extension preparation and
+cache acknowledgement. AR01 and AR02 were reproduced through the previous public API; AR03
+replaces a caller-maintained sequence while preserving the existing refusal checks. These rows
+were originally AP; they became AR when the initial-sync review landed on main.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AR01 | Medium | Selective detail and text getters exposed unloaded values as absent or empty | fixed | `HydratedIssue` gates complete text-bearing answers and conflict alternatives; `read_field` distinguishes unavailable long fields while keeping short fields readable | `beadroll-core`: `hydration`; `HydratedIssue` compile-fail examples |
+| AR02 | Medium | Old encoded locations could be acknowledged on an extended projection, marking changed texts as already persisted | fixed | `Writeback` borrows its exact projection and owns the bytes, places and generation; only its consuming acknowledgement updates locations | `beadroll-core`: `lifecycle::abandoned_writebacks_do_not_acknowledge_locations_and_can_be_retried`, `lifecycle::rewriting_requires_all_texts_and_preserves_unloaded_locations_on_refusal`; `Writeback` compile-fail examples; `beadroll-store`: `projection::tests::lifecycle::failed_projection_writes_leave_new_texts_unacknowledged_for_retry` |
+| AR03 | Low | Extension callers separately selected texts, loaded them and supplied the batch again | by design | Owned `Extension` binds one projection to one batch and its requested text locations; store and sync share loading and preserve `Applied`/`Replay` outcomes | `beadroll-core`: `lifecycle::preparation_loads_only_its_batch_and_a_written_extension_reloads_as_replay`; `Extension` compile-fail example; `beadroll-store`: `projection::tests::lifecycle::a_missing_or_replaced_text_file_declines_the_prepared_batch` |
+| AR04 | Medium | The first hydration migration rejected `dep list`, which built full details from an outline only to select dependency rows | fixed | `State::dependency_summary` exposes just the retained topology rows; `dep list` keeps its outline read and existing output | `beadroll-core`: `hydration::dependency_summaries_match_full_details_without_loading_texts`; `beadroll`: `golden::reading_commands_over_one_tracker`, `hardening::g45::g45_unresolved_imported_dependency_invisible::show_and_dep_list_report_an_unresolved_imported_dependency`, `storage::projection::edges::edges_and_their_metadata_answer_alike_from_the_texts_and_from_the_journal` |
+
 ## Downstream read capabilities (roll-sb21, ids AQ)
 
 The 2026-11-09 source-consumer audit (roll-bdfc), followed by the requested public API changes.

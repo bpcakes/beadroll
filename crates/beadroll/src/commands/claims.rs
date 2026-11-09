@@ -22,7 +22,10 @@ pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
     issues.sort_by(|a, b| a.key().cmp(b.key()));
     let mut rows: Vec<Object> = Vec::new();
     for issue in issues {
-        let title = issue.get(Field::Title).cloned().unwrap_or(Value::Null);
+        let title = issue
+            .read_field(Field::Title)?
+            .cloned()
+            .unwrap_or(Value::Null);
         let row = |owner: Value, since: Value| {
             let mut row = Object::new();
             row.insert("id".into(), Value::from(issue.key()));

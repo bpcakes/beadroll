@@ -532,5 +532,6 @@ fn an_earlier_segment_that_grows_is_replayed() {
 mod attempts;
 mod compacted;
 mod kept;
+mod lifecycle;
 mod sources;
 mod texts;

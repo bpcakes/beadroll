@@ -5,6 +5,8 @@
 mod commands;
 mod compat;
 mod hardening;
+mod hydration;
+mod lifecycle;
 mod protocol;
 mod replay;
 mod snapshots;

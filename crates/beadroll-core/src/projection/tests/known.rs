@@ -74,11 +74,21 @@ fn a_state_read_alone_knows_who_wrote_what_its_conflicts_name_and_the_index_ever
     ));
     let projection = project(journal(&records)).unwrap();
     let (encoded, _) = projection.encode(0);
-    let state = decode_state(&encoded.state).unwrap();
+    let mut state = decode_state(&encoded.state).unwrap();
     let both: Vec<EventId> = [4, 5].map(|n| EventId::parse(&id(n)).unwrap()).into();
     assert_eq!(state.events().collect::<Vec<_>>(), both);
     assert!(knows_writers_alone(&state, &projection));
-    let issue = |state: &State| state.issues().next().map(|issue| state.conflicts(issue));
+    let unloaded = state.issues().next().unwrap();
+    assert_eq!(state.disputed_fields(unloaded), [Field::Title]);
+    assert!(unloaded.hydrated().is_err());
+    read_in(&mut state, &encoded.texts, None);
+    assert!(knows_writers_alone(&state, &projection));
+    let issue = |state: &State| {
+        state
+            .issues()
+            .next()
+            .map(|issue| state.conflicts(issue.hydrated().unwrap()))
+    };
     let conflicts = issue(&state).unwrap();
     assert_eq!(conflicts.len(), 1);
     assert_eq!(conflicts[0].0, Field::Title);
@@ -132,7 +142,12 @@ fn a_state_read_alone_knows_who_wrote_a_long_field_whose_texts_were_not_read_in(
     read_in(&mut state, &file, None);
     let both: Vec<EventId> = [4, 5].map(|n| EventId::parse(&id(n)).unwrap()).into();
     assert_eq!(state.events().collect::<Vec<_>>(), both);
-    let issue = |state: &State| state.issues().next().map(|issue| state.conflicts(issue));
+    let issue = |state: &State| {
+        state
+            .issues()
+            .next()
+            .map(|issue| state.conflicts(issue.hydrated().unwrap()))
+    };
     let conflicts = issue(&state).unwrap();
     assert_eq!(conflicts.len(), 1);
     assert_eq!(conflicts[0].0, Field::Design);

@@ -278,7 +278,7 @@ fn u08_imported_comments_carry_neither_a_uid_nor_a_where() {
         [uid(&kept)]
     );
     assert_eq!(problems(&state), ["create event has a malformed comment"]);
-    let shown = Json::from(state.detail(state.issue(uid(&kept)).unwrap()));
+    let shown = Json::from(state.detail(state.issue(uid(&kept)).unwrap().hydrated().unwrap()));
     let shown: Vec<&Json> = shown["comments"]
         .as_array()
         .unwrap()

@@ -20,7 +20,7 @@ pub enum KnowledgeScope {
     Summary,
 }
 
-/// An issue whose texts must be loaded before exporting the whole state.
+/// An issue whose texts must be loaded before a complete text-bearing read.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("issue {issue} has texts that have not been loaded")]
 pub struct MissingTexts {

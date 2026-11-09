@@ -5,7 +5,7 @@
 //! [`project`] replays a journal and keeps, of what every event had seen, only the events its state
 //! still names: each issue's create, the events behind its registers and its label and dependency
 //! tags, its removals and its claims, and the frontier. Applying an event after all of a journal's
-//! asks about nothing else (`saw_at`, `saw` and `who` in `replay/apply.rs`). [`Projection::extend`]
+//! asks about nothing else (`saw_at`, `saw` and `who` in `replay/apply.rs`). [`Projection::prepare_extension`]
 //! applies records appended to that journal when replay would apply them after every event it
 //! holds, and as it would; when it cannot know that, it declines, and the caller replays.
 //!
@@ -24,7 +24,7 @@
 //! texts written nowhere yet, placed after `texts_at` bytes of a store's text file, and a state
 //! read back has every issue's texts there, until the store reads in those a command needs
 //! ([`State::wanted_texts`], [`State::read_texts`]), and before applying records, those
-//! [`Projection::about`] lists.
+//! [`Extension::wanted_texts`] lists.
 //!
 //! A projection read back keeps the bytes it was read from, and writing it back copies the record
 //! of every issue and event that did not change since (roll-lqjj.44, `parts.rs`): its issues mark
@@ -33,9 +33,11 @@
 
 pub(crate) mod codec;
 mod extend;
+mod extension;
 mod parts;
 mod state_codec;
 mod text_codec;
+mod writeback;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::hash::{DefaultHasher, Hasher as _};
@@ -50,7 +52,9 @@ use text_codec::read_texts;
 
 pub use codec::Unreadable;
 pub use extend::Extended;
+pub use extension::Extension;
 pub use parts::decode_state;
+pub use writeback::Writeback;
 
 /// The version of the bytes [`Projection::encode`] writes. Bytes of another are not read.
 pub const ENCODING: u32 = 11;
@@ -235,7 +239,7 @@ impl Projection {
         since.saturating_mul(COMPACTED) > self.compacted
     }
 
-    /// Whether events can be applied after it ([`Projection::extend`]): nothing in its journal waits
+    /// Whether events can be applied after it ([`Projection::prepare_extension`]): nothing in its journal waits
     /// for a cause, no takeover was refused for naming an id no event has, and every id with
     /// several contents is placed by all its causes.
     pub fn extendable(&self) -> bool {
@@ -248,7 +252,7 @@ impl Projection {
     }
 
     /// The texts [`Projection::encode`] placed, written where it placed them.
-    pub fn placed(&mut self, places: &[(EventId, TextPlace)]) {
+    pub(crate) fn placed(&mut self, places: &[(EventId, TextPlace)]) {
         for (uid, place) in places {
             if let Some(issue) = self.state.issues.get_mut(uid)
                 && matches!(issue.texts, Texts::Here)

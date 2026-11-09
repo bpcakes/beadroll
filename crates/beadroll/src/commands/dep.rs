@@ -78,14 +78,8 @@ pub(crate) fn dep(
         );
         return Ok(Outcome::new(result, lines).answered_from(st));
     }
-    let info = st.detail(issue);
-    let mut result = Object::new();
-    for name in ["dependencies", "dependents", "unresolved_dependencies"] {
-        if let Some(value) = info.get(name) {
-            result.insert(name.into(), value.clone());
-        }
-    }
-    let entries = |name: &str| match info.get(name) {
+    let result = st.dependency_summary(issue);
+    let entries = |name: &str| match result.get(name) {
         Some(Value::Array(items)) => items.clone(),
         _ => Vec::new(),
     };

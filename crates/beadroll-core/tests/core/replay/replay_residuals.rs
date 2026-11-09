@@ -134,41 +134,41 @@ fn identical_misplaced_duplicate_does_not_change_broken_chain_result() {
         Target::Named(&uid),
         json!({"fields": {"title": "second"}}),
     );
-    let projection = |misplaced_first: bool| {
-        let mut rows = vec![(&init, "a"), (&create, "a")];
-        if misplaced_first {
-            rows.push((&second, "b"));
-        }
-        rows.extend([(&first, "a"), (&second, "a")]);
-        if !misplaced_first {
-            rows.push((&second, "b"));
-        }
-        let state = replayed(&rows);
-        let issue = state.issue_named(&uid).unwrap();
-        let conflicts = state
-            .conflicts(issue)
-            .into_iter()
-            .map(|(field, alternatives)| {
-                let alternatives = alternatives
+    let projection =
+        |misplaced_first: bool| {
+            let mut rows = vec![(&init, "a"), (&create, "a")];
+            if misplaced_first {
+                rows.push((&second, "b"));
+            }
+            rows.extend([(&first, "a"), (&second, "a")]);
+            if !misplaced_first {
+                rows.push((&second, "b"));
+            }
+            let state = replayed(&rows);
+            let issue = state.issue_named(&uid).unwrap();
+            let conflicts = state.conflicts(issue.hydrated().unwrap()).into_iter().map(
+                |(field, alternatives)| {
+                    let alternatives = alternatives
+                        .iter()
+                        .map(|a| Json::from(a.to_value()))
+                        .collect::<Vec<_>>();
+                    (field.name().to_owned(), Json::Array(alternatives))
+                },
+            );
+            let breaks = state.chain_breaks().iter().map(|(replica, at)| {
+                let at = at
                     .iter()
-                    .map(|a| Json::from(a.to_value()))
+                    .map(|n| json!(i64::try_from(*n).unwrap()))
                     .collect::<Vec<_>>();
-                (field.name().to_owned(), Json::Array(alternatives))
+                (replica.clone(), Json::Array(at))
             });
-        let breaks = state.chain_breaks().iter().map(|(replica, at)| {
-            let at = at
-                .iter()
-                .map(|n| json!(i64::try_from(*n).unwrap()))
-                .collect::<Vec<_>>();
-            (replica.clone(), Json::Array(at))
-        });
-        json!({
-            "title": (issue.title()),
-            "conflicts": (Json::Object(Box::new(conflicts.collect()))),
-            "integrity": (Json::Array(state.integrity().iter().map(row).collect())),
-            "chain_breaks": (Json::Object(Box::new(breaks.collect())))
-        })
-    };
+            json!({
+                "title": (issue.title()),
+                "conflicts": (Json::Object(Box::new(conflicts.collect()))),
+                "integrity": (Json::Array(state.integrity().iter().map(row).collect())),
+                "chain_breaks": (Json::Object(Box::new(breaks.collect())))
+            })
+        };
     assert_eq!(projection(true), projection(false));
 }
 
@@ -220,7 +220,7 @@ fn takeover_must_causally_see_the_claim_it_supersedes() {
     let issue = state.issue_named(&uid).unwrap();
     assert_eq!(issue.status(), "closed");
     assert!(issue.claim().is_none());
-    assert!(issue.stale().is_empty());
+    assert!(issue.hydrated().unwrap().stale().is_empty());
 }
 
 #[test]
@@ -262,6 +262,8 @@ fn quarantined_common_descendant_dependency_is_scoped() {
     let texts: Vec<Json> = state
         .issue_named(&uid)
         .unwrap()
+        .hydrated()
+        .unwrap()
         .comments()
         .iter()
         .filter_map(|c| c.get("text"))
@@ -295,7 +297,7 @@ fn malformed_embedded_create_comment_is_scoped() {
             .any(|record| record.get("id") == Some(&json!("ex-one")))
     );
     match state.issue_named(&id(&malformed)) {
-        Some(issue) => drop(state.detail(issue)),
+        Some(issue) => drop(state.detail(issue.hydrated().unwrap())),
         None => assert!(!state.integrity().is_empty()),
     }
 }

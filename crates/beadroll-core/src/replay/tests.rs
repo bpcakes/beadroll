@@ -45,6 +45,7 @@ fn answers(state: &State, flawed: HistoryKind) -> Vec<(String, String)> {
     let blockers = state.blocker_lists();
     let details = state.details_of(state.issues());
     for issue in state.issues() {
+        let hydrated = issue.hydrated().unwrap();
         let key = issue.key();
         for field in Field::ALL {
             say(
@@ -55,12 +56,12 @@ fn answers(state: &State, flawed: HistoryKind) -> Vec<(String, String)> {
         say(format!("{key} uid"), issue.uid().to_string());
         say(format!("{key} labels"), format!("{:?}", issue.labels()));
         say(format!("{key} brief"), shown(state.brief(issue)));
-        say(format!("{key} detail"), shown(state.detail(issue)));
-        say(format!("{key} details_of"), shown(details.of(issue)));
+        say(format!("{key} detail"), shown(state.detail(hydrated)));
+        say(format!("{key} details_of"), shown(details.of(hydrated)));
         say(format!("{key} line"), state.line(issue));
         say(
             format!("{key} conflicts"),
-            format!("{:?}", state.conflicts(issue)),
+            format!("{:?}", state.conflicts(hydrated)),
         );
         say(format!("{key} claim"), format!("{:?}", issue.claim()));
         say(

@@ -180,7 +180,7 @@ fn taken(
         (state.read_texts(uid, place, bytes))
             .map_err(|error| Failure::Failed(format!("the texts do not read back: {error}")))?;
     }
-    match projection.extend(records.to_vec()) {
+    match projection.prepare_extension(records.to_vec()).apply() {
         Ok(Extended::Applied(extended)) => Ok(*extended),
         Ok(Extended::Replay) => Err(Failure::Failed("the comments are declined".into())),
         Err(error) => Err(Failure::Failed(format!(

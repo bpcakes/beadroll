@@ -33,6 +33,8 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   what its transaction held (`Spent`), for a caller whose process ends with its command to keep
   (roll-lqjj.42), and `drop_pending`. `src/tx/materialized.rs` keeps the projection, replay-needed
   and replayed states mutually exclusive, each cached view with its applied event prefix.
+  Both cache loading and this materialization use the store's `extend_projection`: its owned
+  preparation binds the batch to its selected text loading before consuming application.
 - `src/link.rs`: `Link` (`unpublished`, `maintain`, `rebuild`) and the gits it keeps in
   `sync.git` (`crates/beadroll-git/AGENTS.md`); `src/link/fetch.rs`: `Link::fetch`, which tries
   again a fetch that lost to another process's fetch of the store; `src/link/asked.rs`: `Link::publishes`, the

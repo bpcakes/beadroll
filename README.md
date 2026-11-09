@@ -282,6 +282,26 @@ Pending events are included in its knowledge, but `saw` recognizes only their di
 check `state().pending()` before treating a false ancestry answer as ruling out an ancestor.
 These are source API changes; CLI output and format 1 are unchanged.
 
+For selective cache reads, obtain `issue.hydrated()?` before reading long fields, comments,
+extras, ownership history, full details or conflict alternatives. Other issues may stay unloaded.
+`issue.read_field(field)?` also reads short fields without loading texts; an unloaded long field
+returns an error, distinct from an absent or empty value. Summary and topology queries keep
+their existing cost.
+`state.dependency_summary(issue)` returns dependency, dependent and unresolved-key rows from
+an outline without building full details or loading texts.
+
+To advance a projection, use `projection.prepare_extension(records)`, load the preparation's
+`wanted_texts()` from its text-file generation, and consume it with `apply()`. Missing texts or
+an unsafe batch return `Extended::Replay`. The store's `extend_projection` performs that loading
+for both cache reads and sync transactions.
+
+To persist a projection, use `prepare_append` for its existing text-file generation or
+`prepare_rewrite` after loading all texts. The returned `Writeback` exclusively borrows the
+projection and supplies its bytes and generation. Call `written()` only after successfully
+writing both texts and projection; dropping it leaves new text locations unacknowledged.
+The pure `encode` entrypoint still supports standalone serialization, without acknowledging
+storage. Raw `about`, `extend` and `placed` are now internal.
+
 ## Documentation and support
 
 - [Migration guide](MIGRATING.md): move a Beads tracker to beadroll or export it back.

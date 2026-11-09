@@ -77,7 +77,7 @@ impl Projection {
     /// Applies `records`, read from the journal's files after the records this projection was made
     /// from, as replay would apply them after every event of that journal; or declines
     /// ([`Extended::Replay`]). Fails only as replay does, when a renamed copy finds no free key.
-    pub fn extend(mut self, records: Vec<Record>) -> Result<Extended, KeySpace> {
+    pub(crate) fn extend(mut self, records: Vec<Record>) -> Result<Extended, KeySpace> {
         if records.is_empty() {
             return Ok(Extended::Applied(Box::new(self)));
         }
@@ -176,7 +176,7 @@ impl Projection {
     /// imported dependency, for the key a create among them brings, which that create makes an edge
     /// of, its metadata with the issue's texts (roll-lqjj.39). Which of them a record needs read in
     /// is [`Projection::texts_in`]'s to say.
-    pub fn about(&self, records: &[Record]) -> Vec<EventId> {
+    pub(crate) fn about(&self, records: &[Record]) -> Vec<EventId> {
         let mut about = Vec::new();
         for record in records {
             let value = &record.value;

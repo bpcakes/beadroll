@@ -49,7 +49,10 @@ pub(crate) fn answers(state: &State) -> String {
         say("lost", all(lost.collect()));
         let stale = issue.stale().iter().map(Stale::to_value);
         say("stale", all(stale.collect()));
-        say("show", json(Value::from(details.of(issue))));
+        say(
+            "show",
+            json(Value::from(details.of(issue.hydrated().unwrap()))),
+        );
     }
     for record in state.export_records() {
         out.push_str(&format!("export\t{}\n", json(Value::from(record))));

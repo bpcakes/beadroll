@@ -78,6 +78,11 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   (`projection_sourced`: each segment's identity as `current` read it, the attempt files by the
   listing and identities the locked phase keeps), and `Sourced::into_current`, which says whether
   they are still the store's files (roll-lqjj.37).
+  `projection/extension.rs` loads the exact locations an owned core `Extension` requests and
+  applies it, with replay on missing or damaged texts; sync uses the same `extend_projection`.
+  `projection/writeback.rs` persists the core's borrowed `Writeback` and acknowledges its own
+  places and generation only after both writes succeed. Failed writes leave new places
+  unacknowledged for retry, with existing cache durability and lock order.
 - `src/listing.rs`: `Claims`, the in-memory accepted-attempt names shared by `claim_files`,
   validated against each directory's identity on every call and cleared at lock boundaries.
   A directory change re-lists it; the file identities used by the memo and projection are still

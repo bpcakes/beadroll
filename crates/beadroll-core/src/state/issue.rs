@@ -142,7 +142,7 @@ impl Issue {
     /// unless a set wrote one after the status, from the members of the status register's entry;
     /// the create's default while a field it did not give has no register; and created_at,
     /// created_by and updated_at from the issue's own stamps.
-    pub fn field(&self, field: Field) -> Option<&Value> {
+    pub(crate) fn field(&self, field: Field) -> Option<&Value> {
         match field {
             Field::CreatedAt => return Some(&self.stamps.created_at),
             Field::CreatedBy => return Some(&self.stamps.created_by),
@@ -171,7 +171,7 @@ impl Issue {
     }
 
     /// A field's value, or `None` when absent or null.
-    pub fn get(&self, field: Field) -> Option<&Value> {
+    pub(crate) fn get(&self, field: Field) -> Option<&Value> {
         self.field(field).filter(|value| **value != Value::Null)
     }
 
@@ -206,7 +206,7 @@ impl Issue {
 
     /// Every value of each register two writers may have set without seeing each other, the
     /// registers in the order first written.
-    pub fn registers(&self) -> &VecMap<Field, IdMap<Value>> {
+    pub(crate) fn registers(&self) -> &VecMap<Field, IdMap<Value>> {
         &self.reg
     }
 
@@ -241,12 +241,12 @@ impl Issue {
     }
 
     /// Its comments, imported first, then those made here in replay order.
-    pub fn comments(&self) -> &[Comment] {
+    pub(crate) fn comments(&self) -> &[Comment] {
         &self.comments
     }
 
     /// Fields of an imported record bead does not know, and what a delete records.
-    pub fn extra(&self) -> &Object {
+    pub(crate) fn extra(&self) -> &Object {
         self.extra.as_deref().unwrap_or(&NO_EXTRA)
     }
 
@@ -272,7 +272,7 @@ impl Issue {
 
     /// Claims that ended, oldest first: empty until its texts are read in ([`Issue::texts`]), which
     /// [`Issue::last_ended`] is not.
-    pub fn claim_history(&self) -> &[EndedClaim] {
+    pub(crate) fn claim_history(&self) -> &[EndedClaim] {
         &self.claim_history
     }
 
@@ -290,12 +290,12 @@ impl Issue {
     }
 
     /// Claims that lost to the owner of the time: empty until its texts are read in.
-    pub fn lost_claims(&self) -> &[LostClaim] {
+    pub(crate) fn lost_claims(&self) -> &[LostClaim] {
         &self.lost_claims
     }
 
     /// Ends of claims that were no longer current, ignored: empty until its texts are read in.
-    pub fn stale(&self) -> &[Stale] {
+    pub(crate) fn stale(&self) -> &[Stale] {
         &self.stale
     }
 

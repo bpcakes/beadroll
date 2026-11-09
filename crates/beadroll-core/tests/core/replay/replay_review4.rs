@@ -141,7 +141,11 @@ fn q09_required_register_clears_remain_queryable() {
                     .any(|row| row.event.as_deref() == Some(id_of(&clear))),
                 "{field:?}"
             );
-            assert_eq!(issue.field(field), fields.get(field.name()), "{field:?}");
+            assert_eq!(
+                issue.hydrated().unwrap().field(field),
+                fields.get(field.name()),
+                "{field:?}"
+            );
         }
         // The accepted clear must stay query-safe.
         state.brief(issue);

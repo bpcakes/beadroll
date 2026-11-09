@@ -23,11 +23,19 @@ consumer on tokio calls through `spawn_blocking`.
   event and ancestry queries. `KnowledgeScope` is derived at replay/projection/decode, never stored
   in cache bytes. Pending records are included, but `FullKnowledge::saw` recognizes only their
   direct causes until a later replay places them. Loading texts does not recover ancestry.
-  Selective issue reads still use `wanted_texts`/`read_texts` and `Issue::texts`.
+  Selective reads load texts with `wanted_texts`/`read_texts` and obtain `Issue::hydrated`:
+  `state/hydrated.rs` gates text-bearing fields, comments, extras, ownership history, full details
+  and conflict alternatives with `HydratedIssue`. `read_field` keeps short fields readable from
+  summaries and errors for an unloaded long field.
 - `snapshot.rs`: `Snapshot` owns one settled journal and its replay. Its events resolve issues
   against that state; its `Recap` keeps the selection, frontier and placed set together.
 - `replay/batch.rs`: `Batch` owns state during event application. Only consuming full or
   changed-record finishing returns it, after dependency holes and derived indexes are settled.
+- `projection/extension.rs`: `prepare_extension` owns a projection and its exact batch; it
+  selects and checks text loading before consuming application. `projection/writeback.rs`:
+  `prepare_append` and `prepare_rewrite` lend `Writeback`, freezing a projection alongside its
+  bytes, places and generation. Only its consuming `written` acknowledges those locations.
+  Callers must write both parts before acknowledging; this pure crate cannot verify I/O.
 
 - `src/metadata.rs`: `Metadata`, the typed published-count map with ordered unknown fields kept
   for rewrites; `src/configuration.rs`: known configuration fields read by type into the existing

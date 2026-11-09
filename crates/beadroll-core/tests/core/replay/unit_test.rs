@@ -67,8 +67,11 @@ fn malformed_payloads_are_scoped_and_reported() {
     }));
     let st = replay(journal(&all)).unwrap();
     let issue = st.issue_named(&ids[1]).unwrap();
-    assert_eq!(issue.field(Field::Title), Some(&Json::from("fine")));
-    assert_eq!(issue.comments().len(), 1);
+    assert_eq!(
+        issue.hydrated().unwrap().field(Field::Title),
+        Some(&Json::from("fine"))
+    );
+    assert_eq!(issue.hydrated().unwrap().comments().len(), 1);
     let mut problems: Vec<String> = st
         .integrity()
         .iter()
@@ -120,7 +123,7 @@ fn an_ignored_newer_format_event_cannot_change_ownership() {
     let issue = st.issue_named(&ids[1]).unwrap();
     assert_eq!(issue.status(), "closed"); // the owner's own close stands
     assert!(issue.claim().is_none());
-    assert!(issue.stale().is_empty());
+    assert!(issue.hydrated().unwrap().stale().is_empty());
     let problems: Vec<String> = st
         .integrity()
         .iter()

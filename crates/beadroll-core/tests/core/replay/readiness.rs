@@ -117,7 +117,7 @@ fn agree(st: &State) -> Vec<String> {
             issue.key()
         );
         assert_eq!(
-            details.of(issue).get("blocked"),
+            details.of(issue.hydrated().unwrap()).get("blocked"),
             Some(&listed.into()),
             "{} shown with every issue",
             issue.key()
@@ -226,7 +226,10 @@ fn a_chain_far_deeper_than_a_thread_stack_takes_is_judged_without_recursion() {
     assert!(lists.of(issue(&st, &gate)).is_empty());
     let details = st.details_of(st.issues());
     assert!(
-        (chain.iter()).all(|uid| details.of(issue(&st, uid)).get("blocked") == Some(&true.into())),
+        (chain.iter()).all(|uid| details
+            .of(issue(&st, uid).hydrated().unwrap())
+            .get("blocked")
+            == Some(&true.into())),
         "every detail of the chain is blocked"
     );
 }

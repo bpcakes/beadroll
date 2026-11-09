@@ -213,7 +213,7 @@ fn quarantined_event_with_missing_cause_does_not_hold_descendants() {
         "quarantined event and descendant wait on first payload missing cause"
     );
     assert_eq!(
-        issue(&st, &uid).field(Field::Notes),
+        issue(&st, &uid).hydrated().unwrap().field(Field::Notes),
         Some(&json!("valid descendant"))
     );
 }
@@ -239,7 +239,11 @@ fn unknown_event_version_is_not_applied_silently() {
 fn unknown_operation_is_reported_and_does_not_mutate_timestamp() {
     let mut f = Fixture::new();
     let uid = f.issue.clone();
-    let before = issue(&f.state(), &uid).field(Field::UpdatedAt).cloned();
+    let before = issue(&f.state(), &uid)
+        .hydrated()
+        .unwrap()
+        .field(Field::UpdatedAt)
+        .cloned();
     f.event(
         "future-op",
         Some(&uid),
@@ -248,7 +252,14 @@ fn unknown_operation_is_reported_and_does_not_mutate_timestamp() {
         json!({"important": "not understood"}),
     );
     let st = f.state();
-    assert_eq!(issue(&st, &uid).field(Field::UpdatedAt).cloned(), before);
+    assert_eq!(
+        issue(&st, &uid)
+            .hydrated()
+            .unwrap()
+            .field(Field::UpdatedAt)
+            .cloned(),
+        before
+    );
     assert!(!st.integrity().is_empty());
 }
 

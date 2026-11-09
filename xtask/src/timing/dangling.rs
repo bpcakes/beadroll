@@ -255,7 +255,7 @@ fn fastest_taken(seed: &Projection, records: &[Record]) -> Result<(f64, (usize, 
         let (mut projection, records) = (seed.clone(), records.to_vec());
         let clock = Instant::now();
         for record in records {
-            projection = match projection.extend(vec![record]) {
+            projection = match projection.prepare_extension(vec![record]).apply() {
                 Ok(Extended::Applied(extended)) => *extended,
                 Ok(Extended::Replay) => {
                     return Err(Failure::Failed(

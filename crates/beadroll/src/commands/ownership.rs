@@ -170,7 +170,9 @@ pub(crate) fn details(st: &State, keys: &[OsString]) -> Result<Vec<Object>, Fail
         .map(|key| resolve_arg(st, key))
         .collect::<Result<Vec<_>, Failure>>()?;
     let details = st.details_of(issues.iter().copied());
-    Ok((issues.iter()).map(|issue| details.of(issue)).collect())
+    (issues.iter())
+        .map(|issue| Ok(details.of(issue.hydrated()?)))
+        .collect()
 }
 
 /// `bead claim`: takes ownership of each issue.

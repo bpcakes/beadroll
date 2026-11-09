@@ -119,5 +119,5 @@ fn a_long_field_shows_what_replay_always_showed() {
     assert_eq!(description(&replayed), Some(Value::from("there")));
     assert_eq!(description(&projected), Some(Value::from("there")));
     let issue = replayed.issue(EventId::parse(&id(2)).unwrap()).unwrap();
-    assert_eq!(replayed.conflicts(issue).len(), 1);
+    assert_eq!(replayed.conflicts(issue.hydrated().unwrap()).len(), 1);
 }

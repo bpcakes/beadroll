@@ -6,6 +6,13 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- Rust projection callers now prepare extensions with their exact record batch and acknowledge
+  cache writes through a borrowed `Writeback` carrying its own bytes, locations and generation.
+  Selective text-bearing issue reads, details and conflict alternatives require `HydratedIssue`;
+  checked short-field reads remain available without loading texts. Store and sync callers use
+  these boundaries. See *Reading from Rust* for the source migration; CLI output, format 1 and
+  projection encoding 11 are unchanged.
+
 - Rust readers now require a settled journal for collections, ordering and recap, a `HydratedState`
   for complete export, and `FullKnowledge` for whole-journal ancestry. `Tree::snapshot()` binds
   one journal to its replayed state and event/recap readers. Source-pinned consumers must migrate
