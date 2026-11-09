@@ -192,6 +192,11 @@ events they cannot apply until upgraded. The [guarantees](docs/GUARANTEES.md)
 describe recovery after interrupted writes, lost acknowledgements, and damaged
 stores, along with measured performance and known limits.
 
+`log` keeps a disposable history metadata cache for repeated reads, and first sync into an
+empty store flushes independent journal files in bounded parallel batches. The
+[3,135-event before/after probe](docs/evidence/hotspots-2026-11-08.md) records the measurements,
+output equivalence and remaining first-read cost.
+
 ### When two machines edit the same thing
 
 | Concurrent changes | Result after sync |

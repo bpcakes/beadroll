@@ -16,6 +16,7 @@ pub mod code;
 pub mod configuration;
 pub mod event;
 pub mod export;
+pub mod history;
 pub mod id;
 pub mod import;
 pub mod journal;

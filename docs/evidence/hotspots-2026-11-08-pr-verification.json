@@ -1,0 +1,54 @@
+{
+  "baseline_source_commit": "ebd060d3e7269932143d82e7d60762c230b272d7",
+  "candidate_source_commit": "aee058b1ed92b6b57d98a6a6c0820ca4589ef336",
+  "snapshot": "f42d36ee792c74d06afb4d098a91838cea95b1b1",
+  "benchmark_report": "hotspots-2026-11-08-pr-base.json",
+  "candidate_executable_sha256": "c1da7f618fe323d27e87ceb7b2ef3fc65059478d225139b276c6afedc74e4575",
+  "changed_rust_sources": {
+    "crates/beadroll-core/src/history.rs": "faaaadee74164ab1a201a196e2ae2f525544756ae9c1b216234c01ab824eeb92",
+    "crates/beadroll-core/src/lib.rs": "a1a12261fc2cdcf898e40f99bf2fcc92e420f019347c26d006e5cf08cc1581c6",
+    "crates/beadroll-store/src/fs.rs": "f3f15d1b2f231b13807f6feb1df4decce03ef527d3a1110b4f94ac4d2d2328a9",
+    "crates/beadroll-store/src/fs/prepared.rs": "a92bfabbe0308c5ee41219a09d2ac2c35b330a41fd10a4c96fd5bdab237f1706",
+    "crates/beadroll-store/src/history.rs": "e910401c3c8f2a0d19a6484ab672b2e6bbf5290a40ce53b38a511cda6b9b36d7",
+    "crates/beadroll-store/src/history/tests.rs": "83c48216799c565ee1af68e4579fc7459bcdce59e118ae85d95fe71cf5a34490",
+    "crates/beadroll-store/src/lib.rs": "c524a57860e85d3635a99b4c782435db5d045711d14041921405a6adc9bd9d49",
+    "crates/beadroll-sync/src/link/merge.rs": "9da555bb599e04deee0e0dabcbef2e0114268b32706d877746987b6de4bda8fb",
+    "crates/beadroll-sync/src/link/merge/bootstrap.rs": "e7b1b9465528f5d4f535110d901e893910de999daf9817824553b39f8b80ceeb",
+    "crates/beadroll/src/commands/history.rs": "7d8597bd8b4b4764c526ec1ec189fe0040d00ff4ea42be937d5fba26d95f3771",
+    "crates/beadroll/tests/cli/protocol.rs": "5ceb4debb2d2c39fc70288e3c9312395e4658a88afbe0ca8717f123e6627868d",
+    "crates/beadroll/tests/cli/protocol/bootstrap.rs": "f1c4d116b6f11d785b9b1ec8635d5447e63793a9b597d82d0c49b8da5b6dbd95",
+    "crates/beadroll/tests/cli/storage.rs": "1bc7706386c7e2c7ad5bd583bc1c831bdb6f698a1da842a989befbade2c7fc5f",
+    "crates/beadroll/tests/cli/storage/history.rs": "9c75e442849cca532ee948d0d06aaf5bdb3b86aaa7647595d016bc94ad0c38d0"
+  },
+  "syscalls": {
+    "before": {
+      "fsync_calls": 255,
+      "threads_calling_fsync": 2,
+      "sha256": "7a497f41f2134afe7990bea0e1494205f3584caa93adcba8f8209cbd27aab31a",
+      "warm_log_one_journal_files_opened": 250
+    },
+    "after": {
+      "fsync_calls": 255,
+      "threads_calling_fsync": 252,
+      "sha256": "c1da7f618fe323d27e87ceb7b2ef3fc65059478d225139b276c6afedc74e4575",
+      "warm_log_one_journal_files_opened": 0
+    }
+  },
+  "checks": {
+    "./check.sh --stress": {
+      "exit_code": 0,
+      "baseline_tests_passed": 1271,
+      "baseline_skipped": 11,
+      "doctests_passed": 2,
+      "infra_tests_passed": 14,
+      "stress_models_passed": 2
+    },
+    "cargo fmt --all -- --check": {
+      "exit_code": 0
+    },
+    "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D clippy::mod_module_files": {
+      "exit_code": 0
+    }
+  },
+  "scope": "Linux x86-64 local execution; no hosted CI or macOS execution claimed"
+}

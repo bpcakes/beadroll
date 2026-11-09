@@ -20,6 +20,29 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Initial-sync review follow-up (roll-wrjv, ids AP)
+
+Claude and Codex reviewed `ebd060d..aaa3576`. These were supporting coverage and documentation
+findings; neither reviewer demonstrated a production defect.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AP01 | Low | Preparation had no automated observation of durable flushing before installation | fixed | Pass the explicit failpoint registry through preparation and observe successful fsync before rename, with a cache-write negative control | `beadroll-store`: `fs::prepared::tests::durable_preparation_flushes_before_installation_and_caches_do_not` |
+| AP02 | Low | Installation-time ENOSPC did not exercise a failed preparation among successful siblings | fixed | Inject a flush error at a known remote-listing slot; hold a later sibling after its successful flush and check structured IO, the installed prefix, ordinary-error cleanup and retry | `beadroll-store`: `fs::prepared::tests::failed_preparation_flush_preserves_the_target_and_discards_the_temporary`; `beadroll`: `protocol::bootstrap::bootstrap_discards_prepared_siblings_after_a_flush_error_and_retries` |
+| AP03 | Low | Interrupted-download assertions accepted any subset of correct files | fixed | Derive order from the remote listing and compare exact installed prefixes at every interruption and before retry after an installation error | `beadroll`: `protocol::bootstrap::bootstrap_recovers_at_batch_boundaries_and_after_write_error` |
+| AP04 | Low | Interruption docs overstated ordinary-merge retry and understated persistent temporary files | fixed | Document retry routing based on installed files, up to eight abandoned preparations with an unbounded final-file overshoot, and no automatic journal temporary sweep | Source comparison with `link::merge::bootstrap`, `fs::prepared` and PID-based temporary naming; no runtime behavior change |
+
+## Frozen-snapshot performance investigation (2026-11-08, ids AO)
+
+Measured on the same 3,135-event snapshot before and after the changes. The
+[evidence](evidence/hotspots-2026-11-08.md) records isolation, executable hashes, output checks,
+measurements and limitations. The live tracker was not used as a test store.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AO01 | Low | `log --limit 1` parsed and ordered all journal payloads on every invocation | optimized | Cache checksummed causal display metadata, validate every source identity on hits, and resolve current keys and aliases afterwards. A changed journal still requires a full read; format 1 and output are unchanged. The snapshot trace opens 0 journal files on a hit, where it opened 250 | `beadroll-store`: `history::tests`; `beadroll`: `storage::history`, `commands::history`; release comparison with `infra/hotspots.py` |
+| AO02 | Low | First sync flushed each newly downloaded journal file serially | optimized | For an empty journal with no pending attempts, prepare and fsync up to eight independent files concurrently, then install in listing order, joining every worker and retaining all flushes. Existing journals and aliased or duplicate destinations retain the ordinary merge. The snapshot still makes 255 fsync calls | `beadroll-store`: `fs::prepared::tests`; `beadroll-sync`: `link::merge::bootstrap::tests`; `beadroll`: `protocol::bootstrap`; the baseline and sync stress models; release comparison with `infra/hotspots.py` |
+
 ## Lock, attempt and merge boundaries (roll-lih9, ids AN)
 
 Three observations from the follow-up 2026-11-08 chat review. The latter two preserve behavior;

@@ -11,6 +11,7 @@ mod elsewhere;
 mod error;
 mod failpoint;
 mod fs;
+mod history;
 mod identity;
 mod journal;
 mod listing;
@@ -30,9 +31,11 @@ pub use elsewhere::{Elsewhere, elsewhere};
 pub use error::{Error, git_code};
 pub use failpoint::{Action, CrashHooks, Failpoints, Fired, POINTS, Selector, kill_self};
 pub use fs::{
-    FileMode, Unreadable, dir_entries, fsync, glob_ending, has_suffix, json_text, os_error_str,
-    private_dir, private_dirs, read, read_json_text, utf8_error, write_atomic,
+    FileMode, PreparedAtomic, Unreadable, dir_entries, fsync, glob_ending, has_suffix, json_text,
+    os_error_str, prepare_atomic, private_dir, private_dirs, read, read_json_text, utf8_error,
+    write_atomic,
 };
+pub use history::history;
 pub use identity::{IdentityMode, hex_token, machine_aliases, replica_id, uuid7};
 pub use journal::{
     ViewError, active_segment, append_events, attempt_path, claim_files, claim_keys,
