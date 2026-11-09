@@ -6,7 +6,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use beadroll_store::{PreparedAtomic, complete_prefix, prepare_atomic};
+use beadroll_store::{Failpoints, PreparedAtomic, complete_prefix, prepare_atomic};
 
 use super::{Merging, attempt_shaped, newlines, segment_shaped};
 use crate::Error;
@@ -70,7 +70,7 @@ impl Merging<'_, '_> {
                     attempt,
                 });
             }
-            let prepared = prepare(&downloads);
+            let prepared = prepare(&downloads, &self.link.ws.settings.failpoints);
             for (download, prepared) in downloads.iter().zip(prepared) {
                 self.facts
                     .remote_counts
@@ -133,7 +133,10 @@ fn unaliased_directory(path: &Path) -> bool {
 /// Each worker prepares one distinct target. A failure remains in its slot: earlier files are
 /// installed first, later prepared files are discarded, as a sequential merge would stop there.
 /// Empty segments are not created, matching merge_segment's empty-prefix case.
-fn prepare(downloads: &[Download]) -> Vec<Result<Option<PreparedAtomic>, Error>> {
+fn prepare(
+    downloads: &[Download],
+    failpoints: &Failpoints,
+) -> Vec<Result<Option<PreparedAtomic>, Error>> {
     std::thread::scope(|scope| {
         let workers: Vec<_> = downloads
             .iter()
@@ -144,7 +147,7 @@ fn prepare(downloads: &[Download]) -> Vec<Result<Option<PreparedAtomic>, Error>>
                         if !download.attempt && download.data.is_empty() {
                             Ok(None)
                         } else {
-                            prepare_atomic(&download.target, &download.data).map(Some)
+                            prepare_atomic(&download.target, &download.data, failpoints).map(Some)
                         }
                     })
             })

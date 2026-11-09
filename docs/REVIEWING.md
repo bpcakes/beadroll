@@ -2313,8 +2313,17 @@ These were decided deliberately. Report problems *with* them, not their existenc
   No existing target or pending attempt enters this path, so conflicts, extensions and pending
   confirmation keep the ordinary merge. Every installed journal file still completes its own
   fsync; no worker outlives the call and no acknowledgement precedes installation. A kill can
-  leave up to eight prepared temporary files in the interrupted batch; readers ignore them and
-  retry uses the ordinary merge if any journal file was installed. The format is unchanged.
+  leave up to eight prepared temporary files in the interrupted batch. The batch stops once its
+  bytes reach four MiB, but its last file can exceed that threshold by any amount. Readers ignore
+  these files; no journal temporary sweep removes them, so leftovers from successive processes
+  can accumulate. Retry uses the ordinary merge if any journal file was installed; otherwise the
+  empty store can take the parallel path again. The format is unchanged.
+  The `atomic-flush:` failpoint injects a preparation error before fsync, and `atomic-flushed:`
+  observes a successful fsync before installation; neither fires for cache writes. Store tests
+  check that durable preparation reaches the latter before rename and that a failed flush
+  discards its temporary. `protocol::bootstrap` checks exact remote-listing prefixes after kills
+  and installation errors, and a failed preparation with a later successfully flushed sibling,
+  including cleanup and retry (AP01–AP03).
   Eligibility also requires distinct absent targets, unaliased parent directories and canonical
   eight-digit lowercase hexadecimal machine names, excluding duplicate paths, symlink aliases,
   dot components and case aliases between destinations. The empty events directory the store
@@ -2336,8 +2345,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   would not protect their files, since a read writes the projection back outside it. A directory
   that cannot be listed or a file that cannot be removed is left alone, and a write that writes
   nothing back (a write after a write, `kept_for`) sweeps nothing. The journal's files are not
-  swept: a kill leaves a few hundred bytes beside an attempt or pending file, and listing
-  `claims/` at every attempt written would cost more than it freed.
+  swept. A killed writer leaves a temporary as large as the file it had prepared; initial sync
+  can leave the larger batch described above. These ignored files can remain indefinitely.
+  Cache cleanup does not remove them, and ordinary writes do not scan `claims/` for them.
   The checksummed caches are the exception (roll-lqjj.27, X05): the projection, its text file and
   the history metadata described above
   are written whole and atomically but not fsynced (`fs::write_cache_parts`; the text file's appends

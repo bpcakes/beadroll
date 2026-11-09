@@ -540,10 +540,15 @@ it, and the file is committed again.
   the history's metadata, even for `--limit 1`; it is not a history boundary.
   First sync into an empty store flushes up to eight independent journal files
   concurrently, then installs them in listing order. Every file is still
-  fsynced before its rename; an interrupted download resumes through the
-  ordinary merge. Payload batches stop after eight files or four MiB, though
-  one file can exceed that budget. Existing journals and pending attempts use
-  the ordinary merge path. See the [before/after evidence](evidence/hotspots-2026-11-08.md).
+  fsynced before its rename. After an interruption, retry uses the ordinary
+  merge if any journal file was installed; otherwise the empty store can take
+  the parallel path again. Payload batches stop after eight files or once
+  their bytes reach four MiB; the last file can exceed that threshold by any
+  amount. A killed process can leave up to eight prepared temporary files
+  from its interrupted batch. Readers ignore them, but no journal temporary
+  sweep removes them, so leftovers from successive processes can accumulate.
+  Existing journals and pending attempts use the ordinary merge path. See
+  the [before/after evidence](evidence/hotspots-2026-11-08.md).
   A write after a write takes the records before it in without
   writing the projection back until they hold more than a 64th of its bytes, so
   at 200,000 events it takes 0.26 s rather than 0.38 s, and a sync after a local

@@ -25,8 +25,18 @@ pub struct PreparedAtomic {
 /// Writes and fsyncs a private file beside `path`, without replacing `path` yet. The returned
 /// value can be moved between threads, and can be installed only once. Every preparation for
 /// one target must finish or be dropped before another begins for that target.
-pub fn prepare_atomic(path: &Path, data: &[u8]) -> Result<PreparedAtomic, Error> {
-    parts(path, &[data], FileMode::Private, Durability::Durable)
+pub fn prepare_atomic(
+    path: &Path,
+    data: &[u8],
+    failpoints: &Failpoints,
+) -> Result<PreparedAtomic, Error> {
+    parts(
+        path,
+        &[data],
+        FileMode::Private,
+        Durability::Durable,
+        failpoints,
+    )
 }
 
 pub(super) fn parts(
@@ -34,6 +44,7 @@ pub(super) fn parts(
     parts: &[&[u8]],
     mode: FileMode,
     durability: Durability,
+    failpoints: &Failpoints,
 ) -> Result<PreparedAtomic, Error> {
     let parent = path.parent().unwrap_or(Path::new("."));
     let private = matches!(mode, FileMode::Private);
@@ -63,7 +74,11 @@ pub(super) fn parts(
         file.write_all(part).map_err(|e| IoError::bare(&e))?;
     }
     if matches!(durability, Durability::Durable) {
+        if let Some(Fired::Errno(errno)) = failpoints.hit_path("atomic-flush", path) {
+            return Err(IoError::bare(&io::Error::from_raw_os_error(errno)).into());
+        }
         fsync(file)?;
+        failpoints.hit_path("atomic-flushed", path);
     }
     Ok(prepared)
 }
@@ -107,14 +122,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let target = dir.path().join("file");
         std::fs::write(&target, b"old").unwrap();
-        let prepared = prepare_atomic(&target, b"new").unwrap();
+        let prepared = prepare_atomic(&target, b"new", &Failpoints::none()).unwrap();
         assert_eq!(std::fs::read(&target).unwrap(), b"old");
         assert_eq!(std::fs::read(&prepared.temporary).unwrap(), b"new");
         let temporary = prepared.temporary.clone();
         drop(prepared);
         assert!(!temporary.exists());
         assert_eq!(std::fs::read(&target).unwrap(), b"old");
-        prepare_atomic(&target, b"new")
+        prepare_atomic(&target, b"new", &Failpoints::none())
             .unwrap()
             .install(&Failpoints::none())
             .unwrap();
@@ -130,7 +145,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let target = dir.path().join("file");
         std::fs::write(&target, b"old").unwrap();
-        let prepared = prepare_atomic(&target, b"new").unwrap();
+        let prepared = prepare_atomic(&target, b"new", &Failpoints::none()).unwrap();
         let temporary = prepared.temporary.clone();
         let faults = Failpoints::from_env(
             Some(OsStr::new("atomic-write:file=errno(ENOSPC)")),
@@ -141,5 +156,64 @@ mod tests {
         assert_eq!(faults.hits("atomic-write:file"), 1);
         assert_eq!(std::fs::read(target).unwrap(), b"old");
         assert!(!temporary.exists());
+    }
+
+    /// AP01: durable preparation reaches the successful-fsync boundary before any rename;
+    /// cache preparation uses the same writer without flushing.
+    #[test]
+    fn durable_preparation_flushes_before_installation_and_caches_do_not() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("file");
+        std::fs::write(&target, b"old").unwrap();
+        let faults = Failpoints::from_env(
+            Some(OsStr::new(
+                "atomic-flushed:file@always=sleep(0);atomic-write:file@always=sleep(0)",
+            )),
+            CrashHooks::default(),
+        )
+        .unwrap();
+        let prepared = prepare_atomic(&target, b"new", &faults).unwrap();
+        assert_eq!(faults.hits("atomic-flushed:file"), 1);
+        assert_eq!(faults.hits("atomic-write:file"), 0);
+        assert_eq!(std::fs::read(&target).unwrap(), b"old");
+        prepared.install(&faults).unwrap();
+        assert_eq!(faults.hits("atomic-write:file"), 1);
+        assert_eq!(std::fs::read(&target).unwrap(), b"new");
+        parts(
+            &target,
+            &[b"cache"],
+            FileMode::Private,
+            Durability::Cache,
+            &faults,
+        )
+        .unwrap()
+        .install(&faults)
+        .unwrap();
+        assert_eq!(faults.hits("atomic-flushed:file"), 1);
+        assert_eq!(std::fs::read(&target).unwrap(), b"cache");
+    }
+
+    /// AP02: a flush error is a preparation error, so no install is possible and the partial
+    /// preparation is discarded while the old target survives.
+    #[test]
+    fn failed_preparation_flush_preserves_the_target_and_discards_the_temporary() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("file");
+        std::fs::write(&target, b"old").unwrap();
+        let faults = Failpoints::from_env(
+            Some(OsStr::new(
+                "atomic-flush:file=errno(ENOSPC);atomic-flushed:file=sleep(0)",
+            )),
+            CrashHooks::default(),
+        )
+        .unwrap();
+        let Err(error) = prepare_atomic(&target, b"new", &faults) else {
+            panic!("the flush must fail");
+        };
+        assert_eq!(error.code(), beadroll_core::code::Code::Io);
+        assert_eq!(faults.hits("atomic-flush:file"), 1);
+        assert_eq!(faults.hits("atomic-flushed:file"), 0);
+        assert_eq!(std::fs::read(&target).unwrap(), b"old");
+        assert!(!temporary(&target).exists());
     }
 }

@@ -25,6 +25,8 @@ remote resolution, actor detection, `view`, and the failpoint registry.
 - `src/fs/prepared.rs`: `prepare_atomic` writes and flushes a private temporary file;
   `PreparedAtomic::install` consumes it to rename it, and dropping it discards it. The writer
   must exclude overlapping preparations for the same target throughout both phases.
+  Preparation takes the explicit failpoint registry: `atomic-flush:` can fail before fsync,
+  and `atomic-flushed:` observes successful fsync before installation. Caches reach neither.
 - `src/history.rs`: `history`, causal display metadata cached under `history`, with the build,
   every source file's settled identity and a content checksum checked on each hit. A miss
   loads and settles the journal. Pending attempts, current issue keys and aliases are not cached.

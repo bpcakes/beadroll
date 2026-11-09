@@ -124,9 +124,9 @@ pub(crate) fn write_atomic_keyed(
 /// command after every write as much again as the write (X05). The failpoints fire as for
 /// [`write_atomic`]. A bead killed between its write and its rename leaves the temporary file,
 /// which the projection's write-back removes, both caches' at once, before it writes either
-/// ([`abandoned`], roll-lqjj.52). The journal's files are not swept, since a kill leaves a few
-/// hundred bytes beside one of them, and a listing of `claims/` at every attempt written would
-/// cost more than it freed.
+/// ([`abandoned`], roll-lqjj.52). Journal temporaries are not swept. An interrupted first sync
+/// can leave up to eight prepared files, with a batch reaching four MiB plus the last file's
+/// overshoot. Readers ignore these files, but later processes can leave them on disk indefinitely.
 pub(crate) fn write_cache_parts(
     path: &Path,
     parts: &[&[u8]],
@@ -152,7 +152,7 @@ fn written_whole(
     durable: Durability,
     failpoints: &Failpoints,
 ) -> Result<File, Error> {
-    prepared::parts(path, parts, private, durable)?.install_file(failpoints)
+    prepared::parts(path, parts, private, durable, failpoints)?.install_file(failpoints)
 }
 
 /// `.NAME.PID.tmp` beside `path`, its name's bytes kept as they are.

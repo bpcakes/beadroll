@@ -20,6 +20,18 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Initial-sync review follow-up (roll-wrjv, ids AP)
+
+Claude and Codex reviewed `ebd060d..aaa3576`. These were supporting coverage and documentation
+findings; neither reviewer demonstrated a production defect.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AP01 | Low | Preparation had no automated observation of durable flushing before installation | fixed | Pass the explicit failpoint registry through preparation and observe successful fsync before rename, with a cache-write negative control | `beadroll-store`: `fs::prepared::tests::durable_preparation_flushes_before_installation_and_caches_do_not` |
+| AP02 | Low | Installation-time ENOSPC did not exercise a failed preparation among successful siblings | fixed | Inject a flush error at a known remote-listing slot; hold a later sibling after its successful flush and check structured IO, the installed prefix, ordinary-error cleanup and retry | `beadroll-store`: `fs::prepared::tests::failed_preparation_flush_preserves_the_target_and_discards_the_temporary`; `beadroll`: `protocol::bootstrap::bootstrap_discards_prepared_siblings_after_a_flush_error_and_retries` |
+| AP03 | Low | Interrupted-download assertions accepted any subset of correct files | fixed | Derive order from the remote listing and compare exact installed prefixes at every interruption and before retry after an installation error | `beadroll`: `protocol::bootstrap::bootstrap_recovers_at_batch_boundaries_and_after_write_error` |
+| AP04 | Low | Interruption docs overstated ordinary-merge retry and understated persistent temporary files | fixed | Document retry routing based on installed files, up to eight abandoned preparations with an unbounded final-file overshoot, and no automatic journal temporary sweep | Source comparison with `link::merge::bootstrap`, `fs::prepared` and PID-based temporary naming; no runtime behavior change |
+
 ## Frozen-snapshot performance investigation (2026-11-08, ids AO)
 
 Measured on the same 3,135-event snapshot before and after the changes. The
