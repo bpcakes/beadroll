@@ -114,8 +114,8 @@ impl Tree {
         if !matches!(&format, Value::Int(n) if n.as_i64() == Some(FORMAT)) {
             return Err(TreeError::Format(repr(&format)));
         }
-        // Read each machine's segments followed by its attempt files, ordered by machine and then
-        // path components.
+        // Every machine's segments, then every machine's attempt files, each by machine and then
+        // by path.
         files.sort_by(|a, b| (a.2, &a.1, &a.0).cmp(&(b.2, &b.1, &b.0)));
         Ok(Tree {
             workspace: expected.to_owned(),

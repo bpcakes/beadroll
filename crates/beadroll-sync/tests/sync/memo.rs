@@ -12,7 +12,7 @@ mod trees;
 use std::fs::{FileTimes, OpenOptions};
 use std::io::Write as _;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{Duration, SystemTime};
 
 use beadroll_core::json::{Object, Value};
@@ -368,7 +368,7 @@ fn a_remembered_blob_sync_git_lost_is_hashed_again() {
     );
     let blob = blob.trim();
     let has = |blob: &str| {
-        Command::new("git")
+        beadroll_test_support::git_command()
             .arg("--git-dir")
             .arg(&sync_git)
             .args(["cat-file", "-e", blob])

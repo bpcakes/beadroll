@@ -174,14 +174,11 @@ fn f13_local_state_files_are_strict_json() {
     let saved = std::fs::read(&replica).unwrap();
     std::fs::write(&replica, "{\"id\": NaN}\n").unwrap();
     let info = machine.run(["info", "--json"]);
-    assert!(!info.crashed(), "{}", info.stderr);
-    if info.returncode() == 0 {
-        assert_strict_json(&info);
-    } else {
-        assert_eq!(code(&info), "IDENTITY", "{}", info.stderr);
-    }
+    assert_eq!(info.returncode(), 1, "{}", info.stdout);
+    assert_eq!(code(&info), "IDENTITY", "{}", info.stderr);
     let created = machine.run(["create", "after nan identity", "--json"]);
-    assert!(!created.crashed(), "{}", created.stderr);
+    assert_eq!(created.returncode(), 1, "{}", created.stdout);
+    assert_eq!(code(&created), "IDENTITY", "{}", created.stderr);
     std::fs::write(&replica, saved).unwrap();
 
     std::fs::write(machine.home().join("aliases.json"), "[1, 2]\n").unwrap();

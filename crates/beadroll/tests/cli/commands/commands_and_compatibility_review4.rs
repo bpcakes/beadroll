@@ -44,37 +44,26 @@ fn q05_tombstone_update_cannot_leave_a_releasable_claim() {
     let key = id(&a.bead(["create", "delete me"]).unwrap());
     a.bead(["sync"]);
     let result = a.run(["update", &key, "--claim", "--status", "tombstone", "--json"]);
-    if result.returncode() != 0 {
-        assert_eq!(code(&result), "VALIDATION");
-        let shown = a.show(&key);
-        assert_eq!(shown["status"], json!("open"));
-        assert!(shown.get("claim").is_none(), "{shown:?}");
-        assert_eq!(
-            glob(&a.store().join("pending"), ".json"),
-            Vec::<PathBuf>::new()
-        );
-        // events/*/claims/*.json
-        let claims: Vec<PathBuf> = glob(&a.store().join("events"), "")
-            .iter()
-            .flat_map(|replica| glob(&replica.join("claims"), ".json"))
-            .collect();
-        assert_eq!(claims, Vec::<PathBuf>::new());
-        let peer = Machine::new(&sandbox, "q05-rejected-peer");
-        peer.bead(["sync"]);
-        assert_eq!(peer.show(&key)["status"], json!("open"));
-        assert!(peer.show(&key).get("claim").is_none());
-        return; // rejecting this spelling in favor of `delete` is safe
-    }
+    // this spelling is refused in favour of `delete`, and nothing of the claim is left anywhere
+    assert_eq!(result.returncode(), 1, "{}", result.stdout);
+    assert_eq!(code(&result), "VALIDATION");
     let shown = a.show(&key);
-    assert_eq!(shown["status"], json!("tombstone"));
-    let released = a.run(["release", &key, "--json"]);
-    assert_ne!(
-        released.returncode(),
-        0,
-        "release resurrected a tombstoned issue"
+    assert_eq!(shown["status"], json!("open"));
+    assert!(shown.get("claim").is_none(), "{shown:?}");
+    assert_eq!(
+        glob(&a.store().join("pending"), ".json"),
+        Vec::<PathBuf>::new()
     );
-    assert_eq!(a.show(&key)["status"], json!("tombstone"));
-    assert!(a.show(&key).get("claim").is_none());
+    // events/*/claims/*.json
+    let claims: Vec<PathBuf> = glob(&a.store().join("events"), "")
+        .iter()
+        .flat_map(|replica| glob(&replica.join("claims"), ".json"))
+        .collect();
+    assert_eq!(claims, Vec::<PathBuf>::new());
+    let peer = Machine::new(&sandbox, "q05-rejected-peer");
+    peer.bead(["sync"]);
+    assert_eq!(peer.show(&key)["status"], json!("open"));
+    assert!(peer.show(&key).get("claim").is_none());
 }
 
 /// Q11: close clears seen provisional claims but preserves concurrent ones.

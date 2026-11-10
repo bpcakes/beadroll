@@ -2,7 +2,7 @@
 //! background child still holds git's standard error open.
 
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use beadroll_test_support::Sandbox;
 use rustix::process::{Pid, Signal, kill_process};
@@ -38,7 +38,7 @@ impl Drop for Helpers {
 /// `_g58_remote_head`: the commit the remote's `refs/beads/journal` names, or nothing when git
 /// cannot say.
 fn remote_head(sandbox: &Sandbox) -> String {
-    let output = Command::new("git")
+    let output = beadroll_test_support::git_command()
         .arg("--git-dir")
         .arg(sandbox.origin())
         .args(["rev-parse", "refs/beads/journal"])

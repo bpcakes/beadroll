@@ -4,6 +4,7 @@
 //!   `./check.sh` is a thin wrapper around it.
 //! - `coverage` reports what the suites run of the product's code, with cargo-llvm-cov.
 //! - `timing` runs a command and records how long it took, as evidence.
+//! - `bead` runs bead in xtask's own process, which counts its heap.
 //!
 //! It is a developer tool, so it prints; the product crates do not (`CONTRIBUTING.md`).
 #![allow(

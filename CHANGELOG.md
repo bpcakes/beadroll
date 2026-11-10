@@ -6,6 +6,32 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A command that publishes what it wrote itself (`init`, and a `close`, `delete` or closing
+  `update` that ends a confirmed claim) tries the remote once. When that publish failed, the
+  command line tried it again: the "not yet published" warning came twice, a remote that did not
+  answer was waited for twice, and after a failure that passed the warning stood above a write
+  that had been published after all (AS07).
+- `list` and `ready` refuse a priority that is none whatever else filters; `list -s blocked -p 9`
+  answered "No issues" when nothing was blocked (AS05). A machine whose name was taken back
+  (`machines --name ID=`) goes by its id in `log`, `recap` and `claims` (AS06).
+- An event that names its operation `invalid` or `quarantined` is reported as any unknown
+  operation is; the first was dropped without an integrity row (AS01). A sync or an ownership
+  command that loses its last round reports `SYNC_CONFLICT` at once, without one more wait of up
+  to two seconds (AS03). A machine identity that could not be written leaves no temporary file
+  in `BEAD_HOME` (AS02).
+- The test fixtures' `git` no longer inherits `GIT_*` variables, with which tests started from a
+  git hook would have committed and pushed in the repository they were started from, and
+  `COLUMNS` no longer reaches the `bead` under test (AS08). The same isolation now covers
+  test-local Git helpers, including commits, fast-import and object maintenance; tests run those
+  callers with inherited routing and check an unrelated repository stays unchanged (AS13).
+  The round-trip driver's tests check the environments passed to bead too (AS14).
+  The isolation probe needs no bead binary, so store tests still run alone (AS15), and child
+  fixtures keep the caller's `BEAD_UNDER_TEST` selection (AS17). The server-race test classifies
+  the push that raced, without making another push (AS16).
+  Tests that accepted either of two
+  outcomes assert the one the ledger records (AS09). `docs/FINDINGS.md`, ids AS, lists the rest
+  of the whole-project audit (roll-23jk).
+
 - Rust projection callers now prepare extensions with their exact record batch and acknowledge
   cache writes through a borrowed `Writeback` carrying its own bytes, locations and generation.
   Selective text-bearing issue reads, details and conflict alternatives require `HydratedIssue`;

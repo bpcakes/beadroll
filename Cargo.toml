@@ -32,7 +32,7 @@ sha2 = "0.10"                               # the version studio already builds
 tempfile = "3"
 textwrap = { version = "0.16", default-features = false, features = ["unicode-width"] }  # bead's own texts, wrapped by display width
 thiserror = "2"
-uuid = { version = "1", features = ["v4", "v7"] }
+uuid = { version = "1", features = ["v4"] }  # the random bits of an event id and a machine id; the UUIDv7 layout is identity.rs's own
 
 [workspace.lints.rust]
 unsafe_code = "deny"                        # three documented exceptions, CONTRIBUTING.md

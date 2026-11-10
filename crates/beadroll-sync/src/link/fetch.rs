@@ -111,9 +111,6 @@ impl Link<'_> {
         }
     }
 
-    /// A missing or unfinished `sync.git` (a failed or interrupted init) completed in place, with no
-    /// template (the user's hooks are for their repositories) and private modes. Two processes may
-    /// race here; whichever loses finds the directory in place.
     /// `sync.git`, in the project's object format: made if it is not there, made again if it was
     /// made in another.
     fn prepare_repository(&mut self) -> Result<(), Error> {
@@ -140,6 +137,9 @@ impl Link<'_> {
         self.ensure_repository()
     }
 
+    /// A missing or unfinished `sync.git` (a failed or interrupted init) completed in place, with no
+    /// template (the user's hooks are for their repositories) and private modes. Two processes may
+    /// race here; whichever loses finds the directory in place.
     fn ensure_repository(&self) -> Result<(), Error> {
         let complete = ["HEAD", "objects", "refs"]
             .iter()

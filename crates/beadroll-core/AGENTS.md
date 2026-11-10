@@ -214,8 +214,8 @@ consumer on tokio calls through `spawn_blocking`.
   addition is with the issue's texts, `None` in a state read alone until they are read in, which
   only an export (and applying more events) needs. So an edge added or removed changes an issue's texts, and so does a create of a
   key another issue's import waits for, which makes that issue an edge: `Projection::extend`
-  declines when such an issue's texts are not in, and `Projection::about` lists them for a store to
-  read in first. Read an edge through `Issue::deps` and `Issue::dep_tags`, never the field; add an
+  declines when such an issue's texts are not in, and `Projection::prepare_extension` lists them
+  (`Extension::wanted_texts`) for a store to read in first. Read an edge through `Issue::deps` and `Issue::dep_tags`, never the field; add an
   edge through `DepTags::added` alone, and change an edge's additions through it, or through
   `DepTags::for_each_to` or `DepTags::values_mut`, which never add or move an edge (roll-lqjj.21):
   an issue's edges are a vector, in the order first added, searched in order while there are at most
@@ -239,7 +239,7 @@ consumer on tokio calls through `spawn_blocking`.
   too late) is kept with its texts (roll-lqjj.40): a state read alone has it empty until they are
   read in, as every command that prints an issue whole does (`show`, `update`, `claim`,
   `takeover`, `comments`, `export`) and as the store does for the issues a batch is about before
-  `Projection::extend` applies it (`Projection::about`). Its claim, its generation and its offline claims, which every
+  `Extension::apply` applies it (`Extension::wanted_texts`). Its claim, its generation and its offline claims, which every
   ownership decision reads, stay in the state part, and so does who ended its last ended claim and
   how (`Issue::last_ended`, from `Stored`), which `close`, `delete` and `update` ask of issues whose
   texts they do not read in. Replay adds to the history only through `Issue::ended`, `Issue::lost`
@@ -316,7 +316,7 @@ consumer on tokio calls through `spawn_blocking`.
   work on the shape it was quadratic on, at a size and at eight times it, and fails above sixteen
   times as much (roll-lqjj.34, X15). The counts are kept where every way of doing the work passes
   (`work::tally`): an issue's edges when `Issue::deps` or `Issue::dep_tags` hands them out and a
-  parent's children when `State::children` does, an issue relabelled (`replay::relabel`), the
+  parent's children when `State::children` does, an issue relabelled (`Issue::relabel`), the
   parent-child index built (`State::index_children`), a waiting import's key read
   (`state::awaited`, which replay reads it through and nowhere else) and the entries `Awaiting`
   hands out, examines or makes whole, an import's record or dependency key read (`id_of`,

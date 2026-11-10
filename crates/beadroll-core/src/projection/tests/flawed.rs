@@ -134,7 +134,7 @@ impl World {
         }
     }
 
-    /// Machine `m` appends `value` to its journal (or, `attempt`, writes it as an attempt file).
+    /// Machine `m` appends `value` to its journal.
     fn push(&mut self, m: usize, value: Value) {
         self.events.push(Written {
             value,

@@ -71,7 +71,7 @@ fn under<'m>(invocation: Invocation<'m>, locale: &str) -> Invocation<'m> {
 /// Lists refs under refs/beads on the remote, decoding invalid UTF-8 with replacement so a
 /// locale-encoded second tracker remains visible to the test.
 fn coordination_refs(sandbox: &Sandbox) -> Vec<String> {
-    let listed = Command::new("git")
+    let listed = beadroll_test_support::git_command()
         .args(["for-each-ref", "--format=%(refname)", "refs/beads"])
         .current_dir(sandbox.origin())
         .stdin(Stdio::null())

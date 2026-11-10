@@ -61,7 +61,7 @@ impl Rng {
         (self.next() % n.max(1) as u64) as usize
     }
 
-    fn chance(&mut self, percent: u64) -> bool {
+    pub(crate) fn chance(&mut self, percent: u64) -> bool {
         self.next() % 100 < percent
     }
 

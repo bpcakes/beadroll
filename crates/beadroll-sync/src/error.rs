@@ -65,7 +65,7 @@ pub enum Error {
     /// not complete (`UNRESOLVED`).
     #[error("{0}")]
     Unresolved(String),
-    /// A failure a failpoint injected (`error(CODE)`, at `publish.result` or
+    /// A failure a failpoint injected (`error(CODE)`, at `publish.result`, `fetch.result` or
     /// `ownership.after-confirm`), with its code.
     #[error("{} injected by the {point} failpoint", .code.as_str())]
     Injected {
@@ -75,6 +75,11 @@ pub enum Error {
         point: &'static str,
     },
 }
+
+/// What a machine is told whose own journal no longer forms one chain, by the merge that finds
+/// it and by the command that would write after it.
+pub(crate) const OWN_CHAIN: &str = "this machine's journal no longer forms one chain: the same machine \
+                                    identity has written from two places. Give one of them a new identity.";
 
 impl Error {
     /// The code bead reports this under.

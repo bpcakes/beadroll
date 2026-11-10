@@ -3,12 +3,11 @@
 //! different store.
 
 use std::path::Path;
-use std::process::Command;
 
 /// Lines listed by `git status --porcelain --untracked-files=all` in `checkout`. The helper does
 /// not check exit status and returns empty output if git fails silently.
 fn untracked(checkout: &Path) -> Vec<String> {
-    let output = Command::new("git")
+    let output = beadroll_test_support::git_command()
         .args(["status", "--porcelain", "--untracked-files=all"])
         .current_dir(checkout)
         .output()
@@ -100,8 +99,11 @@ mod g35_store_never_lands_in_the_checkout {
             Vec::<String>::new(),
             "the store was written inside the checkout: {said}"
         );
-        if made.returncode() != 0 {
-            assert_eq!(code(&made), "CONFIG", "{}", made.stderr);
-        }
+        assert_eq!(
+            made.returncode(),
+            1,
+            "a relative BEAD_HOME was accepted: {said}"
+        );
+        assert_eq!(code(&made), "CONFIG", "{}", made.stderr);
     }
 }

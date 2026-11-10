@@ -25,6 +25,15 @@ fn beads_file(machine: &Machine, text: &str) -> String {
 }
 
 /// Whether the remote publishes a tracker.
+/// `git commit ARGS` by an author named here, whatever identity this machine has or lacks.
+fn commit<'a>(args: &[&'a str]) -> Vec<&'a str> {
+    let identity = ["-c", "user.name=t", "-c", "user.email=t@example.invalid"];
+    let mut command = identity.to_vec();
+    command.push("commit");
+    command.extend(args);
+    command
+}
+
 fn published(origin: &Path) -> bool {
     !git(
         ["ls-remote", origin.to_str().unwrap(), "refs/beads/journal"],
@@ -120,15 +129,15 @@ fn branches_and_worktrees_with_tracker_changes_the_checkout_lacks_are_named() {
     let file = beads_file(&a, EXPORT);
     let at = Some(checkout);
     git(["add", ".beads"], at);
-    git(["commit", "-q", "-m", "tracker"], at);
+    git(commit(&["-q", "-m", "tracker"]), at);
     // behind HEAD: nothing it lacks
     git(["branch", "behind", "HEAD~1"], at);
     // ahead: one commit that touches the tracker file, one that does not
     git(["checkout", "-q", "-b", "ahead"], at);
     let more = format!("{EXPORT}{{\"id\":\"ex-4\",\"title\":\"four\"}}\n");
     beads_file(&a, &more);
-    git(["commit", "-q", "-am", "tracker work"], at);
-    git(["commit", "-q", "--allow-empty", "-m", "code work"], at);
+    git(commit(&["-q", "-am", "tracker work"]), at);
+    git(commit(&["-q", "--allow-empty", "-m", "code work"]), at);
     git(["checkout", "-q", "-"], at);
     // a worktree with tracker changes not committed, and one with none
     let changed = checkout.with_file_name("changed-tree");
@@ -200,7 +209,7 @@ fn another_worktrees_index_is_left_as_it_is() {
     let file = beads_file(&a, EXPORT);
     let at = Some(checkout);
     git(["add", ".beads"], at);
-    git(["commit", "-q", "-m", "tracker"], at);
+    git(commit(&["-q", "-m", "tracker"]), at);
     let tree = checkout.with_file_name("other-tree");
     git(
         [

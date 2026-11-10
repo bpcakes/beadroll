@@ -176,19 +176,13 @@ fn e06_export_never_emits_nonfinite_json_numbers() {
     );
     std::fs::write(&source, nonfinite).unwrap();
     let imported = machine.run(["import", &source.display().to_string(), "--json"]);
-    if imported.returncode() != 0 {
-        // refused, with an error that is itself strict JSON
-        strict_json(&imported.stderr);
-        return;
-    }
+    // refused whole, with an error that is itself strict JSON: nothing is there to export
+    assert_eq!(imported.returncode(), 1, "{}", imported.stdout);
+    strict_json(&imported.stderr);
+    assert_eq!(code(&imported), "VALIDATION", "{}", imported.stderr);
     let exported = machine.run(["export"]);
     assert_eq!(exported.returncode(), 0, "{}", exported.stderr);
-    // The record is ASCII and has no line separator other than newline.
-    for line in exported.stdout.lines() {
-        if let Err(error) = parse_json(line) {
-            panic!("export emitted non-RFC-8259 JSON: {error}; line={line:?}");
-        }
-    }
+    assert_eq!(exported.stdout, "");
 }
 
 /// E07: an early pipeline consumer exit must not produce flush errors.
@@ -217,14 +211,9 @@ fn e07_closed_downstream_pipe_has_defined_quiet_exit() {
         stdout: String::new(),
         stderr: String::from_utf8_lossy(&stderr).into_owned(),
     };
-    let returncode = run.returncode();
-    assert!(
-        [0, 141].contains(&returncode),
-        "{returncode}: {}",
-        run.stderr
-    );
-    assert!(!run.stderr.contains("BrokenPipeError"), "{}", run.stderr);
-    assert!(!run.crashed(), "{}", run.stderr);
+    // a reader that went away is a quiet exit 0, whether bead found it gone or wrote first
+    assert_eq!(run.returncode(), 0, "{}", run.stderr);
+    assert_eq!(run.stderr, "");
 }
 
 /// E08: values accepted by import validation must be safe in every query path.

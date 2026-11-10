@@ -86,7 +86,7 @@ pub(crate) struct Failure {
     pub(crate) code: Code,
     pub(crate) message: String,
     /// The original message bytes when a command-line argument or path is not UTF-8. `message`
-    /// substitutes U+FFFD; human output uses `?`, and JSON uses `\udcXX` escapes.
+    /// substitutes U+FFFD; human output uses `?` for each such byte, and JSON `\ufffd`.
     pub(crate) raw: Option<Vec<u8>>,
     /// What a human reads after the message of a usage error: the usage, and where help is.
     pub(crate) after: Option<String>,
@@ -211,8 +211,9 @@ pub(crate) struct Outcome {
     pub(crate) result: Option<Value>,
     pub(crate) lines: Option<Vec<Line>>,
     pub(crate) raw: Option<String>,
-    /// The command published and counted what it left unpublished itself ([`note_unpublished`]),
-    /// as `init` does when it wrote through another workspace than the one it was given.
+    /// The command published and counted what it left unpublished itself
+    /// ([`Outcome::published_itself`]), as `init` does, and a command whose own publish of a claim
+    /// it ended did not go through.
     pub(crate) settled: bool,
     /// A failed count after a committed write: the result stands, and CLI reports this on stderr.
     pub(crate) count_warning: Option<Failure>,
@@ -257,6 +258,28 @@ impl Outcome {
             settled: false,
             count_warning: None,
             held: None,
+        }
+    }
+
+    /// This outcome, of a command that has tried to publish what it wrote in `ws` itself: it counts
+    /// what is left unpublished and is settled, so that the command line neither tries the remote
+    /// that has just answered once more nor says twice that it did not ([`note_unpublished`]).
+    pub(crate) fn published_itself(mut self, ws: &Workspace) -> Result<Outcome, Failure> {
+        self.count_warning = note_unpublished(ws, &mut self.result, &mut self.lines)?;
+        self.settled = true;
+        Ok(self)
+    }
+
+    /// This outcome, of a command whose own publish of what it wrote in `ws` said `warning`, if
+    /// anything: with a warning it has [`Outcome::published_itself`], said once.
+    pub(crate) fn after_its_publish(
+        self,
+        ws: &Workspace,
+        warning: Option<&str>,
+    ) -> Result<Outcome, Failure> {
+        match warning {
+            Some(_) => self.published_itself(ws),
+            None => Ok(self),
         }
     }
 
@@ -335,7 +358,7 @@ pub(crate) fn note_unpublished(
     Ok(None)
 }
 
-/// What every command is given: the workspace (when there is one), the actor, and the settings.
+/// What every command is given: the workspace, whose settings it reads, and the actor.
 pub(crate) struct Context<'a> {
     pub(crate) ws: &'a Workspace,
     pub(crate) actor: &'a Actor,
@@ -516,7 +539,8 @@ pub(crate) struct Filters {
 }
 
 /// The issues the filters select, ordered by priority, creation time and key. A parent that names
-/// no issue is an error, never an empty answer: it is resolved before anything is filtered.
+/// no issue and a priority that is none are errors, never an empty answer: both are read before
+/// anything is filtered.
 pub(crate) fn select<'s>(st: &'s State, filters: &Filters) -> Result<Vec<&'s Issue>, Failure> {
     let statuses = split_list(&filters.status);
     let want_all = filters.all || statuses.iter().any(|s| s == "all");
@@ -527,6 +551,10 @@ pub(crate) fn select<'s>(st: &'s State, filters: &Filters) -> Result<Vec<&'s Iss
     let types = split_list(&filters.issue_type);
     let labels = split_list(&filters.label);
     let ids = split_list(&filters.id);
+    let priority = match &filters.priority {
+        Some(priority) => Some(IntegerField::from(parse_priority(priority)?)),
+        None => None,
+    };
     let mut items = Vec::new();
     for issue in st.issues() {
         let status = issue.status();
@@ -545,9 +573,7 @@ pub(crate) fn select<'s>(st: &'s State, filters: &Filters) -> Result<Vec<&'s Iss
         if !filters.label.is_empty() && !labels.iter().all(|l| issue.labels().contains(l)) {
             continue;
         }
-        if let Some(priority) = &filters.priority
-            && issue.priority() != IntegerField::from(parse_priority(priority)?)
-        {
+        if (priority.as_ref()).is_some_and(|priority| issue.priority() != *priority) {
             continue;
         }
         if let Some(assignee) = filters.assignee.as_ref().filter(|a| !a.is_empty()) {

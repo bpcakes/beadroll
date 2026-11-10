@@ -9,9 +9,12 @@ use std::process::{Command, ExitStatus, Stdio};
 
 use crate::{Json, Sandbox};
 
-/// Environment prefixes removed so the developer's harness, store, repository and colour settings
-/// cannot reach the binary under test.
-const SCRUBBED: [&str; 6] = ["CLAUDE", "CODEX", "BEAD_", "GIT_", "NO_COLOR", "CLICOLOR"];
+/// Environment prefixes removed so the developer's harness, store, repository, colour settings and
+/// terminal width (bead wraps its help and its texts at `COLUMNS`) cannot reach the binary under
+/// test.
+const SCRUBBED: [&str; 7] = [
+    "CLAUDE", "CODEX", "BEAD_", "GIT_", "NO_COLOR", "CLICOLOR", "COLUMNS",
+];
 
 /// The variable that keeps the profile an instrumented `bead` writes at exit (`cargo xtask
 /// coverage`) out of a resource limit: `LLVM_PROFILE_FILE=/dev/null`. A run of `bead` under
@@ -164,7 +167,9 @@ impl Machine {
 }
 
 /// Inherited variables remaining after harness, tracker and git settings are removed.
-fn scrubbed(vars: impl Iterator<Item = (OsString, OsString)>) -> BTreeMap<OsString, OsString> {
+pub(crate) fn scrubbed(
+    vars: impl Iterator<Item = (OsString, OsString)>,
+) -> BTreeMap<OsString, OsString> {
     vars.filter(|(key, _)| {
         let key = key.as_encoded_bytes();
         !SCRUBBED
@@ -350,6 +355,9 @@ mod tests {
             "BEAD_HOME",
             "GIT_DIR",
             "GIT_CONFIG_GLOBAL",
+            "NO_COLOR",
+            "CLICOLOR_FORCE",
+            "COLUMNS",
             "PATH",
             "HOME",
             "BEADROLL_ORACLE_REFUSALS",

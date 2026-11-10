@@ -14,13 +14,15 @@
 #![allow(clippy::print_stderr, reason = "a failed fixture is a failed test")]
 
 pub mod events;
+mod isolation;
 mod machine;
 mod sandbox;
 pub mod values;
 
 pub use beadroll_core::json::Value as Json;
+pub use isolation::assert_git_isolation;
 pub use machine::{Invocation, Machine, Run, UNPROFILED, code};
-pub use sandbox::{Sandbox, UNDER_TEST, built_bead, git, select_bead};
+pub use sandbox::{Sandbox, UNDER_TEST, built_bead, git, git_command, select_bead};
 
 /// Reads bead's output as a JSON document.
 pub fn parse_json(text: &str) -> Result<Json, String> {

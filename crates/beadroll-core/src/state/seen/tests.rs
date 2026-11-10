@@ -9,28 +9,8 @@ use crate::journal::Journal;
 use crate::journal::JournalOrder;
 use crate::json::{Object, Value};
 use crate::order::{causal_order, effective_deps};
+use crate::projection::tests::Rng;
 use crate::replay::replay;
-
-/// A seeded generator (SplitMix64): the same draws on every run.
-struct Rng(u64);
-
-impl Rng {
-    fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = self.0;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^ (z >> 31)
-    }
-
-    fn below(&mut self, n: usize) -> usize {
-        (self.next() % n.max(1) as u64) as usize
-    }
-
-    fn chance(&mut self, percent: u64) -> bool {
-        self.next() % 100 < percent
-    }
-}
 
 const REPLICAS: [&str; 4] = ["0000aa", "0000bb", "0000cc", "0000dd"];
 

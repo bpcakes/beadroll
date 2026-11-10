@@ -10,7 +10,7 @@ use beadroll_store::PublicationState;
 use beadroll_store::{Actor, Workspace, attempt_path, write_attempt_file};
 
 use super::{Spent, Tx};
-use crate::error::Error;
+use crate::error::{Error, OWN_CHAIN};
 use crate::receipts::forget_receipts;
 
 /// Whether the transaction must apply its emitted events for its caller.
@@ -111,11 +111,7 @@ fn written<T, E: From<Error>>(
         let built = (|| {
             let replica = tx.replica.clone();
             if tx.state()?.chain_breaks().contains_key(&replica) {
-                return Err(Error::JournalFork(
-                    "this machine's journal no longer forms one chain: the same machine identity has \
-                     written from two places. Give one of them a new identity."
-                        .to_owned(),
-                ).into());
+                return Err(Error::JournalFork(OWN_CHAIN.to_owned()).into());
             }
             body(&mut tx)
         })();

@@ -52,8 +52,12 @@ const LONGEST_PAUSE: f64 = 2.0;
 
 /// Random backoff outside the store lock, from zero up to `0.1 × 2^(attempt - 1)` seconds, capped
 /// at [`LONGEST_PAUSE`]. Jitter separates competing writers. The backoff failpoint can skip the
-/// wait.
+/// wait. Nothing follows the last round, so nothing is waited for after it: the command reports
+/// its conflict at once.
 pub fn pause(attempt: u32, failpoints: &Failpoints) {
+    if attempt >= ROUNDS {
+        return;
+    }
     if failpoints.hit("backoff") == Some(Fired::Skip) {
         return;
     }

@@ -8,10 +8,10 @@
 //! projection names. All the same: the projection is read, a command that only reads reading its
 //! state alone. Records appended since (a segment grown whose bytes before are the ones summed, a
 //! segment or an attempt file added) are read alone and applied after it, when replay would apply
-//! them so ([`Projection::extend`]). A file whose times are the projection's own, which could
-//! have been rewritten in place since with nothing to show for it, is read again and its bytes
-//! summed: the sum kept of it says whether it is the one the projection was made from. Anything
-//! else (a file replaced, rewritten, cut or gone, a record replay would apply otherwise) and a
+//! them so ([`Projection::prepare_extension`]). A file whose times are the projection's own, which
+//! could have been rewritten in place since with nothing to show for it, is read again and its
+//! bytes summed: the sum kept of it says whether it is the one the projection was made from.
+//! Anything else (a file replaced, rewritten, cut or gone, a record replay would apply otherwise) and a
 //! projection that is missing, unreadable, damaged or written by another build of bead: the
 //! journal is replayed. A projection made is written back, whole or not at all, with the identity
 //! each file had as it was read, when every segment ended with a whole line, never into a store
@@ -26,7 +26,8 @@
 //! command that prints none (`list`, `ready`) reads the state alone ([`outline`]); one that may
 //! print any, every text ([`state`]); and records applied after the projection have the texts of
 //! the issues they can change read in first: those they are about, and those that wait for a key a
-//! create among them brings, in which it makes an edge (`Projection::about`, roll-lqjj.39). Texts that cannot be read as written have the journal
+//! create among them brings, in which it makes an edge (`Extension::wanted_texts`, roll-lqjj.39).
+//! Texts that cannot be read as written have the journal
 //! replayed, as a projection that cannot be does. Texts written nowhere yet are appended to the
 //! text file, and a projection made whole, or whose text file holds more texts no longer read than
 //! read, writes them all to a new one.

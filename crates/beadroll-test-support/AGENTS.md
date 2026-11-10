@@ -10,13 +10,18 @@ tests it builds events, and for the round-trip properties it draws JSON values.
 
 ## Key entrypoints
 
-- `src/sandbox.rs`: `Sandbox`, `git`, `select_bead`, the choice between `BEAD_UNDER_TEST` and the
+- `src/sandbox.rs`: `Sandbox`, `git`, `git_command`, `select_bead`, the choice between `BEAD_UNDER_TEST` and the
   caller's default (`Sandbox::selecting` takes the variable's value instead of reading it), and
   `built_bead`, the default of the tests of a crate other than `beadroll`: the `bead` Cargo built in
   the profile directory above the running test (`<target>/<profile>/bead` beside
   `<target>/<profile>/deps/`).
 - `src/machine.rs`: `Machine` (`run`, `bead`, `show`, `ready`, `export`, `store`, `with_bead`),
   `Invocation` (a run's directory, thread, agent, environment and input), `Run`, `code`.
+- `src/isolation.rs`: `assert_git_isolation`, which runs named tests in child processes with Git
+  routing pointed at an unrelated disposable repository and checks that its files stay unchanged.
+  It needs no `bead` executable; a child test that runs bead chooses its own through its fixtures.
+  The child test keeps `BEAD_UNDER_TEST` for that selection; a machine still scrubs it before
+  starting bead itself.
 - `src/lib.rs`: `Json` (beadroll-core's `Value`) and `parse_json`, which read `bead --json`.
 - `src/values.rs`: `Rng`, seeded JSON values for the round-trip properties (strings of the
   characters each writer escapes or passes through, integers to any `u64`, floats of
@@ -48,7 +53,12 @@ tests it builds events, and for the round-trip properties it draws JSON values.
   objects (`objects/17`, times 256) passes a threshold, and pack the objects a test is about to
   inspect or damage (roll-k2wy.20). A test that wants a repack runs it.
 - A run's environment is the test's, less every `CLAUDE*`, `CODEX*`, `BEAD_*` and `GIT_*`
-  variable, then the machine's home and identity, then its extras. It keeps `LLVM_PROFILE_FILE`,
+  variable, the colour settings (`NO_COLOR`, `CLICOLOR*`) and `COLUMNS`, then the machine's home
+  and identity, then its extras. A fixture's own `git` (`git`) runs without the `GIT_*` variables
+  too. Test-local Git calls that need byte output, stdin or environment overrides use
+  `git_command()` and apply their deliberate overrides afterward; a caller that clears and
+  supplies its entire environment may keep doing so. An explicit `--git-dir` alone does not
+  isolate object or index routing. The environment keeps `LLVM_PROFILE_FILE`,
   by which an instrumented `bead` writes its counters (`cargo xtask coverage`); a run of `bead`
   under `ulimit` takes `UNPROFILED` after the machine's environment, since the profile written at
   exit would fail on the limit (`xtask/AGENTS.md` says what that costs the report).

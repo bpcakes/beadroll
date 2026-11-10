@@ -14,6 +14,7 @@ pub(super) mod drawn;
 
 use super::super::{Extended, decode_state, project};
 use super::TextFile;
+use super::awaiting::fnv;
 use super::shown::{FIXTURES as SHOWN, fixture};
 use crate::id::EventId;
 use crate::journal::Journal;
@@ -199,14 +200,6 @@ pub(super) fn every_way(state: &State) -> String {
         out.push_str(&format!("  reaches {}\n", reached.join(" ")));
     }
     out
-}
-
-/// FNV-1a over `bytes`, from `hash`.
-fn fnv(mut hash: u64, bytes: &[u8]) -> u64 {
-    for byte in bytes {
-        hash = (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    hash
 }
 
 /// The digest of a history before its first state.

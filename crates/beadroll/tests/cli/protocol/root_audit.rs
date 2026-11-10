@@ -261,15 +261,16 @@ fn nonowner_cannot_bypass_close_guard_with_status_update() {
     );
 }
 
-/// A09: after a thread that does not hold the claim sets the issue's status to open, `ready` still
-/// does not offer it, since it has a confirmed owner.
+/// A09: a thread that does not hold the claim cannot set the issue's status to open, and `ready`
+/// still does not offer it, since it has a confirmed owner.
 #[test]
 fn claimed_issue_is_not_ready_after_nonowner_status_update() {
     let sandbox = crate::sandbox();
     let (a, key) = set_up(&sandbox);
     a.cmd(["claim", &key]).thread("owner-thread").json();
     let status = ["update", &key, "--status", "open", "--json"];
-    a.cmd(status).thread("other-thread").run();
+    let refused = a.cmd(status).thread("other-thread").run();
+    assert_eq!(code(&refused), "CLAIMED_BY_OTHER", "{}", refused.stdout);
     assert!(
         !a.ready().contains(&key),
         "ready offers an issue that still has a confirmed owner"

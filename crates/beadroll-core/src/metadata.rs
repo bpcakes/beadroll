@@ -199,12 +199,7 @@ impl<'de> Deserialize<'de> for Count {
                 Ok(Count::Integer(Int::from(n)))
             }
             fn visit_u64<E: serde::de::Error>(self, n: u64) -> Result<Count, E> {
-                match i64::try_from(n) {
-                    Ok(n) => Ok(Count::Integer(Int::from(n))),
-                    Err(_) => Int::parse(&n.to_string())
-                        .map(Count::Integer)
-                        .ok_or_else(|| E::custom("an integer beyond what bead keeps")),
-                }
+                Ok(Count::Integer(Int::from_u64(n)))
             }
         }
         deserializer.deserialize_any(Read)

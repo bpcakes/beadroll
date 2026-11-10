@@ -148,10 +148,11 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
             UpdateKind::Changed
         },
         notes,
-        warning,
+        warning.clone(),
     );
     let result = Value::Array(result.into_iter().map(Value::from).collect());
-    Ok(Outcome::new(result, lines).answered_from(st))
+    let outcome = Outcome::new(result, lines).answered_from(st);
+    outcome.after_its_publish(ctx.ws, warning.as_deref())
 }
 
 /// The answer's lines, `Updated` (or `Unchanged` when nothing was asked) for each issue, then

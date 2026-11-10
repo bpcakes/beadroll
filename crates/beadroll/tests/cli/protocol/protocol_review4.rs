@@ -8,7 +8,7 @@
 //! test: beadroll-sync's `protocol::protocol_review4`.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use beadroll_core::json::{Format, Style, write};
 use beadroll_test_support::{Json, Machine, git, json, parse_json};
@@ -32,7 +32,7 @@ fn id(result: Option<Json>) -> String {
 
 /// `remote_blob`: the bytes `git show REVISION:PATH` prints from the bare repository `remote`.
 fn remote_blob(remote: &Path, revision_path: &str) -> Vec<u8> {
-    let output = Command::new("git")
+    let output = beadroll_test_support::git_command()
         .arg("--git-dir")
         .arg(remote)
         .args(["show", revision_path])

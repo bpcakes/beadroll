@@ -2,6 +2,7 @@
 //! `docs/FINDINGS.md`. Fault injection uses failpoints on this build's binary
 //! (`crate::rust_only`); `gate` coordinates a test with a paused process.
 
+mod fixture_environment;
 mod g01;
 mod g02;
 mod g03;

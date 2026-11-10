@@ -14,15 +14,13 @@ use beadroll_store::{
 };
 
 use super::{Link, newlines};
-use crate::error::Error;
+use crate::error::{Error, OWN_CHAIN};
 use crate::link::write::BlobUse;
 use crate::synchronise::SyncReport;
 use crate::tx::Spent;
 
 const OWN_FORK: &str = "this machine's journal differs from the published one: the same machine \
                         identity is being used from two places. Give one of them a new identity.";
-const OWN_CHAIN: &str = "this machine's journal no longer forms one chain: the same machine \
-                         identity has written from two places. Give one of them a new identity.";
 
 /// `events/<machine>/claims/<id>.json`, the id of `[0-9a-f-]+`.
 fn attempt_shaped(path: &str) -> bool {

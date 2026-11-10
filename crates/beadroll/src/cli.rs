@@ -276,8 +276,8 @@ impl From<String> for Printed {
 }
 
 /// Runs the request: what standard output is to show, `None` when nothing (more) is to be printed.
-/// Standard output shows colour when `colors` says so; `exits` is whether the process ends with the
-/// run.
+/// Standard output shows colour when `colors` says so; `run_lifetime` is whether the process ends
+/// with the run.
 fn execute(
     request: &Request,
     colors: Colors,

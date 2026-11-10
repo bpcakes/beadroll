@@ -329,6 +329,36 @@ fn j02_a_scope_that_names_no_issue_is_an_error_whatever_else_filters() {
     }
 }
 
+/// AS05: a priority that is none is an error on a tracker where no issue reaches the filter, as it
+/// is where one does: `list -s blocked -p 9` answered "No issues" with nothing blocked.
+#[test]
+fn a_priority_that_is_none_is_an_error_whatever_else_filters() {
+    let (_sandbox, a) = set_up();
+    let fresh = crate::sandbox();
+    let empty = Machine::new(&fresh, "empty");
+    empty.bead(["init", "--prefix", "ex"]);
+    let argvs: [&[&str]; 4] = [
+        &["list", "-p", "9"],
+        &["ready", "-p", "9"],
+        &["list", "-s", "blocked", "-p", "urgent"],
+        &["ready", "--priority", ""],
+    ];
+    let cases: [(&Machine, &[&str]); 2] = [(&empty, &[]), (&a, &["--label", "absent"])];
+    for argv in argvs {
+        for (machine, filters) in cases {
+            let label = format!("{argv:?} on {}", machine.name());
+            let proc = machine.run(argv.iter().chain(filters).chain(&["--json"]));
+            assert_eq!(
+                (proc.returncode(), proc.stdout.as_str()),
+                (1, ""),
+                "{label}: {}",
+                proc.stderr
+            );
+            assert_eq!(code(&proc), "VALIDATION", "{label}");
+        }
+    }
+}
+
 /// J03: `ready --parent A --epic B` silently ignored B. Two scopes are refused, as br refuses
 /// --epic with --parent and either one given twice, and `help ready` says what each one means.
 #[test]

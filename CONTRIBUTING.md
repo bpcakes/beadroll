@@ -39,9 +39,10 @@ push test data anywhere but a throwaway remote of your own.
 - Tests: unit tests beside the code, and one integration-test binary per crate
   (`crates/<crate>/tests/<name>/`), by subject (`replay`, `storage`, `compat`,
   `commands`, `protocol`, `hardening`; the slow `stress` and `sweep`). The
-  goldens in `crates/beadroll/tests/golden/` are what Python's bead printed.
+  goldens in `crates/beadroll/tests/golden/` are fixed reference outputs: what Python's bead
+  printed, with each deliberate change since edited in by hand.
 - `xtask/` — `cargo xtask check` (the baseline), `cargo xtask coverage` (which lines the suites
-  run) and `cargo xtask timing`.
+  run), `cargo xtask timing` and `cargo xtask bead` (bead in a process that counts its heap).
 - `fuzz/` — the cargo-fuzz targets, a workspace of its own on a pinned nightly, fuzzed nightly
   and checked on every push (`fuzz/README.md`).
 - `infra/` — stdlib-Python drivers against real machines, with their tests.
@@ -64,7 +65,8 @@ protocol enumerated: three machines, nine operations at seven fault boundaries, 
 pair of follow-ups, each schedule showing that its fault fired; a thirteen-schedule slice by
 default, including retries of interrupted owner closes and deletes and a sync stopped at its
 push; `BEAD_SWEEP=full` for all 660, with no failure exemptions). `golden` compares
-every help page and the reading commands' output with Python's, captured before the cutover, and
+every help page and the reading commands' output with fixed reference files (the reading
+commands' as Python printed them before the cutover, the help pages as clap lays them out), and
 `parity` holds what the mixed Python and Rust fleets checked, among it receipts byte for byte as
 Python wrote them. Two properties run with them, over seeded generators rather than fixed
 cases: replay answers alike whatever order the records of a generated history are delivered in
@@ -93,7 +95,9 @@ The plan the port followed, `docs/RUST-PORT.md`, is in git history (`git show
 `infra/` holds the maintainer's harness against real machines and a throwaway GitHub
 repository, stdlib Python that drives any `bead`:
 `drive.py` (cross-machine scenarios over ssh), `soak.py` (random agent-like traffic),
-`roundtrip.py` (import/export over real Beads exports), `selected.py` (which bead each runs, and
+`roundtrip.py` (import/export over real Beads exports), `compat_real.py` (the same exports loaded
+by `br` and fed to `bv`, which `./check.sh --real` runs), `hotspots.py` (two beads compared on one
+journal snapshot, the probe behind `docs/evidence/`), `selected.py` (which bead each runs, and
 the record of it before any test data is written), their tests beside them, and the synthetic
 `seed.jsonl`.
 
@@ -197,10 +201,11 @@ by the tests, xtask or `infra/`:
 
 | Variable | Read by | Meaning |
 |---|---|---|
-| `BEAD_UNDER_TEST` | tests, `infra/` | The `bead` to run, by its absolute path, instead of the one Cargo built (tests) or the installed `~/.local/bin/bead` (`infra/`) |
+| `BEAD_UNDER_TEST` | tests, xtask's `timing`, `infra/` | The `bead` to run, by its absolute path, instead of the one Cargo built (tests, xtask) or the installed `~/.local/bin/bead` (`infra/`) |
 | `BEAD_FAILPOINTS` | bead | Faults to inject: `point=action`, `point@nth(k)=action` or `point@always=action`, separated by `;` (`crates/beadroll-store/src/failpoint.rs`) |
 | `BEAD_TEST_CRASH_BEFORE_PUSH`, `BEAD_TEST_CRASH_AFTER_PUSH` | bead | The crash hooks: exit 98 before, 99 after an ownership command's publish; aliases of two failpoints |
 | `BEAD_SWEEP`, `BEAD_SWEEP_GC`, `BEAD_SWEEP_CONCURRENT` | the sweep | `full` runs all 660 schedules; with `BEAD_SWEEP_GC=1` the remote collects garbage after every push it accepts; with `BEAD_SWEEP_CONCURRENT=1` each schedule's two follow-ups run at once |
+| `RT_HOME` | `infra/roundtrip.py` | The scratch store the round trip imports into, which `./check.sh --real` sets; else `bead-roundtrip-home` under `TMPDIR` |
 | `BEAD_TEST_REMOTE`, `BEAD_DRIVE_HOSTS`, `BEAD_DRIVE_BEADS`, `BEAD_EXPECT_VERSION`, `BEAD_TEST_LOCAL_REPO` | `infra/` | Each script's docstring says what it needs |
 
 ## Reporting a problem

@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 
-use crate::hash::object_id;
+use crate::hash::{hex, object_id};
 use crate::runner::Env;
 use crate::session::{NoAnswer, Session};
 
@@ -312,11 +312,6 @@ fn lower_hex(text: &str) -> bool {
 /// ASCII digits only, at least one.
 fn digits(text: &str) -> bool {
     !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit())
-}
-
-/// Raw bytes as lower-case hex.
-fn hex(raw: &[u8]) -> String {
-    raw.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 #[cfg(test)]

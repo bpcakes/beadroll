@@ -181,10 +181,11 @@ pub enum Op {
     LabelRemove(Vec<String>),
     /// The labels, set.
     LabelSet(Vec<String>),
-    /// The stand-in for an id with several contents (or an event that names the operation so).
+    /// The stand-in for an id with several contents. Only the journal makes one: an event that
+    /// names the operation so is [`Op::Unknown`].
     Quarantined,
-    /// The stand-in for a record that is not a valid event (or an event that names the operation
-    /// so).
+    /// The stand-in for a record that is not a valid event. Only the journal makes one: an event
+    /// that names the operation so is [`Op::Unknown`].
     Invalid,
     /// An operation this bead does not know.
     Unknown(String),
@@ -246,7 +247,8 @@ fn ending(data: &mut Object) -> Ending {
 }
 
 impl Op {
-    /// The operation's name, as an event names it: what [`Op::read`] read it from.
+    /// The operation's name, as an event names it: what [`Op::read`] read it from, and for a
+    /// stand-in `quarantined` or `invalid`.
     pub fn name(&self) -> &str {
         match self {
             Op::Init { .. } => "init",
@@ -324,8 +326,8 @@ impl Op {
             "label_add" => Op::LabelAdd(strings(data, "labels")),
             "label_remove" => Op::LabelRemove(strings(data, "labels")),
             "label_set" => Op::LabelSet(strings(data, "labels")),
-            "quarantined" => Op::Quarantined,
-            "invalid" => Op::Invalid,
+            // `quarantined` and `invalid` among them: an event cannot ask to be a stand-in, which
+            // replay takes as reported when it was loaded.
             other => Op::Unknown(other.to_owned()),
         }
     }

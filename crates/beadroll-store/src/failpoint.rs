@@ -115,14 +115,15 @@ pub enum Action {
     Errno(i32),
     /// At `push.reply`: a push the remote accepted is reported as failed, its status line dropped.
     FailReply,
-    /// At `publish.result`: the publish fails with this code; at `ownership.after-confirm`, the
-    /// command does, its attempt confirmed and its pending twin still there.
+    /// At `publish.result` or `fetch.result`: the publish or the fetch fails with this code; at
+    /// `ownership.after-confirm`, the command does, its attempt confirmed and its pending twin
+    /// still there.
     Error(Code),
     /// Touch `PATH.ready`, then wait for `PATH.go`.
     PauseUntil(PathBuf),
     /// Sleep this many milliseconds.
     Sleep(u64),
-    /// At `backoff`: skip the wait.
+    /// At `backoff` or `fetch.retry`: skip the wait.
     Skip,
     /// At `clock`: shift the clock by this many nanoseconds.
     Offset(i128),

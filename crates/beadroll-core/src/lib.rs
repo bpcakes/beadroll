@@ -10,6 +10,10 @@
 //! - [`query`] and [`view`]: readiness, conflicts, cycles and issue presentation.
 //! - [`export`] and [`import`]: Beads JSONL conversion.
 //! - [`published`]: published trees and manifest validation.
+//! - [`snapshot`]: one journal read with its replayed state and recap selections bound to it.
+//! - [`history`]: the metadata of settled events that `log` and `recap` display.
+//! - [`configuration`] and [`metadata`]: the tracked configuration and a store's metadata, read
+//!   with their types.
 //! - [`code`]: wire error codes.
 
 pub mod code;

@@ -41,8 +41,8 @@ pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
             );
             let last: EventId = st.last_by_thread().get(&thread).copied().unwrap_or(held.id);
             let millis = last.millis();
-            let machine = aliases
-                .get(&*held.machine)
+            let machine = (aliases.get(&*held.machine))
+                .filter(|alias| !alias.is_empty())
                 .map_or(&*held.machine, String::as_str);
             let branch = held
                 .where_

@@ -6,11 +6,12 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
+use beadroll_git::{PushOutcome, push_outcome};
 use beadroll_test_support::{Machine, Sandbox, parse_json};
 
 use super::{
-    Env, WINNER_IDENTITY, applied, bead_reads_rejected, contains, executable, git_is_translated,
-    id, locales, member, quoted,
+    Env, WINNER_IDENTITY, applied, contains, executable, git_is_translated, id, locales, member,
+    quoted,
 };
 
 /// `bytes` as text, for a failure's message.
@@ -139,6 +140,14 @@ impl Tokens {
         git_in(env, &self.client, &["push", how, to, &refspec], None)
     }
 
+    /// What bead makes of a captured porcelain push of `commit`: it reads git's status line for
+    /// the ref alone, never standard error (`beadroll_git::push_outcome`, G11).
+    fn outcome(&self, pushed: &Output, commit: &str) -> PushOutcome {
+        let refspec = format!("{commit}:refs/beads/journal");
+        let status = pushed.status.code().unwrap_or(-1);
+        push_outcome(status, &pushed.stdout, &pushed.stderr, &refspec).0
+    }
+
     /// The remote's journal set back to `c1`, where each locale's cases start.
     fn reset(&self) {
         let args = ["update-ref", "refs/beads/journal", &self.c1];
@@ -153,7 +162,6 @@ impl Tokens {
         let said = lossy(&lost.stderr);
         assert!(!lost.status.success(), "{name}: {said}");
         assert!(names_the_lost_race(&lost.stderr), "{name}: {said}");
-        assert!(bead_reads_rejected(&lost.stderr), "{name}: {said}");
         let porcelain = self.push(env, "--porcelain", &self.c2);
         let line = format!(
             "!\t{}:refs/beads/journal\t[rejected] (non-fast-forward)",
@@ -163,6 +171,11 @@ impl Tokens {
             contains(&porcelain.stdout, line.as_bytes()),
             "{name}: {}",
             lossy(&porcelain.stdout)
+        );
+        assert_eq!(
+            self.outcome(&porcelain, &self.c2),
+            PushOutcome::Rejected,
+            "{name}"
         );
         if name == "C" {
             let english = contains(&lost.stderr, b"error: failed to push some refs");
@@ -177,31 +190,42 @@ impl Tokens {
     /// The policy refusal of the pre-receive hook the caller wrote, under the locale `name`
     /// (`env`): `c3` declined, in English words bead reads.
     fn refusal(&self, name: &str, env: &Env) {
-        let refused = self.push(env, "--quiet", &self.c3);
-        let said = lossy(&refused.stderr);
+        let refused = self.push(env, "--porcelain", &self.c3);
+        let said = format!("{}\n{}", lossy(&refused.stdout), lossy(&refused.stderr));
         assert!(!refused.status.success(), "{name}: {said}");
-        let rejected = contains(&refused.stderr, b"[remote rejected]");
+        let rejected = contains(&refused.stdout, b"[remote rejected]");
         assert!(rejected, "{name}: {said}");
-        let declined = contains(&refused.stderr, b"(pre-receive hook declined)");
+        let declined = contains(&refused.stdout, b"(pre-receive hook declined)");
         assert!(declined, "{name}: {said}");
-        assert!(bead_reads_rejected(&refused.stderr), "{name}: {said}");
+        // the remote's own verdict, which no retry changes
+        assert_eq!(
+            self.outcome(&refused, &self.c3),
+            PushOutcome::Refused,
+            "{name}"
+        );
     }
 
     /// The server-side lost race the pre-receive hook the caller wrote stages, under the locale
     /// `name` (`env`): the ref moved while `c3` was received, in English words bead reads.
     fn server_race(&self, name: &str, env: &Env) {
-        let raced = self.push(env, "--quiet", &self.c3);
-        let said = lossy(&raced.stderr);
+        let raced = self.push(env, "--porcelain", &self.c3);
+        let said = format!("{}\n{}", lossy(&raced.stdout), lossy(&raced.stderr));
         assert!(!raced.status.success(), "{name}: {said}");
         let locked = b"remote: error: cannot lock ref 'refs/beads/journal'";
         assert!(contains(&raced.stderr, locked), "{name}: {said}");
-        let rejected = contains(&raced.stderr, b"[remote rejected]");
+        let line = format!("!\t{}:refs/beads/journal\t[remote rejected]", self.c3);
+        let rejected = contains(&raced.stdout, line.as_bytes());
         assert!(rejected, "{name}: {said}");
         // Supported git versions use either reason for the same server-side ref race.
-        let stale = contains(&raced.stderr, b"(incorrect old value provided)")
-            || contains(&raced.stderr, b"(failed to update ref)");
+        let stale = contains(&raced.stdout, b"(incorrect old value provided)")
+            || contains(&raced.stdout, b"(failed to update ref)");
         assert!(stale, "{name}: {said}");
-        assert!(bead_reads_rejected(&raced.stderr), "{name}: {said}");
+        // Classify this race: a second push would instead see the already-moved remote ref.
+        assert_eq!(
+            self.outcome(&raced, &self.c3),
+            PushOutcome::Rejected,
+            "{name}"
+        );
     }
 }
 

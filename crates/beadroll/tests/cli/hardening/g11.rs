@@ -5,7 +5,6 @@
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
-use std::process::Command;
 
 use beadroll_test_support::Sandbox;
 
@@ -39,7 +38,7 @@ fn install_post_receive(sandbox: &Sandbox, gate: &Path) {
 /// `_g11_remote_head`: the commit the remote's `refs/beads/journal` names, as `git rev-parse`
 /// prints it; nothing when it names none.
 fn remote_head(sandbox: &Sandbox) -> String {
-    let output = Command::new("git")
+    let output = beadroll_test_support::git_command()
         .arg("--git-dir")
         .arg(sandbox.origin())
         .args(["rev-parse", "refs/beads/journal"])

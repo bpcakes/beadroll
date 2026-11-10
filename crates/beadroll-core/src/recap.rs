@@ -20,7 +20,7 @@
 
 use crate::id::EventId;
 use crate::journal::SettledJournal;
-use crate::order::settled_order;
+use crate::order::causal_order;
 
 /// Which of a journal's events a recap shows.
 #[derive(Clone, Copy, Debug)]
@@ -50,11 +50,7 @@ pub struct Unseen {
 
 /// What a recap of `journal`, a settled one, shows through `window`, and what it has seen then.
 pub fn unseen(journal: SettledJournal<'_>, window: Window<'_>) -> Unseen {
-    settled_unseen(journal, window)
-}
-
-fn settled_unseen(journal: SettledJournal<'_>, window: Window<'_>) -> Unseen {
-    let (ordered, _) = settled_order(journal);
+    let (ordered, _) = causal_order(journal);
     let seen = match window {
         Window::After(frontier) => below(journal, frontier),
         Window::Since(_) | Window::All => Vec::new(),

@@ -76,6 +76,9 @@ impl Awaiting {
     /// Whether an entry waits for `key`: one of the keys the issues' lists name, entries taken out
     /// while events apply not among them, as [`Issue::dangling`] holds them.
     pub(crate) fn names(&self, key: &str) -> bool {
+        if self.entries.is_empty() {
+            return false; // most trackers: nothing an import named is missing
+        }
         let from = (key.to_owned(), EventId::from_u128(0), 0);
         (self.entries.range(from..).next()).is_some_and(|(named, _, _)| named == key)
     }

@@ -5,7 +5,7 @@
 
 mod g22_origin_is_not_where_git_pushes {
     use std::path::{Path, PathBuf};
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
 
     use beadroll_test_support::{Json, Machine, Sandbox, git};
 
@@ -22,7 +22,7 @@ mod g22_origin_is_not_where_git_pushes {
 
     /// `_g22_has_journal`: whether the repository `repo` has a `refs/beads/journal`.
     fn has_journal(repo: &Path) -> bool {
-        let status = Command::new("git")
+        let status = beadroll_test_support::git_command()
             .arg("--git-dir")
             .arg(repo)
             .args(["rev-parse", "-q", "--verify", "refs/beads/journal"])

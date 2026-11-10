@@ -71,7 +71,7 @@ fn converge_and_compare(machines: &[&Machine], remote: &Path) -> BTreeMap<String
         );
         assert_eq!(info["pending_ownership"], json!([]), "{}", machine.name());
     }
-    let fsck = Command::new("git")
+    let fsck = beadroll_test_support::git_command()
         .arg("--git-dir")
         .arg(remote)
         .args(["fsck", "--full", "--strict"])

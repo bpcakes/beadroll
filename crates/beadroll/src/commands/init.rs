@@ -416,7 +416,8 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
         values.push(("remote", remembered(remote)));
     }
     ws.save_meta(&values)?;
-    if ws.wrote() && !args.offline {
+    let published = ws.wrote() && !args.offline;
+    if published {
         // the tracker exists for the other machines now, not at a later sync
         notes.extend(publication_note(ws, live.as_ref())?);
     }
@@ -451,14 +452,13 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
         );
     }
     lines.extend(notes);
-    let mut outcome = Outcome::new(result, lines);
-    if chosen.is_some() || live.is_some() {
-        // written through another workspace than the one the command was given, or published to
-        // the endpoint init chose (origin's own URL reached as origin): its own count, and no
-        // publish after it through the remote as typed, which may lead elsewhere
-        outcome.count_warning =
-            super::note_unpublished(ws, &mut outcome.result, &mut outcome.lines)?;
-        outcome.settled = true;
+    let outcome = Outcome::new(result, lines);
+    if chosen.is_some() || live.is_some() || published {
+        // written through another workspace than the one the command was given, published to the
+        // endpoint init chose (origin's own URL reached as origin), or published above, whether
+        // that went through or not: its own count, and no publish after it through the remote as
+        // typed, which may lead elsewhere or has just been tried
+        return outcome.published_itself(ws);
     }
     Ok(outcome)
 }

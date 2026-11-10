@@ -230,7 +230,7 @@ fn merged_with_the_clock_ahead(main_commits: usize) -> Vec<Json> {
     let a = Machine::new(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
     let commit_at = |cwd: &Path, message: &str, date: &str| {
-        let made = Command::new("git")
+        let made = beadroll_test_support::git_command()
             .args(IDENTITY)
             .args(["commit", "-q", "--allow-empty", "-m", message])
             .env("GIT_COMMITTER_DATE", date)
@@ -268,7 +268,7 @@ fn merged_with_the_clock_ahead(main_commits: usize) -> Vec<Json> {
             format!("commit refs/heads/main\ncommitter t <t@example.invalid> {time} +0000\ndata 0\n{from}")
         })
         .collect();
-    let mut import = Command::new("git")
+    let mut import = beadroll_test_support::git_command()
         .args(["fast-import", "--quiet"])
         .current_dir(&main)
         .stdin(Stdio::piped())

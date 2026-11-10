@@ -327,7 +327,8 @@ fn failure(args: &[OsString], output: &Output) -> Error {
 }
 
 /// Starts `command` and waits for it: `Some(status)`, or `None` when it took longer than `timeout`
-/// seconds and was killed (its group with `reap`, else the client alone) and then reaped.
+/// seconds and was killed (its group with [`KillScope::ProcessGroup`], else the client alone) and
+/// then reaped.
 fn wait_for(
     mut command: Command,
     timeout: Option<f64>,
@@ -386,8 +387,8 @@ fn wait_for(
     status.map(Some).map_err(|e| Error::Io(IoError::bare(&e)))
 }
 
-/// Kills git (with `reap`, its whole process group: git and every helper it started) after a
-/// timeout. Already gone is fine.
+/// Kills git (with [`KillScope::ProcessGroup`], its whole process group: git and every helper it
+/// started) after a timeout. Already gone is fine.
 pub(crate) fn kill(pid: u32, reap: KillScope) {
     let reap = matches!(reap, KillScope::ProcessGroup);
     let Some(pid) = i32::try_from(pid)

@@ -133,21 +133,20 @@ fn q09_required_register_clears_remain_queryable() {
         );
         let state = replay(journal(&[&init, &create, &clear])).unwrap();
         let issue = state.issue(uid(&create)).unwrap();
-        if !state.integrity().is_empty() {
-            assert!(
-                state
-                    .integrity()
-                    .iter()
-                    .any(|row| row.event.as_deref() == Some(id_of(&clear))),
-                "{field:?}"
-            );
-            assert_eq!(
-                issue.hydrated().unwrap().field(field),
-                fields.get(field.name()),
-                "{field:?}"
-            );
-        }
-        // The accepted clear must stay query-safe.
+        // The clear of a required field is refused, with its row, and the field keeps its value.
+        assert!(
+            state
+                .integrity()
+                .iter()
+                .any(|row| row.event.as_deref() == Some(id_of(&clear))),
+            "{field:?}"
+        );
+        assert_eq!(
+            issue.hydrated().unwrap().field(field),
+            fields.get(field.name()),
+            "{field:?}"
+        );
+        // The issue stays query-safe.
         state.brief(issue);
         state.line(issue);
         state.hydrated().unwrap().export_records();

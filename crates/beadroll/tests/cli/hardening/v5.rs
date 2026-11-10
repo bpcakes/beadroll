@@ -252,7 +252,7 @@ mod v5_retighten {
 }
 
 mod v5_git_dir_in_hook {
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
 
     use beadroll_test_support::git;
 
@@ -287,7 +287,7 @@ mod v5_git_dir_in_hook {
             assert!(!m.checkout().join("sync.git").exists(), "{variant}");
             let after = git(["config", "--get", "core.bare"], Some(m.checkout()));
             assert_eq!(after.trim(), "false", "{variant}");
-            let status = Command::new("git")
+            let status = beadroll_test_support::git_command()
                 .args(["status", "--porcelain"])
                 .current_dir(m.checkout())
                 .stdin(Stdio::null())

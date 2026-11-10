@@ -61,24 +61,6 @@ fn contains(haystack: &[u8], needle: &[u8]) -> bool {
         .any(|window| window == needle)
 }
 
-/// `_v1_bead_reads_rejected`: the test `Link.publish` applies to a failed push's stderr (bead,
-/// `publish`): any of these tokens means 'the remote definitely did not apply it', which a
-/// coordinated command retries.
-fn bead_reads_rejected(stderr: &[u8]) -> bool {
-    const TOKENS: [&str; 7] = [
-        "[rejected]",
-        "[remote rejected]",
-        "non-fast-forward",
-        "fetch first",
-        "stale info",
-        "cannot lock ref",
-        "failed to update ref",
-    ];
-    TOKENS
-        .iter()
-        .any(|token| contains(stderr, token.as_bytes()))
-}
-
 /// `_v1_git_is_translated`: whether git answers in another language than English under `env`: a
 /// message from outside any repository, which every git translation covers.
 fn git_is_translated(env: &Env, place: &Path) -> bool {

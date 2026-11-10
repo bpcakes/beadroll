@@ -6,7 +6,7 @@ import glob, json, os, subprocess, sys, time
 import selected
 BP = selected.local_bead()
 selected.preflight(BP)
-env = {k: v for k, v in os.environ.items() if not k.startswith(("CLAUDE", "CODEX", "BP_"))}
+env = {k: v for k, v in os.environ.items() if not k.startswith(("CLAUDE", "CODEX", "BEAD_", "GIT_"))}
 env.update(BEAD_HOME=os.environ.get("RT_HOME") or os.path.join(os.environ.get("TMPDIR", "/tmp"), "bead-roundtrip-home"), BEAD_AGENT="human")
 def norm(rec):
     rec = dict(rec); rec.pop("source_repo_path", None)

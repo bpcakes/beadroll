@@ -7,6 +7,7 @@ use std::sync::LazyLock;
 use indexmap::IndexMap;
 
 use crate::event::{EXPORT_FIELDS, MAX_NESTING, event_problem, payload_problem, write_problem};
+use crate::export::reserved;
 use crate::id::EventId;
 use crate::json::{self, Object, Value};
 use crate::state::State;
@@ -315,17 +316,10 @@ static NO_MEMBERS: LazyLock<Object> = LazyLock::new(Object::new);
 
 /// What the create of a new record carries.
 fn create_data(record: &Value, taken: &dyn Fn(&str) -> bool) -> Object {
-    let reserved = |name: &str| {
-        EXPORT_FIELDS.iter().any(|field| field.name() == name)
-            || matches!(
-                name,
-                "id" | "labels" | "dependencies" | "comments" | "source_repo_path"
-            )
-    };
     let all = record.as_object().unwrap_or(&NO_MEMBERS);
     let extra: Object = all
         .iter()
-        .filter(|(name, _)| !reserved(name))
+        .filter(|(name, _)| !reserved(name.as_str()))
         .map(|(n, v)| (n.clone(), v.clone()))
         .collect();
     let dangling: Vec<Value> = dependencies(record)

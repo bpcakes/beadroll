@@ -100,8 +100,8 @@ mod g33_duplicate_ids_in_one_import_fail_whole {
     }
 
     /// G33: the same export twice in one file (a union merge of issues.jsonl) gives two claimable
-    /// copies of each issue and leaves a blocked issue ready; it must be refused (or mean the same
-    /// as once).
+    /// copies of each issue and leaves a blocked issue ready; it is refused whole, as any repeated
+    /// id is.
     #[test]
     fn concatenated_export_does_not_double_issues_or_unblock_them() {
         let sandbox = crate::sandbox();
@@ -112,23 +112,13 @@ mod g33_duplicate_ids_in_one_import_fail_whole {
         let path = write_records(&sandbox, "twice.jsonl", &twice);
         let proc = m.run(["import", path.to_str().unwrap(), "--json"]);
         assert!(!proc.crashed(), "import crashed: {}", tail(&proc.stderr));
-        let keys = sorted_ids(&m);
-        assert!(
-            keys.is_empty() || keys == ["ex-x", "ex-y"],
-            "{keys:?}: import rc {} {}",
-            proc.returncode(),
-            proc.stdout.trim()
-        );
-        assert!(!m.ready().contains("ex-y"));
-        // the same file imported once per run stays idempotent
+        assert_eq!(code(&proc), "VALIDATION", "{}", proc.stdout.trim());
+        assert_eq!(sorted_ids(&m), Vec::<String>::new());
+        // the same file imported once is still whole
         let path = write_records(&sandbox, "once.jsonl", &one);
         let imported = m.bead(["import", path.to_str().unwrap()]).unwrap();
-        let expected = if keys.is_empty() { 2 } else { 0 };
-        assert_eq!(
-            imported["imported"].as_i64(),
-            Some(expected),
-            "{imported:?}"
-        );
+        assert_eq!(imported["imported"].as_i64(), Some(2), "{imported:?}");
+        assert!(!m.ready().contains("ex-y"));
         assert_eq!(sorted_ids(&m), ["ex-x", "ex-y"]);
     }
 }

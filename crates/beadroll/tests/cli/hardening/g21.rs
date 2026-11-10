@@ -3,7 +3,6 @@
 //! checkout (`docs/FINDINGS.md`).
 
 use std::path::Path;
-use std::process::Command;
 
 use beadroll_test_support::git;
 
@@ -28,7 +27,7 @@ fn nested_repository(path: &Path) {
 /// `_g21_beads_refs`: the refs under `refs/beads` of the repository at `path`, as `git for-each-ref`
 /// lists them, trimmed; nothing when git lists none, or cannot.
 fn beads_refs(path: &Path) -> String {
-    let output = Command::new("git")
+    let output = beadroll_test_support::git_command()
         .args(["for-each-ref", "refs/beads"])
         .current_dir(path)
         .output()

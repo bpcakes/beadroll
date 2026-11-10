@@ -43,10 +43,6 @@ fn settled_deps(journal: SettledJournal<'_>, event: &Event) -> Vec<EventId> {
 /// causes, in journal order. A quarantined id whose remaining causes loop back onto it is released:
 /// it applies nothing.
 pub fn causal_order(journal: SettledJournal<'_>) -> (Vec<EventId>, Vec<EventId>) {
-    settled_order(journal)
-}
-
-pub(crate) fn settled_order(journal: SettledJournal<'_>) -> (Vec<EventId>, Vec<EventId>) {
     let order = Order::of(journal);
     let ids = |at: &[usize]| -> Vec<EventId> {
         at.iter()

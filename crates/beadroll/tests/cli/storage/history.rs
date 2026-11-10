@@ -44,6 +44,16 @@ fn history_cache_preserves_limits_filters_and_current_machine_aliases() {
         rows.as_array().unwrap()[0]["machine"].as_str(),
         Some("new-alias")
     );
+    // AS06: a name taken back leaves the machine its id, in `log` and `claims` as in `machines`
+    a.bead(["machines", "--name", &format!("{machine}=")]);
+    let rows = a.bead(["log", "--limit", "1"]).unwrap();
+    assert_eq!(
+        rows.as_array().unwrap()[0]["machine"].as_str(),
+        Some(machine)
+    );
+    a.bead(["claim", &key]);
+    let claims = a.bead(["claims"]).unwrap();
+    assert_eq!(claims["claims"][0]["machine"].as_str(), Some(machine));
 }
 
 #[test]

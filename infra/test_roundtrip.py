@@ -30,6 +30,7 @@ class RoundtripFailureReporting(unittest.TestCase):
         self.record = {"id": "x-a", "title": "Example", "status": "open"}
         self.source.write_text(json.dumps(self.record) + "\n")
         self.commands = []
+        self.environments = []
         # the bead under test: a native build as the preflight reads it, never run (subprocess.run is replaced)
         self.bead = self.root / "bead"
         self.bead.write_bytes(b"\x7fELF stand-in\n")
@@ -42,6 +43,7 @@ class RoundtripFailureReporting(unittest.TestCase):
             self.commands.append(args)
             if args[1:] == ["--version"]:
                 return subprocess.CompletedProcess(args, 0, version + "\n", "")
+            self.environments.append((args[1], dict(kwargs["env"])))
             if args[1] == failed_command:
                 return subprocess.CompletedProcess(args, 17, "", "synthetic command failure")
             record = {**self.record, "title": "Changed"} if changed else self.record
@@ -77,6 +79,37 @@ class RoundtripFailureReporting(unittest.TestCase):
         self.assertEqual(self.commands, [[str(self.bead), "--version"]])
         status, output = self.roundtrip(expect="0.2.0")
         self.assertEqual(status, 0, output)
+
+    def test_commands_use_only_the_scratch_store_and_repository_environment(self):
+        hostile = {
+            "BEAD_HOME": "/must-not-be-used",
+            "BEAD_WORKSPACE": "real-workspace",
+            "BEAD_AGENT": "inherited-agent",
+            "BEAD_FAILPOINTS": "publish.result@always=error(IO)",
+            "BEAD_REMOTE": "real-remote",
+            "GIT_DIR": "/real-repository/.git",
+            "GIT_WORK_TREE": "/real-repository",
+            "GIT_INDEX_FILE": "/real-repository/index",
+            "GIT_OBJECT_DIRECTORY": "/real-repository/objects",
+            "CODEX_THREAD_ID": "inherited-thread",
+            "CLAUDE_SESSION_ID": "inherited-session",
+            "LLVM_PROFILE_FILE": "/scratch/coverage-%p.profraw",
+        }
+        with mock.patch.dict(os.environ, hostile):
+            status, output = self.roundtrip()
+        self.assertEqual(status, 0, output)
+        self.assertEqual([command for command, _ in self.environments], ["init", "export", "ready"])
+        expected = {
+            "BEAD_HOME": str(self.root / "store"),
+            "BEAD_AGENT": "human",
+            "BEAD_WORKSPACE": "rt-tracker",
+        }
+        for command, env in self.environments:
+            with self.subTest(command=command):
+                isolated = {key: value for key, value in env.items()
+                            if key.startswith(("BEAD_", "GIT_", "CLAUDE", "CODEX"))}
+                self.assertEqual(isolated, expected)
+                self.assertEqual(env["LLVM_PROFILE_FILE"], hostile["LLVM_PROFILE_FILE"])
 
     def test_failed_commands_fail_the_roundtrip(self):
         for command in ("init", "export", "ready"):

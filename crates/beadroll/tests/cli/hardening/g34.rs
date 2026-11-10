@@ -7,7 +7,7 @@ use std::ffi::{OsStr, OsString};
 use std::io::Write as _;
 use std::os::unix::ffi::OsStrExt as _;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 /// `_g34_tail`: the last line of `text` that is not blank, or nothing.
 fn tail(text: &str) -> &str {
@@ -37,7 +37,7 @@ fn git_bytes(
     env: Option<&BTreeMap<OsString, OsString>>,
     data: Option<&[u8]>,
 ) -> Vec<u8> {
-    let mut command = Command::new("git");
+    let mut command = beadroll_test_support::git_command();
     command
         .args(args.iter().map(|arg| OsStr::from_bytes(arg)))
         .current_dir(cwd)

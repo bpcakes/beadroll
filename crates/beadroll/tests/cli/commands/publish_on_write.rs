@@ -4,7 +4,7 @@
 //! remote still lacks.
 
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, Sandbox, json, parse_json};
+use beadroll_test_support::{Json, Machine, Sandbox, git, json, parse_json};
 
 /// Machine a has initialised tracker `ex`; machine b has synced it.
 fn set_up(sandbox: &Sandbox) -> (Machine, Machine) {
@@ -28,12 +28,6 @@ fn listed(machine: &Machine, field: &str) -> Vec<String> {
         .iter()
         .map(|i| i[field].as_str().unwrap().to_owned())
         .collect()
-}
-
-/// `items[-1:]`: the last item of a list, or nothing when it is empty.
-fn tail(items: &Json) -> &[Json] {
-    let items = items.as_array().unwrap();
-    &items[items.len().saturating_sub(1)..]
 }
 
 #[test]
@@ -74,9 +68,12 @@ fn offline_keeps_it_local_and_says_so_until_the_next_publish() {
         Some("2 events not yet published: bead sync")
     );
     assert_eq!(a.bead(["info"]).unwrap()["unpublished"].as_i64(), Some(2));
-    // reads carry it in JSON dicts only
-    let (first, second) = (a.bead(["ready"]).unwrap(), a.bead(["ready"]).unwrap());
-    assert_eq!(tail(&first), tail(&second));
+    // reads carry it in JSON objects only: a list of issues has no place for it
+    assert_eq!(a.bead(["list"]).unwrap()["unpublished"].as_i64(), Some(2));
+    let ready = a.bead(["ready"]).unwrap();
+    let ready = ready.as_array().expect("ready prints a list");
+    assert_eq!(ready.len(), 2);
+    assert!(ready.iter().all(|issue| issue.get("unpublished").is_none()));
     b.bead(["sync"]);
     assert_eq!(b.bead(["list"]).unwrap()["issues"], Json::Array(Vec::new()));
     // an online write carries the backlog
@@ -110,11 +107,60 @@ fn an_unreachable_remote_never_fails_a_write() {
     assert_eq!(titles, ["still away", "while away"]);
 }
 
+/// AS07: a close, a delete and a closing update that end a confirmed claim publish it themselves.
+/// When that publish failed, the command line tried the remote once more and said "not yet
+/// published" twice. Here the publish fails once (`publish.result`, the first hit): the answer
+/// says so once and counts the event, and the remote has not moved, so nothing tried again.
+#[test]
+fn a_failed_publish_of_an_ended_claim_is_said_once_and_not_tried_again() {
+    let sandbox = crate::sandbox();
+    let a = crate::rust_only(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let origin = sandbox.origin().to_str().unwrap();
+    let tip = || {
+        git(
+            ["--git-dir", origin, "rev-parse", "refs/beads/journal"],
+            None,
+        )
+    };
+    let endings: [&[&str]; 3] = [
+        &["close", "-r", "done"],
+        &["delete"],
+        &["update", "--status", "closed"],
+    ];
+    for ending in endings {
+        let key = id(a.bead(["create", "held"]));
+        a.bead(["claim", &key]);
+        let before = tip();
+        let (verb, rest) = ending.split_first().unwrap();
+        let run = a
+            .cmd([*verb, key.as_str()].iter().chain(rest))
+            .env(
+                "BEAD_FAILPOINTS",
+                "publish.result=error(REMOTE_UNREACHABLE)",
+            )
+            .run();
+        assert_eq!(run.returncode(), 0, "{ending:?}: {}", run.stderr);
+        let said = "recorded locally, not yet published (REMOTE_UNREACHABLE)";
+        assert_eq!(
+            run.stdout.matches(said).count(),
+            1,
+            "{ending:?}: {}",
+            run.stdout
+        );
+        assert_eq!(
+            run.stdout.trim().lines().last(),
+            Some("1 event not yet published: bead sync"),
+            "{ending:?}"
+        );
+        assert_eq!(tip(), before, "{ending:?}: the remote was tried again");
+        a.bead(["sync"]);
+        assert_ne!(tip(), before, "{ending:?}");
+    }
+}
+
 #[test]
 fn init_with_an_import_publishes_the_tracker_at_once() {
-    let sandbox = crate::sandbox();
-    // Initialize the shared fixture too, though the test works in a sandbox of its own.
-    set_up(&sandbox);
     let fresh = crate::sandbox();
     let source = fresh.root().join("issues.jsonl");
     let record = json!({"id": "im-1", "title": "imported", "status": "open", "priority": 2,

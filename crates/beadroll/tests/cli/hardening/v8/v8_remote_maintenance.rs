@@ -2,7 +2,6 @@
 //! ownership whole.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -95,7 +94,7 @@ impl Maintenance {
             ];
             while !looping.load(Ordering::SeqCst) {
                 for cmd in commands {
-                    let out = Command::new("git")
+                    let out = beadroll_test_support::git_command()
                         .arg("--git-dir")
                         .arg(&remote)
                         .args(cmd)
@@ -148,7 +147,7 @@ fn gc_prune_now_aggressive_after_every_remote_operation() {
     let (machines, keys) = setup(&sandbox);
     let origin = sandbox.origin();
     let mut gc = || {
-        let out = Command::new("git")
+        let out = beadroll_test_support::git_command()
             .arg("--git-dir")
             .arg(origin)
             .args(["gc", "--prune=now", "--aggressive", "--quiet"])

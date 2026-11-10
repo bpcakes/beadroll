@@ -5,7 +5,9 @@ Every finding from every review, in one place. The reports themselves are kept v
 when the behaviour is changed and a test fails without the fix; **optimized** when the behaviour
 is kept byte for byte and only the work it takes is removed, so that the tests pass on both
 implementations and a release probe is the evidence; **by design** when the behaviour is kept on
-purpose (with the reason); **open** otherwise.
+purpose (with the reason); **plan corrected** when the finding was against the port's plan and the
+plan was changed (reviews 8 and 9); **rejected** when a reproduction disproved the claim; **open**
+otherwise.
 
 The Tests column names Rust tests: the crate whose tests hold them, then each test's path in its
 test binary (`cargo nextest run -E 'test(/^PATH/)'` runs it, or a class's module of them). Each
@@ -20,12 +22,50 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Whole-project audit (roll-23jk, 2026-11-09, ids AS)
+
+A read of the whole repository for what was broken, inconsistent, inefficient or no longer needed,
+slice by slice, each claim then checked against the code and, where it concerns behaviour,
+reproduced before it was changed. These rows are what was certain and is fixed; what needs the
+maintainer's decision was reported with them and is not recorded here.
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AS01 | Low | An event naming the operation `invalid` was taken for the journal's own stand-in and dropped with no integrity row; one naming `quarantined` was treated as a placeholder too | fixed | `Op::read` makes no stand-in: both names are unknown operations like any other, reported under their issue and applied nowhere. Only the journal makes `Op::Quarantined` and `Op::Invalid` | `beadroll-core`: `replay::replay_residuals::an_event_naming_a_stand_ins_operation_is_an_unknown_operation` |
+| AS02 | Low | A machine identity whose write or fsync failed left `.replica.<pid>.tmp` in `BEAD_HOME`, which nothing sweeps | fixed | `mint` removes the temporary file when it could not be written whole | `beadroll-store`: `identity::tests::a_failed_identity_write_leaves_no_temporary_file` |
+| AS03 | Low | A sync or an ownership command that lost its last round waited up to two seconds more before it reported `SYNC_CONFLICT` | fixed | `pause` waits between two rounds only: nothing follows the last | `beadroll-sync`: `rounds::the_last_round_is_not_followed_by_a_wait` |
+| AS04 | Low | `Comment::get` built the whole comment object to hand out one member, for every comment `search` reads and three times for each `comments` prints | optimized | One member is made alone, and the object is made of the members | `beadroll-core`: `state::issue::tests::a_comments_member_is_the_one_its_object_holds` |
+| AS05 | Low | `list` and `ready` judged `-p` only on an issue that reached the filter: `list -s blocked -p 9` with nothing blocked answered "No issues" | fixed | The priority is read before anything is filtered, as a parent is | `beadroll`: `commands::ready_subtree::a_priority_that_is_none_is_an_error_whatever_else_filters` |
+| AS06 | Low | A machine whose name was taken back (`machines --name ID=`) had an empty machine in `log`, `recap` and `claims`, where `machines` shows it unnamed | fixed | An empty alias is no alias: the id is shown | `beadroll`: `storage::history::history_cache_preserves_limits_filters_and_current_machine_aliases` |
+| AS07 | Medium | `init`, and a `close`, `delete` or closing `update` that ended a confirmed claim, published themselves and, when that failed, had the command line try the remote again: the warning twice, a second wait for a remote that did not answer, and after a failure that passed a warning above a write that had been published | fixed | A command that has tried to publish counts what is left itself and is settled (`Outcome::published_itself`); the command line publishes only what no command tried | `beadroll`: `commands::publish_on_write::a_failed_publish_of_an_ended_claim_is_said_once_and_not_tried_again`, `commands::setup::publication::failed_init_publication_keeps_the_warning_without_an_acknowledgment` |
+| AS08 | Medium | The fixtures' `git` inherited every `GIT_*` variable, so that tests started where `GIT_DIR` is exported (a hook) would commit and push in that repository; `COLUMNS` reached the `bead` under test, whose help it wraps | fixed | A fixture's git is started without them, and `COLUMNS` is scrubbed with the colour settings | `beadroll-test-support`: `sandbox::tests::a_fixtures_git_takes_none_of_the_inherited_git_variables`, `machine::tests::the_scrub_drops_harness_store_and_repository_variables` |
+| AS09 | Low | Tests that could not fail on the regression they name: either of two outcomes accepted where the ledger records one (G33, G35, Q05, Q09, E06, E07, E10, F13 and two of review 3's residual probes), a result compared with itself, a refused update's answer dropped (A09), two of three memo damages never applied, and V1's translation test reading a list of stderr tokens bead stopped reading at G11 | fixed | Each asserts the recorded outcome; the memo loop applies every damage; V1 asks `beadroll_git::push_outcome` what the `--porcelain` line means | `beadroll`: `hardening::g33`, `hardening::g35`, `hardening::v1`, `commands::commands_and_compatibility_review4::q05_tombstone_update_cannot_leave_a_releasable_claim`, `commands::review5_cli`, `commands::review6::store::f13_local_state_files_are_strict_json`, `commands::publish_on_write::offline_keeps_it_local_and_says_so_until_the_next_publish`, `protocol::root_audit::claimed_issue_is_not_ready_after_nonowner_status_update`; `beadroll-core`: `replay::replay_residuals`, `replay::replay_review4::q09_required_register_clears_remain_queryable`, `replay::review5_replay`; `beadroll-sync`: `count::the_count_is_the_slow_count_on_every_path_and_whatever_the_memo_holds` |
+| AS10 | Low | `infra/roundtrip.py` scrubbed `BP_*`, the prefix bead's variables had before they were `BEAD_*`, so the round trip ran with the shell's `BEAD_FAILPOINTS`, `BEAD_REMOTE` and `GIT_*` | fixed | It scrubs `BEAD_*` and `GIT_*`, as `compat_real.py` and `hotspots.py` do | `infra.test_roundtrip.RoundtripFailureReporting.test_commands_use_only_the_scratch_store_and_repository_environment` (added by AS14) |
+| AS11 | Low | Work and code nothing needed: `settled_order` and `settled_unseen` behind functions that only called them, the reserved members of a record listed in import and in export, a `String` a byte for every object id a merge lists, the chain-break message twice, a git of its own for the top of the checkout in an import's dry run, `tempfile` among the store's dependencies for its tests alone, uuid's `v7` feature, four licences no dependency has, and the fuzz helpers of the JSON target removed with the parser | optimized | Each removed or shared; no answer, byte or message changes | The suites, which pass before and after |
+| AS12 | Low | Documents and comments that named what no longer exists or said what the code does not: a JSON fuzz target, twelve rounds, sixteen reviews, an unused letter for a review's ids, goldens that are all Python's, a workspace without doctests, `FIELD_TYPES`, `replay::relabel`, `Projection::about` for a store, `\udcXX` in JSON, and others of their kind | fixed | Corrected against the code; `CONTRIBUTING.md` lists `compat_real.py`, `hotspots.py`, `RT_HOME` and `cargo xtask bead` | None: text |
+
+### Panel follow-up (roll-23jk.2)
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AS13 | High | AS08 scrubbed the shared Git helper but test-local Git commands still inherited repository, index and object routing: a checkout test committed staged work and appended eleven commits to an unrelated repository; G34 rewrote its origin URL | fixed | `git_command` exposes the shared scrub before deliberate fixture overrides. Test-local callers without a complete explicit environment use it, including object maintenance commands with `--git-dir` | `beadroll`: `hardening::fixture_environment::fixture_git_writes_ignore_inherited_repository_and_object_routing`; `beadroll-store`: `settings::fixture_git_writes_ignore_inherited_repository_and_object_routing`; `beadroll-sync`: `rounds::fixture_git_writes_ignore_inherited_repository_and_object_routing` |
+| AS14 | Low | AS10 corrected the round-trip driver's environment filter, but its tests ignored subprocess environments and could not catch inherited failpoints or Git routing returning | fixed | The subprocess stub records environments; the regression supplies hostile inherited variables and checks `init`, `export` and `ready` retain only the intended scratch home, actor and workspace among the scrubbed prefixes | `infra.test_roundtrip.RoundtripFailureReporting.test_commands_use_only_the_scratch_store_and_repository_environment` |
+
+### Second panel follow-up (roll-23jk.3)
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AS15 | Low | The Git isolation probe constructed a bead `Sandbox`, so standalone store tests failed when no bead binary had been built | fixed | The probe creates a plain temporary Git repository and shares the environment scrub; only tests that run bead select its binary. Normal sandbox binary validation is unchanged | `cargo test --locked -p beadroll-store --target-dir <fresh temporary directory>`, including `settings::fixture_git_writes_ignore_inherited_repository_and_object_routing` |
+| AS16 | Low | V1 checked a server ref-update race, then classified a second push that was rejected by the client because the remote had already moved | fixed | The racing push uses porcelain; the test checks its server-race status and classifies that same captured output. The classifier helper no longer starts a push | `hardening::v1::v1_push_side_translation::git_keeps_the_rejection_tokens_bead_reads_untranslated`, including its unconditional C-locale control |
+| AS17 | Low | The isolation probe scrubbed `BEAD_UNDER_TEST` from child tests, losing the caller's binary selection and failing when no default bead was built | fixed | Preserve the optional selector at the child-test boundary; a machine still scrubs it before starting bead. The regression reruns the real sync isolation test from a relocated compiled test executable with no adjacent default binary | `beadroll-sync`: `rounds::fixture_git_isolation_keeps_the_selected_binary_without_a_default`; failed before the fix with the missing-default diagnostic |
+
 ## Projection lifecycle (roll-9445, ids AR)
 
 The follow-up to the source-consumer audit covers selective reading, extension preparation and
 cache acknowledgement. AR01 and AR02 were reproduced through the previous public API; AR03
 replaces a caller-maintained sequence while preserving the existing refusal checks. These rows
-were originally AP; they became AR when the initial-sync review landed on main.
+were originally AP; they became AR when the initial-sync review landed on main. The focused
+review's report is preserved in `docs/reviews/2026-11-09-projection-lifecycle.txt`.
 
 | Id | Severity | Finding | Status | Resolution | Tests |
 |---|---|---|---|---|---|

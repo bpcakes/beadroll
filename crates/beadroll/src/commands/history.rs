@@ -94,7 +94,9 @@ fn logged_summary(
     };
     let at = event_time(event.id.millis());
     let replica = event.machine.as_str();
-    let machine = aliases.get(replica).map_or(replica, String::as_str);
+    // a machine whose name was taken back (`--name ID=`) goes by its id, as one never named
+    let machine =
+        (aliases.get(replica).filter(|alias| !alias.is_empty())).map_or(replica, String::as_str);
     let issue = match event.issue.as_deref() {
         Some(uid) => Value::from(st.key_of(uid)),
         None => Value::Null,

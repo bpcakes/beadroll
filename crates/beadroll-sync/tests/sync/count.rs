@@ -170,11 +170,10 @@ fn the_count_is_the_slow_count_on_every_path_and_whatever_the_memo_holds() {
 
     // the memo of a store that has not synced since is whatever the last sync left; then it is
     // taken away or damaged, and the number does not move
-    for how in ["missing", "older than every file", "garbage"] {
-        let ws = workspace(&a, &origin, &[]);
-        if memo_path(&ws).exists() {
-            damage(&ws, how);
-        }
+    // (taken away last: nothing here writes it again)
+    assert!(memo_path(&workspace(&a, &origin, &[])).exists());
+    for how in ["older than every file", "garbage", "missing"] {
+        damage(&workspace(&a, &origin, &[]), how);
         assert_eq!(counts(&a, &sandbox, how), Some(claimed.clone()), "{how}");
     }
 

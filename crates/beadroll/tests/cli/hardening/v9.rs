@@ -68,7 +68,7 @@ fn sh<S: AsRef<OsStr>>(args: &[S], cwd: Option<&Path>, env: &Env) -> String {
 
 /// `_v9_has_ref`: whether the repository at `git_dir` has `reference`.
 fn has_ref(git_dir: &Path, reference: &str) -> bool {
-    Command::new("git")
+    beadroll_test_support::git_command()
         .arg("--git-dir")
         .arg(git_dir)
         .args(["rev-parse", "-q", "--verify", reference])

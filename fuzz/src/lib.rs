@@ -1,30 +1,13 @@
-//! What bead's fuzz targets share (roll-k2wy.14.4): every JSON dialect, the comparison that tells
-//! `0.0` from `-0.0` and one key order from another, events built as `Tx::emit` writes them, and
-//! the answers a state gives through the public API, to compare two states by. A target asserts:
-//! an assertion that fails is a crash, and libFuzzer keeps its input.
+//! What bead's fuzz targets share (roll-k2wy.14.4): the comparison that tells `0.0` from `-0.0`
+//! and one key order from another, events built as `Tx::emit` writes them, and the answers a state
+//! gives through the public API, to compare two states by. A target asserts: an assertion that
+//! fails is a crash, and libFuzzer keeps its input.
 
 use beadroll_core::event::Field;
 use beadroll_core::id::EventId;
-use beadroll_core::json::{self, Format, Object, Style, Value};
+use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::query::{Edges, ReadyScope};
 use beadroll_core::state::State;
-
-/// Every format: three layouts, raw or ASCII-escaped, in insertion or key order. The six bead names
-/// (`Format::COMPACT` and the rest) are among them.
-pub const FORMATS: [Format; 12] = {
-    let styles = [Style::Compact, Style::Spaced, Style::Indented];
-    let mut all = [Format::COMPACT; 12];
-    let mut at = 0;
-    while at < 12 {
-        all[at] = Format {
-            style: styles[at / 4],
-            ascii: at % 4 >= 2,
-            sorted: at % 2 == 1,
-        };
-        at += 1;
-    }
-    all
-};
 
 /// Whether `a` and `b` are the same value member for member, in the same order, every float the
 /// same bits.
@@ -46,23 +29,6 @@ pub fn identical(a: &Value, b: &Value) -> bool {
 /// Whether every value of `a` is identical to the value of `b` at its place.
 pub fn all_identical(a: &[Value], b: &[Value]) -> bool {
     a.len() == b.len() && a.iter().zip(b).all(|(a, b)| identical(a, b))
-}
-
-/// `value` with every object's members in key order, as a dialect that sorts keys writes it.
-pub fn sorted(value: &Value) -> Value {
-    match value {
-        Value::Array(items) => Value::Array(items.iter().map(sorted).collect()),
-        Value::Object(members) => {
-            let mut members: Vec<(&String, &Value)> = members.iter().collect();
-            members.sort_by(|a, b| a.0.cmp(b.0));
-            Value::from(
-                (members.into_iter())
-                    .map(|(key, value)| (key.clone(), sorted(value)))
-                    .collect::<Object>(),
-            )
-        }
-        other => other.clone(),
-    }
 }
 
 /// The id of event number `n`: a UUIDv7 of one millisecond in 2026, ids in the order of `n`.

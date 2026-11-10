@@ -4,11 +4,12 @@ A brief for an independent reviewer: an agent or a person who did not write this
 to find out whether the design holds, to break it if they can, and to report with
 reproductions. Reviewers do not extend the tool.
 
-Sixteen reviews have run; reviews 8 and 9 audit the Rust port plan, review 10 is Codex's, task by
-task, of epic `roll-lqjj`, review 11 is Claude and Codex's review of its follow-up branch, and
-review 12 is their review of the Rust names (roll-dih8.17); reviews 13 to 15 were reported inline
-on branches before they landed, and review 16 is Claude's of the performance work of roll-lqjj.15
-to .20.
+Twenty-six numbered reviews have run, and audits and branch reviews without a number since;
+reviews 8 and 9 audit the Rust port plan, review 10 is Codex's, task by task, of epic `roll-lqjj`,
+review 11 is Claude and Codex's review of its follow-up branch, and review 12 is their review of
+the Rust names (roll-dih8.17); reviews 13 to 15 were reported inline on branches before they
+landed, and review 16 is Claude's of the performance work of roll-lqjj.15 to .20. `FINDINGS.md`
+heads each later one's section with what it reviewed.
 Their reports are kept verbatim in `reviews/`; every finding and what became of it is in
 `FINDINGS.md`. Start from what they did not cover.
 
@@ -141,6 +142,18 @@ agents and tests match parts of them; `bead prime` lists the codes.
 
 These were decided deliberately. Report problems *with* them, not their existence.
 
+- Fixture Git processes use `beadroll_test_support::git` or `git_command`, which drop inherited
+  `GIT_*` variables before any deliberate test overrides. Test-local commands that clear and
+  supply the whole environment may keep doing so. Selecting `--git-dir` alone is insufficient:
+  inherited object and index routing can still write elsewhere. The isolation tests run existing
+  fixture callers in child processes with routing pointed at an unrelated disposable repository,
+  then compare its files, including staged work, refs, config, index and objects (AS13).
+  The probe creates that repository without a `Sandbox` or a bead binary, so Git-only callers
+  such as the store's tests still build and run alone; child tests that run bead select their own
+  binary through their fixtures (AS15). The child test retains `BEAD_UNDER_TEST` for that
+  selection, even when no default binary was built; a machine still removes the selector before
+  it starts bead (AS17).
+
 - `bead recap` (roll-dih8.2). The maintainer settled these in the issue's acceptance criteria: one
   cursor per `BEAD_HOME` that keeps each tracker's frontier of what was shown, not every event id
   and not a time, so that late syncs and clocks behind cannot hide an event and the cursor does not
@@ -163,8 +176,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   and show whatever their time, as any late sync's do. A recap keeps, of the frontier it read and of
   one another recap saved meanwhile, the ids its own read did not place, since two reads of a store
   a sync is writing file by file need not be nested, and replaces the others with its own frontier,
-  even when it has nothing new to show. Recap reads each store as `log` does, the journal whole and
-  the state from the projection. The cursor and its lock are no part of format 1.
+  even when it has nothing new to show. Recap reads each store's journal whole and
+  the state from the projection, as `log` did before it had its history cache. The cursor and its lock are no part of format 1.
 - Rust APIs describe their role rather than the implementation language bead replaced
   (roll-dih8.17): `op::IntegerField` retains the boolean or integer representation of a format-1
   field, and text and path helpers name their parsing, trimming, casing and normalization
@@ -1220,11 +1233,13 @@ These were decided deliberately. Report problems *with* them, not their existenc
   counters (run 38874018456), and 252 s, 84 s and 164 s instrumented on 16 test threads of a shared
   64-core machine; the fast suite covers the sweep's slice. The sweep's variants (`BEAD_SWEEP_GC`,
   `BEAD_SWEEP_CONCURRENT`) and the simulation's runs (roll-k2wy.14.1 to .14.3) are added when a line
-  needs them. Not covered: the doctests (the workspace has none, and cargo-llvm-cov covers them only
+  needs them. Not covered: the doctests (compile-fail examples of the capability types, which run no line
+  of the product, and cargo-llvm-cov covers doctests only
   on a nightly toolchain, which `rust-toolchain.toml` does not pin), the growth guards (timings an
   instrumented build would spoil) and the `infra/` drivers (Python). It counts the `bead` processes
   the black-box tests start, since the children inherit the profile file's name from the test and
-  `beadroll-test-support` scrubs only `CLAUDE*`, `CODEX*`, `BEAD_*` and `GIT_*`; the command fails
+  `beadroll-test-support` scrubs only `CLAUDE*`, `CODEX*`, `BEAD_*`, `GIT_*`, the colour settings and
+  `COLUMNS`; the command fails
   when `crates/beadroll/src/main.rs`, which only such a process runs, has no line run, and ignores
   `BEAD_UNDER_TEST`, since another `bead` has no counters. Its profiles are written into 16 files
   per binary (`%16m`), not one for each process: the default, 8,237 files and 3.5 GB for the fast
@@ -1955,8 +1970,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `"{strerror}: {path}"`, a rename's naming its target; the JSON of each output and file is the
   `json.dumps` dialect Python wrote it in; the command line was argparse's, its errors and help
   pages included, until clap replaced it (roll-dih8.23, above); SIGXFSZ is ignored, so a file-size limit is an `IO` error, and standard
-  input closed at exec is no stream, `-` then an `IO` error; a sync or ownership command makes 12
-  rounds with `U(0.1, 0.4) × attempt` seconds between them; the names of fetch refs, temporary
+  input closed at exec is no stream, `-` then an `IO` error; the names of fetch refs, temporary
   files and set-aside copies are Python's. The maintainer's decision of 2026-10-22: the Python
   bead was a proof of concept never used on any project, so parity with it is no requirement; a
   rule kept for parity alone is dropped when it costs something, each recorded here and in the
@@ -1966,7 +1980,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   and JSON, over the journals the Python tests built and generated histories, valid and hostile.
   A difference was fixed in Rust or decided in that ledger; the harness kept no list of expected
   differences. Since the cutover the goldens (`crates/beadroll/tests/golden/`) and the answers
-  `parity` pins hold what Python's bead printed. Where the fixed fixtures came from: the golden
+  `parity` pins are fixed references: what Python's bead printed, and each deliberate change
+  since edited in by hand (the help pages are clap's, roll-dih8.23). Where the fixed fixtures came from: the golden
   outputs and receipt signatures were captured from `python-0.1.0` under CPython 3.14, and so
   were the actor and input fixtures (`parity/actors.rs`, `parity/inputs.rs`) and the unpublished
   counts (`COUNTS` in `parity/pending.rs`); the JSON parser's diagnostic fixtures take CPython
@@ -2478,7 +2493,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   race as a strategy would have to be taught to, and the JSON round trip draws values from
   `beadroll_test_support::values`. A failure names its seed and the first answer that differs,
   which is what shrinking would buy for values this small, and proptest would bring a dozen crates
-  into the tests' graph. The fuzz targets (`fuzz/`: the JSON parser, the segment reader, the Beads
+  into the tests' graph. The fuzz targets (`fuzz/`: the segment reader and the Beads
   importer) assert what must hold of any input, not only that nothing panics, and `cargo fuzz tmin`
   shrinks what they find. `fuzz/` is a workspace of its own on a nightly its `rust-toolchain.toml`
   pins, with its own `Cargo.lock` (begun from the root's, so beadroll-core builds on the same
@@ -2536,7 +2551,7 @@ Do not take the baseline from a document; run it:
 ```sh
 ./check.sh            # every test but the slow models, the doctests and the infra/ drivers' tests
 ./check.sh --stress   # also the randomised multi-machine models (several minutes)
-./check.sh --real     # also import/export of the real tracker exports on this Mac
+./check.sh --real     # also import/export of the real tracker exports on this machine
 ```
 
 `check.sh` runs `cargo xtask check` (it needs rustup and cargo-nextest): it prints one line per
@@ -2684,8 +2699,8 @@ repository. `beadroll-test-support` (`Sandbox`, `Machine`) shows the pattern;
 
 1. **A report** at `reviews/<date>-<n>-<name>.md` (n = the next review number). Findings ranked
    by severity (data loss or divergence > wrong ownership > wrong readiness or conflicts >
-   robustness > usability), each with an id of the form `<letter><nn>` using a letter not yet
-   used in `FINDINGS.md`, a one-line claim, a reproduction and, where you can, a proposed diff.
+   robustness > usability), each with an id of the form `<prefix><nn>` using the next
+   two-letter prefix not yet used in `FINDINGS.md` (every single letter is taken), a one-line claim, a reproduction and, where you can, a proposed diff.
    Design observations clearly separated from bugs, and from the accepted decisions in §2.
    Exactly which checks in §5 and §6 you ran, with numbers, and which you did not. Any side
    effects you caused anywhere, even if cleaned up. The `check.sh` output you started from.

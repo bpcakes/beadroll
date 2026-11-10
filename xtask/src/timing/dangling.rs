@@ -199,7 +199,8 @@ pub(super) fn unbound(issues: usize) -> Journal {
     journal_of(values)
 }
 
-/// The events of [`added`], and of [`removed`] when `removing`.
+/// The creates of `issues` issues and then, for each of `ops` in turn, that operation on every edge
+/// of the first issue: the events of [`added`], and of `removed` with `dep_remove` after it.
 fn dep_events(issues: usize, ops: &[&str]) -> Vec<Value> {
     let mut values = events(Shape::Plain, issues);
     let first = id(2);

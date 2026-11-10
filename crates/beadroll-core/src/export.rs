@@ -12,8 +12,9 @@ use crate::state::{Comment, Issue, State};
 /// Where the ids of comments made here start: 2^47, clear of the small ids Beads hands out.
 pub const COMMENT_ID_BASE: u64 = 1 << 47;
 
-/// Record members an extra field never overwrites.
-fn reserved(name: &str) -> bool {
+/// The members of a record that are bead's own: an extra field never overwrites one on export, and
+/// an import keeps none of them among a create's extras.
+pub(crate) fn reserved(name: &str) -> bool {
     EXPORT_FIELDS.iter().any(|field| field.name() == name)
         || matches!(
             name,
@@ -112,9 +113,7 @@ impl State {
             let comments = issue.comments().iter().map(|comment| {
                 let members = comment.to_value();
                 let id = match comment.uid().and_then(|uid| ids.ids.get(&uid)) {
-                    Some(number) => {
-                        Value::Int(Int::from(i64::try_from(*number).unwrap_or(i64::MAX)))
-                    }
+                    Some(number) => Value::Int(Int::from_u64(*number)),
                     None => exported_legacy_id(&members, &ids.taken),
                 };
                 let mut out = Object::new();

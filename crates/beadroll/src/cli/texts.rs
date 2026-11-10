@@ -1,8 +1,8 @@
 //! The texts bead prints: the overview (`OVERVIEW`) for `bead`, `bead -h` and `bead --help`; the
 //! workflow (`PRIME_TITLE` and `PRIME`, with where the caller stands between them) for `bead
-//! prime`; the ends of the pages of `create`, `dep` and `comments`; all laid out for the reader's
-//! width when printed (`layout`). And the agent instructions snippet (`ONBOARD`) for `bead
-//! onboard`, verbatim: it is also this repository's `AGENTS.md`.
+//! prime`; the ends of the pages of `create`, `recap`, `dep` and `comments`; all laid out for the
+//! reader's width when printed (`layout`). And the agent instructions snippet (`ONBOARD`) for
+//! `bead onboard`, verbatim: it is also this repository's `AGENTS.md`.
 
 use super::layout::{BLANK, Block, Row, row};
 

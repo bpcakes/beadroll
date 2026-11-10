@@ -418,7 +418,7 @@ fn page(args: &[OsString]) -> Page {
 /// A clap error as bead reports it: the message and its tips (`message`), and what follows them
 /// (`usage`), both plain. Where the message quotes one of `args` that is not UTF-8, which clap
 /// shows with U+FFFD, it holds that argument's own bytes, so that a human reads `?` for each byte
-/// and JSON `\udcXX`, as every other message shows them.
+/// and JSON `\ufffd`, as every other message shows them.
 fn usage(error: &clap::Error, args: &[OsString]) -> Usage {
     let rendered = error.render().to_string();
     let rendered = rendered.trim_end();

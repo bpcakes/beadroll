@@ -1,6 +1,6 @@
 //! The sandbox: a temporary root with a local bare remote, and the `bead` its machines run.
 
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -164,14 +164,31 @@ impl Drop for Sandbox {
     }
 }
 
-/// Runs git in cwd, or the inherited directory when absent, with the test environment and returns
-/// stdout. Failure panics with git's stderr.
+/// `git` for a fixture, with none of the `GIT_*` variables among `inherited`: one that a hook or a
+/// wrapper the tests were started under exports (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`)
+/// would turn a fixture's commit and push on the repository they were started from.
+fn fixture_git(inherited: impl Iterator<Item = OsString>) -> Command {
+    let mut command = Command::new("git");
+    for name in inherited.filter(|name| name.as_encoded_bytes().starts_with(b"GIT_")) {
+        command.env_remove(name);
+    }
+    command
+}
+
+/// A fixture's git command, without inherited `GIT_*` variables. Callers may then supply their
+/// own environment overrides, byte arguments, input or output handling without losing isolation.
+pub fn git_command() -> Command {
+    fixture_git(std::env::vars_os().map(|(name, _)| name))
+}
+
+/// Runs git in cwd, or the inherited directory when absent, with the test environment less every
+/// `GIT_*` variable, and returns stdout. Failure panics with git's stderr.
 pub fn git<I, S>(args: I, cwd: Option<&Path>) -> String
 where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    let mut command = Command::new("git");
+    let mut command = git_command();
     command.args(args).stdin(Stdio::null());
     if let Some(dir) = cwd {
         command.current_dir(dir);
@@ -189,6 +206,18 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// AS08: a fixture's git is started without the `GIT_*` variables the tests inherited, and
+    /// with every other one.
+    #[test]
+    fn a_fixtures_git_takes_none_of_the_inherited_git_variables() {
+        let inherited = ["GIT_DIR", "GIT_INDEX_FILE", "GITHUB_TOKEN", "PATH"];
+        let command = fixture_git(inherited.into_iter().map(OsString::from));
+        let removed: Vec<_> = (command.get_envs())
+            .map(|(name, value)| (name.to_str().unwrap(), value.is_none()))
+            .collect();
+        assert_eq!(removed, [("GIT_DIR", true), ("GIT_INDEX_FILE", true)]);
+    }
 
     #[test]
     fn bead_under_test_wins_over_the_default() {

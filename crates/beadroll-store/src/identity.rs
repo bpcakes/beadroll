@@ -109,7 +109,11 @@ fn mint(path: &Path, settings: &Settings) -> Result<(), Error> {
                 .map_err(|e| IoError::bare(&e))?;
             fsync(&file)
         });
-    written.map_err(Error::Io)?;
+    if let Err(error) = written {
+        // nothing was linked: what was written of the temporary file goes with the attempt
+        let _ = std::fs::remove_file(&tmp);
+        return Err(Error::Io(error));
+    }
     settings.failpoints.hit("identity.before-link");
     let linked = match std::fs::hard_link(&tmp, path) {
         Ok(()) => Ok(()),
@@ -169,5 +173,35 @@ mod tests {
         assert!((now - i128::from(parsed.millis())).abs() < 5_000);
         assert_eq!(hex_token(8).len(), 8);
         assert_eq!(hex_token(40).len(), 40);
+    }
+
+    /// AS02: an identity that cannot be written whole (here the device is full) leaves nothing
+    /// beside the one it was for, neither the identity nor its temporary file.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_failed_identity_write_leaves_no_temporary_file() {
+        use std::ffi::OsString;
+
+        let home = tempfile::tempdir().unwrap();
+        let mut vars = std::collections::BTreeMap::new();
+        vars.insert(OsString::from("BEAD_HOME"), OsString::from(home.path()));
+        let settings =
+            Settings::from_process(vars, None, OsString::new(), home.path().to_owned(), &|_| {
+                None
+            })
+            .unwrap();
+        let path = home.path().join("replica.json");
+        let tmp = home
+            .path()
+            .join(format!(".replica.{}.tmp", std::process::id()));
+        // every write to /dev/full fails with ENOSPC, and the open follows the link
+        std::os::unix::fs::symlink("/dev/full", &tmp).unwrap();
+        let failed = mint(&path, &settings).unwrap_err();
+        assert_eq!(failed.code(), beadroll_core::code::Code::Io, "{failed}");
+        let left: Vec<_> = std::fs::read_dir(home.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(left, Vec::<OsString>::new());
     }
 }

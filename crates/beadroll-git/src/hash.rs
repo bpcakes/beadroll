@@ -19,7 +19,20 @@ pub(crate) fn object_id(kind: &str, data: &[u8], hex_len: usize) -> Option<Strin
         }
         _ => return None,
     };
-    Some(digest.iter().map(|byte| format!("{byte:02x}")).collect())
+    Some(hex(&digest))
+}
+
+/// Raw bytes as lower-case hex: one string, since a merge names every file of a listed tree by
+/// its object id.
+pub(crate) fn hex(raw: &[u8]) -> String {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(2 * raw.len());
+    for byte in raw {
+        for nibble in [byte >> 4, byte & 0xf] {
+            out.push(char::from(DIGITS[usize::from(nibble)]));
+        }
+    }
+    out
 }
 
 /// The SHA-1 digest of `parts`, one after another. The objects bead checks are small: the message

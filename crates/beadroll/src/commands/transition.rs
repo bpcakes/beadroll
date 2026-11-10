@@ -167,10 +167,11 @@ pub(crate) fn transition(
     }
     let result = Value::Array(result.into_iter().map(Value::from).collect());
     let outcome = Outcome::new(result, lines);
-    Ok(match spent {
+    let outcome = match spent {
         Some(spent) => outcome.wrote_in(spent),
         None => outcome,
-    })
+    };
+    outcome.after_its_publish(ctx.ws, warning.as_deref())
 }
 
 /// What a transition's events name and leave: the claim each issue's event names (it ends exactly

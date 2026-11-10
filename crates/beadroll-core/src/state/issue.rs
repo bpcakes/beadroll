@@ -195,9 +195,9 @@ impl Issue {
         self.text(Field::IssueType)
     }
 
-    /// Its priority: an integer, or a boolean an old history wrote (`[PTrue]`). Every issue replay
-    /// makes has one (a create defaults it to 2, and validation refuses `null`); 2 stands in
-    /// otherwise.
+    /// Its priority: an integer, or a boolean an old history wrote (shown as 1 or 0). Every issue
+    /// replay makes has one (a create defaults it to 2, and validation refuses `null`); 2 stands
+    /// in otherwise.
     pub fn priority(&self) -> IntegerField {
         self.field(Field::Priority)
             .and_then(IntegerField::read)
@@ -397,24 +397,12 @@ impl Comment {
     /// As a JSON object, in field order.
     pub fn to_value(&self) -> Object {
         match self {
-            Comment::Native {
-                uid,
-                seq,
-                author,
-                text,
-                where_,
-            } => {
+            Comment::Native { .. } => {
                 let mut out = Object::new();
-                out.insert("uid".into(), Value::from(uid.to_string()));
-                out.insert(
-                    "seq".into(),
-                    Value::Int(Int::from(i64::try_from(*seq).unwrap_or(i64::MAX))),
-                );
-                out.insert("author".into(), Value::from(&**author));
-                out.insert("text".into(), Value::from(text.as_str()));
-                out.insert("created_at".into(), Value::from(event_time(uid.millis())));
-                if let Some(place) = where_ {
-                    out.insert("where".into(), Value::clone(place));
+                for key in Comment::NATIVE {
+                    if let Some(value) = self.get(key) {
+                        out.insert(key.into(), value);
+                    }
                 }
                 out
             }
@@ -430,8 +418,80 @@ impl Comment {
         }
     }
 
-    /// The member `key`, if present.
+    /// The members of a comment made here, in field order.
+    const NATIVE: [&'static str; 6] = ["uid", "seq", "author", "text", "created_at", "where"];
+
+    /// The member `key`, if present: that one alone is made, so that a search of every comment's
+    /// text builds no other member.
     pub fn get(&self, key: &str) -> Option<Value> {
-        self.to_value().get(key).cloned()
+        let (uid, seq, author, text, where_) = match self {
+            Comment::Native {
+                uid,
+                seq,
+                author,
+                text,
+                where_,
+            } => (uid, seq, author, text, where_),
+            Comment::Imported(members) => return members.get(key).cloned(),
+        };
+        match key {
+            "uid" => Some(Value::from(uid.to_string())),
+            "seq" => Some(Value::Int(Int::from(
+                i64::try_from(*seq).unwrap_or(i64::MAX),
+            ))),
+            "author" => Some(Value::from(&**author)),
+            "text" => Some(Value::from(text.as_str())),
+            "created_at" => Some(Value::from(event_time(uid.millis()))),
+            "where" => where_.as_ref().map(|place| Value::clone(place)),
+            _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// AS04: one member of a comment is what the whole object holds under its name, for a comment
+    /// made here, with and without a place, and for an imported one.
+    #[test]
+    fn a_comments_member_is_the_one_its_object_holds() {
+        let mut place = Object::new();
+        place.insert("branch".into(), Value::from("main"));
+        let mut imported = Object::new();
+        imported.insert("id".into(), Value::from("c-1"));
+        imported.insert("text".into(), Value::from("brought along"));
+        let native = |where_| Comment::Native {
+            uid: EventId::from_u128(0x0190_0000_0000_7000_8000_0000_0000_0001),
+            seq: 3,
+            author: Arc::from("codex:t"),
+            text: "said".to_owned(),
+            where_,
+        };
+        let comments = [
+            native(None),
+            native(Some(Arc::new(Value::from(place)))),
+            Comment::Imported(imported),
+        ];
+        for comment in comments {
+            let whole = comment.to_value();
+            let names = [
+                "uid",
+                "seq",
+                "author",
+                "text",
+                "created_at",
+                "where",
+                "id",
+                "other",
+            ];
+            for name in names {
+                assert_eq!(comment.get(name), whole.get(name).cloned(), "{name}");
+            }
+            let held = whole.keys().filter(|name| comment.get(name).is_some());
+            assert_eq!(held.count(), whole.len());
+        }
+        let keys: Vec<String> = native(None).to_value().keys().cloned().collect();
+        assert_eq!(keys, ["uid", "seq", "author", "text", "created_at"]);
     }
 }

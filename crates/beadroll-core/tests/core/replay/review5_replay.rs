@@ -30,9 +30,7 @@ fn e10_extra_cannot_override_canonical_export_fields() {
     let mut journal = Journal::new();
     journal.add(init, "peer", "", JournalOrder::Sequenced);
     journal.add(create.clone(), "peer", "", JournalOrder::Sequenced);
-    if payload_problem(&create).is_some() {
-        return;
-    }
+    assert_eq!(payload_problem(&create), None);
     let state = replay(journal).unwrap();
     assert!(state.integrity().is_empty());
     let records = state.hydrated().unwrap().export_records();

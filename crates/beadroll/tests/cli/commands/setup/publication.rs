@@ -95,18 +95,14 @@ fn failed_init_publication_keeps_the_warning_without_an_acknowledgment() {
     let a = crate::rust_only(&sandbox, "a");
     let run = a
         .cmd(["init"])
-        .env(
-            "BEAD_FAILPOINTS",
-            "publish.result@always=error(REMOTE_REFUSED)",
-        )
+        // the first publish alone: init tries once, so nothing publishes behind the warning
+        .env("BEAD_FAILPOINTS", "publish.result=error(REMOTE_REFUSED)")
         .run();
     assert_eq!(run.returncode(), 0, "{}", run.stderr);
-    // This code comes from the injected publish result, proving that the fault fired.
-    assert!(
-        run.stdout.contains("not yet published (REMOTE_REFUSED)"),
-        "{}",
-        run.stdout
-    );
+    // This code comes from the injected publish result, proving that the fault fired; and it is
+    // said once (AS07).
+    let said = "not yet published (REMOTE_REFUSED)";
+    assert_eq!(run.stdout.matches(said).count(), 1, "{}", run.stdout);
     assert!(
         run.stdout.contains("1 event not yet published"),
         "{}",

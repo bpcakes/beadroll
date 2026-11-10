@@ -1,7 +1,7 @@
 //! A prune of a machine's own sync.git while it syncs is local damage that the next commands
 //! repair.
 
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -21,7 +21,7 @@ impl Prune {
         let (looping, sync_git) = (Arc::clone(&stop), sync_git.to_owned());
         let worker = std::thread::spawn(move || {
             while !looping.load(Ordering::SeqCst) {
-                let _ = Command::new("git")
+                let _ = beadroll_test_support::git_command()
                     .arg("--git-dir")
                     .arg(&sync_git)
                     .args(["gc", "--prune=now", "--quiet"])

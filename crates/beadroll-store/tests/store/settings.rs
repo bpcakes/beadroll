@@ -6,6 +6,14 @@ use std::sync::Arc;
 
 use beadroll_store::{Settings, find_workspace};
 
+/// AS08: the fixture's init and remote configuration cannot target the invoking repository.
+#[test]
+fn fixture_git_writes_ignore_inherited_repository_and_object_routing() {
+    beadroll_test_support::assert_git_isolation(&[
+        "settings::discovery_runs_git_in_the_checkout_the_settings_name",
+    ]);
+}
+
 /// A caller selecting a different checkout resolves that checkout's tracker. Git uses the
 /// directory in settings, independent of the process's current directory.
 #[test]
@@ -13,7 +21,7 @@ fn discovery_runs_git_in_the_checkout_the_settings_name() {
     let root = tempfile::tempdir().unwrap();
     let checkout = root.path().canonicalize().unwrap().join("elsewhere");
     let git = |args: &[&str]| {
-        let status = std::process::Command::new("git")
+        let status = beadroll_test_support::git_command()
             .args(args)
             .current_dir(&checkout)
             .status()

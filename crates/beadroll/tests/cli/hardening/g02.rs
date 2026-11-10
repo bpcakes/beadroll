@@ -2,7 +2,7 @@
 //! repository's URL-derived store and redirect an existing store's remote.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use beadroll_core::json::{Format, write};
 use beadroll_test_support::{Json, Sandbox, git};
@@ -30,7 +30,7 @@ fn seed_repo(sandbox: &Sandbox, name: &str, origin: &Path, config: &Json) -> Pat
 /// `_g02_journal_refs`: the names of the refs the bare repository `bare` holds, one a line; what
 /// git printed, whether or not it succeeded.
 fn journal_refs(bare: &Path) -> String {
-    let output = Command::new("git")
+    let output = beadroll_test_support::git_command()
         .arg("--git-dir")
         .arg(bare)
         .args(["for-each-ref", "--format=%(refname)"])

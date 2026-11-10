@@ -108,7 +108,7 @@ pub enum Field {
 }
 
 impl Field {
-    /// Every field, in `FIELD_TYPES` order.
+    /// Every field, in the order they are declared.
     pub const ALL: [Field; 16] = [
         Field::Title,
         Field::Description,

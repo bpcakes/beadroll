@@ -1,4 +1,4 @@
-//! What git's messages mean to bead (transliterated from `sync.py`): whether a complaint is about
+//! What git's messages mean to bead: whether a complaint is about
 //! `sync.git`'s own objects, whether a fetch found the remote missing objects or lost to another
 //! process's fetch, and what a push's porcelain status line says happened.
 

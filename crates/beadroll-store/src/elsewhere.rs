@@ -6,6 +6,7 @@ use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_core::text::printed_text;
+use beadroll_git::Fact;
 
 use crate::error::Error;
 use crate::settings::Settings;
@@ -65,7 +66,8 @@ pub fn elsewhere(settings: &Settings, path: &str) -> Result<Elsewhere, Error> {
             found.refs.push((printed_text(name), count));
         }
     }
-    let top = git.git(["rev-parse", "--show-toplevel"]).run()?;
+    // the answer discovery already has, never a git of its own for it
+    let top = settings.fact(Fact::Toplevel)?;
     let top = crate::strip_ascii(&top.stdout);
     let worktrees = git.git(["worktree", "list", "--porcelain", "-z"]).run()?;
     for field in worktrees.stdout.split(|byte| *byte == 0) {

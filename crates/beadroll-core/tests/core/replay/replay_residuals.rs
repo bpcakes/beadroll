@@ -105,14 +105,11 @@ fn missing_issue_creates_cannot_alias_and_overwrite() {
         json!({"key": "ex-second", "fields": {"title": "second"}}),
     );
     let state = replayed(&[(&init, "a"), (&first, "a"), (&second, "b")]);
-    // Either normalize omitted create UIDs to their event IDs or reject the malformed creates. They
-    // must never share a missing UID and overwrite (issues are keyed by event id here, so none can).
-    if state.issue_named(&id(&first)).is_some() || state.issue_named(&id(&second)).is_some() {
-        assert_eq!(state.resolve("ex-first").unwrap().title(), "first");
-        assert_eq!(state.resolve("ex-second").unwrap().title(), "second");
-    } else {
-        assert!(state.integrity().len() >= 2);
-    }
+    // The malformed creates are rejected, each with its row: they never share a missing UID and
+    // overwrite (issues are keyed by event id here, so none can).
+    assert!(state.issue_named(&id(&first)).is_none());
+    assert!(state.issue_named(&id(&second)).is_none());
+    assert!(state.integrity().len() >= 2, "{:?}", state.integrity());
 }
 
 #[test]
@@ -288,18 +285,16 @@ fn malformed_embedded_create_comment_is_scoped() {
         }),
     );
     let state = replayed(&[(&init, "a"), (&create, "a"), (&malformed, "b")]);
-    // A rejected malformed issue is acceptable; so is a fully normalized one. In either case, one
-    // bad embedded comment cannot disable global export/detail.
+    // The malformed issue is rejected, and its one bad embedded comment cannot disable global
+    // export.
     let records = state.hydrated().unwrap().export_records();
     assert!(
         records
             .iter()
             .any(|record| record.get("id") == Some(&json!("ex-one")))
     );
-    match state.issue_named(&id(&malformed)) {
-        Some(issue) => drop(state.detail(issue.hydrated().unwrap())),
-        None => assert!(!state.integrity().is_empty()),
-    }
+    assert!(state.issue_named(&id(&malformed)).is_none());
+    assert!(!state.integrity().is_empty());
 }
 
 #[test]
@@ -338,4 +333,26 @@ fn cycle_scan_reports_each_elementary_cycle() {
         .map(|cycle| cycle.into_iter().map(str::to_owned).collect())
         .collect();
     assert_eq!(cycles, expected);
+}
+
+/// AS01: an event may name the operation one of the journal's own stand-ins carries (`quarantined`,
+/// `invalid`). It is an unknown operation like any other: reported under its issue and applied
+/// nowhere, never taken for a stand-in that was reported as it was loaded.
+#[test]
+fn an_event_naming_a_stand_ins_operation_is_an_unknown_operation() {
+    for op in ["frobnicate", "quarantined", "invalid"] {
+        let mut f = Fixture::new();
+        let (init, create) = f.base();
+        let uid = id(&create);
+        let odd = f.event(op, "a", &[&uid], Target::Named(&uid), json!({}));
+        let state = replayed(&[(&init, "a"), (&create, "a"), (&odd, "a")]);
+        let rows: Vec<Json> = state.integrity().iter().map(row).collect();
+        let expected = json!({
+            "event": (id(&odd)),
+            "issue": "ex-one",
+            "problem": (format!("unknown operation '{op}'"))
+        });
+        assert_eq!(rows, [expected], "{op}");
+        assert_eq!(state.resolve("ex-one").unwrap().title(), "survivor", "{op}");
+    }
 }

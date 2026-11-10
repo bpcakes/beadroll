@@ -304,13 +304,15 @@ enum Labels {
 /// then these added.
 fn label(c: &Ctx<'_>, issue: &mut Issue, labels: &[String], how: Labels) -> bool {
     if how != Labels::Add {
-        let targets: Vec<String> = if how == Labels::Set {
-            issue.label_tags.keys().cloned().collect()
+        let every: Vec<String>;
+        let targets: &[String] = if how == Labels::Set {
+            every = issue.label_tags.keys().cloned().collect();
+            &every
         } else {
-            labels.to_vec()
+            labels
         };
         for label in targets {
-            if let Some(tags) = issue.label_tags.get_mut(&label) {
+            if let Some(tags) = issue.label_tags.get_mut(label) {
                 tags.retain(|tag| !c.k.saw_at(c.at, *tag));
             }
         }

@@ -31,7 +31,7 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
   run (cargo-llvm-cov; the nightly workflow keeps its report), `timing` records how long a command
   took, `bead` runs bead in a process that counts its heap; its tests keep the repository's hygiene
   and the CI matrix.
-- `fuzz/` — cargo-fuzz targets for the JSON parser, the segment reader and the Beads importer, run
+- `fuzz/` — cargo-fuzz targets for the segment reader and the Beads importer, run
   nightly: a workspace of its own on the nightly its `rust-toolchain.toml` pins, outside the main
   workspace; `fuzz/README.md` says how to seed and run them.
 - `infra/` — drives against real machines and a throwaway GitHub repository, in stdlib Python;

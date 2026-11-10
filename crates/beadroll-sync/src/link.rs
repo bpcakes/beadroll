@@ -3,8 +3,8 @@
 //!
 //! A link owns persistent cat-file, hash-object, mktree and update-ref processes. Uncertain
 //! answers fall back to standalone git; processes end with the link or repository rebuild.
-//! Post-fetch refs are updated separately to reduce races with other fetches
-//! ([`Link::keep_fetched`]).
+//! After a fetch the head it brought is kept and the process's own fetch ref deleted in one ref
+//! transaction, in two calls only when the transaction cannot answer ([`Link::keep_fetched`]).
 //!
 //! The journal memo avoids hashing unchanged files (roll-lqjj.1). Publication reuses a remembered
 //! blob only while file identity matches and the blob is known present: this link created it or

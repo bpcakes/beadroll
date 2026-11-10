@@ -315,7 +315,9 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   (`docs/REVIEWING.md` §2).
 - When the publish of an owner's close could not go out, the `--json` answer
   says so (`"unpublished": "recorded locally, not yet published (…)"`) and a
-  retry of the close publishes as the first run would have.
+  retry of the close publishes as the first run would have. The command tries
+  the remote once and says so once; the next command or `bead sync` carries
+  the write.
 - A final unpublished-count failure does not turn a committed local write
   into a failed command. Its successful result stays on stdout, and stderr
   warns that the write was recorded locally and the count is unavailable.
@@ -597,12 +599,6 @@ it, and the file is committed again.
   --read N`, `write_seconds`); a write on a tracker with no remote, which
   freed it too, now keeps it and takes what an offline write takes, about
   90 ms less at 200,000 events (roll-lqjj.50, `no_remote_write_seconds`).
-  A write that is not published (`--offline`) keeps its transaction until
-  the process exits, as a read keeps its state, and one that publishes
-  frees it first, so that none holds two: at 200,000 events an offline
-  write takes 0.20 s rather than 0.27 s and at 20,000 about 32 ms rather
-  than 37 ms, while a write published at once and a sync are as they were
-  (roll-lqjj.42; `cargo xtask timing --read N`, `write_seconds`).
   A write-back of the projection cuts what it keeps of what every event had
   seen down to the events its state names only once it holds more than an
   eighth more than it did after the last such cut, not every time, so at

@@ -1,5 +1,5 @@
 //! `bead recap`: what is new in every tracker on this machine since a recap last marked activity
-//! seen (roll-dih8.2). It reads each store's journal and its projection's state as `log` does, one
+//! seen (roll-dih8.2). It reads each store's journal whole and its projection's state, one
 //! store at a time, each let go of before the next, and never a checkout, git or the network. What
 //! it shows is marked seen only once the answer has been written ([`Delivered`]).
 
@@ -183,9 +183,9 @@ fn heading(name: Option<&str>, workspace: &str) -> Line {
     }
 }
 
-/// What `ws` shows through `window`, laid out as `layout`: its journal and its state read as `log`
-/// reads them, the state after the journal so that every issue an event names is in it, and both
-/// let go of when it returns. Its name is the repository's as this machine last saw it in a
+/// What `ws` shows through `window`, laid out as `layout`: its journal read whole and its state
+/// from the projection, the state after the journal so that every issue an event names is in it,
+/// and both let go of when it returns. Its name is the repository's as this machine last saw it in a
 /// checkout, else the tracker's own; a `meta.json` that cannot be read is no reason to stop here.
 /// With the mark the cursor is to keep of it, given `kept`, the frontier the cursor holds of it,
 /// and the window it is `owed` when it has never been shown.

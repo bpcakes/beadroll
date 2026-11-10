@@ -10,7 +10,7 @@
 
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use beadroll_test_support::{Json, Machine, Run, Sandbox, code, parse_json};
 
@@ -49,7 +49,7 @@ enum Harm {
 
 /// `git --git-dir GIT_DIR ARGS`, given `input`: its output, trimmed.
 fn plumbing(git_dir: &Path, args: &[&str], input: Option<&str>) -> String {
-    let mut child = Command::new("git")
+    let mut child = beadroll_test_support::git_command()
         .arg("--git-dir")
         .arg(git_dir)
         .args(args)
@@ -94,7 +94,7 @@ fn harm(git_dir: &Path, aside: &Path, object: &str, harm: Harm) {
     }
     for pack in moved {
         let input = std::fs::File::open(&pack).expect("a pack set aside");
-        let unpacked = Command::new("git")
+        let unpacked = beadroll_test_support::git_command()
             .arg("--git-dir")
             .arg(git_dir)
             .args(["unpack-objects", "-q"])

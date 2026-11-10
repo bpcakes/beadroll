@@ -63,7 +63,8 @@ pub(crate) struct ArgSpec {
     /// The default when not given: `None` means no value, or false for a flag.
     pub(crate) default: Option<&'static str>,
     pub(crate) help: Option<&'static str>,
-    /// Whether it belongs to the command's one mutually exclusive group (`ready`'s scope).
+    /// Whether it belongs to the command's one mutually exclusive group (`ready`'s scope, `recap`'s
+    /// `--advance` and `--no-advance`).
     pub(crate) exclusive: bool,
 }
 
