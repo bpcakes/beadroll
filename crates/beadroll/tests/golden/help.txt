@@ -1324,7 +1324,7 @@ read an issue's comments, or `comments add ID TEXT` to record one
 Usage: bead comments [OPTIONS] [ARGS]...
 
 Arguments:
-  [ARGS]...  [add] ISSUE [TEXT ...] (below)
+  [ARGS]...  [list] ISSUE or add ISSUE TEXT ... (below)
 
 Options:
   -m, --message <TEXT>   the comment's text
@@ -1352,7 +1352,7 @@ read an issue's comments, or `comments add ID TEXT` to record one
 Usage: bead comments [OPTIONS] [ARGS]...
 
 Arguments:
-  [ARGS]...  [add] ISSUE [TEXT ...] (below)
+  [ARGS]...  [list] ISSUE or add ISSUE TEXT ... (below)
 
 Options:
   -m, --message <TEXT>   the comment's text

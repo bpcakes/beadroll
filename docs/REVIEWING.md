@@ -142,6 +142,15 @@ agents and tests match parts of them; `bead prime` lists the codes.
 
 These were decided deliberately. Report problems *with* them, not their existence.
 
+- A missing `add` is an error when a `comments` or `dep` read has extra positional
+  arguments or writing options (AS18, roll-23jk.7). The maintainer approved this
+  compatibility change on 2026-11-11: such calls previously exited successfully while
+  discarding the extra input. The one-issue listing forms stay accepted; writes still
+  require an explicit action. `comments`' text, file and author options require `add`,
+  and `dep --type` requires `add` or `remove` (`rm`). Explicit `list`, `tree` and `cycles`
+  reads also reject surplus positional arguments. Rejection is `VALIDATION`, writes
+  no event, and shows the applicable syntax.
+
 - Fixture Git processes use `beadroll_test_support::git` or `git_command`, which drop inherited
   `GIT_*` variables before any deliberate test overrides. Test-local commands that clear and
   supply the whole environment may keep doing so. Selecting `--git-dir` alone is insufficient:

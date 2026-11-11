@@ -37,6 +37,23 @@ pub(crate) fn dep(
     if matches!(action.as_str(), "add" | "remove" | "rm") {
         return change(ctx, &action, words, kind);
     }
+    if kind.is_some() {
+        return Err(Failure::new(
+            Code::Validation,
+            "--type requires bead dep add ISSUE DEPENDS_ON or bead dep remove ISSUE DEPENDS_ON",
+        ));
+    }
+    if action == "cycles" && !words.is_empty() {
+        return Err(Failure::new(Code::Validation, "usage: bead dep cycles"));
+    }
+    if action != "cycles" && words.len() > 1 {
+        let usage = if action == "list" {
+            "usage: bead dep [list] ISSUE; to add a dependency, use: bead dep add ISSUE DEPENDS_ON"
+        } else {
+            "usage: bead dep tree ISSUE"
+        };
+        return Err(Failure::new(Code::Validation, usage));
+    }
     let st = view_outline(ctx.ws)?;
     need_tracker(&st)?;
     if action == "cycles" {

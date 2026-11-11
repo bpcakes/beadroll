@@ -13,6 +13,9 @@ use super::{
 };
 use crate::commands::args::TextValidity;
 
+const USAGE: &str =
+    "usage: bead comments [list] ISSUE; to add a comment, use: bead comments add ISSUE TEXT";
+
 /// `comments`' arguments.
 pub(crate) struct CommentArgs {
     pub(crate) words: Vec<OsString>,
@@ -31,13 +34,13 @@ pub(crate) fn comments(ctx: &Context<'_>, args: &CommentArgs) -> Result<Outcome,
         _ => (&b"list"[..], &args.words[..]),
     };
     let Some(key) = words.first() else {
-        return Err(Failure::new(
-            Code::Validation,
-            "usage: bead comments [add] ISSUE [TEXT]",
-        ));
+        return Err(Failure::new(Code::Validation, USAGE));
     };
     if action == b"add" {
         return add(ctx, args, key, &words[1..]);
+    }
+    if words.len() != 1 || args.message.is_some() || args.file.is_some() || args.author.is_some() {
+        return Err(Failure::new(Code::Validation, USAGE));
     }
     let st = view_of(ctx.ws, &[key])?;
     need_tracker(&st)?;

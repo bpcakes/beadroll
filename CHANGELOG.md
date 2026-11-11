@@ -6,6 +6,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `bead comments ID "a note"` and `bead dep A B` now fail with `VALIDATION` and
+  show the explicit `add` syntax instead of silently discarding the extra input.
+  Explicit read forms reject surplus arguments too; comment-writing options require
+  `comments add`, and dependency `--type` requires `add` or `remove` (AS18).
 - A command that publishes what it wrote itself (`init`, and a `close`, `delete` or closing
   `update` that ends a confirmed claim) tries the remote once. When that publish failed, the
   command line tried it again: the "not yet published" warning came twice, a remote that did not

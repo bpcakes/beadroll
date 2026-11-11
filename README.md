@@ -107,6 +107,10 @@ sync first when you need the latest changes.
 Run `bead` for the command overview and `bead help COMMAND` for usage and
 options. Add `--json` for machine-readable output.
 
+`bead comments ID` and `bead dep ID` list what is recorded. To write, use
+`bead comments add ID "a note"` or `bead dep add A B` (A depends on B).
+Extra text or issue IDs without `add` are errors.
+
 `bead recap` works from any directory and reads all local trackers without
 syncing. The first recap shows the last 24 hours. Terminal output marks
 activity as seen; pipes, files, and `--json` only read it unless you pass

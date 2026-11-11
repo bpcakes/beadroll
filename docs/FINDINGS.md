@@ -26,8 +26,8 @@ Reviewers: propose new rows in your report using the next free id for your revie
 
 A read of the whole repository for what was broken, inconsistent, inefficient or no longer needed,
 slice by slice, each claim then checked against the code and, where it concerns behaviour,
-reproduced before it was changed. These rows are what was certain and is fixed; what needs the
-maintainer's decision was reported with them and is not recorded here.
+reproduced before it was changed. These rows are what was certain and is fixed; items awaiting
+the maintainer's decision are added when settled, as AS18 was.
 
 | Id | Severity | Finding | Status | Resolution | Tests |
 |---|---|---|---|---|---|
@@ -58,6 +58,12 @@ maintainer's decision was reported with them and is not recorded here.
 | AS15 | Low | The Git isolation probe constructed a bead `Sandbox`, so standalone store tests failed when no bead binary had been built | fixed | The probe creates a plain temporary Git repository and shares the environment scrub; only tests that run bead select its binary. Normal sandbox binary validation is unchanged | `cargo test --locked -p beadroll-store --target-dir <fresh temporary directory>`, including `settings::fixture_git_writes_ignore_inherited_repository_and_object_routing` |
 | AS16 | Low | V1 checked a server ref-update race, then classified a second push that was rejected by the client because the remote had already moved | fixed | The racing push uses porcelain; the test checks its server-race status and classifies that same captured output. The classifier helper no longer starts a push | `hardening::v1::v1_push_side_translation::git_keeps_the_rejection_tokens_bead_reads_untranslated`, including its unconditional C-locale control |
 | AS17 | Low | The isolation probe scrubbed `BEAD_UNDER_TEST` from child tests, losing the caller's binary selection and failing when no default bead was built | fixed | Preserve the optional selector at the child-test boundary; a machine still scrubs it before starting bead. The regression reruns the real sync isolation test from a relocated compiled test executable with no adjacent default binary | `beadroll-sync`: `rounds::fixture_git_isolation_keeps_the_selected_binary_without_a_default`; failed before the fix with the missing-default diagnostic |
+
+### Command-input follow-up (roll-23jk.7)
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| AS18 | Medium | Without `add`, `comments ISSUE TEXT` and `dep A B` silently discarded input and exited 0; explicit read forms and writing options on reads had the same gap | fixed | Surplus positional arguments and writing options on reads fail with `VALIDATION`, write no events and show the applicable syntax. One-issue listing forms and explicit writes remain accepted. The maintainer approved this compatibility change | `beadroll`: `commands::read_arguments`; both regression tests failed before the fix with exit 0, while the two valid-call controls passed |
 
 ## Projection lifecycle (roll-9445, ids AR)
 

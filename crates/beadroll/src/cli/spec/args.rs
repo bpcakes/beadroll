@@ -258,7 +258,7 @@ pub(super) const DEP: &[ArgSpec] = &[
 pub(super) const COMMENTS: &[ArgSpec] = &[
     positional("words", Nargs::ZeroOrMore)
         .metavar("ARGS")
-        .help("[add] ISSUE [TEXT ...] (below)"),
+        .help("[list] ISSUE or add ISSUE TEXT ... (below)"),
     opt(&["-m", "--message"], "message")
         .metavar("TEXT")
         .help("the comment's text"),
