@@ -206,11 +206,12 @@ fn exchange(
             },
         }
     };
+    ws.settings.failpoints.hit("sync.after-round");
     let mut values = Vec::new();
     if let Some(name) = &ws.name {
         values.push(("name", Value::from(name.to_string_lossy().into_owned())));
     }
-    values.push(("published", Value::from(link.published_counts()?)));
+    values.push(("published", Value::from(published.counts)));
     ws.note_sync(remote, &values);
     ws.set_wrote(PublicationState::Published);
     if !report {

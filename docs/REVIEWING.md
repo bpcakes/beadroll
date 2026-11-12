@@ -2166,7 +2166,10 @@ These were decided deliberately. Report problems *with* them, not their existenc
   (roll-lqjj.30): again only when the file at its path no longer has the identity it had when this
   process last read or wrote it, which bead only ever changes by renaming a whole new file over
   it; what a write leaves is known by the identity its own descriptor has once renamed into
-  place. The unpublished count every command gives reads only the memo's entries of the segments
+  place. A successful sync captures the published file counts before releasing the store lock
+  (roll-byaq); saving that snapshot still happens outside the lock. A later offline write cannot
+  enter the snapshot. Concurrent metadata saves can leave older counts, so the hint can err high.
+  The unpublished count every command gives reads only the memo's entries of the segments
   whose lines it counts; the memo is still checked whole, every line as one is written, now in
   the order bead writes them (each path once, as before), the lines of the files it does not read
   for their shape alone (roll-lqjj.47, below), and one read so is never written back.

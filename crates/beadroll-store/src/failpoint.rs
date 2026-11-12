@@ -30,7 +30,9 @@
 //! `fetch.fetched`, after a fetch that brought a head and before its tip and manifest are read,
 //! where a test removes what it brought from `sync.git` as a prune racing the fetch would;
 //! `append.mid`, inside a segment append after a partial line;
-//! `backoff`, the unlocked wait between rounds; `claim.before-push`, between a claim's fetch and
+//! `backoff`, the unlocked wait between rounds; `sync.after-round`, after a successful sync
+//! round releases the store lock and before saving its publication bookkeeping;
+//! `claim.before-push`, between a claim's fetch and
 //! push; `pending.after-list`, between listing and reading `pending/`; `journal.after-enumerate`,
 //! `journal.before-read` (before each segment is read), `view.before-load-pending` and
 //! `identity.before-link`, for readers racing writers; `recap.before-save`, once a recap's answer
@@ -60,7 +62,7 @@ use beadroll_core::code::Code;
 use crate::error::Error;
 
 /// The points bead has, besides the path-qualified atomic write and flush points above.
-pub const POINTS: [&str; 25] = [
+pub const POINTS: [&str; 26] = [
     "ownership.before-publish",
     "ownership.before-transaction",
     "ownership.after-publish-ok",
@@ -75,6 +77,7 @@ pub const POINTS: [&str; 25] = [
     "fetch.fetched",
     "append.mid",
     "backoff",
+    "sync.after-round",
     "claim.before-push",
     "pending.after-list",
     "journal.after-enumerate",

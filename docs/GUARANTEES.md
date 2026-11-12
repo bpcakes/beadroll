@@ -325,6 +325,9 @@ that it reads the new one; then it flips. Nothing ever rewrites existing events.
   retry of the close publishes as the first run would have. The command tries
   the remote once and says so once; the next command or `bead sync` carries
   the write.
+- A sync records the published file counts while it still holds the store lock.
+  Another process's offline write after that round remains unpublished until
+  a later publication carries it, including when a command publishes automatically.
 - A final unpublished-count failure does not turn a committed local write
   into a failed command. Its successful result stays on stdout, and stderr
   warns that the write was recorded locally and the count is unavailable.

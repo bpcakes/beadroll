@@ -1,5 +1,6 @@
 //! A sync round's progress and outcome, and the recovery allowed between rounds.
 
+use beadroll_core::json::Object;
 use beadroll_git::PushOutcome;
 use beadroll_store::{Workspace, load_pending, segment_files};
 
@@ -25,6 +26,7 @@ pub(super) enum Outcome {
 pub(super) struct Published {
     pub pushed: i64,
     pub repacked: bool,
+    pub counts: Object,
     pub merged: Box<Merged>,
 }
 
@@ -54,7 +56,8 @@ impl Rebuild {
 }
 
 /// Fetch before locking, and fetch again under the lock when pending attempts need the current
-/// head. All merge, fence, retirement and maintenance work stays under that same lock.
+/// head. All merge, fence, retirement, maintenance and publication counting stays under that
+/// same lock.
 pub(super) fn sync_round(ws: &Workspace, link: &mut Link<'_>, report: SyncReport) -> Round {
     let mut pulled = 0;
     let mut discarded = None;
@@ -83,7 +86,9 @@ pub(super) fn sync_round(ws: &Workspace, link: &mut Link<'_>, report: SyncReport
                         // Absent at a head we just advanced: they can never land.
                         drop_pending(ws, &load_pending(ws)?)?;
                         let repacked = link.maintain()?;
-                        Ok(Some((pushed, repacked)))
+                        // Later offline writes must not be counted as part of this publication.
+                        let counts = link.published_counts()?;
+                        Ok(Some((pushed, repacked, counts)))
                     }
                     PushOutcome::Refused => Err(refused(link)),
                     PushOutcome::Uncertain => Err(Error::RemoteUnreachable(format!(
@@ -95,9 +100,10 @@ pub(super) fn sync_round(ws: &Workspace, link: &mut Link<'_>, report: SyncReport
                 }
             })();
             match publication {
-                Ok(Some((pushed, repacked))) => Ok(Outcome::Published(Published {
+                Ok(Some((pushed, repacked, counts))) => Ok(Outcome::Published(Published {
                     pushed,
                     repacked,
+                    counts,
                     merged: Box::new(merged),
                 })),
                 other => {

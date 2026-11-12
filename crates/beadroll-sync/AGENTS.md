@@ -111,6 +111,8 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   allowance under the lock and proceeds without backoff. Adoption is considered only on round
   one. Incoming counts survive a failed publication and rebuild; outgoing counts and maintenance
   come from the successful round. The rebuild allowance is independent of the path in the report.
+  Published file counts are captured in that successful round under the store lock; the later
+  metadata save uses that snapshot, so another process's offline writes remain unpublished.
   `tests/sync/rounds/reports.rs` gates a rejected push between distinct confirmations: only the
   final round's confirmation is reported, while incoming events from both rounds are counted.
 - The protocol depends on fetch, read-tree and push, never on `sync.git`'s internals

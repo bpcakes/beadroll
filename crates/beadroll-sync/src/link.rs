@@ -340,6 +340,8 @@ impl<'a> Link<'a> {
 
     /// Published counts by path: lines per segment and one per attempt. Use memoized line counts
     /// where available and save counts in meta.json so unpublished state can be reported offline.
+    /// Call after successful publication while still holding the store lock: these count the
+    /// local files, which must not have changed since publication.
     pub fn published_counts(&mut self) -> Result<Object, Error> {
         let ws = self.ws;
         let mut counts = Object::new();

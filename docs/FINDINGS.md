@@ -22,6 +22,12 @@ plan the port followed, removed once the port was done (roll-dih8.24); it is in 
 Reviewers: propose new rows in your report using the next free id for your review (see
 `REVIEWING.md`); the maintainer merges them here.
 
+## Published-count race (roll-byaq, 2026-11-12)
+
+| Id | Severity | Finding | Status | Resolution | Tests |
+|---|---|---|---|---|---|
+| roll-byaq | Medium | Sync counted local journal files after releasing the store lock, so a concurrent offline write was recorded as published although the remote lacked it | fixed | Capture counts inside the successful locked round and save that snapshot afterward, for explicit sync and automatic publication | `beadroll`: `protocol::published_counts::writes_after_the_sync_round_remain_unpublished`; failed before the fix with no unpublished hint instead of `1`; covers appends, rotation, offline claims, automatic publication and unchanged sync |
+
 ## Whole-project audit (roll-23jk, 2026-11-09, ids AS)
 
 A read of the whole repository for what was broken, inconsistent, inefficient or no longer needed,
