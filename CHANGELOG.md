@@ -6,6 +6,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- Require rustix 1.1.6 or later, which fixes RUSTSEC-2026-0486, and update the
+  locked dependency so CI's advisory check passes. Build the nightly's Git 2.40.4
+  in GNU C17 mode so newer compilers' C23 default does not break it (roll-ogg8).
+
 - `bead comments ID "a note"` and `bead dep A B` now fail with `VALIDATION` and
   show the explicit `add` syntax instead of silently discarding the extra input.
   Explicit read forms reject surplus arguments too; comment-writing options require

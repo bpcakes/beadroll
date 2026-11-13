@@ -51,7 +51,8 @@ jobs:
           curl -fsSL "https://mirrors.edge.kernel.org/pub/software/scm/git/git-$GIT_VERSION.tar.xz" -o git.tar.xz
           echo "$GIT_SHA256  git.tar.xz" | sha256sum -c -
           tar xf git.tar.xz
-          make -C "git-$GIT_VERSION" -j4 prefix="$HOME/git" NO_GETTEXT=1 NO_TCLTK=1 NO_PERL=1 NO_PYTHON=1 all install > git-build.log 2>&1 || { tail -40 git-build.log; exit 1; }
+          # GCC 15 defaults to C23, whose unreachable macro collides with Git 2.40's function.
+          make -C "git-$GIT_VERSION" -j4 prefix="$HOME/git" CFLAGS="-g -O2 -Wall -std=gnu17" NO_GETTEXT=1 NO_TCLTK=1 NO_PERL=1 NO_PYTHON=1 all install > git-build.log 2>&1 || { tail -40 git-build.log; exit 1; }
           echo "$HOME/git/bin" >> "$GITHUB_PATH"
       - name: The tests run that git
         run: test "$(git --version)" = "git version $GIT_VERSION"
