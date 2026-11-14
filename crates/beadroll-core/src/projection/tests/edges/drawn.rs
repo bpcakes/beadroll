@@ -215,7 +215,7 @@ impl Exercised {
                 let concurrent = (ids.iter().enumerate())
                     .any(|(at, a)| ids[at + 1..].iter().any(|b| apart(*a, *b)));
                 self.concurrent += usize::from(concurrent);
-                let removals = [(to.clone(), Some(kind.clone())), (to.clone(), None)];
+                let removals = [(to.clone(), Some(kind)), (to.clone(), None)];
                 let again = (removals.iter())
                     .filter_map(|removed| issue.retracted().get(removed))
                     .flat_map(|removals| removals.iter())

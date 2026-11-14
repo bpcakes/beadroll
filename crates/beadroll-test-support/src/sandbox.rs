@@ -25,18 +25,31 @@ pub fn select_bead(under_test: Option<&OsStr>, default: &Path) -> PathBuf {
 }
 
 /// The `bead` Cargo builds for the workspace of the running test, found beside that test's own
-/// executable: a test binary runs from `<target>/<profile>/deps/`, and the workspace's binaries
-/// land in `<target>/<profile>/`, whatever the target directory, the build target or the profile.
+/// executable: Cargo puts tests in `<target>/<profile>/build/<package>/<hash>/out/` (or `deps/`
+/// with older Cargo), and binaries in `<target>/<profile>/`, whatever the target directory,
+/// the build target or the profile.
 /// It is the default `bead` of the tests of a crate other than `beadroll`, to which Cargo gives no
 /// `CARGO_BIN_EXE_bead`. A build that includes the `beadroll` package makes it, as `cargo nextest
 /// run --workspace` does; when it is missing, [`Sandbox::new`] fails the test and says how to build
 /// it.
 pub fn built_bead() -> PathBuf {
     let test = std::env::current_exe().expect("the running test's own executable");
-    let profile = test
-        .parent()
-        .and_then(Path::parent)
-        .expect("a test executable in <target>/<profile>/deps");
+    bead_for_test(&test)
+}
+
+/// Recognizes Cargo's test layouts without depending on a target directory or profile name.
+fn bead_for_test(test: &Path) -> PathBuf {
+    let output = test.parent().expect("a test executable's directory");
+    let profile = match output.file_name().and_then(OsStr::to_str) {
+        Some("deps") => output.parent(),
+        Some("out") => output
+            .ancestors()
+            .nth(3)
+            .filter(|dir| dir.file_name() == Some(OsStr::new("build")))
+            .and_then(Path::parent),
+        _ => None,
+    }
+    .expect("a test executable in <profile>/build/<package>/<hash>/out or <profile>/deps");
     profile.join("bead")
 }
 
@@ -254,11 +267,30 @@ mod tests {
     }
 
     #[test]
-    fn the_built_bead_is_in_the_profile_directory_above_the_tests() {
-        let test = std::env::current_exe().unwrap();
-        let profile = test.parent().and_then(Path::parent).unwrap();
-        assert_eq!(built_bead(), profile.join("bead"));
-        assert_eq!(test.parent().and_then(Path::file_name).unwrap(), "deps");
+    fn the_built_bead_is_found_in_both_cargo_test_layouts() {
+        for (test, bead) in [
+            ("/target/debug/deps/test-hash", "/target/debug/bead"),
+            (
+                "/target/debug/build/beadroll-sync/hash/out/test-hash",
+                "/target/debug/bead",
+            ),
+            (
+                "/custom/target/triple/release/deps/test-hash",
+                "/custom/target/triple/release/bead",
+            ),
+            (
+                "/custom/target/triple/release/build/beadroll-sync/hash/out/test-hash",
+                "/custom/target/triple/release/bead",
+            ),
+        ] {
+            assert_eq!(bead_for_test(Path::new(test)), Path::new(bead), "{test}");
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "a test executable in <profile>/build")]
+    fn an_unknown_test_layout_is_refused() {
+        bead_for_test(Path::new("/target/debug/unknown/package/hash/out/test"));
     }
 
     /// What a test pushes into a sandbox remote stays as it arrived (roll-k2wy.20). git's auto

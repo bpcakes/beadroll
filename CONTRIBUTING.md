@@ -12,7 +12,7 @@ cargo build --package beadroll   # the working copy, as target/debug/bead
 ./check.sh                       # the baseline: cargo xtask check, about 4 minutes
 ```
 
-rustup (which installs the pinned toolchain, `rust-toolchain.toml`, 1.99.0, on
+rustup (which installs the pinned toolchain, `rust-toolchain.toml`, 1.100.0, on
 first use), cargo-nextest, git 2.40+, and Python 3 for the tests of the
 `infra/` drivers. `cargo install --locked --force --path crates/beadroll --root
 ~/.local`, run from the checkout's root, installs the working copy as the

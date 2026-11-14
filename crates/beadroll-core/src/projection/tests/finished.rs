@@ -402,7 +402,7 @@ fn each_machines_latest_event_is_its_greatest_id_however_its_records_sort() {
         assert_eq!(projection.journals(), full.journals());
         assert_eq!(projection.event_count(), full.event_count());
         let (encoded, _) = projection.encode(0);
-        let read_back = Projection::decode(encoded.clone()).unwrap();
+        let read_back = Projection::decode(encoded).unwrap();
         assert_eq!(read_back.journals(), full.journals());
         assert_eq!(read_back.event_count(), full.event_count());
     }

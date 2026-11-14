@@ -13,8 +13,8 @@ tests it builds events, and for the round-trip properties it draws JSON values.
 - `src/sandbox.rs`: `Sandbox`, `git`, `git_command`, `select_bead`, the choice between `BEAD_UNDER_TEST` and the
   caller's default (`Sandbox::selecting` takes the variable's value instead of reading it), and
   `built_bead`, the default of the tests of a crate other than `beadroll`: the `bead` Cargo built in
-  the profile directory above the running test (`<target>/<profile>/bead` beside
-  `<target>/<profile>/deps/`).
+  the profile directory above the running test (`<target>/<profile>/bead`, with tests under
+  `build/<package>/<hash>/out/` or older Cargo's `deps/`).
 - `src/machine.rs`: `Machine` (`run`, `bead`, `show`, `ready`, `export`, `store`, `with_bead`),
   `Invocation` (a run's directory, thread, agent, environment and input), `Run`, `code`.
 - `src/isolation.rs`: `assert_git_isolation`, which runs named tests in child processes with Git

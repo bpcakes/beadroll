@@ -1,7 +1,7 @@
 # Working on beadroll
 
 beadroll is a Beads-compatible issue tracker for coding agents working across git worktrees and
-machines. The implementation is a Cargo workspace (Rust 1.99, pinned by `rust-toolchain.toml`):
+machines. The implementation is a Cargo workspace (Rust 1.100, pinned by `rust-toolchain.toml`):
 `cargo build --package beadroll` builds the working copy as `target/debug/bead`, and `cargo install
 --locked --force --path crates/beadroll --root ~/.local`, run from the checkout's root, installs it
 as the `bead` command. `README.md` says what it does and why, and `docs/GUARANTEES.md` every

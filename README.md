@@ -30,7 +30,7 @@ bead --version
 ```
 
 Run the install command from the repository root so rustup picks up
-[rust-toolchain.toml](rust-toolchain.toml) and installs Rust 1.99.0. The binary
+[rust-toolchain.toml](rust-toolchain.toml) and installs Rust 1.100.0. The binary
 goes in `~/.local/bin`; keep that directory on your `PATH`. To upgrade, pull
 the latest source and run the install command again.
 
@@ -38,8 +38,8 @@ the latest source and run the install command again.
 <summary>Install directly from Git without a checkout</summary>
 
 ```sh
-rustup toolchain install 1.99.0 --profile minimal
-cargo +1.99.0 install --locked --force --config net.git-fetch-with-cli=true \
+rustup toolchain install 1.100.0 --profile minimal
+cargo +1.100.0 install --locked --force --config net.git-fetch-with-cli=true \
   --git https://github.com/bpcakes/beadroll.git beadroll --root ~/.local
 ```
 

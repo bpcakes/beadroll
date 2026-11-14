@@ -20,7 +20,7 @@ several machines at once. It replaces the workflow around `br` (beads_rust), who
 lives in a file tracked on code branches: dirty checkouts, tracker-only commits, merge conflicts,
 state split between worktrees and machines.
 
-It is one binary, built from a Cargo workspace (Rust 1.99) whose crates each depend only on the
+It is one binary, built from a Cargo workspace (Rust 1.100) whose crates each depend only on the
 ones before them, which the compiler enforces:
 
 - `beadroll-core`: strict JSON and text, event validation, journals and their settling,

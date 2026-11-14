@@ -6,6 +6,9 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- Upgrade the pinned Rust toolchain and minimum supported Rust version to 1.100.0 (roll-foyo).
+  The shared test helper recognizes Cargo's new test executable layout.
+
 - Require rustix 1.1.6 or later, which fixes RUSTSEC-2026-0486, and update the
   locked dependency so CI's advisory check passes. Build the nightly's Git 2.40.4
   in GNU C17 mode so newer compilers' C23 default does not break it (roll-ogg8).
