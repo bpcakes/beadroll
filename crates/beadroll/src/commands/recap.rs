@@ -8,6 +8,7 @@ mod layout;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use beadroll_core::event::BLOCKS;
 use beadroll_core::id::EventId;
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::op::Op;
@@ -361,10 +362,7 @@ fn summary(op: &Op, st: &State) -> String {
             why(op.name(), ending.reason.as_deref())
         }
         Op::DepAdd { to, kind, .. } => {
-            let kind = kind
-                .as_deref()
-                .filter(|k| !k.is_empty())
-                .unwrap_or("blocks");
+            let kind = kind.as_deref().filter(|k| !k.is_empty()).unwrap_or(BLOCKS);
             format!("dep_add {kind} {}", st.key_of(to))
         }
         Op::DepRemove { to, key, kind } => {

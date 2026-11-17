@@ -6,6 +6,7 @@ use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_core::code::Code;
+use beadroll_core::event::{BLOCKS, PARENT_CHILD};
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::op::OpName;
@@ -192,13 +193,10 @@ fn change(
         };
         let shown = match (action, target) {
             ("add", Some(target)) => {
-                let kind = kind
-                    .as_deref()
-                    .filter(|k| !k.is_empty())
-                    .unwrap_or("blocks");
+                let kind = kind.as_deref().filter(|k| !k.is_empty()).unwrap_or(BLOCKS);
                 let looped = if blocking(kind) {
                     st.reaches(target.uid(), issue.uid())
-                } else if kind == "parent-child" {
+                } else if kind == PARENT_CHILD {
                     st.reaches(issue.uid(), target.uid())
                 } else {
                     false

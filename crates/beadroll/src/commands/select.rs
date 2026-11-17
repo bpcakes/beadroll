@@ -1,6 +1,6 @@
 //! The issues `list` and `ready` show: filtered, limited and laid out as rows.
 
-use beadroll_core::event::DONE;
+use beadroll_core::event::{DONE, PARENT_CHILD};
 use beadroll_core::json::{Int, Value};
 use beadroll_core::op::IntegerField;
 use beadroll_core::state::{Issue, State, Target};
@@ -90,7 +90,7 @@ pub(crate) fn select<'s>(st: &'s State, filters: &Filters) -> Result<Vec<&'s Iss
             continue;
         }
         if let Some(parent) = &parent
-            && !issue.deps().contains(parent, "parent-child")
+            && !issue.deps().contains(parent, PARENT_CHILD)
         {
             continue;
         }

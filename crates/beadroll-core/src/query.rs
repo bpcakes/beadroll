@@ -8,7 +8,7 @@ mod readiness;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
 
-use crate::event::{DONE, Field};
+use crate::event::{BLOCKS, DONE, Field, PARENT_CHILD};
 use crate::id::EventId;
 use crate::json::{self, Format, Object, Value};
 use crate::state::{Edge, HydratedIssue, IdMap, Issue, State, Texts};
@@ -22,7 +22,7 @@ pub const MAX_CYCLES: usize = 200;
 
 /// Whether this dependency type blocks its issue until the target is done.
 pub fn blocking(kind: &str) -> bool {
-    kind == "blocks"
+    kind == BLOCKS
 }
 
 /// One value of a disputed field.
@@ -136,7 +136,7 @@ impl State {
         edges.sort();
         edges
             .into_iter()
-            .filter(|edge| edge.kind() == "parent-child")
+            .filter(|edge| edge.kind() == PARENT_CHILD)
             .filter_map(|edge| self.target(edge.to()))
             .collect()
     }

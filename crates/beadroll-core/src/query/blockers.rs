@@ -6,6 +6,7 @@
 //! that adds no blocker of its own to the one set it inherits shares that set, so the work grows
 //! with the issues, their edges and the blockers listed, not with the depth of every ancestry.
 
+use crate::event::PARENT_CHILD;
 use crate::state::{Issue, State, Target};
 use crate::work::{Work, tally};
 
@@ -163,7 +164,7 @@ impl State {
             (self.issues.get_index(at).into_iter()).flat_map(|(_, issue)| issue.deps().keys())
         };
         let parents = Rows::of(count, |at, row| {
-            let named = edges(at).filter(|edge| edge.kind() == "parent-child");
+            let named = edges(at).filter(|edge| edge.kind() == PARENT_CHILD);
             row.extend(named.filter_map(|edge| place(edge.to())).map(small));
         });
         let direct = Rows::of(count, |at, row| {

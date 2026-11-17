@@ -7,7 +7,7 @@
 use std::ffi::{OsStr, OsString};
 
 use beadroll_core::code::Code;
-use beadroll_core::event::DONE;
+use beadroll_core::event::{DONE, PARENT_CHILD};
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::op::OpName;
@@ -344,13 +344,13 @@ fn edit(
     }
     if let Some(parent) = new_parent {
         for edge in issue.deps().keys() {
-            if edge.kind() == "parent-child" {
+            if edge.kind() == PARENT_CHILD {
                 remove_edge(tx, st, issue, edge.to(), Some(edge.kind()))?;
             }
         }
         let mut edge = Object::new();
         edge.insert("to".into(), Value::from(parent.to_string()));
-        edge.insert("type".into(), Value::from("parent-child"));
+        edge.insert("type".into(), Value::from(PARENT_CHILD));
         tx.emit(OpName::DepAdd, Some(&uid), edge, None)?;
     }
     Ok(())

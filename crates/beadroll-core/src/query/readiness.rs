@@ -7,6 +7,7 @@
 
 use std::collections::HashSet;
 
+use crate::event::PARENT_CHILD;
 use crate::id::EventId;
 use crate::state::{Issue, State, Target};
 
@@ -96,7 +97,7 @@ impl State {
                                 .is_some_and(|child| !flag(&done, child))
                         })
                     || (issue.deps().keys()).any(|edge| {
-                        edge.kind() == "parent-child"
+                        edge.kind() == PARENT_CHILD
                             && named(edge.to()).is_some_and(|parent| flag(&reached, parent))
                     })
             })
@@ -149,7 +150,7 @@ impl State {
     /// [`State::parents_of`] sorts, for a walk whose answer does not depend on the order.
     fn parent_issues<'s>(&'s self, issue: &'s Issue) -> impl Iterator<Item = &'s Issue> {
         (issue.deps().keys())
-            .filter(|edge| edge.kind() == "parent-child")
+            .filter(|edge| edge.kind() == PARENT_CHILD)
             .filter_map(|edge| self.target(edge.to()))
     }
 }

@@ -40,6 +40,13 @@ pub const STATUSES: [&str; 6] = [
 /// Statuses that count as finished.
 pub const DONE: [&str; 2] = ["closed", "tombstone"];
 
+/// The dependency type that keeps its issue waiting until the target is done, and the type of a
+/// dependency that names none.
+pub const BLOCKS: &str = "blocks";
+
+/// The dependency type that makes its target the issue's parent.
+pub const PARENT_CHILD: &str = "parent-child";
+
 /// The maximum nesting of arrays and objects in an event this bead writes.
 pub const MAX_NESTING: usize = 100;
 

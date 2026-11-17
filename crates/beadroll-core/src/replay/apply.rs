@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 
-use crate::event::{DONE, Field};
+use crate::event::{BLOCKS, DONE, Field};
 use crate::id::EventId;
 use crate::journal::{Event, Rest};
 use crate::json::{Object, Value};
@@ -235,7 +235,7 @@ fn comment(c: &Ctx<'_>, issue: &mut Issue, seq: u64, text: &str, author: Option<
 /// A dependency on `to` with `kind` defaulting to blocks, the kind held once for every edge of it,
 /// event stamps and overriding metadata from `meta`.
 fn dep_add(c: &Ctx<'_>, issue: &mut Issue, to: &str, kind: Option<&str>, meta: &Object) -> bool {
-    let kind = kind.filter(|kind| !kind.is_empty()).unwrap_or("blocks");
+    let kind = kind.filter(|kind| !kind.is_empty()).unwrap_or(BLOCKS);
     let edge = Edge {
         to: Target::of(to),
         kind: c.name(kind),
@@ -332,7 +332,7 @@ fn label(c: &Ctx<'_>, issue: &mut Issue, labels: &[String], how: Labels) -> bool
 fn dangling_type(dep: &Value) -> String {
     dep.get("type")
         .filter(|kind| kind.truthy())
-        .map_or_else(|| "blocks".to_owned(), str_of)
+        .map_or_else(|| BLOCKS.to_owned(), str_of)
 }
 
 /// Keeps every value its writer had not seen replaced; a write retires only what it observed (plus

@@ -16,6 +16,7 @@ mod texts;
 
 use indexmap::IndexMap;
 
+use crate::event::PARENT_CHILD;
 use crate::id::EventId;
 use crate::journal::{Event, Journal};
 use crate::json::Value;
@@ -417,7 +418,7 @@ impl State {
         tally(Work::Index, self.issues.len());
         for child in self.issues.values() {
             for edge in child.deps().keys() {
-                if let (Some(parent), "parent-child") = (edge.to().id(), edge.kind()) {
+                if let (Some(parent), PARENT_CHILD) = (edge.to().id(), edge.kind()) {
                     children.entry(parent).or_default().push(child.uid);
                 }
             }
