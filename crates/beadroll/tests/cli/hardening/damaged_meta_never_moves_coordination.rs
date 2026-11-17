@@ -11,7 +11,7 @@ use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
-use beadroll_test_support::{Json, Machine, Sandbox, git, parse_json, printed_id};
+use beadroll_test_support::{Json, Machine, Sandbox, git, json_member, parse_json, printed_id};
 
 /// The names of the refs the sandbox's remote, the code origin, holds.
 fn origin_refs(sandbox: &Sandbox) -> String {
@@ -33,13 +33,6 @@ struct Fixture {
     key: String,
     other: String,
     meta: PathBuf,
-}
-
-/// The member `key` of `value`; absence fails the test.
-fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
-    value
-        .get(key)
-        .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
 }
 
 /// `path` as text, for an argument or a JSON member.
@@ -73,7 +66,7 @@ impl Fixture {
         // b remembers coord in meta.json ("last used")
         b.bead(["sync", "--remote", text(&coord)]);
         let meta = b.store().join("meta.json");
-        assert_eq!(member(&read_json(&meta), "remote"), &resolved(&coord));
+        assert_eq!(json_member(&read_json(&meta), "remote"), &resolved(&coord));
         Fixture {
             sandbox,
             coord,
@@ -109,7 +102,7 @@ impl Fixture {
         );
         let error = parse_json(&claimed.stderr)
             .unwrap_or_else(|error| panic!("{error}: {}", claimed.stderr));
-        let message = member(member(&error, "error"), "message");
+        let message = json_member(json_member(&error, "error"), "message");
         let message = message.as_str().expect("a message");
         assert!(message.contains("meta.json"), "{message}");
     }
@@ -117,7 +110,7 @@ impl Fixture {
 
 /// Who holds the claim on `issue`, as `show` prints it: `issue["claim"]["owner"]`.
 fn owner(issue: &Json) -> &Json {
-    member(member(issue, "claim"), "owner")
+    json_member(json_member(issue, "claim"), "owner")
 }
 
 /// G03: a meta.json with a trailing comma silently moves claims to origin; a remote named with
@@ -140,7 +133,10 @@ fn malformed_meta_does_not_move_coordination_to_origin() {
     assert_eq!(claimed.returncode(), 0, "{}", claimed.stderr);
     s.a.bead(["sync"]);
     assert_eq!(owner(&s.a.show(&s.other)), owner(&s.b.show(&s.other)));
-    assert_eq!(member(&read_json(&s.meta), "remote"), &resolved(&s.coord));
+    assert_eq!(
+        json_member(&read_json(&s.meta), "remote"),
+        &resolved(&s.coord)
+    );
     assert!(!origin_refs(&s.sandbox).contains("refs/beads/journal"));
 }
 
@@ -178,11 +174,14 @@ fn owner_close_with_damaged_meta_stays_off_origin() {
         "{}",
         closed.stdout
     );
-    assert_eq!(member(&s.b.show(&s.key), "status"), &Json::from("closed"));
+    assert_eq!(
+        json_member(&s.b.show(&s.key), "status"),
+        &Json::from("closed")
+    );
     let info = s.b.run(["info", "--json"]);
     // info diagnoses the file instead of stopping on it
     assert_eq!(info.returncode(), 0, "{}", info.stderr);
     let reported = parse_json(&info.stdout).unwrap();
-    let remote = member(&reported, "remote").as_str().expect("a remote");
+    let remote = json_member(&reported, "remote").as_str().expect("a remote");
     assert!(remote.contains("meta.json"), "{remote}");
 }

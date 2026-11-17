@@ -4,20 +4,16 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use beadroll_core::json::{Format, write};
 use beadroll_git::normalize_remote;
-use beadroll_test_support::{Json, Machine, Run, Sandbox, code, git, json, parse_json, printed_id};
+use beadroll_test_support::{
+    Json, Machine, Run, Sandbox, code, git, json, json_member, json_text, parse_json, printed_id,
+};
 use sha2::{Digest as _, Sha256};
-
-/// Spaced, ASCII-escaped JSON.
-fn dumps(value: &Json) -> String {
-    write(value, Format::ASCII).expect("a serializable value")
-}
 
 /// A clone of `origin` carrying a committed .beadroll.json, pushed to its origin.
 fn seed_repo(sandbox: &Sandbox, name: &str, origin: &Path, config: &Json) -> PathBuf {
     let checkout = sandbox.clone(name, Some(origin));
-    std::fs::write(checkout.join(".beadroll.json"), dumps(config) + "\n").unwrap();
+    std::fs::write(checkout.join(".beadroll.json"), json_text(config) + "\n").unwrap();
     git(["add", "-A"], Some(&checkout));
     let identity = ["-c", "user.name=t", "-c", "user.email=t@example.invalid"];
     git(
@@ -49,13 +45,6 @@ fn sha256_hex(data: &[u8]) -> String {
         .collect()
 }
 
-/// The member `key` of `value`; absence fails the test.
-fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
-    value
-        .get(key)
-        .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
-}
-
 /// The exit status and, for a failure, the reported error code.
 fn outcome(run: &Run) -> (i32, Option<String>) {
     let status = run.returncode();
@@ -83,7 +72,7 @@ fn foreign_derived_workspace_id_is_refused() {
     let secret = printed_id(victim.bead(["create", "SECRET acquisition plan", "-p", "1"]));
     victim.bead(["sync"]);
     let info = victim.bead(["info"]).expect("info prints a record");
-    let pid = member(&info, "workspace")
+    let pid = json_member(&info, "workspace")
         .as_str()
         .expect("an id")
         .to_owned();
@@ -123,7 +112,7 @@ fn foreign_derived_workspace_id_is_refused() {
     // The victim's own checkout still coordinates through its real origin.
     let origin = sandbox.origin().canonicalize().unwrap();
     assert_eq!(
-        member(
+        json_member(
             &victim.bead(["info"]).expect("info prints a record"),
             "remote"
         ),
@@ -131,8 +120,11 @@ fn foreign_derived_workspace_id_is_refused() {
         "the victim's own store was redirected to the config's remote"
     );
     let listed = victim.bead(["list"]).expect("list prints a record");
-    let issues = member(&listed, "issues").as_array().expect("a list");
-    let ids: Vec<&Json> = issues.iter().map(|issue| member(issue, "id")).collect();
+    let issues = json_member(&listed, "issues").as_array().expect("a list");
+    let ids: Vec<&Json> = issues
+        .iter()
+        .map(|issue| json_member(issue, "id"))
+        .collect();
     assert!(ids.contains(&&Json::from(secret.as_str())), "{ids:?}");
 
     // Control: an `init --tracked` config (a uuid7 workspace) copied into a repository with a
@@ -160,10 +152,10 @@ fn foreign_derived_workspace_id_is_refused() {
     let joined = b.cmd(["sync", "--json"]).cwd(&elsewhere).run();
     assert_eq!(joined.returncode(), 0, "{}", joined.stderr);
     let listed = b.cmd(["list"]).cwd(&elsewhere).json().expect("a list");
-    assert_eq!(member(&listed, "total"), &json!(1));
+    assert_eq!(json_member(&listed, "total"), &json!(1));
     let info = b.cmd(["info"]).cwd(&elsewhere).json().expect("a record");
     assert_eq!(
-        member(&info, "workspace_source"),
+        json_member(&info, "workspace_source"),
         &json!("tracked .beadroll.json")
     );
 }
@@ -193,7 +185,7 @@ fn tracked_remote_change_does_not_silently_move_an_existing_store() {
         panic!("{config:?} is not an object");
     };
     config.insert("remote".into(), Json::from(text(&evil)));
-    std::fs::write(&config_path, dumps(&Json::Object(config)) + "\n").unwrap();
+    std::fs::write(&config_path, json_text(&Json::Object(config)) + "\n").unwrap();
 
     let sync = a.run(["sync", "--json"]);
     assert_eq!(

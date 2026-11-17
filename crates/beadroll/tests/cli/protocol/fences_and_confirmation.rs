@@ -5,8 +5,7 @@
 //! `beadroll-sync` (`tests/sync/protocol/fences_and_confirmation.rs`).
 
 use beadroll_store::{glob_ending, read_attempt};
-use beadroll_test_support::executable;
-use beadroll_test_support::{Json, Machine, Sandbox, code};
+use beadroll_test_support::{Json, Machine, Sandbox, code, executable, json_member};
 
 /// Machine a's tracker with one issue, "before", synced to machine b.
 struct TwoMachines {
@@ -37,17 +36,10 @@ fn setup_with(make: fn(&Sandbox, &str) -> Machine) -> TwoMachines {
     TwoMachines { sandbox, a, b, key }
 }
 
-/// The member `key` of `value`; absence fails the test.
-fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
-    value
-        .get(key)
-        .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
-}
-
 /// What a reader sees of a claiming update on `issue`: whether it is claimed, its title and its
 /// labels (an empty vector when it has none).
 fn seen(issue: &Json) -> (bool, String, Vec<String>) {
-    let title = member(issue, "title").as_str().expect("a title");
+    let title = json_member(issue, "title").as_str().expect("a title");
     let labels = issue.get("labels").and_then(Json::as_array);
     let labels = labels.unwrap_or_default().iter();
     let labels = labels.map(|label| label.as_str().expect("a label").to_owned());
@@ -134,10 +126,13 @@ fn kill_during_local_confirmation_does_not_leave_partial_atomic_update() {
     let recovered = s.a.show(&s.key);
     assert_eq!(recovered["title"].as_str(), Some("after"));
     assert_eq!(
-        member(&recovered, "labels"),
+        json_member(&recovered, "labels"),
         &Json::Array(vec![Json::from("accepted")])
     );
-    assert_eq!(member(&recovered, "claim"), member(&remote, "claim"));
+    assert_eq!(
+        json_member(&recovered, "claim"),
+        json_member(&remote, "claim")
+    );
     let none = (false, "before".to_owned(), Vec::new());
     let all = (true, "after".to_owned(), vec!["accepted".to_owned()]);
     let partial = seen(&partial);

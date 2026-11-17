@@ -55,6 +55,21 @@ pub fn json_id(value: &Json) -> String {
     }
 }
 
+/// The member `key` of a JSON object bead printed or a test read. The test fails, showing the
+/// value, when it has none.
+pub fn json_member<'v>(value: &'v Json, key: &str) -> &'v Json {
+    value
+        .get(key)
+        .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
+}
+
+/// `value` as one line of JSON as bead writes it (ASCII, members in their order): a record for an
+/// import, a body for a file under the store, an argument. The test fails if it cannot be written.
+pub fn json_text(value: &Json) -> String {
+    beadroll_core::json::write(value, beadroll_core::json::Format::ASCII)
+        .unwrap_or_else(|error| panic!("{value:?} cannot be written: {error}"))
+}
+
 /// Writes `contents` to `path` as an executable (mode 0755): a hook, or a fake `git`, `ps` or
 /// `ssh` a test puts on `PATH`.
 pub fn executable(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) {

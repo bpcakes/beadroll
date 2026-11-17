@@ -8,11 +8,11 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 use beadroll_git::{Ended, PushOutcome, push_outcome};
-use beadroll_test_support::{Machine, Sandbox, parse_json, shell_quoted};
+use beadroll_test_support::{
+    Machine, Sandbox, executable, json_member, parse_json, printed_id, shell_quoted,
+};
 
-use super::{Env, WINNER_IDENTITY, applied, contains, git_is_translated, locales, member};
-use beadroll_test_support::executable;
-use beadroll_test_support::printed_id;
+use super::{Env, WINNER_IDENTITY, applied, contains, git_is_translated, locales};
 
 /// `bytes` as text, for a failure's message.
 fn lossy(bytes: &[u8]) -> String {
@@ -328,7 +328,7 @@ fn lost_races_are_recognised_and_retried_under_translated_git() {
         assert!(gate.exists(), "{name}");
         let result = parse_json(&synced.stdout).unwrap();
         assert_eq!(
-            member(&result, "attempts").as_i64(),
+            json_member(&result, "attempts").as_i64(),
             Some(2),
             "{name}: {result:?}"
         );

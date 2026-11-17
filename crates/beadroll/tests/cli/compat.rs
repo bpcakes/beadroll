@@ -6,16 +6,12 @@
 mod import_dry_run;
 
 mod compat_custom_statuses {
+    use beadroll_test_support::json_text;
 
     use std::collections::{BTreeMap, BTreeSet};
 
-    use beadroll_core::json::{Format, Object, write};
+    use beadroll_core::json::Object;
     use beadroll_test_support::{Json, Machine, code, json, parse_json};
-
-    /// Spaced, ASCII-escaped JSON.
-    fn dumps(value: &Json) -> String {
-        write(value, Format::ASCII).expect("a serializable record")
-    }
 
     /// `{"id": id, "title": title, "status": status, **fields}`.
     fn record(id: &str, title: &str, status: &str, fields: &Object) -> Json {
@@ -62,7 +58,7 @@ mod compat_custom_statuses {
             }),
         ];
         let source = sandbox.root().join("issues.jsonl");
-        let lines: String = records[..3].iter().map(|r| dumps(r) + "\n").collect();
+        let lines: String = records[..3].iter().map(|r| json_text(r) + "\n").collect();
         std::fs::write(&source, lines).expect("the Beads export");
         let source_arg = source.to_str().expect("a UTF-8 path");
         let a = Machine::new(&sandbox, "a");
@@ -94,7 +90,7 @@ mod compat_custom_statuses {
         let export = a.export();
         let odd = export.lines().find(|line| line.contains(r#""ex-odd""#));
         let odd = parse_json(odd.expect("ex-odd in the export")).expect("a record");
-        assert!(odd.get("created_by").is_none(), "{}", dumps(&odd));
+        assert!(odd.get("created_by").is_none(), "{}", json_text(&odd));
         let shown = a.run(["show", "ex-odd"]);
         assert!(shown.stdout.contains("by unknown"), "{}", shown.stdout);
         a.bead(["update", "ex-odd", "--title", "still custom"]);
@@ -106,7 +102,7 @@ mod compat_custom_statuses {
         );
         a.bead(["close", "ex-odd"]);
         assert_eq!(a.show("ex-odd")["status"], json!("closed"));
-        std::fs::write(&source, dumps(&records[3]) + "\n").expect("the malformed export");
+        std::fs::write(&source, json_text(&records[3]) + "\n").expect("the malformed export");
         let malformed = a.run(["import", source_arg, "--json"]);
         assert_eq!(
             (malformed.returncode(), code(&malformed).as_str()),

@@ -1,15 +1,9 @@
 //! What `replica.json` and `.beadroll.json` hold is checked; members
 //! bead does not know are let be, and a ref or a workspace name it cannot use is `CONFIG`.
 
-use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, json};
+use beadroll_test_support::{Json, Machine, json, json_text};
 
 use super::{error_code, replica_id};
-
-/// Spaced, ASCII-escaped JSON.
-fn dumps(body: &Json) -> String {
-    write(body, Format::ASCII).expect("serializable JSON")
-}
 
 /// Verified (V6): replica.json and .beadroll.json shapes are validated. The review measured
 /// replica.json with an integer alias or extra keys: create, machines and claims exit 0. The
@@ -29,7 +23,7 @@ fn identity_and_tracked_config_shapes_are_validated() {
         json!({"id": ident, "alias": "m", "extra": [1]}),
     ];
     for body in &identities {
-        std::fs::write(&replica, dumps(body)).unwrap();
+        std::fs::write(&replica, json_text(body)).unwrap();
         let commands: [&[&str]; 3] = [&["create", "y"], &["machines"], &["claims"]];
         for argv in commands {
             let proc = a.run(argv.iter().chain(&["--json"]));
@@ -38,7 +32,7 @@ fn identity_and_tracked_config_shapes_are_validated() {
                 0,
                 "{} with {}: {}",
                 argv[0],
-                dumps(body),
+                json_text(body),
                 proc.stderr
             );
         }
@@ -58,19 +52,19 @@ fn identity_and_tracked_config_shapes_are_validated() {
         .collect();
     bad.extend(workspaces.iter().map(|w| json!({"workspace": (*w)})));
     for body in &bad {
-        std::fs::write(&config, dumps(body)).unwrap();
+        std::fs::write(&config, json_text(body)).unwrap();
         let proc = a.run(["info", "--json"]);
-        assert!(!proc.crashed(), "{}: {}", dumps(body), proc.stderr);
+        assert!(!proc.crashed(), "{}: {}", json_text(body), proc.stderr);
         assert_eq!(
             error_code(&proc).as_deref(),
             Some("CONFIG"),
             "{}: {}",
-            dumps(body),
+            json_text(body),
             proc.stderr
         );
     }
     let future = json!({"workspace": "w", "future": {"x": 1}});
-    std::fs::write(&config, dumps(&future)).unwrap();
+    std::fs::write(&config, json_text(&future)).unwrap();
     let proc = a.run(["info", "--json"]);
     assert_eq!(proc.returncode(), 0, "{}", proc.stderr);
 }

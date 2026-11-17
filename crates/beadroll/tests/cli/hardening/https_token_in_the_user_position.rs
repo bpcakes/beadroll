@@ -4,7 +4,7 @@
 use std::net::TcpListener;
 use std::path::PathBuf;
 
-use beadroll_test_support::{Json, Machine, git, parse_json};
+use beadroll_test_support::{Machine, git, json_member, parse_json};
 
 /// A token in the shape of a GitHub one.
 const TOKEN: &str = "ghp_G06TESTTOKEN0123";
@@ -18,13 +18,6 @@ fn metas(machine: &Machine) -> Vec<PathBuf> {
         .map(|entry| entry.unwrap().path().join("meta.json"))
         .filter(|path| path.exists())
         .collect()
-}
-
-/// The member `key` of `value`; absence fails the test.
-fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
-    value
-        .get(key)
-        .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
 }
 
 /// G06: https://TOKEN:x-oauth-basic@host and https://TOKEN:@host carry the token as the user
@@ -69,7 +62,7 @@ fn token_user_part_is_not_written_to_tracked_config_or_meta() {
             .expect("a store's meta.json");
         let stored = std::fs::read_to_string(&first).unwrap();
         let meta = parse_json(&stored).unwrap_or_else(|error| panic!("{error}: {stored}"));
-        let remote = member(&meta, "remote").as_str().expect("a remote");
+        let remote = json_member(&meta, "remote").as_str().expect("a remote");
         assert!(
             !remote.contains(TOKEN),
             "shape={shape}: the token is stored in meta.json"
@@ -83,8 +76,8 @@ fn token_user_part_is_not_written_to_tracked_config_or_meta() {
         );
         let reported = parse_json(&info.stdout).unwrap();
         assert_eq!(
-            member(&meta, "remote"),
-            member(&reported, "remote"),
+            json_member(&meta, "remote"),
+            json_member(&reported, "remote"),
             "shape={shape}: bead stores one remote and uses another"
         );
     }

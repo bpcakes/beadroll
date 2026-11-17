@@ -4,8 +4,7 @@
 //! itself and never ready, `dep cycles` reports it, while `dep add X X` refuses the same edge
 //! (CYCLE) and br refuses the file ('Issue cannot depend on itself').
 
-use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, code, json};
+use beadroll_test_support::{Json, Machine, code, json, json_text};
 
 /// The Beads record `key`, titled `key` in capitals, with a dependency on each
 /// `(target, type)` of `depends_on`.
@@ -31,11 +30,6 @@ fn record(key: &str, depends_on: &[(&str, &str)]) -> Json {
     record
 }
 
-/// Spaced, ASCII-escaped JSON.
-fn dumps(record: &Json) -> String {
-    write(record, Format::ASCII).expect("a record bead can read")
-}
-
 /// G46: an import whose record depends on itself fails whole with VALIDATION and writes
 /// nothing, whatever the dependency type, as `dep add X X` and br refuse it.
 #[test]
@@ -49,7 +43,7 @@ fn import_refuses_a_self_dependency_whole() {
     {
         let path = sandbox.root().join(format!("self-{kind}.jsonl"));
         let (ok, own) = (format!("ex-ok{n}"), format!("ex-a{n}"));
-        let text = dumps(&record(&ok, &[])) + "\n" + &dumps(&record(&own, &[(&own, kind)]));
+        let text = json_text(&record(&ok, &[])) + "\n" + &json_text(&record(&own, &[(&own, kind)]));
         std::fs::write(&path, text + "\n").unwrap();
         let path = path.to_str().expect("a UTF-8 path");
         let proc = machine.run(["import", path, "--json"]);

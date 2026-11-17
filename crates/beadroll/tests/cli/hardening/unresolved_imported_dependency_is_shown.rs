@@ -4,13 +4,7 @@
 //! human) and dep list omit it, although `dep remove` accepts it and it blocks the issue as soon
 //! as the key is imported.
 
-use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, json};
-
-/// Spaced, ASCII-escaped JSON.
-fn dumps(value: &Json) -> String {
-    write(value, Format::ASCII).expect("a value bead printed")
-}
+use beadroll_test_support::{Json, Machine, json, json_text};
 
 /// G45: show --json, human show, dep list --json and human dep list name an imported
 /// dependency on a key that is not an issue yet (once, although the record lists it twice).
@@ -34,7 +28,7 @@ fn show_and_dep_list_report_an_unresolved_imported_dependency() {
         ],
     });
     let path = sandbox.root().join("a.jsonl");
-    std::fs::write(&path, dumps(&rec) + "\n").unwrap();
+    std::fs::write(&path, json_text(&rec) + "\n").unwrap();
     let machine = Machine::new(&sandbox, "vis");
     machine.bead(["init", "--prefix", "ex"]);
     machine.bead(["import", path.to_str().expect("a UTF-8 path")]);
@@ -42,13 +36,13 @@ fn show_and_dep_list_report_an_unresolved_imported_dependency() {
     assert!(machine.export().contains("ex-b"));
     // ready now; it becomes blocked the moment ex-b is imported
     assert!(machine.ready().contains("ex-a"));
-    let shown = dumps(&machine.show("ex-a"));
+    let shown = json_text(&machine.show("ex-a"));
     assert!(
         shown.contains("ex-b"),
         "show --json hides the pending imported dependency: {shown}"
     );
     let listed = machine.bead(["dep", "list", "ex-a"]).unwrap_or(Json::Null);
-    let listed = dumps(&listed);
+    let listed = json_text(&listed);
     assert!(
         listed.contains("ex-b"),
         "dep list --json hides it: {listed}"
@@ -71,7 +65,7 @@ fn show_and_dep_list_report_an_unresolved_imported_dependency() {
     let removed = removed.expect("dep remove prints the dependency");
     assert_eq!(removed.get("depends_on_id"), Some(&Json::from("ex-b")));
     assert!(
-        !dumps(&machine.show("ex-a")).contains("ex-b"),
+        !json_text(&machine.show("ex-a")).contains("ex-b"),
         "the retracted dependency is still shown"
     );
 }

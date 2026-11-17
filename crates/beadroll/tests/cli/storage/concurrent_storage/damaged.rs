@@ -7,10 +7,11 @@ use std::fs::{File, FileTimes, OpenOptions};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
-use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, Sandbox, code, git, json, parse_json};
+use beadroll_test_support::{
+    Json, Machine, Sandbox, code, git, json, json_member, json_text, parse_json,
+};
 
-use super::{member, segments, set_up, two};
+use super::{segments, set_up, two};
 
 /// The last segment of the machine's own journal.
 fn segment(machine: &Machine) -> PathBuf {
@@ -53,11 +54,6 @@ fn named(folder: &Path, infix: &str) -> Vec<PathBuf> {
     };
     let paths = entries.map(|entry| entry.expect("a directory entry").path());
     paths.filter(|path| holds(path)).collect()
-}
-
-/// Spaced, ASCII-escaped JSON.
-fn dumps(value: &Json) -> String {
-    write(value, Format::ASCII).expect("a serializable value")
 }
 
 /// The mutable member `key` of object `value`.
@@ -132,13 +128,16 @@ fn invalid_own_remote_record_must_not_disable_sync() {
     a.bead(["sync"]);
     append(&segment(&a), b"null\n");
     let info = a.bead(["info"]).expect("bead info prints a record");
-    let integrity = member(&info, "integrity");
+    let integrity = json_member(&info, "integrity");
     let rows = integrity.as_array().map(<[Json]>::len);
-    assert_eq!(rows, Some(1), "{}", dumps(integrity));
-    assert_eq!(member(&a.show(&key), "title"), &json!("storage survivor"));
+    assert_eq!(rows, Some(1), "{}", json_text(integrity));
+    assert_eq!(
+        json_member(&a.show(&key), "title"),
+        &json!("storage survivor")
+    );
     let synced = a.bead(["sync"]).expect("bead sync prints a record");
     // publication itself succeeds
-    assert_eq!(member(&synced, "integrity"), &json!(1));
+    assert_eq!(json_member(&synced, "integrity"), &json!(1));
     let again = a.run(["sync", "--json"]);
     assert_eq!(
         again.returncode(),
@@ -164,11 +163,11 @@ fn repair_preserves_a_complete_record_that_only_lacks_newline() {
     a.bead(["create", "after missing separator"]);
     a.bead(["sync"]);
     let listed = a.bead(["list"]).expect("bead list prints a page");
-    assert_eq!(member(&listed, "total"), &json!(2));
+    assert_eq!(json_member(&listed, "total"), &json!(2));
     let torn = named(parent(&segment), ".torn-");
     assert!(torn.is_empty(), "{torn:?}");
     let info = a.bead(["info"]).expect("bead info prints a record");
-    assert_eq!(member(&info, "integrity"), &json!([]));
+    assert_eq!(json_member(&info, "integrity"), &json!([]));
 }
 
 #[test]
@@ -182,14 +181,14 @@ fn repair_foreign_fragment_before_publish_retains_authoritative_events() {
     append(&foreign, br#"{"v":1,"id":"unfinished"#);
     let before = a.export();
     let result = b.bead(["sync"]).expect("bead sync prints a record");
-    assert_eq!(member(&result, "integrity"), &json!(0));
+    assert_eq!(json_member(&result, "integrity"), &json!(0));
     assert_eq!(a.export(), before);
     assert_eq!(b.export(), before);
     assert_eq!(bytes(&foreign), bytes(&segment));
     let torn = named(parent(&foreign), ".torn-");
     assert_eq!(torn.len(), 1, "{torn:?}");
     let synced = a.bead(["sync"]).expect("bead sync prints a record");
-    assert_eq!(member(&synced, "integrity"), &json!(0));
+    assert_eq!(json_member(&synced, "integrity"), &json!(0));
 }
 
 #[test]
@@ -206,17 +205,17 @@ fn rewritten_foreign_file_preserves_local_backup_and_published_bytes() {
     let mut rows: Vec<Json> = rows.collect();
     let last = rows.last_mut().expect("the segment's last event");
     retitle(last, "damaged local foreign title");
-    let damaged: String = rows.iter().map(|row| dumps(row) + "\n").collect();
+    let damaged: String = rows.iter().map(|row| json_text(row) + "\n").collect();
     std::fs::write(&foreign, &damaged).expect("the rewritten copy");
     let result = b.bead(["sync"]).expect("bead sync prints a record");
     let published = relative.to_str().expect("a UTF-8 path");
-    assert_eq!(member(&result, "forked_journals"), &json!([published]));
+    assert_eq!(json_member(&result, "forked_journals"), &json!([published]));
     assert_eq!(bytes(&foreign), original);
     let backups = named(parent(&foreign), ".fork-");
     assert_eq!(backups.len(), 1, "{backups:?}");
     assert_eq!(bytes(&backups[0]), damaged.as_bytes());
     let synced = a.bead(["sync"]).expect("bead sync prints a record");
-    assert_eq!(member(&synced, "integrity"), &json!(0));
+    assert_eq!(json_member(&synced, "integrity"), &json!(0));
     assert_eq!(a.export(), b.export());
 }
 
@@ -237,5 +236,8 @@ fn copied_identity_divergence_across_rotation_refuses_remote_change() {
     let attempted = twin.run(["sync", "--json"]);
     assert_eq!(code(&attempted), "JOURNAL_FORK");
     assert_eq!(journal_tip(&sandbox), tip);
-    assert_eq!(member(&a.show(&key), "title"), &json!("original branch"));
+    assert_eq!(
+        json_member(&a.show(&key), "title"),
+        &json!("original branch")
+    );
 }
