@@ -3,6 +3,8 @@
 //! side files are ignored, and global signing does not affect internal commits. The rename crash
 //! test uses `atomic-write:` failpoints.
 
+use beadroll_test_support::executable;
+use beadroll_test_support::printed_id;
 use std::collections::BTreeSet;
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
@@ -30,12 +32,6 @@ fn distinct_modes(paths: &[PathBuf]) -> BTreeSet<u32> {
     paths.iter().map(|path| mode(path)).collect()
 }
 
-/// The id of the issue a `--json` result is: `result["id"]`.
-fn id(result: Option<Json>) -> String {
-    let result = result.expect("bead printed a result");
-    result["id"].as_str().expect("an id").to_owned()
-}
-
 /// The member `key` of `value`; absence fails the test.
 fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
     value
@@ -47,12 +43,6 @@ fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
 fn quoted(path: &Path) -> String {
     let text = path.to_str().expect("a UTF-8 path");
     format!("'{}'", text.replace('\'', r"'\''"))
-}
-
-/// `script` written to `path`, executable.
-fn executable(path: &Path, script: &str) {
-    std::fs::write(path, script).unwrap();
-    std::fs::set_permissions(path, Permissions::from_mode(0o755)).unwrap();
 }
 
 /// The sandbox's remote as a UTF-8 path for bead's `--remote`.
@@ -136,7 +126,7 @@ mod v5_data_file_modes {
             let remote = sandbox.bare(&format!("r{umask:o}.git"));
             let remote = remote.to_str().expect("a UTF-8 path");
             m.bead(["init", "--prefix", "ex", "--tracked", "--remote", remote]);
-            let key = id(m.bead(["create", "x"]));
+            let key = printed_id(m.bead(["create", "x"]));
             let crashed = m
                 .cmd(["claim", &key, "--json"])
                 .env("BEAD_TEST_CRASH_BEFORE_PUSH", "1")
@@ -151,7 +141,7 @@ mod v5_data_file_modes {
                 modes(&pending)
             );
             m.bead(["claim", &key]);
-            let other = id(m.bead(["create", "y"]));
+            let other = printed_id(m.bead(["create", "y"]));
             let lost = m
                 .cmd(["claim", &other, "--json"])
                 .env("BEAD_TEST_CRASH_AFTER_PUSH", "1")
@@ -314,7 +304,7 @@ mod v5_side_files_ignored {
         let sandbox = crate::sandbox();
         let m = Machine::new(&sandbox, "v5-side");
         m.bead(["init", "--prefix", "ex", "--remote", origin(&sandbox)]);
-        let key = id(m.bead(["create", "x"]));
+        let key = printed_id(m.bead(["create", "x"]));
         m.bead(["claim", &key]);
         let before = m.export();
         let own = m.store().join("events").join(replica_id(&m));
@@ -365,7 +355,7 @@ mod v5_kill_at_rename {
         let sandbox = crate::sandbox();
         let m = crate::rust_only(&sandbox, "v5k");
         m.bead(["init", "--prefix", "ex", "--remote", origin(&sandbox)]);
-        let key = id(m.bead(["create", "one"]));
+        let key = printed_id(m.bead(["create", "one"]));
         let target = m.checkout().join("issues.jsonl");
         std::fs::write(&target, "previous export\n").unwrap();
         let killed = m
@@ -432,7 +422,7 @@ mod v5_signing_config_is_inert {
         let gpg = sandbox.root().join("fakegpg");
         executable(
             &gpg,
-            &format!(
+            format!(
                 "#!/bin/sh\necho called >> {}\necho 'gpg: signing failed' >&2\nexit 2\n",
                 quoted(&log)
             ),
@@ -445,7 +435,7 @@ mod v5_signing_config_is_inert {
         std::fs::write(&config, settings).unwrap();
         let mut m = Machine::new(&sandbox, "v5s");
         m.bead(["init", "--prefix", "ex", "--remote", origin(&sandbox)]);
-        let key = id(m.bead(["create", "one"]));
+        let key = printed_id(m.bead(["create", "one"]));
         m.extra.insert("GIT_CONFIG_GLOBAL".into(), config.into());
         m.extra.insert("GIT_CONFIG_NOSYSTEM".into(), "1".into());
         let claimed = m.run(["claim", &key, "--json"]);

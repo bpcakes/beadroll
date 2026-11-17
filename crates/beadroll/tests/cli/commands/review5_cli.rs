@@ -3,6 +3,7 @@
 //! configuration fails whole with a structured error, `--json` is always JSON, and the retry of a
 //! lost acknowledgement whose file changed is a new request.
 
+use beadroll_test_support::printed_id;
 use std::collections::BTreeSet;
 use std::io::Read as _;
 use std::os::unix::fs::PermissionsExt as _;
@@ -16,12 +17,6 @@ fn machine(sandbox: &Sandbox, name: &str) -> Machine {
     let machine = Machine::new(sandbox, name);
     machine.bead(["init", "--prefix", "ex"]);
     machine
-}
-
-/// The `id` member of what `bead ... --json` printed.
-fn id(result: Option<Json>) -> String {
-    let result = result.expect("a result");
-    result["id"].as_str().expect("an id").to_owned()
 }
 
 /// Reads strict JSON or fails the test. NaN, infinity and numbers overflowing a float are
@@ -101,7 +96,7 @@ fn e02_remote_credentials_are_not_disclosed_or_world_readable() {
 fn e03_takeover_fences_an_owners_concurrent_offline_delete() {
     let sandbox = crate::sandbox();
     let owner = machine(&sandbox, "e03-owner");
-    let key = id(owner.bead(["create", "terminal race"]));
+    let key = printed_id(owner.bead(["create", "terminal race"]));
     owner.bead(["sync"]);
     let successor = Machine::new(&sandbox, "e03-successor");
     successor.bead(["sync"]);
@@ -190,7 +185,7 @@ fn e06_export_never_emits_nonfinite_json_numbers() {
 fn e07_closed_downstream_pipe_has_defined_quiet_exit() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "e07-pipe");
-    let key = id(machine.bead(["create", "pipe target"]));
+    let key = printed_id(machine.bead(["create", "pipe target"]));
     let mut command = machine.cmd(["show", &key]).command();
     let mut child = command
         .stdout(Stdio::piped())
@@ -346,9 +341,9 @@ fn e09_invalid_config_types_return_structured_config_errors() {
 fn e11_parent_filter_matches_every_direct_parent() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "e11-parents");
-    let first = id(machine.bead(["create", "parent one"]));
-    let second = id(machine.bead(["create", "parent two"]));
-    let child = id(machine.bead(["create", "child"]));
+    let first = printed_id(machine.bead(["create", "parent one"]));
+    let second = printed_id(machine.bead(["create", "parent two"]));
+    let child = printed_id(machine.bead(["create", "child"]));
     machine.bead(["dep", "add", &child, &first, "--type", "parent-child"]);
     machine.bead(["dep", "add", &child, &second, "--type", "parent-child"]);
     for parent in [&first, &second] {
@@ -389,7 +384,7 @@ fn e12_ascii_locale_cannot_turn_a_committed_create_into_failure() {
 fn e13_receipt_identity_includes_resolved_file_content() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "e13-receipt-file");
-    let key = id(machine.bead(["create", "receipt target"]));
+    let key = printed_id(machine.bead(["create", "receipt target"]));
     machine.bead(["sync"]);
     let body = sandbox.root().join("description.txt");
     let file = body.display().to_string();

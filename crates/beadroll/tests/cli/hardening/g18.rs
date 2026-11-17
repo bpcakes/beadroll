@@ -32,9 +32,10 @@ fn text<'e>(error: &'e Json, name: &str) -> &'e str {
 }
 
 mod g18_definite_refusal_is_neither_a_race_nor_no_answer {
+    use beadroll_test_support::executable;
+    use beadroll_test_support::printed_id;
     use std::ffi::OsString;
-    use std::fs::Permissions;
-    use std::os::unix::fs::PermissionsExt as _;
+
     use std::path::{Path, PathBuf};
     use std::time::{Duration, Instant};
 
@@ -59,14 +60,6 @@ mod g18_definite_refusal_is_neither_a_race_nor_no_answer {
             .insert("GIT_CONFIG_NOSYSTEM".into(), "1".into());
     }
 
-    /// The key of the issue a `--json` result is.
-    fn id(result: Option<Json>) -> String {
-        let result = result.expect("bead printed a result");
-        let id = result.get("id").and_then(Json::as_str);
-        id.unwrap_or_else(|| panic!("no id in {result:?}"))
-            .to_owned()
-    }
-
     /// G18: a push the remote refuses by policy (a declining pre-receive hook, '[remote
     /// rejected]') is treated as a lost race: twelve rounds, about twenty seconds, then
     /// SYNC_CONFLICT 'the remote journal kept moving' without the remote's reason.
@@ -78,11 +71,10 @@ mod g18_definite_refusal_is_neither_a_race_nor_no_answer {
         global(&mut a, &config);
         a.bead(["init", "--prefix", "po"]);
         // local: the sync below is the push the hook refuses
-        let key = id(a.bead(["create", "x", "--offline"]));
+        let key = printed_id(a.bead(["create", "x", "--offline"]));
         let hook = sandbox.origin().join("hooks").join("pre-receive");
         let script = "#!/bin/sh\necho 'refs/beads/* may not be pushed here' >&2\nexit 1\n";
-        std::fs::write(&hook, script).unwrap();
-        std::fs::set_permissions(&hook, Permissions::from_mode(0o755)).unwrap();
+        executable(&hook, script);
         let argvs: [&[&str]; 2] = [&["sync"], &["claim", &key]];
         for argv in argvs {
             let started = Instant::now();
@@ -129,11 +121,10 @@ mod g18_definite_refusal_is_neither_a_race_nor_no_answer {
         let mut writer = Machine::new(&sandbox, "g18w");
         global(&mut writer, &config);
         writer.bead(["init", "--prefix", "ex"]);
-        let key = id(writer.bead(["create", "one"]));
+        let key = printed_id(writer.bead(["create", "one"]));
         writer.bead(["sync"]);
         let ssh = sandbox.root().join("g18-read-only-ssh.sh");
-        std::fs::write(&ssh, READ_ONLY_SSH).unwrap();
-        std::fs::set_permissions(&ssh, Permissions::from_mode(0o755)).unwrap();
+        executable(&ssh, READ_ONLY_SSH);
         let mut reader = Machine::new(&sandbox, "g18r");
         global(&mut reader, &config);
         let mut remote = OsString::from("ssh://fakehost");

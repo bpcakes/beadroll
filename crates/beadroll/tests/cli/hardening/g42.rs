@@ -6,6 +6,7 @@
 /// it saw (dep_remove by uid); when the other copy keeps the key, the retraction misses it and the
 /// dependency is live again on every machine.
 mod g42_uid_retraction_misses_twin_of_imported_key {
+    use beadroll_test_support::printed_id;
     use std::collections::BTreeSet;
 
     use beadroll_core::json::{Format, write};
@@ -34,12 +35,6 @@ mod g42_uid_retraction_misses_twin_of_imported_key {
     /// One record as spaced, ASCII-escaped JSON followed by a newline.
     fn line(record: &Json) -> String {
         write(record, Format::ASCII).expect("a record bead can read") + "\n"
-    }
-
-    /// The id of the issue a `--json` result is: `result["id"]`.
-    fn id(result: Option<Json>) -> String {
-        let result = result.expect("bead printed a result");
-        result["id"].as_str().expect("an id").to_owned()
     }
 
     /// `issue["dependencies"]`: the dependencies `show` lists for an issue.
@@ -82,7 +77,7 @@ mod g42_uid_retraction_misses_twin_of_imported_key {
         let m1 = Machine::new(sandbox, "m1");
         m1.bead(["init", "--prefix", "ex"]);
         m1.bead(["import", a]);
-        let q = id(m1.bead(["create", "Q"]));
+        let q = printed_id(m1.bead(["create", "Q"]));
         m1.bead(["sync"]);
         let (m2, m3) = (Machine::new(sandbox, "m2"), Machine::new(sandbox, "m3"));
         m2.bead(["sync"]);

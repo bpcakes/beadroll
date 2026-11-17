@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 
 use beadroll_test_support::{Json, Machine, Sandbox};
 
-use super::id;
+use beadroll_test_support::printed_id;
 
 /// The clock-skew test's clock: 48 hours behind at every reading.
 const BEHIND: &str = "clock@always=offset(-48h)";
@@ -70,7 +70,7 @@ fn clock_skew_does_not_override_causality() {
         update.env("BEAD_FAILPOINTS", BEHIND).run()
     };
     let past = machine(&sandbox, "clock-past");
-    let key = id(past.bead(["create", "base"]));
+    let key = printed_id(past.bead(["create", "base"]));
     past.bead(["sync"]);
     let future = crate::rust_only(&sandbox, "clock-future");
     future.bead(["sync"]);
@@ -90,7 +90,7 @@ fn clock_skew_does_not_override_causality() {
         "{stamps:?}"
     );
 
-    let key2 = id(past.bead(["create", "race"]));
+    let key2 = printed_id(past.bead(["create", "race"]));
     past.bead(["sync"]);
     future.bead(["sync"]);
     past.bead(["update", &key2, "--title", "alpha"]);

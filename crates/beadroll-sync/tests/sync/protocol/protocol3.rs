@@ -2,11 +2,10 @@
 //! flight; an acknowledgement lost after the remote took an update is recovered, never applied
 //! twice (the third independent review, 2026-10-06).
 
-use std::os::unix::fs::PermissionsExt as _;
-
 use beadroll_store::{Endpoint, Workspace, write_attempt_file};
 use beadroll_sync::PublishMode;
 use beadroll_sync::{Error, Link, Mode, PushOutcome, Tx, locked, synchronise};
+use beadroll_test_support::executable;
 use beadroll_test_support::{Json, Machine, REMOTE_SETTLES, Sandbox, git, wait_until};
 
 use crate::support::{
@@ -84,8 +83,7 @@ fn fence_wins_against_a_real_push_still_running_after_timeout() {
         quoted(&gate),
         quoted(&finished)
     );
-    std::fs::write(&hook, script).unwrap();
-    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    executable(&hook, script);
     let _release = Open(gate.clone());
     let origin = s.sandbox.origin().as_os_str();
     let ws = workspace(&s.a, s.sandbox.origin(), &[]);

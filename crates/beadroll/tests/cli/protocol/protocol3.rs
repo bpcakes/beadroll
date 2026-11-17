@@ -5,9 +5,8 @@
 //! failpoint. Related in-process tests are in `beadroll-sync`
 //! (`tests/sync/protocol/protocol3.rs`).
 
-use std::os::unix::fs::PermissionsExt as _;
-
 use beadroll_store::{glob_ending, read_attempt};
+use beadroll_test_support::executable;
 use beadroll_test_support::{Json, Machine, Sandbox, code};
 
 /// Machine a's tracker with one issue, "before", synced to machine b.
@@ -88,8 +87,7 @@ fn rejected_fences_leave_attempt_pending_and_excluded() {
     let before = s.pending_ids();
     assert_eq!(before.len(), 1);
     let hook = s.sandbox.origin().join("hooks").join("pre-receive");
-    std::fs::write(&hook, "#!/bin/sh\nexit 1\n").unwrap();
-    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    executable(&hook, "#!/bin/sh\nexit 1\n");
     // Refusal ends sync in its first round, before any backoff.
     let refused = s.a.run(["sync", "--json"]);
     assert_eq!(refused.returncode(), 1, "{}", refused.stdout);

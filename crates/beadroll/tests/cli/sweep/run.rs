@@ -5,13 +5,12 @@ mod observe;
 mod settle;
 
 use std::collections::BTreeMap;
-use std::fs::Permissions;
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use beadroll_core::json::{Format, write};
+use beadroll_test_support::executable;
 use beadroll_test_support::{Json, Machine, Sandbox};
 
 use super::call::{Step, answer, exec, tail};
@@ -67,8 +66,7 @@ pub(super) fn shown(value: &Json) -> String {
 /// Installs the hook `name` of the sandbox's remote, `script`.
 fn hook(sandbox: &Sandbox, name: &str, script: &str) {
     let path = sandbox.origin().join("hooks").join(name);
-    std::fs::write(&path, script).expect("the remote's hook");
-    std::fs::set_permissions(&path, Permissions::from_mode(0o755)).expect("an executable hook");
+    executable(&path, script);
 }
 
 /// `path` quoted for the shell, left unchanged when every character is safe.

@@ -26,16 +26,11 @@ fn machine(sandbox: &Sandbox, name: &str, init: TrackerSetup) -> Machine {
 /// exit 0.
 mod g07_receipt_survives_later_local_writes {
     use crate::hardening::TrackerSetup;
+    use beadroll_test_support::printed_id;
 
     use beadroll_test_support::{Json, Machine};
 
     use super::machine;
-
-    /// The id of the issue a `bead create --json` made: `result["id"]`.
-    fn id(created: Option<Json>) -> String {
-        let created = created.expect("bead printed the issue it made");
-        created["id"].as_str().expect("an id").to_owned()
-    }
 
     /// The claim `show` reports, `None` when there is none or it is `null`.
     fn claim(issue: &Json) -> Option<&Json> {
@@ -54,7 +49,7 @@ mod g07_receipt_survives_later_local_writes {
     fn new_claim_after_close_and_reopen_claims() {
         let sandbox = crate::sandbox();
         let a = machine(&sandbox, "g07-again", TrackerSetup::Init);
-        let x = id(a.bead(["create", "X"]));
+        let x = printed_id(a.bead(["create", "X"]));
         a.bead(["sync"]);
         let crashed = a
             .cmd(["claim", &x])
@@ -80,7 +75,7 @@ mod g07_receipt_survives_later_local_writes {
     fn new_claiming_close_after_reopen_closes() {
         let sandbox = crate::sandbox();
         let a = machine(&sandbox, "g07-again-close", TrackerSetup::Init);
-        let x = id(a.bead(["create", "X"]));
+        let x = printed_id(a.bead(["create", "X"]));
         a.bead(["sync"]);
         let crashed = a
             .cmd(["update", &x, "--claim", "--status", "closed"])
@@ -105,7 +100,7 @@ mod g07_receipt_survives_later_local_writes {
     fn write_made_while_the_attempt_was_pending_also_moves_the_actor_on() {
         let sandbox = crate::sandbox();
         let a = machine(&sandbox, "g07-pending-write", TrackerSetup::Init);
-        let x = id(a.bead(["create", "X"]));
+        let x = printed_id(a.bead(["create", "X"]));
         a.bead(["sync"]);
         let crashed = a
             .cmd(["claim", &x])

@@ -2,6 +2,7 @@
 //! from the published tip (roll-dih8.31), even when that machine never syncs again.
 
 use super::*;
+use beadroll_test_support::executable;
 
 /// AJ02: a mismatched root fails either the manifest read or the listing. Both failures must
 /// rebuild, even when the persistent reader is unavailable, and leave b's journal for a fresh c.
@@ -149,8 +150,7 @@ fn refuse_kept_reader(sandbox: &Sandbox, a: &mut Machine, log: &Path) {
         log = super::super::quoted(log.as_os_str()),
         git = super::super::quoted(git.as_os_str()),
     );
-    std::fs::write(shims.join("git"), script).unwrap();
-    std::fs::set_permissions(shims.join("git"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    executable(shims.join("git"), script);
     let path = std::env::join_paths(std::iter::once(shims).chain(std::env::split_paths(&path)));
     a.extra.insert("PATH".into(), path.unwrap());
 }

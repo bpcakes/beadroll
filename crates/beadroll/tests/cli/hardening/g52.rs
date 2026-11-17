@@ -47,12 +47,6 @@ fn own_journal(machine: &Machine) -> PathBuf {
     machine.store().join("events").join(id)
 }
 
-/// The id of the issue a `--json` result is: `result["id"]`.
-fn id(result: Option<Json>) -> String {
-    let result = result.expect("bead printed a result");
-    result["id"].as_str().expect("an id").to_owned()
-}
-
 /// Gives `path` the requested mode until the guard drops, then restores its old mode before
 /// the sandbox is removed.
 struct Unreadable {
@@ -83,7 +77,8 @@ mod g52_unreadable_store_is_io {
 
     use beadroll_test_support::{Machine, parse_json};
 
-    use super::{Unreadable, g52_error, id, own_journal, skipped_as_root};
+    use super::{Unreadable, g52_error, own_journal, skipped_as_root};
+    use beadroll_test_support::printed_id;
 
     /// G52: an unreadable journal directory makes `show` report IO naming the directory, not a
     /// missing tracker.
@@ -95,7 +90,7 @@ mod g52_unreadable_store_is_io {
         let sandbox = crate::sandbox();
         let a = Machine::new(&sandbox, "g52-a");
         a.bead(["init", "--prefix", "ex"]);
-        let key = id(a.bead(["create", "x"]));
+        let key = printed_id(a.bead(["create", "x"]));
         let journal = own_journal(&a);
         let _mode = Unreadable::new(&journal, 0o000);
         let (code, message) = g52_error(&a.run(["show", &key, "--json"]));
@@ -114,7 +109,7 @@ mod g52_unreadable_store_is_io {
         let sandbox = crate::sandbox();
         let a = Machine::new(&sandbox, "g52-a");
         a.bead(["init", "--prefix", "ex"]);
-        let key = id(a.bead(["create", "x"]));
+        let key = printed_id(a.bead(["create", "x"]));
         a.bead(["update", &key, "--claim"]);
         assert_eq!(a.show(&key)["status"].as_str(), Some("in_progress"));
         let _mode = Unreadable::new(&own_journal(&a).join("claims"), 0o000);
@@ -174,7 +169,7 @@ mod g52_unreadable_store_is_io {
         let sandbox = crate::sandbox();
         let mut a = Machine::new(&sandbox, "g52-a");
         a.bead(["init", "--prefix", "ex"]);
-        let key = id(a.bead(["create", "x"]));
+        let key = printed_id(a.bead(["create", "x"]));
         let not_a_dir = sandbox.root().join("home-file");
         std::fs::write(&not_a_dir, "not a directory\n").unwrap();
         a.extra
@@ -196,7 +191,7 @@ mod g52_unreadable_store_is_io {
         let sandbox = crate::sandbox();
         let a = Machine::new(&sandbox, "g52-a");
         a.bead(["init", "--prefix", "ex"]);
-        let key = id(a.bead(["create", "x"]));
+        let key = printed_id(a.bead(["create", "x"]));
         // its mode comes back before the sandbox goes, which could not remove it otherwise
         let _mode = Unreadable::new(&a.store(), 0o000);
         for args in [vec!["show", key.as_str()], vec!["info"]] {

@@ -4,6 +4,7 @@
 //! and doing so starts a second tracker.
 
 mod g23_tracked_config_read_from_working_tree_only {
+    use beadroll_test_support::printed_id;
     use std::path::Path;
 
     use beadroll_test_support::{Json, Machine, Sandbox, git, parse_json};
@@ -11,12 +12,6 @@ mod g23_tracked_config_read_from_working_tree_only {
     /// The path as text passed to git and bead.
     fn text(path: &Path) -> &str {
         path.to_str().expect("a UTF-8 path")
-    }
-
-    /// The id of the issue a `--json` result is: `result["id"]`.
-    fn id(result: Option<Json>) -> String {
-        let result = result.expect("bead printed a result");
-        result["id"].as_str().expect("an id").to_owned()
     }
 
     /// `info["workspace"]`, which `bead info` always prints.
@@ -52,7 +47,7 @@ mod g23_tracked_config_read_from_working_tree_only {
         let a = set_up(&sandbox);
         a.bead(["init", "--tracked"]);
         commit_and_push(a.checkout());
-        let issue = id(a.bead(["create", "fix the release build"]));
+        let issue = printed_id(a.bead(["create", "fix the release build"]));
         a.bead(["sync"]);
         let tracked = workspace(a.bead(["info"]));
         let tree = sandbox.root().join("release-1");
@@ -99,7 +94,7 @@ mod g23_tracked_config_read_from_working_tree_only {
             text(&coordination),
         ]);
         commit_and_push(a.checkout());
-        let issue = id(a.bead(["create", "shared issue"]));
+        let issue = printed_id(a.bead(["create", "shared issue"]));
         a.bead(["sync"]);
         let c = Machine::new(&sandbox, "c");
         git(["checkout", "-q", "release-1"], Some(c.checkout()));

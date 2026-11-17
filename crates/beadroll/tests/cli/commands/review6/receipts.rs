@@ -5,7 +5,8 @@
 
 use beadroll_test_support::{Invocation, Machine};
 
-use super::{count, glob, id, machine, ops};
+use super::{count, glob, machine, ops};
+use beadroll_test_support::printed_id;
 
 /// `bead ARGS` from `machine`, stopped by the crash hook right after its push was accepted.
 fn crashing_after_push<'m>(machine: &'m Machine, args: &[&str]) -> Invocation<'m> {
@@ -22,7 +23,7 @@ fn receipts(machine: &Machine) -> usize {
 fn f01_failed_command_does_not_forget_an_accepted_retry() {
     let sandbox = crate::sandbox();
     let owner = machine(&sandbox, "f01");
-    let key = id(owner.bead(["create", "close once"]));
+    let key = printed_id(owner.bead(["create", "close once"]));
     owner.bead(["sync"]);
     let close = ["update", &key, "--claim", "--status", "closed", "--json"];
     let crashed = crashing_after_push(&owner, &close).run();
@@ -35,9 +36,9 @@ fn f01_failed_command_does_not_forget_an_accepted_retry() {
     assert_eq!(count(&ops(&owner, &key), "close"), 1);
 
     let parent = machine(&sandbox, "f01-parent");
-    let first = id(parent.bead(["create", "first"]));
-    let second = id(parent.bead(["create", "second"]));
-    let child = id(parent.bead(["create", "child", "--parent", &first]));
+    let first = printed_id(parent.bead(["create", "first"]));
+    let second = printed_id(parent.bead(["create", "second"]));
+    let child = printed_id(parent.bead(["create", "child", "--parent", &first]));
     parent.bead(["sync"]);
     let move_child = ["update", &child, "--claim", "--parent", &second, "--json"];
     let crashed = crashing_after_push(&parent, &move_child).run();
@@ -60,7 +61,7 @@ fn f02_locale_retry_keeps_the_accepted_description() {
     std::fs::write(&body, "café body\n".as_bytes()).unwrap();
     let body = body.to_str().unwrap();
     let latin = machine(&sandbox, "f02-latin");
-    let key = id(latin.bead(["create", "locale"]));
+    let key = printed_id(latin.bead(["create", "locale"]));
     latin.bead(["sync"]);
     let describe = [
         "update",
@@ -87,7 +88,7 @@ fn f02_locale_retry_keeps_the_accepted_description() {
     assert_eq!(count(&ops(&latin, &key), "set"), 1);
 
     let sea = machine(&sandbox, "f02-c");
-    let key = id(sea.bead(["create", "locale c"]));
+    let key = printed_id(sea.bead(["create", "locale c"]));
     sea.bead(["sync"]);
     let describe = [
         "update",
@@ -120,7 +121,7 @@ fn f02_locale_retry_keeps_the_accepted_description() {
 fn receipt_identity_holds_for_actor_sync_stdin_and_json() {
     let sandbox = crate::sandbox();
     let m = machine(&sandbox, "receipt-ok");
-    let key = id(m.bead(["create", "receipt"]));
+    let key = printed_id(m.bead(["create", "receipt"]));
     m.bead(["sync"]);
     let body = sandbox.root().join("body.txt");
     std::fs::write(&body, "first body").unwrap();
@@ -150,7 +151,7 @@ fn receipt_identity_holds_for_actor_sync_stdin_and_json() {
     assert_eq!(m.show(&key)["description"].as_str(), Some("second body"));
 
     let piped = machine(&sandbox, "receipt-stdin");
-    let key = id(piped.bead(["create", "stdin"]));
+    let key = printed_id(piped.bead(["create", "stdin"]));
     piped.bead(["sync"]);
     let from_stdin = [
         "update",
@@ -169,7 +170,7 @@ fn receipt_identity_holds_for_actor_sync_stdin_and_json() {
     assert_eq!(piped.show(&key)["description"].as_str(), Some("stdin two"));
 
     let flagged = machine(&sandbox, "receipt-json");
-    let key = id(flagged.bead(["create", "json flag"]));
+    let key = printed_id(flagged.bead(["create", "json flag"]));
     flagged.bead(["sync"]);
     let crashed =
         crashing_after_push(&flagged, &["update", &key, "--claim", "--title", "once"]).run();

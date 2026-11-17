@@ -1,11 +1,11 @@
 //! bead reaches its remote as the user's git would: through the user's ssh command, through a
 //! global pushInsteadOf, and through an origin given as a relative path.
 
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+use beadroll_test_support::executable;
 use beadroll_test_support::{Machine, git, parse_json};
 
 use super::{Env, git_env, has_ref, scratch_git_config, sh};
@@ -56,8 +56,7 @@ fn git_ssh_command_in_the_environment_is_honoured() {
     ];
     for (name, script) in scripts {
         let file = bin.join(name);
-        std::fs::write(&file, script).unwrap();
-        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o755)).unwrap();
+        executable(&file, script);
     }
     let refusing = bin.join("refusing-ssh");
     let genv = scratch_git_config(
@@ -136,8 +135,7 @@ fn global_push_instead_of_is_honoured() {
         None,
     );
     let hook = ro.join("hooks").join("pre-receive");
-    std::fs::write(&hook, "#!/bin/sh\necho 'read-only mirror' >&2\nexit 1\n").unwrap();
-    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    executable(&hook, "#!/bin/sh\necho 'read-only mirror' >&2\nexit 1\n");
     let mut a = Machine::new(&sandbox, "a");
     let config = format!("[url \"{origin}\"]\n\tpushInsteadOf = {}\n", ro.display());
     a.extra.extend(scratch_git_config(&sandbox, &config));

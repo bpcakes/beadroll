@@ -7,14 +7,16 @@ use std::time::{Duration, Instant};
 use beadroll_core::json::{Format, write};
 use beadroll_test_support::{Json, Machine, REMOTE_SETTLES, Sandbox, code, parse_json, wait_until};
 
-use super::{executable, id, member, quoted};
+use super::{member, quoted};
+use beadroll_test_support::executable;
+use beadroll_test_support::printed_id;
 
 /// Machine a, its tracker initialised with the prefix `ex`, the issue `one`
 /// created and synced. Returns the machine and the issue's key.
 fn set_up(sandbox: &Sandbox) -> (Machine, String) {
     let a = Machine::new(sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
-    let key = id(a.bead(["create", "one"]));
+    let key = printed_id(a.bead(["create", "one"]));
     a.bead(["sync"]);
     (a, key)
 }

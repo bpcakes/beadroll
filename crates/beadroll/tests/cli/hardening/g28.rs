@@ -4,12 +4,13 @@
 //! `BEAD_TEST_CRASH_AFTER_PUSH` (exit 99); the listing race uses `pending.after-list`.
 
 mod g28_only_the_lock_holder_sweeps_pending {
+    use beadroll_test_support::printed_id;
     use std::fs::Permissions;
     use std::os::unix::fs::PermissionsExt as _;
     use std::path::{Path, PathBuf};
     use std::process::Command;
 
-    use beadroll_test_support::{Json, Machine, Run, Sandbox, code};
+    use beadroll_test_support::{Machine, Run, Sandbox, code};
 
     use beadroll_test_support::{Gate, beside};
 
@@ -22,18 +23,12 @@ mod g28_only_the_lock_holder_sweeps_pending {
         !rustix::process::geteuid().is_root()
     }
 
-    /// The id of the issue a `--json` result is: `result["id"]`.
-    fn id(result: Option<Json>) -> String {
-        let result = result.expect("bead printed a result");
-        result["id"].as_str().expect("an id").to_owned()
-    }
-
     /// Machine a (made by `make`) publishes its tracker (prefix `gp`), which
     /// holds the issue `x`; its key.
     fn set_up(sandbox: &Sandbox, make: fn(&Sandbox, &str) -> Machine) -> (Machine, String) {
         let a = make(sandbox, "a");
         a.bead(["init", "--prefix", "gp"]);
-        let key = id(a.bead(["create", "x"]));
+        let key = printed_id(a.bead(["create", "x"]));
         a.bead(["sync"]);
         (a, key)
     }
@@ -72,7 +67,7 @@ mod g28_only_the_lock_holder_sweeps_pending {
     /// `release_with_lost_ack`: a new issue, `held`, claimed, then released with the
     /// acknowledgement lost; the release's arguments and its attempt.
     fn release_with_lost_ack(a: &Machine) -> (Vec<String>, PathBuf) {
-        let key = id(a.bead(["create", "held"]));
+        let key = printed_id(a.bead(["create", "held"]));
         a.bead(["claim", &key]);
         let argv = vec!["release".to_owned(), key];
         let attempt = lose_ack(a, &argv);

@@ -22,12 +22,6 @@ fn machine(sandbox: &Sandbox, name: &str) -> Machine {
     machine
 }
 
-/// The id of the issue a `--json` result is: `result["id"]`.
-fn id(result: Option<Json>) -> String {
-    let result = result.expect("bead printed a result");
-    result["id"].as_str().expect("an id").to_owned()
-}
-
 /// `ops`: the operation of each of `key`'s events, as `bead log KEY --limit 0` lists them.
 fn ops(machine: &Machine, key: &str) -> Vec<String> {
     let log = machine.bead(["log", key, "--limit", "0"]).expect("a log");

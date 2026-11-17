@@ -5,19 +5,14 @@
 //! still refuse a foreign tracker named with --remote.
 
 mod g24_renamed_repository_loses_its_tracker {
+    use beadroll_test_support::printed_id;
     use std::path::{Path, PathBuf};
 
-    use beadroll_test_support::{Json, Machine, Sandbox, code, git, parse_json};
+    use beadroll_test_support::{Machine, Sandbox, code, git, parse_json};
 
     /// The path as text passed to git and bead.
     fn text(path: &Path) -> &str {
         path.to_str().expect("a UTF-8 path")
-    }
-
-    /// The id of the issue a `--json` result is: `result["id"]`.
-    fn id(result: Option<Json>) -> String {
-        let result = result.expect("bead printed a result");
-        result["id"].as_str().expect("an id").to_owned()
     }
 
     /// Before the move, machine a publishes its tracker (prefix `rn`), which
@@ -25,7 +20,7 @@ mod g24_renamed_repository_loses_its_tracker {
     fn set_up(sandbox: &Sandbox) -> (Machine, String) {
         let a = Machine::new(sandbox, "a");
         a.bead(["init", "--prefix", "rn"]);
-        let issue = id(a.bead(["create", "one"]));
+        let issue = printed_id(a.bead(["create", "one"]));
         a.bead(["sync"]);
         (a, issue)
     }

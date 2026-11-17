@@ -9,7 +9,8 @@ use std::process::{Command, Output, Stdio};
 
 use beadroll_test_support::{Machine, Run, parse_json};
 
-use super::{id, machine, metas};
+use super::{machine, metas};
+use beadroll_test_support::printed_id;
 
 /// The permission bits of `path`: `stat.S_IMODE(path.stat().st_mode)`.
 fn mode(path: &Path) -> u32 {
@@ -93,7 +94,7 @@ fn f06_failed_command_with_closed_stderr_keeps_its_status() {
 fn closed_stdout_on_success_exits_zero_and_store_stays_private() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "pipe-ok");
-    let key = id(machine.bead(["create", "pipe"]));
+    let key = printed_id(machine.bead(["create", "pipe"]));
     let (read, write) = std::io::pipe().unwrap();
     drop(read);
     let mut command = machine.cmd(["show", &key]).command();
@@ -128,15 +129,15 @@ fn json_keeps_bidi_text() {
 fn prime_matches_ready_and_help_outside_a_repository_is_silent() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "prime");
-    let open_id = id(machine.bead(["create", "open"]));
+    let open_id = printed_id(machine.bead(["create", "open"]));
     machine.bead(["create", "blocked", "--deps", &format!("blocks:{open_id}")]);
-    let claimed = id(machine.bead(["create", "claimed"]));
+    let claimed = printed_id(machine.bead(["create", "claimed"]));
     machine.bead(["claim", &claimed, "--offline"]);
-    let deferred = id(machine.bead(["create", "deferred"]));
+    let deferred = printed_id(machine.bead(["create", "deferred"]));
     machine.bead(["update", &deferred, "--status", "deferred"]);
-    let closed = id(machine.bead(["create", "closed"]));
+    let closed = printed_id(machine.bead(["create", "closed"]));
     machine.bead(["close", &closed, "--reason", "done"]);
-    let epic = id(machine.bead(["create", "epic", "--type", "epic"]));
+    let epic = printed_id(machine.bead(["create", "epic", "--type", "epic"]));
     machine.bead(["create", "child", "--parent", &epic]);
     let primed = machine.bead(["prime"]).unwrap();
     let primed = primed["prime"].as_str().unwrap();

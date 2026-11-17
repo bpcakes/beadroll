@@ -1,9 +1,9 @@
 //! F15: a fetch that times out takes git's helper on the remote side with it.
 
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use beadroll_test_support::executable;
 use beadroll_test_support::{git, within};
 use rustix::process::{Pid, Signal, kill_process, test_kill_process};
 
@@ -37,8 +37,7 @@ fn f15_timeout_reaps_the_git_helper() {
             log.display(),
             exec_path.join(name).display()
         );
-        std::fs::write(&script, text).unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        executable(&script, text);
     }
     let machine = machine(&sandbox, "f15");
     machine.bead(["create", "one"]);

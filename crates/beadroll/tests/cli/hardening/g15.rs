@@ -40,14 +40,6 @@ fn titles(machine: &Machine, key: &str) -> Vec<String> {
     dependencies.iter().map(title).collect()
 }
 
-/// The id of the issue a `--json` result is: `result["id"]`.
-fn id(result: Option<Json>) -> String {
-    let result = result.expect("bead printed a result");
-    let id = result.get("id").and_then(Json::as_str);
-    id.unwrap_or_else(|| panic!("no id in {result:?}"))
-        .to_owned()
-}
-
 /// `path` as the text of a command-line argument.
 fn utf8(path: &Path) -> &str {
     path.to_str().expect("a UTF-8 path")
@@ -62,7 +54,8 @@ mod g15_new_key_captures_pending_imported_dependency {
 
     use beadroll_test_support::{Json, Machine};
 
-    use super::{id, record, titles, utf8};
+    use super::{record, titles, utf8};
+    use beadroll_test_support::printed_id;
 
     /// G15: `create --parent ex-p` does not mint ex-p.2 while an imported dependency waits for
     /// ex-p.2; the genuine ex-p.2 imported next is imported and is what ex-r depends on.
@@ -92,7 +85,7 @@ mod g15_new_key_captures_pending_imported_dependency {
         );
         std::fs::write(&second, genuine + "\n").unwrap();
         a.bead(["import", utf8(&first)]);
-        let local = id(a.bead(["create", "unrelated local child", "--parent", "ex-p"]));
+        let local = printed_id(a.bead(["create", "unrelated local child", "--parent", "ex-p"]));
         assert_ne!(
             local, "ex-p.2",
             "create --parent minted ex-p.2, the key an imported dependency waits for"
@@ -134,11 +127,11 @@ mod g15_new_key_captures_pending_imported_dependency {
         // first by clock: applied before both children in replay order
         m3.bead(["import", utf8(&waits)]);
         assert_eq!(
-            id(m1.bead(["create", "machine 1 child", "--parent", "ex-p"])),
+            printed_id(m1.bead(["create", "machine 1 child", "--parent", "ex-p"])),
             "ex-p.1"
         );
         assert_eq!(
-            id(m2.bead(["create", "machine 2 child", "--parent", "ex-p"])),
+            printed_id(m2.bead(["create", "machine 2 child", "--parent", "ex-p"])),
             "ex-p.1"
         );
         for machine in [m3, m1, m2, m3, m1, m2] {

@@ -2,12 +2,13 @@
 //! crash hooks both binaries have: `BEAD_TEST_CRASH_BEFORE_PUSH` exits with status 98,
 //! `BEAD_TEST_CRASH_AFTER_PUSH` with 99), and an append torn halfway through.
 
-use std::fs::{OpenOptions, Permissions};
+use std::fs::OpenOptions;
 use std::io::Write as _;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use beadroll_test_support::executable;
 use beadroll_test_support::{Json, Machine, within};
 
 use super::{column, owner, segments, settle, two_machines};
@@ -45,8 +46,7 @@ fn holding_first_fetch(sandbox: &beadroll_test_support::Sandbox) -> (PathBuf, Pa
     );
     let folder = root.join("holding-git");
     std::fs::create_dir(&folder).unwrap();
-    std::fs::write(folder.join("git"), script).unwrap();
-    std::fs::set_permissions(folder.join("git"), Permissions::from_mode(0o755)).unwrap();
+    executable(folder.join("git"), script);
     (folder, ready, go)
 }
 

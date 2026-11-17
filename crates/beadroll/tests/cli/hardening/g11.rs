@@ -2,11 +2,10 @@
 //! status for the ref does. A second test pauses between publish rounds to check that an accepted
 //! claiming edit is not rebuilt over a later edit.
 
-use std::fs::Permissions;
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 
 use beadroll_test_support::Sandbox;
+use beadroll_test_support::executable;
 
 /// `path` quoted for the shell.
 fn quoted(path: &Path) -> String {
@@ -31,8 +30,7 @@ fn install_post_receive(sandbox: &Sandbox, gate: &Path) {
         "fi".to_owned(),
         "exit 0".to_owned(),
     ];
-    std::fs::write(&hook, lines.join("\n") + "\n").unwrap();
-    std::fs::set_permissions(&hook, Permissions::from_mode(0o755)).unwrap();
+    executable(&hook, lines.join("\n") + "\n");
 }
 
 /// `_g11_remote_head`: the commit the remote's `refs/beads/journal` names, as `git rev-parse`

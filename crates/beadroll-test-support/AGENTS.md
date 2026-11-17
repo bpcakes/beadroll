@@ -22,7 +22,9 @@ tests it builds events, and for the round-trip properties it draws JSON values.
   It needs no `bead` executable; a child test that runs bead chooses its own through its fixtures.
   The child test keeps `BEAD_UNDER_TEST` for that selection; a machine still scrubs it before
   starting bead itself.
-- `src/lib.rs`: `Json` (beadroll-core's `Value`) and `parse_json`, which read `bead --json`.
+- `src/lib.rs`: `Json` (beadroll-core's `Value`) and `parse_json`, which read `bead --json`;
+  `printed_id`, the id a command printed (the issue a `create` made); `executable`, a hook or a
+  fake `git`, `ps` or `ssh` written with mode 0755. Use these rather than a local copy.
 - `src/gate.rs`: `Gate`, the `pause-until` handshake that holds bead at a failpoint while the
   test acts (`at`, `action`, `meet`, `ready`, `open`), and `beside`, which runs bead in a thread
   while the test meets it at its gates. The sync crate's in-process tests use the same `Gate`.

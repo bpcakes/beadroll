@@ -3,10 +3,9 @@
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
-use std::fs::Permissions;
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
+use beadroll_test_support::executable;
 use beadroll_test_support::{Json, Machine, Sandbox, parse_json};
 
 /// `_g05_fake_ssh`: an ssh stand-in for git (`GIT_SSH_COMMAND`): it runs the remote command in
@@ -20,8 +19,7 @@ fn fake_ssh(sandbox: &Sandbox) -> PathBuf {
         "PATH=\"$(git --exec-path):$PATH\"\n",
         "cd \"$FAKE_SSH_ROOT\" && exec sh -c \"$last\"\n",
     );
-    std::fs::write(&path, script).unwrap();
-    std::fs::set_permissions(&path, Permissions::from_mode(0o755)).unwrap();
+    executable(&path, script);
     path
 }
 

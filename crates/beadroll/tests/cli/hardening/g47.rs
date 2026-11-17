@@ -6,11 +6,12 @@
 /// loose objects holding every event) follow the umask; only BEAD_HOME and <ws> are chmodded
 /// 0700.
 mod g47_store_is_private_by_its_own_modes {
-    use std::fs::{OpenOptions, Permissions};
+    use std::fs::OpenOptions;
     use std::io::Write as _;
     use std::os::unix::fs::PermissionsExt as _;
     use std::path::{Path, PathBuf};
 
+    use beadroll_test_support::executable;
     use beadroll_test_support::{Json, Machine, Sandbox, parse_json};
 
     /// `path` quoted for the shell.
@@ -28,8 +29,7 @@ mod g47_store_is_private_by_its_own_modes {
                 "#!/bin/sh\numask 022 && exec {} \"$@\"\n",
                 quoted(sandbox.bead())
             );
-            std::fs::write(&wrapper, script).unwrap();
-            std::fs::set_permissions(&wrapper, Permissions::from_mode(0o755)).unwrap();
+            executable(&wrapper, script);
         }
         Machine::new(sandbox, name).with_bead(wrapper)
     }

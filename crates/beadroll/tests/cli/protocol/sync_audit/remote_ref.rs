@@ -3,11 +3,10 @@
 //! bead makes.
 
 use std::ffi::OsString;
-use std::fs::Permissions;
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 
 use beadroll_sync::ROUNDS;
+use beadroll_test_support::executable;
 use beadroll_test_support::{Machine, Sandbox, code};
 
 use super::{quoted, real_git, remote_git, setup, setup_with, two_with};
@@ -37,8 +36,7 @@ exec @git@ "$@"
     .replace("@origin@", &quoted(sandbox.origin()))
     .replace("@counter@", &quoted(counter));
     let wrapper = folder.join("git");
-    std::fs::write(&wrapper, script).unwrap();
-    std::fs::set_permissions(&wrapper, Permissions::from_mode(0o755)).unwrap();
+    executable(&wrapper, script);
     let mut path = folder.into_os_string();
     path.push(":");
     path.push(std::env::var_os("PATH").expect("the test's PATH"));

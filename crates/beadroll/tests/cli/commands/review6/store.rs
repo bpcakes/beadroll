@@ -8,7 +8,8 @@ use std::process::Command;
 
 use beadroll_test_support::{Machine, Run, Sandbox, code, git, parse_json};
 
-use super::{glob, id, machine};
+use super::{glob, machine};
+use beadroll_test_support::printed_id;
 
 /// The attempt files in `machine`'s store, in directory order, under `events/*/claims/`.
 fn attempts(machine: &Machine) -> Vec<PathBuf> {
@@ -81,7 +82,7 @@ fn assert_strict_json(info: &Run) {
 fn f10_non_event_json_makes_the_whole_attempt_inert() {
     let sandbox = crate::sandbox();
     let writer = machine(&sandbox, "f10");
-    let key = id(writer.bead(["create", "attempt"]));
+    let key = printed_id(writer.bead(["create", "attempt"]));
     writer.bead(["sync"]);
     let reader = Machine::new(&sandbox, "f10-reader");
     reader.bead(["sync"]);
@@ -114,7 +115,7 @@ fn f10_non_event_json_makes_the_whole_attempt_inert() {
 fn f11_stale_pending_twin_does_not_fork_a_matching_attempt() {
     let sandbox = crate::sandbox();
     let writer = machine(&sandbox, "f11");
-    let key = id(writer.bead(["create", "twin"]));
+    let key = printed_id(writer.bead(["create", "twin"]));
     writer.bead(["sync"]);
     let reader = Machine::new(&sandbox, "f11-reader");
     reader.bead(["sync"]);
@@ -192,7 +193,7 @@ fn f13_local_state_files_are_strict_json() {
 fn f16_read_only_store_write_is_a_structured_error() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "f16");
-    let key = id(machine.bead(["create", "kept"]));
+    let key = printed_id(machine.bead(["create", "kept"]));
     let store = machine.store();
     chmod("a-w", &store);
     let created = machine.run(["create", "nope", "--json"]);

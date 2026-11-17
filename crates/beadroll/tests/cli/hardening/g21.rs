@@ -37,6 +37,7 @@ fn beads_refs(path: &Path) -> String {
 
 mod g21_remote_resolved_against_the_cwd {
     use beadroll_core::json::{Format, write};
+    use beadroll_test_support::printed_id;
     use beadroll_test_support::{Json, Machine, code, git, json, parse_json};
 
     use super::{beads_refs, nested_repository};
@@ -54,14 +55,6 @@ mod g21_remote_resolved_against_the_cwd {
         let remote = info.get("remote").and_then(Json::as_str);
         remote
             .unwrap_or_else(|| panic!("no remote in {info:?}"))
-            .to_owned()
-    }
-
-    /// The key of the issue a `--json` result is.
-    fn id(result: Option<Json>) -> String {
-        let result = result.expect("bead printed a result");
-        let id = result.get("id").and_then(Json::as_str);
-        id.unwrap_or_else(|| panic!("no id in {result:?}"))
             .to_owned()
     }
 
@@ -216,7 +209,7 @@ mod g21_remote_resolved_against_the_cwd {
         std::fs::create_dir(&src).unwrap();
         let init = a.cmd(["init", "--prefix", "ex"]).cwd(&src).run();
         assert_eq!(init.returncode(), 0, "{}", init.stderr);
-        let key = id(a.cmd(["create", "shared work"]).cwd(&src).json());
+        let key = printed_id(a.cmd(["create", "shared work"]).cwd(&src).json());
         a.cmd(["sync"]).cwd(&src).json();
         let init = b.run(["init", "--prefix", "ex"]);
         assert_eq!(init.returncode(), 0, "{}", init.stderr);
