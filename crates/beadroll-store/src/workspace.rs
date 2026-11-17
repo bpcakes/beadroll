@@ -305,8 +305,7 @@ impl Workspace {
             meta.shift_remove("remote");
         }
         let meta = Value::from(meta);
-        let text =
-            json::write(&meta, Format::INDENTED).map_err(|e| Error::io_message(e.to_string()))?;
+        let text = json::write(&meta, Format::INDENTED)?;
         let path = self.dir.join("meta.json");
         let key = write_atomic_keyed(&path, text.as_bytes(), &self.settings.failpoints)?;
         if let (Some(key), Value::Object(meta)) = (key, meta) {

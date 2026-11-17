@@ -26,6 +26,14 @@ pub enum Error {
     Git(#[from] beadroll_git::Error),
 }
 
+/// A value that cannot be written as JSON, one built in memory that no reader would take back (a
+/// float that is not finite, nesting too deep), is the data's fault, never the disk's (`VALIDATION`).
+impl From<beadroll_core::json::WriteError> for Error {
+    fn from(error: beadroll_core::json::WriteError) -> Error {
+        Error::Validation(error.to_string())
+    }
+}
+
 impl Error {
     /// The code bead reports this under.
     pub fn code(&self) -> Code {
@@ -63,5 +71,22 @@ pub fn git_code(error: &beadroll_git::Error) -> Code {
 impl From<IoError> for Error {
     fn from(error: IoError) -> Error {
         Error::Io(error)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use beadroll_core::code::Code;
+    use beadroll_core::json::{Format, Value, write};
+
+    use super::Error;
+
+    /// A value no reader would take back fails to be written as `VALIDATION`, whichever store file
+    /// it was for.
+    #[test]
+    fn a_value_that_cannot_be_written_is_a_validation_error() {
+        let unwritable = Value::Float(f64::NAN);
+        let error: Error = write(&unwritable, Format::COMPACT).unwrap_err().into();
+        assert_eq!(error.code(), Code::Validation, "{error}");
     }
 }

@@ -95,8 +95,7 @@ fn mint(path: &Path, settings: &Settings) -> Result<(), Error> {
     let mut body = Object::new();
     body.insert("id".into(), Value::from(hex_token(8)));
     body.insert("alias".into(), Value::from(short_hostname()));
-    let text = json::write(&Value::from(body), Format::ASCII)
-        .map_err(|e| Error::io_message(e.to_string()))?;
+    let text = json::write(&Value::from(body), Format::ASCII)?;
     let written = OpenOptions::new()
         .write(true)
         .create(true)

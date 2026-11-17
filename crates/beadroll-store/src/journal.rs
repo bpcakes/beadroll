@@ -108,8 +108,7 @@ pub fn encode_events(
 ) -> Result<Vec<u8>, Error> {
     let mut out = Vec::new();
     for event in events {
-        let line = json::write(event.borrow(), Format::COMPACT)
-            .map_err(|e| Error::Validation(e.to_string()))?;
+        let line = json::write(event.borrow(), Format::COMPACT)?;
         out.extend_from_slice(line.as_bytes());
         out.push(b'\n');
     }

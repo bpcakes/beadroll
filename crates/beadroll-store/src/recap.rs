@@ -175,8 +175,7 @@ impl RecapCursor {
         if let Some(at) = at {
             now.at = Some(now.at.map_or(at, |was| was.max(at)));
         }
-        let text = json::write(&now.to_value(), Format::COMPACT)
-            .map_err(|e| Error::Validation(e.to_string()))?;
+        let text = json::write(&now.to_value(), Format::COMPACT)?;
         // a write that fails says so without the file, as a full volume does: name the cursor
         crate::write_atomic(
             &path,
