@@ -111,10 +111,11 @@ fn add(
         if let Some((author, _)) = &author {
             data.insert("author".into(), Value::from(author.as_str()));
         }
-        let event = tx.emit(OpName::Comment, Some(&uid), data, None)?;
+        let id = tx
+            .emit(OpName::Comment, Some(&uid), data, None)?
+            .to_string();
         let author_valid = author.as_ref().map_or(TextValidity::Utf8, |(_, ok)| *ok);
         encodable(valid.and(author_valid))?;
-        let id = event.get("id").map(str_of).unwrap_or_default();
         Ok::<_, Failure>((id, issue_key))
     })?;
     let mut result = Object::new();

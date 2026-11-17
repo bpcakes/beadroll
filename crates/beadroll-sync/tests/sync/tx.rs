@@ -3,10 +3,9 @@
 //! from the journal replayed; and what a write does with its transaction once it is done
 //! ([`writing`] lets go of it, [`writing_spent`] hands it over, roll-lqjj.42).
 
-use beadroll_core::op::OpName;
-
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
+use beadroll_core::op::OpName;
 use beadroll_sync::{
     Error, NetworkMode, Tx, locked, publish_soon, writing, writing_spent, writing_state,
 };

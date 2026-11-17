@@ -2,8 +2,6 @@
 //! and what it emits are here; the store lock and the writes that run a body in one, with what they
 //! hand back of it, are in `tx/writes.rs`.
 
-use beadroll_core::op::OpName;
-
 mod attempt;
 mod materialized;
 mod prepared;
@@ -17,6 +15,7 @@ pub(crate) use tests::DropProbe;
 use beadroll_core::event::{FORMAT, MAX_NESTING, event_problem, payload_problem, write_problem};
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
+use beadroll_core::op::OpName;
 use beadroll_core::projection::{Projection, Record};
 use beadroll_core::state::State;
 use beadroll_store::IdentityMode;
@@ -110,14 +109,14 @@ impl<'a> Tx<'a> {
     }
 
     /// Emits op on issue, defaulting issue to the event itself, with data and a supplied or fresh
-    /// id ([`Emitter::emit`]).
+    /// id ([`Emitter::emit`]): the id of the event emitted.
     pub fn emit(
         &mut self,
         op: OpName,
         issue: Option<&str>,
         data: Object,
         event_id: Option<String>,
-    ) -> Result<Value, Error> {
+    ) -> Result<EventId, Error> {
         self.emitter().emit(op, issue, data, event_id)
     }
 
@@ -228,14 +227,15 @@ pub struct Emitter<'t> {
 
 impl Emitter<'_> {
     /// Emits op on issue, defaulting issue to the event itself, with data and a supplied or fresh
-    /// id. Validate before minting, including the [`MAX_NESTING`] write limit.
+    /// id: the id of the event emitted. Validate before minting, including the [`MAX_NESTING`] write
+    /// limit.
     pub fn emit(
         &mut self,
         op: OpName,
         issue: Option<&str>,
         data: Object,
         event_id: Option<String>,
-    ) -> Result<Value, Error> {
+    ) -> Result<EventId, Error> {
         let id = event_id.unwrap_or_else(|| uuid7(&self.ws.settings.clock));
         let deps: Vec<Value> = (self.heads.iter())
             .map(|dep| Value::from(dep.to_string()))
@@ -278,14 +278,16 @@ impl Emitter<'_> {
         if !sequenced {
             self.ownership.push(event.clone());
         }
-        // later emits build on it
-        *self.heads = EventId::parse(&id).into_iter().collect();
+        // the id passed validation above; later emits build on it
+        let emitted = EventId::parse(&id)
+            .ok_or_else(|| Error::Validation(format!("{id} is not an event id")))?;
+        *self.heads = vec![emitted];
         self.emitted.push(Record {
-            value: event.clone(),
+            value: event,
             replica: self.replica.to_owned(),
             origin: String::new(),
             sequenced,
         });
-        Ok(event)
+        Ok(emitted)
     }
 }
