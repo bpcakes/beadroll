@@ -23,7 +23,7 @@ use std::os::unix::ffi::OsStrExt as _;
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use args::{create_args, filters, list_args, network, owned, update_args};
+use args::{create_args, filters, list_args, network, owned, transition_args, update_args};
 use beadroll_core::code::Code;
 use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Format, Object, Value};
@@ -40,6 +40,7 @@ use spec::Scope;
 use crate::cli::paint::Color;
 use crate::commands::ImportMode;
 use crate::commands::SearchScope;
+use crate::commands::Transition;
 use crate::commands::{self, Context, Delivered, Failure, Held, Line, Outcome, Tone};
 
 /// Whether another state will be read to publish the command.
@@ -482,18 +483,9 @@ fn dispatch(
         "export" => commands::export(ctx, ns.text("output"))?,
         "create" => commands::create(ctx, &create_args(ns))?,
         "update" => commands::update(ctx, &update_args(ns))?,
-        name @ ("close" | "reopen" | "delete") => commands::transition(
-            ctx,
-            name,
-            &commands::TransitionArgs {
-                ids: ns.texts("ids").to_vec(),
-                reason: owned(ns, "reason"),
-                recursive: ns.flag("recursive"),
-                force: ns.flag("force"),
-                network,
-                remote: remote.clone(),
-            },
-        )?,
+        "close" => commands::transition(ctx, Transition::Close, &transition_args(ns))?,
+        "reopen" => commands::transition(ctx, Transition::Reopen, &transition_args(ns))?,
+        "delete" => commands::transition(ctx, Transition::Delete, &transition_args(ns))?,
         "show" => commands::show(ctx, ns.texts("ids"))?,
         "list" => commands::list(ctx, &list_args(ns))?,
         "ready" => commands::ready(
