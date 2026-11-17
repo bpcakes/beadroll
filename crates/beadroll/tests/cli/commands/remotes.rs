@@ -3,7 +3,7 @@
 
 use beadroll_test_support::{Machine, git, parse_json};
 
-use super::metas;
+use super::fixtures::metas;
 
 /// The contents of the first store's `meta.json`.
 fn meta(machine: &Machine) -> String {

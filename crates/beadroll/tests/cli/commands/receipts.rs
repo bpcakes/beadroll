@@ -5,7 +5,7 @@
 
 use beadroll_test_support::{Invocation, Machine};
 
-use super::{count, glob, machine, ops};
+use super::fixtures::{count, glob, machine, ops};
 use beadroll_test_support::printed_id;
 
 /// `bead ARGS` from `machine`, stopped by the crash hook right after its push was accepted.

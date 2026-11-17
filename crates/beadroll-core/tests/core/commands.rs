@@ -1,6 +1,6 @@
 //! The replay halves of `test_commands`' tests whose other half drives the CLI.
 
-mod review6 {
+mod dangling_dependencies {
     use beadroll_core::journal::Journal;
     use beadroll_core::replay::replay;
     use beadroll_test_support::events::Event;

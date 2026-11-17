@@ -7,7 +7,7 @@ use beadroll_test_support::executable;
 use beadroll_test_support::{git, within};
 use rustix::process::{Pid, Signal, kill_process, test_kill_process};
 
-use super::machine;
+use super::fixtures::machine;
 
 /// Whether process `pid` can be signalled, checked without sending a signal.
 fn alive(pid: i32) -> bool {

@@ -8,7 +8,7 @@ use std::process::Command;
 
 use beadroll_test_support::{Machine, Run, Sandbox, code, git, parse_json};
 
-use super::{glob, machine};
+use super::fixtures::{glob, machine};
 use beadroll_test_support::printed_id;
 
 /// The attempt files in `machine`'s store, in directory order, under `events/*/claims/`.
