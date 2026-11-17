@@ -1,6 +1,6 @@
-//! An attempt is one file, confirmed by one write; a fence beats a push still in
-//! flight; an acknowledgement lost after the remote took an update is recovered, never applied
-//! twice (the third independent review, 2026-10-06).
+//! Fences and confirmation, in process: an attempt is one file, confirmed by one write; a fence
+//! beats a push still in flight; an acknowledgement lost after the remote took an update is
+//! recovered, never applied twice.
 
 use beadroll_store::{Endpoint, Workspace, write_attempt_file};
 use beadroll_sync::PublishMode;
@@ -14,25 +14,25 @@ use crate::support::{
 };
 
 /// Machine a's tracker with one issue, "before", synced to machine b.
-struct Protocol3 {
+struct TwoMachines {
     sandbox: Sandbox,
     a: Machine,
     b: Machine,
     key: String,
 }
 
-fn setup() -> Protocol3 {
+fn setup() -> TwoMachines {
     let sandbox = sandbox();
-    let a = Machine::new(&sandbox, "protocol3-a");
+    let a = Machine::new(&sandbox, "fences-a");
     a.bead(["init", "--prefix", "ex"]);
     let key = text(&a.bead(["create", "before"]).unwrap()["id"]);
     a.bead(["sync"]);
-    let b = Machine::new(&sandbox, "protocol3-b");
+    let b = Machine::new(&sandbox, "fences-b");
     b.bead(["sync"]);
-    Protocol3 { sandbox, a, b, key }
+    TwoMachines { sandbox, a, b, key }
 }
 
-impl Protocol3 {
+impl TwoMachines {
     /// Machine a's store in this process, with these failpoints.
     fn ws(&self, failpoints: &str) -> Workspace {
         workspace(
