@@ -1,18 +1,16 @@
-//! The fourth independent review's ownership findings (2026-10-07-4-codex), folded in after the
-//! fixes, at the command line. An attempt damaged in one store never replaces the one the remote
-//! accepted, and an attempt with a malformed line is inert as a whole (Q01); the retry of an
-//! accepted claiming update repeats none of its effects (Q02, on the crash hook
+//! What the remote accepted stays as it accepted it. An attempt damaged in one store never replaces
+//! the one the remote accepted, and an attempt with a malformed line is inert as a whole (Q01); the
+//! retry of an accepted claiming update repeats none of its effects (Q02, on the crash hook
 //! `BEAD_TEST_CRASH_AFTER_PUSH`, which any bead under test implements: exit status 99 once the
 //! remote has taken the push); a manifest of a future format at the remote is refused, never
 //! rewritten (Q04). Q03 interrupts a release between its confirmation and its cleanup, which takes
-//! an in-crate API test: beadroll-sync's `protocol::protocol_review4`.
+//! an in-crate API test: beadroll-sync's `protocol::retried_release`.
 
-use beadroll_test_support::printed_id;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use beadroll_core::json::{Format, Style, write};
-use beadroll_test_support::{Json, Machine, git, json, parse_json};
+use beadroll_test_support::{Json, Machine, git, json, parse_json, printed_id};
 
 /// The hook that stops an ownership command once the remote has taken its push, before bead hears
 /// back: the lost acknowledgement.

@@ -1,5 +1,5 @@
 //! A release confirmed here but cut off before its pending twin was removed is
-//! recognised as done when it is run again (the fourth review, Q03).
+//! recognised as done when it is run again (Q03).
 
 use beadroll_core::code::Code;
 use beadroll_store::{claim_files, detect_actor, find_workspace, pending_files};

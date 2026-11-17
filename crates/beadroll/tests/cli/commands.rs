@@ -1,13 +1,13 @@
 //! Command behavior and compatibility tests.
 
 mod bp_test;
+mod claim_endings;
 mod clock;
 mod close_recursive;
 mod colour;
-mod commands_and_compatibility_review4;
 mod compat_audit_cli;
 mod compat_audit_identity;
-mod deep_tree_review4;
+mod deep_tree;
 pub(crate) mod fixtures;
 mod format_policy;
 mod git_helper;

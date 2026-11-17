@@ -109,3 +109,15 @@ pub(crate) fn record_text(head: Json, tail: Json) -> String {
 
 /// A private-use stand-in for a lone surrogate, which a Rust string cannot hold.
 pub(crate) const STAND_IN: char = '\u{E000}';
+
+/// Member `key` of `value`; its absence fails the test.
+pub(crate) fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
+    value
+        .get(key)
+        .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
+}
+
+/// `value` as spaced, ASCII-escaped JSON, as bead writes a record.
+pub(crate) fn ascii_json(value: &Json) -> String {
+    write(value, Format::ASCII).expect("JSON bead can write")
+}
