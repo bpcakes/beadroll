@@ -33,8 +33,8 @@ storage, protocol behavior and fault recovery.
   - `src/cli/output.rs`: the EPIPE-safe writes and `visible`; `src/cli/tempdir.rs`: writable
     temporary-directory selection with environment overrides and fallbacks.
   - `src/cli/args.rs`: each command's arguments built from the parse (`list_args`, `update_args`,
-    `network`, …); `src/cli/report.rs`: `report` and `warn`, a failure or a warning on standard
-    error.
+    `ownership_args`, `remote`, `network`, …), never inline in `dispatch`; `src/cli/report.rs`:
+    `report` and `warn`, a failure or a warning on standard error.
 - `src/commands.rs`: `Outcome` and the helpers commands share; `src/commands/failure.rs`:
   `Failure` (with the raw bytes of a message that holds some not UTF-8) and the conversions from
   every crate's errors; `src/commands/select.rs`: `Filters`, `select`, `first` and `row`, the
@@ -88,8 +88,9 @@ storage, protocol behavior and fault recovery.
   for its subject, never for a review or a finding id. Update active references in
   `docs/FINDINGS.md` when renaming a test.
 - A command, its output or its exit status: `src/commands` and `src/cli`.
-- An argument or a help text: `src/cli/spec.rs`. The help pages are goldens
-  (`tests/golden/help.txt`): a deliberate change edits the golden by hand in the
+- An argument or a help text: an argument and its help in `src/cli/spec/args.rs`, a command's
+  one-line help in `src/cli/spec.rs` (`COMMANDS`), the longer texts in `src/cli/texts.rs`. The help
+  pages are goldens (`tests/golden/help.txt`): a deliberate change edits the golden by hand in the
   same change. An argument of a coordinated command is part of its receipt (`Namespace::asked`):
   `parity::receipts`, which pins the format bytes, must stay green.
 - A golden scenario: `tests/cli/golden.rs`. For an intentional output change, edit the reference
