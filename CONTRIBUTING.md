@@ -111,7 +111,7 @@ the record of it before any test data is written), their tests beside them, and 
    by patching: to skip the wait between sync attempts, `backoff@always=skip`,
    never a shortened sleep. Black-box tests run `bead` through
    `beadroll-test-support`'s `Sandbox` and `Machine`. Test modules named
-   after a review or a finding id (`hardening/g01`–`g65`, `v1`–`v9`,
+   after a review or a finding id (`hardening/v1`–`v9`,
    `replay_third_review`, the `*_audit` and `*_reaudit` modules) are history, not a
    pattern. A new test is named for the contract it checks, and its doc
    comment cites any finding id.

@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use beadroll_test_support::{Json, Machine, Run, code, parse_json, wait_until};
 
 use super::{create, each, events, recap};
-use crate::hardening::g59::run_on_terminal;
+use crate::hardening::help_is_plain_text::run_on_terminal;
 use beadroll_test_support::{Gate, beside};
 
 /// The frontier the cursor keeps of `machine`'s one tracker, and the time of the last recap that
