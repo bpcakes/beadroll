@@ -3,7 +3,6 @@
 use beadroll_core::event::Field;
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Int, Object, Value};
-use beadroll_core::state::Issue;
 use beadroll_core::text::str_of;
 use beadroll_core::time::event_time;
 use beadroll_store::{MetadataRead, machine_aliases, view_outline};
@@ -17,10 +16,8 @@ pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
     let st = view_outline(ctx.ws)?;
     need_tracker(&st)?;
     let aliases = machine_aliases(&ctx.ws.settings);
-    let mut issues: Vec<&Issue> = st.issues().collect();
-    issues.sort_by(|a, b| a.key().cmp(b.key()));
     let mut rows: Vec<Object> = Vec::new();
-    for issue in issues {
+    for issue in st.issues_by_key() {
         let title = issue
             .read_field(Field::Title)?
             .cloned()
