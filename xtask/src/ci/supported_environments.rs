@@ -1,0 +1,46 @@
+//! Supported platform and git-version coverage.
+
+use regex_lite::Regex;
+
+use super::read;
+
+#[test]
+fn the_suite_runs_on_linux_macos_and_the_oldest_supported_git() {
+    let every_push = read(".github/workflows/rust.yml");
+    let systems = "os: [ubuntu-latest, macos-latest]";
+    assert!(
+        every_push.contains(systems),
+        "rust.yml's tests lost `{systems}`"
+    );
+
+    // "git 2.40+": the oldest git bead supports.
+    let readme = read("README.md");
+    let supported = Regex::new(r"git (\d+\.\d+)\+").expect("a valid pattern");
+    let oldest = supported
+        .captures(&readme)
+        .map(|found| found[1].to_owned())
+        .expect("the README names the oldest git it supports");
+
+    let nightly = read(".github/workflows/rust-nightly.yml");
+    let built = format!("GIT_VERSION: \"{oldest}.");
+    assert!(
+        nightly.contains(&built),
+        "the nightly tests no git {oldest}"
+    );
+    assert!(
+        nightly.contains("schedule:"),
+        "the nightly runs on no schedule"
+    );
+    let checked = r#"test "$(git --version)" = "git version $GIT_VERSION""#;
+    assert!(
+        nightly.contains(checked),
+        "the nightly does not check its git"
+    );
+    // The workspace's tests, on the bead Cargo builds: what each machine is meant to run.
+    let tested = "cargo nextest run --workspace";
+    assert!(nightly.contains(tested), "the nightly lost `{tested}`");
+    assert!(
+        !nightly.contains("BEAD_UNDER_TEST"),
+        "the nightly tests a bead other than the one Cargo builds"
+    );
+}
