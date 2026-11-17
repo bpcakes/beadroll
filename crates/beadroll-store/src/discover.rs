@@ -248,7 +248,7 @@ pub fn moved_workspaces(settings: &Settings) -> Result<Object, Error> {
 /// `GIT_DIR` or `GIT_WORK_TREE` name one elsewhere. Then the committed copy's `cat-file` starts
 /// with discovery's other two gits instead of after them. Only the guess of when to start it:
 /// git's top decides whether its answer is used, and a wrong guess costs a git whose answer is
-/// unused, or one started after the others, as each was before.
+/// unused, or one started after the others, as it would be without the guess.
 fn may_read_committed(settings: &Settings) -> bool {
     let cwd = &settings.cwd;
     if !cwd.is_absolute()

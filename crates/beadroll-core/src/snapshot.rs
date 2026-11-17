@@ -22,8 +22,8 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
-    /// Settles one read and replays that exact journal. Events are shared between the
-    /// journal and its replay input, as when a consumer previously cloned the journal itself.
+    /// Settles one read and replays that exact journal. The journal kept and the one replayed
+    /// share their events: cloning it copies none.
     pub fn from_journal(mut journal: Journal) -> Result<Self, KeySpace> {
         journal.settle();
         let state = replay(journal.clone())?;
