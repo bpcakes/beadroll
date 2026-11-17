@@ -1,6 +1,6 @@
 //! `test_protocol`'s test of the core: ancestry across ownership files and journals.
 
-mod protocol3 {
+mod ancestry {
     use beadroll_core::journal::Journal;
     use beadroll_core::json::{Format, Value, write};
     use beadroll_core::replay::replay;

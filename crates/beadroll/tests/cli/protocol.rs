@@ -3,9 +3,9 @@
 mod accepted_state;
 mod actual_transport_review;
 mod bootstrap;
+mod fences_and_confirmation;
 mod merged_window;
 mod port_alignment;
-mod protocol3;
 mod protocol_reaudit;
 mod published_counts;
 mod root_audit;

@@ -1,31 +1,30 @@
-//! `Protocol3`, black-box: a fence the remote refuses settles nothing, so the attempt it was to
-//! settle stays pending and counts for nothing until one lands; and a claiming update killed while
-//! it confirms the attempt the remote accepted leaves all of it or none, never part (the third
-//! independent review, 2026-10-06). The kill is the Rust `bead`'s `atomic-write:claims/`
-//! failpoint. Related in-process tests are in `beadroll-sync`
-//! (`tests/sync/protocol/protocol3.rs`).
+//! Fences and confirmation, black-box: a fence the remote refuses settles nothing, so the attempt
+//! it was to settle stays pending and counts for nothing until one lands; and a claiming update
+//! killed while it confirms the attempt the remote accepted leaves all of it or none, never part.
+//! The kill is the Rust `bead`'s `atomic-write:claims/` failpoint. Related in-process tests are in
+//! `beadroll-sync` (`tests/sync/protocol/fences_and_confirmation.rs`).
 
 use beadroll_store::{glob_ending, read_attempt};
 use beadroll_test_support::executable;
 use beadroll_test_support::{Json, Machine, Sandbox, code};
 
 /// Machine a's tracker with one issue, "before", synced to machine b.
-struct Protocol3 {
+struct TwoMachines {
     sandbox: Sandbox,
     a: Machine,
     b: Machine,
     key: String,
 }
 
-fn setup() -> Protocol3 {
+fn setup() -> TwoMachines {
     setup_with(Machine::new)
 }
 
 /// Sets up machines made by `make`: `Machine::new`, or `crate::rust_only` for a test that
 /// injects its fault through a failpoint.
-fn setup_with(make: fn(&Sandbox, &str) -> Machine) -> Protocol3 {
+fn setup_with(make: fn(&Sandbox, &str) -> Machine) -> TwoMachines {
     let sandbox = crate::sandbox();
-    let a = make(&sandbox, "protocol3-a");
+    let a = make(&sandbox, "fences-a");
     a.bead(["init", "--prefix", "ex"]);
     let created = a.bead(["create", "before"]).unwrap();
     let key = created["id"]
@@ -33,9 +32,9 @@ fn setup_with(make: fn(&Sandbox, &str) -> Machine) -> Protocol3 {
         .expect("the new issue's id")
         .to_owned();
     a.bead(["sync"]);
-    let b = make(&sandbox, "protocol3-b");
+    let b = make(&sandbox, "fences-b");
     b.bead(["sync"]);
-    Protocol3 { sandbox, a, b, key }
+    TwoMachines { sandbox, a, b, key }
 }
 
 /// The member `key` of `value`; absence fails the test.
@@ -59,7 +58,7 @@ fn seen(issue: &Json) -> (bool, String, Vec<String>) {
     )
 }
 
-impl Protocol3 {
+impl TwoMachines {
     /// The ids of the events of machine a's unsettled attempts, as bead reads its `pending/`: an
     /// attempt is one file holding every event that lands with it.
     fn pending_ids(&self) -> Vec<String> {
