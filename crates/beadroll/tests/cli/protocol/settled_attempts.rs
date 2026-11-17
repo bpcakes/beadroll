@@ -4,13 +4,12 @@
 //! `beadroll-sync` (`tests/sync/protocol/unpublished_claims.rs`).
 
 use std::ffi::OsStr;
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use beadroll_store::glob_ending;
-use beadroll_test_support::executable;
 use beadroll_test_support::{Json, Machine, Sandbox, code, git, parse_json};
+use beadroll_test_support::{executable, git_on_path, shell_quoted};
 
 /// The hook that stops a command after the remote took its push, before bead hears back.
 const CRASH_AFTER_PUSH: &str = "BEAD_TEST_CRASH_AFTER_PUSH";
@@ -120,23 +119,6 @@ impl Reaudit {
     }
 }
 
-/// `path` quoted for the shell.
-fn quoted(path: &Path) -> String {
-    format!("'{}'", path.display().to_string().replace('\'', r"'\''"))
-}
-
-/// The git `which git` finds: the first executable file of that name on the test's PATH.
-fn real_git() -> PathBuf {
-    let path = std::env::var_os("PATH").unwrap_or_default();
-    let runnable = |git: &PathBuf| {
-        std::fs::metadata(git).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-    };
-    std::env::split_paths(&path)
-        .map(|dir| dir.join("git"))
-        .find(runnable)
-        .expect("git on PATH")
-}
-
 /// The texts of an issue's comments, as `show` gives them.
 fn comments(issue: &Json) -> Vec<&str> {
     let comments = issue["comments"].as_array().expect("the issue's comments");
@@ -202,9 +184,9 @@ fn delayed_push_after_timeout_and_absent_fetch_must_not_fork() {
     let script = format!(
         "#!/bin/sh\ntouch {}\nn=0\nwhile [ ! -f {} ] && [ \"$n\" -lt 400 ]; do sleep 0.05; \
          n=$((n+1)); done\ntouch {}\nexit 0\n",
-        quoted(&started),
-        quoted(&release),
-        quoted(&finished)
+        shell_quoted(&started),
+        shell_quoted(&release),
+        shell_quoted(&finished)
     );
     executable(&hook, &script);
     let previous_tip = s.remote_tip();
@@ -263,7 +245,7 @@ fn successful_push_with_nonzero_exit_must_preserve_accepted_claim() {
     let s = setup();
     let wrapper = s.sandbox.root().join("git-wrapper");
     std::fs::create_dir(&wrapper).unwrap();
-    let git = quoted(&real_git());
+    let git = shell_quoted(git_on_path());
     // Run a real local push, then inject a lost transport acknowledgement as status 1.
     let script = format!(
         "#!/bin/sh\nif [ \"$1\" = push ]; then\n  {git} \"$@\" || exit $?\n  exit 1\nfi\nexec \

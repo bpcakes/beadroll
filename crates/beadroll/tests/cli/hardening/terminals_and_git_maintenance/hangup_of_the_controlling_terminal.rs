@@ -152,7 +152,7 @@ fn hang_up(sandbox: &Sandbox, machine: &Machine, args: &[&str]) -> (Vec<u8>, Str
         .collect();
     let line = format!(
         "echo $$ > {}; exec env --default-signal=HUP {}",
-        quoted(pid_file.as_os_str()),
+        shell_quoted(pid_file),
         words.join(" ")
     );
     let mut command = script(&line, &machine.env(None, "codex"));

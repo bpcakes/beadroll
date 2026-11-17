@@ -2,23 +2,13 @@
 //! (`crates/beadroll-store/src/failpoint.rs`).
 
 use std::os::unix::fs::PermissionsExt as _;
-use std::path::PathBuf;
 
 use beadroll_store::Endpoint;
 use beadroll_sync::PublishMode;
 use beadroll_sync::{Error, Link, PushOutcome, locked};
-use beadroll_test_support::{Machine, git};
+use beadroll_test_support::{Machine, git, git_on_path, shell_quoted};
 
-use crate::support::{quoted, sandbox, workspace};
-
-/// The git on `PATH`.
-fn real_git() -> PathBuf {
-    let path = std::env::var_os("PATH").unwrap_or_default();
-    std::env::split_paths(&path)
-        .map(|dir| dir.join("git"))
-        .find(|git| git.is_file())
-        .expect("git on PATH")
-}
+use crate::support::{sandbox, workspace};
 
 /// `fail-reply` makes a push the remote took a lost acknowledgement whatever git's exit status
 /// said: here git pushes and still exits 1, and the status line that names the ref counts as
@@ -32,7 +22,7 @@ fn a_lost_reply_drops_acceptance_whatever_the_exit_status() {
     a.bead(["sync"]);
     let wrapper = sandbox.root().join("git-wrapper");
     std::fs::create_dir(&wrapper).unwrap();
-    let real = quoted(&real_git());
+    let real = shell_quoted(git_on_path());
     let script = format!(
         "#!/bin/sh\nif [ \"$1\" = push ]; then\n  {real} \"$@\" || exit $?\n  exit 1\nfi\nexec {real} \"$@\"\n"
     );

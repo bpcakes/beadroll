@@ -5,12 +5,12 @@
 use beadroll_store::{Endpoint, Workspace, write_attempt_file};
 use beadroll_sync::PublishMode;
 use beadroll_sync::{Error, Link, Mode, PushOutcome, Tx, locked, synchronise};
-use beadroll_test_support::executable;
 use beadroll_test_support::{Json, Machine, REMOTE_SETTLES, Sandbox, git, wait_until};
+use beadroll_test_support::{executable, shell_quoted};
 
 use crate::support::{
-    Gate, Open, actor, alongside, claim, claiming_update, comments, pending_ids, quoted,
-    release_command, sandbox, text, workspace,
+    Gate, Open, actor, alongside, claim, claiming_update, comments, pending_ids, release_command,
+    sandbox, text, workspace,
 };
 
 /// Machine a's tracker with one issue, "before", synced to machine b.
@@ -79,9 +79,9 @@ fn fence_wins_against_a_real_push_still_running_after_timeout() {
     let script = format!(
         "#!/bin/sh\nif mkdir {} 2>/dev/null; then\n n=0\n while [ ! -f {} ] && [ \"$n\" -lt 1200 ]; \
          do sleep .05; n=$((n+1)); done\n touch {}\nfi\nexit 0\n",
-        quoted(&first),
-        quoted(&gate),
-        quoted(&finished)
+        shell_quoted(&first),
+        shell_quoted(&gate),
+        shell_quoted(&finished)
     );
     executable(&hook, script);
     let _release = Open(gate.clone());

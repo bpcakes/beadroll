@@ -7,7 +7,7 @@
 //! they need. Platform coverage is checked by xtask's CI tests.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsString;
 use std::io::Read;
 use std::path::Path;
 use std::process::{Child, Command, ExitStatus};
@@ -172,12 +172,6 @@ fn mixed_ops(
         }
     }
     (owner, unexpected)
-}
-
-/// `word` quoted for `/bin/sh`.
-fn quoted(word: &OsStr) -> String {
-    let text = word.to_str().expect("a UTF-8 word");
-    format!("'{}'", text.replace('\'', r"'\''"))
 }
 
 /// `script(1)` running the shell command `line` with exactly `env`, on a new pseudo-terminal: its

@@ -4,10 +4,10 @@
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use beadroll_test_support::Machine;
 use beadroll_test_support::executable;
+use beadroll_test_support::{Machine, shell_quoted};
 
-use super::{drain, quoted, script, wait_for};
+use super::{drain, script, wait_for};
 
 /// Whether `needle` occurs in `haystack`.
 fn contains(haystack: &[u8], needle: &[u8]) -> bool {
@@ -48,7 +48,7 @@ fn sync_under_a_controlling_terminal_cannot_prompt() {
     // and error.
     let line = format!(
         "exec {} sync --remote ssh://nowhere.invalid/x.git",
-        quoted(a.executable().as_os_str())
+        shell_quoted(a.executable())
     );
     let start = Instant::now();
     let mut child = script(&line, &env)

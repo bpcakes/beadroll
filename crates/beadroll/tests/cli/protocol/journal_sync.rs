@@ -12,11 +12,10 @@ mod segments;
 mod stalls;
 
 use std::ffi::{OsStr, OsString};
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
-use beadroll_test_support::executable;
 use beadroll_test_support::{Machine, Sandbox, git};
+use beadroll_test_support::{executable, git_on_path, shell_quoted};
 
 /// Where a test wrapper pauses relative to its git command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -99,7 +98,7 @@ fn remote_blob(sandbox: &Sandbox, path: &str) -> String {
 fn git_wrapper(sandbox: &Sandbox, action: &str, marker: &Path, after: HookPosition) -> OsString {
     let folder = sandbox.root().join(format!("wrapper-{action}"));
     std::fs::create_dir_all(&folder).unwrap();
-    let (git, marker) = (quoted(&real_git()), quoted(marker));
+    let (git, marker) = (shell_quoted(git_on_path()), shell_quoted(marker));
     let held = if after == HookPosition::After {
         format!(
             "  {git} \"$@\"\n  status=$?\n  printf ready > {marker}\n  sleep 20\n  exit $status\n"
@@ -116,23 +115,4 @@ fn git_wrapper(sandbox: &Sandbox, action: &str, marker: &Path, after: HookPositi
     path.push(":");
     path.push(std::env::var_os("PATH").expect("the test's PATH"));
     path
-}
-
-/// The git executable on the test's `PATH`: the one the wrapper runs.
-fn real_git() -> PathBuf {
-    let path = std::env::var_os("PATH").unwrap_or_default();
-    let executable = |file: &Path| {
-        let mode = std::fs::metadata(file).map(|meta| (meta.is_file(), meta.permissions().mode()));
-        mode.is_ok_and(|(is_file, mode)| is_file && mode & 0o111 != 0)
-    };
-    std::env::split_paths(&path)
-        .map(|dir| dir.join("git"))
-        .find(|git| executable(git))
-        .expect("git on PATH")
-}
-
-/// `path` quoted for the shell.
-fn quoted(path: &Path) -> String {
-    let text = path.to_str().expect("a UTF-8 path");
-    format!("'{}'", text.replace('\'', r"'\''"))
 }

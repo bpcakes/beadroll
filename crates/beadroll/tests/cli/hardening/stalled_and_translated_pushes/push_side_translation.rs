@@ -8,9 +8,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 use beadroll_git::{Ended, PushOutcome, push_outcome};
-use beadroll_test_support::{Machine, Sandbox, parse_json};
+use beadroll_test_support::{Machine, Sandbox, parse_json, shell_quoted};
 
-use super::{Env, WINNER_IDENTITY, applied, contains, git_is_translated, locales, member, quoted};
+use super::{Env, WINNER_IDENTITY, applied, contains, git_is_translated, locales, member};
 use beadroll_test_support::executable;
 use beadroll_test_support::printed_id;
 
@@ -253,7 +253,7 @@ fn git_keeps_the_rejection_tokens_bead_reads_untranslated() {
          GIT_ALTERNATE_OBJECT_DIRECTORIES\n{WINNER_IDENTITY}W=$(GIT_DIR={r} git rev-parse \
          refs/beads/journal)\nN=$(GIT_DIR={r} git commit-tree $W^{{tree}} -p $W -m winner)\n\
          GIT_DIR={r} git update-ref refs/beads/journal $N $W\nexit 0\n",
-        r = quoted(&tokens.remote)
+        r = shell_quoted(&tokens.remote)
     );
     for (name, setting) in locales() {
         let env = applied(&tokens.base, &setting);
@@ -317,8 +317,8 @@ fn lost_races_are_recognised_and_retried_under_translated_git() {
              then\n  W=$(GIT_DIR={origin} git rev-parse refs/beads/journal)\n  \
              N=$(GIT_DIR={origin} git commit-tree $W^{{tree}} -p $W -m winner)\n  \
              GIT_DIR={origin} git update-ref refs/beads/journal $N $W\nfi\nexit 0\n",
-            gate = quoted(&gate),
-            origin = quoted(sandbox.origin()),
+            gate = shell_quoted(&gate),
+            origin = shell_quoted(sandbox.origin()),
         );
         executable(&hook, &script);
         // the sync below is the racing push

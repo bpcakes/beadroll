@@ -6,10 +6,10 @@ use std::ffi::OsString;
 use std::path::Path;
 
 use beadroll_sync::ROUNDS;
-use beadroll_test_support::executable;
 use beadroll_test_support::{Machine, Sandbox, code};
+use beadroll_test_support::{executable, git_on_path, shell_quoted};
 
-use super::{quoted, real_git, remote_git, setup, setup_with, two_with};
+use super::{remote_git, setup, setup_with, two_with};
 
 /// A git wrapper advances the remote journal before every push by adding a commit with the same
 /// tree under identity `audit`, recording each in `counter`. The real push then fails as
@@ -32,9 +32,9 @@ if [ "$1" = push ]; then
 fi
 exec @git@ "$@"
 "#
-    .replace("@git@", &quoted(&real_git()))
-    .replace("@origin@", &quoted(sandbox.origin()))
-    .replace("@counter@", &quoted(counter));
+    .replace("@git@", &shell_quoted(git_on_path()))
+    .replace("@origin@", &shell_quoted(sandbox.origin()))
+    .replace("@counter@", &shell_quoted(counter));
     let wrapper = folder.join("git");
     executable(&wrapper, script);
     let mut path = folder.into_os_string();

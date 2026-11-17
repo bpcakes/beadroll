@@ -3,8 +3,8 @@
 //! side files are ignored, and global signing does not affect internal commits. The rename crash
 //! test uses `atomic-write:` failpoints.
 
-use beadroll_test_support::executable;
 use beadroll_test_support::printed_id;
+use beadroll_test_support::{executable, shell_quoted};
 use std::collections::BTreeSet;
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
@@ -39,12 +39,6 @@ fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
         .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
 }
 
-/// `path` quoted for the shell.
-fn quoted(path: &Path) -> String {
-    let text = path.to_str().expect("a UTF-8 path");
-    format!("'{}'", text.replace('\'', r"'\''"))
-}
-
 /// The sandbox's remote as a UTF-8 path for bead's `--remote`.
 fn origin(sandbox: &Sandbox) -> &str {
     sandbox.origin().to_str().expect("a UTF-8 path")
@@ -67,7 +61,7 @@ mod data_file_modes {
         let path = sandbox.root().join(format!("bead-umask-{umask:03o}"));
         let script = format!(
             "#!/bin/sh\numask {umask:03o}\nexec {} \"$@\"\n",
-            quoted(sandbox.bead())
+            shell_quoted(sandbox.bead())
         );
         executable(&path, &script);
         path
@@ -424,7 +418,7 @@ mod signing_config_is_inert {
             &gpg,
             format!(
                 "#!/bin/sh\necho called >> {}\necho 'gpg: signing failed' >&2\nexit 2\n",
-                quoted(&log)
+                shell_quoted(&log)
             ),
         );
         let config = sandbox.root().join("global");

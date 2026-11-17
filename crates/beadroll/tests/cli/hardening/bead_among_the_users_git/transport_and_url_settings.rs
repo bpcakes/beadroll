@@ -5,15 +5,10 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use beadroll_test_support::executable;
 use beadroll_test_support::{Machine, git, parse_json};
+use beadroll_test_support::{executable, shell_quoted};
 
 use super::{Env, git_env, has_ref, scratch_git_config, sh};
-
-/// The path quoted for use in a shell script.
-fn quoted(path: &Path) -> String {
-    format!("'{}'", path.display())
-}
 
 /// Verified (V9): bead's sync honours a GIT_SSH_COMMAND already in the environment (bead only sets
 /// its own default when none is present). No real ssh runs: the origin is
@@ -34,7 +29,7 @@ fn git_ssh_command_in_the_environment_is_honoured() {
             format!(
                 "#!/bin/sh\necho \"plain-ssh $*\" >> {}\necho 'plain ssh: blocked in this \
                  test' >&2\nexit 255\n",
-                quoted(&log)
+                shell_quoted(&log)
             ),
         ),
         (
@@ -42,7 +37,7 @@ fn git_ssh_command_in_the_environment_is_honoured() {
             format!(
                 "#!/bin/sh\necho \"core-sshcommand $*\" >> {}\necho 'core.sshCommand: blocked \
                  in this test' >&2\nexit 255\n",
-                quoted(&log)
+                shell_quoted(&log)
             ),
         ),
         (
@@ -50,7 +45,7 @@ fn git_ssh_command_in_the_environment_is_honoured() {
             format!(
                 "#!/bin/sh\necho \"user-ssh-wrapper $*\" >> {}\nfor last; do :; done\nexec sh -c \
                  \"$last\"\n",
-                quoted(&log)
+                shell_quoted(&log)
             ),
         ),
     ];

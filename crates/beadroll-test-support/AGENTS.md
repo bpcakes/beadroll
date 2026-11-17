@@ -25,6 +25,9 @@ tests it builds events, and for the round-trip properties it draws JSON values.
 - `src/lib.rs`: `Json` (beadroll-core's `Value`) and `parse_json`, which read `bead --json`;
   `printed_id`, the id a command printed (the issue a `create` made); `executable`, a hook or a
   fake `git`, `ps` or `ssh` written with mode 0755. Use these rather than a local copy.
+- `src/shell.rs`: `shell_quoted`, a word (a path, an argument) quoted for the `sh` scripts a
+  test writes, and `git_on_path`, the real git a fake `git` hands on to. Use these rather than
+  a local copy.
 - `src/gate.rs`: `Gate`, the `pause-until` handshake that holds bead at a failpoint while the
   test acts (`at`, `action`, `meet`, `ready`, `open`), and `beside`, which runs bead in a thread
   while the test meets it at its gates. The sync crate's in-process tests use the same `Gate`.

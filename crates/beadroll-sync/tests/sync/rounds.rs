@@ -9,11 +9,9 @@ use std::process::{Command, Stdio};
 use beadroll_core::json::Object;
 use beadroll_store::{Endpoint, PublicationState, Workspace};
 use beadroll_sync::{Error, ROUNDS, synchronise};
-use beadroll_test_support::{Machine, git};
+use beadroll_test_support::{Machine, git, git_on_path, shell_quoted};
 
-use crate::support::{
-    Gate, actor, alongside, claim_command, quoted, sandbox, settings, text, workspace,
-};
+use crate::support::{Gate, actor, alongside, claim_command, sandbox, settings, text, workspace};
 
 /// AS08: unpacking objects must stay in the fixture even when object routing is inherited.
 #[test]
@@ -236,10 +234,7 @@ fn adoption_is_only_considered_on_the_first_round() {
 /// A git that moves the remote's journal on before every push it is asked for, so that each
 /// round loses, and runs every command as it is.
 fn git_that_always_loses(sandbox: &beadroll_test_support::Sandbox) -> String {
-    let real = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
-        .map(|dir| dir.join("git"))
-        .find(|git| git.is_file())
-        .expect("git on PATH");
+    let real = git_on_path();
     let script = r#"#!/bin/sh
 if [ "$1" = push ]; then
   ahead() {
@@ -254,8 +249,8 @@ if [ "$1" = push ]; then
 fi
 exec @git@ "$@"
 "#
-    .replace("@git@", &quoted(&real))
-    .replace("@origin@", &quoted(sandbox.origin()));
+    .replace("@git@", &shell_quoted(&real))
+    .replace("@origin@", &shell_quoted(sandbox.origin()));
     let folder = sandbox.root().join("git-that-always-loses");
     std::fs::create_dir(&folder).unwrap();
     std::fs::write(folder.join("git"), script).unwrap();
