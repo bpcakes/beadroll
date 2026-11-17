@@ -5,8 +5,7 @@ use super::super::{Extended, Projection, Record, project};
 use super::same;
 use super::shown::replayed;
 use crate::id::EventId;
-use crate::journal::Journal;
-use crate::journal::JournalOrder;
+use crate::journal::{Journal, JournalOrder};
 use crate::json::{Object, Value};
 
 pub(super) const HERE: &str = "0000aa01";

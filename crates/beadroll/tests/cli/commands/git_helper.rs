@@ -3,8 +3,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use beadroll_test_support::executable;
-use beadroll_test_support::{git, within};
+use beadroll_test_support::{executable, git, within};
 use rustix::process::{Pid, Signal, kill_process, test_kill_process};
 
 use super::fixtures::machine;

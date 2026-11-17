@@ -9,8 +9,9 @@ use std::path::{Path, PathBuf};
 
 use beadroll_core::json::{Object, Value};
 use beadroll_core::op::OpName;
-use beadroll_store::IdentityMode;
-use beadroll_store::{Endpoint, Workspace, glob_ending, json_text, read_attempt, replica_id};
+use beadroll_store::{
+    Endpoint, IdentityMode, Workspace, glob_ending, json_text, read_attempt, replica_id,
+};
 use beadroll_sync::{publish_soon, synchronise, writing};
 use beadroll_test_support::{Machine, Sandbox, json, json_line};
 

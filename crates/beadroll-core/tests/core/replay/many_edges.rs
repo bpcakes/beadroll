@@ -10,8 +10,7 @@
 //! are checked here: past 16 edges, and the thirteenth change of edges read back.
 
 use beadroll_core::id::EventId;
-use beadroll_core::journal::Journal;
-use beadroll_core::journal::JournalOrder;
+use beadroll_core::journal::{Journal, JournalOrder};
 use beadroll_core::json::Object;
 use beadroll_core::projection::{Extended, Projection, Record, decode_state, project};
 use beadroll_core::replay::replay;

@@ -1,8 +1,7 @@
 //! Journal lines: what bytes a line may hold and still be an event (U01 to U04).
 
 use beadroll_core::event::event_problem;
-use beadroll_core::journal::JournalOrder;
-use beadroll_core::journal::{Journal, read_segment};
+use beadroll_core::journal::{Journal, JournalOrder, read_segment};
 use beadroll_core::json::{Format, MAX_DEPTH, parse, write};
 use beadroll_core::replay::replay;
 use beadroll_test_support::{Json, json};

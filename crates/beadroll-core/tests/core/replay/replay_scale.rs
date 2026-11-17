@@ -3,8 +3,7 @@
 use std::time::{Duration, Instant};
 
 use beadroll_core::id::EventId;
-use beadroll_core::journal::Journal;
-use beadroll_core::journal::JournalOrder;
+use beadroll_core::journal::{Journal, JournalOrder};
 use beadroll_core::replay::replay;
 use beadroll_test_support::events::id_at;
 use beadroll_test_support::{Json, json};

@@ -2,8 +2,7 @@
 //! filtered `dangling`; when another machine's concurrent import of the target had the earlier
 //! event id, replay had already turned the entry into an edge, so the retraction was lost.
 
-use beadroll_core::journal::Journal;
-use beadroll_core::journal::JournalOrder;
+use beadroll_core::journal::{Journal, JournalOrder};
 use beadroll_core::json::Value;
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;

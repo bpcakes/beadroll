@@ -6,8 +6,7 @@ use std::ffi::OsString;
 use std::path::Path;
 
 use beadroll_sync::ROUNDS;
-use beadroll_test_support::{Machine, Sandbox, code};
-use beadroll_test_support::{executable, git_on_path, shell_quoted};
+use beadroll_test_support::{Machine, Sandbox, code, executable, git_on_path, shell_quoted};
 
 use super::{remote_git, setup, setup_with, two_with};
 

@@ -18,9 +18,9 @@ use beadroll_core::json::{Object, Value};
 use beadroll_core::op::OpName;
 use beadroll_core::projection::{Projection, Record};
 use beadroll_core::state::State;
-use beadroll_store::IdentityMode;
 use beadroll_store::{
-    Actor, Sourced, Workspace, capture_where, encode_events, projection, replica_id, uuid7,
+    Actor, IdentityMode, Sourced, Workspace, capture_where, encode_events, projection, replica_id,
+    uuid7,
 };
 
 use crate::error::Error;

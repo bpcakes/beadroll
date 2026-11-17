@@ -15,8 +15,7 @@
 
 use std::time::Instant;
 
-use beadroll_core::journal::Journal;
-use beadroll_core::journal::JournalOrder;
+use beadroll_core::journal::{Journal, JournalOrder};
 use beadroll_core::json::{Object, Value};
 use beadroll_core::query::ReadyScope;
 use beadroll_core::replay::replay;

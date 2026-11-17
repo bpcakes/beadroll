@@ -51,10 +51,9 @@ use file::{Held, Made};
 use sources::Sources;
 
 use crate::fs::{content_sum, read_keyed};
-use crate::journal::ContentSums;
 use crate::journal::{
-    ViewError, attempt_events, claim_files_afresh, claim_keys, folder_name, load_journal,
-    load_listed, segment_files,
+    ContentSums, ViewError, attempt_events, claim_files_afresh, claim_keys, folder_name,
+    load_journal, load_listed, segment_files,
 };
 use crate::listing::{Keys, Stamp};
 use crate::memo::FileKey;

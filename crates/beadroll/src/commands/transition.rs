@@ -14,8 +14,7 @@ use beadroll_core::op::OpName;
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::str_of;
 use beadroll_store::{Label, view_outline};
-use beadroll_sync::NetworkMode;
-use beadroll_sync::{publish_soon, writing_spent};
+use beadroll_sync::{NetworkMode, publish_soon, writing_spent};
 
 use super::args::TextValidity;
 use super::{

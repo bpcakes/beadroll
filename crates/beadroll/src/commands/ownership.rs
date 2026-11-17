@@ -10,10 +10,8 @@ use beadroll_core::json::{Format, Object, Value, write};
 use beadroll_core::op::OpName;
 use beadroll_core::state::State;
 use beadroll_core::text::str_of;
-use beadroll_store::IdentityMode;
-use beadroll_store::{Actor, replica_id, view_outline};
-use beadroll_sync::NetworkMode;
-use beadroll_sync::{Mode, Tx, coordinated};
+use beadroll_store::{Actor, IdentityMode, replica_id, view_outline};
+use beadroll_sync::{Mode, NetworkMode, Tx, coordinated};
 
 use super::{Context, Failure, Outcome, arg_text, encodable, need_tracker, resolve_arg, view_of};
 use crate::commands::args::TextValidity;

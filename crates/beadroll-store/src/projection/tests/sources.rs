@@ -2,11 +2,10 @@
 //! was read, it is the store's current projection until bead writes a journal file, and not after.
 
 use super::*;
-use crate::FileMode;
-use crate::LockState;
 use crate::fs::write_atomic;
 use crate::listing::Keys;
 use crate::projection::{Sourced, Sources, projection_sourced};
+use crate::{FileMode, LockState};
 
 /// How the projection a test starts from was read.
 #[derive(Clone, Copy, Debug)]

@@ -29,8 +29,7 @@ use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::query::Edges;
 use beadroll_store::{Clock, Settings, detect_actor, find_workspace, nearest_harness};
-use beadroll_sync::NetworkMode;
-use beadroll_sync::publish_soon_at;
+use beadroll_sync::{NetworkMode, publish_soon_at};
 use output::{Stream, Unwritten, emit};
 use paint::{Colors, When};
 use parse::{Namespace, Page, Parsed};
@@ -38,10 +37,10 @@ use report::{report, warn};
 use spec::Scope;
 
 use crate::cli::paint::Color;
-use crate::commands::ImportMode;
-use crate::commands::SearchScope;
-use crate::commands::Transition;
-use crate::commands::{self, Context, Delivered, Failure, Held, Line, Outcome, Tone};
+use crate::commands::{
+    self, Context, Delivered, Failure, Held, ImportMode, Line, Outcome, SearchScope, Tone,
+    Transition,
+};
 
 /// Whether another state will be read to publish the command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

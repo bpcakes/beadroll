@@ -7,10 +7,9 @@ use beadroll_core::event::{Field, status};
 use beadroll_core::json::{Object, Value};
 use beadroll_core::state::State;
 use beadroll_core::text::{repr, repr_bytes, str_of};
-use beadroll_store::IdentityMode;
-use beadroll_store::MetadataRead;
 use beadroll_store::{
-    Actor, Label, Settings, Workspace, replica_id, tracked_config_warning, view_outline,
+    Actor, IdentityMode, Label, MetadataRead, Settings, Workspace, replica_id,
+    tracked_config_warning, view_outline,
 };
 
 use super::help;

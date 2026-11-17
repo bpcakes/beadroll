@@ -5,8 +5,7 @@ use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::text::printed_text;
-use beadroll_store::FileMode;
-use beadroll_store::{normalize_path, view, write_atomic};
+use beadroll_store::{FileMode, normalize_path, view, write_atomic};
 
 use super::{Context, Failure, Outcome};
 

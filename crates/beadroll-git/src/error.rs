@@ -1,8 +1,7 @@
 //! Git execution failures and operating-system error formatting.
 
-use std::fmt;
-use std::io;
 use std::path::{Path, PathBuf};
+use std::{fmt, io};
 
 /// An IO error formatted as `{strerror}: {path}` when a path is present, otherwise `[Errno N]
 /// {strerror}`. Omits the standard library's `(os error N)` suffix.

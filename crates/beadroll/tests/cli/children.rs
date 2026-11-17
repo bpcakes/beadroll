@@ -7,10 +7,10 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use beadroll_test_support::{Invocation, Json, Machine, Run, Sandbox, git, parse_json};
-use beadroll_test_support::{executable, git_on_path, shell_quoted};
-
-use beadroll_test_support::{Gate, beside};
+use beadroll_test_support::{
+    Gate, Invocation, Json, Machine, Run, Sandbox, beside, executable, git, git_on_path,
+    parse_json, shell_quoted,
+};
 
 /// bead started with descriptor 7 open, as a caller's pipe or a make jobserver would be, writes
 /// through git; a git first on PATH notes, each time bead starts it, whether descriptor 7 reached

@@ -8,8 +8,7 @@ use super::*;
 use crate::journal::JournalOrder;
 use crate::json::parse;
 use crate::projection::Record;
-use crate::projection::tests::HistoryKind;
-use crate::projection::tests::history;
+use crate::projection::tests::{HistoryKind, history};
 
 /// Event `n` by machine `a`, as one line without its newline.
 fn line(n: u64, op: &str, issue: Option<u64>, data: &str) -> String {

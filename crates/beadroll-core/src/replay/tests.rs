@@ -13,14 +13,12 @@ use std::collections::BTreeSet;
 use super::replay;
 use crate::event::Field;
 use crate::id::EventId;
-use crate::journal::Journal;
-use crate::journal::JournalOrder;
+use crate::journal::{Journal, JournalOrder};
 use crate::json::{self, Format, Object, Value};
 use crate::projection::Record;
-use crate::projection::tests::HistoryKind;
 use crate::projection::tests::awaiting::fnv;
 use crate::projection::tests::owned::{self, BASIS};
-use crate::projection::tests::{Rng, history};
+use crate::projection::tests::{HistoryKind, Rng, history};
 use crate::query::{Edges, ReadyScope};
 use crate::state::State;
 

@@ -7,9 +7,8 @@ use beadroll_store::{Endpoint, LockState, Settings, Workspace};
 use beadroll_test_support::{Machine, Sandbox, built_bead};
 
 use super::{Link, attempt_shaped, segment_shaped, stem};
-use crate::Error;
-use crate::locked;
 use crate::synchronise::SyncReport;
+use crate::{Error, locked};
 use std::path::Path;
 
 pub(super) fn fixture(faults: &str) -> (Sandbox, Workspace) {

@@ -22,10 +22,9 @@ use beadroll_core::projection::{
     COMPACTED, Encoded, Extended, Projection, Record, decode_state, project,
 };
 
-use super::heap;
 use super::history::{Shape, event_id, history};
-use super::memory;
 use super::world::profile;
+use super::{heap, memory};
 use crate::workspace::{self, Failure, json_string};
 
 /// How many times each part is decoded; the fastest run counts.

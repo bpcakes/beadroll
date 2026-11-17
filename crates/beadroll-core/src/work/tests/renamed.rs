@@ -9,8 +9,7 @@
 
 use super::super::Work;
 use super::{MACHINE, grows_linearly, id, key};
-use crate::journal::Journal;
-use crate::journal::JournalOrder;
+use crate::journal::{Journal, JournalOrder};
 use crate::json::{Object, Value};
 use crate::replay::replay;
 

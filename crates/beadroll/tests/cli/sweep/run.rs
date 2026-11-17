@@ -10,8 +10,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::executable;
-use beadroll_test_support::{Json, Machine, Sandbox};
+use beadroll_test_support::{Json, Machine, Sandbox, executable};
 
 use super::call::{Step, answer, exec, tail};
 use super::{

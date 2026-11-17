@@ -4,8 +4,7 @@
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use beadroll_test_support::executable;
-use beadroll_test_support::{Machine, shell_quoted};
+use beadroll_test_support::{Machine, executable, shell_quoted};
 
 use super::{drain, script, wait_for};
 

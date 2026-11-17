@@ -2,7 +2,8 @@
 //! hostnames, or SSH targets. Patterns describe shapes rather than private names. ASCII word
 //! boundaries deliberately also catch matches beside non-ASCII letters. Lint exemptions sit at a
 //! crate or module root, apart from the two `CONTRIBUTING.md` names, no Rust source grows past
-//! the line it should have been split long before, and nothing is named for a finding.
+//! the line it should have been split long before, nothing is named for a finding, and a
+//! module's items are imported in one `use` line.
 
 /// The repository's tracked files that `pathspecs` match (all of them when none is given), by their
 /// paths from its root. A listing without `expected` fails the test: a scan of nothing would pass.
@@ -358,5 +359,64 @@ mod finding_names {
                 "x.rs:4: pub(crate) fn g25_d"
             ]
         );
+    }
+}
+
+/// `ImportLines`.
+mod import_lines {
+    use std::collections::BTreeMap;
+
+    use regex_lite::Regex;
+
+    /// The modules `text`, the file `name`, imports from in more than one top-level `use` line, as
+    /// NAME:LINE: MODULE for each line after the first. A `pub use`, an import under an attribute
+    /// and one with nested braces or a glob are left out, as rustfmt does not merge them either.
+    fn split(name: &str, text: &str) -> Vec<String> {
+        let line = Regex::new(r"(?m)^use ([a-z_][a-z0-9_]*(?:::[a-z_][a-z0-9_]*)*)::(?:\{[^{}]*\}|[A-Za-z_][A-Za-z0-9_]*(?: as [A-Za-z_][A-Za-z0-9_]*)?);")
+            .expect("a valid pattern");
+        let mut seen: BTreeMap<&str, usize> = BTreeMap::new();
+        let mut found = Vec::new();
+        for import in line.captures_iter(text) {
+            let whole = import.get(0).expect("the match");
+            let before = text[..whole.start()].trim_end_matches('\n');
+            if before
+                .rsplit('\n')
+                .next()
+                .is_some_and(|line| line.starts_with("#["))
+            {
+                continue;
+            }
+            let module = import.get(1).expect("the module").as_str();
+            let count = seen.entry(module).or_default();
+            *count += 1;
+            if *count > 1 {
+                let at = text[..whole.start()].matches('\n').count() + 1;
+                found.push(format!("{name}:{at}: {module}"));
+            }
+        }
+        found
+    }
+
+    /// Every Rust source imports a module's items in one `use` line: a new item joins the braces
+    /// there, rather than a line of its own beside them.
+    #[test]
+    fn a_modules_items_are_imported_in_one_line() {
+        let found: Vec<String> = (super::rust_sources().iter())
+            .flat_map(|(name, text)| split(name, text))
+            .collect();
+        assert!(
+            found.is_empty(),
+            "merge these into the module's other import:\n{}",
+            found.join("\n")
+        );
+    }
+
+    /// A second line for a module is found, braced or not; another module, a `pub use`, an import
+    /// under an attribute and one with nested braces are not.
+    #[test]
+    fn a_second_line_for_one_module_is_found() {
+        let text = "use a::b::{C, d};\nuse a::b::E;\nuse a::c::F;\npub use a::b::G;\n\
+                    #[cfg(test)]\nuse a::b::H;\nuse a::b::{i::{J}, K};\n";
+        assert_eq!(split("x.rs", text), ["x.rs:2: a::b"]);
     }
 }

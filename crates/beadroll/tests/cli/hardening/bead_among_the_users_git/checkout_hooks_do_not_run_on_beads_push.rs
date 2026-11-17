@@ -1,7 +1,6 @@
 //! The checkout's own hooks are the user's pushes' business, never bead's.
 
-use beadroll_test_support::executable;
-use beadroll_test_support::{Machine, git};
+use beadroll_test_support::{Machine, executable, git};
 
 use super::scratch_git_config;
 

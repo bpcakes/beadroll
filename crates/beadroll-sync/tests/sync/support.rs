@@ -10,8 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use beadroll_core::json::{Format, Object, Value, write};
 use beadroll_core::op::OpName;
 use beadroll_store::{Actor, Settings, Workspace, pending_files, read_attempt};
-use beadroll_sync::NetworkMode;
-use beadroll_sync::{Error, Mode, Tx, coordinated};
+use beadroll_sync::{Error, Mode, NetworkMode, Tx, coordinated};
 pub(crate) use beadroll_test_support::Gate;
 use beadroll_test_support::{Json, Machine, Sandbox, built_bead, json};
 

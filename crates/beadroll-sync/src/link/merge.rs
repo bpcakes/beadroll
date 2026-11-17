@@ -6,11 +6,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use beadroll_core::json::Value;
-use beadroll_store::IdentityMode;
-use beadroll_store::{FileMode, Sourced};
 use beadroll_store::{
-    Memo, complete_prefix, extend_segment, pending_files, projection_sourced, read, read_attempt,
-    repair_tail, replica_id, segment_files, write_atomic,
+    FileMode, IdentityMode, Memo, Sourced, complete_prefix, extend_segment, pending_files,
+    projection_sourced, read, read_attempt, repair_tail, replica_id, segment_files, write_atomic,
 };
 
 use super::{Link, newlines};

@@ -8,17 +8,16 @@ use std::ffi::OsStr;
 
 use beadroll_core::json::Value;
 use beadroll_git::PushOutcome;
-use beadroll_store::IdentityMode;
-use beadroll_store::PublicationState;
-use beadroll_store::{Actor, Endpoint, Workspace, load_pending, replica_id};
+use beadroll_store::{
+    Actor, Endpoint, IdentityMode, PublicationState, Workspace, load_pending, replica_id,
+};
 
-use crate::NetworkMode;
-use crate::PublishMode;
 use crate::error::Error;
 use crate::link::Link;
 use crate::receipts::{Request, RetireAfterSuccess, settle};
 use crate::synchronise::{ROUNDS, conflict_detail, pause, refused};
 use crate::tx::{Spent, Tx, drop_pending, locked, writing};
+use crate::{NetworkMode, PublishMode};
 
 mod attempt;
 use attempt::{AttemptOutcome, PendingAttempt, Recovery};

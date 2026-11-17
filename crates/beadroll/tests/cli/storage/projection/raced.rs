@@ -8,11 +8,10 @@
 
 use std::os::unix::fs::MetadataExt as _;
 
-use beadroll_test_support::{Machine, Run, Sandbox};
+use beadroll_test_support::{Gate, Machine, Run, Sandbox, beside};
 
 use super::{answers, projection, texts, tracker};
 use crate::storage::projection::ReadPath;
-use beadroll_test_support::{Gate, beside};
 
 /// The generation the text file was started with: its header's second sixteen bytes.
 fn generation(machine: &Machine) -> Vec<u8> {

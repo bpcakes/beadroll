@@ -15,13 +15,11 @@ use std::path::{Path, PathBuf};
 
 use super::fixtures::machine_settings;
 use beadroll_core::id::EventId;
-use beadroll_core::journal::JournalOrder;
-use beadroll_core::journal::{Journal, read_segment};
+use beadroll_core::journal::{Journal, JournalOrder, read_segment};
 use beadroll_core::json::{Format, Value, write};
 use beadroll_core::replay::replay;
-use beadroll_store::IdentityMode;
 use beadroll_store::{
-    Workspace, claim_files, load_journal, read_attempt, replica_id, segment_files,
+    IdentityMode, Workspace, claim_files, load_journal, read_attempt, replica_id, segment_files,
 };
 use beadroll_test_support::{Json, Machine, Run, Sandbox, converge, json_ids};
 
