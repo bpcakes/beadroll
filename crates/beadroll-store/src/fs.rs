@@ -301,16 +301,9 @@ pub fn json_text(data: &[u8]) -> Result<Value, String> {
         .map_err(|error| error.to_string())
 }
 
-/// An operating-system error about `path`, formatted as `[Errno N] strerror: 'path'`.
+/// An operating-system error about `path`, formatted as every one is: `{strerror}: {path}`.
 pub fn os_error_str(error: &io::Error, path: &Path) -> String {
-    let strerror = beadroll_git::strerror(error);
-    match error.raw_os_error() {
-        Some(errno) => format!(
-            "[Errno {errno}] {strerror}: {}",
-            beadroll_core::text::repr_str(&path.to_string_lossy())
-        ),
-        None => strerror,
-    }
+    format!("{}: {}", beadroll_git::strerror(error), path.display())
 }
 
 /// The established diagnostic for invalid UTF-8 bytes.
@@ -343,6 +336,16 @@ pub fn utf8_error(data: &[u8], error: &std::str::Utf8Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An unreadable file's error reads as every OS error does, `{strerror}: {path}`.
+    #[test]
+    fn an_unreadable_files_error_names_its_path_after_the_strerror() {
+        let error = io::Error::from_raw_os_error(rustix::io::Errno::ACCESS.raw_os_error());
+        assert_eq!(
+            os_error_str(&error, Path::new("/s/claims/x.json")),
+            "Permission denied: /s/claims/x.json"
+        );
+    }
 
     /// A listing is in the order of its names' bytes, which whole paths under one folder sort in
     /// too: a name that is a prefix of another, punctuation that sorts before the folder's

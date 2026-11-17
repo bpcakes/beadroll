@@ -13,6 +13,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   locked dependency so CI's advisory check passes. Build the nightly's Git 2.40.4
   in GNU C17 mode so newer compilers' C23 default does not break it (roll-ogg8).
 
+- An operating-system error reads `{strerror}: {path}` everywhere, as CONTRIBUTING promises.
+  Three messages still had Python's form: an OS error without a path (`[Errno 28] No space
+  left on device`), an unreadable store file (`[Errno 13] Permission denied: '/path'`), and
+  `No usable temporary directory`. The codes are unchanged.
 - A `GIT_CONFIG_COUNT` within a few of the largest `i128` is `CONFIG`: bead's own settings after
   it would be numbered past what an `i128`, and git, can read. It used to write those indices as
   39-digit text, which git then refused. The count is now plain `i128` arithmetic, not a decimal
