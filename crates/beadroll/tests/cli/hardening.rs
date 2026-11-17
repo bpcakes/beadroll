@@ -3,6 +3,8 @@
 //! (`docs/FINDINGS.md`). Fault injection uses failpoints on this build's binary
 //! (`crate::rust_only`); `beadroll_test_support::Gate` coordinates a test with a paused process.
 
+use beadroll_test_support::{Machine, Sandbox};
+
 /// How a test machine first opens its tracker.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TrackerSetup {
@@ -10,6 +12,28 @@ pub(crate) enum TrackerSetup {
     Sync,
     /// A tracker started here with `bead init --prefix ex`.
     Init,
+}
+
+impl TrackerSetup {
+    /// `machine`, its tracker opened this way: started with prefix `ex`, or the published one synced.
+    fn open(self, machine: Machine) -> Machine {
+        match self {
+            TrackerSetup::Init => machine.bead(["init", "--prefix", "ex"]),
+            TrackerSetup::Sync => machine.bead(["sync"]),
+        };
+        machine
+    }
+}
+
+/// Machine `name`, running the bead under test, its tracker opened as `setup` says.
+pub(crate) fn tracker_machine(sandbox: &Sandbox, name: &str, setup: TrackerSetup) -> Machine {
+    setup.open(Machine::new(sandbox, name))
+}
+
+/// Machine `name`, running this build's bead (`crate::rust_only`), its tracker opened as `setup`
+/// says.
+pub(crate) fn rust_tracker_machine(sandbox: &Sandbox, name: &str, setup: TrackerSetup) -> Machine {
+    setup.open(crate::rust_only(sandbox, name))
 }
 
 mod arabic_letter_mark_escaped;

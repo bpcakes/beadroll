@@ -8,21 +8,9 @@
 //! X; `update X --claim` answers "Updated"; `takeover X` crashes with KeyError when the claim has
 //! since ended.
 
-use beadroll_test_support::{Invocation, Json, Machine, Sandbox, printed_id};
+use beadroll_test_support::{Invocation, Json, Machine, printed_id};
 
-use crate::hardening::TrackerSetup;
-
-/// A machine `name` that initialised the tracker (prefix `ex`), or, with `init`
-/// false, synced the one already published.
-fn machine(sandbox: &Sandbox, name: &str, init: TrackerSetup) -> Machine {
-    let machine = Machine::new(sandbox, name);
-    if init == TrackerSetup::Init {
-        machine.bead(["init", "--prefix", "ex"]);
-    } else {
-        machine.bead(["sync"]);
-    }
-    machine
-}
+use crate::hardening::{TrackerSetup, tracker_machine};
 
 /// `bead ARGS` from `machine`, stopped by the crash hook right after its push was accepted.
 fn crashing_after_push<'m>(machine: &'m Machine, args: &[&str]) -> Invocation<'m> {
@@ -46,10 +34,10 @@ fn owner(issue: &Json) -> String {
 #[test]
 fn claim_retry_after_a_takeover_does_not_say_claimed() {
     let sandbox = crate::sandbox();
-    let a = machine(&sandbox, "g10-moved", TrackerSetup::Init);
+    let a = tracker_machine(&sandbox, "g10-moved", TrackerSetup::Init);
     let x = printed_id(a.bead(["create", "X"]));
     a.bead(["sync"]);
-    let b = machine(&sandbox, "g10-moved-b", TrackerSetup::Sync);
+    let b = tracker_machine(&sandbox, "g10-moved-b", TrackerSetup::Sync);
     let crashed = crashing_after_push(&a, &["claim", &x]).run();
     assert_eq!(crashed.returncode(), 99, "{}", crashed.stderr);
     let taken = b.run(["takeover", &x, "--reason", "a looked dead"]);
@@ -71,10 +59,10 @@ fn claim_retry_after_a_takeover_does_not_say_claimed() {
 #[test]
 fn claiming_update_retry_after_a_takeover_does_not_succeed() {
     let sandbox = crate::sandbox();
-    let a = machine(&sandbox, "g10-update", TrackerSetup::Init);
+    let a = tracker_machine(&sandbox, "g10-update", TrackerSetup::Init);
     let x = printed_id(a.bead(["create", "X"]));
     a.bead(["sync"]);
-    let b = machine(&sandbox, "g10-update-b", TrackerSetup::Sync);
+    let b = tracker_machine(&sandbox, "g10-update-b", TrackerSetup::Sync);
     let label = ["update", &x, "--claim", "--add-label", "mine"];
     let crashed = crashing_after_push(&a, &label).run();
     assert_eq!(crashed.returncode(), 99, "{}", crashed.stderr);
@@ -96,10 +84,10 @@ fn claiming_update_retry_after_a_takeover_does_not_succeed() {
 #[test]
 fn takeover_retry_after_the_claim_ended_is_not_a_traceback() {
     let sandbox = crate::sandbox();
-    let a = machine(&sandbox, "g10-ended", TrackerSetup::Init);
+    let a = tracker_machine(&sandbox, "g10-ended", TrackerSetup::Init);
     let x = printed_id(a.bead(["create", "X"]));
     a.bead(["sync"]);
-    let b = machine(&sandbox, "g10-ended-b", TrackerSetup::Sync);
+    let b = tracker_machine(&sandbox, "g10-ended-b", TrackerSetup::Sync);
     b.bead(["claim", &x]);
     a.bead(["sync"]);
     let crashed = crashing_after_push(&a, &["takeover", &x, "--reason", "idle"]).run();
