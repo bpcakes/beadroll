@@ -15,7 +15,7 @@ use beadroll_core::text::printed_text;
 use beadroll_store::{Elsewhere, ViewError, Workspace, elsewhere, load_journal};
 use beadroll_sync::{Tx, writing_spent};
 
-use super::{Context, Failure, Line, Outcome, Tone, need_tracker, read_utf8};
+use super::{Context, Failure, Line, Outcome, Tone, counted, need_tracker, read_utf8};
 use crate::commands::ImportMode;
 
 /// The file Beads keeps its tracker in, on every branch.
@@ -259,11 +259,6 @@ fn report_elsewhere(result: &mut Object, lines: &mut Vec<Line>, changes: &Elsewh
     for tree in &changes.worktrees {
         lines.push(Line::from(format!("  {tree}: changes to it not committed")));
     }
-}
-
-/// `count` and the noun for it, `one` or `many`.
-fn counted(count: usize, one: &str, many: &str) -> String {
-    format!("{count} {}", if count == 1 { one } else { many })
 }
 
 /// `keys`, at most [`SHOWN`] of them, then how many more.
