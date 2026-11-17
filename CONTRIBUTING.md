@@ -108,7 +108,11 @@ the record of it before any test data is written), their tests beside them, and 
    their actions are listed in `crates/beadroll-store/src/failpoint.rs`), never
    by patching: to skip the wait between sync attempts, `backoff@always=skip`,
    never a shortened sleep. Black-box tests run `bead` through
-   `beadroll-test-support`'s `Sandbox` and `Machine`.
+   `beadroll-test-support`'s `Sandbox` and `Machine`. Test modules named
+   after a review or a finding id (`hardening/g01`–`g65`, `v1`–`v9`,
+   `review6`, the `*_audit` and `*_reaudit` modules) are history, not a
+   pattern. A new test is named for the contract it checks, and its doc
+   comment cites any finding id.
 2. Match the surrounding style: comments in prose that say why; names that
    say what a function returns; errors carry a code a user or an agent can
    act on (`bead prime` lists them). Unknown input is reported, never guessed
@@ -203,7 +207,7 @@ by the tests, xtask or `infra/`:
 |---|---|---|
 | `BEAD_UNDER_TEST` | tests, xtask's `timing`, `infra/` | The `bead` to run, by its absolute path, instead of the one Cargo built (tests, xtask) or the installed `~/.local/bin/bead` (`infra/`) |
 | `BEAD_FAILPOINTS` | bead | Faults to inject: `point=action`, `point@nth(k)=action` or `point@always=action`, separated by `;` (`crates/beadroll-store/src/failpoint.rs`) |
-| `BEAD_TEST_CRASH_BEFORE_PUSH`, `BEAD_TEST_CRASH_AFTER_PUSH` | bead | The crash hooks: exit 98 before, 99 after an ownership command's publish; aliases of two failpoints |
+| `BEAD_TEST_CRASH_BEFORE_PUSH`, `BEAD_TEST_CRASH_AFTER_PUSH` | bead | The crash hooks: exit 98 before, 99 after an ownership command's publish. They are aliases of `ownership.before-publish=exit(98)` and `ownership.after-publish-ok=exit(99)`, kept for the tests that use them; new tests name the failpoints |
 | `BEAD_SWEEP`, `BEAD_SWEEP_GC`, `BEAD_SWEEP_CONCURRENT` | the sweep | `full` runs all 660 schedules; with `BEAD_SWEEP_GC=1` the remote collects garbage after every push it accepts; with `BEAD_SWEEP_CONCURRENT=1` each schedule's two follow-ups run at once |
 | `RT_HOME` | `infra/roundtrip.py` | The scratch store the round trip imports into, which `./check.sh --real` sets; else `bead-roundtrip-home` under `TMPDIR` |
 | `BEAD_TEST_REMOTE`, `BEAD_DRIVE_HOSTS`, `BEAD_DRIVE_BEADS`, `BEAD_EXPECT_VERSION`, `BEAD_TEST_LOCAL_REPO` | `infra/` | Each script's docstring says what it needs |

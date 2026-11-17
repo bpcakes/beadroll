@@ -2646,8 +2646,9 @@ happened, and attach the reproduction (command or test).
   provisional claim.
 - `generation` must be monotonic on every machine after any interleaving, including a claimant
   whose fetch was stale.
-- Lost acknowledgement at every point: `BEAD_TEST_CRASH_BEFORE_PUSH`, `BEAD_TEST_CRASH_AFTER_PUSH`,
-  a push killed mid-flight, a push that times out (`BEAD_NET_TIMEOUT`) but was applied, a
+- Lost acknowledgement at every point: `ownership.before-publish=exit(98)` and
+  `ownership.after-publish-ok=exit(99)` (the failpoints behind the older tests' crash hooks), a
+  push killed mid-flight, a push that times out (`BEAD_NET_TIMEOUT`) but was applied, a
   receive hook that stalls (see the `protocol` tests). Then: a retry of the same command, a
   different command, a `sync`, from the same and from a new process.
 - The `superseded` pre-pass in `replay`: find a case where a takeover rejects a legitimate
@@ -2716,10 +2717,12 @@ repository. `beadroll-test-support` (`Sandbox`, `Machine`) shows the pattern;
    Design observations clearly separated from bugs, and from the accepted decisions in §2.
    Exactly which checks in §5 and §6 you ran, with numbers, and which you did not. Any side
    effects you caused anywhere, even if cleaned up. The `check.sh` output you started from.
-2. **Tests**, in a new module `review<n>` of the `beadroll` crate's test binary
-   (`crates/beadroll/tests/cli/review<n>.rs`, declared in its `main.rs`), built on
-   `beadroll-test-support`: every bug as a failing test, every property you verified as a passing
-   one, each test's doc comment naming the finding id. The maintainer folds them into the subject
-   modules when the findings are closed; do not edit the existing modules.
+2. **Tests**, built on `beadroll-test-support`, in the subject modules of the crate whose
+   behaviour they check (`AGENTS.md`, *Making a change*). Every bug gets a failing test, and every
+   property you verified a passing one. Name each test for the contract it checks, and name the
+   finding id in its doc comment. Put new files beside related tests, each declared in its parent
+   module, and do not change existing tests. Never create a module named after the review, its
+   number or a finding id. The `g*`, `v*`, `review<n>` and `*_audit` modules left by earlier
+   reviews are history, not a pattern.
 3. **Proposed ledger rows** for `FINDINGS.md`, one per finding, at the end of the report.
 4. Your scripts, kept runnable, in your scratch directory.

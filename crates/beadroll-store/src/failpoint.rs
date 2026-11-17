@@ -162,7 +162,8 @@ struct Spec {
     action: Action,
 }
 
-/// Legacy crash hooks selected by the caller.
+/// The crash hooks older tests set, aliases of `ownership.before-publish=exit(98)` and
+/// `ownership.after-publish-ok=exit(99)`; new tests name those failpoints instead.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CrashHooks {
     /// Exit before publishing an ownership attempt.
