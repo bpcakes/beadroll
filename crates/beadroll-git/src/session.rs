@@ -114,13 +114,10 @@ fn end(child: &mut Child) {
 mod tests {
     use super::*;
 
-    fn env() -> Env {
-        Env::new(std::env::vars_os(), None, std::env::temp_dir())
-    }
-
     #[test]
     fn a_session_answers_question_after_question_and_is_reaped_when_dropped() {
-        let mut session = Session::start(&env(), ["hash-object", "--stdin-paths"]).unwrap();
+        let (_dir, scratch) = crate::testing::scratch();
+        let mut session = Session::start(&scratch, ["hash-object", "--stdin-paths"]).unwrap();
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("hello");
         std::fs::write(&file, b"hello\n").unwrap();
@@ -142,7 +139,8 @@ mod tests {
 
     #[test]
     fn a_git_that_dies_answers_nothing() {
-        let mut session = Session::start(&env(), ["hash-object", "--stdin-paths"]).unwrap();
+        let (_dir, scratch) = crate::testing::scratch();
+        let mut session = Session::start(&scratch, ["hash-object", "--stdin-paths"]).unwrap();
         session.send(b"/nonexistent/bead/file\n").unwrap();
         assert_eq!(session.line(), Err(NoAnswer));
         assert_eq!(session.exact(1), Err(NoAnswer));

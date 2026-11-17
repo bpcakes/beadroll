@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn gits_run_alongside_answer_as_each_run_alone() {
-        let env = Env::new(std::env::vars_os(), None, std::env::temp_dir());
+        let (_dir, env) = crate::testing::scratch();
         let first = ["hash-object", "--stdin"];
         let second = ["rev-parse", "--verify", "refs/nothing/here"];
         let third = ["hash-object", "--stdin", "-t", "blob"];

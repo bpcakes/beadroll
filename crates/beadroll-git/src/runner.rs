@@ -450,13 +450,10 @@ fn read_whole(file: &File) -> Result<Vec<u8>, Error> {
 mod tests {
     use super::*;
 
-    fn env() -> Env {
-        Env::new(std::env::vars_os(), None, std::env::temp_dir())
-    }
-
     #[test]
     fn a_failure_names_the_command_and_what_git_said() {
-        let error = env()
+        let (_dir, scratch) = crate::testing::scratch();
+        let error = scratch
             .git(["rev-parse", "--verify", "refs/nothing/here"])
             .check()
             .unwrap_err();
@@ -471,7 +468,8 @@ mod tests {
 
     #[test]
     fn input_reaches_git_and_output_comes_back_whole() {
-        let sha = env()
+        let (_dir, scratch) = crate::testing::scratch();
+        let sha = scratch
             .git(["hash-object", "--stdin"])
             .input(b"hello\n".to_vec())
             .string()
