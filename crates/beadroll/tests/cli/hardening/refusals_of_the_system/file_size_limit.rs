@@ -36,6 +36,13 @@ fn file_size_limit_is_io_and_the_next_write_and_sync_are_clean() {
         "{}",
         created.stderr
     );
+    // the error names the segment the append was for, as every error of the operating system names
+    // its path (`CONTRIBUTING.md`)
+    assert!(
+        created.stderr.contains("File too large: ") && created.stderr.contains(".jsonl"),
+        "{}",
+        created.stderr
+    );
     let after = a.run(["create", "after", "--json"]);
     assert_eq!(after.returncode(), 0, "{}", after.stderr);
     other.bead(["create", "growth", "--description-file", body]);
