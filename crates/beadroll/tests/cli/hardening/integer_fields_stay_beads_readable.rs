@@ -5,14 +5,7 @@
 use beadroll_core::json::{Format, Object, write};
 use beadroll_test_support::{Json, Machine, Run, code, json};
 
-/// A Beads record's required fields.
-fn common() -> Json {
-    json!({
-        "status": "open", "priority": 2, "issue_type": "task",
-        "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
-        "created_by": "seed"
-    })
-}
+use crate::commands::fixtures::record_fields;
 
 /// `assert_refused`: the write was refused with VALIDATION, and bead did not crash.
 fn assert_refused(run: &Run, what: &str) {
@@ -45,11 +38,11 @@ fn writes_refuse_booleans_and_estimates_beads_cannot_read() {
         ("est-big", json!({"estimated_minutes": (2_147_483_648_i64)})),
     ];
     for (name, fields) in cases {
-        // {"id": ..., "title": ..., **_g32_common(), **fields}
+        // the id and title, then `record_fields`, then `fields`
         let mut record = Object::new();
         record.insert("id".into(), Json::from(format!("ex-{name}")));
         record.insert("title".into(), Json::from(name));
-        for part in [common(), fields] {
+        for part in [record_fields(), fields] {
             let Json::Object(part) = part else {
                 panic!("members, not {part:?}");
             };

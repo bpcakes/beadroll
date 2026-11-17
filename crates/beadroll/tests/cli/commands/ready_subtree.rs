@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use beadroll_core::json::{Format, Object, write};
 use beadroll_test_support::{Json, Machine, Sandbox, code, json};
 
-/// When a record was made and last changed, unless it says otherwise (`COMMON`).
+/// When a record was made and last changed, unless it says otherwise, as in `record_fields`.
 const CREATED: &str = "2026-01-01T00:00:00Z";
 
 /// ex-e's ready descendants, in ready's order.
