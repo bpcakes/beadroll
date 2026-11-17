@@ -1,6 +1,6 @@
 //! The issues `list` and `ready` show: filtered, limited and laid out as rows.
 
-use beadroll_core::event::{DONE, PARENT_CHILD};
+use beadroll_core::event::{DONE, PARENT_CHILD, status};
 use beadroll_core::json::{Int, Value};
 use beadroll_core::op::IntegerField;
 use beadroll_core::state::{Issue, State, Target};
@@ -57,7 +57,7 @@ pub(crate) fn select<'s>(st: &'s State, filters: &Filters) -> Result<Vec<&'s Iss
                 continue;
             }
         } else if !want_all
-            && (DONE.contains(&status) || (status == "deferred" && !filters.deferred))
+            && (DONE.contains(&status) || (status == status::DEFERRED && !filters.deferred))
         {
             continue;
         }

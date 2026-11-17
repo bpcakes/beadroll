@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::ffi::{OsStr, OsString};
 
 use beadroll_core::code::Code;
-use beadroll_core::event::Field;
+use beadroll_core::event::{Field, status};
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::op::OpName;
@@ -68,9 +68,9 @@ impl Transition {
     /// What it does, the status it gives, and that status as said.
     fn words(self) -> (&'static str, &'static str, &'static str) {
         match self {
-            Transition::Close => ("Closed", "closed", "closed"),
-            Transition::Reopen => ("Reopened", "open", "open"),
-            Transition::Delete => ("Deleted", "tombstone", "deleted"),
+            Transition::Close => ("Closed", status::CLOSED, "closed"),
+            Transition::Reopen => ("Reopened", status::OPEN, "open"),
+            Transition::Delete => ("Deleted", status::TOMBSTONE, "deleted"),
         }
     }
 
@@ -284,9 +284,9 @@ fn plan(st: &State, args: &TransitionArgs) -> Result<Plan, Failure> {
         .collect::<Result<Vec<EventId>, Failure>>()?;
     for uid in st.subtrees_leaf_up(&named) {
         let beneath = !named.contains(&uid);
-        let done = st
-            .issue(uid)
-            .is_none_or(|issue| issue.status() == "tombstone" || already(st, issue, "closed"));
+        let done = st.issue(uid).is_none_or(|issue| {
+            issue.status() == status::TOMBSTONE || already(st, issue, status::CLOSED)
+        });
         if beneath && done {
             plan.left.push(uid);
         } else {

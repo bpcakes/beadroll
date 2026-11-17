@@ -3,7 +3,7 @@
 use std::ffi::OsStr;
 
 use beadroll_core::code::Code;
-use beadroll_core::event::Field;
+use beadroll_core::event::{Field, status};
 use beadroll_core::json::{Object, Value};
 use beadroll_core::state::State;
 use beadroll_core::text::{repr, repr_bytes, str_of};
@@ -157,7 +157,7 @@ fn standing(ws: &Workspace, me: &Label) -> Result<(String, State), Failure> {
     let ready = st
         .issues()
         .filter(|i| {
-            i.status() == "open"
+            i.status() == status::OPEN
                 && i.claim().is_none()
                 && !readiness.is_blocked(i)
                 && !st.disputed(i, Field::Status)
