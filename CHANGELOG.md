@@ -13,6 +13,11 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   locked dependency so CI's advisory check passes. Build the nightly's Git 2.40.4
   in GNU C17 mode so newer compilers' C23 default does not break it (roll-ogg8).
 
+- A `list` or `ready` filter value that is not UTF-8 matches nothing, as `search`'s query and
+  every command's key already did, instead of failing with `VALIDATION`: `--status`, `--type` and
+  `--id` keep their other values, and `--label`, `--assignee` and `--title-contains` match no issue.
+  `--parent` and `ready`'s root that are not UTF-8 are `ISSUE_NOT_FOUND`, and `--priority` gives
+  the error `create` gives.
 - An operating-system error reads `{strerror}: {path}` everywhere, as CONTRIBUTING promises.
   Three messages still had Python's form: an OS error without a path (`[Errno 28] No space
   left on device`), an unreadable store file (`[Errno 13] Permission denied: '/path'`), and

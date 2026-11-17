@@ -5,9 +5,14 @@ use beadroll_core::json::{Int, Value};
 use beadroll_core::op::IntegerField;
 use beadroll_core::state::{Issue, State, Target};
 
-use super::{Failure, Line, Tone, parse_priority, resolve, split_list};
+use std::ffi::OsString;
 
-/// The filters shared by `list` and `ready`, as given.
+use super::args::{parse_priority_arg, resolve_arg};
+use super::{Failure, Line, Tone, split_list};
+
+/// The filters shared by `list` and `ready`, as given. Command-line text that is not UTF-8 matches
+/// nothing (`args.rs`): the values that are UTF-8 are kept, and `unmatched` says that a filter
+/// asked for something no issue can have.
 #[derive(Default)]
 pub(crate) struct Filters {
     pub(crate) status: Vec<String>,
@@ -15,11 +20,13 @@ pub(crate) struct Filters {
     pub(crate) deferred: bool,
     pub(crate) issue_type: Vec<String>,
     pub(crate) label: Vec<String>,
-    pub(crate) priority: Option<String>,
+    pub(crate) priority: Option<OsString>,
     pub(crate) assignee: Option<String>,
     pub(crate) title_contains: Option<String>,
     pub(crate) id: Vec<String>,
-    pub(crate) parent: Option<String>,
+    pub(crate) parent: Option<OsString>,
+    /// A filter no issue can pass, as one whose every value was not UTF-8.
+    pub(crate) unmatched: bool,
 }
 
 /// The issues the filters select, ordered by priority, creation time and key. A parent that names
@@ -29,16 +36,19 @@ pub(crate) fn select<'s>(st: &'s State, filters: &Filters) -> Result<Vec<&'s Iss
     let statuses = split_list(&filters.status);
     let want_all = filters.all || statuses.iter().any(|s| s == "all");
     let parent = match &filters.parent {
-        Some(key) => Some(Target::Id(resolve(st, key)?.uid())),
+        Some(key) => Some(Target::Id(resolve_arg(st, key)?.uid())),
         None => None,
     };
     let types = split_list(&filters.issue_type);
     let labels = split_list(&filters.label);
     let ids = split_list(&filters.id);
     let priority = match &filters.priority {
-        Some(priority) => Some(IntegerField::from(parse_priority(priority)?)),
+        Some(priority) => Some(IntegerField::from(parse_priority_arg(priority)?)),
         None => None,
     };
+    if filters.unmatched {
+        return Ok(Vec::new());
+    }
     let mut items = Vec::new();
     for issue in st.issues() {
         let status = issue.status();

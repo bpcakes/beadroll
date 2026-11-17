@@ -26,7 +26,7 @@ mod sync;
 mod transition;
 mod update;
 
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::io::Read as _;
 use std::os::unix::ffi::OsStrExt as _;
 
@@ -249,11 +249,6 @@ pub(crate) fn text(value: &OsStr) -> Result<String, Failure> {
         .to_str()
         .map(str::to_owned)
         .ok_or_else(|| Failure::new(Code::Validation, "text is not valid UTF-8"))
-}
-
-/// Each argument as text.
-pub(crate) fn texts(values: &[OsString]) -> Result<Vec<String>, Failure> {
-    values.iter().map(|v| text(v)).collect()
 }
 
 /// The state as `view` gives it, with the texts of the issues `keys` name read in: what a command
