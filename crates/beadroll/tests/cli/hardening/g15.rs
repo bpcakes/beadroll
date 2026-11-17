@@ -27,7 +27,7 @@ fn record(key: &str, title: &str, deps: &[(&str, &str)], kind: &str) -> String {
     write(&record, Format::ASCII).expect("a record bead can read")
 }
 
-/// `_g15_titles`: the titles of the dependencies `show` lists for `key` on `machine`.
+/// The titles of the dependencies `show` lists for `key` on `machine`.
 fn titles(machine: &Machine, key: &str) -> Vec<String> {
     let shown = machine.show(key);
     let dependencies = shown.get("dependencies").and_then(Json::as_array);

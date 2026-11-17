@@ -13,7 +13,7 @@ fn quoted(path: &Path) -> String {
     format!("'{}'", text.replace('\'', r"'\''"))
 }
 
-/// `_g11_install_post_receive`: post-receive runs after the ref update and after receive-pack sent
+/// Post-receive runs after the ref update and after receive-pack sent
 /// its status report. On its first run, the one that makes the directory `gate`, it prints a line
 /// that looks like a refusal (the client relays it as `remote: ...`) and kills receive-pack, so the
 /// client's push exits 1 although the remote applied the update.
@@ -33,7 +33,7 @@ fn install_post_receive(sandbox: &Sandbox, gate: &Path) {
     executable(&hook, lines.join("\n") + "\n");
 }
 
-/// `_g11_remote_head`: the commit the remote's `refs/beads/journal` names, as `git rev-parse`
+/// The commit the remote's `refs/beads/journal` names, as `git rev-parse`
 /// prints it; nothing when it names none.
 fn remote_head(sandbox: &Sandbox) -> String {
     let output = beadroll_test_support::git_command()

@@ -22,7 +22,7 @@ mod g26_object_format {
         path.to_str().expect("a UTF-8 path")
     }
 
-    /// `_g26_config`: a scratch global git config for this sandbox (never the developer's), the
+    /// A scratch global git config for this sandbox (never the developer's), the
     /// file `name` holding `contents`, as the variables that make git read it and nothing else.
     fn config(sandbox: &Sandbox, name: &str, contents: &str) -> Env {
         let path = sandbox.root().join(name);
@@ -33,7 +33,7 @@ mod g26_object_format {
         ])
     }
 
-    /// `_g26_git`: `git -c user.name=t -c user.email=t@example.invalid ARGS` in `cwd`, with the
+    /// `git -c user.name=t -c user.email=t@example.invalid ARGS` in `cwd`, with the
     /// test's environment less every `GIT_*` variable, then `env`; what it printed, stripped. A
     /// failure fails the test with git's standard error.
     fn git(args: &[&str], cwd: Option<&Path>, env: &Env) -> String {

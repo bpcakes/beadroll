@@ -4,7 +4,7 @@
 use beadroll_core::json::Object;
 use beadroll_test_support::{Json, json};
 
-/// `_g33_common`: a Beads record's required fields.
+/// A Beads record's required fields.
 fn common() -> Json {
     json!({
         "status": "open",
@@ -30,7 +30,7 @@ fn record(key: &str, title: &str, more: Json) -> Json {
     Json::from(members)
 }
 
-/// `_g33_tail`: the last line of `text` that is not blank, or nothing.
+/// The last line of `text` that is not blank, or nothing.
 fn tail(text: &str) -> &str {
     let mut lines = text.trim().split('\n');
     lines.rfind(|line| !line.trim().is_empty()).unwrap_or("")

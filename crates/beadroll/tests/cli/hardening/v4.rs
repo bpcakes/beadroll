@@ -11,7 +11,7 @@ mod v4_dangling_orders_that_hold {
     use beadroll_core::json::{Format, write};
     use beadroll_test_support::{Json, Machine, Sandbox, json};
 
-    /// `_v4_record`: the Beads record `key`, titled in capitals, that depends on (is blocked by)
+    /// The Beads record `key`, titled in capitals, that depends on (is blocked by)
     /// each of `depends_on`.
     fn record(key: &str, depends_on: &[&str]) -> Json {
         let mut record = json!({

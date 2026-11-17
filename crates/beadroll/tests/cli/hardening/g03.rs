@@ -3,7 +3,7 @@
 
 use beadroll_test_support::{Sandbox, git};
 
-/// `_g03_origin_refs`: the names of the refs the sandbox's remote, the code origin, holds.
+/// The names of the refs the sandbox's remote, the code origin, holds.
 fn origin_refs(sandbox: &Sandbox) -> String {
     let origin = sandbox.origin().to_str().expect("a UTF-8 path");
     git(
@@ -90,14 +90,14 @@ mod g03_damaged_meta_moves_coordination_to_origin {
             }
         }
 
-        /// `_damage`: a hand edit's trailing comma.
+        /// A hand edit's trailing comma.
         fn damage(&self) {
             let read = std::fs::read_to_string(&self.meta).unwrap();
             let damaged = format!("{},}}\n", read.trim_end().trim_end_matches('}'));
             std::fs::write(&self.meta, damaged).unwrap();
         }
 
-        /// `_contest`: a claims the contested issue through coord; b, whose `meta.json` is damaged,
+        /// Machine a claims the contested issue through coord; b, whose `meta.json` is damaged,
         /// must neither publish to origin nor confirm a claim of its own, and must name the file.
         fn contest(&self) {
             self.a.bead(["claim", &self.key]); // a holds the issue, confirmed through coord

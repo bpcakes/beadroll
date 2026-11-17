@@ -18,7 +18,7 @@ mod v9_transport_and_url_settings;
 /// An environment: variables and their values.
 type Env = BTreeMap<OsString, OsString>;
 
-/// `_v9_scratch_git_config`: a scratch global git config holding `text` for this sandbox (never
+/// A scratch global git config holding `text` for this sandbox (never
 /// the user's), with system config off: the variables that select it.
 fn scratch_git_config(sandbox: &Sandbox, text: &str) -> Env {
     let path = sandbox.root().join("global.gitconfig");
@@ -29,7 +29,7 @@ fn scratch_git_config(sandbox: &Sandbox, text: &str) -> Env {
     ])
 }
 
-/// `_v9_git_env`: the test process's environment without `GIT_*` variables, plus the scratch git
+/// The test process's environment without `GIT_*` variables, plus the scratch git
 /// config.
 fn git_env(genv: &Env) -> Env {
     let mut env: Env = std::env::vars_os()
@@ -39,7 +39,7 @@ fn git_env(genv: &Env) -> Env {
     env
 }
 
-/// `_v9_sh`: git ARGS with a fixed identity, in `cwd` (the test's own directory when `None`) with
+/// Git ARGS with a fixed identity, in `cwd` (the test's own directory when `None`) with
 /// exactly `env`; what it printed, stripped, or the test fails with git's standard error.
 fn sh<S: AsRef<OsStr>>(args: &[S], cwd: Option<&Path>, env: &Env) -> String {
     let mut command = Command::new("git");
@@ -66,7 +66,7 @@ fn sh<S: AsRef<OsStr>>(args: &[S], cwd: Option<&Path>, env: &Env) -> String {
         .to_owned()
 }
 
-/// `_v9_has_ref`: whether the repository at `git_dir` has `reference`.
+/// Whether the repository at `git_dir` has `reference`.
 fn has_ref(git_dir: &Path, reference: &str) -> bool {
     beadroll_test_support::git_command()
         .arg("--git-dir")

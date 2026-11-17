@@ -18,7 +18,7 @@ mod v7_origins_with_a_user_or_scheme_are_one_workspace {
     /// Environment variables for a child process.
     type Env = BTreeMap<OsString, OsString>;
 
-    /// `_v7_git_env`: git with no user, system or global config, no proxies and no prompts: it sees
+    /// Git with no user, system or global config, no proxies and no prompts: it sees
     /// only `root`. `more` is set last.
     fn git_env(root: &Path, more: &[(&str, &str)]) -> Env {
         let home = root.join("v7-home");
@@ -61,7 +61,7 @@ mod v7_origins_with_a_user_or_scheme_are_one_workspace {
         env
     }
 
-    /// `_v7_fake_ssh`: an ssh stand-in for `GIT_SSH_COMMAND`: it runs the remote command locally,
+    /// An ssh stand-in for `GIT_SSH_COMMAND`: it runs the remote command locally,
     /// in `$V7_SSH_ROOT`.
     fn fake_ssh(root: &Path) -> PathBuf {
         let path = root.join("v7-fake-ssh");
@@ -71,7 +71,7 @@ mod v7_origins_with_a_user_or_scheme_are_one_workspace {
         path
     }
 
-    /// `_v7_info`: what `bead info --json` printed, run by `machine` in `cwd` (its checkout when
+    /// What `bead info --json` printed, run by `machine` in `cwd` (its checkout when
     /// `None`), which must succeed.
     fn info(machine: &Machine, cwd: Option<&Path>) -> Json {
         let mut invocation = machine.cmd(["info", "--json"]);

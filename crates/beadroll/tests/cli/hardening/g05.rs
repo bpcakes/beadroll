@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use beadroll_test_support::executable;
 use beadroll_test_support::{Json, Machine, Sandbox, parse_json};
 
-/// `_g05_fake_ssh`: an ssh stand-in for git (`GIT_SSH_COMMAND`): it runs the remote command in
+/// An ssh stand-in for git (`GIT_SSH_COMMAND`): it runs the remote command in
 /// `$FAKE_SSH_ROOT`, locally.
 fn fake_ssh(sandbox: &Sandbox) -> PathBuf {
     let path = sandbox.root().join("fake-ssh");
@@ -23,7 +23,7 @@ fn fake_ssh(sandbox: &Sandbox) -> PathBuf {
     path
 }
 
-/// `_g05_git_env`: a scratch global git config for this sandbox (never the developer's own),
+/// A scratch global git config for this sandbox (never the developer's own),
 /// holding `text`, and the variables that make git read it alone.
 fn git_env(sandbox: &Sandbox, text: &str) -> BTreeMap<OsString, OsString> {
     let entries = std::fs::read_dir(sandbox.root()).unwrap();
@@ -41,7 +41,7 @@ fn git_env(sandbox: &Sandbox, text: &str) -> BTreeMap<OsString, OsString> {
     ])
 }
 
-/// `_g05_info`: what `bead info --json` reports on `machine`, run in `cwd` (its checkout when
+/// What `bead info --json` reports on `machine`, run in `cwd` (its checkout when
 /// `None`); a failure fails the test.
 fn info(machine: &Machine, cwd: Option<&Path>) -> Json {
     let mut invocation = machine.cmd(["info", "--json"]);

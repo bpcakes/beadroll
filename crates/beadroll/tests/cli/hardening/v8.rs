@@ -42,7 +42,7 @@ fn claims_of(machine: &Machine) -> Claims {
     claims
 }
 
-/// `_v8_converge_and_compare`: two full sync rounds, then identical exports and claims, a clean
+/// Two full sync rounds, then identical exports and claims, a clean
 /// `info` and a clean remote fsck; the claims each machine lists, by machine name.
 fn converge_and_compare(machines: &[&Machine], remote: &Path) -> BTreeMap<String, Claims> {
     for _ in 0..2 {
@@ -85,7 +85,7 @@ fn converge_and_compare(machines: &[&Machine], remote: &Path) -> BTreeMap<String
     claims
 }
 
-/// `_v8_rng`: a small deterministic generator in [0, 1) (a 64-bit LCG), so the operation mix is
+/// A small deterministic generator in [0, 1) (a 64-bit LCG), so the operation mix is
 /// reproducible.
 struct Rng(u64);
 
@@ -98,7 +98,7 @@ impl Rng {
         (self.0 >> 11) as f64 / (1u64 << 53) as f64
     }
 
-    /// `_v8_pick`: one of `items`.
+    /// One of `items`.
     fn pick<'a, T>(&mut self, items: &'a [T]) -> &'a T {
         let index = (self.next() * items.len() as f64) as usize;
         &items[index.min(items.len() - 1)]
@@ -118,7 +118,7 @@ type Outcome = (
     Vec<(usize, String, Vec<String>, String)>,
 );
 
-/// `_v8_mixed_ops`: `steps` random claims, releases, edits and syncs on `machines` over `keys`,
+/// `steps` random claims, releases, edits and syncs on `machines` over `keys`,
 /// drawn from `seed`; `after_remote_op` runs after each operation that reaches the remote (all but
 /// the edits).
 fn mixed_ops(

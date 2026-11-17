@@ -1,4 +1,4 @@
-//! `Review5PositiveControls`: what the fifth independent review (2026-10-07-5-codex) found working,
+//! What the fifth independent review (2026-10-07-5-codex) found working,
 //! kept working.
 
 use std::process::Command;

@@ -4,7 +4,7 @@
 use beadroll_core::json::{Format, Object, write};
 use beadroll_test_support::{Json, json};
 
-/// `_g38_common`: a Beads record's required fields.
+/// A Beads record's required fields.
 fn common() -> Json {
     json!({
         "status": "open",
@@ -16,7 +16,7 @@ fn common() -> Json {
     })
 }
 
-/// `_g38_shapes`: `comments` values that are not a list of objects, each with its name.
+/// `comments` values that are not a list of objects, each with its name.
 fn shapes() -> [(&'static str, Json); 6] {
     [
         ("list of strings", json!(["text"])),
@@ -28,7 +28,7 @@ fn shapes() -> [(&'static str, Json); 6] {
     ]
 }
 
-/// `_g38_tail`: the last line of `text` that is not blank, or nothing.
+/// The last line of `text` that is not blank, or nothing.
 fn tail(text: &str) -> &str {
     let mut lines = text.trim().split('\n');
     lines.rfind(|line| !line.trim().is_empty()).unwrap_or("")

@@ -1,4 +1,4 @@
-//! `Review5Replay`: the fifth independent review (2026-10-07-5-codex), folded in after the fixes.
+//! The fifth independent review (2026-10-07-5-codex), folded in after the fixes.
 
 use beadroll_core::event::payload_problem;
 use beadroll_core::journal::Journal;

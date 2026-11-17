@@ -32,7 +32,7 @@ mod g29_failure_after_acceptance_is_not_nothing_half_done {
         a.cmd(argv).env("BEAD_FAILPOINTS", failpoints).run()
     }
 
-    /// `_g29_seen`: (status, owner) of the issue `key` as `machine` sees it.
+    /// (status, owner) of the issue `key` as `machine` sees it.
     fn seen(machine: &Machine, key: &str) -> (String, Option<String>) {
         let issue = machine.show(key);
         let status = issue["status"].as_str().expect("a status").to_owned();

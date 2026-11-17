@@ -6,7 +6,7 @@ mod g32_integer_fields_stay_beads_readable {
     use beadroll_core::json::{Format, Object, write};
     use beadroll_test_support::{Json, Machine, Run, code, json};
 
-    /// `_g32_common`: a Beads record's required fields.
+    /// A Beads record's required fields.
     fn common() -> Json {
         json!({
             "status": "open", "priority": 2, "issue_type": "task",

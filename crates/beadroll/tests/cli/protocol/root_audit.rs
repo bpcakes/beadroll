@@ -1,4 +1,4 @@
-//! `RootAudit`: the first independent audit's ownership checks, against a real coordination
+//! The first independent audit's ownership checks, against a real coordination
 //! remote (`docs/reviews/2026-10-06-1-audit.md`, A09). Claims, takeovers and releases raced from
 //! several machines end where the operations the remote accepted lead, with one confirmed owner at
 //! most and generations that only grow; a forced close or a tombstone ends ownership; a

@@ -4,7 +4,7 @@
 
 use beadroll_test_support::{Json, json};
 
-/// `_v3_common`: the fields every imported record in these tests carries besides id and title.
+/// The fields every imported record in these tests carries besides id and title.
 fn common() -> Json {
     json!({
         "status": "open",
@@ -162,7 +162,7 @@ mod v3_foreign_folder_default_quote_path {
 
     use beadroll_test_support::Machine;
 
-    /// `_v3_git`: git with byte arguments, so that path names need not be UTF-8, run in `repo` with
+    /// Git with byte arguments, so that path names need not be UTF-8, run in `repo` with
     /// `data` on its standard input; what it printed, or the test fails with its standard error.
     fn git(repo: &Path, args: &[&[u8]], data: Option<&[u8]>) -> Vec<u8> {
         let mut command = beadroll_test_support::git_command();
@@ -219,7 +219,7 @@ mod v3_foreign_folder_default_quote_path {
         [b"040000 tree ".as_slice(), sha, b"\t".as_slice(), name].concat()
     }
 
-    /// `_v3_add_foreign_folder`: a commit on the coordination ref of `bare` adding
+    /// A commit on the coordination ref of `bare` adding
     /// `events/<name>/000001.jsonl` (empty), as a foreign writer would; `name` is raw bytes and
     /// need not be UTF-8.
     fn add_foreign_folder(bare: &Path, name: &[u8]) {

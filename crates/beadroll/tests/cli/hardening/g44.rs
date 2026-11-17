@@ -12,7 +12,7 @@ mod g44_materialised_dependency_exports_null_meta {
     use beadroll_core::json::{Format, write};
     use beadroll_test_support::{Json, Machine, Sandbox, json, parse_json};
 
-    /// `_g44_record`: the Beads record `key`, titled `key` in capitals, depending on each of
+    /// The Beads record `key`, titled `key` in capitals, depending on each of
     /// `depends_on` by a `blocks` dependency that has no `created_at` or `created_by`, as in the
     /// shipped incremental-import test.
     fn record(key: &str, depends_on: &[&str]) -> Json {
@@ -61,7 +61,7 @@ mod g44_materialised_dependency_exports_null_meta {
         path.to_str().expect("a UTF-8 path").to_owned()
     }
 
-    /// `_g44_dependency`: the first dependency of the record `key` in `machine`'s export.
+    /// The first dependency of the record `key` in `machine`'s export.
     fn dependency(machine: &Machine, key: &str) -> Json {
         // The records are ASCII and have no line separator other than newline.
         let export = machine.export();

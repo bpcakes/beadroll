@@ -13,7 +13,7 @@ mod g25_first_sync_remote_is_frozen {
         path.to_str().expect("a UTF-8 path")
     }
 
-    /// `_g25_track`: `init --tracked` (prefix `fz`), committed and pushed, so every clone shares
+    /// `init --tracked` (prefix `fz`), committed and pushed, so every clone shares
     /// the workspace id whatever its URL.
     fn track(machine: &Machine) {
         machine.bead(["init", "--prefix", "fz", "--tracked"]);

@@ -5,7 +5,7 @@
 use beadroll_core::json::{Format, write};
 use beadroll_test_support::{Json, Machine, Sandbox, json};
 
-/// `_g14_record`: the Beads record of `key`, titled `key` in capitals, with a `blocks` dependency on
+/// The Beads record of `key`, titled `key` in capitals, with a `blocks` dependency on
 /// each key of `depends_on`, if there is any.
 fn record(key: &str, depends_on: &[&str]) -> Json {
     let mut record = json!({
@@ -43,7 +43,7 @@ fn jsonl_file(sandbox: &Sandbox, name: &str, records: &[Json]) -> String {
     path.to_str().expect("a UTF-8 path").to_owned()
 }
 
-/// `_g14_edges`: the dependencies `show` lists for `key` on `machine`, as sorted pairs of the id
+/// The dependencies `show` lists for `key` on `machine`, as sorted pairs of the id
 /// and the dependency's type; none when it lists no dependencies.
 fn edges(machine: &Machine, key: &str) -> Vec<(String, String)> {
     let shown = machine.show(key);
@@ -77,7 +77,7 @@ mod g14_key_retraction_lost_to_concurrent_target {
 
     use super::{edges, jsonl_file, record};
 
-    /// `_g14_pair`: machine m1 has initialised tracker `ex`, imported ex-a, which depends on ex-b,
+    /// Machine m1 has initialised tracker `ex`, imported ex-a, which depends on ex-b,
     /// an issue nowhere yet, and synced; then machine m2 has synced.
     fn pair(sandbox: &Sandbox) -> (Machine, Machine) {
         let m1 = Machine::new(sandbox, "m1");
@@ -92,7 +92,7 @@ mod g14_key_retraction_lost_to_concurrent_target {
         (m1, m2)
     }
 
-    /// `_g14_settle`: each machine syncs, in turn, twice; then they must export the same records.
+    /// Each machine syncs, in turn, twice; then they must export the same records.
     fn settle(machines: &[&Machine]) {
         for machine in machines.iter().chain(machines) {
             machine.bead(["sync"]);

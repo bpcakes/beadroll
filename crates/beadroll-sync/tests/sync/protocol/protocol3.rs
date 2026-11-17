@@ -1,4 +1,4 @@
-//! `Protocol3`: an attempt is one file, confirmed by one write; a fence beats a push still in
+//! An attempt is one file, confirmed by one write; a fence beats a push still in
 //! flight; an acknowledgement lost after the remote took an update is recovered, never applied
 //! twice (the third independent review, 2026-10-06).
 

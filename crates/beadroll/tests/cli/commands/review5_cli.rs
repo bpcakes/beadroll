@@ -1,4 +1,4 @@
-//! `Review5CLI`: the fifth independent review's findings (2026-10-07-5-codex) at the command line,
+//! The fifth independent review's findings (2026-10-07-5-codex) at the command line,
 //! folded in after the fixes: untrusted text stays inert, secrets stay private, a bad import or
 //! configuration fails whole with a structured error, `--json` is always JSON, and the retry of a
 //! lost acknowledgement whose file changed is a new request.

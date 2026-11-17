@@ -44,7 +44,7 @@ fn refused_checkout(locale: &str) -> Option<(Sandbox, Machine)> {
     Some((sandbox, a))
 }
 
-/// `_g62_translates`: whether git speaks `locale`, which its message for a repository that is not
+/// Whether git speaks `locale`, which its message for a repository that is not
 /// one shows: something, without the untranslated "fatal:".
 fn translates(locale: &str) -> bool {
     let inherited = std::env::vars_os().filter(|(key, _)| {

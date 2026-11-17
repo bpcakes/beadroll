@@ -1,11 +1,11 @@
-//! `ProtocolReview4`: the fourth independent review's ownership findings (2026-10-07-4-codex),
-//! folded in after the fixes, at the command line. An attempt damaged in one store never replaces
-//! the one the remote accepted, and an attempt with a malformed line is inert as a whole (Q01); the
-//! retry of an accepted claiming update repeats none of its effects (Q02, on the crash hook
-//! `BEAD_TEST_CRASH_AFTER_PUSH`, which both binaries implement: exit status 99 once the remote has
-//! taken the push); a manifest of a future format at the remote is refused, never rewritten (Q04).
-//! Q03 interrupts a release between its confirmation and its cleanup, which takes an in-crate API
-//! test: beadroll-sync's `protocol::protocol_review4`.
+//! The fourth independent review's ownership findings (2026-10-07-4-codex), folded in after the
+//! fixes, at the command line. An attempt damaged in one store never replaces the one the remote
+//! accepted, and an attempt with a malformed line is inert as a whole (Q01); the retry of an
+//! accepted claiming update repeats none of its effects (Q02, on the crash hook
+//! `BEAD_TEST_CRASH_AFTER_PUSH`, which any bead under test implements: exit status 99 once the
+//! remote has taken the push); a manifest of a future format at the remote is refused, never
+//! rewritten (Q04). Q03 interrupts a release between its confirmation and its cleanup, which takes
+//! an in-crate API test: beadroll-sync's `protocol::protocol_review4`.
 
 use beadroll_test_support::printed_id;
 use std::path::{Path, PathBuf};

@@ -30,7 +30,7 @@ mod g23_tracked_config_read_from_working_tree_only {
         a
     }
 
-    /// `_g23_commit_and_push`: `.beadroll.json` committed in `checkout` and pushed to `main`.
+    /// `.beadroll.json` committed in `checkout` and pushed to `main`.
     fn commit_and_push(checkout: &Path) {
         git(["add", ".beadroll.json"], Some(checkout));
         let identity = ["-c", "user.name=t", "-c", "user.email=t@example.invalid"];

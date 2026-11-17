@@ -9,7 +9,7 @@ use std::os::unix::ffi::OsStrExt as _;
 use std::path::Path;
 use std::process::Stdio;
 
-/// `_g34_tail`: the last line of `text` that is not blank, or nothing.
+/// The last line of `text` that is not blank, or nothing.
 fn tail(text: &str) -> &str {
     let mut lines = text.trim().split('\n');
     lines.rfind(|line| !line.trim().is_empty()).unwrap_or("")
@@ -28,7 +28,7 @@ fn strip(data: &[u8]) -> &[u8] {
     &data[start..end.map_or(start, |at| at + 1)]
 }
 
-/// `_g34_git`: git with byte arguments allowed, in `cwd`, with exactly the environment `env` when
+/// Git with byte arguments allowed, in `cwd`, with exactly the environment `env` when
 /// one is given, `data` on its standard input; its standard output, stripped. A failure panics,
 /// as `check=True` raises.
 fn git_bytes(
@@ -71,7 +71,7 @@ fn ref_name(row: &[u8]) -> &[u8] {
     &row[space.expect("a packed ref: an object and a name") + 1..]
 }
 
-/// `_g34_add_packed_ref`: a ref whose name is not UTF-8. APFS refuses such file names, so it goes
+/// A ref whose name is not UTF-8. APFS refuses such file names, so it goes
 /// into packed-refs.
 fn add_packed_ref(checkout: &Path, name: &[u8], sha: &[u8]) {
     let path = checkout.join(".git").join("packed-refs");
@@ -205,7 +205,7 @@ mod g34_non_utf8_git_and_ps_output_is_not_a_traceback {
         assert_eq!(proc.returncode(), 0, "{}", proc.stderr);
     }
 
-    /// `_plant_foreign_folder`: adds `events/caf\xe9/1.jsonl` to the published coordination ref
+    /// Adds `events/caf\xe9/1.jsonl` to the published coordination ref
     /// on the shared bare remote.
     fn plant_foreign_folder(sandbox: &Sandbox) {
         let mut env: BTreeMap<OsString, OsString> = std::env::vars_os()

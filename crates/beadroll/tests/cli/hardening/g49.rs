@@ -19,7 +19,7 @@ mod g49_local_state_shapes_traceback {
         (a, key)
     }
 
-    /// `_g49_answered`: no crash; the command either succeeded or gave the structured JSON error
+    /// No crash; the command either succeeded or gave the structured JSON error
     /// envelope, with a code.
     fn answered(proc: &Run, what: &str) {
         assert!(!proc.crashed(), "{what}: {}", proc.stderr);

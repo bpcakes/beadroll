@@ -15,7 +15,7 @@ mod g22_origin_is_not_where_git_pushes {
         path.to_str().expect("a UTF-8 path")
     }
 
-    /// `_g22_has_journal`: whether the repository `repo` has a `refs/beads/journal`.
+    /// Whether the repository `repo` has a `refs/beads/journal`.
     fn has_journal(repo: &Path) -> bool {
         let status = beadroll_test_support::git_command()
             .arg("--git-dir")
@@ -29,7 +29,7 @@ mod g22_origin_is_not_where_git_pushes {
         status.success()
     }
 
-    /// `_mirror_machine`: a machine `name` that fetches from a mirror and pushes to the primary
+    /// A machine `name` that fetches from a mirror and pushes to the primary
     /// (url=mirror, pushurl=primary), and the mirror, `mirror.git`, cloned from the primary the
     /// first time a test asks for it.
     fn mirror_machine(sandbox: &Sandbox, name: &str) -> (Machine, PathBuf) {

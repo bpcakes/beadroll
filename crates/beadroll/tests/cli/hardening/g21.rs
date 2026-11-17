@@ -6,7 +6,7 @@ use std::path::Path;
 
 use beadroll_test_support::git;
 
-/// `_g21_nested_repository`: a repository at `path` inside the checkout (vendored code, a
+/// A repository at `path` inside the checkout (vendored code, a
 /// submodule-like directory), with one commit on `main`.
 fn nested_repository(path: &Path) {
     git(
@@ -24,7 +24,7 @@ fn nested_repository(path: &Path) {
     git(identity.into_iter().chain(commit), Some(path));
 }
 
-/// `_g21_beads_refs`: the refs under `refs/beads` of the repository at `path`, as `git for-each-ref`
+/// The refs under `refs/beads` of the repository at `path`, as `git for-each-ref`
 /// lists them, trimmed; nothing when git lists none, or cannot.
 fn beads_refs(path: &Path) -> String {
     let output = beadroll_test_support::git_command()

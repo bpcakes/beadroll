@@ -16,7 +16,7 @@ mod g30_deep_json_is_bounded_and_scoped {
         path.to_str().expect("a UTF-8 path")
     }
 
-    /// `_g30_common`: a Beads record's required fields.
+    /// A Beads record's required fields.
     fn common() -> Json {
         json!({
             "status": "open",
@@ -51,13 +51,13 @@ mod g30_deep_json_is_bounded_and_scoped {
         nested(1_000_000)
     }
 
-    /// `_g30_record`: a Beads record whose unknown field nests `depth` arrays (the record itself is
+    /// A Beads record whose unknown field nests `depth` arrays (the record itself is
     /// one more level).
     fn record(key: &str, depth: usize, field: &str) -> String {
         format!("{}, \"{field}\": {}}}\n", head(key, "deep"), nested(depth))
     }
 
-    /// `_g30_tail`: the last line of `text` that is not blank.
+    /// The last line of `text` that is not blank.
     fn tail(text: &str) -> &str {
         let mut lines = text.trim().split('\n');
         lines.rfind(|line| !line.trim().is_empty()).unwrap_or("")
@@ -69,7 +69,7 @@ mod g30_deep_json_is_bounded_and_scoped {
         text.chars().skip(skip).collect()
     }
 
-    /// `_g30_git`: plumbing on the sandbox's bare remote `origin` (`GIT_DIR`), run from inside it
+    /// Plumbing on the sandbox's bare remote `origin` (`GIT_DIR`), run from inside it
     /// rather than the caller's cwd, with the test's environment less every `GIT_*` variable and
     /// `t` as author and committer, `data` on its standard input; what it printed, stripped. A
     /// failure fails the test.

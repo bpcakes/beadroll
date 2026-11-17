@@ -1,4 +1,4 @@
-//! `HelpAndPrime`: the overview, one command's help, `prime` and `onboard`, with and without a
+//! The overview, one command's help, `prime` and `onboard`, with and without a
 //! tracker.
 
 use std::path::Path;

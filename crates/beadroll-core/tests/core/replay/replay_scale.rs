@@ -1,4 +1,4 @@
-//! `ReplayScale`: replay stays fast and small where ownership history is long.
+//! Replay stays fast and small where ownership history is long.
 
 use std::time::{Duration, Instant};
 

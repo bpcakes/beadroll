@@ -28,7 +28,7 @@ const FORMAT_AND_HOUSEKEEPING: [&str; 4] = [
     "[color]\n\tui = always\n",
 ];
 
-/// `_v9_round`: a two-machine round under one scratch global git config holding `text`: init,
+/// A two-machine round under one scratch global git config holding `text`: init,
 /// create, sync, claim on b, a competing claim on a (ALREADY_CLAIMED), close on b, sync both; then
 /// both machines agree.
 fn round(text: &str) {

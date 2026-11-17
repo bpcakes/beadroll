@@ -13,7 +13,7 @@ fn dumps(value: &Json) -> String {
     write(value, Format::ASCII).expect("a serializable value")
 }
 
-/// `_g02_seed_repo`: a clone of `origin` carrying a committed .beadroll.json, pushed to its origin.
+/// A clone of `origin` carrying a committed .beadroll.json, pushed to its origin.
 fn seed_repo(sandbox: &Sandbox, name: &str, origin: &Path, config: &Json) -> PathBuf {
     let checkout = sandbox.clone(name, Some(origin));
     std::fs::write(checkout.join(".beadroll.json"), dumps(config) + "\n").unwrap();
@@ -27,7 +27,7 @@ fn seed_repo(sandbox: &Sandbox, name: &str, origin: &Path, config: &Json) -> Pat
     checkout
 }
 
-/// `_g02_journal_refs`: the names of the refs the bare repository `bare` holds, one a line; what
+/// The names of the refs the bare repository `bare` holds, one a line; what
 /// git printed, whether or not it succeeded.
 fn journal_refs(bare: &Path) -> String {
     let output = beadroll_test_support::git_command()

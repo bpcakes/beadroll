@@ -39,7 +39,7 @@ fn g52_error(run: &Run) -> (Option<String>, String) {
     (Some(label.to_owned()), run.stderr.clone())
 }
 
-/// `_g52_own_journal`: this machine's own journal directory, `events/<the id in replica.json>`.
+/// This machine's own journal directory, `events/<the id in replica.json>`.
 fn own_journal(machine: &Machine) -> PathBuf {
     let replica = std::fs::read_to_string(machine.home().join("replica.json")).unwrap();
     let replica = parse_json(&replica).unwrap();

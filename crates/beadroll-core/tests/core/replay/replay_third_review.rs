@@ -1,4 +1,4 @@
-//! `ReplayThirdReview`: the third independent review (REVIEW3, 2026-10-06; findings in
+//! The third independent review (REVIEW3, 2026-10-06; findings in
 //! `docs/FINDINGS.md`). A quarantined id stays scoped to itself, malformed embedded comments and
 //! creates without an issue are inert, exported comment ids survive later arrivals, register clears
 //! stay queryable, a cycle left after a partial removal is reported, and the ancestry of mixed

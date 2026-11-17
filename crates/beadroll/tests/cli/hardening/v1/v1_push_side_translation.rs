@@ -1,4 +1,4 @@
-//! `V1_PushSideTranslation`: push-side race classification survives translated git (run-git area).
+//! Push-side race classification survives translated git (run-git area).
 //! Each locale git has no translation for on this machine is skipped, and says so; the others still
 //! run.
 

@@ -1,4 +1,4 @@
-//! `ProtocolReview4`: a release confirmed here but cut off before its pending twin was removed is
+//! A release confirmed here but cut off before its pending twin was removed is
 //! recognised as done when it is run again (the fourth review, Q03).
 
 use beadroll_core::code::Code;

@@ -36,7 +36,7 @@ mod g51_unusable_tracked_config_is_an_error {
         (a, config)
     }
 
-    /// `_break`: `.beadroll.json` becomes a link to itself (`loop`) or to a file that is not there.
+    /// `.beadroll.json` becomes a link to itself (`loop`) or to a file that is not there.
     fn break_config(config: &Path, kind: &str) {
         std::fs::remove_file(config).unwrap();
         let target = if kind == "loop" {
