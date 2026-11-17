@@ -28,11 +28,7 @@ const WORKSPACE: &str = "timing";
 
 /// The `bead` measured: `BEAD_UNDER_TEST`, else the one Cargo builds in xtask's own profile.
 pub(super) fn bead() -> Result<PathBuf, Failure> {
-    match std::env::var_os("BEAD_UNDER_TEST").filter(|bead| !bead.is_empty()) {
-        Some(bead) => std::path::absolute(&bead)
-            .map_err(|error| Failure::io("cannot resolve", Path::new(&bead), &error)),
-        None => crate::check::build(&workspace::root()),
-    }
+    workspace::bead()
 }
 
 /// What the store was given.

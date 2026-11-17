@@ -113,8 +113,7 @@ pub(crate) fn export(records: usize) -> String {
 /// What runs bead so that its heap is counted: xtask itself, unless `BEAD_UNDER_TEST` names
 /// another bead.
 fn counted() -> Option<PathBuf> {
-    let other = std::env::var_os("BEAD_UNDER_TEST").is_some_and(|bead| !bead.is_empty());
-    if other {
+    if crate::workspace::under_test().is_some() {
         return None;
     }
     std::env::current_exe().ok()

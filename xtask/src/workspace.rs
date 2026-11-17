@@ -24,6 +24,21 @@ impl Failure {
     }
 }
 
+/// The bead `BEAD_UNDER_TEST` names, when it names one (an empty value names none).
+pub(crate) fn under_test() -> Option<std::ffi::OsString> {
+    std::env::var_os("BEAD_UNDER_TEST").filter(|bead| !bead.is_empty())
+}
+
+/// The bead a check or a timing runs: [`under_test`]'s as an absolute path, else the one Cargo
+/// builds in xtask's own profile.
+pub(crate) fn bead() -> Result<PathBuf, Failure> {
+    match under_test() {
+        Some(bead) => std::path::absolute(&bead)
+            .map_err(|error| Failure::io("cannot resolve", Path::new(&bead), &error)),
+        None => crate::check::build(&root()),
+    }
+}
+
 /// The repository's root: the directory above this crate.
 pub(crate) fn root() -> PathBuf {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
