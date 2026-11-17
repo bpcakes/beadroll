@@ -251,7 +251,7 @@ impl<'l, 'w> Merging<'l, 'w> {
             if read(pending_path)? != theirs {
                 if target.exists() && read(&target)? == theirs {
                     // a leftover twin of a confirmed attempt; its receipt stays: it was accepted
-                    crate::tx::remove(pending_path)?;
+                    beadroll_store::remove(pending_path)?;
                     return Ok(false);
                 }
                 return Err(Error::AttemptFork(format!(
@@ -263,7 +263,7 @@ impl<'l, 'w> Merging<'l, 'w> {
                 self.write_journal(path, &target, &theirs, Some(sha))?;
                 self.link.ws.forget_claims(&target);
             }
-            crate::tx::remove(pending_path)?;
+            beadroll_store::remove(pending_path)?;
             self.facts.confirmed.push(attempt_id);
             self.facts
                 .confirmed_events

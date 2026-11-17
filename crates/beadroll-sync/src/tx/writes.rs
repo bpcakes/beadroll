@@ -1,13 +1,10 @@
 //! The writes that go through a transaction: the store lock, a local write that appends what its
 //! body emitted, and what each hands back of the transaction (nothing, its state, or what it held).
 
-use std::path::Path;
-
 use beadroll_core::json::Value;
 use beadroll_core::state::State;
-use beadroll_git::IoError;
 use beadroll_store::PublicationState;
-use beadroll_store::{Actor, Workspace, attempt_path, write_attempt_file};
+use beadroll_store::{Actor, Workspace, attempt_path, remove, write_attempt_file};
 
 use super::{Spent, Tx};
 use crate::error::{Error, OWN_CHAIN};
@@ -158,13 +155,4 @@ pub fn drop_pending(ws: &Workspace, attempts: &[Vec<Value>]) -> Result<(), Error
         remove(&folder.join(format!("{id}.command")))?;
     }
     Ok(())
-}
-
-/// Removes path, succeeding if already absent.
-pub fn remove(path: &Path) -> Result<(), Error> {
-    match std::fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(IoError::at(&error, path).into()),
-    }
 }

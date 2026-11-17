@@ -4,10 +4,9 @@
 use std::path::{Path, PathBuf};
 
 use beadroll_core::json::Value;
-use beadroll_store::{Actor, Workspace, glob_ending, json_text, read};
+use beadroll_store::{Actor, Workspace, glob_ending, json_text, read, remove};
 
 use crate::error::Error;
-use crate::tx::remove;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Receipt {
@@ -142,7 +141,8 @@ pub(crate) fn settle(
 
 /// Removes these receipts: the actor has moved on from them.
 pub(crate) fn forget(receipts: &[PathBuf]) -> Result<(), Error> {
-    receipts.iter().try_for_each(|receipt| remove(receipt))
+    receipts.iter().try_for_each(|receipt| remove(receipt))?;
+    Ok(())
 }
 
 /// A later command of this actor went through: the receipts that would answer a repeat of an
