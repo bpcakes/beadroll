@@ -173,7 +173,12 @@ check compare), their tests beside them, and the synthetic `seed.jsonl`.
   uses `allow`, not `expect`, which fails once the lint stops firing.
   `beadroll-test-support` is a library, so clippy's `allow-*-in-tests`
   settings do not reach it: its root allows `unwrap_used`, `expect_used`,
-  `panic` and `print_stderr` ("a failed fixture is a failed test").
+  `panic` and `print_stderr` ("a failed fixture is a failed test"). A module
+  that needs one puts it at its own root (`#![allow]`, as `beadroll::sys`
+  does). An item never has one: a test too long for `too_many_lines` is split.
+  The exceptions are `beadroll_git::runner::detach`'s `unsafe_code` and the
+  sweep's `module_inception`. xtask's `hygiene::lint_exemptions` fails on any
+  other.
 - **Every crate root has `//!` docs**, binaries and test roots included
   (`missing_docs` fires on them). Each `tests/<name>/main.rs` starts with
   `#![cfg(test)]`, so that clippy treats its helpers as test code, and helpers

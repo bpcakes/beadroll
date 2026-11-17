@@ -1,6 +1,7 @@
 //! Repository hygiene: tracked files must not expose maintainer home directories, LAN or tailnet
 //! hostnames, or SSH targets. Patterns describe shapes rather than private names. ASCII word
-//! boundaries deliberately also catch matches beside non-ASCII letters.
+//! boundaries deliberately also catch matches beside non-ASCII letters. Lint exemptions sit at a
+//! crate or module root, apart from the two `CONTRIBUTING.md` names.
 
 /// `RepositoryHygiene`.
 mod repository_hygiene {
@@ -140,5 +141,97 @@ mod repository_hygiene {
         );
         assert!(finds("an ssh target", "bead@localhost and git@github.com").is_empty());
         assert!(finds("a .local hostname", "Box.locally").is_empty());
+    }
+}
+
+/// `LintExemptions`.
+mod lint_exemptions {
+    use regex_lite::Regex;
+
+    use crate::workspace;
+
+    /// An exemption on one item rather than a whole crate or module: an outer `allow` or `expect`.
+    const OUTER: &str = r"(?m)^[ \t]*#\[(?:allow|expect)\(";
+
+    /// The item-level exemptions `CONTRIBUTING.md` accepts, by file and the lint they name:
+    /// beadroll-git's `detach`, one of the audited unsafe spots in a module that is otherwise safe,
+    /// and the sweep's `sweep::sweep`, kept for the test filters and findings that name it.
+    const ACCEPTED: [(&str, &str); 2] = [
+        ("crates/beadroll-git/src/runner.rs", "unsafe_code"),
+        (
+            "crates/beadroll/tests/cli/sweep.rs",
+            "clippy::module_inception",
+        ),
+    ];
+
+    /// The item-level exemptions in `text`, the file `name`, that are not accepted, as NAME:LINE.
+    fn unaccepted(name: &str, text: &str) -> Vec<String> {
+        let outer = Regex::new(OUTER).expect("a valid pattern");
+        outer
+            .find_iter(text)
+            .filter(|found| {
+                let after = &text[found.end()..];
+                let lint = after
+                    .trim_start()
+                    .split([',', ')'])
+                    .next()
+                    .unwrap_or_default()
+                    .trim();
+                !ACCEPTED.contains(&(name, lint))
+            })
+            .map(|found| {
+                let line = text[..found.start()].matches('\n').count() + 1;
+                format!("{name}:{line}")
+            })
+            .collect()
+    }
+
+    /// Every lint exemption in the repository's Rust is a crate's or module's (`#![allow]`), apart
+    /// from the accepted ones: a long test, say, is split rather than exempted (`CONTRIBUTING.md`).
+    #[test]
+    fn exemptions_sit_at_a_crate_or_module_root() {
+        let root = workspace::root();
+        let listed = std::process::Command::new("git")
+            .args(["ls-files", "-z", "*.rs"])
+            .current_dir(&root)
+            .output()
+            .expect("git runs");
+        assert!(listed.status.success(), "git ls-files failed");
+        let names = String::from_utf8(listed.stdout).expect("UTF-8 file names");
+        let names: Vec<&str> = names.split('\0').filter(|name| !name.is_empty()).collect();
+        // A scan of nothing would pass: it must cover this repository.
+        assert!(names.contains(&"xtask/src/hygiene.rs"), "no Rust listed");
+        let found: Vec<String> = (names.iter())
+            .flat_map(|name| {
+                let text = std::fs::read_to_string(root.join(name))
+                    .unwrap_or_else(|error| panic!("{name}: {error}"));
+                unaccepted(name, &text)
+            })
+            .collect();
+        assert!(
+            found.is_empty(),
+            "item-level exemptions:\n{}",
+            found.join("\n")
+        );
+    }
+
+    /// An outer exemption is found wherever it is indented, unless it is an accepted one; an inner
+    /// one, at a root, is not an item's. The examples are put together at run time, so that this
+    /// file holds no exemption itself.
+    #[test]
+    fn an_item_level_exemption_is_found_unless_accepted() {
+        let attribute = |inner: &str, lint: &str| format!("{}{inner}[allow(\n    {lint},\n", '#');
+        let item = format!(
+            "fn a() {{}}\n    {}",
+            attribute("", "clippy::too_many_lines")
+        );
+        assert_eq!(unaccepted("x.rs", &item), ["x.rs:2"]);
+        assert!(unaccepted("x.rs", &attribute("!", "clippy::too_many_lines")).is_empty());
+        let (name, lint) = ACCEPTED[0];
+        assert!(unaccepted(name, &attribute("", lint)).is_empty());
+        assert_eq!(
+            unaccepted(name, &attribute("", "dead_code")),
+            [format!("{name}:1")]
+        );
     }
 }
