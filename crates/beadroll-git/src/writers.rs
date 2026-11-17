@@ -154,13 +154,7 @@ mod tests {
 
     /// A bare repository in a temporary directory, and the environment git runs in there.
     fn repository() -> (tempfile::TempDir, Env) {
-        let dir = tempfile::tempdir().unwrap();
-        let git_dir = dir.path().join("r.git");
-        let mut vars: std::collections::BTreeMap<_, _> = std::env::vars_os().collect();
-        vars.insert("GIT_DIR".into(), git_dir.into_os_string());
-        let env = Env::new(vars, None, std::env::temp_dir());
-        env.git(["init", "-q", "--bare"]).check().unwrap();
-        (dir, env)
+        crate::testing::bare("sha1")
     }
 
     #[test]

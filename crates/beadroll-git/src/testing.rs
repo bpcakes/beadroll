@@ -23,6 +23,14 @@ pub(crate) fn clean_env(dir: Option<&Path>, home: &Path, extra: &[(&str, &OsStri
     Env::new(vars, dir.map(Path::to_path_buf), std::env::temp_dir())
 }
 
+/// A new empty directory, and the environment that runs git there with no repository around it: for a
+/// test of the runner itself, which must not find the checkout the test runs in.
+pub(crate) fn scratch() -> (tempfile::TempDir, Env) {
+    let dir = tempfile::tempdir().unwrap();
+    let env = clean_env(Some(dir.path()), dir.path(), &[]);
+    (dir, env)
+}
+
 /// A bare repository of `format` in a new temporary directory, and the environment that runs git
 /// in it (`GIT_DIR`).
 pub(crate) fn bare(format: &str) -> (tempfile::TempDir, Env) {
