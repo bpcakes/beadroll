@@ -9,6 +9,8 @@ use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::{Path, PathBuf};
 
+use beadroll_store::FileMode;
+
 use beadroll_core::code::Code;
 use beadroll_core::text::repr_str;
 
@@ -64,7 +66,7 @@ fn usable(dir: &Path) -> bool {
             .read(true)
             .write(true)
             .create_new(true)
-            .mode(0o600)
+            .mode(FileMode::Private.bits())
             .open(&probe);
         match file {
             Ok(mut file) => {

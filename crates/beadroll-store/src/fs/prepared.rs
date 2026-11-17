@@ -47,18 +47,18 @@ pub(super) fn parts(
     failpoints: &Failpoints,
 ) -> Result<PreparedAtomic, Error> {
     let parent = path.parent().unwrap_or(Path::new("."));
-    let private = matches!(mode, FileMode::Private);
-    if private {
-        private_dirs(parent)?;
-    } else {
-        std::fs::create_dir_all(parent).map_err(|e| IoError::at(&e, parent))?;
+    match mode {
+        FileMode::Private => private_dirs(parent)?,
+        FileMode::Checkout => {
+            std::fs::create_dir_all(parent).map_err(|e| IoError::at(&e, parent))?;
+        }
     }
     let temporary = temporary(path);
     let file = OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
-        .mode(if private { 0o600 } else { 0o666 })
+        .mode(mode.bits())
         .open(&temporary)
         .map_err(|e| IoError::at(&e, &temporary))?;
     let prepared = PreparedAtomic {

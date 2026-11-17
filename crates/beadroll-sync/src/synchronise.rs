@@ -177,7 +177,6 @@ fn exchange(
     remote: &Endpoint,
     sync_report: SyncReport,
 ) -> Result<Option<Synced>, Error> {
-    let report = matches!(sync_report, SyncReport::Collect);
     let mut link = Link::new(ws, remote)?;
     let mut pulled = 0;
     let mut rebuild = Rebuild::Available;
@@ -214,7 +213,7 @@ fn exchange(
     values.push(("published", Value::from(published.counts)));
     ws.note_sync(remote, &values);
     ws.set_wrote(PublicationState::Published);
-    if !report {
+    if sync_report == SyncReport::Skip {
         return Ok(None);
     }
     let state = published.merged.state.state();

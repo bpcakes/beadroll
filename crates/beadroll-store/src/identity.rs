@@ -10,6 +10,7 @@ use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_git::IoError;
 
 use crate::error::Error;
+use crate::fs::FileMode;
 use crate::fs::{fsync, json_text, private_dir};
 use crate::settings::{Clock, Settings};
 
@@ -100,7 +101,7 @@ fn mint(path: &Path, settings: &Settings) -> Result<(), Error> {
         .write(true)
         .create(true)
         .truncate(true)
-        .mode(0o600)
+        .mode(FileMode::Private.bits())
         .open(&tmp)
         .map_err(|e| IoError::at(&e, &tmp))
         .and_then(|mut file| {

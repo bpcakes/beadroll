@@ -40,6 +40,17 @@ pub enum FileMode {
     Private,
 }
 
+impl FileMode {
+    /// The permission bits a file of this mode is created with, before the umask: 0666 for a
+    /// checkout's file, 0600 for the store's.
+    pub const fn bits(self) -> u32 {
+        match self {
+            FileMode::Checkout => 0o666,
+            FileMode::Private => 0o600,
+        }
+    }
+}
+
 /// `path` and any missing parents made as 0700 (less the umask, as `mkdir` gives it); a race loser
 /// is fine, a file in the way is an error.
 pub fn private_dirs(path: &Path) -> Result<(), Error> {
