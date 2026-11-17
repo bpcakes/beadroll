@@ -11,10 +11,9 @@ mod merges;
 mod remotes;
 
 use std::collections::BTreeMap;
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
+use super::fixtures::machine_settings;
 use beadroll_core::id::EventId;
 use beadroll_core::journal::JournalOrder;
 use beadroll_core::journal::{Journal, read_segment};
@@ -22,7 +21,7 @@ use beadroll_core::json::{Format, Value, write};
 use beadroll_core::replay::replay;
 use beadroll_store::IdentityMode;
 use beadroll_store::{
-    Settings, Workspace, claim_files, load_journal, read_attempt, replica_id, segment_files,
+    Workspace, claim_files, load_journal, read_attempt, replica_id, segment_files,
 };
 use beadroll_test_support::{Json, Machine, Run, Sandbox, converge, json_ids};
 
@@ -108,22 +107,6 @@ pub(crate) fn segments(store: &Path) -> Vec<PathBuf> {
     found
 }
 
-/// The settings of a `bead` run on `machine`, as the test reads its store in-process.
-fn settings(machine: &Machine) -> Arc<Settings> {
-    let vars: BTreeMap<OsString, OsString> = machine.env(None, "codex").into_iter().collect();
-    let user_home = std::env::var_os("HOME").unwrap_or_default();
-    Arc::new(
-        Settings::from_process(
-            vars,
-            Some(machine.checkout().to_path_buf()),
-            user_home,
-            std::env::temp_dir(),
-            &|_| None,
-        )
-        .unwrap(),
-    )
-}
-
 /// What a reader sees of `journal`: the export and every issue in full, as sorted JSON.
 fn view(journal: Journal) -> String {
     let st = replay(journal).unwrap();
@@ -174,7 +157,7 @@ fn replay_does_not_depend_on_delivery_order() {
     a.bead(["update", &x, "--notes", "after seeing everything"]);
     a.bead(["sync"]);
 
-    let settings = settings(&a);
+    let settings = machine_settings(&a);
     let store = a.store();
     let id = store.file_name().unwrap().to_str().unwrap();
     let ws = Workspace::new(settings.clone(), id, None, None, Default::default()).unwrap();

@@ -5,9 +5,9 @@
 use std::path::Path;
 
 use beadroll_core::text::is_space;
-use beadroll_test_support::{Json, Machine, Sandbox, code, json, json_id, json_ids, parse_json};
-
-use super::fixtures::ascii_json;
+use beadroll_test_support::{
+    Json, Machine, Sandbox, code, json, json_id, json_ids, json_line, parse_json,
+};
 
 /// A sandbox and machine `compat`, whose tracker (prefix `ex`) holds issues X and Y.
 fn set_up() -> (Sandbox, Machine, String, String) {
@@ -163,7 +163,7 @@ fn workspace_config_cannot_escape_home() {
     let (sandbox, a, _, _) = set_up();
     let absolute = sandbox.root().join("escaped-absolute");
     for wid in [absolute.to_str().unwrap(), "../escaped-relative"] {
-        let config = ascii_json(&json!({ "workspace": wid }));
+        let config = json_line(&json!({ "workspace": wid }));
         std::fs::write(a.checkout().join(".beadroll.json"), config).unwrap();
         let p = a.run(["init", "--prefix", "evil", "--json"]);
         assert_ne!(
@@ -182,7 +182,7 @@ fn changed_workspace_config_does_not_delete_old_store() {
     let before = a.store();
     let saved = a.export();
     let config = a.checkout().join(".beadroll.json");
-    let second = ascii_json(&json!({ "workspace": "second-workspace" }));
+    let second = json_line(&json!({ "workspace": "second-workspace" }));
     std::fs::write(&config, second).unwrap();
     let p = a.run(["show", &x, "--json"]);
     assert_eq!(code(&p), "NOT_INITIALIZED");
@@ -205,7 +205,7 @@ fn import_preserves_dependency_metadata_extra_and_tombstone_mutation() {
             "metadata": "{\"kept\":true}", "thread_id": "meta-thread"
         }]
     });
-    std::fs::write(&src, ascii_json(&rec) + "\n").unwrap();
+    std::fs::write(&src, json_line(&rec) + "\n").unwrap();
     a.bead(["import", src.to_str().unwrap()]);
     a.bead(["delete", "ex-z", "--reason", "duplicate"]);
     let got = record(&a.export(), "ex-z");
@@ -222,7 +222,7 @@ fn imported_comment_zero_id_roundtrips() {
     let rec = json!({"id": "ex-z", "title": "zero comment", "comments": [{
         "id": 0, "author": "audit", "text": "zero", "created_at": "2026-01-01T00:00:00Z"
     }]});
-    std::fs::write(&src, ascii_json(&rec) + "\n").unwrap();
+    std::fs::write(&src, json_line(&rec) + "\n").unwrap();
     a.bead(["import", src.to_str().unwrap()]);
     let p = a.run(["export"]);
     assert_eq!(p.returncode(), 0, "{}", p.stderr);
@@ -242,7 +242,7 @@ fn metadata_excludes_local_machine_identifiers() {
     for event in journal_events(&a.store()) {
         let mut metadata = event.as_object().unwrap().clone();
         metadata.shift_remove("data");
-        let text = ascii_json(&Json::from(metadata));
+        let text = json_line(&Json::from(metadata));
         for word in &forbidden {
             assert!(!text.contains(word.as_str()), "{word:?} in {text}");
         }

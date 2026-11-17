@@ -2,9 +2,11 @@
 //! of a store, and Beads records to import.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use beadroll_core::json::{Format, Object, write};
-use beadroll_test_support::{Json, Machine, Sandbox, json, json_line, parse_json};
+use beadroll_store::Settings;
+use beadroll_test_support::{Json, Machine, Sandbox, json, parse_json};
 
 /// A machine `name` whose tracker is initialised, prefix `ex`.
 pub(crate) fn machine(sandbox: &Sandbox, name: &str) -> Machine {
@@ -89,11 +91,6 @@ pub(crate) fn record_text(head: Json, tail: Json) -> String {
 /// A private-use stand-in for a lone surrogate, which a Rust string cannot hold.
 pub(crate) const STAND_IN: char = '\u{E000}';
 
-/// `value` as spaced, ASCII-escaped JSON, as bead writes a record.
-pub(crate) fn ascii_json(value: &Json) -> String {
-    json_line(value)
-}
-
 /// Machine `root2-a` with tracker `re` initialised, one issue created, and synced: the machine and
 /// the issue's id.
 pub(crate) fn published_issue(sandbox: &Sandbox) -> (Machine, String) {
@@ -116,4 +113,17 @@ pub(crate) fn set_stamps(machine: &Machine, key: &str) -> Vec<i64> {
         i64::from_str_radix(&id[..12], 16).expect("a UUIDv7")
     })
     .collect()
+}
+
+/// The settings `machine`'s `bead` runs with, its checkout and environment as `Machine::run` gives
+/// them: for a test that reads or writes its store in-process.
+pub(crate) fn machine_settings(machine: &Machine) -> Arc<Settings> {
+    let settings = Settings::from_process(
+        machine.env(None, "codex"),
+        Some(machine.checkout().to_path_buf()),
+        std::env::var_os("HOME").unwrap_or_default(),
+        std::env::temp_dir(),
+        &|_| None,
+    );
+    Arc::new(settings.expect("the machine's settings"))
 }
