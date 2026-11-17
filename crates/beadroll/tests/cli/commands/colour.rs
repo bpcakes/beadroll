@@ -1,5 +1,5 @@
 //! Colour (roll-dih8.23): where it is asked for, or a terminal shows it, and never in JSON or
-//! instead of escaping what an issue says. Terminals are `hardening::g59` and `hardening::v8`'s.
+//! instead of escaping what an issue says. Terminals are `hardening::help_is_plain_text`'s and `hardening::v8`'s.
 
 use beadroll_test_support::{Machine, Run, parse_json};
 
