@@ -6,25 +6,15 @@ use std::io::Write as _;
 use std::path::PathBuf;
 
 use beadroll_core::json::{Format, Value, write};
-use beadroll_store::{Clock, uuid7};
+use beadroll_store::{Clock, glob_ending, uuid7};
 use beadroll_test_support::{Machine, json, parse_json};
 
-/// The first segment under the store's `events/`, as `glob("*/*.jsonl")` finds it.
+/// The first segment under the store's `events/`: of its first replica by name, the first by name.
 fn first_segment(machine: &Machine) -> PathBuf {
-    let events = machine.store().join("events");
-    std::fs::read_dir(events)
-        .unwrap()
-        .map(|entry| entry.unwrap().path())
-        .filter(|path| path.is_dir())
-        .flat_map(|replica| std::fs::read_dir(replica).unwrap())
-        .map(|entry| entry.unwrap().path())
-        .find(|path| {
-            path.file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .ends_with(".jsonl")
-        })
+    let replicas = glob_ending(&machine.store().join("events"), "");
+    (replicas.into_iter().filter(|path| path.is_dir()))
+        .flat_map(|replica| glob_ending(&replica, ".jsonl"))
+        .next()
         .expect("a segment in the store")
 }
 

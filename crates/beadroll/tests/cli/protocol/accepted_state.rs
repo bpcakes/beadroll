@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use beadroll_core::json::{Format, Style, write};
+use beadroll_store::glob_ending;
 use beadroll_test_support::{Json, Machine, git, json, parse_json, printed_id};
 
 /// The hook that stops an ownership command once the remote has taken its push, before bead hears
@@ -41,21 +42,6 @@ fn remote_blob(remote: &Path, revision_path: &str) -> Vec<u8> {
     output.stdout
 }
 
-/// The entries of `dir` whose names end with `suffix`, in directory order:
-/// none when `dir` is not a directory.
-fn glob(dir: &Path, suffix: &str) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    entries
-        .map(|entry| entry.expect("a directory entry").path())
-        .filter(|path| {
-            let name = path.file_name().expect("a name");
-            name.as_encoded_bytes().ends_with(suffix.as_bytes())
-        })
-        .collect()
-}
-
 /// The entries of `machine`'s `events` folder, one folder per machine, in directory order.
 fn replicas(machine: &Machine) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(machine.store().join("events")) else {
@@ -70,7 +56,7 @@ fn replicas(machine: &Machine) -> Vec<PathBuf> {
 fn attempts(machine: &Machine) -> Vec<PathBuf> {
     let replicas = replicas(machine).into_iter();
     replicas
-        .flat_map(|replica| glob(&replica.join("claims"), ".json"))
+        .flat_map(|replica| glob_ending(&replica.join("claims"), ".json"))
         .collect()
 }
 
@@ -78,7 +64,7 @@ fn attempts(machine: &Machine) -> Vec<PathBuf> {
 fn segments(machine: &Machine) -> Vec<PathBuf> {
     let replicas = replicas(machine).into_iter();
     replicas
-        .flat_map(|replica| glob(&replica, ".jsonl"))
+        .flat_map(|replica| glob_ending(&replica, ".jsonl"))
         .collect()
 }
 
