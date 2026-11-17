@@ -398,8 +398,8 @@ mod compat_audit_real_compatibility {
 /// Whether a round-trip comparison passed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum CheckResult {
-    /// Failed.
+    /// The round trip changed something, which the check reports.
     Failed,
-    /// Passed.
+    /// The round trip gave back what went in.
     Passed,
 }

@@ -28,9 +28,9 @@ use crate::state::{Issue, Meta, State};
 /// Which equivalent public answers a digest checks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum AnswerCoverage {
-    /// Direct.
+    /// Only what the state answers directly.
     Direct,
-    /// EveryWay.
+    /// Every equivalent public answer too, for the last state of a history.
     EveryWay,
 }
 

@@ -20,9 +20,9 @@ use call::Rc;
 /// Whether an injected pause held the command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FaultProgress {
-    /// Continued.
+    /// The remote's stall hook never started: no push of the operation's reached it.
     Continued,
-    /// Stalled.
+    /// The remote's stall hook started for the operation's push.
     Stalled,
 }
 

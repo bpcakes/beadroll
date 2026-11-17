@@ -29,9 +29,9 @@ use crate::support::{actor, claim_command, sandbox, workspace};
 /// Which side of the current time a memo timestamp is set to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TimeDirection {
-    /// Earlier.
+    /// Before now.
     Earlier,
-    /// Later.
+    /// After now.
     Later,
 }
 

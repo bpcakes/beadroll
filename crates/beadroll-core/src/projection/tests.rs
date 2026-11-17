@@ -39,9 +39,9 @@ use crate::state::State;
 /// Whether generated histories include malformed or conflicting records.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum HistoryKind {
-    /// Valid.
+    /// Only records replay applies.
     Valid,
-    /// Flawed.
+    /// Records replay reports too, and a machine whose identity was copied.
     Flawed,
 }
 

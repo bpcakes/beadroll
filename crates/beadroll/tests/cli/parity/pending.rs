@@ -18,9 +18,9 @@ use super::{id, json, settings};
 /// Whether the pending attempt is also published by its fixture.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PendingSetup {
-    /// Local.
+    /// Only written here: the remote never heard of it.
     Local,
-    /// Published.
+    /// Pushed with the journal too, its answer lost, so it stays pending.
     Published,
 }
 

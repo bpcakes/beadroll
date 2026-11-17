@@ -15,9 +15,9 @@ use crate::hardening::TrackerSetup;
 /// Whether the in-flight push lands before the competing action.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PushOrder {
-    /// Later.
+    /// The competing action goes first, while the push is still held.
     Later,
-    /// First.
+    /// The held push is let go and lands before the competing action.
     First,
 }
 

@@ -19,9 +19,9 @@ use crate::workspace::Workspace;
 /// How the projection text file is opened.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum TextFileAccess {
-    /// Read.
+    /// Only to read the texts it holds.
     Read,
-    /// Append.
+    /// To read and to append the texts a projection writes after them.
     Append,
 }
 

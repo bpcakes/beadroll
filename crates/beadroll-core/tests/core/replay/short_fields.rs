@@ -14,9 +14,9 @@ use beadroll_test_support::{Json, json};
 /// Whether a create imports an issue.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum CreateOrigin {
-    /// Local.
+    /// A create made here.
     Local,
-    /// Imported.
+    /// A create that imports a Beads record.
     Imported,
 }
 

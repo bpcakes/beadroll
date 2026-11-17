@@ -16,9 +16,9 @@ use crate::work::{Work, counted};
 /// Which edge kinds a test removal affects.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RemovalScope {
-    /// Kind.
+    /// Only edges of the kind named.
     Kind,
-    /// Any.
+    /// Edges of every kind.
     Any,
 }
 

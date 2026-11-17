@@ -20,9 +20,9 @@ use beadroll_test_support::Machine;
 /// Which read path a projection test observes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ReadPath {
-    /// Projection.
+    /// The read answers from the store's projection.
     Projection,
-    /// Replay.
+    /// The read replays the journal, as with no projection to use.
     Replay,
 }
 
