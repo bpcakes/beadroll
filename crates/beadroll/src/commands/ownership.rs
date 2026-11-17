@@ -21,7 +21,7 @@ use crate::commands::args::TextValidity;
 pub(crate) struct OwnershipArgs {
     pub(crate) ids: Vec<OsString>,
     pub(crate) reason: Option<OsString>,
-    pub(crate) offline: bool,
+    pub(crate) network: NetworkMode,
     pub(crate) remote: Option<OsString>,
     /// The parsed command line as the receipt names it (`Namespace::asked`).
     pub(crate) asked: String,
@@ -110,7 +110,7 @@ impl ClaimStep<'_> {
                 )
             })?;
             data.insert("generation".into(), Value::Int(generation));
-            let mut valid = true;
+            let mut valid = TextValidity::Utf8;
             if let (Some(reason), Some(held)) = (self.takeover, held) {
                 let (reason, ok) = arg_text(reason);
                 valid = ok;
@@ -118,11 +118,7 @@ impl ClaimStep<'_> {
                 data.insert("reason".into(), Value::from(reason));
             }
             tx.emit("claim", Some(&issue.uid().to_string()), data, None)?;
-            encodable(if valid {
-                TextValidity::Utf8
-            } else {
-                TextValidity::Invalid
-            })?;
+            encodable(valid)?;
         }
         Ok(mode)
     }
@@ -186,11 +182,7 @@ pub(crate) fn claim(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome, 
     let mode = coordinated(
         ctx.ws,
         ctx.actor,
-        if args.offline {
-            NetworkMode::Offline
-        } else {
-            NetworkMode::Online
-        },
+        args.network,
         args.remote.as_deref(),
         &signature,
         |tx, mode| step.run(tx, mode),
@@ -219,7 +211,7 @@ pub(crate) fn claim(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome, 
 /// `bead takeover`: replaces the current owner of each issue, after investigating; it must be
 /// coordinated online and give its reason.
 pub(crate) fn takeover(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome, Failure> {
-    if args.offline {
+    if args.network == NetworkMode::Offline {
         return Err(Failure::new(
             Code::Validation,
             "a takeover has to be coordinated online",
@@ -269,11 +261,7 @@ pub(crate) fn release(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome
     coordinated(
         ctx.ws,
         ctx.actor,
-        if args.offline {
-            NetworkMode::Offline
-        } else {
-            NetworkMode::Online
-        },
+        args.network,
         args.remote.as_deref(),
         &signature,
         |tx, mode| -> Result<Mode, Failure> {
@@ -288,18 +276,14 @@ pub(crate) fn release(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome
                 if let Some(held) = held.filter(|held| me.is(&held.owner)) {
                     let mut data = Object::new();
                     data.insert("claim".into(), Value::from(held.id.to_string()));
-                    let mut valid = true;
+                    let mut valid = TextValidity::Utf8;
                     if let Some(reason) = args.reason.as_deref().filter(|r| !r.is_empty()) {
                         let (reason, ok) = arg_text(reason);
                         valid = ok;
                         data.insert("reason".into(), Value::from(reason));
                     }
                     tx.emit("release", Some(&uid), data, None)?;
-                    encodable(if valid {
-                        TextValidity::Utf8
-                    } else {
-                        TextValidity::Invalid
-                    })?;
+                    encodable(valid)?;
                 } else if issue.provisional_claims().iter().any(|p| me.is(&p.owner)) {
                     tx.emit("release", Some(&uid), Object::new(), None)?;
                 } else {

@@ -28,10 +28,9 @@ const SHOWN: usize = 20;
 pub(crate) fn import(
     ctx: &Context<'_>,
     path: &OsStr,
-    dry_run: ImportMode,
+    mode: ImportMode,
 ) -> Result<Outcome, Failure> {
-    let dry_run = matches!(dry_run, ImportMode::DryRun);
-    if dry_run {
+    if mode == ImportMode::DryRun {
         let state = read_only(ctx.ws)?;
         need_tracker(&state)?;
         return Ok(answer_dry_run(ctx.ws, &state, path, Vec::new())?.answered_from(state));

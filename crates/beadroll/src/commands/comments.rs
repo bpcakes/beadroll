@@ -77,9 +77,10 @@ fn add(
 ) -> Result<Outcome, Failure> {
     let (text, valid) = match (&args.message, &args.file) {
         (Some(message), _) if !message.is_empty() => arg_text(message),
-        (_, Some(file)) if !file.is_empty() => {
-            (read_utf8(file, OsStr::new("the comment file"))?, true)
-        }
+        (_, Some(file)) if !file.is_empty() => (
+            read_utf8(file, OsStr::new("the comment file"))?,
+            TextValidity::Utf8,
+        ),
         _ => {
             let joined = rest
                 .iter()
@@ -110,11 +111,8 @@ fn add(
             data.insert("author".into(), Value::from(author.as_str()));
         }
         let event = tx.emit("comment", Some(&uid), data, None)?;
-        encodable(if valid && author.as_ref().is_none_or(|(_, ok)| *ok) {
-            TextValidity::Utf8
-        } else {
-            TextValidity::Invalid
-        })?;
+        let author_valid = author.as_ref().map_or(TextValidity::Utf8, |(_, ok)| *ok);
+        encodable(valid.and(author_valid))?;
         let id = event.get("id").map(str_of).unwrap_or_default();
         Ok::<_, Failure>((id, issue_key))
     })?;

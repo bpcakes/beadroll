@@ -25,20 +25,19 @@ fn words(words: &[&str]) -> Vec<OsString> {
     words.iter().map(OsString::from).collect()
 }
 
-/// `close`, `reopen` or `delete` of `key`, published at once unless `offline`.
+/// `close`, `reopen` or `delete` of `key`, published at once unless `network` is offline.
 fn transit(
     ctx: &Context<'_>,
     op: &str,
     key: &OsString,
-    offline: NetworkMode,
+    network: NetworkMode,
 ) -> Result<Outcome, Failure> {
-    let offline = matches!(offline, NetworkMode::Offline);
     let args = TransitionArgs {
         ids: vec![key.clone()],
         reason: None,
         recursive: false,
         force: false,
-        offline,
+        network,
         remote: None,
     };
     transition(ctx, op, &args)
@@ -115,7 +114,7 @@ fn a_write_hands_the_command_line_its_transaction_to_keep() {
         add_label: Vec::new(),
         remove_label: Vec::new(),
         set_labels: None,
-        offline: true,
+        network: NetworkMode::Offline,
         remote: None,
         asked: "{}".to_owned(),
     };
@@ -138,7 +137,7 @@ fn a_write_that_publishes_or_fails_hands_over_nothing() {
     let taking = OwnershipArgs {
         ids: vec![key.clone()],
         reason: None,
-        offline: false,
+        network: NetworkMode::Online,
         remote: None,
         asked: "{}".to_owned(),
     };

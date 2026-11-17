@@ -29,7 +29,7 @@ pub(crate) struct TransitionArgs {
     /// `close --recursive`: every issue beneath each one too.
     pub(crate) recursive: bool,
     pub(crate) force: bool,
-    pub(crate) offline: bool,
+    pub(crate) network: NetworkMode,
     pub(crate) remote: Option<OsString>,
 }
 
@@ -133,15 +133,7 @@ pub(crate) fn transition(
     // reads (no claim of its own to name), and frees it all the same, which is harmless.
     let spent = (!ended).then_some(spent);
     let warning = if ended {
-        publish_soon(
-            ctx.ws,
-            if args.offline {
-                NetworkMode::Offline
-            } else {
-                NetworkMode::Online
-            },
-            args.remote.as_deref(),
-        )
+        publish_soon(ctx.ws, args.network, args.remote.as_deref())
     } else {
         None
     };
@@ -207,9 +199,7 @@ fn decide(
     let mut valid = TextValidity::Utf8;
     if let Some(reason) = args.reason.as_deref().filter(|r| !r.is_empty()) {
         let (reason, ok) = arg_text(reason);
-        if !ok {
-            valid = TextValidity::Invalid;
-        }
+        valid = ok;
         data.insert("reason".into(), Value::from(reason));
     }
     if ends_claims && let Some(held) = held.filter(|held| me.is(&held.owner)) {

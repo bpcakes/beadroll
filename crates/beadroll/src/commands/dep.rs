@@ -165,17 +165,12 @@ fn change(
             format!("usage: bead dep {action} ISSUE DEPENDS_ON"),
         ));
     };
-    let (kind, kind_valid) = match kind {
+    let (kind, validity) = match kind {
         Some(kind) => {
             let (text, valid) = arg_text(kind);
             (Some(text), valid)
         }
-        None => (None, true),
-    };
-    let validity = if kind_valid {
-        TextValidity::Utf8
-    } else {
-        TextValidity::Invalid
+        None => (None, TextValidity::Utf8),
     };
     let ((issue_key, shown), spent) = writing_spent(ctx.ws, ctx.actor, |tx| {
         // read as it was before anything is emitted, without a copy (roll-lqjj.29)
