@@ -1,8 +1,8 @@
 //! Repository hygiene: tracked files must not expose maintainer home directories, LAN or tailnet
 //! hostnames, or SSH targets. Patterns describe shapes rather than private names. ASCII word
 //! boundaries deliberately also catch matches beside non-ASCII letters. Lint exemptions sit at a
-//! crate or module root, apart from the two `CONTRIBUTING.md` names, and no Rust source grows past
-//! the line it should have been split long before.
+//! crate or module root, apart from the two `CONTRIBUTING.md` names, no Rust source grows past
+//! the line it should have been split long before, and nothing is named for a finding.
 
 /// `RepositoryHygiene`.
 mod repository_hygiene {
@@ -294,6 +294,87 @@ mod file_lengths {
         assert_eq!(
             too_long([("c.rs", over.as_str())]),
             [format!("c.rs: {} lines", LIMIT + 1)]
+        );
+    }
+}
+
+/// `FindingNames`.
+mod finding_names {
+    use regex_lite::Regex;
+
+    use crate::workspace;
+
+    /// The ids of the findings `ledger` (`docs/FINDINGS.md`) has a row for, lower-cased as a name
+    /// would carry them.
+    fn finding_ids(ledger: &str) -> Vec<String> {
+        let row = Regex::new(r"(?m)^\| ([A-Z]{1,2}[0-9]{2}) \|").expect("a valid pattern");
+        (row.captures_iter(ledger))
+            .map(|found| found[1].to_lowercase())
+            .collect()
+    }
+
+    /// The functions and modules of `text`, the file `name`, whose names begin with one of `ids`,
+    /// as NAME:LINE: ITEM.
+    fn named_for_a_finding(name: &str, text: &str, ids: &[String]) -> Vec<String> {
+        let item = Regex::new(
+            r"(?m)^[ \t]*(?:pub(?:\([a-z]+\))? )?(?:fn|mod) ([a-z]{1,2}[0-9]{2})_[a-z0-9_]*",
+        )
+        .expect("a valid pattern");
+        (item.captures_iter(text))
+            .filter(|found| ids.iter().any(|id| *id == found[1]))
+            .map(|found| {
+                let at = found.get(0).expect("the match").start();
+                let line = text[..at].matches('\n').count() + 1;
+                format!("{name}:{line}: {}", found[0].trim())
+            })
+            .collect()
+    }
+
+    /// No function or module is named for a finding: a test is named for the contract it checks
+    /// and cites its finding in its doc comment (`AGENTS.md`, *Making a change*).
+    #[test]
+    fn nothing_is_named_for_a_finding() {
+        let root = workspace::root();
+        let ledger = std::fs::read_to_string(root.join("docs/FINDINGS.md")).expect("the ledger");
+        let ids = finding_ids(&ledger);
+        // A ledger read as empty would pass everything: it has hundreds of rows.
+        assert!(ids.len() > 100, "{} finding ids", ids.len());
+        let listed = std::process::Command::new("git")
+            .args(["ls-files", "-z", "*.rs"])
+            .current_dir(&root)
+            .output()
+            .expect("git runs");
+        assert!(listed.status.success(), "git ls-files failed");
+        let names = String::from_utf8(listed.stdout).expect("UTF-8 file names");
+        let found: Vec<String> = (names.split('\0'))
+            .filter(|name| !name.is_empty())
+            .flat_map(|name| {
+                let text = std::fs::read_to_string(root.join(name))
+                    .unwrap_or_else(|error| panic!("{name}: {error}"));
+                named_for_a_finding(name, &text, &ids)
+            })
+            .collect();
+        assert!(
+            found.is_empty(),
+            "name these for what they check:\n{}",
+            found.join("\n")
+        );
+    }
+
+    /// A name beginning with a ledger's id is found, as a function or a module and at any
+    /// indentation; one beginning with letters and digits that are no finding's is not.
+    #[test]
+    fn a_finding_prefix_is_found_only_for_a_finding_in_the_ledger() {
+        let ids = finding_ids("| G25 | Low | a row |\n| AD01 | High | another |\nprose | X99 |\n");
+        assert_eq!(ids, ["g25", "ad01"]);
+        let text = "fn ad01_a() {}\n    mod g25_b {}\nfn b36_c() {}\npub(crate) fn g25_d() {}\n";
+        assert_eq!(
+            named_for_a_finding("x.rs", text, &ids),
+            [
+                "x.rs:1: fn ad01_a",
+                "x.rs:2: mod g25_b",
+                "x.rs:4: pub(crate) fn g25_d"
+            ]
         );
     }
 }
