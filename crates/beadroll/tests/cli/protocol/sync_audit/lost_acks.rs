@@ -6,9 +6,9 @@ use std::time::Duration;
 
 use beadroll_test_support::{Json, code, parse_json};
 
-use super::{Worker, git_wrapper, setup, two, wait_marker};
+use super::{git_wrapper, setup, two};
 use crate::protocol::sync_audit::HookPosition;
-use crate::protocol::sync_audit::ProcessSession;
+use beadroll_test_support::ProcessGroup;
 
 /// The claim on `issue`; absence fails the test.
 fn claim(issue: &Json) -> Json {
@@ -40,13 +40,13 @@ fn claim_lost_ack_after_real_push_kill_is_recovered() {
     let b = two(&sandbox, &a);
     let marker = sandbox.root().join("pushed");
     let path = git_wrapper(&sandbox, "push", &marker, HookPosition::After);
-    let mut worker = Worker::start(
-        a.cmd(["claim", &key, "--json"]).env("PATH", path),
-        ProcessSession::New,
-    );
-    wait_marker(&marker, &mut worker);
+    let mut worker = a
+        .cmd(["claim", &key, "--json"])
+        .env("PATH", path)
+        .spawn(ProcessGroup::Own);
+    worker.wait_for(&marker, Duration::from_secs(15));
     worker.kill().expect("the claim's process group");
-    worker.communicate(Some(Duration::from_secs(5)));
+    worker.communicate(Duration::from_secs(5));
     assert!(a.show(&key).get("claim").is_none());
     let recovered = claim(&a.bead(["claim", &key]).unwrap()[0]);
     assert_eq!(recovered["generation"].as_i64(), Some(1));

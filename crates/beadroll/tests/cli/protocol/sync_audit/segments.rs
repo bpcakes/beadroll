@@ -11,8 +11,8 @@ use std::time::Duration;
 
 use beadroll_test_support::{Gate, Json, Machine, UNPROFILED, parse_json};
 
-use super::{Worker, jsonl, own_segment, setup, setup_with, wait_marker};
-use crate::protocol::sync_audit::ProcessSession;
+use super::{jsonl, own_segment, setup, setup_with};
+use beadroll_test_support::ProcessGroup;
 
 /// The unterminated fragment an append interrupted mid-line leaves at the end of a segment.
 const TORN: &[u8] = br#"{"v":1,"id":"interrupted"#;
@@ -191,11 +191,13 @@ fn bug_kill_mid_append_then_successful_write_must_stay_readable() {
     let appending = Gate::new(&sandbox, "append-started");
     let spec = appending.at("append.mid@always");
     let writing = a.cmd(["create", "killed writer", "--json"]);
-    let mut worker = Worker::start(writing.env("BEAD_FAILPOINTS", spec), ProcessSession::New);
-    wait_marker(&appending.ready(), &mut worker);
+    let mut worker = writing
+        .env("BEAD_FAILPOINTS", spec)
+        .spawn(ProcessGroup::Own);
+    worker.wait_for(&appending.ready(), Duration::from_secs(15));
     assert_eq!(a.show(&key)["title"].as_str(), Some("Original issue"));
     worker.kill().expect("the writer's process group");
-    let killed = worker.communicate(Some(Duration::from_secs(5)));
+    let killed = worker.communicate(Duration::from_secs(5));
     assert_eq!(killed.returncode(), -9, "{}", killed.stderr);
     assert_eq!(a.show(&key)["title"].as_str(), Some("Original issue"));
     let later = a.run(["create", "accepted after killed writer", "--json"]);

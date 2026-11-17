@@ -21,6 +21,7 @@ mod gate;
 mod isolation;
 mod machine;
 mod sandbox;
+mod spawned;
 pub mod values;
 mod wait;
 
@@ -29,6 +30,7 @@ pub use gate::{Gate, beside};
 pub use isolation::assert_git_isolation;
 pub use machine::{Invocation, Machine, Run, UNPROFILED, code};
 pub use sandbox::{Sandbox, UNDER_TEST, built_bead, git, git_command, select_bead};
+pub use spawned::{ProcessGroup, Spawned};
 pub use wait::{REMOTE_SETTLES, wait_until, within};
 
 /// Reads bead's output as a JSON document.
