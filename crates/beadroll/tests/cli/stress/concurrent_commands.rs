@@ -9,17 +9,17 @@
 //! remain visible. Worker seeds are `20261007 + wave * 101 + machine * 907`; each worker has its
 //! own deterministic random stream and command interleaving.
 
+use beadroll_test_support::{Json, Machine, Run, json_id};
+
 mod oracle;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
-use beadroll_test_support::{Json, Machine, Run};
-
 use self::oracle::{check_claims, expected_ready, exported_keys, settled};
 use super::{
-    Rng, details, each, error_code, id, joined, machines, missing, realized, reply, run_json,
-    sorted, viewed, words,
+    Rng, details, each, error_code, joined, machines, missing, realized, reply, run_json, sorted,
+    viewed, words,
 };
 
 /// Whether a stress worker is isolated from the remote.
@@ -144,7 +144,7 @@ impl Receipt {
             key: key.to_owned(),
             generation: generation.unwrap_or_else(|| panic!("no generation in {held:?}")),
             owner: held["owner"].as_str().unwrap_or_default().to_owned(),
-            id: id(held),
+            id: json_id(held),
         }
     }
 
@@ -269,7 +269,7 @@ impl Done {
         let val = reply(run, row);
         let key = row.args.get(1).cloned().unwrap_or_default();
         match row.args[0].as_str() {
-            "create" => self.newkeys.push(id(&val)),
+            "create" => self.newkeys.push(json_id(&val)),
             op @ ("claim" | "takeover") => {
                 let held = val[0].get("claim").filter(|held| held.truthy());
                 let held = held.unwrap_or_else(|| panic!("{row:?}: no claim in {val:?}"));
@@ -312,7 +312,7 @@ fn run_concurrent_stress(waves: usize, per_wave: usize, seed: u64) -> Fleet {
     let machines = machines(&sandbox, "wave");
     let first = &machines[0];
     first.bead(["init", "--prefix", "wave"]);
-    let create = |title: String| id(&first.bead(["create", &title]).expect("an issue"));
+    let create = |title: String| json_id(&first.bead(["create", &title]).expect("an issue"));
     let editable: Vec<String> = (0..24).map(|n| create(format!("editable {n}"))).collect();
     let owned: Vec<String> = (0..12).map(|n| create(format!("ownership {n}"))).collect();
     for machine in &machines {

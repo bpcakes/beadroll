@@ -12,18 +12,13 @@ use std::sync::Arc;
 use beadroll_core::json::{Format, write};
 use beadroll_core::replay::replay;
 use beadroll_store::{Settings, find_workspace, load_journal};
-use beadroll_test_support::{Json, Machine, git};
+use beadroll_test_support::{Json, Machine, git, json_id};
 
 mod actors;
 mod inputs;
 mod pending;
 mod receipts;
 mod retries;
-
-/// `value["id"]`, a string.
-fn id(value: &Json) -> String {
-    value["id"].as_str().expect("an id").to_owned()
-}
 
 /// `bead ARGS --json` on `machine`: the document it printed; a failure panics.
 fn json(machine: &Machine, args: &[&str]) -> Json {
@@ -34,7 +29,13 @@ fn json(machine: &Machine, args: &[&str]) -> Json {
 fn everything(machine: &Machine) -> String {
     let listed = json(machine, &["list", "--all", "--limit", "0"]);
     let mut args = vec!["show".to_owned()];
-    args.extend(listed["issues"].as_array().expect("issues").iter().map(id));
+    args.extend(
+        listed["issues"]
+            .as_array()
+            .expect("issues")
+            .iter()
+            .map(json_id),
+    );
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
     write(&json(machine, &args), Format::SORTED_ASCII).expect("bead's JSON writes back")
 }
@@ -69,9 +70,9 @@ fn two_machines_converge() {
     let p = crate::rust_only(&sandbox, "p");
     let r = crate::rust_only(&sandbox, "r");
     json(&p, &["init", "--prefix", "ex"]);
-    let x = id(&json(&p, &["create", "from p", "-p", "1", "-l", "a,b"]));
+    let x = json_id(&json(&p, &["create", "from p", "-p", "1", "-l", "a,b"]));
     json(&r, &["sync"]);
-    let y = id(&json(&r, &["create", "from r", "--parent", &x]));
+    let y = json_id(&json(&r, &["create", "from r", "--parent", &x]));
     let deps = format!("blocks:{y}");
     json(&r, &["create", "r two", "--parent", &x, "--deps", &deps]);
     json(&p, &["sync"]);
@@ -109,7 +110,7 @@ fn the_published_tree_is_format_1s() {
     let sandbox = crate::sandbox();
     let r = Machine::new(&sandbox, "r");
     json(&r, &["init", "--prefix", "ex"]);
-    let x = id(&json(&r, &["create", "one", "-l", "x,y"]));
+    let x = json_id(&json(&r, &["create", "one", "-l", "x,y"]));
     json(&r, &["create", "two", "--parent", &x]);
     json(&r, &["sync"]);
     let origin = sandbox.origin();
@@ -167,13 +168,13 @@ fn every_write_exports_the_same_on_both_machines() {
     std::fs::write(&beads, BEADS).unwrap();
     let beads = beads.display().to_string();
     json(&p, &["init", "--prefix", "ex", "--import", &beads]);
-    let x = id(&json(
+    let x = json_id(&json(
         &p,
         &["create", "p task", "--parent", "ex-m", "-l", "a,b"],
     ));
     json(&p, &["comments", "add", &x, "from p"]);
     json(&r, &["sync"]);
-    let y = id(&json(&r, &["create", "r task", "-p", "0", "--deps", &x]));
+    let y = json_id(&json(&r, &["create", "r task", "-p", "0", "--deps", &x]));
     let notes = "née\u{2028}line";
     json(
         &r,
@@ -198,7 +199,7 @@ fn every_write_exports_the_same_on_both_machines() {
     json(&r, &["dep", "rm", "ex-m.1", "ex-later"]);
     json(&r, &["close", &x, "-r", "done in r"]);
     json(&r, &["reopen", &x]);
-    let z = id(&json(&r, &["create", "doomed"]));
+    let z = json_id(&json(&r, &["create", "doomed"]));
     json(&r, &["delete", &z, "-r", "not needed"]);
     let more = sandbox.root().join("more.jsonl");
     let later = r#"{"id":"ex-later","title":"Arrived later","status":"open","priority":2,"issue_type":"task","created_at":"2026-01-04T00:00:00Z","updated_at":"2026-01-04T00:00:00Z","created_by":"seed"}"#;

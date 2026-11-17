@@ -14,11 +14,11 @@ use std::time::Instant;
 
 use beadroll_core::id::EventId;
 use beadroll_sync::NetworkMode;
-use beadroll_test_support::{Json, Machine, Run};
+use beadroll_test_support::{Json, Machine, Run, json_id};
 
 use super::{
-    Rng, details, each, error_code, id, machines, missing, realized, replayed, reply, run_json,
-    sorted, status_disputed, words,
+    Rng, details, each, error_code, machines, missing, realized, replayed, reply, run_json, sorted,
+    status_disputed, words,
 };
 
 /// What a step of the model does.
@@ -152,7 +152,7 @@ fn audit_model_run(operations: usize, seed: u64) -> Soak {
     let machines = machines(&sandbox, "soak");
     let root = &machines[0];
     root.bead(["init", "--prefix", "soak"]);
-    let create = |title: String| id(&root.bead(["create", &title]).expect("an issue"));
+    let create = |title: String| json_id(&root.bead(["create", &title]).expect("an issue"));
     let keys = (0..24).map(|n| create(format!("seed issue {n}"))).collect();
     for machine in &machines {
         machine.bead(["sync"]);
@@ -276,11 +276,11 @@ impl Soak {
         let result = reply(run, row);
         let key = row.args.get(1).cloned().unwrap_or_default();
         match row.args[0].as_str() {
-            "create" => self.keys.push(id(&result)),
+            "create" => self.keys.push(json_id(&result)),
             "claim" | "takeover" if !row.partitioned => {
                 let held = result[0].get("claim");
                 let held = held.unwrap_or_else(|| panic!("{row:?}: no claim in {result:?}"));
-                let claim = id(held);
+                let claim = json_id(held);
                 let generation = held["generation"].as_i64();
                 if self.model.holder.get(&key) != Some(&claim) {
                     let last = self.model.generations.get(&key).copied().unwrap_or(0);
@@ -358,11 +358,11 @@ impl Soak {
     /// An issue as `machine` shows it: claimed as the model has it, and ready exactly when it is
     /// open, unblocked and its status undisputed.
     fn check_issue(&self, step: usize, machine: &Machine, issue: &Json, ready: &BTreeSet<String>) {
-        let key = id(issue);
+        let key = json_id(issue);
         let current = issue.get("claim").filter(|claim| claim.truthy());
         let context = || format!("{step}: {} {issue:?}", machine.name());
         assert_eq!(
-            current.map(id).as_ref(),
+            current.map(json_id).as_ref(),
             self.model.holder.get(&key),
             "{}",
             context()

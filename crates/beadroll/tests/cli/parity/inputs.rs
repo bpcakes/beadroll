@@ -5,9 +5,9 @@ use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
 use std::path::Path;
 
-use beadroll_test_support::{Json, Machine, parse_json};
+use beadroll_test_support::{Json, Machine, json_id, parse_json};
 
-use super::{id, json};
+use super::json;
 
 /// How a run ended: its exit status, standard output and standard error.
 type Answer = (i32, String, String);
@@ -240,7 +240,7 @@ fn arguments_that_are_not_utf8_keep_established_diagnostics() {
     );
     ask(&m, None, "", &uninitialised);
     json(&m, &["init", "--prefix", "ex"]);
-    let key = id(&json(&m, &["create", "seed"]));
+    let key = json_id(&json(&m, &["create", "seed"]));
     let before = m.export();
     for case in &ARGUMENTS {
         ask(&m, None, &key, case);
@@ -257,8 +257,8 @@ fn a_transition_that_writes_nothing_takes_a_reason_that_is_not_utf8() {
     let sandbox = crate::sandbox();
     let m = Machine::new(&sandbox, "bytes");
     json(&m, &["init", "--prefix", "ex"]);
-    let closed = id(&json(&m, &["create", "closed"]));
-    let open = id(&json(&m, &["create", "open"]));
+    let closed = json_id(&json(&m, &["create", "closed"]));
+    let open = json_id(&json(&m, &["create", "open"]));
     json(&m, &["close", &closed, "-r", "done"]);
     let before = m.export();
     for (verb, key, unchanged) in [
@@ -388,7 +388,7 @@ fn paths_are_normalized_consistently_for_reads_and_writes() {
     let sandbox = crate::sandbox();
     let m = Machine::new(&sandbox, "paths");
     json(&m, &["init", "--prefix", "ex"]);
-    let key = id(&json(&m, &["create", "seed"]));
+    let key = json_id(&json(&m, &["create", "seed"]));
     let dir = m.checkout();
     std::fs::write(dir.join("note.txt"), "from a file\n").unwrap();
     std::fs::write(dir.join("bad.jsonl"), "{not json\n").unwrap();

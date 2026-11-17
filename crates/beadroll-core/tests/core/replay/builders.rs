@@ -9,9 +9,7 @@ use beadroll_core::json::Value;
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
 use beadroll_test_support::events::Event;
-use beadroll_test_support::{Json, json};
-
-use super::scoped_damage::id;
+use beadroll_test_support::{Json, json, json_id};
 
 pub(crate) fn id_of(event: &Json) -> &str {
     event["id"].as_str().unwrap()
@@ -235,7 +233,7 @@ pub(crate) mod actors {
             let create = self.event(
                 "create",
                 "a",
-                &[&id(&init)],
+                &[&json_id(&init)],
                 Target::Itself,
                 json!({"key": "ex-one", "fields": {"title": "survivor"}}),
             );

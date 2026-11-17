@@ -6,9 +6,9 @@ use std::path::Path;
 use std::process::Command;
 
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, code, json, parse_json};
+use beadroll_test_support::{Json, Machine, code, json, json_id, parse_json};
 
-use super::{column, id, length, segments, settle, two_machines};
+use super::{column, length, segments, settle, two_machines};
 
 /// The UUID version, or `None` without the RFC 4122 variant. Text that is not a UUID fails the
 /// test.
@@ -75,7 +75,7 @@ fn damaged_lines_and_payloads_are_reported_not_fatal() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
-    let key = id(&a.bead(["create", "survivor"]).unwrap());
+    let key = json_id(&a.bead(["create", "survivor"]).unwrap());
     let segment = segments(&a.store()).remove(0);
     let text = std::fs::read_to_string(&segment).unwrap();
     let mut rows: Vec<&str> = text.lines().collect();

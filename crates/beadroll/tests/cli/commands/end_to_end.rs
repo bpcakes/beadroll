@@ -72,14 +72,6 @@ pub(crate) fn settle(machines: &[&Machine]) {
     );
 }
 
-/// The `id` of a record bead printed: an issue, or what `create` made.
-pub(crate) fn id(record: &Json) -> String {
-    match record["id"].as_str() {
-        Some(id) => id.to_owned(),
-        None => panic!("no id in {record:?}"),
-    }
-}
-
 /// Who holds the claim on `issue`, as `show` prints it.
 pub(crate) fn owner(issue: &Json) -> &str {
     let owner = issue["claim"]["owner"].as_str();

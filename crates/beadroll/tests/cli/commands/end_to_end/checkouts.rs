@@ -9,9 +9,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use beadroll_core::json::{Format, write};
 use beadroll_test_support::events::{Event, id_at};
-use beadroll_test_support::{Json, Machine, git, json, parse_json};
+use beadroll_test_support::{Json, Machine, git, json, json_id, parse_json};
 
-use super::{column, id, length, pool_map, segments, sorted_codes};
+use super::{column, length, pool_map, segments, sorted_codes};
 
 /// The identity the sandbox's own commits are made with.
 const IDENTITY: [&str; 4] = ["-c", "user.name=t", "-c", "user.email=t@example.invalid"];
@@ -76,10 +76,10 @@ fn parallel_writers_lose_nothing_and_claim_is_exclusive() {
         .as_array()
         .unwrap()
         .iter()
-        .map(id)
+        .map(json_id)
         .collect();
     assert_eq!(ids.len(), 30);
-    let target = id(&listed["issues"][0]);
+    let target = json_id(&listed["issues"][0]);
     let claims = pool_map(2, &["thread-one-0001", "thread-two-0002"], |thread| {
         let claim = a.cmd(["update", &target, "--claim", "--json"]);
         claim.thread(*thread).run()
@@ -95,7 +95,7 @@ fn reads_work_when_the_store_is_read_only() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
-    let key = id(&a.bead(["create", "readable"]).unwrap());
+    let key = json_id(&a.bead(["create", "readable"]).unwrap());
     let status = Command::new("chmod")
         .args(["-R", "a-w"])
         .arg(a.home())
@@ -117,7 +117,7 @@ fn events_record_the_branch_and_a_close_knows_whether_it_is_merged() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
-    let x = id(&a.bead(["create", "feature work"]).unwrap());
+    let x = json_id(&a.bead(["create", "feature work"]).unwrap());
     let wt = sandbox.root().join("wt-feature");
     worktree(a.checkout(), &wt, "feature/x");
     std::fs::write(wt.join("work.txt"), "done\n").unwrap();
@@ -161,15 +161,15 @@ fn show_of_several_closed_issues_says_of_each_whether_it_is_merged() {
         git(IDENTITY.into_iter().chain(commit), Some(cwd));
     };
     let closed_in = |cwd: &Path, title: &str| {
-        let key = id(&a.bead(["create", title]).unwrap());
+        let key = json_id(&a.bead(["create", title]).unwrap());
         a.cmd(["close", &key]).cwd(cwd).json();
         key
     };
     let main = a.checkout().to_path_buf();
     commit(&main, "one");
     let (m1, m2) = (
-        id(&a.bead(["create", "m1"]).unwrap()),
-        id(&a.bead(["create", "m2"]).unwrap()),
+        json_id(&a.bead(["create", "m1"]).unwrap()),
+        json_id(&a.bead(["create", "m2"]).unwrap()),
     );
     a.bead(["close", &m1, &m2]);
     commit(&main, "two");
@@ -184,7 +184,7 @@ fn show_of_several_closed_issues_says_of_each_whether_it_is_merged() {
     let elsewhere = sandbox.clone("a-elsewhere", None);
     commit(&elsewhere, "five");
     let u = closed_in(&elsewhere, "u");
-    let open = id(&a.bead(["create", "open"]).unwrap());
+    let open = json_id(&a.bead(["create", "open"]).unwrap());
     let keys = [&m1, &f1, &u, &m2, &open, &f2, &m3, &f1];
     let shown = a
         .bead(["show"].into_iter().chain(keys.map(String::as_str)))
@@ -242,7 +242,7 @@ fn merged_with_the_clock_ahead(main_commits: usize) -> Vec<Json> {
         assert!(made.status.success(), "git commit {message}: {stderr}");
     };
     let closed_in = |cwd: &Path, title: &str| {
-        let key = id(&a.bead(["create", title]).unwrap());
+        let key = json_id(&a.bead(["create", title]).unwrap());
         a.cmd(["close", &key]).cwd(cwd).json();
         key
     };
@@ -318,7 +318,7 @@ fn a_default_branch_that_is_no_commit_leaves_merged_unknown() {
     let closed = |title: &str| {
         let commit = ["commit", "-q", "--allow-empty", "-m", title];
         git(IDENTITY.into_iter().chain(commit), Some(&main));
-        let key = id(&a.bead(["create", title]).unwrap());
+        let key = json_id(&a.bead(["create", title]).unwrap());
         a.bead(["close", &key]);
         key
     };
@@ -339,7 +339,7 @@ fn a_default_branch_that_is_no_commit_leaves_merged_unknown() {
 /// beside its title, as that machine's journal records them: the issues' keys.
 fn closed_elsewhere(a: &Machine, titles: &[(&str, &str)]) -> Vec<String> {
     let keys: Vec<String> = (titles.iter())
-        .map(|(title, _)| id(&a.bead(["create", title]).unwrap()))
+        .map(|(title, _)| json_id(&a.bead(["create", title]).unwrap()))
         .collect();
     let mut created = BTreeMap::new();
     for path in segments(&a.store()) {
@@ -439,11 +439,11 @@ fn where_is_absent_outside_a_checkout_and_when_switched_off() {
         .env("BEAD_WORKSPACE", store)
         .run();
     assert_eq!(proc.returncode(), 0, "{}", proc.stderr);
-    let created = id(&parse_json(&proc.stdout).unwrap());
+    let created = json_id(&parse_json(&proc.stdout).unwrap());
     assert!(a.show(&created).get("where").is_none());
     let config = json!({"workspace": store, "where": false});
     let config = write(&config, Format::ASCII).unwrap();
     std::fs::write(a.checkout().join(".beadroll.json"), config).unwrap();
-    let quiet = id(&a.bead(["create", "no branch recorded"]).unwrap());
+    let quiet = json_id(&a.bead(["create", "no branch recorded"]).unwrap());
     assert!(a.show(&quiet).get("where").is_none());
 }

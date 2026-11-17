@@ -5,9 +5,9 @@
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
 
-use beadroll_test_support::{Machine, parse_json};
+use beadroll_test_support::{Machine, json_id, parse_json};
 
-use super::{id, json};
+use super::json;
 
 /// `text` with the time after each `since ` up to the `)` that closes it written `<TIME>`.
 fn untimed(text: &str) -> String {
@@ -122,8 +122,8 @@ fn an_actor_that_is_not_utf8_holds_nothing() {
     let sandbox = crate::sandbox();
     let m = Machine::new(&sandbox, "who");
     json(&m, &["init", "--prefix", "ex"]);
-    let held = id(&json(&m, &["create", "held by ?"]));
-    let free = id(&json(&m, &["create", "held by nobody"]));
+    let held = json_id(&json(&m, &["create", "held by ?"]));
+    let free = json_id(&json(&m, &["create", "held by nobody"]));
     json(&m, &["--actor", "?", "claim", &held]);
     let named = |text: &str| text.replace("{held}", &held).replace("{free}", &free);
     let before = m.export();

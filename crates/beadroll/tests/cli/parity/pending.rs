@@ -2,6 +2,7 @@
 //! pending files and published counts in `meta.json` (`docs/REVIEWING.md` §1).
 
 use beadroll_core::op::OpName;
+use beadroll_test_support::{Machine, code, json_id, parse_json};
 
 mod publication;
 
@@ -13,9 +14,8 @@ use beadroll_store::FileMode;
 use beadroll_store::{Workspace, find_workspace, load_journal, write_atomic, write_attempt_file};
 use beadroll_sync::PublishMode;
 use beadroll_sync::{Link, PushOutcome, Tx, locked};
-use beadroll_test_support::{Machine, code, parse_json};
 
-use super::{id, json, settings};
+use super::{json, settings};
 
 /// Whether the pending attempt is also published by its fixture.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -58,7 +58,7 @@ fn pending_attempts_a_stopped_claim_left_are_settled_by_sync() {
         let sandbox = crate::sandbox();
         let m = Machine::new(&sandbox, "m");
         json(&m, &["init", "--prefix", "ex"]);
-        let x = id(&json(&m, &["create", "x"]));
+        let x = json_id(&json(&m, &["create", "x"]));
         json(&m, &["sync"]);
         let stopped = m.cmd(["claim", &x]).env(hook, "1").run();
         assert_eq!(stopped.returncode(), status, "{hook}: {}", stopped.stderr);
@@ -117,7 +117,7 @@ fn pending_attempts_left_in_process_are_settled_by_sync() {
         let sandbox = crate::sandbox();
         let r = crate::rust_only(&sandbox, "r");
         json(&r, &["init", "--prefix", "ex"]);
-        let x = id(&json(&r, &["create", "x"]));
+        let x = json_id(&json(&r, &["create", "x"]));
         json(&r, &["sync"]);
         let settings = settings(&r);
         let ws = find_workspace(&settings).unwrap();
@@ -337,7 +337,7 @@ fn af01_a_committed_write_keeps_its_result_when_the_unpublished_count_overflows(
         let r = crate::rust_only(&sandbox, "r");
         let (meta, original, segment, published) = published_three(&r);
         let listed = json(&r, &["list"]);
-        let key = id(&listed["issues"][0]);
+        let key = json_id(&listed["issues"][0]);
         let edited = original.replacen(
             &published,
             &format!("\"{segment}\": \"{}\"", 3 - i128::MAX),

@@ -7,11 +7,10 @@ use beadroll_core::event::Field;
 use beadroll_core::journal::{Journal, JournalOrder};
 use beadroll_core::replay::replay;
 use beadroll_test_support::events::journal;
-use beadroll_test_support::{Json, json};
+use beadroll_test_support::{Json, json, json_id};
 
 use super::builders::{actors, id_of, serial, uid};
 use super::properties::fixture::{Fixture, MISSING, issue, snapshot};
-use super::scoped_damage::id;
 
 #[test]
 fn quarantined_takeover_cannot_supersede_a_valid_close() {
@@ -175,22 +174,22 @@ fn missing_issue_creates_cannot_alias_and_overwrite() {
     let first = f.event(
         "create",
         "a",
-        &[&id(&init)],
+        &[&json_id(&init)],
         actors::Target::Omitted,
         json!({"key": "ex-first", "fields": {"title": "first"}}),
     );
     let second = f.event(
         "create",
         "b",
-        &[&id(&first)],
+        &[&json_id(&first)],
         actors::Target::Omitted,
         json!({"key": "ex-second", "fields": {"title": "second"}}),
     );
     let state = actors::replayed(&[(&init, "a"), (&first, "a"), (&second, "b")]);
     // The malformed creates are rejected, each with its row: they never share a missing UID and
     // overwrite (issues are keyed by event id here, so none can).
-    assert!(state.issue_named(&id(&first)).is_none());
-    assert!(state.issue_named(&id(&second)).is_none());
+    assert!(state.issue_named(&json_id(&first)).is_none());
+    assert!(state.issue_named(&json_id(&second)).is_none());
     assert!(state.integrity().len() >= 2, "{:?}", state.integrity());
 }
 
@@ -198,7 +197,7 @@ fn missing_issue_creates_cannot_alias_and_overwrite() {
 fn quarantined_common_descendant_dependency_is_scoped() {
     let mut f = actors::Fixture::new();
     let (init, create) = f.base();
-    let uid = id(&create);
+    let uid = json_id(&create);
     let quarantined = f.event(
         "comment",
         "b",
@@ -209,14 +208,14 @@ fn quarantined_common_descendant_dependency_is_scoped() {
     let child = f.event(
         "comment",
         "c",
-        &[&id(&quarantined)],
+        &[&json_id(&quarantined)],
         actors::Target::Named(&uid),
         json!({"text": "descendant survives"}),
     );
     // The quarantined event names its own descendant as its cause, in both variants.
     let mut quarantined = quarantined;
     if let Json::Object(members) = &mut quarantined {
-        members.insert("deps".into(), json!([(id(&child))]));
+        members.insert("deps".into(), json!([(json_id(&child))]));
     }
     let mut variant = quarantined.clone();
     if let Json::Object(members) = &mut variant {
@@ -250,7 +249,7 @@ fn malformed_embedded_create_comment_is_scoped() {
     let malformed = f.event(
         "create",
         "b",
-        &[&id(&create)],
+        &[&json_id(&create)],
         actors::Target::Itself,
         json!({
             "key": "ex-bad",
@@ -267,7 +266,7 @@ fn malformed_embedded_create_comment_is_scoped() {
             .iter()
             .any(|record| record.get("id") == Some(&json!("ex-one")))
     );
-    assert!(state.issue_named(&id(&malformed)).is_none());
+    assert!(state.issue_named(&json_id(&malformed)).is_none());
     assert!(!state.integrity().is_empty());
 }
 

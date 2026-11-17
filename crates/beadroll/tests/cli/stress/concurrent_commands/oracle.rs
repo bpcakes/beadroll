@@ -3,14 +3,14 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use beadroll_test_support::{Json, Machine, parse_json};
+use beadroll_test_support::{Json, Machine, json_id, parse_json};
 
-use crate::stress::{id, json_file, status_disputed};
+use crate::stress::{json_file, status_disputed};
 
 /// The ids of the issues `export` holds, sorted.
 pub(super) fn exported_keys(export: &str) -> Vec<String> {
     let mut keys: Vec<String> = (export.lines())
-        .map(|line| id(&parse_json(line).expect("an exported record")))
+        .map(|line| json_id(&parse_json(line).expect("an exported record")))
         .collect();
     keys.sort();
     keys
@@ -23,8 +23,11 @@ pub(super) fn check_claims(
     expected: &BTreeMap<String, Option<String>>,
 ) {
     for issue in details.as_array().expect("bead show prints a list") {
-        if let Some(want) = expected.get(&id(issue)) {
-            let held = issue.get("claim").filter(|claim| claim.truthy()).map(id);
+        if let Some(want) = expected.get(&json_id(issue)) {
+            let held = issue
+                .get("claim")
+                .filter(|claim| claim.truthy())
+                .map(json_id);
             assert_eq!(
                 held.as_ref(),
                 want.as_ref(),
@@ -40,7 +43,8 @@ pub(super) fn check_claims(
 /// claimed and whose status is undisputed.
 pub(super) fn expected_ready(wave: usize, details: &Json) -> BTreeSet<String> {
     let issues = details.as_array().expect("bead show prints a list");
-    let by_id: BTreeMap<String, &Json> = issues.iter().map(|issue| (id(issue), issue)).collect();
+    let by_id: BTreeMap<String, &Json> =
+        issues.iter().map(|issue| (json_id(issue), issue)).collect();
     let done = |issue: &Json| {
         matches!(issue["status"].as_str(), Some("closed" | "tombstone")) && !status_disputed(issue)
     };

@@ -6,11 +6,11 @@ use beadroll_core::journal::{Journal, JournalOrder};
 use beadroll_core::op::IntegerField;
 use beadroll_core::replay::replay;
 use beadroll_test_support::events::journal;
-use beadroll_test_support::{Json, json};
+use beadroll_test_support::{Json, json, json_id};
 
 use super::builders::{actors, event_id, id_of, numbered, serial, uid};
 use super::properties::fixture::{Fixture, MISSING, conflict, issue, snapshot};
-use super::scoped_damage::{id, row};
+use super::scoped_damage::row;
 
 mod detached;
 
@@ -221,7 +221,7 @@ fn identical_misplaced_duplicate_does_not_reorder_own_journal() {
 fn identical_misplaced_duplicate_does_not_change_broken_chain_result() {
     let mut f = actors::Fixture::new();
     let (init, create) = f.base();
-    let uid = id(&create);
+    let uid = json_id(&create);
     let first = f.event(
         "set",
         "a",
@@ -278,7 +278,7 @@ fn identical_misplaced_duplicate_does_not_change_broken_chain_result() {
 fn takeover_must_causally_see_the_claim_it_supersedes() {
     let mut f = actors::Fixture::new();
     let (init, create) = f.base();
-    let uid = id(&create);
+    let uid = json_id(&create);
     let claim = f.event(
         "claim",
         "a",
@@ -294,16 +294,16 @@ fn takeover_must_causally_see_the_claim_it_supersedes() {
         json!({
             "mode": "online",
             "generation": 2,
-            "takeover": (id(&claim)),
+            "takeover": (json_id(&claim)),
             "reason": "forged without seeing predecessor"
         }),
     );
     let close = f.event(
         "close",
         "a",
-        &[&id(&claim)],
+        &[&json_id(&claim)],
         actors::Target::Named(&uid),
-        json!({"claim": (id(&claim)), "reason": "done"}),
+        json!({"claim": (json_id(&claim)), "reason": "done"}),
     );
     let state = actors::replayed(&[
         (&init, "a"),
@@ -312,7 +312,7 @@ fn takeover_must_causally_see_the_claim_it_supersedes() {
         (&takeover, "b"),
         (&close, "a"),
     ]);
-    let event = |e: &Json| beadroll_core::id::EventId::parse(&id(e)).unwrap();
+    let event = |e: &Json| beadroll_core::id::EventId::parse(&json_id(e)).unwrap();
     assert!(
         !state
             .full_knowledge()
