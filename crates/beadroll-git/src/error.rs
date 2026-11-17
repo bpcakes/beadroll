@@ -37,10 +37,9 @@ impl IoError {
 
 impl fmt::Display for IoError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match (&self.path, self.errno) {
-            (Some(path), _) => write!(f, "{}: {}", self.strerror, path.display()),
-            (None, Some(errno)) => write!(f, "[Errno {errno}] {}", self.strerror),
-            (None, None) => f.write_str(&self.strerror),
+        match &self.path {
+            Some(path) => write!(f, "{}: {}", self.strerror, path.display()),
+            None => f.write_str(&self.strerror),
         }
     }
 }
@@ -86,4 +85,22 @@ pub enum Error {
     /// appended; reported as CONFIG.
     #[error("GIT_CONFIG_COUNT is {0:?}, not a number of configuration settings")]
     ConfigCount(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An OS error reads `{strerror}: {path}`, or the strerror alone without a path: never with
+    /// Rust's `(os error N)` or Python's `[Errno N]`.
+    #[test]
+    fn an_os_error_reads_as_its_strerror_and_its_path() {
+        let error = io::Error::from_raw_os_error(libc::ENOENT);
+        assert_eq!(
+            IoError::bare(&error).to_string(),
+            "No such file or directory"
+        );
+        let at = IoError::at(&error, std::path::Path::new("/s/meta.json"));
+        assert_eq!(at.to_string(), "No such file or directory: /s/meta.json");
+    }
 }

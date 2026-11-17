@@ -49,7 +49,7 @@ pub(crate) fn temporary_directory(
     Err(Failure::new(
         Code::Io,
         format!(
-            "[Errno 2] No usable temporary directory found in [{}]",
+            "No usable temporary directory found in [{}]",
             shown.join(", ")
         ),
     ))
