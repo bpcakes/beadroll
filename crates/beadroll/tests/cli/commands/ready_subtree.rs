@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use beadroll_core::json::{Format, Object, write};
-use beadroll_test_support::{Json, Machine, Sandbox, code, json};
+use beadroll_test_support::{Json, Machine, Sandbox, code, json, json_ids};
 
 /// When a record was made and last changed, unless it says otherwise, as in `record_fields`.
 const CREATED: &str = "2026-01-01T00:00:00Z";
@@ -139,18 +139,9 @@ fn set_up() -> (Sandbox, Machine) {
     (sandbox, a)
 }
 
-/// The ids of a list of issues, in its order.
-fn id_list(issues: &Json) -> Vec<String> {
-    let issues = issues.as_array().unwrap();
-    issues
-        .iter()
-        .map(|issue| issue["id"].as_str().unwrap().to_owned())
-        .collect()
-}
-
 /// The ids `bead ready ARGS` offers on `machine`, in its order.
 fn ids(machine: &Machine, args: &[&str]) -> Vec<String> {
-    id_list(&machine.bead(["ready"].iter().chain(args)).unwrap())
+    json_ids(&machine.bead(["ready"].iter().chain(args)).unwrap())
 }
 
 /// `ids` as a set.
@@ -168,11 +159,11 @@ fn j01_the_subtree_at_any_depth_judged_on_the_whole_tracker() {
         a.bead(["ready"]).unwrap(),
         a.bead(["ready", "ex-e"]).unwrap(),
     );
-    let everywhere_ids: BTreeSet<String> = id_list(&everywhere).into_iter().collect();
+    let everywhere_ids: BTreeSet<String> = json_ids(&everywhere).into_iter().collect();
     let mut wanted = set(&SUBTREE);
     wanted.extend(set(&["ex-x", "ex-g", "ex-e.99"]));
     assert_eq!(everywhere_ids, wanted);
-    assert_eq!(id_list(&scoped), SUBTREE);
+    assert_eq!(json_ids(&scoped), SUBTREE);
     let inside: Vec<Json> = everywhere
         .as_array()
         .unwrap()
@@ -208,7 +199,7 @@ fn j01_the_subtree_at_any_depth_judged_on_the_whole_tracker() {
     let children = a
         .bead(["list", "--parent", "ex-e", "--all", "--limit", "0"])
         .unwrap();
-    let children: BTreeSet<String> = id_list(&children["issues"]).into_iter().collect();
+    let children: BTreeSet<String> = json_ids(&children["issues"]).into_iter().collect();
     assert_eq!(children, set(&["ex-n", "ex-c", "ex-d", "ex-f", "ex-q"]));
     // filters, order and limit apply within the subtree as they do everywhere
     let filtered: [(&[&str], &[&str]); 5] = [

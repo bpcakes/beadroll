@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, Sandbox, code, json, last_line};
+use beadroll_test_support::{Json, Machine, Sandbox, code, json, json_ids, last_line};
 
 use crate::commands::fixtures::record;
 
@@ -29,11 +29,7 @@ fn write_records(sandbox: &Sandbox, name: &str, records: &[Json]) -> PathBuf {
 /// The ids of every issue returned by `bead list --all --limit 0`, sorted.
 fn sorted_ids(m: &Machine) -> Vec<String> {
     let listed = m.bead(["list", "--all", "--limit", "0"]).unwrap();
-    let issues = listed["issues"].as_array().expect("the listed issues");
-    let mut ids: Vec<String> = issues
-        .iter()
-        .map(|issue| issue["id"].as_str().expect("an id").to_owned())
-        .collect();
+    let mut ids = json_ids(&listed["issues"]);
     ids.sort();
     ids
 }

@@ -12,7 +12,7 @@ use std::sync::Arc;
 use beadroll_core::json::{Format, write};
 use beadroll_core::replay::replay;
 use beadroll_store::{Settings, find_workspace, load_journal};
-use beadroll_test_support::{Json, Machine, git, json_id};
+use beadroll_test_support::{Json, Machine, git, json_id, json_ids};
 
 mod actors;
 mod inputs;
@@ -29,13 +29,7 @@ fn json(machine: &Machine, args: &[&str]) -> Json {
 fn everything(machine: &Machine) -> String {
     let listed = json(machine, &["list", "--all", "--limit", "0"]);
     let mut args = vec!["show".to_owned()];
-    args.extend(
-        listed["issues"]
-            .as_array()
-            .expect("issues")
-            .iter()
-            .map(json_id),
-    );
+    args.extend(json_ids(&listed["issues"]));
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
     write(&json(machine, &args), Format::SORTED_ASCII).expect("bead's JSON writes back")
 }

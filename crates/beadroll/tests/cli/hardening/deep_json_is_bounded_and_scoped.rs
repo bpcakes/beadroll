@@ -8,7 +8,9 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use beadroll_core::json::{Format, Object, write};
-use beadroll_test_support::{Json, Machine, Run, Sandbox, code, last_line, parse_json, path_text};
+use beadroll_test_support::{
+    Json, Machine, Run, Sandbox, code, json_ids, last_line, parse_json, path_text,
+};
 
 use crate::commands::fixtures::record_fields;
 
@@ -237,9 +239,7 @@ fn import_refuses_nesting_that_not_every_machine_can_read() {
 
 /// The ids of the issues a `bead list --json` printed.
 fn ids(listed: &Json) -> BTreeSet<String> {
-    let issues = listed["issues"].as_array().expect("a list of issues");
-    let id = |issue: &Json| issue["id"].as_str().expect("an id").to_owned();
-    issues.iter().map(id).collect()
+    json_ids(&listed["issues"]).into_iter().collect()
 }
 
 /// G30: after one machine's 12,000-level import is refused, its peer keeps working and sees

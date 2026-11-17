@@ -3,7 +3,7 @@
 //! closed with nothing to end, are left as they are; another owner's claim anywhere refuses the
 //! whole command unless `--force`. Only `close` takes the flag.
 
-use beadroll_test_support::{Json, Machine, Sandbox, code};
+use beadroll_test_support::{Json, Machine, Sandbox, code, json_ids};
 
 /// Runs `bead ARGS` on `machine`, which must succeed: its standard output.
 fn ok(machine: &Machine, args: &[&str]) -> String {
@@ -55,15 +55,6 @@ fn closes(machine: &Machine) -> Vec<String> {
 /// The status `machine` shows for `key`.
 fn status(machine: &Machine, key: &str) -> String {
     machine.show(key)["status"].as_str().unwrap().to_owned()
-}
-
-/// The ids of a `--json` answer, in its order.
-fn ids(answer: &Json) -> Vec<String> {
-    let items = answer.as_array().unwrap();
-    items
-        .iter()
-        .map(|item| item["id"].as_str().unwrap().to_owned())
-        .collect()
 }
 
 #[test]
@@ -140,7 +131,7 @@ fn issues_beneath_already_closed_or_deleted_are_left_as_they_are() {
 
     // again: the named one answers as a plain close does, and nothing is written
     let again = a.bead(["close", "--recursive", &e]).unwrap();
-    assert_eq!(ids(&again), [e.as_str()]);
+    assert_eq!(json_ids(&again), [e.as_str()]);
     assert_eq!(again[0]["unchanged"].as_str(), Some("already closed"));
     let said = ok(&a, &["close", "--recursive", &e]);
     assert_eq!(
@@ -180,7 +171,7 @@ fn another_owners_claim_beneath_refuses_all_and_names_each_until_forced() {
 
     let forced = a.bead(["close", "--recursive", &e, "--force"]).unwrap();
     assert_eq!(
-        ids(&forced),
+        json_ids(&forced),
         [g.as_str(), child_a.as_str(), child_b.as_str(), e.as_str()]
     );
     for key in [&child_b, &g] {
@@ -213,7 +204,7 @@ fn another_owners_claim_on_a_deleted_issue_beneath_refuses_too() {
     assert_eq!(status(&a, &child_a), "open");
     // forced, the rest is closed and the deleted one left as it is
     let forced = a.bead(["close", "--recursive", &e, "--force"]).unwrap();
-    assert!(!ids(&forced).contains(&g), "{forced:?}");
+    assert!(!json_ids(&forced).contains(&g), "{forced:?}");
     assert_eq!(status(&a, &child_a), "closed");
     assert_eq!(status(&a, &g), "tombstone");
 }
@@ -281,7 +272,7 @@ fn overlapping_roots_close_each_issue_once_and_a_second_parent_outside_stays_ope
         .bead(["close", "--recursive", &e, &child_a, &shared])
         .unwrap();
     assert_eq!(
-        ids(&closed),
+        json_ids(&closed),
         [
             g.as_str(),
             shared.as_str(),
@@ -328,7 +319,7 @@ fn a_parent_loop_merged_from_two_machines_ends() {
     let cycles = a.bead(["dep", "cycles"]).unwrap();
     assert_eq!(cycles["count"].as_i64(), Some(1), "{cycles:?}");
     let closed = a.bead(["close", "--recursive", &k]).unwrap();
-    assert_eq!(ids(&closed), [z.as_str(), m.as_str(), k.as_str()]);
+    assert_eq!(json_ids(&closed), [z.as_str(), m.as_str(), k.as_str()]);
     assert_eq!(closes(&a), [z.as_str(), m.as_str(), k.as_str()]);
 }
 

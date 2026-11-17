@@ -25,7 +25,7 @@ use beadroll_store::IdentityMode;
 use beadroll_store::{
     Settings, Workspace, claim_files, load_journal, read_attempt, replica_id, segment_files,
 };
-use beadroll_test_support::{Json, Machine, Run, Sandbox, converge};
+use beadroll_test_support::{Json, Machine, Run, Sandbox, converge, json_ids};
 
 /// Machine a owns an initialised tracker with issues X and Y; machine b has synced it.
 pub(crate) fn two_machines(sandbox: &Sandbox) -> (Machine, Machine, String, String) {
@@ -48,12 +48,7 @@ pub(crate) fn settle(machines: &[&Machine]) {
         .iter()
         .map(|m| {
             let listed = m.bead(["list", "--all", "--limit", "0"]).unwrap();
-            let ids: Vec<String> = listed["issues"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|r| r["id"].as_str().unwrap().to_owned())
-                .collect();
+            let ids = json_ids(&listed["issues"]);
             let shown = m
                 .bead(std::iter::once("show".to_owned()).chain(ids))
                 .unwrap();

@@ -55,6 +55,16 @@ pub fn json_id(value: &Json) -> String {
     }
 }
 
+/// The `id` of each document of the array `documents`, in its order: the issues `ready` printed,
+/// a list's `issues`, the records of an answer. The test fails when it is not an array or a
+/// document has no id.
+pub fn json_ids(documents: &Json) -> Vec<String> {
+    let documents = documents
+        .as_array()
+        .unwrap_or_else(|| panic!("not a list of documents: {documents:?}"));
+    documents.iter().map(json_id).collect()
+}
+
 /// The member `key` of a JSON object bead printed or a test read. The test fails, showing the
 /// value, when it has none.
 pub fn json_member<'v>(value: &'v Json, key: &str) -> &'v Json {

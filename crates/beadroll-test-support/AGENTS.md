@@ -25,7 +25,8 @@ tests it builds events, and for the round-trip properties it draws JSON values.
   The child test keeps `BEAD_UNDER_TEST` for that selection; a machine still scrubs it before
   starting bead itself.
 - `src/lib.rs`: `Json` (beadroll-core's `Value`) and `parse_json`, which read `bead --json`;
-  `printed_id`, the id a command printed (the issue a `create` made); `json_member`, a member the
+  `printed_id`, the id a command printed (the issue a `create` made); `json_ids`, the ids of a list
+  of documents, in order; `json_member`, a member the
   test requires; `json_text`, a value as one line of bead's JSON (a record to import, a file's
   body); `path_text`, a sandbox path as text; `last_line`, what a command's output ends with;
   `executable`, a hook or a fake `git`, `ps` or `ssh` written with mode 0755. Use these rather

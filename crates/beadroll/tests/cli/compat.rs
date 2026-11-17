@@ -6,12 +6,10 @@
 mod import_dry_run;
 
 mod compat_custom_statuses {
-    use beadroll_test_support::json_text;
-
     use std::collections::{BTreeMap, BTreeSet};
 
     use beadroll_core::json::Object;
-    use beadroll_test_support::{Json, Machine, code, json, parse_json};
+    use beadroll_test_support::{Json, Machine, code, json, json_ids, json_text, parse_json};
 
     /// The record with this `id`, `title` and `status`, then the members of `fields`.
     fn record(id: &str, title: &str, status: &str, fields: &Object) -> Json {
@@ -79,12 +77,11 @@ mod compat_custom_statuses {
         let listed = a
             .bead(["list", "--limit", "0"])
             .expect("bead list prints a page");
-        let issues = listed["issues"].as_array().expect("a list of issues");
-        let ids: BTreeSet<&str> = issues
-            .iter()
-            .map(|issue| issue["id"].as_str().expect("an id"))
-            .collect();
-        assert_eq!(ids, BTreeSet::from(["ex-open", "ex-pin", "ex-odd"]));
+        let ids: BTreeSet<String> = json_ids(&listed["issues"]).into_iter().collect();
+        assert_eq!(
+            ids,
+            ["ex-open", "ex-pin", "ex-odd"].map(String::from).into()
+        );
         assert_eq!(a.show("ex-odd")["status"], json!("invalid"));
         // a record without created_by (28 of beads_rust's 1,031) is not attributed to the importer
         let export = a.export();

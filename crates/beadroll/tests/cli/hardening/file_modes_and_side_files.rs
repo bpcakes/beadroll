@@ -3,13 +3,14 @@
 //! side files are ignored, and global signing does not affect internal commits. The rename crash
 //! test uses `atomic-write:` failpoints.
 
-use beadroll_test_support::{
-    Json, Machine, Sandbox, executable, json_member, parse_json, printed_id, shell_quoted,
-};
 use std::collections::BTreeSet;
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
+
+use beadroll_test_support::{
+    Json, Machine, Sandbox, executable, json_member, parse_json, printed_id, shell_quoted,
+};
 
 /// The permission bits of `path` itself, without following symlinks.
 fn mode(path: &Path) -> u32 {
