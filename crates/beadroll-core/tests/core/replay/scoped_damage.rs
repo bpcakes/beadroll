@@ -7,8 +7,7 @@ use beadroll_test_support::{Json, json, json_id};
 mod scale;
 
 use beadroll_core::event::{Field, FieldType, REGISTERS, REQUIRED_FIELDS};
-use beadroll_core::journal::Journal;
-use beadroll_core::journal::JournalOrder;
+use beadroll_core::journal::{Journal, JournalOrder};
 use beadroll_core::json::{Format, Int, write};
 use beadroll_core::replay::replay;
 use beadroll_core::state::{Integrity, State};

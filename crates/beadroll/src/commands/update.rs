@@ -14,8 +14,7 @@ use beadroll_core::op::OpName;
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::str_of;
 use beadroll_store::Label;
-use beadroll_sync::NetworkMode;
-use beadroll_sync::{Emitter, Mode, coordinated, publish_soon, writing_state};
+use beadroll_sync::{Emitter, Mode, NetworkMode, coordinated, publish_soon, writing_state};
 
 use super::ownership::{ClaimStep, command_signature, details, still_held};
 use super::{

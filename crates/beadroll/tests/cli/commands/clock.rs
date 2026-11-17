@@ -4,10 +4,9 @@
 
 use std::collections::BTreeSet;
 
-use beadroll_test_support::{Json, Machine, Sandbox};
+use beadroll_test_support::{Json, Machine, Sandbox, printed_id};
 
 use super::fixtures::set_stamps;
-use beadroll_test_support::printed_id;
 
 /// The clock-skew test's clock: 48 hours behind at every reading.
 const BEHIND: &str = "clock@always=offset(-48h)";

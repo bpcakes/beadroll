@@ -10,10 +10,10 @@ use std::os::unix::fs::PermissionsExt as _;
 use beadroll_core::json::{Format, Object, Value, write};
 use beadroll_core::op::OpName;
 use beadroll_core::replay::replay;
-use beadroll_store::FileMode;
-use beadroll_store::{Workspace, find_workspace, load_journal, write_atomic, write_attempt_file};
-use beadroll_sync::PublishMode;
-use beadroll_sync::{Link, PushOutcome, Tx, locked};
+use beadroll_store::{
+    FileMode, Workspace, find_workspace, load_journal, write_atomic, write_attempt_file,
+};
+use beadroll_sync::{Link, PublishMode, PushOutcome, Tx, locked};
 
 use super::json;
 use crate::commands::fixtures::machine_settings;

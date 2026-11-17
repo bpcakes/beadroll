@@ -5,8 +5,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::id::EventId;
-use crate::journal::Journal;
-use crate::journal::JournalOrder;
+use crate::journal::{Journal, JournalOrder};
 use crate::json::{Object, Value};
 use crate::order::{causal_order, effective_deps};
 use crate::projection::tests::Rng;

@@ -92,7 +92,8 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
   (`run_with` and the libraries free).
 - `src/hygiene.rs`: the repository lint (a test only): no private names in tracked files, and no
   lint exemption on an item but the two `CONTRIBUTING.md` accepts, no Rust source past 800
-  lines, and no function or module named for a finding in `docs/FINDINGS.md`.
+  lines, no function or module named for a finding in `docs/FINDINGS.md`, and no module imported
+  in two `use` lines.
 - `src/ci.rs` and its modules in `src/ci/`: `supported_environments`, the CI matrix the workflows keep,
   `growth_guards`, the nightly step that runs the growth guards, `coverage_report`, the
   nightly job that makes the coverage report with the cargo-llvm-cov `CARGO_LLVM_COV` names and

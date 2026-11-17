@@ -9,9 +9,7 @@ use std::fs::File;
 use std::io::{Read as _, Seek as _, SeekFrom};
 use std::path::Path;
 
-use beadroll_core::projection::{ENCODING, Encoded};
-
-use beadroll_core::projection::sum;
+use beadroll_core::projection::{ENCODING, Encoded, sum};
 
 use crate::memo::FileKey;
 

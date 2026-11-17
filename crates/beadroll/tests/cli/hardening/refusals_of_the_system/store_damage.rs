@@ -6,10 +6,9 @@ use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 
-use beadroll_test_support::Machine;
+use beadroll_test_support::{Machine, printed_id};
 
 use super::{error_code, replica_id, unprivileged};
-use beadroll_test_support::printed_id;
 
 /// What undoes a damage.
 type Repair = Box<dyn FnOnce()>;

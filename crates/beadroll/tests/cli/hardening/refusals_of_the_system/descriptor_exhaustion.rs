@@ -1,10 +1,9 @@
 //! V6: descriptor exhaustion must return an error without losing a pending attempt. Apply limits
 //! with `/bin/sh` and `ulimit -n`; skip if the shell is unavailable.
 
-use beadroll_test_support::Machine;
+use beadroll_test_support::{Machine, printed_id};
 
 use super::{error_code, limited, with_sh};
-use beadroll_test_support::printed_id;
 
 /// Descriptor limits spanning failure before reading, failure during coordination and sufficient
 /// capacity: 8, 10, 11, 12 and 13.

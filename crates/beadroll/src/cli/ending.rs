@@ -10,15 +10,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use beadroll_core::json::{Object, Value};
-use beadroll_store::PublicationState;
-use beadroll_store::Workspace;
-use beadroll_sync::NetworkMode;
-use beadroll_sync::Spent;
+use beadroll_store::{PublicationState, Workspace};
+use beadroll_sync::{NetworkMode, Spent};
 use beadroll_test_support::{Machine, Sandbox, built_bead, git};
 
 use super::{Answer, Failure, Held, Line, Outcome, Tone, ended_with, finish};
-use crate::cli::AfterCommand;
-use crate::cli::RunLifetime;
+use crate::cli::{AfterCommand, RunLifetime};
 use crate::testing::{settings, tracker, workspace};
 
 /// Something a command held, which counts how often it was freed.

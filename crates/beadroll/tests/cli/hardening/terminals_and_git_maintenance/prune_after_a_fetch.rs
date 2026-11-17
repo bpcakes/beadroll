@@ -12,9 +12,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 use std::process::Stdio;
 
-use beadroll_test_support::{Json, Machine, Run, Sandbox, code, parse_json};
-
-use beadroll_test_support::{Gate, beside};
+use beadroll_test_support::{Gate, Json, Machine, Run, Sandbox, beside, code, parse_json};
 
 mod mismatched_trees;
 

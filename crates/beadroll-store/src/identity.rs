@@ -10,8 +10,7 @@ use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_git::IoError;
 
 use crate::error::Error;
-use crate::fs::FileMode;
-use crate::fs::{fsync, json_text, private_dir};
+use crate::fs::{FileMode, fsync, json_text, private_dir};
 use crate::settings::{Clock, Settings};
 
 /// Whether a missing machine identity may be created.

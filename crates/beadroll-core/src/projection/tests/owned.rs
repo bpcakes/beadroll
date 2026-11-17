@@ -17,8 +17,7 @@ use super::{
     whole,
 };
 use crate::id::EventId;
-use crate::journal::Journal;
-use crate::journal::JournalOrder;
+use crate::journal::{Journal, JournalOrder};
 use crate::json::{Format, Object, Value, write};
 use crate::replay::replay;
 use crate::state::{Ended, EndedClaim, LostClaim, Provisional, Stale, State, Texts};

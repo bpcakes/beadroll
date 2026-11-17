@@ -5,11 +5,9 @@ use std::os::unix::ffi::OsStrExt as _;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::projection::Projection;
 use beadroll_core::text::{printed_text, str_of};
-use beadroll_store::IdentityMode;
-use beadroll_store::MetadataRead;
 use beadroll_store::{
-    Workspace, dir_entries, load_pending, projection, replica_id, segment_files,
-    tracked_config_warning,
+    IdentityMode, MetadataRead, Workspace, dir_entries, load_pending, projection, replica_id,
+    segment_files, tracked_config_warning,
 };
 
 use super::{Context, Failure, Outcome};

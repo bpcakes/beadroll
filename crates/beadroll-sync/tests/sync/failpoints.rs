@@ -4,8 +4,7 @@
 use std::os::unix::fs::PermissionsExt as _;
 
 use beadroll_store::Endpoint;
-use beadroll_sync::PublishMode;
-use beadroll_sync::{Error, Link, PushOutcome, locked};
+use beadroll_sync::{Error, Link, PublishMode, PushOutcome, locked};
 use beadroll_test_support::{Machine, git, git_on_path, shell_quoted};
 
 use crate::support::{sandbox, workspace};

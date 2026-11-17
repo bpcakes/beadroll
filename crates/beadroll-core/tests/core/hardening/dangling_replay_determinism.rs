@@ -4,8 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use beadroll_core::journal::Journal;
-use beadroll_core::journal::JournalOrder;
+use beadroll_core::journal::{Journal, JournalOrder};
 use beadroll_core::json::Value;
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;

@@ -5,8 +5,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use beadroll_test_support::{Machine, git, parse_json};
-use beadroll_test_support::{executable, shell_quoted};
+use beadroll_test_support::{Machine, executable, git, parse_json, shell_quoted};
 
 use super::{Env, git_env, has_ref, scratch_git_config, sh};
 

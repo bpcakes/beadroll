@@ -7,11 +7,10 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use beadroll_test_support::Machine;
+use beadroll_test_support::{Gate, Machine, beside};
 
 use super::{answers, projection};
 use crate::storage::projection::ReadPath;
-use beadroll_test_support::{Gate, beside};
 
 /// How many times the records after the stored projection may go into its bytes before a write
 /// writes it back (`TAIL` in `beadroll-store`'s projection).

@@ -4,11 +4,10 @@
 
 use std::time::Duration;
 
-use beadroll_test_support::{Json, code, parse_json};
+use beadroll_test_support::{Json, ProcessGroup, code, parse_json};
 
 use super::{git_wrapper, setup, two};
 use crate::protocol::journal_sync::HookPosition;
-use beadroll_test_support::ProcessGroup;
 
 /// The claim on `issue`; absence fails the test.
 fn claim(issue: &Json) -> Json {

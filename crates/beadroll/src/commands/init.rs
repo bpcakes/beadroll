@@ -10,15 +10,12 @@ use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::op::OpName;
 use beadroll_core::text::repr;
 use beadroll_git::{Fact, is_local_path, realpath, without_password};
-use beadroll_store::FileMode;
-use beadroll_store::RemoteSource;
 use beadroll_store::{
-    Endpoint, Workspace, derived_shaped, find_workspace, remembered, uuid7, view_outline,
-    write_atomic,
+    Endpoint, FileMode, RemoteSource, Workspace, derived_shaped, find_workspace, remembered, uuid7,
+    view_outline, write_atomic,
 };
-use beadroll_sync::NetworkMode;
 use beadroll_sync::{
-    Error as SyncError, Link, publish_soon, publish_soon_to, synchronise, writing,
+    Error as SyncError, Link, NetworkMode, publish_soon, publish_soon_to, synchronise, writing,
 };
 
 use super::import::{answer_dry_run, import_records, read_only};

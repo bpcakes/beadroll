@@ -6,8 +6,7 @@ use beadroll_core::json::{Int, Object, Value};
 use beadroll_core::state::Issue;
 use beadroll_core::text::str_of;
 use beadroll_core::time::event_time;
-use beadroll_store::MetadataRead;
-use beadroll_store::{machine_aliases, view_outline};
+use beadroll_store::{MetadataRead, machine_aliases, view_outline};
 
 use super::{Context, Failure, Line, Outcome, Tone, need_tracker};
 

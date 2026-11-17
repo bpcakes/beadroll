@@ -47,12 +47,10 @@ use indexmap::IndexMap;
 
 use super::{Projection, Record, small};
 use crate::id::EventId;
-use crate::journal::JournalOrder;
-use crate::journal::{Event, Journal, Parts, Rest};
+use crate::journal::{Event, Journal, JournalOrder, Parts, Rest};
 use crate::json::Value;
 use crate::op::Op;
-use crate::replay::Contents;
-use crate::replay::{Batch, Names, Room, observe_one};
+use crate::replay::{Batch, Contents, Names, Room, observe_one};
 use crate::state::{KeySpace, Texts, is_text};
 
 /// How an operation uses issue texts.

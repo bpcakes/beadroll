@@ -3,9 +3,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use beadroll_test_support::{Machine, Sandbox, code, git};
-
-use beadroll_test_support::{Gate, beside};
+use beadroll_test_support::{Gate, Machine, Sandbox, beside, code, git};
 
 fn files(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
     stored_files(root)

@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::Doing;
+use super::{Doing, Names, dangling_type};
 use crate::event::{Field, REGISTERS};
 use crate::id::EventId;
 use crate::json::{Int, Object, Value};
@@ -12,8 +12,6 @@ use crate::state::{
     State, Target, VecMap, awaited,
 };
 use crate::time::event_time;
-
-use super::{Names, dangling_type};
 
 /// Makes the issue a create names.
 pub(super) fn create(

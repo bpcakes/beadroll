@@ -22,8 +22,7 @@ mod renamed;
 
 use super::{Work, counted};
 use crate::id::EventId;
-use crate::journal::Journal;
-use crate::journal::JournalOrder;
+use crate::journal::{Journal, JournalOrder};
 use crate::json::{Object, Value};
 use crate::projection::{Extended, Projection, Record, project};
 use crate::replay::replay;

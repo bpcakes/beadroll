@@ -17,12 +17,10 @@ use std::time::{Duration, SystemTime};
 
 use beadroll_core::json::{Object, Value};
 use beadroll_core::op::OpName;
-use beadroll_store::IdentityMode;
 use beadroll_store::{
-    Endpoint, Workspace, claim_files, memo_path, relative, replica_id, segment_files,
+    Endpoint, IdentityMode, Workspace, claim_files, memo_path, relative, replica_id, segment_files,
 };
-use beadroll_sync::PublishMode;
-use beadroll_sync::{Error, Link, PushOutcome, locked, writing};
+use beadroll_sync::{Error, Link, PublishMode, PushOutcome, locked, writing};
 use beadroll_test_support::{Machine, Sandbox, git};
 
 use crate::support::{actor, claim_command, sandbox, workspace};

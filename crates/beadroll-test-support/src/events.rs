@@ -3,8 +3,7 @@
 //! `Tx.emit` writes. Core's own unit tests cannot use these: there the dev-dependency would build a
 //! second `beadroll_core`, whose types do not match.
 
-use beadroll_core::journal::Journal;
-use beadroll_core::journal::JournalOrder;
+use beadroll_core::journal::{Journal, JournalOrder};
 use beadroll_core::json::Object;
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;

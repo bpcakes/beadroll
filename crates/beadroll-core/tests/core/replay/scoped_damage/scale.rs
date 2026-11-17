@@ -5,8 +5,7 @@ use std::collections::BTreeMap;
 
 use beadroll_core::event::{Field, REGISTERS};
 use beadroll_core::id::EventId;
-use beadroll_core::journal::Journal;
-use beadroll_core::journal::JournalOrder;
+use beadroll_core::journal::{Journal, JournalOrder};
 use beadroll_core::query::Edges;
 use beadroll_core::replay::replay;
 use beadroll_test_support::events::journal;

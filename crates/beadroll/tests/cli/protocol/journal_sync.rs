@@ -14,8 +14,7 @@ mod stalls;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
-use beadroll_test_support::{Machine, Sandbox, git};
-use beadroll_test_support::{executable, git_on_path, shell_quoted};
+use beadroll_test_support::{Machine, Sandbox, executable, git, git_on_path, shell_quoted};
 
 /// Where a test wrapper pauses relative to its git command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -6,8 +6,7 @@ use std::ffi::OsStr;
 
 use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Format, Object, Value};
-use beadroll_git::KillScope;
-use beadroll_git::{Ended, PushOutcome, blob_tree_id, push_outcome};
+use beadroll_git::{Ended, KillScope, PushOutcome, blob_tree_id, push_outcome};
 use beadroll_store::{
     Fired, attempt_path, encode_events, hex_token, relative, repair_tail, segment_files,
 };

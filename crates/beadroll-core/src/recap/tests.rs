@@ -8,13 +8,11 @@ use std::collections::BTreeSet;
 
 use super::{Window, joined, unseen};
 use crate::id::EventId;
-use crate::journal::Journal;
-use crate::journal::JournalOrder;
+use crate::journal::{Journal, JournalOrder};
 use crate::json::{Object, Value};
 use crate::order::causal_order;
 use crate::projection::Record;
-use crate::projection::tests::HistoryKind;
-use crate::projection::tests::{Rng, history};
+use crate::projection::tests::{HistoryKind, Rng, history};
 use crate::replay::tests::interleaved;
 
 /// Histories, each taken in by a store a few records at a time.

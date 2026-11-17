@@ -16,10 +16,9 @@ use beadroll_core::recap::{Window, joined, unseen};
 use beadroll_core::state::{Integrity, Issue, State};
 use beadroll_core::text::str_of;
 use beadroll_core::time::event_time;
-use beadroll_store::MetadataRead;
 use beadroll_store::{
-    Mark, RecapCursor, Settings, Workspace, home_stores, load_journal, machine_aliases,
-    view_outline,
+    Mark, MetadataRead, RecapCursor, Settings, Workspace, home_stores, load_journal,
+    machine_aliases, view_outline,
 };
 
 use self::layout::{activity, time};

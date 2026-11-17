@@ -2,8 +2,7 @@
 //! cannot override its id, status or comments.
 
 use beadroll_core::event::payload_problem;
-use beadroll_core::journal::Journal;
-use beadroll_core::journal::JournalOrder;
+use beadroll_core::journal::{Journal, JournalOrder};
 use beadroll_core::replay::replay;
 use beadroll_test_support::json;
 

@@ -5,8 +5,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::process::Command;
 use std::time::Duration;
 
-use beadroll_git::KillScope;
-use beadroll_git::{Env, Error};
+use beadroll_git::{Env, Error, KillScope};
 
 fn alive(pid: i32) -> bool {
     rustix::process::Pid::from_raw(pid)

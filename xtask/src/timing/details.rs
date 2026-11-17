@@ -10,8 +10,7 @@
 //! detail alone, and the lookup now and before. Replay is not measured. The fastest of [`RUNS`]
 //! runs counts. Evidence, never a gate.
 
-use beadroll_core::journal::Journal;
-use beadroll_core::journal::JournalOrder;
+use beadroll_core::journal::{Journal, JournalOrder};
 use beadroll_core::json::{Object, Value};
 use beadroll_core::replay::replay;
 use beadroll_core::state::{Edge, Issue, State, Target};

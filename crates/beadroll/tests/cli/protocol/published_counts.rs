@@ -1,8 +1,6 @@
 //! Publication counts must describe the locked round, before another process writes offline.
 
-use beadroll_test_support::parse_json;
-
-use beadroll_test_support::{Gate, beside};
+use beadroll_test_support::{Gate, beside, parse_json};
 
 #[test]
 fn writes_after_the_sync_round_remain_unpublished() {

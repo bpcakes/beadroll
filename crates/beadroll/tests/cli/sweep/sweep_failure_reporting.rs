@@ -7,8 +7,7 @@ use super::call::Rc;
 use super::sweep::{Report, selected, verdict};
 use super::{FAULTS, SLICE, Schedule, Variant, fault_fired, schedule};
 use crate::sweep::FaultProgress;
-use crate::sweep::sweep::Execution;
-use crate::sweep::sweep::ScheduleSet;
+use crate::sweep::sweep::{Execution, ScheduleSet};
 
 /// Whether a synthetic sweep report contains a failure.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

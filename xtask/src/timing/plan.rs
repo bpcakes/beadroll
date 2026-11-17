@@ -12,8 +12,7 @@ use std::time::Instant;
 
 use beadroll_core::import::dry_run::problems;
 use beadroll_core::import::{plan_import, read_records};
-use beadroll_core::journal::Journal;
-use beadroll_core::journal::JournalOrder;
+use beadroll_core::journal::{Journal, JournalOrder};
 use beadroll_core::json::{Format, Object, Value, write};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;

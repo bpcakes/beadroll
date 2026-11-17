@@ -3,8 +3,9 @@
 
 use beadroll_core::json::Value;
 use beadroll_core::state::State;
-use beadroll_store::PublicationState;
-use beadroll_store::{Actor, Workspace, attempt_path, remove, write_attempt_file};
+use beadroll_store::{
+    Actor, PublicationState, Workspace, attempt_path, remove, write_attempt_file,
+};
 
 use super::{Spent, Tx};
 use crate::error::{Error, OWN_CHAIN};

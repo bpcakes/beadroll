@@ -15,8 +15,9 @@ use beadroll_core::recap::joined;
 use beadroll_core::text::printed_text;
 use beadroll_git::IoError;
 
-use crate::FileMode;
-use crate::{Error, Settings, Unreadable, Workspace, dir_entries, private_dir, read_json_text};
+use crate::{
+    Error, FileMode, Settings, Unreadable, Workspace, dir_entries, private_dir, read_json_text,
+};
 
 /// The cursor's file, in `BEAD_HOME`. Its name starts with a dot, which no workspace id can, so no
 /// store is ever taken for it, nor it for a store.
