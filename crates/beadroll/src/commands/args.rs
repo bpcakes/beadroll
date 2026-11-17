@@ -11,7 +11,7 @@ use beadroll_core::json::{Int, Object, Value};
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::{is_space, repr_bytes};
 
-use super::{Failure, parse_priority, read_utf8, resolve};
+use super::{Failure, issue_not_found, parse_priority, priority_out_of_range, read_utf8, resolve};
 
 /// Whether command-line text can be encoded in an event. It travels with the text from where the
 /// argument is read to the [`encodable`] check after the event is emitted.
@@ -150,11 +150,7 @@ pub(crate) fn rpartition(spec: &OsStr, sep: u8) -> (&OsStr, &OsStr) {
 pub(crate) fn resolve_arg<'s>(st: &'s State, key: &OsStr) -> Result<&'s Issue, Failure> {
     match key.to_str() {
         Some(key) => resolve(st, key),
-        None => {
-            let mut message = b"Issue not found: ".to_vec();
-            message.extend_from_slice(key.as_bytes());
-            Err(Failure::bytes(Code::IssueNotFound, message))
-        }
+        None => Err(issue_not_found(key.as_bytes())),
     }
 }
 
@@ -162,10 +158,7 @@ pub(crate) fn resolve_arg<'s>(st: &'s State, key: &OsStr) -> Result<&'s Issue, F
 pub(crate) fn parse_priority_arg(value: &OsStr) -> Result<i64, Failure> {
     match value.to_str() {
         Some(value) => parse_priority(value),
-        None => Err(Failure::new(
-            Code::Validation,
-            format!("priority must be 0-4, got {}", repr_bytes(value.as_bytes())),
-        )),
+        None => Err(priority_out_of_range(&repr_bytes(value.as_bytes()))),
     }
 }
 

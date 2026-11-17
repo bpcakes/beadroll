@@ -305,7 +305,15 @@ pub(crate) fn need_tracker(st: &State) -> Result<(), Failure> {
 /// The issue a key (or a bare suffix) names.
 pub(crate) fn resolve<'s>(st: &'s State, key: &str) -> Result<&'s Issue, Failure> {
     st.resolve(key)
-        .ok_or_else(|| Failure::new(Code::IssueNotFound, format!("Issue not found: {key}")))
+        .ok_or_else(|| issue_not_found(key.as_bytes()))
+}
+
+/// `ISSUE_NOT_FOUND` for `key` as it was given, bytes that may not all be UTF-8: the one message
+/// every lookup of an issue fails with.
+pub(crate) fn issue_not_found(key: &[u8]) -> Failure {
+    let mut message = b"Issue not found: ".to_vec();
+    message.extend_from_slice(key);
+    Failure::bytes(Code::IssueNotFound, message)
 }
 
 /// A priority given as `0`-`4` or `P0`-`P4`.
@@ -313,11 +321,16 @@ pub(crate) fn parse_priority(value: &str) -> Result<i64, Failure> {
     let digits = value.strip_prefix(['P', 'p']).unwrap_or(value);
     match digits.as_bytes() {
         [d @ b'0'..=b'4'] => Ok(i64::from(d - b'0')),
-        _ => Err(Failure::new(
-            Code::Validation,
-            format!("priority must be 0-4, got {}", repr_str(value)),
-        )),
+        _ => Err(priority_out_of_range(&repr_str(value))),
     }
+}
+
+/// `VALIDATION` for a priority that is not one of `0`-`4`, `shown` as an error shows the value.
+pub(crate) fn priority_out_of_range(shown: &str) -> Failure {
+    Failure::new(
+        Code::Validation,
+        format!("priority must be 0-4, got {shown}"),
+    )
 }
 
 /// Comma-separated lists, flattened, each item stripped, empty ones dropped.
