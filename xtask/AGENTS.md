@@ -90,7 +90,8 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
   or delete that ends a claim peaks where the claim did (neither holds a transaction beside a
   state), and that every command, answering or failing, returns holding none of the tracker
   (`run_with` and the libraries free).
-- `src/hygiene.rs`: the repository lint (a test only).
+- `src/hygiene.rs`: the repository lint (a test only): no private names in tracked files, and no
+  lint exemption on an item but the two `CONTRIBUTING.md` accepts.
 - `src/ci.rs`: `v8_supported_environments`, the CI matrix the workflows keep,
   `x15_growth_guards`, the nightly step that runs the growth guards, `coverage_report`, the
   nightly job that makes the coverage report with the cargo-llvm-cov `CARGO_LLVM_COV` names and

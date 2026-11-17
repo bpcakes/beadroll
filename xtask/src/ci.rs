@@ -300,31 +300,36 @@ mod coverage_report {
         )
     }
 
+    /// Every edit of `spoiled`, each of the nightly workflow with what `problems` must then say of
+    /// it, is found among the problems of the workflow it gives.
+    fn each_is_found(spoiled: impl IntoIterator<Item = (&'static str, String)>) {
+        for (expected, workflow) in spoiled {
+            let found = problems(&workflow);
+            assert!(
+                found.iter().any(|problem| problem.contains(expected)),
+                "{expected:?} not found among {found:?}"
+            );
+        }
+    }
+
+    /// The nightly workflow with `from` replaced by `to` in its coverage job.
+    fn coverage_edited(from: &str, to: &str) -> String {
+        edited(&read(NIGHTLY), "coverage", from, to)
+    }
+
+    /// The job runs the whole coverage, stress and sweep included, fails when it fails, has its
+    /// tools, and runs on Linux on every schedule.
     #[test]
-    #[allow(
-        clippy::too_many_lines,
-        reason = "a table of edits, one for each way to spoil the job"
-    )]
-    fn every_way_of_spoiling_the_job_is_found() {
+    fn every_way_of_spoiling_how_the_job_runs_is_found() {
         let nightly = read(NIGHTLY);
         let coverage = job(&nightly, "coverage").expect("the job");
         let run = "run: cargo --locked xtask coverage --stress --sweep";
-        let upload = steps(coverage)
-            .into_iter()
-            .find(|step| step.contains("upload-artifact"))
-            .expect("the upload step");
         let timeout = (coverage.lines())
             .find(|line| line.starts_with("    timeout-minutes: "))
             .expect("a timeout");
-        let change = |from: &str, to: &str| edited(&nightly, "coverage", from, to);
-        let moved = {
-            // the upload step now ends the file, in the slow job
-            let without = change(upload, "");
-            format!("{}\n{upload}", without.trim_end())
-        };
+        let change = coverage_edited;
         let runs_on = "    runs-on: ubuntu-latest\n";
-        let cancelled = "        if: ${{ !cancelled() }}\n";
-        let spoiled = [
+        each_is_found([
             ("exit status", change(run, &format!("{run} || true"))),
             ("exit status", change(run, &format!("{run}; true"))),
             (
@@ -374,15 +379,6 @@ mod coverage_report {
                 ),
             ),
             (
-                "lost when a suite fails",
-                change(cancelled, "        if: ${{ success() }}\n"),
-            ),
-            // the condition only in a comment
-            (
-                "lost when a suite fails",
-                change(cancelled, "        # if: ${{ !cancelled() }}\n"),
-            ),
-            (
                 "runs only on a condition",
                 change(
                     runs_on,
@@ -398,6 +394,36 @@ mod coverage_report {
             (
                 "does not run on ubuntu-latest",
                 change(runs_on, "    runs-on: macos-latest\n"),
+            ),
+        ]);
+    }
+
+    /// The job keeps its report whatever its suites did: uploaded by itself, under its name, with
+    /// both of its files, for thirty days.
+    #[test]
+    fn every_way_of_losing_the_coverage_report_is_found() {
+        let nightly = read(NIGHTLY);
+        let coverage = job(&nightly, "coverage").expect("the job");
+        let upload = steps(coverage)
+            .into_iter()
+            .find(|step| step.contains("upload-artifact"))
+            .expect("the upload step");
+        let change = coverage_edited;
+        let moved = {
+            // the upload step now ends the file, in the slow job
+            let without = change(upload, "");
+            format!("{}\n{upload}", without.trim_end())
+        };
+        let cancelled = "        if: ${{ !cancelled() }}\n";
+        each_is_found([
+            (
+                "lost when a suite fails",
+                change(cancelled, "        if: ${{ success() }}\n"),
+            ),
+            // the condition only in a comment
+            (
+                "lost when a suite fails",
+                change(cancelled, "        # if: ${{ !cancelled() }}\n"),
             ),
             (
                 "no `target/coverage/lcov.info`",
@@ -420,14 +446,7 @@ mod coverage_report {
                 change("name: coverage-report", "name: report"),
             ),
             ("not uploaded by this job", moved),
-        ];
-        for (expected, workflow) in spoiled {
-            let found = problems(&workflow);
-            assert!(
-                found.iter().any(|problem| problem.contains(expected)),
-                "{expected:?} not found among {found:?}"
-            );
-        }
+        ]);
     }
 
     #[test]
