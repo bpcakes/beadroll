@@ -23,6 +23,11 @@ struct Reaudit {
     key: String,
 }
 
+/// The network timeout of a command that gives up on a push the hook holds. A loaded machine
+/// stretches the push's way to the hook past a fraction of a second; the hook holds it until the
+/// test releases it (up to 20 seconds), however long this is.
+const GIVE_UP: &str = "2";
+
 fn setup() -> Reaudit {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
@@ -75,12 +80,13 @@ impl Reaudit {
     }
 
     /// The `try` block of the delayed-push test: a claim, then a sync, each giving up on a push
-    /// the hook holds, leave the attempt pending and the claim unseen; local work goes on.
+    /// the hook holds, leave the attempt pending and the claim unseen; local work goes on. Each
+    /// gives up after [`GIVE_UP`], which has to outlast the push's way to the hook.
     fn stalled_claim_stays_pending(&self, started: &Path, finished: &Path) {
         let result = self
             .a
             .cmd(["claim", &self.key, "--json"])
-            .env("BEAD_NET_TIMEOUT", "0.3")
+            .env("BEAD_NET_TIMEOUT", GIVE_UP)
             .run();
         assert_eq!(result.returncode(), 1, "{}", result.stderr);
         let answer = code(&result);
@@ -100,7 +106,7 @@ impl Reaudit {
         let stalled = self
             .a
             .cmd(["sync", "--json"])
-            .env("BEAD_NET_TIMEOUT", "0.3")
+            .env("BEAD_NET_TIMEOUT", GIVE_UP)
             .run();
         assert_eq!(stalled.returncode(), 1, "{}", stalled.stdout);
         assert_eq!(code(&stalled), "REMOTE_UNREACHABLE");
