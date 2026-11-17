@@ -101,7 +101,8 @@ pub struct Workspace {
     pub name: Option<OsString>,
     /// The checkout's origin URL, as configured: where `git push origin` goes (its first push URL,
     /// else its first URL), a relative path as written, which git reads from the top of the
-    /// checkout, where bead runs it.
+    /// checkout, where bead runs it. `None` when there is none, never empty: [`Workspace::new`] takes
+    /// an empty one for none.
     pub origin: Option<OsString>,
     /// Whether that is origin's own push URL (`remote.origin.pushurl`), which git pushes to as
     /// configured, without `pushInsteadOf`.
@@ -128,7 +129,7 @@ type MetaRead = Result<Arc<Metadata>, String>;
 
 impl Workspace {
     /// The workspace `id` (an opaque token, never a path) of a checkout named `name` with `origin`
-    /// and tracked configuration `config`.
+    /// (an empty one is none) and tracked configuration `config`.
     pub fn new(
         settings: Arc<Settings>,
         id: &str,
@@ -146,7 +147,7 @@ impl Workspace {
         Ok(Workspace {
             id: id.to_owned(),
             name,
-            origin,
+            origin: origin.filter(|origin| !origin.is_empty()),
             origin_push: false,
             config,
             derived: None,

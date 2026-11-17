@@ -76,7 +76,7 @@ impl Workspace {
     /// forge serves alike and the URL-derived id already takes for one; two local paths are origin
     /// only spelled alike, since `x` and `x.git` are two repositories.
     pub(crate) fn is_origin_chosen(&self, chosen: &OsStr) -> Result<bool, Error> {
-        let Some(origin) = self.origin.clone().filter(|origin| !origin.is_empty()) else {
+        let Some(origin) = self.origin.clone() else {
             return Ok(false);
         };
         if chosen == "origin" {
@@ -102,7 +102,7 @@ impl Workspace {
     /// spellings taken for one place. A relative path typed just now (`typed`) is read from where
     /// it was typed, a path of its own.
     pub fn is_origin_url(&self, value: &OsStr, typed: RemoteSource) -> bool {
-        let Some(origin) = self.origin.as_deref().filter(|origin| !origin.is_empty()) else {
+        let Some(origin) = self.origin.as_deref() else {
             return false;
         };
         let relative = is_local_path(value) && !value.as_bytes().starts_with(b"/");
@@ -233,7 +233,7 @@ impl Workspace {
     /// as the name `origin` given ([`Workspace::resolve_endpoint`]); `None` when the checkout has
     /// none.
     pub fn origin_endpoint(&self) -> Option<Endpoint> {
-        let origin = self.origin.clone().filter(|origin| !origin.is_empty())?;
+        let origin = self.origin.clone()?;
         Some(Endpoint {
             url: without_password(&origin).0,
             own_push_url: self.origin_push,

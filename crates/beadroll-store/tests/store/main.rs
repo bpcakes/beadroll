@@ -10,6 +10,7 @@ mod names;
 mod replay;
 mod settings;
 mod storage;
+mod workspace;
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
