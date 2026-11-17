@@ -5,11 +5,13 @@
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use beadroll_store::glob_ending;
-use beadroll_test_support::{Json, Machine, Sandbox, code, git, parse_json};
-use beadroll_test_support::{executable, git_on_path, shell_quoted};
+use beadroll_test_support::{
+    Json, Machine, Sandbox, code, executable, git, git_on_path, parse_json, shell_quoted,
+    wait_until,
+};
 
 /// The hook that stops a command after the remote took its push, before bead hears back.
 const CRASH_AFTER_PUSH: &str = "BEAD_TEST_CRASH_AFTER_PUSH";
@@ -193,19 +195,8 @@ fn delayed_push_after_timeout_and_absent_fetch_must_not_fork() {
     let released = Touch(release);
     s.stalled_claim_stays_pending(&started, &finished);
     drop(released); // the `finally`: release the hook, then wait for a push to land
-    let deadline = Instant::now() + Duration::from_secs(30);
-    let mut current = String::new();
-    while Instant::now() < deadline {
-        current = s.remote_tip();
-        if current != previous_tip {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    assert_ne!(
-        current, previous_tip,
-        "fault injection did not produce a delayed successful push"
-    );
+    let landed = || s.remote_tip() != previous_tip;
+    wait_until("the delayed push to land", Duration::from_secs(30), landed);
     s.sandbox.await_remote_settled(); // the losing receive-packs finish failing
     let recovered = s.a.run(["sync", "--json"]);
     assert_eq!(

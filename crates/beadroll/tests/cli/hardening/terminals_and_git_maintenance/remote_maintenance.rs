@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use beadroll_test_support::{Machine, Sandbox, git};
+use beadroll_test_support::{Machine, Sandbox, git, within};
 
 use super::{Outcome, converge_and_compare, mixed_ops};
 
@@ -56,10 +56,8 @@ struct RemoteGc(PathBuf);
 
 impl RemoteGc {
     fn wait(&self) {
-        let deadline = Instant::now() + Duration::from_secs(20);
-        while self.0.join("gc.pid").exists() && Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(100));
-        }
+        // a cleanup: a gc still running after its time is left to the sandbox, not a failure
+        within(Duration::from_secs(20), || !self.0.join("gc.pid").exists());
     }
 }
 

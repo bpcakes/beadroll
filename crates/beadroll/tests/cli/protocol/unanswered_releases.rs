@@ -4,13 +4,12 @@
 //! and built again, once.
 
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use beadroll_store::glob_ending;
-use beadroll_test_support::{Machine, Run, Sandbox, git};
-use beadroll_test_support::{executable, shell_quoted};
-
-use beadroll_test_support::{Gate, beside};
+use beadroll_test_support::{
+    Gate, Machine, Run, Sandbox, beside, executable, git, shell_quoted, within,
+};
 
 /// Machine `NAME-a`'s tracker with one issue, "release target", synced to machine `NAME-b`, and
 /// then claimed by machine a: both machines (made by `make`) and the issue's key.
@@ -94,11 +93,9 @@ fn timed_out_accepted_release_returns_success() {
             // bead gave up on the push and waits between rounds: the push lands now
             between.meet(finished, || {
                 std::fs::write(&go, b"").unwrap();
-                let deadline = Instant::now() + Duration::from_secs(60);
-                while remote_kinds(&sandbox).len() == before.len() && Instant::now() < deadline {
-                    std::thread::sleep(Duration::from_millis(10));
-                }
-                remote_kinds(&sandbox).len() > before.len()
+                within(Duration::from_secs(60), || {
+                    remote_kinds(&sandbox).len() > before.len()
+                })
             })
         },
     );
