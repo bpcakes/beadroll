@@ -9,7 +9,7 @@ use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_test_support::{Json, Machine, code, json, parse_json};
 
-use super::{jsonl, machine, record};
+use super::fixtures::{jsonl, machine, record};
 use beadroll_test_support::printed_id;
 
 /// F07: non-UTF-8 titles and description files return a JSON error and store nothing.
@@ -130,7 +130,7 @@ fn incremental_mutual_import_matches_one_shot() {
 }
 
 /// F09: a dependency removed before its target exists does not reappear, and does not cycle (the
-/// command-line subtests; the replay one is beadroll-core's `commands::review6`).
+/// command-line subtests; the replay one is beadroll-core's `commands::dangling_dependencies`).
 #[test]
 fn f09_dangling_dependency_can_be_retracted_before_its_target_exists() {
     let sandbox = crate::sandbox();

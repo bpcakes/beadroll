@@ -9,7 +9,7 @@ use std::process::{Command, Output, Stdio};
 
 use beadroll_test_support::{Machine, Run, parse_json};
 
-use super::{machine, metas};
+use super::fixtures::{machine, metas};
 use beadroll_test_support::printed_id;
 
 /// The permission bits of `path`: `stat.S_IMODE(path.stat().st_mode)`.

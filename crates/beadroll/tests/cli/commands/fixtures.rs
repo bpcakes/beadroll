@@ -1,29 +1,20 @@
-//! Regression tests for findings F01–F16 and verified properties (`docs/FINDINGS.md`), grouped by
-//! subject. F09's replay checks are in beadroll-core (`tests/core/commands.rs`); F14 and
-//! clock-skew checks use the `clock` failpoint.
+//! Fixtures the command modules share: a machine with a tracker, an issue's operations, the files
+//! of a store, and Beads records to import.
 
 use std::path::{Path, PathBuf};
 
 use beadroll_core::json::{Format, Object, write};
 use beadroll_test_support::{Json, Machine, Sandbox, json};
 
-mod clock;
-mod git_helper;
-mod input;
-mod output;
-mod receipts;
-mod remotes;
-mod store;
-
 /// A machine `name` whose tracker is initialised, prefix `ex`.
-fn machine(sandbox: &Sandbox, name: &str) -> Machine {
+pub(crate) fn machine(sandbox: &Sandbox, name: &str) -> Machine {
     let machine = Machine::new(sandbox, name);
     machine.bead(["init", "--prefix", "ex"]);
     machine
 }
 
 /// `ops`: the operation of each of `key`'s events, as `bead log KEY --limit 0` lists them.
-fn ops(machine: &Machine, key: &str) -> Vec<String> {
+pub(crate) fn ops(machine: &Machine, key: &str) -> Vec<String> {
     let log = machine.bead(["log", key, "--limit", "0"]).expect("a log");
     let events = log.as_array().expect("bead log prints a list");
     events
@@ -33,13 +24,13 @@ fn ops(machine: &Machine, key: &str) -> Vec<String> {
 }
 
 /// The number of occurrences of `op` in `ops`.
-fn count(ops: &[String], op: &str) -> usize {
+pub(crate) fn count(ops: &[String], op: &str) -> usize {
     ops.iter().filter(|each| *each == op).count()
 }
 
 /// The entries of `dir` whose names end with `suffix`, in directory order:
 /// none when `dir` is not there.
-fn glob(dir: &Path, suffix: &str) -> Vec<PathBuf> {
+pub(crate) fn glob(dir: &Path, suffix: &str) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
@@ -53,7 +44,7 @@ fn glob(dir: &Path, suffix: &str) -> Vec<PathBuf> {
 }
 
 /// The `meta.json` of each store in `machine`'s home, in directory order.
-fn metas(machine: &Machine) -> Vec<PathBuf> {
+pub(crate) fn metas(machine: &Machine) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(machine.home()) else {
         return Vec::new();
     };
@@ -64,7 +55,7 @@ fn metas(machine: &Machine) -> Vec<PathBuf> {
 }
 
 /// `COMMON`: the fields every Beads record these tests import carries.
-fn common() -> Json {
+pub(crate) fn common() -> Json {
     json!({
         "status": "open",
         "priority": 2,
@@ -76,7 +67,7 @@ fn common() -> Json {
 }
 
 /// The Beads record `{"id": KEY, "title": TITLE, **COMMON}`, then the members of `more`.
-fn record(key: &str, title: &str, more: Json) -> Json {
+pub(crate) fn record(key: &str, title: &str, more: Json) -> Json {
     let mut members = Object::new();
     members.insert("id".into(), Json::from(key));
     members.insert("title".into(), Json::from(title));
@@ -90,7 +81,7 @@ fn record(key: &str, title: &str, more: Json) -> Json {
 }
 
 /// Records as spaced, ASCII-escaped JSON, each followed by a newline.
-fn jsonl(records: &[Json]) -> String {
+pub(crate) fn jsonl(records: &[Json]) -> String {
     records
         .iter()
         .map(|record| write(record, Format::ASCII).expect("a record bead can read") + "\n")
