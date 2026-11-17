@@ -80,9 +80,35 @@ pub fn claim_keys(ws: &Workspace, files: &Arc<[PathBuf]>) -> Arc<[Option<FileKey
     ws.claims.borrow_mut().keys(files, ws.lock_state())
 }
 
+/// The folder of this machine's ownership attempts the remote has not confirmed, each beside the
+/// receipt of the command that made it.
+pub fn pending_dir(ws: &Workspace) -> PathBuf {
+    ws.dir.join("pending")
+}
+
 /// This machine's own ownership attempts the remote has not confirmed. Never read as events.
 pub fn pending_files(ws: &Workspace) -> Vec<PathBuf> {
-    glob_ending(&ws.dir.join("pending"), ".json")
+    glob_ending(&pending_dir(ws), ".json")
+}
+
+/// The receipts in [`pending_dir`]: what each command that made an attempt answered.
+pub fn receipt_files(ws: &Workspace) -> Vec<PathBuf> {
+    glob_ending(&pending_dir(ws), ".command")
+}
+
+/// An attempt's pending file and its command's receipt, both named after its first event's id;
+/// `None` for an attempt whose first event has no id, which no file can be named after.
+pub fn pending_paths(ws: &Workspace, events: &[Value]) -> Option<(PathBuf, PathBuf)> {
+    let id = events
+        .first()?
+        .get("id")?
+        .as_str()
+        .filter(|id| !id.is_empty())?;
+    let folder = pending_dir(ws);
+    Some((
+        folder.join(format!("{id}.json")),
+        folder.join(format!("{id}.command")),
+    ))
 }
 
 /// Where an attempt lives once it counts: one file, named after its first event, holding every
