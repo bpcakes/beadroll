@@ -360,7 +360,7 @@ fn apply_one(
         }
         return Ok(());
     }
-    let actor = trace.actor().filter(|actor| actor.truthy());
+    let actor = trace.actor();
     let who = actor_label(actor, trace.replica());
     let when = event_time(id.millis());
     let thread = actor

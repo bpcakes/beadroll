@@ -34,7 +34,6 @@ impl From<&Event> for HistoryEntry {
         let actor = |key: &str| {
             event
                 .actor()
-                .filter(|a| a.truthy())
                 .and_then(|a| a.get(key))
                 .cloned()
                 .unwrap_or(Value::Null)
@@ -49,7 +48,6 @@ impl From<&Event> for HistoryEntry {
             issue: event.issue().map(str::to_owned),
             branch: event
                 .place()
-                .filter(|p| p.truthy())
                 .and_then(|p| p.get("branch"))
                 .cloned()
                 .unwrap_or(Value::Null),
