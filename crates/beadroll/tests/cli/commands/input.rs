@@ -1,17 +1,21 @@
-//! F07–F09, E04, E08, U09, U11 and a verified property of F09's fix: what bead reads. Text that is
-//! not UTF-8, on the command line or in a file, is a structured error; an import checks its
-//! dependencies before it writes, fails whole on a record it cannot take (one without a creation
-//! time, or with a lone surrogate anywhere) and takes null where a field may be; a dependency taken
-//! back before its target exists stays taken back; and a mutual dependency imported in two batches
-//! is the one a single import makes.
+//! F07–F09, E04, E08, Q06, Q10, U09, U11 and a verified property of F09's fix: what bead reads.
+//! Text that is not UTF-8, on the command line or in a file, is a structured error; an import
+//! checks its dependencies before it writes, fails whole on a record it cannot take (one without a
+//! creation time, or with a lone surrogate anywhere), takes null where a field may be, and keeps a
+//! reserved field it imports from breaking the export; a dependency taken back before its target
+//! exists stays taken back; and an import split in two, or a mutual dependency imported in two
+//! batches, is the one a single import makes.
 
 use std::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
 
+use beadroll_core::json::Object;
 use beadroll_test_support::{Json, Machine, code, json, parse_json, printed_id};
 
-use super::fixtures::{STAND_IN, jsonl, machine, record, record_text, strict_json};
+use super::fixtures::{
+    STAND_IN, ascii_json, jsonl, machine, member, record, record_text, strict_json,
+};
 
 /// F07: non-UTF-8 titles and description files return a JSON error and store nothing.
 #[test]
@@ -313,4 +317,78 @@ fn u11_an_escaped_lone_surrogate_fails_the_import_wherever_it_is() {
         assert!(message.starts_with(&expected), "{name}: {message}");
     }
     assert_eq!(machine.bead(["list"]).unwrap()["issues"], json!([]));
+}
+
+/// An issue record as Q06 writes it: `id` and `title`, then the fields both of its records share.
+fn q06_issue(id: &str, title: &str) -> Object {
+    let record = json!({
+        "id": id, "title": title, "status": "open", "priority": 2, "issue_type": "task",
+        "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
+        "created_by": "seed"
+    });
+    record.as_object().unwrap().clone()
+}
+
+/// Q06: split and one-shot imports must have the same dependencies and readiness.
+#[test]
+fn q06_incremental_import_resolves_late_dependency_target() {
+    let sandbox = crate::sandbox();
+    let dep = json!({
+        "issue_id": "ex-a", "depends_on_id": "ex-b", "type": "blocks",
+        "created_at": "2026-01-01T00:00:00Z", "created_by": "seed",
+        "metadata": "{}", "thread_id": ""
+    });
+    let mut issue_a = q06_issue("ex-a", "A");
+    issue_a.insert("dependencies".into(), json!([dep]));
+    let (issue_a, issue_b) = (Json::from(issue_a), Json::from(q06_issue("ex-b", "B")));
+    let root = sandbox.root();
+    let (a_path, b_path, all_path) = (
+        root.join("q06-a.jsonl"),
+        root.join("q06-b.jsonl"),
+        root.join("q06-all.jsonl"),
+    );
+    std::fs::write(&a_path, ascii_json(&issue_a) + "\n").unwrap();
+    std::fs::write(&b_path, ascii_json(&issue_b) + "\n").unwrap();
+    let both = ascii_json(&issue_a) + "\n" + &ascii_json(&issue_b) + "\n";
+    std::fs::write(&all_path, both).unwrap();
+
+    let split = Machine::new(&sandbox, "q06-split");
+    split.bead(["init", "--prefix", "ex"]);
+    split.bead(["import", a_path.to_str().unwrap()]);
+    split.bead(["import", b_path.to_str().unwrap()]);
+    let one = Machine::new(&sandbox, "q06-one");
+    one.bead(["init", "--prefix", "ex"]);
+    one.bead(["import", all_path.to_str().unwrap()]);
+
+    assert_eq!(
+        split.export(),
+        one.export(),
+        "interchange data should already agree"
+    );
+    let (split_a, one_a) = (split.show("ex-a"), one.show("ex-a"));
+    assert_eq!(
+        member(&split_a, "dependencies"),
+        member(&one_a, "dependencies")
+    );
+    assert_eq!(member(&split_a, "blocked"), member(&one_a, "blocked"));
+    assert_eq!(split.ready(), one.ready());
+}
+
+/// Q10: an imported unknown field must not poison internal dependency bookkeeping.
+#[test]
+fn q10_reserved_dangling_extra_cannot_crash_export() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "q10-import");
+    a.bead(["init", "--prefix", "ex"]);
+    let record = json!({
+        "id": "ex-one", "title": "one", "status": "open", "priority": 2,
+        "issue_type": "task", "_dangling_dependencies": "user supplied"
+    });
+    let path = sandbox.root().join("q10.jsonl");
+    std::fs::write(&path, ascii_json(&record) + "\n").unwrap();
+    a.bead(["import", path.to_str().unwrap()]);
+    let exported = a.run(["export"]);
+    assert_eq!(exported.returncode(), 0, "{}", exported.stderr);
+    let exported = parse_json(&exported.stdout).unwrap();
+    assert_eq!(exported["_dangling_dependencies"], json!("user supplied"));
 }

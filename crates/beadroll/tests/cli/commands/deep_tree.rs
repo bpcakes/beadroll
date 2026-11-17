@@ -1,4 +1,4 @@
-//! `DeepTreeReview4`, from the fourth independent review: `dep tree` over a deep valid chain.
+//! `dep tree` over a deep valid chain does not overflow (Q08).
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
