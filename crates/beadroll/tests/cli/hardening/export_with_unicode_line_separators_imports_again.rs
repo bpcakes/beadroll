@@ -2,18 +2,12 @@
 //! CRLF line ends and blank lines between its records is read whole.
 
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, json, parse_json, printed_id};
+use beadroll_test_support::{Json, Machine, json, last_line, parse_json, printed_id};
 
 /// Titles holding U+2028, U+2029 and U+0085 (escapes only: raw ones would be split
 /// by line-based tools).
 fn titles() -> [&'static str; 3] {
     ["line\u{2028}sep", "para\u{2029}sep", "nel\u{0085}x"]
-}
-
-/// The last line of `text` that is not blank, or nothing.
-fn tail(text: &str) -> &str {
-    let mut lines = text.trim().split('\n');
-    lines.rfind(|line| !line.trim().is_empty()).unwrap_or("")
 }
 
 /// G31: `export` writes U+2028/U+2029/U+0085 raw inside JSON strings (valid JSONL), but `import`
@@ -49,7 +43,7 @@ fn own_export_with_unicode_line_separators_imports_again() {
         proc.returncode(),
         0,
         "bead could not import its own export: {}",
-        tail(&proc.stderr)
+        last_line(&proc.stderr)
     );
     // (--offline: the result also counts the unpublished)
     let imported = parse_json(&proc.stdout).unwrap();
@@ -103,7 +97,7 @@ fn init_import_of_a_br_export_with_a_raw_line_separator() {
         proc.returncode(),
         0,
         "init --import refused a valid br export: {}",
-        tail(&proc.stderr)
+        last_line(&proc.stderr)
     );
     let imported = parse_json(&proc.stdout).unwrap();
     assert_eq!(imported["imported"].as_i64(), Some(2), "{}", proc.stdout);

@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, json, parse_json};
+use beadroll_test_support::{Json, Machine, json, last_line, parse_json};
 
 /// What stands for the lone surrogate U+D800 in a title until the line is bytes: a Rust string
 /// cannot hold one.
@@ -42,15 +42,6 @@ fn raw_line(event: &Json) -> Vec<u8> {
     [before.as_bytes(), b"\xed\xa0\x80", after.as_bytes()].concat()
 }
 
-/// The last line of `text` that is not blank: `_g57_tail`.
-fn tail(text: &str) -> &str {
-    let mut lines = text
-        .trim()
-        .split('\n')
-        .filter(|line| !line.trim().is_empty());
-    lines.next_back().unwrap_or_default()
-}
-
 /// G57: a journal line whose text holds a lone surrogate (escaped `\ud800`, or the raw bytes
 /// ED A0 80; bead itself refuses to write one) is not UTF-8 text, so it is no event: it is
 /// reported under `integrity`, its issue is nowhere, and `export -o` and `export` to standard
@@ -76,7 +67,11 @@ fn export_survives_a_lone_surrogate_in_a_journal() {
     }
     let out = sandbox.root().join("out.jsonl");
     let proc = m.run(["export", "-o", out.to_str().unwrap(), "--json"]);
-    assert!(!proc.crashed(), "export -o crashed: {}", tail(&proc.stderr));
+    assert!(
+        !proc.crashed(),
+        "export -o crashed: {}",
+        last_line(&proc.stderr)
+    );
     assert_eq!(proc.returncode(), 0, "{}", proc.stderr);
     let written = std::fs::read(&out).unwrap();
     let text = std::str::from_utf8(&written).expect("export -o wrote UTF-8");

@@ -9,11 +9,10 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, code, git, parse_json};
+use beadroll_test_support::{Json, Machine, code, git, parse_json, path_text};
 
 use super::{
-    alias_both_ways, commit, commit_tracked_file, json, mirror, set_origin, text, titles,
-    tracked_file,
+    alias_both_ways, commit, commit_tracked_file, json, mirror, set_origin, titles, tracked_file,
 };
 
 /// `store`'s `meta.json` saying that it last went through `remote`, as an older bead left it.
@@ -34,7 +33,7 @@ pub(super) fn save_remote(store: &Path, remote: &str) {
 fn init_tracked_given_origins_url_stores_its_name() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
-    let origin = text(sandbox.origin());
+    let origin = path_text(sandbox.origin());
     json(
         &a,
         &["init", "--tracked", "--prefix", "ex", "--remote", origin],
@@ -47,7 +46,7 @@ fn init_tracked_given_origins_url_stores_its_name() {
     json(&a, &["create", "after the move"]);
     let synced = json(&a, &["sync"]);
     let resolved = moved.canonicalize().expect("the moved remote");
-    assert_eq!(synced["remote"].as_str(), Some(text(&resolved)));
+    assert_eq!(synced["remote"].as_str(), Some(path_text(&resolved)));
     let b = Machine::new(&sandbox, "b");
     set_origin(&b, &moved);
     commit(&a, &["push", "-q", "origin", "HEAD:main"]);
@@ -63,7 +62,7 @@ fn a_tracked_origin_resolves_to_where_git_pushes() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
     let pushed = sandbox.bare("push.git");
-    let push_url = ["remote", "set-url", "--push", "origin", text(&pushed)];
+    let push_url = ["remote", "set-url", "--push", "origin", path_text(&pushed)];
     git(push_url, Some(a.checkout()));
     let init = [
         "init",
@@ -71,17 +70,17 @@ fn a_tracked_origin_resolves_to_where_git_pushes() {
         "--prefix",
         "ex",
         "--remote",
-        text(&pushed),
+        path_text(&pushed),
     ];
     json(&a, &init);
     assert_eq!(tracked_file(&a)["remote"].as_str(), Some("origin"));
     json(&a, &["create", "coordinated"]);
     let synced = json(&a, &["sync"]);
     let resolved = pushed.canonicalize().expect("the push remote");
-    assert_eq!(synced["remote"].as_str(), Some(text(&resolved)));
+    assert_eq!(synced["remote"].as_str(), Some(path_text(&resolved)));
     let fetched = [
         "--git-dir",
-        text(sandbox.origin()),
+        path_text(sandbox.origin()),
         "for-each-ref",
         "refs/beads",
     ];
@@ -128,18 +127,24 @@ fn a_tracked_remote_saved_as_git_rewrote_it_is_still_the_same_remote() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
     let tracker = sandbox.bare("tracker.git");
-    let rewrite = format!("url.{}/.insteadOf", text(sandbox.root()));
+    let rewrite = format!("url.{}/.insteadOf", path_text(sandbox.root()));
     commit(&a, &["config", &rewrite, "company:"]);
     commit(&a, &["remote", "add", "tracker", "company:tracker.git"]);
     let init = ["init", "--tracked", "--prefix", "ex", "--remote", "tracker"];
     let store = PathBuf::from(json(&a, &init)["path"].as_str().expect("a path"));
-    save_remote(&store, text(&tracker));
+    save_remote(&store, path_text(&tracker));
     let synced = a.run(["sync", "--json"]);
     assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
     let elsewhere = sandbox.bare("elsewhere.git");
-    let push_url = ["remote", "set-url", "--push", "tracker", text(&elsewhere)];
+    let push_url = [
+        "remote",
+        "set-url",
+        "--push",
+        "tracker",
+        path_text(&elsewhere),
+    ];
     commit(&a, &push_url);
-    save_remote(&store, text(&tracker));
+    save_remote(&store, path_text(&tracker));
     assert_eq!(code(&a.run(["sync", "--json"])), "CONFIG");
 }
 
@@ -159,7 +164,7 @@ fn a_checkout_whose_name_ends_in_a_space_reaches_its_remote() {
     assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
     let refs = [
         "--git-dir",
-        text(sandbox.origin()),
+        path_text(sandbox.origin()),
         "for-each-ref",
         "refs/beads",
     ];
@@ -174,7 +179,10 @@ fn a_remote_url_that_names_another_remote_is_still_a_path() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
     let inside = a.checkout().join("origin");
-    git(["init", "-q", "--bare", "-b", "main", text(&inside)], None);
+    git(
+        ["init", "-q", "--bare", "-b", "main", path_text(&inside)],
+        None,
+    );
     commit(&a, &["remote", "add", "tracker", "origin"]);
     let init = [
         "init",
@@ -189,7 +197,7 @@ fn a_remote_url_that_names_another_remote_is_still_a_path() {
     assert_eq!(run.returncode(), 0, "{}", run.stderr);
     let refs = |remote: &Path| {
         git(
-            ["--git-dir", text(remote), "for-each-ref", "refs/beads"],
+            ["--git-dir", path_text(remote), "for-each-ref", "refs/beads"],
             None,
         )
     };
@@ -219,7 +227,12 @@ fn a_typed_relative_path_is_read_from_where_it_was_typed() {
     let sync = ["sync", "--remote", "../tracker.git", "--json"];
     let synced = a.cmd(sync).cwd(&below).run();
     assert_ne!(synced.returncode(), 0, "{}", synced.stdout);
-    let refs = ["--git-dir", text(&beside), "for-each-ref", "refs/beads"];
+    let refs = [
+        "--git-dir",
+        path_text(&beside),
+        "for-each-ref",
+        "refs/beads",
+    ];
     assert_eq!(
         git(refs, None),
         "",
@@ -234,13 +247,18 @@ fn a_remote_name_an_older_bead_saved_is_that_remote() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
     let tracker = sandbox.bare("tracker.git");
-    commit(&a, &["remote", "add", "tracker", text(&tracker)]);
+    commit(&a, &["remote", "add", "tracker", path_text(&tracker)]);
     let init = json(&a, &["init", "--prefix", "ex", "--offline"]);
     let store = PathBuf::from(init["path"].as_str().expect("a path"));
     save_remote(&store, "tracker");
     let synced = a.run(["sync", "--json"]);
     assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
-    let refs = ["--git-dir", text(&tracker), "for-each-ref", "refs/beads"];
+    let refs = [
+        "--git-dir",
+        path_text(&tracker),
+        "for-each-ref",
+        "refs/beads",
+    ];
     assert_ne!(
         git(refs, None),
         "",
@@ -256,8 +274,8 @@ fn a_tracked_remote_pushed_to_otherwise_is_a_change() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
     let tracker = sandbox.bare("tracker.git");
-    let own = format!("file://{}", text(&tracker));
-    commit(&a, &["remote", "add", "tracker", text(&tracker)]);
+    let own = format!("file://{}", path_text(&tracker));
+    commit(&a, &["remote", "add", "tracker", path_text(&tracker)]);
     commit(&a, &["remote", "set-url", "--push", "tracker", &own]);
     json(
         &a,
@@ -279,14 +297,17 @@ fn init_given_a_remotes_name_that_is_also_origins_path_reaches_the_remote() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
     let inside = a.checkout().join("tracker");
-    git(["init", "-q", "--bare", "-b", "main", text(&inside)], None);
+    git(
+        ["init", "-q", "--bare", "-b", "main", path_text(&inside)],
+        None,
+    );
     set_origin(&a, &inside);
     let named = sandbox.bare("named.git");
-    commit(&a, &["remote", "add", "tracker", text(&named)]);
+    commit(&a, &["remote", "add", "tracker", path_text(&named)]);
     json(&a, &["init", "--prefix", "ex", "--remote", "tracker"]);
     let refs = |remote: &Path| {
         git(
-            ["--git-dir", text(remote), "for-each-ref", "refs/beads"],
+            ["--git-dir", path_text(remote), "for-each-ref", "refs/beads"],
             None,
         )
     };
@@ -309,7 +330,7 @@ fn a_url_that_names_another_remote_stays_a_url() {
     json(&a, &["create", "after"]);
     let refs = |remote: &Path| {
         git(
-            ["--git-dir", text(remote), "for-each-ref", "refs/beads"],
+            ["--git-dir", path_text(remote), "for-each-ref", "refs/beads"],
             None,
         )
     };
@@ -348,7 +369,12 @@ fn a_tracked_name_spelled_like_the_saved_alias_is_a_change() {
     )
     .unwrap();
     assert_eq!(code(&a.run(["sync", "--json"])), "CONFIG");
-    let refs = ["--git-dir", text(&second), "for-each-ref", "refs/beads"];
+    let refs = [
+        "--git-dir",
+        path_text(&second),
+        "for-each-ref",
+        "refs/beads",
+    ];
     assert_eq!(
         git(refs, None),
         "",
@@ -365,16 +391,21 @@ fn a_tracked_name_that_pushes_elsewhere_is_a_change() {
     let a = Machine::new(&sandbox, "a");
     json(&a, &["init", "--prefix", "ex"]);
     let (first, second) = (sandbox.bare("A.git"), sandbox.bare("B.git"));
-    json(&a, &["sync", "--remote", text(&first)]);
-    let fetched = format!("url.{}.insteadOf", text(&first));
-    let pushed = format!("url.{}.pushInsteadOf", text(&second));
+    json(&a, &["sync", "--remote", path_text(&first)]);
+    let fetched = format!("url.{}.insteadOf", path_text(&first));
+    let pushed = format!("url.{}.pushInsteadOf", path_text(&second));
     commit(&a, &["config", &fetched, "alias"]);
     commit(&a, &["config", &pushed, "alias"]);
     commit(&a, &["remote", "add", "tracker", "alias"]);
     let tracked = a.checkout().join(".beadroll.json");
     std::fs::write(tracked, "{\"remote\": \"tracker\"}\n").expect("a tracked file");
     assert_eq!(code(&a.run(["sync", "--json"])), "CONFIG");
-    let refs = ["--git-dir", text(&second), "for-each-ref", "refs/beads"];
+    let refs = [
+        "--git-dir",
+        path_text(&second),
+        "for-each-ref",
+        "refs/beads",
+    ];
     assert_eq!(git(refs, None), "", "a write went where the name pushes");
 }
 
@@ -385,10 +416,10 @@ fn a_tracked_name_that_pushes_elsewhere_is_a_change() {
 fn init_publishes_only_where_it_chose_to() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
-    let own = format!("file://{}", text(sandbox.origin()));
+    let own = format!("file://{}", path_text(sandbox.origin()));
     commit(&a, &["remote", "set-url", "--push", "origin", &own]);
     let pushed = sandbox.bare("push.git");
-    let rewrite = format!("url.{}.pushInsteadOf", text(&pushed));
+    let rewrite = format!("url.{}.pushInsteadOf", path_text(&pushed));
     commit(&a, &["config", &rewrite, &own]);
     // from now on origin refuses every push
     let hook = sandbox.origin().join("hooks").join("pre-receive");
@@ -400,7 +431,12 @@ fn init_publishes_only_where_it_chose_to() {
     let result = parse_json(&run.stdout).expect("a result");
     let behind = result["unpublished"].as_i64();
     assert!(behind.is_some_and(|n| n > 0), "{result:?}");
-    let refs = ["--git-dir", text(&pushed), "for-each-ref", "refs/beads"];
+    let refs = [
+        "--git-dir",
+        path_text(&pushed),
+        "for-each-ref",
+        "refs/beads",
+    ];
     assert_eq!(
         git(refs, None),
         "",
@@ -418,12 +454,12 @@ fn a_tracked_name_reaching_another_place_than_the_saved_url_is_a_change() {
     let init = json(&a, &["init", "--prefix", "ex", "--offline"]);
     let store = PathBuf::from(init["path"].as_str().expect("a path"));
     let (named, saved) = (sandbox.bare("B.git"), sandbox.bare("C.git"));
-    let to_named = format!("url.{}.insteadOf", text(&named));
-    let to_saved = format!("url.{}.insteadOf", text(&saved));
+    let to_named = format!("url.{}.insteadOf", path_text(&named));
+    let to_saved = format!("url.{}.insteadOf", path_text(&saved));
     commit(&a, &["config", &to_named, "alias:repo"]);
-    commit(&a, &["config", &to_saved, text(&named)]);
+    commit(&a, &["config", &to_saved, path_text(&named)]);
     commit(&a, &["remote", "add", "tracker", "alias:repo"]);
-    save_remote(&store, text(&named));
+    save_remote(&store, path_text(&named));
     let tracked = a.checkout().join(".beadroll.json");
     std::fs::write(tracked, "{\"remote\": \"tracker\"}\n").expect("a tracked file");
     assert_eq!(code(&a.run(["sync", "--json"])), "CONFIG");
@@ -437,17 +473,22 @@ fn a_remote_pushed_to_by_origins_url_is_not_forgotten_as_origin() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
     json(&a, &["init", "--prefix", "ex"]);
-    let origin = text(sandbox.origin());
+    let origin = path_text(sandbox.origin());
     let pushed = sandbox.bare("push.git");
-    let rewrite = format!("url.{}.pushInsteadOf", text(&pushed));
+    let rewrite = format!("url.{}.pushInsteadOf", path_text(&pushed));
     commit(&a, &["config", &rewrite, origin]);
     let tracker = sandbox.bare("tracker.git");
-    commit(&a, &["remote", "add", "tracker", text(&tracker)]);
+    commit(&a, &["remote", "add", "tracker", path_text(&tracker)]);
     commit(&a, &["remote", "set-url", "--push", "tracker", origin]);
     let synced = a.run(["sync", "--remote", "tracker", "--json"]);
     assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
     json(&a, &["create", "after"]);
-    let refs = ["--git-dir", text(&pushed), "for-each-ref", "refs/beads"];
+    let refs = [
+        "--git-dir",
+        path_text(&pushed),
+        "for-each-ref",
+        "refs/beads",
+    ];
     assert_eq!(
         git(refs, None),
         "",
@@ -467,7 +508,7 @@ fn a_remote_rewritten_away_from_origin_is_not_forgotten_as_origin() {
         git(
             [
                 "--git-dir",
-                text(sandbox.origin()),
+                path_text(sandbox.origin()),
                 "rev-parse",
                 "refs/beads/journal",
             ],
@@ -478,9 +519,9 @@ fn a_remote_rewritten_away_from_origin_is_not_forgotten_as_origin() {
     let coord = sandbox.bare("coord.git");
     let link = sandbox.root().join("link.git");
     std::os::unix::fs::symlink(sandbox.origin(), &link).expect("a link");
-    let rule = format!("url.{}.insteadOf", text(&coord));
-    commit(&a, &["config", &rule, text(&link)]);
-    commit(&a, &["remote", "add", "tracker", text(&link)]);
+    let rule = format!("url.{}.insteadOf", path_text(&coord));
+    commit(&a, &["config", &rule, path_text(&link)]);
+    commit(&a, &["remote", "add", "tracker", path_text(&link)]);
     json(&a, &["sync", "--remote", "tracker"]);
     json(&a, &["create", "after"]);
     assert_eq!(tip(), before, "a write after the sync went to origin");

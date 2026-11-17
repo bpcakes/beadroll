@@ -10,15 +10,10 @@ use std::ffi::OsString;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use beadroll_test_support::{Machine, Sandbox, printed_id};
+use beadroll_test_support::{Machine, Sandbox, path_text, printed_id};
 
 /// Variables set for a run, over the environment it starts from.
 type Env = BTreeMap<OsString, OsString>;
-
-/// The path as text passed to git and bead.
-fn text(path: &Path) -> &str {
-    path.to_str().expect("a UTF-8 path")
-}
 
 /// A scratch global git config for this sandbox (never the developer's), the
 /// file `name` holding `contents`, as the variables that make git read it and nothing else.
@@ -73,7 +68,7 @@ fn sync_git_format(machine: &Machine, plain: &Env) -> String {
     let sync_git = machine.store().join("sync.git");
     let args = [
         "--git-dir",
-        text(&sync_git),
+        path_text(&sync_git),
         "rev-parse",
         "--show-object-format",
     ];
@@ -108,7 +103,7 @@ fn poison(machine: &Machine, plain: &Env) {
         "-q",
         "--bare",
         "--object-format=sha256",
-        text(&path),
+        path_text(&path),
     ];
     git(&args, None, plain);
 }
@@ -126,7 +121,7 @@ fn sha256_project_syncs() {
         "--object-format=sha256",
         "-b",
         "main",
-        text(&origin),
+        path_text(&origin),
     ];
     git(&init, None, &plain);
     // the project's first commit comes from a repository made SHA-256, not from a clone of
@@ -139,18 +134,22 @@ fn sha256_project_syncs() {
         "--object-format=sha256",
         "-b",
         "main",
-        text(&seed),
+        path_text(&seed),
     ];
     git(&made, None, &plain);
     let start = ["commit", "-q", "--allow-empty", "-m", "start"];
     git(&start, Some(&seed), &plain);
-    let push = ["push", "-q", text(&origin), "HEAD:main"];
+    let push = ["push", "-q", path_text(&origin), "HEAD:main"];
     git(&push, Some(&seed), &plain);
     let (a, b) = machines(&sandbox, &plain);
     // each machine's checkout is a clone of the SHA-256 project (`m.checkout = ...`)
     let (a_dir, b_dir) = (sandbox.root().join("a-256"), sandbox.root().join("b-256"));
     for dir in [&a_dir, &b_dir] {
-        git(&["clone", "-q", text(&origin), text(dir)], None, &plain);
+        git(
+            &["clone", "-q", path_text(&origin), path_text(dir)],
+            None,
+            &plain,
+        );
         let format = git(&["rev-parse", "--show-object-format"], Some(dir), &plain);
         assert_eq!(format, "sha256", "{}", dir.display());
     }

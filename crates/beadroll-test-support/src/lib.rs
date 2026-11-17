@@ -70,6 +70,21 @@ pub fn json_text(value: &Json) -> String {
         .unwrap_or_else(|error| panic!("{value:?} cannot be written: {error}"))
 }
 
+/// `path` as text, for an argument or a file a test writes it into. The sandbox's paths are UTF-8;
+/// one that is not fails the test.
+pub fn path_text(path: &Path) -> &str {
+    path.to_str()
+        .unwrap_or_else(|| panic!("{} is not UTF-8", path.display()))
+}
+
+/// The last line of `text` with anything but whitespace on it, or `""`: what a command's standard
+/// error ends with, such as its one-line error.
+pub fn last_line(text: &str) -> &str {
+    text.lines()
+        .rfind(|line| !line.trim().is_empty())
+        .unwrap_or_default()
+}
+
 /// Writes `contents` to `path` as an executable (mode 0755): a hook, or a fake `git`, `ps` or
 /// `ssh` a test puts on `PATH`.
 pub fn executable(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) {
@@ -81,7 +96,15 @@ pub fn executable(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) {
 
 #[cfg(test)]
 mod tests {
-    use super::{Json, parse_json, printed_id};
+    use super::{Json, last_line, parse_json, printed_id};
+
+    /// The last line with text on it, wherever the blank lines are.
+    #[test]
+    fn the_last_line_is_the_last_one_with_text() {
+        assert_eq!(last_line("one\ntwo\n\n  \n"), "two");
+        assert_eq!(last_line("only"), "only");
+        assert_eq!(last_line("\n \n"), "");
+    }
 
     #[test]
     fn the_id_bead_printed_is_read_from_its_document() {

@@ -4,12 +4,7 @@
 
 use std::path::Path;
 
-use beadroll_test_support::{Machine, code, git, printed_id};
-
-/// The path as text passed to git and bead.
-fn text(path: &Path) -> &str {
-    path.to_str().expect("a UTF-8 path")
-}
+use beadroll_test_support::{Machine, code, git, path_text, printed_id};
 
 /// `init --tracked` (prefix `fz`), committed and pushed, so every clone shares
 /// the workspace id whatever its URL.
@@ -27,7 +22,12 @@ fn track(machine: &Machine) {
 fn fresh_clone(machine: &Machine, origin: &Path) {
     std::fs::remove_dir_all(machine.checkout()).expect("the machine's first clone");
     git(
-        ["clone", "-q", text(origin), text(machine.checkout())],
+        [
+            "clone",
+            "-q",
+            path_text(origin),
+            path_text(machine.checkout()),
+        ],
         None,
     );
 }
@@ -44,7 +44,7 @@ fn set_url_is_followed() {
     let moved = sandbox.root().join("moved.git");
     std::fs::rename(sandbox.origin(), &moved).expect("the repository moves");
     git(
-        ["remote", "set-url", "origin", text(&moved)],
+        ["remote", "set-url", "origin", path_text(&moved)],
         Some(a.checkout()),
     );
     // git follows the change
@@ -52,7 +52,7 @@ fn set_url_is_followed() {
     let sync = a.run(["sync", "--json"]);
     assert_eq!(sync.returncode(), 0, "{}", sync.stderr);
     let info = a.bead(["info"]).expect("bead info prints a record");
-    assert_eq!(info["remote"].as_str(), Some(text(&moved)));
+    assert_eq!(info["remote"].as_str(), Some(path_text(&moved)));
     let claim = a.run(["claim", &issue, "--json"]);
     assert_eq!(claim.returncode(), 0, "{}", claim.stderr);
 }
@@ -74,13 +74,13 @@ fn moved_repository_does_not_split_the_crew() {
             "clone",
             "-q",
             "--mirror",
-            text(sandbox.origin()),
-            text(&new_home),
+            path_text(sandbox.origin()),
+            path_text(&new_home),
         ],
         None,
     );
     git(
-        ["remote", "set-url", "origin", text(&new_home)],
+        ["remote", "set-url", "origin", path_text(&new_home)],
         Some(a.checkout()),
     );
     // a fresh clone of the new home

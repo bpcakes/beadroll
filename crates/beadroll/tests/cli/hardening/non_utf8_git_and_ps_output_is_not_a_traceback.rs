@@ -9,13 +9,7 @@ use std::os::unix::ffi::OsStrExt as _;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 
-use beadroll_test_support::{Machine, Run, Sandbox, parse_json};
-
-/// The last line of `text` that is not blank, or nothing.
-fn tail(text: &str) -> &str {
-    let mut lines = text.trim().split('\n');
-    lines.rfind(|line| !line.trim().is_empty()).unwrap_or("")
-}
+use beadroll_test_support::{Machine, Run, Sandbox, last_line, parse_json};
 
 /// Whether `byte` is ASCII whitespace, including vertical tab and form feed.
 fn is_space(byte: &u8) -> bool {
@@ -117,7 +111,11 @@ fn finished(output: Output) -> Run {
 
 /// `assert_no_traceback`: `proc` did not crash.
 fn assert_no_traceback(proc: &Run, what: &str) {
-    assert!(!proc.crashed(), "{what} crashed: {}", tail(&proc.stderr));
+    assert!(
+        !proc.crashed(),
+        "{what} crashed: {}",
+        last_line(&proc.stderr)
+    );
 }
 
 /// G34: `capture_where` strictly decodes `rev-parse --abbrev-ref HEAD`, so `create` on a

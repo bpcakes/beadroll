@@ -6,7 +6,8 @@ use std::process::Stdio;
 
 use beadroll_git::normalize_remote;
 use beadroll_test_support::{
-    Json, Machine, Run, Sandbox, code, git, json, json_member, json_text, parse_json, printed_id,
+    Json, Machine, Run, Sandbox, code, git, json, json_member, json_text, parse_json, path_text,
+    printed_id,
 };
 use sha2::{Digest as _, Sha256};
 
@@ -56,11 +57,6 @@ fn head(text: &str, count: usize) -> String {
     text.chars().take(count).collect()
 }
 
-/// `path` as text, for an argument or a JSON member.
-fn text(path: &Path) -> &str {
-    path.to_str().expect("a UTF-8 path")
-}
-
 /// G02: a committed .beadroll.json naming another repository's URL-derived workspace id (plus
 /// a remote of its own) binds the checkout to that repository's existing store, reads it,
 /// publishes it to the config's remote, and leaves that store's remembered remote switched.
@@ -85,7 +81,7 @@ fn foreign_derived_workspace_id_is_refused() {
 
     let attacker_bare = sandbox.bare("attacker.git");
     let collect = sandbox.bare("collect.git");
-    let hostile = json!({"workspace": (pid.as_str()), "remote": (text(&collect))});
+    let hostile = json!({"workspace": (pid.as_str()), "remote": (path_text(&collect))});
     seed_repo(&sandbox, "hostile-seed", &attacker_bare, &hostile);
     let victim_in_m = sandbox.clone("victim-in-m", Some(&attacker_bare));
 
@@ -116,7 +112,7 @@ fn foreign_derived_workspace_id_is_refused() {
             &victim.bead(["info"]).expect("info prints a record"),
             "remote"
         ),
-        &Json::from(text(&origin)),
+        &Json::from(path_text(&origin)),
         "the victim's own store was redirected to the config's remote"
     );
     let listed = victim.bead(["list"]).expect("list prints a record");
@@ -138,7 +134,7 @@ fn foreign_derived_workspace_id_is_refused() {
         "ex",
         "--tracked",
         "--remote",
-        text(&coordination),
+        path_text(&coordination),
     ]);
     a.bead(["create", "shared"]);
     a.bead(["sync"]);
@@ -175,7 +171,7 @@ fn tracked_remote_change_does_not_silently_move_an_existing_store() {
         "p",
         "--tracked",
         "--remote",
-        text(&good),
+        path_text(&good),
     ]);
     a.bead(["create", "work"]);
     a.bead(["sync"]);
@@ -184,7 +180,7 @@ fn tracked_remote_change_does_not_silently_move_an_existing_store() {
     let Json::Object(mut config) = config else {
         panic!("{config:?} is not an object");
     };
-    config.insert("remote".into(), Json::from(text(&evil)));
+    config.insert("remote".into(), Json::from(path_text(&evil)));
     std::fs::write(&config_path, json_text(&Json::Object(config)) + "\n").unwrap();
 
     let sync = a.run(["sync", "--json"]);
@@ -200,14 +196,14 @@ fn tracked_remote_change_does_not_silently_move_an_existing_store() {
     );
     // Consent through an explicit --remote is still honoured.
     assert_eq!(
-        a.run(["sync", "--remote", text(&evil), "--json"])
+        a.run(["sync", "--remote", path_text(&evil), "--json"])
             .returncode(),
         0,
         "an explicit --remote switch was refused"
     );
     // So is the documented switch, `init --tracked --remote` (the route the CONFIG error
     // names).
-    a.bead(["init", "--tracked", "--remote", text(&third)]);
+    a.bead(["init", "--tracked", "--remote", path_text(&third)]);
     let switched = a.run(["sync", "--json"]);
     assert_eq!(
         switched.returncode(),

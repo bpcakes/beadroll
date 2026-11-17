@@ -5,12 +5,7 @@
 
 use std::path::Path;
 
-use beadroll_test_support::{Json, Machine, Sandbox, git, parse_json, printed_id};
-
-/// The path as text passed to git and bead.
-fn text(path: &Path) -> &str {
-    path.to_str().expect("a UTF-8 path")
-}
+use beadroll_test_support::{Json, Machine, Sandbox, git, parse_json, path_text, printed_id};
 
 /// `info["workspace"]`, which `bead info` always prints.
 fn workspace(info: Option<Json>) -> Json {
@@ -50,7 +45,7 @@ fn worktree_on_an_older_branch_uses_the_repositorys_tracker() {
     let tracked = workspace(a.bead(["info"]));
     let tree = sandbox.root().join("release-1");
     git(
-        ["worktree", "add", "-q", text(&tree), "release-1"],
+        ["worktree", "add", "-q", path_text(&tree), "release-1"],
         Some(a.checkout()),
     );
     assert!(!tree.join(".beadroll.json").exists());
@@ -65,7 +60,13 @@ fn worktree_on_an_older_branch_uses_the_repositorys_tracker() {
     assert_eq!(claim.returncode(), 0, "{}", claim.stderr);
     let bare = sandbox.root().join("bare.git");
     git(
-        ["clone", "-q", "--bare", text(sandbox.origin()), text(&bare)],
+        [
+            "clone",
+            "-q",
+            "--bare",
+            path_text(sandbox.origin()),
+            path_text(&bare),
+        ],
         None,
     );
     assert_eq!(
@@ -89,7 +90,7 @@ fn older_branch_checkout_keeps_the_tracked_coordination_remote() {
         "tr",
         "--tracked",
         "--remote",
-        text(&coordination),
+        path_text(&coordination),
     ]);
     commit_and_push(a.checkout());
     let issue = printed_id(a.bead(["create", "shared issue"]));
@@ -102,12 +103,12 @@ fn older_branch_checkout_keeps_the_tracked_coordination_remote() {
         .canonicalize()
         .expect("the coordination remote");
     let result = parse_json(&sync.stdout).expect("sync --json prints JSON");
-    assert_eq!(result["remote"].as_str(), Some(text(&resolved)));
+    assert_eq!(result["remote"].as_str(), Some(path_text(&resolved)));
     assert_eq!(c.show(&issue)["title"].as_str(), Some("shared issue"));
     let refs = git(
         [
             "--git-dir",
-            text(sandbox.origin()),
+            path_text(sandbox.origin()),
             "for-each-ref",
             "--format=%(refname)",
             "refs/beads",

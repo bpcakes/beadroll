@@ -25,8 +25,9 @@ tests it builds events, and for the round-trip properties it draws JSON values.
 - `src/lib.rs`: `Json` (beadroll-core's `Value`) and `parse_json`, which read `bead --json`;
   `printed_id`, the id a command printed (the issue a `create` made); `json_member`, a member the
   test requires; `json_text`, a value as one line of bead's JSON (a record to import, a file's
-  body); `executable`, a hook or a fake `git`, `ps` or `ssh` written with mode 0755. Use these
-  rather than a local copy.
+  body); `path_text`, a sandbox path as text; `last_line`, what a command's output ends with;
+  `executable`, a hook or a fake `git`, `ps` or `ssh` written with mode 0755. Use these rather
+  than a local copy.
 - `src/shell.rs`: `shell_quoted`, a word (a path, an argument) quoted for the `sh` scripts a
   test writes, and `git_on_path`, the real git a fake `git` hands on to. Use these rather than
   a local copy.

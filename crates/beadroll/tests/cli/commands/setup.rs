@@ -7,20 +7,15 @@
 
 use std::path::Path;
 
-use beadroll_test_support::{Json, Machine, Sandbox, code, git, parse_json};
-
-use beadroll_test_support::{Gate, beside};
+use beadroll_test_support::{
+    Gate, Json, Machine, Sandbox, beside, code, git, parse_json, path_text,
+};
 
 mod chosen;
 mod publication;
 mod remotes;
 mod rewrites;
 mod warnings;
-
-/// `path` as the text git and bead are given.
-fn text(path: &Path) -> &str {
-    path.to_str().expect("a UTF-8 path")
-}
 
 /// `bead ARGS --json` on `machine`: what it printed; a failure panics.
 fn json(machine: &Machine, args: &[&str]) -> Json {
@@ -62,14 +57,14 @@ fn tracked_file(machine: &Machine) -> Json {
 /// A copy of the sandbox's remote at `path`, every ref with it, as a rename, a transfer or a
 /// mirror push moves a repository.
 fn mirror(sandbox: &Sandbox, path: &Path) {
-    let from = text(sandbox.origin());
-    git(["clone", "-q", "--mirror", from, text(path)], None);
+    let from = path_text(sandbox.origin());
+    git(["clone", "-q", "--mirror", from, path_text(path)], None);
 }
 
 /// `machine`'s checkout now fetches from and pushes to `url`, as after `git remote set-url`.
 fn set_origin(machine: &Machine, url: &Path) {
     git(
-        ["remote", "set-url", "origin", text(url)],
+        ["remote", "set-url", "origin", path_text(url)],
         Some(machine.checkout()),
     );
 }
@@ -90,9 +85,9 @@ fn commit_tracked_file(a: &Machine) {
 /// `machine`'s checkout with a remote `tracker` whose URL is `alias`, which an `insteadOf` rule
 /// rewrites to `first`, and a remote named `alias` at `second`.
 fn alias_both_ways(machine: &Machine, first: &Path, second: &Path) {
-    let rewrite = format!("url.{}.insteadOf", text(first));
+    let rewrite = format!("url.{}.insteadOf", path_text(first));
     commit(machine, &["config", &rewrite, "alias"]);
-    commit(machine, &["remote", "add", "alias", text(second)]);
+    commit(machine, &["remote", "add", "alias", path_text(second)]);
     commit(machine, &["remote", "add", "tracker", "alias"]);
 }
 
@@ -213,7 +208,7 @@ fn init_starts_nothing_when_joining_the_published_tracker_fails() {
     std::fs::write(&records, format!("{record}\n")).expect("an export");
     // the adopted tracker's fetch, the second of the run, fails
     let failed = b
-        .cmd(["init", "--import", text(&records), "--json"])
+        .cmd(["init", "--import", path_text(&records), "--json"])
         .env(
             "BEAD_FAILPOINTS",
             "fetch.result@nth(2)=error(REMOTE_UNREACHABLE)",
@@ -258,15 +253,18 @@ fn a_move_without_the_tracker_says_how_to_bring_it_along() {
     let elsewhere = sandbox.root().join("elsewhere");
     std::fs::create_dir(&elsewhere).expect("a directory");
     let moved = elsewhere.join("origin.git");
-    git(["init", "-q", "--bare", "-b", "main", text(&moved)], None);
-    let origin = text(sandbox.origin());
+    git(
+        ["init", "-q", "--bare", "-b", "main", path_text(&moved)],
+        None,
+    );
+    let origin = path_text(sandbox.origin());
     git(
         [
             "--git-dir",
             origin,
             "push",
             "-q",
-            text(&moved),
+            path_text(&moved),
             "refs/heads/*:refs/heads/*",
         ],
         None,
@@ -318,7 +316,7 @@ fn init_starts_nothing_when_the_adopted_tracker_vanishes() {
     let failpoints = format!("fetch.result@nth(2)={}", gate.action());
     let gone = [
         "--git-dir",
-        text(&moved),
+        path_text(&moved),
         "update-ref",
         "-d",
         "refs/beads/journal",
@@ -361,7 +359,7 @@ fn init_reports_what_it_left_unpublished_in_the_adopted_tracker() {
         r#""created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}"#,
     );
     std::fs::write(&records, format!("{record}\n")).expect("an export");
-    let run = b.run(["init", "--import", text(&records), "--json"]);
+    let run = b.run(["init", "--import", path_text(&records), "--json"]);
     assert_eq!(run.returncode(), 0, "{}", run.stderr);
     let result = parse_json(&run.stdout).expect("a result");
     assert_eq!(result["joined"], Json::Bool(true), "{result:?}");
@@ -412,17 +410,28 @@ fn the_advice_to_bring_a_tracker_along_names_the_remote_asked() {
     let elsewhere = sandbox.root().join("elsewhere");
     std::fs::create_dir(&elsewhere).expect("a directory");
     let moved = elsewhere.join("origin.git");
-    git(["init", "-q", "--bare", "-b", "main", text(&moved)], None);
+    git(
+        ["init", "-q", "--bare", "-b", "main", path_text(&moved)],
+        None,
+    );
     set_origin(&a, &moved);
     let tracker = sandbox.bare("tracker.git");
-    let synced = a.run(["sync", "--remote", text(&tracker), "--json"]);
+    let synced = a.run(["sync", "--remote", path_text(&tracker), "--json"]);
     assert_eq!(code(&synced), "NOT_INITIALIZED", "{}", synced.stderr);
-    let command = format!("BEAD_WORKSPACE={old} bead sync --remote {}", text(&tracker));
+    let command = format!(
+        "BEAD_WORKSPACE={old} bead sync --remote {}",
+        path_text(&tracker)
+    );
     assert!(synced.stderr.contains(&command), "{}", synced.stderr);
-    let advised = ["sync", "--remote", text(&tracker), "--json"];
+    let advised = ["sync", "--remote", path_text(&tracker), "--json"];
     let published = a.cmd(advised).env("BEAD_WORKSPACE", &old).run();
     assert_eq!(published.returncode(), 0, "{}", published.stderr);
-    let refs = ["--git-dir", text(&tracker), "for-each-ref", "refs/beads"];
+    let refs = [
+        "--git-dir",
+        path_text(&tracker),
+        "for-each-ref",
+        "refs/beads",
+    ];
     assert_ne!(
         git(refs, None),
         "",
@@ -471,7 +480,12 @@ fn init_tracked_in_a_subdirectory_reads_a_missing_path_from_there() {
     let run = a.cmd(init.iter().chain(&["--json"])).cwd(&below).run();
     assert_eq!(run.returncode(), 0, "{}", run.stderr);
     assert_eq!(tracked_file(&a)["remote"].as_str(), Some("tracker.git"));
-    let refs = ["--git-dir", text(&beside), "for-each-ref", "refs/beads"];
+    let refs = [
+        "--git-dir",
+        path_text(&beside),
+        "for-each-ref",
+        "refs/beads",
+    ];
     assert_eq!(git(refs, None), "", "init published beside the checkout");
 }
 
@@ -488,7 +502,7 @@ fn an_adopted_tracker_does_not_remember_origin_by_its_push_url() {
     mirror(&sandbox, &moved);
     let b = Machine::new(&sandbox, "b");
     set_origin(&b, &moved);
-    let own = format!("file://{}", text(&moved));
+    let own = format!("file://{}", path_text(&moved));
     commit(&b, &["remote", "set-url", "--push", "origin", &own]);
     json(&b, &["sync"]);
     assert_eq!(workspace(&b), workspace(&a));

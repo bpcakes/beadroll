@@ -1,8 +1,8 @@
 //! Init acknowledges publication only when its write reached the coordination remote.
 
-use beadroll_test_support::{Machine, git, parse_json};
+use beadroll_test_support::{Machine, git, parse_json, path_text};
 
-use super::{commit, text};
+use super::commit;
 
 #[test]
 fn init_acknowledges_publication_but_repeat_and_join_do_not_claim_a_push() {
@@ -21,7 +21,11 @@ fn init_acknowledges_publication_but_repeat_and_join_do_not_claim_a_push() {
     );
     assert!(
         !git(
-            ["ls-remote", text(sandbox.origin()), "refs/beads/journal"],
+            [
+                "ls-remote",
+                path_text(sandbox.origin()),
+                "refs/beads/journal"
+            ],
             None
         )
         .is_empty()
@@ -46,7 +50,7 @@ fn init_acknowledges_the_chosen_remote_and_ref() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
     let remote = sandbox.bare("tracker.git");
-    commit(&a, &["remote", "add", "tracker", text(&remote)]);
+    commit(&a, &["remote", "add", "tracker", path_text(&remote)]);
     std::fs::write(
         a.checkout().join(".beadroll.json"),
         r#"{"workspace":"publication-test","ref":"refs/beads/custom"}"#,
@@ -60,8 +64,14 @@ fn init_acknowledges_the_chosen_remote_and_ref() {
         "{}",
         run.stdout
     );
-    assert!(!git(["ls-remote", text(&remote), "refs/beads/custom"], None).is_empty());
-    assert!(git(["ls-remote", text(sandbox.origin()), "refs/beads/*"], None).is_empty());
+    assert!(!git(["ls-remote", path_text(&remote), "refs/beads/custom"], None).is_empty());
+    assert!(
+        git(
+            ["ls-remote", path_text(sandbox.origin()), "refs/beads/*"],
+            None
+        )
+        .is_empty()
+    );
 }
 
 #[test]
@@ -85,7 +95,13 @@ fn offline_init_and_init_without_a_remote_do_not_acknowledge_publication() {
                 run.stdout
             );
         }
-        assert!(git(["ls-remote", text(sandbox.origin()), "refs/beads/*"], None).is_empty());
+        assert!(
+            git(
+                ["ls-remote", path_text(sandbox.origin()), "refs/beads/*"],
+                None
+            )
+            .is_empty()
+        );
     }
 }
 
@@ -109,7 +125,13 @@ fn failed_init_publication_keeps_the_warning_without_an_acknowledgment() {
         run.stdout
     );
     assert!(!run.stdout.contains("Published to"), "{}", run.stdout);
-    assert!(git(["ls-remote", text(sandbox.origin()), "refs/beads/*"], None).is_empty());
+    assert!(
+        git(
+            ["ls-remote", path_text(sandbox.origin()), "refs/beads/*"],
+            None
+        )
+        .is_empty()
+    );
 }
 
 #[test]

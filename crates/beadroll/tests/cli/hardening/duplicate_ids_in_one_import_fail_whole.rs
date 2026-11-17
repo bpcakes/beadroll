@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use beadroll_core::json::{Format, Object, write};
-use beadroll_test_support::{Json, Machine, Sandbox, code, json};
+use beadroll_test_support::{Json, Machine, Sandbox, code, json, last_line};
 
 /// A Beads record's required fields.
 fn common() -> Json {
@@ -30,12 +30,6 @@ fn record(key: &str, title: &str, more: Json) -> Json {
         }
     }
     Json::from(members)
-}
-
-/// The last line of `text` that is not blank, or nothing.
-fn tail(text: &str) -> &str {
-    let mut lines = text.trim().split('\n');
-    lines.rfind(|line| !line.trim().is_empty()).unwrap_or("")
 }
 
 /// Machine g33, its tracker initialised with the prefix `ex`.
@@ -81,7 +75,11 @@ fn duplicate_ids_in_one_import_fail_whole() {
     ];
     let path = write_records(&sandbox, "dup.jsonl", &records);
     let proc = m.run(["import", path.to_str().unwrap(), "--json"]);
-    assert!(!proc.crashed(), "import crashed: {}", tail(&proc.stderr));
+    assert!(
+        !proc.crashed(),
+        "import crashed: {}",
+        last_line(&proc.stderr)
+    );
     assert_ne!(
         proc.returncode(),
         0,
@@ -105,7 +103,11 @@ fn concatenated_export_does_not_double_issues_or_unblock_them() {
     let twice = [one.clone(), one.clone()].concat();
     let path = write_records(&sandbox, "twice.jsonl", &twice);
     let proc = m.run(["import", path.to_str().unwrap(), "--json"]);
-    assert!(!proc.crashed(), "import crashed: {}", tail(&proc.stderr));
+    assert!(
+        !proc.crashed(),
+        "import crashed: {}",
+        last_line(&proc.stderr)
+    );
     assert_eq!(code(&proc), "VALIDATION", "{}", proc.stdout.trim());
     assert_eq!(sorted_ids(&m), Vec::<String>::new());
     // the same file imported once is still whole
