@@ -10,6 +10,7 @@ publish.workspace = true
 
 [dependencies]
 beadroll-core.workspace = true
+rustix.workspace = true
 tempfile.workspace = true
 
 [lints]

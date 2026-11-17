@@ -3,12 +3,12 @@
 
 use std::time::Duration;
 
-use super::{Worker, git_wrapper, setup, two, wait_marker};
+use super::{git_wrapper, setup, two};
 use crate::protocol::sync_audit::HookPosition;
-use crate::protocol::sync_audit::ProcessSession;
+use beadroll_test_support::ProcessGroup;
 
 /// How long a process the test waits for may take: `communicate(timeout=5)`, `run(timeout=5)`.
-const FIVE_SECONDS: Option<Duration> = Some(Duration::from_secs(5));
+const FIVE_SECONDS: Duration = Duration::from_secs(5);
 
 /// A sync stalled in its push holds the store lock: a local writer waits for it, and completes
 /// once the sync is killed. Nothing is lost, and the next sync leaves nothing waiting.
@@ -20,13 +20,13 @@ fn slow_push_holds_lock_then_local_writer_completes_without_loss() {
     let marker = sandbox.root().join("slow-push");
     a.bead(["create", "before slow push", "--offline"]);
     let path = git_wrapper(&sandbox, "push", &marker, HookPosition::After);
-    let mut sync = Worker::start(
-        a.cmd(["sync", "--json"]).env("PATH", path),
-        ProcessSession::New,
-    );
-    wait_marker(&marker, &mut sync);
+    let mut sync = a
+        .cmd(["sync", "--json"])
+        .env("PATH", path)
+        .spawn(ProcessGroup::Own);
+    sync.wait_for(&marker, Duration::from_secs(15));
     let writing = a.cmd(["create", "during push", "--offline", "--json"]);
-    let mut writer = Worker::start(writing, ProcessSession::Inherited);
+    let mut writer = writing.spawn(ProcessGroup::Inherited);
     // An observation window, not a wait for something to happen: the claim is that the writer has
     // NOT finished, which only time can show, since no failpoint fires while a process waits for
     // the store lock. A wait for an event is `wait_until` or a `Gate`, never a sleep.
@@ -56,13 +56,15 @@ fn killed_slow_fetch_does_not_block_local_writer() {
     two(&sandbox, &a);
     let marker = sandbox.root().join("fetching");
     let path = git_wrapper(&sandbox, "fetch", &marker, HookPosition::Before);
-    let mut worker = Worker::start(
-        a.cmd(["sync", "--json"]).env("PATH", path),
-        ProcessSession::New,
-    );
-    wait_marker(&marker, &mut worker);
+    let mut worker = a
+        .cmd(["sync", "--json"])
+        .env("PATH", path)
+        .spawn(ProcessGroup::Own);
+    worker.wait_for(&marker, Duration::from_secs(15));
     let writing = a.cmd(["create", "during stalled fetch", "--json"]);
-    let result = Worker::start(writing, ProcessSession::Inherited).communicate(FIVE_SECONDS);
+    let result = writing
+        .spawn(ProcessGroup::Inherited)
+        .communicate(FIVE_SECONDS);
     assert_eq!(result.returncode(), 0, "{}", result.stderr);
     worker.kill().expect("the sync's process group");
     worker.communicate(FIVE_SECONDS);

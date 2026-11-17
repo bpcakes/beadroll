@@ -12,10 +12,9 @@ use beadroll_store::glob_ending;
 use beadroll_test_support::{Json, Machine, Run, Sandbox, code, parse_json};
 
 use beadroll_test_support::Gate;
-use started::{Started, wait};
+use beadroll_test_support::ProcessGroup;
 
 mod damaged;
-mod started;
 
 /// How a test makes its machines: `Machine::new`, which runs the bead under test, or
 /// `crate::rust_only` for a test that stops bead at a failpoint.
@@ -134,8 +133,8 @@ fn refused_claiming_update_leaves_the_journal_untouched_under_a_reader() {
         .cmd(update)
         .env("BEAD_ROTATE_BYTES", "1")
         .env("BEAD_FAILPOINTS", publish.at("publish.before"));
-    let mut claimer = Started::start(claiming);
-    wait(&publish.ready(), &mut claimer);
+    let mut claimer = claiming.spawn(ProcessGroup::Own);
+    claimer.wait_for(&publish.ready(), Duration::from_secs(10));
     let attempts = pending(&a);
     assert_eq!(attempts.len(), 1, "the attempt is one file");
     let ops: Vec<Json> = events(&attempts[0])
@@ -150,8 +149,10 @@ fn refused_claiming_update_leaves_the_journal_untouched_under_a_reader() {
     assert_eq!(journal(&a), journal_before);
     let pausing = read.at("journal.after-enumerate@always");
     let reading = a.cmd(["show", &key, "--json"]);
-    let mut reader = Started::start(reading.env("BEAD_FAILPOINTS", pausing));
-    wait(&read.ready(), &mut reader);
+    let mut reader = reading
+        .env("BEAD_FAILPOINTS", pausing)
+        .spawn(ProcessGroup::Own);
+    reader.wait_for(&read.ready(), Duration::from_secs(10));
     let accepted = claim(&b, &key);
     publish.open();
     let claimed = claimer.communicate(Duration::from_secs(15));
@@ -191,15 +192,19 @@ fn reader_never_confirms_a_claim_whose_push_was_rejected() {
     let b = two(&sandbox, &a, crate::rust_only);
     let (publish, read) = (Gate::new(&sandbox, "claim"), Gate::new(&sandbox, "view"));
     let claiming = a.cmd(["claim", &key, "--json"]);
-    let mut claimer = Started::start(claiming.env("BEAD_FAILPOINTS", publish.at("publish.before")));
-    wait(&publish.ready(), &mut claimer);
+    let mut claimer = claiming
+        .env("BEAD_FAILPOINTS", publish.at("publish.before"))
+        .spawn(ProcessGroup::Own);
+    claimer.wait_for(&publish.ready(), Duration::from_secs(10));
     let attempt = pending(&a).into_iter().next();
     let attempt = attempt.expect("the claim's pending attempt");
     let failed_id = member(&events(&attempt)[0], "id").clone();
     let pausing = read.at("view.before-load-pending@always");
     let reading = a.cmd(["show", &key, "--json"]);
-    let mut reader = Started::start(reading.env("BEAD_FAILPOINTS", pausing));
-    wait(&read.ready(), &mut reader);
+    let mut reader = reading
+        .env("BEAD_FAILPOINTS", pausing)
+        .spawn(ProcessGroup::Own);
+    reader.wait_for(&read.ready(), Duration::from_secs(10));
     let accepted = claim(&b, &key);
     publish.open();
     let claimed = claimer.communicate(Duration::from_secs(15));
@@ -237,9 +242,9 @@ fn machine_identity_first_use_is_atomic_across_workspaces() {
     };
     let pausing =
         init("identity-one").env("BEAD_FAILPOINTS", gate.at("identity.before-link@always"));
-    let mut first = Started::start(pausing);
-    wait(&gate.ready(), &mut first);
-    let mut second = Started::start(init("identity-two"));
+    let mut first = pausing.spawn(ProcessGroup::Own);
+    first.wait_for(&gate.ready(), Duration::from_secs(10));
+    let mut second = init("identity-two").spawn(ProcessGroup::Own);
     // a correct implementation may wait for the creator
     let second_done = second.within(Duration::from_secs(2));
     gate.open();
@@ -289,9 +294,9 @@ fn machine_identity_can_recover_from_first_use_crash() {
         init.env("BEAD_WORKSPACE", "identity-crash")
     };
     let pausing = init().env("BEAD_FAILPOINTS", gate.at("identity.before-link@always"));
-    let mut process = Started::start(pausing);
-    wait(&gate.ready(), &mut process);
-    process.kill();
+    let mut process = pausing.spawn(ProcessGroup::Own);
+    process.wait_for(&gate.ready(), Duration::from_secs(10));
+    process.kill().expect("its process group");
     let killed = process.communicate(Duration::from_secs(10));
     assert_eq!(killed.returncode(), -9, "{}", killed.stderr);
     assert!(

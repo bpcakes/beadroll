@@ -126,6 +126,7 @@ name = "beadroll-test-support"
 version = "0.2.0"
 dependencies = [
  "beadroll-core",
+ "rustix",
  "tempfile",
 ]
 

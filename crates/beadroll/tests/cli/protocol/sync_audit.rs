@@ -13,26 +13,11 @@ mod segments;
 mod stalls;
 
 use std::ffi::{OsStr, OsString};
-use std::io::Read;
 use std::os::unix::fs::PermissionsExt as _;
-use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
-use std::process::{Child, ExitStatus, Stdio};
-use std::sync::mpsc::{self, Receiver};
-use std::time::{Duration, Instant};
 
 use beadroll_test_support::executable;
-use beadroll_test_support::{Invocation, Machine, Run, Sandbox, git};
-use rustix::process::{Pid, Signal, kill_process, kill_process_group};
-
-/// Whether a worker starts in a separate process session.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ProcessSession {
-    /// Inherited.
-    Inherited,
-    /// New.
-    New,
-}
+use beadroll_test_support::{Machine, Sandbox, git};
 
 /// Where a test wrapper pauses relative to its git command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -108,20 +93,6 @@ fn remote_blob(sandbox: &Sandbox, path: &str) -> String {
     remote_git(sandbox, &["show", &format!("refs/beads/journal:{path}")])
 }
 
-/// `wait_marker`: waits up to 15 seconds for the instrumented git to leave `marker`. The worker
-/// ending first fails the test with what it printed, and so does a marker that never comes.
-fn wait_marker(marker: &Path, worker: &mut Worker) {
-    let until = Instant::now() + Duration::from_secs(15);
-    while !marker.exists() && Instant::now() < until {
-        if worker.poll().is_some() {
-            let printed = worker.communicate(None);
-            panic!("worker exited before marker: {printed:?}");
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    assert!(marker.exists(), "instrumented fault point was not reached");
-}
-
 /// A git wrapper delays push or fetch for 20 seconds. With `after`, run the operation before
 /// creating `marker` and waiting, simulating a lost acknowledgement; otherwise mark and wait
 /// first. Other git calls pass through. The shell's sleep child can outlive the client killed on
@@ -165,110 +136,4 @@ fn real_git() -> PathBuf {
 fn quoted(path: &Path) -> String {
     let text = path.to_str().expect("a UTF-8 path");
     format!("'{}'", text.replace('\'', r"'\''"))
-}
-
-/// A bead process with empty stdin and output drained concurrently. When `alone`, it leads a
-/// separate process group so a kill reaches the whole group. Dropping a running worker kills and
-/// reaps it.
-struct Worker {
-    child: Child,
-    alone: bool,
-    output: Option<(Drained, Drained)>,
-}
-
-/// What a pipe held, handed over by the thread that read it to its end.
-type Drained = Receiver<Vec<u8>>;
-
-impl Worker {
-    /// Starts `invocation`.
-    fn start(invocation: Invocation<'_>, alone: ProcessSession) -> Worker {
-        let mut command = invocation.command();
-        command
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        if alone == ProcessSession::New {
-            command.process_group(0);
-        }
-        let mut child = command.spawn().expect("bead starts");
-        let stdout = drain(child.stdout.take().expect("bead's standard output"));
-        let stderr = drain(child.stderr.take().expect("bead's standard error"));
-        Worker {
-            child,
-            alone: alone == ProcessSession::New,
-            output: Some((stdout, stderr)),
-        }
-    }
-
-    /// `poll()`: how it ended, or `None` while it runs.
-    fn poll(&mut self) -> Option<ExitStatus> {
-        self.child.try_wait().expect("the worker's status")
-    }
-
-    /// Sends SIGKILL to its process group when started alone, or to the process otherwise.
-    fn kill(&self) -> rustix::io::Result<()> {
-        let pid = Pid::from_child(&self.child);
-        if self.alone {
-            kill_process_group(pid, Signal::KILL)
-        } else {
-            kill_process(pid, Signal::KILL)
-        }
-    }
-
-    /// Waits for process and output completion, returning captured output. Exceeding `timeout`
-    /// fails the test; without a timeout, waits indefinitely.
-    fn communicate(&mut self, timeout: Option<Duration>) -> Run {
-        let until = timeout.map(|timeout| Instant::now() + timeout);
-        let status = loop {
-            if let Some(status) = self.poll() {
-                break status;
-            }
-            let expired = until.is_some_and(|until| Instant::now() >= until);
-            assert!(!expired, "bead had not ended after {timeout:?}");
-            std::thread::sleep(Duration::from_millis(10));
-        };
-        let (stdout, stderr) = self.output.take().expect("output not yet read");
-        let left = || until.map(|until| until.saturating_duration_since(Instant::now()));
-        let stdout = received(&stdout, left());
-        let stderr = received(&stderr, left());
-        Run {
-            status,
-            stdout: text(stdout, "standard output"),
-            stderr: text(stderr, "standard error"),
-        }
-    }
-}
-
-impl Drop for Worker {
-    fn drop(&mut self) {
-        if let Ok(None) = self.child.try_wait() {
-            let _ = self.kill();
-            let _ = self.child.wait();
-        }
-    }
-}
-
-/// A thread that reads `pipe` to its end, and the channel it hands what it read to.
-fn drain(mut pipe: impl Read + Send + 'static) -> Drained {
-    let (sender, receiver) = mpsc::channel();
-    std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        let _ = pipe.read_to_end(&mut bytes);
-        let _ = sender.send(bytes);
-    });
-    receiver
-}
-
-/// What `drain`'s thread read, once the pipe has ended: within `timeout`, or the test fails.
-fn received(receiver: &Drained, timeout: Option<Duration>) -> Vec<u8> {
-    let bytes = match timeout {
-        Some(timeout) => receiver.recv_timeout(timeout).ok(),
-        None => receiver.recv().ok(),
-    };
-    bytes.unwrap_or_else(|| panic!("bead's output had not ended after {timeout:?}"))
-}
-
-/// Output decoded as `text=True` decodes it: UTF-8, or the test fails.
-fn text(bytes: Vec<u8>, stream: &str) -> String {
-    String::from_utf8(bytes).unwrap_or_else(|error| panic!("bead's {stream} is not UTF-8: {error}"))
 }
