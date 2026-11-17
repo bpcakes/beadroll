@@ -13,7 +13,7 @@ mod compat_custom_statuses {
     use beadroll_core::json::Object;
     use beadroll_test_support::{Json, Machine, code, json, parse_json};
 
-    /// `{"id": id, "title": title, "status": status, **fields}`.
+    /// The record with this `id`, `title` and `status`, then the members of `fields`.
     fn record(id: &str, title: &str, status: &str, fields: &Object) -> Json {
         let mut members = Object::new();
         members.insert("id".to_owned(), Json::from(id));

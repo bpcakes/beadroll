@@ -76,7 +76,7 @@ fn init_import_of_a_br_export_with_a_raw_line_separator() {
         "created_at": "2026-10-07T18:24:00Z",
         "updated_at": "2026-10-07T18:24:00Z",
     });
-    // {**record, "id": "bx-crlf", "title": "plain"}: the same members in the same places
+    // `record` with another id and title: the same members in the same places
     let mut other = record.clone();
     let Json::Object(members) = &mut other else {
         panic!("a record is an object")

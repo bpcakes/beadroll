@@ -77,8 +77,8 @@ fn dependency(machine: &Machine, key: &str) -> Json {
         .clone()
 }
 
-/// Whether `dependency[key]` is a string, as `assertIsInstance(dependency[key], str)` checks;
-/// a member that is not there fails the test.
+/// Whether the member `key` of `dependency` is a string; a member that is not there fails the
+/// test.
 fn is_string(dependency: &Json, key: &str) -> bool {
     let value = dependency.get(key);
     let value = value.unwrap_or_else(|| panic!("no {key} in {dependency:?}"));

@@ -51,8 +51,8 @@ fn assert_b_works(a: &Machine, b: &Machine, issue: &str, after: &str) {
     );
 }
 
-/// The names of the files anywhere under `dir`: `[p.name for p in dir.rglob("*") if
-/// p.is_file()]`, in the order of a walk that does not enter linked directories.
+/// The names of the files anywhere under `dir`, in the order of a walk that does not enter linked
+/// directories.
 fn files_under(dir: &Path) -> Vec<String> {
     let mut names = Vec::new();
     let mut folders: Vec<PathBuf> = vec![dir.to_path_buf()];

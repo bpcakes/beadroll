@@ -46,7 +46,7 @@ fn with(event: &Json, name: &str, value: Json) -> Json {
     Json::from(members)
 }
 
-/// `{**base, **extra}`.
+/// `base`'s members, then `extra`'s, which replace any of the same name.
 fn merged(base: &Json, extra: &Json) -> Json {
     let mut members = base.as_object().unwrap().clone();
     members.extend(extra.as_object().unwrap().clone());
