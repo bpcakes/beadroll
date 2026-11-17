@@ -3,6 +3,7 @@
 use std::ffi::OsString;
 
 use beadroll_core::code::Code;
+use beadroll_core::event::{BLOCKS, PARENT_CHILD};
 use beadroll_core::json::{Object, Value};
 use beadroll_core::op::OpName;
 use beadroll_core::query::blocking;
@@ -73,7 +74,7 @@ fn write_issue(
             let (kind, target) = rpartition(&spec, b':');
             let (kind, valid) = arg_text(kind);
             let kind = if kind.is_empty() {
-                "blocks".to_owned()
+                BLOCKS.to_owned()
             } else {
                 kind
             };
@@ -111,7 +112,7 @@ fn write_issue(
     if let Some(parent) = &parent_uid {
         let mut edge = Object::new();
         edge.insert("to".into(), Value::from(parent.as_str()));
-        edge.insert("type".into(), Value::from("parent-child"));
+        edge.insert("type".into(), Value::from(PARENT_CHILD));
         tx.emit(OpName::DepAdd, Some(&uid), edge, None)?;
     }
     for (target, kind, valid) in deps {

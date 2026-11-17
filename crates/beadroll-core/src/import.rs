@@ -6,7 +6,9 @@ use std::sync::LazyLock;
 
 use indexmap::IndexMap;
 
-use crate::event::{EXPORT_FIELDS, MAX_NESTING, event_problem, payload_problem, write_problem};
+use crate::event::{
+    BLOCKS, EXPORT_FIELDS, MAX_NESTING, event_problem, payload_problem, write_problem,
+};
 use crate::export::reserved;
 use crate::id::EventId;
 use crate::json::{self, Object, Value};
@@ -292,7 +294,7 @@ fn kind(dep: &Value) -> &str {
     dep.get("type")
         .filter(|kind| kind.truthy())
         .and_then(Value::as_str)
-        .unwrap_or("blocks")
+        .unwrap_or(BLOCKS)
 }
 
 /// The keys `fresh` (the records the tracker does not have) brings, each with the number of the
@@ -332,7 +334,7 @@ fn create_data(record: &Value, taken: &dyn Fn(&str) -> bool) -> Object {
                 .get("type")
                 .filter(|kind| kind.truthy())
                 .cloned()
-                .unwrap_or(Value::from("blocks"));
+                .unwrap_or(Value::from(BLOCKS));
             dep.insert("type".into(), kind);
             Value::from(dep)
         })

@@ -3,7 +3,7 @@
 mod dependents;
 mod details;
 
-use crate::event::{EXPORT_FIELDS, Field};
+use crate::event::{BLOCKS, EXPORT_FIELDS, Field};
 use crate::json::{Object, Value};
 use crate::query::Alternative;
 use crate::state::{Comment, Edge, HydratedIssue, Issue, State};
@@ -353,7 +353,7 @@ fn unresolved(issue: &Issue) -> Value {
             let kind = dep
                 .get("type")
                 .filter(|kind| kind.truthy())
-                .map_or_else(|| "blocks".to_owned(), str_of);
+                .map_or_else(|| BLOCKS.to_owned(), str_of);
             (key, kind)
         })
         .collect();
