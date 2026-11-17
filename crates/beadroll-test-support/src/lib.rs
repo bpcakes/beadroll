@@ -26,7 +26,7 @@ pub use gate::{Gate, beside};
 pub use isolation::assert_git_isolation;
 pub use machine::{Invocation, Machine, Run, UNPROFILED, code};
 pub use sandbox::{Sandbox, UNDER_TEST, built_bead, git, git_command, select_bead};
-pub use wait::{REMOTE_SETTLES, wait_until};
+pub use wait::{REMOTE_SETTLES, wait_until, within};
 
 /// Reads bead's output as a JSON document.
 pub fn parse_json(text: &str) -> Result<Json, String> {

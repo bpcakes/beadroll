@@ -7,7 +7,7 @@ use std::io::Read as _;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use beadroll_test_support::{Json, Machine, Run, code, parse_json};
+use beadroll_test_support::{Json, Machine, Run, code, parse_json, wait_until};
 
 use super::{create, each, events, recap};
 use crate::hardening::g59::run_on_terminal;
@@ -192,9 +192,11 @@ fn recaps_that_overlap_one_after_another_keep_one_frontier() {
                         // both have read the cursor and the store; the first saves first
                         two.meet(second_done, || {
                             one.open();
-                            while !first_done() {
-                                std::thread::sleep(Duration::from_millis(5));
-                            }
+                            wait_until(
+                                "the first recap to finish",
+                                Duration::from_secs(20),
+                                first_done,
+                            );
                         })
                     },
                 )

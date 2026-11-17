@@ -12,13 +12,21 @@ use crate::Sandbox;
 pub const REMOTE_SETTLES: Duration = Duration::from_secs(20);
 
 /// Polls `done` every 10 ms until it holds; panics, naming `what`, if `limit` passes first.
-pub fn wait_until(what: &str, limit: Duration, mut done: impl FnMut() -> bool) {
+pub fn wait_until(what: &str, limit: Duration, done: impl FnMut() -> bool) {
+    assert!(within(limit, done), "waited {limit:?} for {what}, in vain");
+}
+
+/// Polls `done` every 10 ms until it holds or `limit` passes: whether it held. For a test that
+/// still has to clean up when it did not, before it fails.
+pub fn within(limit: Duration, mut done: impl FnMut() -> bool) -> bool {
     let deadline = Instant::now() + limit;
-    while !done() {
-        assert!(
-            Instant::now() < deadline,
-            "waited {limit:?} for {what}, in vain"
-        );
+    loop {
+        if done() {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
         std::thread::sleep(Duration::from_millis(10));
     }
 }

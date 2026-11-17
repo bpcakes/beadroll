@@ -27,6 +27,9 @@ fn slow_push_holds_lock_then_local_writer_completes_without_loss() {
     wait_marker(&marker, &mut sync);
     let writing = a.cmd(["create", "during push", "--offline", "--json"]);
     let mut writer = Worker::start(writing, ProcessSession::Inherited);
+    // An observation window, not a wait for something to happen: the claim is that the writer has
+    // NOT finished, which only time can show, since no failpoint fires while a process waits for
+    // the store lock. A wait for an event is `wait_until` or a `Gate`, never a sleep.
     std::thread::sleep(Duration::from_millis(300));
     assert!(
         writer.poll().is_none(),
