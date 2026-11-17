@@ -220,7 +220,6 @@ impl Writer {
 /// The history `timing --replay` has always measured, draw for draw; with `texts`, the same
 /// operations carrying prose (`Shape::Text`), which takes draws of its own.
 fn plain(w: &mut Writer, count: usize, texts: Shape) {
-    let texts = matches!(texts, Shape::Text);
     let mut issues: Vec<String> = Vec::new();
     let mut claims: Vec<(String, String)> = Vec::new();
     for n in 0..count {
@@ -235,7 +234,7 @@ fn plain(w: &mut Writer, count: usize, texts: Shape) {
         }
         if issues.is_empty() || w.next(10) == 0 {
             let mut data = create(n);
-            if texts {
+            if texts == Shape::Text {
                 let description = prose(w, 1200);
                 described(&mut data, "description", description);
             }
@@ -244,7 +243,7 @@ fn plain(w: &mut Writer, count: usize, texts: Shape) {
         }
         let issue = issues[w.next(issues.len())].clone();
         let (op, data) = match w.next(10) {
-            0..=2 if texts => {
+            0..=2 if texts == Shape::Text => {
                 let field = if w.next(2) == 0 {
                     "description"
                 } else {
@@ -255,7 +254,7 @@ fn plain(w: &mut Writer, count: usize, texts: Shape) {
                 ("set", data)
             }
             0..=2 => ("set", edit(n)),
-            3 | 4 if texts => ("comment", obj(&[("text", prose(w, 300).into())])),
+            3 | 4 if texts == Shape::Text => ("comment", obj(&[("text", prose(w, 300).into())])),
             3 | 4 => ("comment", obj(&[("text", format!("note {n}").into())])),
             5 => (
                 "label_add",

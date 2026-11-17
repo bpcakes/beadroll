@@ -271,10 +271,9 @@ const NO_SUBCOMMAND: &str = "echo 'error: no such command: `llvm-cov`' >&2\nexit
 /// A toolchain whose libraries are in `dir/lib` and whose LLVM tools, when `llvm_tools`, are in
 /// `dir/bin`, as `rustup component add llvm-tools` puts them.
 fn rustc(dir: &Path, llvm_tools: LlvmTools) -> OsString {
-    let llvm_tools = matches!(llvm_tools, LlvmTools::Installed);
     std::fs::create_dir_all(dir.join("lib")).expect("the libraries");
     std::fs::create_dir_all(dir.join("bin")).expect("the binaries");
-    if llvm_tools {
+    if llvm_tools == LlvmTools::Installed {
         for tool in ["llvm-profdata", "llvm-cov"] {
             std::fs::write(dir.join("bin").join(tool), "").expect("an LLVM tool");
         }

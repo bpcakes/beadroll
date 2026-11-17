@@ -66,7 +66,6 @@ fn temporaries(machine: &Machine) -> Vec<String> {
 /// a human reads it), then to the history's; with `replaying`, its projection is removed before
 /// each, so that each replays the journal.
 fn answers(machine: &Machine, keys: &[String], replaying: ReadPath) -> Vec<String> {
-    let replaying = matches!(replaying, ReadPath::Replay);
     let mut out = Vec::new();
     let shows: Vec<Vec<&str>> = (keys.iter())
         .flat_map(|key| [vec!["show", key, "--json"], vec!["show", key]])
@@ -78,7 +77,7 @@ fn answers(machine: &Machine, keys: &[String], replaying: ReadPath) -> Vec<Strin
         .chain(shows)
         .chain(history)
     {
-        if replaying {
+        if replaying == ReadPath::Replay {
             let _ = std::fs::remove_file(projection(machine));
         }
         let run = machine.run(&args);

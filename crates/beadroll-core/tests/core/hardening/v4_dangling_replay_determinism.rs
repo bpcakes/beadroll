@@ -224,7 +224,6 @@ fn pool() -> Vec<String> {
 /// A CLI-shaped history on three replicas, each acting on its own replayed knowledge. With
 /// duplicates enabled, two replicas may mint the same key.
 fn generate(stream: &mut Stream, twins: Identities) -> Vec<Value> {
-    let twins = matches!(twins, Identities::Twins);
     let known = REPLICAS.iter().map(|r| (*r, BTreeSet::new())).collect();
     let mut history = History {
         stream,
@@ -262,7 +261,7 @@ fn generate(stream: &mut Stream, twins: Identities) -> Vec<Value> {
         let fresh: Vec<String> = pool()
             .into_iter()
             .filter(|k| {
-                if twins {
+                if twins == Identities::Twins {
                     !st.keys().contains_key(k)
                 } else {
                     !used.contains(k)

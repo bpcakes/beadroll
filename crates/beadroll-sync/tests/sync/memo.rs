@@ -70,13 +70,12 @@ fn round(ws: &Workspace, origin: &Path) -> Round {
 /// Sets the memo's own modification time `from_now` from now: a memo written after every file it
 /// remembers vouches for them all, one written before a file for none of what it says of that file.
 fn memo_time(ws: &Workspace, from_now: Duration, later: TimeDirection) {
-    let later = matches!(later, TimeDirection::Later);
     let file = OpenOptions::new()
         .write(true)
         .open(memo_path(ws))
         .expect("a memo to set the time of");
     let now = SystemTime::now();
-    let moment = if later {
+    let moment = if later == TimeDirection::Later {
         now + from_now
     } else {
         now - from_now

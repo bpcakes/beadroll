@@ -215,7 +215,6 @@ fn command(
     partitioned: Connectivity,
     keys: &Keys,
 ) -> Vec<String> {
-    let partitioned = matches!(partitioned, Connectivity::Partitioned);
     let action = rng.weighted(&ACTIONS);
     let key = rng.choice(&keys.editable).as_str();
     let tag = format!("{wave}/{mi}/{step}");
@@ -251,13 +250,13 @@ fn command(
         Action::Claim | Action::Release | Action::Takeover => {
             let key = rng.choice(&keys.owned).as_str();
             match action {
-                _ if partitioned => words(["show", key]),
+                _ if partitioned == Connectivity::Partitioned => words(["show", key]),
                 Action::Claim => words(["claim", key]),
                 Action::Release => words(["release", key]),
                 _ => words(["takeover", key, "--reason", "concurrency audit"]),
             }
         }
-        Action::Sync if partitioned => words(["info"]),
+        Action::Sync if partitioned == Connectivity::Partitioned => words(["info"]),
         Action::Sync => words(["sync"]),
     }
 }

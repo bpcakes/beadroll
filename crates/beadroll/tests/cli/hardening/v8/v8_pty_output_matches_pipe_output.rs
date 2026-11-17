@@ -340,13 +340,12 @@ fn pty_output_matches_pipe_output_and_escapes_hostile_text() {
 
 /// `machine`'s environment on a colour terminal, with colour on or turned off (`NO_COLOR`).
 fn environment(machine: &Machine, coloured: ColorMode) -> BTreeMap<OsString, OsString> {
-    let coloured = matches!(coloured, ColorMode::Colored);
     let mut env = machine.env(None, "codex");
     for colour in ["NO_COLOR", "CLICOLOR", "CLICOLOR_FORCE", "TERM"] {
         env.remove(OsStr::new(colour));
     }
     env.insert("TERM".into(), "xterm-256color".into());
-    if !coloured {
+    if coloured != ColorMode::Colored {
         env.insert("NO_COLOR".into(), "1".into());
     }
     env

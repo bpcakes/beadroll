@@ -225,7 +225,6 @@ impl Soak {
 
     /// The action applied to a randomly selected key at this step.
     fn command(&self, rng: &mut Rng, step: usize, mi: usize, offline: NetworkMode) -> Vec<String> {
-        let offline = matches!(offline, NetworkMode::Offline);
         let action = rng.weighted(&ACTIONS);
         let key = rng.choice(&self.keys).as_str();
         match action {
@@ -258,11 +257,13 @@ impl Soak {
                 words(["dep", rng.choice(&["add", "remove"]), key, target])
             }
             Action::Comment => words(["comments", "add", key, &format!("synthetic note {step}")]),
-            Action::Sync if offline => words(["info"]),
+            Action::Sync if offline == NetworkMode::Offline => words(["info"]),
             Action::Sync => words(["sync"]),
-            Action::Claim if offline => words(["claim", key, "--offline"]),
+            Action::Claim if offline == NetworkMode::Offline => words(["claim", key, "--offline"]),
             Action::Claim => words(["claim", key]),
-            Action::Release | Action::Takeover if offline => words(["show", key]),
+            Action::Release | Action::Takeover if offline == NetworkMode::Offline => {
+                words(["show", key])
+            }
             Action::Release => words(["release", key]),
             Action::Takeover => words(["takeover", key, "--reason", "synthetic model test"]),
         }

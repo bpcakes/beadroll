@@ -32,9 +32,8 @@ fn machine(sandbox: &Sandbox, name: &str) -> Machine {
 /// [`machine`] for a `rust_only` test: machine `name` running this build's `bead`, its tracker
 /// initialised as [`machine`] does with `TrackerSetup::Init`, or the published tracker synced.
 fn rust_machine(sandbox: &Sandbox, name: &str, init: TrackerSetup) -> Machine {
-    let init = matches!(init, TrackerSetup::Init);
     let machine = crate::rust_only(sandbox, name);
-    if init {
+    if init == TrackerSetup::Init {
         machine.bead(["init", "--prefix", "ex", "--offline"]);
     } else {
         machine.bead(["sync"]);
@@ -164,9 +163,8 @@ mod v2_in_flight_attempt_across_actors {
     /// before B's command. Pause every backoff at a gate: the first waits for B, later waits pass
     /// through it. Returns the pending filenames left by B.
     fn in_flight(lands_first: PushOrder) -> Vec<String> {
-        let lands_first = matches!(lands_first, PushOrder::First);
         let sandbox = crate::sandbox();
-        let n = u8::from(lands_first);
+        let n = u8::from(lands_first == PushOrder::First);
         let m = rust_machine(&sandbox, &format!("v2-flight-{n}"), TrackerSetup::Init);
         // the claim below is the first push the hook sees
         let x = printed_id(m.bead(["create", "X", "--offline"]));
@@ -196,7 +194,7 @@ mod v2_in_flight_attempt_across_actors {
             |finished| {
                 // A's lock is released and its push is still in flight
                 between.meet(finished, || {
-                    if lands_first {
+                    if lands_first == PushOrder::First {
                         std::fs::remove_dir(&gate).unwrap();
                         settled(&sandbox, &done);
                     }
@@ -232,7 +230,7 @@ mod v2_in_flight_attempt_across_actors {
                 Some("actor-b")
             );
         }
-        let expected: &[&str] = if lands_first {
+        let expected: &[&str] = if lands_first == PushOrder::First {
             &["claim", "claim", "claim"]
         } else {
             &["claim", "fence", "claim", "claim"]
