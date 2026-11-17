@@ -7,8 +7,6 @@
 //! from need not have left. A test that measures what a publish hashes therefore moves the memo's
 //! own time past every file first ([`settled_round`]), so that what is measured is change alone.
 
-use beadroll_core::op::OpName;
-
 mod trees;
 
 use std::fs::{FileTimes, OpenOptions};
@@ -18,6 +16,7 @@ use std::process::Stdio;
 use std::time::{Duration, SystemTime};
 
 use beadroll_core::json::{Object, Value};
+use beadroll_core::op::OpName;
 use beadroll_store::IdentityMode;
 use beadroll_store::{
     Endpoint, Workspace, claim_files, memo_path, relative, replica_id, segment_files,

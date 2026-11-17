@@ -9,8 +9,7 @@
 
 use std::path::PathBuf;
 
-use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, Sandbox, converge, json, parse_json};
+use beadroll_test_support::{Json, Machine, Sandbox, converge, json, json_line, parse_json};
 
 /// The Beads record `key`, titled `key` in capitals, depending on each of
 /// `depends_on` by a `blocks` dependency that has no `created_at` or `created_by`, as in the
@@ -47,10 +46,7 @@ fn path(sandbox: &Sandbox, name: &str) -> PathBuf {
 fn setup(sandbox: &Sandbox) {
     let (a, b) = (record("ex-a", &["ex-b"]), record("ex-b", &[]));
     for (name, records) in [("a", vec![&a]), ("b", vec![&b]), ("ab", vec![&a, &b])] {
-        let text: String = records
-            .into_iter()
-            .map(|r| write(r, Format::ASCII).expect("a record bead can read") + "\n")
-            .collect();
+        let text: String = records.into_iter().map(|r| json_line(r) + "\n").collect();
         std::fs::write(path(sandbox, name), text).unwrap();
     }
 }

@@ -7,9 +7,8 @@
 
 use std::path::Path;
 
-use beadroll_core::json::{Format, write};
 use beadroll_store::{Clock, uuid7};
-use beadroll_test_support::{Json, Machine, json, parse_json};
+use beadroll_test_support::{Json, Machine, json, json_line, json_lines, parse_json};
 
 /// What a journal holds besides this machine's records.
 #[derive(Clone, Copy, Debug)]
@@ -55,7 +54,7 @@ fn answers(out: &str) -> Vec<&str> {
 fn place(machine: &Machine, record: &Json) {
     let folder = machine.store().join("events").join("feedface");
     std::fs::create_dir_all(&folder).unwrap();
-    let line = write(record, Format::ASCII).unwrap() + "\n";
+    let line = json_line(record) + "\n";
     std::fs::write(Path::new(&folder).join("000001.jsonl"), line).unwrap();
 }
 
@@ -300,10 +299,7 @@ fn an_issue_named_again_is_as_its_event_left_it_though_events_off_the_frontier_w
     };
     let folder = a.store().join("events").join("feedface");
     std::fs::create_dir_all(&folder).unwrap();
-    let lines: String = [event(&first, &second), event(&second, &first)]
-        .iter()
-        .map(|record| write(record, Format::ASCII).unwrap() + "\n")
-        .collect();
+    let lines = json_lines(&[event(&first, &second), event(&second, &first)]);
     std::fs::write(folder.join("000001.jsonl"), lines).unwrap();
     let info = a.bead(["info"]).unwrap();
     assert_eq!(info["waiting_events"].as_i64(), Some(2));
@@ -343,7 +339,7 @@ fn an_issue_named_again_is_as_the_events_before_left_it_though_they_did_not_see_
     let title = || json!({"fields": {"title": "x"}});
     let folder = a.store().join("events").join("feedface");
     std::fs::create_dir_all(&folder).unwrap();
-    let lines: String = [
+    let lines = json_lines(&[
         event(
             &change,
             &[&uid],
@@ -352,10 +348,7 @@ fn an_issue_named_again_is_as_the_events_before_left_it_though_they_did_not_see_
         ),
         event(&first, &[&second, &change], &first, title()),
         event(&second, &[&first], &second, title()),
-    ]
-    .iter()
-    .map(|record| write(record, Format::ASCII).unwrap() + "\n")
-    .collect();
+    ]);
     std::fs::write(folder.join("000001.jsonl"), lines).unwrap();
     let info = a.bead(["info"]).unwrap();
     assert_eq!(info["waiting_events"].as_i64(), Some(2));

@@ -2,14 +2,13 @@
 //! One invalid record fails the whole import before anything is written. A dry run says what an
 //! import would do, and imports nothing.
 
-use beadroll_core::op::OpName;
-
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_core::import::dry_run::{Preview, preview, problems};
 use beadroll_core::import::{Step, Target, plan_import, read_records};
 use beadroll_core::json::{Object, Value};
+use beadroll_core::op::OpName;
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
 use beadroll_core::text::printed_text;

@@ -7,8 +7,7 @@
 //! replay has already turned the entry into an edge, so the retraction is lost and the edge comes
 //! back.
 
-use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, Sandbox, converge, json};
+use beadroll_test_support::{Json, Machine, Sandbox, converge, json, json_lines};
 
 /// The Beads record of `key`, titled `key` in capitals, with a `blocks` dependency on
 /// each key of `depends_on`, if there is any.
@@ -40,10 +39,7 @@ fn record(key: &str, depends_on: &[&str]) -> Json {
 /// returns its path.
 fn jsonl_file(sandbox: &Sandbox, name: &str, records: &[Json]) -> String {
     let path = sandbox.root().join(format!("{name}.jsonl"));
-    let text: String = records
-        .iter()
-        .map(|record| write(record, Format::ASCII).expect("a record bead can read") + "\n")
-        .collect();
+    let text = json_lines(records);
     std::fs::write(&path, text).unwrap();
     path.to_str().expect("a UTF-8 path").to_owned()
 }

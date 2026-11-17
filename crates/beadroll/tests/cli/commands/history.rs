@@ -5,9 +5,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use beadroll_core::id::EventId;
-use beadroll_core::json::{Format, Object, write};
+use beadroll_core::json::Object;
 use beadroll_core::time::event_time;
-use beadroll_test_support::{Json, Machine, Sandbox, json, parse_json};
+use beadroll_test_support::{Json, Machine, Sandbox, json, json_line, parse_json};
 
 use super::end_to_end::segments;
 
@@ -163,7 +163,7 @@ fn troubled(sandbox: &Sandbox) -> Machine {
         "created_by": "seed",
     });
     let export = sandbox.root().join("ext.jsonl");
-    std::fs::write(&export, write(&record, Format::ASCII).unwrap() + "\n").unwrap();
+    std::fs::write(&export, json_line(&record) + "\n").unwrap();
     let export = export.to_str().unwrap();
     a.bead(["import", export]);
     b.bead(["import", export]);

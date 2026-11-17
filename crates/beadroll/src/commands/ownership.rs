@@ -2,13 +2,12 @@
 //! (`beadroll_sync::coordinated`): a claim is exclusive once the remote accepts it, and lasts until
 //! a release, a close or a takeover.
 
-use beadroll_core::op::OpName;
-
 use std::ffi::{OsStr, OsString};
 
 use beadroll_core::code::Code;
 use beadroll_core::event::Field;
 use beadroll_core::json::{Format, Object, Value, write};
+use beadroll_core::op::OpName;
 use beadroll_core::state::State;
 use beadroll_core::text::str_of;
 use beadroll_store::IdentityMode;

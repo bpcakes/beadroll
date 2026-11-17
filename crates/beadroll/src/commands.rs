@@ -1,7 +1,5 @@
 //! Commands: typed arguments in, a result and its human-readable lines out.
 
-use beadroll_core::op::OpName;
-
 mod args;
 mod claims;
 mod comments;
@@ -33,6 +31,7 @@ use std::os::unix::ffi::OsStrExt as _;
 use beadroll_core::code::Code;
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Int, Object, Value};
+use beadroll_core::op::OpName;
 use beadroll_core::state::{Issue, State, Target};
 use beadroll_core::text::{repr_str, strip};
 use beadroll_store::{

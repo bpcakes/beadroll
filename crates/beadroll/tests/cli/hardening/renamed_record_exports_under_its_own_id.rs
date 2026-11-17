@@ -7,8 +7,7 @@
 
 use std::collections::BTreeSet;
 
-use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, json, parse_json};
+use beadroll_test_support::{Json, Machine, json, json_line, parse_json};
 
 /// G43: every exported dependency names its own record (issue_id == id), including a
 /// still-dangling imported dependency of a record that was renamed because two machines
@@ -37,7 +36,7 @@ fn unresolved_dependency_is_exported_under_the_records_own_id() {
         "dependencies": [dep],
     });
     let path = sandbox.root().join("ext.jsonl");
-    let line = write(&rec, Format::ASCII).expect("a record bead can read") + "\n";
+    let line = json_line(&rec) + "\n";
     std::fs::write(&path, line).unwrap();
     let path = path.to_str().expect("a UTF-8 path");
     let m1 = Machine::new(&sandbox, "m1");

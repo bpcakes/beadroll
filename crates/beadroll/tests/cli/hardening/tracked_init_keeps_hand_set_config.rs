@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use beadroll_core::json::{Format, Object, write};
-use beadroll_test_support::{Json, Machine, Run, git, json, parse_json, path_text};
+use beadroll_test_support::{Json, Machine, Run, git, json, json_line, parse_json, path_text};
 
 /// Commits `machine`'s .beadroll.json and pushes it to origin's `main`.
 fn commit_config(machine: &Machine) {
@@ -203,7 +203,7 @@ fn reinit_does_not_write_back_a_hand_set_password() {
     let again = m.run(["init", "--tracked", "--json"]);
     assert_eq!(again.returncode(), 0, "{}", again.stderr);
     let rewritten = Json::from(read_object(&config_path));
-    let dumped = write(&rewritten, Format::ASCII).expect("a config");
+    let dumped = json_line(&rewritten);
     assert!(!dumped.contains("supersecret"), "{dumped}");
     assert_eq!(
         rewritten.get("where"),

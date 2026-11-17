@@ -5,15 +5,14 @@
 //! are still the ones it was made from: a file written between the two has the store read again
 //! (roll-lqjj.37).
 
-use beadroll_core::op::OpName;
-
 use std::path::{Path, PathBuf};
 
-use beadroll_core::json::{Format, Object, Value, write};
+use beadroll_core::json::{Object, Value};
+use beadroll_core::op::OpName;
 use beadroll_store::IdentityMode;
 use beadroll_store::{Endpoint, Workspace, glob_ending, json_text, read_attempt, replica_id};
 use beadroll_sync::{publish_soon, synchronise, writing};
-use beadroll_test_support::{Machine, Sandbox, json};
+use beadroll_test_support::{Machine, Sandbox, json, json_line};
 
 use crate::support::{Gate, actor, alongside, claim_command, sandbox, text, workspace};
 
@@ -59,7 +58,7 @@ fn a_sync_that_brings_a_rename_reads_the_state_before_and_after_its_merge() {
         "created_by": "seed",
     });
     let path = sandbox.root().join("ext.jsonl");
-    let line = write(&record, Format::ASCII).expect("a record") + "\n";
+    let line = json_line(&record) + "\n";
     std::fs::write(&path, line).unwrap();
     let path = path.to_str().expect("a UTF-8 path");
     let (m1, m2) = (Machine::new(&sandbox, "m1"), Machine::new(&sandbox, "m2"));

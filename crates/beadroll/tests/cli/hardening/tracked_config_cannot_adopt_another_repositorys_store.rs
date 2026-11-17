@@ -6,7 +6,7 @@ use std::process::Stdio;
 
 use beadroll_git::normalize_remote;
 use beadroll_test_support::{
-    Json, Machine, Run, Sandbox, code, git, json, json_member, json_text, parse_json, path_text,
+    Json, Machine, Run, Sandbox, code, git, json, json_line, json_member, parse_json, path_text,
     printed_id,
 };
 use sha2::{Digest as _, Sha256};
@@ -14,7 +14,7 @@ use sha2::{Digest as _, Sha256};
 /// A clone of `origin` carrying a committed .beadroll.json, pushed to its origin.
 fn seed_repo(sandbox: &Sandbox, name: &str, origin: &Path, config: &Json) -> PathBuf {
     let checkout = sandbox.clone(name, Some(origin));
-    std::fs::write(checkout.join(".beadroll.json"), json_text(config) + "\n").unwrap();
+    std::fs::write(checkout.join(".beadroll.json"), json_line(config) + "\n").unwrap();
     git(["add", "-A"], Some(&checkout));
     let identity = ["-c", "user.name=t", "-c", "user.email=t@example.invalid"];
     git(
@@ -181,7 +181,7 @@ fn tracked_remote_change_does_not_silently_move_an_existing_store() {
         panic!("{config:?} is not an object");
     };
     config.insert("remote".into(), Json::from(path_text(&evil)));
-    std::fs::write(&config_path, json_text(&Json::Object(config)) + "\n").unwrap();
+    std::fs::write(&config_path, json_line(&Json::Object(config)) + "\n").unwrap();
 
     let sync = a.run(["sync", "--json"]);
     assert_eq!(

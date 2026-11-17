@@ -4,14 +4,13 @@
 //! made with it are one attempt, coordinated with the remote: both land, or neither. An update
 //! that asks for nothing writes nothing and says so.
 
-use beadroll_core::op::OpName;
-
 use std::ffi::{OsStr, OsString};
 
 use beadroll_core::code::Code;
 use beadroll_core::event::DONE;
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
+use beadroll_core::op::OpName;
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::str_of;
 use beadroll_store::Label;

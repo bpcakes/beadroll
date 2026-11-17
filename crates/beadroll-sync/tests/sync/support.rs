@@ -1,8 +1,6 @@
 //! Shared protocol fixtures: in-process stores and actors, coordinated command bodies and
 //! pause-until handshakes.
 
-use beadroll_core::op::OpName;
-
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
@@ -10,6 +8,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use beadroll_core::json::{Format, Object, Value, write};
+use beadroll_core::op::OpName;
 use beadroll_store::{Actor, Settings, Workspace, pending_files, read_attempt};
 use beadroll_sync::NetworkMode;
 use beadroll_sync::{Error, Mode, Tx, coordinated};

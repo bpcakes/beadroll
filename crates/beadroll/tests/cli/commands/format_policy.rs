@@ -5,9 +5,9 @@ use std::collections::BTreeSet;
 use std::io::Write as _;
 use std::path::PathBuf;
 
-use beadroll_core::json::{Format, Value, write};
+use beadroll_core::json::Value;
 use beadroll_store::{Clock, glob_ending, uuid7};
-use beadroll_test_support::{Machine, json, parse_json};
+use beadroll_test_support::{Machine, json, json_line, json_lines, parse_json};
 
 /// The first segment under the store's `events/`: of its first replica by name, the first by name.
 fn first_segment(machine: &Machine) -> PathBuf {
@@ -45,7 +45,7 @@ fn list_and_show_print_legacy_boolean_priorities_as_numbers() {
                     };
                     fields.insert("priority".into(), Value::Bool(flag));
                 }
-                write(&event, Format::ASCII).unwrap() + "\n"
+                json_line(&event) + "\n"
             })
             .collect();
         std::fs::write(&path, legacy).unwrap();
@@ -98,10 +98,7 @@ fn unapplicable_events_travel_untouched_and_hold_nothing_up() {
                "deps": [(archive.as_str())], "op": "set", "issue": (uid.clone()),
                "data": {"fields": {"title": "from the future"}}}),
     ];
-    let foreign: String = future
-        .iter()
-        .map(|event| write(event, Format::ASCII).unwrap() + "\n")
-        .collect();
+    let foreign = json_lines(&future);
     let mut file = std::fs::OpenOptions::new()
         .append(true)
         .open(&segment)

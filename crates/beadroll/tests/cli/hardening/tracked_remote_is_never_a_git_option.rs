@@ -1,7 +1,7 @@
 //! G01 (`docs/FINDINGS.md`): a tracked `remote` starting with `-` reached git as an option, so
 //! `--upload-pack=<cmd>` ran a command.
 
-use beadroll_test_support::{Machine, git, json, json_text, printed_id};
+use beadroll_test_support::{Machine, git, json, json_line, printed_id};
 
 /// G01: a committed .beadroll.json `remote` beginning with `--upload-pack=` reaches `git fetch`
 /// as an option, so `bead claim` and `bead sync` run the command it names.
@@ -14,7 +14,7 @@ fn tracked_remote_that_looks_like_an_option_runs_nothing() {
     let config = a.checkout().join(".beadroll.json");
     let remote = format!("--upload-pack=touch {} ;", claim_marker.display());
     let tracked = json!({"workspace": "ws-g01-0001", "remote": remote});
-    std::fs::write(&config, json_text(&tracked)).unwrap();
+    std::fs::write(&config, json_line(&tracked)).unwrap();
     a.bead(["init", "--prefix", "ex"]);
     let key = printed_id(a.bead(["create", "work"]));
     let claim = a.run(["claim", &key, "--json"]);
@@ -26,7 +26,7 @@ fn tracked_remote_that_looks_like_an_option_runs_nothing() {
     );
     let remote = format!("--upload-pack=touch {} ;", sync_marker.display());
     let tracked = json!({"workspace": "ws-g01-0001", "remote": remote});
-    std::fs::write(&config, json_text(&tracked)).unwrap();
+    std::fs::write(&config, json_line(&tracked)).unwrap();
     let sync = a.run(["sync", "--json"]);
     assert!(
         !sync_marker.exists(),
@@ -48,7 +48,7 @@ fn tracked_remote_that_looks_like_an_option_runs_nothing() {
     let honest_config = json!({"workspace": "ws-g01-0002", "remote": "-coord.git"});
     std::fs::write(
         b.checkout().join(".beadroll.json"),
-        json_text(&honest_config),
+        json_line(&honest_config),
     )
     .unwrap();
     b.bead(["init", "--prefix", "ex"]);

@@ -2,7 +2,7 @@
 //! identity in two places, whose histories part across a segment boundary.
 
 use beadroll_core::json::{Format, Style, write};
-use beadroll_test_support::{Json, Machine, Run, Sandbox, code, copy_tree, parse_json};
+use beadroll_test_support::{Json, Machine, Run, Sandbox, code, copy_tree, json_line, parse_json};
 
 use super::{own_segment, remote_blob, setup, two};
 
@@ -120,6 +120,6 @@ fn bug_segment_boundary_fork_must_not_erase_concurrent_title() {
     assert!(
         conflicts.is_some_and(|conflicts| conflicts.contains_key("title")),
         "concurrent title vanished because segment order invented ancestry: {}",
-        write(&shown, Format::ASCII).unwrap()
+        json_line(&shown)
     );
 }

@@ -1,7 +1,6 @@
 //! State retained between commands: pending attempts and receipts settled by sync, invalid
 //! pending files and published counts in `meta.json` (`docs/REVIEWING.md` §1).
 
-use beadroll_core::op::OpName;
 use beadroll_test_support::{Machine, code, json_id, parse_json};
 
 mod publication;
@@ -9,6 +8,7 @@ mod publication;
 use std::os::unix::fs::PermissionsExt as _;
 
 use beadroll_core::json::{Format, Object, Value, write};
+use beadroll_core::op::OpName;
 use beadroll_core::replay::replay;
 use beadroll_store::FileMode;
 use beadroll_store::{Workspace, find_workspace, load_journal, write_atomic, write_attempt_file};

@@ -1,13 +1,12 @@
 //! Observe unused internal merge projections on real production exits, after their state drops.
 
-use beadroll_core::op::OpName;
-
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use beadroll_core::code::Code;
 use beadroll_core::json::{Format, Object, Value, write};
+use beadroll_core::op::OpName;
 use beadroll_store::{Actor, Endpoint, LockState, Workspace, pending_files};
 use beadroll_test_support::json;
 

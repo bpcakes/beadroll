@@ -11,7 +11,7 @@ use std::process::Stdio;
 
 use beadroll_core::json::{Format, Style, write};
 use beadroll_store::glob_ending;
-use beadroll_test_support::{Json, Machine, git, json, parse_json, printed_id};
+use beadroll_test_support::{Json, Machine, git, json, json_line, parse_json, printed_id};
 
 /// The hook that stops an ownership command once the remote has taken its push, before bead hears
 /// back: the lost acknowledgement.
@@ -288,7 +288,7 @@ fn future_manifest_is_refused_without_remote_rewrite() {
     let store = a.store();
     let workspace = store.file_name().expect("the store's name").to_str();
     let manifest = json!({"format": 2, "workspace": (workspace.expect("a UTF-8 name"))});
-    let manifest = write(&manifest, Format::ASCII).unwrap() + "\n";
+    let manifest = json_line(&manifest) + "\n";
     std::fs::write(attacker.join("manifest.json"), manifest).unwrap();
     std::fs::write(
         attacker.join("future-state.bin"),

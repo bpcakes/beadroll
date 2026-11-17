@@ -1,8 +1,6 @@
 //! `bead dep`: add or take back a dependency, list one issue's, draw its tree, or find the
 //! dependency cycles.
 
-use beadroll_core::op::OpName;
-
 use std::collections::BTreeSet;
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStrExt as _;
@@ -10,6 +8,7 @@ use std::os::unix::ffi::OsStrExt as _;
 use beadroll_core::code::Code;
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
+use beadroll_core::op::OpName;
 use beadroll_core::query::{Edges, blocking};
 use beadroll_core::state::{Edge, Issue, State, Target};
 use beadroll_core::text::str_of;

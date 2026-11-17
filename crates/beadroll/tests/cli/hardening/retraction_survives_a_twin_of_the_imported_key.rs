@@ -6,8 +6,7 @@
 //! it saw (dep_remove by uid); when the other copy keeps the key, the retraction misses it and the
 //! dependency is live again on every machine.
 
-use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, Sandbox, converge, json, printed_id};
+use beadroll_test_support::{Json, Machine, Sandbox, converge, json, json_line, printed_id};
 
 /// The Beads record `key` titled `title`, depending on `depends_on`, when there
 /// is one, by a dependency of type `kind`.
@@ -31,7 +30,7 @@ fn record(key: &str, title: &str, depends_on: Option<&str>, kind: &str) -> Json 
 
 /// One record as spaced, ASCII-escaped JSON followed by a newline.
 fn line(record: &Json) -> String {
-    write(record, Format::ASCII).expect("a record bead can read") + "\n"
+    json_line(record) + "\n"
 }
 
 /// `issue["dependencies"]`: the dependencies `show` lists for an issue.
