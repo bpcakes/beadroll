@@ -18,7 +18,7 @@ use crate::error::Error;
 use crate::fs::{Unreadable, read_json_keyed, write_atomic_keyed};
 use crate::listing::Claims;
 use crate::memo::FileKey;
-use crate::settings::Settings;
+use crate::settings::{Clock, Settings};
 
 pub use lock::WorkspaceLock;
 pub use remote::{Endpoint, RemoteSource};
@@ -320,7 +320,7 @@ impl Workspace {
     pub fn note_sync(&self, remote: &Endpoint, values: &[(&str, Value)]) {
         let mut all: Vec<(&str, Value)> = values.to_vec();
         all.push(("remote", remembered(remote)));
-        all.push(("last_sync", Value::from(stamp())));
+        all.push(("last_sync", Value::from(stamp(&self.settings.clock))));
         let _ = self.save_meta(&all);
     }
 
@@ -370,11 +370,10 @@ fn opaque_token(id: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
 }
 
-/// The real current time in UTC to the second for last_sync, unaffected by event-clock shifts.
-pub fn stamp() -> String {
-    let seconds = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |since| since.as_secs());
+/// The real current time in UTC to the second for `last_sync`, unaffected by event-clock shifts
+/// ([`Clock::real_ns`]).
+fn stamp(clock: &Clock) -> String {
+    let seconds = u64::try_from(clock.real_ns() / 1_000_000_000).unwrap_or(0);
     beadroll_core::time::utc_stamp(seconds)
 }
 

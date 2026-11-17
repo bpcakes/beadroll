@@ -139,7 +139,10 @@ the record of it before any test data is written), their tests beside them, and 
   explicit values (`Settings`, the actor, the checkout path, the environment
   git children inherit) and passes them down, which is what lets studio and
   in-process tests use the crates; `std::env::set_var` is `unsafe` in edition
-  2024 besides, so tests set environments on child processes only. The actor's
+  2024 besides, so tests set environments on child processes only. Time is read through
+  `Settings.clock`: `now_ns` for event ids and the stamps events carry, which offsets and the
+  `clock` failpoint move, and `real_ns` for when something really happened here, which they do
+  not; nothing reads `SystemTime` itself. The actor's
   one impure step, the walk up the process tree with `ps` when both a Claude
   and a Codex session variable are set, goes through a function the CLI passes
   in, so a fake `ps` on `PATH` drives its test.

@@ -3,11 +3,17 @@
 
 use super::parse::Namespace;
 use crate::cli::OutputMode;
+use beadroll_store::Clock;
+
 use crate::commands::{Failure, Layout, RecapArgs};
 
 /// `recap`'s arguments. What a person reads on a terminal is marked seen once it is written; what
 /// a pipe, a file or `--json` takes in (an agent's run, a `| head`) only when `--advance` asks.
-pub(super) fn args(ns: &Namespace, output: OutputMode) -> Result<RecapArgs, Failure> {
+pub(super) fn args(
+    ns: &Namespace,
+    output: OutputMode,
+    clock: &Clock,
+) -> Result<RecapArgs, Failure> {
     let layout = match ns.text("format") {
         None => Layout::Events,
         Some(name) => (name.to_str().and_then(Layout::named)).ok_or_else(|| {
@@ -26,15 +32,11 @@ pub(super) fn args(ns: &Namespace, output: OutputMode) -> Result<RecapArgs, Fail
         all: ns.flag("all"),
         advance: ns.flag("advance") || (terminal && !ns.flag("no_advance")),
         layout,
-        now: now_millis(),
+        now: now_millis(clock),
     })
 }
 
-/// Milliseconds since the epoch on the real clock.
-fn now_millis() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |since| {
-            u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
-        })
+/// Milliseconds since the epoch on the real clock ([`Clock::real_ns`]); before it, none.
+fn now_millis(clock: &Clock) -> u64 {
+    u64::try_from(clock.real_ns() / 1_000_000).unwrap_or(0)
 }

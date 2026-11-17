@@ -55,17 +55,24 @@ impl Clock {
         }
     }
 
-    /// Nanoseconds since the epoch.
+    /// Nanoseconds since the epoch, for event ids and the stamps events carry.
     pub fn now_ns(&self) -> i128 {
-        let real = match SystemTime::now().duration_since(UNIX_EPOCH) {
-            Ok(since) => since.as_nanos() as i128,
-            Err(before) => -(before.duration().as_nanos() as i128),
-        };
-        let now = real + self.offset_ns;
+        let now = self.real_ns() + self.offset_ns;
         match self.failpoints.as_ref().and_then(|f| f.hit("clock")) {
             Some(Fired::Offset(ns)) => now + ns,
             Some(Fired::At(ns)) => ns,
             _ => now,
+        }
+    }
+
+    /// Nanoseconds since the epoch on the real clock: neither the configured offset nor the
+    /// `clock` failpoint moves it. For when something really happened here (`last_sync`, how long
+    /// a claim has been held, what `recap` counts as now), never for an event id. The one reading
+    /// of the wall clock in bead.
+    pub fn real_ns(&self) -> i128 {
+        match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(since) => since.as_nanos() as i128,
+            Err(before) => -(before.duration().as_nanos() as i128),
         }
     }
 }

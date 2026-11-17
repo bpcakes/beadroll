@@ -26,7 +26,7 @@ use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Format, Int, Object, Value};
 use beadroll_core::query::Edges;
 use beadroll_core::text::json_ascii_bytes;
-use beadroll_store::{Settings, detect_actor, find_workspace, nearest_harness};
+use beadroll_store::{Clock, Settings, detect_actor, find_workspace, nearest_harness};
 use beadroll_sync::NetworkMode;
 use beadroll_sync::publish_soon_at;
 use output::{Stream, Unwritten, emit};
@@ -303,7 +303,7 @@ fn execute(
     };
     if ns.spec.scope == Scope::Home {
         // every tracker of this machine's and no checkout: none to find, and no git to start
-        let args = recap::args(&ns, output_mode)?;
+        let args = recap::args(&ns, output_mode, &settings.clock)?;
         let (outcome, delivered) = commands::recap(&Arc::new(settings), &args)?;
         let text = rendered((outcome.result, outcome.lines), output_mode, colors)?;
         return Ok(text.map(|text| Printed { text, delivered }));
@@ -536,7 +536,7 @@ fn dispatch(
         "log" => commands::log(ctx, ns.text("key"), ns.int("limit"))?,
         "info" => commands::info(ctx)?,
         "machines" => commands::machines(ctx, ns.text("name"))?,
-        "claims" => commands::claims(ctx, real_time())?,
+        "claims" => commands::claims(ctx, real_seconds(&ctx.ws.settings.clock))?,
         name => {
             let args = commands::OwnershipArgs {
                 ids: ns.texts("ids").to_vec(),
@@ -555,13 +555,10 @@ fn dispatch(
     Ok((outcome, network, remote))
 }
 
-/// Seconds since the epoch on the real clock. The `clock` failpoint shifts only the nanosecond
-/// clock used for event ids, not this reading.
-fn real_time() -> f64 {
-    match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
-        Ok(since) => since.as_nanos() as f64 / 1e9,
-        Err(before) => -(before.duration().as_nanos() as f64) / 1e9,
-    }
+/// Seconds since the epoch on the real clock ([`Clock::real_ns`]), which the `clock` failpoint
+/// does not shift: how long a claim has been held.
+fn real_seconds(clock: &Clock) -> f64 {
+    clock.real_ns() as f64 / 1e9
 }
 
 /// `list`'s arguments.

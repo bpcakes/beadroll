@@ -154,3 +154,22 @@ fn a_pause_waits_for_its_go_file() {
     assert_eq!(fp.hit("push.before"), None);
     opener.join().unwrap();
 }
+
+/// The clock failpoint and a configured offset move the event clock only: the real clock, which
+/// `last_sync`, a claim's age and `recap`'s now read, stays where it is.
+#[test]
+fn the_real_clock_is_not_moved_by_offsets_or_the_clock_failpoint() {
+    let day = 86_400 * 1_000_000_000_i128;
+    let shifted = crate::Clock::shifted(-2 * day);
+    let pointed = crate::Clock::with_failpoints(std::sync::Arc::new(
+        points("clock@always=offset(-48h)").unwrap(),
+    ));
+    for clock in [&shifted, &pointed] {
+        let real = clock.real_ns();
+        assert!(clock.now_ns() < real - day, "{clock:?}");
+        assert!(
+            (crate::Clock::system().now_ns() - real).abs() < day,
+            "{clock:?}"
+        );
+    }
+}
