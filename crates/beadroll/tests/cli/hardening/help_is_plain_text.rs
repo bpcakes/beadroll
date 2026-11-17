@@ -54,7 +54,8 @@ fn read_all(mut pipe: impl Read + Send + 'static) -> JoinHandle<Vec<u8>> {
     })
 }
 
-/// What a reader thread read, as `text=True` decodes it; nothing for a stream that was not piped.
+/// What a reader thread read, as text (output that is not UTF-8 fails the test); nothing for a
+/// stream that was not piped.
 fn text(reader: Option<JoinHandle<Vec<u8>>>) -> String {
     let bytes = reader.map(|thread| thread.join().expect("a reader"));
     String::from_utf8(bytes.unwrap_or_default()).expect("bead's output is UTF-8")

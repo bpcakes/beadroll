@@ -48,13 +48,13 @@ fn text(dependency: &Json, key: &str) -> String {
         .to_owned()
 }
 
-/// `[(d["id"], d["dependency_type"]) for d in issue["dependencies"]]`.
+/// Each of `issue`'s dependencies as its id and its type, in the order `show` lists them.
 fn dependencies(issue: &Json) -> Vec<(String, String)> {
     let pair = |d: &Json| (text(d, "id"), text(d, "dependency_type"));
     listed(issue).iter().map(pair).collect()
 }
 
-/// `[d["id"] for d in issue["dependencies"]]`.
+/// The ids of `issue`'s dependencies, in the order `show` lists them.
 fn dependency_ids(issue: &Json) -> Vec<String> {
     listed(issue).iter().map(|d| text(d, "id")).collect()
 }

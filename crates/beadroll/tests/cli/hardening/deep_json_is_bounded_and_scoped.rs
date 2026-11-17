@@ -235,7 +235,7 @@ fn import_refuses_nesting_that_not_every_machine_can_read() {
     assert_eq!(written, nested(50));
 }
 
-/// The ids of the issues a `bead list --json` printed: `{i["id"] for i in listed["issues"]}`.
+/// The ids of the issues a `bead list --json` printed.
 fn ids(listed: &Json) -> BTreeSet<String> {
     let issues = listed["issues"].as_array().expect("a list of issues");
     let id = |issue: &Json| issue["id"].as_str().expect("an id").to_owned();

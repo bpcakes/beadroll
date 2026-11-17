@@ -82,7 +82,7 @@ fn close_on_a_feature_branch(sandbox: &Sandbox, a: &Machine) -> (String, PathBuf
     (key, tree)
 }
 
-/// `show KEY`'s `merged`, which must be there: `assertIs` compares it with `True` or `False`.
+/// `show KEY`'s `merged`, which must be there; the tests compare it with `true` or `false`.
 fn merged(a: &Machine, key: &str) -> Json {
     a.show(key).get("merged").expect("show's merged").clone()
 }

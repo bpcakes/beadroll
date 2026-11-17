@@ -18,7 +18,7 @@ fn mode(path: &Path) -> u32 {
     std::fs::metadata(path).unwrap().permissions().mode() & 0o7777
 }
 
-/// `output` as a [`Run`], decoded as `text=True` decodes it.
+/// `output` as a [`Run`]; output that is not UTF-8 fails the test.
 fn finished(output: Output) -> Run {
     Run {
         status: output.status,

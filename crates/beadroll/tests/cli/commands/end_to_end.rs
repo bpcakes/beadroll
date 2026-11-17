@@ -72,7 +72,7 @@ pub(crate) fn owner(issue: &Json) -> &str {
     owner.unwrap_or_else(|| panic!("no claim owner in {issue:?}"))
 }
 
-/// `[row[key] for row in rows]`: the member `key` of every row of the list `rows`.
+/// The member `key` of every row of the list `rows`, in order.
 pub(crate) fn column(rows: &Json, key: &str) -> Vec<Json> {
     let rows = rows
         .as_array()
@@ -267,7 +267,8 @@ fn replay_does_not_depend_on_delivery_order() {
     assert!(waiting.join(" ").contains("after seeing everything"));
 }
 
-/// Every order of `items[at..]` after `items[..at]`, in the order itertools.permutations gives.
+/// Every order of `items[at..]` after `items[..at]`, in lexicographic order of the items' places
+/// in `items`.
 fn permutations(items: &mut Vec<String>, at: usize, out: &mut Vec<Vec<String>>) {
     if at == items.len() {
         out.push(items.clone());

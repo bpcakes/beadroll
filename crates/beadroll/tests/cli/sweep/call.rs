@@ -164,7 +164,7 @@ fn returncode(status: ExitStatus) -> Rc {
     }
 }
 
-/// Output decoded as `text=True` decodes it: UTF-8, or the schedule fails.
+/// Output as text: UTF-8, or the schedule fails.
 fn text(bytes: Vec<u8>, stream: &str) -> String {
     String::from_utf8(bytes).unwrap_or_else(|error| panic!("bead's {stream} is not UTF-8: {error}"))
 }
