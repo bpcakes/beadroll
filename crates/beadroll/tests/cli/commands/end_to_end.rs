@@ -25,7 +25,7 @@ use beadroll_store::IdentityMode;
 use beadroll_store::{
     Settings, Workspace, claim_files, load_journal, read_attempt, replica_id, segment_files,
 };
-use beadroll_test_support::{Json, Machine, Run, Sandbox};
+use beadroll_test_support::{Json, Machine, Run, Sandbox, converge};
 
 /// Machine a owns an initialised tracker with issues X and Y; machine b has synced it.
 pub(crate) fn two_machines(sandbox: &Sandbox) -> (Machine, Machine, String, String) {
@@ -40,16 +40,10 @@ pub(crate) fn two_machines(sandbox: &Sandbox) -> (Machine, Machine, String, Stri
     (a, b, text(x), text(y))
 }
 
-/// Every machine syncs twice; then they must export the same records and show the same issues.
+/// The machines converge (`beadroll_test_support::converge`); then they must also show the same
+/// issues, claims and conflicts included.
 pub(crate) fn settle(machines: &[&Machine]) {
-    for machine in machines.iter().chain(machines) {
-        machine.bead(["sync"]);
-    }
-    let exports: Vec<String> = machines.iter().map(|m| m.export()).collect();
-    assert!(
-        exports.iter().all(|e| *e == exports[0]),
-        "machines did not converge"
-    );
+    converge(machines);
     let views: Vec<String> = machines
         .iter()
         .map(|m| {

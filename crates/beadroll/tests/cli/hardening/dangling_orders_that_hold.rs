@@ -5,10 +5,8 @@
 //! End to end on two machines: the orders in which a retraction of an imported dependency
 //! already holds, and add-wins against a key-based retraction.
 
-use std::collections::BTreeSet;
-
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, Sandbox, json};
+use beadroll_test_support::{Json, Machine, Sandbox, converge, json};
 
 /// The Beads record `key`, titled in capitals, that depends on (is blocked by)
 /// each of `depends_on`.
@@ -64,15 +62,6 @@ fn pair(sandbox: &Sandbox) -> (Machine, Machine) {
     (m1, m2)
 }
 
-/// `settle`: every machine syncs, twice round, and then their exports are equal.
-fn settle(machines: &[&Machine]) {
-    for machine in machines.iter().chain(machines) {
-        machine.bead(["sync"]);
-    }
-    let exports: BTreeSet<String> = machines.iter().map(|m| m.export()).collect();
-    assert_eq!(exports.len(), 1, "machines did not converge");
-}
-
 /// `edges`: `key`'s dependencies as `bead show` lists them, sorted (id, type) pairs.
 fn edges(machine: &Machine, key: &str) -> Vec<(String, String)> {
     let shown = machine.show(key);
@@ -113,7 +102,7 @@ fn key_retraction_that_sorts_first_holds() {
         "import",
         &write_records(&sandbox, "b", &[record("ex-b", &["ex-a"])]),
     ]);
-    settle(&[&m1, &m2]);
+    converge(&[&m1, &m2]);
     assert_eq!(edges(&m1, "ex-a"), []);
     assert_eq!(edges(&m2, "ex-a"), []);
     let cycles = m2.bead(["dep", "cycles"]).expect("dep cycles");
@@ -135,7 +124,7 @@ fn uid_retraction_after_the_target_arrived_holds() {
     m1.bead(["sync"]);
     assert_eq!(edges(&m1, "ex-a"), blocks("ex-b"));
     m1.bead(["dep", "remove", "ex-a", "ex-b"]);
-    settle(&[&m1, &m2]);
+    converge(&[&m1, &m2]);
     assert_eq!(edges(&m1, "ex-a"), []);
     assert_eq!(edges(&m2, "ex-a"), []);
 }
@@ -157,7 +146,7 @@ fn concurrent_explicit_add_survives_a_key_retraction() {
     unseen(&m1, "ex-b");
     // key-based, concurrent with m2's explicit add
     m1.bead(["dep", "remove", "ex-a", "ex-b"]);
-    settle(&[&m1, &m2]);
+    converge(&[&m1, &m2]);
     assert_eq!(edges(&m1, "ex-a"), blocks("ex-b"));
     assert_eq!(edges(&m2, "ex-a"), blocks("ex-b"));
 }

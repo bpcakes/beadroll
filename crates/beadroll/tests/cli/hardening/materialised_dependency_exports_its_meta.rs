@@ -10,7 +10,7 @@
 use std::path::PathBuf;
 
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, Sandbox, json, parse_json};
+use beadroll_test_support::{Json, Machine, Sandbox, converge, json, parse_json};
 
 /// The Beads record `key`, titled `key` in capitals, depending on each of
 /// `depends_on` by a `blocks` dependency that has no `created_at` or `created_by`, as in the
@@ -123,10 +123,7 @@ fn target_imported_on_another_machine_stamps_the_dependency() {
     y.bead(["sync"]);
     x.bead(["import", &file(&sandbox, "a")]);
     y.bead(["import", &file(&sandbox, "b")]);
-    for machine in [&x, &y, &x, &y] {
-        machine.bead(["sync"]);
-    }
-    assert_eq!(x.export(), y.export());
+    converge(&[&x, &y]);
     let dep = dependency(&x, "ex-a");
     assert_eq!(dep.get("depends_on_id"), Some(&Json::from("ex-b")));
     assert!(

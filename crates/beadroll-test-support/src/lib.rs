@@ -29,7 +29,7 @@ mod wait;
 pub use beadroll_core::json::Value as Json;
 pub use gate::{Gate, beside};
 pub use isolation::assert_git_isolation;
-pub use machine::{Invocation, Machine, Run, UNPROFILED, code};
+pub use machine::{Invocation, Machine, Run, UNPROFILED, code, converge};
 pub use sandbox::{Sandbox, UNDER_TEST, built_bead, git, git_command, select_bead};
 pub use shell::{git_on_path, shell_quoted};
 pub use spawned::{ProcessGroup, Spawned};
