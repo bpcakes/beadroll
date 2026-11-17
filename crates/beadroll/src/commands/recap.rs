@@ -349,9 +349,9 @@ fn summary(op: &Op, st: &State) -> String {
         }
         Op::Comment { text, .. } => format!("comment: {text}"),
         Op::Claim(claim) => {
-            let what = if claim.mode.as_deref() == Some("offline") {
+            let what = if claim.provisional() {
                 "claim (provisional)"
-            } else if claim.takeover.as_deref().is_some_and(|t| !t.is_empty()) {
+            } else if claim.takeover_of().is_some() {
                 "takeover"
             } else {
                 "claim"

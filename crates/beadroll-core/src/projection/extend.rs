@@ -117,7 +117,7 @@ impl Projection {
         for event in events.values_mut() {
             let what = event.take_rest();
             if let Op::Claim(claiming) = &what.op
-                && claiming.takeover.as_deref().is_some_and(|t| !t.is_empty())
+                && claiming.takeover_of().is_some()
             {
                 return Ok(Extended::Replay);
             }

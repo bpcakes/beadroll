@@ -103,10 +103,13 @@ pub struct Create {
     pub imported: bool,
 }
 
+/// The `mode` of a provisional claim: one made offline, standing until it is published.
+pub const PROVISIONAL: &str = "offline";
+
 /// What a claim carries.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Claiming {
-    /// `offline` for a provisional claim; `online` when absent or empty.
+    /// [`PROVISIONAL`] for a provisional claim; `online` when absent or empty.
     pub mode: Option<String>,
     /// The claim it takes over.
     pub takeover: Option<String>,
@@ -114,6 +117,18 @@ pub struct Claiming {
     pub reason: Option<String>,
     /// The generation its writer saw.
     pub generation: Option<IntegerField>,
+}
+
+impl Claiming {
+    /// Whether it is provisional: claimed offline, standing until it is published and confirmed.
+    pub fn provisional(&self) -> bool {
+        self.mode.as_deref() == Some(PROVISIONAL)
+    }
+
+    /// The claim it takes over, by its event id, when it is a takeover: an empty one names none.
+    pub fn takeover_of(&self) -> Option<&str> {
+        self.takeover.as_deref().filter(|named| !named.is_empty())
+    }
 }
 
 /// What a release, close or delete carries.
