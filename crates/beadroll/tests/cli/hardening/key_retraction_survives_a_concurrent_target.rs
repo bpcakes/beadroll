@@ -1,6 +1,6 @@
 //! G14: retracting an imported dependency by key survives a concurrent create with an earlier id.
 //! The clock does not decide the result. The replay-only test is in beadroll-core's
-//! `tests/core/hardening/g14_key_retraction_lost_to_concurrent_target.rs`.
+//! `tests/core/hardening/key_retraction_survives_a_concurrent_target.rs`.
 //!
 //! A key-based dep_remove (the target is not an issue on the remover's machine) only filters
 //! `dangling`. When another machine's concurrent import of the target has the earlier event id,

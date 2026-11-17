@@ -16,13 +16,13 @@ use std::time::{Duration, Instant};
 
 use beadroll_test_support::{Machine, json, parse_json};
 
-mod v8_hangup_of_the_controlling_terminal;
-mod v8_prune_after_a_fetch;
-mod v8_prune_on_the_private_sync_repo;
-mod v8_pty_output_matches_pipe_output;
-mod v8_recovery_from_a_pruned_remote;
-mod v8_remote_maintenance;
-mod v8_sync_under_a_controlling_terminal_cannot_prompt;
+mod hangup_of_the_controlling_terminal;
+mod prune_after_a_fetch;
+mod prune_on_the_private_sync_repo;
+mod pty_output_matches_pipe_output;
+mod recovery_from_a_pruned_remote;
+mod remote_maintenance;
+mod sync_under_a_controlling_terminal_cannot_prompt;
 
 /// The claims a machine lists, as (id, owner, state), sorted.
 type Claims = Vec<(String, String, String)>;

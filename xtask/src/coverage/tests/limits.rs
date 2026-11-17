@@ -207,8 +207,8 @@ fn stripping_the_use_from_the_real_helper_is_found() {
     let sources = test_sources();
     let (name, text) = sources
         .iter()
-        .find(|(name, _)| name.ends_with("hardening/v6.rs"))
-        .expect("the V6 helper");
+        .find(|(name, _)| name.ends_with("hardening/refusals_of_the_system.rs"))
+        .expect("the V6 helpers' module");
     assert!(problem(name, text).is_none());
     // its doc comment names UNPROFILED, as it should; the code is what counts
     assert!(text.contains("[`UNPROFILED`]"));

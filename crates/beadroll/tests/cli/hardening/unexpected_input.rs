@@ -16,7 +16,7 @@ fn common() -> Json {
     })
 }
 
-mod v3_non_utf8_identity_and_text {
+mod non_utf8_identity_and_text {
     use std::ffi::{OsStr, OsString};
     use std::os::unix::ffi::OsStrExt as _;
 
@@ -92,7 +92,7 @@ mod v3_non_utf8_identity_and_text {
     }
 }
 
-mod v3_import_shape_errors {
+mod import_shape_errors {
     use beadroll_core::json::{Format, Object, write};
     use beadroll_test_support::{Json, Machine, code, json};
 
@@ -153,7 +153,7 @@ mod v3_import_shape_errors {
     }
 }
 
-mod v3_foreign_folder_default_quote_path {
+mod foreign_folder_default_quote_path {
     use std::ffi::OsStr;
     use std::io::Write as _;
     use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};

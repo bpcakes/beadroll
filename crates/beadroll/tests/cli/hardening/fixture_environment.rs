@@ -7,6 +7,6 @@ fn fixture_git_writes_ignore_inherited_repository_and_object_routing() {
         "hardening::non_utf8_git_and_ps_output_is_not_a_traceback::every_command_with_an_origin_url_that_is_not_utf8",
         "hardening::non_utf8_git_and_ps_output_is_not_a_traceback::create_on_a_branch_whose_name_is_not_utf8",
         "hardening::non_utf8_git_and_ps_output_is_not_a_traceback::show_closed_issue_when_origin_head_names_a_latin1_branch",
-        "hardening::v3::v3_foreign_folder_default_quote_path::non_utf8_ref_folder_does_not_crash_sync_under_default_quotepath",
+        "hardening::unexpected_input::foreign_folder_default_quote_path::non_utf8_ref_folder_does_not_crash_sync_under_default_quotepath",
     ]);
 }

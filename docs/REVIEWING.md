@@ -1857,8 +1857,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   is a failed `cat-file -t`: damage git names there it names in the read first. Everything else is the remote's: a tree without a manifest blob (none, a tree or a gitlink
   by that name) is `MANIFEST_MISSING`, something else the merge cannot read (a gitlink where a
   segment goes) `GIT_ERROR`. Asked by object, not by git's message for a path or a missing name,
-  which differs between versions (roll-dih8.30; `hardening::v8::v8_prune_after_a_fetch`, through
-  `fetch.fetched`). A loose tree whose content no longer hashes to its name is local damage too
+  which differs between versions (roll-dih8.30;
+  `hardening::terminals_and_git_maintenance::prune_after_a_fetch`, through `fetch.fetched`).
+  A loose tree whose content no longer hashes to its name is local damage too
   (roll-dih8.31): the in-process listing hashes each distinct subtree's bytes before walking it,
   as it already did the commit and root tree. This adds no git to the normal sync path. When that walk
   cannot answer, the fallback asks `ls-tree -r -t -z` for trees as well as files, including empty
@@ -2723,7 +2724,7 @@ repository. `beadroll-test-support` (`Sandbox`, `Machine`) shows the pattern;
    property you verified a passing one. Name each test for the contract it checks, and name the
    finding id in its doc comment. Put new files beside related tests, each declared in its parent
    module, and do not change existing tests. Never create a module named after the review, its
-   number or a finding id. The `hardening/v*`, `replay_*` and `*_audit` modules left by earlier
+   number or a finding id. The `replay_*` and `root_reaudit` modules left by earlier
    reviews are history, not a pattern.
 3. **Proposed ledger rows** for `FINDINGS.md`, one per finding, at the end of the report.
 4. Your scripts, kept runnable, in your scratch directory.

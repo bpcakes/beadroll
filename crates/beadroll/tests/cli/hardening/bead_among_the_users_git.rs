@@ -9,11 +9,11 @@ use std::process::{Command, Stdio};
 
 use beadroll_test_support::Sandbox;
 
-mod v9_caller_git_environment;
-mod v9_checkout_hooks_do_not_run_on_beads_push;
-mod v9_every_checkout_shape_is_one_workspace;
-mod v9_harmless_global_git_settings;
-mod v9_transport_and_url_settings;
+mod caller_git_environment;
+mod checkout_hooks_do_not_run_on_beads_push;
+mod every_checkout_shape_is_one_workspace;
+mod harmless_global_git_settings;
+mod transport_and_url_settings;
 
 /// An environment: variables and their values.
 type Env = BTreeMap<OsString, OsString>;

@@ -85,8 +85,8 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
   `Sandbox::await_remote_settled` for the push, and both fail the test at their deadline; a fixed
   sleep never stands in for them.
 - Some old tests are history, not a pattern; do not copy them:
-  - Module names that carry a review or finding id: `hardening/v1`–`v9`, `replay_third_review`,
-    and the `*_audit`, `*_reaudit` and `*_review4` modules.
+  - Module names that carry a review or finding id: `replay_third_review`, `replay_residuals`,
+    `replay_audit_bugs`, `replay_review4` and `root_reaudit`.
   - Helper docs that start with the Python function a helper was ported from
     (`` `_g08_machine`: ``).
   - The crash hooks `BEAD_TEST_CRASH_BEFORE_PUSH` and `BEAD_TEST_CRASH_AFTER_PUSH`. They are
