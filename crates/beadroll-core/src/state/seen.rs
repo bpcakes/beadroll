@@ -18,7 +18,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::id::EventId;
 use crate::journal::Event;
-use crate::state::actor_label;
+use crate::state::actor_of;
 
 /// Where an event is: a chain and its position there.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -416,7 +416,7 @@ impl Knowledge {
     /// Who wrote `event`, as bead names an actor, if it was replayed.
     pub(crate) fn who(&self, event: EventId) -> Option<String> {
         let event = self.events.get(&event)?;
-        Some(actor_label(event.actor(), event.replica()))
+        Some(actor_of(event))
     }
 
     /// Everything kept of the event at `at`, as text: its id, causes, machine and actor, its place,
