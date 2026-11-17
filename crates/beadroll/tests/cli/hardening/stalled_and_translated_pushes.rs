@@ -10,8 +10,8 @@ use std::process::{Command, Stdio};
 
 use beadroll_test_support::Json;
 
-mod v1_push_side_translation;
-mod v1_stalled_receive_timeouts;
+mod push_side_translation;
+mod stalled_receive_timeouts;
 
 /// Environment variables for a child process.
 type Env = BTreeMap<OsString, OsString>;

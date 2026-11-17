@@ -13,11 +13,11 @@ use std::time::{Duration, Instant};
 use beadroll_test_support::{Json, Machine, Run, UNPROFILED, parse_json};
 use rustix::fs::{Access, access};
 
-mod v6_descriptor_exhaustion;
-mod v6_file_size_limit;
-mod v6_identity_and_config_shapes;
-mod v6_store_damage;
-mod v6_user_supplied_paths;
+mod descriptor_exhaustion;
+mod file_size_limit;
+mod identity_and_config_shapes;
+mod store_damage;
+mod user_supplied_paths;
 
 /// The code reported by a failed JSON command, `TRACEBACK` for a crash detected by
 /// `Run::crashed`, or `None`.

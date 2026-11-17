@@ -72,7 +72,7 @@ fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
         .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
 }
 
-mod v2_receipts_are_per_actor {
+mod receipts_are_per_actor {
     use super::*;
 
     /// Verified (V2): receipts are per actor. Another thread on the same machine whose `claim Z`
@@ -118,7 +118,7 @@ mod v2_receipts_are_per_actor {
     }
 }
 
-mod v2_in_flight_attempt_across_actors {
+mod in_flight_attempt_across_actors {
 
     use std::path::Path;
 
@@ -263,7 +263,7 @@ mod v2_in_flight_attempt_across_actors {
     }
 }
 
-mod v2_confirmed_twin_keeps_the_retry_recognised {
+mod confirmed_twin_keeps_the_retry_recognised {
     use super::*;
 
     /// V2: after ownership.after-confirm=exit(97), an identical pending twin must retain the

@@ -58,7 +58,7 @@ fn replica_id(machine: &Machine) -> String {
     id.as_str().expect("a replica id").to_owned()
 }
 
-mod v5_data_file_modes {
+mod data_file_modes {
     use super::*;
 
     /// A launcher that sets `umask` and execs the sandbox's bead. Each machine uses it through
@@ -196,7 +196,7 @@ mod v5_data_file_modes {
     }
 }
 
-mod v5_retighten {
+mod retighten {
     use super::*;
 
     /// Verified (V5): a write command chmods BEAD_HOME and <ws> back to 0700 and a read command
@@ -241,7 +241,7 @@ mod v5_retighten {
     }
 }
 
-mod v5_git_dir_in_hook {
+mod git_dir_in_hook {
     use std::process::Stdio;
 
     use beadroll_test_support::git;
@@ -292,7 +292,7 @@ mod v5_git_dir_in_hook {
     }
 }
 
-mod v5_side_files_ignored {
+mod side_files_ignored {
     use super::*;
 
     /// Verified (V5): side files next to journals (`.X.<pid>.tmp`, `*.torn-*`, `*.fork-*`, in
@@ -334,7 +334,7 @@ mod v5_side_files_ignored {
     }
 }
 
-mod v5_kill_at_rename {
+mod kill_at_rename {
     use super::*;
 
     /// The names in `dir` that start with `start` and end with `end`, as `glob("START*END")`.
@@ -405,7 +405,7 @@ mod v5_kill_at_rename {
     }
 }
 
-mod v5_signing_config_is_inert {
+mod signing_config_is_inert {
     use super::*;
 
     /// V5: global `commit.gpgsign=true` must not reach internal `git commit-tree` calls. A fake
