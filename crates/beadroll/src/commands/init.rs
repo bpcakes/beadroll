@@ -369,13 +369,7 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
     let (prefix, imported) = writing(ws, ctx.actor, |tx| -> Result<_, Failure> {
         if tx.state()?.prefix().is_none() {
             let name = match &ws.name {
-                Some(name) if !name.is_empty() => Some(
-                    name.to_str()
-                        .ok_or_else(|| {
-                            beadroll_sync::Error::Validation("text is not valid UTF-8".to_owned())
-                        })?
-                        .to_owned(),
-                ),
+                Some(name) if !name.is_empty() => Some(text(name)?),
                 _ => None,
             };
             let prefix = match prefix_flag.as_ref().filter(|p| !p.is_empty()) {
