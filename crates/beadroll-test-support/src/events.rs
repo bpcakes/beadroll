@@ -54,7 +54,7 @@ impl Event {
     /// Event `id` doing `op`.
     pub fn new(id: &str, op: &str) -> Event {
         let mut members = Object::new();
-        members.insert("v".into(), Json::from(1));
+        members.insert("v".into(), Json::from(beadroll_core::event::FORMAT));
         members.insert("id".into(), Json::from(id));
         members.insert("replica".into(), Json::from("a"));
         members.insert("deps".into(), Json::Array(Vec::new()));

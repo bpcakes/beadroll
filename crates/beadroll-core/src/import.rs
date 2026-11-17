@@ -7,7 +7,7 @@ use std::sync::LazyLock;
 use indexmap::IndexMap;
 
 use crate::event::{
-    BLOCKS, EXPORT_FIELDS, MAX_NESTING, event_problem, payload_problem, write_problem,
+    BLOCKS, EXPORT_FIELDS, FORMAT, MAX_NESTING, event_problem, payload_problem, write_problem,
 };
 use crate::export::reserved;
 use crate::id::EventId;
@@ -192,7 +192,7 @@ pub fn plan_import(state: &State, records: &[Value]) -> Result<Plan, ImportError
 /// would mint for it.
 fn create_problem(record: &Value, data: &Object) -> Option<ImportError> {
     let mut probe = Object::new();
-    probe.insert("v".into(), Value::from(1));
+    probe.insert("v".into(), Value::from(FORMAT));
     probe.insert("id".into(), Value::from(PROBE_ID));
     probe.insert("replica".into(), Value::from("probe"));
     probe.insert("deps".into(), Value::Array(Vec::new()));
