@@ -1,8 +1,8 @@
-//! Storage audit regressions for segments, torn tails, rotation, reader/writer races and initial
-//! machine identity. Build-specific failpoints stop claims before publication, readers around
+//! Segments, torn tails, rotation, reader/writer races and initial machine identity, as several
+//! processes meet them. Build-specific failpoints stop claims before publication, readers around
 //! journal and pending reads, and identity creation before linking. The `pause-until` handshake
-//! exposes each boundary; `@always` pauses every hit. Direct damage tests using the selected
-//! binary are in `damaged`.
+//! exposes each boundary; `@always` pauses every hit. Direct damage tests using the selected binary
+//! are in `damaged`.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

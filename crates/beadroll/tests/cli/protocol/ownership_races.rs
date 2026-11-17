@@ -1,10 +1,9 @@
-//! The first independent audit's ownership checks, against a real coordination
-//! remote (`docs/reviews/2026-10-06-1-audit.md`, A09). Claims, takeovers and releases raced from
+//! Ownership against a real coordination remote (A09). Claims, takeovers and releases raced from
 //! several machines end where the operations the remote accepted lead, with one confirmed owner at
-//! most and generations that only grow; a forced close or a tombstone ends ownership; a
-//! provisional claim can be released, or replaced by its thread's online claim; a status edit
-//! obeys the ownership rules `close` does; and an edit made after another settles the register
-//! even when its clock reads earlier, which the Rust `bead`'s `clock` failpoint shows.
+//! most and generations that only grow; a forced close or a tombstone ends ownership; a provisional
+//! claim can be released, or replaced by its thread's online claim; a status edit obeys the
+//! ownership rules `close` does; and an edit made after another settles the register even when its
+//! clock reads earlier, which the Rust `bead`'s `clock` failpoint shows.
 
 use std::sync::Barrier;
 

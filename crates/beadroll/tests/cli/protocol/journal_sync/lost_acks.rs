@@ -7,7 +7,7 @@ use std::time::Duration;
 use beadroll_test_support::{Json, code, parse_json};
 
 use super::{git_wrapper, setup, two};
-use crate::protocol::sync_audit::HookPosition;
+use crate::protocol::journal_sync::HookPosition;
 use beadroll_test_support::ProcessGroup;
 
 /// The claim on `issue`; absence fails the test.

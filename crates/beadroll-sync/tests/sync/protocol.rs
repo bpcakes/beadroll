@@ -2,5 +2,5 @@
 //! out or lost its acknowledgement settles one way or the other, never twice and never half.
 
 mod fences_and_confirmation;
-mod protocol_reaudit;
 mod retried_release;
+mod unpublished_claims;
