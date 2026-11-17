@@ -58,7 +58,9 @@ pub fn merged_into_default(
 ) -> Result<Vec<Option<bool>>, Error> {
     let git = &settings.git;
     let asked: BTreeSet<&str> = (commits.iter().copied())
-        .filter(|commit| (4..=64).contains(&commit.len()) && hex(commit.as_bytes()))
+        .filter(|commit| {
+            (4..=64).contains(&commit.len()) && beadroll_core::text::is_lower_hex(commit.as_bytes())
+        })
         .collect();
     let mut answers: HashMap<&str, Option<bool>> = HashMap::new();
     let refs = if asked.is_empty() {
@@ -126,11 +128,6 @@ fn default_refs(git: &Env) -> Result<Vec<String>, Error> {
         }
     }
     Ok(Vec::new())
-}
-
-/// Whether `text` is lowercase hex digits, as git prints an object name.
-fn hex(text: &[u8]) -> bool {
-    (text.iter()).all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 /// How many commits of the default branch's history [`screened`] walks for each commit it has

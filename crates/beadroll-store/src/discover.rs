@@ -425,9 +425,7 @@ fn local_id(settings: &Settings) -> Result<String, Error> {
 
 /// `[0-9a-f]{16}|local-[0-9a-f]{12}`, whole: the shape of an id bead derives itself.
 pub fn derived_shaped(id: &str) -> bool {
-    let hex = |s: &str, n: usize| {
-        s.len() == n && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
-    };
+    let hex = |s: &str, n: usize| s.len() == n && beadroll_core::text::is_lower_hex(s.as_bytes());
     hex(id, 16) || id.strip_prefix("local-").is_some_and(|rest| hex(rest, 12))
 }
 

@@ -113,9 +113,7 @@ fn independent_targets(events: &Path, listing: &[(Vec<u8>, String)]) -> bool {
         let folder = events.join(machine);
         let target = events.join(path.strip_prefix("events/").unwrap_or(path));
         machine.len() == 8
-            && machine
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            && beadroll_core::text::is_lower_hex(machine.as_bytes())
             && paths.insert(path)
             && unaliased_directory(&folder)
             && (!attempt_shaped(path) || unaliased_directory(&folder.join("claims")))

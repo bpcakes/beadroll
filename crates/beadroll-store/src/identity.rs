@@ -74,7 +74,9 @@ fn read_replica_id(path: &Path) -> Result<String, Error> {
     let ident = json_text(&raw)
         .ok()
         .and_then(|value| match value.get("id") {
-            Some(Value::Str(id)) if id.len() == 8 && id.bytes().all(is_lower_hex) => {
+            Some(Value::Str(id))
+                if id.len() == 8 && beadroll_core::text::is_lower_hex(id.as_bytes()) =>
+            {
                 Some(id.clone())
             }
             _ => None,
@@ -86,10 +88,6 @@ fn read_replica_id(path: &Path) -> Result<String, Error> {
             path.display()
         ))
     })
-}
-
-fn is_lower_hex(b: u8) -> bool {
-    b.is_ascii_digit() || (b'a'..=b'f').contains(&b)
 }
 
 /// Writes a new identity beside `path` and links it into place; another process may win.

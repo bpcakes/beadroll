@@ -209,6 +209,13 @@ pub fn strip(text: &str) -> &str {
     text.trim_matches(is_space)
 }
 
+/// Whether every byte of `text` is a lowercase hex digit, as git and bead print ids and object
+/// names; a caller asks the length it needs besides.
+pub fn is_lower_hex(text: &[u8]) -> bool {
+    text.iter()
+        .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+}
+
 /// How many newline bytes `data` holds: the lines of a journal segment, each ended by one.
 pub fn newlines(data: &[u8]) -> usize {
     data.iter().filter(|b| **b == b'\n').count()
@@ -331,5 +338,16 @@ mod tests {
         assert_eq!(b36(&[0]), "");
         assert_eq!(b36(&[35]), "z");
         assert_eq!(b36(&[36]), "01");
+    }
+
+    /// Lowercase hex digits pass, whatever their number; an uppercase digit or another character
+    /// does not.
+    #[test]
+    fn lower_hex_is_digits_and_a_to_f_alone() {
+        assert!(is_lower_hex(b"0123456789abcdef"));
+        assert!(is_lower_hex(b""));
+        assert!(!is_lower_hex(b"0A"));
+        assert!(!is_lower_hex(b"g"));
+        assert!(!is_lower_hex(b"0-1"));
     }
 }
