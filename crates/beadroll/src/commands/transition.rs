@@ -19,8 +19,8 @@ use beadroll_sync::{publish_soon, writing_spent};
 
 use super::args::TextValidity;
 use super::{
-    Context, Failure, Line, Outcome, Tone, arg_text, encodable, ended_by, need_tracker,
-    refuse_foreign_claim, resolve_arg, texts_in,
+    Context, Failure, Line, Outcome, Tone, arg_text, encodable, ended_by, issue_not_found,
+    need_tracker, refuse_foreign_claim, resolve_arg, texts_in,
 };
 
 /// The arguments `close`, `reopen` and `delete` take.
@@ -322,7 +322,7 @@ fn refuse_claimed(st: &State, issues: &[EventId], me: &Label) -> Result<(), Fail
 /// The issue `uid`, which a plan made from this state found.
 fn known(st: &State, uid: EventId) -> Result<&Issue, Failure> {
     st.issue(uid)
-        .ok_or_else(|| Failure::new(Code::IssueNotFound, format!("Issue not found: {uid}")))
+        .ok_or_else(|| issue_not_found(uid.to_string().as_bytes()))
 }
 
 /// The briefs of `issues`, in that order.
