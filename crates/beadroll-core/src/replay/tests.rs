@@ -34,7 +34,6 @@ const ORDERS: usize = 6;
 /// What `state` answers, in order, each answer with what was asked; with the records that could not
 /// be used sorted, when `flawed`.
 fn answers(state: &State, flawed: HistoryKind) -> Vec<(String, String)> {
-    let flawed = matches!(flawed, HistoryKind::Flawed);
     let mut said: Vec<(String, String)> = Vec::new();
     let mut say = |asked: String, answer: String| said.push((asked, answer));
     let shown = |object: Object| written(&Value::from(object));
@@ -108,7 +107,7 @@ fn answers(state: &State, flawed: HistoryKind) -> Vec<(String, String)> {
     let mut integrity: Vec<String> = (state.integrity().iter())
         .map(|row| format!("{row:?}"))
         .collect();
-    if flawed {
+    if flawed == HistoryKind::Flawed {
         integrity.sort();
     }
     say("integrity".into(), integrity.join("\n"));

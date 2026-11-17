@@ -95,9 +95,8 @@ fn removal<'a>(
     below: EventId,
     seen: &'a mut Vec<Edge>,
 ) -> impl FnMut(&Edge, &mut IdMap<Meta>) + 'a {
-    let any = matches!(any, RemovalScope::Any);
     move |edge, tags| {
-        if any || *edge.kind == *kind {
+        if any == RemovalScope::Any || *edge.kind == *kind {
             seen.push(edge.clone());
             tags.retain(|tag, _| *tag >= below);
         }

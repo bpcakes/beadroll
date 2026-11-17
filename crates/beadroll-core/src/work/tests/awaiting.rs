@@ -19,11 +19,10 @@ pub(crate) enum AwaitedKeys {
 /// half's for the keys the second half brings when `brought`, and for keys that never come
 /// otherwise.
 fn waiting(issues: usize, brought: AwaitedKeys) -> History {
-    let brought = matches!(brought, AwaitedKeys::Brought);
     let mut history = History::new();
     let half = issues / 2;
     for n in 0..issues {
-        let named = if brought && n < half {
+        let named = if brought == AwaitedKeys::Brought && n < half {
             key(n + half)
         } else {
             format!("ex-gone{n}")

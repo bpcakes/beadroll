@@ -84,13 +84,12 @@ impl Tally {
 /// does of every event the state names, whichever way the projection was written back. A world
 /// `flawed` has machines that also write what replay reports, and one whose identity was copied.
 pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: HistoryKind) -> Tally {
-    let flawed = matches!(flawed, HistoryKind::Flawed);
     let mut tally = Tally {
         owned: owned::BASIS,
         ..Tally::default()
     };
     for seed in seeds {
-        let mut world = if flawed {
+        let mut world = if flawed == HistoryKind::Flawed {
             World::flawed(20_261_012 + seed)
         } else {
             World::new(20_261_012 + seed)

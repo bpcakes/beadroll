@@ -58,9 +58,9 @@ use crate::state::{KeySpace, Texts, is_text};
 /// How an operation uses issue texts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TextAccess {
-    /// Read.
+    /// The texts are only read: texts read in from the text file stay there.
     Read,
-    /// Change.
+    /// The texts may change: texts read in are placed anew, which marks the issue.
     Change,
 }
 
@@ -247,12 +247,13 @@ impl Projection {
     /// `false` when they are only in the text file. Texts read in that change are then to be placed
     /// anew, which marks the issue; otherwise it is left as it is.
     fn texts_here(&mut self, uid: EventId, changes: TextAccess) -> bool {
-        let changes = matches!(changes, TextAccess::Change);
         match self.state.issues.get(&uid).map(|issue| &issue.texts) {
             None | Some(Texts::Here) => true,
             Some(Texts::There(_)) => false,
             Some(Texts::Read(_)) => {
-                if changes && let Some(issue) = self.state.issues.get_mut(&uid) {
+                if changes == TextAccess::Change
+                    && let Some(issue) = self.state.issues.get_mut(&uid)
+                {
                     issue.texts = Texts::Here;
                 }
                 true

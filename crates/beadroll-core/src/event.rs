@@ -18,9 +18,9 @@ pub(crate) use envelope::{Data, Envelope};
 /// Which fields an operation may write.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FieldScope {
-    /// Editable.
+    /// A `set`: only the fields a user edits.
     Editable,
-    /// Create.
+    /// A `create`: `created_at`, `updated_at` and `created_by` too.
     Create,
 }
 
@@ -242,16 +242,15 @@ pub fn event_problem(event: &Value) -> Option<String> {
     borrowed::Borrowed::of(event).problem()
 }
 
-/// Why `fields` cannot be written, or `None`. `bookkeeping` permits `created_at`, `updated_at`
-/// and `created_by` on a create.
-pub fn fields_problem(fields: &Value, bookkeeping: FieldScope) -> Option<String> {
-    let bookkeeping = matches!(bookkeeping, FieldScope::Create);
+/// Why `fields` cannot be written, or `None`. A create's fields (`FieldScope::Create`) may hold
+/// `created_at`, `updated_at` and `created_by` too.
+pub fn fields_problem(fields: &Value, scope: FieldScope) -> Option<String> {
     let Value::Object(fields) = fields else {
         return Some("fields is not an object".into());
     };
     for (name, value) in fields.iter() {
-        let Some(field) =
-            Field::from_name(name).filter(|field| bookkeeping || !field.bookkeeping())
+        let Some(field) = Field::from_name(name)
+            .filter(|field| scope == FieldScope::Create || !field.bookkeeping())
         else {
             return Some(format!("field {} is not writable", repr_str(name)));
         };
