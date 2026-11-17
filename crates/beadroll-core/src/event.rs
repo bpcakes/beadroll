@@ -414,7 +414,10 @@ fn create_problem(data: Option<&Object>, strings: &dyn Fn(&str) -> bool) -> Opti
 /// Stricter validation for new writes: priority and estimated_minutes must be non-negative 32-bit
 /// integers for Beads readers; booleans are refused even though legacy replay accepts them.
 pub fn write_problem(event: &Value) -> Option<String> {
-    let op = event.get("op").and_then(Value::as_str).and_then(OpName::from_name);
+    let op = event
+        .get("op")
+        .and_then(Value::as_str)
+        .and_then(OpName::from_name);
     if !matches!(op, Some(OpName::Create | OpName::Set)) {
         return None;
     }

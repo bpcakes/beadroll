@@ -440,7 +440,11 @@ mod tests {
         }
         for stand_in in ["quarantined", "invalid", "rename", ""] {
             assert_eq!(OpName::from_name(stand_in), None, "{stand_in:?}");
-            assert_eq!(Op::read(stand_in, Object::new()).kind(), None, "{stand_in:?}");
+            assert_eq!(
+                Op::read(stand_in, Object::new()).kind(),
+                None,
+                "{stand_in:?}"
+            );
         }
     }
 }

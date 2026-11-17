@@ -2724,7 +2724,6 @@ repository. `beadroll-test-support` (`Sandbox`, `Machine`) shows the pattern;
    property you verified a passing one. Name each test for the contract it checks, and name the
    finding id in its doc comment. Put new files beside related tests, each declared in its parent
    module, and do not change existing tests. Never create a module named after the review, its
-   number or a finding id. The `replay_*` modules left by earlier
-   reviews are history, not a pattern.
+   number or a finding id.
 3. **Proposed ledger rows** for `FINDINGS.md`, one per finding, at the end of the report.
 4. Your scripts, kept runnable, in your scratch directory.

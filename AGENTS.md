@@ -84,18 +84,12 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
   that bead gave up on still running at the remote. Those poll with `wait_until`, or with
   `Sandbox::await_remote_settled` for the push, and both fail the test at their deadline; a fixed
   sleep never stands in for them.
-- Some old tests are history, not a pattern; do not copy them:
-  - Module names that carry a review or finding id: `replay_third_review`, `replay_residuals`,
-    `replay_audit_bugs` and `replay_review4`.
-  - Helper docs that start with the Python function a helper was ported from
-    (`` `_g08_machine`: ``).
-  - The crash hooks `BEAD_TEST_CRASH_BEFORE_PUSH` and `BEAD_TEST_CRASH_AFTER_PUSH`. They are
-    aliases, kept for the tests that use them.
-
-  A new test goes in its subject's module under a name that says the contract it checks, with
-  any finding id in its doc comment. A helper's doc says what the helper returns. A test that
-  crashes an ownership command names the failpoint, `ownership.before-publish=exit(98)` or
-  `ownership.after-publish-ok=exit(99)`.
+- A test module is named for its subject and a test for the contract it checks, with any finding id
+  in its doc comment, never the review's name in either; a helper's doc says what the helper
+  returns. A test that crashes an ownership command names the failpoint,
+  `ownership.before-publish=exit(98)` or `ownership.after-publish-ok=exit(99)`: the crash hooks
+  `BEAD_TEST_CRASH_BEFORE_PUSH` and `BEAD_TEST_CRASH_AFTER_PUSH` are aliases kept for the older
+  tests that use them, not to copy.
 - Record deliberate decisions in `docs/REVIEWING.md` §2, every guarantee in `docs/GUARANTEES.md`,
   and what a new user reads first in `README.md`; a review finding you close gets its row in
   `docs/FINDINGS.md`. Format 1 is frozen: additions only.
