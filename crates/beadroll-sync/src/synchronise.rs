@@ -164,8 +164,8 @@ pub fn synchronise(ws: &Workspace, remote: &Endpoint) -> Result<Synced, Error> {
         .ok_or_else(|| Error::Validation("no report".to_owned()))
 }
 
-/// [`synchronise`], and what it did when `report` asks for it: a write published at once is not
-/// told. The store's state is read once per round, by its merge, and the report is made of the
+/// [`synchronise`], and what it did when `sync_report` asks for it: a write published at once is
+/// not told. The store's state is read once per round, by its merge, and the report is made of the
 /// state the last merge left (roll-lqjj.29); the keys renamed before the sync are counted by the
 /// first merge, from the projection it reads before it merges, which is the one it goes on with
 /// when nothing comes in.
@@ -402,12 +402,12 @@ pub fn publish_soon(
     publish_soon_at(ws, destination(ws, network_mode, remote))
 }
 
-/// Where [`publish_soon`] would publish: nowhere (`None`) when `offline`, or when the tracker has
-/// no remote to publish to; else the remote, or why it could not be chosen. A command line chooses
-/// it before it lets go of what a write held, so that a write with nowhere to go keeps that to the
-/// end of the process as an offline write does (roll-lqjj.50). Choosing asks git what choosing
-/// asked it when the publish chose: a remote's URL by its name, the rules that rewrite a local
-/// path, the top of the checkout for a relative one, how an older version saved a remembered
+/// Where [`publish_soon`] would publish: nowhere (`None`) when `network` is offline, or when the
+/// tracker has no remote to publish to; else the remote, or why it could not be chosen. A command
+/// line chooses it before it lets go of what a write held, so that a write with nowhere to go keeps
+/// that to the end of the process as an offline write does (roll-lqjj.50). Choosing asks git what
+/// choosing asked it when the publish chose: a remote's URL by its name, the rules that rewrite a
+/// local path, the top of the checkout for a relative one, how an older version saved a remembered
 /// remote; nothing more.
 pub fn destination(
     ws: &Workspace,

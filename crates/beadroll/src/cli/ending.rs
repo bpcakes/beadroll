@@ -80,8 +80,9 @@ fn what_a_command_held_is_kept_only_by_a_process_that_ends_with_it_and_publishes
     ));
 }
 
-/// Runs `finish` on an outcome holding a probe, for a command that wrote (`wrote`) or did not, as
-/// the process ends with it when `exits`: what it answered, and how often the probe was freed.
+/// Runs `finish` on an outcome holding a probe, for a command that wrote or did not
+/// (`publication_state`), as the process ends with it or not (`run_lifetime`): what it answered,
+/// and how often the probe was freed.
 fn finishing(
     ws: &Workspace,
     publication_state: PublicationState,

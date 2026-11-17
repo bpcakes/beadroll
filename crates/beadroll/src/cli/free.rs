@@ -21,7 +21,7 @@ use crate::cli::paint::Color;
 use crate::commands::{Failure, Line, Outcome, Tone, need_tracker};
 
 /// Runs `help`, `prime` or `onboard`; `ws` is the workspace when there is one. A help page is
-/// coloured when `color`.
+/// coloured as `color_mode` says.
 pub(crate) fn run(
     ns: &Namespace,
     ws: Option<&Workspace>,
