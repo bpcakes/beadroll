@@ -100,11 +100,6 @@ impl<'a> Tx<'a> {
         })
     }
 
-    /// Whether any sequential event was emitted.
-    pub fn has_pending(&self) -> bool {
-        self.emitted.iter().any(|record| record.sequenced)
-    }
-
     /// The state the journal replays into, with every event emitted so far. Of its issues' texts,
     /// those of the issues the events emitted can change are in it (roll-lqjj.6,
     /// `Projection::about`); a command reads in any other it prints.

@@ -110,16 +110,6 @@ impl Workspace {
         !(typed && relative) && without_password(value).0 == without_password(origin).0
     }
 
-    /// One remote spelling (a configured remote's name, a URL, a path) reduced to the URL bead
-    /// uses ([`Workspace::resolve_endpoint`]).
-    pub fn resolve_remote(
-        &self,
-        value: &OsStr,
-        remote_source: RemoteSource,
-    ) -> Result<OsString, Error> {
-        Ok(self.resolve_endpoint(value, remote_source)?.url)
-    }
-
     /// One remote spelling as bead reads it: a configured remote's name wins over a same-named
     /// path, and is that remote, reached at the URL it is configured with for `git push NAME` (its
     /// first push URL, else its first URL, as written: git rewrites it, and reads a relative path

@@ -53,7 +53,7 @@ remote resolution, actor detection, `view`, and the failpoint registry.
   `src/workspace/remote.rs`: what a remote given to bead means (`resolve_endpoint`, `endpoint`,
   an `Endpoint` being the URL, whether it is a remote's own push URL and the name it was chosen
   by; `Endpoint::chosen`, the remote as it was chosen, which a store remembers and compares and
-  advice gives; `resolve_remote` and `remote`, their URLs; `remembered_remote`, `is_origin_url`)
+  advice gives; `remote`, its URL; `remembered_remote`, `is_origin_url`)
   and a remote's URL as git is configured with it (`configured_url`, which discovery reads origin
   with); `src/discover.rs`: `find_workspace`, `checked_config`, `moved_workspaces`,
   `tracked_config_warning` (a `.beadroll.json` the other checkouts do not see), `workspaces_named`.

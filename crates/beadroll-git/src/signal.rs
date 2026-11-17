@@ -1,7 +1,7 @@
 //! Platform signal names used in `killed by SIGNAME` git errors.
 
 /// The platform name for a signal, or `signal N` if unknown.
-pub fn signal_name(number: i32) -> String {
+pub(crate) fn signal_name(number: i32) -> String {
     named(number).map_or_else(|| format!("signal {number}"), str::to_owned)
 }
 

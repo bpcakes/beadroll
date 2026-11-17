@@ -140,28 +140,14 @@ pub(crate) fn settle(
     Ok(result)
 }
 
-/// Examines the actor's receipts under the lock. A matching accepted signature means this request
-/// is already done. Other settled receipts become stale when the new command succeeds. Keep
-/// pending receipts; drop malformed receipts and those older than an accepted attempt by this
-/// actor.
-pub fn settle_commands(
-    ws: &Workspace,
-    replica: &str,
-    actor: &Actor,
-    signature: &str,
-) -> Result<(bool, Vec<PathBuf>), Error> {
-    let settled = settle(ws, replica, actor, signature)?;
-    Ok((settled.request == Request::Accepted, settled.retire.0))
-}
-
 /// Removes these receipts: the actor has moved on from them.
-pub fn forget(receipts: &[PathBuf]) -> Result<(), Error> {
+pub(crate) fn forget(receipts: &[PathBuf]) -> Result<(), Error> {
     receipts.iter().try_for_each(|receipt| remove(receipt))
 }
 
 /// A later command of this actor went through: the receipts that would answer a repeat of an
 /// earlier command go. Attempts still pending stay for sync to settle.
-pub fn forget_receipts(ws: &Workspace, actor: &Value) -> Result<(), Error> {
+pub(crate) fn forget_receipts(ws: &Workspace, actor: &Value) -> Result<(), Error> {
     for receipt in glob_ending(&ws.dir.join("pending"), ".command") {
         let Ok(data) = std::fs::read(&receipt) else {
             continue;

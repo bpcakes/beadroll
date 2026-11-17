@@ -16,7 +16,6 @@ pub use beadroll_git::PushOutcome;
 pub use error::Error;
 pub use link::{Link, PublishMode};
 pub use ownership::{Mode, Settled, coordinated, settle_pending};
-pub use receipts::{forget, forget_receipts, settle_commands};
 pub use synchronise::{
     NetworkMode, ROUNDS, Synced, adopt_published, conflict_detail, destination, pause,
     publish_soon, publish_soon_at, publish_soon_to, refused, synchronise, unpublished_count,

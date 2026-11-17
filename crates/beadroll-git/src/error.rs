@@ -33,11 +33,6 @@ impl IoError {
             path: None,
         }
     }
-
-    /// Whether the system said the path does not exist (`ENOENT`).
-    pub fn not_found(&self) -> bool {
-        self.errno == Some(libc::ENOENT)
-    }
 }
 
 impl fmt::Display for IoError {

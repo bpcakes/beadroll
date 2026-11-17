@@ -234,14 +234,11 @@ pub(crate) fn takeover(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcom
         takeover: Some(reason),
     };
     let signature = command_signature(ctx.actor, &args.asked, None);
+    // Online only: an offline takeover was refused above.
     coordinated(
         ctx.ws,
         ctx.actor,
-        if args.offline {
-            NetworkMode::Offline
-        } else {
-            NetworkMode::Online
-        },
+        NetworkMode::Online,
         args.remote.as_deref(),
         &signature,
         |tx, mode| step.run(tx, mode),
