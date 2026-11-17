@@ -1,14 +1,13 @@
 //! Observe the real store lock when a failed write destroys its materialized view. A probe is
 //! attached after the body's final state read, and follows that view through preparation.
 
-use beadroll_core::op::OpName;
-
 use std::fs::{File, TryLockError};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use beadroll_core::code::Code;
 use beadroll_core::json::{Object, Value};
+use beadroll_core::op::OpName;
 use beadroll_store::{Actor, LockState, Settings, Workspace};
 use beadroll_test_support::{Machine, Sandbox, built_bead, json};
 

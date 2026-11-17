@@ -9,8 +9,7 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, json, printed_id};
+use beadroll_test_support::{Json, Machine, json, json_line, printed_id};
 
 /// A Beads JSON record with `key`, `title`, `kind` and a dependency for each `(key, type)` in
 /// `deps`.
@@ -30,7 +29,7 @@ fn record(key: &str, title: &str, deps: &[(&str, &str)], kind: &str) -> String {
         "created_by": "seed",
         "dependencies": dependencies,
     });
-    write(&record, Format::ASCII).expect("a record bead can read")
+    json_line(&record)
 }
 
 /// The titles of the dependencies `show` lists for `key` on `machine`.

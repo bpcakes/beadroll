@@ -7,8 +7,7 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, Sandbox, code, json};
+use beadroll_test_support::{Json, Machine, Sandbox, code, json, json_line};
 
 /// Machine `u05-a` has a tracker, prefix `ex`, whose one issue it has published.
 fn set_up(sandbox: &Sandbox) -> Machine {
@@ -135,7 +134,7 @@ fn only_segments_numbered_in_ascii_digits_are_merged() {
         "issue": "019a5555-5555-7000-8000-000000000001",
         "data": {"key": "ex-planted", "fields": {"title": "planted"}},
     });
-    let line = write(&planted, Format::ASCII).expect("an event") + "\n";
+    let line = json_line(&planted) + "\n";
     let blob = remote(
         &sandbox,
         &["hash-object", "-w", "--stdin"],

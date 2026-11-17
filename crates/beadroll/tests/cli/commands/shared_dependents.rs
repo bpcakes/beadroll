@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, Sandbox, code, json};
+use beadroll_test_support::{Json, Machine, Sandbox, code, json, json_lines};
 
 /// When every record was made and last changed.
 const CREATED: &str = "2026-01-01T00:00:00Z";
@@ -64,10 +64,7 @@ fn tracker() -> Vec<Json> {
 /// `rows` as JSON lines in a file at the sandbox's root.
 fn records(sandbox: &Sandbox, rows: &[Json]) -> PathBuf {
     let path = sandbox.root().join("records.jsonl");
-    let text: String = rows
-        .iter()
-        .map(|row| write(row, Format::ASCII).unwrap() + "\n")
-        .collect();
+    let text = json_lines(rows);
     std::fs::write(&path, text).unwrap();
     path
 }

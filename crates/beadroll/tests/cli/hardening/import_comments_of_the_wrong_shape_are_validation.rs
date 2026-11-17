@@ -1,8 +1,8 @@
 //! G38: an imported record whose `comments` is not a list of objects fails the import whole with
 //! VALIDATION, from `import` and from `init --import` alike.
 
-use beadroll_core::json::{Format, Object, write};
-use beadroll_test_support::{Json, Machine, code, json, last_line};
+use beadroll_core::json::Object;
+use beadroll_test_support::{Json, Machine, code, json, json_lines, last_line};
 
 use crate::commands::fixtures::record;
 
@@ -25,14 +25,6 @@ fn with_comments(key: &str, title: &str, comments: Json) -> Json {
     record(key, title, Json::from(more))
 }
 
-/// Records as spaced, ASCII-escaped JSON lines.
-fn jsonl(records: &[Json]) -> String {
-    records
-        .iter()
-        .map(|record| write(record, Format::ASCII).unwrap() + "\n")
-        .collect()
-}
-
 /// G38: an imported record whose `comments` is not a list of objects crashes `import_records`
 /// with AttributeError/TypeError before validation runs, instead of failing whole with
 /// VALIDATION.
@@ -47,7 +39,7 @@ fn wrong_comment_shapes_fail_the_import_with_validation() {
             .root()
             .join(format!("{}.jsonl", name.replace(' ', "-")));
         let bad = with_comments("ex-bad", name, comments);
-        std::fs::write(&path, jsonl(&[good.clone(), bad])).unwrap();
+        std::fs::write(&path, json_lines(&[good.clone(), bad])).unwrap();
         let proc = m.run(["import", path.to_str().unwrap(), "--json"]);
         assert!(
             !proc.crashed(),
@@ -68,7 +60,7 @@ fn wrong_comment_shapes_fail_the_import_with_validation() {
         "created_at": "2026-01-01T00:00:00Z",
     });
     let kept = with_comments("ex-good", "good", json!([comment]));
-    std::fs::write(&ok, jsonl(&[kept])).unwrap();
+    std::fs::write(&ok, json_lines(&[kept])).unwrap();
     let imported = m.bead(["import", ok.to_str().unwrap()]).unwrap();
     assert_eq!(imported["imported"].as_i64(), Some(1), "{imported:?}");
     let shown = m.show("ex-good");
@@ -86,7 +78,7 @@ fn init_import_with_wrong_comment_shape_is_validation() {
     let sandbox = crate::sandbox();
     let path = sandbox.root().join("init.jsonl");
     let bad = with_comments("bx-bad", "t", json!(["x"]));
-    std::fs::write(&path, jsonl(&[bad])).unwrap();
+    std::fs::write(&path, json_lines(&[bad])).unwrap();
     let m = Machine::new(&sandbox, "g38init");
     let path = path.to_str().unwrap();
     let proc = m.run(["init", "--prefix", "bx", "--import", path, "--json"]);

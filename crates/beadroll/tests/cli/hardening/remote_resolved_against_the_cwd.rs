@@ -4,8 +4,7 @@
 
 use std::path::Path;
 
-use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, code, git, json, parse_json, printed_id};
+use beadroll_test_support::{Json, Machine, code, git, json, json_line, parse_json, printed_id};
 
 /// A repository at `path` inside the checkout (vendored code, a
 /// submodule-like directory), with one commit on `main`.
@@ -40,7 +39,7 @@ fn beads_refs(path: &Path) -> String {
 /// final newline.
 fn named_config() -> String {
     let config = json!({"workspace": "named-ws", "remote": "upstream"});
-    write(&config, Format::ASCII).expect("a config") + "\n"
+    json_line(&config) + "\n"
 }
 
 /// The remote `bead info --json` names, from `info`'s output.

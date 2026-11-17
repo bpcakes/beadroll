@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use beadroll_core::json::{Format, Object, write};
-use beadroll_test_support::{Json, Machine, Sandbox, json, parse_json};
+use beadroll_test_support::{Json, Machine, Sandbox, json, json_line, parse_json};
 
 /// A machine `name` whose tracker is initialised, prefix `ex`.
 pub(crate) fn machine(sandbox: &Sandbox, name: &str) -> Machine {
@@ -67,14 +67,6 @@ pub(crate) fn record(key: &str, title: &str, more: Json) -> Json {
     Json::from(members)
 }
 
-/// Records as spaced, ASCII-escaped JSON, each followed by a newline.
-pub(crate) fn jsonl(records: &[Json]) -> String {
-    records
-        .iter()
-        .map(|record| write(record, Format::ASCII).expect("a record bead can read") + "\n")
-        .collect()
-}
-
 /// Reads strict JSON or fails the test. NaN, infinity and numbers overflowing a float are
 /// refused.
 pub(crate) fn strict_json(text: &str) -> Json {
@@ -99,7 +91,7 @@ pub(crate) const STAND_IN: char = '\u{E000}';
 
 /// `value` as spaced, ASCII-escaped JSON, as bead writes a record.
 pub(crate) fn ascii_json(value: &Json) -> String {
-    write(value, Format::ASCII).expect("JSON bead can write")
+    json_line(value)
 }
 
 /// Machine `root2-a` with tracker `re` initialised, one issue created, and synced: the machine and

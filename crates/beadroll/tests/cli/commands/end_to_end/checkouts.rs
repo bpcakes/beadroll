@@ -9,7 +9,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use beadroll_core::json::{Format, write};
 use beadroll_test_support::events::{Event, id_at};
-use beadroll_test_support::{Json, Machine, git, json, json_id, json_ids, parse_json, pool_map};
+use beadroll_test_support::{
+    Json, Machine, git, json, json_id, json_ids, json_line, parse_json, pool_map,
+};
 
 use super::{column, length, segments, sorted_codes};
 
@@ -437,7 +439,7 @@ fn where_is_absent_outside_a_checkout_and_when_switched_off() {
     let created = json_id(&parse_json(&proc.stdout).unwrap());
     assert!(a.show(&created).get("where").is_none());
     let config = json!({"workspace": store, "where": false});
-    let config = write(&config, Format::ASCII).unwrap();
+    let config = json_line(&config);
     std::fs::write(a.checkout().join(".beadroll.json"), config).unwrap();
     let quiet = json_id(&a.bead(["create", "no branch recorded"]).unwrap());
     assert!(a.show(&quiet).get("where").is_none());

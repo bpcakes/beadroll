@@ -1,7 +1,7 @@
 //! What `replica.json` and `.beadroll.json` hold is checked; members
 //! bead does not know are let be, and a ref or a workspace name it cannot use is `CONFIG`.
 
-use beadroll_test_support::{Json, Machine, json, json_text};
+use beadroll_test_support::{Json, Machine, json, json_line};
 
 use super::{error_code, replica_id};
 
@@ -23,7 +23,7 @@ fn identity_and_tracked_config_shapes_are_validated() {
         json!({"id": ident, "alias": "m", "extra": [1]}),
     ];
     for body in &identities {
-        std::fs::write(&replica, json_text(body)).unwrap();
+        std::fs::write(&replica, json_line(body)).unwrap();
         let commands: [&[&str]; 3] = [&["create", "y"], &["machines"], &["claims"]];
         for argv in commands {
             let proc = a.run(argv.iter().chain(&["--json"]));
@@ -32,7 +32,7 @@ fn identity_and_tracked_config_shapes_are_validated() {
                 0,
                 "{} with {}: {}",
                 argv[0],
-                json_text(body),
+                json_line(body),
                 proc.stderr
             );
         }
@@ -52,19 +52,19 @@ fn identity_and_tracked_config_shapes_are_validated() {
         .collect();
     bad.extend(workspaces.iter().map(|w| json!({"workspace": (*w)})));
     for body in &bad {
-        std::fs::write(&config, json_text(body)).unwrap();
+        std::fs::write(&config, json_line(body)).unwrap();
         let proc = a.run(["info", "--json"]);
-        assert!(!proc.crashed(), "{}: {}", json_text(body), proc.stderr);
+        assert!(!proc.crashed(), "{}: {}", json_line(body), proc.stderr);
         assert_eq!(
             error_code(&proc).as_deref(),
             Some("CONFIG"),
             "{}: {}",
-            json_text(body),
+            json_line(body),
             proc.stderr
         );
     }
     let future = json!({"workspace": "w", "future": {"x": 1}});
-    std::fs::write(&config, json_text(&future)).unwrap();
+    std::fs::write(&config, json_line(&future)).unwrap();
     let proc = a.run(["info", "--json"]);
     assert_eq!(proc.returncode(), 0, "{}", proc.stderr);
 }

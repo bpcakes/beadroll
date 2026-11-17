@@ -3,8 +3,6 @@
 //! already as asked is left alone and said to be. `close --recursive` closes every issue beneath
 //! each one too, children first, in the same transaction.
 
-use beadroll_core::op::OpName;
-
 use std::collections::HashSet;
 use std::ffi::{OsStr, OsString};
 
@@ -12,6 +10,7 @@ use beadroll_core::code::Code;
 use beadroll_core::event::Field;
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
+use beadroll_core::op::OpName;
 use beadroll_core::state::{Issue, State};
 use beadroll_core::text::str_of;
 use beadroll_store::{Label, view_outline};

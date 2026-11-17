@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, json, last_line, parse_json};
+use beadroll_test_support::{Json, Machine, json, json_line, last_line, parse_json};
 
 /// What stands for the lone surrogate U+D800 in a title until the line is bytes: a Rust string
 /// cannot hold one.
@@ -31,7 +31,7 @@ fn create(n: u128, replica: &str, key: &str, title: &str) -> Json {
 
 /// The event as a JSON line with `SURROGATE` encoded as `\ud800`.
 fn escaped_line(event: &Json) -> Vec<u8> {
-    let line = write(event, Format::ASCII).unwrap();
+    let line = json_line(event);
     line.replace(SURROGATE, r"\ud800").into_bytes()
 }
 
@@ -101,7 +101,7 @@ fn export_survives_a_lone_surrogate_in_a_journal() {
             let text = |key: &str| match row.get(key) {
                 None => "None".to_owned(),
                 Some(Json::Str(text)) => text.clone(),
-                Some(other) => write(other, Format::ASCII).unwrap(),
+                Some(other) => json_line(other),
             };
             (text("origin"), text("problem"))
         })

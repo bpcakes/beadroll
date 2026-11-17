@@ -9,7 +9,7 @@ use std::process::{Command, Stdio};
 
 use beadroll_core::json::{Format, Object, write};
 use beadroll_test_support::{
-    Json, Machine, Run, Sandbox, code, json_ids, last_line, parse_json, path_text,
+    Json, Machine, Run, Sandbox, code, json_ids, json_line, last_line, parse_json, path_text,
 };
 
 use crate::commands::fixtures::record_fields;
@@ -233,7 +233,7 @@ fn import_refuses_nesting_that_not_every_machine_can_read() {
     let row = export.split('\n').find(|row| row.contains("\"ex-nested\""));
     let exported = parse_json(row.expect("the record in the export")).expect("a record");
     let custom = exported.get("custom").expect("its custom field");
-    let written = write(custom, Format::ASCII).expect("the field");
+    let written = json_line(custom);
     assert_eq!(written, nested(50));
 }
 

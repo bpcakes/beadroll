@@ -8,7 +8,8 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use beadroll_test_support::{
-    Json, Machine, Sandbox, code, copy_tree, git, json, json_member, json_text, parse_json,
+    Json, Machine, Sandbox, code, copy_tree, git, json, json_line, json_lines, json_member,
+    parse_json,
 };
 
 use super::{segments, set_up, two};
@@ -99,7 +100,7 @@ fn invalid_own_remote_record_must_not_disable_sync() {
     let info = a.bead(["info"]).expect("bead info prints a record");
     let integrity = json_member(&info, "integrity");
     let rows = integrity.as_array().map(<[Json]>::len);
-    assert_eq!(rows, Some(1), "{}", json_text(integrity));
+    assert_eq!(rows, Some(1), "{}", json_line(integrity));
     assert_eq!(
         json_member(&a.show(&key), "title"),
         &json!("storage survivor")
@@ -174,7 +175,7 @@ fn rewritten_foreign_file_preserves_local_backup_and_published_bytes() {
     let mut rows: Vec<Json> = rows.collect();
     let last = rows.last_mut().expect("the segment's last event");
     retitle(last, "damaged local foreign title");
-    let damaged: String = rows.iter().map(|row| json_text(row) + "\n").collect();
+    let damaged = json_lines(&rows);
     std::fs::write(&foreign, &damaged).expect("the rewritten copy");
     let result = b.bead(["sync"]).expect("bead sync prints a record");
     let published = relative.to_str().expect("a UTF-8 path");

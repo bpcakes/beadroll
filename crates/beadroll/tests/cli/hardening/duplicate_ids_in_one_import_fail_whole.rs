@@ -3,8 +3,7 @@
 
 use std::path::PathBuf;
 
-use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, Sandbox, code, json, json_ids, last_line};
+use beadroll_test_support::{Json, Machine, Sandbox, code, json, json_ids, json_lines, last_line};
 
 use crate::commands::fixtures::record;
 
@@ -18,10 +17,7 @@ fn setup(sandbox: &Sandbox) -> Machine {
 /// Writes records as spaced, ASCII-escaped JSON lines to the sandbox file name.
 fn write_records(sandbox: &Sandbox, name: &str, records: &[Json]) -> PathBuf {
     let path = sandbox.root().join(name);
-    let lines: String = records
-        .iter()
-        .map(|record| write(record, Format::ASCII).unwrap() + "\n")
-        .collect();
+    let lines = json_lines(records);
     std::fs::write(&path, lines).unwrap();
     path
 }

@@ -3,9 +3,7 @@
 //! once, as a close already did; `--offline` keeps it local; and every command reports what the
 //! remote still lacks.
 
-use beadroll_core::json::{Format, write};
-use beadroll_test_support::printed_id;
-use beadroll_test_support::{Json, Machine, Sandbox, git, json, parse_json};
+use beadroll_test_support::{Json, Machine, Sandbox, git, json, json_line, parse_json, printed_id};
 
 /// Machine a has initialised tracker `ex`; machine b has synced it.
 fn set_up(sandbox: &Sandbox) -> (Machine, Machine) {
@@ -162,7 +160,7 @@ fn init_with_an_import_publishes_the_tracker_at_once() {
     let record = json!({"id": "im-1", "title": "imported", "status": "open", "priority": 2,
                         "issue_type": "task", "created_at": "2026-01-01T00:00:00Z",
                         "updated_at": "2026-01-01T00:00:00Z"});
-    std::fs::write(&source, write(&record, Format::ASCII).unwrap() + "\n").unwrap();
+    std::fs::write(&source, json_line(&record) + "\n").unwrap();
     let one = Machine::new(&fresh, "one");
     let made = one
         .bead([

@@ -1,14 +1,13 @@
 //! `bead init`: the tracker for this repository, optionally with a tracked `.beadroll.json` and an
 //! imported Beads export.
 
-use beadroll_core::op::OpName;
-
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 use std::path::{Path, PathBuf};
 
 use beadroll_core::code::Code;
 use beadroll_core::json::{self, Format, Object, Value};
+use beadroll_core::op::OpName;
 use beadroll_core::text::repr;
 use beadroll_git::{Fact, is_local_path, realpath, without_password};
 use beadroll_store::FileMode;

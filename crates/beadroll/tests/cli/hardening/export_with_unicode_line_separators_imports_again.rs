@@ -2,7 +2,7 @@
 //! CRLF line ends and blank lines between its records is read whole.
 
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, json, last_line, parse_json, printed_id};
+use beadroll_test_support::{Json, Machine, json, json_line, last_line, parse_json, printed_id};
 
 /// Titles holding U+2028, U+2029 and U+0085 (escapes only: raw ones would be split
 /// by line-based tools).
@@ -87,7 +87,7 @@ fn init_import_of_a_br_export_with_a_raw_line_separator() {
     // Write the first record with raw Unicode and the second with ASCII escapes.
     let mut bytes = write(&record, Format::SPACED).unwrap().into_bytes();
     bytes.extend_from_slice(b"\r\n\n");
-    bytes.extend(write(&other, Format::ASCII).unwrap().into_bytes());
+    bytes.extend(json_line(&other).into_bytes());
     bytes.extend_from_slice(b"\r\n");
     std::fs::write(&path, bytes).unwrap();
     let machine = Machine::new(&sandbox, "g31br");

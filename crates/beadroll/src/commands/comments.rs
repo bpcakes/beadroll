@@ -1,12 +1,11 @@
 //! `bead comments`: an issue's comments, or `comments add ID TEXT` to record one.
 
-use beadroll_core::op::OpName;
-
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 
 use beadroll_core::code::Code;
 use beadroll_core::json::{Object, Value};
+use beadroll_core::op::OpName;
 use beadroll_core::text::{str_of, strip};
 use beadroll_sync::writing_spent;
 

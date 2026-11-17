@@ -6,8 +6,8 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use beadroll_core::json::{Format, Object, write};
-use beadroll_test_support::{Json, Machine, Sandbox, code, json, json_ids};
+use beadroll_core::json::Object;
+use beadroll_test_support::{Json, Machine, Sandbox, code, json, json_ids, json_lines};
 
 /// When a record was made and last changed, unless it says otherwise, as in `record_fields`.
 const CREATED: &str = "2026-01-01T00:00:00Z";
@@ -122,10 +122,7 @@ fn tree() -> Vec<Json> {
 /// `rows` as JSON lines in `records-N.jsonl` at the sandbox's root, N the number of rows.
 fn records(sandbox: &Sandbox, rows: &[Json]) -> PathBuf {
     let path = sandbox.root().join(format!("records-{}.jsonl", rows.len()));
-    let text: String = rows
-        .iter()
-        .map(|row| write(row, Format::ASCII).unwrap() + "\n")
-        .collect();
+    let text = json_lines(rows);
     std::fs::write(&path, text).unwrap();
     path
 }

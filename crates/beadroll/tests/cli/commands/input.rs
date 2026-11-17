@@ -10,11 +10,13 @@ use std::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
 
-use beadroll_core::json::{Format, Object, write};
-use beadroll_test_support::{Json, Machine, code, json, json_member, parse_json, printed_id};
+use beadroll_core::json::Object;
+use beadroll_test_support::{
+    Json, Machine, code, json, json_line, json_lines, json_member, parse_json, printed_id,
+};
 
 use super::fixtures::{
-    STAND_IN, ascii_json, jsonl, machine, published_issue, record, record_text, strict_json,
+    STAND_IN, ascii_json, machine, published_issue, record, record_text, strict_json,
 };
 
 /// F07: non-UTF-8 titles and description files return a JSON error and store nothing.
@@ -74,7 +76,7 @@ fn import_probes_dependencies_before_writing() {
         record("ex-a", "A", json!({"dependencies": [dependency]})),
         record("ex-b", "B", json!({})),
     ];
-    std::fs::write(&typed, jsonl(&records)).unwrap();
+    std::fs::write(&typed, json_lines(&records)).unwrap();
     let imported = machine.run(["import", typed.to_str().unwrap(), "--json"]);
     assert_ne!(imported.returncode(), 0, "{}", imported.stdout);
     assert!(!imported.crashed(), "{}", imported.stderr);
@@ -83,7 +85,7 @@ fn import_probes_dependencies_before_writing() {
 
     let bare = sandbox.root().join("bare.jsonl");
     let records = [record("ex-c", "C", json!({"dependencies": ["ex-b"]}))];
-    std::fs::write(&bare, jsonl(&records)).unwrap();
+    std::fs::write(&bare, json_lines(&records)).unwrap();
     let imported = machine.run(["import", bare.to_str().unwrap(), "--json"]);
     assert_ne!(imported.returncode(), 0, "{}", imported.stdout);
     assert!(!imported.crashed(), "{}", imported.stderr);
@@ -118,9 +120,17 @@ fn incremental_mutual_import_matches_one_shot() {
     let root = sandbox.root();
     let first = record("ex-a", "A", blocked_by("ex-a", "ex-b"));
     let second = record("ex-b", "B", blocked_by("ex-b", "ex-a"));
-    std::fs::write(root.join("a.jsonl"), jsonl(std::slice::from_ref(&first))).unwrap();
-    std::fs::write(root.join("b.jsonl"), jsonl(std::slice::from_ref(&second))).unwrap();
-    std::fs::write(root.join("both.jsonl"), jsonl(&[first, second])).unwrap();
+    std::fs::write(
+        root.join("a.jsonl"),
+        json_lines(std::slice::from_ref(&first)),
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("b.jsonl"),
+        json_lines(std::slice::from_ref(&second)),
+    )
+    .unwrap();
+    std::fs::write(root.join("both.jsonl"), json_lines(&[first, second])).unwrap();
     let path = |name: &str| root.join(name).to_str().unwrap().to_owned();
     let split = machine(&sandbox, "mutual-split");
     split.bead(["import", &path("a.jsonl")]);
@@ -152,7 +162,7 @@ fn dangling_dependency_can_be_retracted_before_its_target_exists() {
         json!({"dependencies": [{"issue_id": "ex-b", "depends_on_id": "ex-a", "type": "blocks"}]}),
     );
     for (name, records) in [("a", dangling), ("cleared", cleared), ("b", target)] {
-        let text = jsonl(std::slice::from_ref(&records));
+        let text = json_lines(std::slice::from_ref(&records));
         std::fs::write(root.join(format!("{name}.jsonl")), text).unwrap();
     }
     let file = |name: &str| root.join(format!("{name}.jsonl")).display().to_string();
@@ -434,7 +444,7 @@ fn importing_legacy_comment_does_not_renumber_existing_local_comment() {
             "created_at": "2026-01-01T00:00:00Z"
         }]
     });
-    let line = write(&legacy, Format::ASCII).expect("a record") + "\n";
+    let line = json_line(&legacy) + "\n";
     std::fs::write(&src, line).expect("the legacy file");
     a.bead(["import", src.to_str().expect("a UTF-8 path")]);
     let after = first_comment_id(&a.export(), &key);

@@ -79,7 +79,7 @@ pub fn json_member<'v>(value: &'v Json, key: &str) -> &'v Json {
 
 /// `value` as one line of JSON as bead writes it (ASCII, members in their order): a record for an
 /// import, a body for a file under the store, an argument. The test fails if it cannot be written.
-pub fn json_text(value: &Json) -> String {
+pub fn json_line(value: &Json) -> String {
     beadroll_core::json::write(value, beadroll_core::json::Format::ASCII)
         .unwrap_or_else(|error| panic!("{value:?} cannot be written: {error}"))
 }
@@ -97,6 +97,12 @@ pub fn last_line(text: &str) -> &str {
     text.lines()
         .rfind(|line| !line.trim().is_empty())
         .unwrap_or_default()
+}
+
+/// `rows` as JSON lines as bead reads them: each one [`json_line`] and a newline, a Beads export or
+/// a journal's segment for a test to write to a file.
+pub fn json_lines(rows: &[Json]) -> String {
+    rows.iter().map(|row| json_line(row) + "\n").collect()
 }
 
 /// Writes `contents` to `path` as an executable (mode 0755): a hook, or a fake `git`, `ps` or

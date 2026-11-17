@@ -1,11 +1,10 @@
 //! `bead create`: one issue, with its parent and dependencies, published at once.
 
-use beadroll_core::op::OpName;
-
 use std::ffi::OsString;
 
 use beadroll_core::code::Code;
 use beadroll_core::json::{Object, Value};
+use beadroll_core::op::OpName;
 use beadroll_core::query::blocking;
 use beadroll_store::uuid7;
 use beadroll_sync::{Tx, writing_spent};

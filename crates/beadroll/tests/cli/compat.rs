@@ -9,7 +9,9 @@ mod compat_custom_statuses {
     use std::collections::{BTreeMap, BTreeSet};
 
     use beadroll_core::json::Object;
-    use beadroll_test_support::{Json, Machine, code, json, json_ids, json_text, parse_json};
+    use beadroll_test_support::{
+        Json, Machine, code, json, json_ids, json_line, json_lines, parse_json,
+    };
 
     /// The record with this `id`, `title` and `status`, then the members of `fields`.
     fn record(id: &str, title: &str, status: &str, fields: &Object) -> Json {
@@ -56,7 +58,7 @@ mod compat_custom_statuses {
             }),
         ];
         let source = sandbox.root().join("issues.jsonl");
-        let lines: String = records[..3].iter().map(|r| json_text(r) + "\n").collect();
+        let lines = json_lines(&records[..3]);
         std::fs::write(&source, lines).expect("the Beads export");
         let source_arg = source.to_str().expect("a UTF-8 path");
         let a = Machine::new(&sandbox, "a");
@@ -87,7 +89,7 @@ mod compat_custom_statuses {
         let export = a.export();
         let odd = export.lines().find(|line| line.contains(r#""ex-odd""#));
         let odd = parse_json(odd.expect("ex-odd in the export")).expect("a record");
-        assert!(odd.get("created_by").is_none(), "{}", json_text(&odd));
+        assert!(odd.get("created_by").is_none(), "{}", json_line(&odd));
         let shown = a.run(["show", "ex-odd"]);
         assert!(shown.stdout.contains("by unknown"), "{}", shown.stdout);
         a.bead(["update", "ex-odd", "--title", "still custom"]);
@@ -99,7 +101,7 @@ mod compat_custom_statuses {
         );
         a.bead(["close", "ex-odd"]);
         assert_eq!(a.show("ex-odd")["status"], json!("closed"));
-        std::fs::write(&source, json_text(&records[3]) + "\n").expect("the malformed export");
+        std::fs::write(&source, json_line(&records[3]) + "\n").expect("the malformed export");
         let malformed = a.run(["import", source_arg, "--json"]);
         assert_eq!(
             (malformed.returncode(), code(&malformed).as_str()),
@@ -123,8 +125,9 @@ mod real_exports {
 
     use std::time::Duration;
 
-    use beadroll_core::json::{Format, write};
-    use beadroll_test_support::{Json, ProcessGroup, Run, Spawned, UNDER_TEST, json, parse_json};
+    use beadroll_test_support::{
+        Json, ProcessGroup, Run, Spawned, UNDER_TEST, json, json_line, parse_json,
+    };
     use rustix::fs::{Access, access};
 
     /// Finds infra/compat_real.py in the source tree used to build the test, searching the crate
@@ -274,7 +277,7 @@ mod real_exports {
 
     /// `value` as JSON text, for a failure's message.
     fn shown(value: &Json) -> String {
-        write(value, Format::ASCII).expect("a serializable value")
+        json_line(value)
     }
 
     /// What the test needs and this machine lacks: `br`, `bv`, or any real export.
