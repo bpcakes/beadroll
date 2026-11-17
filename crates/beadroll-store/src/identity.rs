@@ -14,15 +14,6 @@ use crate::error::Error;
 use crate::fs::{FileMode, fsync, json_text, private_dir};
 use crate::settings::{Clock, Settings};
 
-/// Whether a missing machine identity may be created.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum IdentityMode {
-    /// Only an identity already here: none is minted, and a read answers `None`.
-    Existing,
-    /// Minted on first use, and kept from then on.
-    Create,
-}
-
 /// A UUIDv7 event id: clock milliseconds followed by random bits. Clock order is for display;
 /// deps determine causality.
 pub fn uuid7(clock: &Clock) -> String {
@@ -46,21 +37,33 @@ pub fn hex_token(n: usize) -> String {
     out
 }
 
-/// The opaque id of this machine, from `$BEAD_HOME/replica.json`; with `create`, minted on first
-/// use. The hostname stays in a local alias, never in events. The file is written whole under a
-/// temporary name and then linked into place, so it is never seen half done, and the first writer
-/// wins.
-pub fn replica_id(settings: &Settings, create: IdentityMode) -> Result<Option<String>, Error> {
+/// The opaque id of this machine, from `$BEAD_HOME/replica.json`, if it has one yet: a read never
+/// mints one ([`ensure_replica_id`] does). The hostname stays in a local alias, never in events.
+pub fn replica_id(settings: &Settings) -> Result<Option<String>, Error> {
+    let path = settings.home()?.join(layout::REPLICA);
+    if !path.exists() {
+        return Ok(None);
+    }
+    read_replica_id(&path).map(Some)
+}
+
+/// The opaque id of this machine, minted first if it has none: what every event it writes
+/// carries. The file is written whole under a temporary name and then linked into place, so it is
+/// never seen half done, and the first writer wins.
+pub fn ensure_replica_id(settings: &Settings) -> Result<String, Error> {
     let home = settings.home()?;
     let path = home.join(layout::REPLICA);
     if !path.exists() {
-        if create == IdentityMode::Existing {
-            return Ok(None);
-        }
         private_dir(&home)?;
         mint(&path, settings)?;
     }
-    let raw = std::fs::read(&path).map_err(|error| {
+    read_replica_id(&path)
+}
+
+/// The id `path`, a machine identity file, holds: eight lowercase hex digits, or an error that says
+/// to fix the file rather than replace it.
+fn read_replica_id(path: &Path) -> Result<String, Error> {
+    let raw = std::fs::read(path).map_err(|error| {
         Error::io_message(format!(
             "{}: {} (fix its access; do not replace it: the claims this machine holds belong to \
              that identity)",
@@ -76,7 +79,7 @@ pub fn replica_id(settings: &Settings, create: IdentityMode) -> Result<Option<St
             }
             _ => None,
         });
-    ident.map(Some).ok_or_else(|| {
+    ident.ok_or_else(|| {
         Error::Identity(format!(
             "{} is not a valid machine identity; restore it, or move it aside to mint a new one \
              (claims held under the old identity then need `bead takeover`)",

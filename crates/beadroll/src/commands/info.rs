@@ -6,8 +6,8 @@ use beadroll_core::json::{Object, Value};
 use beadroll_core::projection::Projection;
 use beadroll_core::text::{printed_text, str_of};
 use beadroll_store::{
-    IdentityMode, MetadataRead, Workspace, dir_entries, load_pending, projection, replica_id,
-    segment_files, tracked_config_warning,
+    MetadataRead, Workspace, dir_entries, load_pending, projection, replica_id, segment_files,
+    tracked_config_warning,
 };
 
 use super::{Context, Failure, Outcome};
@@ -22,7 +22,7 @@ pub(crate) fn info(ctx: &Context<'_>) -> Result<Outcome, Failure> {
     let ws = ctx.ws;
     let projection = projection(ws)?;
     let st = projection.state();
-    let replica = replica_id(&ws.settings, IdentityMode::Existing)?;
+    let replica = replica_id(&ws.settings)?;
     let remote = match ws.remote(None) {
         Ok(Some(remote)) => Value::from(printed_text(remote.as_bytes())),
         Ok(None) => Value::Null,

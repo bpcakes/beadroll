@@ -8,8 +8,8 @@ use beadroll_core::json::{Object, Value};
 use beadroll_core::state::State;
 use beadroll_core::text::{repr, repr_bytes, str_of};
 use beadroll_store::{
-    Actor, IdentityMode, Label, MetadataRead, Settings, Workspace, replica_id,
-    tracked_config_warning, view_outline,
+    Actor, Label, MetadataRead, Settings, Workspace, replica_id, tracked_config_warning,
+    view_outline,
 };
 
 use super::help;
@@ -91,7 +91,7 @@ fn help_page(
 /// The workflow, with where this agent stands: who it is, and in a repository with a tracker how
 /// many issues are ready, which it holds and when this machine last synced.
 fn prime(ws: Option<&Workspace>, actor: &Actor, settings: &Settings) -> Result<Outcome, Failure> {
-    let replica = replica_id(settings, IdentityMode::Existing)?;
+    let replica = replica_id(settings)?;
     let me = actor.label(replica.as_deref().unwrap_or("?"));
     let mut context = vec![format!("You are {} (machine, agent, thread).", me.shown())];
     let mut state = None;

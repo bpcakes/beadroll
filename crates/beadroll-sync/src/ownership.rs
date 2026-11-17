@@ -9,7 +9,7 @@ use std::ffi::OsStr;
 use beadroll_core::json::Value;
 use beadroll_git::PushOutcome;
 use beadroll_store::{
-    Actor, Endpoint, IdentityMode, PublicationState, Workspace, load_pending, replica_id,
+    Actor, Endpoint, PublicationState, Workspace, ensure_replica_id, load_pending,
 };
 
 use crate::error::Error;
@@ -101,9 +101,7 @@ pub fn coordinated<E: From<Error>>(
         Connection::Local(mode) => return writing(ws, actor, |tx| build(tx, mode)),
     };
     let mut link = Link::new(ws, &remote).map_err(E::from)?;
-    let replica = replica_id(&ws.settings, IdentityMode::Create)
-        .map_err(|e| E::from(e.into()))?
-        .unwrap_or_default();
+    let replica = ensure_replica_id(&ws.settings).map_err(|e| E::from(e.into()))?;
     // a push of ours that got no answer, with what it answered: it may still have landed
     let mut recovery = Recovery::Ready;
     // this actor's settled receipts: dropped only once this command has gone through

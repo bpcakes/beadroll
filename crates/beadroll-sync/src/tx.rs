@@ -19,8 +19,7 @@ use beadroll_core::op::OpName;
 use beadroll_core::projection::{Projection, Record};
 use beadroll_core::state::State;
 use beadroll_store::{
-    Actor, IdentityMode, Sourced, Workspace, capture_where, encode_events, projection, replica_id,
-    uuid7,
+    Actor, Sourced, Workspace, capture_where, encode_events, ensure_replica_id, projection, uuid7,
 };
 
 use crate::error::Error;
@@ -83,7 +82,7 @@ impl<'a> Tx<'a> {
 
     /// A transaction on `projection`, the store's as it is now.
     fn from(ws: &'a Workspace, actor: &Actor, projection: Projection) -> Result<Tx<'a>, Error> {
-        let replica = replica_id(&ws.settings, IdentityMode::Create)?.unwrap_or_default();
+        let replica = ensure_replica_id(&ws.settings)?;
         let place = capture_where(ws)?;
         Ok(Tx {
             ws,

@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 
 use beadroll_core::json::Value;
 use beadroll_store::{
-    FileMode, IdentityMode, Memo, Sourced, complete_prefix, extend_segment, pending_files,
-    projection_sourced, read, read_attempt, repair_tail, replica_id, segment_files, write_atomic,
+    FileMode, Memo, Sourced, complete_prefix, extend_segment, pending_files, projection_sourced,
+    read, read_attempt, repair_tail, replica_id, segment_files, write_atomic,
 };
 
 use super::{Link, newlines};
@@ -158,7 +158,7 @@ impl<'l, 'w> Merging<'l, 'w> {
         } else {
             None
         };
-        let own = replica_id(&self.link.ws.settings, IdentityMode::Existing)?;
+        let own = replica_id(&self.link.ws.settings)?;
         let pending: HashMap<String, PathBuf> = pending_files(self.link.ws)
             .into_iter()
             .map(|path| (stem(&path), path))

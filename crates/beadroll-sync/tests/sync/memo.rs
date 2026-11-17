@@ -18,7 +18,7 @@ use std::time::{Duration, SystemTime};
 use beadroll_core::json::{Object, Value};
 use beadroll_core::op::OpName;
 use beadroll_store::{
-    Endpoint, IdentityMode, Workspace, claim_files, memo_path, relative, replica_id, segment_files,
+    Endpoint, Workspace, claim_files, memo_path, relative, replica_id, segment_files,
 };
 use beadroll_sync::{Error, Link, PublishMode, PushOutcome, locked, writing};
 use beadroll_test_support::{Machine, Sandbox, git};
@@ -143,7 +143,7 @@ fn set_up(sandbox: &Sandbox) -> (Machine, Workspace, String, Machine) {
 
 /// This machine's segment `n`, by its path in the store.
 fn own_segment(ws: &Workspace, n: u32) -> String {
-    let me = replica_id(&ws.settings, IdentityMode::Existing)
+    let me = replica_id(&ws.settings)
         .expect("an identity")
         .expect("this machine's identity");
     format!("events/{me}/{n:06}.jsonl")
@@ -337,7 +337,7 @@ fn a_memo_written_before_a_file_says_nothing_of_it() {
 
 /// This machine's identity.
 fn own_machine(ws: &Workspace) -> String {
-    replica_id(&ws.settings, IdentityMode::Existing)
+    replica_id(&ws.settings)
         .expect("an identity")
         .expect("this machine's identity")
 }

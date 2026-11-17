@@ -9,9 +9,7 @@ use std::path::{Path, PathBuf};
 
 use beadroll_core::json::{Object, Value};
 use beadroll_core::op::OpName;
-use beadroll_store::{
-    Endpoint, IdentityMode, Workspace, glob_ending, json_text, read_attempt, replica_id,
-};
+use beadroll_store::{Endpoint, Workspace, glob_ending, json_text, read_attempt, replica_id};
 use beadroll_sync::{publish_soon, synchronise, writing};
 use beadroll_test_support::{Machine, Sandbox, json, json_line};
 
@@ -247,7 +245,7 @@ impl Window {
 
     /// The causes of the claim `a` made: the events its event builds on.
     fn causes(&self, ws: &Workspace) -> Vec<String> {
-        let replica = replica_id(&ws.settings, IdentityMode::Existing).expect("an identity");
+        let replica = replica_id(&ws.settings).expect("an identity");
         let claims = ws
             .events_dir
             .join(replica.expect("a replica"))
