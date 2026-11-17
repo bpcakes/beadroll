@@ -13,32 +13,44 @@ use beadroll_core::text::{is_space, repr_bytes};
 
 use super::{Failure, parse_priority, read_utf8, resolve};
 
-/// Whether command-line text can be encoded in an event.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Whether command-line text can be encoded in an event. It travels with the text from where the
+/// argument is read to the [`encodable`] check after the event is emitted.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum TextValidity {
-    /// Invalid.
+    /// Some bytes are not UTF-8: they are held as U+FFFD, and writing the text fails.
     Invalid,
-    /// Utf8.
+    /// Every byte is UTF-8 (no text at all is too): the text can be written.
+    #[default]
     Utf8,
 }
 
-/// Command-line text and its UTF-8 validity. Invalid bytes are represented by U+FFFD and a false
-/// flag; they match no key, status or name and cause a write to fail when encoded.
-pub(crate) fn arg_text(value: &OsStr) -> (String, bool) {
-    match value.to_str() {
-        Some(text) => (text.to_owned(), true),
-        None => (value.to_string_lossy().into_owned(), false),
+impl TextValidity {
+    /// The validity of this text and `other` written together: valid only if both are.
+    pub(crate) fn and(self, other: TextValidity) -> TextValidity {
+        match (self, other) {
+            (TextValidity::Utf8, TextValidity::Utf8) => TextValidity::Utf8,
+            _ => TextValidity::Invalid,
+        }
     }
 }
 
-/// [`arg_text`] of each, and whether all are valid UTF-8.
-pub(crate) fn arg_texts(values: &[OsString]) -> (Vec<String>, bool) {
-    let mut valid = true;
+/// Command-line text and its UTF-8 validity. Invalid bytes are represented by U+FFFD; they match
+/// no key, status or name and cause a write to fail when encoded.
+pub(crate) fn arg_text(value: &OsStr) -> (String, TextValidity) {
+    match value.to_str() {
+        Some(text) => (text.to_owned(), TextValidity::Utf8),
+        None => (value.to_string_lossy().into_owned(), TextValidity::Invalid),
+    }
+}
+
+/// [`arg_text`] of each, and the validity of them all.
+pub(crate) fn arg_texts(values: &[OsString]) -> (Vec<String>, TextValidity) {
+    let mut valid = TextValidity::Utf8;
     let texts = values
         .iter()
         .map(|value| {
             let (text, ok) = arg_text(value);
-            valid &= ok;
+            valid = valid.and(ok);
             text
         })
         .collect();
@@ -50,21 +62,18 @@ pub(crate) fn arg_texts(values: &[OsString]) -> (Vec<String>, bool) {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Payload {
     pub(crate) values: Object,
-    pub(crate) valid: bool,
+    pub(crate) valid: TextValidity,
 }
 
 impl Payload {
     pub(crate) fn new() -> Payload {
-        Payload {
-            values: Object::new(),
-            valid: true,
-        }
+        Payload::default()
     }
 
     /// Sets `name` to command-line text, in place when it is there already.
     pub(crate) fn set_text(&mut self, name: &str, value: &OsStr) {
         let (text, valid) = arg_text(value);
-        self.valid &= valid;
+        self.valid = self.valid.and(valid);
         self.values.insert(name.into(), Value::from(text));
     }
 }
@@ -72,11 +81,10 @@ impl Payload {
 /// Checks that an emitted event can be encoded: command-line text that is not valid UTF-8 fails
 /// after all other validation. A failed transaction writes nothing.
 pub(crate) fn encodable(valid: TextValidity) -> Result<(), Failure> {
-    let valid = matches!(valid, TextValidity::Utf8);
-    if valid {
-        return Ok(());
+    match valid {
+        TextValidity::Utf8 => Ok(()),
+        TextValidity::Invalid => Err(Failure::new(Code::Validation, "text is not valid UTF-8")),
     }
-    Err(Failure::new(Code::Validation, "text is not valid UTF-8"))
 }
 
 /// Comma-separated command-line items, trimmed, with empty items dropped and bytes that are not
@@ -229,4 +237,43 @@ pub(crate) fn field_args(title: Option<&OsStr>, flags: &ContentArgs) -> Result<P
         fields.values.insert("status".into(), Value::from(status));
     }
     Ok(fields)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt as _;
+
+    use super::{TextValidity, arg_texts, encodable};
+
+    #[test]
+    fn texts_are_valid_together_only_if_each_is() {
+        use TextValidity::{Invalid, Utf8};
+        for (a, b, both) in [
+            (Utf8, Utf8, Utf8),
+            (Utf8, Invalid, Invalid),
+            (Invalid, Utf8, Invalid),
+            (Invalid, Invalid, Invalid),
+        ] {
+            assert_eq!(a.and(b), both, "{a:?} and {b:?}");
+        }
+        assert_eq!(
+            TextValidity::default(),
+            Utf8,
+            "no text at all can be written"
+        );
+    }
+
+    #[test]
+    fn one_argument_that_is_not_utf8_makes_the_texts_unwritable() {
+        let args = [
+            OsStr::new("a").to_owned(),
+            OsStr::from_bytes(b"b\xff").to_owned(),
+        ];
+        let (texts, valid) = arg_texts(&args);
+        assert_eq!(texts, ["a", "b\u{fffd}"]);
+        assert_eq!(valid, TextValidity::Invalid);
+        assert!(encodable(valid).is_err());
+        assert!(encodable(arg_texts(&args[..1]).1).is_ok());
+    }
 }

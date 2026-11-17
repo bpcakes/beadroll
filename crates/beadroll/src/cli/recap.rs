@@ -7,8 +7,7 @@ use crate::commands::{Failure, Layout, RecapArgs};
 
 /// `recap`'s arguments. What a person reads on a terminal is marked seen once it is written; what
 /// a pipe, a file or `--json` takes in (an agent's run, a `| head`) only when `--advance` asks.
-pub(super) fn args(ns: &Namespace, as_json: OutputMode) -> Result<RecapArgs, Failure> {
-    let as_json = matches!(as_json, OutputMode::Json);
+pub(super) fn args(ns: &Namespace, output: OutputMode) -> Result<RecapArgs, Failure> {
     let layout = match ns.text("format") {
         None => Layout::Events,
         Some(name) => (name.to_str().and_then(Layout::named)).ok_or_else(|| {
@@ -22,7 +21,7 @@ pub(super) fn args(ns: &Namespace, as_json: OutputMode) -> Result<RecapArgs, Fai
             )
         })?,
     };
-    let terminal = !as_json && rustix::termios::isatty(std::io::stdout());
+    let terminal = output == OutputMode::Human && rustix::termios::isatty(std::io::stdout());
     Ok(RecapArgs {
         all: ns.flag("all"),
         advance: ns.flag("advance") || (terminal && !ns.flag("no_advance")),

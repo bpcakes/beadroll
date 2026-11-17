@@ -38,7 +38,7 @@ pub(crate) struct InitArgs {
     pub(crate) import_path: Option<OsString>,
     pub(crate) tracked: bool,
     pub(crate) remote: Option<OsString>,
-    pub(crate) offline: bool,
+    pub(crate) network: NetworkMode,
     /// `--dry-run`: what `--import` would do, nothing imported or started, no remote asked.
     pub(crate) dry_run: bool,
 }
@@ -150,10 +150,9 @@ enum Published {
 fn join_published(
     ws: &Workspace,
     remote: Option<&Endpoint>,
-    offline: NetworkMode,
+    network: NetworkMode,
 ) -> Result<Published, Failure> {
-    let offline = matches!(offline, NetworkMode::Offline);
-    if offline || view_outline(ws)?.prefix().is_some() {
+    if network == NetworkMode::Offline || view_outline(ws)?.prefix().is_some() {
         return Ok(Published::Nothing);
     }
     let remote = match remote {
@@ -186,11 +185,10 @@ fn join_published(
 }
 
 /// Writes `.beadroll.json` at the top of the checkout: the configuration it has (unknown keys
-/// kept), a workspace id (this tracker's when `keep`, as when it is already here or the remote
+/// kept), a workspace id (this tracker's when `id` is `Keep`, as when it is already here or the remote
 /// published it, else minted) unless it names one, and `remote`, or the configured remote without a password:
 /// none is ever written back, even a hand-set one.
-fn write_tracked(ws: &Workspace, remote: Option<&OsStr>, keep: WorkspaceId) -> Result<(), Failure> {
-    let keep = matches!(keep, WorkspaceId::Keep);
+fn write_tracked(ws: &Workspace, remote: Option<&OsStr>, id: WorkspaceId) -> Result<(), Failure> {
     let settings = &ws.settings;
     let top = settings
         .fact(Fact::Toplevel)?
@@ -198,7 +196,7 @@ fn write_tracked(ws: &Workspace, remote: Option<&OsStr>, keep: WorkspaceId) -> R
     let mut config: Object = ws.config.clone();
     let workspace = match config.get("workspace") {
         Some(value) if value.truthy() => value.clone(),
-        _ if keep => Value::from(ws.id.as_str()),
+        _ if id == WorkspaceId::Keep => Value::from(ws.id.as_str()),
         _ => Value::from(uuid7(&settings.clock)),
     };
     config.insert("workspace".into(), workspace);
@@ -239,13 +237,8 @@ fn workspace_for(
     let live = given.map(|given| &given.live);
     let names_origin = given.is_some_and(|given| given.names_origin);
     let tracked = args.tracked;
-    let network_mode = if args.offline {
-        NetworkMode::Offline
-    } else {
-        NetworkMode::Online
-    };
     let settings = &ctx.ws.settings;
-    let (ws, joined) = match join_published(ctx.ws, live, network_mode)? {
+    let (ws, joined) = match join_published(ctx.ws, live, args.network)? {
         Published::Joined(joined) => (Some(find_workspace(settings)?), Some(joined)),
         Published::Nothing => (None, None),
     };
@@ -416,7 +409,7 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
         values.push(("remote", remembered(remote)));
     }
     ws.save_meta(&values)?;
-    let published = ws.wrote() && !args.offline;
+    let published = ws.wrote() && args.network == NetworkMode::Online;
     if published {
         // the tracker exists for the other machines now, not at a later sync
         notes.extend(publication_note(ws, live.as_ref())?);

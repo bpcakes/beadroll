@@ -47,19 +47,18 @@ pub(crate) fn blocked(ctx: &Context<'_>) -> Result<Outcome, Failure> {
 }
 
 /// Issues whose key, title, texts or comments contain `query`, ignoring case; open issues unless
-/// `all` is set. A query that is not UTF-8 matches nothing.
+/// `scope` is `All`. A query that is not UTF-8 matches nothing.
 pub(crate) fn search(
     ctx: &Context<'_>,
     query: &OsStr,
-    all: SearchScope,
+    scope: SearchScope,
 ) -> Result<Outcome, Failure> {
-    let all = matches!(all, SearchScope::All);
     let st = view(ctx.ws)?;
     need_tracker(&st)?;
     let needle = query.to_str().map(str::to_lowercase);
     let mut hits: Vec<&Issue> = Vec::new();
     for issue in st.issues() {
-        if DONE.contains(&issue.status()) && !all {
+        if DONE.contains(&issue.status()) && scope == SearchScope::Open {
             continue;
         }
         let Some(needle) = &needle else {

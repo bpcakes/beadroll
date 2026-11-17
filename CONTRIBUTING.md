@@ -150,9 +150,11 @@ the record of it before any test data is written), their tests beside them, and 
   failed rename names its target.
 - **No boolean function parameters.** Clippy denies `fn_params_excessive_bools` with
   `max-fn-params-bools = 0`, including test helpers and tooling. Use named modes for choices,
-  reuse existing argument types, and remove switches that every caller supplies alike. Booleans
-  can remain stored data and return values; implementations of external traits keep their
-  required signatures.
+  reuse existing argument types, and remove switches that every caller supplies alike. The mode
+  is the data: make it where the choice is made, carry it in the argument structs, and match on it
+  where it is used. Never turn it straight back into a bool (`let json = matches!(mode,
+  OutputMode::Json)`) or build it from one at each call. Booleans can remain stored data and
+  return values; implementations of external traits keep their required signatures.
 - **No panics outside tests.** Libraries deny `unwrap_used`, `expect_used`,
   `panic`, `todo` and `unimplemented`; indexing that cannot be shown safe uses
   `get`. Replay is total: every input is applied or reported, never an abort.

@@ -94,7 +94,6 @@ fn style(tone: Tone) -> Style {
 /// `line` for a reader: each part escaped, and painted when `color`. A plain line that starts
 /// with a check mark (`✓ Closed …`) has the mark painted as done.
 pub(crate) fn render(line: &Line, color: Color) -> String {
-    let color = matches!(color, Color::Ansi);
     let marked;
     let parts = match line.parts() {
         [(Tone::Plain, text)] if text.starts_with("✓ ") => {
@@ -115,7 +114,7 @@ pub(crate) fn render(line: &Line, color: Color) -> String {
             visible(text)
         };
         let style = style(*tone);
-        if color && style != Style::new() {
+        if color == Color::Ansi && style != Style::new() {
             out.push_str(&format!("{style}{text}{style:#}"));
         } else {
             out.push_str(&text);

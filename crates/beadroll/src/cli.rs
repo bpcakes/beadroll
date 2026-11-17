@@ -94,7 +94,7 @@ pub(crate) fn main_with(argv: Vec<OsString>) -> ExitCode {
 /// everything after `--` is data, never an option; `--json` counts anywhere before it, `--actor`
 /// once, the last `--color` (`None` for one without its value).
 struct Request {
-    as_json: bool,
+    output: OutputMode,
     name: Option<OsString>,
     color: Option<Option<OsString>>,
     args: Vec<OsString>,
@@ -103,7 +103,11 @@ struct Request {
 fn read_request(argv: Vec<OsString>) -> Request {
     let cut = argv.iter().position(|a| a == "--").unwrap_or(argv.len());
     let (head, tail) = argv.split_at(cut);
-    let as_json = head.iter().any(|a| a == "--json");
+    let output = if head.iter().any(|a| a == "--json") {
+        OutputMode::Json
+    } else {
+        OutputMode::Human
+    };
     let mut head: Vec<OsString> = head.iter().filter(|a| *a != "--json").cloned().collect();
     let mut name = None;
     for index in 0..head.len() {
@@ -133,7 +137,7 @@ fn read_request(argv: Vec<OsString>) -> Request {
     }
     head.extend(tail.iter().cloned());
     Request {
-        as_json,
+        output,
         name,
         color,
         args: head,
@@ -158,7 +162,7 @@ fn colors_for(request: &Request) -> Result<Colors, Failure> {
             )
         })?,
     };
-    if request.as_json {
+    if request.output == OutputMode::Json {
         return Ok(Colors::default());
     }
     Ok(paint::colors(when, &|key| std::env::var_os(key)))
@@ -204,19 +208,11 @@ fn home_of(name: &std::ffi::OsStr) -> Option<OsString> {
 
 fn run(argv: Vec<OsString>, run_lifetime: RunLifetime) -> u8 {
     let request = read_request(argv);
-    let as_json = request.as_json;
+    let output = request.output;
     let colors = match colors_for(&request) {
         Ok(colors) => colors,
         Err(failure) => {
-            return report(
-                &failure,
-                if as_json {
-                    OutputMode::Json
-                } else {
-                    OutputMode::Human
-                },
-                Color::Plain,
-            );
+            return report(&failure, output, Color::Plain);
         }
     };
     match execute(&request, colors, run_lifetime) {
@@ -226,37 +222,17 @@ fn run(argv: Vec<OsString>, run_lifetime: RunLifetime) -> u8 {
             // reported where it can still be read
             Ok(()) => match printed.delivered.map_or(Ok(()), Delivered::done) {
                 Ok(()) => 0,
-                Err(failure) => report(
-                    &failure,
-                    if as_json {
-                        OutputMode::Json
-                    } else {
-                        OutputMode::Human
-                    },
-                    colors.stderr,
-                ),
+                Err(failure) => report(&failure, output, colors.stderr),
             },
             Err(Unwritten::Gone) => 0,
             // the answer could not be delivered: say so where it can still be read
             Err(Unwritten::Failed(error)) => report(
                 &Failure::new(Code::Io, beadroll_git::IoError::bare(&error).to_string()),
-                if as_json {
-                    OutputMode::Json
-                } else {
-                    OutputMode::Human
-                },
+                output,
                 colors.stderr,
             ),
         },
-        Err(failure) => report(
-            &failure,
-            if as_json {
-                OutputMode::Json
-            } else {
-                OutputMode::Human
-            },
-            colors.stderr,
-        ),
+        Err(failure) => report(&failure, output, colors.stderr),
     }
 }
 
@@ -283,15 +259,11 @@ fn execute(
     colors: Colors,
     run_lifetime: RunLifetime,
 ) -> Result<Option<Printed>, Failure> {
-    let output_mode = if request.as_json {
-        OutputMode::Json
-    } else {
-        OutputMode::Human
-    };
+    let output_mode = request.output;
     let mut settings = settings()?;
     let args = &request.args;
     if args.len() == 1 && (args[0] == "--version" || args[0] == "-V") {
-        return Ok(Some(Printed::from(if request.as_json {
+        return Ok(Some(Printed::from(if request.output == OutputMode::Json {
             let mut out = Object::new();
             out.insert("version".into(), Value::from(VERSION));
             out.insert("format".into(), Value::from(FORMAT));
@@ -301,7 +273,7 @@ fn execute(
         })));
     }
     let overview = || -> Result<Option<Printed>, Failure> {
-        Ok(Some(Printed::from(if request.as_json {
+        Ok(Some(Printed::from(if request.output == OutputMode::Json {
             // laid out for no width: the reader wraps it
             let mut out = Object::new();
             let overview = layout::lay_out(texts::OVERVIEW, None);
@@ -351,22 +323,18 @@ fn execute(
     let actor = detect_actor(&settings, request.name.as_deref(), &|| {
         nearest_harness(std::os::unix::process::parent_id(), &run_ps)
     });
-    let (outcome, offline, remote) = match &ws {
+    let (outcome, network, remote) = match &ws {
         Some(ws) if !free => dispatch(&Context { ws, actor: &actor }, &ns)?,
         _ => (
             free::run(&ns, ws.as_ref(), &actor, &settings, colors.stdout)?,
-            false,
+            NetworkMode::Online,
             None,
         ),
     };
     let finished = finish(
         outcome,
         ws.as_ref().filter(|_| !free),
-        if offline {
-            NetworkMode::Offline
-        } else {
-            NetworkMode::Online
-        },
+        network,
         &remote,
         run_lifetime,
         |warning| warn(&warning, output_mode, colors.stderr),
@@ -384,13 +352,14 @@ type Answer = (Option<Value>, Option<Vec<Line>>);
 /// when `colors` says so; `None` when it has neither.
 fn rendered(
     (result, lines): Answer,
-    as_json: OutputMode,
+    output: OutputMode,
     colors: Colors,
 ) -> Result<Option<String>, Failure> {
-    let as_json = matches!(as_json, OutputMode::Json);
     Ok(match (result, lines) {
         (None, None) => None,
-        (result, _) if as_json => Some(write(&result.unwrap_or(Value::Null), Format::SPACED)?),
+        (result, _) if output == OutputMode::Json => {
+            Some(write(&result.unwrap_or(Value::Null), Format::SPACED)?)
+        }
         (_, lines) => Some(paint::render_all(&lines.unwrap_or_default(), colors.stdout)),
     })
 }
@@ -460,17 +429,15 @@ fn finish(
 }
 
 /// What becomes of what the command held (the state it answered from, or the transaction a write
-/// was made in), once the command is done: freed, or kept until the process exits when it `exits`
-/// with the run, which is whether it was kept. A command answers from its state, or writes, and the
+/// was made in), once the command is done: freed, or kept until the process exits when the run's
+/// `lifetime` is the process's, which is whether it was kept. A command answers from its state, or writes, and the
 /// process then ends, so freeing each of its issues first is work nobody waits for, a quarter of
 /// a reading command's time on a large tracker (roll-lqjj.32), and about 83 ms of a write's at
-/// 200,000 events (roll-lqjj.42). Freed instead when the run `publishing` what the command wrote,
-/// which reads a state of its own, so that none is held beside another.
-fn ended_with(held: Option<Box<dyn Held>>, publishing: AfterCommand, exits: RunLifetime) -> bool {
-    let publishing = matches!(publishing, AfterCommand::Publish);
-    let exits = matches!(exits, RunLifetime::Process);
-    match held {
-        Some(held) if exits && !publishing => {
+/// 200,000 events (roll-lqjj.42). Freed instead when what follows the command (`after`) publishes
+/// what it wrote, which reads a state of its own, so that none is held beside another.
+fn ended_with(held: Option<Box<dyn Held>>, after: AfterCommand, lifetime: RunLifetime) -> bool {
+    match (held, after, lifetime) {
+        (Some(held), AfterCommand::Return, RunLifetime::Process) => {
             // never freed: the process ends once the answer is written
             std::mem::forget(held);
             true
@@ -479,13 +446,13 @@ fn ended_with(held: Option<Box<dyn Held>>, publishing: AfterCommand, exits: RunL
     }
 }
 
-/// Runs the command; with what it says about publishing: whether it was `--offline`, and the
-/// remote it named.
+/// Runs the command; with what it says about publishing: whether it may reach the remote (not
+/// with `--offline`), and the remote it named.
 fn dispatch(
     ctx: &Context<'_>,
     ns: &Namespace,
-) -> Result<(Outcome, bool, Option<OsString>), Failure> {
-    let offline = ns.flag("offline");
+) -> Result<(Outcome, NetworkMode, Option<OsString>), Failure> {
+    let network = network(ns);
     let remote = ns.text("remote").map(OsStr::to_os_string);
     let outcome = match ns.spec.name {
         "init" => commands::init(
@@ -495,7 +462,7 @@ fn dispatch(
                 import_path: owned(ns, "import_path"),
                 tracked: ns.flag("tracked"),
                 remote: remote.clone(),
-                offline,
+                network,
                 dry_run: ns.flag("dry_run"),
             },
         )?,
@@ -519,7 +486,7 @@ fn dispatch(
                 reason: owned(ns, "reason"),
                 recursive: ns.flag("recursive"),
                 force: ns.flag("force"),
-                offline,
+                network,
                 remote: remote.clone(),
             },
         )?,
@@ -573,7 +540,7 @@ fn dispatch(
             let args = commands::OwnershipArgs {
                 ids: ns.texts("ids").to_vec(),
                 reason: owned(ns, "reason"),
-                offline,
+                network,
                 remote: remote.clone(),
                 asked: ns.asked(),
             };
@@ -584,7 +551,7 @@ fn dispatch(
             }
         }
     };
-    Ok((outcome, offline, remote))
+    Ok((outcome, network, remote))
 }
 
 /// Seconds since the epoch on the real clock. The `clock` failpoint shifts only the nanosecond
@@ -632,9 +599,18 @@ fn update_args(ns: &Namespace) -> commands::UpdateArgs {
         add_label: ns.texts("add_label").to_vec(),
         remove_label: ns.texts("remove_label").to_vec(),
         set_labels: owned(ns, "set_labels"),
-        offline: ns.flag("offline"),
+        network: network(ns),
         remote: owned(ns, "remote"),
         asked: ns.asked(),
+    }
+}
+
+/// Whether the command may reach its coordination remote: not with `--offline`.
+fn network(ns: &Namespace) -> NetworkMode {
+    if ns.flag("offline") {
+        NetworkMode::Offline
+    } else {
+        NetworkMode::Online
     }
 }
 
@@ -688,9 +664,8 @@ fn write(value: &Value, format: Format) -> Result<String, Failure> {
 }
 
 /// Reports a post-commit count warning separately, preserving every command's stdout shape.
-fn warn(failure: &Failure, as_json: OutputMode, color_mode: Color) {
-    let as_json = matches!(as_json, OutputMode::Json);
-    let text = if as_json {
+fn warn(failure: &Failure, output: OutputMode, color_mode: Color) {
+    let text = if output == OutputMode::Json {
         let raw = failure.raw.as_deref().unwrap_or(failure.message.as_bytes());
         format!(
             "{{\"warning\": {{\"code\": {}, \"message\": {}}}}}",
@@ -710,9 +685,8 @@ fn warn(failure: &Failure, as_json: OutputMode, color_mode: Color) {
 /// Reports `failure` on standard error: `{"error": {"code", "message"}}` with `--json`, else
 /// `Error: message`, painted when `color`. The status is the command's (2 for `USAGE`, else 1),
 /// whatever stderr does.
-fn report(failure: &Failure, as_json: OutputMode, color_mode: Color) -> u8 {
-    let as_json = matches!(as_json, OutputMode::Json);
-    let text = match (as_json, &failure.raw) {
+fn report(failure: &Failure, output: OutputMode, color_mode: Color) -> u8 {
+    let text = match (output == OutputMode::Json, &failure.raw) {
         // Bytes that are not UTF-8 become U+FFFD.
         (true, Some(raw)) => format!(
             "{{\"error\": {{\"code\": {}, \"message\": {}}}}}",

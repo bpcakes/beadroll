@@ -22,7 +22,6 @@ use super::{
     field_args, need_tracker, refuse_foreign_claim, remove_edge, resolve_arg, split_args, view_of,
     view_of_written,
 };
-use crate::commands::args::TextValidity;
 
 /// Whether an update requested any changes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -43,7 +42,7 @@ pub(crate) struct UpdateArgs {
     pub(crate) add_label: Vec<OsString>,
     pub(crate) remove_label: Vec<OsString>,
     pub(crate) set_labels: Option<OsString>,
-    pub(crate) offline: bool,
+    pub(crate) network: NetworkMode,
     pub(crate) remote: Option<OsString>,
     /// The parsed command line as the receipt names it (`Namespace::asked`).
     pub(crate) asked: String,
@@ -61,19 +60,19 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
     }
     // in_progress is reached only through a claim
     let wants_claim = args.claim || status.as_deref() == Some("in_progress");
-    let network_mode = if args.offline {
-        NetworkMode::Offline
-    } else {
-        NetworkMode::Online
-    };
     let status = status.filter(|status| status != "in_progress");
-    let asked_nothing = fields.values.is_empty()
+    let kind = if fields.values.is_empty()
         && status.is_none()
         && !wants_claim
         && args.add_label.is_empty()
         && args.remove_label.is_empty()
         && args.set_labels.is_none()
-        && args.fields.parent.as_deref().is_none_or(OsStr::is_empty);
+        && args.fields.parent.as_deref().is_none_or(OsStr::is_empty)
+    {
+        UpdateKind::Empty
+    } else {
+        UpdateKind::Changed
+    };
     let mut notes = Vec::new();
     // the state the write left, which the answer reads unless a publish follows (roll-lqjj.29)
     let mut written = None;
@@ -95,7 +94,7 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
         let mode = coordinated(
             ctx.ws,
             ctx.actor,
-            network_mode,
+            args.network,
             args.remote.as_deref(),
             &signature,
             |tx, mode| -> Result<Mode, Failure> {
@@ -131,7 +130,7 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
         None
     } else {
         written = None; // the publish may bring in what other machines wrote: read after it
-        publish_soon(ctx.ws, network_mode, args.remote.as_deref())
+        publish_soon(ctx.ws, args.network, args.remote.as_deref())
     };
     let st = match written {
         Some(written) => view_of_written(ctx.ws, written, &args.ids)?,
@@ -141,16 +140,7 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
         still_held(ctx, &st, &args.ids)?;
     }
     let mut result = details(&st, &args.ids)?;
-    let lines = answer(
-        &mut result,
-        if asked_nothing {
-            UpdateKind::Empty
-        } else {
-            UpdateKind::Changed
-        },
-        notes,
-        warning.clone(),
-    );
+    let lines = answer(&mut result, kind, notes, warning.clone());
     let result = Value::Array(result.into_iter().map(Value::from).collect());
     let outcome = Outcome::new(result, lines).answered_from(st);
     outcome.after_its_publish(ctx.ws, warning.as_deref())
@@ -160,12 +150,11 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
 /// `notes` and `warning`, which `result` carries too, as warnings.
 fn answer(
     result: &mut [Object],
-    asked_nothing: UpdateKind,
+    kind: UpdateKind,
     mut notes: Vec<String>,
     warning: Option<String>,
 ) -> Vec<Line> {
-    let asked_nothing = matches!(asked_nothing, UpdateKind::Empty);
-    if asked_nothing {
+    if kind == UpdateKind::Empty {
         for item in result.iter_mut() {
             item.insert(
                 "unchanged".into(),
@@ -178,10 +167,9 @@ fn answer(
                 .to_owned(),
         );
     }
-    let done = if asked_nothing {
-        "Unchanged"
-    } else {
-        "Updated"
+    let done = match kind {
+        UpdateKind::Empty => "Unchanged",
+        UpdateKind::Changed => "Updated",
     };
     let mut lines: Vec<Line> = result
         .iter()
@@ -296,11 +284,7 @@ fn edit(
             with("fields", fields.values.clone()),
             None,
         )?;
-        encodable(if fields.valid {
-            TextValidity::Utf8
-        } else {
-            TextValidity::Invalid
-        })?;
+        encodable(fields.valid)?;
     }
     match status {
         Some("closed") => {
@@ -367,9 +351,5 @@ fn labels(tx: &mut Emitter<'_>, op: &str, uid: &str, items: &[OsString]) -> Resu
         Value::Array(items.into_iter().map(Value::from).collect()),
     );
     tx.emit(op, Some(uid), data, None)?;
-    encodable(if valid {
-        TextValidity::Utf8
-    } else {
-        TextValidity::Invalid
-    })
+    encodable(valid)
 }
