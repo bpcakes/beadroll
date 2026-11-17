@@ -486,6 +486,22 @@ pub(crate) fn read_utf8(path: &OsStr, what: &OsStr) -> Result<String, Failure> {
     })
 }
 
+/// Refuses to change `issue` while someone other than `me` holds its claim: the error every write
+/// that a claim guards gives, which `--force` lets the caller skip.
+pub(crate) fn refuse_foreign_claim(issue: &Issue, me: &Label) -> Result<(), Failure> {
+    match issue.claim() {
+        Some(held) if !me.is(&held.owner) => Err(Failure::new(
+            Code::ClaimedByOther,
+            format!(
+                "{} is claimed by {}: use `bead takeover` first, or --force",
+                issue.key(),
+                held.owner
+            ),
+        )),
+        _ => Ok(()),
+    }
+}
+
 /// Whether `me` ended the issue's last claim by closing or deleting it. That run may have died
 /// before publishing, so a retry publishes as promptly as the first run. Asked of issues whose
 /// texts, which hold their ownership history, are not read in (roll-lqjj.40).
