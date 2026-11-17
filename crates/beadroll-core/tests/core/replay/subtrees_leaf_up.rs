@@ -54,8 +54,7 @@ fn siblings_come_in_the_order_they_were_made_not_of_their_ids() {
     let made = f.create("au-second");
     // made after the first, which it saw, under an id that sorts before every other, as two
     // ids of one millisecond can
-    let second =
-        EventId::from_u128((1_790_000_000_000_u128 << 80) | (7 << 76) | (2 << 62)).to_string();
+    let second = beadroll_test_support::events::id_at(1_790_000_000_000, 0);
     f.edit(&made, |event| {
         event.insert("id".into(), Json::from(second.as_str()));
         event.insert("issue".into(), Json::from(second.as_str()));
