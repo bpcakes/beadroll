@@ -7,6 +7,7 @@ use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 use std::path::Path;
 
 use crate::path::{exists, realpath};
+use crate::text::is_space;
 
 /// `url` without any password in its user-info part, and whether one was there. bead never stores
 /// or uses an embedded password: git's credential helpers are the place for it. Over http(s) the
@@ -205,11 +206,6 @@ fn units(bytes: &[u8]) -> Vec<Unit<'_>> {
         out.extend(chunk.invalid().iter().map(|b| Unit::Byte(*b)));
     }
     out
-}
-
-/// Whether `c` is Unicode whitespace or one of the separators U+001C to U+001F.
-fn is_space(c: char) -> bool {
-    c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c)
 }
 
 /// OS bytes without Unicode whitespace or separators U+001C to U+001F at either end.

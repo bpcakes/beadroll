@@ -11,9 +11,16 @@ pub(crate) fn strip_ascii(data: &[u8]) -> &[u8] {
     data.get(start..end).unwrap_or_default()
 }
 
-/// Text without whitespace at either end: Unicode whitespace and the separators U+001C to U+001F.
+/// Whether `c` is Unicode whitespace or one of the separators U+001C to U+001F: what Python's
+/// `str.strip()` takes away, as `strip` and `url`'s byte stripping do. beadroll-core has the same
+/// rule for its own text (`text::is_space`); the git crate cannot depend on core.
+pub(crate) fn is_space(c: char) -> bool {
+    c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c)
+}
+
+/// Text without whitespace at either end ([`is_space`]).
 pub(crate) fn strip(text: &str) -> &str {
-    text.trim_matches(|c: char| c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c))
+    text.trim_matches(is_space)
 }
 
 /// Lines split at `\n`, `\r`, `\r\n`, `\x0b`, `\x0c`, `\x1c`-`\x1e`, `\x85`, U+2028 and
