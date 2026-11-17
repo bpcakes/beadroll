@@ -224,7 +224,7 @@ fn delayed_push_after_timeout_and_absent_fetch_must_not_fork() {
         current, previous_tip,
         "fault injection did not produce a delayed successful push"
     );
-    std::thread::sleep(Duration::from_millis(500)); // let the losing receive-packs finish failing
+    s.sandbox.await_remote_settled(); // the losing receive-packs finish failing
     let recovered = s.a.run(["sync", "--json"]);
     assert_eq!(
         recovered.returncode(),

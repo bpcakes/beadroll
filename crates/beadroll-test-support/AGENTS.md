@@ -23,6 +23,10 @@ tests it builds events, and for the round-trip properties it draws JSON values.
   The child test keeps `BEAD_UNDER_TEST` for that selection; a machine still scrubs it before
   starting bead itself.
 - `src/lib.rs`: `Json` (beadroll-core's `Value`) and `parse_json`, which read `bead --json`.
+- `src/wait.rs`: `wait_until`, a condition polled until a deadline, which fails the test naming
+  what it waited for. `Sandbox::receive_pack_running` and `Sandbox::await_remote_settled` cover
+  a push still running at the remote after bead gave up on it: the test waits for it to land or
+  fail before it reads the remote. `REMOTE_SETTLES` is their deadline.
 - `src/values.rs`: `Rng`, seeded JSON values for the round-trip properties (strings of the
   characters each writer escapes or passes through, integers to any `u64`, floats of
   every finite bit pattern, nesting to a depth), `identical` (member order and float bits

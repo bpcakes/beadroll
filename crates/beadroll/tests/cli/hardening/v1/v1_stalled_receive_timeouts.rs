@@ -5,7 +5,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, Sandbox, code, parse_json};
+use beadroll_test_support::{Json, Machine, REMOTE_SETTLES, Sandbox, code, parse_json, wait_until};
 
 use super::{executable, id, member, quoted};
 
@@ -19,12 +19,11 @@ fn set_up(sandbox: &Sandbox) -> (Machine, String) {
     (a, key)
 }
 
-/// Waits up to 15 seconds for `path` to exist, looking every tenth of a second.
-fn wait_for(path: &Path) {
-    let deadline = Instant::now() + Duration::from_secs(15);
-    while !path.exists() && Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(100));
-    }
+/// Waits for the stalled hook to touch `done`; the test fails if it never does.
+fn wait_for(done: &Path) {
+    wait_until("the stalled receive side to finish", REMOTE_SETTLES, || {
+        done.exists()
+    });
 }
 
 /// Verified (V1): a receive side that floods stderr and then stalls does not hold bead past
@@ -57,9 +56,8 @@ fn stalled_receive_with_a_stderr_flood_returns_within_the_timeout() {
     assert!(took < Duration::from_secs_f64(1.5 + 2.0), "{took:?}");
     assert_eq!(code(&stalled), "REMOTE_UNREACHABLE");
     wait_for(&done);
-    assert!(done.exists(), "the receive side never finished");
     std::fs::remove_file(&hook).unwrap();
-    std::thread::sleep(Duration::from_millis(300));
+    sandbox.await_remote_settled();
     let settled = a.run(["sync", "--json"]);
     assert_eq!(settled.returncode(), 0, "{}", settled.stderr);
     let info = a.bead(["info"]).expect("bead info prints a record");

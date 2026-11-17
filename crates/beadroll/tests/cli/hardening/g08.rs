@@ -29,7 +29,6 @@ mod g08_stale_receipts_dropped_before_the_command_goes_through {
 
     use std::fs::Permissions;
     use std::os::unix::fs::PermissionsExt as _;
-    use std::time::Duration;
 
     use beadroll_test_support::{Invocation, Json, Machine, code};
 
@@ -102,7 +101,7 @@ mod g08_stale_receipts_dropped_before_the_command_goes_through {
             .run();
         std::fs::remove_dir(&gate).unwrap();
         // the held pushes are refused once the gate is gone
-        std::thread::sleep(Duration::from_secs(1));
+        sandbox.await_remote_settled();
         std::fs::remove_file(&hook).unwrap();
         assert_eq!(later.returncode(), 1, "{}", later.stderr);
         assert_eq!(code(&later), "UNRESOLVED");

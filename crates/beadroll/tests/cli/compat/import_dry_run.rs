@@ -222,11 +222,13 @@ fn another_worktrees_index_is_left_as_it_is() {
         ],
         at,
     );
-    // the same bytes written again later: its index entry's stat data is stale, which a plain git
-    // status would refresh and write back
+    // the same bytes written again, dated later than the index: its index entry's stat data is
+    // stale, which a plain git status would refresh and write back
     let copy = tree.join(".beads/issues.jsonl");
-    std::thread::sleep(std::time::Duration::from_millis(1100));
     std::fs::write(&copy, std::fs::read(&copy).unwrap()).unwrap();
+    let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
+    let written = std::fs::File::options().write(true).open(&copy).unwrap();
+    written.set_modified(later).unwrap();
     let index = checkout.join(".git/worktrees/other-tree/index");
     let before = std::fs::read(&index).unwrap();
     let said = answer(&a, &["init", "--import", &file, "--dry-run"]);
