@@ -4,6 +4,40 @@
 //! crate or module root, apart from the two `CONTRIBUTING.md` names, no Rust source grows past
 //! the line it should have been split long before, and nothing is named for a finding.
 
+/// The repository's tracked files that `pathspecs` match (all of them when none is given), by their
+/// paths from its root. A listing without `expected` fails the test: a scan of nothing would pass.
+fn tracked(pathspecs: &[&str], expected: &str) -> Vec<String> {
+    let listed = std::process::Command::new("git")
+        .args(["ls-files", "-z", "--"])
+        .args(pathspecs)
+        .current_dir(crate::workspace::root())
+        .output()
+        .expect("git runs");
+    assert!(listed.status.success(), "git ls-files failed");
+    let names = String::from_utf8(listed.stdout).expect("UTF-8 file names");
+    let names: Vec<String> = (names.split('\0'))
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
+        .collect();
+    assert!(
+        names.iter().any(|name| name == expected),
+        "{expected} not listed"
+    );
+    names
+}
+
+/// Every tracked Rust source, its path from the repository's root and its text.
+fn rust_sources() -> Vec<(String, String)> {
+    let root = crate::workspace::root();
+    (tracked(&["*.rs"], "xtask/src/hygiene.rs").into_iter())
+        .map(|name| {
+            let text = std::fs::read_to_string(root.join(&name))
+                .unwrap_or_else(|error| panic!("{name}: {error}"));
+            (name, text)
+        })
+        .collect()
+}
+
 /// `RepositoryHygiene`.
 mod repository_hygiene {
     use std::fs::Permissions;
@@ -74,18 +108,9 @@ mod repository_hygiene {
 
     #[test]
     fn tracked_files_name_no_machine_or_user() {
-        let root = workspace::root();
-        let listed = std::process::Command::new("git")
-            .args(["ls-files", "-z"])
-            .current_dir(&root)
-            .output()
-            .expect("git runs");
-        assert!(listed.status.success(), "git ls-files failed");
-        let names = String::from_utf8(listed.stdout).expect("UTF-8 file names");
-        let names: Vec<&str> = names.split('\0').filter(|name| !name.is_empty()).collect();
-        // A scan of nothing would pass: it must cover this repository.
-        assert!(names.contains(&"README.md"), "no README.md listed");
-        let found = findings(&root, names).unwrap_or_else(|error| panic!("{error}"));
+        let names = super::tracked(&[], "README.md");
+        let found = findings(&workspace::root(), names.iter().map(String::as_str))
+            .unwrap_or_else(|error| panic!("{error}"));
         assert!(found.is_empty(), "\n{}", found.join("\n"));
     }
 
@@ -149,8 +174,6 @@ mod repository_hygiene {
 mod lint_exemptions {
     use regex_lite::Regex;
 
-    use crate::workspace;
-
     /// An exemption on one item rather than a whole crate or module: an outer `allow` or `expect`.
     const OUTER: &str = r"(?m)^[ \t]*#\[(?:allow|expect)\(";
 
@@ -191,23 +214,8 @@ mod lint_exemptions {
     /// from the accepted ones: a long test, say, is split rather than exempted (`CONTRIBUTING.md`).
     #[test]
     fn exemptions_sit_at_a_crate_or_module_root() {
-        let root = workspace::root();
-        let listed = std::process::Command::new("git")
-            .args(["ls-files", "-z", "*.rs"])
-            .current_dir(&root)
-            .output()
-            .expect("git runs");
-        assert!(listed.status.success(), "git ls-files failed");
-        let names = String::from_utf8(listed.stdout).expect("UTF-8 file names");
-        let names: Vec<&str> = names.split('\0').filter(|name| !name.is_empty()).collect();
-        // A scan of nothing would pass: it must cover this repository.
-        assert!(names.contains(&"xtask/src/hygiene.rs"), "no Rust listed");
-        let found: Vec<String> = (names.iter())
-            .flat_map(|name| {
-                let text = std::fs::read_to_string(root.join(name))
-                    .unwrap_or_else(|error| panic!("{name}: {error}"));
-                unaccepted(name, &text)
-            })
+        let found: Vec<String> = (super::rust_sources().iter())
+            .flat_map(|(name, text)| unaccepted(name, text))
             .collect();
         assert!(
             found.is_empty(),
@@ -239,7 +247,6 @@ mod lint_exemptions {
 
 /// `FileLengths`.
 mod file_lengths {
-    use crate::workspace;
 
     /// The most lines a Rust source may have: `CONTRIBUTING.md` asks for under 500, and a file past
     /// this was not split when it should have been.
@@ -259,25 +266,12 @@ mod file_lengths {
     /// of its own, not onto the end of the longest file.
     #[test]
     fn no_source_is_past_the_line_to_split_it() {
-        let root = workspace::root();
-        let listed = std::process::Command::new("git")
-            .args(["ls-files", "-z", "*.rs"])
-            .current_dir(&root)
-            .output()
-            .expect("git runs");
-        assert!(listed.status.success(), "git ls-files failed");
-        let names = String::from_utf8(listed.stdout).expect("UTF-8 file names");
-        let names: Vec<&str> = names.split('\0').filter(|name| !name.is_empty()).collect();
-        // A scan of nothing would pass: it must cover this repository.
-        assert!(names.contains(&"xtask/src/hygiene.rs"), "no Rust listed");
-        let texts: Vec<(&str, String)> = (names.iter())
-            .map(|name| {
-                let text = std::fs::read_to_string(root.join(name))
-                    .unwrap_or_else(|error| panic!("{name}: {error}"));
-                (*name, text)
-            })
-            .collect();
-        let found = too_long(texts.iter().map(|(name, text)| (*name, text.as_str())));
+        let sources = super::rust_sources();
+        let found = too_long(
+            sources
+                .iter()
+                .map(|(name, text)| (name.as_str(), text.as_str())),
+        );
         assert!(
             found.is_empty(),
             "split these by subject:\n{}",
@@ -339,20 +333,8 @@ mod finding_names {
         let ids = finding_ids(&ledger);
         // A ledger read as empty would pass everything: it has hundreds of rows.
         assert!(ids.len() > 100, "{} finding ids", ids.len());
-        let listed = std::process::Command::new("git")
-            .args(["ls-files", "-z", "*.rs"])
-            .current_dir(&root)
-            .output()
-            .expect("git runs");
-        assert!(listed.status.success(), "git ls-files failed");
-        let names = String::from_utf8(listed.stdout).expect("UTF-8 file names");
-        let found: Vec<String> = (names.split('\0'))
-            .filter(|name| !name.is_empty())
-            .flat_map(|name| {
-                let text = std::fs::read_to_string(root.join(name))
-                    .unwrap_or_else(|error| panic!("{name}: {error}"));
-                named_for_a_finding(name, &text, &ids)
-            })
+        let found: Vec<String> = (super::rust_sources().iter())
+            .flat_map(|(name, text)| named_for_a_finding(name, text, &ids))
             .collect();
         assert!(
             found.is_empty(),
