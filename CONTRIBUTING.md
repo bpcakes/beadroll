@@ -192,8 +192,9 @@ check compare), their tests beside them, and the synthetic `seed.jsonl`.
   and `beadroll_git::runner` (`setsid` and SIGXFSZ's default between fork and
   exec), the two in bead; and xtask's `timing::heap`, the system allocator with
   a count of what it hands out, since `GlobalAlloc` is an unsafe trait.
-- **Layout.** No `mod.rs` files (`clippy::mod_module_files`). A source file
-  warns above 500 lines; split it long before 800. Each crate's `AGENTS.md` has
+- **Layout.** No `mod.rs` files (`clippy::mod_module_files`). Keep a source
+  file under 500 lines, and split it by subject long before 800: xtask's
+  `hygiene::file_lengths` fails on one past that. Each crate's `AGENTS.md` has
   the sections Purpose, Key entrypoints, Edit here for X, Invariants and Common
   commands.
 - **Few dependencies, each for a reason.** serde_json reads JSON into
