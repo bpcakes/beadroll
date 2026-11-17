@@ -4,7 +4,7 @@
 # targets formatted, checked, linted and run through cargo-deny on the root's toolchain, which
 # needs no nightly (they are fuzzed nightly, in rust-nightly.yml). The oracle, the
 # differential checks against CPython and the mixed Python/Rust fleets ran here until the cutover
-# removed the Python implementation (python-0.1.0 has them). The nightly checks are
+# removed the Python implementation (commit b10a55c has them). The nightly checks are
 # rust-nightly.yml's. Nothing here touches a real store or a real remote: every test builds its own
 # repositories and bare remotes in a temporary directory.
 name: rust

@@ -1,5 +1,5 @@
 """infra/roundtrip.py must fail when a selected check fails, using synthetic results only: its own
-tests, beside it (they left tests/test_check.py; ./check.sh and cargo xtask check run them)."""
+tests, beside it, which ./check.sh and cargo xtask check run."""
 import contextlib
 import io
 import json
