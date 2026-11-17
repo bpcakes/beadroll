@@ -4,7 +4,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use beadroll_test_support::git;
+use beadroll_test_support::{git, within};
 use rustix::process::{Pid, Signal, kill_process, test_kill_process};
 
 use super::machine;
@@ -49,12 +49,15 @@ fn f15_timeout_reaps_the_git_helper() {
         .run();
     assert_ne!(proc.returncode(), 0, "{}", proc.stdout);
     assert!(!proc.crashed(), "{}", proc.stderr);
-    std::thread::sleep(Duration::from_millis(200));
     let pids: Vec<i32> = std::fs::read_to_string(&log)
         .unwrap()
         .split_whitespace()
         .map(|line| line.parse().unwrap())
         .collect();
+    // a helper killed with its group is gone once the system has reaped it
+    within(Duration::from_secs(10), || {
+        !pids.iter().any(|pid| alive(*pid))
+    });
     let survivors: Vec<i32> = pids.into_iter().filter(|pid| alive(*pid)).collect();
     // The `finally`: whatever the assertion says, no helper outlives the test.
     for pid in &survivors {

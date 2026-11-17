@@ -5,17 +5,50 @@
 use std::fs::{OpenOptions, Permissions};
 use std::io::Write as _;
 use std::os::unix::fs::PermissionsExt as _;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use beadroll_test_support::{Json, Machine};
+use beadroll_test_support::{Json, Machine, within};
 
 use super::{column, owner, segments, settle, two_machines};
 
 /// The hook that stops a claim after the remote took its push, before bead hears back.
 const CRASH_AFTER_PUSH: &str = "BEAD_TEST_CRASH_AFTER_PUSH";
 
-/// A `git` that sleeps two seconds before every fetch, then runs the system's.
-const SLOW_GIT: &str = "#!/bin/sh\n[ \"$1\" = fetch ] && sleep 2\nexec /usr/bin/git \"$@\"\n";
+/// A directory holding a `git` that, at the first fetch, touches `held.ready` in the sandbox and
+/// waits for `held.go` (a minute at most) before running the git on `PATH`; every other git runs
+/// at once. With the directory put first on `PATH`: a process held inside its first fetch, which
+/// the test lets go once it has acted. Black-box, so that it holds either binary.
+fn holding_first_fetch(sandbox: &beadroll_test_support::Sandbox) -> (PathBuf, PathBuf, PathBuf) {
+    let path = std::env::var_os("PATH").expect("the test's PATH");
+    let git = std::env::split_paths(&path)
+        .map(|dir| dir.join("git"))
+        .find(|git| {
+            std::fs::metadata(git)
+                .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+        })
+        .expect("git on PATH");
+    let root = sandbox.root();
+    let (once, ready, go) = (
+        root.join("held"),
+        root.join("held.ready"),
+        root.join("held.go"),
+    );
+    let quoted = |path: &Path| format!("'{}'", path.display().to_string().replace('\'', r"'\''"));
+    let script = format!(
+        "#!/bin/sh\nif [ \"$1\" = fetch ] && mkdir {} 2>/dev/null; then\n  touch {}\n  n=0\n  \
+         while [ ! -f {} ] && [ \"$n\" -lt 1200 ]; do sleep 0.05; n=$((n+1)); done\nfi\nexec {} \"$@\"\n",
+        quoted(&once),
+        quoted(&ready),
+        quoted(&go),
+        quoted(&git),
+    );
+    let folder = root.join("holding-git");
+    std::fs::create_dir(&folder).unwrap();
+    std::fs::write(folder.join("git"), script).unwrap();
+    std::fs::set_permissions(folder.join("git"), Permissions::from_mode(0o755)).unwrap();
+    (folder, ready, go)
+}
 
 /// A claim the remote accepted but never acknowledged is not counted until a retry finds it
 /// there; the retry claims nothing again, and every machine sees the same owner.
@@ -109,11 +142,8 @@ fn a_crash_before_the_claim_is_written_leaves_no_false_owner() {
 fn a_sync_that_fetched_before_a_lost_acknowledgement_does_not_void_it() {
     let sandbox = crate::sandbox();
     let (a, b, x, _) = two_machines(&sandbox);
-    let slow = sandbox.root().join("slow-git");
-    std::fs::create_dir(&slow).unwrap();
-    std::fs::write(slow.join("git"), SLOW_GIT).unwrap();
-    std::fs::set_permissions(slow.join("git"), Permissions::from_mode(0o755)).unwrap();
-    let mut path = slow.into_os_string();
+    let (holding, ready, go) = holding_first_fetch(&sandbox);
+    let mut path = holding.into_os_string();
     path.push(":");
     path.push(std::env::var_os("PATH").expect("the test's PATH"));
     let (crashed, synced) = std::thread::scope(|scope| {
@@ -121,11 +151,18 @@ fn a_sync_that_fetched_before_a_lost_acknowledgement_does_not_void_it() {
             let sync = a.cmd(["sync", "--json"]).env("PATH", &path);
             sync.thread("a-sync").run()
         });
-        std::thread::sleep(Duration::from_millis(500)); // the sync is inside its first, slow fetch
-        let claim = a.cmd(["claim", &x]).env(CRASH_AFTER_PUSH, "1");
-        let crashed = claim.thread("a-claimer").run(); // accepted, unacknowledged
+        let held = within(Duration::from_secs(20), || {
+            ready.exists() || syncing.is_finished()
+        });
+        let crashed = (held && ready.exists()).then(|| {
+            // the sync is inside its first fetch
+            let claim = a.cmd(["claim", &x]).env(CRASH_AFTER_PUSH, "1");
+            claim.thread("a-claimer").run() // accepted, unacknowledged
+        });
+        std::fs::write(&go, b"").unwrap();
         (crashed, syncing.join().expect("the sync's thread"))
     });
+    let crashed = crashed.expect("the sync never reached its first fetch");
     assert_eq!(crashed.returncode(), 99, "{}", crashed.stderr);
     assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
     b.bead(["sync"]);

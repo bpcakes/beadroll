@@ -85,7 +85,13 @@ fn timeouts_leak_nothing_and_reap_as_documented() {
             assert!(matches!(error, Error::Timeout { .. }), "{error:?}");
             assert_eq!(error.to_string(), "git -C gave no answer within 0.2s");
         }
-        std::thread::sleep(Duration::from_millis(300));
+        // what the killed gits held is let go once the system has reaped them
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while (open_descriptors() != before || !zombies().is_empty())
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(10));
+        }
         assert_eq!(open_descriptors(), before, "reap={reap}");
         assert_eq!(zombies(), Vec::<String>::new(), "reap={reap}");
         let started_helpers: Vec<i32> = std::fs::read_to_string(&log)
