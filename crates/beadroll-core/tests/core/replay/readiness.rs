@@ -14,7 +14,7 @@ use beadroll_core::query::{ReadyScope, sort_for_listing};
 use beadroll_core::state::{Issue, State};
 use beadroll_test_support::{Json, json};
 
-use super::replay_audit_properties::fixture::{Fixture, fields, issue};
+use super::properties::fixture::{Fixture, fields, issue};
 
 /// Adds a dependency of `kind` from `from` to `to` after the last event.
 fn link(f: &mut Fixture, from: &str, to: &str, kind: &str) {

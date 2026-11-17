@@ -8,7 +8,7 @@ use beadroll_core::query::sort_for_listing;
 use beadroll_core::state::Issue;
 use beadroll_test_support::json;
 
-use super::replay_audit_properties::fixture::{Fixture, fields};
+use super::properties::fixture::{Fixture, fields};
 
 /// The order the sort had before it compared borrowed text: owned creation times, compared whole.
 fn reference(items: &mut [&Issue]) {

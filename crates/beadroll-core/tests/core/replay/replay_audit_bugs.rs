@@ -11,7 +11,7 @@ use beadroll_core::replay::replay;
 use beadroll_test_support::events::journal;
 use beadroll_test_support::{Json, json};
 
-use super::replay_audit_properties::fixture::{Fixture, MISSING, conflict, issue, snapshot};
+use super::properties::fixture::{Fixture, MISSING, conflict, issue, snapshot};
 
 fn event_id(text: &str) -> EventId {
     EventId::parse(text).unwrap()

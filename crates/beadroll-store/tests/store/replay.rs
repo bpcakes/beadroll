@@ -29,7 +29,7 @@ mod unit_test {
     }
 }
 
-mod replay_audit_properties {
+mod workspace_isolation {
     use beadroll_core::json::Object;
     use beadroll_core::replay::replay;
     use beadroll_store::{Workspace, append_events, load_journal};
