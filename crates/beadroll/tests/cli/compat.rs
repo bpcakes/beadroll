@@ -124,15 +124,14 @@ mod real_exports {
     use crate::compat::CheckResult;
 
     use std::ffi::OsString;
-    use std::io::Read;
     use std::os::unix::ffi::OsStringExt as _;
     use std::path::{Path, PathBuf};
-    use std::process::{Command, Stdio};
-    use std::sync::mpsc::{self, Receiver};
-    use std::time::{Duration, Instant};
+    use std::process::Command;
+
+    use std::time::Duration;
 
     use beadroll_core::json::{Format, write};
-    use beadroll_test_support::{Json, Run, UNDER_TEST, json, parse_json};
+    use beadroll_test_support::{Json, ProcessGroup, Run, Spawned, UNDER_TEST, json, parse_json};
     use rustix::fs::{Access, access};
 
     /// Finds infra/compat_real.py in the source tree used to build the test, searching the crate
@@ -197,56 +196,10 @@ mod real_exports {
         found
     }
 
-    /// What a pipe held, handed over by the thread that read it to its end.
-    type Drained = Receiver<Vec<u8>>;
-
-    /// A thread that reads `pipe` to its end, and the channel it hands what it read to.
-    fn drain(mut pipe: impl Read + Send + 'static) -> Drained {
-        let (sender, receiver) = mpsc::channel();
-        std::thread::spawn(move || {
-            let mut bytes = Vec::new();
-            let _ = pipe.read_to_end(&mut bytes);
-            let _ = sender.send(bytes);
-        });
-        receiver
-    }
-
-    /// What the helper printed on `stream`, once the pipe has ended, by `deadline`, decoded as
-    /// `text=True` decodes it.
-    fn received(receiver: &Drained, deadline: Instant, stream: &str) -> String {
-        let left = deadline.saturating_duration_since(Instant::now());
-        let bytes = receiver.recv_timeout(left);
-        let bytes = bytes.unwrap_or_else(|_| panic!("the helper's {stream} had not ended in time"));
-        String::from_utf8(bytes)
-            .unwrap_or_else(|error| panic!("the helper's {stream} is not UTF-8: {error}"))
-    }
-
-    /// Runs a command and captures its status and text output. If the process or its output
-    /// remains open after `timeout`, kill it and fail the test.
-    fn run(mut command: Command, timeout: Duration) -> Run {
-        let deadline = Instant::now() + timeout;
-        command.stdout(Stdio::piped()).stderr(Stdio::piped());
-        let mut child = command
-            .spawn()
-            .unwrap_or_else(|error| panic!("cannot start {command:?}: {error}"));
-        let stdout = drain(child.stdout.take().expect("the helper's standard output"));
-        let stderr = drain(child.stderr.take().expect("the helper's standard error"));
-        let status = loop {
-            if let Some(status) = child.try_wait().expect("the helper's status") {
-                break status;
-            }
-            if Instant::now() >= deadline {
-                let _ = child.kill();
-                let _ = child.wait();
-                panic!("{command:?} had not ended after {timeout:?}");
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        };
-        Run {
-            status,
-            stdout: received(&stdout, deadline, "standard output"),
-            stderr: received(&stderr, deadline, "standard error"),
-        }
+    /// Runs `command` with empty standard input and captures its status and text output. If it
+    /// has not ended within `timeout`, it is killed and the test fails.
+    fn run(command: Command, timeout: Duration) -> Run {
+        Spawned::start(command, ProcessGroup::Inherited).communicate(timeout)
     }
 
     /// `value[key]`: the member, or the `KeyError` that ends the subtest.

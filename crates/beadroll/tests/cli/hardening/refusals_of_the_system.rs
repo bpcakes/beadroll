@@ -5,12 +5,10 @@
 //! drops a pending attempt, and the shapes of `replica.json` and `.beadroll.json` are checked.
 //! Scenarios are grouped in modules; their shared helpers are here.
 
-use std::io::Read;
-use std::process::{Command, Stdio};
-use std::sync::mpsc::{self, Receiver};
-use std::time::{Duration, Instant};
+use std::process::Command;
+use std::time::Duration;
 
-use beadroll_test_support::{Json, Machine, Run, UNPROFILED, parse_json};
+use beadroll_test_support::{Json, Machine, ProcessGroup, Run, Spawned, UNPROFILED, parse_json};
 use rustix::fs::{Access, access};
 
 mod descriptor_exhaustion;
@@ -46,52 +44,10 @@ fn limited(machine: &Machine, limit: &str, argv: &[&str]) -> Run {
     run_within(command, Duration::from_secs(120))
 }
 
-/// Runs a command with empty standard input and reads output through completion. If either
-/// process or output exceeds `timeout`, kill it and fail the test.
-fn run_within(mut command: Command, timeout: Duration) -> Run {
-    let deadline = Instant::now() + timeout;
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut child = command
-        .spawn()
-        .unwrap_or_else(|error| panic!("cannot start {command:?}: {error}"));
-    let stdout = drain(child.stdout.take().expect("the standard output"));
-    let stderr = drain(child.stderr.take().expect("the standard error"));
-    let status = loop {
-        if let Some(status) = child.try_wait().unwrap() {
-            break status;
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            panic!("{command:?} had not ended after {timeout:?}");
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    };
-    let read = |pipe: &Receiver<Vec<u8>>| {
-        let left = deadline.saturating_duration_since(Instant::now());
-        let bytes = pipe.recv_timeout(left);
-        let bytes = bytes.unwrap_or_else(|_| panic!("{command:?}'s output had not ended"));
-        String::from_utf8(bytes).expect("UTF-8 output")
-    };
-    Run {
-        status,
-        stdout: read(&stdout),
-        stderr: read(&stderr),
-    }
-}
-
-/// A thread that reads `pipe` to its end, and the channel it hands what it read to.
-fn drain(mut pipe: impl Read + Send + 'static) -> Receiver<Vec<u8>> {
-    let (sender, receiver) = mpsc::channel();
-    std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        let _ = pipe.read_to_end(&mut bytes);
-        let _ = sender.send(bytes);
-    });
-    receiver
+/// Runs `command` with empty standard input and reads its output through completion. If it has
+/// not ended within `timeout`, it is killed and the test fails.
+fn run_within(command: Command, timeout: Duration) -> Run {
+    Spawned::start(command, ProcessGroup::Inherited).communicate(timeout)
 }
 
 /// Whether the test can run. As root, `chmod 0` does not deny access, so
