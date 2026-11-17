@@ -140,8 +140,7 @@ impl Refs {
 /// An object name as git prints it on a line of its own.
 fn object_name(line: Vec<u8>) -> Result<String, NoAnswer> {
     let name = String::from_utf8(line).map_err(|_| NoAnswer)?;
-    let hex = name.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
-    if hex && matches!(name.len(), 40 | 64) {
+    if crate::objects::is_object_name(name.as_bytes()) {
         Ok(name)
     } else {
         Err(NoAnswer)

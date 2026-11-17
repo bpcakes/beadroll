@@ -131,7 +131,7 @@ fn header_fields(header: &str) -> Option<(&str, &str, usize)> {
         return None;
     };
     let known = matches!(*kind, "blob" | "tree" | "commit" | "tag");
-    if !known || !lower_hex(oid) || !matches!(oid.len(), 40 | 64) || !digits(size) {
+    if !known || !is_object_name(oid.as_bytes()) || !digits(size) {
         return None;
     }
     Some((oid, kind, size.parse().ok()?))
@@ -349,6 +349,12 @@ fn commit_tree(data: &[u8], hex_len: usize) -> Option<String> {
         rest = &rest[parent_len + 1..];
     }
     Some(tree.to_owned())
+}
+
+/// Whether `name` is a full object name as git prints it: 40 (SHA-1) or 64 (SHA-256) lowercase hex
+/// digits, never an abbreviation, which git could take for another object.
+pub fn is_object_name(name: &[u8]) -> bool {
+    matches!(name.len(), 40 | 64) && name.iter().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 /// Lower-case hex digits only, at least one.
