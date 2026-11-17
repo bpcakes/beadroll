@@ -2,7 +2,7 @@
 //! VALIDATION, from `import` and from `init --import` alike.
 
 use beadroll_core::json::{Format, Object, write};
-use beadroll_test_support::{Json, Machine, code, json};
+use beadroll_test_support::{Json, Machine, code, json, last_line};
 
 /// A Beads record's required fields.
 fn common() -> Json {
@@ -26,12 +26,6 @@ fn shapes() -> [(&'static str, Json); 6] {
         ("true", json!(true)),
         ("list holding null", json!([null])),
     ]
-}
-
-/// The last line of `text` that is not blank, or nothing.
-fn tail(text: &str) -> &str {
-    let mut lines = text.trim().split('\n');
-    lines.rfind(|line| !line.trim().is_empty()).unwrap_or("")
 }
 
 /// The Beads record `{"id": KEY, "title": TITLE, **_g38_common()}`, then the members of `more`.
@@ -82,7 +76,7 @@ fn wrong_comment_shapes_fail_the_import_with_validation() {
         assert!(
             !proc.crashed(),
             "import with comments as {name} crashed: {}",
-            tail(&proc.stderr)
+            last_line(&proc.stderr)
         );
         assert_eq!(proc.returncode(), 1, "{name}: {}", proc.stdout);
         assert_eq!(code(&proc), "VALIDATION", "{name}");
@@ -123,7 +117,7 @@ fn init_import_with_wrong_comment_shape_is_validation() {
     assert!(
         !proc.crashed(),
         "init --import with comments as a list of strings crashed: {}",
-        tail(&proc.stderr)
+        last_line(&proc.stderr)
     );
     assert_eq!(code(&proc), "VALIDATION");
 }

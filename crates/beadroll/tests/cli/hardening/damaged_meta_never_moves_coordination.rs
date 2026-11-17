@@ -11,7 +11,9 @@ use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
-use beadroll_test_support::{Json, Machine, Sandbox, git, json_member, parse_json, printed_id};
+use beadroll_test_support::{
+    Json, Machine, Sandbox, git, json_member, parse_json, path_text, printed_id,
+};
 
 /// The names of the refs the sandbox's remote, the code origin, holds.
 fn origin_refs(sandbox: &Sandbox) -> String {
@@ -35,11 +37,6 @@ struct Fixture {
     meta: PathBuf,
 }
 
-/// `path` as text, for an argument or a JSON member.
-fn text(path: &Path) -> &str {
-    path.to_str().expect("a UTF-8 path")
-}
-
 /// The JSON document held by path.
 fn read_json(path: &Path) -> Json {
     let read = std::fs::read_to_string(path).unwrap();
@@ -48,7 +45,7 @@ fn read_json(path: &Path) -> Json {
 
 /// The canonical absolute path as text, as the remote the store remembers.
 fn resolved(path: &Path) -> Json {
-    Json::from(text(&path.canonicalize().unwrap()))
+    Json::from(path_text(&path.canonicalize().unwrap()))
 }
 
 impl Fixture {
@@ -58,13 +55,13 @@ impl Fixture {
         let coord = sandbox.bare("coord.git");
         let a = Machine::new(&sandbox, "a");
         // coordination remote is not origin
-        a.bead(["init", "--prefix", "ex", "--remote", text(&coord)]);
+        a.bead(["init", "--prefix", "ex", "--remote", path_text(&coord)]);
         let key = printed_id(a.bead(["create", "contested"]));
         let other = printed_id(a.bead(["create", "uncontested"]));
         a.bead(["sync"]);
         let b = Machine::new(&sandbox, "b");
         // b remembers coord in meta.json ("last used")
-        b.bead(["sync", "--remote", text(&coord)]);
+        b.bead(["sync", "--remote", path_text(&coord)]);
         let meta = b.store().join("meta.json");
         assert_eq!(json_member(&read_json(&meta), "remote"), &resolved(&coord));
         Fixture {
@@ -129,7 +126,7 @@ fn malformed_meta_does_not_move_coordination_to_origin() {
         "init replaced a meta.json it could not read"
     );
     let claimed =
-        s.b.run(["claim", &s.other, "--remote", text(&s.coord), "--json"]);
+        s.b.run(["claim", &s.other, "--remote", path_text(&s.coord), "--json"]);
     assert_eq!(claimed.returncode(), 0, "{}", claimed.stderr);
     s.a.bead(["sync"]);
     assert_eq!(owner(&s.a.show(&s.other)), owner(&s.b.show(&s.other)));

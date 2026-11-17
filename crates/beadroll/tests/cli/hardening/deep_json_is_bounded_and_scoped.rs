@@ -8,12 +8,9 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use beadroll_core::json::{Format, Object, write};
-use beadroll_test_support::{Json, Machine, Run, Sandbox, code, json, parse_json};
-
-/// The path as text passed to bead.
-fn text(path: &Path) -> &str {
-    path.to_str().expect("a UTF-8 path")
-}
+use beadroll_test_support::{
+    Json, Machine, Run, Sandbox, code, json, last_line, parse_json, path_text,
+};
 
 /// A Beads record's required fields.
 fn common() -> Json {
@@ -54,12 +51,6 @@ fn foreign() -> String {
 /// one more level).
 fn record(key: &str, depth: usize, field: &str) -> String {
     format!("{}, \"{field}\": {}}}\n", head(key, "deep"), nested(depth))
-}
-
-/// The last line of `text` that is not blank.
-fn tail(text: &str) -> &str {
-    let mut lines = text.trim().split('\n');
-    lines.rfind(|line| !line.trim().is_empty()).unwrap_or("")
 }
 
 /// The last `count` Unicode scalar values of `text`.
@@ -122,7 +113,7 @@ fn set_up(sandbox: &Sandbox) -> Machine {
 
 /// `assert_no_traceback`: `what`, which `run` ran, did not crash.
 fn assert_no_crash(run: &Run, what: &str) {
-    assert!(!run.crashed(), "{what} crashed: {}", tail(&run.stderr));
+    assert!(!run.crashed(), "{what} crashed: {}", last_line(&run.stderr));
 }
 
 /// `assert_works`: `what`, which `run` ran, did not crash and succeeded.
@@ -224,7 +215,7 @@ fn import_refuses_nesting_that_not_every_machine_can_read() {
     for (name, contents) in cases {
         let path = sandbox.root().join(format!("{name}.jsonl"));
         std::fs::write(&path, contents).expect("the records to import");
-        let run = m.run(["import", text(&path), "--json"]);
+        let run = m.run(["import", path_text(&path), "--json"]);
         assert_no_crash(&run, &format!("import of {name}"));
         assert_ne!(
             run.returncode(),
@@ -245,7 +236,7 @@ fn import_refuses_nesting_that_not_every_machine_can_read() {
     let ordinary = sandbox.root().join("nested-50.jsonl");
     let nested_50 = record("ex-nested", 50, "custom");
     std::fs::write(&ordinary, nested_50).expect("the record to import");
-    let imported = m.bead(["import", text(&ordinary)]);
+    let imported = m.bead(["import", path_text(&ordinary)]);
     let imported = imported.expect("bead import prints a record");
     assert_eq!(imported["imported"].as_i64(), Some(1));
     let export = m.export();
@@ -274,7 +265,7 @@ fn peer_keeps_working_after_a_deep_import_elsewhere() {
     assert_works(&b.run(["sync", "--json"]), "the peer's first sync");
     let path = sandbox.root().join("deep.jsonl");
     std::fs::write(&path, record("ex-deep", 12_000, "x_state")).expect("the record");
-    let imported = a.run(["import", text(&path), "--json"]);
+    let imported = a.run(["import", path_text(&path), "--json"]);
     assert_no_crash(&imported, "the deep import");
     let accepted = imported.returncode() == 0;
     assert!(

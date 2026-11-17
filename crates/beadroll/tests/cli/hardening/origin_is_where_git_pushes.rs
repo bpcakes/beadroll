@@ -6,12 +6,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use beadroll_test_support::{Machine, Sandbox, git, printed_id};
-
-/// The path as text passed to git and bead.
-fn text(path: &Path) -> &str {
-    path.to_str().expect("a UTF-8 path")
-}
+use beadroll_test_support::{Machine, Sandbox, git, path_text, printed_id};
 
 /// Whether the repository `repo` has a `refs/beads/journal`.
 fn has_journal(repo: &Path) -> bool {
@@ -32,13 +27,16 @@ fn has_journal(repo: &Path) -> bool {
 /// first time a test asks for it.
 fn mirror_machine(sandbox: &Sandbox, name: &str) -> (Machine, PathBuf) {
     let mirror = sandbox.root().join("mirror.git");
-    let origin = text(sandbox.origin());
+    let origin = path_text(sandbox.origin());
     if !mirror.exists() {
-        git(["clone", "-q", "--mirror", origin, text(&mirror)], None);
+        git(
+            ["clone", "-q", "--mirror", origin, path_text(&mirror)],
+            None,
+        );
     }
     let m = Machine::new(sandbox, name);
     git(
-        ["remote", "set-url", "origin", text(&mirror)],
+        ["remote", "set-url", "origin", path_text(&mirror)],
         Some(m.checkout()),
     );
     git(
@@ -102,13 +100,13 @@ fn second_url_does_not_move_the_tracker() {
     a.bead(["init", "--prefix", "pu"]);
     let issue = printed_id(a.bead(["create", "one"]));
     a.bead(["sync"]);
-    let origin = text(sandbox.origin());
+    let origin = path_text(sandbox.origin());
     let backup = sandbox.root().join("backup.git");
     // branches only: no tracker
-    git(["clone", "-q", "--bare", origin, text(&backup)], None);
+    git(["clone", "-q", "--bare", origin, path_text(&backup)], None);
     let c = Machine::new(&sandbox, "c");
     git(
-        ["remote", "set-url", "--add", "origin", text(&backup)],
+        ["remote", "set-url", "--add", "origin", path_text(&backup)],
         Some(c.checkout()),
     );
     let fetches_from = git(["remote", "get-url", "origin"], Some(c.checkout()));

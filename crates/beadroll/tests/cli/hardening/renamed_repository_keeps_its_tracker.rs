@@ -6,12 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use beadroll_test_support::{Machine, Sandbox, code, git, parse_json, printed_id};
-
-/// The path as text passed to git and bead.
-fn text(path: &Path) -> &str {
-    path.to_str().expect("a UTF-8 path")
-}
+use beadroll_test_support::{Machine, Sandbox, code, git, parse_json, path_text, printed_id};
 
 /// Before the move, machine a publishes its tracker (prefix `rn`), which
 /// holds one issue, `one`; the issue's key.
@@ -36,7 +31,12 @@ fn move_repository(sandbox: &Sandbox) -> PathBuf {
 fn fresh_clone(machine: &Machine, origin: &Path) {
     std::fs::remove_dir_all(machine.checkout()).expect("the machine's first clone");
     git(
-        ["clone", "-q", text(origin), text(machine.checkout())],
+        [
+            "clone",
+            "-q",
+            path_text(origin),
+            path_text(machine.checkout()),
+        ],
         None,
     );
 }
@@ -49,7 +49,7 @@ fn machine_that_updates_origin_keeps_its_tracker() {
     let (a, issue) = set_up(&sandbox);
     let renamed = move_repository(&sandbox);
     git(
-        ["remote", "set-url", "origin", text(&renamed)],
+        ["remote", "set-url", "origin", path_text(&renamed)],
         Some(a.checkout()),
     );
     let sync = a.run(["sync", "--json"]);
@@ -79,7 +79,7 @@ fn fresh_clone_under_the_new_url_uses_the_published_tracker() {
     let unrelated = sandbox.clone("unrelated", Some(&sandbox.bare("unrelated.git")));
     fresh_clone(&d, &renamed);
     let foreign = d
-        .cmd(["sync", "--remote", text(&renamed), "--json"])
+        .cmd(["sync", "--remote", path_text(&renamed), "--json"])
         .cwd(&unrelated)
         .run();
     assert_eq!(code(&foreign), "WORKSPACE_MISMATCH", "{}", foreign.stdout);

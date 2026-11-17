@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use beadroll_core::json::{Format, Object, write};
-use beadroll_test_support::{Json, Machine, Run, git, json, parse_json};
+use beadroll_test_support::{Json, Machine, Run, git, json, parse_json, path_text};
 
 /// Commits `machine`'s .beadroll.json and pushes it to origin's `main`.
 fn commit_config(machine: &Machine) {
@@ -37,11 +37,6 @@ fn outcome(run: &Run) -> String {
         .get("owner")
         .unwrap_or_else(|| panic!("no owner in {claim:?}"));
     format!("confirmed owner {}", owner.as_str().expect("an owner"))
-}
-
-/// `path` as text, for an argument or a JSON member.
-fn text(path: &Path) -> &str {
-    path.to_str().expect("a UTF-8 path")
 }
 
 /// The JSON object held by path.
@@ -101,7 +96,7 @@ fn g04_reinit_keeps_where_false_ref_and_unknown_keys() {
     );
     write_indented(&config_path, config);
     let other = sandbox.bare("other.git");
-    let again = m.run(["init", "--tracked", "--remote", text(&other), "--json"]);
+    let again = m.run(["init", "--tracked", "--remote", path_text(&other), "--json"]);
     assert_eq!(again.returncode(), 0, "{}", again.stderr);
     m.bead(["create", "after re-init"]);
     let rewritten = read_object(&config_path);
@@ -110,7 +105,10 @@ fn g04_reinit_keeps_where_false_ref_and_unknown_keys() {
     let line = read.lines().last().expect("an event in the segment");
     let last = parse_json(line).unwrap_or_else(|error| panic!("{error}: {line}"));
     let last = last.as_object().expect("an event");
-    assert_eq!(rewritten.get("remote"), Some(&Json::from(text(&other))));
+    assert_eq!(
+        rewritten.get("remote"),
+        Some(&Json::from(path_text(&other)))
+    );
     assert_eq!(
         (
             rewritten.get("where"),
@@ -138,7 +136,7 @@ fn g04_reinit_does_not_move_the_checkout_to_another_ref() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "g04-a");
     let b = Machine::new(&sandbox, "g04-b");
-    let origin = text(sandbox.origin());
+    let origin = path_text(sandbox.origin());
     let made = a.run([
         "init",
         "--prefix",
