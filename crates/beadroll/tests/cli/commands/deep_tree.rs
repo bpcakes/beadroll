@@ -67,7 +67,7 @@ fn q08_deep_valid_dependency_tree_does_not_overflow() {
         .collect();
     for (key, value) in [
         ("BEAD_HOME", sandbox.root().join("home").into_os_string()),
-        ("BEAD_WORKSPACE", "review4-deep-tree".into()),
+        ("BEAD_WORKSPACE", "deep-tree".into()),
         ("BEAD_AGENT", "test".into()),
         ("BEAD_THREAD", "tree-thread".into()),
     ] {
@@ -81,7 +81,7 @@ fn q08_deep_valid_dependency_tree_does_not_overflow() {
         &|_| None,
     )
     .unwrap();
-    let id = "review4-deep-tree";
+    let id = "deep-tree";
     let workspace = Workspace::new(Arc::new(settings), id, None, None, Object::new()).unwrap();
     let mut chain = Chain::default();
     chain.emit("init", None, json!({"prefix": "ex"}));

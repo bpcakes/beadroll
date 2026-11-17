@@ -5,7 +5,7 @@ mod export_extras;
 mod import_plan;
 mod json_round_trip;
 
-mod compat_audit_comment_ids {
+mod comment_ids {
     use beadroll_core::journal::Journal;
     use beadroll_core::json::Value;
     use beadroll_core::replay::replay;

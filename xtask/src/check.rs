@@ -24,7 +24,8 @@ use std::time::Instant;
 use crate::workspace::{self, Failure};
 
 /// The real-export compatibility test, `#[ignore]`d until a check asks for it.
-const COMPAT_REAL: &str = "test(=compat::compat_audit_real_compatibility::all_available_real_exports_and_br_bv_consumers)";
+const COMPAT_REAL: &str =
+    "test(=compat::real_exports::all_available_real_exports_and_br_bv_consumers)";
 
 /// What the command line asked for.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

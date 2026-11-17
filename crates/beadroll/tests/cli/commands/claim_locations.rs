@@ -1,5 +1,4 @@
-//! `LocationReview`, from the third independent review: where a claim was made, and the activity
-//! that followed it.
+//! Where a claim was made, and the activity that followed it, as `claims` and `log` report them.
 
 use beadroll_test_support::{Machine, git, json};
 

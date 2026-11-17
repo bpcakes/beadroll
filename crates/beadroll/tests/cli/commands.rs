@@ -2,11 +2,11 @@
 
 mod bp_test;
 mod claim_endings;
+mod claim_locations;
+mod cli_compatibility;
 mod clock;
 mod close_recursive;
 mod colour;
-mod compat_audit_cli;
-mod compat_audit_identity;
 mod deep_tree;
 pub(crate) mod fixtures;
 mod format_policy;
@@ -15,7 +15,7 @@ mod help_and_prime;
 mod history;
 mod input;
 mod list_filters;
-mod location_review;
+mod nested_agent_identity;
 mod output;
 pub(crate) mod ownership;
 mod publish_on_write;
