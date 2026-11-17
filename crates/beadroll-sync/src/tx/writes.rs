@@ -16,9 +16,9 @@ use crate::receipts::forget_receipts;
 /// Whether the transaction must apply its emitted events for its caller.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum WriteResult {
-    /// DiscardState.
+    /// The caller reads nothing after the write.
     DiscardState,
-    /// KeepState.
+    /// The emitted events are applied, for a caller that reads the state after.
     KeepState,
 }
 
@@ -103,7 +103,6 @@ fn written<T, E: From<Error>>(
     keep: WriteResult,
     body: impl FnOnce(&mut Tx<'_>) -> Result<T, E>,
 ) -> Result<Written<T>, E> {
-    let keep = matches!(keep, WriteResult::KeepState);
     let mut spent = Spent::default();
     let mut pending_write = None;
     let result = locked(ws, || -> Result<(T, bool), E> {
@@ -116,7 +115,7 @@ fn written<T, E: From<Error>>(
             body(&mut tx)
         })();
         // the events emitted applied while the transaction still has them
-        let applied = built.is_ok() && keep && tx.state().is_ok();
+        let applied = built.is_ok() && keep == WriteResult::KeepState && tx.state().is_ok();
         let (prepared, retained) = tx.prepare();
         spent = retained;
         let prepared = pending_write.insert(prepared);

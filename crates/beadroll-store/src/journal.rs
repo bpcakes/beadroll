@@ -15,7 +15,6 @@ use beadroll_core::text::parse_integer;
 use beadroll_git::IoError;
 
 use crate::FileMode;
-use crate::LockState;
 use crate::error::Error;
 use crate::failpoint::{Fired, kill_self};
 use crate::fs::{
@@ -29,9 +28,9 @@ use crate::workspace::Workspace;
 /// Whether a journal read also computes file content sums.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ContentSums {
-    /// Skip.
+    /// Only the events.
     Skip,
-    /// Compute.
+    /// Each file's content sum too, which a projection records.
     Compute,
 }
 
@@ -78,14 +77,7 @@ pub(crate) fn claim_files_afresh(ws: &Workspace) -> Result<(Arc<[PathBuf]>, Opti
 /// it, each stat-ed now. A directory's identity never vouches for its files (roll-lqjj.12), and
 /// what bead writes is stat-ed again ([`Workspace::forget_claims`]).
 pub fn claim_keys(ws: &Workspace, files: &Arc<[PathBuf]>) -> Arc<[Option<FileKey>]> {
-    ws.claims.borrow_mut().keys(
-        files,
-        if ws.holding() {
-            LockState::Locked
-        } else {
-            LockState::Unlocked
-        },
-    )
+    ws.claims.borrow_mut().keys(files, ws.lock_state())
 }
 
 /// This machine's own ownership attempts the remote has not confirmed. Never read as events.
@@ -356,7 +348,7 @@ pub(crate) fn load_listed(
     segments: &[PathBuf],
     summed: ContentSums,
 ) -> Result<Loaded, Error> {
-    let summed = matches!(summed, ContentSums::Compute);
+    let summed = summed == ContentSums::Compute;
     let mut journal = Journal::new();
     let mut whole = true;
     let mut held = Vec::with_capacity(segments.len());

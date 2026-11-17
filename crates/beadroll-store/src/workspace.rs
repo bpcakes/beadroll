@@ -27,18 +27,18 @@ pub(crate) use remote::{configured_url, listed_url};
 /// How unreadable local metadata is handled.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MetadataRead {
-    /// Lenient.
+    /// Unreadable metadata counts as none.
     Lenient,
-    /// Strict.
+    /// Unreadable metadata is an error, since it records the remote last used here.
     Strict,
 }
 
 /// Whether this process has events still to publish.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PublicationState {
-    /// Published.
+    /// Nothing written here waits to be published.
     Published,
-    /// Unpublished.
+    /// Events written here are not yet on the remote.
     Unpublished,
 }
 
@@ -81,9 +81,9 @@ impl CommandState {
 /// Whether this process currently holds the store lock.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LockState {
-    /// Unlocked.
+    /// The lock is not held: every listing and identity is taken afresh.
     Unlocked,
-    /// Locked.
+    /// The lock is held: what this phase listed and stat-ed holds until it ends.
     Locked,
 }
 
@@ -116,7 +116,7 @@ pub struct Workspace {
     pub events_dir: PathBuf,
     /// The settings it was found with.
     pub settings: Arc<Settings>,
-    holding: Cell<bool>,
+    holding: Cell<LockState>,
     command: Cell<CommandState>,
     pub(crate) claims: RefCell<Claims>,
     /// What `meta.json` held when this process last read or wrote it, by that file's identity.
@@ -153,7 +153,7 @@ impl Workspace {
             events_dir: dir.join("events"),
             dir,
             settings,
-            holding: Cell::new(false),
+            holding: Cell::new(LockState::Unlocked),
             command: Cell::new(CommandState::NEW),
             claims: RefCell::new(Claims::default()),
             meta_read: RefCell::new(None),
@@ -162,6 +162,11 @@ impl Workspace {
 
     /// Whether this process holds the store lock.
     pub fn holding(&self) -> bool {
+        self.lock_state() == LockState::Locked
+    }
+
+    /// The store lock as this process holds it, or does not.
+    pub fn lock_state(&self) -> LockState {
         self.holding.get()
     }
 
@@ -170,7 +175,6 @@ impl Workspace {
     /// outside the lock. Prefer [`Workspace::lock`], which pairs this phase with the file lock.
     /// This setter remains for callers that manage their own lock.
     pub fn set_holding(&self, holding: LockState) {
-        let holding = matches!(holding, LockState::Locked);
         if self.holding.replace(holding) != holding {
             *self.claims.borrow_mut() = Claims::default();
         }
@@ -227,13 +231,12 @@ impl Workspace {
     /// Metadata with its published map kept as typed counts. Ordinary reads borrow only the
     /// fields they need; [`Self::meta`] retains the generic public API for compatibility.
     pub fn metadata(&self, strict: MetadataRead) -> Result<Arc<Metadata>, Error> {
-        let strict = matches!(strict, MetadataRead::Strict);
         let path = self.dir.join("meta.json");
         let problem = match self.read_meta(&path) {
             Ok(meta) => return Ok(meta),
             Err(problem) => problem,
         };
-        if !strict {
+        if strict == MetadataRead::Lenient {
             return Ok(Arc::default());
         }
         Err(Error::io_message(format!(

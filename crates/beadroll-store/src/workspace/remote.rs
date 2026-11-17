@@ -20,9 +20,9 @@ use crate::error::Error;
 /// Where a remote spelling came from, for resolving relative paths.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RemoteSource {
-    /// Remembered.
+    /// Stored in the workspace: a relative path is read from the top of the checkout.
     Remembered,
-    /// Typed.
+    /// Given on the command line just now: a relative path is read from the working directory.
     Typed,
 }
 
@@ -102,12 +102,12 @@ impl Workspace {
     /// spellings taken for one place. A relative path typed just now (`typed`) is read from where
     /// it was typed, a path of its own.
     pub fn is_origin_url(&self, value: &OsStr, typed: RemoteSource) -> bool {
-        let typed = matches!(typed, RemoteSource::Typed);
         let Some(origin) = self.origin.as_deref().filter(|origin| !origin.is_empty()) else {
             return false;
         };
         let relative = is_local_path(value) && !value.as_bytes().starts_with(b"/");
-        !(typed && relative) && without_password(value).0 == without_password(origin).0
+        !(typed == RemoteSource::Typed && relative)
+            && without_password(value).0 == without_password(origin).0
     }
 
     /// One remote spelling as bead reads it: a configured remote's name wins over a same-named
@@ -154,7 +154,6 @@ impl Workspace {
     /// through its symbolic links, whether it exists or not; except a spelling git rewrites
     /// (`insteadOf`), kept as written for git to rewrite. A password is dropped.
     fn endpoint_at(&self, value: &OsStr, typed: RemoteSource) -> Result<Endpoint, Error> {
-        let typed = matches!(typed, RemoteSource::Typed);
         let git = &self.settings.git;
         let mut value = without_password(value).0;
         if is_local_path(&value) {
@@ -164,7 +163,7 @@ impl Workspace {
                 return Ok(Endpoint::at(value));
             }
             if !value.as_bytes().starts_with(b"/") {
-                let base = if typed {
+                let base = if typed == RemoteSource::Typed {
                     Some(self.settings.cwd.as_os_str().as_bytes().to_vec())
                 } else {
                     let top = self.settings.fact(Fact::Toplevel)?;

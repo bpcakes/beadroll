@@ -39,10 +39,11 @@ pub fn texts_path(ws: &Workspace) -> PathBuf {
 /// The text file of `generation`, open to read, and to append to when `append`: `None` when there
 /// is none, or it is another's.
 pub(super) fn open(ws: &Workspace, generation: [u8; 16], append: TextFileAccess) -> Option<File> {
-    let append = matches!(append, TextFileAccess::Append);
-    let file = (OpenOptions::new().read(true).write(append))
-        .open(texts_path(ws))
-        .ok()?;
+    let file = (OpenOptions::new()
+        .read(true)
+        .write(append == TextFileAccess::Append))
+    .open(texts_path(ws))
+    .ok()?;
     let mut head = [0u8; START as usize];
     file.read_exact_at(&mut head, 0).ok()?;
     (head.get(..16) == Some(&MAGIC[..]) && head.get(16..) == Some(&generation[..])).then_some(file)

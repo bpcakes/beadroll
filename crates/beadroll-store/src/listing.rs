@@ -126,13 +126,12 @@ impl Claims {
         Some(identities.into())
     }
 
-    /// The identity of each of `files` ([`FileKey::of`]): with `keep` (the store lock held), the
+    /// The identity of each of `files` ([`FileKey::of`]): with the store lock held (`lock`), the
     /// one this phase took, each file stat-ed once; else each stat-ed now. Identities are kept by
     /// the listing they were taken for, and carried over to a new one file by file, since both are
     /// in the order of their paths.
-    pub(crate) fn keys(&mut self, files: &Arc<[PathBuf]>, keep: LockState) -> Keys {
-        let keep = matches!(keep, LockState::Locked);
-        if !keep {
+    pub(crate) fn keys(&mut self, files: &Arc<[PathBuf]>, lock: LockState) -> Keys {
+        if lock == LockState::Unlocked {
             return files.iter().map(|file| FileKey::of(file)).collect();
         }
         if let Some((listed, keys)) = &self.keys

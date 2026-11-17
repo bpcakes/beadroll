@@ -25,18 +25,18 @@ use crate::memo::FileKey;
 /// Whether an atomic write must be flushed before rename.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Durability {
-    /// Cache.
+    /// Not fsynced: a cache that a crash may lose, and that is made again.
     Cache,
-    /// Durable.
+    /// Fsynced before the rename, so that a crash leaves the old file or the new one.
     Durable,
 }
 
 /// Permissions for an atomic write.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FileMode {
-    /// Checkout.
+    /// The caller's umask, like any other file in the checkout.
     Checkout,
-    /// Private.
+    /// 0600, as every store file is.
     Private,
 }
 

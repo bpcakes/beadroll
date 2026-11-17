@@ -28,18 +28,18 @@ mod round;
 /// Whether a command may reach its coordination remote.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NetworkMode {
-    /// Online.
+    /// The remote is reached: fetched from and published to.
     Online,
-    /// Offline.
+    /// `--offline`: nothing is fetched or published, and a claim is provisional.
     Offline,
 }
 
 /// Whether a synchronization collects counts for its report.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SyncReport {
-    /// Skip.
+    /// No counts: a sync nobody reports on.
     Skip,
-    /// Collect.
+    /// The counts a sync's report gives: events pulled and issues renamed.
     Collect,
 }
 
@@ -416,11 +416,10 @@ pub fn publish_soon(
 /// remote; nothing more.
 pub fn destination(
     ws: &Workspace,
-    offline: NetworkMode,
+    network: NetworkMode,
     remote: Option<&OsStr>,
 ) -> Option<Result<Endpoint, Error>> {
-    let offline = matches!(offline, NetworkMode::Offline);
-    if offline {
+    if network == NetworkMode::Offline {
         return None;
     }
     match ws.endpoint(remote) {
