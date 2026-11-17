@@ -15,9 +15,7 @@ use beadroll_test_support::{
     Json, Machine, code, json, json_line, json_lines, json_member, parse_json, printed_id,
 };
 
-use super::fixtures::{
-    STAND_IN, ascii_json, machine, published_issue, record, record_text, strict_json,
-};
+use super::fixtures::{STAND_IN, machine, published_issue, record, record_text, strict_json};
 
 /// F07: non-UTF-8 titles and description files return a JSON error and store nothing.
 #[test]
@@ -357,9 +355,9 @@ fn incremental_import_resolves_late_dependency_target() {
         root.join("q06-b.jsonl"),
         root.join("q06-all.jsonl"),
     );
-    std::fs::write(&a_path, ascii_json(&issue_a) + "\n").unwrap();
-    std::fs::write(&b_path, ascii_json(&issue_b) + "\n").unwrap();
-    let both = ascii_json(&issue_a) + "\n" + &ascii_json(&issue_b) + "\n";
+    std::fs::write(&a_path, json_line(&issue_a) + "\n").unwrap();
+    std::fs::write(&b_path, json_line(&issue_b) + "\n").unwrap();
+    let both = json_line(&issue_a) + "\n" + &json_line(&issue_b) + "\n";
     std::fs::write(&all_path, both).unwrap();
 
     let split = Machine::new(&sandbox, "q06-split");
@@ -398,7 +396,7 @@ fn reserved_dangling_extra_cannot_crash_export() {
         "issue_type": "task", "_dangling_dependencies": "user supplied"
     });
     let path = sandbox.root().join("q10.jsonl");
-    std::fs::write(&path, ascii_json(&record) + "\n").unwrap();
+    std::fs::write(&path, json_line(&record) + "\n").unwrap();
     a.bead(["import", path.to_str().unwrap()]);
     let exported = a.run(["export"]);
     assert_eq!(exported.returncode(), 0, "{}", exported.stderr);

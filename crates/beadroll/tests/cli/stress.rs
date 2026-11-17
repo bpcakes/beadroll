@@ -13,12 +13,12 @@ pub(crate) use seeded_random::Rng;
 use std::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::path::Path;
-use std::sync::Arc;
 
+use crate::commands::fixtures::machine_settings;
 use beadroll_core::json::{Format, Object, write};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
-use beadroll_store::{Settings, Workspace, load_journal, view};
+use beadroll_store::{Workspace, load_journal, view};
 use beadroll_test_support::{Json, Machine, Run, Sandbox, parse_json};
 
 /// The machines of a model: `NAME0` to `NAME5`, each running the Rust `bead`.
@@ -101,18 +101,11 @@ pub(crate) fn joined<R>(thread: std::thread::ScopedJoinHandle<'_, R>) -> R {
 
 /// Opens the machine's workspace in-process with that machine's home and store id.
 fn workspace(machine: &Machine) -> Workspace {
-    let settings = Settings::from_process(
-        machine.env(None, "codex"),
-        Some(machine.checkout().to_path_buf()),
-        std::env::var_os("HOME").unwrap_or_default(),
-        std::env::temp_dir(),
-        &|_| None,
-    )
-    .expect("the machine's settings");
+    let settings = machine_settings(machine);
     let store = machine.store();
     let wid = store.file_name().and_then(OsStr::to_str);
     let wid = wid.unwrap_or_else(|| panic!("{} names no workspace", store.display()));
-    Workspace::new(Arc::new(settings), wid, None, None, Object::new()).expect("the workspace")
+    Workspace::new(settings, wid, None, None, Object::new()).expect("the workspace")
 }
 
 /// The confirmed state from replaying the machine's journal.

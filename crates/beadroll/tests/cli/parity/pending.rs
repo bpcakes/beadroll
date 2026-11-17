@@ -15,7 +15,8 @@ use beadroll_store::{Workspace, find_workspace, load_journal, write_atomic, writ
 use beadroll_sync::PublishMode;
 use beadroll_sync::{Link, PushOutcome, Tx, locked};
 
-use super::{json, settings};
+use super::json;
+use crate::commands::fixtures::machine_settings;
 
 /// Whether the pending attempt is also published by its fixture.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -119,7 +120,7 @@ fn pending_attempts_left_in_process_are_settled_by_sync() {
         json(&r, &["init", "--prefix", "ex"]);
         let x = json_id(&json(&r, &["create", "x"]));
         json(&r, &["sync"]);
-        let settings = settings(&r);
+        let settings = machine_settings(&r);
         let ws = find_workspace(&settings).unwrap();
         let st = replay(load_journal(&ws).unwrap()).unwrap();
         let uid = st.resolve(&x).unwrap().uid().to_string();

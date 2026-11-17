@@ -1,12 +1,9 @@
 //! Git's own maintenance is off in sync.git, fetches stay packed, and bead
 //! repacks under the store lock when objects pile up.
 
-use std::collections::BTreeMap;
-use std::ffi::OsString;
-use std::sync::Arc;
-
+use super::fixtures::machine_settings;
 use beadroll_git::SYNC_REPO_CONFIG;
-use beadroll_store::{Endpoint, Settings, find_workspace};
+use beadroll_store::{Endpoint, find_workspace};
 use beadroll_sync::Link;
 use beadroll_test_support::{Json, Machine, Sandbox, git, parse_json};
 
@@ -51,18 +48,7 @@ fn no_git_maintenance_in_sync_git_and_fetches_stay_packed() {
     let (a, _, b) = set_up(&sandbox);
 
     // The link machine a's bead builds, in its checkout and environment.
-    let vars: BTreeMap<OsString, OsString> = a.env(None, "codex").into_iter().collect();
-    let user_home = std::env::var_os("HOME").unwrap_or_default();
-    let settings = Arc::new(
-        Settings::from_process(
-            vars,
-            Some(a.checkout().to_path_buf()),
-            user_home,
-            std::env::temp_dir(),
-            &|_| None,
-        )
-        .unwrap(),
-    );
+    let settings = machine_settings(&a);
     let ws = find_workspace(&settings).unwrap();
     let link = Link::new(&ws, &Endpoint::at(sandbox.origin())).unwrap();
     for (key, value) in SYNC_REPO_CONFIG {

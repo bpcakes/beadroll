@@ -4,14 +4,13 @@
 //! input handling; golden tests pin help and reading commands (provenance in
 //! `docs/REVIEWING.md` §2).
 
-use std::collections::BTreeMap;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::process::Command;
-use std::sync::Arc;
 
+use crate::commands::fixtures::machine_settings;
 use beadroll_core::json::{Format, write};
 use beadroll_core::replay::replay;
-use beadroll_store::{Settings, find_workspace, load_journal};
+use beadroll_store::{find_workspace, load_journal};
 use beadroll_test_support::{Json, Machine, git, json_id, json_ids};
 
 mod actors;
@@ -34,24 +33,9 @@ fn everything(machine: &Machine) -> String {
     write(&json(machine, &args), Format::SORTED_ASCII).expect("bead's JSON writes back")
 }
 
-/// The settings of `machine`'s runs, for reading or writing its store in-process.
-fn settings(machine: &Machine) -> Arc<Settings> {
-    let vars: BTreeMap<OsString, OsString> = machine.env(None, "codex").into_iter().collect();
-    Arc::new(
-        Settings::from_process(
-            vars,
-            Some(machine.checkout().to_path_buf()),
-            std::env::var_os("HOME").unwrap_or_default(),
-            std::env::temp_dir(),
-            &|_| None,
-        )
-        .expect("the machine's settings"),
-    )
-}
-
 /// The integrity rows the replay finds in `machine`'s store, read in this process.
 fn integrity(machine: &Machine) -> usize {
-    let ws = find_workspace(&settings(machine)).expect("the machine's workspace");
+    let ws = find_workspace(&machine_settings(machine)).expect("the machine's workspace");
     let st = replay(load_journal(&ws).expect("its journal")).expect("its replay");
     st.integrity().len()
 }
