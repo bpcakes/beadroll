@@ -14,7 +14,6 @@ use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use beadroll_core::id::EventId;
 use beadroll_core::journal::JournalOrder;
@@ -88,39 +87,6 @@ pub(crate) fn sorted_codes(runs: &[Run]) -> Vec<i32> {
     let mut codes: Vec<i32> = runs.iter().map(Run::returncode).collect();
     codes.sort_unstable();
     codes
-}
-
-/// `f` of every job, run on `workers` threads at once, in the order of the jobs: what
-/// `list(ThreadPoolExecutor(workers).map(f, jobs))` gives. A job that panics fails the test.
-pub(crate) fn pool_map<J, R, F>(workers: usize, jobs: &[J], f: F) -> Vec<R>
-where
-    J: Sync,
-    R: Send,
-    F: Fn(&J) -> R + Sync,
-{
-    let next = AtomicUsize::new(0);
-    std::thread::scope(|scope| {
-        let threads: Vec<_> = (0..workers)
-            .map(|_| {
-                scope.spawn(|| {
-                    let mut done = Vec::new();
-                    loop {
-                        let index = next.fetch_add(1, Ordering::SeqCst);
-                        let Some(job) = jobs.get(index) else {
-                            return done;
-                        };
-                        done.push((index, f(job)));
-                    }
-                })
-            })
-            .collect();
-        let mut done: Vec<(usize, R)> = threads
-            .into_iter()
-            .flat_map(|thread| thread.join().expect("a job panicked"))
-            .collect();
-        done.sort_by_key(|(index, _)| *index);
-        done.into_iter().map(|(_, result)| result).collect()
-    })
 }
 
 /// The segments of the journal in `store`, `events/*/*.jsonl`, in order of their paths.

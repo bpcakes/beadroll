@@ -6,13 +6,11 @@ use std::fs::OpenOptions;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use beadroll_test_support::{Gate, Json, Machine, UNPROFILED, parse_json};
+use beadroll_test_support::{Gate, Json, Machine, ProcessGroup, UNPROFILED, parse_json, pool_map};
 
 use super::{jsonl, own_segment, setup, setup_with};
-use beadroll_test_support::ProcessGroup;
 
 /// The unterminated fragment an append interrupted mid-line leaves at the end of a segment.
 const TORN: &[u8] = br#"{"v":1,"id":"interrupted"#;
@@ -46,39 +44,6 @@ fn segments(store: &Path) -> Vec<PathBuf> {
 fn events(path: &Path) -> Vec<Json> {
     let text = std::fs::read_to_string(path).unwrap();
     text.lines().map(|line| parse_json(line).unwrap()).collect()
-}
-
-/// `f` of every job, run on `workers` threads at once, in the order of the jobs: what
-/// `list(ThreadPoolExecutor(workers).map(f, jobs))` gives. A job that panics fails the test.
-fn pool_map<J, R, F>(workers: usize, jobs: &[J], f: F) -> Vec<R>
-where
-    J: Sync,
-    R: Send,
-    F: Fn(&J) -> R + Sync,
-{
-    let next = AtomicUsize::new(0);
-    std::thread::scope(|scope| {
-        let threads: Vec<_> = (0..workers)
-            .map(|_| {
-                scope.spawn(|| {
-                    let mut done = Vec::new();
-                    loop {
-                        let index = next.fetch_add(1, Ordering::SeqCst);
-                        let Some(job) = jobs.get(index) else {
-                            return done;
-                        };
-                        done.push((index, f(job)));
-                    }
-                })
-            })
-            .collect();
-        let mut done: Vec<(usize, R)> = threads
-            .into_iter()
-            .flat_map(|thread| thread.join().expect("a job panicked"))
-            .collect();
-        done.sort_by_key(|(index, _)| *index);
-        done.into_iter().map(|(_, result)| result).collect()
-    })
 }
 
 /// The block `ulimit -f` counts in, in bytes, which the shell decides: 512 in dash and in bash's

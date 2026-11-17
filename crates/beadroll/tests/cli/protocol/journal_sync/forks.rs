@@ -1,11 +1,8 @@
 //! Forked journals: a copy of another machine's published journal rewritten, and one machine's
 //! identity in two places, whose histories part across a segment boundary.
 
-use std::path::Path;
-use std::process::Command;
-
 use beadroll_core::json::{Format, Style, write};
-use beadroll_test_support::{Json, Machine, Run, Sandbox, code, parse_json};
+use beadroll_test_support::{Json, Machine, Run, Sandbox, code, copy_tree, parse_json};
 
 use super::{own_segment, remote_blob, setup, two};
 
@@ -16,19 +13,6 @@ const DUMPS_COMPACT: Format = Format {
     sorted: false,
 };
 
-/// `to`, which must not exist yet, becomes a copy of the directory
-/// `from`, its files' modes and times kept.
-fn copytree(from: &Path, to: &Path) {
-    assert!(!to.exists(), "{} exists", to.display());
-    let status = Command::new("cp")
-        .arg("-pR")
-        .arg(from)
-        .arg(to)
-        .status()
-        .unwrap();
-    assert!(status.success(), "cp -pR {} failed", from.display());
-}
-
 /// The scenario both copied-identity tests share: a publishes to b, and its home is copied to a
 /// twin, a restored backup or a cloned disk with a's identity. The original starts a new segment
 /// (`BEAD_ROTATE_BYTES=1`), while the restored copy still appends the old one; each retitles the
@@ -37,7 +21,7 @@ fn copied_identity_retitles(sandbox: &Sandbox) -> (Machine, String, Run) {
     let (mut a, key) = setup(sandbox);
     two(sandbox, &a);
     let mut twin = Machine::new(sandbox, "twin");
-    copytree(a.home(), twin.home());
+    copy_tree(a.home(), twin.home());
     // Original starts a new segment, while restored copy still appends the old one.
     a.extra.insert("BEAD_ROTATE_BYTES".into(), "1".into());
     twin.extra

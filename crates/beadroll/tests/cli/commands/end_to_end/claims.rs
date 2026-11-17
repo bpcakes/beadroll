@@ -1,9 +1,9 @@
 //! Claims: exclusive online, provisional offline, lasting until release, close or takeover, and
 //! leaving no trace when refused.
 
-use beadroll_test_support::{Json, Machine, code};
+use beadroll_test_support::{Json, Machine, code, pool_map};
 
-use super::{column, length, owner, pool_map, settle, sorted_codes, two_machines};
+use super::{column, length, owner, settle, sorted_codes, two_machines};
 
 /// `(id, state, generation)` of every claim `bead claims` lists on `machine`.
 fn claim_rows(machine: &Machine) -> Vec<(Json, Json, Json)> {

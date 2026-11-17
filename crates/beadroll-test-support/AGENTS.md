@@ -42,6 +42,9 @@ tests it builds events, and for the round-trip properties it draws JSON values.
   of its own or the test's: its output drained by threads, `poll`, `kill`, `within` and
   `communicate` under a deadline, `wait_for` a marker; killed and reaped when dropped running. Use
   it rather than a local spawn-and-wait loop.
+- `src/files.rs`: `copy_tree`, a directory copied with its modes and times (a machine's twin), and
+  `descendants`, every path under one, links not followed; `src/pool.rs`: `pool_map`, jobs run on a
+  few threads at once with their results in the jobs' order. Use these rather than a local copy.
 - `src/wait.rs`: `wait_until`, a condition polled until a deadline, which fails the test naming
   what it waited for. `Sandbox::receive_pack_running` and `Sandbox::await_remote_settled` cover
   a push still running at the remote after bead gave up on it: the test waits for it to land or

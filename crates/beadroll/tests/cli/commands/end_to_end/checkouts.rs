@@ -9,9 +9,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use beadroll_core::json::{Format, write};
 use beadroll_test_support::events::{Event, id_at};
-use beadroll_test_support::{Json, Machine, git, json, json_id, json_ids, parse_json};
+use beadroll_test_support::{Json, Machine, git, json, json_id, json_ids, parse_json, pool_map};
 
-use super::{column, length, pool_map, segments, sorted_codes};
+use super::{column, length, segments, sorted_codes};
 
 /// The identity the sandbox's own commits are made with.
 const IDENTITY: [&str; 4] = ["-c", "user.name=t", "-c", "user.email=t@example.invalid"];

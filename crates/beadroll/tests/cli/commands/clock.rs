@@ -6,6 +6,7 @@ use std::collections::BTreeSet;
 
 use beadroll_test_support::{Json, Machine, Sandbox};
 
+use super::fixtures::set_stamps;
 use beadroll_test_support::printed_id;
 
 /// The clock-skew test's clock: 48 hours behind at every reading.
@@ -21,19 +22,6 @@ fn machine(sandbox: &Sandbox, name: &str) -> Machine {
     let machine = crate::rust_only(sandbox, name);
     machine.bead(["init", "--prefix", "ex"]);
     machine
-}
-
-/// The clock reading of each `set` event on `key`, in the order `bead log` lists them: the
-/// milliseconds since the epoch that lead its id (a UUIDv7).
-fn set_stamps(machine: &Machine, key: &str) -> Vec<i64> {
-    let log = machine.bead(["log", key, "--limit", "0"]).expect("a log");
-    let rows = log.as_array().expect("bead log prints a list");
-    let sets = rows.iter().filter(|row| row["op"].as_str() == Some("set"));
-    sets.map(|row| {
-        let id = row["event"].as_str().expect("an event id").replace('-', "");
-        i64::from_str_radix(&id[..12], 16).expect("a UUIDv7")
-    })
-    .collect()
 }
 
 /// F14: a clock past year 2100 must not crash create. Set every clock reading to the year 2110

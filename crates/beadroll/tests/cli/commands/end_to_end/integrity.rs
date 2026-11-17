@@ -2,11 +2,9 @@
 //! event or a copied machine identity.
 
 use std::collections::BTreeSet;
-use std::path::Path;
-use std::process::Command;
 
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, code, json, json_id, parse_json};
+use beadroll_test_support::{Json, Machine, code, copy_tree, json, json_id, parse_json};
 
 use super::{column, length, segments, settle, two_machines};
 
@@ -23,19 +21,6 @@ fn uuid_version(text: &str) -> Option<u128> {
     let value = u128::from_str_radix(&hex, 16).unwrap_or_else(|error| panic!("{text}: {error}"));
     let rfc_4122 = (value >> 62) & 0b11 == 0b10;
     rfc_4122.then_some((value >> 76) & 0xf)
-}
-
-/// `to`, which must not exist yet, becomes a copy of the directory
-/// `from`, its files' modes and times kept.
-fn copytree(from: &Path, to: &Path) {
-    assert!(!to.exists(), "{} exists", to.display());
-    let status = Command::new("cp")
-        .arg("-pR")
-        .arg(from)
-        .arg(to)
-        .status()
-        .unwrap();
-    assert!(status.success(), "cp -pR {} failed", from.display());
 }
 
 /// Every event carries the machine, agent and thread that made it, and its id is a UUIDv7.
@@ -139,7 +124,7 @@ fn a_copied_machine_identity_is_detected() {
     let (a, b, _, _) = two_machines(&sandbox);
     let twin = Machine::new(&sandbox, "twin");
     // a restored backup or cloned disk: same identity, two places
-    copytree(a.home(), twin.home());
+    copy_tree(a.home(), twin.home());
     a.bead(["create", "made on the original"]);
     twin.bead(["create", "made on the copy"]);
     a.bead(["sync"]);

@@ -112,3 +112,16 @@ pub(crate) fn published_issue(sandbox: &Sandbox) -> (Machine, String) {
     a.bead(["sync"]);
     (a, key)
 }
+
+/// The clock reading of each `set` event on `key`, in the order `bead log` lists them: the
+/// milliseconds since the epoch that lead its id (a UUIDv7).
+pub(crate) fn set_stamps(machine: &Machine, key: &str) -> Vec<i64> {
+    let log = machine.bead(["log", key, "--limit", "0"]).expect("a log");
+    let rows = log.as_array().expect("bead log prints a list");
+    let sets = rows.iter().filter(|row| row["op"].as_str() == Some("set"));
+    sets.map(|row| {
+        let id = row["event"].as_str().expect("an event id").replace('-', "");
+        i64::from_str_radix(&id[..12], 16).expect("a UUIDv7")
+    })
+    .collect()
+}
