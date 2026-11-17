@@ -120,7 +120,7 @@ mod compat_custom_statuses {
     }
 }
 
-mod compat_audit_real_compatibility {
+mod real_exports {
     use crate::compat::CheckResult;
 
     use std::ffi::OsString;

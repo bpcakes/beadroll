@@ -1,6 +1,6 @@
 //! Coordination-ref validation tests.
 
-mod compat_audit_ref_validation {
+mod ref_validation {
     use beadroll_core::json::{Object, Value};
     use beadroll_store::Workspace;
 

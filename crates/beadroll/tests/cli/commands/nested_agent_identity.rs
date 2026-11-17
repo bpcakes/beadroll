@@ -1,7 +1,6 @@
-//! `CompatAuditIdentity`, from the first independent audit: who the caller is when an agent was
-//! started from inside another agent's session, so that both a Claude and a Codex session are in
-//! the environment. Tests of `detect_actor` as a function of the environment are the
-//! store's (`crates/beadroll-store/tests/store/commands.rs`).
+//! Who the caller is when an agent was started from inside another agent's session, so that both a
+//! Claude and a Codex session are in the environment. Tests of `detect_actor` as a function of the
+//! environment are the store's (`crates/beadroll-store/tests/store/commands.rs`).
 
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
@@ -10,8 +9,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use beadroll_test_support::executable;
-use beadroll_test_support::{Run, Sandbox, json, parse_json};
+use beadroll_test_support::{Run, Sandbox, executable, json, parse_json};
 
 /// The test's environment less every `BEAD_*`, `CLAUDE*`, `CODEX*` and `GIT_*` variable.
 fn scrubbed() -> BTreeMap<OsString, OsString> {

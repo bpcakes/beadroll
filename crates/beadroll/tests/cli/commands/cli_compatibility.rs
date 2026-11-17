@@ -1,12 +1,13 @@
-//! `CompatAuditCLI`, from the first independent audit: global options in any position, stdin and
-//! multi-id commands, the JSON error envelopes, workspace configuration, what an import keeps, and
-//! the metadata events carry.
+//! What a Beads user expects of the command line: global options in any position, standard input
+//! and commands of several ids, the JSON error envelopes, the workspace configuration, what an
+//! import keeps, and the metadata events carry.
 
 use std::path::Path;
 
-use beadroll_core::json::{Format, write};
 use beadroll_core::text::is_space;
 use beadroll_test_support::{Json, Machine, Sandbox, code, json, parse_json};
+
+use super::fixtures::ascii_json;
 
 /// A sandbox and machine `compat`, whose tracker (prefix `ex`) holds issues X and Y.
 fn set_up() -> (Sandbox, Machine, String, String) {
@@ -25,11 +26,6 @@ fn id(value: &Json) -> String {
 /// The ids of a list of issues, in order.
 fn ids(issues: &Json) -> Vec<String> {
     issues.as_array().unwrap().iter().map(id).collect()
-}
-
-/// Spaced, ASCII-escaped JSON.
-fn dumps(value: &Json) -> String {
-    write(value, Format::ASCII).unwrap()
 }
 
 /// The record `key` of a Beads export: the first line that names it.
@@ -176,7 +172,7 @@ fn workspace_config_cannot_escape_home() {
     let (sandbox, a, _, _) = set_up();
     let absolute = sandbox.root().join("escaped-absolute");
     for wid in [absolute.to_str().unwrap(), "../escaped-relative"] {
-        let config = dumps(&json!({ "workspace": wid }));
+        let config = ascii_json(&json!({ "workspace": wid }));
         std::fs::write(a.checkout().join(".beadroll.json"), config).unwrap();
         let p = a.run(["init", "--prefix", "evil", "--json"]);
         assert_ne!(
@@ -195,7 +191,7 @@ fn changed_workspace_config_does_not_delete_old_store() {
     let before = a.store();
     let saved = a.export();
     let config = a.checkout().join(".beadroll.json");
-    let second = dumps(&json!({ "workspace": "second-workspace" }));
+    let second = ascii_json(&json!({ "workspace": "second-workspace" }));
     std::fs::write(&config, second).unwrap();
     let p = a.run(["show", &x, "--json"]);
     assert_eq!(code(&p), "NOT_INITIALIZED");
@@ -218,7 +214,7 @@ fn import_preserves_dependency_metadata_extra_and_tombstone_mutation() {
             "metadata": "{\"kept\":true}", "thread_id": "meta-thread"
         }]
     });
-    std::fs::write(&src, dumps(&rec) + "\n").unwrap();
+    std::fs::write(&src, ascii_json(&rec) + "\n").unwrap();
     a.bead(["import", src.to_str().unwrap()]);
     a.bead(["delete", "ex-z", "--reason", "duplicate"]);
     let got = record(&a.export(), "ex-z");
@@ -235,7 +231,7 @@ fn imported_comment_zero_id_roundtrips() {
     let rec = json!({"id": "ex-z", "title": "zero comment", "comments": [{
         "id": 0, "author": "audit", "text": "zero", "created_at": "2026-01-01T00:00:00Z"
     }]});
-    std::fs::write(&src, dumps(&rec) + "\n").unwrap();
+    std::fs::write(&src, ascii_json(&rec) + "\n").unwrap();
     a.bead(["import", src.to_str().unwrap()]);
     let p = a.run(["export"]);
     assert_eq!(p.returncode(), 0, "{}", p.stderr);
@@ -255,7 +251,7 @@ fn metadata_excludes_local_machine_identifiers() {
     for event in journal_events(&a.store()) {
         let mut metadata = event.as_object().unwrap().clone();
         metadata.shift_remove("data");
-        let text = dumps(&Json::from(metadata));
+        let text = ascii_json(&Json::from(metadata));
         for word in &forbidden {
             assert!(!text.contains(word.as_str()), "{word:?} in {text}");
         }

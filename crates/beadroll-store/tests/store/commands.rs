@@ -1,6 +1,6 @@
 //! Actor detection tests.
 
-mod compat_audit_identity {
+mod actor_detection {
     use beadroll_store::detect_actor;
     use beadroll_test_support::{Json, json};
 
