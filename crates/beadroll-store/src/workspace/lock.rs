@@ -6,6 +6,7 @@ use std::os::unix::fs::OpenOptionsExt as _;
 use beadroll_git::IoError;
 
 use super::{LockState, Workspace};
+use crate::fs::FileMode;
 use crate::{Error, private_dir, private_dirs};
 
 /// An exclusive store lock. Dropping it invalidates the phase's cached identities before
@@ -38,7 +39,7 @@ impl Workspace {
             .read(true)
             .append(true)
             .create(true)
-            .mode(0o600)
+            .mode(FileMode::Private.bits())
             .open(&path)
             .map_err(|error| IoError::at(&error, &path))?;
         file.lock().map_err(|error| IoError::at(&error, &path))?;

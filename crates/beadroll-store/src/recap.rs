@@ -158,7 +158,7 @@ impl RecapCursor {
             .read(true)
             .append(true)
             .create(true)
-            .mode(0o600)
+            .mode(FileMode::Private.bits())
             .open(&path)
             .map_err(|e| IoError::at(&e, &path))?;
         lock.lock().map_err(|e| IoError::at(&e, &path))?;

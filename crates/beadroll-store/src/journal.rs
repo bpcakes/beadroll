@@ -230,7 +230,7 @@ pub fn append_events(
     let mut file = OpenOptions::new()
         .append(true)
         .create(true)
-        .mode(0o600)
+        .mode(FileMode::Private.bits())
         .open(&path)
         .map_err(|e| IoError::at(&e, &path))?;
     // Seek to the end before writing so Darwin checks the file-size limit against the correct
