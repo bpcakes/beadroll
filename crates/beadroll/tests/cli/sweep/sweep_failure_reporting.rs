@@ -26,7 +26,6 @@ const RETRIES: [&str; 5] = ["RD", "RO", "RS", "OR", "SR"];
 /// The verdict of a sweep whose only schedule is `only`, reporting `injected failure` unless
 /// `ok`: the full sweep's list with `full`, else the slice, as `BEAD_SWEEP` picks them.
 fn sweep_of(only: Schedule, ok: ScheduleResult, schedule_set: ScheduleSet) -> Result<(), String> {
-    let ok = matches!(ok, ScheduleResult::Passed);
     let chosen = selected(schedule_set, Execution::Sequential, vec![only], &[only]);
     let sequential = Variant {
         gc: false,
@@ -34,7 +33,7 @@ fn sweep_of(only: Schedule, ok: ScheduleResult, schedule_set: ScheduleSet) -> Re
     };
     let report = |schedule| Report {
         schedule,
-        violations: if ok {
+        violations: if ok == ScheduleResult::Passed {
             Vec::new()
         } else {
             vec!["injected failure".to_owned()]

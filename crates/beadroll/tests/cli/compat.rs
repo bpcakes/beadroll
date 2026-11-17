@@ -256,8 +256,11 @@ mod compat_audit_real_compatibility {
 
     /// Nothing when `holds`, else the failure `what` that ends the subtest.
     fn check(holds: CheckResult, what: &str) -> Result<(), String> {
-        let holds = matches!(holds, CheckResult::Passed);
-        if holds { Ok(()) } else { Err(what.to_owned()) }
+        if holds == CheckResult::Passed {
+            Ok(())
+        } else {
+            Err(what.to_owned())
+        }
     }
 
     /// The first check that one tracker's result row fails, or `Ok` if all checks pass.

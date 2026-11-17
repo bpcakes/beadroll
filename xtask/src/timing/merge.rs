@@ -33,7 +33,6 @@ pub(crate) fn measure(
     concurrent: MergeHistory,
     label: Option<&str>,
 ) -> Result<String, Failure> {
-    let concurrent = matches!(concurrent, MergeHistory::Concurrent);
     let bead = bead()?;
     let dir = workspace::output_dir("timing")?.join(format!("merge-{}-{count}", shape.name()));
     if dir.exists() {
@@ -61,7 +60,7 @@ pub(crate) fn measure(
                 ])?;
             }
             other.bead(&["sync"])?;
-            if concurrent {
+            if concurrent == MergeHistory::Concurrent {
                 here.write(&format!("here {run}"))?;
             }
             if cold {
@@ -74,7 +73,7 @@ pub(crate) fn measure(
     std::fs::remove_dir_all(&dir).map_err(|error| Failure::io("cannot remove", &dir, &error))?;
     let label = label.map_or_else(
         || {
-            let how = if concurrent {
+            let how = if concurrent == MergeHistory::Concurrent {
                 "concurrent merges"
             } else {
                 "merges"
@@ -85,11 +84,12 @@ pub(crate) fn measure(
     );
     Ok(format!(
         "{{\"label\": {}, \"shape\": {}, \"events\": {count}, \"batch\": {batch}, \
-         \"concurrent\": {concurrent}, \"segments\": {}, \"attempt_files\": {}, \
+         \"concurrent\": {}, \"segments\": {}, \"attempt_files\": {}, \
          \"journal_bytes\": {}, \"profile\": {}, \"runs\": {RUNS}, \"seconds\": {warm:.4}, \
          \"cold_seconds\": {cold:.4}, ",
         json_string(&label),
         json_string(shape.name()),
+        concurrent == MergeHistory::Concurrent,
         layout.segments,
         layout.attempts,
         layout.bytes,

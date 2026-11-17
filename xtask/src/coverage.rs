@@ -119,8 +119,7 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
 
 /// The exit status of a run that `passed`, or did not.
 fn exit_code(passed: RunResult) -> ExitCode {
-    let passed = matches!(passed, RunResult::Passed);
-    if passed {
+    if passed == RunResult::Passed {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE

@@ -271,12 +271,11 @@ fn fault_env(op: &str, fault: &str) -> (&'static str, &'static str) {
 /// for a timeout, the remote's stall hook started (`stalled`) by the operation's push, which the
 /// client then waited on past its timeout. Any other end means the operation never got there.
 fn fault_fired(fault: &str, rc: Rc, stalled: FaultProgress) -> bool {
-    let stalled = matches!(stalled, FaultProgress::Stalled);
     match fault {
         "crash-before-push" => rc.is(98),
         "crash-after-push" => rc.is(99),
         "kill-confirm" | "kill-write-pending" | "kill-write-confirm" => rc.is(-9),
-        _ => stalled,
+        _ => stalled == FaultProgress::Stalled,
     }
 }
 

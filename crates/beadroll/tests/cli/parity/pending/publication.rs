@@ -121,7 +121,6 @@ fn ah01_an_earlier_invocations_accepted_receipt_keeps_its_result() {
 }
 
 fn recovered_claim_keeps_result(restart: Recovery) {
-    let restart = matches!(restart, Recovery::Restart);
     let sandbox = crate::sandbox();
     let r = crate::rust_only(&sandbox, "r");
     let (meta, original, segment, published) = published_three(&r);
@@ -141,7 +140,7 @@ fn recovered_claim_keeps_result(restart: Recovery) {
     );
     let before = durable_inputs(&r.store().join("events"));
     let args = ["claim", key.as_str(), "--json"];
-    let fault = if restart {
+    let fault = if restart == Recovery::Restart {
         let stopped = r
             .cmd(args)
             .env("BEAD_FAILPOINTS", "ownership.after-publish-ok=exit(97)")

@@ -142,10 +142,12 @@ pub(super) fn selected(
     every: Vec<Schedule>,
     slice: &[Schedule],
 ) -> Vec<Schedule> {
-    let concurrent = matches!(concurrent, Execution::Concurrent);
-    let full = matches!(full, ScheduleSet::Full);
-    let mut chosen = if full { every } else { slice.to_vec() };
-    if concurrent {
+    let mut chosen = if full == ScheduleSet::Full {
+        every
+    } else {
+        slice.to_vec()
+    };
+    if concurrent == Execution::Concurrent {
         chosen.retain(|schedule| {
             let letters = schedule.pair.as_bytes();
             letters[0] < letters[1]

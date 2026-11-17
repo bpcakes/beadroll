@@ -70,7 +70,6 @@ fn pending_attempts_a_stopped_claim_left_are_settled_by_sync() {
 /// receipt first, then the pending attempt; with `publish`, pushed with the journal, its answer
 /// lost (the attempt stays pending).
 fn leave_pending(ws: &Workspace, actor: &Value, issue: &str, publish: PendingSetup) {
-    let publish = matches!(publish, PendingSetup::Published);
     let remote = ws.endpoint(None).unwrap().unwrap();
     let mut link = Link::new(ws, &remote).unwrap();
     locked(ws, || -> Result<(), beadroll_sync::Error> {
@@ -94,7 +93,7 @@ fn leave_pending(ws: &Workspace, actor: &Value, issue: &str, publish: PendingSet
             &ws.settings.failpoints,
         )?;
         write_attempt_file(ws, &folder.join(format!("{first}.json")), &tx.ownership)?;
-        if publish {
+        if publish == PendingSetup::Published {
             let outcome = link.publish(
                 tip.as_deref(),
                 "claim",

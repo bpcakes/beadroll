@@ -127,11 +127,10 @@ fn wait_marker(marker: &Path, worker: &mut Worker) {
 /// first. Other git calls pass through. The shell's sleep child can outlive the client killed on
 /// push timeout and finishes after its 20 seconds.
 fn git_wrapper(sandbox: &Sandbox, action: &str, marker: &Path, after: HookPosition) -> OsString {
-    let after = matches!(after, HookPosition::After);
     let folder = sandbox.root().join(format!("wrapper-{action}"));
     std::fs::create_dir_all(&folder).unwrap();
     let (git, marker) = (quoted(&real_git()), quoted(marker));
-    let held = if after {
+    let held = if after == HookPosition::After {
         format!(
             "  {git} \"$@\"\n  status=$?\n  printf ready > {marker}\n  sleep 20\n  exit $status\n"
         )
@@ -183,13 +182,12 @@ type Drained = Receiver<Vec<u8>>;
 impl Worker {
     /// Starts `invocation`.
     fn start(invocation: Invocation<'_>, alone: ProcessSession) -> Worker {
-        let alone = matches!(alone, ProcessSession::New);
         let mut command = invocation.command();
         command
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        if alone {
+        if alone == ProcessSession::New {
             command.process_group(0);
         }
         let mut child = command.spawn().expect("bead starts");
@@ -197,7 +195,7 @@ impl Worker {
         let stderr = drain(child.stderr.take().expect("bead's standard error"));
         Worker {
             child,
-            alone,
+            alone: alone == ProcessSession::New,
             output: Some((stdout, stderr)),
         }
     }

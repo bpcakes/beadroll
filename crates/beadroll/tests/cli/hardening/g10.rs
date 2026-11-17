@@ -10,9 +10,8 @@ use crate::hardening::TrackerSetup;
 /// A machine `name` that initialised the tracker (prefix `ex`), or, with `init`
 /// false, synced the one already published.
 fn machine(sandbox: &Sandbox, name: &str, init: TrackerSetup) -> Machine {
-    let init = matches!(init, TrackerSetup::Init);
     let machine = Machine::new(sandbox, name);
-    if init {
+    if init == TrackerSetup::Init {
         machine.bead(["init", "--prefix", "ex"]);
     } else {
         machine.bead(["sync"]);

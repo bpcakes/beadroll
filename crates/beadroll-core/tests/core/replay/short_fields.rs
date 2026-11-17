@@ -27,9 +27,10 @@ fn uid() -> String {
 
 /// An `init`, and a create of `fields`, on machine `a` (with `imported` when it is an import).
 fn created(fields: Json, imported: CreateOrigin) -> Vec<Json> {
-    let imported = matches!(imported, CreateOrigin::Imported);
     let mut data = json!({"key": "sf-a", "fields": fields});
-    if imported && let Json::Object(members) = &mut data {
+    if imported == CreateOrigin::Imported
+        && let Json::Object(members) = &mut data
+    {
         members.insert("imported".into(), Json::Bool(true));
     }
     vec![

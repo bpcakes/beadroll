@@ -104,10 +104,9 @@ fn sorted(dir: &Path) -> Result<Vec<std::path::PathBuf>, Failure> {
 /// `--no-replay` only loads it, and says how many events and issues there were, and the most the
 /// process held on its heap at once ([`heap::peak`]).
 pub(crate) fn main(dir: &Path, replaying: LoadMode) -> Result<ExitCode, Failure> {
-    let replaying = matches!(replaying, LoadMode::Replay);
     let mut journal = load(dir)?;
     let events = journal.settled_view().events().len();
-    if replaying {
+    if replaying == LoadMode::Replay {
         let state =
             replay(journal).map_err(|error| Failure::Failed(format!("replay failed: {error}")))?;
         println!("{events} events, {} issues", state.issues().count());
