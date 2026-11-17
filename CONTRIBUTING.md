@@ -101,7 +101,8 @@ stdlib Python that drives any `bead`: `drive.py` (cross-machine scenarios over s
 `hotspots.py` (two beads compared on one journal snapshot, the probe behind `docs/evidence/`),
 `selected.py` (which bead each runs, and the record of it before any test data is written),
 `records.py` (what two exports must agree on of a record, which the round trip and the real-data
-check compare), their tests beside them, and the synthetic `seed.jsonl`.
+check compare), `environment.py` (the caller's environment less what would route bead or git
+elsewhere or lend them the caller's agent), their tests beside them, and the synthetic `seed.jsonl`.
 
 ## Making a change
 

@@ -6,6 +6,7 @@ scratch repositories with no remotes. Writes results.json under --out. The bead 
 record of it before any data is written, are infra/selected.py's: the one BEAD_UNDER_TEST names (an absolute
 path), else the installed one."""
 import argparse, collections, json, os, pathlib, shutil, subprocess, sys, tempfile
+import environment
 import selected
 from records import canonical
 P=pathlib.Path
@@ -13,7 +14,7 @@ parser=argparse.ArgumentParser();parser.add_argument('--out', default=tempfile.m
 root=P(args.out);root.mkdir(parents=True,exist_ok=True)
 bead=selected.local_bead();selected.preflight(bead)
 br=shutil.which('br') or os.path.expanduser('~/.local/bin/br');bv=shutil.which('bv') or os.path.expanduser('~/.local/bin/bv')
-env={k:v for k,v in os.environ.items() if not k.startswith(('BEAD_','CODEX','CLAUDE','BEADS','BV_','BD_','GIT_'))}
+env=environment.scrubbed('BEADS','BV_','BD_')  # br's and bv's own as well
 env.update(BEAD_HOME=str(root/'bead-home'), BEAD_AGENT='audit', BEAD_THREAD='audit-compat',XDG_CACHE_HOME=str(root/'cache'),BV_NO_CACHE='1',BV_OUTPUT_FORMAT='json')
 def run(command,cwd,extra=None):
  return subprocess.run(command,cwd=cwd,env={**env,**(extra or {})},capture_output=True,text=True,timeout=60)

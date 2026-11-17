@@ -21,6 +21,8 @@ import subprocess
 import tempfile
 import time
 
+import environment
+
 
 def digest(data):
     return hashlib.sha256(data).hexdigest()
@@ -48,7 +50,7 @@ def measure(args):
         raise ValueError("--snapshot must be a local bare repository directory")
     binaries = {name: path.resolve(strict=True) for name, path in
                 (("before", args.before), ("after", args.after))}
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("BEAD_", "GIT_"))}
+    env = environment.scrubbed()
     env.update(GIT_ALLOW_PROTOCOL="file", NO_COLOR="1", BEAD_NET_TIMEOUT="60")
     if execute(["git", "--git-dir=" + str(source), "rev-parse", "--is-bare-repository"],
                source, env)[0].strip() != b"true":
