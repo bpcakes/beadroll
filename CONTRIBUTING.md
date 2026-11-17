@@ -94,15 +94,14 @@ port's tests passed against both, and the last Python is in commit `b10a55c`, th
 The plan the port followed, `docs/RUST-PORT.md`, is in git history (`git show
 5a6ea8d:docs/RUST-PORT.md`), its measurements among it.
 
-`infra/` holds the maintainer's harness against real machines and a throwaway GitHub
-repository, stdlib Python that drives any `bead`:
-`drive.py` (cross-machine scenarios over ssh), `soak.py` (random agent-like traffic),
-`roundtrip.py` (import/export over real Beads exports), `compat_real.py` (the same exports loaded
-by `br` and fed to `bv`, which `./check.sh --real` runs), `hotspots.py` (two beads compared on one
-journal snapshot, the probe behind `docs/evidence/`), `selected.py` (which bead each runs, and
-the record of it before any test data is written), `records.py` (what two exports must agree on of a
-record, which the round trip and the real-data check compare), their tests beside them, and the synthetic
-`seed.jsonl`.
+`infra/` holds the maintainer's harness against real machines and a throwaway GitHub repository,
+stdlib Python that drives any `bead`: `drive.py` (cross-machine scenarios over ssh), `soak.py`
+(random agent-like traffic), `roundtrip.py` (import/export over real Beads exports),
+`compat_real.py` (the same exports loaded by `br` and fed to `bv`, which `./check.sh --real` runs),
+`hotspots.py` (two beads compared on one journal snapshot, the probe behind `docs/evidence/`),
+`selected.py` (which bead each runs, and the record of it before any test data is written),
+`records.py` (what two exports must agree on of a record, which the round trip and the real-data
+check compare), their tests beside them, and the synthetic `seed.jsonl`.
 
 ## Making a change
 
