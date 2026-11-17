@@ -3,10 +3,11 @@
 //! run.
 
 use std::io::Write as _;
+use std::os::unix::process::ExitStatusExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
-use beadroll_git::{PushOutcome, push_outcome};
+use beadroll_git::{Ended, PushOutcome, push_outcome};
 use beadroll_test_support::{Machine, Sandbox, parse_json};
 
 use super::{Env, WINNER_IDENTITY, applied, contains, git_is_translated, locales, member, quoted};
@@ -143,8 +144,11 @@ impl Tokens {
     /// the ref alone, never standard error (`beadroll_git::push_outcome`, G11).
     fn outcome(&self, pushed: &Output, commit: &str) -> PushOutcome {
         let refspec = format!("{commit}:refs/beads/journal");
-        let status = pushed.status.code().unwrap_or(-1);
-        push_outcome(status, &pushed.stdout, &pushed.stderr, &refspec).0
+        let ended = match pushed.status.code() {
+            Some(code) => Ended::Exit(code),
+            None => Ended::Signal(pushed.status.signal().unwrap_or_default()),
+        };
+        push_outcome(ended, &pushed.stdout, &pushed.stderr, &refspec).0
     }
 
     /// The remote's journal set back to `c1`, where each locale's cases start.

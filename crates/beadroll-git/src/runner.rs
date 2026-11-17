@@ -6,6 +6,7 @@
 
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
+use std::fmt;
 use std::fs::File;
 use std::io::{self, Seek as _, SeekFrom, Write as _};
 use std::os::unix::ffi::OsStringExt as _;
@@ -157,7 +158,7 @@ impl Git<'_> {
     /// Runs git, returning [`Error::Failed`] on unsuccessful exit.
     pub fn check(self) -> Result<Output, Error> {
         let (output, args) = self.execute()?;
-        if output.returncode == 0 {
+        if output.success() {
             return Ok(output);
         }
         Err(failure(&args, &output))
@@ -237,21 +238,41 @@ fn seconds(timeout: Duration) -> String {
 
 /// A completed git's status and captured output.
 pub(crate) fn finished(status: ExitStatus, out: &File, err: &File) -> Result<Output, Error> {
-    let returncode = status
-        .code()
-        .unwrap_or_else(|| -status.signal().unwrap_or_default());
+    let ended = match status.code() {
+        Some(code) => Ended::Exit(code),
+        None => Ended::Signal(status.signal().unwrap_or_default()),
+    };
     Ok(Output {
-        returncode,
+        ended,
         stdout: read_whole(out)?,
         stderr: read_whole(err)?,
     })
 }
 
-/// A git result: exit code or negated terminating signal number, plus captured output.
+/// How a git ended: by its own exit, or by a signal.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Ended {
+    /// It exited with this status.
+    Exit(i32),
+    /// This signal ended it.
+    Signal(i32),
+}
+
+impl fmt::Display for Ended {
+    /// The status, or minus the signal: what a message about the end of a git has always said.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Ended::Exit(code) => write!(f, "{code}"),
+            Ended::Signal(signal) => write!(f, "-{signal}"),
+        }
+    }
+}
+
+/// A git result: how it ended, plus captured output.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Output {
-    /// The exit status, or minus the signal that ended it.
-    pub returncode: i32,
+    /// How git ended.
+    pub ended: Ended,
     /// Its standard output.
     pub stdout: Vec<u8>,
     /// Its standard error.
@@ -261,13 +282,13 @@ pub struct Output {
 impl Output {
     /// Whether git exited with status 0.
     pub fn success(&self) -> bool {
-        self.returncode == 0
+        self.ended == Ended::Exit(0)
     }
 
     /// Whether a signal ended git rather than its own exit: a failure that says nothing of what
     /// git was reading, since something outside it (an OOM killer, say) cut it short.
     pub fn killed(&self) -> bool {
-        self.returncode < 0
+        matches!(self.ended, Ended::Signal(_))
     }
 
     /// The [`Error::Failed`] [`Git::check`] gives when `git ARGS` answered with this output.
@@ -285,7 +306,7 @@ impl Output {
     /// What [`Git::text`] gives when `git ARGS` answered with this output: standard output without
     /// the ASCII whitespace at either end, or [`Error::Failed`] naming the command.
     pub fn checked_text(self, args: &[&str]) -> Result<OsString, Error> {
-        if self.returncode != 0 {
+        if !self.success() {
             let args: Vec<OsString> = args.iter().map(OsString::from).collect();
             return Err(failure(&args, &self));
         }
@@ -298,8 +319,8 @@ impl Output {
 fn failure(args: &[OsString], output: &Output) -> Error {
     let stderr = String::from_utf8_lossy(&output.stderr);
     let mut said = strip(&stderr).to_owned();
-    if output.returncode < 0 {
-        let name = signal_name(-output.returncode);
+    if let Ended::Signal(signal) = output.ended {
+        let name = signal_name(signal);
         said = if said.is_empty() {
             format!("killed by {name}")
         } else {
@@ -491,7 +512,8 @@ mod tests {
         assert!(killed.killed() && !killed.success());
         let exited = finished(ExitStatus::from_raw(128 << 8), &out, &err).unwrap();
         assert!(!exited.killed() && !exited.success());
-        assert_eq!(exited.returncode, 128);
+        assert_eq!(exited.ended, Ended::Exit(128));
+        assert_eq!(killed.ended, Ended::Signal(libc::SIGKILL));
         let error = killed.failed(&[OsStr::new("cat-file"), OsStr::new("blob")]);
         assert_eq!(error.to_string(), "git cat-file blob: killed by SIGKILL");
     }

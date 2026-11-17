@@ -39,7 +39,7 @@ pub use objects::{
     Object, Objects, TreeListing, batch_answers, list_tree, list_tree_with_subtrees, root_tree,
 };
 pub use path::{exists, realpath};
-pub use runner::{Env, Git, KillScope, Output};
+pub use runner::{Ended, Env, Git, KillScope, Output};
 pub use session::NoAnswer;
 pub use tree::blob_tree_id;
 pub use url::{is_local_path, normalize_remote, strip_text_bytes, without_password};

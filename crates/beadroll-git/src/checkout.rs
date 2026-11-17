@@ -11,7 +11,7 @@
 use std::sync::OnceLock;
 
 use crate::error::Error;
-use crate::runner::{Env, Git, Output};
+use crate::runner::{Ended, Env, Git, Output};
 
 /// The keys that hold origin's URLs (`git config --get-regexp`).
 pub const ORIGIN_KEYS: &str = r"^remote\.origin\.(push)?url$";
@@ -121,7 +121,7 @@ fn rev_parse_args() -> Vec<&'static str> {
 /// A call that succeeded, printing `stdout`.
 fn success(stdout: Vec<u8>) -> Output {
     Output {
-        returncode: 0,
+        ended: Ended::Exit(0),
         stdout,
         stderr: Vec::new(),
     }
@@ -311,7 +311,7 @@ mod tests {
         let found = found.unwrap();
         assert_eq!(found, env.git(ORIGIN_ARGS).run().unwrap());
         assert_eq!(also.unwrap().unwrap(), committed().run().unwrap());
-        assert_eq!(found.returncode, 1, "nothing set");
+        assert_eq!(found.ended, Ended::Exit(1), "nothing set");
         assert!(matches!(checkout.combined.get(), Some(Some(_))));
         let top = env.git(Fact::Toplevel.args()).run().unwrap();
         assert_eq!(checkout.fact(&env, Fact::Toplevel).unwrap(), top);
