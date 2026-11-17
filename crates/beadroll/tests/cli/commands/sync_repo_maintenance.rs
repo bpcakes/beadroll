@@ -1,4 +1,4 @@
-//! `SyncRepoMaintenance`: git's own maintenance is off in sync.git, fetches stay packed, and bead
+//! Git's own maintenance is off in sync.git, fetches stay packed, and bead
 //! repacks under the store lock when objects pile up.
 
 use std::collections::BTreeMap;

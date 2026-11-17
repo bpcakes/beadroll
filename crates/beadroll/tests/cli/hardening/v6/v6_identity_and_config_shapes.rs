@@ -1,4 +1,4 @@
-//! `V6_IdentityAndConfigShapes`: what `replica.json` and `.beadroll.json` hold is checked; members
+//! What `replica.json` and `.beadroll.json` hold is checked; members
 //! bead does not know are let be, and a ref or a workspace name it cannot use is `CONFIG`.
 
 use beadroll_core::json::{Format, write};

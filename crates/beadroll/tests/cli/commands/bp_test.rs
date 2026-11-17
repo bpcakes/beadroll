@@ -1,4 +1,4 @@
-//! `BpTest`: the core behaviours, end to end. Its tests are grouped by subject in the modules
+//! The core behaviours, end to end. Its tests are grouped by subject in the modules
 //! below; the replay test and the helpers they share are here.
 
 mod checkouts;

@@ -1,13 +1,13 @@
 //! G07 (`docs/FINDINGS.md`): a settled receipt survived the actor's later successful local writes,
-//! so a deliberate repeat of a claim was answered "Claimed (confirmed)" while nobody held the issue.
-//! The first attempt stops on the crash hook `BEAD_TEST_CRASH_AFTER_PUSH`, which both binaries
-//! implement: exit status 99 once the remote has taken the push.
+//! so a deliberate repeat of a claim was answered "Claimed (confirmed)" while nobody held the
+//! issue. The first attempt stops on the crash hook `BEAD_TEST_CRASH_AFTER_PUSH`, which any bead
+//! under test implements: exit status 99 once the remote has taken the push.
 
 use beadroll_test_support::{Machine, Sandbox};
 
 use crate::hardening::TrackerSetup;
 
-/// `_g07_machine`: a machine `name` that initialised the tracker (prefix `ex`), or, with `init`
+/// A machine `name` that initialised the tracker (prefix `ex`), or, with `init`
 /// false, synced the one already published.
 fn machine(sandbox: &Sandbox, name: &str, init: TrackerSetup) -> Machine {
     let init = matches!(init, TrackerSetup::Init);

@@ -6,7 +6,7 @@ use std::ffi::OsString;
 use std::path::Path;
 use std::process::Command;
 
-/// `_g19_git`: git ARGS as user `t`, in `cwd`, with exactly the environment `env`; its output,
+/// Git ARGS as user `t`, in `cwd`, with exactly the environment `env`; its output,
 /// trimmed. A failure fails the test with git's standard error.
 fn git(args: &[&str], cwd: &Path, env: &BTreeMap<OsString, OsString>) -> String {
     let output = Command::new("git")

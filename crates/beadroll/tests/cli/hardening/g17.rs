@@ -5,7 +5,7 @@ use std::process::Command;
 
 use beadroll_test_support::Sandbox;
 
-/// `_g17_translated_locale`: a locale in which this git prints a translated "couldn't find remote
+/// A locale in which this git prints a translated "couldn't find remote
 /// ref", or `None`. git answers for itself: a fetch of a ref the sandbox's remote does not have,
 /// with no user or system config, under each locale in turn.
 fn translated_locale(sandbox: &Sandbox) -> Option<&'static str> {

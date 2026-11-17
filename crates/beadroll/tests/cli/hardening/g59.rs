@@ -21,7 +21,7 @@ use rustix::pty::{OpenptFlags, grantpt, openpt, ptsname, unlockpt};
 /// The maximum duration of one bead invocation.
 const LIMIT: Duration = Duration::from_secs(30);
 
-/// `_g59_env`: `bead ARGS` from `machine`, its environment without the variables that turn colour
+/// `bead ARGS` from `machine`, its environment without the variables that turn colour
 /// on or off (`NO_COLOR`, `FORCE_COLOR`, `CLICOLOR`, `CLICOLOR_FORCE`, `PYTHON_COLORS`, `TERM`),
 /// then `name=value`.
 fn command(machine: &Machine, args: &[&str], (name, value): (&str, &str)) -> Command {

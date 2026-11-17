@@ -1,4 +1,4 @@
-//! `FormatPolicy`: format 1 is frozen and changes are additive, so what a newer bead writes
+//! Format 1 is frozen and changes are additive, so what a newer bead writes
 //! travels untouched through one that cannot apply it.
 
 use std::collections::BTreeSet;

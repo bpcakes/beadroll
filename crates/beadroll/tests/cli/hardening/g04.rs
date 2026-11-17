@@ -3,7 +3,7 @@
 
 use beadroll_test_support::{Machine, Run, git, parse_json};
 
-/// `_g04_commit_config`: commits `machine`'s .beadroll.json and pushes it to origin's `main`.
+/// Commits `machine`'s .beadroll.json and pushes it to origin's `main`.
 fn commit_config(machine: &Machine) {
     git(["add", ".beadroll.json"], Some(machine.checkout()));
     let identity = ["-c", "user.name=t", "-c", "user.email=t@example.invalid"];
@@ -19,7 +19,7 @@ fn commit_config(machine: &Machine) {
     );
 }
 
-/// `_g04_outcome`: the owner a successful claim reports, or the error of a refused one.
+/// The owner a successful claim reports, or the error of a refused one.
 fn outcome(run: &Run) -> String {
     if run.returncode() != 0 {
         return run.stderr.trim().chars().take(200).collect();

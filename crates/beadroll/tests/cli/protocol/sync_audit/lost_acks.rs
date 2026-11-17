@@ -1,5 +1,5 @@
 //! Lost acknowledgements: a claim the remote took whose answer never reached bead, because bead
-//! was killed, crashed (the crash hook both binaries have, `BEAD_TEST_CRASH_AFTER_PUSH`, which
+//! was killed, crashed (the crash hook any bead under test has, `BEAD_TEST_CRASH_AFTER_PUSH`, which
 //! exits with status 99) or stopped waiting.
 
 use std::time::Duration;

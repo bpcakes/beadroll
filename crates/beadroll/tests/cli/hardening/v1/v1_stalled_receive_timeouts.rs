@@ -1,4 +1,4 @@
-//! `V1_StalledReceiveTimeouts`: stalled receive sides do not hold bead past BEAD_NET_TIMEOUT; their
+//! Stalled receive sides do not hold bead past BEAD_NET_TIMEOUT; their
 //! outcomes settle later.
 
 use std::path::Path;

@@ -42,7 +42,7 @@ fn hung_up_terminal() -> File {
     terminal
 }
 
-/// `_g36_noise`: how a run ended, and the last 300 characters of its standard error.
+/// How a run ended, and the last 300 characters of its standard error.
 fn noise(proc: &Run) -> String {
     let stderr = &proc.stderr;
     let from_end = stderr.char_indices().rev().nth(299);

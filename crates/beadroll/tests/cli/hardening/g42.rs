@@ -12,7 +12,7 @@ mod g42_uid_retraction_misses_twin_of_imported_key {
     use beadroll_core::json::{Format, write};
     use beadroll_test_support::{Json, Machine, Sandbox, json};
 
-    /// `_g42_record`: the Beads record `key` titled `title`, depending on `depends_on`, when there
+    /// The Beads record `key` titled `title`, depending on `depends_on`, when there
     /// is one, by a dependency of type `kind`.
     fn record(key: &str, title: &str, depends_on: Option<&str>, kind: &str) -> Json {
         let mut record = json!({
@@ -62,7 +62,7 @@ mod g42_uid_retraction_misses_twin_of_imported_key {
         listed(issue).iter().map(|d| text(d, "id")).collect()
     }
 
-    /// `_g42_machines`: m1 imports ex-a, which depends on the key ex-b (not an issue yet) by a
+    /// M1 imports ex-a, which depends on the key ex-b (not an issue yet) by a
     /// dependency of type `kind`, creates Q and publishes; m2 and m3 sync, then both import ex-b,
     /// m3 first, so that m3's copy keeps the key after the merge and m2's is renamed. Machines m1,
     /// m2 and m3, and Q's id.
@@ -91,7 +91,7 @@ mod g42_uid_retraction_misses_twin_of_imported_key {
         (m1, m2, m3, q)
     }
 
-    /// `_g42_settle`: every machine syncs twice, and then they export the same records.
+    /// Every machine syncs twice, and then they export the same records.
     fn settle(machines: &[&Machine]) {
         for machine in machines.iter().chain(machines) {
             machine.bead(["sync"]);

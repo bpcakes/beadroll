@@ -21,7 +21,7 @@ pub(crate) enum PushOrder {
     First,
 }
 
-/// `_v2_machine`: machine `name`, its tracker initialised with the prefix `ex` and kept local until
+/// Machine `name`, its tracker initialised with the prefix `ex` and kept local until
 /// its first claim or sync (`--offline`).
 fn machine(sandbox: &Sandbox, name: &str) -> Machine {
     let machine = Machine::new(sandbox, name);
@@ -29,8 +29,8 @@ fn machine(sandbox: &Sandbox, name: &str) -> Machine {
     machine
 }
 
-/// `_v2_machine` for a `rust_only` test: machine `name` running the Rust `bead`, its tracker
-/// initialised as [`machine`] does, or, with `init` false, the published tracker synced.
+/// [`machine`] for a `rust_only` test: machine `name` running this build's `bead`, its tracker
+/// initialised as [`machine`] does with `TrackerSetup::Init`, or the published tracker synced.
 fn rust_machine(sandbox: &Sandbox, name: &str, init: TrackerSetup) -> Machine {
     let init = matches!(init, TrackerSetup::Init);
     let machine = crate::rust_only(sandbox, name);
@@ -42,7 +42,7 @@ fn rust_machine(sandbox: &Sandbox, name: &str, init: TrackerSetup) -> Machine {
     machine
 }
 
-/// `_v2_pending`: the names in `machine`'s `pending/`, sorted; none when there is no such folder.
+/// The names in `machine`'s `pending/`, sorted; none when there is no such folder.
 fn pending(machine: &Machine) -> Vec<String> {
     let folder = machine.store().join("pending");
     if !folder.is_dir() {
@@ -56,7 +56,7 @@ fn pending(machine: &Machine) -> Vec<String> {
     names
 }
 
-/// `_v2_releases`: how many of `key`'s events are releases, as `bead log KEY --limit 0` lists them.
+/// How many of `key`'s events are releases, as `bead log KEY --limit 0` lists them.
 fn releases(machine: &Machine, key: &str) -> usize {
     let log = machine.bead(["log", key, "--limit", "0"]).expect("a log");
     let events = log.as_array().expect("bead log prints a list");
@@ -134,7 +134,7 @@ mod v2_in_flight_attempt_across_actors {
         format!("'{}'", text.replace('\'', r"'\''"))
     }
 
-    /// `_hook`: `script` as the remote's pre-receive hook.
+    /// `script` as the remote's pre-receive hook.
     fn hook(sandbox: &Sandbox, script: &str) {
         let hook = sandbox.origin().join("hooks").join("pre-receive");
         executable(&hook, format!("#!/bin/sh\n{script}"));
@@ -149,7 +149,7 @@ mod v2_in_flight_attempt_across_actors {
         sandbox.await_remote_settled();
     }
 
-    /// `_v2_remote_notes`: the kind of each commit on the remote journal, oldest first ("claim",
+    /// The kind of each commit on the remote journal, oldest first ("claim",
     /// "fence", ...).
     fn remote_notes(sandbox: &Sandbox) -> Vec<String> {
         let args = ["log", "--reverse", "--format=%s", "refs/beads/journal"];

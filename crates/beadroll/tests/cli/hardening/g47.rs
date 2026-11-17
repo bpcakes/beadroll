@@ -45,7 +45,7 @@ mod g47_store_is_private_by_its_own_modes {
         }
     }
 
-    /// `_g47_loose`: every path under `root` (`root` included) that group or others can read,
+    /// Every path under `root` (`root` included) that group or others can read,
     /// write or enter, with its mode.
     fn loose(root: &Path) -> Vec<String> {
         let mut paths = vec![root.to_path_buf()];

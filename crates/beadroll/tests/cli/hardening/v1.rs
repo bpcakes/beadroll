@@ -19,7 +19,7 @@ type Env = BTreeMap<OsString, OsString>;
 /// A locale setting: the variables it sets, a later one winning over an earlier one of its name.
 type Setting = Vec<(&'static str, &'static str)>;
 
-/// `_v1_locales`: the translated settings the review ran, plus the C control. Each blanks the
+/// The translated settings the review ran, plus the C control. Each blanks the
 /// ambient LC_ALL, LC_MESSAGES and LANGUAGE first (an empty value counts as unset), so that only
 /// the named variables decide git's language.
 fn locales() -> Vec<(&'static str, Setting)> {
@@ -59,7 +59,7 @@ fn contains(haystack: &[u8], needle: &[u8]) -> bool {
         .any(|window| window == needle)
 }
 
-/// `_v1_git_is_translated`: whether git answers in another language than English under `env`: a
+/// Whether git answers in another language than English under `env`: a
 /// message from outside any repository, which every git translation covers.
 fn git_is_translated(env: &Env, place: &Path) -> bool {
     let outside = place.join("not-a-repo");
@@ -78,7 +78,7 @@ fn git_is_translated(env: &Env, place: &Path) -> bool {
     !probe.status.success() && !contains(&probe.stderr, b"not a git repository")
 }
 
-/// `_v1_winner_identity`: shell lines giving a hook's own commit an identity, whatever the user's
+/// Shell lines giving a hook's own commit an identity, whatever the user's
 /// git config holds.
 const WINNER_IDENTITY: &str = concat!(
     "export GIT_AUTHOR_NAME=winner GIT_AUTHOR_EMAIL=w@example.invalid ",

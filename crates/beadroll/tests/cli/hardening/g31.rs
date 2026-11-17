@@ -1,13 +1,13 @@
 //! G31: an export whose text holds U+2028, U+2029 or U+0085 imports again, and a Beads file with
 //! CRLF line ends and blank lines between its records is read whole.
 
-/// `_g31_titles`: titles holding U+2028, U+2029 and U+0085 (escapes only: raw ones would be split
+/// Titles holding U+2028, U+2029 and U+0085 (escapes only: raw ones would be split
 /// by line-based tools).
 fn titles() -> [&'static str; 3] {
     ["line\u{2028}sep", "para\u{2029}sep", "nel\u{0085}x"]
 }
 
-/// `_g31_tail`: the last line of `text` that is not blank, or nothing.
+/// The last line of `text` that is not blank, or nothing.
 fn tail(text: &str) -> &str {
     let mut lines = text.trim().split('\n');
     lines.rfind(|line| !line.trim().is_empty()).unwrap_or("")

@@ -4,7 +4,7 @@
 
 use beadroll_test_support::{Json, Run, parse_json};
 
-/// `_g18_read_only_ssh`: a transport that serves fetches and refuses every push the way a
+/// A transport that serves fetches and refuses every push the way a
 /// read-only deploy key does.
 const READ_ONLY_SSH: &str = concat!(
     "#!/bin/sh\n",
@@ -17,7 +17,7 @@ const READ_ONLY_SSH: &str = concat!(
     "esac\nexit 2\n",
 );
 
-/// `_g18_error`: the error a failed `bead ... --json` reported on standard error.
+/// The error a failed `bead ... --json` reported on standard error.
 fn error(run: &Run) -> Json {
     let document = parse_json(&run.stderr)
         .unwrap_or_else(|error| panic!("bead's error is not JSON ({error}): {}", run.stderr));

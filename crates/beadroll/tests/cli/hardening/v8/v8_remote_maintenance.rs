@@ -50,8 +50,8 @@ fn check(machines: &[Machine; 3], origin: &Path, (owner, unexpected): Outcome) {
     assert_eq!(seen, expected);
 }
 
-/// `_v8_wait_for_remote_gc`, also as a cleanup: a detached `gc --auto` may still be running on the
-/// remote; let it finish (for up to 20 seconds) before the sandbox goes.
+/// Waits, also as a cleanup, for a detached `gc --auto` that may still be running on the remote to
+/// finish (for up to 20 seconds) before the sandbox goes.
 struct RemoteGc(PathBuf);
 
 impl RemoteGc {

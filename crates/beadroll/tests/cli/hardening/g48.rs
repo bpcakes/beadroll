@@ -52,7 +52,7 @@ mod g48_failed_atomic_write_leaves_nothing_behind {
         found
     }
 
-    /// `_g48_error`: the code and message of a failed `--json` call; a crash or other output is
+    /// The code and message of a failed `--json` call; a crash or other output is
     /// reported as such, with all of its standard error.
     fn error(run: &Run) -> (String, String) {
         let document = parse_json(&run.stderr).ok();

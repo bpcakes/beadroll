@@ -6,7 +6,7 @@ use beadroll_test_support::{Machine, Sandbox};
 
 use crate::hardening::TrackerSetup;
 
-/// `_g09_machine`: a machine `name` running the Rust `bead`, that initialised the tracker (prefix
+/// A machine `name` running the Rust `bead`, that initialised the tracker (prefix
 /// `ex`), or, with `init` false, synced the one already published.
 fn machine(sandbox: &Sandbox, name: &str, init: TrackerSetup) -> Machine {
     let init = matches!(init, TrackerSetup::Init);

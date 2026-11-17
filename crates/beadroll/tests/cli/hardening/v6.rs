@@ -28,7 +28,7 @@ fn error_code(run: &Run) -> Option<String> {
     reported.or_else(|| run.crashed().then(|| "TRACEBACK".to_owned()))
 }
 
-/// `_v6_limited`: `bead ARGV --json` run as `machine` under a shell resource limit such as `-f 200`
+/// `bead ARGV --json` run as `machine` under a shell resource limit such as `-f 200`
 /// or `-n 8`: `/bin/sh -c 'ulimit LIMIT; exec "$@"'` in the machine's checkout with its
 /// environment, given 120 seconds. The profile an instrumented bead writes at exit would hit the
 /// limit too ([`UNPROFILED`]): these runs write none.
@@ -94,7 +94,7 @@ fn drain(mut pipe: impl Read + Send + 'static) -> Receiver<Vec<u8>> {
     receiver
 }
 
-/// `_v6_need_unprivileged`: whether the test can run. As root, `chmod 0` does not deny access, so
+/// Whether the test can run. As root, `chmod 0` does not deny access, so
 /// EACCES cannot be produced: the test is skipped, and says so.
 fn unprivileged() -> bool {
     let root = rustix::process::geteuid().is_root();
@@ -106,7 +106,7 @@ fn unprivileged() -> bool {
     !root
 }
 
-/// `_v6_need_sh`: whether the test can run. Without an executable `/bin/sh` there is no shell to
+/// Whether the test can run. Without an executable `/bin/sh` there is no shell to
 /// apply a ulimit with: the test is skipped, and says so.
 fn with_sh() -> bool {
     let found = access("/bin/sh", Access::EXEC_OK).is_ok();

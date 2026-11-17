@@ -16,7 +16,7 @@ mod g40_at_sign_after_the_authority {
             .expect("a meta.json in the machine's home")
     }
 
-    /// `_g40_init`: `init --remote URL` on a new machine: what init printed (its standard output,
+    /// `init --remote URL` on a new machine: what init printed (its standard output,
     /// then its standard error), meta.json's remote (`None` when it has none) and info's remote.
     fn init(machine: &Machine, url: &str) -> (String, Option<Json>, Json) {
         let made = machine.run(["init", "--prefix", "ex", "--remote", url]);

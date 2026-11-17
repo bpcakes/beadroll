@@ -7,7 +7,7 @@ mod g46_import_accepts_self_dependency {
     use beadroll_core::json::{Format, write};
     use beadroll_test_support::{Json, Machine, code, json};
 
-    /// `_g46_record`: the Beads record `key`, titled `key` in capitals, with a dependency on each
+    /// The Beads record `key`, titled `key` in capitals, with a dependency on each
     /// `(target, type)` of `depends_on`.
     fn record(key: &str, depends_on: &[(&str, &str)]) -> Json {
         let title = key.to_uppercase();

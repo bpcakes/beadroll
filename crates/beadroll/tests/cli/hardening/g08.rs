@@ -1,13 +1,13 @@
 //! G08 (`docs/FINDINGS.md`): stale receipts were dropped right after `build`, before the push; a
 //! failure after that lost them, and the retry rebuilt an accepted command. The tests stop commands
-//! on the crash hooks both binaries implement: `BEAD_TEST_CRASH_AFTER_PUSH` (exit status 99 once
-//! the remote has taken the push) and `BEAD_TEST_CRASH_BEFORE_PUSH` (98, before the push).
+//! on the crash hooks any bead under test implements: `BEAD_TEST_CRASH_AFTER_PUSH` (exit status 99
+//! once the remote has taken the push) and `BEAD_TEST_CRASH_BEFORE_PUSH` (98, before the push).
 
 use beadroll_test_support::{Machine, Sandbox};
 
 use crate::hardening::TrackerSetup;
 
-/// `_g08_machine`: a machine `name` that initialised the tracker (prefix `ex`), or, with `init`
+/// A machine `name` that initialised the tracker (prefix `ex`), or, with `init`
 /// false, synced the one already published.
 fn machine(sandbox: &Sandbox, name: &str, init: TrackerSetup) -> Machine {
     let init = matches!(init, TrackerSetup::Init);

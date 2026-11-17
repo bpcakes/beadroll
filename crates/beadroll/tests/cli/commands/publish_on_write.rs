@@ -1,4 +1,4 @@
-//! `PublishOnWrite`: a tracker imported on one machine sat unpublished until a manual sync, and
+//! A tracker imported on one machine sat unpublished until a manual sync, and
 //! nothing said so. Now a local write (create, update, comment, dep, import, init) publishes at
 //! once, as a close already did; `--offline` keeps it local; and every command reports what the
 //! remote still lacks.

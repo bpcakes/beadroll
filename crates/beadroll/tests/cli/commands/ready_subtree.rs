@@ -1,4 +1,4 @@
-//! `ReadySubtree`: `bead ready ID`, and `--epic ID` as in br, is the frontier inside ID's subtree
+//! `bead ready ID`, and `--epic ID` as in br, is the frontier inside ID's subtree
 //! (J01): every issue beneath ID through parent-child edges, at any depth and whatever lies in
 //! between, with readiness judged on the whole tracker. `--parent ID` stays ID's direct children.
 //! A scope is resolved before anything is filtered (J02), and one scope is taken at a time (J03).

@@ -17,7 +17,7 @@ mod g28_only_the_lock_holder_sweeps_pending {
     /// The hook that stops a command after the remote took its push, before bead hears back.
     const CRASH_AFTER_PUSH: &str = "BEAD_TEST_CRASH_AFTER_PUSH";
 
-    /// `_g28_unprivileged`: whether file modes bind the user the tests run as. Root reads a
+    /// Whether file modes bind the user the tests run as. Root reads a
     /// mode-000 file and writes a read-only store, so the tests that rely on modes skip under it.
     fn unprivileged() -> bool {
         !rustix::process::geteuid().is_root()

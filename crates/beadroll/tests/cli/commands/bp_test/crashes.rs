@@ -1,5 +1,5 @@
 //! Crashes: a claim that stopped before its push, or after it with the acknowledgement lost (the
-//! crash hooks both binaries have: `BEAD_TEST_CRASH_BEFORE_PUSH` exits with status 98,
+//! crash hooks any bead under test has: `BEAD_TEST_CRASH_BEFORE_PUSH` exits with status 98,
 //! `BEAD_TEST_CRASH_AFTER_PUSH` with 99), and an append torn halfway through.
 
 use std::fs::OpenOptions;
@@ -19,7 +19,7 @@ const CRASH_AFTER_PUSH: &str = "BEAD_TEST_CRASH_AFTER_PUSH";
 /// A directory holding a `git` that, at the first fetch, touches `held.ready` in the sandbox and
 /// waits for `held.go` (a minute at most) before running the git on `PATH`; every other git runs
 /// at once. With the directory put first on `PATH`: a process held inside its first fetch, which
-/// the test lets go once it has acted. Black-box, so that it holds either binary.
+/// the test lets go once it has acted. Black-box, so that it holds any bead under test.
 fn holding_first_fetch(sandbox: &beadroll_test_support::Sandbox) -> (PathBuf, PathBuf, PathBuf) {
     let path = std::env::var_os("PATH").expect("the test's PATH");
     let git = std::env::split_paths(&path)

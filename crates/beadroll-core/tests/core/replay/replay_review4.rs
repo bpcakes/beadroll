@@ -1,4 +1,4 @@
-//! `ReplayReview4`: the fourth independent review (2026-10-07-4-codex), folded in after the fixes. An
+//! The fourth independent review (2026-10-07-4-codex), folded in after the fixes. An
 //! inert placeholder lends no ancestry to its journal's tail, clearing a required register leaves
 //! every query usable, and the cycle enumerator matches a brute-force oracle on every small graph.
 

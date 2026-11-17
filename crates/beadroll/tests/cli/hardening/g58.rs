@@ -7,7 +7,7 @@ use std::process::Stdio;
 use beadroll_test_support::Sandbox;
 use rustix::process::{Pid, Signal, kill_process};
 
-/// `_g58_ssh_script`: a transport whose background job keeps git's stderr open after git has
+/// A transport whose background job keeps git's stderr open after git has
 /// exited. It runs the remote command locally; a receive-pack first leaves a `sleep` of
 /// `G58_BG_SECONDS` behind, its pid noted in `G58_PIDS`.
 const SSH_SCRIPT: &str = r#"#!/bin/sh
@@ -35,7 +35,7 @@ impl Drop for Helpers {
     }
 }
 
-/// `_g58_remote_head`: the commit the remote's `refs/beads/journal` names, or nothing when git
+/// The commit the remote's `refs/beads/journal` names, or nothing when git
 /// cannot say.
 fn remote_head(sandbox: &Sandbox) -> String {
     let output = beadroll_test_support::git_command()

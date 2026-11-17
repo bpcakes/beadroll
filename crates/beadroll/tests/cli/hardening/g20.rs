@@ -18,7 +18,7 @@ use beadroll_test_support::{Json, Machine, Sandbox};
 /// Variables to set, by name.
 type Env = BTreeMap<OsString, OsString>;
 
-/// `_g20_config`: a scratch global git config for this sandbox (never the developer's) that says
+/// A scratch global git config for this sandbox (never the developer's) that says
 /// `text`, and the variables that make git read it and no system config.
 fn config(sandbox: &Sandbox, text: &str) -> Env {
     let path = sandbox.root().join("global.gitconfig");
@@ -29,7 +29,7 @@ fn config(sandbox: &Sandbox, text: &str) -> Env {
     ])
 }
 
-/// `_g20_git`: git ARGS as user `t`, in `cwd` (the test's own directory when `None`), with the
+/// Git ARGS as user `t`, in `cwd` (the test's own directory when `None`), with the
 /// test's environment less its `GIT_*` variables, then `env`; its output, trimmed. A failure fails
 /// the test with git's standard error.
 fn git(args: &[&str], cwd: Option<&Path>, env: &Env) -> String {
@@ -259,7 +259,7 @@ fn reason(status: u16) -> &'static str {
     }
 }
 
-/// `_g20_fake_ssh`: a folder `bin` in the sandbox whose `ssh` refuses (nothing leaves the
+/// A folder `bin` in the sandbox whose `ssh` refuses (nothing leaves the
 /// machine) and whose `user-ssh` runs the remote command locally; the `PATH` that puts it first.
 fn fake_ssh(sandbox: &Sandbox) -> Env {
     let folder = sandbox.root().join("bin");

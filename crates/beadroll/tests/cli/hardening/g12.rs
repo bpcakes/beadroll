@@ -48,7 +48,7 @@ mod g12_retried_end_of_claim_is_published {
         }
     }
 
-    /// `_g12_seen`: (status, owner) of the issue `key` as `machine` sees it.
+    /// (status, owner) of the issue `key` as `machine` sees it.
     fn seen(machine: &Machine, key: &str) -> (String, Option<String>) {
         let issue = machine.show(key);
         let status = issue["status"].as_str().expect("a status").to_owned();

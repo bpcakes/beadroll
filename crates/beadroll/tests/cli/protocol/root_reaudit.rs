@@ -1,4 +1,4 @@
-//! `RootReaudit`: the second independent audit's command-level checks
+//! The second independent audit's command-level checks
 //! (`docs/reviews/2026-10-06-2-reaudit.md`): a local import keeps the ids of the comments already
 //! exported (R13); a forced close through `update` publishes as `close` does (R12); and a claiming
 //! update that fails writes, claims and publishes nothing, whichever of its targets it fails on

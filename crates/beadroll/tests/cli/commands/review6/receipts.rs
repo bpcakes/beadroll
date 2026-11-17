@@ -1,7 +1,7 @@
 //! F01, F02 and a verified property: the retry of an accepted command is recognised by its receipt
 //! (`pending/*.command`), whatever failed or ran in between, whatever the locale, and whatever
 //! standard input held. The first attempt stops on the crash hook `BEAD_TEST_CRASH_AFTER_PUSH`,
-//! which both binaries implement: exit status 99 once the remote has taken the push.
+//! which any bead under test implements: exit status 99 once the remote has taken the push.
 
 use beadroll_test_support::{Invocation, Machine};
 

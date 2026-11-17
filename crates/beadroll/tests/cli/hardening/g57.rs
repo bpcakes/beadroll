@@ -11,7 +11,7 @@ use beadroll_test_support::{Json, json};
 /// cannot hold one.
 const SURROGATE: &str = "<lone surrogate>";
 
-/// `_g57_event_id`: a UUIDv7 for now, with `n` in its random bits.
+/// A UUIDv7 for now, with `n` in its random bits.
 fn event_id(n: u128) -> String {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -20,7 +20,7 @@ fn event_id(n: u128) -> String {
     EventId::from_u128((millis << 80) | (0x7 << 76) | (0b10 << 62) | n).to_string()
 }
 
-/// `_g57_create`: event `n`, machine `replica` creating issue `key` titled `title`.
+/// Event `n`, machine `replica` creating issue `key` titled `title`.
 fn create(n: u128, replica: &str, key: &str, title: &str) -> Json {
     let eid = event_id(n);
     json!({
