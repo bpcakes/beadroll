@@ -5,7 +5,8 @@ use beadroll_core::code::Code;
 use beadroll_core::json::Value;
 use beadroll_git::PushOutcome;
 use beadroll_store::{
-    FileMode, Fired, Workspace, attempt_path, private_dirs, write_atomic, write_attempt_file,
+    FileMode, Fired, Workspace, attempt_path, pending_dir, pending_paths, private_dirs,
+    write_atomic, write_attempt_file,
 };
 
 use super::Mode;
@@ -52,20 +53,17 @@ impl PendingAttempt {
         signature: &str,
         answer: Mode,
     ) -> Result<Self, Error> {
-        let id = events
-            .first()
-            .and_then(|e| e.get("id"))
-            .map(beadroll_core::text::str_of)
-            .unwrap_or_default();
-        let folder = ws.dir.join("pending");
-        private_dirs(&folder)?;
+        let (attempt, receipt) = pending_paths(ws, &events).ok_or_else(|| {
+            Error::Validation("an attempt whose first event has no id".to_owned())
+        })?;
+        private_dirs(&pending_dir(ws))?;
         write_atomic(
-            &folder.join(format!("{id}.command")),
+            &receipt,
             signature.as_bytes(),
             FileMode::Private,
             &ws.settings.failpoints,
         )?;
-        write_attempt_file(ws, &folder.join(format!("{id}.json")), &events)?;
+        write_attempt_file(ws, &attempt, &events)?;
         Ok(Self { events, answer })
     }
 

@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use beadroll_core::json::Value;
-use beadroll_store::{Actor, Workspace, glob_ending, json_text, read, remove};
+use beadroll_store::{Actor, Workspace, json_text, read, receipt_files, remove};
 
 use crate::error::Error;
 
@@ -100,7 +100,7 @@ pub(crate) fn settle(
     signature: &str,
 ) -> Result<SettledCommands, Error> {
     let mut settled = Vec::new();
-    for path in glob_ending(&ws.dir.join("pending"), ".command") {
+    for path in receipt_files(ws) {
         let receipt = Receipt::read(actor, &path);
         match receipt {
             Receipt::Malformed => remove(&path)?,
@@ -148,7 +148,7 @@ pub(crate) fn forget(receipts: &[PathBuf]) -> Result<(), Error> {
 /// A later command of this actor went through: the receipts that would answer a repeat of an
 /// earlier command go. Attempts still pending stay for sync to settle.
 pub(crate) fn forget_receipts(ws: &Workspace, actor: &Value) -> Result<(), Error> {
-    for receipt in glob_ending(&ws.dir.join("pending"), ".command") {
+    for receipt in receipt_files(ws) {
         let Ok(data) = std::fs::read(&receipt) else {
             continue;
         };

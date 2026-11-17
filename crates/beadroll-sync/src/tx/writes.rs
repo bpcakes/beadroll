@@ -4,7 +4,7 @@
 use beadroll_core::json::Value;
 use beadroll_core::state::State;
 use beadroll_store::{
-    Actor, PublicationState, Workspace, attempt_path, remove, write_attempt_file,
+    Actor, PublicationState, Workspace, attempt_path, pending_paths, remove, write_attempt_file,
 };
 
 use super::{Spent, Tx};
@@ -144,16 +144,11 @@ fn written<T, E: From<Error>>(
 /// Removes these attempts' pending files and their receipts.
 pub fn drop_pending(ws: &Workspace, attempts: &[Vec<Value>]) -> Result<(), Error> {
     for events in attempts {
-        let Some(id) = events
-            .first()
-            .and_then(|e| e.get("id"))
-            .map(beadroll_core::text::str_of)
-        else {
-            continue;
-        };
-        let folder = ws.dir.join("pending");
-        remove(&folder.join(format!("{id}.json")))?;
-        remove(&folder.join(format!("{id}.command")))?;
+        // an attempt with no id was never written as a pending file
+        if let Some((attempt, receipt)) = pending_paths(ws, events) {
+            remove(&attempt)?;
+            remove(&receipt)?;
+        }
     }
     Ok(())
 }
