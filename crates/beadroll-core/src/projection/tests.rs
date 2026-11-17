@@ -45,30 +45,8 @@ pub(crate) enum HistoryKind {
     Flawed,
 }
 
-/// A seeded generator (SplitMix64): the same draws on every run.
-pub(crate) struct Rng(pub(crate) u64);
-
-impl Rng {
-    fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = self.0;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^ (z >> 31)
-    }
-
-    pub(crate) fn below(&mut self, n: usize) -> usize {
-        (self.next() % n.max(1) as u64) as usize
-    }
-
-    pub(crate) fn chance(&mut self, percent: u64) -> bool {
-        self.next() % 100 < percent
-    }
-
-    fn pick<'a, T>(&mut self, items: &'a [T]) -> Option<&'a T> {
-        (!items.is_empty()).then(|| &items[self.below(items.len())])
-    }
-}
+/// The seeded generator the tests of the crate draw from: the same draws on every run.
+pub(crate) use beadroll_test_support::values::Rng;
 
 const MACHINES: [&str; 3] = ["0000aa01", "0000bb02", "0000cc03"];
 
@@ -106,7 +84,7 @@ struct World {
 impl World {
     fn new(seed: u64) -> World {
         World {
-            rng: Rng(seed),
+            rng: Rng::new(seed),
             events: Vec::new(),
             machines: MACHINES.iter().map(|_| Machine::default()).collect(),
             folders: MACHINES.to_vec(),
@@ -221,7 +199,7 @@ impl World {
 
     /// A new event id, of the world's clock.
     fn mint(&mut self) -> String {
-        let random = u128::from(self.rng.next()) & ((1 << 62) - 1);
+        let random = u128::from(self.rng.bits()) & ((1 << 62) - 1);
         let value = (u128::from(self.clock) << 80) | (7 << 76) | (2 << 62) | random;
         EventId::from_u128(value).to_string()
     }

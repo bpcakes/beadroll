@@ -14,16 +14,12 @@ use beadroll_test_support::{Json, json, json_id};
 
 use super::{Fixture, projection};
 
-/// A seeded generator (SplitMix64): the same draws on every run.
-struct Rng(u64);
+/// The draws the scale checks make, from the shared seeded generator: the same on every run.
+struct Rng(beadroll_test_support::values::Rng);
 
 impl Rng {
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = self.0;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^ (z >> 31)
+        self.0.bits()
     }
 
     /// A number below `n`.
@@ -41,7 +37,8 @@ impl Rng {
         &items[self.below(items.len())]
     }
 
-    /// `count` distinct orders of the six machines, as `rng.sample(permutations("abcdef"), count)`.
+    /// `count` distinct orders of the six machines, drawn without repeats from all of them in their
+    /// lexicographic order.
     fn orders(&mut self, count: usize) -> Vec<Vec<&'static str>> {
         let mut all: Vec<Vec<&'static str>> = vec![Vec::new()];
         for _ in 0..MACHINES.len() {
@@ -138,7 +135,7 @@ fn with(mut event: Json, name: &str, value: Json) -> Json {
 
 #[test]
 fn six_machine_3600_mixed_envelope_events_are_scoped_and_deterministic() {
-    let mut rng = Rng(901_834);
+    let mut rng = Rng(beadroll_test_support::values::Rng::new(901_834));
     let mut f = Fixture::new();
     let (rows, valid_comments) = mixed_envelope_rows(&mut f, &mut rng);
     let uid = json_id(&rows[1].0);
@@ -290,7 +287,7 @@ fn converging_events(f: &mut Fixture, rng: &mut Rng) -> (Vec<Json>, Vec<Bits>) {
 
 #[test]
 fn valid_six_machine_6000_events_converge_and_ancestry_is_exact() {
-    let mut rng = Rng(901_833);
+    let mut rng = Rng(beadroll_test_support::values::Rng::new(901_833));
     let mut f = Fixture::new();
     let (events, ancestry) = converging_events(&mut f, &mut rng);
     let base = journal(&events);

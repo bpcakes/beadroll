@@ -305,7 +305,7 @@ fn delivered_alike(seeds: std::ops::Range<u64>, history_kind: HistoryKind) -> Ta
         tally.reported += first.integrity().len();
         tally.owned = fnv(tally.owned, owned::answers(&first).as_bytes());
         let expected = answers(&first, history_kind);
-        let mut rng = Rng(seed);
+        let mut rng = Rng::new(seed);
         let mut orders = vec![("as a store reads", stored(&records))];
         for _ in 0..ORDERS {
             if !flawed {

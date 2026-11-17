@@ -61,7 +61,7 @@ fn a_growing_store_shows_every_event_once_and_in_causal_order() {
                     HistoryKind::Valid
                 },
             );
-            let mut rng = Rng(seed);
+            let mut rng = Rng::new(seed);
             let order = interleaved(&records, &mut rng);
             let mut cuts: Vec<usize> = (0..STEPS).map(|_| rng.below(order.len() + 1)).collect();
             cuts.push(order.len());
@@ -133,7 +133,7 @@ fn two_reads_that_saw_different_events_mark_what_both_placed_once_joined() {
                     HistoryKind::Valid
                 },
             );
-            let mut rng = Rng(seed);
+            let mut rng = Rng::new(seed);
             // two reads of one store, each part way through its records in an order of its own:
             // each machine's journal read further by one than by the other, as a sync writing
             // file after file lets happen

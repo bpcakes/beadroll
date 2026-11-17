@@ -7,19 +7,8 @@ mod ancestry {
     use beadroll_test_support::events::{Event, id_at};
     use beadroll_test_support::json;
 
-    /// A splitmix64 stream: the property holds for any order, so any seeded stream will do.
-    struct Stream(u64);
-
-    impl Stream {
-        fn below(&mut self, n: usize) -> usize {
-            self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
-            let mut z = self.0;
-            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-            z ^= z >> 31;
-            usize::try_from(z % u64::try_from(n).unwrap()).unwrap()
-        }
-    }
+    // the property holds for any order, so any seeded stream will do
+    use beadroll_test_support::values::Rng as Stream;
 
     /// 2,000 events on six machines, one chain through all of them, claims and releases in
     /// attempt files and the rest in journals: whichever order the machines are read in, nothing is
@@ -68,7 +57,7 @@ mod ancestry {
             events.push(event.json());
             previous = Some(eid);
         }
-        let mut stream = Stream(3106);
+        let mut stream = Stream::new(3106);
         let mut expected = None;
         for _ in 0..6 {
             let mut replicas: Vec<String> = (0..6).map(|i| format!("machine{i}")).collect();

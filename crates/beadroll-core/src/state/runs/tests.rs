@@ -137,7 +137,7 @@ fn sound(runs: &Runs, claimed: &dyn Fn(&str) -> bool) {
 fn every_copy_takes_the_key_counting_one_number_at_a_time_takes() {
     let (mut copies, mut skipped, mut forgotten) = (0, 0, 0);
     for seed in 0..300 {
-        let mut rng = Rng(20_261_026 + seed);
+        let mut rng = Rng::new(20_261_026 + seed);
         let mut issues: HashSet<String> = HashSet::new();
         // the keys imports wait for, each as often as one does
         let mut waited: HashMap<String, usize> = HashMap::new();

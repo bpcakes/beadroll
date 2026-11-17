@@ -23,17 +23,12 @@ pub(crate) enum Identities {
 const SEEDS: u64 = 1000;
 const ORDERS: usize = 4;
 
-/// Floats in [0, 1) drawn from a splitmix64 stream.
-struct Stream(u64);
+/// Floats in [0, 1) drawn from the shared seeded generator.
+struct Stream(beadroll_test_support::values::Rng);
 
 impl Stream {
     fn random(&mut self) -> f64 {
-        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = self.0;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^= z >> 31;
-        (z >> 11) as f64 / (1u64 << 53) as f64
+        (self.0.bits() >> 11) as f64 / (1u64 << 53) as f64
     }
 
     /// An index below `n`, from a random fraction scaled by `n` and truncated.
@@ -290,7 +285,9 @@ fn check(identities: Identities) {
     let twins = matches!(identities, Identities::Twins);
     let mut stats = Stats::default();
     for seed in 0..SEEDS {
-        let mut stream = Stream(seed * 7919 + if twins { 104_729 } else { 0 });
+        let mut stream = Stream(beadroll_test_support::values::Rng::new(
+            seed * 7919 + if twins { 104_729 } else { 0 },
+        ));
         let events = generate(&mut stream, identities);
         stats.events += events.len();
         let op = |e: &Value| e["op"].as_str().unwrap().to_owned();

@@ -15,18 +15,7 @@ use beadroll_core::state::{State, Target};
 use beadroll_test_support::{Json, json};
 use fixture::{Fixture, MISSING, conflict, fields, issue, snapshot};
 
-/// A seeded SplitMix64 generator for reproducible property checks.
-struct Rng(u64);
-
-impl Rng {
-    fn below(&mut self, n: usize) -> usize {
-        self.0 = self.0.wrapping_add(0x9e37_79b9_7f4a_7c15);
-        let mut z = self.0;
-        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
-        usize::try_from((z ^ (z >> 31)) % u64::try_from(n).unwrap()).unwrap()
-    }
-}
+use beadroll_test_support::values::Rng;
 
 /// Every order of `n` things.
 fn permutations(n: usize) -> Vec<Vec<usize>> {
@@ -63,7 +52,7 @@ fn six_machine_3000_event_replay_all_720_enumerations() {
     }
     let replicas = ["seed", "m1", "m2", "m3", "m4", "m5"];
     let mut heads = vec![f.last(); replicas.len()];
-    let mut rng = Rng(6403);
+    let mut rng = Rng::new(6403);
     for index in 0..3000 {
         let replica = index % 6;
         let issue = items[rng.below(items.len())].clone();

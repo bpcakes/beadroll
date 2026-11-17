@@ -126,7 +126,7 @@ fn edges_answer_what_a_vector_searched_in_order_answered_listed_or_indexed() {
     let kinds = kinds();
     let mut indexed = 0;
     for seed in 0..40 {
-        let mut rng = Rng(20_261_025 + seed);
+        let mut rng = Rng::new(20_261_025 + seed);
         let targets = 1 + rng.below(40);
         let every: Vec<Target> = (0..=targets).map(target_of).collect();
         let (mut edges, mut model) = (DepTags::default(), Model::default());
