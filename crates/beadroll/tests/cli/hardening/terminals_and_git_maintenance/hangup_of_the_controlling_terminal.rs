@@ -126,7 +126,9 @@ fn hang_up(sandbox: &Sandbox, machine: &Machine, args: &[&str]) -> (Vec<u8>, Str
         Pid, Signal, WaitOptions, getpid, kill_process, set_child_subreaper, waitpid,
     };
 
-    use super::{drain, quoted, script, wait_for};
+    use beadroll_test_support::shell_quoted;
+
+    use super::{drain, script, wait_for};
 
     set_child_subreaper(Some(getpid())).expect("the test becomes a subreaper");
     let (mut reader, mut writer) = std::io::pipe().expect("a pipe");
