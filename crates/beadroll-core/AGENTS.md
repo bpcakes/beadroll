@@ -273,7 +273,8 @@ consumer on tokio calls through `spawn_blocking`.
   makes each such list whole, so no state outside replay holds a null, and lists nothing again
   (W01). The index is derived and never written: a state read back builds it from the issues'
   lists, and `projection/tests/awaiting.rs` keeps replay, a projection extended and one read back
-  listing the same entries at the same places, and what replay made of waiting imports before it.
+  listing the same entries at the same places; `awaiting/removals.rs` what taking an entry back
+  leaves, and `awaiting/histories.rs` what replay made of waiting imports before it.
 - A copy renamed for a key two machines minted is given its key by asking of each candidate
   (`State::claims_key`: `by_key` holds it, or `Awaiting::names` finds an entry that waits for it),
   never by collecting `claimed_keys()` for each copy (roll-lqjj.25, X03); `claimed_keys` is public
