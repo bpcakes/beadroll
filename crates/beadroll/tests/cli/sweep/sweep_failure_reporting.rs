@@ -13,9 +13,9 @@ use crate::sweep::sweep::ScheduleSet;
 /// Whether a synthetic sweep report contains a failure.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ScheduleResult {
-    /// Failed.
+    /// The report holds a failed schedule, which must fail the sweep.
     Failed,
-    /// Passed.
+    /// Every schedule passed.
     Passed,
 }
 

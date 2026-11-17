@@ -22,9 +22,9 @@ use beadroll_test_support::{Machine, Sandbox, git};
 /// Where a test wrapper pauses relative to its git command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum HookPosition {
-    /// Before.
+    /// The wrapper marks and waits before git runs: the operation has not happened.
     Before,
-    /// After.
+    /// Git runs first, then the wrapper marks and waits: the operation happened, its answer withheld.
     After,
 }
 

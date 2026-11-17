@@ -25,9 +25,9 @@ use super::{
 /// Whether a stress worker is isolated from the remote.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Connectivity {
-    /// Connected.
+    /// The worker reaches the remote.
     Connected,
-    /// Partitioned.
+    /// The worker is cut off: it reads (`show`, `info`) where a connected one claims or syncs.
     Partitioned,
 }
 

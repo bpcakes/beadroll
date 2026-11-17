@@ -17,9 +17,9 @@ use crate::replay::replay;
 /// Whether copied issues import unresolved dependencies.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Dependencies {
-    /// Absent.
+    /// No dependencies.
     Absent,
-    /// Waiting.
+    /// A dependency on a key that never comes, so keys are claimed and waited for together.
     Waiting,
 }
 

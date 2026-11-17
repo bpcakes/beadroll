@@ -7,18 +7,18 @@ use super::Rng;
 /// Whether a generated field value may be null.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FieldValue {
-    /// Required.
+    /// Never null.
     Required,
-    /// Nullable.
+    /// Null now and then, where the field may be cleared.
     Nullable,
 }
 
 /// Whether a generated create imports an existing issue.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum CreateOrigin {
-    /// Local.
+    /// A create made here: bead sets its times and author.
     Local,
-    /// Imported.
+    /// An import: the record's own times and author, now and then.
     Imported,
 }
 

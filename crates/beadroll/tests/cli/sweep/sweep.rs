@@ -21,18 +21,18 @@ use super::{SLICE, Schedule, Variant, schedules};
 /// How a sweep executes each pair of follow-ups.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Execution {
-    /// Sequential.
+    /// One follow-up after the other.
     Sequential,
-    /// Concurrent.
+    /// Both follow-ups at once (`BEAD_SWEEP_CONCURRENT=1`).
     Concurrent,
 }
 
 /// Which schedules a sweep selects.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ScheduleSet {
-    /// Slice.
+    /// The thirteen schedules the fast suite runs.
     Slice,
-    /// Full.
+    /// All 660 (`BEAD_SWEEP=full`).
     Full,
 }
 

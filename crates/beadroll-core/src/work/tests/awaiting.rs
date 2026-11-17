@@ -9,9 +9,9 @@ use crate::replay::replay;
 /// Whether generated dependencies name keys later brought by the history.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum AwaitedKeys {
-    /// Missing.
+    /// Keys that never come.
     Missing,
-    /// Brought.
+    /// Keys the second half of the history brings.
     Brought,
 }
 

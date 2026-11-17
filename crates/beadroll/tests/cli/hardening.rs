@@ -83,8 +83,8 @@ mod v9;
 /// How a test machine first opens its tracker.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TrackerSetup {
-    /// Sync.
+    /// The tracker another machine published, fetched with `bead sync`.
     Sync,
-    /// Init.
+    /// A tracker started here with `bead init --prefix ex`.
     Init,
 }

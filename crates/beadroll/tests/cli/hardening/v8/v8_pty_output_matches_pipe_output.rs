@@ -18,9 +18,9 @@ use super::{Drained, drain, quoted, script, wait_for};
 /// Which terminal output style the test requests.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ColorMode {
-    /// Plain.
+    /// Colour off (`NO_COLOR`): a terminal shows what a pipe does.
     Plain,
-    /// Colored.
+    /// Colour on: the same output once bead's own colour codes are taken out.
     Colored,
 }
 

@@ -14,9 +14,9 @@ use beadroll_test_support::json;
 /// Whether the generated history includes a copied machine identity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Identities {
-    /// Unique.
+    /// Every machine has an identity of its own.
     Unique,
-    /// Twins.
+    /// Two machines share one copied identity.
     Twins,
 }
 

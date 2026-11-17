@@ -9,9 +9,9 @@ use super::{durable_inputs, id, json, published_three};
 /// How a lost ownership acknowledgement is recovered.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Recovery {
-    /// RetryRound.
+    /// The next round's merge confirms the accepted push whose reply was lost.
     RetryRound,
-    /// Restart.
+    /// The command run again recognises the stopped invocation's matching receipt.
     Restart,
 }
 
