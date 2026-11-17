@@ -74,7 +74,7 @@ fn timeouts_leak_nothing_and_reap_as_documented() {
         for _ in 0..20 {
             let error = env
                 .git(&args)
-                .timeout(0.2)
+                .timeout(Duration::from_millis(200))
                 .reap(if reap {
                     KillScope::ProcessGroup
                 } else {

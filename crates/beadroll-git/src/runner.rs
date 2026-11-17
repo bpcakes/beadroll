@@ -123,7 +123,7 @@ pub struct Git<'a> {
     env: &'a Env,
     args: Vec<OsString>,
     input: Option<Vec<u8>>,
-    timeout: Option<f64>,
+    timeout: Option<Duration>,
     kill_scope: KillScope,
 }
 
@@ -134,10 +134,10 @@ impl Git<'_> {
         self
     }
 
-    /// Allows git to run for `seconds`, then kills it and returns [`Error::Timeout`]. A negative
-    /// duration permits no wait.
-    pub fn timeout(mut self, seconds: f64) -> Self {
-        self.timeout = Some(seconds);
+    /// Allows git to run for `limit`, then kills it and returns [`Error::Timeout`]; `None` sets no
+    /// limit.
+    pub fn timeout(mut self, limit: impl Into<Option<Duration>>) -> Self {
+        self.timeout = limit.into();
         self
     }
 
@@ -229,8 +229,8 @@ impl Git<'_> {
 
 /// A timeout as [`Error::Timeout`] gives it: in seconds, to the millisecond and without trailing
 /// zeros (`45`, `0.2`), as `BEAD_NET_TIMEOUT` is set.
-fn seconds(timeout: f64) -> String {
-    let text = format!("{timeout:.3}");
+fn seconds(timeout: Duration) -> String {
+    let text = format!("{:.3}", timeout.as_secs_f64());
     let text = text.trim_end_matches('0');
     text.strip_suffix('.').unwrap_or(text).to_owned()
 }
@@ -318,11 +318,11 @@ fn failure(args: &[OsString], output: &Output) -> Error {
 }
 
 /// Starts `command` and waits for it: `Some(status)`, or `None` when it took longer than `timeout`
-/// seconds and was killed (its group with [`KillScope::ProcessGroup`], else the client alone) and
+/// and was killed (its group with [`KillScope::ProcessGroup`], else the client alone) and
 /// then reaped.
 fn wait_for(
     mut command: Command,
-    timeout: Option<f64>,
+    timeout: Option<Duration>,
     kill_scope: KillScope,
 ) -> Result<Option<ExitStatus>, Error> {
     // The waiter exists before git does, so that a git is never started without someone to reap it:
@@ -352,21 +352,15 @@ fn wait_for(
             "the git waiter thread is gone",
         ))));
     }
-    let status = match timeout {
+    let status = match timeout.map(|limit| done.recv_timeout(limit)) {
         None => done.recv(),
-        Some(seconds) => {
-            let limit = Duration::try_from_secs_f64(seconds.max(0.0)).ok();
-            match limit.map(|limit| done.recv_timeout(limit)) {
-                None => done.recv(),
-                Some(Ok(status)) => Ok(status),
-                Some(Err(mpsc::RecvTimeoutError::Disconnected)) => Err(mpsc::RecvError),
-                Some(Err(mpsc::RecvTimeoutError::Timeout)) => {
-                    kill(pid, kill_scope);
-                    let _ = done.recv(); // dead now: reaped, so it leaves no zombie
-                    let _ = waiter.join();
-                    return Ok(None);
-                }
-            }
+        Some(Ok(status)) => Ok(status),
+        Some(Err(mpsc::RecvTimeoutError::Disconnected)) => Err(mpsc::RecvError),
+        Some(Err(mpsc::RecvTimeoutError::Timeout)) => {
+            kill(pid, kill_scope);
+            let _ = done.recv(); // dead now: reaped, so it leaves no zombie
+            let _ = waiter.join();
+            return Ok(None);
         }
     };
     let _ = waiter.join();
@@ -516,7 +510,11 @@ mod tests {
             (0.0, "0"),
         ];
         for (timeout, shown) in read {
-            assert_eq!(seconds(timeout), shown, "{timeout}");
+            assert_eq!(
+                seconds(Duration::from_secs_f64(timeout)),
+                shown,
+                "{timeout}"
+            );
         }
     }
 
