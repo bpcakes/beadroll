@@ -1959,8 +1959,8 @@ These were decided deliberately. Report problems *with* them, not their existenc
   than saturating at that bound (AD05). Unreadable or out-of-range `COLUMNS` falls back to the
   terminal width, or no wrapping when output is not a terminal. `GIT_CONFIG_COUNT`'s predicate
   now recognises ASCII digits only. A nondigit count is zero when settings are carried; without
-  carried settings it must still parse as an integer. A digits-only count must fit an `i128`;
-  failure is `CONFIG`. The git crate takes these rules from its caller, so its `CountRules`
+  carried settings it must still parse as an integer. A digits-only count must fit an `i128`,
+  with room after it for the settings bead adds; failure is `CONFIG`. The git crate takes these rules from its caller, so its `CountRules`
   contract describes the supplied predicate.
 - The Rust bead keeps CPython's semantics wherever Python's bead had them, as the port plan's
   ledger of them decided (the rows not stated above): replay takes a boolean where an integer is due

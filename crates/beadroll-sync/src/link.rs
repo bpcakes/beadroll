@@ -113,7 +113,7 @@ pub struct Link<'a> {
 fn link_env(ws: &Workspace) -> Result<Env, Error> {
     let settings = &ws.settings;
     let carried = transport_config(&transport_settings(&settings.git)?);
-    let int = |text: &str| beadroll_core::text::parse_integer(text).map(|n| n.to_string());
+    let int = |text: &str| beadroll_core::text::parse_integer(text).map(|n| n.as_i128());
     let rules = CountRules {
         is_digit: &beadroll_core::text::is_digits,
         int: &int,

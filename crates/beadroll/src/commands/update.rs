@@ -213,29 +213,50 @@ fn edits(
         Some(key) => Some(resolve_arg(st, key)?.uid()),
         None => None,
     };
+    let change = Change {
+        args,
+        fields,
+        status,
+        new_parent,
+        me,
+    };
     let mut ended = Vec::new();
     for issue in &targets {
-        check(st, issue, args, me, status, new_parent)?;
+        check(st, issue, &change)?;
         if status == Some("closed") && (issue.claim().is_some() || ended_by(issue, me)) {
             ended.push(issue.key().to_owned());
         }
     }
     for issue in &targets {
-        edit(&mut tx, st, issue, args, fields, status, new_parent, me)?;
+        edit(&mut tx, st, issue, &change)?;
     }
     Ok(ended)
 }
 
+/// What an update asks of every issue it names, decided once from the command line and the state.
+struct Change<'a> {
+    /// The command line.
+    args: &'a UpdateArgs,
+    /// The fields to set, and whether their text can be written.
+    fields: &'a Payload,
+    /// The status asked for, if any (`in_progress` already made a claim).
+    status: Option<&'a str>,
+    /// The new parent, if `--parent` names one.
+    new_parent: Option<EventId>,
+    /// Who is asking.
+    me: &'a Label,
+}
+
 /// Why `issue` cannot be changed as asked: a parent beneath it, someone else's claim on a status
 /// change without `--force`, or your own claim given up by reopening rather than releasing.
-fn check(
-    st: &State,
-    issue: &Issue,
-    args: &UpdateArgs,
-    me: &Label,
-    status: Option<&str>,
-    new_parent: Option<EventId>,
-) -> Result<(), Failure> {
+fn check(st: &State, issue: &Issue, change: &Change<'_>) -> Result<(), Failure> {
+    let Change {
+        args,
+        status,
+        new_parent,
+        me,
+        ..
+    } = *change;
     let held = issue.claim();
     if let Some(parent) = new_parent
         && (parent == issue.uid() || st.reaches(issue.uid(), parent))
@@ -262,20 +283,19 @@ fn check(
 }
 
 /// Emits the changes to one issue: its fields, its status, its labels and its parent.
-#[allow(
-    clippy::too_many_arguments,
-    reason = "The edit transaction needs the request, actor and field changes together"
-)]
 fn edit(
     tx: &mut Emitter<'_>,
     st: &State,
     issue: &Issue,
-    args: &UpdateArgs,
-    fields: &Payload,
-    status: Option<&str>,
-    new_parent: Option<EventId>,
-    me: &Label,
+    change: &Change<'_>,
 ) -> Result<(), Failure> {
+    let Change {
+        args,
+        fields,
+        status,
+        new_parent,
+        me,
+    } = *change;
     let uid = issue.uid().to_string();
     if !fields.values.is_empty() {
         tx.emit(

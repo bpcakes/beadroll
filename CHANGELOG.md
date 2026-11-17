@@ -13,6 +13,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   locked dependency so CI's advisory check passes. Build the nightly's Git 2.40.4
   in GNU C17 mode so newer compilers' C23 default does not break it (roll-ogg8).
 
+- A `GIT_CONFIG_COUNT` within a few of the largest `i128` is `CONFIG`: bead's own settings after
+  it would be numbered past what an `i128`, and git, can read. It used to write those indices as
+  39-digit text, which git then refused. The count is now plain `i128` arithmetic, not a decimal
+  bignum of its own.
 - `close`, `reopen` and `delete` given a `--reason` that is not UTF-8 fail only when they would
   write an event, as `release`, `update` and `create` do. Closing an issue already closed, or
   reopening one already open, answered `VALIDATION` though it writes nothing; it now answers
