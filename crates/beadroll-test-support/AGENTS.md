@@ -23,6 +23,9 @@ tests it builds events, and for the round-trip properties it draws JSON values.
   The child test keeps `BEAD_UNDER_TEST` for that selection; a machine still scrubs it before
   starting bead itself.
 - `src/lib.rs`: `Json` (beadroll-core's `Value`) and `parse_json`, which read `bead --json`.
+- `src/gate.rs`: `Gate`, the `pause-until` handshake that holds bead at a failpoint while the
+  test acts (`at`, `action`, `meet`, `ready`, `open`), and `beside`, which runs bead in a thread
+  while the test meets it at its gates. The sync crate's in-process tests use the same `Gate`.
 - `src/wait.rs`: `wait_until`, a condition polled until a deadline, which fails the test naming
   what it waited for. `Sandbox::receive_pack_running` and `Sandbox::await_remote_settled` cover
   a push still running at the remote after bead gave up on it: the test waits for it to land or

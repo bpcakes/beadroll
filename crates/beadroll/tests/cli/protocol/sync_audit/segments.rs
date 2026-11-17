@@ -9,7 +9,7 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use beadroll_test_support::{Json, Machine, UNPROFILED, parse_json};
+use beadroll_test_support::{Gate, Json, Machine, UNPROFILED, parse_json};
 
 use super::{Worker, jsonl, own_segment, setup, setup_with, wait_marker};
 use crate::protocol::sync_audit::ProcessSession;
@@ -188,11 +188,11 @@ fn bug_file_size_limit_partial_append_must_not_poison_next_write() {
 fn bug_kill_mid_append_then_successful_write_must_stay_readable() {
     let sandbox = crate::sandbox();
     let (a, key) = setup_with(&sandbox, crate::rust_only);
-    let marker = sandbox.root().join("append-started");
-    let spec = format!("append.mid@always=pause-until({})", marker.display());
+    let appending = Gate::new(&sandbox, "append-started");
+    let spec = appending.at("append.mid@always");
     let writing = a.cmd(["create", "killed writer", "--json"]);
     let mut worker = Worker::start(writing.env("BEAD_FAILPOINTS", spec), ProcessSession::New);
-    wait_marker(&sandbox.root().join("append-started.ready"), &mut worker);
+    wait_marker(&appending.ready(), &mut worker);
     assert_eq!(a.show(&key)["title"].as_str(), Some("Original issue"));
     worker.kill().expect("the writer's process group");
     let killed = worker.communicate(Some(Duration::from_secs(5)));

@@ -131,7 +131,7 @@ mod v2_in_flight_attempt_across_actors {
     use beadroll_test_support::{REMOTE_SETTLES, git, wait_until};
 
     use super::*;
-    use crate::hardening::gate::{Gate, beside};
+    use beadroll_test_support::{Gate, beside};
 
     /// `path` quoted as one shell word.
     fn quoted(path: &Path) -> String {

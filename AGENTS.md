@@ -78,8 +78,8 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
   `BEAD_UNDER_TEST` names another. A fault is injected through a failpoint (`BEAD_FAILPOINTS`,
   listed in `crates/beadroll-store/src/failpoint.rs`), never by patching or by sleeping:
   `backoff@always=skip` skips the wait between attempts, and `pause-until(PATH)` holds bead at a
-  point for the test to act (`hardening/gate.rs`); such a test's machine is `rust_only`, this
-  build's binary. In-crate tests pass the failpoint registry in `Settings`, never through the
+  point for the test to act (`beadroll_test_support::Gate`); such a test's machine is `rust_only`,
+  this build's binary. In-crate tests pass the failpoint registry in `Settings`, never through the
   process environment. Some waits cannot be a failpoint, such as a hook touching a file or a push
   that bead gave up on still running at the remote. Those poll with `wait_until`, or with
   `Sandbox::await_remote_settled` for the push, and both fail the test at their deadline; a fixed

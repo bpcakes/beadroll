@@ -1,47 +1,14 @@
-//! Starting, waiting for and stopping `bead` beside the test, and the
-//! `pause-until` gates the test stops it at.
+//! Starting, waiting for and stopping `bead` beside the test.
 
 use std::io::Read;
 use std::os::unix::process::CommandExt as _;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Child, ExitStatus, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
-use beadroll_test_support::{Invocation, Run, Sandbox};
+use beadroll_test_support::{Invocation, Run};
 use rustix::process::{Pid, Signal, kill_process_group};
-
-/// The sandbox handshake for `pause-until(PATH)`: bead creates PATH.ready at the boundary and
-/// resumes when PATH.go exists.
-pub(super) struct Gate(PathBuf);
-
-impl Gate {
-    /// A gate named `name` in the sandbox.
-    pub(super) fn new(sandbox: &Sandbox, name: &str) -> Gate {
-        Gate(sandbox.root().join(name))
-    }
-
-    /// `BEAD_FAILPOINTS` for `point`, with its selector, stopping at this gate.
-    pub(super) fn at(&self, point: &str) -> String {
-        format!("{point}=pause-until({})", self.0.display())
-    }
-
-    fn file(&self, suffix: &str) -> PathBuf {
-        let mut name = self.0.clone().into_os_string();
-        name.push(suffix);
-        PathBuf::from(name)
-    }
-
-    /// The file bead touches once it has stopped at this gate.
-    pub(super) fn ready(&self) -> PathBuf {
-        self.file(".ready")
-    }
-
-    /// Lets bead go on.
-    pub(super) fn open(&self) {
-        std::fs::write(self.file(".go"), b"").expect("the gate's go file");
-    }
-}
 
 /// A `bead` started beside the test: nothing on its standard input, its output drained by
 /// separate threads, and its own process group so a kill reaches its children too.

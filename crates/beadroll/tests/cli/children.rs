@@ -9,7 +9,7 @@ use std::process::Command;
 
 use beadroll_test_support::{Invocation, Json, Machine, Run, Sandbox, git, parse_json};
 
-use crate::hardening::gate::{Gate, beside};
+use beadroll_test_support::{Gate, beside};
 
 /// The git on the test's PATH.
 fn real_git() -> PathBuf {

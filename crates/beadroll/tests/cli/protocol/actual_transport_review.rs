@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use beadroll_store::glob_ending;
 use beadroll_test_support::{Machine, Run, Sandbox, git};
 
-use crate::hardening::gate::{Gate, beside};
+use beadroll_test_support::{Gate, beside};
 
 /// Machine `NAME-a`'s tracker with one issue, "release target", synced to machine `NAME-b`, and
 /// then claimed by machine a: both machines (made by `make`) and the issue's key.

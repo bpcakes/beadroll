@@ -64,17 +64,17 @@ storage, protocol behavior and fault recovery.
   the unpublished counts (`parity/pending.rs`), and what bead says to arguments, actors and paths
   that are not UTF-8 (`parity/inputs.rs`, `parity/actors.rs`).
 - `tests/cli/protocol.rs`, `hardening.rs`, `storage.rs`, `compat.rs`, `replay.rs`: the black-box
-  tests of their respective subjects (the real-export test is `#[ignore]`d, run by
-  `cargo xtask check --real`); `hardening/gate.rs`: the `pause-until` handshake a test holds bead
-  at. `tests/cli/sweep.rs`: the ownership protocol enumerated, its boundaries reached through
-  failpoints (`fault_env`), each
-  schedule showing that its fault fired (`fault_fired`); the thirteen-schedule slice runs in the
-  fast suite, and `sweep/sweep_failure_reporting.rs` checks
-  that a failed schedule fails it, and one whose fault never fired.
-  `tests/cli/stress.rs`: two randomised models, ignored by default; they draw from
-  `stress/seeded_random.rs`, whose MT19937 stream preserves recorded scenarios for each seed.
+  tests of their respective subjects (the real-export test is `#[ignore]`d, run by `cargo xtask
+  check --real`); a test holds bead at a `pause-until` failpoint with `beadroll_test_support::Gate`.
+  `tests/cli/sweep.rs`: the ownership protocol enumerated, its boundaries reached through failpoints
+  (`fault_env`), each schedule showing that its fault fired (`fault_fired`); the thirteen-schedule
+  slice runs in the fast suite, and `sweep/sweep_failure_reporting.rs` checks that a failed schedule
+  fails it, and one whose fault never fired. `tests/cli/stress.rs`: two randomised models, ignored
+  by default; they draw from `stress/seeded_random.rs`, whose MT19937 stream preserves recorded
+  scenarios for each seed.
 - `main.rs`'s `rust_only`: the machine of a test that uses build-specific failpoints, reads the
-  store in the test process, or checks a build-specific contract. It runs this build's binary whatever `BEAD_UNDER_TEST` says.
+  store in the test process, or checks a build-specific contract. It runs this build's binary
+  whatever `BEAD_UNDER_TEST` says.
 
 ## Edit here for X
 

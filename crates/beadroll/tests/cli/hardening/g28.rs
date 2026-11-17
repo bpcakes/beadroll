@@ -11,7 +11,7 @@ mod g28_only_the_lock_holder_sweeps_pending {
 
     use beadroll_test_support::{Json, Machine, Run, Sandbox, code};
 
-    use crate::hardening::gate::{Gate, beside};
+    use beadroll_test_support::{Gate, beside};
 
     /// The hook that stops a command after the remote took its push, before bead hears back.
     const CRASH_AFTER_PUSH: &str = "BEAD_TEST_CRASH_AFTER_PUSH";

@@ -14,6 +14,7 @@
 #![allow(clippy::print_stderr, reason = "a failed fixture is a failed test")]
 
 pub mod events;
+mod gate;
 mod isolation;
 mod machine;
 mod sandbox;
@@ -21,6 +22,7 @@ pub mod values;
 mod wait;
 
 pub use beadroll_core::json::Value as Json;
+pub use gate::{Gate, beside};
 pub use isolation::assert_git_isolation;
 pub use machine::{Invocation, Machine, Run, UNPROFILED, code};
 pub use sandbox::{Sandbox, UNDER_TEST, built_bead, git, git_command, select_bead};

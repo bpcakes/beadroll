@@ -11,7 +11,8 @@ use std::time::Duration;
 use beadroll_store::glob_ending;
 use beadroll_test_support::{Json, Machine, Run, Sandbox, code, parse_json};
 
-use started::{Gate, Started, wait};
+use beadroll_test_support::Gate;
+use started::{Started, wait};
 
 mod damaged;
 mod started;
