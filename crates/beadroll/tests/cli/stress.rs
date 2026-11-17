@@ -8,10 +8,6 @@
 //! sequences. The reference model is sequential; each wave of the concurrency model has six
 //! workers. Independent checkpoint reads run one thread per machine ([`each`]).
 
-mod concurrent_reaudit;
-mod root_audit_stress;
-mod seeded_random;
-
 pub(crate) use seeded_random::Rng;
 
 use std::collections::BTreeSet;
@@ -174,3 +170,7 @@ pub(crate) fn json_file(path: &Path) -> Option<Json> {
     };
     Some(parse_json(&text).unwrap_or_else(|error| panic!("{}: {error}", path.display())))
 }
+
+mod concurrent_commands;
+mod reference_model;
+mod seeded_random;

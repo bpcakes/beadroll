@@ -1,6 +1,5 @@
 //! Command behavior and compatibility tests.
 
-mod bp_test;
 mod claim_endings;
 mod claim_locations;
 mod cli_compatibility;
@@ -8,6 +7,7 @@ mod clock;
 mod close_recursive;
 mod colour;
 mod deep_tree;
+mod end_to_end;
 pub(crate) mod fixtures;
 mod format_policy;
 mod git_helper;

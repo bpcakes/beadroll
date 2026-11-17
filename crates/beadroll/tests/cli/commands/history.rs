@@ -9,7 +9,7 @@ use beadroll_core::json::{Format, Object, write};
 use beadroll_core::time::event_time;
 use beadroll_test_support::{Json, Machine, Sandbox, json, parse_json};
 
-use super::bp_test::segments;
+use super::end_to_end::segments;
 
 /// The words of the human `bead log KEY` row for each event, in order.
 fn rows(machine: &Machine, key: &str) -> Vec<Vec<String>> {

@@ -86,7 +86,7 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
   sleep never stands in for them.
 - Some old tests are history, not a pattern; do not copy them:
   - Module names that carry a review or finding id: `hardening/g01`–`g65` and `v1`–`v9`,
-    `bp_test`, `replay_third_review`, and the `*_audit`,
+    `replay_third_review`, and the `*_audit`,
     `*_reaudit` and `*_review4` modules.
   - Helper docs that start with the Python function a helper was ported from
     (`` `_g08_machine`: ``).

@@ -10,7 +10,7 @@ use beadroll_core::json::{Format, write};
 use beadroll_store::{Clock, uuid7};
 use beadroll_test_support::{Json, Machine, code, git, json, parse_json};
 
-use super::bp_test::segments;
+use super::end_to_end::segments;
 
 pub(crate) fn create(machine: &Machine, title: &str) -> String {
     machine.bead(["create", title]).unwrap()["id"]
