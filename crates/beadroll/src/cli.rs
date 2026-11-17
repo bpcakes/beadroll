@@ -2,6 +2,7 @@
 //! arguments. It finds the workspace, runs a command, publishes what it wrote and renders the
 //! result as JSON with `--json` or as human-readable lines.
 
+mod args;
 #[cfg(test)]
 mod ending;
 mod free;
@@ -11,6 +12,7 @@ mod output;
 mod paint;
 mod parse;
 mod recap;
+mod report;
 mod spec;
 mod tempdir;
 mod texts;
@@ -21,17 +23,18 @@ use std::os::unix::ffi::OsStrExt as _;
 use std::process::ExitCode;
 use std::sync::Arc;
 
+use args::{create_args, filters, list_args, network, owned, update_args};
 use beadroll_core::code::Code;
 use beadroll_core::event::FORMAT;
-use beadroll_core::json::{self, Format, Int, Object, Value};
+use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::query::Edges;
-use beadroll_core::text::json_ascii_bytes;
 use beadroll_store::{Clock, Settings, detect_actor, find_workspace, nearest_harness};
 use beadroll_sync::NetworkMode;
 use beadroll_sync::publish_soon_at;
 use output::{Stream, Unwritten, emit};
 use paint::{Colors, When};
 use parse::{Namespace, Page, Parsed};
+use report::{report, warn};
 use spec::Scope;
 
 use crate::cli::paint::Color;
@@ -561,91 +564,6 @@ fn real_seconds(clock: &Clock) -> f64 {
     clock.real_ns() as f64 / 1e9
 }
 
-/// `list`'s arguments.
-fn list_args(ns: &Namespace) -> commands::ListArgs {
-    commands::ListArgs {
-        status: ns.texts("status").to_vec(),
-        all: ns.flag("all"),
-        deferred: ns.flag("deferred"),
-        title_contains: owned(ns, "title_contains"),
-        id: ns.texts("id").to_vec(),
-        parent: owned(ns, "parent"),
-        filters: filters(ns),
-    }
-}
-
-/// `create`'s arguments.
-fn create_args(ns: &Namespace) -> commands::CreateArgs {
-    commands::CreateArgs {
-        title_pos: owned(ns, "title_pos"),
-        title: owned(ns, "title"),
-        fields: content(ns),
-        labels: ns.texts("labels").to_vec(),
-        deps: ns.texts("deps").to_vec(),
-        silent: ns.flag("silent"),
-    }
-}
-
-/// `update`'s arguments, with the command line as its receipt names it.
-fn update_args(ns: &Namespace) -> commands::UpdateArgs {
-    commands::UpdateArgs {
-        ids: ns.texts("ids").to_vec(),
-        title: owned(ns, "title"),
-        fields: content(ns),
-        claim: ns.flag("claim"),
-        force: ns.flag("force"),
-        add_label: ns.texts("add_label").to_vec(),
-        remove_label: ns.texts("remove_label").to_vec(),
-        set_labels: owned(ns, "set_labels"),
-        network: network(ns),
-        remote: owned(ns, "remote"),
-        asked: ns.asked(),
-    }
-}
-
-/// Whether the command may reach its coordination remote: not with `--offline`.
-fn network(ns: &Namespace) -> NetworkMode {
-    if ns.flag("offline") {
-        NetworkMode::Offline
-    } else {
-        NetworkMode::Online
-    }
-}
-
-/// A text argument, owned.
-fn owned(ns: &Namespace, dest: &str) -> Option<OsString> {
-    ns.text(dest).map(OsStr::to_os_string)
-}
-
-/// The fields `create` and `update` both set.
-fn content(ns: &Namespace) -> commands::ContentArgs {
-    commands::ContentArgs {
-        description: owned(ns, "description"),
-        description_file: owned(ns, "description_file"),
-        acceptance_criteria: owned(ns, "acceptance_criteria"),
-        notes: owned(ns, "notes"),
-        design: owned(ns, "design"),
-        priority: owned(ns, "priority"),
-        issue_type: owned(ns, "type"),
-        status: owned(ns, "status"),
-        assignee: owned(ns, "assignee"),
-        estimate: ns.int("estimate").cloned(),
-        external_ref: owned(ns, "external_ref"),
-        parent: owned(ns, "parent"),
-    }
-}
-
-/// The filters `list` and `ready` share.
-fn filters(ns: &Namespace) -> commands::FilterArgs {
-    commands::FilterArgs {
-        issue_type: ns.texts("type").to_vec(),
-        label: ns.texts("label").to_vec(),
-        priority: owned(ns, "priority"),
-        assignee: owned(ns, "assignee"),
-        limit: ns.int("limit").cloned().unwrap_or_else(|| Int::from(0)),
-    }
-}
-
 /// `ps -o ppid=,args= -p PID` from `PATH`: its exit status and output, or `None` when it cannot run.
 fn run_ps(pid: u32) -> Option<(i32, String)> {
     let output = std::process::Command::new("ps")
@@ -659,68 +577,4 @@ fn run_ps(pid: u32) -> Option<(i32, String)> {
 
 fn write(value: &Value, format: Format) -> Result<String, Failure> {
     json::write(value, format).map_err(|e| Failure::new(Code::Validation, e.to_string()))
-}
-
-/// Reports a post-commit count warning separately, preserving every command's stdout shape.
-fn warn(failure: &Failure, output: OutputMode, color_mode: Color) {
-    let text = if output == OutputMode::Json {
-        let raw = failure.raw.as_deref().unwrap_or(failure.message.as_bytes());
-        format!(
-            "{{\"warning\": {{\"code\": {}, \"message\": {}}}}}",
-            json_ascii_bytes(failure.code.as_str().as_bytes()),
-            json_ascii_bytes(raw)
-        )
-    } else {
-        let line = Line::toned(Tone::Warning, "Warning:")
-            .with(Tone::Plain, " ")
-            .with(Tone::Plain, failure.printed());
-        paint::render_all(&[line], color_mode)
-    };
-    // A warning cannot turn an already committed command into a failure, even if stderr is gone.
-    let _ = emit(Some(&text), Stream::Stderr);
-}
-
-/// Reports `failure` on standard error: `{"error": {"code", "message"}}` with `--json`, else
-/// `Error: message`, painted when `color`. The status is the command's (2 for `USAGE`, else 1),
-/// whatever stderr does.
-fn report(failure: &Failure, output: OutputMode, color_mode: Color) -> u8 {
-    let text = match (output == OutputMode::Json, &failure.raw) {
-        // Bytes that are not UTF-8 become U+FFFD.
-        (true, Some(raw)) => format!(
-            "{{\"error\": {{\"code\": {}, \"message\": {}}}}}",
-            json_ascii_bytes(failure.code.as_str().as_bytes()),
-            json_ascii_bytes(raw)
-        ),
-        (true, None) => {
-            let mut error = Object::new();
-            error.insert("code".into(), Value::from(failure.code.as_str()));
-            error.insert("message".into(), Value::from(failure.message.as_str()));
-            let mut body = Object::new();
-            body.insert("error".into(), Value::from(error));
-            json::write(&Value::from(body), Format::ASCII).unwrap_or_default()
-        }
-        (false, _) => {
-            let mut lines = vec![
-                Line::toned(Tone::Error, "Error:")
-                    .with(Tone::Plain, " ")
-                    .with(Tone::Plain, failure.printed()),
-            ];
-            if let Some(after) = &failure.after {
-                lines.push(Line::new());
-                lines.extend(
-                    after
-                        .split('\n')
-                        .map(|line| match line.strip_prefix("Usage:") {
-                            Some(usage) => {
-                                Line::toned(Tone::Heading, "Usage:").with(Tone::Plain, usage)
-                            }
-                            None => Line::from(line),
-                        }),
-                );
-            }
-            paint::render_all(&lines, color_mode)
-        }
-    };
-    let _ = emit(Some(&text), Stream::Stderr);
-    if failure.code == Code::Usage { 2 } else { 1 }
 }
