@@ -39,7 +39,7 @@ fn set_stamps(machine: &Machine, key: &str) -> Vec<i64> {
 /// F14: a clock past year 2100 must not crash create. Set every clock reading to the year 2110
 /// with `clock@always=at(4429000000000000000)`.
 #[test]
-fn f14_future_clock_create_is_a_structured_error() {
+fn future_clock_create_is_a_structured_error() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "f14");
     let created = machine

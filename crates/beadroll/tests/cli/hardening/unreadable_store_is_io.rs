@@ -21,7 +21,7 @@ fn skipped_as_root() -> bool {
 
 /// A failed JSON call's code and message; success returns `None` and stdout. A crash returns
 /// `TRACEBACK`; an unstructured failure returns `UNSTRUCTURED`, both with stderr.
-fn g52_error(run: &Run) -> (Option<String>, String) {
+fn failed_call(run: &Run) -> (Option<String>, String) {
     if run.returncode() == 0 {
         return (None, run.stdout.clone());
     }
@@ -74,7 +74,7 @@ impl Drop for Unreadable {
 /// G52: an unreadable journal directory makes `show` report IO naming the directory, not a
 /// missing tracker.
 #[test]
-fn g52_unlistable_own_journal_is_io_not_no_tracker() {
+fn unlistable_own_journal_is_io_not_no_tracker() {
     if skipped_as_root() {
         return;
     }
@@ -84,7 +84,7 @@ fn g52_unlistable_own_journal_is_io_not_no_tracker() {
     let key = printed_id(a.bead(["create", "x"]));
     let journal = own_journal(&a);
     let _mode = Unreadable::new(&journal, 0o000);
-    let (code, message) = g52_error(&a.run(["show", &key, "--json"]));
+    let (code, message) = failed_call(&a.run(["show", &key, "--json"]));
     assert_eq!(code.as_deref(), Some("IO"), "{message}");
     let journal = journal.to_str().unwrap();
     assert!(message.contains(journal), "{journal} not in {message}");
@@ -93,7 +93,7 @@ fn g52_unlistable_own_journal_is_io_not_no_tracker() {
 /// G52: with `claims/` unreadable, `ready` answers `IO`, instead of showing the claimed issue
 /// open and listing it (exit 0).
 #[test]
-fn g52_unlistable_claims_do_not_turn_a_claimed_issue_ready() {
+fn unlistable_claims_do_not_turn_a_claimed_issue_ready() {
     if skipped_as_root() {
         return;
     }
@@ -104,7 +104,7 @@ fn g52_unlistable_claims_do_not_turn_a_claimed_issue_ready() {
     a.bead(["update", &key, "--claim"]);
     assert_eq!(a.show(&key)["status"].as_str(), Some("in_progress"));
     let _mode = Unreadable::new(&own_journal(&a).join("claims"), 0o000);
-    let (code, message) = g52_error(&a.run(["ready", "--json"]));
+    let (code, message) = failed_call(&a.run(["ready", "--json"]));
     assert_eq!(
         code.as_deref(),
         Some("IO"),
@@ -116,7 +116,7 @@ fn g52_unlistable_claims_do_not_turn_a_claimed_issue_ready() {
 /// and then missing afterwards (it started a second chain, reported as a copied machine
 /// identity).
 #[test]
-fn g52_create_into_an_unlistable_journal_is_refused_not_lost() {
+fn create_into_an_unlistable_journal_is_refused_not_lost() {
     if skipped_as_root() {
         return;
     }
@@ -131,7 +131,7 @@ fn g52_create_into_an_unlistable_journal_is_refused_not_lost() {
     b.bead(["create", "first"]);
     // writable and searchable, not listable
     let _mode = Unreadable::new(&own_journal(&b), 0o300);
-    let (code, message) = g52_error(&b.run(["create", "second", "--json"]));
+    let (code, message) = failed_call(&b.run(["create", "second", "--json"]));
     if code.is_none() {
         // acknowledged: it must then exist
         let key = parse_json(&message).unwrap()["id"]
@@ -153,7 +153,7 @@ fn g52_create_into_an_unlistable_journal_is_refused_not_lost() {
 /// G52: `BEAD_HOME` naming a regular file is `IO` for `show` and `info`, as it is for `create`
 /// on the same store, not `NOT_INITIALIZED` for `show` and exit 0 with no issues for `info`.
 #[test]
-fn g52_store_that_is_not_a_directory_is_io() {
+fn store_that_is_not_a_directory_is_io() {
     if skipped_as_root() {
         return;
     }
@@ -166,7 +166,7 @@ fn g52_store_that_is_not_a_directory_is_io() {
     a.extra
         .insert("BEAD_HOME".into(), not_a_dir.into_os_string());
     for args in [vec!["show", key.as_str()], vec!["info"]] {
-        let (code, message) = g52_error(&a.run(args.iter().chain(&["--json"])));
+        let (code, message) = failed_call(&a.run(args.iter().chain(&["--json"])));
         assert_eq!(code.as_deref(), Some("IO"), "{}: {message}", args[0]);
     }
 }
@@ -175,7 +175,7 @@ fn g52_store_that_is_not_a_directory_is_io() {
 /// treat EACCES as an absent tracker. Skip under root, where chmod does not enforce this
 /// denial.
 #[test]
-fn g52_unenterable_store_is_io_not_no_tracker() {
+fn unenterable_store_is_io_not_no_tracker() {
     if skipped_as_root() {
         return;
     }
@@ -186,7 +186,7 @@ fn g52_unenterable_store_is_io_not_no_tracker() {
     // its mode comes back before the sandbox goes, which could not remove it otherwise
     let _mode = Unreadable::new(&a.store(), 0o000);
     for args in [vec!["show", key.as_str()], vec!["info"]] {
-        let (code, message) = g52_error(&a.run(args.iter().chain(&["--json"])));
+        let (code, message) = failed_call(&a.run(args.iter().chain(&["--json"])));
         assert_eq!(code.as_deref(), Some("IO"), "{}: {message}", args[0]);
     }
 }

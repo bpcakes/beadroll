@@ -20,7 +20,7 @@ fn receipts(machine: &Machine) -> usize {
 
 /// F01: a failed command must not make a retry of an accepted command look new.
 #[test]
-fn f01_failed_command_does_not_forget_an_accepted_retry() {
+fn failed_command_does_not_forget_an_accepted_retry() {
     let sandbox = crate::sandbox();
     let owner = machine(&sandbox, "f01");
     let key = printed_id(owner.bead(["create", "close once"]));
@@ -55,7 +55,7 @@ fn f01_failed_command_does_not_forget_an_accepted_retry() {
 
 /// F02: a retry decodes the same file as the same request, whatever the locale.
 #[test]
-fn f02_locale_retry_keeps_the_accepted_description() {
+fn locale_retry_keeps_the_accepted_description() {
     let sandbox = crate::sandbox();
     let body = sandbox.root().join("cafe.txt");
     std::fs::write(&body, "café body\n".as_bytes()).unwrap();
@@ -182,7 +182,7 @@ fn receipt_identity_holds_for_actor_sync_stdin_and_json() {
 
 /// E12: rendering in a reduced locale must not report failure after committing.
 #[test]
-fn e12_ascii_locale_cannot_turn_a_committed_create_into_failure() {
+fn ascii_locale_cannot_turn_a_committed_create_into_failure() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "e12-ascii");
     let result = machine
@@ -202,7 +202,7 @@ fn e12_ascii_locale_cannot_turn_a_committed_create_into_failure() {
 
 /// E13: changed file input is a new semantic request after lost-ack recovery.
 #[test]
-fn e13_receipt_identity_includes_resolved_file_content() {
+fn receipt_identity_includes_resolved_file_content() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "e13-receipt-file");
     let key = printed_id(machine.bead(["create", "receipt target"]));

@@ -269,7 +269,7 @@ fn a_published_count_that_is_not_a_number_is_an_io_error() {
 /// AD03: valid i128 inputs can still overflow the caller's subtraction, aggregate or final
 /// attempt increment. None may turn into a default count, panic or partial durable write.
 #[test]
-fn ad03_unpublished_count_arithmetic_overflow_is_an_unchanged_store_error() {
+fn unpublished_count_arithmetic_overflow_is_an_unchanged_store_error() {
     for boundary in ["subtraction", "aggregate", "attempt"] {
         let sandbox = crate::sandbox();
         let r = crate::rust_only(&sandbox, "r");
@@ -331,7 +331,7 @@ fn ad03_unpublished_count_arithmetic_overflow_is_an_unchanged_store_error() {
 /// AF01: the count is valid before the write and overflows only after its event is committed.
 /// A warning preserves the success and result shape, so a caller has no false failure to retry.
 #[test]
-fn af01_a_committed_write_keeps_its_result_when_the_unpublished_count_overflows() {
+fn a_committed_write_keeps_its_result_when_the_unpublished_count_overflows() {
     for shape in ["object", "array", "silent", "human", "init"] {
         let sandbox = crate::sandbox();
         let r = crate::rust_only(&sandbox, "r");

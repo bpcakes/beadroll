@@ -62,7 +62,7 @@ fn runs_without_the_remote(a: &Machine, keys: &[String]) -> [(&'static str, Run)
 /// G37: with `--json`, an owner's close/delete/update --status closed whose publish failed
 /// must say so.
 #[test]
-fn g37_json_close_delete_update_say_they_were_not_published() {
+fn json_close_delete_update_say_they_were_not_published() {
     let sandbox = crate::sandbox();
     let (a, keys) = setup(&sandbox);
     // the remote answers

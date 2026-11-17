@@ -16,7 +16,7 @@ fn alive(pid: i32) -> bool {
 
 /// F15: a fetch that times out does not leave git-upload-pack running.
 #[test]
-fn f15_timeout_reaps_the_git_helper() {
+fn timeout_reaps_the_git_helper() {
     let sandbox = crate::sandbox();
     let exec_path = PathBuf::from(git(["--exec-path"], None).trim());
     let fake = sandbox.root().join("git-exec");

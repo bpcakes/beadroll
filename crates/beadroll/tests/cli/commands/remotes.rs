@@ -16,7 +16,7 @@ fn meta(machine: &Machine) -> String {
 
 /// F03: uppercase schemes, slash passwords and token userinfo are not stored or shown.
 #[test]
-fn f03_credential_urls_are_not_stored() {
+fn credential_urls_are_not_stored() {
     let sandbox = crate::sandbox();
     let cases = [
         (
@@ -117,7 +117,7 @@ fn remote_url_shapes_that_are_already_safe() {
 
 /// E02: remote URL credentials must be redacted and protected at rest.
 #[test]
-fn e02_remote_credentials_are_not_disclosed_or_world_readable() {
+fn remote_credentials_are_not_disclosed_or_world_readable() {
     let sandbox = crate::sandbox();
     let secret = "supersecret";
     let remote = format!("https://alice:{secret}@example.invalid/private.git");

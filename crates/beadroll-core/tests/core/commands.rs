@@ -9,7 +9,7 @@ mod dangling_dependencies {
     /// F09: a dependency removed before its target exists does not reappear, and does not cycle
     /// (the replay half: the removal names the target's future uid, and the create comes after).
     #[test]
-    fn f09_dangling_dependency_can_be_retracted_before_its_target_exists() {
+    fn dangling_dependency_can_be_retracted_before_its_target_exists() {
         let create_a = "01900000-0000-7000-8000-000000000001";
         let remove = "01900000-0000-7000-8000-000000000002";
         let create_b = "01900000-0000-7000-8000-000000000003";

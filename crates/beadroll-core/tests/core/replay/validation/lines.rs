@@ -41,7 +41,7 @@ fn ids(events: &[Json]) -> Vec<&str> {
 
 /// U01: 1e400 read as infinity, which no export can write; like NaN, it is refused.
 #[test]
-fn u01_numbers_beyond_a_float_are_not_json_numbers() {
+fn numbers_beyond_a_float_are_not_json_numbers() {
     for text in [
         "1e400",
         "-1e400",
@@ -72,7 +72,7 @@ fn u01_numbers_beyond_a_float_are_not_json_numbers() {
 
 /// U02: `$` let an id or a dependency end in a newline; ids match the UUID shape whole.
 #[test]
-fn u02_ids_and_deps_with_a_trailing_newline_are_not_uuids() {
+fn ids_and_deps_with_a_trailing_newline_are_not_uuids() {
     let create = event(1, "init", "a", &[], None, json!({"prefix": "ex"}));
     assert_eq!(event_problem(&create), None);
     let id = format!("{}\n", id_of(&create));
@@ -93,7 +93,7 @@ fn u02_ids_and_deps_with_a_trailing_newline_are_not_uuids() {
 /// U03: readers accept at most `MAX_DEPTH` nesting levels, the same on every machine; brackets
 /// inside strings do not count.
 #[test]
-fn u03_nesting_deeper_than_the_ceiling_is_unreadable() {
+fn nesting_deeper_than_the_ceiling_is_unreadable() {
     let nested = |depth: usize| format!("{}{}", "[".repeat(depth), "]".repeat(depth));
     assert_eq!(MAX_DEPTH, 127);
     let value = parse(nested(MAX_DEPTH).as_bytes()).unwrap().value;
@@ -122,7 +122,7 @@ fn u03_nesting_deeper_than_the_ceiling_is_unreadable() {
 
 /// U04: journal lines must be UTF-8; refuse UTF-16, UTF-32 and a UTF-8 byte-order mark.
 #[test]
-fn u04_journal_lines_are_utf8_whatever_their_first_bytes() {
+fn journal_lines_are_utf8_whatever_their_first_bytes() {
     let text = line(1, json!({}));
     let utf16 = |big: bool| -> Vec<u8> {
         text.encode_utf16()

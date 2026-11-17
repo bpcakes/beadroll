@@ -55,7 +55,7 @@ impl Chain {
 /// `BEAD_HOME` and `BEAD_WORKSPACE`, outside any repository. The sandbox removes the developer's
 /// harness, store and repository variables.
 #[test]
-fn q08_deep_valid_dependency_tree_does_not_overflow() {
+fn deep_valid_dependency_tree_does_not_overflow() {
     let sandbox = crate::sandbox();
     let mut env: BTreeMap<OsString, OsString> = std::env::vars_os()
         .filter(|(key, _)| {

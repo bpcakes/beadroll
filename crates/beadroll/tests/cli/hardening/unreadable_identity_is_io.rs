@@ -12,7 +12,7 @@ use beadroll_test_support::{Machine, Run, Sandbox, parse_json};
 
 /// A failed JSON call's code and message; a crash returns `TRACEBACK` with stderr, and no
 /// structured error returns `None` with stderr.
-fn g53_error(run: &Run) -> (Option<String>, String) {
+fn failed_call(run: &Run) -> (Option<String>, String) {
     if run.crashed() {
         return (Some("TRACEBACK".to_owned()), run.stderr.clone());
     }
@@ -49,7 +49,7 @@ fn set_up(sandbox: &Sandbox) -> (Machine, String, PathBuf) {
 /// G53: a permission error on `replica.json` is `IO`, and the advice is not to mint a new
 /// identity (which would orphan this machine's claims): fixing the mode is the whole cure.
 #[test]
-fn g53_unreadable_identity_is_io_and_does_not_advise_a_new_identity() {
+fn unreadable_identity_is_io_and_does_not_advise_a_new_identity() {
     if skipped_as_root() {
         return;
     }
@@ -60,7 +60,7 @@ fn g53_unreadable_identity_is_io_and_does_not_advise_a_new_identity() {
     // The `finally`: should starting bead panic, the sandbox goes with the file all the same.
     std::fs::set_permissions(&replica, Permissions::from_mode(0o600)).unwrap();
     assert_eq!(closed.returncode(), 1, "{}", closed.stderr);
-    let (code, message) = g53_error(&closed);
+    let (code, message) = failed_call(&closed);
     assert_eq!(
         (code.as_deref(), message.contains("mint a new")),
         (Some("IO"), false),
@@ -75,7 +75,7 @@ fn g53_unreadable_identity_is_io_and_does_not_advise_a_new_identity() {
 /// G53: guard for the fix (it passed before it too): a `replica.json` that is not UTF-8 is
 /// still a damaged identity (F13), a structured `IDENTITY` error, not a crash.
 #[test]
-fn g53_guard_undecodable_identity_stays_a_structured_identity_error() {
+fn guard_undecodable_identity_stays_a_structured_identity_error() {
     if skipped_as_root() {
         return;
     }
@@ -84,7 +84,7 @@ fn g53_guard_undecodable_identity_stays_a_structured_identity_error() {
     std::fs::write(&replica, b"{\"id\": \"\xff\xfe\"}\n").unwrap();
     let closed = a.run(["close", &key, "--json"]);
     assert_eq!(
-        g53_error(&closed).0.as_deref(),
+        failed_call(&closed).0.as_deref(),
         Some("IDENTITY"),
         "{}",
         closed.stderr

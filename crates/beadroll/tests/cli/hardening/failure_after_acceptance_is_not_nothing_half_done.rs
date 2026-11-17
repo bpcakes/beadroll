@@ -67,7 +67,7 @@ fn replica(m: &Machine) -> String {
 /// G29: failure to save metadata after remote acceptance must not report the accepted release
 /// or claiming close as an IO failure. Inject ENOSPC on every META write.
 #[test]
-fn g29_accepted_command_is_not_reported_as_io_when_meta_cannot_be_written() {
+fn accepted_command_is_not_reported_as_io_when_meta_cannot_be_written() {
     let sandbox = crate::sandbox();
     let (a, obs) = set_up(&sandbox);
     let released = printed_id(a.bead(["create", "released"]));
@@ -108,7 +108,7 @@ fn g29_accepted_command_is_not_reported_as_io_when_meta_cannot_be_written() {
 /// G29: a retry recognised from its receipt must still succeed if every subsequent META write
 /// fails with ENOSPC.
 #[test]
-fn g29_recognised_retry_is_not_reported_as_io_when_meta_cannot_be_written() {
+fn recognised_retry_is_not_reported_as_io_when_meta_cannot_be_written() {
     let sandbox = crate::sandbox();
     let (a, _) = set_up(&sandbox);
     let key = printed_id(a.bead(["create", "x"]));
@@ -137,7 +137,7 @@ fn g29_recognised_retry_is_not_reported_as_io_when_meta_cannot_be_written() {
 /// segment reports recorded-but-unpublished rather than an IO command failure. Inject ENOSPC
 /// for every write in machine b's journal folder.
 #[test]
-fn g29_owner_close_whose_publish_hits_a_full_volume_is_recorded_not_failed() {
+fn owner_close_whose_publish_hits_a_full_volume_is_recorded_not_failed() {
     let sandbox = crate::sandbox();
     let (a, _) = set_up(&sandbox);
     let key = printed_id(a.bead(["create", "x"]));

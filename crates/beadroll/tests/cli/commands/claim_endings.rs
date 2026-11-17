@@ -9,7 +9,7 @@ use super::fixtures::glob;
 
 /// Q05: a terminal tombstone transition must not survive with a live claim.
 #[test]
-fn q05_tombstone_update_cannot_leave_a_releasable_claim() {
+fn tombstone_update_cannot_leave_a_releasable_claim() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "q05-tombstone");
     a.bead(["init", "--prefix", "ex"]);
@@ -40,7 +40,7 @@ fn q05_tombstone_update_cannot_leave_a_releasable_claim() {
 
 /// Q11: close clears seen provisional claims but preserves concurrent ones.
 #[test]
-fn q11_offline_close_ends_a_provisional_claim() {
+fn offline_close_ends_a_provisional_claim() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "q11-provisional");
     a.bead(["init", "--prefix", "ex"]);

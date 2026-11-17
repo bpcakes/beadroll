@@ -107,7 +107,7 @@ fn beside_segments(store: &Path, mark: &str) -> Vec<PathBuf> {
 /// damaged foreign segment, every path under BEAD_HOME is owner-only (0700 directories,
 /// 0600/0400 files).
 #[test]
-fn g47_every_store_path_is_owner_only_under_umask_022() {
+fn every_store_path_is_owner_only_under_umask_022() {
     let sandbox = crate::sandbox();
     let (a, b) = (machine(&sandbox, "g47-a"), machine(&sandbox, "g47-b"));
     let origin = sandbox.origin().to_str().expect("a UTF-8 path");
@@ -149,7 +149,7 @@ fn g47_every_store_path_is_owner_only_under_umask_022() {
 
 /// G47: `machines --name` as the first command in a fresh BEAD_HOME creates it 0755.
 #[test]
-fn g47_machines_name_as_first_command_makes_a_private_home() {
+fn machines_name_as_first_command_makes_a_private_home() {
     let sandbox = crate::sandbox();
     let m = machine(&sandbox, "g47-first");
     let named = m.run(["machines", "--name", "deadbeef=laptop", "--json"]);
@@ -162,7 +162,7 @@ fn g47_machines_name_as_first_command_makes_a_private_home() {
 /// same floating-point second, exposing filename collisions. This build-specific clock test
 /// does not depend on umask.
 #[test]
-fn g47_two_torn_fragments_in_one_second_are_both_kept() {
+fn two_torn_fragments_in_one_second_are_both_kept() {
     let sandbox = crate::sandbox();
     let m = crate::rust_only(&sandbox, "g47-torn");
     m.bead(["init", "--prefix", "ex"]);

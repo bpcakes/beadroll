@@ -5,8 +5,9 @@ use beadroll_store::{Workspace, active_segment, append_events, encode_events};
 use beadroll_test_support::events::{Event, id};
 use beadroll_test_support::json;
 
+/// AD04: segment rotation exhaustion lacked storage-boundary coverage.
 #[test]
-fn ad04_rotation_accepts_the_last_number_and_refuses_exhaustion_without_writing() {
+fn rotation_accepts_the_last_number_and_refuses_exhaustion_without_writing() {
     for last in [i128::MAX - 1, i128::MAX] {
         let root = tempfile::tempdir().unwrap();
         let ws = Workspace::new(

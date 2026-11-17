@@ -29,7 +29,7 @@ fn setup(sandbox: &Sandbox) -> Machine {
 /// directory named `~` in the checkout holding the journal and the machine identity; from
 /// `src/` the tracker is missing.
 #[test]
-fn g35_tilde_bead_home_means_the_users_home() {
+fn tilde_bead_home_means_the_users_home() {
     let sandbox = crate::sandbox();
     let m = setup(&sandbox);
     let fake = sandbox.root().join("fakehome");
@@ -79,7 +79,7 @@ fn g35_tilde_bead_home_means_the_users_home() {
 /// G35: `BEAD_HOME=state/beads` writes the store (journal, lock, meta, machine identity) under
 /// the current directory of each command.
 #[test]
-fn g35_relative_bead_home_never_writes_into_the_checkout() {
+fn relative_bead_home_never_writes_into_the_checkout() {
     let sandbox = crate::sandbox();
     let m = setup(&sandbox);
     let made = m

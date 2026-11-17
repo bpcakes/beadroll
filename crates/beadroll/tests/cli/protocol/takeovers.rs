@@ -6,7 +6,7 @@ use crate::commands::fixtures::machine;
 
 /// E03: a takeover must fence the prior owner's stale terminal transition.
 #[test]
-fn e03_takeover_fences_an_owners_concurrent_offline_delete() {
+fn takeover_fences_an_owners_concurrent_offline_delete() {
     let sandbox = crate::sandbox();
     let owner = machine(&sandbox, "e03-owner");
     let key = printed_id(owner.bead(["create", "terminal race"]));

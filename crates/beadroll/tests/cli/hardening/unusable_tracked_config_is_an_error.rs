@@ -8,7 +8,7 @@ use beadroll_test_support::{Machine, Run, Sandbox, git, parse_json};
 
 /// A failed JSON call's error code; `TRACEBACK` for a crash (traceback, panic or fatal signal),
 /// or `None` for neither.
-fn g51_code(run: &Run) -> Option<String> {
+fn error_code(run: &Run) -> Option<String> {
     let document = parse_json(&run.stderr).ok();
     let code = document.and_then(|document| document["error"]["code"].as_str().map(str::to_owned));
     code.or_else(|| run.crashed().then(|| "TRACEBACK".to_owned()))
@@ -57,7 +57,7 @@ fn unresolvable_config_link_is_config_not_absent() {
                 .then(|| parse_json(&proc.stdout).ok()?.get("workspace").cloned())
                 .flatten();
             assert_eq!(
-                (proc.returncode(), g51_code(&proc).as_deref()),
+                (proc.returncode(), error_code(&proc).as_deref()),
                 (1, Some("CONFIG")),
                 "{command} with a {kind} .beadroll.json link: rc={} workspace={found:?} {}",
                 proc.returncode(),
@@ -107,7 +107,7 @@ fn empty_workspace_is_refused() {
         })
         .flatten();
     assert_eq!(
-        (proc.returncode(), g51_code(&proc).as_deref()),
+        (proc.returncode(), error_code(&proc).as_deref()),
         (1, Some("CONFIG")),
         "an empty tracked workspace was accepted (workspace_source={found:?})"
     );

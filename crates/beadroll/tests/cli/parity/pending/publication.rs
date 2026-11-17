@@ -18,7 +18,7 @@ pub(crate) enum Recovery {
 /// AG01: publication clears the pending-write flag even when saving its counts fails. Local
 /// appends, init's own publication and coordinated ownership must all retain committed success.
 #[test]
-fn ag01_a_published_write_keeps_its_result_when_saving_counts_fails() {
+fn a_published_write_keeps_its_result_when_saving_counts_fails() {
     for command in ["comment", "init", "claim"] {
         let sandbox = crate::sandbox();
         let r = crate::rust_only(&sandbox, "r");
@@ -110,13 +110,13 @@ fn assert_result(command: &str, result: &Value, key: &str) {
 /// AH01: an accepted push with a lost reply is confirmed by the next round's merge, not the
 /// direct confirmation path. Its successful result survives a failed count save too.
 #[test]
-fn ah01_a_claim_recovered_after_a_lost_reply_keeps_its_result() {
+fn a_claim_recovered_after_a_lost_reply_keeps_its_result() {
     recovered_claim_keeps_result(Recovery::RetryRound);
 }
 
-/// The matching receipt of a stopped invocation is the other accepted recovery path.
+/// AH01: The matching receipt of a stopped invocation is the other accepted recovery path.
 #[test]
-fn ah01_an_earlier_invocations_accepted_receipt_keeps_its_result() {
+fn an_earlier_invocations_accepted_receipt_keeps_its_result() {
     recovered_claim_keeps_result(Recovery::Restart);
 }
 

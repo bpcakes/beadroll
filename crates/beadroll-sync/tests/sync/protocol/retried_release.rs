@@ -9,7 +9,7 @@ use crate::support::{release_command, sandbox, settings, text};
 
 /// Q03: a final attempt plus its pending twin must be recognised as accepted.
 #[test]
-fn q03_crash_after_confirmation_before_cleanup_is_idempotent() {
+fn crash_after_confirmation_before_cleanup_is_idempotent() {
     let sandbox = sandbox();
     let a = Machine::new(&sandbox, "q03-a");
     a.bead(["init", "--prefix", "ex"]);

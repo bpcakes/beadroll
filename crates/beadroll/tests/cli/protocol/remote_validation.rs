@@ -96,7 +96,7 @@ fn entries(dir: &Path, wanted: impl Fn(&[u8]) -> bool) -> Vec<PathBuf> {
 /// does not read (`FORMAT_UNSUPPORTED`), and one that holds NaN is unreadable (`MANIFEST_MISSING`);
 /// either way the sync is refused and the remote's journal is left as it was.
 #[test]
-fn u05_a_manifest_that_only_equals_format_1_is_refused() {
+fn a_manifest_that_only_equals_format_1_is_refused() {
     let sandbox = crate::sandbox();
     let a = set_up(&sandbox);
     let store = a.store();
@@ -121,7 +121,7 @@ fn u05_a_manifest_that_only_equals_format_1_is_refused() {
 /// U06 (`docs/FINDINGS.md`): the merge took any Unicode digits for a segment's number,
 /// so a published `events/<machine>/٠٠٠٠٠١.jsonl` was copied in and read as a journal.
 #[test]
-fn u06_only_segments_numbered_in_ascii_digits_are_merged() {
+fn only_segments_numbered_in_ascii_digits_are_merged() {
     let sandbox = crate::sandbox();
     set_up(&sandbox);
     let tip = remote(&sandbox, &["rev-parse", "refs/beads/journal"], None);
@@ -181,7 +181,7 @@ fn u06_only_segments_numbered_in_ascii_digits_are_merged() {
 /// U05: a torn tail that holds NaN is not a complete event: the next write cuts it off and keeps it
 /// aside, byte for byte, instead of completing it, and the tracker reports no damage.
 #[test]
-fn u05_a_torn_tail_holding_nan_is_cut_and_kept_aside() {
+fn a_torn_tail_holding_nan_is_cut_and_kept_aside() {
     let sandbox = crate::sandbox();
     let a = set_up(&sandbox);
     let info = a.bead(["info"]).unwrap();

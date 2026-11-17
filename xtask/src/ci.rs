@@ -58,7 +58,7 @@ mod v8_supported_environments {
 
 /// The growth guards only time can keep (X15): ignored by every other run, they run nightly, in
 /// release and one at a time, or not at all.
-mod x15_growth_guards {
+mod growth_guards {
     use super::read;
 
     #[test]

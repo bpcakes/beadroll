@@ -16,8 +16,10 @@ fn rejected(machine: &Machine, args: &[&str], syntax: &str) {
     assert!(json.stderr.contains(syntax), "{args:?}: {json:?}");
 }
 
+/// AS18: without `add`, `comments ISSUE TEXT` and `dep A B` silently discarded input and exited 0;
+/// explicit read forms and writing options on reads had the same gap.
 #[test]
-fn as18_comments_require_add_for_text_and_writing_options() {
+fn comments_require_add_for_text_and_writing_options() {
     let sandbox = crate::sandbox();
     let machine = crate::rust_only(&sandbox, "comments");
     machine.bead(["init", "--prefix", "ex"]);
@@ -58,8 +60,10 @@ fn as18_comments_require_add_for_text_and_writing_options() {
     );
 }
 
+/// AS18: without `add`, `comments ISSUE TEXT` and `dep A B` silently discarded input and exited 0;
+/// explicit read forms and writing options on reads had the same gap.
 #[test]
-fn as18_dependency_reads_reject_surplus_issues_and_writing_options() {
+fn dependency_reads_reject_surplus_issues_and_writing_options() {
     let sandbox = crate::sandbox();
     let machine = crate::rust_only(&sandbox, "dependencies");
     machine.bead(["init", "--prefix", "ex"]);

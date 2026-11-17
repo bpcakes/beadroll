@@ -64,7 +64,7 @@ fn problems(state: &State) -> Vec<&str> {
 /// U06: \d matched any Unicode digit, so a renamed copy of `x.٣` became `x.3` and a child of a parent
 /// with child `p.١` counted on from 1; a key's number is ASCII digits only.
 #[test]
-fn u06_key_numbers_are_ascii_digits() {
+fn key_numbers_are_ascii_digits() {
     let init = event(1, "init", "seed", &[], None, json!({"prefix": "ex"}));
     let parent = event(
         2,
@@ -123,7 +123,7 @@ fn u06_key_numbers_are_ascii_digits() {
 /// U07: three malformed payloads must fail validation with stable diagnostics rather than fail
 /// during replay.
 #[test]
-fn u07_payloads_that_reached_the_last_resort_are_refused_by_name() {
+fn payloads_that_reached_the_last_resort_are_refused_by_name() {
     let init = event(1, "init", "seed", &[], None, json!({"prefix": "ex"}));
     let target = event(
         2,
@@ -224,7 +224,7 @@ fn u07_payloads_that_reached_the_last_resort_are_refused_by_name() {
 /// here has, broke `show` or `export` (a where that is not an object, a uid that is not a string) or
 /// exported as a comment made here; it is refused.
 #[test]
-fn u08_imported_comments_carry_neither_a_uid_nor_a_where() {
+fn imported_comments_carry_neither_a_uid_nor_a_where() {
     let comment = json!({"text": "hi", "author": null, "created_at": null});
     let extras = [
         json!({"uid": 5}),
@@ -298,7 +298,7 @@ fn u08_imported_comments_carry_neither_a_uid_nor_a_where() {
 /// U10: the stand-in for an id with several contents named the issue of the copy placed first; when no
 /// copy was valid that could be a list or an object, and replay failed hashing it.
 #[test]
-fn u10_a_quarantined_id_names_its_issue_only_by_a_string() {
+fn a_quarantined_id_names_its_issue_only_by_a_string() {
     let cases = [
         (json!([1]), None),
         (json!({"a": 1}), None),
@@ -329,7 +329,7 @@ fn u10_a_quarantined_id_names_its_issue_only_by_a_string() {
 /// U09: an issue created with `created_at: null` (an import of such a record) made `list` and `ready`
 /// fail comparing its time with the others'; a create cannot clear it, as it cannot clear a title.
 #[test]
-fn u09_a_create_cannot_clear_created_at() {
+fn a_create_cannot_clear_created_at() {
     let create = event(
         1,
         "create",
