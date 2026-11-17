@@ -77,6 +77,11 @@ impl Rng {
         (self.bits() % n.max(1) as u64) as usize
     }
 
+    /// One of `items`, or `None` when there are none.
+    pub fn pick<'a, T>(&mut self, items: &'a [T]) -> Option<&'a T> {
+        (!items.is_empty()).then(|| &items[self.below(items.len())])
+    }
+
     /// True `percent` times in a hundred.
     pub fn chance(&mut self, percent: u64) -> bool {
         self.bits() % 100 < percent

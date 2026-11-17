@@ -9,16 +9,12 @@ use beadroll_test_support::{Json, json};
 use super::super::builders::serial::{Fixture, journal};
 use super::super::builders::{id_of, uid};
 
-/// A deterministic SplitMix64 stream for ancestry property checks.
-struct Rng(u64);
+/// The draws the ancestry property checks make, from the shared seeded generator.
+struct Rng(beadroll_test_support::values::Rng);
 
 impl Rng {
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = self.0;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^ (z >> 31)
+        self.0.bits()
     }
 
     fn below(&mut self, n: usize) -> usize {
@@ -36,7 +32,7 @@ impl Rng {
 /// on the order the machines' journals are read in.
 #[test]
 fn mixed_detached_ownership_ancestry_matches_exact_graph() {
-    let mut rng = Rng(71029);
+    let mut rng = Rng(beadroll_test_support::values::Rng::new(71029));
     let mut f = Fixture::new();
     let (init, create) = f.base();
     let mut events = vec![init, create.clone()];

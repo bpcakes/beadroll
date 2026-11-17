@@ -165,7 +165,7 @@ fn bitset_saw(journal: &Journal) -> impl Fn(EventId, EventId) -> bool + '_ {
 
 #[test]
 fn every_answer_is_the_bitsets_answer_on_hostile_histories() {
-    let mut rng = Rng(20_261_010);
+    let mut rng = Rng::new(20_261_010);
     let mut wider = 0;
     for _ in 0..24 {
         let count = 50 + rng.below(250);

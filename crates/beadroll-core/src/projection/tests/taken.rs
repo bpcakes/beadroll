@@ -108,7 +108,7 @@ pub(super) fn differential(seeds: impl IntoIterator<Item = u64>, flawed: History
         let mut stored = WriteBack::EVERY.map(|back| Stored::new(&first, back, seed));
         let mut answers = edges::START;
         // the tracks' own draws: which texts they read in besides the batch's
-        let mut coin = Rng(seed);
+        let mut coin = Rng::new(seed);
         for n in 0..60 {
             let batch = world.next_batch();
             let reading_back = world.rng.chance(50);
@@ -242,7 +242,7 @@ impl Stored {
             file,
             since: Vec::new(),
             batches: 0,
-            coin: Rng(seed),
+            coin: Rng::new(seed),
             back,
         }
     }
