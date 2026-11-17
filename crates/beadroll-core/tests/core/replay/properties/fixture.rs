@@ -1,6 +1,6 @@
 //! The first audit's fixture (`ReplayAuditFixture`): a history of an `init` and the issue
 //! `au-one` on machine `seed`, the events a test adds, and the snapshot of what a reader sees,
-//! which `ReplayAuditProperties` and `ReplayAuditBugs` share.
+//! which `properties`, `ancestry`, `quarantine` and `readiness` share.
 
 use beadroll_core::event::Field;
 use beadroll_core::id::EventId;

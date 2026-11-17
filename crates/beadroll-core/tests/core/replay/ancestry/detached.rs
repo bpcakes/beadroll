@@ -1,4 +1,4 @@
-//! `ReplayThirdReview`, the ancestry of a long mixed history: events in journals and in attempt
+//! The ancestry of a long mixed history: events in journals and in attempt
 //! files, on six machines.
 
 use std::collections::BTreeSet;
@@ -6,7 +6,8 @@ use std::collections::BTreeSet;
 use beadroll_core::replay::replay;
 use beadroll_test_support::{Json, json};
 
-use super::{Fixture, id_of, journal, uid};
+use super::super::builders::serial::{Fixture, journal};
+use super::super::builders::{id_of, uid};
 
 /// A deterministic SplitMix64 stream for ancestry property checks.
 struct Rng(u64);

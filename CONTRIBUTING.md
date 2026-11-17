@@ -110,11 +110,10 @@ the record of it before any test data is written), their tests beside them, and 
    their actions are listed in `crates/beadroll-store/src/failpoint.rs`), never
    by patching: to skip the wait between sync attempts, `backoff@always=skip`,
    never a shortened sleep. Black-box tests run `bead` through
-   `beadroll-test-support`'s `Sandbox` and `Machine`. Test modules named
-   after a review or a finding id (`replay_third_review`, `replay_residuals`,
-   `replay_audit_bugs`, `replay_review4`) are history, not a
-   pattern. A new test is named for the contract it checks, and its doc
-   comment cites any finding id.
+   `beadroll-test-support`'s `Sandbox` and `Machine`. A test module is named
+   for its subject, never for the review or the finding that asked for it; a
+   test is named for the contract it checks, and its doc comment cites any
+   finding id.
 2. Match the surrounding style: comments in prose that say why; names that
    say what a function returns; errors carry a code a user or an agent can
    act on (`bead prime` lists them). Unknown input is reported, never guessed

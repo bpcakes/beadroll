@@ -541,3 +541,33 @@ fn random_graphs_agree_with_the_blocker_lists() {
     }
     assert!(ever_held > 200, "the graphs hold something: {ever_held}");
 }
+
+#[test]
+fn second_parent_blockers_hold_child() {
+    let mut f = Fixture::new();
+    let uid = f.issue.clone();
+    let first = f.create("au-free-parent");
+    let second = f.create("au-blocked-parent");
+    let gate = f.create("au-gate");
+    for (from, to, kind) in [
+        (&uid, &first, "parent-child"),
+        (&uid, &second, "parent-child"),
+        (&second, &gate, "blocks"),
+    ] {
+        let last = f.last();
+        f.event(
+            "dep_add",
+            Some(from),
+            "seed",
+            &[&last],
+            json!({"to": (to.as_str()), "type": kind}),
+        );
+    }
+    let st = f.state();
+    let blockers: Vec<&str> = st
+        .open_blockers(issue(&st, &uid))
+        .iter()
+        .map(|i| i.key())
+        .collect();
+    assert_eq!(blockers, ["au-gate"]);
+}
