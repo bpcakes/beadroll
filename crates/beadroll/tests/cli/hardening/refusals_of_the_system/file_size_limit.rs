@@ -4,9 +4,9 @@
 
 use std::collections::BTreeSet;
 
-use beadroll_test_support::{Json, Machine};
+use beadroll_test_support::{Json, Machine, json_member};
 
-use super::{error_code, limited, member, with_sh};
+use super::{error_code, limited, with_sh};
 
 /// Verified (V6): EFBIG from a file-size limit is IO, and the next write and sync are clean.
 /// The review measured, under `ulimit -f 200`: create with a 300 KB --description-file IO
@@ -59,12 +59,12 @@ fn file_size_limit_is_io_and_the_next_write_and_sync_are_clean() {
     let resynced = a.run(["sync", "--json"]);
     assert_eq!(resynced.returncode(), 0, "{}", resynced.stderr);
     let info = a.bead(["info"]).expect("bead info prints a record");
-    assert_eq!(member(&info, "integrity"), &Json::Array(Vec::new()));
+    assert_eq!(json_member(&info, "integrity"), &Json::Array(Vec::new()));
     let listed = a.bead(["list"]).expect("bead list prints a record");
-    let issues = member(&listed, "issues").as_array().expect("a list");
+    let issues = json_member(&listed, "issues").as_array().expect("a list");
     let titles: BTreeSet<&str> = issues
         .iter()
-        .map(|issue| member(issue, "title").as_str().expect("a title"))
+        .map(|issue| json_member(issue, "title").as_str().expect("a title"))
         .collect();
     assert!(titles.contains("growth"), "{titles:?}");
 }

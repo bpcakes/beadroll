@@ -9,10 +9,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use beadroll_store::glob_ending;
-use beadroll_test_support::{Json, Machine, Run, Sandbox, code, parse_json};
-
-use beadroll_test_support::Gate;
-use beadroll_test_support::ProcessGroup;
+use beadroll_test_support::{
+    Gate, Json, Machine, ProcessGroup, Run, Sandbox, code, json_member, parse_json,
+};
 
 mod damaged;
 
@@ -76,17 +75,10 @@ fn events(path: &Path) -> Vec<Json> {
     lines.collect()
 }
 
-/// The member `key` of `value`; absence fails the test.
-fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
-    value
-        .get(key)
-        .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
-}
-
 /// The claim returned when `machine` claims `key`.
 fn claim(machine: &Machine, key: &str) -> Json {
     let claimed = machine.bead(["claim", key]).expect("the claimed issue");
-    member(&claimed[0], "claim").clone()
+    json_member(&claimed[0], "claim").clone()
 }
 
 /// The first issue a `show --json` printed.
@@ -139,7 +131,7 @@ fn refused_claiming_update_leaves_the_journal_untouched_under_a_reader() {
     assert_eq!(attempts.len(), 1, "the attempt is one file");
     let ops: Vec<Json> = events(&attempts[0])
         .iter()
-        .map(|event| member(event, "op").clone())
+        .map(|event| json_member(event, "op").clone())
         .collect();
     assert_eq!(
         ops,
@@ -178,7 +170,7 @@ fn refused_claiming_update_leaves_the_journal_untouched_under_a_reader() {
         "the reader showed something other than nothing or the accepted claim: {seen:?}"
     );
     a.bead(["sync"]);
-    assert_eq!(member(&a.show(&key), "claim"), &accepted);
+    assert_eq!(json_member(&a.show(&key), "claim"), &accepted);
     assert_eq!(a.show(&key)["title"].as_str(), Some("storage survivor"));
 }
 
@@ -198,7 +190,7 @@ fn reader_never_confirms_a_claim_whose_push_was_rejected() {
     claimer.wait_for(&publish.ready(), Duration::from_secs(10));
     let attempt = pending(&a).into_iter().next();
     let attempt = attempt.expect("the claim's pending attempt");
-    let failed_id = member(&events(&attempt)[0], "id").clone();
+    let failed_id = json_member(&events(&attempt)[0], "id").clone();
     let pausing = read.at("view.before-load-pending@always");
     let reading = a.cmd(["show", &key, "--json"]);
     let mut reader = reading
@@ -211,7 +203,7 @@ fn reader_never_confirms_a_claim_whose_push_was_rejected() {
     assert_eq!(claimed.returncode(), 1, "{}", claimed.stderr);
     assert_eq!(code(&claimed), "ALREADY_CLAIMED");
     assert_eq!(pending(&a), Vec::<PathBuf>::new());
-    assert_ne!(member(&accepted, "id"), &failed_id);
+    assert_ne!(json_member(&accepted, "id"), &failed_id);
     read.open();
     let read_out = reader.communicate(Duration::from_secs(10));
     assert_eq!(read_out.returncode(), 0, "{}", read_out.stderr);
@@ -271,7 +263,7 @@ fn machine_identity_first_use_is_atomic_across_workspaces() {
     );
     let machine = |run: &Run| {
         let info = parse_json(&run.stdout).expect("info prints JSON");
-        member(&info, "machine").clone()
+        json_member(&info, "machine").clone()
     };
     assert_eq!(
         machine(&one),

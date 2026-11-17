@@ -11,10 +11,10 @@ use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_core::json::{Format, Object, write};
-use beadroll_test_support::{Json, Machine, code, json, parse_json, printed_id};
+use beadroll_test_support::{Json, Machine, code, json, json_member, parse_json, printed_id};
 
 use super::fixtures::{
-    STAND_IN, ascii_json, jsonl, machine, member, published_issue, record, record_text, strict_json,
+    STAND_IN, ascii_json, jsonl, machine, published_issue, record, record_text, strict_json,
 };
 
 /// F07: non-UTF-8 titles and description files return a JSON error and store nothing.
@@ -367,10 +367,13 @@ fn q06_incremental_import_resolves_late_dependency_target() {
     );
     let (split_a, one_a) = (split.show("ex-a"), one.show("ex-a"));
     assert_eq!(
-        member(&split_a, "dependencies"),
-        member(&one_a, "dependencies")
+        json_member(&split_a, "dependencies"),
+        json_member(&one_a, "dependencies")
     );
-    assert_eq!(member(&split_a, "blocked"), member(&one_a, "blocked"));
+    assert_eq!(
+        json_member(&split_a, "blocked"),
+        json_member(&one_a, "blocked")
+    );
     assert_eq!(split.ready(), one.ready());
 }
 

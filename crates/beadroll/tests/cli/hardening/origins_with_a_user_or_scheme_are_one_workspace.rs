@@ -8,7 +8,7 @@ use std::process::{Command, ExitStatus};
 use std::time::Duration;
 
 use beadroll_test_support::{
-    Json, Machine, ProcessGroup, Spawned, executable, git, parse_json, shell_quoted,
+    Json, Machine, ProcessGroup, Spawned, executable, git, json_member, parse_json, shell_quoted,
 };
 
 /// Environment variables for a child process.
@@ -79,13 +79,6 @@ fn info(machine: &Machine, cwd: Option<&Path>) -> Json {
     parse_json(&proc.stdout).unwrap()
 }
 
-/// The member `key` of `value`; absence fails the test.
-fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
-    value
-        .get(key)
-        .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
-}
-
 /// Runs `command` with empty standard input: its status and standard error. If it has not ended
 /// within `timeout`, it is killed and the test fails.
 fn run_within(command: Command, timeout: Duration) -> (ExitStatus, String) {
@@ -131,10 +124,10 @@ fn shapes_with_a_user_or_scheme_give_one_workspace_everywhere() {
         for (place, machine, cwd) in places {
             let data = info(machine, cwd);
             calls += 1;
-            let workspace = member(&data, "workspace").as_str().expect("an id");
+            let workspace = json_member(&data, "workspace").as_str().expect("an id");
             ids.insert(workspace.to_owned());
             assert_eq!(
-                member(&data, "remote").as_str(),
+                json_member(&data, "remote").as_str(),
                 Some(url),
                 "{url} in the {place}"
             );
@@ -189,8 +182,12 @@ fn scp_origin_with_a_user_syncs_over_ssh() {
     let synced = a.run(["sync", "--json"]);
     assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
     let result = parse_json(&synced.stdout).unwrap();
-    assert_eq!(member(&result, "pushed").as_i64(), Some(1), "{result:?}");
-    assert_eq!(member(&result, "remote").as_str(), Some(url));
+    assert_eq!(
+        json_member(&result, "pushed").as_i64(),
+        Some(1),
+        "{result:?}"
+    );
+    assert_eq!(json_member(&result, "remote").as_str(), Some(url));
     let published = git(
         ["for-each-ref", "--format=%(refname)", "refs/beads"],
         Some(sandbox.origin()),
@@ -208,10 +205,10 @@ fn scp_origin_with_a_user_syncs_over_ssh() {
     ];
     for (place, info) in &seen {
         assert_eq!(
-            member(info, "workspace").as_str(),
+            json_member(info, "workspace").as_str(),
             Some("606ef04ef5c6313e"),
             "{place}"
         );
-        assert_eq!(member(info, "remote").as_str(), Some(url), "{place}");
+        assert_eq!(json_member(info, "remote").as_str(), Some(url), "{place}");
     }
 }

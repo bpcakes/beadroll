@@ -6,7 +6,7 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use beadroll_test_support::{Json, Machine, Sandbox, executable, git, parse_json};
+use beadroll_test_support::{Json, Machine, Sandbox, executable, git, json_member, parse_json};
 
 /// An ssh stand-in for git (`GIT_SSH_COMMAND`): it runs the remote command in
 /// `$FAKE_SSH_ROOT`, locally.
@@ -53,13 +53,6 @@ fn info(machine: &Machine, cwd: Option<&Path>) -> Json {
     parse_json(&run.stdout).unwrap_or_else(|error| panic!("{error}: {}", run.stdout))
 }
 
-/// The member `key` of `value`; absence fails the test.
-fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
-    value
-        .get(key)
-        .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
-}
-
 /// G05: an origin git reads as ssh or a remote helper (host:path without user@, an ssh alias,
 /// an insteadOf shorthand such as gh:org/repo, bracketed IPv6 scp, an upper-case scheme,
 /// transport::address) is not a path under the checkout: every clone, worktree and
@@ -100,7 +93,7 @@ fn origin_shapes_git_reads_as_remotes_are_one_workspace() {
         ];
         let ids: Vec<(&str, &Json)> = seen
             .iter()
-            .map(|(place, info)| (*place, member(info, "workspace")))
+            .map(|(place, info)| (*place, json_member(info, "workspace")))
             .collect();
         assert!(
             ids.iter().all(|(_, id)| *id == ids[0].1),
@@ -109,7 +102,7 @@ fn origin_shapes_git_reads_as_remotes_are_one_workspace() {
         );
         for (place, info) in &seen {
             assert_eq!(
-                member(info, "remote"),
+                json_member(info, "remote"),
                 &Json::from(url),
                 "origin={url}: {place}: the remote became a path under the checkout"
             );
@@ -131,7 +124,7 @@ fn upper_case_scheme_is_the_same_remote() {
             ["remote", "set-url", "origin", url],
             Some(machine.checkout()),
         );
-        ids.push(member(&info(&machine, None), "workspace").clone());
+        ids.push(json_member(&info(&machine, None), "workspace").clone());
     }
     assert_eq!(
         ids[0], ids[1],
@@ -204,7 +197,7 @@ fn scp_and_shorthand_origins_sync() {
         let pulled = b.run(["sync", "--json"]);
         assert_eq!(pulled.returncode(), 0, "shape={shape}: {}", pulled.stderr);
         assert_eq!(
-            member(&b.show(key), "title"),
+            json_member(&b.show(key), "title"),
             &Json::from("shared through the remote"),
             "shape={shape}"
         );

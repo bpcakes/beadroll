@@ -6,12 +6,9 @@ use std::time::{Duration, Instant};
 
 use beadroll_core::json::{Format, write};
 use beadroll_test_support::{
-    Json, Machine, REMOTE_SETTLES, Sandbox, code, parse_json, shell_quoted, wait_until,
+    Json, Machine, REMOTE_SETTLES, Sandbox, code, executable, json_member, parse_json, printed_id,
+    shell_quoted, wait_until,
 };
-
-use super::member;
-use beadroll_test_support::executable;
-use beadroll_test_support::printed_id;
 
 /// Machine a, its tracker initialised with the prefix `ex`, the issue `one`
 /// created and synced. Returns the machine and the issue's key.
@@ -65,7 +62,10 @@ fn stalled_receive_with_a_stderr_flood_returns_within_the_timeout() {
     let settled = a.run(["sync", "--json"]);
     assert_eq!(settled.returncode(), 0, "{}", settled.stderr);
     let info = a.bead(["info"]).expect("bead info prints a record");
-    assert_eq!(member(&info, "pending_ownership"), &Json::Array(Vec::new()));
+    assert_eq!(
+        json_member(&info, "pending_ownership"),
+        &Json::Array(Vec::new())
+    );
     let b = Machine::new(&sandbox, "b");
     b.bead(["sync"]);
     let shown = write(&b.show(&key), Format::ASCII).unwrap();
@@ -95,10 +95,17 @@ fn claim_whose_ack_is_held_by_a_slow_post_receive_is_recovered() {
     assert_eq!(claimed.returncode(), 0, "{}", claimed.stderr);
     assert!(gate.exists(), "the slow post-receive never ran");
     let printed = parse_json(&claimed.stdout).unwrap();
-    let claim = member(&printed[0], "claim");
-    assert_eq!(member(claim, "generation").as_i64(), Some(1), "{claim:?}");
+    let claim = json_member(&printed[0], "claim");
+    assert_eq!(
+        json_member(claim, "generation").as_i64(),
+        Some(1),
+        "{claim:?}"
+    );
     let info = a.bead(["info"]).expect("bead info prints a record");
-    assert_eq!(member(&info, "pending_ownership"), &Json::Array(Vec::new()));
+    assert_eq!(
+        json_member(&info, "pending_ownership"),
+        &Json::Array(Vec::new())
+    );
     // let the receive side finish before the sandbox goes
     wait_for(&done);
 }

@@ -7,7 +7,7 @@
 
 use std::sync::Barrier;
 
-use beadroll_test_support::{Json, Machine, Run, Sandbox, code, parse_json};
+use beadroll_test_support::{Json, Machine, Run, Sandbox, code, json_member, parse_json};
 
 /// Machine `root-a` has initialised tracker `root`, created the issue every test works
 /// on and synced. Returns the machine and the issue's id.
@@ -53,18 +53,11 @@ fn settle(machines: &[&Machine], key: &str) -> Json {
     expected
 }
 
-/// The member `key` of `value`; absence fails the test.
-fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
-    value
-        .get(key)
-        .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
-}
-
 /// The claim in the first issue returned by a successful JSON command.
 fn claim_of(run: &Run) -> Json {
     let printed = parse_json(&run.stdout)
         .unwrap_or_else(|error| panic!("bead printed no JSON ({error}): {}", run.stdout));
-    member(&printed[0], "claim").clone()
+    json_member(&printed[0], "claim").clone()
 }
 
 /// `bead ARGS` from each `(machine, ARGS)` at the same instant, a thread each, released together
@@ -116,7 +109,7 @@ fn six_simultaneous_claims_have_one_winner() {
         .find(|r| r.returncode() == 0)
         .expect("a winner");
     let winner = claim_of(won);
-    assert_eq!(member(&settle(&machines, &key), "claim"), &winner);
+    assert_eq!(json_member(&settle(&machines, &key), "claim"), &winner);
 }
 
 /// The owner's release races another machine's claim: the release succeeds, and the issue settles
@@ -129,7 +122,7 @@ fn claim_racing_release_matches_accepted_outcome() {
     let (a, key) = set_up(&sandbox);
     let b = machine(&sandbox, "root-b");
     let claimed = a.bead(["claim", &key]).expect("the claimed issue");
-    let first = member(&claimed[0], "claim");
+    let first = json_member(&claimed[0], "claim");
     let generation = first["generation"].as_i64().expect("a generation");
     let raced = race(&[
         (&a, &["release", &key, "--json"]),
@@ -142,8 +135,8 @@ fn claim_racing_release_matches_accepted_outcome() {
         assert_eq!(code(claim), "ALREADY_CLAIMED");
         assert!(issue.get("claim").is_none(), "{issue:?}");
     } else {
-        let held = member(&issue, "claim");
-        assert_eq!(member(held, "id"), member(&claim_of(claim), "id"));
+        let held = json_member(&issue, "claim");
+        assert_eq!(json_member(held, "id"), json_member(&claim_of(claim), "id"));
         assert_eq!(held["generation"].as_i64(), Some(generation + 1));
     }
 }
@@ -171,7 +164,7 @@ fn two_takeovers_are_serial_and_generation_increases() {
         .iter()
         .find(|claim| claim["generation"].as_i64() == Some(3));
     let last = last.expect("the generation 3 claim");
-    assert_eq!(member(&settle(&[&a, &b, &c], &key), "claim"), last);
+    assert_eq!(json_member(&settle(&[&a, &b, &c], &key), "claim"), last);
 }
 
 /// The owner's release races another machine's takeover: the takeover succeeds, the release either
@@ -193,8 +186,8 @@ fn takeover_racing_release_ends_at_new_owner() {
         assert_eq!(code(released), "NOT_OWNER");
     }
     let settled = settle(&[&a, &b], &key);
-    let held = member(&settled, "claim");
-    assert_eq!(member(held, "id"), member(&claim_of(taken), "id"));
+    let held = json_member(&settled, "claim");
+    assert_eq!(json_member(held, "id"), json_member(&claim_of(taken), "id"));
     assert_eq!(held["generation"].as_i64(), Some(2));
 }
 

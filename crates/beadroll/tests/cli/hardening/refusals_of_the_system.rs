@@ -8,7 +8,9 @@
 use std::process::Command;
 use std::time::Duration;
 
-use beadroll_test_support::{Json, Machine, ProcessGroup, Run, Spawned, UNPROFILED, parse_json};
+use beadroll_test_support::{
+    Json, Machine, ProcessGroup, Run, Spawned, UNPROFILED, json_member, parse_json,
+};
 use rustix::fs::{Access, access};
 
 mod descriptor_exhaustion;
@@ -72,16 +74,9 @@ fn with_sh() -> bool {
     found
 }
 
-/// The member `key` of `value`; absence fails the test.
-fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
-    value
-        .get(key)
-        .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
-}
-
 /// The machine id from replica.json.
 fn replica_id(machine: &Machine) -> Json {
     let text = std::fs::read_to_string(machine.home().join("replica.json")).unwrap();
     let identity = parse_json(&text).unwrap();
-    member(&identity, "id").clone()
+    json_member(&identity, "id").clone()
 }

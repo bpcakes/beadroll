@@ -8,8 +8,6 @@ use std::ffi::OsString;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use beadroll_test_support::Json;
-
 mod push_side_translation;
 mod stalled_receive_timeouts;
 
@@ -84,10 +82,3 @@ const WINNER_IDENTITY: &str = concat!(
     "export GIT_AUTHOR_NAME=winner GIT_AUTHOR_EMAIL=w@example.invalid ",
     "GIT_COMMITTER_NAME=winner GIT_COMMITTER_EMAIL=w@example.invalid\n"
 );
-
-/// The member `key` of `value`; absence fails the test.
-fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
-    value
-        .get(key)
-        .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
-}

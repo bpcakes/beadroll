@@ -6,9 +6,7 @@
 //! process; they are `rust_only`, with the `backoff` and `ownership.after-confirm` failpoints.
 
 use beadroll_store::glob_ending;
-use beadroll_test_support::printed_id;
-use beadroll_test_support::{Json, Machine, Sandbox};
-use beadroll_test_support::{executable, shell_quoted};
+use beadroll_test_support::{Machine, Sandbox, executable, json_member, printed_id, shell_quoted};
 
 use crate::hardening::TrackerSetup;
 
@@ -61,15 +59,8 @@ fn releases(machine: &Machine, key: &str) -> usize {
     let events = log.as_array().expect("bead log prints a list");
     events
         .iter()
-        .filter(|event| member(event, "op").as_str() == Some("release"))
+        .filter(|event| json_member(event, "op").as_str() == Some("release"))
         .count()
-}
-
-/// The member `key` of `value`; absence fails the test.
-fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
-    value
-        .get(key)
-        .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
 }
 
 mod receipts_are_per_actor {
@@ -112,7 +103,7 @@ mod receipts_are_per_actor {
         assert_eq!(releases(&a, &x), 1);
         let claimed = a.show(&y);
         assert_eq!(
-            member(member(&claimed, "claim"), "thread").as_str(),
+            json_member(json_member(&claimed, "claim"), "thread").as_str(),
             Some("other")
         );
     }
@@ -224,7 +215,7 @@ mod in_flight_attempt_across_actors {
             assert_eq!(releases(machine, &x), 1);
             let claimed = machine.show(&y);
             assert_eq!(
-                member(member(&claimed, "claim"), "thread").as_str(),
+                json_member(json_member(&claimed, "claim"), "thread").as_str(),
                 Some("actor-b")
             );
         }

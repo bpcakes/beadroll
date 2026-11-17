@@ -5,11 +5,10 @@ use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
-use beadroll_test_support::Machine;
+use beadroll_test_support::{Machine, json_member, printed_id};
 use rustix::fs::{Access, access};
 
-use super::{error_code, member, unprivileged};
-use beadroll_test_support::printed_id;
+use super::{error_code, unprivileged};
 
 /// Splits text at newline, CRLF, carriage return, vertical tab, form feed, U+001C–U+001E, U+0085,
 /// U+2028 and U+2029, without a final empty line.
@@ -70,7 +69,7 @@ fn oserror_on_a_user_supplied_input_path_is_io_and_writes_nothing() {
         root.join("afile").join("x"),
     ];
     let info = a.bead(["info"]).expect("bead info prints a record");
-    let before = member(&info, "events").clone();
+    let before = json_member(&info, "events").clone();
     for path in &paths {
         let name = path.file_name().expect("a name").to_string_lossy();
         let label: String = name.chars().take(12).collect();
@@ -95,7 +94,7 @@ fn oserror_on_a_user_supplied_input_path_is_io_and_writes_nothing() {
         }
     }
     let info = a.bead(["info"]).expect("bead info prints a record");
-    assert_eq!(member(&info, "events"), &before);
+    assert_eq!(json_member(&info, "events"), &before);
     let shown = a.show(&key);
     assert!(shown.get("claim").is_none(), "{shown:?}");
     std::fs::set_permissions(&noread, Permissions::from_mode(0o600)).unwrap();

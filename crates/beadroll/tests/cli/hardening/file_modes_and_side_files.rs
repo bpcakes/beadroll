@@ -3,14 +3,13 @@
 //! side files are ignored, and global signing does not affect internal commits. The rename crash
 //! test uses `atomic-write:` failpoints.
 
-use beadroll_test_support::printed_id;
-use beadroll_test_support::{executable, shell_quoted};
+use beadroll_test_support::{
+    Json, Machine, Sandbox, executable, json_member, parse_json, printed_id, shell_quoted,
+};
 use std::collections::BTreeSet;
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
-
-use beadroll_test_support::{Json, Machine, Sandbox, parse_json};
 
 /// The permission bits of `path` itself, without following symlinks.
 fn mode(path: &Path) -> u32 {
@@ -32,13 +31,6 @@ fn distinct_modes(paths: &[PathBuf]) -> BTreeSet<u32> {
     paths.iter().map(|path| mode(path)).collect()
 }
 
-/// The member `key` of `value`; absence fails the test.
-fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
-    value
-        .get(key)
-        .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
-}
-
 /// The sandbox's remote as a UTF-8 path for bead's `--remote`.
 fn origin(sandbox: &Sandbox) -> &str {
     sandbox.origin().to_str().expect("a UTF-8 path")
@@ -48,7 +40,7 @@ fn origin(sandbox: &Sandbox) -> &str {
 fn replica_id(machine: &Machine) -> String {
     let text = std::fs::read_to_string(machine.home().join("replica.json")).unwrap();
     let identity = parse_json(&text).unwrap();
-    let id = member(&identity, "id");
+    let id = json_member(&identity, "id");
     id.as_str().expect("a replica id").to_owned()
 }
 
@@ -318,9 +310,9 @@ mod side_files_ignored {
         let info = m.bead(["info"]).expect("bead info prints a record");
         assert_eq!(
             (
-                member(&synced, "integrity"),
-                member(&info, "integrity"),
-                member(&info, "segments"),
+                json_member(&synced, "integrity"),
+                json_member(&info, "integrity"),
+                json_member(&info, "segments"),
             ),
             (&Json::from(0), &Json::Array(Vec::new()), &Json::from(1))
         );
@@ -385,15 +377,17 @@ mod kill_at_rename {
         let none = Json::Array(Vec::new());
         assert_eq!(
             (
-                member(&info, "integrity"),
-                member(&info, "pending_ownership")
+                json_member(&info, "integrity"),
+                json_member(&info, "pending_ownership")
             ),
             (&none, &none)
         );
-        let machine = member(&info, "machine").as_str().expect("the machine's id");
+        let machine = json_member(&info, "machine")
+            .as_str()
+            .expect("the machine's id");
         let shown = m.show(&key);
         assert_eq!(
-            member(member(&shown, "claim"), "owner").as_str(),
+            json_member(json_member(&shown, "claim"), "owner").as_str(),
             Some(format!("codex:v5k-thread-0001@{machine}").as_str())
         );
     }
@@ -440,9 +434,11 @@ mod signing_config_is_inert {
         assert!(!log.exists());
         let shown = m.show(&key);
         let info = m.bead(["info"]).expect("bead info prints a record");
-        let machine = member(&info, "machine").as_str().expect("the machine's id");
+        let machine = json_member(&info, "machine")
+            .as_str()
+            .expect("the machine's id");
         assert_eq!(
-            member(member(&shown, "claim"), "owner").as_str(),
+            json_member(json_member(&shown, "claim"), "owner").as_str(),
             Some(format!("codex:v5s-thread-0001@{machine}").as_str())
         );
     }
