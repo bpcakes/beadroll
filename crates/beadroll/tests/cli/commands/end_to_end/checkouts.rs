@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use beadroll_core::json::{Format, write};
 use beadroll_test_support::events::{Event, id_at};
-use beadroll_test_support::{Json, Machine, git, json, json_id, parse_json};
+use beadroll_test_support::{Json, Machine, git, json, json_id, json_ids, parse_json};
 
 use super::{column, length, pool_map, segments, sorted_codes};
 
@@ -72,12 +72,7 @@ fn parallel_writers_lose_nothing_and_claim_is_exclusive() {
     assert_eq!(results, [0; 30]);
     let listed = a.bead(["list", "--limit", "0"]).unwrap();
     assert_eq!(listed["total"].as_i64(), Some(30));
-    let ids: BTreeSet<String> = listed["issues"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(json_id)
-        .collect();
+    let ids: BTreeSet<String> = json_ids(&listed["issues"]).into_iter().collect();
     assert_eq!(ids.len(), 30);
     let target = json_id(&listed["issues"][0]);
     let claims = pool_map(2, &["thread-one-0001", "thread-two-0002"], |thread| {

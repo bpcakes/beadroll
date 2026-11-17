@@ -5,7 +5,7 @@
 use std::path::Path;
 
 use beadroll_core::text::is_space;
-use beadroll_test_support::{Json, Machine, Sandbox, code, json, json_id, parse_json};
+use beadroll_test_support::{Json, Machine, Sandbox, code, json, json_id, json_ids, parse_json};
 
 use super::fixtures::ascii_json;
 
@@ -17,11 +17,6 @@ fn set_up() -> (Sandbox, Machine, String, String) {
     let x = json_id(&a.bead(["create", "Issue X"]).unwrap());
     let y = json_id(&a.bead(["create", "Issue Y"]).unwrap());
     (sandbox, a, x, y)
-}
-
-/// The ids of a list of issues, in order.
-fn ids(issues: &Json) -> Vec<String> {
-    issues.as_array().unwrap().iter().map(json_id).collect()
 }
 
 /// The record `key` of a Beads export: the first line that names it.
@@ -95,8 +90,8 @@ fn description_stdin_multi_id_and_filters() {
             "x",
         ])
         .unwrap();
-    assert_eq!(ids(&filtered["issues"]), std::slice::from_ref(&x));
-    assert_eq!(ids(&a.bead(["show", &x, &y]).unwrap()), [x, y]);
+    assert_eq!(json_ids(&filtered["issues"]), std::slice::from_ref(&x));
+    assert_eq!(json_ids(&a.bead(["show", &x, &y]).unwrap()), [x, y]);
 }
 
 #[test]

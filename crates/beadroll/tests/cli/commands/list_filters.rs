@@ -1,8 +1,6 @@
 //! `list`'s filters: an issue matches `--parent` through any of its parents.
 
-use std::collections::BTreeSet;
-
-use beadroll_test_support::printed_id;
+use beadroll_test_support::{json_ids, printed_id};
 
 use super::fixtures::machine;
 
@@ -20,11 +18,7 @@ fn e11_parent_filter_matches_every_direct_parent() {
         let result = machine
             .bead(["list", "--all", "--parent", parent, "--limit", "0"])
             .unwrap();
-        let issues = result["issues"].as_array().expect("issues");
-        let ids: BTreeSet<&str> = issues
-            .iter()
-            .map(|issue| issue["id"].as_str().expect("an id"))
-            .collect();
-        assert!(ids.contains(child.as_str()), "parent {parent}: {ids:?}");
+        let ids = json_ids(&result["issues"]);
+        assert!(ids.contains(&child), "parent {parent}: {ids:?}");
     }
 }

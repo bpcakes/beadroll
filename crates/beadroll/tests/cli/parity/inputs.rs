@@ -5,7 +5,7 @@ use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
 use std::path::Path;
 
-use beadroll_test_support::{Json, Machine, json_id, parse_json};
+use beadroll_test_support::{Json, Machine, json_id, json_ids, parse_json};
 
 use super::json;
 
@@ -289,8 +289,7 @@ fn a_filter_value_that_is_not_utf8_matches_nothing_beside_those_that_are() {
         let run = m.cmd(args.iter().map(|a| OsStr::from_bytes(a))).run();
         assert_eq!(run.returncode(), 0, "{}", run.stderr);
         let said = parse_json(&run.stdout).expect("JSON");
-        let issues = said["issues"].as_array().expect("issues");
-        issues.iter().map(json_id).collect::<Vec<_>>()
+        json_ids(&said["issues"])
     };
     assert_eq!(listed(b"open,\xff"), [open]);
     assert_eq!(listed(b"\xff"), Vec::<String>::new());
