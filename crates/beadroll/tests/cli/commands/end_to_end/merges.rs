@@ -3,9 +3,9 @@
 
 use std::collections::BTreeSet;
 
-use beadroll_test_support::{Json, Machine, code, git, json, json_id};
+use beadroll_test_support::{Json, Machine, code, git, json, json_id, pool_map};
 
-use super::{column, pool_map, settle, two_machines};
+use super::{column, settle, two_machines};
 
 /// The text of every value in `values`.
 fn texts(values: &[Json]) -> BTreeSet<String> {

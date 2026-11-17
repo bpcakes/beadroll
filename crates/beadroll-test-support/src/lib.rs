@@ -17,9 +17,11 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 
 pub mod events;
+mod files;
 mod gate;
 mod isolation;
 mod machine;
+mod pool;
 mod sandbox;
 mod shell;
 mod spawned;
@@ -27,9 +29,11 @@ pub mod values;
 mod wait;
 
 pub use beadroll_core::json::Value as Json;
+pub use files::{copy_tree, descendants};
 pub use gate::{Gate, beside};
 pub use isolation::assert_git_isolation;
 pub use machine::{Invocation, Machine, Run, UNPROFILED, code, converge};
+pub use pool::pool_map;
 pub use sandbox::{Sandbox, UNDER_TEST, built_bead, git, git_command, select_bead};
 pub use shell::{git_on_path, shell_quoted};
 pub use spawned::{ProcessGroup, Spawned};

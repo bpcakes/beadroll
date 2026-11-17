@@ -3,12 +3,12 @@
 //! Commands run through the selected bead binary.
 
 use std::ffi::OsStr;
-use std::fs::{File, FileTimes, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use beadroll_test_support::{
-    Json, Machine, Sandbox, code, git, json, json_member, json_text, parse_json,
+    Json, Machine, Sandbox, code, copy_tree, git, json, json_member, json_text, parse_json,
 };
 
 use super::{segments, set_up, two};
@@ -75,37 +75,6 @@ fn retitle(event: &mut Json, title: &str) {
         }
         other => panic!("{other:?} is not an object"),
     }
-}
-
-/// Copies the tree under `source` to `target`, which must not exist yet, following symlinks.
-/// Each file is copied with its mode and
-/// times, and each directory takes its source's times and mode once its contents are in.
-fn copytree(source: &Path, target: &Path) {
-    std::fs::create_dir(target).unwrap_or_else(|error| panic!("{}: {error}", target.display()));
-    let entries = std::fs::read_dir(source).expect("the directory to copy");
-    for entry in entries {
-        let from = entry.expect("a directory entry").path();
-        let to = target.join(from.file_name().expect("a name"));
-        if from.is_dir() {
-            copytree(&from, &to);
-        } else {
-            std::fs::copy(&from, &to).unwrap_or_else(|error| panic!("{}: {error}", from.display()));
-            copystat(&from, &to);
-        }
-    }
-    copystat(source, target);
-}
-
-/// Gives `target` the access and modification times of
-/// `source`, then its mode.
-fn copystat(source: &Path, target: &Path) {
-    let metadata = std::fs::metadata(source).expect("the source's metadata");
-    let times = FileTimes::new()
-        .set_accessed(metadata.accessed().expect("an access time"))
-        .set_modified(metadata.modified().expect("a modification time"));
-    let copy = File::open(target).expect("the copy");
-    copy.set_times(times).expect("the copy's times");
-    std::fs::set_permissions(target, metadata.permissions()).expect("the copy's mode");
 }
 
 /// The commit the remote's coordination ref names:
@@ -225,7 +194,7 @@ fn copied_identity_divergence_across_rotation_refuses_remote_change() {
     let (mut a, key) = set_up(&sandbox, Machine::new);
     let _ = two(&sandbox, &a, Machine::new);
     let mut twin = Machine::new(&sandbox, "identity-twin");
-    copytree(a.home(), twin.home());
+    copy_tree(a.home(), twin.home());
     a.extra.insert("BEAD_ROTATE_BYTES".into(), "1".into());
     twin.extra
         .insert("BEAD_ROTATE_BYTES".into(), "9999999".into());

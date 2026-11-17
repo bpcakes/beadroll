@@ -4,10 +4,10 @@
 //! G48: write_atomic leaves `.NAME.PID.tmp` behind when the write, fsync or rename fails: beside an
 //! `export -o` target in the user's checkout, and under pending/ and events/ in the store.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 
-use beadroll_test_support::{Machine, Run, Sandbox, UNPROFILED, parse_json};
+use beadroll_test_support::{Machine, Run, Sandbox, UNPROFILED, descendants, parse_json};
 
 /// Machine g48, its tracker initialised with the prefix `ex`, and the keys
 /// of the six issues it creates, each titled with a hundred `x`.
@@ -24,22 +24,11 @@ fn setup(sandbox: &Sandbox) -> (Machine, Vec<String>) {
     (m, keys)
 }
 
-/// Every path under `dir`, symbolic links not followed: `Path.rglob("*")`.
-fn descendants(dir: &Path, found: &mut Vec<PathBuf>) {
-    for entry in std::fs::read_dir(dir).expect("a directory") {
-        let path = entry.expect("a directory entry").path();
-        found.push(path.clone());
-        if std::fs::symlink_metadata(&path).unwrap().is_dir() {
-            descendants(&path, found);
-        }
-    }
-}
-
 /// `leftovers`: every file under `root` whose name matches `.*.tmp`, relative to `root`,
 /// sorted.
 fn leftovers(root: &Path) -> Vec<String> {
     let mut paths = Vec::new();
-    descendants(root, &mut paths);
+    paths.extend(descendants(root));
     let mut found: Vec<String> = paths
         .iter()
         .filter(|path| {

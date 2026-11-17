@@ -11,7 +11,9 @@ use std::io::Write as _;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
-use beadroll_test_support::{Json, Machine, Sandbox, executable, parse_json, shell_quoted};
+use beadroll_test_support::{
+    Json, Machine, Sandbox, descendants, executable, parse_json, shell_quoted,
+};
 
 /// A machine whose bead commands run under umask 022. Set it in a shell that execs bead,
 /// avoiding changes to the test process's shared umask.
@@ -27,22 +29,11 @@ fn machine(sandbox: &Sandbox, name: &str) -> Machine {
     Machine::new(sandbox, name).with_bead(wrapper)
 }
 
-/// Every path under `dir`, depth first, symbolic links not followed: `Path.rglob("*")`.
-fn descendants(dir: &Path, found: &mut Vec<PathBuf>) {
-    for entry in std::fs::read_dir(dir).expect("a directory") {
-        let path = entry.expect("a directory entry").path();
-        found.push(path.clone());
-        if std::fs::symlink_metadata(&path).unwrap().is_dir() {
-            descendants(&path, found);
-        }
-    }
-}
-
 /// Every path under `root` (`root` included) that group or others can read,
 /// write or enter, with its mode.
 fn loose(root: &Path) -> Vec<String> {
     let mut paths = vec![root.to_path_buf()];
-    descendants(root, &mut paths);
+    paths.extend(descendants(root));
     let mut out = Vec::new();
     for path in paths {
         let mode = std::fs::symlink_metadata(&path)
