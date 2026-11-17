@@ -7,6 +7,8 @@ import environment
 import selected
 from records import canonical
 BP = selected.local_bead()
+# seconds a bead run may take: one longer than this is hung, not slow, and the driver stops on it
+TIMEOUT = 600
 selected.preflight(BP)
 env = environment.scrubbed()
 env.update(BEAD_HOME=os.environ.get("RT_HOME") or os.path.join(os.environ.get("TMPDIR", "/tmp"), "bead-roundtrip-home"), BEAD_AGENT="human")
@@ -19,10 +21,10 @@ for path in sorted(glob.glob(os.path.expanduser("~/Documents/*/.beads/issues.jso
     if not src: continue
     e = dict(env, BEAD_WORKSPACE="rt-" + repo)
     t = time.time()
-    p = subprocess.run([BP, "init", "--prefix", "x", "--import", path, "--offline", "--json"], env=e, capture_output=True, text=True)
+    p = subprocess.run([BP, "init", "--prefix", "x", "--import", path, "--offline", "--json"], env=e, capture_output=True, text=True, timeout=TIMEOUT)
     t_imp = time.time() - t
     if p.returncode: failed = True; print(repo, "IMPORT FAILED", p.stderr[:300]); continue
-    t = time.time(); out = subprocess.run([BP, "export"], env=e, capture_output=True, text=True); t_exp = time.time() - t
+    t = time.time(); out = subprocess.run([BP, "export"], env=e, capture_output=True, text=True, timeout=TIMEOUT); t_exp = time.time() - t
     if out.returncode: failed = True; print(repo, "EXPORT FAILED", out.stderr[:300]); continue
     got = {r["id"]: r for r in map(json.loads, out.stdout.splitlines())}
     ok = 0
@@ -33,7 +35,7 @@ for path in sorted(glob.glob(os.path.expanduser("~/Documents/*/.beads/issues.jso
         elif len(diffs) < 12:
             keys = sorted(k for k in set(a) | set(b) if a.get(k) != b.get(k))
             diffs.append((repo, rec["id"], keys, {k: (str(a.get(k))[:70], str(b.get(k))[:70]) for k in keys[:2]}))
-    t = time.time(); ready = subprocess.run([BP, "ready", "--json"], env=e, capture_output=True, text=True); t_ready = time.time() - t
+    t = time.time(); ready = subprocess.run([BP, "ready", "--json"], env=e, capture_output=True, text=True, timeout=TIMEOUT); t_ready = time.time() - t
     if ready.returncode: failed = True; print(repo, "READY FAILED", ready.stderr[:300])
     seg = glob.glob(os.path.join(env["BEAD_HOME"], f"rt-{repo}/events/*/*.jsonl"))
     rows.append((repo, len(src), ok, round(t_imp*1000), round(t_exp*1000), round(t_ready*1000), sum(os.path.getsize(s) for s in seg)//1024, os.path.getsize(path)//1024))

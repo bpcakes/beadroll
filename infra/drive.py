@@ -269,18 +269,20 @@ def main(argv):
 
     section("S11 a linked worktree on this machine sees the same tracker and stays clean")
     wt = REPO_LOCAL + "-wt"
-    subprocess.run(["git", "-C", REPO_LOCAL, "worktree", "add", "-q", wt, "-b", f"feature-{TAG}"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", REPO_LOCAL, "worktree", "add", "-q", wt, "-b", f"feature-{TAG}"], check=True, capture_output=True,
+                   timeout=120)
     try:
-        cmd = f"cd {wt} && BEAD_HOME={STATE} {word(BEADS['local'])} info --json"
-        info = json.loads(subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, check=True).stdout)
+        cmd = f"cd {word(wt)} && BEAD_HOME={STATE} {word(BEADS['local'])} info --json"
+        info = json.loads(subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, check=True, timeout=120).stdout)
         status = subprocess.run(["git", "-C", wt, "status", "--porcelain"], capture_output=True, text=True).stdout
         print("same workspace:", info["workspace"] == run("local", "info")["ok"]["workspace"], "| worktree clean:", status == "")
         results["S11"] = info["workspace"] == run("local", "info")["ok"]["workspace"] and status == ""
 
         section("S12 a claim made in the worktree carries its branch to every machine")
         issue = ready_ids("local")[5]
-        cmd = f"cd {wt} && BEAD_HOME={STATE} BEAD_AGENT=codex BEAD_THREAD=local-wt-thread {word(BEADS['local'])} update {shlex.quote(issue)} --claim --add-label from-worktree --json"
-        claimed = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True)
+        cmd = (f"cd {word(wt)} && BEAD_HOME={STATE} BEAD_AGENT=codex BEAD_THREAD=local-wt-thread {word(BEADS['local'])} "
+               f"update {shlex.quote(issue)} --claim --add-label from-worktree --json")
+        claimed = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=120)
         same, _ = settle()
         views = {h: show(h, issue) for h in HOSTS}
         branches = {h: (v.get("claim") or {}).get("where", {}).get("branch") for h, v in views.items()}
