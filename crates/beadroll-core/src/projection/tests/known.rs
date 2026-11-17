@@ -28,12 +28,13 @@ pub(super) fn knows_alike(
     projection: &Projection,
     compacted: Compaction,
 ) -> bool {
-    let compacted = matches!(compacted, Compaction::Compact);
     let read = &decoded.state.knowledge.events;
     let held = &projection.state.knowledge.events;
     let mut kept = named(projection.state());
     kept.extend(projection.heads.iter().copied());
-    let order = held.keys().filter(|id| !compacted || kept.contains(*id));
+    let order = held
+        .keys()
+        .filter(|id| compacted != Compaction::Compact || kept.contains(*id));
     read.keys().eq(order)
         && (read.iter()).all(|(id, event)| {
             held.get(id).is_some_and(|was| {

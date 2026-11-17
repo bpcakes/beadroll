@@ -208,8 +208,7 @@ pub(super) const START: u64 = 0xcbf2_9ce4_8422_2325;
 /// `digest` with what `state` [`answers`] folded in, or for the last state of a history, what it
 /// answers [`every_way`].
 pub(super) fn fold(digest: u64, state: &State, last: AnswerCoverage) -> u64 {
-    let last = matches!(last, AnswerCoverage::EveryWay);
-    let answered = if last {
+    let answered = if last == AnswerCoverage::EveryWay {
         every_way(state)
     } else {
         answers(state)

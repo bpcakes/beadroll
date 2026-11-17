@@ -45,13 +45,12 @@ pub(super) fn fields(title: &str) -> Object {
 }
 
 /// A record of the journal of `folder`.
-pub(super) fn record(value: Value, folder: &str, sequenced: JournalOrder) -> Record {
-    let sequenced = matches!(sequenced, JournalOrder::Sequenced);
+pub(super) fn record(value: Value, folder: &str, order: JournalOrder) -> Record {
     Record {
         value,
         replica: folder.to_owned(),
         origin: format!("events/{folder}/000001.jsonl"),
-        sequenced,
+        sequenced: order == JournalOrder::Sequenced,
     }
 }
 

@@ -26,9 +26,9 @@ pub(crate) use apply::Names;
 /// Whether one event id was found with several contents.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Contents {
-    /// Unique.
+    /// One content for the id, as an event id promises.
     Unique,
-    /// Doubled.
+    /// Different contents under one id: the event is reported, never applied.
     Doubled,
 }
 
@@ -208,7 +208,6 @@ pub(crate) fn observe_one(
     doubled: Contents,
     room: &mut Room,
 ) -> Option<String> {
-    let doubled = matches!(doubled, Contents::Doubled);
     let Knowledge {
         events,
         replicas,
@@ -248,7 +247,7 @@ pub(crate) fn observe_one(
         raise(clock, chain, number);
     }
     ancestry.record(at, clock, causes, replica);
-    if doubled {
+    if doubled == Contents::Doubled {
         Some("one event id with different contents".to_owned())
     } else if matches!(what.op, Op::Invalid) {
         Some(String::new())

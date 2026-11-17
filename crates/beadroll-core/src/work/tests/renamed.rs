@@ -80,7 +80,6 @@ enum Keys {
 /// never comes, so that the keys claimed are the issues' and the keys waited for together: of
 /// numbered keys, the next N numbers, `ex-1.N+1` to `ex-1.2N`, which the copies count past too.
 fn minted_twice(issues: usize, keys: Keys, waiting: Dependencies) -> Journal {
-    let waiting = matches!(waiting, Dependencies::Waiting);
     let named = |n: usize| match keys {
         Keys::Plain => key(n),
         Keys::Numbered => format!("ex-1.{n}"),
@@ -96,7 +95,7 @@ fn minted_twice(issues: usize, keys: Keys, waiting: Dependencies) -> Journal {
         for n in 1..=issues {
             let number = (turn * issues + n) as u64 + 1;
             let after = if n == 1 { 1 } else { number - 1 };
-            let awaited = (waiting && turn == 0).then(|| match keys {
+            let awaited = (waiting == Dependencies::Waiting && turn == 0).then(|| match keys {
                 Keys::Plain => format!("gone-{n}"),
                 Keys::Numbered => named(issues + n),
             });

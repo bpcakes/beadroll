@@ -14,10 +14,28 @@ use crate::state::{Claim, EndedClaim, Issue, LostClaim, Provisional};
 /// How an issue and its claim end.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum EndingKind {
-    /// Delete.
+    /// `delete`: the issue becomes a tombstone, with who deleted it, when and why.
     Delete,
-    /// Close.
+    /// `close`: the issue is closed where it was closed, and the provisional claims it saw end.
     Close,
+}
+
+impl EndingKind {
+    /// The status the issue is left with.
+    fn status(self) -> &'static str {
+        match self {
+            EndingKind::Delete => "tombstone",
+            EndingKind::Close => "closed",
+        }
+    }
+
+    /// The operation that ends the claim, as its history records it.
+    fn op(self) -> &'static str {
+        match self {
+            EndingKind::Delete => "delete",
+            EndingKind::Close => "close",
+        }
+    }
 }
 
 pub(super) fn claim(
@@ -104,9 +122,8 @@ pub(super) fn release(c: &Ctx<'_>, issue: &mut Issue, ending: &Ending) -> bool {
     true
 }
 
-/// `close` (`closing`) and `delete`: both may name the claim they end.
-pub(super) fn close(c: &Ctx<'_>, issue: &mut Issue, ending: &Ending, closing: EndingKind) -> bool {
-    let closing = matches!(closing, EndingKind::Close);
+/// `close` and `delete` (`kind`): both may name the claim they end.
+pub(super) fn close(c: &Ctx<'_>, issue: &mut Issue, ending: &Ending, kind: EndingKind) -> bool {
     let named = ending.claim.as_deref().filter(|named| !named.is_empty());
     let named_id = named.and_then(EventId::parse);
     let current = c.claim.is_some_and(|held| Some(held.id) == named_id);
@@ -117,13 +134,8 @@ pub(super) fn close(c: &Ctx<'_>, issue: &mut Issue, ending: &Ending, closing: En
     let supersede: Vec<EventId> = named_id.into_iter().collect();
     let reason = ending.reason.as_deref();
     // A close that names its claim knows about it, even when the claim's bytes arrived later.
-    c.write_status(
-        issue,
-        if closing { "closed" } else { "tombstone" },
-        reason,
-        &supersede,
-    );
-    if !closing {
+    c.write_status(issue, kind.status(), reason, &supersede);
+    if kind == EndingKind::Delete {
         let extra = issue.extra_mut();
         extra.insert("deleted_at".into(), Value::from(c.when));
         extra.insert("deleted_by".into(), Value::from(c.who));
@@ -135,13 +147,13 @@ pub(super) fn close(c: &Ctx<'_>, issue: &mut Issue, ending: &Ending, closing: En
     if c.claim
         .is_some_and(|held| named.is_some() || c.k.saw_at(c.at, held.id))
     {
-        if closing && named.is_some() {
+        if kind == EndingKind::Close && named.is_some() {
             let assignee = issue.get(Field::Assignee).cloned().unwrap_or(Value::Null);
             c.write(issue, Field::Assignee, assignee, &supersede);
         }
-        end_claim(c, issue, if closing { "close" } else { "delete" }, None);
+        end_claim(c, issue, kind.op(), None);
     }
-    if closing {
+    if kind == EndingKind::Close {
         issue.provisional_claims.retain(|p| !c.k.saw_at(c.at, p.id));
         if let Some(place) = c.place {
             issue.closed_on = Some(std::sync::Arc::clone(place));

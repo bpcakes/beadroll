@@ -441,8 +441,7 @@ fn load(world: &World, held: &[usize]) -> Journal {
 /// properties of replay deliver in other orders (`replay::tests`). A world `flawed` also writes
 /// what replay reports.
 pub(crate) fn history(seed: u64, batches: usize, flawed: HistoryKind) -> Vec<Record> {
-    let flawed = matches!(flawed, HistoryKind::Flawed);
-    let mut world = if flawed {
+    let mut world = if flawed == HistoryKind::Flawed {
         World::flawed(seed)
     } else {
         World::new(seed)

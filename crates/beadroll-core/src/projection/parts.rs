@@ -27,9 +27,9 @@ use crate::state::{Knowledge, State, TextPlace, Texts};
 /// Whether encoding retains the full known event index or compacts it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Compaction {
-    /// Keep.
+    /// Every event the projection knows stays in its index.
     Keep,
-    /// Compact.
+    /// The index keeps only the events the state names and the heads.
     Compact,
 }
 
@@ -125,7 +125,6 @@ impl Projection {
         compact: Compaction,
         copying: Copying,
     ) -> (Encoded, Vec<(EventId, TextPlace)>) {
-        let compact = matches!(compact, Compaction::Compact);
         let (mut texts, mut places) = (Vec::new(), Vec::new());
         for issue in self.state.issues.values() {
             if matches!(issue.texts, Texts::Here) {
@@ -164,13 +163,13 @@ impl Projection {
             None => self.state_part(&given, Table::default(), None).0,
         };
         let index = match kept {
-            Some(kept) if !compact => {
+            Some(kept) if compact == Compaction::Keep => {
                 let knowledge = &self.state.knowledge;
                 self.index_part(knowledge, self.compacted, Some(kept), copying)
             }
             _ => {
                 let cut;
-                let knowledge = if compact {
+                let knowledge = if compact == Compaction::Compact {
                     let mut named = named(&self.state);
                     named.extend(self.heads.iter().copied());
                     cut = self.state.knowledge.kept(&named);
@@ -178,7 +177,7 @@ impl Projection {
                 } else {
                     &self.state.knowledge
                 };
-                let compacted = if compact {
+                let compacted = if compact == Compaction::Compact {
                     knowledge.events.len()
                 } else {
                     self.compacted

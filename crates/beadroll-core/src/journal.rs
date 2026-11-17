@@ -26,9 +26,9 @@ use crate::op::Op;
 /// Whether a record belongs to the machine journal order or an ownership attempt.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum JournalOrder {
-    /// Attempt.
+    /// An ownership attempt's file: its events have no place in the replica's order.
     Attempt,
-    /// Sequenced.
+    /// A segment of a replica's journal, whose records come in the order the replica wrote them.
     Sequenced,
 }
 
@@ -202,8 +202,9 @@ impl Journal {
 
     /// Where a record of `replica`'s journal at `origin` was found, shared with the records before
     /// it from the same file.
-    fn source(&mut self, replica: &str, origin: &str, sequenced: JournalOrder) -> Arc<Source> {
-        let sequenced = matches!(sequenced, JournalOrder::Sequenced);
+    fn source(&mut self, replica: &str, origin: &str, order: JournalOrder) -> Arc<Source> {
+        // the source stores the order as the flag every record reads
+        let sequenced = order == JournalOrder::Sequenced;
         if let Some(last) = &self.last_source
             && *last.replica == *replica
             && *last.origin == *origin

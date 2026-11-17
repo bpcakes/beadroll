@@ -10,9 +10,9 @@ use crate::json::Value;
 /// Whether a key lookup found an existing claim.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum KeyClaim {
-    /// Free.
+    /// No issue or awaited dependency has the key.
     Free,
-    /// Claimed.
+    /// An issue has the key, or an import waits for it.
     Claimed,
 }
 
@@ -46,10 +46,11 @@ fn holds(state: &State, key: &str) -> bool {
         })
 }
 
-/// Fails unless `claimed`, what [`State::claims_key`] answered of `key`, is whether
+/// Fails unless `claim`, what [`State::claims_key`] answered of `key`, is whether
 /// [`State::claimed_keys`] would hold it; keeps the ask.
-pub(super) fn agrees(state: &State, key: &str, claimed: KeyClaim) {
-    let claimed = matches!(claimed, KeyClaim::Claimed);
+pub(super) fn agrees(state: &State, key: &str, claim: KeyClaim) {
+    // an ask stores the answer as the flag its checks compare
+    let claimed = claim == KeyClaim::Claimed;
     assert_eq!(
         claimed,
         holds(state, key),

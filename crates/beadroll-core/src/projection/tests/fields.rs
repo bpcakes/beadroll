@@ -26,7 +26,6 @@ pub(super) enum CreateOrigin {
 /// null or a legacy boolean priority, or makes an issue closed with what it gives of the close;
 /// an import's, now and then the times and the author its record gives, the author null included.
 pub(super) fn created(r: &mut Rng, roll: usize, imported: CreateOrigin) -> Object {
-    let imported = matches!(imported, CreateOrigin::Imported);
     let mut fields = Object::new();
     for field in ["title", "priority", "issue_type"] {
         if !r.chance(10) {
@@ -56,7 +55,7 @@ pub(super) fn created(r: &mut Rng, roll: usize, imported: CreateOrigin) -> Objec
         }
     }
     for field in ["created_at", "updated_at", "created_by"] {
-        if imported && r.chance(50) {
+        if imported == CreateOrigin::Imported && r.chance(50) {
             let value = match field {
                 "created_by" if r.chance(30) => Value::Null,
                 "created_by" => Value::from(format!("v{roll}")),
@@ -99,9 +98,8 @@ const SET: [&str; 10] = [
 /// A value of `field` for an event of `roll` to write: null now and then where `nullable` and the
 /// field may be cleared, and a legacy boolean priority now and then.
 fn drawn(r: &mut Rng, field: &str, roll: usize, nullable: FieldValue) -> Value {
-    let nullable = matches!(nullable, FieldValue::Nullable);
     let required = matches!(field, "title" | "priority" | "issue_type" | "status");
-    if nullable && !required && r.chance(30) {
+    if nullable == FieldValue::Nullable && !required && r.chance(30) {
         return Value::Null;
     }
     match field {
