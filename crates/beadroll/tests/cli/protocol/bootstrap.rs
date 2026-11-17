@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use beadroll_test_support::{Machine, Sandbox, code, git};
 
-use crate::hardening::gate::{Gate, beside};
+use beadroll_test_support::{Gate, beside};
 
 fn files(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
     stored_files(root)

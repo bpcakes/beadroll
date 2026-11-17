@@ -1,8 +1,8 @@
 //! Black-box hardening tests. The `g*` and `v*` modules keep the finding ids `docs/FINDINGS.md`
 //! cites, from the port of Python's suite. They are history, not a pattern: a new test goes in a
 //! module named for its subject, under a name that says the contract it checks (`AGENTS.md`).
-//! Fault injection uses failpoints on this build's binary (`crate::rust_only`); `gate` coordinates
-//! a test with a paused process.
+//! Fault injection uses failpoints on this build's binary (`crate::rust_only`); `beadroll_test_support::Gate`
+//! coordinates a test with a paused process.
 
 mod fixture_environment;
 mod g01;
@@ -70,7 +70,6 @@ mod g62;
 mod g63;
 mod g64;
 mod g65;
-pub(crate) mod gate;
 mod v1;
 mod v2;
 mod v3;

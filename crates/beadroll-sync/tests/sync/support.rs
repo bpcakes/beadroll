@@ -6,12 +6,12 @@ use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
 
 use beadroll_core::json::{Format, Object, Value, write};
 use beadroll_store::{Actor, Settings, Workspace, pending_files, read_attempt};
 use beadroll_sync::NetworkMode;
 use beadroll_sync::{Error, Mode, Tx, coordinated};
+pub(crate) use beadroll_test_support::Gate;
 use beadroll_test_support::{Json, Machine, Sandbox, built_bead, json};
 
 /// A sandbox whose machines run `BEAD_UNDER_TEST`, else the `bead` Cargo built beside this test
@@ -194,49 +194,7 @@ pub(crate) fn release_command(ws: &Workspace, actor: &Actor, key: &str) -> Resul
     )
 }
 
-/// The handshake of a `pause-until` failpoint: the paused process touches `PATH.ready`, then waits
-/// for `PATH.go`.
-pub(crate) struct Gate {
-    path: PathBuf,
-}
-
-impl Gate {
-    /// A gate named `name` in the sandbox.
-    pub(crate) fn new(sandbox: &Sandbox, name: &str) -> Gate {
-        Gate {
-            path: sandbox.root().join(name),
-        }
-    }
-
-    /// The failpoint action that stops at this gate.
-    pub(crate) fn action(&self) -> String {
-        format!("pause-until({})", self.path.display())
-    }
-
-    fn with(&self, suffix: &str) -> PathBuf {
-        let mut name = self.path.as_os_str().to_owned();
-        name.push(suffix);
-        PathBuf::from(name)
-    }
-
-    /// Once the paused process has reached the gate, runs `step` and then lets the process go on,
-    /// even if `step` fails; `None` if `done` is set first, the process having finished without
-    /// reaching it.
-    pub(crate) fn meet<T>(&self, done: &AtomicBool, step: impl FnOnce() -> T) -> Option<T> {
-        let ready = self.with(".ready");
-        let deadline = Instant::now() + Duration::from_secs(120);
-        while !ready.exists() {
-            if done.load(Ordering::SeqCst) || Instant::now() > deadline {
-                return None;
-            }
-            std::thread::sleep(Duration::from_millis(5));
-        }
-        let _open = Open(self.with(".go"));
-        Some(step())
-    }
-}
-
-/// Touches its file when dropped: a gate opened, or a hook released, whatever the test came to.
+/// Touches its file when dropped: a hook released, whatever the test came to.
 pub(crate) struct Open(pub(crate) PathBuf);
 
 impl Drop for Open {
@@ -254,15 +212,16 @@ impl Drop for Done<'_> {
     }
 }
 
-/// Runs `main` in this thread and `helper` beside it, which meets `main` at its gates and learns
-/// from the flag it is given that `main` has finished: what each came to.
+/// Runs `main` in this thread and `helper` beside it, which meets `main` at its gates and is told
+/// whether `main` has finished: what each came to. The in-process counterpart of
+/// [`beadroll_test_support::beside`].
 pub(crate) fn alongside<M, H: Send>(
     main: impl FnOnce() -> M,
-    helper: impl FnOnce(&AtomicBool) -> H + Send,
+    helper: impl FnOnce(&dyn Fn() -> bool) -> H + Send,
 ) -> (M, H) {
     let done = AtomicBool::new(false);
     std::thread::scope(|scope| {
-        let helper = scope.spawn(|| helper(&done));
+        let helper = scope.spawn(|| helper(&|| done.load(Ordering::SeqCst)));
         let out = {
             let _done = Done(&done);
             main()

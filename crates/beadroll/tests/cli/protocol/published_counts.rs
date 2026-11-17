@@ -2,7 +2,7 @@
 
 use beadroll_test_support::parse_json;
 
-use crate::hardening::gate::{Gate, beside};
+use beadroll_test_support::{Gate, beside};
 
 #[test]
 fn writes_after_the_sync_round_remain_unpublished() {

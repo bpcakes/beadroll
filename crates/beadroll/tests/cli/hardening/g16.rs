@@ -10,7 +10,7 @@ mod g16_concurrent_processes_share_no_fetch_destination {
 
     use beadroll_test_support::{Invocation, Json, Machine, Run, code, parse_json};
 
-    use crate::hardening::gate::{Gate, beside};
+    use beadroll_test_support::{Gate, beside};
 
     /// A `bead` started beside others: nothing on its standard
     /// input, its output piped and read to the end by a thread of its own, which hands it over

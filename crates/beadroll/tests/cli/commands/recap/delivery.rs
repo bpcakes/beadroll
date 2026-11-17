@@ -11,7 +11,7 @@ use beadroll_test_support::{Json, Machine, Run, code, parse_json};
 
 use super::{create, each, events, recap};
 use crate::hardening::g59::run_on_terminal;
-use crate::hardening::gate::{Gate, beside};
+use beadroll_test_support::{Gate, beside};
 
 /// The frontier the cursor keeps of `machine`'s one tracker, and the time of the last recap that
 /// marked anything seen.

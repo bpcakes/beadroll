@@ -53,7 +53,7 @@ mod g11_server_hook_text_does_not_decide_the_push_outcome {
     use beadroll_test_support::{Json, Machine, Sandbox, parse_json};
 
     use super::{install_post_receive, remote_head};
-    use crate::hardening::gate::{Gate, beside};
+    use beadroll_test_support::{Gate, beside};
 
     /// Machine `g11` (made by `make`) has initialised tracker `ex`, created
     /// the issue `one` and synced. Returns the machine and the issue's key.

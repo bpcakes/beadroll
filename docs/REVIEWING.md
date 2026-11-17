@@ -1649,7 +1649,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   `incorrect old value provided` or `failed to update ref`; the locale test accepts both while
   still requiring the ref-lock error, rejection status and bead's rejection classification.
   ActualTransportReview's tests cut a release's push short by holding it in the remote's hook, and
-  order the rounds with a gate on `backoff` (`hardening::gate`): one lets the push land before
+  order the rounds with a gate on `backoff` (`beadroll_test_support::Gate`): one lets the push land before
   bead's next round, which finds the release accepted, the other opens the gate first, so that the
   round fences the push and builds the release again; the command's other fetches and pushes have a
   second each, far more than they take. They ran under a `BEAD_NET_TIMEOUT` of 0.1 s, which caps

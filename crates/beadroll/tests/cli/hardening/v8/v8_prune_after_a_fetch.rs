@@ -14,7 +14,7 @@ use std::process::Stdio;
 
 use beadroll_test_support::{Json, Machine, Run, Sandbox, code, parse_json};
 
-use crate::hardening::gate::{Gate, beside};
+use beadroll_test_support::{Gate, beside};
 
 mod mismatched_trees;
 

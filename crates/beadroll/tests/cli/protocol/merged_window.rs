@@ -9,7 +9,7 @@ use std::path::Path;
 use beadroll_store::{glob_ending, json_text, read_attempt};
 use beadroll_test_support::{Json, Machine, Sandbox};
 
-use crate::hardening::gate::{Gate, beside};
+use beadroll_test_support::{Gate, beside};
 
 /// Machine `a`, which started a tracker of three issues and has written alone, and machine `b`,
 /// which joined it.

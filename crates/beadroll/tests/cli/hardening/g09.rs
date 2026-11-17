@@ -29,7 +29,7 @@ mod g09_receipt_loop_variable_shadows_the_in_flight_receipt {
     use beadroll_test_support::Json;
 
     use super::machine;
-    use crate::hardening::gate::{Gate, beside};
+    use beadroll_test_support::{Gate, beside};
 
     /// The id of the issue a `--json` result is: `result["id"]`.
     fn id(result: Option<Json>) -> String {
