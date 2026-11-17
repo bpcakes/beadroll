@@ -77,8 +77,7 @@ pub fn printed_text(data: &[u8]) -> String {
 
 /// OS bytes as an ASCII-escaped JSON string, including quotes. Escape controls and characters
 /// outside printable ASCII, use surrogate pairs beyond the BMP and represent each invalid UTF-8
-/// byte as U+FFFD (`\ufffd`), so that what bead prints or signs as JSON is JSON any reader takes
-/// (until roll-lqjj.53 it was a lone surrogate escape, which only bead's own parser read).
+/// byte as U+FFFD (`\ufffd`), so that what bead prints or signs as JSON is JSON any reader takes.
 pub fn json_ascii_bytes(data: &[u8]) -> String {
     let mut out = String::with_capacity(data.len() + 2);
     out.push('"');

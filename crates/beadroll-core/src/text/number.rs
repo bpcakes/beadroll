@@ -1,8 +1,6 @@
 //! Numeric text accepted by `--limit`, `--estimate` and the `BEAD_*` settings (roll-lqjj.53.2):
 //! what Rust reads, whitespace around it allowed. An integer is an optional sign and ASCII digits
-//! within an `i128`; a float is what `f64` parses (`1e3`, `.5`, `5.`, `inf`, `nan`). Until
-//! roll-lqjj.53.2 these read as Python's `int()` and `float()` did, for parity with the Python
-//! bead (`" +5 "`, `5_000`, digits of every script), and that parity is gone.
+//! within an `i128`; a float is what `f64` parses (`1e3`, `.5`, `5.`, `inf`, `nan`).
 
 use crate::json::Int;
 

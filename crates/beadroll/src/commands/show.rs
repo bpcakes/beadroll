@@ -236,7 +236,7 @@ fn relations(item: &Object) -> Vec<String> {
                 .unwrap_or_default()
                 .iter()
                 .map(|o| {
-                    // each value as JSON (until roll-lqjj.53.2 as Python's `repr()` printed it)
+                    // each value as JSON
                     let value = o.get("value").unwrap_or(&Value::Null);
                     let shown = json::write(value, Format::COMPACT)
                         .unwrap_or_else(|_| format!("{value:?}"));
