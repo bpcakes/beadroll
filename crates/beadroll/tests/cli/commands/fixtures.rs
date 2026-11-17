@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use beadroll_core::json::{Format, Object, write};
-use beadroll_test_support::{Json, Machine, Sandbox, json};
+use beadroll_test_support::{Json, Machine, Sandbox, json, parse_json};
 
 /// A machine `name` whose tracker is initialised, prefix `ex`.
 pub(crate) fn machine(sandbox: &Sandbox, name: &str) -> Machine {
@@ -87,3 +87,25 @@ pub(crate) fn jsonl(records: &[Json]) -> String {
         .map(|record| write(record, Format::ASCII).expect("a record bead can read") + "\n")
         .collect()
 }
+
+/// Reads strict JSON or fails the test. NaN, infinity and numbers overflowing a float are
+/// refused.
+pub(crate) fn strict_json(text: &str) -> Json {
+    parse_json(text).unwrap_or_else(|error| panic!("not strict JSON ({error}): {text:?}"))
+}
+
+/// One Beads record as text: `head`, [`common`] and `tail` merged in that order (a member already
+/// there keeps its place and takes the new value), written spaced and ASCII-escaped.
+pub(crate) fn record_text(head: Json, tail: Json) -> String {
+    let mut members = Object::new();
+    for part in [head, common(), tail] {
+        let Json::Object(part) = part else {
+            panic!("members, not {part:?}");
+        };
+        members.extend(*part);
+    }
+    write(&Json::from(members), Format::ASCII).expect("a record")
+}
+
+/// A private-use stand-in for a lone surrogate, which a Rust string cannot hold.
+pub(crate) const STAND_IN: char = '\u{E000}';

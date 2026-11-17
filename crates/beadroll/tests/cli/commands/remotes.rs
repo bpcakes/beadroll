@@ -1,5 +1,8 @@
-//! F03 and a verified property: a password or token in a remote's URL is neither stored nor shown,
-//! whatever the URL's shape, and the shapes that were already safe stay as they were.
+//! F03, E02 and a verified property: a password or token in a remote's URL is neither stored nor
+//! shown, nor left readable by others, whatever the URL's shape, and the shapes that were already
+//! safe stay as they were.
+
+use std::os::unix::fs::PermissionsExt as _;
 
 use beadroll_test_support::{Machine, git, parse_json};
 
@@ -110,4 +113,24 @@ fn remote_url_shapes_that_are_already_safe() {
         // G06: over https the user part may be the token
         Some("https://example.invalid/private.git")
     );
+}
+
+/// E02: remote URL credentials must be redacted and protected at rest.
+#[test]
+fn e02_remote_credentials_are_not_disclosed_or_world_readable() {
+    let sandbox = crate::sandbox();
+    let secret = "supersecret";
+    let remote = format!("https://alice:{secret}@example.invalid/private.git");
+    let machine = Machine::new(&sandbox, "e02-secret");
+    let initialized = machine.run(["init", "--prefix", "ex", "--remote", &remote, "--json"]);
+    assert_eq!(initialized.returncode(), 0, "{}", initialized.stderr);
+    let info = machine.run(["info", "--json"]);
+    assert_eq!(info.returncode(), 0, "{}", info.stderr);
+    assert!(!info.stdout.contains(secret), "{}", info.stdout);
+    let meta = machine.store().join("meta.json");
+    let text = std::fs::read_to_string(&meta).unwrap();
+    assert!(!text.contains(secret), "{text}");
+    // `stat.S_IMODE(mode) & 0o077`: no permission for the group or for others
+    let mode = std::fs::metadata(&meta).unwrap().permissions().mode();
+    assert_eq!(mode & 0o7777 & 0o077, 0, "meta.json has mode {mode:o}");
 }
