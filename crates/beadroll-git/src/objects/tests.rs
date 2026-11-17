@@ -223,3 +223,42 @@ fn a_subtree_with_another_trees_content_is_never_listed() {
         }
     }
 }
+
+/// `cat-file --batch`'s answers are read one by one: an object, `missing`, then an object again;
+/// a SHA-256 name too.
+#[test]
+fn batch_answers_are_objects_or_missing_in_order() {
+    let blob = "a".repeat(40);
+    let tree = "b".repeat(64);
+    let out = format!("{blob} blob 3\nabc\nHEAD:x missing\n{tree} tree 0\n\n");
+    let answers = batch_answers(out.as_bytes(), 3);
+    let object = |oid: &str, kind: &str, data: &[u8]| Object {
+        oid: oid.to_owned(),
+        kind: kind.to_owned(),
+        data: data.to_vec(),
+    };
+    assert_eq!(
+        answers,
+        [
+            Some(object(&blob, "blob", b"abc")),
+            None,
+            Some(object(&tree, "tree", b""))
+        ]
+    );
+}
+
+/// An answer not as git writes one ends the reading: what follows it cannot be told apart, and no
+/// object is guessed at.
+#[test]
+fn an_unreadable_batch_answer_ends_the_reading() {
+    let blob = "c".repeat(40);
+    for out in [
+        format!("{blob} blob 9\nabc\n{blob} blob 1\nx\n"), // content cut short
+        format!("{blob}  blob 3\nabc\n{blob} blob 1\nx\n"), // two spaces
+        format!("{blob} widget 3\nabc\n{blob} blob 1\nx\n"), // no such type
+        format!("{blob} blob 3\nabcd{blob} blob 1\nx\n"),  // no newline after the content
+    ] {
+        assert_eq!(batch_answers(out.as_bytes(), 2), [None, None], "{out:?}");
+    }
+    assert_eq!(batch_answers(b"", 2), [None, None]);
+}

@@ -108,26 +108,73 @@ fn ask(session: &mut Session, command: &str, name: &str) -> Result<Option<Object
     {
         return Ok(None);
     }
-    let fields: Vec<&str> = header.split(' ').collect();
-    let [oid, kind, size] = fields.as_slice() else {
-        return Err(NoAnswer);
-    };
-    let known = matches!(*kind, "blob" | "tree" | "commit" | "tag");
-    if !known || !lower_hex(oid) || !matches!(oid.len(), 40 | 64) || !digits(size) {
-        return Err(NoAnswer);
-    }
+    let (oid, kind, size) = header_fields(&header).ok_or(NoAnswer)?;
     let mut data = Vec::new();
     if command == "contents" {
-        data = session.exact(size.parse().map_err(|_| NoAnswer)?)?;
+        data = session.exact(u64::try_from(size).map_err(|_| NoAnswer)?)?;
         if session.exact(1)? != b"\n" {
             return Err(NoAnswer);
         }
     }
     Ok(Some(Object {
-        oid: (*oid).to_owned(),
-        kind: (*kind).to_owned(),
+        oid: oid.to_owned(),
+        kind: kind.to_owned(),
         data,
     }))
+}
+
+/// The name, type and size an object's header gives (`<oid> <type> <size>`), checked as git
+/// writes them; `None` for anything else, `missing` included.
+fn header_fields(header: &str) -> Option<(&str, &str, usize)> {
+    let fields: Vec<&str> = header.split(' ').collect();
+    let [oid, kind, size] = fields.as_slice() else {
+        return None;
+    };
+    let known = matches!(*kind, "blob" | "tree" | "commit" | "tag");
+    if !known || !lower_hex(oid) || !matches!(oid.len(), 40 | 64) || !digits(size) {
+        return None;
+    }
+    Some((oid, kind, size.parse().ok()?))
+}
+
+/// What `git cat-file --batch` printed for `count` questions, in order: each object, or `None`
+/// where git said it is missing. An answer that is not as git writes one (a header of another
+/// shape, content cut short) is `None`, and so is every answer after it, which can no longer be
+/// told apart: never a guess at an object.
+pub fn batch_answers(mut out: &[u8], count: usize) -> Vec<Option<Object>> {
+    let mut answers = Vec::with_capacity(count);
+    let mut readable = true;
+    for _ in 0..count {
+        // Some(object or None for missing), or None for an answer that cannot be read
+        let mut read = || -> Option<Option<Object>> {
+            let at = out.iter().position(|b| *b == b'\n')?;
+            let (header, rest) = (out.get(..at)?, out.get(at + 1..)?);
+            out = rest;
+            let header = std::str::from_utf8(header).ok()?;
+            if header.ends_with(" missing") {
+                return Some(None);
+            }
+            let (oid, kind, size) = header_fields(header)?;
+            let data = out.get(..size)?.to_vec();
+            if out.get(size) != Some(&b'\n') {
+                return None;
+            }
+            out = out.get(size + 1..)?;
+            Some(Some(Object {
+                oid: oid.to_owned(),
+                kind: kind.to_owned(),
+                data,
+            }))
+        };
+        match readable.then(&mut read).flatten() {
+            Some(answer) => answers.push(answer),
+            None => {
+                readable = false;
+                answers.push(None);
+            }
+        }
+    }
+    answers
 }
 
 /// What `git rev-parse COMMIT^{tree}` finds for `commit`, read with [`Objects::get`]: its tree

@@ -19,7 +19,9 @@ resolution shared with the store.
   (`setsid`, SIGXFSZ back to default).
 - `src/session.rs`: `Session`, one long-lived git spoken to through pipes, started as the runner
   starts every git and killed with its helpers and reaped when dropped; `NoAnswer`.
-- `src/objects.rs`: `Objects` (`cat-file --batch-command`: `name`, `get`, `start`, `stop`),
+- `src/objects.rs`: `batch_answers`, the one reader of `git cat-file --batch` output, whose
+  headers are checked as strictly as `Objects` checks its own; `Objects` (`cat-file
+  --batch-command`: `name`, `get`, `start`, `stop`),
   `Object`, `list_tree` (what `ls-tree -r -z COMMIT` lists) and `root_tree` (what `rev-parse
   COMMIT^{tree}` finds), and `list_tree_with_subtrees` (also retaining subtree names), with git's
   own checks: tree entries as `decode_tree_entry` reads them, commits as `parse_commit_buffer`
