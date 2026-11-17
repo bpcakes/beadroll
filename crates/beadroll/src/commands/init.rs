@@ -95,10 +95,9 @@ fn stored_remote(ws: &Workspace, typed: &OsStr, live: &Endpoint) -> Result<OsStr
     }
     let settings = &ws.settings;
     let cwd = &settings.cwd;
-    let top = settings.fact(Fact::Toplevel)?;
-    // the top as a stored path is read from: git's line, stripped, then a slash
-    let base = top.success().then(|| {
-        let mut base = beadroll_core::text::strip_bytes(&top.stdout).to_vec();
+    // the top as a stored path is read from: git's line, then a slash
+    let base = settings.toplevel()?.map(|top| {
+        let mut base = top.into_os_string().into_vec();
         if !base.ends_with(b"/") {
             base.push(b'/');
         }
@@ -188,9 +187,10 @@ fn join_published(
 /// none is ever written back, even a hand-set one.
 fn write_tracked(ws: &Workspace, remote: Option<&OsStr>, id: WorkspaceId) -> Result<(), Failure> {
     let settings = &ws.settings;
-    let top = settings
-        .fact(Fact::Toplevel)?
-        .checked_text(Fact::Toplevel.args())?;
+    let Some(top) = settings.toplevel()? else {
+        let args: Vec<&OsStr> = Fact::Toplevel.args().iter().map(OsStr::new).collect();
+        return Err(settings.fact(Fact::Toplevel)?.failed(&args).into());
+    };
     let mut config: Object = ws.config.clone();
     let workspace = match config.get("workspace") {
         Some(value) if value.truthy() => value.clone(),

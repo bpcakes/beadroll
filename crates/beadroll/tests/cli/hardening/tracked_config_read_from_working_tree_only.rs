@@ -117,3 +117,32 @@ fn older_branch_checkout_keeps_the_tracked_coordination_remote() {
     );
     assert_eq!(refs, "", "bead published to the code origin");
 }
+
+/// A checkout whose directory's name ends in a space reads the `.beadroll.json` at its top, and is
+/// named as git names it. Discovery read git's top with its surrounding whitespace stripped, so the
+/// file was looked for in a directory that does not exist, and the tracked workspace was dropped
+/// for the local path's without a word.
+#[test]
+fn a_checkout_whose_name_ends_in_a_space_reads_its_tracked_config() {
+    let sandbox = crate::sandbox();
+    let m = Machine::new(&sandbox, "spaced");
+    let dir = sandbox.root().join("repo ");
+    std::fs::create_dir(&dir).unwrap();
+    git(["init", "-q"], Some(&dir));
+    std::fs::write(dir.join(".beadroll.json"), r#"{"workspace": "spaced"}"#).unwrap();
+    let made = m
+        .cmd(["init", "--prefix", "ex", "--offline", "--json"])
+        .cwd(&dir)
+        .run();
+    assert_eq!(made.returncode(), 0, "{}", made.stderr);
+    let shown = m.cmd(["info", "--json"]).cwd(&dir).run();
+    assert_eq!(shown.returncode(), 0, "{}", shown.stderr);
+    let info = parse_json(&shown.stdout).unwrap();
+    assert_eq!(
+        info["workspace_source"].as_str(),
+        Some("tracked .beadroll.json"),
+        "{info:?}"
+    );
+    assert_eq!(info["workspace"].as_str(), Some("spaced"));
+    assert_eq!(info["name"].as_str(), Some("repo "));
+}

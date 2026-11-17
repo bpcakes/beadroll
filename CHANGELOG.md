@@ -6,6 +6,11 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A checkout whose directory's name begins or ends with whitespace reads the `.beadroll.json` at
+  its top and is named as git names it. Discovery stripped the whitespace off git's answer, so it
+  looked for the file in a directory that does not exist and fell back to the local path's
+  workspace without a word; relative remotes and `init --tracked` resolved from the same wrong top.
+
 - A store write that fails part-way names the file it was writing, as every other operating-system
   error does (`{strerror}: {path}`): an append to a journal segment, an atomic write's contents
   and flush, and the machine identity. A full volume or a file-size limit reported only

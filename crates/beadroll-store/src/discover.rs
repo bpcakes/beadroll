@@ -101,13 +101,10 @@ fn committed_config(answer: Result<Output, beadroll_git::Error>) -> Result<Objec
 /// two when the file is not committed (to say why).
 pub fn tracked_config_warning(ws: &Workspace) -> Result<Option<String>, Error> {
     let settings = &ws.settings;
-    let top = settings.fact(Fact::Toplevel)?;
-    if !top.success() {
+    let Some(top) = settings.toplevel()? else {
         return Ok(None);
-    }
-    let root = normalize_path(OsStr::from_bytes(beadroll_core::text::strip_bytes(
-        &top.stdout,
-    )));
+    };
+    let root = normalize_path(top.as_os_str());
     let here = std::fs::read(root.join(".beadroll.json")).ok();
     if here.is_none() && ws.config.is_empty() {
         return Ok(None);
@@ -308,11 +305,9 @@ pub fn find_workspace(settings: &Arc<Settings>) -> Result<Workspace, Error> {
     // read the committed copy beside them too, and use it only if git's top has none.
     let early = may_read_committed(settings).then(|| committed_query(settings));
     let (origin_urls, committed) = settings.checkout.origin_urls(&settings.git, early);
-    let top = settings.fact(Fact::Toplevel)?;
-    let root: Option<PathBuf> = top.success().then(|| {
-        let raw = beadroll_core::text::strip_bytes(&top.stdout);
-        normalize_path(OsStr::from_bytes(raw))
-    });
+    let root: Option<PathBuf> = settings
+        .toplevel()?
+        .map(|top| normalize_path(top.as_os_str()));
     let tracked_file = root.as_ref().map(|root| root.join(".beadroll.json"));
     if let Some(file) = &tracked_file
         && file.is_symlink()
