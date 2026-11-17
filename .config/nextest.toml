@@ -29,7 +29,7 @@ threads-required = "num-cpus"
 [[profile.default.overrides]]
 filter = """\
     test(=sweep::sweep::sweep) \
-    | test(/^stress::(root_audit_stress|concurrent_reaudit)::/)"""
+    | test(/^stress::(reference_model|concurrent_commands)::/)"""
 slow-timeout = { period = "60s", terminate-after = 60 }
 
 [profile.ci]
