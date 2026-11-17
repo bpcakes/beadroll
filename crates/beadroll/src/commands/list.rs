@@ -6,9 +6,9 @@ use beadroll_core::event::Field;
 use beadroll_core::json::{Int, Object, Value};
 use beadroll_store::view_outline;
 
+use super::args::{TextValidity, resolve_arg};
 use super::{
-    Context, Failure, Filters, Line, Outcome, first, need_tracker, resolve, row, select, text,
-    texts,
+    Context, Failure, Filters, Line, Outcome, first, need_tracker, row, select, split_args,
 };
 
 /// The filters `list` and `ready` take, as given.
@@ -39,8 +39,64 @@ pub(crate) struct ReadyArgs {
     pub(crate) filters: FilterArgs,
 }
 
-fn optional(value: Option<&OsString>) -> Result<Option<String>, Failure> {
-    value.map(|v| text(v)).transpose()
+/// Filter values from the command line, split at commas: those that are UTF-8, and whether every
+/// one given was (one that is not matches no issue).
+fn values(given: &[OsString]) -> (Vec<String>, TextValidity) {
+    let mut valid = TextValidity::Utf8;
+    let kept = split_args(given)
+        .into_iter()
+        .filter_map(|value| {
+            let text = value.into_string().ok();
+            if text.is_none() {
+                valid = TextValidity::Invalid;
+            }
+            text
+        })
+        .collect();
+    (kept, valid)
+}
+
+/// The filters `list` and `ready` share from their arguments. A list of values any of which an
+/// issue may have (statuses, types, ids) matches nothing when no value given is UTF-8; labels,
+/// every one of which an issue must have, and the assignee and title match nothing when one is not.
+fn filters(
+    status: &[OsString],
+    args: &FilterArgs,
+    title_contains: Option<&OsString>,
+    id: &[OsString],
+) -> Filters {
+    let any_of = |given: &[OsString]| {
+        let (kept, valid) = values(given);
+        let unmatched = valid == TextValidity::Invalid && kept.is_empty();
+        (kept, unmatched)
+    };
+    let (status, no_status) = any_of(status);
+    let (issue_type, no_type) = any_of(&args.issue_type);
+    let (id, no_id) = any_of(id);
+    let (label, labels_valid) = values(&args.label);
+    let single = |value: Option<&OsString>| match value.map(|v| v.to_str()) {
+        None => (None, false),
+        Some(Some(text)) => (Some(text.to_owned()), false),
+        Some(None) => (None, true),
+    };
+    let (assignee, no_assignee) = single(args.assignee.as_ref());
+    let (title_contains, no_title) = single(title_contains);
+    Filters {
+        status,
+        issue_type,
+        label,
+        priority: args.priority.clone(),
+        assignee,
+        title_contains,
+        id,
+        unmatched: no_status
+            || no_type
+            || no_id
+            || labels_valid == TextValidity::Invalid
+            || no_assignee
+            || no_title,
+        ..Filters::default()
+    }
 }
 
 /// Issues (open ones by default), by priority, creation time and key; `--limit 0` lists them all.
@@ -48,16 +104,15 @@ pub(crate) fn list(ctx: &Context<'_>, args: &ListArgs) -> Result<Outcome, Failur
     let st = view_outline(ctx.ws)?;
     need_tracker(&st)?;
     let filters = Filters {
-        status: texts(&args.status)?,
         all: args.all,
         deferred: args.deferred,
-        issue_type: texts(&args.filters.issue_type)?,
-        label: texts(&args.filters.label)?,
-        priority: optional(args.filters.priority.as_ref())?,
-        assignee: optional(args.filters.assignee.as_ref())?,
-        title_contains: optional(args.title_contains.as_ref())?,
-        id: texts(&args.id)?,
-        parent: optional(args.parent.as_ref())?,
+        parent: args.parent.clone(),
+        ..filters(
+            &args.status,
+            &args.filters,
+            args.title_contains.as_ref(),
+            &args.id,
+        )
     };
     let items = select(&st, &filters)?;
     let total = items.len();
@@ -91,22 +146,15 @@ pub(crate) fn list(ctx: &Context<'_>, args: &ListArgs) -> Result<Outcome, Failur
 pub(crate) fn ready(ctx: &Context<'_>, args: &ReadyArgs) -> Result<Outcome, Failure> {
     let st = view_outline(ctx.ws)?;
     need_tracker(&st)?;
-    let root = match &args.root {
-        Some(root) => Some(text(root)?),
-        None => optional(args.epic.as_ref())?,
-    };
-    let beneath = match &root {
-        Some(root) => Some(st.descendants(resolve(&st, root)?.uid())),
+    let root = args.root.as_ref().or(args.epic.as_ref());
+    let beneath = match root {
+        Some(root) => Some(st.descendants(resolve_arg(&st, root)?.uid())),
         None => None,
     };
     let filters = Filters {
         status: vec!["open".to_owned()],
-        issue_type: texts(&args.filters.issue_type)?,
-        label: texts(&args.filters.label)?,
-        priority: optional(args.filters.priority.as_ref())?,
-        assignee: optional(args.filters.assignee.as_ref())?,
-        parent: optional(args.parent.as_ref())?,
-        ..Filters::default()
+        parent: args.parent.clone(),
+        ..filters(&[], &args.filters, None, &[])
     };
     let held = st.readiness();
     let mut items: Vec<_> = select(&st, &filters)?

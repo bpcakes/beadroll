@@ -62,7 +62,7 @@ const NOT_UTF8_JSON: (i32, &str, &str) = (
 );
 
 /// The arguments that are not UTF-8, once the tracker and `{key}` exist.
-const ARGUMENTS: [Case; 14] = [
+const ARGUMENTS: [Case; 17] = [
     (
         &[b"create", b"t", b"x\xff"],
         (
@@ -191,6 +191,34 @@ const ARGUMENTS: [Case; 14] = [
         ),
     ),
     (&[b"search", b"\xff"], (0, "No matches", ""), (0, "[]", "")),
+    // a filter value that is not UTF-8 matches nothing, as `search` does, never an error
+    (
+        &[b"list", b"--status", b"op\xffen"],
+        (0, "No issues", ""),
+        (
+            0,
+            r#"{"issues": [], "total": 0, "limit": 50, "offset": 0, "has_more": false}"#,
+            "",
+        ),
+    ),
+    (
+        &[b"list", b"--label", b"x\xff"],
+        (0, "No issues", ""),
+        (
+            0,
+            r#"{"issues": [], "total": 0, "limit": 50, "offset": 0, "has_more": false}"#,
+            "",
+        ),
+    ),
+    (
+        &[b"ready", b"--parent", b"ex-\xff"],
+        (1, "", "Error: Issue not found: ex-?"),
+        (
+            1,
+            "",
+            r#"{"error": {"code": "ISSUE_NOT_FOUND", "message": "Issue not found: ex-\ufffd"}}"#,
+        ),
+    ),
     (
         &[b"close", b"{key}", b"-r", b"\xff"],
         NOT_UTF8,
@@ -246,6 +274,26 @@ fn arguments_that_are_not_utf8_keep_established_diagnostics() {
         ask(&m, None, &key, case);
     }
     assert_eq!(m.export(), before, "nothing was written");
+}
+
+/// A filter's values that are UTF-8 still match beside one that is not, which matches nothing: an
+/// open issue is listed for `--status open,<bytes>`, and none for `--status <bytes>` alone.
+#[test]
+fn a_filter_value_that_is_not_utf8_matches_nothing_beside_those_that_are() {
+    let sandbox = crate::sandbox();
+    let m = Machine::new(&sandbox, "filters");
+    json(&m, &["init", "--prefix", "ex"]);
+    let open = json_id(&json(&m, &["create", "open"]));
+    let listed = |status: &[u8]| {
+        let args = [&b"list"[..], b"--status", status, b"--json"];
+        let run = m.cmd(args.iter().map(|a| OsStr::from_bytes(a))).run();
+        assert_eq!(run.returncode(), 0, "{}", run.stderr);
+        let said = parse_json(&run.stdout).expect("JSON");
+        let issues = said["issues"].as_array().expect("issues");
+        issues.iter().map(json_id).collect::<Vec<_>>()
+    };
+    assert_eq!(listed(b"open,\xff"), [open]);
+    assert_eq!(listed(b"\xff"), Vec::<String>::new());
 }
 
 /// A reason that is not UTF-8 fails a transition only when an event would carry it, as it does
