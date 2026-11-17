@@ -80,7 +80,10 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
   `backoff@always=skip` skips the wait between attempts, and `pause-until(PATH)` holds bead at a
   point for the test to act (`hardening/gate.rs`); such a test's machine is `rust_only`, this
   build's binary. In-crate tests pass the failpoint registry in `Settings`, never through the
-  process environment.
+  process environment. Some waits cannot be a failpoint, such as a hook touching a file or a push
+  that bead gave up on still running at the remote. Those poll with `wait_until`, or with
+  `Sandbox::await_remote_settled` for the push, and both fail the test at their deadline; a fixed
+  sleep never stands in for them.
 - Some old tests are history, not a pattern; do not copy them:
   - Module names that carry a review or finding id: `hardening/g01`–`g65` and `v1`–`v9`,
     `review5_*`, `review6`, `bp_test`, `protocol3`, `replay_third_review`, and the `*_audit`,

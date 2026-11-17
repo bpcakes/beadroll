@@ -8,7 +8,6 @@ use std::collections::BTreeMap;
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
-use std::process::Command;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -319,18 +318,10 @@ impl Run {
                 std::thread::sleep(Duration::from_millis(50));
             }
         }
-        let pattern = format!("receive-pack.*{}", self.sandbox.origin().display());
-        loop {
+        while self.sandbox.receive_pack_running() {
             if Instant::now() >= deadline {
                 let text = "a receive-pack was still running 20 s after the stalled push";
                 self.violation(text.to_owned());
-                break;
-            }
-            let busy = Command::new("pgrep")
-                .args(["-f", &pattern])
-                .output()
-                .expect("pgrep runs");
-            if String::from_utf8_lossy(&busy.stdout).trim().is_empty() {
                 break;
             }
             std::thread::sleep(Duration::from_millis(50));

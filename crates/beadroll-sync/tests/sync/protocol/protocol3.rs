@@ -3,12 +3,11 @@
 //! twice (the third independent review, 2026-10-06).
 
 use std::os::unix::fs::PermissionsExt as _;
-use std::time::{Duration, Instant};
 
 use beadroll_store::{Endpoint, Workspace, write_attempt_file};
 use beadroll_sync::PublishMode;
 use beadroll_sync::{Error, Link, Mode, PushOutcome, Tx, locked, synchronise};
-use beadroll_test_support::{Json, Machine, Sandbox, git};
+use beadroll_test_support::{Json, Machine, REMOTE_SETTLES, Sandbox, git, wait_until};
 
 use crate::support::{
     Gate, Open, actor, alongside, claim, claiming_update, comments, pending_ids, quoted,
@@ -79,7 +78,7 @@ fn fence_wins_against_a_real_push_still_running_after_timeout() {
     );
     let hook = s.sandbox.origin().join("hooks").join("pre-receive");
     let script = format!(
-        "#!/bin/sh\nif mkdir {} 2>/dev/null; then\n n=0\n while [ ! -f {} ] && [ \"$n\" -lt 200 ]; \
+        "#!/bin/sh\nif mkdir {} 2>/dev/null; then\n n=0\n while [ ! -f {} ] && [ \"$n\" -lt 1200 ]; \
          do sleep .05; n=$((n+1)); done\n touch {}\nfi\nexit 0\n",
         quoted(&first),
         quoted(&gate),
@@ -90,8 +89,10 @@ fn fence_wins_against_a_real_push_still_running_after_timeout() {
     let _release = Open(gate.clone());
     let origin = s.sandbox.origin().as_os_str();
     let ws = workspace(&s.a, s.sandbox.origin(), &[]);
-    // the per-Link timeout: this one publish waits a quarter of a second
-    let short = workspace(&s.a, s.sandbox.origin(), &[("BEAD_NET_TIMEOUT", "0.25")]);
+    // The per-Link timeout of this one publish. It has to outlast the push's way to the hook, which
+    // a loaded machine stretches past a quarter of a second, and the hook holds the push until the
+    // test releases it, however long the timeout.
+    let short = workspace(&s.a, s.sandbox.origin(), &[("BEAD_NET_TIMEOUT", "2")]);
     let actor = actor(&s.a);
     let outcome = locked(&ws, || -> Result<PushOutcome, Error> {
         let mut link = Link::new(&ws, &Endpoint::at(origin))?;
@@ -120,12 +121,10 @@ fn fence_wins_against_a_real_push_still_running_after_timeout() {
     let fenced = synced.tip.unwrap();
     assert_eq!(pending_ids(&ws), Vec::<String>::new());
     std::fs::write(&gate, b"").unwrap();
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while !finished.exists() && Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    assert!(finished.exists());
-    std::thread::sleep(Duration::from_millis(200));
+    wait_until("the released hook to finish", REMOTE_SETTLES, || {
+        finished.exists()
+    });
+    s.sandbox.await_remote_settled();
     assert_eq!(s.remote_tip(), fenced);
     s.b.bead(["sync"]);
     s.a.bead(["sync"]);

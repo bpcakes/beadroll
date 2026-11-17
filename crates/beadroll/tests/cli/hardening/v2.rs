@@ -127,9 +127,8 @@ mod v2_in_flight_attempt_across_actors {
     use std::fs::Permissions;
     use std::os::unix::fs::PermissionsExt as _;
     use std::path::Path;
-    use std::time::Duration;
 
-    use beadroll_test_support::git;
+    use beadroll_test_support::{REMOTE_SETTLES, git, wait_until};
 
     use super::*;
     use crate::hardening::gate::{Gate, beside};
@@ -147,14 +146,13 @@ mod v2_in_flight_attempt_across_actors {
         std::fs::set_permissions(&hook, Permissions::from_mode(0o755)).unwrap();
     }
 
-    /// Waits until `path` exists, polling every 50 ms at most `polls` times.
-    fn wait_for(path: &Path, polls: u32) {
-        for _ in 0..polls {
-            if path.exists() {
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        }
+    /// Waits until the stalled push's hook has touched `done` and its receive-pack has ended, so
+    /// that the push has landed before the test reads or writes the remote.
+    fn settled(sandbox: &Sandbox, done: &Path) {
+        wait_until("the stalled push's hook to finish", REMOTE_SETTLES, || {
+            done.exists()
+        });
+        sandbox.await_remote_settled();
     }
 
     /// `_v2_remote_notes`: the kind of each commit on the remote journal, oldest first ("claim",
@@ -206,8 +204,7 @@ mod v2_in_flight_attempt_across_actors {
                 between.meet(finished, || {
                     if lands_first {
                         std::fs::remove_dir(&gate).unwrap();
-                        wait_for(&done, 400);
-                        std::thread::sleep(Duration::from_millis(300));
+                        settled(&sandbox, &done);
                     }
                     let claimed = m.cmd(["claim", &y, "--json"]).thread("actor-b").run();
                     (claimed.returncode(), pending(&m))
@@ -218,8 +215,7 @@ mod v2_in_flight_attempt_across_actors {
             std::fs::remove_dir(&gate).unwrap();
         }
         // let the stalled receive finish before anything else touches the remote
-        wait_for(&done, 200);
-        std::thread::sleep(Duration::from_millis(300));
+        settled(&sandbox, &done);
         let (seen, pending_after_b): (Vec<i32>, Vec<String>) =
             seen.map_or_else(Default::default, |(rc, names)| (vec![rc], names));
         assert_eq!(
