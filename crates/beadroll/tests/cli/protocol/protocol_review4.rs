@@ -7,6 +7,7 @@
 //! Q03 interrupts a release between its confirmation and its cleanup, which takes an in-crate API
 //! test: beadroll-sync's `protocol::protocol_review4`.
 
+use beadroll_test_support::printed_id;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -23,12 +24,6 @@ const COMPACT_ASCII: Format = Format {
     ascii: true,
     sorted: false,
 };
-
-/// The id of the issue a `--json` result is: `result["id"]`.
-fn id(result: Option<Json>) -> String {
-    let result = result.expect("bead printed a result");
-    result["id"].as_str().expect("an id").to_owned()
-}
 
 /// `remote_blob`: the bytes `git show REVISION:PATH` prints from the bare repository `remote`.
 fn remote_blob(remote: &Path, revision_path: &str) -> Vec<u8> {
@@ -135,7 +130,7 @@ fn q01_damaged_immutable_attempt_cannot_replace_remote_transaction() {
     let sandbox = crate::sandbox();
     let [a, b, c] = ["q01-a", "q01-b", "q01-c"].map(|name| Machine::new(&sandbox, name));
     a.bead(["init", "--prefix", "ex"]);
-    let key = id(a.bead(["create", "before"]));
+    let key = printed_id(a.bead(["create", "before"]));
     a.bead(["sync"]);
     b.bead(["sync"]);
     a.bead([
@@ -181,7 +176,7 @@ fn q01_malformed_attempt_is_inert_as_a_whole() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "q01-malformed");
     a.bead(["init", "--prefix", "ex"]);
-    let key = id(a.bead(["create", "survivor"]));
+    let key = printed_id(a.bead(["create", "survivor"]));
     let records: Vec<Json> = segments(&a)
         .iter()
         .flat_map(|path| {
@@ -236,9 +231,9 @@ fn q02_retry_after_accepted_claiming_parent_move_keeps_parent() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "q02-a");
     a.bead(["init", "--prefix", "ex"]);
-    let first = id(a.bead(["create", "first parent"]));
-    let second = id(a.bead(["create", "second parent"]));
-    let child = id(a.bead(["create", "child", "--parent", &first]));
+    let first = printed_id(a.bead(["create", "first parent"]));
+    let second = printed_id(a.bead(["create", "second parent"]));
+    let child = printed_id(a.bead(["create", "child", "--parent", &first]));
     a.bead(["sync"]);
     let peer = Machine::new(&sandbox, "q02-peer");
     peer.bead(["sync"]);
@@ -261,7 +256,7 @@ fn q02_retry_after_accepted_claiming_close_emits_one_close() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "q02-close");
     a.bead(["init", "--prefix", "ex"]);
-    let key = id(a.bead(["create", "close once"]));
+    let key = printed_id(a.bead(["create", "close once"]));
     a.bead(["sync"]);
     let close = ["update", &key, "--claim", "--status", "closed", "--json"];
     let crashed = a.cmd(close).env(CRASH_AFTER_PUSH, "1").run();

@@ -1,7 +1,6 @@
 //! The checkout's own hooks are the user's pushes' business, never bead's.
 
-use std::os::unix::fs::PermissionsExt as _;
-
+use beadroll_test_support::executable;
 use beadroll_test_support::{Machine, git};
 
 use super::scratch_git_config;
@@ -23,8 +22,7 @@ fn checkout_and_husky_pre_push_hooks_never_run() {
     for hook in hooks {
         std::fs::create_dir_all(hook.parent().expect("a hooks folder")).unwrap();
         let script = format!("#!/bin/sh\ntouch '{}'\nexit 1\n", marker.display());
-        std::fs::write(&hook, script).unwrap();
-        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        executable(&hook, script);
     }
     git(["config", "core.hooksPath", ".husky"], Some(a.checkout()));
     a.bead(["init"]);

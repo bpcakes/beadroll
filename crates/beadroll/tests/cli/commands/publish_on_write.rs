@@ -4,6 +4,7 @@
 //! remote still lacks.
 
 use beadroll_core::json::{Format, write};
+use beadroll_test_support::printed_id;
 use beadroll_test_support::{Json, Machine, Sandbox, git, json, parse_json};
 
 /// Machine a has initialised tracker `ex`; machine b has synced it.
@@ -13,11 +14,6 @@ fn set_up(sandbox: &Sandbox) -> (Machine, Machine) {
     let b = Machine::new(sandbox, "b");
     b.bead(["sync"]);
     (a, b)
-}
-
-/// The id of the issue a `--json` command answered with.
-fn id(made: Option<Json>) -> String {
-    made.unwrap()["id"].as_str().unwrap().to_owned()
 }
 
 /// The `field` of every issue `bead list` printed, in its order.
@@ -34,9 +30,9 @@ fn listed(machine: &Machine, field: &str) -> Vec<String> {
 fn writes_reach_the_other_machine_without_a_sync() {
     let sandbox = crate::sandbox();
     let (a, b) = set_up(&sandbox);
-    let x = id(a.bead(["create", "x"]));
+    let x = printed_id(a.bead(["create", "x"]));
     a.bead(["comments", "add", &x, "note"]);
-    let y = id(a.bead(["create", "y"]));
+    let y = printed_id(a.bead(["create", "y"]));
     a.bead(["dep", "add", &y, &x]);
     a.bead(["update", &x, "--title", "x renamed"]);
     b.bead(["sync"]);
@@ -129,7 +125,7 @@ fn a_failed_publish_of_an_ended_claim_is_said_once_and_not_tried_again() {
         &["update", "--status", "closed"],
     ];
     for ending in endings {
-        let key = id(a.bead(["create", "held"]));
+        let key = printed_id(a.bead(["create", "held"]));
         a.bead(["claim", &key]);
         let before = tip();
         let (verb, rest) = ending.split_first().unwrap();

@@ -49,18 +49,13 @@ fn sha256_hex(data: &[u8]) -> String {
 }
 
 mod g02_tracked_config_cannot_adopt_another_repositorys_store {
+    use beadroll_test_support::printed_id;
     use std::path::Path;
 
     use beadroll_git::normalize_remote;
     use beadroll_test_support::{Json, Machine, Run, code, json, parse_json};
 
     use super::{dumps, journal_refs, seed_repo, sha256_hex};
-
-    /// The id of the issue a `bead create --json` made: `result["id"]`.
-    fn id(created: Option<Json>) -> String {
-        let created = created.expect("bead printed the issue it made");
-        created["id"].as_str().expect("an id").to_owned()
-    }
 
     /// The member `key` of `value`; absence fails the test.
     fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
@@ -93,7 +88,7 @@ mod g02_tracked_config_cannot_adopt_another_repositorys_store {
         let sandbox = crate::sandbox();
         let victim = Machine::new(&sandbox, "victim");
         victim.bead(["init", "--prefix", "p"]);
-        let secret = id(victim.bead(["create", "SECRET acquisition plan", "-p", "1"]));
+        let secret = printed_id(victim.bead(["create", "SECRET acquisition plan", "-p", "1"]));
         victim.bead(["sync"]);
         let info = victim.bead(["info"]).expect("info prints a record");
         let pid = member(&info, "workspace")

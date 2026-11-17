@@ -10,6 +10,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use beadroll_test_support::executable;
 use beadroll_test_support::{Run, Sandbox, json, parse_json};
 
 /// The test's environment less every `BEAD_*`, `CLAUDE*`, `CODEX*` and `GIT_*` variable.
@@ -90,8 +91,7 @@ fn nearest_harness_mocked_process_tree() {
         ("node /opt/claude/cli.js", "claude"),
     ] {
         let ps = fake.join("ps");
-        std::fs::write(&ps, format!("#!/bin/sh\nprintf '%s\\n' '1 {proc}'\n")).unwrap();
-        std::fs::set_permissions(&ps, std::fs::Permissions::from_mode(0o755)).unwrap();
+        executable(&ps, format!("#!/bin/sh\nprintf '%s\\n' '1 {proc}'\n"));
         let p = nested_info(&sandbox, &root, &path);
         assert_eq!(p.returncode(), 0, "{proc}: {}", p.stderr);
         assert_eq!(

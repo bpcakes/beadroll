@@ -5,8 +5,6 @@
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
-use std::fs::Permissions;
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -91,18 +89,6 @@ const WINNER_IDENTITY: &str = concat!(
 fn quoted(path: &Path) -> String {
     let text = path.to_str().expect("a UTF-8 path");
     format!("'{}'", text.replace('\'', r"'\''"))
-}
-
-/// `script` written to `path`, executable.
-fn executable(path: &Path, script: &str) {
-    std::fs::write(path, script).unwrap();
-    std::fs::set_permissions(path, Permissions::from_mode(0o755)).unwrap();
-}
-
-/// The id of the issue a `--json` result is: `result["id"]`.
-fn id(result: Option<Json>) -> String {
-    let result = result.expect("bead printed a result");
-    result["id"].as_str().expect("an id").to_owned()
 }
 
 /// The member `key` of `value`; absence fails the test.

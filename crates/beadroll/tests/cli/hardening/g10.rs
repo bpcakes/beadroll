@@ -26,16 +26,11 @@ fn machine(sandbox: &Sandbox, name: &str, init: TrackerSetup) -> Machine {
 /// since ended.
 mod g10_recognised_retry_reports_a_claim_that_moved_on {
     use crate::hardening::TrackerSetup;
+    use beadroll_test_support::printed_id;
 
     use beadroll_test_support::{Invocation, Json, Machine};
 
     use super::machine;
-
-    /// The id of the issue a `bead create --json` made: `result["id"]`.
-    fn id(created: Option<Json>) -> String {
-        let created = created.expect("bead printed the issue it made");
-        created["id"].as_str().expect("an id").to_owned()
-    }
 
     /// `bead ARGS` from `machine`, stopped by the crash hook right after its push was accepted.
     fn crashing_after_push<'m>(machine: &'m Machine, args: &[&str]) -> Invocation<'m> {
@@ -60,7 +55,7 @@ mod g10_recognised_retry_reports_a_claim_that_moved_on {
     fn claim_retry_after_a_takeover_does_not_say_claimed() {
         let sandbox = crate::sandbox();
         let a = machine(&sandbox, "g10-moved", TrackerSetup::Init);
-        let x = id(a.bead(["create", "X"]));
+        let x = printed_id(a.bead(["create", "X"]));
         a.bead(["sync"]);
         let b = machine(&sandbox, "g10-moved-b", TrackerSetup::Sync);
         let crashed = crashing_after_push(&a, &["claim", &x]).run();
@@ -85,7 +80,7 @@ mod g10_recognised_retry_reports_a_claim_that_moved_on {
     fn claiming_update_retry_after_a_takeover_does_not_succeed() {
         let sandbox = crate::sandbox();
         let a = machine(&sandbox, "g10-update", TrackerSetup::Init);
-        let x = id(a.bead(["create", "X"]));
+        let x = printed_id(a.bead(["create", "X"]));
         a.bead(["sync"]);
         let b = machine(&sandbox, "g10-update-b", TrackerSetup::Sync);
         let label = ["update", &x, "--claim", "--add-label", "mine"];
@@ -110,7 +105,7 @@ mod g10_recognised_retry_reports_a_claim_that_moved_on {
     fn takeover_retry_after_the_claim_ended_is_not_a_traceback() {
         let sandbox = crate::sandbox();
         let a = machine(&sandbox, "g10-ended", TrackerSetup::Init);
-        let x = id(a.bead(["create", "X"]));
+        let x = printed_id(a.bead(["create", "X"]));
         a.bead(["sync"]);
         let b = machine(&sandbox, "g10-ended-b", TrackerSetup::Sync);
         b.bead(["claim", &x]);

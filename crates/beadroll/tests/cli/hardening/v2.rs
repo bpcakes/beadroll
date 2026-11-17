@@ -6,6 +6,8 @@
 //! process; they are `rust_only`, with the `backoff` and `ownership.after-confirm` failpoints.
 
 use beadroll_store::glob_ending;
+use beadroll_test_support::executable;
+use beadroll_test_support::printed_id;
 use beadroll_test_support::{Json, Machine, Sandbox};
 
 use crate::hardening::TrackerSetup;
@@ -64,12 +66,6 @@ fn releases(machine: &Machine, key: &str) -> usize {
         .count()
 }
 
-/// The id of the issue a `--json` result is: `result["id"]`.
-fn id(result: Option<Json>) -> String {
-    let result = result.expect("bead printed a result");
-    result["id"].as_str().expect("an id").to_owned()
-}
-
 /// The member `key` of `value`; absence fails the test.
 fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
     value
@@ -89,9 +85,9 @@ mod v2_receipts_are_per_actor {
     fn other_actor_on_the_same_machine_never_drops_a_receipt() {
         let sandbox = crate::sandbox();
         let a = machine(&sandbox, "v2-actors");
-        let x = id(a.bead(["create", "X"]));
-        let y = id(a.bead(["create", "Y"]));
-        let z = id(a.bead(["create", "Z"]));
+        let x = printed_id(a.bead(["create", "X"]));
+        let y = printed_id(a.bead(["create", "Y"]));
+        let z = printed_id(a.bead(["create", "Z"]));
         a.bead(["claim", &x]);
         a.bead(["sync"]);
         let lost = a
@@ -124,8 +120,7 @@ mod v2_receipts_are_per_actor {
 }
 
 mod v2_in_flight_attempt_across_actors {
-    use std::fs::Permissions;
-    use std::os::unix::fs::PermissionsExt as _;
+
     use std::path::Path;
 
     use beadroll_test_support::{REMOTE_SETTLES, git, wait_until};
@@ -142,8 +137,7 @@ mod v2_in_flight_attempt_across_actors {
     /// `_hook`: `script` as the remote's pre-receive hook.
     fn hook(sandbox: &Sandbox, script: &str) {
         let hook = sandbox.origin().join("hooks").join("pre-receive");
-        std::fs::write(&hook, format!("#!/bin/sh\n{script}")).unwrap();
-        std::fs::set_permissions(&hook, Permissions::from_mode(0o755)).unwrap();
+        executable(&hook, format!("#!/bin/sh\n{script}"));
     }
 
     /// Waits until the stalled push's hook has touched `done` and its receive-pack has ended, so
@@ -175,8 +169,8 @@ mod v2_in_flight_attempt_across_actors {
         let n = u8::from(lands_first);
         let m = rust_machine(&sandbox, &format!("v2-flight-{n}"), TrackerSetup::Init);
         // the claim below is the first push the hook sees
-        let x = id(m.bead(["create", "X", "--offline"]));
-        let y = id(m.bead(["create", "Y", "--offline"]));
+        let x = printed_id(m.bead(["create", "X", "--offline"]));
+        let y = printed_id(m.bead(["create", "Y", "--offline"]));
         m.cmd(["claim", &x]).thread("actor-a").json();
         m.bead(["sync"]);
         let root = sandbox.root();
@@ -281,7 +275,7 @@ mod v2_confirmed_twin_keeps_the_retry_recognised {
     fn identical_pending_twin_confirms_and_the_retry_is_recognised() {
         let sandbox = crate::sandbox();
         let a = rust_machine(&sandbox, "v2-twin", TrackerSetup::Init);
-        let x = id(a.bead(["create", "X"]));
+        let x = printed_id(a.bead(["create", "X"]));
         a.bead(["claim", &x]);
         let crashed = a
             .cmd(["release", &x])

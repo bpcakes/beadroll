@@ -8,7 +8,8 @@ use std::path::{Path, PathBuf};
 use beadroll_test_support::Machine;
 use rustix::fs::{Access, access};
 
-use super::{error_code, id, member, unprivileged};
+use super::{error_code, member, unprivileged};
+use beadroll_test_support::printed_id;
 
 /// Splits text at newline, CRLF, carriage return, vertical tab, form feed, U+001C–U+001E, U+0085,
 /// U+2028 and U+2029, without a final empty line.
@@ -51,7 +52,7 @@ fn oserror_on_a_user_supplied_input_path_is_io_and_writes_nothing() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
-    let key = id(a.bead(["create", "x"]));
+    let key = printed_id(a.bead(["create", "x"]));
     a.bead(["sync"]);
     let root = sandbox.root();
     std::fs::write(root.join("afile"), "x").unwrap();

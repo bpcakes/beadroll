@@ -3,19 +3,14 @@
 //! older stored spellings is checked in beadroll-store's `tests/store/hardening.rs`.
 
 mod g25_first_sync_remote_is_frozen {
+    use beadroll_test_support::printed_id;
     use std::path::Path;
 
-    use beadroll_test_support::{Json, Machine, code, git};
+    use beadroll_test_support::{Machine, code, git};
 
     /// The path as text passed to git and bead.
     fn text(path: &Path) -> &str {
         path.to_str().expect("a UTF-8 path")
-    }
-
-    /// The id of the issue a `--json` result is: `result["id"]`.
-    fn id(result: Option<Json>) -> String {
-        let result = result.expect("bead printed a result");
-        result["id"].as_str().expect("an id").to_owned()
     }
 
     /// `_g25_track`: `init --tracked` (prefix `fz`), committed and pushed, so every clone shares
@@ -46,7 +41,7 @@ mod g25_first_sync_remote_is_frozen {
         let sandbox = crate::sandbox();
         let a = Machine::new(&sandbox, "a");
         track(&a);
-        let issue = id(a.bead(["create", "one"]));
+        let issue = printed_id(a.bead(["create", "one"]));
         a.bead(["sync"]);
         let moved = sandbox.root().join("moved.git");
         std::fs::rename(sandbox.origin(), &moved).expect("the repository moves");
@@ -72,7 +67,7 @@ mod g25_first_sync_remote_is_frozen {
         let sandbox = crate::sandbox();
         let a = Machine::new(&sandbox, "a");
         track(&a);
-        let issue = id(a.bead(["create", "contested"]));
+        let issue = printed_id(a.bead(["create", "contested"]));
         a.bead(["sync"]);
         let new_home = sandbox.root().join("new-home.git");
         // tracker included

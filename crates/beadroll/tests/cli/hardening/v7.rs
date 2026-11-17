@@ -4,14 +4,15 @@
 mod v7_origins_with_a_user_or_scheme_are_one_workspace {
     use std::collections::{BTreeMap, BTreeSet};
     use std::ffi::OsString;
-    use std::fs::Permissions;
+
     use std::io::Read;
-    use std::os::unix::fs::PermissionsExt as _;
+
     use std::path::{Path, PathBuf};
     use std::process::{Command, ExitStatus, Stdio};
     use std::sync::mpsc::{self, Receiver};
     use std::time::{Duration, Instant};
 
+    use beadroll_test_support::executable;
     use beadroll_test_support::{Json, Machine, git, parse_json};
 
     /// Environment variables for a child process.
@@ -66,8 +67,7 @@ mod v7_origins_with_a_user_or_scheme_are_one_workspace {
         let path = root.join("v7-fake-ssh");
         let script = "#!/bin/sh\n[ \"$1\" = \"-G\" ] && exit 0\nfor last; do :; done\n\
                       PATH=\"$(git --exec-path):$PATH\"\ncd \"$V7_SSH_ROOT\" && exec sh -c \"$last\"\n";
-        std::fs::write(&path, script).unwrap();
-        std::fs::set_permissions(&path, Permissions::from_mode(0o755)).unwrap();
+        executable(&path, script);
         path
     }
 

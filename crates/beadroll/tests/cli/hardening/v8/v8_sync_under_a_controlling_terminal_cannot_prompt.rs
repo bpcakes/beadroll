@@ -1,11 +1,11 @@
 //! A transport that wants the terminal cannot have bead's: git and ssh run in a session of their
 //! own, so a sync fails fast instead of prompting.
 
-use std::os::unix::fs::PermissionsExt as _;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 use beadroll_test_support::Machine;
+use beadroll_test_support::executable;
 
 use super::{drain, quoted, script, wait_for};
 
@@ -36,8 +36,7 @@ fn sync_under_a_controlling_terminal_cannot_prompt() {
          exit 255; }}\nprintf 'Passphrase: ' >&3\nread x <&3\nexit 255\n",
         marker.display()
     );
-    std::fs::write(&fake, program).unwrap();
-    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    executable(&fake, program);
     let mut env = a.env(None, "codex");
     env.insert("GIT_SSH_COMMAND".into(), fake.into_os_string());
     env.insert("BEAD_NET_TIMEOUT".into(), "30".into());

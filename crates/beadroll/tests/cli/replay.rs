@@ -3,6 +3,7 @@
 //! replay checks live in beadroll-core's `tests/core/replay.rs`.
 
 mod replay_audit_thread_ownership {
+
     use beadroll_test_support::{Machine, code};
 
     /// From the first independent audit: a thread whose id begins with the same eight characters
@@ -30,13 +31,7 @@ mod replay_audit_thread_ownership {
 mod replay_reaudit {
     use std::collections::BTreeSet;
 
-    use beadroll_test_support::{Json, Machine, json};
-
-    /// The id of the issue `bead create` printed.
-    fn id(created: Option<Json>) -> String {
-        let created = created.expect("the new issue");
-        created["id"].as_str().expect("the issue's id").to_owned()
-    }
+    use beadroll_test_support::{Machine, json, printed_id};
 
     /// From the second independent audit: a makes y the parent of x while b makes x the parent of
     /// y; once both edits have merged, `dep cycles` finds the one cycle, and both issues are ready,
@@ -47,8 +42,8 @@ mod replay_reaudit {
         let sandbox = crate::sandbox();
         let (a, b) = (Machine::new(&sandbox, "a"), Machine::new(&sandbox, "b"));
         a.bead(["init", "--prefix", "ex"]);
-        let x = id(a.bead(["create", "first task"]));
-        let y = id(a.bead(["create", "second task"]));
+        let x = printed_id(a.bead(["create", "first task"]));
+        let y = printed_id(a.bead(["create", "second task"]));
         a.bead(["sync"]);
         b.bead(["sync"]);
         a.bead(["update", &x, "--parent", &y]);

@@ -8,7 +8,8 @@ use std::path::Path;
 
 use beadroll_test_support::Machine;
 
-use super::{error_code, id, replica_id, unprivileged};
+use super::{error_code, replica_id, unprivileged};
+use beadroll_test_support::printed_id;
 
 /// What undoes a damage.
 type Repair = Box<dyn FnOnce()>;
@@ -61,7 +62,7 @@ fn store_damage_is_answered_with_a_structured_code() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
-    let key = id(a.bead(["create", "x"]));
+    let key = printed_id(a.bead(["create", "x"]));
     a.bead(["sync"]);
     let store = a.store();
     let replica = replica_id(&a);

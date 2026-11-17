@@ -6,12 +6,13 @@
 //! the setting is gone.
 
 mod g26_object_format {
+    use beadroll_test_support::printed_id;
     use std::collections::BTreeMap;
     use std::ffi::OsString;
     use std::path::Path;
     use std::process::{Command, Stdio};
 
-    use beadroll_test_support::{Json, Machine, Sandbox};
+    use beadroll_test_support::{Machine, Sandbox};
 
     /// Variables set for a run, over the environment it starts from.
     type Env = BTreeMap<OsString, OsString>;
@@ -19,12 +20,6 @@ mod g26_object_format {
     /// The path as text passed to git and bead.
     fn text(path: &Path) -> &str {
         path.to_str().expect("a UTF-8 path")
-    }
-
-    /// The id of the issue a `--json` result is: `result["id"]`.
-    fn id(result: Option<Json>) -> String {
-        let result = result.expect("bead printed a result");
-        result["id"].as_str().expect("an id").to_owned()
     }
 
     /// `_g26_config`: a scratch global git config for this sandbox (never the developer's), the
@@ -169,7 +164,7 @@ mod g26_object_format {
             assert_eq!(format, "sha256", "{}", dir.display());
         }
         a.cmd(["init", "--prefix", "of"]).cwd(&a_dir).json();
-        let issue = id(a.cmd(["create", "one"]).cwd(&a_dir).json());
+        let issue = printed_id(a.cmd(["create", "one"]).cwd(&a_dir).json());
         assert_published(&a, &a_dir, &b, &b_dir, &issue, "SHA-256 project");
     }
 
@@ -183,7 +178,7 @@ mod g26_object_format {
         // the user's own git works here
         git(&["fetch", "-q", "origin"], Some(a.checkout()), &a.extra);
         a.bead(["init", "--prefix", "of"]);
-        let issue = id(a.bead(["create", "one"]));
+        let issue = printed_id(a.bead(["create", "one"]));
         let why = "SHA-256 default, SHA-1 project";
         assert_published(&a, a.checkout(), &b, b.checkout(), &issue, why);
     }
@@ -196,7 +191,7 @@ mod g26_object_format {
         let plain = config(&sandbox, "plain.gitconfig", "");
         let (a, b) = machines(&sandbox, &plain);
         a.bead(["init", "--prefix", "of"]);
-        let issue = id(a.bead(["create", "one"]));
+        let issue = printed_id(a.bead(["create", "one"]));
         poison(&a, &plain);
         let first = a.run(["sync", "--json"]);
         assert_eq!(

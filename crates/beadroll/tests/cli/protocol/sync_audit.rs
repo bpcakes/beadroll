@@ -13,7 +13,6 @@ mod segments;
 mod stalls;
 
 use std::ffi::{OsStr, OsString};
-use std::fs::Permissions;
 use std::io::Read;
 use std::os::unix::fs::PermissionsExt as _;
 use std::os::unix::process::CommandExt as _;
@@ -22,6 +21,7 @@ use std::process::{Child, ExitStatus, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
+use beadroll_test_support::executable;
 use beadroll_test_support::{Invocation, Machine, Run, Sandbox, git};
 use rustix::process::{Pid, Signal, kill_process, kill_process_group};
 
@@ -142,8 +142,7 @@ fn git_wrapper(sandbox: &Sandbox, action: &str, marker: &Path, after: HookPositi
     let script =
         format!("#!/bin/sh\nif [ \"$1\" = {action} ]; then\n{held}fi\nexec {git} \"$@\"\n");
     let wrapper = folder.join("git");
-    std::fs::write(&wrapper, script).unwrap();
-    std::fs::set_permissions(&wrapper, Permissions::from_mode(0o755)).unwrap();
+    executable(&wrapper, script);
     let mut path = folder.into_os_string();
     path.push(":");
     path.push(std::env::var_os("PATH").expect("the test's PATH"));

@@ -3,7 +3,8 @@
 
 use beadroll_test_support::Machine;
 
-use super::{error_code, id, limited, with_sh};
+use super::{error_code, limited, with_sh};
+use beadroll_test_support::printed_id;
 
 /// Descriptor limits spanning failure before reading, failure during coordination and sufficient
 /// capacity: 8, 10, 11, 12 and 13.
@@ -41,8 +42,8 @@ fn descriptor_exhaustion_never_drops_a_pending_attempt() {
         let sandbox = crate::sandbox();
         let a = Machine::new(&sandbox, &format!("fd{limit}"));
         a.bead(["init", "--prefix", "ex"]);
-        let x = id(a.bead(["create", "x"]));
-        let y = id(a.bead(["create", "y"]));
+        let x = printed_id(a.bead(["create", "x"]));
+        let y = printed_id(a.bead(["create", "y"]));
         a.bead(["sync"]);
         let argv = ["update", x.as_str(), "--claim", "--status", "closed"];
         let lost = a

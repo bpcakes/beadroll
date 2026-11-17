@@ -9,7 +9,8 @@ use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_test_support::{Json, Machine, code, json, parse_json};
 
-use super::{id, jsonl, machine, record};
+use super::{jsonl, machine, record};
+use beadroll_test_support::printed_id;
 
 /// F07: non-UTF-8 titles and description files return a JSON error and store nothing.
 #[test]
@@ -42,7 +43,7 @@ fn f07_non_utf8_input_is_a_structured_error() {
 
     let raw = sandbox.root().join("raw.txt");
     std::fs::write(&raw, b"caf\xff").unwrap();
-    let key = id(machine.bead(["create", "file target"]));
+    let key = printed_id(machine.bead(["create", "file target"]));
     let updated = machine.run([
         "update",
         &key,

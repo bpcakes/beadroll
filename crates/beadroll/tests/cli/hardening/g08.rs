@@ -26,19 +26,12 @@ fn machine(sandbox: &Sandbox, name: &str, init: TrackerSetup) -> Machine {
 /// a failed later command by the same actor.
 mod g08_stale_receipts_dropped_before_the_command_goes_through {
     use crate::hardening::TrackerSetup;
-
-    use std::fs::Permissions;
-    use std::os::unix::fs::PermissionsExt as _;
+    use beadroll_test_support::executable;
+    use beadroll_test_support::printed_id;
 
     use beadroll_test_support::{Invocation, Json, Machine, code};
 
     use super::machine;
-
-    /// The id of the issue a `bead create --json` made: `result["id"]`.
-    fn id(created: Option<Json>) -> String {
-        let created = created.expect("bead printed the issue it made");
-        created["id"].as_str().expect("an id").to_owned()
-    }
 
     /// `bead ARGS` from `machine`, stopped by the crash hook right after its push was accepted.
     fn crashing_after_push<'m>(machine: &'m Machine, args: &[&str]) -> Invocation<'m> {
@@ -56,8 +49,8 @@ mod g08_stale_receipts_dropped_before_the_command_goes_through {
     fn crash_before_push_of_a_later_command_keeps_the_accepted_close() {
         let sandbox = crate::sandbox();
         let a = machine(&sandbox, "g08-crash", TrackerSetup::Init);
-        let x = id(a.bead(["create", "X"]));
-        let y = id(a.bead(["create", "Y"]));
+        let x = printed_id(a.bead(["create", "X"]));
+        let y = printed_id(a.bead(["create", "Y"]));
         a.bead(["sync"]);
         let close = ["update", &x, "--claim", "--status", "closed", "--json"];
         let first = crashing_after_push(&a, &close).run();
@@ -80,8 +73,8 @@ mod g08_stale_receipts_dropped_before_the_command_goes_through {
     fn unresolved_later_command_keeps_the_accepted_release() {
         let sandbox = crate::sandbox();
         let a = machine(&sandbox, "g08-unresolved", TrackerSetup::Init);
-        let x = id(a.bead(["create", "X"]));
-        let y = id(a.bead(["create", "Y"]));
+        let x = printed_id(a.bead(["create", "X"]));
+        let y = printed_id(a.bead(["create", "Y"]));
         a.bead(["claim", &x]);
         a.bead(["sync"]);
         let released = crashing_after_push(&a, &["release", &x, "--json"]).run();
@@ -93,8 +86,7 @@ mod g08_stale_receipts_dropped_before_the_command_goes_through {
             "#!/bin/sh\nwhile [ -d '{}' ]; do sleep 0.05; done\nexit 1\n",
             gate.display()
         );
-        std::fs::write(&hook, script).unwrap();
-        std::fs::set_permissions(&hook, Permissions::from_mode(0o755)).unwrap();
+        executable(&hook, script);
         let later = a
             .cmd(["claim", &y, "--json"])
             .env("BEAD_NET_TIMEOUT", "1")
@@ -121,8 +113,8 @@ mod g08_stale_receipts_dropped_before_the_command_goes_through {
     fn failed_later_command_does_not_make_the_retry_reapply_edits() {
         let sandbox = crate::sandbox();
         let a = machine(&sandbox, "g08-overwrite", TrackerSetup::Init);
-        let x = id(a.bead(["create", "X"]));
-        let y = id(a.bead(["create", "Y"]));
+        let x = printed_id(a.bead(["create", "X"]));
+        let y = printed_id(a.bead(["create", "Y"]));
         a.bead(["sync"]);
         let b = machine(&sandbox, "g08-overwrite-b", TrackerSetup::Sync);
         let retitle = ["update", &x, "--claim", "--title", "from-A", "--json"];

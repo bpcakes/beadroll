@@ -57,8 +57,6 @@ impl Sandbox {
 
 #[cfg(test)]
 mod tests {
-    use std::os::unix::fs::PermissionsExt as _;
-
     use super::*;
 
     #[test]
@@ -87,9 +85,7 @@ mod tests {
             "#!/bin/sh\nwhile [ ! -f '{}' ]; do sleep 0.05; done\nexit 0\n",
             release.display()
         );
-        std::fs::write(&hook, script).expect("the hook");
-        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755))
-            .expect("the hook's mode");
+        crate::executable(&hook, script);
         let seed = sandbox.root().join("seed");
         let identity = ["-c", "user.name=t", "-c", "user.email=t@example.invalid"];
         crate::git(

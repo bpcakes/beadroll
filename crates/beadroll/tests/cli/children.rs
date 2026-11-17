@@ -7,6 +7,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use beadroll_test_support::executable;
 use beadroll_test_support::{Invocation, Json, Machine, Run, Sandbox, git, parse_json};
 
 use beadroll_test_support::{Gate, beside};
@@ -43,8 +44,7 @@ fn git_inherits_no_descriptor_beyond_the_standard_three() {
         log = quoted(&log.display().to_string()),
         git = quoted(&real_git().display().to_string()),
     );
-    std::fs::write(shims.join("git"), script).unwrap();
-    std::fs::set_permissions(shims.join("git"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    executable(shims.join("git"), script);
     let mut env = m.env(None, "codex");
     let path = std::env::var_os("PATH").unwrap_or_default();
     let dirs = std::iter::once(shims).chain(std::env::split_paths(&path));
@@ -251,8 +251,7 @@ fn the_refs_a_fetch_leaves_are_set_in_one_transaction() {
         input = quoted(&input.display().to_string()),
         git = quoted(&real_git().display().to_string()),
     );
-    std::fs::write(shims.join("git"), script).unwrap();
-    std::fs::set_permissions(shims.join("git"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    executable(shims.join("git"), script);
     let path = std::env::var_os("PATH").unwrap_or_default();
     let path = std::env::join_paths(std::iter::once(shims).chain(std::env::split_paths(&path)));
     let run = m.cmd(["sync", "--json"]).env("PATH", path.unwrap()).run();
@@ -322,8 +321,7 @@ fn a_publish_goes_by_the_transport_settings_of_when_its_link_is_made() {
     );
     let shims = sandbox.root().join("setting-shims");
     std::fs::create_dir(&shims).unwrap();
-    std::fs::write(shims.join("git"), script).unwrap();
-    std::fs::set_permissions(shims.join("git"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    executable(shims.join("git"), script);
     let path = std::env::var_os("PATH").unwrap_or_default();
     let path = std::env::join_paths(std::iter::once(shims).chain(std::env::split_paths(&path)));
     let run = a
@@ -361,8 +359,7 @@ fn with_no_kept_git_every_question_uses_a_separate_git_call() {
         log = quoted(&log.display().to_string()),
         git = quoted(&real_git().display().to_string()),
     );
-    std::fs::write(shims.join("git"), script).unwrap();
-    std::fs::set_permissions(shims.join("git"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    executable(shims.join("git"), script);
     let path = std::env::var_os("PATH").unwrap_or_default();
     let path = std::env::join_paths(std::iter::once(shims).chain(std::env::split_paths(&path)));
     let path = path.unwrap();

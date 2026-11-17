@@ -8,7 +8,8 @@
 /// reported as IO, which `bead prime` documents as "nothing half-done": the release or close has
 /// happened, and the receipt that would let a retry recognise it is already gone.
 mod g29_failure_after_acceptance_is_not_nothing_half_done {
-    use beadroll_test_support::{Json, Machine, Run, Sandbox, parse_json};
+    use beadroll_test_support::printed_id;
+    use beadroll_test_support::{Machine, Run, Sandbox, parse_json};
 
     /// The failpoint path part of the workspace's `meta.json` (the driver's `G29_FULL=meta`).
     const META: &str = "/meta.json";
@@ -22,12 +23,6 @@ mod g29_failure_after_acceptance_is_not_nothing_half_done {
         );
         a.bead(["init", "--prefix", "gf"]);
         (a, obs)
-    }
-
-    /// The id of the issue a `--json` result is: `result["id"]`.
-    fn id(result: Option<Json>) -> String {
-        let result = result.expect("bead printed a result");
-        result["id"].as_str().expect("an id").to_owned()
     }
 
     /// `full`: `bead ARGV` on a, every write of a target whose path holds `part` failing with
@@ -76,8 +71,8 @@ mod g29_failure_after_acceptance_is_not_nothing_half_done {
     fn g29_accepted_command_is_not_reported_as_io_when_meta_cannot_be_written() {
         let sandbox = crate::sandbox();
         let (a, obs) = set_up(&sandbox);
-        let released = id(a.bead(["create", "released"]));
-        let closed = id(a.bead(["create", "closed"]));
+        let released = printed_id(a.bead(["create", "released"]));
+        let closed = printed_id(a.bead(["create", "closed"]));
         a.bead(["sync"]);
         a.bead(["claim", &released]);
         let cases: [(&str, Vec<&str>, &str); 2] = [
@@ -117,7 +112,7 @@ mod g29_failure_after_acceptance_is_not_nothing_half_done {
     fn g29_recognised_retry_is_not_reported_as_io_when_meta_cannot_be_written() {
         let sandbox = crate::sandbox();
         let (a, _) = set_up(&sandbox);
-        let key = id(a.bead(["create", "x"]));
+        let key = printed_id(a.bead(["create", "x"]));
         a.bead(["sync"]);
         a.bead(["claim", &key]);
         let lost = a
@@ -147,7 +142,7 @@ mod g29_failure_after_acceptance_is_not_nothing_half_done {
     fn g29_owner_close_whose_publish_hits_a_full_volume_is_recorded_not_failed() {
         let sandbox = crate::sandbox();
         let (a, _) = set_up(&sandbox);
-        let key = id(a.bead(["create", "x"]));
+        let key = printed_id(a.bead(["create", "x"]));
         a.bead(["sync"]);
         a.bead(["claim", &key]);
         let b = crate::rust_only(&sandbox, "b");

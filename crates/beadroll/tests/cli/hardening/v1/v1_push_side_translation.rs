@@ -9,10 +9,9 @@ use std::process::{Command, Output, Stdio};
 use beadroll_git::{PushOutcome, push_outcome};
 use beadroll_test_support::{Machine, Sandbox, parse_json};
 
-use super::{
-    Env, WINNER_IDENTITY, applied, contains, executable, git_is_translated, id, locales, member,
-    quoted,
-};
+use super::{Env, WINNER_IDENTITY, applied, contains, git_is_translated, locales, member, quoted};
+use beadroll_test_support::executable;
+use beadroll_test_support::printed_id;
 
 /// `bytes` as text, for a failure's message.
 fn lossy(bytes: &[u8]) -> String {
@@ -301,7 +300,7 @@ fn lost_races_are_recognised_and_retried_under_translated_git() {
             continue;
         }
         m.bead(["init", "--prefix", "ex"]);
-        let key = id(m.bead(["create", "one"]));
+        let key = printed_id(m.bead(["create", "one"]));
         // first publication
         let first = m.cmd(["sync", "--json"]).env("LC_ALL", "C").run();
         assert_eq!(first.returncode(), 0, "{name}: {}", first.stderr);

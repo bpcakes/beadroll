@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use beadroll_store::glob_ending;
+use beadroll_test_support::executable;
 use beadroll_test_support::{Json, Machine, Sandbox, code, git, parse_json};
 
 /// The hook that stops a command after the remote took its push, before bead hears back.
@@ -112,12 +113,6 @@ impl Reaudit {
         let note = "work while the attempt is unsettled";
         self.a.bead(["comments", "add", &self.key, note]);
     }
-}
-
-/// `script` written to `path`, executable.
-fn executable(path: &Path, script: &str) {
-    std::fs::write(path, script).unwrap();
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
 /// `path` quoted for the shell.
@@ -269,7 +264,7 @@ fn successful_push_with_nonzero_exit_must_preserve_accepted_claim() {
         "#!/bin/sh\nif [ \"$1\" = push ]; then\n  {git} \"$@\" || exit $?\n  exit 1\nfi\nexec \
          {git} \"$@\"\n"
     );
-    executable(&wrapper.join("git"), &script);
+    executable(wrapper.join("git"), &script);
     let mut path = wrapper.into_os_string();
     path.push(":");
     path.push(std::env::var_os("PATH").expect("the test's PATH"));

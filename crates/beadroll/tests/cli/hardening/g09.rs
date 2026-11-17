@@ -24,18 +24,12 @@ fn machine(sandbox: &Sandbox, name: &str, init: TrackerSetup) -> Machine {
 /// evaluates `receipt[0]` on a PosixPath: TypeError, a traceback instead of another round.
 mod g09_receipt_loop_variable_shadows_the_in_flight_receipt {
     use crate::hardening::TrackerSetup;
+    use beadroll_test_support::printed_id;
 
     use beadroll_store::glob_ending;
-    use beadroll_test_support::Json;
 
     use super::machine;
     use beadroll_test_support::{Gate, beside};
-
-    /// The id of the issue a `--json` result is: `result["id"]`.
-    fn id(result: Option<Json>) -> String {
-        let result = result.expect("bead printed a result");
-        result["id"].as_str().expect("an id").to_owned()
-    }
 
     /// G09: after an earlier lost acknowledgement leaves a settled receipt, a claim losing its
     /// first push race must retry successfully. Pause at the first claim.before-push, between
@@ -44,8 +38,8 @@ mod g09_receipt_loop_variable_shadows_the_in_flight_receipt {
     fn ordinary_contention_after_a_settled_receipt_retries_the_claim() {
         let sandbox = crate::sandbox();
         let a = machine(&sandbox, "g09-contend", TrackerSetup::Init);
-        let x = id(a.bead(["create", "X"]));
-        let y = id(a.bead(["create", "Y"]));
+        let x = printed_id(a.bead(["create", "X"]));
+        let y = printed_id(a.bead(["create", "Y"]));
         a.bead(["sync"]);
         let b = machine(&sandbox, "g09-contend-b", TrackerSetup::Sync);
         let lost = a

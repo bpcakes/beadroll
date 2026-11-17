@@ -3,13 +3,8 @@
 //! sync never swept it (`load_pending` sweeps `*.json` only).
 
 mod g55_receipt_that_is_not_an_object_blocks_every_claim {
-    use beadroll_test_support::{Json, Machine};
-
-    /// The id of the issue a `--json` result is: `result["id"]`.
-    fn id(result: Option<Json>) -> String {
-        let result = result.expect("bead printed a result");
-        result["id"].as_str().expect("an id").to_owned()
-    }
+    use beadroll_test_support::Machine;
+    use beadroll_test_support::printed_id;
 
     /// G55: a `pending/*.command` receipt holding valid JSON that is not an object is dropped like
     /// an unreadable one: `claim X` of any actor goes through instead of crashing, and the receipt
@@ -19,8 +14,8 @@ mod g55_receipt_that_is_not_an_object_blocks_every_claim {
         let sandbox = crate::sandbox();
         let a = Machine::new(&sandbox, "g55-shape");
         a.bead(["init", "--prefix", "ex"]);
-        let x = id(a.bead(["create", "X"]));
-        let y = id(a.bead(["create", "Y"]));
+        let x = printed_id(a.bead(["create", "X"]));
+        let y = printed_id(a.bead(["create", "Y"]));
         a.bead(["sync"]);
         let pending = a.store().join("pending");
         if !pending.is_dir() {

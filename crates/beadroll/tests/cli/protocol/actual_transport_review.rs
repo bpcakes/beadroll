@@ -4,11 +4,11 @@
 //! began is fenced by that round and built again, once (the third independent review,
 //! 2026-10-06).
 
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use beadroll_store::glob_ending;
+use beadroll_test_support::executable;
 use beadroll_test_support::{Machine, Run, Sandbox, git};
 
 use beadroll_test_support::{Gate, beside};
@@ -65,8 +65,7 @@ fn hold_first_push(sandbox: &Sandbox, name: &str) -> PathBuf {
         quoted(&first),
         quoted(&go)
     );
-    std::fs::write(&hook, script).unwrap();
-    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    executable(&hook, script);
     go
 }
 

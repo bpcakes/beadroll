@@ -34,12 +34,12 @@ fn git(args: &[&str], cwd: &Path, env: &BTreeMap<OsString, OsString>) -> String 
 /// no answer'), the hook's message is never shown, and nothing changes until the hook is found in a
 /// directory the user does not know about.
 mod g19_client_hooks_on_private_pushes {
-    use std::fs::Permissions;
-    use std::os::unix::fs::PermissionsExt as _;
+
     use std::path::{Path, PathBuf};
     use std::process::Command;
 
     use beadroll_store::glob_ending;
+    use beadroll_test_support::executable;
     use beadroll_test_support::{Json, Machine, Sandbox};
 
     use super::git;
@@ -79,8 +79,7 @@ mod g19_client_hooks_on_private_pushes {
             std::fs::create_dir_all(path.parent().expect("the hook's folder")).unwrap();
             let log = self.log.to_str().expect("a UTF-8 path");
             let script = format!("#!/bin/sh\necho \"$0 ran in $PWD\" >> '{log}'\n{body}\n");
-            std::fs::write(path, script).unwrap();
-            std::fs::set_permissions(path, Permissions::from_mode(0o755)).unwrap();
+            executable(path, script);
             path.to_path_buf()
         }
 

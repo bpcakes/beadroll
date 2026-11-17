@@ -18,6 +18,7 @@ fn origin_refs(sandbox: &Sandbox) -> String {
 /// owners), the tracker is pushed into the code origin, and save_meta rewrites meta.json with
 /// origin.
 mod g03_damaged_meta_moves_coordination_to_origin {
+    use beadroll_test_support::printed_id;
     use std::fs::Permissions;
     use std::os::unix::fs::PermissionsExt as _;
     use std::path::{Path, PathBuf};
@@ -37,12 +38,6 @@ mod g03_damaged_meta_moves_coordination_to_origin {
         key: String,
         other: String,
         meta: PathBuf,
-    }
-
-    /// The id of the issue a `bead create --json` made: `result["id"]`.
-    fn id(created: Option<Json>) -> String {
-        let created = created.expect("bead printed the issue it made");
-        created["id"].as_str().expect("an id").to_owned()
     }
 
     /// The member `key` of `value`; absence fails the test.
@@ -76,8 +71,8 @@ mod g03_damaged_meta_moves_coordination_to_origin {
             let a = Machine::new(&sandbox, "a");
             // coordination remote is not origin
             a.bead(["init", "--prefix", "ex", "--remote", text(&coord)]);
-            let key = id(a.bead(["create", "contested"]));
-            let other = id(a.bead(["create", "uncontested"]));
+            let key = printed_id(a.bead(["create", "contested"]));
+            let other = printed_id(a.bead(["create", "uncontested"]));
             a.bead(["sync"]);
             let b = Machine::new(&sandbox, "b");
             // b remembers coord in meta.json ("last used")

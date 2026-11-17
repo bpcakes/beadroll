@@ -4,20 +4,15 @@
 //! (or the first url) and `git fetch` reads the first url.
 
 mod g22_origin_is_not_where_git_pushes {
+    use beadroll_test_support::printed_id;
     use std::path::{Path, PathBuf};
     use std::process::Stdio;
 
-    use beadroll_test_support::{Json, Machine, Sandbox, git};
+    use beadroll_test_support::{Machine, Sandbox, git};
 
     /// The path as text passed to git and bead.
     fn text(path: &Path) -> &str {
         path.to_str().expect("a UTF-8 path")
-    }
-
-    /// The id of the issue a `--json` result is: `result["id"]`.
-    fn id(result: Option<Json>) -> String {
-        let result = result.expect("bead printed a result");
-        result["id"].as_str().expect("an id").to_owned()
     }
 
     /// `_g22_has_journal`: whether the repository `repo` has a `refs/beads/journal`.
@@ -87,13 +82,13 @@ mod g22_origin_is_not_where_git_pushes {
         let sandbox = crate::sandbox();
         let a = Machine::new(&sandbox, "a");
         a.bead(["init", "--prefix", "pu"]);
-        let issue = id(a.bead(["create", "one"]));
+        let issue = printed_id(a.bead(["create", "one"]));
         a.bead(["sync"]);
         let (m, _) = mirror_machine(&sandbox, "m");
         let sync = m.run(["sync", "--json"]);
         assert_eq!(sync.returncode(), 0, "{}", sync.stderr);
         assert_eq!(m.show(&issue)["title"].as_str(), Some("one"));
-        let added = id(m.bead(["create", "two"]));
+        let added = printed_id(m.bead(["create", "two"]));
         m.bead(["sync"]);
         a.bead(["sync"]);
         assert_eq!(a.show(&added)["title"].as_str(), Some("two"));
@@ -107,7 +102,7 @@ mod g22_origin_is_not_where_git_pushes {
         let sandbox = crate::sandbox();
         let a = Machine::new(&sandbox, "a");
         a.bead(["init", "--prefix", "pu"]);
-        let issue = id(a.bead(["create", "one"]));
+        let issue = printed_id(a.bead(["create", "one"]));
         a.bead(["sync"]);
         let origin = text(sandbox.origin());
         let backup = sandbox.root().join("backup.git");

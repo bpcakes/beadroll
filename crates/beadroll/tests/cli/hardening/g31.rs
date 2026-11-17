@@ -15,15 +15,10 @@ fn tail(text: &str) -> &str {
 
 mod g31_export_with_unicode_line_separators_imports_again {
     use beadroll_core::json::{Format, write};
+    use beadroll_test_support::printed_id;
     use beadroll_test_support::{Json, Machine, json, parse_json};
 
     use super::{tail, titles};
-
-    /// The id of the issue a `--json` result is: `result["id"]`.
-    fn id(result: Option<Json>) -> String {
-        let result = result.expect("bead printed a result");
-        result["id"].as_str().expect("an id").to_owned()
-    }
 
     /// G31: `export` writes U+2028/U+2029/U+0085 raw inside JSON strings (valid JSONL), but `import`
     /// splits the file at Unicode line boundaries, so bead cannot import its own export.
@@ -35,7 +30,7 @@ mod g31_export_with_unicode_line_separators_imports_again {
         let mut keys = Vec::new();
         for title in titles() {
             let description = format!("d:{title}");
-            let key = id(src.bead(["create", title, "-d", &description]));
+            let key = printed_id(src.bead(["create", title, "-d", &description]));
             src.bead(["comments", "add", &key, &format!("c:{title}")]);
             keys.push((title, key));
         }

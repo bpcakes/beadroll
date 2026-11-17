@@ -49,8 +49,9 @@ fn remote_head(sandbox: &Sandbox) -> String {
 }
 
 mod g58_finished_push_is_not_an_unanswered_one {
+    use beadroll_test_support::executable;
     use std::ffi::OsString;
-    use std::os::unix::fs::PermissionsExt as _;
+
     use std::time::{Duration, Instant};
 
     use beadroll_test_support::Machine;
@@ -68,8 +69,7 @@ mod g58_finished_push_is_not_an_unanswered_one {
         std::fs::write(&pids, "").unwrap();
         let _helpers = Helpers(pids.clone());
         let ssh = sandbox.root().join("g58-ssh.sh");
-        std::fs::write(&ssh, SSH_SCRIPT).unwrap();
-        std::fs::set_permissions(&ssh, std::fs::Permissions::from_mode(0o755)).unwrap();
+        executable(&ssh, SSH_SCRIPT);
         let config = sandbox.root().join("g58-empty.gitconfig");
         std::fs::write(&config, "").unwrap();
         let mut a = Machine::new(&sandbox, "g58");
