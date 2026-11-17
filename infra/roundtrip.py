@@ -4,15 +4,11 @@ the preflight record of it before any data is written, are infra/selected.py's: 
 (an absolute path), else the installed one."""
 import glob, json, os, subprocess, sys, time
 import selected
+from records import canonical
 BP = selected.local_bead()
 selected.preflight(BP)
 env = {k: v for k, v in os.environ.items() if not k.startswith(("CLAUDE", "CODEX", "BEAD_", "GIT_"))}
 env.update(BEAD_HOME=os.environ.get("RT_HOME") or os.path.join(os.environ.get("TMPDIR", "/tmp"), "bead-roundtrip-home"), BEAD_AGENT="human")
-def norm(rec):
-    rec = dict(rec); rec.pop("source_repo_path", None)
-    if "labels" in rec: rec["labels"] = sorted(rec["labels"])
-    if "dependencies" in rec: rec["dependencies"] = sorted(rec["dependencies"], key=lambda d: (d["depends_on_id"], d["type"]))
-    return rec
 total = same = 0; diffs = []; rows = []; failed = False
 for path in sorted(glob.glob(os.path.expanduser("~/Documents/*/.beads/issues.jsonl"))):
     repo = path.split("/")[-3]
@@ -31,7 +27,7 @@ for path in sorted(glob.glob(os.path.expanduser("~/Documents/*/.beads/issues.jso
     ok = 0
     for rec in src:
         total += 1
-        a, b = norm(rec), norm(got.get(rec["id"], {}))
+        a, b = canonical(rec), canonical(got.get(rec["id"], {}))
         if a == b: ok += 1; same += 1
         elif len(diffs) < 12:
             keys = sorted(k for k in set(a) | set(b) if a.get(k) != b.get(k))

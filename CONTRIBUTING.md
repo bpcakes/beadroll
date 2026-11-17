@@ -100,7 +100,8 @@ repository, stdlib Python that drives any `bead`:
 `roundtrip.py` (import/export over real Beads exports), `compat_real.py` (the same exports loaded
 by `br` and fed to `bv`, which `./check.sh --real` runs), `hotspots.py` (two beads compared on one
 journal snapshot, the probe behind `docs/evidence/`), `selected.py` (which bead each runs, and
-the record of it before any test data is written), their tests beside them, and the synthetic
+the record of it before any test data is written), `records.py` (what two exports must agree on of a
+record, which the round trip and the real-data check compare), their tests beside them, and the synthetic
 `seed.jsonl`.
 
 ## Making a change

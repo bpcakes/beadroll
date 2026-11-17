@@ -7,6 +7,7 @@ record of it before any data is written, are infra/selected.py's: the one BEAD_U
 path), else the installed one."""
 import argparse, collections, json, os, pathlib, shutil, subprocess, sys, tempfile
 import selected
+from records import canonical
 P=pathlib.Path
 parser=argparse.ArgumentParser();parser.add_argument('--out', default=tempfile.mkdtemp(prefix='bead-compat-real-'));parser.add_argument('--documents',default=os.path.expanduser('~/Documents'));args=parser.parse_args()
 root=P(args.out);root.mkdir(parents=True,exist_ok=True)
@@ -17,14 +18,8 @@ env.update(BEAD_HOME=str(root/'bead-home'), BEAD_AGENT='audit', BEAD_THREAD='aud
 def run(command,cwd,extra=None):
  return subprocess.run(command,cwd=cwd,env={**env,**(extra or {})},capture_output=True,text=True,timeout=60)
 def parse(p):return json.loads(p.stdout)
-def canon(records):
- out=[]
- for r in records:
-  r=dict(r);r.pop('source_repo_path',None)
-  for f in ('labels','dependencies'):
-   if f in r:r[f]=sorted(r[f],key=lambda v:json.dumps(v,sort_keys=True))
-  out.append(r)
- return sorted(out,key=lambda r:r['id'])
+def canon(listed):
+ return sorted(map(canonical,listed),key=lambda r:r['id'])
 def keys(p):
  x=parse(p)
  if isinstance(x,dict):x=x.get('issues',x.get('blocked',[]))
