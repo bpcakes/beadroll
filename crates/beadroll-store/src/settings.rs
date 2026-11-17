@@ -6,7 +6,7 @@ use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use beadroll_core::text::{parse_float, parse_integer, repr_str};
 use beadroll_git::{Checkout, Env, Fact, Output};
@@ -17,8 +17,8 @@ use crate::failpoint::{Failpoints, Fired};
 
 /// Segment rotation size when `BEAD_ROTATE_BYTES` is unset.
 pub const ROTATE_BYTES: i128 = 256 * 1024;
-/// Seconds for one fetch or push when `BEAD_NET_TIMEOUT` is unset.
-pub const NET_TIMEOUT: f64 = 45.0;
+/// How long one fetch or push may take when `BEAD_NET_TIMEOUT` is unset.
+pub const NET_TIMEOUT: Duration = Duration::from_secs(45);
 /// Loose objects in `sync.git` before bead repacks it, when `BEAD_REPACK_LOOSE` is unset.
 pub const REPACK_LOOSE: i128 = 1000;
 /// Packs in `sync.git` (one per fetch that brought something) before bead repacks it, when
@@ -86,8 +86,9 @@ pub struct Settings {
     user_home: OsString,
     /// `BEAD_ROTATE_BYTES`: the size from which this machine starts a new segment.
     pub rotate_bytes: i128,
-    /// `BEAD_NET_TIMEOUT`: seconds for one fetch or push.
-    pub net_timeout: f64,
+    /// `BEAD_NET_TIMEOUT`: how long one fetch or push may take; `None` for no limit, which an
+    /// infinite or too large number of seconds gives. A negative one is no wait at all.
+    pub net_timeout: Option<Duration>,
     /// `BEAD_REPACK_LOOSE`: loose objects in `sync.git` before it is repacked.
     pub repack_loose: i128,
     /// `BEAD_REPACK_PACKS`: packs in `sync.git` before it is repacked.
@@ -134,13 +135,17 @@ impl Settings {
                 })
             })
         };
-        let net_timeout = get("BEAD_NET_TIMEOUT").map_or(Ok(NET_TIMEOUT), |value| {
-            value.to_str().and_then(parse_float).ok_or_else(|| {
-                Error::Config(format!(
-                    "BEAD_NET_TIMEOUT must be a number of seconds, not {}",
-                    repr_str(&value.to_string_lossy())
-                ))
-            })
+        let net_timeout = get("BEAD_NET_TIMEOUT").map_or(Ok(Some(NET_TIMEOUT)), |value| {
+            let seconds = value.to_str().and_then(parse_float);
+            // NaN and below zero are no wait; beyond what a duration holds, no limit
+            seconds
+                .map(|s| Duration::try_from_secs_f64(s.max(0.0)).ok())
+                .ok_or_else(|| {
+                    Error::Config(format!(
+                        "BEAD_NET_TIMEOUT must be a number of seconds, not {}",
+                        repr_str(&value.to_string_lossy())
+                    ))
+                })
         })?;
         let bead_home =
             get("BEAD_HOME").map(|value| (value.clone(), expand_user(value, &user_home, home_of)));
@@ -323,8 +328,13 @@ mod tests {
         .unwrap();
         assert_eq!(
             (s.rotate_bytes, s.net_timeout, s.repack_loose),
-            (10, 0.25, 1000)
+            (10, Some(Duration::from_millis(250)), 1000)
         );
+        // beyond what a duration holds is no limit, and below zero no wait at all
+        let unlimited = settings(&[("BEAD_NET_TIMEOUT", "inf")]).unwrap();
+        assert_eq!(unlimited.net_timeout, None);
+        let none = settings(&[("BEAD_NET_TIMEOUT", "-1")]).unwrap();
+        assert_eq!(none.net_timeout, Some(Duration::ZERO));
         let bad = settings(&[("BEAD_NET_TIMEOUT", "soon")]).unwrap_err();
         assert_eq!(bad.code().as_str(), "CONFIG");
         assert!(settings(&[("BEAD_REPACK_PACKS", "1.5")]).is_err());
