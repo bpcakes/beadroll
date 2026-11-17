@@ -71,8 +71,8 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
   `beadroll` crate's `cli` reads the environment, the working directory and the clock. Match the
   surrounding style: comments in prose that say why, names that say what a function returns,
   errors whose codes a user can act on (`bead prime` lists them). Unknown input is reported,
-  never guessed at; nothing is ever half-written. No `mod.rs` files, and a source file warns
-  above 500 lines.
+  never guessed at; nothing is ever half-written. No `mod.rs` files, and a source file stays
+  under 500 lines where it can and is split before 800, which xtask's hygiene tests enforce.
 - Every behaviour change comes with a test in the module of its subject. A black-box test runs
   `bead` through `beadroll-test-support` (`Sandbox`, `Machine`): the binary Cargo built, unless
   `BEAD_UNDER_TEST` names another. A fault is injected through a failpoint (`BEAD_FAILPOINTS`,

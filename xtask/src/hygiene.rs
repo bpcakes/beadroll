@@ -1,7 +1,8 @@
 //! Repository hygiene: tracked files must not expose maintainer home directories, LAN or tailnet
 //! hostnames, or SSH targets. Patterns describe shapes rather than private names. ASCII word
 //! boundaries deliberately also catch matches beside non-ASCII letters. Lint exemptions sit at a
-//! crate or module root, apart from the two `CONTRIBUTING.md` names.
+//! crate or module root, apart from the two `CONTRIBUTING.md` names, and no Rust source grows past
+//! the line it should have been split long before.
 
 /// `RepositoryHygiene`.
 mod repository_hygiene {
@@ -232,6 +233,67 @@ mod lint_exemptions {
         assert_eq!(
             unaccepted(name, &attribute("", "dead_code")),
             [format!("{name}:1")]
+        );
+    }
+}
+
+/// `FileLengths`.
+mod file_lengths {
+    use crate::workspace;
+
+    /// The most lines a Rust source may have: `CONTRIBUTING.md` asks for under 500, and a file past
+    /// this was not split when it should have been.
+    const LIMIT: usize = 800;
+
+    /// The files of `sources`, each its name and text, longer than [`LIMIT`] lines, as NAME: LINES.
+    fn too_long<'s>(sources: impl IntoIterator<Item = (&'s str, &'s str)>) -> Vec<String> {
+        sources
+            .into_iter()
+            .map(|(name, text)| (name, text.lines().count()))
+            .filter(|&(_, lines)| lines > LIMIT)
+            .map(|(name, lines)| format!("{name}: {lines} lines"))
+            .collect()
+    }
+
+    /// No tracked Rust source is longer than [`LIMIT`]: the next test of a subject goes into a module
+    /// of its own, not onto the end of the longest file.
+    #[test]
+    fn no_source_is_past_the_line_to_split_it() {
+        let root = workspace::root();
+        let listed = std::process::Command::new("git")
+            .args(["ls-files", "-z", "*.rs"])
+            .current_dir(&root)
+            .output()
+            .expect("git runs");
+        assert!(listed.status.success(), "git ls-files failed");
+        let names = String::from_utf8(listed.stdout).expect("UTF-8 file names");
+        let names: Vec<&str> = names.split('\0').filter(|name| !name.is_empty()).collect();
+        // A scan of nothing would pass: it must cover this repository.
+        assert!(names.contains(&"xtask/src/hygiene.rs"), "no Rust listed");
+        let texts: Vec<(&str, String)> = (names.iter())
+            .map(|name| {
+                let text = std::fs::read_to_string(root.join(name))
+                    .unwrap_or_else(|error| panic!("{name}: {error}"));
+                (*name, text)
+            })
+            .collect();
+        let found = too_long(texts.iter().map(|(name, text)| (*name, text.as_str())));
+        assert!(
+            found.is_empty(),
+            "split these by subject:\n{}",
+            found.join("\n")
+        );
+    }
+
+    /// A file of exactly [`LIMIT`] lines passes, with or without a last newline; one more fails.
+    #[test]
+    fn the_limit_counts_lines() {
+        let at = "x\n".repeat(LIMIT);
+        let over = format!("{at}y");
+        assert!(too_long([("a.rs", at.as_str()), ("b.rs", at.trim_end())]).is_empty());
+        assert_eq!(
+            too_long([("c.rs", over.as_str())]),
+            [format!("c.rs: {} lines", LIMIT + 1)]
         );
     }
 }
