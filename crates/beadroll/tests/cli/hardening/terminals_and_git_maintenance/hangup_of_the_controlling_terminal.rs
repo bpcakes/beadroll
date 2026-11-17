@@ -150,11 +150,11 @@ fn hang_up(sandbox: &Sandbox, machine: &Machine, args: &[&str]) -> (Vec<u8>, Str
     let pid_file = sandbox.root().join("hangup.pid");
     let words: Vec<String> = std::iter::once(machine.executable().as_os_str())
         .chain(args.iter().map(OsStr::new))
-        .map(quoted)
+        .map(shell_quoted)
         .collect();
     let line = format!(
         "echo $$ > {}; exec env --default-signal=HUP {}",
-        shell_quoted(pid_file),
+        shell_quoted(&pid_file),
         words.join(" ")
     );
     let mut command = script(&line, &machine.env(None, "codex"));
