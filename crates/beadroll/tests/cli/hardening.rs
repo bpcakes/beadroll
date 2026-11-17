@@ -1,6 +1,8 @@
-//! Black-box hardening tests. Module and test names retain the references used by
-//! `docs/FINDINGS.md`. Fault injection uses failpoints on this build's binary
-//! (`crate::rust_only`); `gate` coordinates a test with a paused process.
+//! Black-box hardening tests. The `g*` and `v*` modules keep the finding ids `docs/FINDINGS.md`
+//! cites, from the port of Python's suite. They are history, not a pattern: a new test goes in a
+//! module named for its subject, under a name that says the contract it checks (`AGENTS.md`).
+//! Fault injection uses failpoints on this build's binary (`crate::rust_only`); `gate` coordinates
+//! a test with a paused process.
 
 mod fixture_environment;
 mod g01;

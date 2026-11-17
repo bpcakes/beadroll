@@ -33,8 +33,9 @@ storage, protocol behavior and fault recovery.
   - `src/cli/output.rs`: the EPIPE-safe writes and `visible`; `src/cli/tempdir.rs`: writable
     temporary-directory selection with environment overrides and fallbacks.
 - `src/commands.rs`: `Failure` (with the raw bytes of a message that holds some not UTF-8),
-  `Outcome` and the helpers commands share; `src/commands/args.rs`: command-line text with invalid
-  UTF-8 preserved through `surrogateescape` (`resolve_arg`, `field_args`, `Payload`, `encodable`);
+  `Outcome` and the helpers commands share; `src/commands/args.rs`: command-line text, with invalid
+  UTF-8 held as U+FFFD and a validity flag, so it fails only when an event carrying it is encoded
+  (`resolve_arg`, `field_args`, `Payload`, `encodable`);
   `src/commands/*.rs`: one command or a family each (`transition.rs` is close, reopen and delete;
   `queries.rs` blocked, search and lint; `history.rs` log and machines, and `logged`, the row and
   line of an event that `recap.rs` builds on, whose `recap/layout.rs` lays activity out by
@@ -73,13 +74,14 @@ storage, protocol behavior and fault recovery.
   `tests/cli/stress.rs`: two randomised models, ignored by default; they draw from
   `stress/seeded_random.rs`, whose MT19937 stream preserves recorded scenarios for each seed.
 - `main.rs`'s `rust_only`: the machine of a test that uses build-specific failpoints, reads the
-  store in the test process, or checks a build-specific contract (a structured error where Python
-  died with a traceback). It runs this build's binary whatever `BEAD_UNDER_TEST` says.
+  store in the test process, or checks a build-specific contract. It runs this build's binary whatever `BEAD_UNDER_TEST` says.
 
 ## Edit here for X
 
 - A test of a command: `tests/cli/<module>/<subject>.rs` beside related tests. Test names describe
-  the contract they check; a regression test names its finding. Update active references in
+  the contract they check; a regression test names its finding in its doc comment. Module names
+  that carry a review or finding id (`hardening/g*`, `v*`, `review*`, `*_audit`) are history,
+  never a pattern. Update active references in
   `docs/FINDINGS.md` when renaming a test.
 - A command, its output or its exit status: `src/commands` and `src/cli`.
 - An argument or a help text: `src/cli/spec.rs`. The help pages are goldens

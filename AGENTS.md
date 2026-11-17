@@ -81,6 +81,19 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
   point for the test to act (`hardening/gate.rs`); such a test's machine is `rust_only`, this
   build's binary. In-crate tests pass the failpoint registry in `Settings`, never through the
   process environment.
+- Some old tests are history, not a pattern; do not copy them:
+  - Module names that carry a review or finding id: `hardening/g01`–`g65` and `v1`–`v9`,
+    `review5_*`, `review6`, `bp_test`, `protocol3`, `replay_third_review`, and the `*_audit`,
+    `*_reaudit` and `*_review4` modules.
+  - Helper docs that start with the Python function a helper was ported from
+    (`` `_g08_machine`: ``).
+  - The crash hooks `BEAD_TEST_CRASH_BEFORE_PUSH` and `BEAD_TEST_CRASH_AFTER_PUSH`. They are
+    aliases, kept for the tests that use them.
+
+  A new test goes in its subject's module under a name that says the contract it checks, with
+  any finding id in its doc comment. A helper's doc says what the helper returns. A test that
+  crashes an ownership command names the failpoint, `ownership.before-publish=exit(98)` or
+  `ownership.after-publish-ok=exit(99)`.
 - Record deliberate decisions in `docs/REVIEWING.md` §2, every guarantee in `docs/GUARANTEES.md`,
   and what a new user reads first in `README.md`; a review finding you close gets its row in
   `docs/FINDINGS.md`. Format 1 is frozen: additions only.
