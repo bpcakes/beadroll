@@ -33,6 +33,18 @@ pub(super) fn create_args(ns: &Namespace) -> commands::CreateArgs {
     }
 }
 
+/// The arguments `close`, `reopen` and `delete` share, the network and remote among them.
+pub(super) fn transition_args(ns: &Namespace) -> commands::TransitionArgs {
+    commands::TransitionArgs {
+        ids: ns.texts("ids").to_vec(),
+        reason: owned(ns, "reason"),
+        recursive: ns.flag("recursive"),
+        force: ns.flag("force"),
+        network: network(ns),
+        remote: ns.text("remote").map(OsStr::to_os_string),
+    }
+}
+
 /// `update`'s arguments, with the command line as its receipt names it.
 pub(super) fn update_args(ns: &Namespace) -> commands::UpdateArgs {
     commands::UpdateArgs {

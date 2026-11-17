@@ -9,8 +9,8 @@ use beadroll_sync::NetworkMode;
 use beadroll_test_support::Machine;
 
 use super::{
-    CommentArgs, Context, CreateArgs, Failure, Outcome, OwnershipArgs, TransitionArgs, UpdateArgs,
-    claim, comments, create, dep, import, transition, update,
+    CommentArgs, Context, CreateArgs, Failure, Outcome, OwnershipArgs, Transition, TransitionArgs,
+    UpdateArgs, claim, comments, create, dep, import, transition, update,
 };
 use crate::testing::{actor, tracker, workspace};
 
@@ -28,7 +28,7 @@ fn words(words: &[&str]) -> Vec<OsString> {
 /// `close`, `reopen` or `delete` of `key`, published at once unless `network` is offline.
 fn transit(
     ctx: &Context<'_>,
-    op: &str,
+    op: Transition,
     key: &OsString,
     network: NetworkMode,
 ) -> Result<Outcome, Failure> {
@@ -88,8 +88,11 @@ fn a_write_hands_the_command_line_its_transaction_to_keep() {
             "dep {action}"
         );
     }
-    for op in ["close", "reopen", "delete"] {
-        assert!(holds(transit(&ctx, op, &two, NetworkMode::Offline)), "{op}");
+    for op in [Transition::Close, Transition::Reopen, Transition::Delete] {
+        assert!(
+            holds(transit(&ctx, op, &two, NetworkMode::Offline)),
+            "{op:?}"
+        );
     }
     let file = sandbox.root().join("issues.jsonl");
     std::fs::write(
@@ -142,8 +145,8 @@ fn a_write_that_publishes_or_fails_hands_over_nothing() {
         asked: "{}".to_owned(),
     };
     claim(&ctx, &taking).expect("a claim");
-    let ended =
-        transit(&ctx, "close", &key, NetworkMode::Online).expect("a close that ends the claim");
+    let ended = transit(&ctx, Transition::Close, &key, NetworkMode::Online)
+        .expect("a close that ends the claim");
     assert!(
         ended.held.is_none(),
         "it held its transaction through the publish"

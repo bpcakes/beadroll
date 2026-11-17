@@ -44,6 +44,45 @@ struct Plan {
     unknown: Option<Failure>,
 }
 
+/// The status changes `close`, `reopen` and `delete` make, which [`transition`] writes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Transition {
+    /// `bead close`: the issue closed, a claim on it ended.
+    Close,
+    /// `bead reopen`: the issue open again.
+    Reopen,
+    /// `bead delete`: the issue a tombstone, a claim on it ended.
+    Delete,
+}
+
+impl Transition {
+    /// The event it writes.
+    fn op(self) -> OpName {
+        match self {
+            Transition::Close => OpName::Close,
+            Transition::Reopen => OpName::Reopen,
+            Transition::Delete => OpName::Delete,
+        }
+    }
+
+    /// What it does, the status it gives, and that status as said.
+    fn words(self) -> (&'static str, &'static str, &'static str) {
+        match self {
+            Transition::Close => ("Closed", "closed", "closed"),
+            Transition::Reopen => ("Reopened", "open", "open"),
+            Transition::Delete => ("Deleted", "tombstone", "deleted"),
+        }
+    }
+
+    /// Whether it ends a claim the issue holds: a close or a delete does, a reopen not.
+    fn ends_claims(self) -> bool {
+        match self {
+            Transition::Close | Transition::Delete => true,
+            Transition::Reopen => false,
+        }
+    }
+}
+
 /// Applies `op` (`close`, `reopen` or `delete`) to each issue, and with `--recursive` to every
 /// issue beneath each, leaf-up. When a claim ended, the result is published at once; a close or
 /// delete that named a claim another owner had already taken over is answered as `superseded`. An
@@ -52,15 +91,11 @@ struct Plan {
 /// it has. An issue beneath in that state, or deleted, is left out.
 pub(crate) fn transition(
     ctx: &Context<'_>,
-    op: &str,
+    op: Transition,
     args: &TransitionArgs,
 ) -> Result<Outcome, Failure> {
-    // the event it writes, what it does, the status it gives, and that status as said
-    let (kind, verb, status, said) = match op {
-        "close" => (OpName::Close, "Closed", "closed", "closed"),
-        "reopen" => (OpName::Reopen, "Reopened", "open", "open"),
-        _ => (OpName::Delete, "Deleted", "tombstone", "deleted"),
-    };
+    let kind = op.op();
+    let (verb, status, said) = op.words();
     let written = writing_spent(ctx.ws, ctx.actor, |tx| {
         need_tracker(tx.state()?)?;
         let me = ctx.actor.label(&tx.replica);
@@ -71,7 +106,7 @@ pub(crate) fn transition(
             let subtree: Vec<EventId> = plan.issues.iter().chain(&plan.left).copied().collect();
             refuse_claimed(st, &subtree, &me)?;
         }
-        let ends_claims = matches!(op, "close" | "delete");
+        let ends_claims = op.ends_claims();
         let mut decided = Decided {
             // a repeat of this actor's close that ended a claim still publishes it, as a plain
             // close does, though the issue beneath is left out of the answer; nothing is written
@@ -184,12 +219,12 @@ struct Decided {
 fn decide(
     st: &State,
     uid: EventId,
-    (op, status): (&str, &str),
+    (op, status): (Transition, &str),
     args: &TransitionArgs,
     me: &Label,
     decided: &mut Decided,
 ) -> Result<Option<Object>, Failure> {
-    let ends_claims = matches!(op, "close" | "delete");
+    let ends_claims = op.ends_claims();
     let issue = known(st, uid)?;
     let held = issue.claim();
     if !args.force {
@@ -358,7 +393,7 @@ fn answer(
 /// are those `result` answers for, in its order.
 fn superseded(
     ctx: &Context<'_>,
-    op: &str,
+    op: Transition,
     issues: &[EventId],
     named: &[(EventId, EventId)],
     result: &mut Vec<Object>,
@@ -370,11 +405,9 @@ fn superseded(
     let mut lost = Vec::new();
     for (uid, claim) in named {
         if let Some(issue) = st.issue(*uid)
-            && issue
-                .hydrated()?
-                .stale()
-                .iter()
-                .any(|stale| stale.op == op && stale.claim.as_deref() == Some(&claim.to_string()))
+            && issue.hydrated()?.stale().iter().any(|stale| {
+                stale.op == op.op().as_str() && stale.claim.as_deref() == Some(&claim.to_string())
+            })
         {
             lost.push(*uid);
         }
@@ -387,7 +420,8 @@ fn superseded(
         if lost.contains(uid) {
             let key = item.get("id").map(str_of).unwrap_or_default();
             let text = format!(
-                "another owner took over before this {op} reached the remote; it is ignored"
+                "another owner took over before this {} reached the remote; it is ignored",
+                op.op().as_str()
             );
             item.insert("superseded".into(), Value::from(text.as_str()));
             notes.push(format!("! {key}: {text} (see `bead show`, under stale)"));

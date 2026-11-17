@@ -79,7 +79,7 @@ pub(crate) use recap::{Layout, RecapArgs, recap};
 pub(crate) use select::{Filters, first, row, select};
 pub(crate) use show::show;
 pub(crate) use sync::sync;
-pub(crate) use transition::{TransitionArgs, transition};
+pub(crate) use transition::{Transition, TransitionArgs, transition};
 pub(crate) use update::{UpdateArgs, update};
 
 /// What a command answers: the result `--json` prints, and the lines a human reads; or, for a
