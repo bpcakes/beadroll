@@ -44,7 +44,7 @@ pub(super) fn claim(
     claiming: &Claiming,
 ) -> Result<bool, &'static str> {
     let who = c.who;
-    if claiming.mode.as_deref() == Some("offline") {
+    if claiming.provisional() {
         // Provisional: never displaces a confirmed owner.
         if !c.claim.is_some_and(|held| held.mine) {
             issue.provisional_claims.retain(|p| *p.owner != *who);
@@ -173,11 +173,7 @@ pub(super) fn reopen(c: &Ctx<'_>, issue: &mut Issue) -> bool {
 
 /// Whether a claim takes over the current one by naming it.
 fn takes_over(claim: Option<Held>, claiming: &Claiming) -> bool {
-    let named = claiming
-        .takeover
-        .as_deref()
-        .filter(|t| !t.is_empty())
-        .and_then(EventId::parse);
+    let named = claiming.takeover_of().and_then(EventId::parse);
     claim.is_some_and(|held| named == Some(held.id))
 }
 

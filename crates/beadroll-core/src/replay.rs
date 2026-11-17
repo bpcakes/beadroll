@@ -132,7 +132,7 @@ pub(crate) fn replayed(mut journal: Journal) -> Result<(State, Replayed), KeySpa
                 continue;
             };
             if events.get(at).and_then(Option::as_deref).is_some_and(|event| {
-                matches!(&event.op, Op::Claim(claiming) if claiming.takeover.as_deref().is_some_and(|t| !t.is_empty()))
+                matches!(&event.op, Op::Claim(claiming) if claiming.takeover_of().is_some())
             }) {
                 inert.insert(at, entry.problem.clone());
                 refused = true;
@@ -279,7 +279,7 @@ fn settle_takeovers(
         let Op::Claim(claiming) = &event.op else {
             continue;
         };
-        let Some(takeover) = claiming.takeover.as_deref().filter(|t| !t.is_empty()) else {
+        let Some(takeover) = claiming.takeover_of() else {
             continue;
         };
         let named = EventId::parse(takeover);
@@ -295,7 +295,7 @@ fn settle_takeovers(
                 if !k.saw_at(at, previous) {
                     Some("takeover of a claim its writer had not seen")
                 } else {
-                    if claiming.mode.as_deref() != Some("offline") && !inert.contains_key(&before) {
+                    if !claiming.provisional() && !inert.contains_key(&before) {
                         superseded.insert(previous);
                     }
                     None

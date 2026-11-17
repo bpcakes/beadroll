@@ -272,3 +272,15 @@ fn connection(
         None => Connection::Local(Mode::Local),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Mode;
+
+    /// A claim made offline records the mode replay reads as provisional (`Claiming::provisional`).
+    #[test]
+    fn an_offline_claim_is_written_with_the_provisional_mode() {
+        assert_eq!(Mode::Offline.as_str(), beadroll_core::op::PROVISIONAL);
+        assert_ne!(Mode::Online.as_str(), beadroll_core::op::PROVISIONAL);
+    }
+}

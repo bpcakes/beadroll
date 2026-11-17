@@ -101,10 +101,8 @@ fn happened(events: &[&Event]) -> String {
         let change = match event.op() {
             Op::Create(create) if create.imported => "imported",
             Op::Create(_) => "created",
-            Op::Claim(claim) if claim.mode.as_deref() == Some("offline") => "claimed provisionally",
-            Op::Claim(claim) if claim.takeover.as_deref().is_some_and(|t| !t.is_empty()) => {
-                "taken over"
-            }
+            Op::Claim(claim) if claim.provisional() => "claimed provisionally",
+            Op::Claim(claim) if claim.takeover_of().is_some() => "taken over",
             Op::Claim(_) => "claimed",
             Op::Release(_) => "released",
             Op::Close(_) => "closed",
