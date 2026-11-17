@@ -17,10 +17,10 @@ fn contains(haystack: &[u8], needle: &[u8]) -> bool {
 }
 
 /// Verified (V8): sync under a controlling terminal cannot prompt, because git and ssh run in their
-/// own session (run_git uses start_new_session=True), so a transport that wants /dev/tty fails fast
-/// instead of hanging. The review measured rc 1 after 0.44 s with bead as session leader of a PTY
-/// and a fake ssh that opens /dev/tty for a passphrase: the terminal showed '/dev/tty: Device not
-/// configured ... fatal: Could not read from remote repository.' and no prompt.
+/// own session (beadroll-git's runner calls setsid for each), so a transport that wants /dev/tty
+/// fails fast instead of hanging. The review measured rc 1 after 0.44 s with bead as session leader
+/// of a PTY and a fake ssh that opens /dev/tty for a passphrase: the terminal showed '/dev/tty:
+/// Device not configured ... fatal: Could not read from remote repository.' and no prompt.
 #[test]
 fn sync_under_a_controlling_terminal_cannot_prompt() {
     let sandbox = crate::sandbox();

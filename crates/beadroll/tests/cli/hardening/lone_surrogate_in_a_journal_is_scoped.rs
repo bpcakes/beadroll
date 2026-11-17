@@ -60,7 +60,7 @@ fn export_survives_a_lone_surrogate_in_a_journal() {
         ("fffffff0", escaped_line(&escaped)),
         ("fffffff1", raw_line(&raw)),
     ] {
-        // `mkdir(parents=True)`: `events/` is there, the tracker having events
+        // `events/` is there already, the tracker having events: only the replica's folder is new
         let folder = m.store().join("events").join(replica);
         std::fs::create_dir(&folder).unwrap();
         std::fs::write(folder.join("000001.jsonl"), [line, b"\n".to_vec()].concat()).unwrap();

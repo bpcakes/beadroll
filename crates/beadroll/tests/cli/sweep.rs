@@ -146,9 +146,9 @@ const FAULTS: [&str; 7] = [
     "kill-write-confirm",
 ];
 
-/// Every ordered pair of two different follow-ups, in the order `itertools.permutations("RDOS",
-/// 2)` gives them: R a retry of the same command by A1 on m1, D `claim Z` by A1 on m1, O `claim X`
-/// by A2 on m1, S `sync` on m2.
+/// Every ordered pair of two different follow-ups, first by the first of them and then by the
+/// second, each in the order R, D, O, S: R a retry of the same command by A1 on m1, D `claim Z` by
+/// A1 on m1, O `claim X` by A2 on m1, S `sync` on m2. The sweep's cases are numbered in this order.
 const PAIRS: [&str; 12] = [
     "RD", "RO", "RS", "DR", "DO", "DS", "OR", "OD", "OS", "SR", "SD", "SO",
 ];

@@ -25,8 +25,8 @@ fn strip(data: &[u8]) -> &[u8] {
 }
 
 /// Git with byte arguments allowed, in `cwd`, with exactly the environment `env` when
-/// one is given, `data` on its standard input; its standard output, stripped. A failure panics,
-/// as `check=True` raises.
+/// one is given, `data` on its standard input; its standard output, stripped. A git that fails
+/// fails the test.
 fn git_bytes(
     args: &[&[u8]],
     cwd: &Path,
@@ -100,7 +100,7 @@ fn nul_terminated(items: &[&[u8]], last: &[u8]) -> Vec<u8> {
     data
 }
 
-/// `output` as a [`Run`], decoded as `text=True` decodes it.
+/// `output` as a [`Run`]; output that is not UTF-8 fails the test.
 fn finished(output: Output) -> Run {
     Run {
         status: output.status,

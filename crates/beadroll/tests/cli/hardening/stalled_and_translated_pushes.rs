@@ -41,7 +41,7 @@ fn locales() -> Vec<(&'static str, Setting)> {
     ]
 }
 
-/// `env` with `setting` applied: `{**env, **loc}`.
+/// `env` with each variable of `setting` set, over any value `env` gave it.
 fn applied(env: &Env, setting: &Setting) -> Env {
     let mut env = env.clone();
     for (key, value) in setting {
