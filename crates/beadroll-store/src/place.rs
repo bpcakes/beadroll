@@ -3,7 +3,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use beadroll_core::json::{Object, Value};
-use beadroll_git::{Env, Fact, HeadAnswers, head_and_branch};
+use beadroll_git::{Ended, Env, Fact, HeadAnswers, head_and_branch};
 
 use crate::error::Error;
 use crate::settings::Settings;
@@ -255,11 +255,11 @@ fn ancestor_of_any(git: &Env, refs: &[String], commit: &str) -> Result<Option<bo
             commit,
             target,
         ];
-        codes.push(git.git(ask).run()?.returncode);
+        codes.push(git.git(ask).run()?.ended);
     }
-    Ok(if codes.contains(&0) {
+    Ok(if codes.contains(&Ended::Exit(0)) {
         Some(true)
-    } else if codes.contains(&1) {
+    } else if codes.contains(&Ended::Exit(1)) {
         Some(false)
     } else {
         None

@@ -284,7 +284,7 @@ fn walk_failed(listed: &Output) -> Option<String> {
     let said = String::from_utf8_lossy(&listed.stderr);
     let said = strip(&said);
     Some(if said.is_empty() {
-        format!("git rev-list ended with {}", listed.returncode)
+        format!("git rev-list ended with {}", listed.ended)
     } else {
         said.to_owned()
     })
@@ -292,12 +292,14 @@ fn walk_failed(listed: &Output) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use beadroll_git::Ended;
+
     use super::*;
 
-    /// A git's output: its return code (minus the signal that ended it) and what it printed.
-    fn ended(returncode: i32, stdout: &str, stderr: &str) -> Output {
+    /// A git's output: how it ended and what it printed.
+    fn ended(ended: Ended, stdout: &str, stderr: &str) -> Output {
         Output {
-            returncode,
+            ended,
             stdout: stdout.into(),
             stderr: stderr.into(),
         }
@@ -305,36 +307,46 @@ mod tests {
 
     #[test]
     fn a_blob_is_unreadable_only_when_git_failed_reading_it_and_types_it_a_blob() {
-        let stream = ended(128, "", "fatal: unable to stream 02f5 to stdout");
-        let killed = ended(-9, "", ""); // SIGKILL
-        let blob = ended(0, "blob\n", "");
+        let stream = ended(
+            Ended::Exit(128),
+            "",
+            "fatal: unable to stream 02f5 to stdout",
+        );
+        let killed = ended(Ended::Signal(9), "", ""); // SIGKILL
+        let blob = ended(Ended::Exit(0), "blob\n", "");
         assert!(blob_unreadable(&stream, &blob));
         assert!(!blob_unreadable(&killed, &blob));
-        assert!(!blob_unreadable(&stream, &ended(0, "commit\n", "")));
-        assert!(!blob_unreadable(&stream, &ended(0, "tree\n", "")));
         assert!(!blob_unreadable(
             &stream,
-            &ended(128, "", "fatal: bad header")
+            &ended(Ended::Exit(0), "commit\n", "")
+        ));
+        assert!(!blob_unreadable(
+            &stream,
+            &ended(Ended::Exit(0), "tree\n", "")
+        ));
+        assert!(!blob_unreadable(
+            &stream,
+            &ended(Ended::Exit(128), "", "fatal: bad header")
         ));
         assert!(!blob_unreadable(&stream, &killed));
     }
 
     #[test]
     fn a_tip_is_missing_when_git_says_so_by_its_own_exit() {
-        assert!(tip_missing(&ended(1, "", "")));
-        assert!(!tip_missing(&ended(0, "", "")));
-        assert!(!tip_missing(&ended(-9, "", ""))); // SIGKILL
+        assert!(tip_missing(&ended(Ended::Exit(1), "", "")));
+        assert!(!tip_missing(&ended(Ended::Exit(0), "", "")));
+        assert!(!tip_missing(&ended(Ended::Signal(9), "", ""))); // SIGKILL
     }
 
     #[test]
     fn a_failed_walk_is_damage_unless_a_signal_ended_it() {
-        let short = ended(128, "", "fatal: too-short tree object\n");
+        let short = ended(Ended::Exit(128), "", "fatal: too-short tree object\n");
         assert_eq!(
             walk_failed(&short).as_deref(),
             Some("fatal: too-short tree object")
         );
-        let silent = walk_failed(&ended(1, "", ""));
+        let silent = walk_failed(&ended(Ended::Exit(1), "", ""));
         assert_eq!(silent.as_deref(), Some("git rev-list ended with 1"));
-        assert_eq!(walk_failed(&ended(-9, "", "")), None); // SIGKILL
+        assert_eq!(walk_failed(&ended(Ended::Signal(9), "", "")), None); // SIGKILL
     }
 }

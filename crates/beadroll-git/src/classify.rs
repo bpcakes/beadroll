@@ -6,6 +6,7 @@ use std::sync::LazyLock;
 
 use regex_lite::Regex;
 
+use crate::runner::Ended;
 use crate::text::{split_lines, strip};
 
 /// Git's own read errors about local repository objects.
@@ -108,7 +109,7 @@ pub enum PushOutcome {
 /// not go through: the status summary and every stderr line but `To ...` and hints, or the exit
 /// status.
 pub fn push_outcome(
-    returncode: i32,
+    ended: Ended,
     stdout: &[u8],
     stderr: &[u8],
     refspec: &str,
@@ -119,7 +120,7 @@ pub fn push_outcome(
         .map(|line| line.split('\t').collect::<Vec<&str>>())
         .find(|fields| fields.get(1) == Some(&refspec));
     let flag = status.as_ref().and_then(|s| s.first()).copied();
-    if returncode == 0 || matches!(flag, Some(" " | "+" | "*" | "=")) {
+    if ended == Ended::Exit(0) || matches!(flag, Some(" " | "+" | "*" | "=")) {
         return (PushOutcome::Ok, String::new());
     }
     let said = String::from_utf8_lossy(stderr);
@@ -138,7 +139,7 @@ pub fn push_outcome(
     let joined = parts.join(" ");
     let mut error = strip(&joined).to_owned();
     if error.is_empty() {
-        error = format!("git push exited {returncode}");
+        error = format!("git push exited {ended}");
     }
     let outcome = if flag == Some("!") {
         if summary.starts_with("[rejected]") || search(&RACE, summary) {
@@ -195,14 +196,14 @@ mod tests {
     fn a_status_line_decides_a_push() {
         let refspec = "abc:refs/beads/journal";
         let ok = push_outcome(
-            1,
+            Ended::Exit(1),
             b"To x\n \tabc:refs/beads/journal\t[new]\nDone\n",
             b"",
             refspec,
         );
         assert_eq!(ok.0, PushOutcome::Ok);
         let raced = push_outcome(
-            1,
+            Ended::Exit(1),
             b"!\tabc:refs/beads/journal\t[rejected] (fetch first)\n",
             b"To /x\nhint: pull\nerror: failed to push\n",
             refspec,
@@ -215,21 +216,21 @@ mod tests {
             )
         );
         let refused = push_outcome(
-            1,
+            Ended::Exit(1),
             b"!\tabc:refs/beads/journal\t[remote rejected] (pre-receive hook declined)\n",
             b"",
             refspec,
         );
         assert_eq!(refused.0, PushOutcome::Refused);
         let unpacker = push_outcome(
-            1,
+            Ended::Exit(1),
             b"!\tabc:refs/beads/journal\t[remote rejected] (unpacker error)\n",
             b"",
             refspec,
         );
         assert_eq!(unpacker.0, PushOutcome::Rejected);
         assert_eq!(
-            push_outcome(128, b"", b"", refspec),
+            push_outcome(Ended::Exit(128), b"", b"", refspec),
             (PushOutcome::Uncertain, "git push exited 128".into())
         );
     }

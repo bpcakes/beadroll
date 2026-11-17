@@ -7,7 +7,7 @@ use std::ffi::OsStr;
 use beadroll_core::event::FORMAT;
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_git::KillScope;
-use beadroll_git::{PushOutcome, blob_tree_id, push_outcome};
+use beadroll_git::{Ended, PushOutcome, blob_tree_id, push_outcome};
 use beadroll_store::{
     Fired, attempt_path, encode_events, hex_token, relative, repair_tail, segment_files,
 };
@@ -188,14 +188,14 @@ impl Link<'_> {
             }
             Err(error) => return Err(error.into()),
         };
-        let mut judged = push_outcome(push.returncode, &push.stdout, &push.stderr, &refspec);
+        let mut judged = push_outcome(push.ended, &push.stdout, &push.stderr, &refspec);
         if failpoints.hit("push.reply") == Some(Fired::FailReply) && judged.0 == PushOutcome::Ok {
             // the remote took it, whatever the exit status said; the answer never arrived, git's
             // status line with it
-            push.returncode = 1;
+            push.ended = Ended::Exit(1);
             push.stdout.clear();
             push.stderr = b"connection closed after remote accepted".to_vec();
-            judged = push_outcome(push.returncode, &push.stdout, &push.stderr, &refspec);
+            judged = push_outcome(push.ended, &push.stdout, &push.stderr, &refspec);
         }
         let (outcome, said) = judged;
         if outcome == PushOutcome::Ok {
