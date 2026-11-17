@@ -271,7 +271,7 @@ fn execute(
             let mut out = Object::new();
             out.insert("version".into(), Value::from(VERSION));
             out.insert("format".into(), Value::from(FORMAT));
-            write(&Value::from(out), Format::ASCII)?
+            json::write(&Value::from(out), Format::ASCII)?
         } else {
             format!("bead {VERSION}")
         })));
@@ -282,7 +282,7 @@ fn execute(
             let mut out = Object::new();
             let overview = layout::lay_out(texts::OVERVIEW, None);
             out.insert("help".into(), Value::from(overview));
-            write(&Value::from(out), Format::ASCII)?
+            json::write(&Value::from(out), Format::ASCII)?
         } else {
             let width = layout::width(settings.var("COLUMNS"));
             let overview = layout::lay_out_lines(texts::OVERVIEW, width);
@@ -362,7 +362,7 @@ fn rendered(
     Ok(match (result, lines) {
         (None, None) => None,
         (result, _) if output == OutputMode::Json => {
-            Some(write(&result.unwrap_or(Value::Null), Format::SPACED)?)
+            Some(json::write(&result.unwrap_or(Value::Null), Format::SPACED)?)
         }
         (_, lines) => Some(paint::render_all(&lines.unwrap_or_default(), colors.stdout)),
     })
@@ -565,8 +565,4 @@ fn run_ps(pid: u32) -> Option<(i32, String)> {
         .ok()?;
     let status = output.status.code().unwrap_or(-1);
     Some((status, String::from_utf8_lossy(&output.stdout).into_owned()))
-}
-
-fn write(value: &Value, format: Format) -> Result<String, Failure> {
-    json::write(value, format).map_err(|e| Failure::new(Code::Validation, e.to_string()))
 }

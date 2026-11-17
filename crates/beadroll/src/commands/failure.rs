@@ -92,6 +92,13 @@ impl From<beadroll_store::Error> for Failure {
     }
 }
 
+/// A value that cannot be written as JSON is the data's fault (`VALIDATION`), as the store says.
+impl From<beadroll_core::json::WriteError> for Failure {
+    fn from(error: beadroll_core::json::WriteError) -> Failure {
+        beadroll_store::Error::from(error).into()
+    }
+}
+
 impl From<beadroll_git::Error> for Failure {
     fn from(error: beadroll_git::Error) -> Failure {
         Failure::new(beadroll_store::git_code(&error), error.to_string())

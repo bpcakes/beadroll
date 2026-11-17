@@ -207,8 +207,7 @@ fn write_tracked(ws: &Workspace, remote: Option<&OsStr>, id: WorkspaceId) -> Res
         let kept = without_password(OsStr::new(remote)).0;
         config.insert("remote".into(), Value::from(text(&kept)?));
     }
-    let mut body = json::write(&Value::from(config), Format::INDENTED)
-        .map_err(|e| Failure::new(beadroll_core::code::Code::Validation, e.to_string()))?;
+    let mut body = json::write(&Value::from(config), Format::INDENTED)?;
     body.push('\n');
     write_atomic(
         &Path::new(&top).join(".beadroll.json"),

@@ -3,7 +3,6 @@
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
 
-use beadroll_core::code::Code;
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::text::printed_text;
 use beadroll_store::FileMode;
@@ -21,8 +20,7 @@ pub(crate) fn export(ctx: &Context<'_>, output: Option<&OsStr>) -> Result<Outcom
         .map_err(|e| Failure::new(e.code(), e.to_string()))?
         .export_records()
     {
-        let line = json::write(&Value::from(record), Format::COMPACT)
-            .map_err(|e| Failure::new(Code::Validation, e.to_string()))?;
+        let line = json::write(&Value::from(record), Format::COMPACT)?;
         text.push_str(&line);
         text.push('\n');
     }

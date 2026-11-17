@@ -322,8 +322,7 @@ pub fn adopt_published(
     adopted.origin_push = ws.origin_push;
     let mut moved = moved_workspaces(&ws.settings)?;
     moved.insert(derived.clone(), Value::from(found.as_str()));
-    let text = json::write(&Value::from(moved), Format::INDENTED)
-        .map_err(|e| Error::Validation(e.to_string()))?;
+    let text = json::write(&Value::from(moved), Format::INDENTED)?;
     write_atomic(
         &ws.settings.home()?.join("moved.json"),
         text.as_bytes(),

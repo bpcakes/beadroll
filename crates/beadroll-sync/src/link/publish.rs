@@ -60,8 +60,7 @@ impl Link<'_> {
         let mut manifest = Object::new();
         manifest.insert("format".into(), Value::from(FORMAT));
         manifest.insert("workspace".into(), Value::from(self.ws.id.as_str()));
-        let mut manifest = json::write(&Value::from(manifest), Format::SORTED_ASCII)
-            .map_err(|e| Error::Validation(e.to_string()))?;
+        let mut manifest = json::write(&Value::from(manifest), Format::SORTED_ASCII)?;
         manifest.push('\n');
         let manifest_sha = self.blob_of(manifest.into_bytes())?;
         let top =
