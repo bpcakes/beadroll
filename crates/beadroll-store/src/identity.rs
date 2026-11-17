@@ -16,9 +16,9 @@ use crate::settings::{Clock, Settings};
 /// Whether a missing machine identity may be created.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IdentityMode {
-    /// Existing.
+    /// Only an identity already here: none is minted, and a read answers `None`.
     Existing,
-    /// Create.
+    /// Minted on first use, and kept from then on.
     Create,
 }
 
@@ -50,11 +50,10 @@ pub fn hex_token(n: usize) -> String {
 /// temporary name and then linked into place, so it is never seen half done, and the first writer
 /// wins.
 pub fn replica_id(settings: &Settings, create: IdentityMode) -> Result<Option<String>, Error> {
-    let create = matches!(create, IdentityMode::Create);
     let home = settings.home()?;
     let path = home.join("replica.json");
     if !path.exists() {
-        if !create {
+        if create == IdentityMode::Existing {
             return Ok(None);
         }
         private_dir(&home)?;

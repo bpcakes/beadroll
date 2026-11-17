@@ -16,9 +16,9 @@ use crate::commands::{Line, Tone};
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum Color {
     #[default]
-    /// Plain.
+    /// No escape codes: a pipe, a file, `NO_COLOR` or `--color never`.
     Plain,
-    /// Ansi.
+    /// ANSI colours, for a terminal or `--color always`.
     Ansi,
 }
 

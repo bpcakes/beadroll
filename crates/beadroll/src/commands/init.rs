@@ -26,9 +26,9 @@ use super::{Context, Failure, Outcome, text};
 /// Which workspace id a tracked file records.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum WorkspaceId {
-    /// Mint.
+    /// A new id, for a tracker started here.
     Mint,
-    /// Keep.
+    /// This tracker's id, as when it is already here or the remote published it.
     Keep,
 }
 

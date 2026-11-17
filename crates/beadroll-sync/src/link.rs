@@ -46,9 +46,9 @@ use self::known::KnownObjects;
 /// Whether a remote has its own configured push URL.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PushUrl {
-    /// Rewrite.
+    /// Only a URL: a push goes through git's `pushInsteadOf` rewrites, as `git push NAME` would.
     Rewrite,
-    /// Explicit.
+    /// The remote's own push URL, set as `pushurl` too, which git does not rewrite.
     Explicit,
 }
 
@@ -137,11 +137,9 @@ fn link_env(ws: &Workspace) -> Result<Env, Error> {
 /// as for `git fetch NAME` and `git push NAME`. `name` is made for the link, so that no
 /// configuration defines that remote already: its URLs would be added to.
 pub(crate) fn defining_remote(env: &Env, name: &str, url: &OsStr, own_push_url: PushUrl) -> Env {
-    let own_push_url = matches!(own_push_url, PushUrl::Explicit);
-    let keys: &[&str] = if own_push_url {
-        &["url", "pushurl"]
-    } else {
-        &["url"]
+    let keys: &[&str] = match own_push_url {
+        PushUrl::Explicit => &["url", "pushurl"],
+        PushUrl::Rewrite => &["url"],
     };
     let settings: Vec<(String, OsString)> = keys
         .iter()

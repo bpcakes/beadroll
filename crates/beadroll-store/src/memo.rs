@@ -25,11 +25,12 @@ use crate::fs::{read, read_keyed, write_atomic};
 use crate::workspace::Workspace;
 
 /// Which entries are kept when reading the journal memo.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum MemoRead {
-    /// Whole.
+    /// Every entry: the memo can be written back whole.
+    #[default]
     Whole,
-    /// Partial.
+    /// Only the entries asked for: the memo is never written back, which would drop the rest.
     Partial,
 }
 
@@ -154,7 +155,7 @@ pub struct Memo {
     changed: bool,
     /// Whether it holds only some of the files the memo on disk does ([`Memo::load_only`]): it is
     /// then never written back.
-    partial: bool,
+    partial: MemoRead,
 }
 
 impl Memo {
@@ -176,7 +177,6 @@ impl Memo {
     }
 
     fn load_of(ws: &Workspace, wanted: &dyn Fn(&str) -> bool, partial: MemoRead) -> Memo {
-        let partial = matches!(partial, MemoRead::Partial);
         let (data, key) = read_keyed(&memo_path(ws)).unwrap_or_default();
         let mut files = parse(&data, wanted).unwrap_or_default();
         settled(&mut files, key.map(|memo| memo.written()));
@@ -253,7 +253,7 @@ impl Memo {
     /// store lock is held. A memo that cannot be written stays as it was: the next command reads
     /// or hashes again what it would have remembered.
     pub fn save(&mut self, ws: &Workspace) {
-        if !self.changed || self.partial || !ws.dir.join("sync.git").is_dir() {
+        if !self.changed || self.partial == MemoRead::Partial || !ws.dir.join("sync.git").is_dir() {
             return;
         }
         let failpoints = &ws.settings.failpoints;

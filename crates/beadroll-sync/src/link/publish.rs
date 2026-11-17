@@ -20,9 +20,9 @@ use crate::link::write::BlobUse;
 /// Whether publication skips an unchanged tree or fences earlier pushes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PublishMode {
-    /// IfChanged.
+    /// Nothing is pushed when the tree is the remote tip's already.
     IfChanged,
-    /// Fence.
+    /// A commit is pushed even onto the same tree, fencing off earlier pushes still in flight.
     Fence,
 }
 
@@ -138,7 +138,6 @@ impl Link<'_> {
         pending: &[Value],
         fence: PublishMode,
     ) -> Result<PushOutcome, Error> {
-        let fence = matches!(fence, PublishMode::Fence);
         let failpoints = std::sync::Arc::clone(&self.ws.settings.failpoints);
         failpoints.hit("publish.before");
         if let Some(Fired::Error(code)) = failpoints.hit("publish.result") {
@@ -146,7 +145,7 @@ impl Link<'_> {
         }
         let tree = self.tree(pending)?;
         if let Some(tip) = tip
-            && !fence
+            && fence == PublishMode::IfChanged
             && self.tip_tree(tip)? == tree
         {
             self.last_commit = Some(tip.to_owned());

@@ -23,9 +23,9 @@ use crate::text::{strip, strip_ascii};
 /// Which processes are killed when a git invocation ends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KillScope {
-    /// Client.
+    /// Git alone, so that a push's receiving side finishes on its own.
     Client,
-    /// ProcessGroup.
+    /// Git and every helper it started, the default (a fetch).
     ProcessGroup,
 }
 
@@ -111,7 +111,7 @@ impl Env {
             args: args.into_iter().map(|a| a.as_ref().to_owned()).collect(),
             input: None,
             timeout: None,
-            reap: true,
+            kill_scope: KillScope::ProcessGroup,
         }
     }
 }
@@ -124,7 +124,7 @@ pub struct Git<'a> {
     args: Vec<OsString>,
     input: Option<Vec<u8>>,
     timeout: Option<f64>,
-    reap: bool,
+    kill_scope: KillScope,
 }
 
 impl Git<'_> {
@@ -143,9 +143,8 @@ impl Git<'_> {
 
     /// What a timeout kills: the whole process group by default (for a fetch), or
     /// [`KillScope::Client`] alone for a push.
-    pub fn reap(mut self, reap: KillScope) -> Self {
-        let reap = matches!(reap, KillScope::ProcessGroup);
-        self.reap = reap;
+    pub fn reap(mut self, scope: KillScope) -> Self {
+        self.kill_scope = scope;
         self
     }
 
@@ -183,15 +182,7 @@ impl Git<'_> {
 
     fn execute(self) -> Result<(Output, Vec<OsString>), Error> {
         let (command, out, err) = self.prepare()?;
-        let waited = wait_for(
-            command,
-            self.timeout,
-            if self.reap {
-                KillScope::ProcessGroup
-            } else {
-                KillScope::Client
-            },
-        )?;
+        let waited = wait_for(command, self.timeout, self.kill_scope)?;
         let Some(status) = waited else {
             let first = self.args.first().map(|a| a.to_string_lossy());
             return Err(Error::Timeout {
@@ -389,8 +380,7 @@ fn wait_for(
 
 /// Kills git (with [`KillScope::ProcessGroup`], its whole process group: git and every helper it
 /// started) after a timeout. Already gone is fine.
-pub(crate) fn kill(pid: u32, reap: KillScope) {
-    let reap = matches!(reap, KillScope::ProcessGroup);
+pub(crate) fn kill(pid: u32, scope: KillScope) {
     let Some(pid) = i32::try_from(pid)
         .ok()
         .and_then(rustix::process::Pid::from_raw)
@@ -398,10 +388,9 @@ pub(crate) fn kill(pid: u32, reap: KillScope) {
         return;
     };
     let signal = rustix::process::Signal::KILL;
-    let _ = if reap {
-        rustix::process::kill_process_group(pid, signal)
-    } else {
-        rustix::process::kill_process(pid, signal)
+    let _ = match scope {
+        KillScope::ProcessGroup => rustix::process::kill_process_group(pid, signal),
+        KillScope::Client => rustix::process::kill_process(pid, signal),
     };
 }
 

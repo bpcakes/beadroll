@@ -42,27 +42,27 @@ use crate::commands::{self, Context, Delivered, Failure, Held, Line, Outcome, To
 /// Whether another state will be read to publish the command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum AfterCommand {
-    /// Return.
+    /// Nothing follows: the answer is returned as the command made it.
     Return,
-    /// Publish.
+    /// What the command wrote is published, which reads a state of its own.
     Publish,
 }
 
 /// Whether the process ends with the command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RunLifetime {
-    /// Embedded.
+    /// The process goes on after the run (a test in process): nothing the run made is kept.
     Embedded,
-    /// Process.
+    /// The process exits after the run, so what the command held need not be freed.
     Process,
 }
 
 /// The representation requested for command output.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum OutputMode {
-    /// Human.
+    /// Lines for a reader, painted on a terminal.
     Human,
-    /// Json.
+    /// `--json`: one JSON document on standard output, errors as JSON on standard error.
     Json,
 }
 
@@ -428,13 +428,14 @@ fn finish(
     Ok(Some((result, lines)))
 }
 
-/// What becomes of what the command held (the state it answered from, or the transaction a write
-/// was made in), once the command is done: freed, or kept until the process exits when the run's
-/// `lifetime` is the process's, which is whether it was kept. A command answers from its state, or writes, and the
-/// process then ends, so freeing each of its issues first is work nobody waits for, a quarter of
-/// a reading command's time on a large tracker (roll-lqjj.32), and about 83 ms of a write's at
-/// 200,000 events (roll-lqjj.42). Freed instead when what follows the command (`after`) publishes
-/// what it wrote, which reads a state of its own, so that none is held beside another.
+/// What becomes of what the command held (the state it answered from, or the transaction a
+/// write was made in), once the command is done: freed, or kept until the process exits when
+/// the run's `lifetime` is the process's, which is whether it was kept. A command answers from
+/// its state, or writes, and the process then ends, so freeing each of its issues first is work
+/// nobody waits for, a quarter of a reading command's time on a large tracker (roll-lqjj.32),
+/// and about 83 ms of a write's at 200,000 events (roll-lqjj.42). Freed instead when what
+/// follows the command (`after`) publishes what it wrote, which reads a state of its own, so
+/// that none is held beside another.
 fn ended_with(held: Option<Box<dyn Held>>, after: AfterCommand, lifetime: RunLifetime) -> bool {
     match (held, after, lifetime) {
         (Some(held), AfterCommand::Return, RunLifetime::Process) => {

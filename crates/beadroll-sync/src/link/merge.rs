@@ -145,7 +145,6 @@ impl<'l, 'w> Merging<'l, 'w> {
     }
 
     fn run(&mut self, tip: Option<&str>, count: SyncReport) -> Result<(Sourced, i64), Error> {
-        let count = matches!(count, SyncReport::Collect);
         // the memo as it is now: another bead process may have written it since this link last did
         self.link.memo = Some(Memo::load(self.link.ws));
         self.link.known.before_merge();
@@ -154,7 +153,7 @@ impl<'l, 'w> Merging<'l, 'w> {
             repair_tail(self.link.ws, &path)?;
         }
         // the store's projection, with every whole line its segments hold
-        let found = if count && self.link.renames_before.is_none() {
+        let found = if count == SyncReport::Collect && self.link.renames_before.is_none() {
             let found = projection_sourced(self.link.ws)?;
             self.link.renames_before = Some(found.state().renames().len());
             Some(found)

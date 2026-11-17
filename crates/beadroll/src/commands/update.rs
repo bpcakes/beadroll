@@ -26,9 +26,9 @@ use super::{
 /// Whether an update requested any changes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum UpdateKind {
-    /// Changed.
+    /// A field, the status, a label or the parent was named.
     Changed,
-    /// Empty.
+    /// Nothing to update was named: every issue is answered unchanged.
     Empty,
 }
 

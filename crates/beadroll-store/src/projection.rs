@@ -69,9 +69,9 @@ use writeback::save;
 /// The kind of journal file a projection records.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum JournalFile {
-    /// Attempt.
+    /// An accepted ownership attempt, one file.
     Attempt,
-    /// Segment.
+    /// A segment of a replica's append-only journal.
     Segment,
 }
 
@@ -305,12 +305,11 @@ fn kept(
     segment: JournalFile,
     sum: Option<[u8; 16]>,
 ) -> Option<Held> {
-    let segment = matches!(segment, JournalFile::Segment);
     let path = path.strip_prefix(&ws.events_dir).ok()?.to_str()?.to_owned();
     Some(Held {
         path,
         key: key?,
-        segment,
+        segment: segment == JournalFile::Segment,
         sum,
     })
 }

@@ -42,18 +42,18 @@ use beadroll_sync::{Emitter, Spent, unpublished_count};
 /// Which issues a search considers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SearchScope {
-    /// Open.
+    /// Open issues only, the default.
     Open,
-    /// All.
+    /// Closed and deleted issues too (`--all`).
     All,
 }
 
 /// Whether an import is applied or previewed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ImportMode {
-    /// Apply.
+    /// The records are imported.
     Apply,
-    /// DryRun.
+    /// `--dry-run`: what would be imported is reported, and nothing is written.
     DryRun,
 }
 

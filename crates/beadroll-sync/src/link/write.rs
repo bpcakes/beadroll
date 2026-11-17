@@ -17,9 +17,9 @@ use crate::error::Error;
 /// What local journal blob names are needed for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum BlobUse {
-    /// Comparison.
+    /// To compare with a tree: any blob the memo remembers will do.
     Comparison,
-    /// Publication.
+    /// To build the tree pushed: only blobs the sync repository holds are taken from the memo.
     Publication,
 }
 
@@ -34,7 +34,6 @@ impl Link<'_> {
         &mut self,
         for_tree: BlobUse,
     ) -> Result<BTreeMap<String, String>, Error> {
-        let for_tree = matches!(for_tree, BlobUse::Publication);
         let ws = self.ws;
         let segments = segment_files(ws)?;
         let attempts = claim_files(ws)?;
@@ -52,7 +51,9 @@ impl Link<'_> {
             let remembered = key
                 .as_ref()
                 .and_then(|key| memo.blob(name, key))
-                .filter(|blob| !for_tree || self.known.contains_blob(name, blob));
+                .filter(|blob| {
+                    for_tree == BlobUse::Comparison || self.known.contains_blob(name, blob)
+                });
             match remembered {
                 Some(blob) => {
                     blobs.insert(name.clone(), blob.to_owned());
