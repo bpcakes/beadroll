@@ -7,9 +7,10 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use beadroll_store::glob_ending;
 use beadroll_test_support::{Machine, Run, Sandbox, code, git, parse_json, printed_id};
 
-use super::fixtures::{glob, machine};
+use super::fixtures::machine;
 
 /// The attempt files in `machine`'s store, in directory order, under `events/*/claims/`.
 fn attempts(machine: &Machine) -> Vec<PathBuf> {
@@ -17,7 +18,7 @@ fn attempts(machine: &Machine) -> Vec<PathBuf> {
         return Vec::new();
     };
     replicas
-        .flat_map(|replica| glob(&replica.unwrap().path().join("claims"), ".json"))
+        .flat_map(|replica| glob_ending(&replica.unwrap().path().join("claims"), ".json"))
         .collect()
 }
 

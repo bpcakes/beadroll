@@ -4,9 +4,10 @@
 //! stops on the crash hook `BEAD_TEST_CRASH_AFTER_PUSH`, which any bead under test implements: exit
 //! status 99 once the remote has taken the push.
 
+use beadroll_store::glob_ending;
 use beadroll_test_support::{Invocation, Machine, printed_id};
 
-use super::fixtures::{count, glob, machine, ops};
+use super::fixtures::{count, machine, ops};
 
 /// `bead ARGS` from `machine`, stopped by the crash hook right after its push was accepted.
 fn crashing_after_push<'m>(machine: &'m Machine, args: &[&str]) -> Invocation<'m> {
@@ -15,7 +16,7 @@ fn crashing_after_push<'m>(machine: &'m Machine, args: &[&str]) -> Invocation<'m
 
 /// How many `.command` receipts `machine`'s store keeps in `pending/`.
 fn receipts(machine: &Machine) -> usize {
-    glob(&machine.store().join("pending"), ".command").len()
+    glob_ending(&machine.store().join("pending"), ".command").len()
 }
 
 /// F01: a failed command must not make a retry of an accepted command look new.

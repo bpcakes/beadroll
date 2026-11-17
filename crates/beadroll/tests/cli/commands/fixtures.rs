@@ -1,7 +1,7 @@
 //! Fixtures the command modules share: a machine with a tracker, an issue's operations, the files
 //! of a store, and Beads records to import.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use beadroll_core::json::{Format, Object, write};
 use beadroll_test_support::{Json, Machine, Sandbox, json, parse_json};
@@ -26,21 +26,6 @@ pub(crate) fn ops(machine: &Machine, key: &str) -> Vec<String> {
 /// The number of occurrences of `op` in `ops`.
 pub(crate) fn count(ops: &[String], op: &str) -> usize {
     ops.iter().filter(|each| *each == op).count()
-}
-
-/// The entries of `dir` whose names end with `suffix`, in directory order:
-/// none when `dir` is not there.
-pub(crate) fn glob(dir: &Path, suffix: &str) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    entries
-        .map(|entry| entry.expect("a directory entry").path())
-        .filter(|path| {
-            let name = path.file_name().expect("a name");
-            name.as_encoded_bytes().ends_with(suffix.as_bytes())
-        })
-        .collect()
 }
 
 /// The `meta.json` of each store in `machine`'s home, in directory order.

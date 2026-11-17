@@ -8,6 +8,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use beadroll_store::glob_ending;
 use beadroll_test_support::{Gate, Machine, Run, Sandbox, beside, code, printed_id};
 
 /// The hook that stops a command after the remote took its push, before bead hears back.
@@ -29,21 +30,6 @@ fn set_up(sandbox: &Sandbox, make: fn(&Sandbox, &str) -> Machine) -> (Machine, S
     (a, key)
 }
 
-/// The entries of `dir` whose names end with `suffix`, in directory order:
-/// none when `dir` is not there.
-fn glob(dir: &Path, suffix: &str) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    entries
-        .map(|entry| entry.expect("a directory entry").path())
-        .filter(|path| {
-            let name = path.file_name().expect("a name");
-            name.as_encoded_bytes().ends_with(suffix.as_bytes())
-        })
-        .collect()
-}
-
 /// `argv` followed by `--json`.
 fn with_json(argv: &[String]) -> Vec<&str> {
     argv.iter().map(String::as_str).chain(["--json"]).collect()
@@ -54,7 +40,7 @@ fn with_json(argv: &[String]) -> Vec<&str> {
 fn lose_ack(a: &Machine, argv: &[String]) -> PathBuf {
     let crashed = a.cmd(with_json(argv)).env(CRASH_AFTER_PUSH, "1").run();
     assert_eq!(crashed.returncode(), 99, "{}", crashed.stderr);
-    let attempts = glob(&a.store().join("pending"), ".json");
+    let attempts = glob_ending(&a.store().join("pending"), ".json");
     assert_eq!(attempts.len(), 1);
     assert!(attempts[0].with_extension("command").exists());
     attempts[0].clone()

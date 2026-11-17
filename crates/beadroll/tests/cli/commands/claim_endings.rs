@@ -3,9 +3,8 @@
 
 use std::path::PathBuf;
 
+use beadroll_store::glob_ending;
 use beadroll_test_support::{Machine, code, json, printed_id};
-
-use super::fixtures::glob;
 
 /// Q05: a terminal tombstone transition must not survive with a live claim.
 #[test]
@@ -23,13 +22,13 @@ fn tombstone_update_cannot_leave_a_releasable_claim() {
     assert_eq!(shown["status"], json!("open"));
     assert!(shown.get("claim").is_none(), "{shown:?}");
     assert_eq!(
-        glob(&a.store().join("pending"), ".json"),
+        glob_ending(&a.store().join("pending"), ".json"),
         Vec::<PathBuf>::new()
     );
     // events/*/claims/*.json
-    let claims: Vec<PathBuf> = glob(&a.store().join("events"), "")
+    let claims: Vec<PathBuf> = glob_ending(&a.store().join("events"), "")
         .iter()
-        .flat_map(|replica| glob(&replica.join("claims"), ".json"))
+        .flat_map(|replica| glob_ending(&replica.join("claims"), ".json"))
         .collect();
     assert_eq!(claims, Vec::<PathBuf>::new());
     let peer = Machine::new(&sandbox, "q05-rejected-peer");
