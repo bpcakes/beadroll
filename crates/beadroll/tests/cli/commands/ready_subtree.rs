@@ -152,7 +152,7 @@ fn set(ids: &[&str]) -> BTreeSet<String> {
 /// J01: `ready --epic E` matched E's direct children only, so with E -> nested epic N -> task T
 /// the global frontier held T and the scoped one was empty; br's --epic is recursive.
 #[test]
-fn j01_the_subtree_at_any_depth_judged_on_the_whole_tracker() {
+fn the_subtree_at_any_depth_judged_on_the_whole_tracker() {
     let (_sandbox, a) = set_up();
     let before = a.export();
     let (everywhere, scoped) = (
@@ -227,7 +227,7 @@ fn j01_the_subtree_at_any_depth_judged_on_the_whole_tracker() {
 /// J01: inside the subtree an owner, a provisional claim or a disputed status takes an issue off
 /// the frontier as it does everywhere, and the walk goes on beneath a claimed issue.
 #[test]
-fn j01_claims_and_disputed_statuses_count_inside_as_everywhere() {
+fn claims_and_disputed_statuses_count_inside_as_everywhere() {
     let (sandbox, a) = set_up();
     a.bead(["claim", "ex-f"]);
     a.bead(["claim", "ex-t", "--offline"]);
@@ -261,7 +261,7 @@ fn j01_claims_and_disputed_statuses_count_inside_as_everywhere() {
 /// J01: the walk ends on a merged or imported parent loop, never counts the root as its own
 /// descendant, and has no depth limit: 1,100 levels, everything in between closed.
 #[test]
-fn j01_a_loop_through_the_root_and_a_chain_deeper_than_the_recursion_limit() {
+fn a_loop_through_the_root_and_a_chain_deeper_than_the_recursion_limit() {
     let (sandbox, a) = set_up();
     let mut rows = vec![
         Record::new("ex-k", "in a loop", &["ex-m"]).json(),
@@ -290,7 +290,7 @@ fn j01_a_loop_through_the_root_and_a_chain_deeper_than_the_recursion_limit() {
 /// filter had left no candidate, `ready --epic missing` answered [] and a typo passed for an
 /// exhausted queue.
 #[test]
-fn j02_a_scope_that_names_no_issue_is_an_error_whatever_else_filters() {
+fn a_scope_that_names_no_issue_is_an_error_whatever_else_filters() {
     let (_sandbox, a) = set_up();
     let fresh = crate::sandbox();
     let empty = Machine::new(&fresh, "empty");
@@ -353,7 +353,7 @@ fn a_priority_that_is_none_is_an_error_whatever_else_filters() {
 /// J03: `ready --parent A --epic B` silently ignored B. Two scopes are refused, as br refuses
 /// --epic with --parent and either one given twice, and `help ready` says what each one means.
 #[test]
-fn j03_one_scope_at_a_time() {
+fn one_scope_at_a_time() {
     let (_sandbox, a) = set_up();
     let argvs: [&[&str]; 7] = [
         &["ready", "ex-e", "--epic", "ex-e"],

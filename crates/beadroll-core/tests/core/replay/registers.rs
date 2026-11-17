@@ -9,7 +9,7 @@ use super::builders::{id_of, numbered, serial, uid};
 
 /// Q09: required-field clears must be rejected or leave every query usable.
 #[test]
-fn q09_required_register_clears_remain_queryable() {
+fn required_register_clears_remain_queryable() {
     for (offset, field) in (10..).zip([Field::Title, Field::Priority, Field::IssueType]) {
         let init = numbered::event(offset, "init", "seed", &[], None, json!({"prefix": "ex"}));
         let key = format!("ex-{}", field.name());

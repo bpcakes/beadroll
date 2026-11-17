@@ -8,8 +8,9 @@ use beadroll_core::replay::replay;
 use beadroll_test_support::events::{Event, id, journal};
 use beadroll_test_support::{Json, json};
 
+/// AD01: imported long numbered keys disappeared on cold replay.
 #[test]
-fn ad01_a_long_key_written_by_the_old_importer_still_replays() {
+fn a_long_key_written_by_the_old_importer_still_replays() {
     // Unmodified journal bytes from 9e27e78's `init --prefix x --import issues.jsonl` on a
     // synthetic local remote, recorded 2026-10-23. The source id is x. followed by forty 1s.
     let mut journal = Journal::new();
@@ -52,8 +53,9 @@ fn claimed(generation: i128) -> Vec<Json> {
     ]
 }
 
+/// AD02: native claim-generation overflow silently reused the old generation.
 #[test]
-fn ad02_exhausted_reclaim_reports_integrity_without_changing_the_issue() {
+fn exhausted_reclaim_reports_integrity_without_changing_the_issue() {
     let mut events = claimed(i128::MAX);
     events.push(next(4, "release", json!({"claim": (id(3))})));
     let before = replay(journal(&events)).unwrap();
@@ -92,8 +94,9 @@ fn ad02_exhausted_reclaim_reports_integrity_without_changing_the_issue() {
     }
 }
 
+/// AD02: native claim-generation overflow silently reused the old generation.
 #[test]
-fn ad02_exhausted_takeover_keeps_the_owner_and_does_not_silence_its_release() {
+fn exhausted_takeover_keeps_the_owner_and_does_not_silence_its_release() {
     // Reach MAX both by proposing it and by incrementing MAX-1, so refusal cannot depend on
     // looking only at the previous claim's payload.
     for direct in [true, false] {
@@ -147,8 +150,10 @@ fn ad02_exhausted_takeover_keeps_the_owner_and_does_not_silence_its_release() {
     }
 }
 
+/// AE01: retrying replay after native claim exhaustion lost the flag for another takeover's missing
+/// target.
 #[test]
-fn ae01_exhaustion_retry_keeps_a_missing_takeover_target_unsettled() {
+fn exhaustion_retry_keeps_a_missing_takeover_target_unsettled() {
     let mut events = claimed(i128::MAX);
     events.push(next(4, "claim", json!({"takeover": (id(3))})));
     events.push(next(5, "claim", json!({"takeover": (id(99))})));

@@ -19,7 +19,7 @@ use super::fixtures::{
 
 /// F07: non-UTF-8 titles and description files return a JSON error and store nothing.
 #[test]
-fn f07_non_utf8_input_is_a_structured_error() {
+fn non_utf8_input_is_a_structured_error() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "f07");
     // The invalid byte 0xFF appears within the supplied title.
@@ -65,7 +65,7 @@ fn f07_non_utf8_input_is_a_structured_error() {
 
 /// F08: a bad dependency fails the import; it is not dropped and it is not a traceback.
 #[test]
-fn f08_import_probes_dependencies_before_writing() {
+fn import_probes_dependencies_before_writing() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "f08");
     let typed = sandbox.root().join("typed.jsonl");
@@ -137,7 +137,7 @@ fn incremental_mutual_import_matches_one_shot() {
 /// F09: a dependency removed before its target exists does not reappear, and does not cycle (the
 /// command-line subtests; the replay one is beadroll-core's `commands::dangling_dependencies`).
 #[test]
-fn f09_dangling_dependency_can_be_retracted_before_its_target_exists() {
+fn dangling_dependency_can_be_retracted_before_its_target_exists() {
     let sandbox = crate::sandbox();
     let root = sandbox.root();
     let dangling = record(
@@ -197,7 +197,7 @@ fn str_of(value: &Json) -> String {
 
 /// E04: an import count and exit zero must mean the issue was imported.
 #[test]
-fn e04_invalid_import_fails_instead_of_counting_an_inert_event() {
+fn invalid_import_fails_instead_of_counting_an_inert_event() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "e04-import");
     let source = sandbox.root().join("invalid.jsonl");
@@ -216,7 +216,7 @@ fn e04_invalid_import_fails_instead_of_counting_an_inert_event() {
 
 /// E08: values accepted by import validation must be safe in every query path.
 #[test]
-fn e08_nullable_import_values_do_not_crash_render_or_export() {
+fn nullable_import_values_do_not_crash_render_or_export() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "e08-nullable");
     let comments = sandbox.root().join("nullable-comment.jsonl");
@@ -250,7 +250,7 @@ fn e08_nullable_import_values_do_not_crash_render_or_export() {
 /// U09 (docs/FINDINGS.md): a record whose created_at is null imported, and then `list` failed
 /// comparing times; the import fails whole instead, and the tracker keeps listing.
 #[test]
-fn u09_a_record_without_a_creation_time_is_not_imported() {
+fn a_record_without_a_creation_time_is_not_imported() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "u09-created");
     machine.bead(["create", "listed first"]);
@@ -280,7 +280,7 @@ fn u09_a_record_without_a_creation_time_is_not_imported() {
 /// drops it (a known record, source_repo_path); every record is refused for it, as a raw one
 /// already was: since roll-lqjj.53 the record is not valid JSONL at all, named by its line.
 #[test]
-fn u11_an_escaped_lone_surrogate_fails_the_import_wherever_it_is() {
+fn an_escaped_lone_surrogate_fails_the_import_wherever_it_is() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "u11-surrogate");
     let good = record_text(json!({"id": "ex-fine", "title": "fine"}), json!({}));
@@ -320,7 +320,7 @@ fn u11_an_escaped_lone_surrogate_fails_the_import_wherever_it_is() {
 }
 
 /// An issue record as Q06 writes it: `id` and `title`, then the fields both of its records share.
-fn q06_issue(id: &str, title: &str) -> Object {
+fn issue(id: &str, title: &str) -> Object {
     let record = json!({
         "id": id, "title": title, "status": "open", "priority": 2, "issue_type": "task",
         "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
@@ -331,16 +331,16 @@ fn q06_issue(id: &str, title: &str) -> Object {
 
 /// Q06: split and one-shot imports must have the same dependencies and readiness.
 #[test]
-fn q06_incremental_import_resolves_late_dependency_target() {
+fn incremental_import_resolves_late_dependency_target() {
     let sandbox = crate::sandbox();
     let dep = json!({
         "issue_id": "ex-a", "depends_on_id": "ex-b", "type": "blocks",
         "created_at": "2026-01-01T00:00:00Z", "created_by": "seed",
         "metadata": "{}", "thread_id": ""
     });
-    let mut issue_a = q06_issue("ex-a", "A");
+    let mut issue_a = issue("ex-a", "A");
     issue_a.insert("dependencies".into(), json!([dep]));
-    let (issue_a, issue_b) = (Json::from(issue_a), Json::from(q06_issue("ex-b", "B")));
+    let (issue_a, issue_b) = (Json::from(issue_a), Json::from(issue("ex-b", "B")));
     let root = sandbox.root();
     let (a_path, b_path, all_path) = (
         root.join("q06-a.jsonl"),
@@ -379,7 +379,7 @@ fn q06_incremental_import_resolves_late_dependency_target() {
 
 /// Q10: an imported unknown field must not poison internal dependency bookkeeping.
 #[test]
-fn q10_reserved_dangling_extra_cannot_crash_export() {
+fn reserved_dangling_extra_cannot_crash_export() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "q10-import");
     a.bead(["init", "--prefix", "ex"]);

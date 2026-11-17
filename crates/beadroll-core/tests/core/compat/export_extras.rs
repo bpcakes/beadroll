@@ -9,7 +9,7 @@ use beadroll_test_support::json;
 
 /// E10: a valid event's compatibility extras cannot forge its exported identity/state.
 #[test]
-fn e10_extra_cannot_override_canonical_export_fields() {
+fn extra_cannot_override_canonical_export_fields() {
     let init_id = "019a4444-4444-7000-8000-000000000001";
     let create_id = "019a4444-4444-7000-8000-000000000002";
     let init = json!({

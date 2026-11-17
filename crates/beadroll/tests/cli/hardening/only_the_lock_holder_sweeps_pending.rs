@@ -88,7 +88,7 @@ fn chmod_tree(mode: &str, path: &Path) {
 
 /// G28: `show` (no lock) deletes an accepted attempt it cannot read (EACCES) and its receipt.
 #[test]
-fn g28_reader_keeps_an_unreadable_accepted_attempt_and_its_receipt() {
+fn reader_keeps_an_unreadable_accepted_attempt_and_its_receipt() {
     if !unprivileged() {
         return; // root can read a mode-000 file
     }
@@ -125,7 +125,7 @@ fn g28_reader_keeps_an_unreadable_accepted_attempt_and_its_receipt() {
 /// first pending.after-list, after listing the attempt but before reading it, while a locked
 /// sync confirms it and removes the pending file.
 #[test]
-fn g28_reader_racing_a_sync_keeps_the_receipt_the_sync_kept() {
+fn reader_racing_a_sync_keeps_the_receipt_the_sync_kept() {
     let sandbox = crate::sandbox();
     let (a, _) = set_up(&sandbox, crate::rust_only);
     let (argv, attempt) = release_with_lost_ack(&a);
@@ -164,7 +164,7 @@ fn g28_reader_racing_a_sync_keeps_the_receipt_the_sync_kept() {
 /// G28: readers try to delete a junk pending file, so every read fails with IO on a read-only
 /// store.
 #[test]
-fn g28_readers_work_on_a_read_only_store_with_a_junk_pending_file() {
+fn readers_work_on_a_read_only_store_with_a_junk_pending_file() {
     if !unprivileged() {
         return; // root can write a read-only store
     }
@@ -198,7 +198,7 @@ fn g28_readers_work_on_a_read_only_store_with_a_junk_pending_file() {
 /// it (and its receipt) away; it reports IO, and once the mode is fixed the retry is
 /// recognised.
 #[test]
-fn g28_locked_sweep_does_not_delete_an_unreadable_attempt() {
+fn locked_sweep_does_not_delete_an_unreadable_attempt() {
     if !unprivileged() {
         return; // root can read a mode-000 file
     }

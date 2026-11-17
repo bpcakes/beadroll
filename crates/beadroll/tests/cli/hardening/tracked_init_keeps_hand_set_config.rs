@@ -83,7 +83,7 @@ fn segments(machine: &Machine) -> Vec<PathBuf> {
 /// does not know; without them the next event records branch and commit again and the
 /// checkout changes ref.
 #[test]
-fn g04_reinit_keeps_where_false_ref_and_unknown_keys() {
+fn reinit_keeps_where_false_ref_and_unknown_keys() {
     let sandbox = crate::sandbox();
     let m = Machine::new(&sandbox, "g04");
     let made = m.run(["init", "--prefix", "ex", "--tracked", "--json"]);
@@ -132,7 +132,7 @@ fn g04_reinit_keeps_where_false_ref_and_unknown_keys() {
 /// refs/beads/journal while its teammates stay on the committed ref, and two machines both
 /// hold an online-confirmed claim on one issue.
 #[test]
-fn g04_reinit_does_not_move_the_checkout_to_another_ref() {
+fn reinit_does_not_move_the_checkout_to_another_ref() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "g04-a");
     let b = Machine::new(&sandbox, "g04-b");
@@ -188,7 +188,7 @@ fn g04_reinit_does_not_move_the_checkout_to_another_ref() {
 /// keys, never writes a hand-set password back into the tracked file (guard for the fix; bead
 /// never stores one).
 #[test]
-fn g04_reinit_does_not_write_back_a_hand_set_password() {
+fn reinit_does_not_write_back_a_hand_set_password() {
     let sandbox = crate::sandbox();
     let m = Machine::new(&sandbox, "g04-pw");
     let made = m.run(["init", "--prefix", "ex", "--tracked", "--json"]);

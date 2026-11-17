@@ -79,7 +79,7 @@ fn assert_strict_json(info: &Run) {
 
 /// F10: a later JSON value that is not an event voids the whole attempt.
 #[test]
-fn f10_non_event_json_makes_the_whole_attempt_inert() {
+fn non_event_json_makes_the_whole_attempt_inert() {
     let sandbox = crate::sandbox();
     let writer = machine(&sandbox, "f10");
     let key = printed_id(writer.bead(["create", "attempt"]));
@@ -112,7 +112,7 @@ fn f10_non_event_json_makes_the_whole_attempt_inert() {
 
 /// F11: a leftover pending twin must not raise ATTEMPT_FORK when the confirmed file matches.
 #[test]
-fn f11_stale_pending_twin_does_not_fork_a_matching_attempt() {
+fn stale_pending_twin_does_not_fork_a_matching_attempt() {
     let sandbox = crate::sandbox();
     let writer = machine(&sandbox, "f11");
     let key = printed_id(writer.bead(["create", "twin"]));
@@ -137,7 +137,7 @@ fn f11_stale_pending_twin_does_not_fork_a_matching_attempt() {
 
 /// F12: one corrupt pending file does not add a fence commit on every later sync.
 #[test]
-fn f12_unreadable_pending_file_is_not_fenced_forever() {
+fn unreadable_pending_file_is_not_fenced_forever() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "f12");
     machine.bead(["create", "quiet"]);
@@ -161,7 +161,7 @@ fn f12_unreadable_pending_file_is_not_fenced_forever() {
 
 /// F13: meta, replica and aliases reject non-strict or wrong-shaped JSON without a traceback.
 #[test]
-fn f13_local_state_files_are_strict_json() {
+fn local_state_files_are_strict_json() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "f13");
     let meta = machine.store().join("meta.json");
@@ -190,7 +190,7 @@ fn f13_local_state_files_are_strict_json() {
 
 /// F16: writing a read-only store fails without a traceback and keeps what was already there.
 #[test]
-fn f16_read_only_store_write_is_a_structured_error() {
+fn read_only_store_write_is_a_structured_error() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "f16");
     let key = printed_id(machine.bead(["create", "kept"]));
@@ -211,7 +211,7 @@ fn f16_read_only_store_write_is_a_structured_error() {
 
 /// E09: malformed tracked configuration must produce a structured error.
 #[test]
-fn e09_invalid_config_types_return_structured_config_errors() {
+fn invalid_config_types_return_structured_config_errors() {
     let sandbox = crate::sandbox();
     let machine = Machine::new(&sandbox, "e09-config");
     let config = machine.checkout().join(".beadroll.json");

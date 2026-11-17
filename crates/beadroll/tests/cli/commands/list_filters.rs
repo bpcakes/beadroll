@@ -6,7 +6,7 @@ use super::fixtures::machine;
 
 /// E11: --parent must match any parent represented in the issue's dependency set.
 #[test]
-fn e11_parent_filter_matches_every_direct_parent() {
+fn parent_filter_matches_every_direct_parent() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "e11-parents");
     let first = printed_id(machine.bead(["create", "parent one"]));

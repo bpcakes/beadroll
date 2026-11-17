@@ -30,7 +30,7 @@ fn first_segment(machine: &Machine) -> PathBuf {
 
 /// AF02: legacy booleans keep their JSON type, but both human views use numeric priorities.
 #[test]
-fn af02_list_and_show_print_legacy_boolean_priorities_as_numbers() {
+fn list_and_show_print_legacy_boolean_priorities_as_numbers() {
     for (flag, number) in [(true, "1"), (false, "0")] {
         let sandbox = crate::sandbox();
         let m = crate::rust_only(&sandbox, "m");

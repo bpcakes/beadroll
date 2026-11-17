@@ -115,7 +115,7 @@ fn identical_id_in_different_machine_journals_is_order_independent() {
 
 /// Q07: an inert placeholder must not invent predecessor ancestry for its tail.
 #[test]
-fn q07_invalid_placeholder_cannot_bridge_a_broken_machine_chain() {
+fn invalid_placeholder_cannot_bridge_a_broken_machine_chain() {
     let init = numbered::event(1, "init", "seed", &[], None, json!({"prefix": "ex"}));
     let create = numbered::event(
         2,

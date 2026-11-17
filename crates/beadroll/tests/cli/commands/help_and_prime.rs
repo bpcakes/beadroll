@@ -120,7 +120,7 @@ fn prime_and_onboard_work_with_and_without_a_tracker() {
 
 /// V02: top-level and subcommand help are local, side-effect free operations.
 #[test]
-fn v02_help_needs_no_repository_and_creates_no_state() {
+fn help_needs_no_repository_and_creates_no_state() {
     // The sandbox names the bead under test; the help runs in a new directory of its own, in no
     // repository, with the test's whole environment and a home that does not exist.
     let sandbox = crate::sandbox();

@@ -1,6 +1,8 @@
 //! Store hardening tests.
 
-mod g25_first_sync_remote_is_frozen {
+/// G25: the first remote used (origin included) was frozen as "last used" and outranked origin
+/// forever.
+mod first_sync_remote_is_frozen {
     use std::ffi::OsString;
 
     use beadroll_core::json::{Object, Value};
@@ -43,7 +45,9 @@ mod g25_first_sync_remote_is_frozen {
     }
 }
 
-mod g32_integer_fields_stay_beads_readable {
+/// G32: booleans and out-of-range integers were accepted for `priority`/`estimated_minutes`; br
+/// refused the export.
+mod integer_fields_stay_beads_readable {
     use beadroll_core::journal::Journal;
     use beadroll_core::replay::replay;
     use beadroll_store::read_attempt;
@@ -105,7 +109,9 @@ mod g32_integer_fields_stay_beads_readable {
     }
 }
 
-mod g57_lone_surrogate_in_a_journal_is_scoped {
+/// G57: A lone surrogate in a journal line replayed unreported, then `export -o` crashed, which
+/// this pins.
+mod lone_surrogate_in_a_journal_is_scoped {
     use beadroll_store::read_attempt;
 
     /// G57: an attempt file whose text holds a lone surrogate is not UTF-8 text, so its line is

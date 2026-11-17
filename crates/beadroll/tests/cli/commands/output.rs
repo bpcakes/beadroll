@@ -43,7 +43,7 @@ fn communicate(mut command: Command) -> Run {
 
 /// F04: `.beadroll.json` and `export -o` are not forced owner-only.
 #[test]
-fn f04_checkout_files_stay_readable_in_a_shared_tree() {
+fn checkout_files_stay_readable_in_a_shared_tree() {
     let sandbox = crate::sandbox();
     let machine = Machine::new(&sandbox, "f04");
     let made = machine.run(["init", "--prefix", "ex", "--tracked", "--json"]);
@@ -62,7 +62,7 @@ fn f04_checkout_files_stay_readable_in_a_shared_tree() {
 
 /// F05: human output escapes TAB and Unicode line separators.
 #[test]
-fn f05_human_output_escapes_tab_and_line_separators() {
+fn human_output_escapes_tab_and_line_separators() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "f05");
     let created = machine.run(["create", "col\tFORGED\u{2028}line\u{202e}title"]);
@@ -78,7 +78,7 @@ fn f05_human_output_escapes_tab_and_line_separators() {
 
 /// F06: a closed stderr on a failed command exits with the command status, not 120.
 #[test]
-fn f06_failed_command_with_closed_stderr_keeps_its_status() {
+fn failed_command_with_closed_stderr_keeps_its_status() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "f06");
     let (read, write) = std::io::pipe().unwrap();
@@ -182,7 +182,7 @@ fn prime_matches_ready_and_help_outside_a_repository_is_silent() {
 
 /// E01: untrusted fields must not execute terminal protocols or forge lines.
 #[test]
-fn e01_human_output_escapes_terminal_controls() {
+fn human_output_escapes_terminal_controls() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "e01-terminal");
     let title = "safe\x1b]52;c;SGVsbG8=\x07\nFORGED: success";
@@ -199,7 +199,7 @@ fn e01_human_output_escapes_terminal_controls() {
 
 /// E05: every successful --json command must emit valid JSON.
 #[test]
-fn e05_silent_create_still_honors_json_mode() {
+fn silent_create_still_honors_json_mode() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "e05-silent");
     let created = machine.run(["create", "machine result", "--silent", "--json"]);
@@ -216,7 +216,7 @@ fn e05_silent_create_still_honors_json_mode() {
 
 /// E06: accepted data must not make Beads JSONL violate RFC 8259.
 #[test]
-fn e06_export_never_emits_nonfinite_json_numbers() {
+fn export_never_emits_nonfinite_json_numbers() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "e06-json");
     let source = sandbox.root().join("nonfinite.jsonl");
@@ -239,7 +239,7 @@ fn e06_export_never_emits_nonfinite_json_numbers() {
 
 /// E07: an early pipeline consumer exit must not produce flush errors.
 #[test]
-fn e07_closed_downstream_pipe_has_defined_quiet_exit() {
+fn closed_downstream_pipe_has_defined_quiet_exit() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "e07-pipe");
     let key = printed_id(machine.bead(["create", "pipe target"]));
@@ -270,7 +270,7 @@ fn e07_closed_downstream_pipe_has_defined_quiet_exit() {
 
 /// V01: the standard JSON serializer keeps control data inert and recoverable.
 #[test]
-fn v01_machine_json_preserves_and_escapes_control_data() {
+fn machine_json_preserves_and_escapes_control_data() {
     let sandbox = crate::sandbox();
     let machine = machine(&sandbox, "v01-json-control");
     let title = "safe\x1b]52;c;SGVsbG8=\x07\nline";

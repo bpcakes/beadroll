@@ -126,7 +126,7 @@ fn limited(machine: &Machine, dir: &Path, kib: u64, args: &[&str]) -> Run {
 /// G48: `export -o DIR` fails at the rename; a full copy of the export stays in the checkout as
 /// `.DIR.PID.tmp`, and the IO message names that temporary file instead of DIR.
 #[test]
-fn g48_export_onto_a_directory_leaves_no_copy_and_names_the_target() {
+fn export_onto_a_directory_leaves_no_copy_and_names_the_target() {
     let sandbox = crate::sandbox();
     let (m, _) = setup(&sandbox);
     std::fs::create_dir(m.checkout().join("out")).unwrap();
@@ -149,7 +149,7 @@ fn g48_export_onto_a_directory_leaves_no_copy_and_names_the_target() {
 /// the partial `.NAME.PID.tmp` in the checkout, and a later successful export does not remove
 /// it.
 #[test]
-fn g48_export_that_cannot_be_written_whole_leaves_nothing() {
+fn export_that_cannot_be_written_whole_leaves_nothing() {
     let sandbox = crate::sandbox();
     let (m, _) = setup(&sandbox);
     let failed = limited(&m, sandbox.root(), 1, &["export", "-o", "big.jsonl"]);
@@ -169,7 +169,7 @@ fn g48_export_that_cannot_be_written_whole_leaves_nothing() {
 /// `.ID.command|json.PID.tmp` under pending/; nothing ever sweeps it, not even a later
 /// successful sync.
 #[test]
-fn g48_failed_store_write_leaves_no_temporary_file() {
+fn failed_store_write_leaves_no_temporary_file() {
     let sandbox = crate::sandbox();
     let (m, keys) = setup(&sandbox);
     let big = sandbox.root().join("description.txt");

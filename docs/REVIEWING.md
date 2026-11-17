@@ -1180,7 +1180,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
   about three times what linear work takes and well under the 64 of quadratic. They are the one
   exception to "timings never gate"
   (`xtask/AGENTS.md`): ignored by every other run, so that no pull request or `./check.sh` waits
-  on a timing, and run by the nightly workflow in release, one at a time (`ci::x15_growth_guards`
+  on a timing, and run by the nightly workflow in release, one at a time (`ci::growth_guards`
   keeps the step). On main they measure 8.4 to 13.6 times; the scans of roll-lqjj.15 restored
   measure 30 to 60, a create that reads every waiting list's keys inline 84, and every id moved on
   each batch, as the merged vector of V02 moved them, 59 (64 cores, shared with ten other builds,

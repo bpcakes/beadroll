@@ -124,7 +124,7 @@ fn splitlines(text: &str) -> Vec<&str> {
 
 /// Q01: a damaged foreign attempt must be refused or repaired, never republished.
 #[test]
-fn q01_damaged_immutable_attempt_cannot_replace_remote_transaction() {
+fn damaged_immutable_attempt_cannot_replace_remote_transaction() {
     let sandbox = crate::sandbox();
     let [a, b, c] = ["q01-a", "q01-b", "q01-c"].map(|name| Machine::new(&sandbox, name));
     a.bead(["init", "--prefix", "ex"]);
@@ -170,7 +170,7 @@ fn q01_damaged_immutable_attempt_cannot_replace_remote_transaction() {
 
 /// Q01: one malformed line must make the whole ownership attempt inert.
 #[test]
-fn q01_malformed_attempt_is_inert_as_a_whole() {
+fn malformed_attempt_is_inert_as_a_whole() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "q01-malformed");
     a.bead(["init", "--prefix", "ex"]);
@@ -225,7 +225,7 @@ fn q01_malformed_attempt_is_inert_as_a_whole() {
 
 /// Q02: retrying an accepted claiming parent move must not remove the new parent.
 #[test]
-fn q02_retry_after_accepted_claiming_parent_move_keeps_parent() {
+fn retry_after_accepted_claiming_parent_move_keeps_parent() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "q02-a");
     a.bead(["init", "--prefix", "ex"]);
@@ -250,7 +250,7 @@ fn q02_retry_after_accepted_claiming_parent_move_keeps_parent() {
 
 /// Q02: recovery must not append a second close with new time/provenance.
 #[test]
-fn q02_retry_after_accepted_claiming_close_emits_one_close() {
+fn retry_after_accepted_claiming_close_emits_one_close() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "q02-close");
     a.bead(["init", "--prefix", "ex"]);
@@ -272,7 +272,7 @@ fn q02_retry_after_accepted_claiming_close_emits_one_close() {
 
 /// Q04: an older client must not replace a future manifest/tree at the remote tip.
 #[test]
-fn q04_future_manifest_is_refused_without_remote_rewrite() {
+fn future_manifest_is_refused_without_remote_rewrite() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "q04-a");
     a.bead(["init", "--prefix", "ex"]);

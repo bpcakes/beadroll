@@ -39,7 +39,7 @@ fn brute_force(size: usize, edges: &[BTreeSet<usize>]) -> BTreeSet<Vec<String>> 
 
 /// D01 verification: every <=4-node directed graph matches a brute-force oracle.
 #[test]
-fn d01_cycle_enumerator_matches_every_graph_through_four_nodes() {
+fn cycle_enumerator_matches_every_graph_through_four_nodes() {
     for size in 1..5usize {
         let pairs: Vec<(usize, usize)> = (0..size)
             .flat_map(|s| (0..size).map(move |t| (s, t)))

@@ -102,7 +102,7 @@ fn ended(status: &str) -> (String, Option<String>) {
 /// G12: retry an owner's close interrupted by BEFORE_ANY_PUSH. Success must publish the
 /// claim's end.
 #[test]
-fn g12_retried_close_publishes_the_end_of_the_claim() {
+fn retried_close_publishes_the_end_of_the_claim() {
     let seen = crash_then_retry("close", &["--reason", "done"]);
     assert_eq!(seen, ended("closed"), "{}", unpublished("close", &seen));
 }
@@ -110,7 +110,7 @@ fn g12_retried_close_publishes_the_end_of_the_claim() {
 /// G12: retry an owner's delete interrupted by BEFORE_ANY_PUSH. Success must publish the
 /// claim's end.
 #[test]
-fn g12_retried_delete_publishes_the_end_of_the_claim() {
+fn retried_delete_publishes_the_end_of_the_claim() {
     let seen = crash_then_retry("delete", &["--reason", "gone"]);
     assert_eq!(seen, ended("tombstone"), "{}", unpublished("delete", &seen));
 }
@@ -118,7 +118,7 @@ fn g12_retried_delete_publishes_the_end_of_the_claim() {
 /// G12: retry `update --status closed` interrupted by BEFORE_ANY_PUSH, with the same
 /// publication requirement as close.
 #[test]
-fn g12_retried_update_status_closed_publishes_the_end_of_the_claim() {
+fn retried_update_status_closed_publishes_the_end_of_the_claim() {
     let seen = crash_then_retry("update", &["--status", "closed"]);
     assert_eq!(
         seen,

@@ -94,7 +94,7 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
   lint exemption on an item but the two `CONTRIBUTING.md` accepts, and no Rust source past 800
   lines.
 - `src/ci.rs`: `v8_supported_environments`, the CI matrix the workflows keep,
-  `x15_growth_guards`, the nightly step that runs the growth guards, `coverage_report`, the
+  `growth_guards`, the nightly step that runs the growth guards, `coverage_report`, the
   nightly job that makes the coverage report with the cargo-llvm-cov `CARGO_LLVM_COV` names and
   keeps it, and `fuzzing`, read from the workflows' steps: the nightly job that runs every target
   `fuzz/Cargo.toml` declares in a step of its own after the corpus is seeded, for a budget above
@@ -168,7 +168,7 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
   64. They are `#[ignore]`d, so that no debug build, `./check.sh` or pull request is gated by a
   timing, and the nightly workflow runs them in release, one at a time:
   `cargo nextest run --release --locked --package xtask --run-ignored only --test-threads 1 -E
-  'test(/^timing::growth::/)'`; `ci::x15_growth_guards` keeps that step. Anything a count can see
+  'test(/^timing::growth::/)'`; `ci::growth_guards` keeps that step. Anything a count can see
   is guarded by count instead, in beadroll-core (`work::tests`), on every push.
 - `timing --sync` runs `bead` and git on a scratch store, checkout and remote under
   `target/timing/`, which it removes after, as workspace `timing`, never the real store or another
