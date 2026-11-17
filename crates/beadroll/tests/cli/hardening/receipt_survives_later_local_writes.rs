@@ -8,21 +8,9 @@
 //! deliberate repeat of the same command is answered from the old receipt and does nothing,
 //! exit 0.
 
-use beadroll_test_support::{Json, Machine, Sandbox, printed_id};
+use beadroll_test_support::{Json, Machine, printed_id};
 
-use crate::hardening::TrackerSetup;
-
-/// A machine `name` that initialised the tracker (prefix `ex`), or, with `init`
-/// false, synced the one already published.
-fn machine(sandbox: &Sandbox, name: &str, init: TrackerSetup) -> Machine {
-    let machine = Machine::new(sandbox, name);
-    if init == TrackerSetup::Init {
-        machine.bead(["init", "--prefix", "ex"]);
-    } else {
-        machine.bead(["sync"]);
-    }
-    machine
-}
+use crate::hardening::{TrackerSetup, tracker_machine};
 
 /// The claim `show` reports, `None` when there is none or it is `null`.
 fn claim(issue: &Json) -> Option<&Json> {
@@ -40,7 +28,7 @@ fn succeeds(machine: &Machine, args: &[&str]) {
 #[test]
 fn new_claim_after_close_and_reopen_claims() {
     let sandbox = crate::sandbox();
-    let a = machine(&sandbox, "g07-again", TrackerSetup::Init);
+    let a = tracker_machine(&sandbox, "g07-again", TrackerSetup::Init);
     let x = printed_id(a.bead(["create", "X"]));
     a.bead(["sync"]);
     let crashed = a
@@ -66,7 +54,7 @@ fn new_claim_after_close_and_reopen_claims() {
 #[test]
 fn new_claiming_close_after_reopen_closes() {
     let sandbox = crate::sandbox();
-    let a = machine(&sandbox, "g07-again-close", TrackerSetup::Init);
+    let a = tracker_machine(&sandbox, "g07-again-close", TrackerSetup::Init);
     let x = printed_id(a.bead(["create", "X"]));
     a.bead(["sync"]);
     let crashed = a
@@ -91,7 +79,7 @@ fn new_claiming_close_after_reopen_closes() {
 #[test]
 fn write_made_while_the_attempt_was_pending_also_moves_the_actor_on() {
     let sandbox = crate::sandbox();
-    let a = machine(&sandbox, "g07-pending-write", TrackerSetup::Init);
+    let a = tracker_machine(&sandbox, "g07-pending-write", TrackerSetup::Init);
     let x = printed_id(a.bead(["create", "X"]));
     a.bead(["sync"]);
     let crashed = a
@@ -101,7 +89,7 @@ fn write_made_while_the_attempt_was_pending_also_moves_the_actor_on() {
     assert_eq!(crashed.returncode(), 99, "{}", crashed.stderr);
     succeeds(&a, &["comments", "add", &x, "work continues"]);
     succeeds(&a, &["sync"]); // settles the attempt: a holds X
-    let b = machine(&sandbox, "g07-pending-write-b", TrackerSetup::Sync);
+    let b = tracker_machine(&sandbox, "g07-pending-write-b", TrackerSetup::Sync);
     succeeds(&b, &["takeover", &x, "--reason", "a went quiet"]);
     succeeds(&b, &["release", &x]);
     succeeds(&a, &["sync"]);

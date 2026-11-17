@@ -7,21 +7,9 @@
 //! evaluates `receipt[0]` on a PosixPath: TypeError, a traceback instead of another round.
 
 use beadroll_store::glob_ending;
-use beadroll_test_support::{Gate, Machine, Sandbox, beside, printed_id};
+use beadroll_test_support::{Gate, beside, printed_id};
 
-use crate::hardening::TrackerSetup;
-
-/// A machine `name` running the Rust `bead`, that initialised the tracker (prefix
-/// `ex`), or, with `init` false, synced the one already published.
-fn machine(sandbox: &Sandbox, name: &str, init: TrackerSetup) -> Machine {
-    let machine = crate::rust_only(sandbox, name);
-    if init == TrackerSetup::Init {
-        machine.bead(["init", "--prefix", "ex"]);
-    } else {
-        machine.bead(["sync"]);
-    }
-    machine
-}
+use crate::hardening::{TrackerSetup, rust_tracker_machine};
 
 /// G09: after an earlier lost acknowledgement leaves a settled receipt, a claim losing its
 /// first push race must retry successfully. Pause at the first claim.before-push, between
@@ -29,11 +17,11 @@ fn machine(sandbox: &Sandbox, name: &str, init: TrackerSetup) -> Machine {
 #[test]
 fn ordinary_contention_after_a_settled_receipt_retries_the_claim() {
     let sandbox = crate::sandbox();
-    let a = machine(&sandbox, "g09-contend", TrackerSetup::Init);
+    let a = rust_tracker_machine(&sandbox, "g09-contend", TrackerSetup::Init);
     let x = printed_id(a.bead(["create", "X"]));
     let y = printed_id(a.bead(["create", "Y"]));
     a.bead(["sync"]);
-    let b = machine(&sandbox, "g09-contend-b", TrackerSetup::Sync);
+    let b = rust_tracker_machine(&sandbox, "g09-contend-b", TrackerSetup::Sync);
     let lost = a
         .cmd(["claim", &x])
         .env("BEAD_TEST_CRASH_AFTER_PUSH", "1")
