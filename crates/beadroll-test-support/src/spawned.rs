@@ -5,7 +5,7 @@
 use std::io::Read;
 use std::os::unix::process::CommandExt as _;
 use std::path::Path;
-use std::process::{Child, ExitStatus, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
@@ -36,7 +36,14 @@ type Drained = Receiver<Vec<u8>>;
 impl Invocation<'_> {
     /// Starts this invocation beside the test, in `group`.
     pub fn spawn(self, group: ProcessGroup) -> Spawned {
-        let mut command = self.command();
+        Spawned::start(self.command(), group)
+    }
+}
+
+impl Spawned {
+    /// Starts `command` beside the test, in `group`: a `bead` with an environment of its own, a
+    /// shell, or a tool such as `br`. Its standard input is empty and its output is drained.
+    pub fn start(mut command: Command, group: ProcessGroup) -> Spawned {
         command
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -44,18 +51,18 @@ impl Invocation<'_> {
         if group == ProcessGroup::Own {
             command.process_group(0);
         }
-        let mut child = command.spawn().expect("bead starts");
-        let stdout = drain(child.stdout.take().expect("bead's standard output"));
-        let stderr = drain(child.stderr.take().expect("bead's standard error"));
+        let mut child = command
+            .spawn()
+            .unwrap_or_else(|error| panic!("cannot start {:?}: {error}", command.get_program()));
+        let stdout = drain(child.stdout.take().expect("the standard output"));
+        let stderr = drain(child.stderr.take().expect("the standard error"));
         Spawned {
             child,
             group,
             output: Some((stdout, stderr)),
         }
     }
-}
 
-impl Spawned {
     /// How it ended, or `None` while it runs.
     pub fn poll(&mut self) -> Option<ExitStatus> {
         self.child.try_wait().expect("bead's status")

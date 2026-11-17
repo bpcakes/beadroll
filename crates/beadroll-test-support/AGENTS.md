@@ -28,10 +28,11 @@ tests it builds events, and for the round-trip properties it draws JSON values.
 - `src/gate.rs`: `Gate`, the `pause-until` handshake that holds bead at a failpoint while the
   test acts (`at`, `action`, `meet`, `ready`, `open`), and `beside`, which runs bead in a thread
   while the test meets it at its gates. The sync crate's in-process tests use the same `Gate`.
-- `src/spawned.rs`: `Invocation::spawn`, a `Spawned` bead beside the test, in a `ProcessGroup` of
-  its own or the test's: its output drained by threads, `poll`, `kill`, `within` and `communicate`
-  under a deadline, `wait_for` a marker; killed and reaped when dropped running. Use it rather
-  than a local spawn-and-wait loop.
+- `src/spawned.rs`: `Invocation::spawn` (or `Spawned::start` for any `Command`: a bead with an
+  environment of its own, a shell, `br`), a `Spawned` process beside the test, in a `ProcessGroup`
+  of its own or the test's: its output drained by threads, `poll`, `kill`, `within` and
+  `communicate` under a deadline, `wait_for` a marker; killed and reaped when dropped running. Use
+  it rather than a local spawn-and-wait loop.
 - `src/wait.rs`: `wait_until`, a condition polled until a deadline, which fails the test naming
   what it waited for. `Sandbox::receive_pack_running` and `Sandbox::await_remote_settled` cover
   a push still running at the remote after bead gave up on it: the test waits for it to land or

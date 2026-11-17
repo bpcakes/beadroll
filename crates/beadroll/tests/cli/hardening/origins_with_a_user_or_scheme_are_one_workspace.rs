@@ -3,13 +3,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
-use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus, Stdio};
-use std::sync::mpsc::{self, Receiver};
-use std::time::{Duration, Instant};
+use std::process::{Command, ExitStatus};
+use std::time::Duration;
 
-use beadroll_test_support::{Json, Machine, executable, git, parse_json};
+use beadroll_test_support::{Json, Machine, ProcessGroup, Spawned, executable, git, parse_json};
 
 /// Environment variables for a child process.
 type Env = BTreeMap<OsString, OsString>;
@@ -92,47 +90,11 @@ fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
         .unwrap_or_else(|| panic!("no {key:?} in {value:?}"))
 }
 
-/// A thread that reads `pipe` to its end, and the channel it hands what it read to.
-fn drain(mut pipe: impl Read + Send + 'static) -> Receiver<Vec<u8>> {
-    let (sender, receiver) = mpsc::channel();
-    std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        let _ = pipe.read_to_end(&mut bytes);
-        let _ = sender.send(bytes);
-    });
-    receiver
-}
-
-/// Runs a command with empty standard input and returns its status and stderr. Kill it and
-/// fail the test if it exceeds `timeout`.
-fn run_within(mut command: Command, timeout: Duration) -> (ExitStatus, String) {
-    let deadline = Instant::now() + timeout;
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut child = command.spawn().unwrap();
-    let stdout = drain(child.stdout.take().expect("the standard output"));
-    let stderr = drain(child.stderr.take().expect("the standard error"));
-    let status = loop {
-        if let Some(status) = child.try_wait().unwrap() {
-            break status;
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            panic!("{command:?} had not ended after {timeout:?}");
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    };
-    let read = |pipe: &Receiver<Vec<u8>>| {
-        let left = deadline.saturating_duration_since(Instant::now());
-        let bytes = pipe.recv_timeout(left);
-        let bytes = bytes.unwrap_or_else(|_| panic!("{command:?}'s output had not ended"));
-        String::from_utf8(bytes).expect("UTF-8 output")
-    };
-    read(&stdout);
-    (status, read(&stderr))
+/// Runs `command` with empty standard input: its status and standard error. If it has not ended
+/// within `timeout`, it is killed and the test fails.
+fn run_within(command: Command, timeout: Duration) -> (ExitStatus, String) {
+    let run = Spawned::start(command, ProcessGroup::Inherited).communicate(timeout);
+    (run.status, run.stderr)
 }
 
 /// Verified (V7): an origin with a user part or a scheme (scp `git@host.example:org/repo.git`,
