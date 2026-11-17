@@ -16,8 +16,10 @@ use beadroll_store::{Label, view_outline};
 use beadroll_sync::NetworkMode;
 use beadroll_sync::{publish_soon, writing_spent};
 
+use super::args::TextValidity;
 use super::{
-    Context, Failure, Line, Outcome, Tone, ended_by, need_tracker, resolve_arg, text, texts_in,
+    Context, Failure, Line, Outcome, Tone, arg_text, encodable, ended_by, need_tracker,
+    refuse_foreign_claim, resolve_arg, texts_in,
 };
 
 /// The arguments `close`, `reopen` and `delete` take.
@@ -197,22 +199,18 @@ fn decide(
     let ends_claims = matches!(op, "close" | "delete");
     let issue = known(st, uid)?;
     let held = issue.claim();
-    if let Some(held) = held
-        && !me.is(&held.owner)
-        && !args.force
-    {
-        return Err(Failure::new(
-            Code::ClaimedByOther,
-            format!(
-                "{} is claimed by {}: use `bead takeover` first, or --force",
-                issue.key(),
-                held.owner
-            ),
-        ));
+    if !args.force {
+        refuse_foreign_claim(issue, me)?;
     }
     let mut data = Object::new();
+    // A reason that is not UTF-8 fails only when an event would carry it, as in every write.
+    let mut valid = TextValidity::Utf8;
     if let Some(reason) = args.reason.as_deref().filter(|r| !r.is_empty()) {
-        data.insert("reason".into(), Value::from(text(reason)?));
+        let (reason, ok) = arg_text(reason);
+        if !ok {
+            valid = TextValidity::Invalid;
+        }
+        data.insert("reason".into(), Value::from(reason));
     }
     if ends_claims && let Some(held) = held.filter(|held| me.is(&held.owner)) {
         data.insert("claim".into(), Value::from(held.id.to_string()));
@@ -224,7 +222,11 @@ fn decide(
     decided.ended = decided.ended || held.is_some() || (ends_claims && ended_by(issue, me));
     let settled = already(st, issue, status);
     decided.unchanged.push(settled);
-    Ok((!settled).then_some(data))
+    if settled {
+        return Ok(None);
+    }
+    encodable(valid)?;
+    Ok(Some(data))
 }
 
 /// What `args` acts on in `st`: each id named, in the order given; with `--recursive`, each named

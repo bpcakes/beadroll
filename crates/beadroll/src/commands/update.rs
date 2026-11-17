@@ -19,7 +19,8 @@ use beadroll_sync::{Emitter, Mode, coordinated, publish_soon, writing_state};
 use super::ownership::{ClaimStep, command_signature, details, still_held};
 use super::{
     ContentArgs, Context, Failure, Line, Outcome, Payload, Tone, arg_texts, encodable, ended_by,
-    field_args, need_tracker, remove_edge, resolve_arg, split_args, view_of, view_of_written,
+    field_args, need_tracker, refuse_foreign_claim, remove_edge, resolve_arg, split_args, view_of,
+    view_of_written,
 };
 use crate::commands::args::TextValidity;
 
@@ -260,18 +261,8 @@ fn check(
             ),
         ));
     }
-    if let (Some(_), Some(held)) = (status, held)
-        && !me.is(&held.owner)
-        && !args.force
-    {
-        return Err(Failure::new(
-            Code::ClaimedByOther,
-            format!(
-                "{} is claimed by {}: use `bead takeover` first, or --force",
-                issue.key(),
-                held.owner
-            ),
-        ));
+    if status.is_some() && !args.force {
+        refuse_foreign_claim(issue, me)?;
     }
     if status == Some("open") && held.is_some_and(|held| me.is(&held.owner)) {
         return Err(Failure::new(

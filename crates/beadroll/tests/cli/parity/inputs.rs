@@ -248,6 +248,32 @@ fn arguments_that_are_not_utf8_keep_established_diagnostics() {
     assert_eq!(m.export(), before, "nothing was written");
 }
 
+/// A reason that is not UTF-8 fails a transition only when an event would carry it, as it does
+/// `release`, `update` and `create`. Closing an issue already closed, or reopening one already
+/// open, writes nothing, so it answers "unchanged" whatever the reason's bytes. A transition that
+/// would write still fails, as `ARGUMENTS` pins.
+#[test]
+fn a_transition_that_writes_nothing_takes_a_reason_that_is_not_utf8() {
+    let sandbox = crate::sandbox();
+    let m = Machine::new(&sandbox, "bytes");
+    json(&m, &["init", "--prefix", "ex"]);
+    let closed = id(&json(&m, &["create", "closed"]));
+    let open = id(&json(&m, &["create", "open"]));
+    json(&m, &["close", &closed, "-r", "done"]);
+    let before = m.export();
+    for (verb, key, unchanged) in [
+        ("close", &closed, "already closed"),
+        ("reopen", &open, "already open"),
+    ] {
+        let args = [verb.as_bytes(), key.as_bytes(), b"-r", b"\xff", b"--json"];
+        let run = m.cmd(args.iter().map(|a| OsStr::from_bytes(a))).run();
+        assert_eq!(run.returncode(), 0, "{verb}: {}", run.stderr);
+        let said = parse_json(&run.stdout).expect("JSON");
+        assert_eq!(said[0]["unchanged"].as_str(), Some(unchanged), "{verb}");
+    }
+    assert_eq!(m.export(), before, "nothing was written");
+}
+
 /// Expected `aliases.json` after renaming, with `<replica>` for this machine: existing members
 /// are preserved, a repeated key keeps its first place and last value, and new names follow.
 const ALIASES: &str = r#"{
