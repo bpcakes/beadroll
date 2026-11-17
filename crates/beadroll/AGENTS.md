@@ -32,8 +32,13 @@ storage, protocol behavior and fault recovery.
   - `src/commands/line.rs`: a line of human output as parts that say what they are (`Tone`).
   - `src/cli/output.rs`: the EPIPE-safe writes and `visible`; `src/cli/tempdir.rs`: writable
     temporary-directory selection with environment overrides and fallbacks.
-- `src/commands.rs`: `Failure` (with the raw bytes of a message that holds some not UTF-8),
-  `Outcome` and the helpers commands share; `src/commands/args.rs`: command-line text, with invalid
+  - `src/cli/args.rs`: each command's arguments built from the parse (`list_args`, `update_args`,
+    `network`, …); `src/cli/report.rs`: `report` and `warn`, a failure or a warning on standard
+    error.
+- `src/commands.rs`: `Outcome` and the helpers commands share; `src/commands/failure.rs`:
+  `Failure` (with the raw bytes of a message that holds some not UTF-8) and the conversions from
+  every crate's errors; `src/commands/select.rs`: `Filters`, `select`, `first` and `row`, the
+  issues `list` and `ready` show; `src/commands/args.rs`: command-line text, with invalid
   UTF-8 held as U+FFFD and a validity flag, so it fails only when an event carrying it is encoded
   (`resolve_arg`, `field_args`, `Payload`, `encodable`);
   `src/commands/*.rs`: one command or a family each (`transition.rs` is close, reopen and delete;
