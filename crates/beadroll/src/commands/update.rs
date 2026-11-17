@@ -4,6 +4,8 @@
 //! made with it are one attempt, coordinated with the remote: both land, or neither. An update
 //! that asks for nothing writes nothing and says so.
 
+use beadroll_core::op::OpName;
+
 use std::ffi::{OsStr, OsString};
 
 use beadroll_core::code::Code;
@@ -299,7 +301,7 @@ fn edit(
     let uid = issue.uid().to_string();
     if !fields.values.is_empty() {
         tx.emit(
-            "set",
+            OpName::Set,
             Some(&uid),
             with("fields", fields.values.clone()),
             None,
@@ -313,21 +315,21 @@ fn edit(
             if let Some(held) = issue.claim().filter(|held| me.is(&held.owner)) {
                 data.insert("claim".into(), Value::from(held.id.to_string()));
             }
-            tx.emit("close", Some(&uid), data, None)?;
+            tx.emit(OpName::Close, Some(&uid), data, None)?;
         }
         Some("open") if DONE.contains(&issue.status()) => {
-            tx.emit("reopen", Some(&uid), Object::new(), None)?;
+            tx.emit(OpName::Reopen, Some(&uid), Object::new(), None)?;
         }
         Some(status) => {
             let mut changed = Object::new();
             changed.insert("status".into(), Value::from(status));
-            tx.emit("set", Some(&uid), with("fields", changed), None)?;
+            tx.emit(OpName::Set, Some(&uid), with("fields", changed), None)?;
         }
         None => {}
     }
     for (op, given) in [
-        ("label_add", &args.add_label),
-        ("label_remove", &args.remove_label),
+        (OpName::LabelAdd, &args.add_label),
+        (OpName::LabelRemove, &args.remove_label),
     ] {
         if !given.is_empty() {
             labels(tx, op, &uid, &split_args(given))?;
@@ -336,7 +338,7 @@ fn edit(
     if let Some(set) = &args.set_labels {
         labels(
             tx,
-            "label_set",
+            OpName::LabelSet,
             &uid,
             &split_args(std::slice::from_ref(set)),
         )?;
@@ -350,7 +352,7 @@ fn edit(
         let mut edge = Object::new();
         edge.insert("to".into(), Value::from(parent.to_string()));
         edge.insert("type".into(), Value::from("parent-child"));
-        tx.emit("dep_add", Some(&uid), edge, None)?;
+        tx.emit(OpName::DepAdd, Some(&uid), edge, None)?;
     }
     Ok(())
 }
@@ -363,7 +365,7 @@ fn with(name: &str, value: Object) -> Object {
 }
 
 /// Emits a label event: `{"labels": [...]}`.
-fn labels(tx: &mut Emitter<'_>, op: &str, uid: &str, items: &[OsString]) -> Result<(), Failure> {
+fn labels(tx: &mut Emitter<'_>, op: OpName, uid: &str, items: &[OsString]) -> Result<(), Failure> {
     let (items, valid) = arg_texts(items);
     let mut data = Object::new();
     data.insert(

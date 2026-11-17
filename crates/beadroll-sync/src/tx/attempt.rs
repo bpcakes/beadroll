@@ -1,6 +1,8 @@
 //! A scoped writer puts every emitted event in the transaction's ownership attempt. Borrowing
 //! the transaction prevents ordinary emission until this writer is released; no flag is toggled.
 
+use beadroll_core::op::OpName;
+
 use beadroll_core::json::{Object, Value};
 use beadroll_core::state::State;
 
@@ -42,7 +44,7 @@ impl Attempt<'_, '_> {
     /// Emits into the ownership attempt, including ordinary edits such as `set` and `label_add`.
     pub fn emit(
         &mut self,
-        op: &str,
+        op: OpName,
         issue: Option<&str>,
         data: Object,
         event_id: Option<String>,

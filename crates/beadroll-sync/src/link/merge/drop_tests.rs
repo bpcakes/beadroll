@@ -1,5 +1,7 @@
 //! Observe unused internal merge projections on real production exits, after their state drops.
 
+use beadroll_core::op::OpName;
+
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -104,7 +106,7 @@ fn accepted_receipt_destroys_its_unused_merge_after_unlocking() {
             let mut data = Object::new();
             data.insert("mode".into(), Value::from(mode.as_str()));
             data.insert("generation".into(), Value::from(1));
-            tx.emit("claim", Some(&uid), data, None)?;
+            tx.emit(OpName::Claim, Some(&uid), data, None)?;
             Ok(mode)
         },
     );

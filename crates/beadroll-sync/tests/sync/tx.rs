@@ -3,6 +3,8 @@
 //! from the journal replayed; and what a write does with its transaction once it is done
 //! ([`writing`] lets go of it, [`writing_spent`] hands it over, roll-lqjj.42).
 
+use beadroll_core::op::OpName;
+
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
 use beadroll_sync::{
@@ -27,7 +29,7 @@ fn preparing_a_write_keeps_sequential_and_conditional_events_together() {
         let uid = tx.state()?.resolve(&key).expect("the issue").uid();
         crate::support::claim(tx, beadroll_sync::Mode::Local, &key)?;
         tx.attempt().emit(
-            "set",
+            OpName::Set,
             Some(&uid.to_string()),
             titled("with the claim"),
             None,
@@ -80,13 +82,13 @@ fn a_lent_state_is_the_one_before_and_the_next_has_every_event() {
             let uid = tx.state()?.resolve(&key).expect("the issue").uid();
             let id = uid.to_string();
             for name in ["one", "two"] {
-                tx.emit("set", Some(&id), titled(name), None)?;
+                tx.emit(OpName::Set, Some(&id), titled(name), None)?;
                 assert_eq!(title(&mut tx, uid), name);
             }
             {
                 let (st, mut emitter) = tx.lend()?;
-                emitter.emit("set", Some(&id), titled("three"), None)?;
-                emitter.emit("set", Some(&id), titled("four"), None)?;
+                emitter.emit(OpName::Set, Some(&id), titled("three"), None)?;
+                emitter.emit(OpName::Set, Some(&id), titled("four"), None)?;
                 assert_eq!(st.issue(uid).expect("the issue").title(), "two");
             }
             assert_eq!(title(&mut tx, uid), "four");
@@ -107,7 +109,7 @@ fn comment_on(key: &str, text: &str) -> impl FnOnce(&mut Tx<'_>) -> Result<Strin
             .ok_or_else(|| Error::Validation(format!("Issue not found: {key}")))?;
         let mut data = Object::new();
         data.insert("text".into(), Value::from(text.as_str()));
-        tx.emit("comment", Some(&uid), data, None)?;
+        tx.emit(OpName::Comment, Some(&uid), data, None)?;
         Ok(text)
     }
 }
@@ -174,7 +176,12 @@ fn a_written_state_survives_draining_and_publication_preserves_commitment() {
 
         let (said, state) = writing_state(&ws, &actor, |tx| -> Result<String, Error> {
             let uid = tx.state()?.resolve(&key).expect("the issue").uid();
-            tx.emit("set", Some(&uid.to_string()), titled(machine.name()), None)?;
+            tx.emit(
+                OpName::Set,
+                Some(&uid.to_string()),
+                titled(machine.name()),
+                None,
+            )?;
             Ok(machine.name().to_owned())
         })
         .expect("a write with its state");

@@ -1,5 +1,7 @@
 //! Commands: typed arguments in, a result and its human-readable lines out.
 
+use beadroll_core::op::OpName;
+
 mod args;
 mod claims;
 mod comments;
@@ -406,12 +408,12 @@ pub(crate) fn remove_edge(
     let mut data = Object::new();
     data.insert("to".into(), Value::from(to.to_string()));
     data.insert("type".into(), kind.clone());
-    tx.emit("dep_remove", Some(&uid.to_string()), data, None)?;
+    tx.emit(OpName::DepRemove, Some(&uid.to_string()), data, None)?;
     if imported {
         let mut data = Object::new();
         data.insert("key".into(), Value::from(&*st.target_key(to)));
         data.insert("type".into(), kind);
-        tx.emit("dep_remove", Some(&uid.to_string()), data, None)?;
+        tx.emit(OpName::DepRemove, Some(&uid.to_string()), data, None)?;
     }
     Ok(())
 }

@@ -1,6 +1,8 @@
 //! Shared protocol fixtures: in-process stores and actors, coordinated command bodies and
 //! pause-until handshakes.
 
+use beadroll_core::op::OpName;
+
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
@@ -98,7 +100,7 @@ pub(crate) fn claim(tx: &mut Tx<'_>, mode: Mode, key: &str) -> Result<Mode, Erro
         .plus_one()
         .expect("a generation counts on");
     data.insert("generation".into(), Value::Int(generation));
-    tx.emit("claim", Some(&issue.uid().to_string()), data, None)?;
+    tx.emit(OpName::Claim, Some(&issue.uid().to_string()), data, None)?;
     Ok(mode)
 }
 
@@ -154,11 +156,11 @@ pub(crate) fn claiming_update(
             fields.insert("title".into(), Value::from(title));
             let mut data = Object::new();
             data.insert("fields".into(), Value::from(fields));
-            tx.emit("set", Some(&uid), data, None)?;
+            tx.emit(OpName::Set, Some(&uid), data, None)?;
             if let Some(label) = label {
                 let mut data = Object::new();
                 data.insert("labels".into(), json!([label]));
-                tx.emit("label_add", Some(&uid), data, None)?;
+                tx.emit(OpName::LabelAdd, Some(&uid), data, None)?;
             }
             Ok(mode)
         },
@@ -188,7 +190,7 @@ pub(crate) fn release_command(ws: &Workspace, actor: &Actor, key: &str) -> Resul
                 held.ok_or_else(|| Error::Validation(format!("{key} is not claimed")))?;
             let mut data = Object::new();
             data.insert("claim".into(), Value::from(claim));
-            tx.emit("release", Some(&uid), data, None)?;
+            tx.emit(OpName::Release, Some(&uid), data, None)?;
             Ok(mode)
         },
     )

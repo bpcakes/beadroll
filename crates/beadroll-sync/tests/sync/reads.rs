@@ -5,6 +5,8 @@
 //! are still the ones it was made from: a file written between the two has the store read again
 //! (roll-lqjj.37).
 
+use beadroll_core::op::OpName;
+
 use std::path::{Path, PathBuf};
 
 use beadroll_core::json::{Format, Object, Value, write};
@@ -92,7 +94,7 @@ fn a_published_write_reads_the_state_for_its_transaction_and_its_merge() {
         let uid = tx.state()?.resolve(&key).expect("the issue").uid();
         let mut data = Object::new();
         data.insert("text".into(), Value::from("noted"));
-        tx.emit("comment", Some(&uid.to_string()), data, None)
+        tx.emit(OpName::Comment, Some(&uid.to_string()), data, None)
     })
     .expect("a comment");
     assert_eq!(reads(&ws), 1);

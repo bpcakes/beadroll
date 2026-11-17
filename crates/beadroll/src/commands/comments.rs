@@ -1,5 +1,7 @@
 //! `bead comments`: an issue's comments, or `comments add ID TEXT` to record one.
 
+use beadroll_core::op::OpName;
+
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 
@@ -110,7 +112,7 @@ fn add(
         if let Some((author, _)) = &author {
             data.insert("author".into(), Value::from(author.as_str()));
         }
-        let event = tx.emit("comment", Some(&uid), data, None)?;
+        let event = tx.emit(OpName::Comment, Some(&uid), data, None)?;
         let author_valid = author.as_ref().map_or(TextValidity::Utf8, |(_, ok)| *ok);
         encodable(valid.and(author_valid))?;
         let id = event.get("id").map(str_of).unwrap_or_default();

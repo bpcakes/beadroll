@@ -2,6 +2,8 @@
 //! (`beadroll_sync::coordinated`): a claim is exclusive once the remote accepts it, and lasts until
 //! a release, a close or a takeover.
 
+use beadroll_core::op::OpName;
+
 use std::ffi::{OsStr, OsString};
 
 use beadroll_core::code::Code;
@@ -117,7 +119,7 @@ impl ClaimStep<'_> {
                 data.insert("takeover".into(), Value::from(held.id.to_string()));
                 data.insert("reason".into(), Value::from(reason));
             }
-            tx.emit("claim", Some(&issue.uid().to_string()), data, None)?;
+            tx.emit(OpName::Claim, Some(&issue.uid().to_string()), data, None)?;
             encodable(valid)?;
         }
         Ok(mode)
@@ -282,10 +284,10 @@ pub(crate) fn release(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome
                         valid = ok;
                         data.insert("reason".into(), Value::from(reason));
                     }
-                    tx.emit("release", Some(&uid), data, None)?;
+                    tx.emit(OpName::Release, Some(&uid), data, None)?;
                     encodable(valid)?;
                 } else if issue.provisional_claims().iter().any(|p| me.is(&p.owner)) {
-                    tx.emit("release", Some(&uid), Object::new(), None)?;
+                    tx.emit(OpName::Release, Some(&uid), Object::new(), None)?;
                 } else {
                     // Keep the label's original bytes for the error message.
                     let mut message = format!("{} is not claimed by ", issue.key()).into_bytes();

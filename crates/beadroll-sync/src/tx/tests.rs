@@ -1,6 +1,8 @@
 //! Observe the real store lock when a failed write destroys its materialized view. A probe is
 //! attached after the body's final state read, and follows that view through preparation.
 
+use beadroll_core::op::OpName;
+
 use std::fs::{File, TryLockError};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -206,7 +208,7 @@ fn failed_persistence_destroys_the_view_after_unlocking() {
                 let mut data = Object::new();
                 data.insert("mode".into(), Value::from(mode.as_str()));
                 data.insert("generation".into(), Value::Int(1.into()));
-                tx.emit("claim", Some(&uid), data, None)?;
+                tx.emit(OpName::Claim, Some(&uid), data, None)?;
                 observe(tx, view, &observed);
                 Ok(mode)
             });
@@ -229,19 +231,22 @@ fn attempt_emission_is_scoped_even_after_an_error() {
             data.insert("text".into(), Value::from("comment"));
             data
         };
-        tx.emit("comment", Some(&uid), comment(), None)?;
+        tx.emit(OpName::Comment, Some(&uid), comment(), None)?;
         {
             let mut attempt = tx.attempt();
-            attempt.emit("comment", Some(&uid), comment(), None)?;
+            attempt.emit(OpName::Comment, Some(&uid), comment(), None)?;
             let (_, mut emitter) = attempt.lend()?;
-            emitter.emit("comment", Some(&uid), comment(), None)?;
+            emitter.emit(OpName::Comment, Some(&uid), comment(), None)?;
+            // a refused event records nothing: a comment whose text is not text
+            let mut malformed = Object::new();
+            malformed.insert("text".into(), Value::from(1));
             assert!(
                 emitter
-                    .emit("not-an-operation", Some(&uid), Object::new(), None)
+                    .emit(OpName::Comment, Some(&uid), malformed, None)
                     .is_err()
             );
         }
-        tx.emit("comment", Some(&uid), comment(), None)?;
+        tx.emit(OpName::Comment, Some(&uid), comment(), None)?;
         assert_eq!(
             tx.emitted
                 .iter()
@@ -272,21 +277,27 @@ fn legacy_conditional_routing_survives_an_attempt_scope() {
             data
         };
         tx.conditional = true;
-        tx.emit("comment", Some(&uid), comment(), None)?;
-        tx.lend()?.1.emit("comment", Some(&uid), comment(), None)?;
+        tx.emit(OpName::Comment, Some(&uid), comment(), None)?;
+        tx.lend()?
+            .1
+            .emit(OpName::Comment, Some(&uid), comment(), None)?;
         {
             let mut attempt = tx.attempt();
-            attempt.emit("comment", Some(&uid), comment(), None)?;
+            attempt.emit(OpName::Comment, Some(&uid), comment(), None)?;
             attempt
                 .lend()?
                 .1
-                .emit("comment", Some(&uid), comment(), None)?;
+                .emit(OpName::Comment, Some(&uid), comment(), None)?;
         }
-        tx.emit("comment", Some(&uid), comment(), None)?;
-        tx.lend()?.1.emit("comment", Some(&uid), comment(), None)?;
+        tx.emit(OpName::Comment, Some(&uid), comment(), None)?;
+        tx.lend()?
+            .1
+            .emit(OpName::Comment, Some(&uid), comment(), None)?;
         tx.conditional = false;
-        tx.emit("comment", Some(&uid), comment(), None)?;
-        tx.lend()?.1.emit("comment", Some(&uid), comment(), None)?;
+        tx.emit(OpName::Comment, Some(&uid), comment(), None)?;
+        tx.lend()?
+            .1
+            .emit(OpName::Comment, Some(&uid), comment(), None)?;
         assert_eq!(
             tx.emitted
                 .iter()
