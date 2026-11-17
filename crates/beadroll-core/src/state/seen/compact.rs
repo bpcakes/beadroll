@@ -9,8 +9,9 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::id::EventId;
 use crate::journal::Event;
+use crate::order::position;
 
-use super::{Ancestry, Clock, Knowledge, Place, UNOBSERVED, small};
+use super::{Ancestry, Clock, Knowledge, Place, UNOBSERVED};
 
 impl Knowledge {
     /// This knowledge cut down to the events in `keep`, in the journal's order, each with its place
@@ -47,7 +48,7 @@ impl Knowledge {
                 let chain = (self.replicas.iter()).position(|name| name == event.replica())?;
                 let positions = self.applicable.get_mut(chain)?;
                 positions.push(number);
-                Place::Sequenced(small(chain), number)
+                Place::Sequenced(position(chain), number)
             }
             None => Place::Nowhere,
         };
@@ -87,7 +88,7 @@ impl Ancestry {
                 let start = out.positions.len();
                 out.positions.extend_from_slice(seen.positions);
                 Clock {
-                    set: small(set),
+                    set: position(set),
                     start,
                 }
             });

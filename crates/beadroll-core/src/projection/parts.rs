@@ -22,6 +22,7 @@ use super::state_codec::{Records, read_state, write_state};
 use super::text_codec::write_texts;
 use super::{Encoded, Projection, named, sum};
 use crate::id::EventId;
+use crate::order::position;
 use crate::state::{Knowledge, State, TextPlace, Texts};
 
 /// Whether encoding retains the full known event index or compacts it.
@@ -133,7 +134,7 @@ impl Projection {
                     issue.uid,
                     TextPlace {
                         at: texts_at.saturating_add(texts.len() as u64),
-                        len: u32::try_from(bytes.len()).unwrap_or(u32::MAX),
+                        len: position(bytes.len()),
                         sum: sum(&bytes),
                     },
                 ));

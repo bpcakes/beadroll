@@ -18,6 +18,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::id::EventId;
 use crate::journal::Event;
+use crate::order::position;
 use crate::state::actor_of;
 
 /// Where an event is: a chain and its position there.
@@ -89,11 +90,6 @@ pub(crate) struct Ancestry {
     lengths: Vec<u32>,
     /// The chain each machine's unsequenced events last joined.
     last: HashMap<String, u32>,
-}
-
-/// `n` as a chain or position (a journal holds fewer than 2³² events).
-fn small(n: usize) -> u32 {
-    u32::try_from(n).unwrap_or(u32::MAX)
 }
 
 impl Ancestry {
@@ -214,7 +210,7 @@ impl Ancestry {
             None => {
                 self.lengths.push(0);
                 self.sequenced
-                    .saturating_add(small(self.lengths.len().saturating_sub(1)))
+                    .saturating_add(position(self.lengths.len().saturating_sub(1)))
             }
         };
         let Some(length) = chain
@@ -250,7 +246,7 @@ impl Ancestry {
             (self.sets.get_index(*set as usize))
                 .is_some_and(|set| set.iter().copied().eq(chains.clone()))
         });
-        known.unwrap_or_else(|| small(self.sets.insert_full(chains.collect()).0))
+        known.unwrap_or_else(|| position(self.sets.insert_full(chains.collect()).0))
     }
 
     /// Adds `clock`'s positions to the arena, and says where they begin.
@@ -365,10 +361,10 @@ impl Knowledge {
                     continue;
                 };
                 if let Some(place) = places.get_mut(at) {
-                    *place = Place::Sequenced(small(replica), small(number));
+                    *place = Place::Sequenced(position(replica), position(number));
                 }
                 if !placeholder(at) {
-                    positions.push(small(number));
+                    positions.push(position(number));
                 }
             }
             applicable.push(positions);
@@ -378,7 +374,7 @@ impl Knowledge {
             clocks: vec![UNOBSERVED; events.len()],
             sets: IndexSet::new(),
             positions: Vec::new(),
-            sequenced: small(replicas.len()),
+            sequenced: position(replicas.len()),
             lengths: Vec::new(),
             last: HashMap::new(),
         };

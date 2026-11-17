@@ -16,6 +16,7 @@ use std::sync::Arc;
 
 use crate::id::EventId;
 use crate::json::{Int, Object, Value};
+use crate::order::position;
 
 /// How deeply a value read back may nest arrays and objects: as deep as JSON bead read when the
 /// projection's format was fixed (512 levels, until roll-lqjj.53), and the few levels replay wraps
@@ -52,10 +53,10 @@ impl Numbering {
     /// The table `table` with more to come, its entries numbered as they are.
     fn of(table: Table) -> Numbering {
         let names = (table.names.iter().enumerate())
-            .map(|(n, name)| (Arc::clone(name), small(n)))
+            .map(|(n, name)| (Arc::clone(name), position(n)))
             .collect();
         let addresses = (table.values.iter().enumerate())
-            .map(|(n, value)| (Arc::as_ptr(value) as usize, small(n)))
+            .map(|(n, value)| (Arc::as_ptr(value) as usize, position(n)))
             .collect();
         Numbering {
             table,
@@ -69,7 +70,7 @@ impl Numbering {
         if let Some(number) = self.names.get(name) {
             return *number;
         }
-        let number = small(self.table.names.len());
+        let number = position(self.table.names.len());
         self.table.names.push(Arc::clone(name));
         self.names.insert(Arc::clone(name), number);
         number
@@ -86,14 +87,14 @@ impl Numbering {
         let values = &self.table.values;
         let contents = self.contents.get_or_insert_with(|| {
             (values.iter().enumerate())
-                .map(|(n, value)| (bytes_of(value), small(n)))
+                .map(|(n, value)| (bytes_of(value), position(n)))
                 .collect()
         });
         let bytes = bytes_of(value);
         let number = match contents.get(&bytes) {
             Some(number) => *number,
             None => {
-                let number = small(self.table.values.len());
+                let number = position(self.table.values.len());
                 contents.insert(bytes, number);
                 self.table.values.push(Arc::clone(value));
                 number
@@ -110,11 +111,6 @@ pub(super) fn bytes_of(value: &Value) -> Vec<u8> {
     let mut w = Writer::default();
     w.value(value);
     w.finish()
-}
-
-/// `n` as a number in a table (a projection holds fewer than 2³² of anything).
-fn small(n: usize) -> u32 {
-    u32::try_from(n).unwrap_or(u32::MAX)
 }
 
 /// Bytes being written: names and shared values each written the first time and referred to after,
@@ -228,7 +224,7 @@ impl Writer {
         match self.names.get(name) {
             Some(number) => self.number(u64::from(*number) + 1),
             None => {
-                let number = u32::try_from(self.names.len()).unwrap_or(u32::MAX);
+                let number = position(self.names.len());
                 self.names.insert(Arc::clone(name), number);
                 self.number(0);
                 self.text(name);
@@ -253,7 +249,7 @@ impl Writer {
         match self.shared.get(&address) {
             Some(number) => self.number(u64::from(*number) + 1),
             None => {
-                let number = u32::try_from(self.shared.len()).unwrap_or(u32::MAX);
+                let number = position(self.shared.len());
                 self.shared.insert(address, number);
                 self.number(0);
                 self.value(value);

@@ -45,6 +45,7 @@ use std::hash::{DefaultHasher, Hasher as _};
 use crate::id::EventId;
 use crate::journal::Journal;
 use crate::json::Value;
+use crate::order::position;
 use crate::replay::replayed;
 use crate::state::{KeySpace, State, TextPlace, Texts};
 
@@ -156,7 +157,7 @@ pub fn project(mut journal: Journal) -> Result<Projection, KeySpace> {
     let heads = settled.frontier();
     let ids: BTreeSet<EventId> = settled.events().keys().copied().collect();
     let lengths = (settled.order().iter())
-        .map(|(machine, ids)| (machine.clone(), small(ids.len())))
+        .map(|(machine, ids)| (machine.clone(), position(ids.len())))
         .collect();
     let lasts = (settled.order().iter())
         .filter_map(|(machine, ids)| Some((machine.clone(), *ids.iter().max()?)))
@@ -367,11 +368,6 @@ pub(crate) fn asked(state: &State) -> HashSet<EventId> {
     (state.issues.values())
         .flat_map(|issue| state_codec::asked(issue))
         .collect()
-}
-
-/// `n` as a position (a journal holds fewer than 2³² events).
-fn small(n: usize) -> u32 {
-    u32::try_from(n).unwrap_or(u32::MAX)
 }
 
 #[cfg(test)]
