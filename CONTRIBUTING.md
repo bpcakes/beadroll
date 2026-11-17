@@ -2,7 +2,7 @@
 
 Thanks for looking. beadroll is small and deliberately boring: one binary, a
 few dependencies, git. The rules below are the ones that keep it that way. It
-was a Python package until 0.2.0 (the tag `python-0.1.0`).
+was a Python package until 0.2.0 (the last commit with it is `b10a55c`).
 
 ## Setup
 
@@ -67,8 +67,9 @@ default, including retries of interrupted owner closes and deletes and a sync st
 push; `BEAD_SWEEP=full` for all 660, with no failure exemptions). `golden` compares
 every help page and the reading commands' output with fixed reference files (the reading
 commands' as Python printed them before the cutover, the help pages as clap lays them out), and
-`parity` holds what the mixed Python and Rust fleets checked, among it receipts byte for byte as
-Python wrote them. Two properties run with them, over seeded generators rather than fixed
+`parity` holds what machines and versions must agree on, which the mixed Python and Rust fleets
+checked first, among it receipts byte for byte as Python wrote them, which format 1 keeps. Two
+properties run with them, over seeded generators rather than fixed
 cases: replay answers alike whatever order the records of a generated history are delivered in
 (`replay::tests`, on the differential tests' generator), and JSON round-trips in every dialect
 bead writes (`compat::json_round_trip`, and the journal's lines in `beadroll-store`'s `storage`,
@@ -88,7 +89,8 @@ whose report is kept as an artifact. A test that runs `bead` under `ulimit` take
 
 Every test that runs bead runs the one Cargo builds, unless `BEAD_UNDER_TEST` names another by its
 absolute path. Until 0.2.0 bead was a Python package, whose suite the Rust tests port; the
-port's tests passed against both, and the last Python is tagged `python-0.1.0`.
+port's tests passed against both, and the last Python is in commit `b10a55c`, the parent of
+`1bab95d`, which removed it.
 The plan the port followed, `docs/RUST-PORT.md`, is in git history (`git show
 5a6ea8d:docs/RUST-PORT.md`), its measurements among it.
 

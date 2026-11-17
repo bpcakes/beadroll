@@ -41,8 +41,9 @@ ones before them, which the compiler enforces:
 *Install* has `cargo install`. Until 0.2.0 bead was a Python package of seven modules, which the
 Rust implementation ports with nothing changed in behaviour except where Python's failed: the
 structured errors below where Python died with a traceback, and a coordination ref named by its
-UTF-8 bytes under any locale (`roll-k2wy.18`). The last of the Python package is the tag
-`python-0.1.0`, and its function names survive in the Rust ones below. The plan the port followed,
+UTF-8 bytes under any locale (`roll-k2wy.18`). The last of the Python package is commit
+`b10a55c`, the parent of `1bab95d`, which removed it, and its function names survive in the Rust
+ones below. The plan the port followed,
 `docs/RUST-PORT.md`, was removed once nothing in it was in force that is not here, in
 `CONTRIBUTING.md` or in a crate's `AGENTS.md` (roll-dih8.24); its measurements (Appendix A), its
 ledger of CPython semantics (§5) and what reviews 8 and 9 corrected in it are in git:

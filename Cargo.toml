@@ -28,7 +28,7 @@ regex-lite = "0.1"                          # git message classifiers
 serde = { version = "1", default-features = false, features = ["std"] }  # the Deserialize core's Value implements
 serde_json = { version = "1", features = ["float_roundtrip"] }  # the JSON reader (roll-lqjj.53): floats exact, as the writer prints them; core's writer stays its own
 rustix = { version = "1.1.6", features = ["fs", "process", "system", "termios"] }  # termios: the terminal width help pages wrap at
-sha2 = "0.10"                               # the version studio already builds
+sha2 = "0.10"                               # the version pancake-studio, which links beadroll-core, already builds
 tempfile = "3"
 textwrap = { version = "0.16", default-features = false, features = ["unicode-width"] }  # bead's own texts, wrapped by display width
 thiserror = "2"
@@ -61,7 +61,7 @@ allow_attributes_without_reason = "deny"
 undocumented_unsafe_blocks = "deny"
 
 [profile.dev]
-debug = "line-tables-only"                  # test builds are dominated by linking (studio's note)
+debug = "line-tables-only"                  # test builds are dominated by linking (pancake-studio's note)
 [profile.dev.package."*"]
 debug = false
 [profile.dev.package.beadroll-core]

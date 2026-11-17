@@ -100,7 +100,8 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
 - Record deliberate decisions in `docs/REVIEWING.md` §2, every guarantee in `docs/GUARANTEES.md`,
   and what a new user reads first in `README.md`; a review finding you close gets its row in
   `docs/FINDINGS.md`. Format 1 is frozen: additions only.
-- Run the fast baseline before committing, the stress suite when the sync protocol changed. The
+- Run the fast baseline and the lints (*Before you change anything*) before committing, the stress
+  suite when the sync protocol changed. The
   commit message says what changed in behaviour, in prose.
 - After a push, a machine upgrades by rerunning its install (`cargo install --locked --force
   --path crates/beadroll --root ~/.local` from its checkout's root, or the `--git` form in the
@@ -143,6 +144,6 @@ clone and machine of this repository, stored outside the working tree, never on 
      (tests, docs, merged where), and the branch or PR conventions a close reason should name. -->
 
 Project specifics: the prefix is `roll-`, and most of the backlog hangs off the open epics, which
-`bead list --type epic` lists. "Done" means the fast baseline is green, the docs above are
-updated, and the change is on `main`. The block above is `bead onboard`'s output verbatim; a test
-keeps it that way, so change the text in `ONBOARD` (`crates/beadroll/src/cli/texts.rs`).
+`bead list --type epic` lists. "Done" means the fast baseline and the lints are green, the docs
+above are updated, and the change is on `main`. The block above is `bead onboard`'s output verbatim;
+a test keeps it that way, so change the text in `ONBOARD` (`crates/beadroll/src/cli/texts.rs`).
