@@ -1,6 +1,6 @@
-//! U05/U06 validation regressions (`docs/FINDINGS.md`): torn-tail repair and manifests refuse
-//! non-finite JSON; manifest format must be integer 1 rather than true or 1.0; segment numbers
-//! require ASCII digits. These tests write remote content directly with git.
+//! What a sync accepts from the remote (U05, U06, `docs/FINDINGS.md`): torn-tail repair and
+//! manifests refuse non-finite JSON; a manifest's format must be the integer 1, not true or 1.0;
+//! segment numbers are ASCII digits. These tests write remote content directly with git.
 
 use std::collections::BTreeSet;
 use std::io::Write as _;

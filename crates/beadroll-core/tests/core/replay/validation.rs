@@ -1,6 +1,5 @@
-//! Validation regressions U01–U04 and U06–U10 (`docs/FINDINGS.md`).
-//! Journal interpretation must be deterministic, and no accepted create payload may break a
-//! query.
+//! What replay accepts (U01–U04 and U06–U10, `docs/FINDINGS.md`): journal interpretation must be
+//! deterministic, and no accepted create payload may break a query.
 
 mod lines;
 

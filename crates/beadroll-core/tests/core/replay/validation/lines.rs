@@ -1,4 +1,4 @@
-//! `PortAlignment`, journal lines: what bytes a line may hold and still be an event (U01 to U04).
+//! Journal lines: what bytes a line may hold and still be an event (U01 to U04).
 
 use beadroll_core::event::event_problem;
 use beadroll_core::journal::JournalOrder;
