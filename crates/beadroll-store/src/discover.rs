@@ -7,7 +7,10 @@ use std::sync::Arc;
 
 use beadroll_core::json::{Object, Value};
 use beadroll_core::text::repr_str;
-use beadroll_git::{Fact, Git, Output, is_local_path, normalize_remote, realpath};
+use beadroll_git::{
+    Fact, Git, Object as GitObject, Output, batch_answers, is_local_path, normalize_remote,
+    realpath,
+};
 use sha2::{Digest as _, Sha256};
 
 use crate::error::Error;
@@ -72,33 +75,13 @@ fn committed_query(settings: &Settings) -> Git<'_> {
 /// copy first, then the default branch's.
 fn committed_config(answer: Result<Output, beadroll_git::Error>) -> Result<Object, Error> {
     let proc = answer?;
-    let mut out: &[u8] = if proc.success() { &proc.stdout } else { b"" };
-    for name in COMMITTED_REFS {
-        let (header, rest) = match out.iter().position(|b| *b == b'\n') {
-            Some(at) => (&out[..at], &out[at + 1..]),
-            None => (out, &b""[..]),
-        };
-        out = rest;
-        let fields: Vec<&[u8]> = header
-            .split(|b| b.is_ascii_whitespace())
-            .filter(|f| !f.is_empty())
-            .collect();
-        let size = match fields.as_slice() {
-            [_, _, size] if !size.is_empty() && size.iter().all(u8::is_ascii_digit) => {
-                std::str::from_utf8(size)
-                    .ok()
-                    .and_then(|s| s.parse::<usize>().ok())
-            }
-            _ => None,
-        };
-        let Some(size) = size else {
-            continue; // "<name> missing": not in that commit, or no such ref
-        };
-        let body = out.get(..size).unwrap_or(out);
-        out = out.get(size + 1..).unwrap_or_default();
-        if fields.get(1) == Some(&&b"blob"[..]) {
+    let out: &[u8] = if proc.success() { &proc.stdout } else { b"" };
+    let answers = batch_answers(out, COMMITTED_REFS.len());
+    for (name, answer) in COMMITTED_REFS.iter().zip(answers) {
+        // missing: not in that commit, or no such ref
+        if let Some(object) = answer.filter(|object| object.kind == "blob") {
             let origin = format!("{name}:.beadroll.json");
-            let config = beadroll_core::configuration::read(body)
+            let config = beadroll_core::configuration::read(&object.data)
                 .map_err(|_| Error::Config(format!("{origin} is not valid JSON")))?;
             return checked_config(config, &origin);
         }
@@ -133,12 +116,16 @@ pub fn tracked_config_warning(ws: &Workspace) -> Result<Option<String>, Error> {
         .git(["cat-file", "--batch"])
         .input(input.as_bytes().to_vec())
         .run()?;
-    let objects = batch_objects(if found.success() { &found.stdout } else { b"" }, 3);
-    let committed = match (objects[0].as_ref(), &here) {
+    let [at_head, origin_head, at_origin] = <[Option<GitObject>; 3]>::try_from(batch_answers(
+        if found.success() { &found.stdout } else { b"" },
+        3,
+    ))
+    .unwrap_or_default();
+    let committed = match (at_head.as_ref(), &here) {
         // neither here nor at HEAD: the default branch's copy, which every clone reads, or none
         (None, None) => return Ok(None),
         (None, Some(_)) => return not_committed(settings).map(Some),
-        (Some((_, content)), Some(here)) if !same_settings(content, here) => {
+        (Some(object), Some(here)) if !same_settings(&object.data, here) => {
             return Ok(Some(
                 ".beadroll.json differs from its committed copy, which the other checkouts and \
                  machines use: commit the change"
@@ -146,9 +133,9 @@ pub fn tracked_config_warning(ws: &Workspace) -> Result<Option<String>, Error> {
             ));
         }
         // the tree's copy is the commit's, or the tree has none and HEAD's is the one in use
-        (Some((committed, _)), _) => committed,
+        (Some(object), _) => &object.oid,
     };
-    Ok(match (&objects[1], &objects[2]) {
+    Ok(match (&origin_head, &at_origin) {
         (None, _) if ws.origin.is_some() => Some(
             ".beadroll.json is committed, but this checkout cannot tell whether origin's default \
              branch, which clones read it from, has it (no refs/remotes/origin/HEAD): `git remote \
@@ -160,7 +147,7 @@ pub fn tracked_config_warning(ws: &Workspace) -> Result<Option<String>, Error> {
              worktrees on other branches do not see it until it is merged there"
                 .to_owned(),
         ),
-        (Some(_), Some((there, _))) if there != committed => Some(
+        (Some(_), Some(there)) if there.oid != *committed => Some(
             ".beadroll.json differs from the copy on origin's default branch, which clones and \
              worktrees on other branches read: merge it there"
                 .to_owned(),
@@ -203,34 +190,6 @@ fn same_settings(committed: &[u8], here: &[u8]) -> bool {
         (Ok(committed), Ok(here)) => committed == here,
         _ => committed == here,
     }
-}
-
-/// The `count` objects `git cat-file --batch` printed, in order: each one's id and content, or
-/// `None` where it said `missing`.
-fn batch_objects(mut out: &[u8], count: usize) -> Vec<Option<(Vec<u8>, Vec<u8>)>> {
-    let mut objects = Vec::with_capacity(count);
-    for _ in 0..count {
-        let (header, rest) = match out.iter().position(|b| *b == b'\n') {
-            Some(at) => (&out[..at], &out[at + 1..]),
-            None => (out, &b""[..]),
-        };
-        out = rest;
-        let fields: Vec<&[u8]> = header.split(|b| *b == b' ').collect();
-        let size = match fields.as_slice() {
-            [_, _, size] => std::str::from_utf8(size)
-                .ok()
-                .and_then(|s| s.parse::<usize>().ok()),
-            _ => None,
-        };
-        let Some(size) = size else {
-            objects.push(None);
-            continue;
-        };
-        let content = out.get(..size).unwrap_or(out).to_vec();
-        out = out.get(size + 1..).unwrap_or_default();
-        objects.push(Some((fields[0].to_vec(), content)));
-    }
-    objects
 }
 
 /// The other workspaces of this store whose `meta.json` names `name`, by id: where a repository
