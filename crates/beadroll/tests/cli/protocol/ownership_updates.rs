@@ -1,75 +1,15 @@
-//! The second independent audit's command-level checks
-//! (`docs/reviews/2026-10-06-2-reaudit.md`): a local import keeps the ids of the comments already
-//! exported (R13); a forced close through `update` publishes as `close` does (R12); and a claiming
-//! update that fails writes, claims and publishes nothing, whichever of its targets it fails on
-//! (I06).
+//! An `update` that ends or takes a claim behaves as the ownership command does: a forced close
+//! through `update` publishes as `close` does (R12), and a claiming update that fails writes, claims
+//! and publishes nothing, whichever of its targets it fails on (I06).
 
-use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, Sandbox, code, json, parse_json};
+use beadroll_test_support::{Json, Machine, code};
 
-/// Machine `root2-a` has initialised tracker `re`, created the issue every test works on
-/// and synced. Returns the machine and the issue's id.
-fn set_up(sandbox: &Sandbox) -> (Machine, String) {
-    let a = Machine::new(sandbox, "root2-a");
-    a.bead(["init", "--prefix", "re"]);
-    let created = a.bead(["create", "root re-audit"]).expect("the issue");
-    let key = created["id"].as_str().expect("an id").to_owned();
-    a.bead(["sync"]);
-    (a, key)
-}
-
-/// The first comment id in the exported record for key.
-fn first_comment_id(export: &str, key: &str) -> Json {
-    let record = export
-        .lines()
-        .map(|line| parse_json(line).unwrap_or_else(|error| panic!("not JSON ({error}): {line}")))
-        .find(|record| record.get("id").expect("a record's id").as_str() == Some(key))
-        .unwrap_or_else(|| panic!("no record of {key} in {export}"));
-    let comment = &record["comments"][0];
-    let id = comment.get("id").cloned();
-    id.unwrap_or_else(|| panic!("no first comment id in {record:?}"))
-}
+use crate::commands::fixtures::published_issue;
 
 /// `bead claims`' list of claims on `machine`.
 fn claims(machine: &Machine) -> Json {
     let listed = machine.bead(["claims"]).expect("the claims");
     listed["claims"].clone()
-}
-
-/// R13: importing a legacy Beads record whose comment has id 41 does not renumber the comment this
-/// machine had already exported.
-#[test]
-fn importing_legacy_comment_does_not_renumber_existing_local_comment() {
-    let sandbox = crate::sandbox();
-    let (a, key) = set_up(&sandbox);
-    a.bead(["comments", "add", &key, "existing local comment"]);
-    let before = first_comment_id(&a.export(), &key);
-    let src = sandbox.root().join("legacy.jsonl");
-    let legacy = json!({
-        "id": "re-legacy",
-        "title": "legacy issue",
-        "status": "open",
-        "priority": 2,
-        "issue_type": "task",
-        "created_at": "2026-01-01T00:00:00Z",
-        "updated_at": "2026-01-01T00:00:00Z",
-        "created_by": "audit",
-        "comments": [{
-            "id": 41,
-            "issue_id": "re-legacy",
-            "author": "audit",
-            "text": "legacy",
-            "created_at": "2026-01-01T00:00:00Z"
-        }]
-    });
-    let line = write(&legacy, Format::ASCII).expect("a record") + "\n";
-    std::fs::write(&src, line).expect("the legacy file");
-    a.bead(["import", src.to_str().expect("a UTF-8 path")]);
-    let after = first_comment_id(&a.export(), &key);
-    assert_eq!(
-        after, before,
-        "single-machine import renumbered an already exported comment"
-    );
 }
 
 /// R12: a machine that does not hold the claim force-closes the issue through
@@ -78,7 +18,7 @@ fn importing_legacy_comment_does_not_renumber_existing_local_comment() {
 #[test]
 fn forced_close_through_update_publishes_like_forced_close() {
     let sandbox = crate::sandbox();
-    let (a, key) = set_up(&sandbox);
+    let (a, key) = published_issue(&sandbox);
     a.bead(["claim", &key]);
     let b = Machine::new(&sandbox, "root2-b");
     b.bead(["sync"]);
@@ -101,7 +41,7 @@ fn forced_close_through_update_publishes_like_forced_close() {
 #[test]
 fn claim_update_cycle_validation_is_atomic_for_all_targets() {
     let sandbox = crate::sandbox();
-    let (a, key) = set_up(&sandbox);
+    let (a, key) = published_issue(&sandbox);
     let created = a.bead(["create", "child", "--parent", &key]);
     let child = created.expect("the child")["id"]
         .as_str()
@@ -134,7 +74,7 @@ fn claim_update_cycle_validation_is_atomic_for_all_targets() {
 #[test]
 fn failed_claim_does_not_publish_bundled_field_edit() {
     let sandbox = crate::sandbox();
-    let (a, key) = set_up(&sandbox);
+    let (a, key) = published_issue(&sandbox);
     a.bead(["claim", &key]);
     let b = Machine::new(&sandbox, "root2-b");
     b.bead(["sync"]);

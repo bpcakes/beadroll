@@ -85,7 +85,7 @@ storage, protocol behavior and fault recovery.
 
 - A test of a command: `tests/cli/<module>/<subject>.rs` beside related tests. Test names describe
   the contract they check; a regression test names its finding in its doc comment. Module names that
-  carry a review or finding id (`replay_third_review`, `replay_residuals`, `root_reaudit`) are
+  carry a review or finding id (`replay_third_review`, `replay_residuals`) are
   history, never a pattern. Update active references in `docs/FINDINGS.md` when renaming a test.
 - A command, its output or its exit status: `src/commands` and `src/cli`.
 - An argument or a help text: `src/cli/spec.rs`. The help pages are goldens

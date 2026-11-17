@@ -121,3 +121,14 @@ pub(crate) fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
 pub(crate) fn ascii_json(value: &Json) -> String {
     write(value, Format::ASCII).expect("JSON bead can write")
 }
+
+/// Machine `root2-a` with tracker `re` initialised, one issue created, and synced: the machine and
+/// the issue's id.
+pub(crate) fn published_issue(sandbox: &Sandbox) -> (Machine, String) {
+    let a = Machine::new(sandbox, "root2-a");
+    a.bead(["init", "--prefix", "re"]);
+    let created = a.bead(["create", "root re-audit"]).expect("the issue");
+    let key = created["id"].as_str().expect("an id").to_owned();
+    a.bead(["sync"]);
+    (a, key)
+}
