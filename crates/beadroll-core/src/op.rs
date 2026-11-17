@@ -11,7 +11,7 @@ use crate::json::{Int, Object, Value};
 /// An integer field read from a format-1 event, retaining a legacy boolean representation.
 /// Replay accepts booleans in integer fields of old histories (`docs/REVIEWING.md` §2).
 /// Comparison and display use their numeric values (`true` is 1, `false` is 0), while JSON keeps
-/// the original type (until roll-lqjj.53.2 a boolean printed as Python's `True` or `False`).
+/// the original type.
 #[derive(Clone, Debug)]
 pub enum IntegerField {
     /// `true` or `false`.

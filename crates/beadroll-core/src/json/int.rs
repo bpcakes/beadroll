@@ -2,8 +2,6 @@
 //! an `i64`, which is what serde_json keeps exact; one beyond arrives as a float), counts (a
 //! segment's number, a claim's generation, the unpublished count) and mints (a key's number). Each
 //! count is checked, never wrapped: what cannot be counted on is `None`, and the caller says so.
-//! The 4,300-digit decimal limit of Python 3.11's `json`, kept until then for parity with the
-//! Python bead, is gone with the parity.
 
 use std::fmt;
 
