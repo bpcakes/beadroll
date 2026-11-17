@@ -7,7 +7,7 @@
 use std::ffi::{OsStr, OsString};
 
 use beadroll_core::code::Code;
-use beadroll_core::event::{DONE, PARENT_CHILD};
+use beadroll_core::event::{DONE, PARENT_CHILD, status};
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::op::OpName;
@@ -53,15 +53,15 @@ pub(crate) struct UpdateArgs {
 pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Failure> {
     let mut fields = field_args(args.title.as_deref(), &args.fields)?;
     let status = fields.values.shift_remove("status").map(|s| str_of(&s));
-    if status.as_deref() == Some("tombstone") {
+    if status.as_deref() == Some(status::TOMBSTONE) {
         return Err(Failure::new(
             Code::Validation,
             "use `bead delete` to tombstone an issue; it ends the claim as well",
         ));
     }
     // in_progress is reached only through a claim
-    let wants_claim = args.claim || status.as_deref() == Some("in_progress");
-    let status = status.filter(|status| status != "in_progress");
+    let wants_claim = args.claim || status.as_deref() == Some(status::IN_PROGRESS);
+    let status = status.filter(|named| named != status::IN_PROGRESS);
     let kind = if fields.values.is_empty()
         && status.is_none()
         && !wants_claim
@@ -116,7 +116,7 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
             notes.push("claim is PROVISIONAL: not exclusive until claimed online".to_owned());
         }
         // a claiming close ends the claim on purpose
-        check_held = mode != Mode::Offline && status.as_deref() != Some("closed");
+        check_held = mode != Mode::Offline && status.as_deref() != Some(status::CLOSED);
         ended
     } else {
         let (ended, state) = writing_state(ctx.ws, ctx.actor, |tx| {
@@ -224,7 +224,7 @@ fn edits(
     let mut ended = Vec::new();
     for issue in &targets {
         check(st, issue, &change)?;
-        if status == Some("closed") && (issue.claim().is_some() || ended_by(issue, me)) {
+        if status == Some(status::CLOSED) && (issue.claim().is_some() || ended_by(issue, me)) {
             ended.push(issue.key().to_owned());
         }
     }
@@ -274,7 +274,7 @@ fn check(st: &State, issue: &Issue, change: &Change<'_>) -> Result<(), Failure> 
     if status.is_some() && !args.force {
         refuse_foreign_claim(issue, me)?;
     }
-    if status == Some("open") && held.is_some_and(|held| me.is(&held.owner)) {
+    if status == Some(status::OPEN) && held.is_some_and(|held| me.is(&held.owner)) {
         return Err(Failure::new(
             Code::Validation,
             format!("{}: use `bead release` to give up your claim", issue.key()),
@@ -308,7 +308,7 @@ fn edit(
         encodable(fields.valid)?;
     }
     match status {
-        Some("closed") => {
+        Some(status::CLOSED) => {
             // the same transition `bead close` makes, ending exactly our claim
             let mut data = Object::new();
             if let Some(held) = issue.claim().filter(|held| me.is(&held.owner)) {

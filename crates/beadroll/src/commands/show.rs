@@ -2,6 +2,7 @@
 
 use std::ffi::OsString;
 
+use beadroll_core::event::status;
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::op::IntegerField;
 use beadroll_core::state::Issue;
@@ -62,7 +63,7 @@ fn closing_commit(issue: &Issue) -> Option<String> {
     let commit = (place.get("commit"))
         .filter(|commit| commit.truthy())
         .map(str_of);
-    (issue.status() == "closed").then(|| commit.unwrap_or_default())
+    (issue.status() == status::CLOSED).then(|| commit.unwrap_or_default())
 }
 
 /// The member `key` rendered as text, or an empty string when absent.

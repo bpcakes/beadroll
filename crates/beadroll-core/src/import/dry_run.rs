@@ -3,6 +3,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use crate::event::status;
 use crate::json::{self, Value};
 use crate::state::State;
 use crate::text::{repr_str, strip};
@@ -48,7 +49,7 @@ pub fn preview(state: &State, records: &[Value]) -> Preview {
             .and_then(Value::as_str)
             .unwrap_or("open");
         *preview.statuses.entry(status.to_owned()).or_default() += 1;
-        if status == "in_progress" {
+        if status == status::IN_PROGRESS {
             preview.unowned.push(id_of(record).to_owned());
         }
         for dep in dependencies(record) {

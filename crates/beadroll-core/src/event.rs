@@ -27,18 +27,35 @@ pub enum FieldScope {
 /// The format of events this bead reads and writes.
 pub const FORMAT: i64 = 1;
 
+/// The statuses bead's own commands set, one name each. Beads tools write others, which bead keeps
+/// as they are, so a status stays text.
+pub mod status {
+    /// Waiting to be worked on.
+    pub const OPEN: &str = "open";
+    /// Being worked on: what `update --status in_progress` asks of a claim.
+    pub const IN_PROGRESS: &str = "in_progress";
+    /// Waiting on something outside the tracker.
+    pub const BLOCKED: &str = "blocked";
+    /// Put off; left out of a listing unless asked for.
+    pub const DEFERRED: &str = "deferred";
+    /// Done.
+    pub const CLOSED: &str = "closed";
+    /// Deleted: kept so that what named it still resolves.
+    pub const TOMBSTONE: &str = "tombstone";
+}
+
 /// The statuses bead's own commands set; Beads tools write others, kept as they are.
 pub const STATUSES: [&str; 6] = [
-    "open",
-    "in_progress",
-    "blocked",
-    "deferred",
-    "closed",
-    "tombstone",
+    status::OPEN,
+    status::IN_PROGRESS,
+    status::BLOCKED,
+    status::DEFERRED,
+    status::CLOSED,
+    status::TOMBSTONE,
 ];
 
 /// Statuses that count as finished.
-pub const DONE: [&str; 2] = ["closed", "tombstone"];
+pub const DONE: [&str; 2] = [status::CLOSED, status::TOMBSTONE];
 
 /// The dependency type that keeps its issue waiting until the target is done, and the type of a
 /// dependency that names none.

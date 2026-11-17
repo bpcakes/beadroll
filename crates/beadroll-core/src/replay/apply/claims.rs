@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use super::{CLAIM_GENERATION_EXHAUSTED, Ctx, Held};
-use crate::event::Field;
+use crate::event::{Field, status};
 use crate::id::EventId;
 use crate::journal::Event;
 use crate::json::Value;
@@ -24,8 +24,8 @@ impl EndingKind {
     /// The status the issue is left with.
     fn status(self) -> &'static str {
         match self {
-            EndingKind::Delete => "tombstone",
-            EndingKind::Close => "closed",
+            EndingKind::Delete => status::TOMBSTONE,
+            EndingKind::Close => status::CLOSED,
         }
     }
 

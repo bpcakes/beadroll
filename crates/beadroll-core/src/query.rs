@@ -8,7 +8,7 @@ mod readiness;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
 
-use crate::event::{BLOCKS, DONE, Field, PARENT_CHILD};
+use crate::event::{BLOCKS, DONE, Field, PARENT_CHILD, status};
 use crate::id::EventId;
 use crate::json::{self, Format, Object, Value};
 use crate::state::{Edge, HydratedIssue, IdMap, Issue, State, Texts};
@@ -246,7 +246,7 @@ impl State {
         let held = self.readiness();
         let mut items: Vec<&Issue> = self
             .issues()
-            .filter(|issue| issue.status() == "open")
+            .filter(|issue| issue.status() == status::OPEN)
             .filter(|issue| {
                 beneath
                     .as_ref()
