@@ -324,6 +324,16 @@ impl Run {
     }
 }
 
+/// Every machine syncs, in turn, and then again in the same order, which brings each one what any
+/// of them published; then they must export the same records, or the test fails.
+pub fn converge(machines: &[&Machine]) {
+    for machine in machines.iter().chain(machines) {
+        machine.bead(["sync"]);
+    }
+    let exports: BTreeSet<String> = machines.iter().map(|machine| machine.export()).collect();
+    assert!(exports.len() <= 1, "the machines did not converge");
+}
+
 /// The structured error code reported on stderr by a failed JSON command.
 pub fn code(run: &Run) -> String {
     let document = crate::parse_json(&run.stderr)

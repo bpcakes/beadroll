@@ -7,10 +7,8 @@
 //! replay has already turned the entry into an edge, so the retraction is lost and the edge comes
 //! back.
 
-use std::collections::BTreeSet;
-
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, Sandbox, json};
+use beadroll_test_support::{Json, Machine, Sandbox, converge, json};
 
 /// The Beads record of `key`, titled `key` in capitals, with a `blocks` dependency on
 /// each key of `depends_on`, if there is any.
@@ -88,15 +86,6 @@ fn pair(sandbox: &Sandbox) -> (Machine, Machine) {
     (m1, m2)
 }
 
-/// Each machine syncs, in turn, twice; then they must export the same records.
-fn settle(machines: &[&Machine]) {
-    for machine in machines.iter().chain(machines) {
-        machine.bead(["sync"]);
-    }
-    let exports: BTreeSet<String> = machines.iter().map(|m| m.export()).collect();
-    assert_eq!(exports.len(), 1, "machines did not converge");
-}
-
 /// G14: `dep remove ex-a ex-b` of an imported dependency on a key that is not an issue yet
 /// stays removed after sync even when another machine's concurrent import of ex-b has the
 /// earlier id.
@@ -113,7 +102,7 @@ fn dep_remove_of_a_dangling_key_survives_a_concurrent_target_import() {
     // m1 has not seen ex-b: the removal is key-based
     m1.bead(["dep", "remove", "ex-a", "ex-b"]);
     assert_eq!(edges(&m1, "ex-a"), none);
-    settle(&[&m1, &m2]);
+    converge(&[&m1, &m2]);
     assert_eq!(
         edges(&m1, "ex-a"),
         none,
@@ -139,7 +128,7 @@ fn reimport_that_drops_the_dependency_survives_a_concurrent_target_import() {
         "import",
         &jsonl_file(&sandbox, "cleared", &[record("ex-a", &[])]),
     ]);
-    settle(&[&m1, &m2]);
+    converge(&[&m1, &m2]);
     assert_eq!(
         edges(&m2, "ex-a"),
         Vec::<(String, String)>::new(),

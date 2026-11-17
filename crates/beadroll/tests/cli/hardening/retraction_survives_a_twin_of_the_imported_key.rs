@@ -6,10 +6,8 @@
 //! it saw (dep_remove by uid); when the other copy keeps the key, the retraction misses it and the
 //! dependency is live again on every machine.
 
-use std::collections::BTreeSet;
-
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, Sandbox, json, printed_id};
+use beadroll_test_support::{Json, Machine, Sandbox, converge, json, printed_id};
 
 /// The Beads record `key` titled `title`, depending on `depends_on`, when there
 /// is one, by a dependency of type `kind`.
@@ -90,15 +88,6 @@ fn machines(sandbox: &Sandbox, kind: &str) -> (Machine, Machine, Machine, String
     (m1, m2, m3, q)
 }
 
-/// Every machine syncs twice, and then they export the same records.
-fn settle(machines: &[&Machine]) {
-    for machine in machines.iter().chain(machines) {
-        machine.bead(["sync"]);
-    }
-    let exports: BTreeSet<String> = machines.iter().map(|m| m.export()).collect();
-    assert_eq!(exports.len(), 1, "machines did not converge");
-}
-
 /// G42: `dep remove ex-a ex-b` of an imported dependency stays removed after sync even when a
 /// concurrent import of ex-b on another machine sorts first and keeps the key.
 #[test]
@@ -108,7 +97,7 @@ fn dep_remove_of_an_imported_dependency_survives_the_merge() {
     m2.bead(["dep", "remove", "ex-a", "ex-b"]); // by uid: m2's own copy of ex-b
     let none = Json::Array(Vec::new());
     assert_eq!(m2.show("ex-a").get("dependencies"), Some(&none));
-    settle(&[&m1, &m2, &m3]);
+    converge(&[&m1, &m2, &m3]);
     let listed = m2
         .bead(["list", "--all", "--limit", "0"])
         .expect("a listing");
@@ -131,7 +120,7 @@ fn reparenting_away_from_an_imported_parent_survives_the_merge() {
     let (m1, m2, m3, q) = machines(&sandbox, "parent-child");
     m2.bead(["update", "ex-a", "--parent", &q]); // removes the imported parent edge by uid
     assert_eq!(dependency_ids(&m2.show("ex-a")), std::slice::from_ref(&q));
-    settle(&[&m1, &m2, &m3]);
+    converge(&[&m1, &m2, &m3]);
     assert_eq!(
         dependency_ids(&m2.show("ex-a")),
         [q],

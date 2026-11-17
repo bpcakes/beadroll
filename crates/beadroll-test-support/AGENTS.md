@@ -16,7 +16,9 @@ tests it builds events, and for the round-trip properties it draws JSON values.
   the profile directory above the running test (`<target>/<profile>/bead`, with tests under
   `build/<package>/<hash>/out/` or older Cargo's `deps/`).
 - `src/machine.rs`: `Machine` (`run`, `bead`, `show`, `ready`, `export`, `store`, `with_bead`),
-  `Invocation` (a run's directory, thread, agent, environment and input), `Run`, `code`.
+  `Invocation` (a run's directory, thread, agent, environment and input), `Run`, `code`, and
+  `converge`, every machine synced twice round and their exports compared; use it rather than a
+  local sync loop.
 - `src/isolation.rs`: `assert_git_isolation`, which runs named tests in child processes with Git
   routing pointed at an unrelated disposable repository and checks that its files stay unchanged.
   It needs no `bead` executable; a child test that runs bead chooses its own through its fixtures.
