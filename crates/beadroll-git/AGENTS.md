@@ -67,6 +67,9 @@ resolution shared with the store.
 ## Invariants
 
 - No other crate starts git.
+- A `regex-lite` pattern is a `LazyLock<Option<Regex>>`, since the library may not panic, and a
+  unit test asserts that it compiles (`classify::tests::the_patterns_compile`); a pattern that
+  did not compile would match nothing, silently.
 - Every in-process or long-lived answer matches the corresponding separate git command.
   Anything this code cannot answer with certainty (`NoAnswer`: missing, damaged, unusual, a
   name it would have to quote, no git) falls back to that command,

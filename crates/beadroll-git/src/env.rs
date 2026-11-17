@@ -58,16 +58,19 @@ static RESETTABLE: LazyLock<Option<Regex>> =
 pub fn with_settings(env: &Env, settings: &[(String, OsString)]) -> Env {
     let mut vars = env.vars().clone();
     let count_var = OsStr::new("GIT_CONFIG_COUNT");
+    // the count `sync_env` wrote, an integer it has checked has room for its own settings
     let count = vars
         .get(count_var)
         .and_then(|value| value.to_str())
-        .map_or_else(Decimal::zero, Decimal::read);
+        .and_then(|text| text.trim().parse::<i128>().ok())
+        .unwrap_or(0);
+    let at = |n: usize| count.saturating_add(i128::try_from(n).unwrap_or(i128::MAX));
     for (index, (key, value)) in settings.iter().enumerate() {
-        let at = count.plus(index);
+        let at = at(index);
         vars.insert(format!("GIT_CONFIG_KEY_{at}").into(), key.into());
         vars.insert(format!("GIT_CONFIG_VALUE_{at}").into(), value.clone());
     }
-    vars.insert(count_var.into(), count.plus(settings.len()).into());
+    vars.insert(count_var.into(), at(settings.len()).to_string().into());
     env.with_vars(vars)
 }
 
@@ -111,8 +114,8 @@ pub fn transport_config(proc: &Output) -> Vec<(String, String)> {
 pub struct CountRules<'a> {
     /// Whether a string is nonempty and consists entirely of the caller's accepted digits.
     pub is_digit: &'a dyn Fn(&str) -> bool,
-    /// The exact parsed integer as decimal text, or `None` when unreadable.
-    pub int: &'a dyn Fn(&str) -> Option<String>,
+    /// The integer, or `None` when it is unreadable or does not fit an `i128`.
+    pub int: &'a dyn Fn(&str) -> Option<i128>,
 }
 
 /// Builds the sync environment from the checkout's: remove repository-location variables; set
@@ -155,20 +158,29 @@ pub fn sync_env(
     let count_var = OsStr::new("GIT_CONFIG_COUNT");
     let refused = |value: &OsStr| Error::ConfigCount(value.to_string_lossy().into_owned());
     // Only an all-digit count is parsed; missing or non-digit counts mean zero.
-    let count: Decimal = match env.get(count_var) {
+    let given = env.get(count_var).cloned();
+    let count: i128 = match &given {
         Some(value) => match value.to_str().filter(|text| (rules.is_digit)(text)) {
-            Some(text) => Decimal::read(&(rules.int)(text).ok_or_else(|| refused(value))?),
-            None => Decimal::zero(),
+            Some(text) => (rules.int)(text).ok_or_else(|| refused(value))?,
+            None => 0,
         },
-        None => Decimal::zero(),
+        None => 0,
+    };
+    // the index `n` places after the caller's settings; a count without room for them is refused
+    let after = |count: i128, n: usize| {
+        i128::try_from(n)
+            .ok()
+            .and_then(|n| count.checked_add(n))
+            .ok_or_else(|| refused(given.as_deref().unwrap_or_default()))
     };
     for (index, (key, value)) in carried.iter().enumerate() {
-        let at = count.plus(index);
+        let at = after(count, index)?;
         env.insert(format!("GIT_CONFIG_KEY_{at}").into(), key.into());
         env.insert(format!("GIT_CONFIG_VALUE_{at}").into(), value.into());
     }
     if !carried.is_empty() {
-        env.insert(count_var.into(), count.plus(carried.len()).into());
+        let total = after(count, carried.len())?;
+        env.insert(count_var.into(), total.to_string().into());
     }
     let has = |name: &str| env.contains_key(OsStr::new(name));
     if !has("GIT_SSH_COMMAND")
@@ -178,126 +190,22 @@ pub fn sync_env(
         env.insert("GIT_SSH_COMMAND".into(), DEFAULT_SSH_COMMAND.into());
     }
     // A missing or empty count means zero; other values must parse as integers.
-    let count: Decimal = match env.get(count_var) {
-        None => Decimal::zero(),
-        Some(value) if value.is_empty() => Decimal::zero(),
-        Some(value) => Decimal::read(
-            &value
-                .to_str()
-                .and_then(|text| (rules.int)(text))
-                .ok_or_else(|| refused(value))?,
-        ),
+    let count: i128 = match env.get(count_var) {
+        None => 0,
+        Some(value) if value.is_empty() => 0,
+        Some(value) => value
+            .to_str()
+            .and_then(|text| (rules.int)(text))
+            .ok_or_else(|| refused(value))?,
     };
     for (index, (key, value)) in SYNC_REPO_CONFIG.iter().enumerate() {
-        let at = count.plus(index);
+        let at = after(count, index)?;
         env.insert(format!("GIT_CONFIG_KEY_{at}").into(), (*key).into());
         env.insert(format!("GIT_CONFIG_VALUE_{at}").into(), (*value).into());
     }
-    env.insert(count_var.into(), count.plus(SYNC_REPO_CONFIG.len()).into());
+    let total = after(count, SYNC_REPO_CONFIG.len())?;
+    env.insert(count_var.into(), total.to_string().into());
     Ok(checkout.with_vars(env))
-}
-
-/// An exact decimal count to which enumeration indices are added.
-struct Decimal {
-    negative: bool,
-    /// Decimal digits, no leading zeros (`0` alone for zero).
-    digits: String,
-}
-
-impl Decimal {
-    fn zero() -> Decimal {
-        Decimal {
-            negative: false,
-            digits: "0".into(),
-        }
-    }
-
-    /// `text` as a canonical decimal integer: an optional minus, then digits.
-    fn read(text: &str) -> Decimal {
-        let (negative, digits) = match text.strip_prefix('-') {
-            Some(rest) => (true, rest),
-            None => (false, text),
-        };
-        let digits = digits.trim_start_matches('0');
-        if digits.is_empty() {
-            return Decimal::zero();
-        }
-        Decimal {
-            negative,
-            digits: digits.into(),
-        }
-    }
-
-    /// This number plus `n`, as decimal text.
-    fn plus(&self, n: usize) -> String {
-        let n = n.to_string();
-        if !self.negative {
-            return add_digits(&self.digits, &n);
-        }
-        let magnitude = (self.digits.len(), self.digits.as_str());
-        match magnitude.cmp(&(n.len(), n.as_str())) {
-            std::cmp::Ordering::Greater => format!("-{}", subtract_digits(&self.digits, &n)),
-            _ => subtract_digits(&n, &self.digits),
-        }
-    }
-}
-
-/// The sum of two decimal magnitudes.
-fn add_digits(a: &str, b: &str) -> String {
-    let (a, b) = (a.as_bytes(), b.as_bytes());
-    let mut out = Vec::new();
-    let mut carry = 0u8;
-    for at in 0..a.len().max(b.len()) {
-        let digit = |x: &[u8]| {
-            x.len()
-                .checked_sub(at + 1)
-                .and_then(|i| x.get(i))
-                .map_or(0, |d| d - b'0')
-        };
-        let total = digit(a) + digit(b) + carry;
-        out.push(b'0' + total % 10);
-        carry = total / 10;
-    }
-    if carry > 0 {
-        out.push(b'0' + carry);
-    }
-    out.reverse();
-    trimmed(out)
-}
-
-/// The difference of two decimal magnitudes, the first not the smaller.
-fn subtract_digits(a: &str, b: &str) -> String {
-    let (a, b) = (a.as_bytes(), b.as_bytes());
-    let mut out = Vec::new();
-    let mut borrow = 0i8;
-    for at in 0..a.len() {
-        let digit = |x: &[u8]| {
-            x.len()
-                .checked_sub(at + 1)
-                .and_then(|i| x.get(i))
-                .map_or(0, |d| (d - b'0') as i8)
-        };
-        let mut value = digit(a) - digit(b) - borrow;
-        borrow = 0;
-        if value < 0 {
-            value += 10;
-            borrow = 1;
-        }
-        out.push(b'0' + value as u8);
-    }
-    out.reverse();
-    trimmed(out)
-}
-
-/// Decimal digits without leading zeros (`0` for none).
-fn trimmed(digits: Vec<u8>) -> String {
-    let text = String::from_utf8_lossy(&digits);
-    let text = text.trim_start_matches('0');
-    if text.is_empty() {
-        "0".into()
-    } else {
-        text.into()
-    }
 }
 
 #[cfg(test)]
@@ -307,7 +215,7 @@ mod tests {
     /// ASCII numeric rules sufficient for these test cases.
     const RULES: CountRules<'static> = CountRules {
         is_digit: &|text| !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit()),
-        int: &|text| text.trim().parse::<i128>().ok().map(|n| n.to_string()),
+        int: &|text| text.trim().parse::<i128>().ok(),
     };
 
     fn checkout(vars: &[(&str, &str)]) -> Env {
@@ -350,6 +258,21 @@ mod tests {
         assert_eq!(get(&env, "GIT_SSH_COMMAND"), Some(DEFAULT_SSH_COMMAND));
     }
 
+    /// The pattern is held as an `Option`, since a library may not panic; a pattern that did not
+    /// compile would answer "not resettable" of every key, so this is where it fails.
+    #[test]
+    fn the_resettable_lists_pattern_compiles_and_matches_them() {
+        let re = RESETTABLE.as_ref().expect("RESETTABLE compiles");
+        for key in [
+            "credential.helper",
+            "credential.https://h.helper",
+            "http.extraheader",
+        ] {
+            assert!(re.is_match(key), "{key}");
+        }
+        assert!(!re.is_match("credential.username"));
+    }
+
     #[test]
     fn a_caller_ssh_setting_suppresses_the_default() {
         for vars in [&[("GIT_SSH", "")][..], &[("GIT_SSH_COMMAND", "x")][..]] {
@@ -363,16 +286,54 @@ mod tests {
 
     #[test]
     fn counts_are_numbered_on_exactly() {
-        assert_eq!(Decimal::read("-3").plus(4), "1");
-        assert_eq!(Decimal::read("-3").plus(1), "-2");
-        assert_eq!(Decimal::read("-3").plus(3), "0");
-        assert_eq!(Decimal::read("007").plus(0), "7");
-        let wide = "9".repeat(45);
-        assert_eq!(Decimal::read(&wide).plus(1), format!("1{}", "0".repeat(45)));
-        assert_eq!(
-            Decimal::read(&format!("-1{}", "0".repeat(45))).plus(1),
-            format!("-{}", "9".repeat(45))
+        for (given, first, total) in [("007", "7", "11"), ("-3", "-3", "1"), ("-2", "-2", "2")] {
+            let env = sync_env(
+                &checkout(&[("GIT_CONFIG_COUNT", given)]),
+                Path::new("/s"),
+                &[],
+                &RULES,
+            )
+            .unwrap();
+            assert_eq!(
+                get(&env, &format!("GIT_CONFIG_KEY_{first}")),
+                Some("gc.auto"),
+                "{given}"
+            );
+            assert_eq!(get(&env, "GIT_CONFIG_COUNT"), Some(total), "{given}");
+        }
+        let near = (i128::MAX - 4).to_string();
+        let env = sync_env(
+            &checkout(&[("GIT_CONFIG_COUNT", &near)]),
+            Path::new("/s"),
+            &[],
+            &RULES,
         );
+        assert_eq!(
+            get(&env.unwrap(), "GIT_CONFIG_COUNT"),
+            Some(i128::MAX.to_string().as_str())
+        );
+    }
+
+    /// A count with no room for bead's own settings after it is refused, not wrapped or written
+    /// past what git can read.
+    #[test]
+    fn a_count_without_room_for_beads_settings_is_refused() {
+        let full = (i128::MAX - 3).to_string();
+        let error = sync_env(
+            &checkout(&[("GIT_CONFIG_COUNT", &full)]),
+            Path::new("/s"),
+            &[],
+            &RULES,
+        );
+        assert!(matches!(error, Err(Error::ConfigCount(_))), "{error:?}");
+    }
+
+    #[test]
+    fn settings_are_added_after_the_count_the_link_has() {
+        let env = checkout(&[("GIT_CONFIG_COUNT", "5")]);
+        let added = with_settings(&env, &[("remote.r.url".to_owned(), OsString::from("u"))]);
+        assert_eq!(get(&added, "GIT_CONFIG_KEY_5"), Some("remote.r.url"));
+        assert_eq!(get(&added, "GIT_CONFIG_COUNT"), Some("6"));
     }
 
     #[test]
