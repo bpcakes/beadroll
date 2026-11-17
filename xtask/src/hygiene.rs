@@ -2,8 +2,9 @@
 //! hostnames, or SSH targets. Patterns describe shapes rather than private names. ASCII word
 //! boundaries deliberately also catch matches beside non-ASCII letters. Lint exemptions sit at a
 //! crate or module root, apart from the two `CONTRIBUTING.md` names, no Rust source grows past
-//! the line it should have been split long before, nothing is named for a finding, and a
-//! module's items are imported in one `use` line.
+//! the line it should have been split long before, nothing is named for a finding, a
+//! module's items are imported in one `use` line, and the store's and sync's errors of the
+//! operating system name their path.
 
 /// The repository's tracked files that `pathspecs` match (all of them when none is given), by their
 /// paths from its root. A listing without `expected` fails the test: a scan of nothing would pass.
@@ -418,5 +419,52 @@ mod import_lines {
         let text = "use a::b::{C, d};\nuse a::b::E;\nuse a::c::F;\npub use a::b::G;\n\
                     #[cfg(test)]\nuse a::b::H;\nuse a::b::{i::{J}, K};\n";
         assert_eq!(split("x.rs", text), ["x.rs:2: a::b"]);
+    }
+}
+
+/// `PathlessErrors`.
+mod pathless_errors {
+    /// The crates whose every operating-system error concerns a file they name: the store's and
+    /// sync's. Only git's runner (pipes, child processes) and the CLI (standard input, the
+    /// terminal) meet errors about no file in particular.
+    const NAMING: [&str; 2] = ["crates/beadroll-store/src/", "crates/beadroll-sync/src/"];
+
+    /// The lines of `text`, the file `name`, that make an error of the operating system without
+    /// its path, as NAME:LINE.
+    fn pathless(name: &str, text: &str) -> Vec<String> {
+        if !NAMING.iter().any(|crate_src| name.starts_with(crate_src)) {
+            return Vec::new();
+        }
+        (text.lines().enumerate())
+            .filter(|(_, line)| line.contains("IoError::bare("))
+            .map(|(at, _)| format!("{name}:{}", at + 1))
+            .collect()
+    }
+
+    /// The store and sync name the path of every error of the operating system they report, as
+    /// `CONTRIBUTING.md` asks (`{strerror}: {path}`): `IoError::at`, never `IoError::bare`.
+    #[test]
+    fn the_store_and_sync_name_the_path_of_every_os_error() {
+        let found: Vec<String> = (super::rust_sources().iter())
+            .flat_map(|(name, text)| pathless(name, text))
+            .collect();
+        assert!(
+            found.is_empty(),
+            "name the path with IoError::at:\n{}",
+            found.join("\n")
+        );
+    }
+
+    /// A path-less error is found in the store and sync, and passed over in git and the CLI.
+    #[test]
+    fn a_pathless_error_is_found_only_where_a_path_is_known() {
+        let line = "    file.write_all(data).map_err(|e| IoError::bare(&e))?;\n";
+        let text = format!("fn a() {{}}\n{line}");
+        assert_eq!(
+            pathless("crates/beadroll-store/src/journal.rs", &text),
+            ["crates/beadroll-store/src/journal.rs:2"]
+        );
+        assert!(pathless("crates/beadroll-git/src/runner.rs", &text).is_empty());
+        assert!(pathless("crates/beadroll/src/commands.rs", &text).is_empty());
     }
 }
