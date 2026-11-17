@@ -112,7 +112,7 @@ the record of it before any test data is written), their tests beside them, and 
    never a shortened sleep. Black-box tests run `bead` through
    `beadroll-test-support`'s `Sandbox` and `Machine`. Test modules named
    after a review or a finding id (`replay_third_review`, `replay_residuals`,
-   `replay_audit_bugs`, `replay_review4`, `root_reaudit`) are history, not a
+   `replay_audit_bugs`, `replay_review4`) are history, not a
    pattern. A new test is named for the contract it checks, and its doc
    comment cites any finding id.
 2. Match the surrounding style: comments in prose that say why; names that

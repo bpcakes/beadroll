@@ -1,20 +1,20 @@
-//! F07–F09, E04, E08, Q06, Q10, U09, U11 and a verified property of F09's fix: what bead reads.
-//! Text that is not UTF-8, on the command line or in a file, is a structured error; an import
-//! checks its dependencies before it writes, fails whole on a record it cannot take (one without a
-//! creation time, or with a lone surrogate anywhere), takes null where a field may be, and keeps a
-//! reserved field it imports from breaking the export; a dependency taken back before its target
-//! exists stays taken back; and an import split in two, or a mutual dependency imported in two
-//! batches, is the one a single import makes.
+//! F07–F09, E04, E08, Q06, Q10, R13, U09, U11 and a verified property of F09's fix: what bead
+//! reads. Text that is not UTF-8, on the command line or in a file, is a structured error; an
+//! import checks its dependencies before it writes, fails whole on a record it cannot take (one
+//! without a creation time, or with a lone surrogate anywhere), takes null where a field may be,
+//! renumbers no comment already exported, and keeps a reserved field it imports from breaking the
+//! export; a dependency taken back before its target exists stays taken back; and an import split
+//! in two, or a mutual dependency imported in two batches, is the one a single import makes.
 
 use std::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
 
-use beadroll_core::json::Object;
+use beadroll_core::json::{Format, Object, write};
 use beadroll_test_support::{Json, Machine, code, json, parse_json, printed_id};
 
 use super::fixtures::{
-    STAND_IN, ascii_json, jsonl, machine, member, record, record_text, strict_json,
+    STAND_IN, ascii_json, jsonl, machine, member, published_issue, record, record_text, strict_json,
 };
 
 /// F07: non-UTF-8 titles and description files return a JSON error and store nothing.
@@ -391,4 +391,52 @@ fn q10_reserved_dangling_extra_cannot_crash_export() {
     assert_eq!(exported.returncode(), 0, "{}", exported.stderr);
     let exported = parse_json(&exported.stdout).unwrap();
     assert_eq!(exported["_dangling_dependencies"], json!("user supplied"));
+}
+
+/// The first comment id in the exported record for key.
+fn first_comment_id(export: &str, key: &str) -> Json {
+    let record = export
+        .lines()
+        .map(|line| parse_json(line).unwrap_or_else(|error| panic!("not JSON ({error}): {line}")))
+        .find(|record| record.get("id").expect("a record's id").as_str() == Some(key))
+        .unwrap_or_else(|| panic!("no record of {key} in {export}"));
+    let comment = &record["comments"][0];
+    let id = comment.get("id").cloned();
+    id.unwrap_or_else(|| panic!("no first comment id in {record:?}"))
+}
+
+/// R13: importing a legacy Beads record whose comment has id 41 does not renumber the comment this
+/// machine had already exported.
+#[test]
+fn importing_legacy_comment_does_not_renumber_existing_local_comment() {
+    let sandbox = crate::sandbox();
+    let (a, key) = published_issue(&sandbox);
+    a.bead(["comments", "add", &key, "existing local comment"]);
+    let before = first_comment_id(&a.export(), &key);
+    let src = sandbox.root().join("legacy.jsonl");
+    let legacy = json!({
+        "id": "re-legacy",
+        "title": "legacy issue",
+        "status": "open",
+        "priority": 2,
+        "issue_type": "task",
+        "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-01T00:00:00Z",
+        "created_by": "audit",
+        "comments": [{
+            "id": 41,
+            "issue_id": "re-legacy",
+            "author": "audit",
+            "text": "legacy",
+            "created_at": "2026-01-01T00:00:00Z"
+        }]
+    });
+    let line = write(&legacy, Format::ASCII).expect("a record") + "\n";
+    std::fs::write(&src, line).expect("the legacy file");
+    a.bead(["import", src.to_str().expect("a UTF-8 path")]);
+    let after = first_comment_id(&a.export(), &key);
+    assert_eq!(
+        after, before,
+        "single-machine import renumbered an already exported comment"
+    );
 }

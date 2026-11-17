@@ -711,8 +711,8 @@ both are recorded here, the second as Q12.
 | R09 | Medium | A scoped null record disabled later sync | fixed | Records without a usable id are reported, not fatal, on the fast path too | `beadroll`: `storage::concurrent_storage::damaged::invalid_own_remote_record_must_not_disable_sync` |
 | R10 | Medium | First machine-identity write exposed an empty file | fixed | Written whole to a temporary file, linked into place | `beadroll`: `storage::concurrent_storage::machine_identity_first_use_is_atomic_across_workspaces`, `storage::concurrent_storage::machine_identity_can_recover_from_first_use_crash` |
 | R11 | Medium | A long valid dependency chain overflowed the cycle scan | fixed | Iterative scan (now Johnson's, see D01) | `beadroll-core`: `replay::scoped_damage::scale::deep_valid_dependency_graph_does_not_overflow_cycle_scan` |
-| R12 | Low | A forced close through `update` did not publish like `close` | fixed | Same transition, same immediate publish | `beadroll`: `protocol::root_reaudit::forced_close_through_update_publishes_like_forced_close` |
-| R13 | Low | A local import renumbered existing comments | fixed | Ids derived from the event (see K01) | `beadroll`: `protocol::root_reaudit::importing_legacy_comment_does_not_renumber_existing_local_comment` |
+| R12 | Low | A forced close through `update` did not publish like `close` | fixed | Same transition, same immediate publish | `beadroll`: `protocol::ownership_updates::forced_close_through_update_publishes_like_forced_close` |
+| R13 | Low | A local import renumbered existing comments | fixed | Ids derived from the event (see K01) | `beadroll`: `commands::input::importing_legacy_comment_does_not_renumber_existing_local_comment` |
 
 ## Interim review (six findings reported inline, no file)
 
@@ -723,7 +723,7 @@ both are recorded here, the second as Q12.
 | I03 | `update --status closed` by the owner did not publish at once | fixed | `publish_soon` on any held claim ended by `update` | `beadroll`: `commands` |
 | I04 | Malformed events reached `apply_event` | fixed | Validation phase before apply | `beadroll-core`: `replay::replay_audit_bugs::bad_event_schema_has_scoped_damage` |
 | I05 | Ownership bookkeeping interleaved with application | fixed | Three-phase replay (classify, supersede, apply) | `beadroll-core`: `replay` (permutation tests) |
-| I06 | `--parent` could form a loop | fixed | Cycle check before emitting | `beadroll`: `protocol::root_reaudit::claim_update_cycle_validation_is_atomic_for_all_targets` |
+| I06 | `--parent` could form a loop | fixed | Cycle check before emitting | `beadroll`: `protocol::ownership_updates::claim_update_cycle_validation_is_atomic_for_all_targets` |
 
 ## Review 1 (`reviews/2026-10-06-1-audit.md`, ids A)
 
