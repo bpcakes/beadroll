@@ -19,6 +19,7 @@ use std::collections::BTreeMap;
 use std::os::unix::fs::MetadataExt as _;
 use std::path::{Path, PathBuf};
 
+use beadroll_core::text::newlines;
 use beadroll_git::is_object_name;
 
 use crate::error::Error;
@@ -424,11 +425,6 @@ fn number<N: std::str::FromStr>(text: &str) -> Option<N> {
         return None;
     }
     text.parse().ok()
-}
-
-/// The number of newline bytes in `data`.
-fn newlines(data: &[u8]) -> usize {
-    data.iter().filter(|b| **b == b'\n').count()
 }
 
 #[cfg(test)]

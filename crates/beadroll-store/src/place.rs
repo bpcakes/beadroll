@@ -95,7 +95,8 @@ fn default_refs(git: &Env) -> Result<Vec<String>, Error> {
         .git(["symbolic-ref", "-q", "refs/remotes/origin/HEAD"])
         .run()?;
     if head.success() {
-        let full = String::from_utf8_lossy(crate::strip_ascii(&head.stdout)).into_owned();
+        let full =
+            String::from_utf8_lossy(beadroll_core::text::strip_bytes(&head.stdout)).into_owned();
         names.push(
             full.strip_prefix("refs/remotes/origin/")
                 .map_or(full.clone(), str::to_owned),

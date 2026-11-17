@@ -209,6 +209,11 @@ pub fn strip(text: &str) -> &str {
     text.trim_matches(is_space)
 }
 
+/// How many newline bytes `data` holds: the lines of a journal segment, each ended by one.
+pub fn newlines(data: &[u8]) -> usize {
+    data.iter().filter(|b| **b == b'\n').count()
+}
+
 /// Bytes without surrounding ASCII space, tab, newline, carriage return, vertical tab or form
 /// feed.
 pub fn strip_bytes(data: &[u8]) -> &[u8] {

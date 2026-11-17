@@ -59,8 +59,3 @@ pub use workspace::{
     DEFAULT_REF, Endpoint, LockState, MetadataRead, PublicationState, REMOTE_REF, RemoteSource,
     Workspace, WorkspaceLock, relative, relative_name, remembered,
 };
-
-/// The bytes without the ASCII whitespace at either end.
-pub(crate) fn strip_ascii(data: &[u8]) -> &[u8] {
-    beadroll_core::text::strip_bytes(data)
-}

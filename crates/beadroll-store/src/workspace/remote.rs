@@ -168,7 +168,7 @@ impl Workspace {
                 } else {
                     let top = self.settings.fact(Fact::Toplevel)?;
                     top.success()
-                        .then(|| crate::strip_ascii(&top.stdout).to_vec())
+                        .then(|| beadroll_core::text::strip_bytes(&top.stdout).to_vec())
                 };
                 if let Some(base) = base {
                     value = joined(base, &value);
@@ -267,7 +267,7 @@ impl Workspace {
         let git = &self.settings.git;
         let ask = |args: &[&OsStr]| -> Result<Option<OsString>, Error> {
             let asked = git.git(args).run()?;
-            let url = OsString::from_vec(crate::strip_ascii(&asked.stdout).to_vec());
+            let url = OsString::from_vec(beadroll_core::text::strip_bytes(&asked.stdout).to_vec());
             Ok(asked.success().then_some(url))
         };
         let (remote, get_url, push) = (OsStr::new("remote"), OsStr::new("get-url"), "--push");
@@ -296,7 +296,7 @@ impl Workspace {
         if !url.as_bytes().starts_with(b"/") {
             let top = self.settings.fact(Fact::Toplevel)?;
             if top.success() {
-                path = joined(crate::strip_ascii(&top.stdout).to_vec(), url);
+                path = joined(beadroll_core::text::strip_bytes(&top.stdout).to_vec(), url);
             }
         }
         Ok(realpath(&path, &self.settings.cwd).into_os_string())
