@@ -12,7 +12,7 @@ use beadroll_test_support::Json;
 use beadroll_test_support::events::Event;
 use beadroll_test_support::json;
 
-use super::replay_reaudit::{id, row};
+use super::scoped_damage::{id, row};
 
 /// Whose issue an event names: itself, another, or none (no `issue` member at all).
 #[derive(Clone, Copy)]

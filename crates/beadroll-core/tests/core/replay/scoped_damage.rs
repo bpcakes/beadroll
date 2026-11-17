@@ -1,6 +1,6 @@
 //! Storage damage stays scoped to the offending event, and replayed state does not depend on
-//! journal delivery order. The merged-parent-cycle command test is in the CLI suite
-//! (`docs/FINDINGS.md`, REAUDIT).
+//! journal delivery order. The merged-parent-cycle command test is the CLI suite's
+//! `replay::merged_cycles`.
 
 mod scale;
 

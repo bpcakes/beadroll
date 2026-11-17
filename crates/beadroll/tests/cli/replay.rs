@@ -28,7 +28,7 @@ mod replay_audit_thread_ownership {
     }
 }
 
-mod replay_reaudit {
+mod merged_cycles {
     use std::collections::BTreeSet;
 
     use beadroll_test_support::{Machine, json, printed_id};

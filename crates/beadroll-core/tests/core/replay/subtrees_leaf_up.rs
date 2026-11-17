@@ -5,7 +5,7 @@
 use beadroll_core::id::EventId;
 use beadroll_test_support::{Json, json};
 
-use super::replay_audit_properties::fixture::Fixture;
+use super::properties::fixture::Fixture;
 
 /// Makes `child` a child of `parent` after the last event.
 fn adopt(f: &mut Fixture, child: &str, parent: &str) {
