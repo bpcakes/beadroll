@@ -12,8 +12,8 @@ use beadroll_core::state::State;
 use beadroll_core::text::{printed_text, str_of};
 use beadroll_core::time::event_time;
 use beadroll_store::{
-    FileMode, Unreadable, history, machine_aliases, projection, read_json_text, view_outline,
-    write_atomic,
+    FileMode, Unreadable, history, layout, machine_aliases, projection, read_json_text,
+    view_outline, write_atomic,
 };
 
 use super::{Context, Failure, Line, Outcome, Tone, resolve_arg};
@@ -188,7 +188,7 @@ fn record_alias(ctx: &Context<'_>, name: &OsStr) -> Result<(), Failure> {
         return Err(Failure::new(Code::Validation, "text is not valid UTF-8"));
     };
     let (ident, alias) = name.split_once('=').unwrap_or((name, ""));
-    let path = ctx.ws.settings.home()?.join("aliases.json");
+    let path = ctx.ws.settings.home()?.join(layout::ALIASES);
     let shown = printed_text(path.as_os_str().as_bytes());
     let cannot = |problem: &str| {
         Failure::new(

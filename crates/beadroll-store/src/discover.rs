@@ -5,6 +5,7 @@ use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::layout;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::text::repr_str;
 use beadroll_git::{
@@ -214,7 +215,7 @@ pub fn workspaces_named(
         })
         .filter(|(id, _)| id != except)
         .filter(|(_, path)| {
-            let meta = std::fs::read(path.join("meta.json"))
+            let meta = std::fs::read(path.join(layout::META))
                 .ok()
                 .and_then(|bytes| {
                     beadroll_core::metadata::Metadata::read(&bytes)
@@ -232,7 +233,7 @@ pub fn workspaces_named(
 
 /// URL-derived ids whose repository's tracker was found under another id (`adopt_published`).
 pub fn moved_workspaces(settings: &Settings) -> Result<Object, Error> {
-    let path = settings.home()?.join("moved.json");
+    let path = settings.home()?.join(layout::MOVED);
     Ok(match read_json_text(&path) {
         Ok(Value::Object(moved)) => moved
             .into_iter()

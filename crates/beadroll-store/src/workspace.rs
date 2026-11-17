@@ -10,6 +10,7 @@ use std::os::unix::ffi::OsStrExt as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::layout;
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::metadata::Metadata;
 use beadroll_core::text::repr_str;
@@ -232,7 +233,7 @@ impl Workspace {
     /// Metadata with its published map kept as typed counts. Ordinary reads borrow only the
     /// fields they need; [`Self::meta`] retains the generic public API for compatibility.
     pub fn metadata(&self, strict: MetadataRead) -> Result<Arc<Metadata>, Error> {
-        let path = self.dir.join("meta.json");
+        let path = self.dir.join(layout::META);
         let problem = match self.read_meta(&path) {
             Ok(meta) => return Ok(meta),
             Err(problem) => problem,
@@ -307,7 +308,7 @@ impl Workspace {
         }
         let meta = Value::from(meta);
         let text = json::write(&meta, Format::INDENTED)?;
-        let path = self.dir.join("meta.json");
+        let path = self.dir.join(layout::META);
         let key = write_atomic_keyed(&path, text.as_bytes(), &self.settings.failpoints)?;
         if let (Some(key), Value::Object(meta)) = (key, meta) {
             *self.meta_read.borrow_mut() = Some((key, Ok(Arc::new(Metadata::from_object(*meta)))));

@@ -33,8 +33,8 @@ use beadroll_git::{
     with_settings,
 };
 use beadroll_store::{
-    Endpoint, Memo, Workspace, claim_files, dir_entries, has_suffix, hex_token, private_dir,
-    relative, segment_files,
+    Endpoint, Memo, Workspace, claim_files, dir_entries, has_suffix, hex_token, layout,
+    private_dir, relative, segment_files,
 };
 
 use crate::error::Error;
@@ -118,7 +118,12 @@ fn link_env(ws: &Workspace) -> Result<Env, Error> {
         is_digit: &beadroll_core::text::is_digits,
         int: &int,
     };
-    let env = sync_env(&settings.git, &ws.dir.join("sync.git"), &carried, &rules)?;
+    let env = sync_env(
+        &settings.git,
+        &ws.dir.join(layout::SYNC_GIT),
+        &carried,
+        &rules,
+    )?;
     let top = settings.fact(Fact::Toplevel)?;
     Ok(if top.success() {
         // the line git prints, without its end: a directory's name may end in a space
@@ -154,7 +159,7 @@ impl<'a> Link<'a> {
     pub fn new(ws: &'a Workspace, remote: &Endpoint) -> Result<Link<'a>, Error> {
         let ref_name = ws.ref_name()?;
         private_dir(&ws.dir)?;
-        let git_dir = ws.dir.join("sync.git");
+        let git_dir = ws.dir.join(layout::SYNC_GIT);
         let env = link_env(ws)?;
         Ok(Link {
             ws,

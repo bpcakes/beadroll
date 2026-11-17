@@ -14,6 +14,7 @@ mod fs;
 mod history;
 mod identity;
 mod journal;
+pub mod layout;
 mod listing;
 mod memo;
 mod place;
