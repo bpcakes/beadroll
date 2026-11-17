@@ -3,34 +3,10 @@
 
 use std::path::PathBuf;
 
-use beadroll_core::json::{Format, Object, write};
+use beadroll_core::json::{Format, write};
 use beadroll_test_support::{Json, Machine, Sandbox, code, json, last_line};
 
-/// A Beads record's required fields.
-fn common() -> Json {
-    json!({
-        "status": "open",
-        "priority": 2,
-        "issue_type": "task",
-        "created_at": "2026-01-01T00:00:00Z",
-        "updated_at": "2026-01-01T00:00:00Z",
-        "created_by": "seed",
-    })
-}
-
-/// The Beads record `{"id": KEY, "title": TITLE, **_g33_common()}`, then the members of `more`.
-fn record(key: &str, title: &str, more: Json) -> Json {
-    let mut members = Object::new();
-    members.insert("id".into(), Json::from(key));
-    members.insert("title".into(), Json::from(title));
-    for part in [common(), more] {
-        match part {
-            Json::Object(part) => members.extend(*part),
-            other => panic!("{other:?} is not an object"),
-        }
-    }
-    Json::from(members)
-}
+use crate::commands::fixtures::record;
 
 /// Machine g33, its tracker initialised with the prefix `ex`.
 fn setup(sandbox: &Sandbox) -> Machine {

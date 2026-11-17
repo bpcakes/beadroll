@@ -8,28 +8,16 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use beadroll_core::json::{Format, Object, write};
-use beadroll_test_support::{
-    Json, Machine, Run, Sandbox, code, json, last_line, parse_json, path_text,
-};
+use beadroll_test_support::{Json, Machine, Run, Sandbox, code, last_line, parse_json, path_text};
 
-/// A Beads record's required fields.
-fn common() -> Json {
-    json!({
-        "status": "open",
-        "priority": 2,
-        "issue_type": "task",
-        "created_at": "2026-01-01T00:00:00Z",
-        "updated_at": "2026-01-01T00:00:00Z",
-        "created_by": "seed",
-    })
-}
+use crate::commands::fixtures::record_fields;
 
 /// The JSON record without its closing brace, so more members can be appended.
 fn head(key: &str, title: &str) -> String {
     let mut members = Object::new();
     members.insert("id".into(), Json::from(key));
     members.insert("title".into(), Json::from(title));
-    if let Json::Object(common) = common() {
+    if let Json::Object(common) = record_fields() {
         members.extend(*common);
     }
     let mut written = write(&Json::from(members), Format::ASCII).expect("a record");

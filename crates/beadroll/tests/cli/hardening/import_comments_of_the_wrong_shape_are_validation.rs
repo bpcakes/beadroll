@@ -4,17 +4,7 @@
 use beadroll_core::json::{Format, Object, write};
 use beadroll_test_support::{Json, Machine, code, json, last_line};
 
-/// A Beads record's required fields.
-fn common() -> Json {
-    json!({
-        "status": "open",
-        "priority": 2,
-        "issue_type": "task",
-        "created_at": "2026-01-01T00:00:00Z",
-        "updated_at": "2026-01-01T00:00:00Z",
-        "created_by": "seed",
-    })
-}
+use crate::commands::fixtures::record;
 
 /// `comments` values that are not a list of objects, each with its name.
 fn shapes() -> [(&'static str, Json); 6] {
@@ -26,20 +16,6 @@ fn shapes() -> [(&'static str, Json); 6] {
         ("true", json!(true)),
         ("list holding null", json!([null])),
     ]
-}
-
-/// The Beads record `{"id": KEY, "title": TITLE, **_g38_common()}`, then the members of `more`.
-fn record(key: &str, title: &str, more: Json) -> Json {
-    let mut members = Object::new();
-    members.insert("id".into(), Json::from(key));
-    members.insert("title".into(), Json::from(title));
-    for part in [common(), more] {
-        match part {
-            Json::Object(part) => members.extend(*part),
-            other => panic!("{other:?} is not an object"),
-        }
-    }
-    Json::from(members)
 }
 
 /// `record` with a `comments` member holding `comments`.

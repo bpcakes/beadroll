@@ -54,8 +54,9 @@ pub(crate) fn metas(machine: &Machine) -> Vec<PathBuf> {
         .collect()
 }
 
-/// `COMMON`: the fields every Beads record these tests import carries.
-pub(crate) fn common() -> Json {
+/// The fields every Beads record these tests import carries besides its id and title: an open
+/// task of priority 2, created and updated at the start of 2026 by `seed`.
+pub(crate) fn record_fields() -> Json {
     json!({
         "status": "open",
         "priority": 2,
@@ -66,12 +67,13 @@ pub(crate) fn common() -> Json {
     })
 }
 
-/// The Beads record `{"id": KEY, "title": TITLE, **COMMON}`, then the members of `more`.
+/// The Beads record with id `key` and title `title`, then [`record_fields`], then the members of
+/// `more`.
 pub(crate) fn record(key: &str, title: &str, more: Json) -> Json {
     let mut members = Object::new();
     members.insert("id".into(), Json::from(key));
     members.insert("title".into(), Json::from(title));
-    for part in [common(), more] {
+    for part in [record_fields(), more] {
         match part {
             Json::Object(part) => members.extend(*part),
             other => panic!("{other:?} is not an object"),
@@ -94,11 +96,11 @@ pub(crate) fn strict_json(text: &str) -> Json {
     parse_json(text).unwrap_or_else(|error| panic!("not strict JSON ({error}): {text:?}"))
 }
 
-/// One Beads record as text: `head`, [`common`] and `tail` merged in that order (a member already
+/// One Beads record as text: `head`, [`record_fields`] and `tail` merged in that order (a member already
 /// there keeps its place and takes the new value), written spaced and ASCII-escaped.
 pub(crate) fn record_text(head: Json, tail: Json) -> String {
     let mut members = Object::new();
-    for part in [head, common(), tail] {
+    for part in [head, record_fields(), tail] {
         let Json::Object(part) = part else {
             panic!("members, not {part:?}");
         };

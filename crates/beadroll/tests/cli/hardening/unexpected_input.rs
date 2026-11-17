@@ -2,19 +2,7 @@
 //! line and in the environment, import records whose members have the wrong shape, and a folder of
 //! the coordination ref whose name is not UTF-8.
 
-use beadroll_test_support::{Json, json};
-
-/// The fields every imported record in these tests carries besides id and title.
-fn common() -> Json {
-    json!({
-        "status": "open",
-        "priority": 2,
-        "issue_type": "task",
-        "created_at": "2026-01-01T00:00:00Z",
-        "updated_at": "2026-01-01T00:00:00Z",
-        "created_by": "seed",
-    })
-}
+use crate::commands::fixtures::record_fields;
 
 mod non_utf8_identity_and_text {
     use std::ffi::{OsStr, OsString};
@@ -130,7 +118,7 @@ mod import_shape_errors {
             let mut record = Object::new();
             record.insert("id".into(), Json::from(format!("ex-{name}")));
             record.insert("title".into(), Json::from(name));
-            for part in [super::common(), extra] {
+            for part in [super::record_fields(), extra] {
                 let Json::Object(members) = part else {
                     panic!("{part:?} is not an object")
                 };
