@@ -3,11 +3,12 @@ Reads ~/Documents/*/.beads/issues.jsonl only; writes nothing outside the scratch
 the preflight record of it before any data is written, are infra/selected.py's: the one BEAD_UNDER_TEST names
 (an absolute path), else the installed one."""
 import glob, json, os, subprocess, sys, time
+import environment
 import selected
 from records import canonical
 BP = selected.local_bead()
 selected.preflight(BP)
-env = {k: v for k, v in os.environ.items() if not k.startswith(("CLAUDE", "CODEX", "BEAD_", "GIT_"))}
+env = environment.scrubbed()
 env.update(BEAD_HOME=os.environ.get("RT_HOME") or os.path.join(os.environ.get("TMPDIR", "/tmp"), "bead-roundtrip-home"), BEAD_AGENT="human")
 total = same = 0; diffs = []; rows = []; failed = False
 for path in sorted(glob.glob(os.path.expanduser("~/Documents/*/.beads/issues.jsonl"))):
