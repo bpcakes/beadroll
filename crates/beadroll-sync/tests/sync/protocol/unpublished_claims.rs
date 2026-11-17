@@ -1,5 +1,4 @@
-//! A claim whose publish never reached the remote, and the fences that settle it
-//! (the second independent audit, 2026-10-06).
+//! A claim whose publish never reached the remote, and the fences that settle it.
 
 use beadroll_core::code::Code;
 use beadroll_store::{Endpoint, Workspace};

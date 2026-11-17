@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use super::{git_wrapper, setup, two};
-use crate::protocol::sync_audit::HookPosition;
+use crate::protocol::journal_sync::HookPosition;
 use beadroll_test_support::ProcessGroup;
 
 /// How long a process the test waits for may take: `communicate(timeout=5)`, `run(timeout=5)`.

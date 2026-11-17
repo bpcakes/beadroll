@@ -1,8 +1,7 @@
-//! A release the remote accepted while bead heard nothing back (its push
-//! still running when bead stopped waiting, or its acknowledgement lost) is found accepted and
-//! reported as a success, never built again; one whose push had not landed when bead's next round
-//! began is fenced by that round and built again, once (the third independent review,
-//! 2026-10-06).
+//! A release the remote accepted while bead heard nothing back (its push still running when bead
+//! stopped waiting, or its acknowledgement lost) is found accepted and reported as a success, never
+//! built again; one whose push had not landed when bead's next round began is fenced by that round
+//! and built again, once.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};

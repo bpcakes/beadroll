@@ -1,10 +1,9 @@
-//! The first independent audit (AUDIT, 2026-10-06) of the journal and its sync: an
-//! append cut short, a journal forked by a rewritten or a copied history, rotation under parallel
-//! writers, a remote that lost its history, lost acknowledgements, and git stalled in a push or a
-//! fetch. Its tests are grouped by subject in the modules below; their shared helpers are here.
-//! The kill in the middle of an append and the exhaustion of a command's retries
-//! are `rust_only`: they stop the Rust `bead` at its `append.mid` failpoint, and skip its waits
-//! between rounds at `backoff`.
+//! The journal and its sync: an append cut short, a journal forked by a rewritten or a copied
+//! history, rotation under parallel writers, a remote that lost its history, lost acknowledgements,
+//! and git stalled in a push or a fetch. Its tests are grouped by subject in the modules below;
+//! their shared helpers are here. The kill in the middle of an append and the exhaustion of a
+//! command's retries are `rust_only`: they stop the Rust `bead` at its `append.mid` failpoint, and
+//! skip its waits between rounds at `backoff`.
 
 mod forks;
 mod lost_acks;

@@ -1,8 +1,7 @@
-//! `ProtocolReaudit`, black-box: an ownership attempt whose push the remote took while bead heard
-//! nothing back (the acknowledgement lost, the client killed at its timeout, or git exiting 1
-//! after the push) settles one way or the other, whole, and no journal forks (the second
-//! independent audit, 2026-10-06). Related in-process tests are in `beadroll-sync`
-//! (`tests/sync/protocol/protocol_reaudit.rs`).
+//! Black-box: an ownership attempt whose push the remote took while bead heard nothing back (the
+//! acknowledgement lost, the client killed at its timeout, or git exiting 1 after the push) settles
+//! one way or the other, whole, and no journal forks. Related in-process tests are in
+//! `beadroll-sync` (`tests/sync/protocol/unpublished_claims.rs`).
 
 use std::ffi::OsStr;
 use std::os::unix::fs::PermissionsExt as _;
