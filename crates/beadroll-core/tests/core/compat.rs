@@ -86,6 +86,7 @@ mod import_dry_run {
     use beadroll_core::import::dry_run::{preview, problems};
     use beadroll_core::import::{plan_import, read_records};
     use beadroll_core::journal::Journal;
+    use beadroll_core::op::OpName;
     use beadroll_core::replay::replay;
     use beadroll_core::state::State;
     use beadroll_test_support::events::{Event, id};
@@ -207,7 +208,7 @@ mod import_dry_run {
         assert_eq!(
             plan.steps
                 .iter()
-                .filter(|step| step.op() == "dep_remove")
+                .filter(|step| step.op() == OpName::DepRemove)
                 .count(),
             1
         );

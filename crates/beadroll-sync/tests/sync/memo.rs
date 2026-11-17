@@ -7,6 +7,8 @@
 //! from need not have left. A test that measures what a publish hashes therefore moves the memo's
 //! own time past every file first ([`settled_round`]), so that what is measured is change alone.
 
+use beadroll_core::op::OpName;
+
 mod trees;
 
 use std::fs::{FileTimes, OpenOptions};
@@ -120,7 +122,7 @@ fn comment(ws: &Workspace, machine: &Machine, key: &str, text: &str) {
             .map(|issue| issue.uid().to_string());
         let mut data = Object::new();
         data.insert("text".into(), Value::from(text));
-        tx.emit("comment", issue.as_deref(), data, None)?;
+        tx.emit(OpName::Comment, issue.as_deref(), data, None)?;
         Ok(())
     })
     .expect("a comment");

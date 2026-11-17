@@ -1,6 +1,8 @@
 //! `bead init`: the tracker for this repository, optionally with a tracked `.beadroll.json` and an
 //! imported Beads export.
 
+use beadroll_core::op::OpName;
+
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 use std::path::{Path, PathBuf};
@@ -388,7 +390,7 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
             let mut data = Object::new();
             data.insert("prefix".into(), Value::from(prefix.as_str()));
             data.insert("name".into(), Value::from(name.unwrap_or(prefix)));
-            tx.emit("init", None, data, None)?;
+            tx.emit(OpName::Init, None, data, None)?;
         }
         // read before the import, which never changes it: the state then never takes in what an
         // import emits, which would hold every imported text beside the events (roll-lqjj.9)

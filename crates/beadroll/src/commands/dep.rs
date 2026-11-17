@@ -1,6 +1,8 @@
 //! `bead dep`: add or take back a dependency, list one issue's, draw its tree, or find the
 //! dependency cycles.
 
+use beadroll_core::op::OpName;
+
 use std::collections::BTreeSet;
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStrExt as _;
@@ -215,7 +217,7 @@ fn change(
                 let mut data = Object::new();
                 data.insert("to".into(), Value::from(target.uid().to_string()));
                 data.insert("type".into(), Value::from(kind));
-                tx.emit("dep_add", Some(&uid), data, None)?;
+                tx.emit(OpName::DepAdd, Some(&uid), data, None)?;
                 encodable(validity)?;
                 target.key().to_owned()
             }
@@ -224,7 +226,7 @@ fn change(
                 let mut data = Object::new();
                 data.insert("key".into(), Value::from(key.as_str()));
                 data.insert("type".into(), kind.clone().map_or(Value::Null, Value::from));
-                tx.emit("dep_remove", Some(&uid), data, None)?;
+                tx.emit(OpName::DepRemove, Some(&uid), data, None)?;
                 encodable(validity)?;
                 key
             }

@@ -1,6 +1,8 @@
 //! State retained between commands: pending attempts and receipts settled by sync, invalid
 //! pending files and published counts in `meta.json` (`docs/REVIEWING.md` §1).
 
+use beadroll_core::op::OpName;
+
 mod publication;
 
 use std::os::unix::fs::PermissionsExt as _;
@@ -79,7 +81,7 @@ fn leave_pending(ws: &Workspace, actor: &Value, issue: &str, publish: PendingSet
         let mut data = Object::new();
         data.insert("mode".into(), Value::from("online"));
         data.insert("generation".into(), Value::from(1));
-        tx.emit("claim", Some(issue), data, None)?;
+        tx.emit(OpName::Claim, Some(issue), data, None)?;
         let first = tx.ownership[0]["id"].as_str().unwrap().to_owned();
         let folder = ws.dir.join("pending");
         let receipt = format!(

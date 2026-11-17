@@ -1,5 +1,7 @@
 //! `bead create`: one issue, with its parent and dependencies, published at once.
 
+use beadroll_core::op::OpName;
+
 use std::ffi::OsString;
 
 use beadroll_core::code::Code;
@@ -105,19 +107,19 @@ fn write_issue(
         "labels".into(),
         Value::Array(labels.into_iter().map(Value::from).collect()),
     );
-    tx.emit("create", None, data, Some(uid.clone()))?;
+    tx.emit(OpName::Create, None, data, Some(uid.clone()))?;
     encodable(fields.valid.and(labels_valid))?;
     if let Some(parent) = &parent_uid {
         let mut edge = Object::new();
         edge.insert("to".into(), Value::from(parent.as_str()));
         edge.insert("type".into(), Value::from("parent-child"));
-        tx.emit("dep_add", Some(&uid), edge, None)?;
+        tx.emit(OpName::DepAdd, Some(&uid), edge, None)?;
     }
     for (target, kind, valid) in deps {
         let mut edge = Object::new();
         edge.insert("to".into(), Value::from(target.to_string()));
         edge.insert("type".into(), Value::from(kind));
-        tx.emit("dep_add", Some(&uid), edge, None)?;
+        tx.emit(OpName::DepAdd, Some(&uid), edge, None)?;
         encodable(valid)?;
     }
     let st = tx.state()?;

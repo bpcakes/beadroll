@@ -246,29 +246,117 @@ fn ending(data: &mut Object) -> Ending {
     }
 }
 
+/// An operation an event names, one of the fourteen replay applies, by the name format 1 gives
+/// it. Writes name their operation by this, so that a misspelt one does not compile.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum OpName {
+    /// `init`: The tracker begins: its prefix and name.
+    Init,
+    /// `create`: An issue is made, or imported.
+    Create,
+    /// `set`: Fields of an issue are set or cleared.
+    Set,
+    /// `claim`: An issue is claimed, or taken over.
+    Claim,
+    /// `release`: A claim is given up.
+    Release,
+    /// `close`: An issue is closed, ending the claim it names.
+    Close,
+    /// `reopen`: A closed issue is opened again.
+    Reopen,
+    /// `delete`: An issue becomes a tombstone, ending the claim it names.
+    Delete,
+    /// `comment`: A comment is added to an issue.
+    Comment,
+    /// `dep_add`: A dependency is added.
+    DepAdd,
+    /// `dep_remove`: A dependency is taken back.
+    DepRemove,
+    /// `label_add`: Labels are added.
+    LabelAdd,
+    /// `label_remove`: Labels are taken away.
+    LabelRemove,
+    /// `label_set`: An issue's labels are replaced.
+    LabelSet,
+}
+
+impl OpName {
+    /// Every operation, in the order format 1 lists them.
+    pub const ALL: [OpName; 14] = [
+        OpName::Init,
+        OpName::Create,
+        OpName::Set,
+        OpName::Claim,
+        OpName::Release,
+        OpName::Close,
+        OpName::Reopen,
+        OpName::Delete,
+        OpName::Comment,
+        OpName::DepAdd,
+        OpName::DepRemove,
+        OpName::LabelAdd,
+        OpName::LabelRemove,
+        OpName::LabelSet,
+    ];
+
+    /// The name an event gives the operation.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            OpName::Init => "init",
+            OpName::Create => "create",
+            OpName::Set => "set",
+            OpName::Claim => "claim",
+            OpName::Release => "release",
+            OpName::Close => "close",
+            OpName::Reopen => "reopen",
+            OpName::Delete => "delete",
+            OpName::Comment => "comment",
+            OpName::DepAdd => "dep_add",
+            OpName::DepRemove => "dep_remove",
+            OpName::LabelAdd => "label_add",
+            OpName::LabelRemove => "label_remove",
+            OpName::LabelSet => "label_set",
+        }
+    }
+
+    /// The operation `name` names, or `None` for one replay does not apply (a newer bead's, or a
+    /// stand-in's `quarantined` and `invalid`).
+    pub fn from_name(name: &str) -> Option<OpName> {
+        OpName::ALL.into_iter().find(|op| op.as_str() == name)
+    }
+}
+
 impl Op {
     /// The operation's name, as an event names it: what [`Op::read`] read it from, and for a
     /// stand-in `quarantined` or `invalid`.
     pub fn name(&self) -> &str {
         match self {
-            Op::Init { .. } => "init",
-            Op::Create(_) => "create",
-            Op::Set(_) => "set",
-            Op::Claim(_) => "claim",
-            Op::Release(_) => "release",
-            Op::Close(_) => "close",
-            Op::Reopen => "reopen",
-            Op::Delete(_) => "delete",
-            Op::Comment { .. } => "comment",
-            Op::DepAdd { .. } => "dep_add",
-            Op::DepRemove { .. } => "dep_remove",
-            Op::LabelAdd(_) => "label_add",
-            Op::LabelRemove(_) => "label_remove",
-            Op::LabelSet(_) => "label_set",
             Op::Quarantined => "quarantined",
             Op::Invalid => "invalid",
             Op::Unknown(name) => name,
+            known => known.kind().map_or_default(OpName::as_str),
         }
+    }
+
+    /// The operation replay applied, or `None` for a stand-in or an operation it does not know.
+    pub fn kind(&self) -> Option<OpName> {
+        Some(match self {
+            Op::Init { .. } => OpName::Init,
+            Op::Create(_) => OpName::Create,
+            Op::Set(_) => OpName::Set,
+            Op::Claim(_) => OpName::Claim,
+            Op::Release(_) => OpName::Release,
+            Op::Close(_) => OpName::Close,
+            Op::Reopen => OpName::Reopen,
+            Op::Delete(_) => OpName::Delete,
+            Op::Comment { .. } => OpName::Comment,
+            Op::DepAdd { .. } => OpName::DepAdd,
+            Op::DepRemove { .. } => OpName::DepRemove,
+            Op::LabelAdd(_) => OpName::LabelAdd,
+            Op::LabelRemove(_) => OpName::LabelRemove,
+            Op::LabelSet(_) => OpName::LabelSet,
+            Op::Quarantined | Op::Invalid | Op::Unknown(_) => return None,
+        })
     }
 
     /// The operation `name` asks for, its payload read from `data`, which it takes apart: what
@@ -278,12 +366,17 @@ impl Op {
         let present = |data: &mut Object, key: &str| {
             take(data, key).filter(|v| *v != Value::Null).map(Box::new)
         };
-        match name {
-            "init" => Op::Init {
+        let Some(op) = OpName::from_name(name) else {
+            // `quarantined` and `invalid` among them: an event cannot ask to be a stand-in, which
+            // replay takes as reported when it was loaded.
+            return Op::Unknown(name.to_owned());
+        };
+        match op {
+            OpName::Init => Op::Init {
                 prefix: present(data, "prefix"),
                 name: present(data, "name"),
             },
-            "create" => Op::Create(Box::new(Create {
+            OpName::Create => Op::Create(Box::new(Create {
                 key: text(data, "key").unwrap_or_default(),
                 fields: fields(data),
                 labels: strings(data, "labels"),
@@ -298,37 +391,60 @@ impl Op {
                 dangling: items(data, "dangling"),
                 imported: data.get("imported").is_some_and(Value::truthy),
             })),
-            "set" => Op::Set(fields(data)),
-            "claim" => Op::Claim(Box::new(Claiming {
+            OpName::Set => Op::Set(fields(data)),
+            OpName::Claim => Op::Claim(Box::new(Claiming {
                 mode: text(data, "mode"),
                 takeover: text(data, "takeover"),
                 reason: text(data, "reason"),
                 generation: data.get("generation").and_then(IntegerField::read),
             })),
-            "release" => Op::Release(ending(data)),
-            "close" => Op::Close(ending(data)),
-            "reopen" => Op::Reopen,
-            "delete" => Op::Delete(ending(data)),
-            "comment" => Op::Comment {
+            OpName::Release => Op::Release(ending(data)),
+            OpName::Close => Op::Close(ending(data)),
+            OpName::Reopen => Op::Reopen,
+            OpName::Delete => Op::Delete(ending(data)),
+            OpName::Comment => Op::Comment {
                 text: text(data, "text").unwrap_or_default(),
                 author: text(data, "author"),
             },
-            "dep_add" => Op::DepAdd {
+            OpName::DepAdd => Op::DepAdd {
                 to: text(data, "to").unwrap_or_default(),
                 kind: text(data, "type"),
                 meta: Box::new(object(data, "meta")),
             },
-            "dep_remove" => Op::DepRemove {
+            OpName::DepRemove => Op::DepRemove {
                 to: text(data, "to"),
                 key: text(data, "key"),
                 kind: text(data, "type"),
             },
-            "label_add" => Op::LabelAdd(strings(data, "labels")),
-            "label_remove" => Op::LabelRemove(strings(data, "labels")),
-            "label_set" => Op::LabelSet(strings(data, "labels")),
-            // `quarantined` and `invalid` among them: an event cannot ask to be a stand-in, which
-            // replay takes as reported when it was loaded.
-            other => Op::Unknown(other.to_owned()),
+            OpName::LabelAdd => Op::LabelAdd(strings(data, "labels")),
+            OpName::LabelRemove => Op::LabelRemove(strings(data, "labels")),
+            OpName::LabelSet => Op::LabelSet(strings(data, "labels")),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::json::Object;
+
+    use super::{Op, OpName};
+
+    /// Each operation reads back from its own name, and is what replay reads that name as: the one
+    /// list a write names, a payload is checked against and replay applies.
+    #[test]
+    fn every_operation_is_read_back_from_its_name() {
+        for op in OpName::ALL {
+            assert_eq!(OpName::from_name(op.as_str()), Some(op));
+            let read = Op::read(op.as_str(), Object::new());
+            assert_eq!((read.kind(), read.name()), (Some(op), op.as_str()));
+        }
+        for stand_in in ["quarantined", "invalid", "rename", ""] {
+            assert_eq!(OpName::from_name(stand_in), None, "{stand_in:?}");
+            assert_eq!(
+                Op::read(stand_in, Object::new()).kind(),
+                None,
+                "{stand_in:?}"
+            );
         }
     }
 }

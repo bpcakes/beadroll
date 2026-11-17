@@ -2,6 +2,8 @@
 //! and what it emits are here; the store lock and the writes that run a body in one, with what they
 //! hand back of it, are in `tx/writes.rs`.
 
+use beadroll_core::op::OpName;
+
 mod attempt;
 mod materialized;
 mod prepared;
@@ -32,7 +34,7 @@ pub use writes::{
 };
 
 /// Ownership events: settled with the remote, and kept one attempt per file.
-pub const OWNERSHIP: [&str; 2] = ["claim", "release"];
+pub const OWNERSHIP: [OpName; 2] = [OpName::Claim, OpName::Release];
 
 /// One locked read-modify-append on this machine's own journal. Sequential events go to the
 /// journal. Ownership events (`claim`, `release`) form an attempt that is settled with the remote
@@ -113,7 +115,7 @@ impl<'a> Tx<'a> {
     /// id ([`Emitter::emit`]).
     pub fn emit(
         &mut self,
-        op: &str,
+        op: OpName,
         issue: Option<&str>,
         data: Object,
         event_id: Option<String>,
@@ -231,7 +233,7 @@ impl Emitter<'_> {
     /// id. Validate before minting, including the [`MAX_NESTING`] write limit.
     pub fn emit(
         &mut self,
-        op: &str,
+        op: OpName,
         issue: Option<&str>,
         data: Object,
         event_id: Option<String>,
@@ -246,7 +248,7 @@ impl Emitter<'_> {
         event.insert("replica".into(), Value::from(self.replica));
         event.insert("deps".into(), Value::Array(deps));
         event.insert("actor".into(), self.actor.clone());
-        event.insert("op".into(), Value::from(op));
+        event.insert("op".into(), Value::from(op.as_str()));
         let issue = issue.filter(|issue| !issue.is_empty()).unwrap_or(&id);
         event.insert("issue".into(), Value::from(issue));
         event.insert("data".into(), Value::from(data));

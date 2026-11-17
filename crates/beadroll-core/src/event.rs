@@ -10,7 +10,7 @@ mod envelope;
 use crate::id::EventId;
 use crate::json::{Int, Object, Value, member};
 use crate::key::number_too_long;
-use crate::op::IntegerField;
+use crate::op::{IntegerField, OpName};
 use crate::text::repr_str;
 
 pub(crate) use envelope::{Data, Envelope};
@@ -26,24 +26,6 @@ pub enum FieldScope {
 
 /// The format of events this bead reads and writes.
 pub const FORMAT: i64 = 1;
-
-/// The operations replay applies.
-pub const KNOWN_OPS: [&str; 14] = [
-    "init",
-    "create",
-    "set",
-    "claim",
-    "release",
-    "close",
-    "reopen",
-    "delete",
-    "comment",
-    "dep_add",
-    "dep_remove",
-    "label_add",
-    "label_remove",
-    "label_set",
-];
 
 /// The statuses bead's own commands set; Beads tools write others, kept as they are.
 pub const STATUSES: [&str; 6] = [
@@ -311,16 +293,16 @@ pub(crate) fn payload_problem_of(
     issue: Option<&str>,
 ) -> Option<String> {
     let get = |key: &str| data.and_then(|d| member(d, key));
-    if !KNOWN_OPS.contains(&op) {
+    let Some(name) = OpName::from_name(op) else {
         return Some(format!("unknown operation {}", repr_str(op)));
-    }
+    };
     let strings = |key: &str| match get(key) {
         None => true,
         Some(Value::Array(items)) => items.iter().all(|item| matches!(item, Value::Str(_))),
         Some(_) => false,
     };
-    match op {
-        "create" => {
+    match name {
+        OpName::Create => {
             // An id's spelling is exact, so the issue names it exactly when it spells it.
             let names_itself = id.is_some() && issue.and_then(EventId::parse) == id;
             if !names_itself {
@@ -329,13 +311,13 @@ pub(crate) fn payload_problem_of(
                 create_problem(data, &strings)
             }
         }
-        "set" => match get("fields") {
+        OpName::Set => match get("fields") {
             None => Some("fields is not an object".into()),
             Some(fields) => fields_problem(fields, FieldScope::Editable),
         },
-        "dep_add" | "dep_remove" => {
+        OpName::DepAdd | OpName::DepRemove => {
             let has_to = data.is_some_and(|d| member(d, "to").is_some());
-            let target = if has_to || op == "dep_add" {
+            let target = if has_to || name == OpName::DepAdd {
                 get("to")
             } else {
                 get("key")
@@ -345,22 +327,22 @@ pub(crate) fn payload_problem_of(
                 return Some(format!("{op} event has no valid target"));
             }
             // What apply reads beside the target: dep_add's meta, dep_remove's key.
-            let (name, valid) = if op == "dep_add" {
+            let (member_name, valid) = if name == OpName::DepAdd {
                 ("meta", object_or_none(get("meta")))
             } else {
                 ("key", str_or_none(get("key")))
             };
-            (!valid).then(|| format!("{op} event has a malformed {}", repr_str(name)))
+            (!valid).then(|| format!("{op} event has a malformed {}", repr_str(member_name)))
         }
-        "label_add" | "label_remove" | "label_set" => {
+        OpName::LabelAdd | OpName::LabelRemove | OpName::LabelSet => {
             (!strings("labels")).then(|| format!("{op} event has malformed labels"))
         }
-        "comment" => {
+        OpName::Comment => {
             let text_valid = matches!(get("text"), None | Some(Value::Str(_)));
             (!text_valid || !str_or_none(get("author")))
                 .then(|| "comment event is malformed".into())
         }
-        "claim" | "release" | "close" | "reopen" | "delete" => {
+        OpName::Claim | OpName::Release | OpName::Close | OpName::Reopen | OpName::Delete => {
             for key in ["mode", "takeover", "reason", "claim"] {
                 if !str_or_none(get(key)) {
                     return Some(format!("{op} event has a malformed {}", repr_str(key)));
@@ -369,7 +351,7 @@ pub(crate) fn payload_problem_of(
             (!get("generation").is_none_or(is_int))
                 .then(|| "claim event has a malformed generation".into())
         }
-        _ => None,
+        OpName::Init => None,
     }
 }
 
@@ -432,8 +414,11 @@ fn create_problem(data: Option<&Object>, strings: &dyn Fn(&str) -> bool) -> Opti
 /// Stricter validation for new writes: priority and estimated_minutes must be non-negative 32-bit
 /// integers for Beads readers; booleans are refused even though legacy replay accepts them.
 pub fn write_problem(event: &Value) -> Option<String> {
-    let op = event.get("op").and_then(Value::as_str).unwrap_or_default();
-    if !matches!(op, "create" | "set") {
+    let op = event
+        .get("op")
+        .and_then(Value::as_str)
+        .and_then(OpName::from_name);
+    if !matches!(op, Some(OpName::Create | OpName::Set)) {
         return None;
     }
     let fields = data_of(event)

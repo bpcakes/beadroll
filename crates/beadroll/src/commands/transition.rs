@@ -3,6 +3,8 @@
 //! already as asked is left alone and said to be. `close --recursive` closes every issue beneath
 //! each one too, children first, in the same transaction.
 
+use beadroll_core::op::OpName;
+
 use std::collections::HashSet;
 use std::ffi::{OsStr, OsString};
 
@@ -54,11 +56,11 @@ pub(crate) fn transition(
     op: &str,
     args: &TransitionArgs,
 ) -> Result<Outcome, Failure> {
-    // what it does, the status it gives, and that status as said
-    let (verb, status, said) = match op {
-        "close" => ("Closed", "closed", "closed"),
-        "reopen" => ("Reopened", "open", "open"),
-        _ => ("Deleted", "tombstone", "deleted"),
+    // the event it writes, what it does, the status it gives, and that status as said
+    let (kind, verb, status, said) = match op {
+        "close" => (OpName::Close, "Closed", "closed", "closed"),
+        "reopen" => (OpName::Reopen, "Reopened", "open", "open"),
+        _ => (OpName::Delete, "Deleted", "tombstone", "deleted"),
     };
     let written = writing_spent(ctx.ws, ctx.actor, |tx| {
         need_tracker(tx.state()?)?;
@@ -94,7 +96,7 @@ pub(crate) fn transition(
         for &uid in &plan.issues {
             if written.contains(&uid) {
                 for (uid, data) in events.drain(..) {
-                    tx.emit(op, Some(&uid.to_string()), data, None)?;
+                    tx.emit(kind, Some(&uid.to_string()), data, None)?;
                 }
                 written.clear();
             }
@@ -111,7 +113,7 @@ pub(crate) fn transition(
             }
         }
         for (uid, data) in events {
-            tx.emit(op, Some(&uid.to_string()), data, None)?;
+            tx.emit(kind, Some(&uid.to_string()), data, None)?;
         }
         if let Some(failure) = failure.or_else(|| plan.unknown.take()) {
             return Err(failure);

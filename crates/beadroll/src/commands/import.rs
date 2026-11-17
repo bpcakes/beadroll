@@ -2,6 +2,8 @@
 //! One invalid record fails the whole import before anything is written. A dry run says what an
 //! import would do, and imports nothing.
 
+use beadroll_core::op::OpName;
+
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
 
@@ -65,10 +67,10 @@ pub(crate) fn import_records(tx: &mut Tx<'_>, path: &OsStr) -> Result<usize, Fai
     for step in plan.steps {
         match step {
             Step::DepRemove { issue, data } => {
-                tx.emit("dep_remove", Some(&issue.to_string()), data, None)?;
+                tx.emit(OpName::DepRemove, Some(&issue.to_string()), data, None)?;
             }
             Step::Create(data) => {
-                let event = tx.emit("create", None, data, None)?;
+                let event = tx.emit(OpName::Create, None, data, None)?;
                 let id = event.get("id").and_then(Value::as_str).unwrap_or_default();
                 created.push(id.to_owned());
             }
@@ -81,7 +83,7 @@ pub(crate) fn import_records(tx: &mut Tx<'_>, path: &OsStr) -> Result<usize, Fai
                 payload.insert("to".into(), Value::from(to));
                 payload.extend(data);
                 let issue = created.get(issue).cloned().unwrap_or_default();
-                tx.emit("dep_add", Some(&issue), payload, None)?;
+                tx.emit(OpName::DepAdd, Some(&issue), payload, None)?;
             }
         }
     }

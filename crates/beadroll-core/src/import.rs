@@ -10,6 +10,7 @@ use crate::event::{EXPORT_FIELDS, MAX_NESTING, event_problem, payload_problem, w
 use crate::export::reserved;
 use crate::id::EventId;
 use crate::json::{self, Object, Value};
+use crate::op::OpName;
 use crate::state::State;
 use crate::text::{repr_str, strip};
 use crate::work::{Work, tally};
@@ -59,11 +60,11 @@ pub enum Step {
 
 impl Step {
     /// The operation it emits.
-    pub fn op(&self) -> &'static str {
+    pub fn op(&self) -> OpName {
         match self {
-            Step::DepRemove { .. } => "dep_remove",
-            Step::Create(_) => "create",
-            Step::DepAdd { .. } => "dep_add",
+            Step::DepRemove { .. } => OpName::DepRemove,
+            Step::Create(_) => OpName::Create,
+            Step::DepAdd { .. } => OpName::DepAdd,
         }
     }
 }
@@ -193,7 +194,7 @@ fn create_problem(record: &Value, data: &Object) -> Option<ImportError> {
     probe.insert("id".into(), Value::from(PROBE_ID));
     probe.insert("replica".into(), Value::from("probe"));
     probe.insert("deps".into(), Value::Array(Vec::new()));
-    probe.insert("op".into(), Value::from("create"));
+    probe.insert("op".into(), Value::from(OpName::Create.as_str()));
     probe.insert("issue".into(), Value::from(PROBE_ID));
     probe.insert("data".into(), Value::from(data.clone()));
     let probe = Value::from(probe);
