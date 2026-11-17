@@ -1,12 +1,12 @@
-//! F01, F02 and a verified property: the retry of an accepted command is recognised by its receipt
-//! (`pending/*.command`), whatever failed or ran in between, whatever the locale, and whatever
-//! standard input held. The first attempt stops on the crash hook `BEAD_TEST_CRASH_AFTER_PUSH`,
-//! which any bead under test implements: exit status 99 once the remote has taken the push.
+//! F01, F02, E12, E13 and a verified property: the retry of an accepted command is recognised by
+//! its receipt (`pending/*.command`), whatever failed or ran in between, whatever the locale, and
+//! whatever standard input held, and a retry whose file changed is a new request. The first attempt
+//! stops on the crash hook `BEAD_TEST_CRASH_AFTER_PUSH`, which any bead under test implements: exit
+//! status 99 once the remote has taken the push.
 
-use beadroll_test_support::{Invocation, Machine};
+use beadroll_test_support::{Invocation, Machine, printed_id};
 
 use super::fixtures::{count, glob, machine, ops};
-use beadroll_test_support::printed_id;
 
 /// `bead ARGS` from `machine`, stopped by the crash hook right after its push was accepted.
 fn crashing_after_push<'m>(machine: &'m Machine, args: &[&str]) -> Invocation<'m> {
@@ -178,4 +178,56 @@ fn receipt_identity_holds_for_actor_sync_stdin_and_json() {
     assert_eq!(crashed.returncode(), 99, "{}", crashed.stderr);
     assert_eq!(retry.returncode(), 0, "{}", retry.stderr);
     assert_eq!(count(&ops(&flagged, &key), "set"), 1);
+}
+
+/// E12: rendering in a reduced locale must not report failure after committing.
+#[test]
+fn e12_ascii_locale_cannot_turn_a_committed_create_into_failure() {
+    let sandbox = crate::sandbox();
+    let machine = machine(&sandbox, "e12-ascii");
+    let result = machine
+        .cmd(["create", "committed but failed"])
+        .env("LC_ALL", "C")
+        .env("LANG", "C")
+        .env("PYTHONUTF8", "0")
+        .env("PYTHONCOERCECLOCALE", "0")
+        .run();
+    assert_eq!(result.returncode(), 0, "{}", result.stderr);
+    assert!(!result.crashed(), "{}", result.stderr);
+    let listed = machine.bead(["list", "--all", "--limit", "0"]).unwrap();
+    let issues = listed["issues"].as_array().expect("issues");
+    let titles: Vec<Option<&str>> = issues.iter().map(|i| i["title"].as_str()).collect();
+    assert_eq!(titles, [Some("committed but failed")]);
+}
+
+/// E13: changed file input is a new semantic request after lost-ack recovery.
+#[test]
+fn e13_receipt_identity_includes_resolved_file_content() {
+    let sandbox = crate::sandbox();
+    let machine = machine(&sandbox, "e13-receipt-file");
+    let key = printed_id(machine.bead(["create", "receipt target"]));
+    machine.bead(["sync"]);
+    let body = sandbox.root().join("description.txt");
+    let file = body.display().to_string();
+    std::fs::write(&body, "first body").unwrap();
+    let update = [
+        "update",
+        &key,
+        "--claim",
+        "--description-file",
+        &file,
+        "--json",
+    ];
+    let first = machine
+        .cmd(update)
+        .env("BEAD_TEST_CRASH_AFTER_PUSH", "1")
+        .run();
+    assert_eq!(first.returncode(), 99, "{}", first.stderr);
+    std::fs::write(&body, "second body").unwrap();
+    let retry = machine.run(update);
+    assert_eq!(retry.returncode(), 0, "{}", retry.stderr);
+    assert_eq!(
+        machine.show(&key)["description"].as_str(),
+        Some("second body")
+    );
 }

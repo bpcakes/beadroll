@@ -1,4 +1,5 @@
-//! The fifth independent review (2026-10-07-5-codex), folded in after the fixes.
+//! What an export says of an issue comes from bead's own fields: a create's compatibility extras
+//! cannot override its id, status or comments.
 
 use beadroll_core::event::payload_problem;
 use beadroll_core::journal::Journal;

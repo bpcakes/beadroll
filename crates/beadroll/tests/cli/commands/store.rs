@@ -1,15 +1,15 @@
-//! F10, F11, F12, F13 and F16: the store's files when they are not what bead wrote. An attempt
-//! with a line that is not an event is inert, a stale pending twin of a confirmed attempt is no
-//! fork, a junk pending file is swept instead of fenced on every sync, the local state files are
-//! read as strict JSON, and a read-only store refuses a write without losing what it holds.
+//! F10–F13, F16 and E09: the store's files when they are not what bead wrote. An attempt with a
+//! line that is not an event is inert, a stale pending twin of a confirmed attempt is no fork, a
+//! junk pending file is swept instead of fenced on every sync, the local state files are read as
+//! strict JSON, a configuration of the wrong types is a structured `CONFIG` error, and a read-only
+//! store refuses a write without losing what it holds.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use beadroll_test_support::{Machine, Run, Sandbox, code, git, parse_json};
+use beadroll_test_support::{Machine, Run, Sandbox, code, git, parse_json, printed_id};
 
 use super::fixtures::{glob, machine};
-use beadroll_test_support::printed_id;
 
 /// The attempt files in `machine`'s store, in directory order, under `events/*/claims/`.
 fn attempts(machine: &Machine) -> Vec<PathBuf> {
@@ -207,4 +207,24 @@ fn f16_read_only_store_write_is_a_structured_error() {
     );
     // The `finally`: should an assertion fail, the sandbox's drop makes the store writable again.
     chmod("u+w", &store);
+}
+
+/// E09: malformed tracked configuration must produce a structured error.
+#[test]
+fn e09_invalid_config_types_return_structured_config_errors() {
+    let sandbox = crate::sandbox();
+    let machine = Machine::new(&sandbox, "e09-config");
+    let config = machine.checkout().join(".beadroll.json");
+    let cases = [
+        "[]\n",
+        "{\"workspace\":\"safe\",\"ref\":42}\n",
+        "{\"workspace\":\"safe\",\"remote\":{\"url\":\"x\"}}\n",
+    ];
+    for body in cases {
+        std::fs::write(&config, body).unwrap();
+        let result = machine.run(["info", "--json"]);
+        assert_ne!(result.returncode(), 0, "config {body:?}");
+        assert!(!result.crashed(), "config {body:?}: {}", result.stderr);
+        assert_eq!(code(&result), "CONFIG", "config {body:?}");
+    }
 }

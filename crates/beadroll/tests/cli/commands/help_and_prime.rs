@@ -2,8 +2,9 @@
 //! tracker.
 
 use std::path::Path;
+use std::process::Command;
 
-use beadroll_test_support::{Machine, Sandbox, code, parse_json};
+use beadroll_test_support::{Machine, Run, Sandbox, code, parse_json};
 
 /// A sandbox and one machine, `help-a`.
 fn set_up() -> (Sandbox, Machine) {
@@ -115,4 +116,35 @@ fn prime_and_onboard_work_with_and_without_a_tracker() {
         agents.contains(onboard.stdout.trim()),
         "AGENTS.md's work-tracking block must be bead onboard's output"
     );
+}
+
+/// V02: top-level and subcommand help are local, side-effect free operations.
+#[test]
+fn v02_help_needs_no_repository_and_creates_no_state() {
+    // The sandbox names the bead under test; the help runs in a new directory of its own, in no
+    // repository, with the test's whole environment and a home that does not exist.
+    let sandbox = crate::sandbox();
+    let root = sandbox.root().join("help-outside-a-repository");
+    std::fs::create_dir(&root).unwrap();
+    let state = root.join("state");
+    for args in [&["--help"][..], &["create", "--help"]] {
+        let output = Command::new(sandbox.bead())
+            .args(args)
+            .current_dir(&root)
+            .env("BEAD_HOME", &state)
+            .output()
+            .expect("bead runs");
+        let result = Run {
+            status: output.status,
+            stdout: String::from_utf8(output.stdout).expect("UTF-8 output"),
+            stderr: String::from_utf8(output.stderr).expect("UTF-8 errors"),
+        };
+        assert_eq!(result.returncode(), 0, "{args:?}: {}", result.stderr);
+        assert!(
+            result.stdout.to_lowercase().contains("usage:"),
+            "{args:?}: {}",
+            result.stdout
+        );
+        assert!(!state.exists(), "{args:?} created {}", state.display());
+    }
 }

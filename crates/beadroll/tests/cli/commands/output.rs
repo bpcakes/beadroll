@@ -1,16 +1,17 @@
-//! F04, F05, F06 and verified properties: what bead prints and the files it writes for others to
-//! read. Files written into a checkout follow the caller's umask while the store stays private, the
-//! human output escapes what a terminal would act on, `--json` keeps text exactly, a closed stream
-//! leaves the command's own status, and the help pages create no state.
+//! F04–F06, E01, E05–E07, V01 and verified properties: what bead prints and the files it writes for
+//! others to read. Files written into a checkout follow the caller's umask while the store stays
+//! private, the human output escapes what a terminal would act on, `--json` is always JSON and
+//! keeps text exactly, an export never holds a number JSON cannot, a closed stream leaves the
+//! command's own status, and the help pages create no state.
 
+use std::io::Read as _;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 
-use beadroll_test_support::{Machine, Run, parse_json};
+use beadroll_test_support::{Machine, Run, code, parse_json, printed_id};
 
-use super::fixtures::{machine, metas};
-use beadroll_test_support::printed_id;
+use super::fixtures::{machine, metas, strict_json};
 
 /// The permission bits of `path`: `stat.S_IMODE(path.stat().st_mode)`.
 fn mode(path: &Path) -> u32 {
@@ -177,4 +178,104 @@ fn prime_matches_ready_and_help_outside_a_repository_is_silent() {
         assert!(!result.crashed(), "{args:?}: {}", result.stderr);
         assert!(!state.exists(), "{args:?} made {}", state.display());
     }
+}
+
+/// E01: untrusted fields must not execute terminal protocols or forge lines.
+#[test]
+fn e01_human_output_escapes_terminal_controls() {
+    let sandbox = crate::sandbox();
+    let machine = machine(&sandbox, "e01-terminal");
+    let title = "safe\x1b]52;c;SGVsbG8=\x07\nFORGED: success";
+    let created = machine.run(["create", title]);
+    assert_eq!(created.returncode(), 0, "{}", created.stderr);
+    let listing = machine.run(["list"]);
+    assert_eq!(listing.returncode(), 0, "{}", listing.stderr);
+    for output in [&created.stdout, &listing.stdout] {
+        assert!(!output.contains('\x1b'), "{output:?}");
+        assert!(!output.contains('\x07'), "{output:?}");
+        assert!(!output.contains("\nFORGED: success"), "{output:?}");
+    }
+}
+
+/// E05: every successful --json command must emit valid JSON.
+#[test]
+fn e05_silent_create_still_honors_json_mode() {
+    let sandbox = crate::sandbox();
+    let machine = machine(&sandbox, "e05-silent");
+    let created = machine.run(["create", "machine result", "--silent", "--json"]);
+    assert_eq!(created.returncode(), 0, "{}", created.stderr);
+    let result = parse_json(&created.stdout).unwrap_or_else(|error| {
+        panic!(
+            "successful --json output was not JSON: {error}; bytes={:?}",
+            created.stdout
+        )
+    });
+    let members = result.as_object().unwrap_or_else(|| panic!("{result:?}"));
+    assert!(members.contains_key("id"), "{result:?}");
+}
+
+/// E06: accepted data must not make Beads JSONL violate RFC 8259.
+#[test]
+fn e06_export_never_emits_nonfinite_json_numbers() {
+    let sandbox = crate::sandbox();
+    let machine = machine(&sandbox, "e06-json");
+    let source = sandbox.root().join("nonfinite.jsonl");
+    let nonfinite = concat!(
+        r#"{"id":"ex-nan","title":"bad number","status":"open","priority":2,"#,
+        r#""issue_type":"task","created_at":"2026-01-01T00:00:00Z","#,
+        r#""updated_at":"2026-01-01T00:00:00Z","created_by":"seed","score":NaN}"#,
+        "\n",
+    );
+    std::fs::write(&source, nonfinite).unwrap();
+    let imported = machine.run(["import", &source.display().to_string(), "--json"]);
+    // refused whole, with an error that is itself strict JSON: nothing is there to export
+    assert_eq!(imported.returncode(), 1, "{}", imported.stdout);
+    strict_json(&imported.stderr);
+    assert_eq!(code(&imported), "VALIDATION", "{}", imported.stderr);
+    let exported = machine.run(["export"]);
+    assert_eq!(exported.returncode(), 0, "{}", exported.stderr);
+    assert_eq!(exported.stdout, "");
+}
+
+/// E07: an early pipeline consumer exit must not produce flush errors.
+#[test]
+fn e07_closed_downstream_pipe_has_defined_quiet_exit() {
+    let sandbox = crate::sandbox();
+    let machine = machine(&sandbox, "e07-pipe");
+    let key = printed_id(machine.bead(["create", "pipe target"]));
+    let mut command = machine.cmd(["show", &key]).command();
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("bead starts");
+    // the reader of standard output is gone before bead writes to it
+    drop(child.stdout.take());
+    let mut stderr = Vec::new();
+    child
+        .stderr
+        .take()
+        .expect("bead's standard error")
+        .read_to_end(&mut stderr)
+        .expect("bead's standard error");
+    let run = Run {
+        status: child.wait().expect("bead ends"),
+        stdout: String::new(),
+        stderr: String::from_utf8_lossy(&stderr).into_owned(),
+    };
+    // a reader that went away is a quiet exit 0, whether bead found it gone or wrote first
+    assert_eq!(run.returncode(), 0, "{}", run.stderr);
+    assert_eq!(run.stderr, "");
+}
+
+/// V01: the standard JSON serializer keeps control data inert and recoverable.
+#[test]
+fn v01_machine_json_preserves_and_escapes_control_data() {
+    let sandbox = crate::sandbox();
+    let machine = machine(&sandbox, "v01-json-control");
+    let title = "safe\x1b]52;c;SGVsbG8=\x07\nline";
+    let result = machine.run(["create", title, "--json"]);
+    assert_eq!(result.returncode(), 0, "{}", result.stderr);
+    assert!(!result.stdout.contains('\x1b'), "{:?}", result.stdout);
+    assert_eq!(strict_json(&result.stdout)["title"].as_str(), Some(title));
 }

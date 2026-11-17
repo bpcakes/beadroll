@@ -1,16 +1,17 @@
-//! F07, F08, F09 and a verified property of F09's fix: what bead reads. Text that is not UTF-8, on
-//! the command line or in a file, is a structured error; an import checks its dependencies before
-//! it writes; a dependency taken back before its target exists stays taken back; and a mutual
-//! dependency imported in two batches is the one a single import makes.
+//! F07–F09, E04, E08, U09, U11 and a verified property of F09's fix: what bead reads. Text that is
+//! not UTF-8, on the command line or in a file, is a structured error; an import checks its
+//! dependencies before it writes, fails whole on a record it cannot take (one without a creation
+//! time, or with a lone surrogate anywhere) and takes null where a field may be; a dependency taken
+//! back before its target exists stays taken back; and a mutual dependency imported in two batches
+//! is the one a single import makes.
 
 use std::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
 
-use beadroll_test_support::{Json, Machine, code, json, parse_json};
+use beadroll_test_support::{Json, Machine, code, json, parse_json, printed_id};
 
-use super::fixtures::{jsonl, machine, record};
-use beadroll_test_support::printed_id;
+use super::fixtures::{STAND_IN, jsonl, machine, record, record_text, strict_json};
 
 /// F07: non-UTF-8 titles and description files return a JSON error and store nothing.
 #[test]
@@ -188,4 +189,128 @@ fn f09_dangling_dependency_can_be_retracted_before_its_target_exists() {
 /// The text of a JSON string.
 fn str_of(value: &Json) -> String {
     value.as_str().expect("a string").to_owned()
+}
+
+/// E04: an import count and exit zero must mean the issue was imported.
+#[test]
+fn e04_invalid_import_fails_instead_of_counting_an_inert_event() {
+    let sandbox = crate::sandbox();
+    let machine = machine(&sandbox, "e04-import");
+    let source = sandbox.root().join("invalid.jsonl");
+    let invalid = record_text(
+        json!({"id": "ex-invalid", "title": "discarded"}),
+        // a lower-case custom status imports
+        json!({"status": "NOT A STATUS"}),
+    );
+    std::fs::write(&source, invalid + "\n").unwrap();
+    let imported = machine.run(["import", &source.display().to_string(), "--json"]);
+    assert_ne!(imported.returncode(), 0, "{}", imported.stdout);
+    let error = strict_json(&imported.stderr)["error"].clone();
+    assert_eq!(error["code"].as_str(), Some("VALIDATION"), "{error:?}");
+    assert_eq!(machine.bead(["info"]).unwrap()["integrity"], json!([]));
+}
+
+/// E08: values accepted by import validation must be safe in every query path.
+#[test]
+fn e08_nullable_import_values_do_not_crash_render_or_export() {
+    let sandbox = crate::sandbox();
+    let machine = machine(&sandbox, "e08-nullable");
+    let comments = sandbox.root().join("nullable-comment.jsonl");
+    let commented = record_text(
+        json!({"id": "ex-null", "title": "nullable comment"}),
+        json!({"comments": [{"id": 1, "author": null, "text": "hello", "created_at": null}]}),
+    );
+    std::fs::write(&comments, commented + "\n").unwrap();
+    let imported = machine.run(["import", &comments.display().to_string(), "--json"]);
+    assert_eq!(imported.returncode(), 0, "{}", imported.stderr);
+    for args in [["show", "ex-null"], ["comments", "ex-null"]] {
+        let result = machine.run(args);
+        assert_eq!(result.returncode(), 0, "{args:?}: {}", result.stderr);
+    }
+
+    let dependencies = sandbox.root().join("nullable-dependencies.jsonl");
+    let depending = record_text(
+        json!({"id": "ex-deps", "title": "nullable dependency"}),
+        json!({"dependencies": [
+            {"issue_id": "ex-deps", "depends_on_id": "missing", "type": null},
+            {"issue_id": "ex-deps", "depends_on_id": "missing", "type": "blocks"}
+        ]}),
+    );
+    std::fs::write(&dependencies, depending + "\n").unwrap();
+    let imported = machine.run(["import", &dependencies.display().to_string(), "--json"]);
+    assert_eq!(imported.returncode(), 0, "{}", imported.stderr);
+    let exported = machine.run(["export"]);
+    assert_eq!(exported.returncode(), 0, "{}", exported.stderr);
+}
+
+/// U09 (docs/FINDINGS.md): a record whose created_at is null imported, and then `list` failed
+/// comparing times; the import fails whole instead, and the tracker keeps listing.
+#[test]
+fn u09_a_record_without_a_creation_time_is_not_imported() {
+    let sandbox = crate::sandbox();
+    let machine = machine(&sandbox, "u09-created");
+    machine.bead(["create", "listed first"]);
+    let source = sandbox.root().join("no-creation-time.jsonl");
+    let untimed = record_text(
+        json!({"id": "ex-untimed", "title": "no time"}),
+        json!({"created_at": null}),
+    );
+    std::fs::write(&source, untimed + "\n").unwrap();
+    let imported = machine.run(["import", &source.display().to_string(), "--json"]);
+    assert_eq!(imported.returncode(), 1, "{}", imported.stdout);
+    assert_eq!(
+        strict_json(&imported.stderr)["error"],
+        json!({
+            "code": "VALIDATION",
+            "message": "record 'ex-untimed' cannot be imported: field 'created_at' cannot be cleared"
+        })
+    );
+    let listed = machine.bead(["list"]).unwrap();
+    let issues = listed["issues"].as_array().expect("issues");
+    let titles: Vec<Option<&str>> = issues.iter().map(|i| i["title"].as_str()).collect();
+    assert_eq!(titles, [Some("listed first")]);
+}
+
+/// U11 (docs/FINDINGS.md): an escaped lone surrogate failed an import only where it reached an
+/// event ("text is not valid UTF-8" when the create was written), and passed where the import
+/// drops it (a known record, source_repo_path); every record is refused for it, as a raw one
+/// already was: since roll-lqjj.53 the record is not valid JSONL at all, named by its line.
+#[test]
+fn u11_an_escaped_lone_surrogate_fails_the_import_wherever_it_is() {
+    let sandbox = crate::sandbox();
+    let machine = machine(&sandbox, "u11-surrogate");
+    let good = record_text(json!({"id": "ex-fine", "title": "fine"}), json!({}));
+    // A Rust string cannot hold a lone surrogate. Write STAND_IN instead, then replace its JSON
+    // escape with the surrogate escape.
+    let escape = |unit: u32| format!(r"\u{unit:04x}");
+    let lone = |line: String, surrogate: u32| {
+        let stand_in = escape(u32::from(STAND_IN));
+        assert!(line.contains(&stand_in), "{line}");
+        line.replace(&stand_in, &escape(surrogate))
+    };
+    let title = record_text(
+        json!({"id": "ex-1"}),
+        json!({"title": (format!("a{STAND_IN}"))}),
+    );
+    let dropped = record_text(
+        json!({"id": "ex-2", "title": "b"}),
+        json!({"source_repo_path": (STAND_IN.to_string())}),
+    );
+    let cases = [
+        ("title", lone(title, 0xD800)),
+        ("dropped", lone(dropped, 0xDC00)),
+    ];
+    for (name, bad) in cases {
+        let source = sandbox.root().join(format!("{name}.jsonl"));
+        // escaped: ASCII text
+        std::fs::write(&source, format!("{good}\n{bad}\n")).unwrap();
+        let imported = machine.run(["import", &source.display().to_string(), "--json"]);
+        assert_eq!(imported.returncode(), 1, "{name}: {}", imported.stdout);
+        let error = strict_json(&imported.stderr)["error"].clone();
+        assert_eq!(error["code"], json!("VALIDATION"), "{name}: {error:?}");
+        let message = error["message"].as_str().unwrap_or_default();
+        let expected = format!("{}:2 is not valid JSONL: ", source.display());
+        assert!(message.starts_with(&expected), "{name}: {message}");
+    }
+    assert_eq!(machine.bead(["list"]).unwrap()["issues"], json!([]));
 }
