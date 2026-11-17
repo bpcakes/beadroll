@@ -1,9 +1,9 @@
 //! A scoped writer puts every emitted event in the transaction's ownership attempt. Borrowing
 //! the transaction prevents ordinary emission until this writer is released; no flag is toggled.
 
+use beadroll_core::id::EventId;
+use beadroll_core::json::Object;
 use beadroll_core::op::OpName;
-
-use beadroll_core::json::{Object, Value};
 use beadroll_core::state::State;
 
 use super::{Emitter, Tx};
@@ -48,7 +48,7 @@ impl Attempt<'_, '_> {
         issue: Option<&str>,
         data: Object,
         event_id: Option<String>,
-    ) -> Result<Value, Error> {
+    ) -> Result<EventId, Error> {
         let mut emitter = self.tx.emitter();
         emitter.route = Route::Attempt;
         emitter.emit(op, issue, data, event_id)

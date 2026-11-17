@@ -69,9 +69,7 @@ pub(crate) fn import_records(tx: &mut Tx<'_>, path: &OsStr) -> Result<usize, Fai
                 tx.emit(OpName::DepRemove, Some(&issue.to_string()), data, None)?;
             }
             Step::Create(data) => {
-                let event = tx.emit(OpName::Create, None, data, None)?;
-                let id = event.get("id").and_then(Value::as_str).unwrap_or_default();
-                created.push(id.to_owned());
+                created.push(tx.emit(OpName::Create, None, data, None)?.to_string());
             }
             Step::DepAdd { issue, to, data } => {
                 let to = match to {
