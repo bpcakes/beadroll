@@ -85,8 +85,9 @@ fn bug_local_write_after_lost_ack_must_not_fork_accepted_claim() {
     assert_eq!(a.show(&key)["comments"][0]["text"].as_str(), Some(text));
 }
 
-/// A claim whose push the remote applied but that gave no answer within the network timeout (0.4
-/// seconds; the push is held 20) is recovered: either a later round of the same command finds the
+/// A claim whose push the remote applied but that gave no answer within the network timeout (2
+/// seconds, which a real push has to finish within on a loaded machine; the answer is held 20) is
+/// recovered: either a later round of the same command finds the
 /// attempt on the remote and confirms it, or the command fails as unreachable or unresolved,
 /// counting nothing, and the next claim confirms it. Generation 1 either way, and the other machine
 /// sees the same claim.
@@ -98,7 +99,7 @@ fn claim_timeout_after_real_applied_push_is_recovered() {
     let marker = sandbox.root().join("pushed");
     let path = git_wrapper(&sandbox, "push", &marker, HookPosition::After);
     let claiming = a.cmd(["claim", &key, "--json"]).env("PATH", path);
-    let result = claiming.env("BEAD_NET_TIMEOUT", "0.4").run();
+    let result = claiming.env("BEAD_NET_TIMEOUT", "2").run();
     assert!(marker.exists());
     let recovered = if result.returncode() == 0 {
         // The attempt stayed pending after the unanswered push; the next round of the same
