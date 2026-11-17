@@ -2,6 +2,8 @@
 //! journal delivery order. The merged-parent-cycle command test is the CLI suite's
 //! `replay::merged_cycles`.
 
+use beadroll_test_support::{Json, json, json_id};
+
 mod scale;
 
 use beadroll_core::event::{Field, FieldType, REGISTERS, REQUIRED_FIELDS};
@@ -10,9 +12,7 @@ use beadroll_core::journal::JournalOrder;
 use beadroll_core::json::{Format, Int, write};
 use beadroll_core::replay::replay;
 use beadroll_core::state::{Integrity, State};
-use beadroll_test_support::Json;
 use beadroll_test_support::events::{Event, journal};
-use beadroll_test_support::json;
 
 /// Events with fixed UUIDv7s, so every order assertion is independent of the clock.
 pub(crate) struct Fixture {
@@ -50,17 +50,12 @@ impl Fixture {
         let create = self.event(
             "create",
             "a",
-            &[&id(&init)],
+            &[&json_id(&init)],
             None,
             json!({"key": "ex-ok", "fields": {"title": "survivor"}}),
         );
         (init, create)
     }
-}
-
-/// An event's id.
-pub(crate) fn id(event: &Json) -> String {
-    event["id"].as_str().unwrap().to_owned()
 }
 
 /// The state `events` replay to, each in its writer's journal.
@@ -112,7 +107,7 @@ pub(crate) fn projection(journal: Journal) -> String {
 
 /// The issue `event` created.
 fn issue<'a>(st: &'a State, event: &Json) -> &'a beadroll_core::state::Issue {
-    st.issue_named(&id(event)).unwrap()
+    st.issue_named(&json_id(event)).unwrap()
 }
 
 /// A copy of `event` with member `name` set to `value`.
@@ -148,7 +143,7 @@ fn malformed_duplicate_order_does_not_change_projection() {
         right.hydrated().unwrap().export_records()
     );
     assert!(
-        left.issue_named(&id(&create)).is_none(),
+        left.issue_named(&json_id(&create)).is_none(),
         "ambiguous event must be ignored in either order"
     );
 }
@@ -160,17 +155,17 @@ fn quarantined_variant_cannot_hold_descendants_in_cycle() {
     let child = f.event(
         "create",
         "a",
-        &[&id(&create)],
+        &[&json_id(&create)],
         None,
         json!({"key": "ex-child", "fields": {"title": "unrelated survivor"}}),
     );
-    let variant = with(&create, "deps", json!([(id(&child))]));
+    let variant = with(&create, "deps", json!([(json_id(&child))]));
     let st = replayed(&[init, create, child.clone(), variant]);
     assert!(
         st.pending().is_empty(),
         "quarantined event must not hold later frontier events"
     );
-    assert!(st.issue_named(&id(&child)).is_some());
+    assert!(st.issue_named(&json_id(&child)).is_some());
     assert_eq!(st.integrity().len(), 1);
 }
 
@@ -178,7 +173,7 @@ fn quarantined_variant_cannot_hold_descendants_in_cycle() {
 fn invalid_timestamp_is_scoped_even_when_event_is_inert() {
     let mut f = Fixture::new();
     let (init, create) = f.fixture();
-    let invalid = f.event("future_op", "b", &[&id(&create)], None, json!({}));
+    let invalid = f.event("future_op", "b", &[&json_id(&create)], None, json!({}));
     let invalid = with(
         &invalid,
         "id",
@@ -196,8 +191,8 @@ fn non_scalar_actor_thread_is_scoped() {
     let invalid = f.event(
         "comment",
         "b",
-        &[&id(&create)],
-        Some(&id(&create)),
+        &[&json_id(&create)],
+        Some(&json_id(&create)),
         json!({"text": "bad"}),
     );
     let invalid = with(
@@ -223,8 +218,8 @@ fn malformed_set_is_atomic_and_cannot_overwrite_internal_state() {
     let invalid = f.event(
         "set",
         "b",
-        &[&id(&create)],
-        Some(&id(&create)),
+        &[&json_id(&create)],
+        Some(&json_id(&create)),
         json!({"fields": {"title": "partial poison", "reg": null}}),
     );
     let st = replayed(&[init, create.clone(), invalid]);
@@ -250,8 +245,8 @@ fn duplicate_create_uid_does_not_destroy_issue() {
     let overwrite = f.event(
         "create",
         "b",
-        &[&id(&create)],
-        Some(&id(&create)),
+        &[&json_id(&create)],
+        Some(&json_id(&create)),
         json!({"key": "ex-other", "fields": {"title": "replacement"}}),
     );
     let st = replayed(&[init, create, overwrite]);
@@ -263,7 +258,7 @@ fn duplicate_create_uid_does_not_destroy_issue() {
 fn offline_forged_takeover_stays_provisional_and_does_not_fence_close() {
     let mut f = Fixture::new();
     let (init, create) = f.fixture();
-    let uid = id(&create);
+    let uid = json_id(&create);
     let claim = f.event(
         "claim",
         "a",
@@ -274,16 +269,16 @@ fn offline_forged_takeover_stays_provisional_and_does_not_fence_close() {
     let fake = f.event(
         "claim",
         "b",
-        &[&id(&claim)],
+        &[&json_id(&claim)],
         Some(&uid),
-        json!({"mode": "offline", "generation": 999, "takeover": (id(&claim)), "reason": "offline"}),
+        json!({"mode": "offline", "generation": 999, "takeover": (json_id(&claim)), "reason": "offline"}),
     );
     let close = f.event(
         "close",
         "a",
-        &[&id(&claim)],
+        &[&json_id(&claim)],
         Some(&uid),
-        json!({"claim": (id(&claim))}),
+        json!({"claim": (json_id(&claim))}),
     );
     let st = replayed(&[init, create.clone(), claim, fake, close]);
     let issue = issue(&st, &create);
@@ -297,7 +292,7 @@ fn offline_forged_takeover_stays_provisional_and_does_not_fence_close() {
 fn orphan_takeover_does_not_fence_another_issues_close() {
     let mut f = Fixture::new();
     let (init, create) = f.fixture();
-    let uid = id(&create);
+    let uid = json_id(&create);
     let claim = f.event(
         "claim",
         "a",
@@ -308,16 +303,16 @@ fn orphan_takeover_does_not_fence_another_issues_close() {
     let orphan = f.event(
         "claim",
         "b",
-        &[&id(&claim)],
+        &[&json_id(&claim)],
         Some("019a1111-1111-7000-8000-111111111111"),
-        json!({"mode": "online", "generation": 2, "takeover": (id(&claim)), "reason": "wrong target"}),
+        json!({"mode": "online", "generation": 2, "takeover": (json_id(&claim)), "reason": "wrong target"}),
     );
     let close = f.event(
         "close",
         "a",
-        &[&id(&claim)],
+        &[&json_id(&claim)],
         Some(&uid),
-        json!({"claim": (id(&claim))}),
+        json!({"claim": (json_id(&claim))}),
     );
     let st = replayed(&[init, create.clone(), claim, orphan, close]);
     let issue = issue(&st, &create);
@@ -330,7 +325,7 @@ fn orphan_takeover_does_not_fence_another_issues_close() {
 fn partially_invalid_label_add_applies_nothing() {
     let mut f = Fixture::new();
     let (init, create) = f.fixture();
-    let uid = id(&create);
+    let uid = json_id(&create);
     let bad = f.event(
         "label_add",
         "b",
@@ -350,7 +345,7 @@ fn partially_invalid_label_add_applies_nothing() {
 fn all_registers_preserve_none_against_concurrent_value() {
     let mut f = Fixture::new();
     let (init, create) = f.fixture();
-    let uid = id(&create);
+    let uid = json_id(&create);
     // Q09: the required registers cannot be cleared.
     let clearable: Vec<Field> = REGISTERS
         .into_iter()
@@ -383,7 +378,7 @@ fn all_registers_preserve_none_against_concurrent_value() {
     let settled = f.event(
         "set",
         "d",
-        &[&id(&left), &id(&right)],
+        &[&json_id(&left), &json_id(&right)],
         Some(&uid),
         fields(&|_| Json::Null),
     );
@@ -399,7 +394,7 @@ fn all_registers_preserve_none_against_concurrent_value() {
 fn missing_predecessor_holds_claim_and_close_then_recovers() {
     let mut f = Fixture::new();
     let (init, create) = f.fixture();
-    let uid = id(&create);
+    let uid = json_id(&create);
     let claim = f.event(
         "claim",
         "b",
@@ -410,15 +405,15 @@ fn missing_predecessor_holds_claim_and_close_then_recovers() {
     let close = f.event(
         "close",
         "b",
-        &[&id(&claim)],
+        &[&json_id(&claim)],
         Some(&uid),
-        json!({"claim": (id(&claim))}),
+        json!({"claim": (json_id(&claim))}),
     );
     let mut j = journal(&[init, claim.clone(), close.clone()]);
     let st = replay(j.clone()).unwrap();
     let mut pending: Vec<String> = st.pending().iter().map(ToString::to_string).collect();
     pending.sort();
-    let mut expected = vec![id(&claim), id(&close)];
+    let mut expected = vec![json_id(&claim), json_id(&close)];
     expected.sort();
     assert_eq!(pending, expected);
     assert_eq!(st.issues().count(), 0);
@@ -433,12 +428,12 @@ fn missing_predecessor_holds_claim_and_close_then_recovers() {
 fn ignored_op_with_valid_id_does_not_hold_descendant() {
     let mut f = Fixture::new();
     let (init, create) = f.fixture();
-    let unknown = f.event("future_op", "a", &[&id(&create)], None, json!({}));
+    let unknown = f.event("future_op", "a", &[&json_id(&create)], None, json!({}));
     let child = f.event(
         "comment",
         "a",
-        &[&id(&unknown)],
-        Some(&id(&create)),
+        &[&json_id(&unknown)],
+        Some(&json_id(&create)),
         json!({"text": "survivor"}),
     );
     let st = replayed(&[init, create.clone(), unknown, child]);

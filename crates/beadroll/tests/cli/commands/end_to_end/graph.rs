@@ -3,9 +3,9 @@
 
 use std::collections::BTreeSet;
 
-use beadroll_test_support::{Json, Machine, code};
+use beadroll_test_support::{Json, Machine, code, json_id};
 
-use super::{id, settle, two_machines};
+use super::{settle, two_machines};
 
 /// Readiness follows the rule br uses: an epic waits for its open children and any other parent
 /// does not; an issue held by its prerequisite holds everything beneath it until the prerequisite
@@ -15,7 +15,7 @@ fn readiness_follows_the_rule_br_uses() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
-    let create = |args: &[&str]| id(&a.bead(args).unwrap());
+    let create = |args: &[&str]| json_id(&a.bead(args).unwrap());
     let gate = create(&["create", "prerequisite"]);
     let epic = create(&["create", "epic", "-t", "epic"]);
     let feature = create(&[

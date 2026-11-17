@@ -5,7 +5,7 @@
 use std::path::Path;
 
 use beadroll_core::text::is_space;
-use beadroll_test_support::{Json, Machine, Sandbox, code, json, parse_json};
+use beadroll_test_support::{Json, Machine, Sandbox, code, json, json_id, parse_json};
 
 use super::fixtures::ascii_json;
 
@@ -14,18 +14,14 @@ fn set_up() -> (Sandbox, Machine, String, String) {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "compat");
     a.bead(["init", "--prefix", "ex"]);
-    let x = id(&a.bead(["create", "Issue X"]).unwrap());
-    let y = id(&a.bead(["create", "Issue Y"]).unwrap());
+    let x = json_id(&a.bead(["create", "Issue X"]).unwrap());
+    let y = json_id(&a.bead(["create", "Issue Y"]).unwrap());
     (sandbox, a, x, y)
-}
-
-fn id(value: &Json) -> String {
-    value["id"].as_str().unwrap().to_owned()
 }
 
 /// The ids of a list of issues, in order.
 fn ids(issues: &Json) -> Vec<String> {
-    issues.as_array().unwrap().iter().map(id).collect()
+    issues.as_array().unwrap().iter().map(json_id).collect()
 }
 
 /// The record `key` of a Beads export: the first line that names it.

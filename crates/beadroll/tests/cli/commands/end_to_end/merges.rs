@@ -3,9 +3,9 @@
 
 use std::collections::BTreeSet;
 
-use beadroll_test_support::{Json, Machine, code, git, json};
+use beadroll_test_support::{Json, Machine, code, git, json, json_id};
 
-use super::{column, id, pool_map, settle, two_machines};
+use super::{column, pool_map, settle, two_machines};
 
 /// The text of every value in `values`.
 fn texts(values: &[Json]) -> BTreeSet<String> {
@@ -156,9 +156,9 @@ fn same_child_number_on_two_machines_is_renumbered_identically() {
     let (a, b, x, _) = two_machines(&sandbox);
     let (first, second) = (format!("{x}.1"), format!("{x}.2"));
     let on_a = ["create", "child made on a", "--parent", &x, "--offline"];
-    assert_eq!(id(&a.bead(on_a).unwrap()), first);
+    assert_eq!(json_id(&a.bead(on_a).unwrap()), first);
     let on_b = ["create", "child made on b", "--parent", &x, "--offline"];
-    assert_eq!(id(&b.bead(on_b).unwrap()), first);
+    assert_eq!(json_id(&b.bead(on_b).unwrap()), first);
     a.bead(["sync"]);
     let report = b.bead(["sync"]).unwrap();
     let renamed: Vec<(Json, Json)> = report["renamed"]

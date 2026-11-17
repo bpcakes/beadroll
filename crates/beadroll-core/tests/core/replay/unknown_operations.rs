@@ -2,11 +2,11 @@
 //! nothing, a stand-in's operation included.
 
 use beadroll_core::event::Field;
-use beadroll_test_support::{Json, json};
+use beadroll_test_support::{Json, json, json_id};
 
 use super::builders::actors;
 use super::properties::fixture::{Fixture, issue};
-use super::scoped_damage::{id, row};
+use super::scoped_damage::row;
 
 #[test]
 fn unknown_event_version_is_not_applied_silently() {
@@ -61,12 +61,12 @@ fn an_event_naming_a_stand_ins_operation_is_an_unknown_operation() {
     for op in ["frobnicate", "quarantined", "invalid"] {
         let mut f = actors::Fixture::new();
         let (init, create) = f.base();
-        let uid = id(&create);
+        let uid = json_id(&create);
         let odd = f.event(op, "a", &[&uid], actors::Target::Named(&uid), json!({}));
         let state = actors::replayed(&[(&init, "a"), (&create, "a"), (&odd, "a")]);
         let rows: Vec<Json> = state.integrity().iter().map(row).collect();
         let expected = json!({
-            "event": (id(&odd)),
+            "event": (json_id(&odd)),
             "issue": "ex-one",
             "problem": (format!("unknown operation '{op}'"))
         });

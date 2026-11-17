@@ -4,10 +4,9 @@
 use std::collections::BTreeSet;
 
 use beadroll_core::query::{Edges, find_cycles};
-use beadroll_test_support::{Json, json};
+use beadroll_test_support::{Json, json, json_id};
 
 use super::builders::{actors, id_of, serial};
-use super::scoped_damage::id;
 
 /// The elementary cycles of a graph found by walking every path from each node through larger
 /// ones, each written from its smallest member.
@@ -80,12 +79,12 @@ fn cycle_scan_reports_each_elementary_cycle() {
         json!({"prefix": "ex"}),
     );
     let mut events = vec![init];
-    let mut last = id(&events[0]);
+    let mut last = json_id(&events[0]);
     let mut issues = Vec::new();
     for key in ["a", "b", "c"] {
         let data = json!({"key": (format!("ex-{key}")), "fields": {"title": key}});
         let create = f.event("create", "a", &[&last], actors::Target::Itself, data);
-        last = id(&create);
+        last = json_id(&create);
         issues.push(last.clone());
         events.push(create);
     }
@@ -98,7 +97,7 @@ fn cycle_scan_reports_each_elementary_cycle() {
             actors::Target::Named(&issues[source]),
             data,
         );
-        last = id(&edge);
+        last = json_id(&edge);
         events.push(edge);
     }
     let rows: Vec<(&Json, &str)> = events.iter().map(|event| (event, "a")).collect();

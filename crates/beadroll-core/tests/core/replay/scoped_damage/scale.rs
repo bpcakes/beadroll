@@ -9,11 +9,10 @@ use beadroll_core::journal::Journal;
 use beadroll_core::journal::JournalOrder;
 use beadroll_core::query::Edges;
 use beadroll_core::replay::replay;
-use beadroll_test_support::Json;
 use beadroll_test_support::events::journal;
-use beadroll_test_support::json;
+use beadroll_test_support::{Json, json, json_id};
 
-use super::{Fixture, id, projection};
+use super::{Fixture, projection};
 
 /// A seeded generator (SplitMix64): the same draws on every run.
 struct Rng(u64);
@@ -82,7 +81,7 @@ fn build(rows: &[(Json, &str)], order: &[&str]) -> Journal {
 /// or another, the sixth a valid comment. Also the number of valid comments.
 fn mixed_envelope_rows(f: &mut Fixture, rng: &mut Rng) -> (Vec<(Json, &'static str)>, usize) {
     let (init, create) = f.fixture();
-    let uid = id(&create);
+    let uid = json_id(&create);
     let mut rows = vec![(init, "a"), (create, "a")];
     let mut heads: BTreeMap<&str, String> = BTreeMap::from([("a", uid.clone())]);
     let mut valid_comments = 0;
@@ -124,7 +123,7 @@ fn mixed_envelope_rows(f: &mut Fixture, rng: &mut Rng) -> (Vec<(Json, &'static s
                 f.event("comment", machine, &deps, Some(&uid), text)
             }
         };
-        heads.insert(machine, id(&event));
+        heads.insert(machine, json_id(&event));
         rows.push((event, machine));
     }
     (rows, valid_comments)
@@ -142,7 +141,7 @@ fn six_machine_3600_mixed_envelope_events_are_scoped_and_deterministic() {
     let mut rng = Rng(901_834);
     let mut f = Fixture::new();
     let (rows, valid_comments) = mixed_envelope_rows(&mut f, &mut rng);
-    let uid = id(&rows[1].0);
+    let uid = json_id(&rows[1].0);
     let base = build(&rows, &MACHINES);
     let st = replay(base.clone()).unwrap();
     assert!(st.pending().is_empty());
@@ -167,14 +166,14 @@ fn six_machine_3600_mixed_envelope_events_are_scoped_and_deterministic() {
 fn deep_valid_dependency_graph_does_not_overflow_cycle_scan() {
     let mut f = Fixture::new();
     let (init, first) = f.fixture();
-    let mut last = id(&first);
+    let mut last = json_id(&first);
     let mut issues = vec![last.clone()];
     let mut events = vec![init, first];
     for n in 0..1500 {
         let data =
             json!({"key": (format!("ex-chain-{n}")), "fields": {"title": (format!("chain {n}"))}});
         let event = f.event("create", "a", &[&last], None, data);
-        last = id(&event);
+        last = json_id(&event);
         issues.push(last.clone());
         events.push(event);
     }
@@ -186,7 +185,7 @@ fn deep_valid_dependency_graph_does_not_overflow_cycle_scan() {
             Some(&pair[0]),
             json!({"to": (pair[1].as_str()), "type": "blocks"}),
         );
-        last = id(&event);
+        last = json_id(&event);
         events.push(event);
     }
     let st = replay(journal(&events)).unwrap();
@@ -250,10 +249,11 @@ impl Bits {
 /// The 6,000 valid events of the convergence test, and the exact ancestors of each.
 fn converging_events(f: &mut Fixture, rng: &mut Rng) -> (Vec<Json>, Vec<Bits>) {
     let (init, create) = f.fixture();
-    let uid = id(&create);
+    let uid = json_id(&create);
     let mut ancestry = vec![Bits::default(), Bits::default()];
     ancestry[1].insert(0);
-    let mut index: BTreeMap<String, usize> = BTreeMap::from([(id(&init), 0), (uid.clone(), 1)]);
+    let mut index: BTreeMap<String, usize> =
+        BTreeMap::from([(json_id(&init), 0), (uid.clone(), 1)]);
     let mut events = vec![init, create];
     let mut heads: Vec<(&str, String)> = vec![("a", uid.clone())];
     for n in 0..5998 {
@@ -277,11 +277,11 @@ fn converging_events(f: &mut Fixture, rng: &mut Rng) -> (Vec<Json>, Vec<Bits>) {
             ancestors.union(&ancestry[at]);
             ancestors.insert(at);
         }
-        index.insert(id(&event), events.len());
+        index.insert(json_id(&event), events.len());
         ancestry.push(ancestors);
         match heads.iter_mut().find(|(m, _)| *m == machine) {
-            Some((_, head)) => *head = id(&event),
-            None => heads.push((machine, id(&event))),
+            Some((_, head)) => *head = json_id(&event),
+            None => heads.push((machine, json_id(&event))),
         }
         events.push(event);
     }
@@ -298,7 +298,7 @@ fn valid_six_machine_6000_events_converge_and_ancestry_is_exact() {
     let st = replay(base.clone()).unwrap();
     assert!(st.integrity().is_empty());
     assert!(st.pending().is_empty());
-    let uuid = |at: usize| EventId::parse(&id(&events[at])).unwrap();
+    let uuid = |at: usize| EventId::parse(&json_id(&events[at])).unwrap();
     for _ in 0..10_000 {
         let later = 1 + rng.below(events.len() - 1);
         let earlier = rng.below(later);
@@ -310,7 +310,7 @@ fn valid_six_machine_6000_events_converge_and_ancestry_is_exact() {
     }
     // Arbitrary interleaving of complete machine journals, preserving each journal's bytes.
     let written: std::collections::HashMap<EventId, &Json> = (events.iter())
-        .map(|event| (EventId::parse(&id(event)).unwrap(), event))
+        .map(|event| (EventId::parse(&json_id(event)).unwrap(), event))
         .collect();
     for order in rng.orders(36) {
         let mut j = Journal::new();

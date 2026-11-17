@@ -1,10 +1,10 @@
 //! Count bookkeeping after a successful publication must preserve a committed command's answer.
 
 use beadroll_core::json::Value;
-use beadroll_test_support::{code, parse_json};
+use beadroll_test_support::{code, json_id, parse_json};
 
 use super::super::on_remote;
-use super::{durable_inputs, id, json, published_three};
+use super::{durable_inputs, json, published_three};
 
 /// How a lost ownership acknowledgement is recovered.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -23,7 +23,7 @@ fn ag01_a_published_write_keeps_its_result_when_saving_counts_fails() {
         let sandbox = crate::sandbox();
         let r = crate::rust_only(&sandbox, "r");
         let (meta, original, segment, published) = published_three(&r);
-        let key = id(&json(&r, &["list"])["issues"][0]);
+        let key = json_id(&json(&r, &["list"])["issues"][0]);
         let edited = original.replacen(
             &published,
             &format!("\"{segment}\": \"{}\"", 3 - i128::MAX),
@@ -124,7 +124,7 @@ fn recovered_claim_keeps_result(restart: Recovery) {
     let sandbox = crate::sandbox();
     let r = crate::rust_only(&sandbox, "r");
     let (meta, original, segment, published) = published_three(&r);
-    let key = id(&json(&r, &["list"])["issues"][0]);
+    let key = json_id(&json(&r, &["list"])["issues"][0]);
     let edited = original.replacen(
         &published,
         &format!("\"{segment}\": \"{}\"", 3 - i128::MAX),

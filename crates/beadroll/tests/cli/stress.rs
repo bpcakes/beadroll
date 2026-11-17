@@ -55,13 +55,6 @@ pub(crate) fn reply(run: &Run, context: &dyn std::fmt::Debug) -> Json {
     })
 }
 
-/// `value["id"]`, a string.
-pub(crate) fn id(value: &Json) -> String {
-    let id = value["id"].as_str();
-    id.unwrap_or_else(|| panic!("no id in {value:?}"))
-        .to_owned()
-}
-
 /// Sorted-key JSON used to compare machine results.
 pub(crate) fn sorted(value: &Json) -> String {
     write(value, Format::SORTED_ASCII).expect("bead's JSON writes back")

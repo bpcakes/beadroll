@@ -41,10 +41,15 @@ pub fn parse_json(text: &str) -> Result<Json, String> {
 /// The `id` in what `bead … --json` printed, such as the issue a `create` made. The test fails,
 /// saying which, when bead printed nothing (the command failed) or no id.
 pub fn printed_id(printed: Option<Json>) -> String {
-    let printed = printed.expect("bead printed nothing: the command failed");
-    match printed.get("id").and_then(Json::as_str) {
+    json_id(&printed.expect("bead printed nothing: the command failed"))
+}
+
+/// The `id` member of a JSON document: an issue bead printed, a record of an export, an event of a
+/// journal. The test fails, saying so, when it has none that is text.
+pub fn json_id(value: &Json) -> String {
+    match value.get("id").and_then(Json::as_str) {
         Some(id) => id.to_owned(),
-        None => panic!("no id in what bead printed: {printed:?}"),
+        None => panic!("no id in what bead printed: {value:?}"),
     }
 }
 
