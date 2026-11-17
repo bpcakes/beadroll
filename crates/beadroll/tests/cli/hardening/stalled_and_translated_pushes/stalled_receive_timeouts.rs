@@ -5,9 +5,11 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, REMOTE_SETTLES, Sandbox, code, parse_json, wait_until};
+use beadroll_test_support::{
+    Json, Machine, REMOTE_SETTLES, Sandbox, code, parse_json, shell_quoted, wait_until,
+};
 
-use super::{member, quoted};
+use super::member;
 use beadroll_test_support::executable;
 use beadroll_test_support::printed_id;
 
@@ -44,7 +46,7 @@ fn stalled_receive_with_a_stderr_flood_returns_within_the_timeout() {
     let script = format!(
         "#!/bin/sh\ncat >/dev/null\nhead -c 204800 /dev/zero | tr '\\0' x >&2\nsleep 4\ntouch \
          {}\nexit 0\n",
-        quoted(&done)
+        shell_quoted(&done)
     );
     executable(&hook, &script);
     // the sync below meets the stall
@@ -82,8 +84,8 @@ fn claim_whose_ack_is_held_by_a_slow_post_receive_is_recovered() {
     let hook = sandbox.origin().join("hooks").join("post-receive");
     let script = format!(
         "#!/bin/sh\ncat >/dev/null\nif mkdir {} 2>/dev/null; then sleep 4; touch {}; fi\nexit 0\n",
-        quoted(&gate),
-        quoted(&done)
+        shell_quoted(&gate),
+        shell_quoted(&done)
     );
     executable(&hook, &script);
     let claimed = a

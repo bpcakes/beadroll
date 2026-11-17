@@ -3,12 +3,12 @@
 //! built again; one whose push had not landed when bead's next round began is fenced by that round
 //! and built again, once.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use beadroll_store::glob_ending;
-use beadroll_test_support::executable;
 use beadroll_test_support::{Machine, Run, Sandbox, git};
+use beadroll_test_support::{executable, shell_quoted};
 
 use beadroll_test_support::{Gate, beside};
 
@@ -38,11 +38,6 @@ fn pending(machine: &Machine) -> Vec<PathBuf> {
     glob_ending(&machine.store().join("pending"), ".json")
 }
 
-/// `path` quoted for the shell.
-fn quoted(path: &Path) -> String {
-    format!("'{}'", path.display().to_string().replace('\'', r"'\''"))
-}
-
 /// The kind of each commit on the remote's journal, oldest first ("claim", "fence", "sync").
 fn remote_kinds(sandbox: &Sandbox) -> Vec<String> {
     let args = ["log", "--reverse", "--format=%s", "refs/beads/journal"];
@@ -61,8 +56,8 @@ fn hold_first_push(sandbox: &Sandbox, name: &str) -> PathBuf {
     let script = format!(
         "#!/bin/sh\nif mkdir {} 2>/dev/null; then\n  i=0\n  while [ ! -e {} ] && [ $i -lt 1200 ]; \
          do\n    sleep 0.05\n    i=$((i + 1))\n  done\nfi\nexit 0\n",
-        quoted(&first),
-        quoted(&go)
+        shell_quoted(&first),
+        shell_quoted(&go)
     );
     executable(&hook, script);
     go

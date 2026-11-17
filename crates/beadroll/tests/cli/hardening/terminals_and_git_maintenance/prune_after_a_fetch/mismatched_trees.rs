@@ -2,7 +2,7 @@
 //! from the published tip (roll-dih8.31), even when that machine never syncs again.
 
 use super::*;
-use beadroll_test_support::executable;
+use beadroll_test_support::{executable, git_on_path, shell_quoted};
 
 /// AJ02: a mismatched root fails either the manifest read or the listing. Both failures must
 /// rebuild, even when the persistent reader is unavailable, and leave b's journal for a fresh c.
@@ -136,10 +136,7 @@ fn a_mismatched_subtree_without_a_kept_reader_is_local_damage() {
 /// records each standalone tree read. The real git still supplies every object and tree byte.
 fn refuse_kept_reader(sandbox: &Sandbox, a: &mut Machine, log: &Path) {
     let path = std::env::var_os("PATH").unwrap_or_default();
-    let git = std::env::split_paths(&path)
-        .map(|dir| dir.join("git"))
-        .find(|git| git.is_file())
-        .expect("git on PATH");
+    let git = git_on_path();
     let shims = sandbox.root().join("refusing-reader");
     std::fs::create_dir(&shims).unwrap();
     let script = format!(
@@ -147,8 +144,8 @@ fn refuse_kept_reader(sandbox: &Sandbox, a: &mut Machine, log: &Path) {
          echo 'refused cat-file --batch-command' >> {log}\nexit 1\nfi\n\
          if [ \"$1\" = cat-file ] && [ \"$2\" = tree ]; then\n\
          printf 'cat-file tree %s\\n' \"$3\" >> {log}\nfi\nexec {git} \"$@\"\n",
-        log = super::super::quoted(log.as_os_str()),
-        git = super::super::quoted(git.as_os_str()),
+        log = shell_quoted(log),
+        git = shell_quoted(git),
     );
     executable(shims.join("git"), script);
     let path = std::env::join_paths(std::iter::once(shims).chain(std::env::split_paths(&path)));

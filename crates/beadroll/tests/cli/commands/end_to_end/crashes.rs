@@ -4,12 +4,10 @@
 
 use std::fs::OpenOptions;
 use std::io::Write as _;
-use std::os::unix::fs::PermissionsExt as _;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
-use beadroll_test_support::executable;
-use beadroll_test_support::{Json, Machine, within};
+use beadroll_test_support::{Json, Machine, executable, git_on_path, shell_quoted, within};
 
 use super::{column, owner, segments, settle, two_machines};
 
@@ -21,28 +19,20 @@ const CRASH_AFTER_PUSH: &str = "BEAD_TEST_CRASH_AFTER_PUSH";
 /// at once. With the directory put first on `PATH`: a process held inside its first fetch, which
 /// the test lets go once it has acted. Black-box, so that it holds any bead under test.
 fn holding_first_fetch(sandbox: &beadroll_test_support::Sandbox) -> (PathBuf, PathBuf, PathBuf) {
-    let path = std::env::var_os("PATH").expect("the test's PATH");
-    let git = std::env::split_paths(&path)
-        .map(|dir| dir.join("git"))
-        .find(|git| {
-            std::fs::metadata(git)
-                .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
-        })
-        .expect("git on PATH");
+    let git = git_on_path();
     let root = sandbox.root();
     let (once, ready, go) = (
         root.join("held"),
         root.join("held.ready"),
         root.join("held.go"),
     );
-    let quoted = |path: &Path| format!("'{}'", path.display().to_string().replace('\'', r"'\''"));
     let script = format!(
         "#!/bin/sh\nif [ \"$1\" = fetch ] && mkdir {} 2>/dev/null; then\n  touch {}\n  n=0\n  \
          while [ ! -f {} ] && [ \"$n\" -lt 1200 ]; do sleep 0.05; n=$((n+1)); done\nfi\nexec {} \"$@\"\n",
-        quoted(&once),
-        quoted(&ready),
-        quoted(&go),
-        quoted(&git),
+        shell_quoted(&once),
+        shell_quoted(&ready),
+        shell_quoted(&go),
+        shell_quoted(&git),
     );
     let folder = root.join("holding-git");
     std::fs::create_dir(&folder).unwrap();

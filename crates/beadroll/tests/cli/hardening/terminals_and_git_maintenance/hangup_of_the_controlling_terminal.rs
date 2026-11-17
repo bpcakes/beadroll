@@ -126,7 +126,9 @@ fn hang_up(sandbox: &Sandbox, machine: &Machine, args: &[&str]) -> (Vec<u8>, Str
         Pid, Signal, WaitOptions, getpid, kill_process, set_child_subreaper, waitpid,
     };
 
-    use super::{drain, quoted, script, wait_for};
+    use beadroll_test_support::shell_quoted;
+
+    use super::{drain, script, wait_for};
 
     set_child_subreaper(Some(getpid())).expect("the test becomes a subreaper");
     let (mut reader, mut writer) = std::io::pipe().expect("a pipe");
@@ -148,11 +150,11 @@ fn hang_up(sandbox: &Sandbox, machine: &Machine, args: &[&str]) -> (Vec<u8>, Str
     let pid_file = sandbox.root().join("hangup.pid");
     let words: Vec<String> = std::iter::once(machine.executable().as_os_str())
         .chain(args.iter().map(OsStr::new))
-        .map(quoted)
+        .map(shell_quoted)
         .collect();
     let line = format!(
         "echo $$ > {}; exec env --default-signal=HUP {}",
-        quoted(pid_file.as_os_str()),
+        shell_quoted(&pid_file),
         words.join(" ")
     );
     let mut command = script(&line, &machine.env(None, "codex"));

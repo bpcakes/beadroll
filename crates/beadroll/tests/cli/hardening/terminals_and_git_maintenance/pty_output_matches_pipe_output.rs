@@ -10,10 +10,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
-use beadroll_test_support::{Machine, Run};
+use beadroll_test_support::{Machine, Run, shell_quoted};
 use rustix::process::{Pid, Signal, kill_process};
 
-use super::{Drained, drain, quoted, script, wait_for};
+use super::{Drained, drain, script, wait_for};
 
 /// Which terminal output style the test requests.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -43,8 +43,8 @@ impl Terminal {
         let staged = ready.with_extension("staged");
         let line = format!(
             "echo \"$$ $(tty)\" > {staged} && mv {staged} {ready} && exec sleep 3600",
-            staged = quoted(staged.as_os_str()),
-            ready = quoted(ready.as_os_str()),
+            staged = shell_quoted(staged),
+            ready = shell_quoted(ready),
         );
         let env: BTreeMap<OsString, OsString> = std::env::vars_os().collect();
         let mut child = script(&line, &env)

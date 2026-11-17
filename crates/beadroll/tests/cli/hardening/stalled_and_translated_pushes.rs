@@ -85,12 +85,6 @@ const WINNER_IDENTITY: &str = concat!(
     "GIT_COMMITTER_NAME=winner GIT_COMMITTER_EMAIL=w@example.invalid\n"
 );
 
-/// `path` quoted for the shell.
-fn quoted(path: &Path) -> String {
-    let text = path.to_str().expect("a UTF-8 path");
-    format!("'{}'", text.replace('\'', r"'\''"))
-}
-
 /// The member `key` of `value`; absence fails the test.
 fn member<'v>(value: &'v Json, key: &str) -> &'v Json {
     value

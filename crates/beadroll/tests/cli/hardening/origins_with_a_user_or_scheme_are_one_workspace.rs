@@ -7,7 +7,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
 use std::time::Duration;
 
-use beadroll_test_support::{Json, Machine, ProcessGroup, Spawned, executable, git, parse_json};
+use beadroll_test_support::{
+    Json, Machine, ProcessGroup, Spawned, executable, git, parse_json, shell_quoted,
+};
 
 /// Environment variables for a child process.
 type Env = BTreeMap<OsString, OsString>;
@@ -75,12 +77,6 @@ fn info(machine: &Machine, cwd: Option<&Path>) -> Json {
     let proc = invocation.run();
     assert_eq!(proc.returncode(), 0, "{}", proc.stderr);
     parse_json(&proc.stdout).unwrap()
-}
-
-/// `path` quoted for the shell.
-fn quoted(path: &Path) -> String {
-    let text = path.to_str().expect("a UTF-8 path");
-    format!("'{}'", text.replace('\'', r"'\''"))
 }
 
 /// The member `key` of `value`; absence fails the test.
@@ -156,7 +152,7 @@ fn shapes_with_a_user_or_scheme_give_one_workspace_everywhere() {
 fn scp_origin_with_a_user_syncs_over_ssh() {
     let sandbox = crate::sandbox();
     let url = "git@myhost:origin.git";
-    let ssh = quoted(&fake_ssh(sandbox.root()));
+    let ssh = shell_quoted(fake_ssh(sandbox.root()));
     let root = sandbox.root().to_str().expect("a UTF-8 path");
     let env = git_env(
         sandbox.root(),

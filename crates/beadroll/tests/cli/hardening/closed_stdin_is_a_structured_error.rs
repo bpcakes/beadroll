@@ -2,12 +2,7 @@
 
 use std::process::Command;
 
-use beadroll_test_support::{Machine, parse_json};
-
-/// `arg` quoted for the shell.
-fn quoted(arg: &str) -> String {
-    format!("'{}'", arg.replace('\'', r"'\''"))
-}
+use beadroll_test_support::{Machine, parse_json, shell_quoted};
 
 /// G56: `-` names standard input. When descriptor 0 is closed, file-based comments,
 /// descriptions and import must return a structured error and write nothing. Open standard
@@ -36,8 +31,8 @@ fn closed_stdin_for_every_dash_reader_is_a_structured_error() {
     ];
     let bead = m.executable().display().to_string();
     for (label, args) in cases {
-        let mut words = vec![quoted(&bead)];
-        words.extend(args.iter().map(|a| quoted(a)));
+        let mut words = vec![shell_quoted(&bead)];
+        words.extend(args.iter().map(shell_quoted));
         words.push("--json".to_owned());
         let script = format!("{} <&-", words.join(" "));
         let out = Command::new("/bin/sh")

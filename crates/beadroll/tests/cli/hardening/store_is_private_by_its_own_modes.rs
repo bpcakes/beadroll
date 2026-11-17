@@ -11,13 +11,7 @@ use std::io::Write as _;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
-use beadroll_test_support::{Json, Machine, Sandbox, executable, parse_json};
-
-/// `path` quoted for the shell.
-fn quoted(path: &Path) -> String {
-    let text = path.to_str().expect("a UTF-8 path");
-    format!("'{}'", text.replace('\'', r"'\''"))
-}
+use beadroll_test_support::{Json, Machine, Sandbox, executable, parse_json, shell_quoted};
 
 /// A machine whose bead commands run under umask 022. Set it in a shell that execs bead,
 /// avoiding changes to the test process's shared umask.
@@ -26,7 +20,7 @@ fn machine(sandbox: &Sandbox, name: &str) -> Machine {
     if !wrapper.exists() {
         let script = format!(
             "#!/bin/sh\numask 022 && exec {} \"$@\"\n",
-            quoted(sandbox.bead())
+            shell_quoted(sandbox.bead())
         );
         executable(&wrapper, script);
     }

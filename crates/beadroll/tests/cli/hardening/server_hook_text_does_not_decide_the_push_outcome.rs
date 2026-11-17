@@ -4,13 +4,9 @@
 
 use std::path::Path;
 
-use beadroll_test_support::{Gate, Json, Machine, Sandbox, beside, executable, parse_json};
-
-/// `path` quoted for the shell.
-fn quoted(path: &Path) -> String {
-    let text = path.to_str().expect("a UTF-8 path");
-    format!("'{}'", text.replace('\'', r"'\''"))
-}
+use beadroll_test_support::{
+    Gate, Json, Machine, Sandbox, beside, executable, parse_json, shell_quoted,
+};
 
 /// Post-receive runs after the ref update and after receive-pack sent
 /// its status report. On its first run, the one that makes the directory `gate`, it prints a line
@@ -21,7 +17,7 @@ fn install_post_receive(sandbox: &Sandbox, gate: &Path) {
     let lines = [
         "#!/bin/sh".to_owned(),
         "cat >/dev/null".to_owned(),
-        format!("if mkdir {} 2>/dev/null; then", quoted(gate)),
+        format!("if mkdir {} 2>/dev/null; then", shell_quoted(gate)),
         "  echo 'mirror: ! [rejected]  refs/beads/journal -> refs/beads/journal (fetch first)' >&2"
             .to_owned(),
         "  sleep 0.2".to_owned(),

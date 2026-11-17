@@ -7,24 +7,10 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use beadroll_test_support::executable;
 use beadroll_test_support::{Invocation, Json, Machine, Run, Sandbox, git, parse_json};
+use beadroll_test_support::{executable, git_on_path, shell_quoted};
 
 use beadroll_test_support::{Gate, beside};
-
-/// The git on the test's PATH.
-fn real_git() -> PathBuf {
-    let path = std::env::var_os("PATH").unwrap_or_default();
-    std::env::split_paths(&path)
-        .map(|dir| dir.join("git"))
-        .find(|git| git.is_file())
-        .expect("git on PATH")
-}
-
-/// `text` quoted for the shell.
-fn quoted(text: &str) -> String {
-    format!("'{}'", text.replace('\'', r"'\''"))
-}
 
 /// bead started with descriptor 7 open, as a caller's pipe or a make jobserver would be, writes
 /// through git; a git first on PATH notes, each time bead starts it, whether descriptor 7 reached
@@ -41,15 +27,15 @@ fn git_inherits_no_descriptor_beyond_the_standard_three() {
         // the probe runs in a subshell: dash leaves the whole script when a redirection of `:` fails
         "#!/bin/sh\nif ( : >&7 ) 2>/dev/null; then echo inherited >> {log}; else echo closed >> \
          {log}; fi\nexec {git} \"$@\"\n",
-        log = quoted(&log.display().to_string()),
-        git = quoted(&real_git().display().to_string()),
+        log = shell_quoted(&log),
+        git = shell_quoted(git_on_path()),
     );
     executable(shims.join("git"), script);
     let mut env = m.env(None, "codex");
     let path = std::env::var_os("PATH").unwrap_or_default();
     let dirs = std::iter::once(shims).chain(std::env::split_paths(&path));
     env.insert("PATH".into(), std::env::join_paths(dirs).unwrap());
-    let bead = quoted(&m.executable().display().to_string());
+    let bead = shell_quoted(m.executable());
     let out = Command::new("/bin/sh")
         .args([
             "-c",
@@ -85,8 +71,8 @@ impl Counted {
         let log = sandbox.root().join("gits.log");
         let script = format!(
             "#!/bin/sh\necho \"$1\" >> {log}\nexec {git} \"$@\"\n",
-            log = quoted(&log.display().to_string()),
-            git = quoted(&real_git().display().to_string()),
+            log = shell_quoted(&log),
+            git = shell_quoted(git_on_path()),
         );
         std::fs::write(shims.join("git"), script).unwrap();
         let executable = std::fs::Permissions::from_mode(0o755);
@@ -247,9 +233,9 @@ fn the_refs_a_fetch_leaves_are_set_in_one_transaction() {
     let script = format!(
         "#!/bin/sh\nif [ \"$1\" = update-ref ]; then\n  echo \"$*\" >> {log}\n  \
          tee -a {input} | {git} \"$@\"\n  exit $?\nfi\nexec {git} \"$@\"\n",
-        log = quoted(&log.display().to_string()),
-        input = quoted(&input.display().to_string()),
-        git = quoted(&real_git().display().to_string()),
+        log = shell_quoted(&log),
+        input = shell_quoted(&input),
+        git = shell_quoted(git_on_path()),
     );
     executable(shims.join("git"), script);
     let path = std::env::var_os("PATH").unwrap_or_default();
@@ -313,11 +299,11 @@ fn a_publish_goes_by_the_transport_settings_of_when_its_link_is_made() {
     let script = format!(
         "#!/bin/sh\nif [ \"$1\" = rev-parse ] && [ \"$2\" = HEAD ] && mkdir {added} 2>/dev/null; \
          then\n  {git} config --file {config} {key} {prefix}\nfi\nexec {git} \"$@\"\n",
-        added = quoted(&added.display().to_string()),
-        git = quoted(&real_git().display().to_string()),
-        config = quoted(&config.display().to_string()),
-        key = quoted(&format!("url.{real}/.insteadOf")),
-        prefix = quoted(&format!("{}/", elsewhere.display())),
+        added = shell_quoted(&added),
+        git = shell_quoted(git_on_path()),
+        config = shell_quoted(&config),
+        key = shell_quoted(format!("url.{real}/.insteadOf")),
+        prefix = shell_quoted(format!("{}/", elsewhere.display())),
     );
     let shims = sandbox.root().join("setting-shims");
     std::fs::create_dir(&shims).unwrap();
@@ -356,8 +342,8 @@ fn with_no_kept_git_every_question_uses_a_separate_git_call() {
     let script = format!(
         "#!/bin/sh\nif [ -p /dev/stdin ]; then echo \"refused $1\" >> {log}; exit 1; fi\n\
          echo \"$1\" >> {log}\nexec {git} \"$@\"\n",
-        log = quoted(&log.display().to_string()),
-        git = quoted(&real_git().display().to_string()),
+        log = shell_quoted(&log),
+        git = shell_quoted(git_on_path()),
     );
     executable(shims.join("git"), script);
     let path = std::env::var_os("PATH").unwrap_or_default();

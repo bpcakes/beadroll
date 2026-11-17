@@ -6,9 +6,9 @@
 //! process; they are `rust_only`, with the `backoff` and `ownership.after-confirm` failpoints.
 
 use beadroll_store::glob_ending;
-use beadroll_test_support::executable;
 use beadroll_test_support::printed_id;
 use beadroll_test_support::{Json, Machine, Sandbox};
+use beadroll_test_support::{executable, shell_quoted};
 
 use crate::hardening::TrackerSetup;
 
@@ -127,12 +127,6 @@ mod in_flight_attempt_across_actors {
     use super::*;
     use beadroll_test_support::{Gate, beside};
 
-    /// `path` quoted as one shell word.
-    fn quoted(path: &Path) -> String {
-        let text = path.to_str().expect("a UTF-8 path");
-        format!("'{}'", text.replace('\'', r"'\''"))
-    }
-
     /// `script` as the remote's pre-receive hook.
     fn hook(sandbox: &Sandbox, script: &str) {
         let hook = sandbox.origin().join("hooks").join("pre-receive");
@@ -174,7 +168,11 @@ mod in_flight_attempt_across_actors {
         let root = sandbox.root();
         let (gate, started, done) = (root.join("gate"), root.join("started"), root.join("done"));
         std::fs::create_dir(&gate).unwrap();
-        let (g, s, d) = (quoted(&gate), quoted(&started), quoted(&done));
+        let (g, s, d) = (
+            shell_quoted(&gate),
+            shell_quoted(&started),
+            shell_quoted(&done),
+        );
         // The first push to arrive (A's release) stalls in the hook until the gate is removed.
         hook(
             &sandbox,
