@@ -1,8 +1,4 @@
-//! Whitespace and line boundaries in git's output, and arguments made from paths.
-
-use std::ffi::{OsStr, OsString};
-use std::os::unix::ffi::OsStrExt as _;
-use std::path::Path;
+//! Whitespace and line boundaries in git's output.
 
 /// Bytes without the ASCII whitespace at either end.
 pub(crate) fn strip_ascii(data: &[u8]) -> &[u8] {
@@ -53,11 +49,6 @@ pub(crate) fn split_lines(text: &str) -> Vec<&str> {
         lines.push(&text[start..]);
     }
     lines
-}
-
-/// An argument for git from a path, byte for byte.
-pub fn path_arg(path: &Path) -> OsString {
-    OsStr::from_bytes(path.as_os_str().as_bytes()).to_owned()
 }
 
 #[cfg(test)]

@@ -141,11 +141,6 @@ impl State {
             .collect()
     }
 
-    /// Its first parent.
-    pub fn parent_of(&self, issue: &Issue) -> Option<&Issue> {
-        self.parents_of(issue).into_iter().next()
-    }
-
     /// Every issue beneath `uid`: its children, theirs, and so on, through every parent link and
     /// whatever the issues in between are. Only parent-child edges count, and `uid` itself is never
     /// among them, even when a merged cycle leads back.

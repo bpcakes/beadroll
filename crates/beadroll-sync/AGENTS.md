@@ -5,7 +5,7 @@
 `crates/beadroll-sync` is the sync protocol of bead: transactions (`Tx`, `writing`), the link to
 the coordination remote (fetch, merge, tree, publish, maintenance, rebuild), `synchronise` with
 its settling of this machine's pending attempts, `publish_soon` and the unpublished counts, and
-the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `settle_pending`).
+the ownership protocol (`coordinated`, receipts, fences, `settle_pending`).
 
 ## Key entrypoints
 
@@ -72,9 +72,10 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_commands`, `set
   the failpoint `ownership.before-transaction` sits between a round's merge (and what settles after
   it) and its transaction, where nothing writes the journal. `src/ownership/attempt.rs` owns the
   prepared attempt, its publication outcome and the answer recovery retains across rounds.
-- `src/receipts.rs`: `settle_commands`, `forget`, `forget_receipts`; receipt classification and
-  immediate, recognised-retry or deferred retirement. Public compatibility entrypoints retain
-  their signatures; `coordinated` uses the named request result and deferred retirement batch.
+- `src/receipts.rs`: `settle`, `forget`, `forget_receipts`; receipt classification and
+  immediate, recognised-retry or deferred retirement. These are crate-private: `coordinated` uses
+  the named request result and the deferred retirement batch, and nothing outside the crate
+  settles receipts.
 - `src/error.rs`: `Error`, each variant with its code.
 - `tests/sync/`: in-crate protocol tests (`count.rs` and `count_foreign.rs`: the unpublished count
   against a count of the journal the slow way, on one machine and on two, on every path and

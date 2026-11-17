@@ -70,7 +70,7 @@ The design under test, in the order it is best read:
   attempt; an unanswered one stays pending until a later contact finds it on the remote
   (confirmed) or fences it off with a commit on the same head (`settle_pending`). Attempt files
   are immutable and compared on sync; the accepted copy wins. A command whose push landed
-  without an answer recognises its own accepted work (`settle_commands`) instead of redoing it.
+  without an answer recognises its own accepted work (`receipts::settle`) instead of redoing it.
   Ownership never expires; it ends only by `release`, `close` (by the owner) or
   `takeover --reason`. `--offline` claims are provisional and never displace a confirmed owner.
 - **Concurrent writes are flagged, not merged**: each editable field keeps every value whose
@@ -508,7 +508,7 @@ These were decided deliberately. Report problems *with* them, not their existenc
 - An ownership round goes on from its merge's projection only while the journal's files are the
   ones it was made from (roll-lqjj.37). The transaction of roll-lqjj.29 starts from the projection
   the merge read, which is right because nothing writes under `events/` between the two:
-  `settle_commands` and `drop_pending` touch receipts and pending attempts, which are not the
+  `receipts::settle` and `drop_pending` touch receipts and pending attempts, which are not the
   journal, and `settle_pending`'s publish cuts torn segment tails, which the merge cut already,
   and hashes and pushes. PR #13's review checked each step, and only a comment kept it so: a step
   added there that wrote a segment or an attempt file would have started the claim's transaction

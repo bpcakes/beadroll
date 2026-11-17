@@ -244,7 +244,7 @@ pub fn strip_text_bytes(bytes: &[u8]) -> &[u8] {
 
 /// OS bytes with each run of UTF-8 lowercased (final sigma included).
 /// Bytes that are not UTF-8 stay as they are.
-pub fn lowercase_text_bytes(bytes: &[u8]) -> Vec<u8> {
+pub(crate) fn lowercase_text_bytes(bytes: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(bytes.len());
     for unit in units(bytes) {
         match unit {
