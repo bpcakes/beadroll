@@ -76,10 +76,10 @@ TIMEOUT = 120
 ENV = environment.scrubbed()
 
 
-def ran(argv, **options):
-    """`argv` run here as subprocess.run runs it, in the scrubbed environment: how this driver starts every
-    process."""
-    return subprocess.run(argv, env=ENV, **options)
+def ran(argv, timeout=TIMEOUT, **options):
+    """`argv` run here as subprocess.run runs it, in the scrubbed environment and within TIMEOUT unless the
+    caller gives another deadline: how this driver starts every process, so that none can hang the run."""
+    return subprocess.run(argv, env=ENV, timeout=timeout, **options)
 
 
 def word(path):
@@ -107,8 +107,7 @@ def probe(host):
     """The preflight's record of `host`'s bead (selected.describe's fields, its role and its system) and of
     its clone's origin."""
     repo = word(REPO_LOCAL if HOSTS[host] is None else REPO_REMOTE)
-    proc = ran(over(host, PROBE.format(bead=word(BEADS[host]), repo=repo)), capture_output=True, text=True,
-                          timeout=TIMEOUT)
+    proc = ran(over(host, PROBE.format(bead=word(BEADS[host]), repo=repo)), capture_output=True, text=True)
     lines = proc.stdout.split("\n")
     if proc.returncode or len(lines) < 8 or lines[7] != "end":
         sys.exit(f"preflight: cannot reach {host} ({HOSTS[host] or 'here'}): {proc.stderr.strip()[-300:]}")
@@ -305,11 +304,10 @@ def main(argv):
 
     section("S11 a linked worktree on this machine sees the same tracker and stays clean")
     wt = REPO_LOCAL + "-wt"
-    ran(["git", "-C", REPO_LOCAL, "worktree", "add", "-q", wt, "-b", f"feature-{TAG}"], check=True, capture_output=True,
-                   timeout=TIMEOUT)
+    ran(["git", "-C", REPO_LOCAL, "worktree", "add", "-q", wt, "-b", f"feature-{TAG}"], check=True, capture_output=True)
     try:
         cmd = f"cd {word(wt)} && BEAD_HOME={STATE} {word(BEADS['local'])} info --json"
-        info = json.loads(ran(["bash", "-c", cmd], capture_output=True, text=True, check=True, timeout=TIMEOUT).stdout)
+        info = json.loads(ran(["bash", "-c", cmd], capture_output=True, text=True, check=True).stdout)
         status = ran(["git", "-C", wt, "status", "--porcelain"], capture_output=True, text=True).stdout
         print("same workspace:", info["workspace"] == run("local", "info")["ok"]["workspace"], "| worktree clean:", status == "")
         results["S11"] = info["workspace"] == run("local", "info")["ok"]["workspace"] and status == ""
@@ -318,7 +316,7 @@ def main(argv):
         issue = ready_ids("local")[5]
         cmd = (f"cd {word(wt)} && BEAD_HOME={STATE} BEAD_AGENT=codex BEAD_THREAD=local-wt-thread {word(BEADS['local'])} "
                f"update {shlex.quote(issue)} --claim --add-label from-worktree --json")
-        claimed = ran(["bash", "-c", cmd], capture_output=True, text=True, timeout=TIMEOUT)
+        claimed = ran(["bash", "-c", cmd], capture_output=True, text=True)
         same, _ = settle()
         views = {h: show(h, issue) for h in HOSTS}
         branches = {h: (v.get("claim") or {}).get("where", {}).get("branch") for h, v in views.items()}
