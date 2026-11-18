@@ -16,10 +16,10 @@ use beadroll_core::text::str_of;
 use beadroll_store::{Label, view_outline};
 use beadroll_sync::{NetworkMode, publish_soon, writing_spent};
 
-use super::args::TextValidity;
+use super::args::Payload;
 use super::{
-    Context, Failure, Line, Outcome, Tone, arg_text, encodable, ended_by, issue_not_found,
-    need_tracker, refuse_foreign_claim, resolve_arg, texts_in,
+    Context, Failure, Line, Outcome, Tone, encodable, ended_by, issue_not_found, need_tracker,
+    refuse_foreign_claim, resolve_arg, texts_in,
 };
 
 /// The arguments `close`, `reopen` and `delete` take.
@@ -229,16 +229,13 @@ fn decide(
     if !args.force {
         refuse_foreign_claim(issue, me)?;
     }
-    let mut data = Object::new();
     // A reason that is not UTF-8 fails only when an event would carry it, as in every write.
-    let mut valid = TextValidity::Utf8;
+    let mut data = Payload::new();
     if let Some(reason) = args.reason.as_deref().filter(|r| !r.is_empty()) {
-        let (reason, ok) = arg_text(reason);
-        valid = ok;
-        data.insert("reason".into(), Value::from(reason));
+        data.set_text("reason", reason);
     }
     if ends_claims && let Some(held) = held.filter(|held| me.is(&held.owner)) {
-        data.insert("claim".into(), Value::from(held.id.to_string()));
+        (data.values).insert("claim".into(), Value::from(held.id.to_string()));
         match decided.named.iter_mut().find(|(issue, _)| *issue == uid) {
             Some(entry) => entry.1 = held.id,
             None => decided.named.push((uid, held.id)),
@@ -250,8 +247,8 @@ fn decide(
     if settled {
         return Ok(None);
     }
-    encodable(valid)?;
-    Ok(Some(data))
+    encodable(data.valid)?;
+    Ok(Some(data.values))
 }
 
 /// What `args` acts on in `st`: each id named, in the order given; with `--recursive`, each named

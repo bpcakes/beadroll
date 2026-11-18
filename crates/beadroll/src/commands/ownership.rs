@@ -13,8 +13,8 @@ use beadroll_core::text::str_of;
 use beadroll_store::{Actor, ensure_replica_id, view_outline};
 use beadroll_sync::{Mode, NetworkMode, Tx, coordinated};
 
-use super::{Context, Failure, Outcome, arg_text, encodable, need_tracker, resolve_arg, view_of};
-use crate::commands::args::TextValidity;
+use super::{Context, Failure, Outcome, encodable, need_tracker, resolve_arg, view_of};
+use crate::commands::args::Payload;
 
 /// The arguments the coordinated commands share.
 pub(crate) struct OwnershipArgs {
@@ -97,8 +97,8 @@ impl ClaimStep<'_> {
                     ),
                 ));
             }
-            let mut data = Object::new();
-            data.insert("mode".into(), Value::from(mode.as_str()));
+            let mut data = Payload::new();
+            (data.values).insert("mode".into(), Value::from(mode.as_str()));
             let generation = issue.claim_generation().plus_one().ok_or_else(|| {
                 Failure::new(
                     Code::Validation,
@@ -108,16 +108,18 @@ impl ClaimStep<'_> {
                     ),
                 )
             })?;
-            data.insert("generation".into(), Value::Int(generation));
-            let mut valid = TextValidity::Utf8;
+            (data.values).insert("generation".into(), Value::Int(generation));
             if let (Some(reason), Some(held)) = (self.takeover, held) {
-                let (reason, ok) = arg_text(reason);
-                valid = ok;
-                data.insert("takeover".into(), Value::from(held.id.to_string()));
-                data.insert("reason".into(), Value::from(reason));
+                (data.values).insert("takeover".into(), Value::from(held.id.to_string()));
+                data.set_text("reason", reason);
             }
-            tx.emit(OpName::Claim, Some(&issue.uid().to_string()), data, None)?;
-            encodable(valid)?;
+            tx.emit(
+                OpName::Claim,
+                Some(&issue.uid().to_string()),
+                data.values,
+                None,
+            )?;
+            encodable(data.valid)?;
         }
         Ok(mode)
     }
@@ -273,16 +275,13 @@ pub(crate) fn release(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome
                 let uid = issue.uid().to_string();
                 let held = issue.claim();
                 if let Some(held) = held.filter(|held| me.is(&held.owner)) {
-                    let mut data = Object::new();
-                    data.insert("claim".into(), Value::from(held.id.to_string()));
-                    let mut valid = TextValidity::Utf8;
+                    let mut data = Payload::new();
+                    (data.values).insert("claim".into(), Value::from(held.id.to_string()));
                     if let Some(reason) = args.reason.as_deref().filter(|r| !r.is_empty()) {
-                        let (reason, ok) = arg_text(reason);
-                        valid = ok;
-                        data.insert("reason".into(), Value::from(reason));
+                        data.set_text("reason", reason);
                     }
-                    tx.emit(OpName::Release, Some(&uid), data, None)?;
-                    encodable(valid)?;
+                    tx.emit(OpName::Release, Some(&uid), data.values, None)?;
+                    encodable(data.valid)?;
                 } else if issue.provisional_claims().iter().any(|p| me.is(&p.owner)) {
                     tx.emit(OpName::Release, Some(&uid), Object::new(), None)?;
                 } else {
