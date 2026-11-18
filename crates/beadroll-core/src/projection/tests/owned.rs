@@ -27,7 +27,7 @@ use crate::state::{Ended, EndedClaim, LostClaim, Provisional, Stale, State, Text
 /// detail; then each export record.
 pub(crate) fn answers(state: &State) -> String {
     let json = |value: Value| write(&value, Format::COMPACT).unwrap_or_default();
-    let all = |items: Vec<Object>| json(Value::Array(items.into_iter().map(Value::from).collect()));
+    let all = |items: Vec<Object>| json(Value::from(items));
     let details = state.details_of(state.issues());
     let mut out = String::new();
     for issue in state.issues() {

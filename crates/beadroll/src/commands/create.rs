@@ -103,10 +103,7 @@ fn write_issue(
     let mut data = Object::new();
     data.insert("key".into(), Value::from(key));
     data.insert("fields".into(), Value::from(fields.values.clone()));
-    data.insert(
-        "labels".into(),
-        Value::Array(labels.into_iter().map(Value::from).collect()),
-    );
+    data.insert("labels".into(), Value::from(labels));
     tx.emit(OpName::Create, None, data, Some(uid.clone()))?;
     encodable(fields.valid.and(labels_valid))?;
     if let Some(parent) = &parent_uid {

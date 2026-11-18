@@ -96,10 +96,7 @@ pub(crate) fn claims(ctx: &Context<'_>, now: f64) -> Result<Outcome, Failure> {
         format!("(as of this machine's last sync: {shown})"),
     ));
     let mut result = Object::new();
-    result.insert(
-        "claims".into(),
-        Value::Array(rows.into_iter().map(Value::from).collect()),
-    );
+    result.insert("claims".into(), Value::from(rows));
     result.insert("last_sync".into(), synced.unwrap_or(Value::Null));
     Ok(Outcome::new(result, lines).answered_from(st))
 }

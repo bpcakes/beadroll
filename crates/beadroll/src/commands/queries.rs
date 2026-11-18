@@ -34,10 +34,7 @@ pub(crate) fn blocked(ctx: &Context<'_>) -> Result<Outcome, Failure> {
                 .with(Tone::Id, blockers.join(", ")),
         );
         let mut item = st.brief(issue);
-        item.insert(
-            "blocked_by".into(),
-            Value::Array(blockers.into_iter().map(Value::from).collect()),
-        );
+        item.insert("blocked_by".into(), Value::from(blockers));
         result.push(Value::from(item));
     }
     if lines.is_empty() {

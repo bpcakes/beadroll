@@ -198,9 +198,10 @@ impl From<Object> for Value {
     }
 }
 
-impl From<Vec<Value>> for Value {
-    fn from(items: Vec<Value>) -> Value {
-        Value::Array(items)
+/// An array of `items`, each made a value: values themselves, objects, strings, numbers.
+impl<T: Into<Value>> From<Vec<T>> for Value {
+    fn from(items: Vec<T>) -> Value {
+        Value::Array(items.into_iter().map(Into::into).collect())
     }
 }
 
