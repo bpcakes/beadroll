@@ -234,7 +234,7 @@ fn every_extension_past_an_integrity_entry_is_replays_answer_or_declined() {
 }
 
 /// The same over many more seeds, eight threads at a time: `cargo test --release --package
-/// beadroll-core -- --ignored many_seeds`.
+/// beadroll-core -- --ignored many_seeds`, as the nightly workflow's `seeds` job runs it.
 #[test]
 #[ignore = "minutes: run in release"]
 fn many_seeds_past_integrity_entries() {
