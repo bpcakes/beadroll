@@ -105,7 +105,9 @@ pub fn tracked_config_warning(ws: &Workspace) -> Result<Option<String>, Error> {
     if !top.success() {
         return Ok(None);
     }
-    let root = normalize_path(OsStr::from_bytes(crate::strip_ascii(&top.stdout)));
+    let root = normalize_path(OsStr::from_bytes(beadroll_core::text::strip_bytes(
+        &top.stdout,
+    )));
     let here = std::fs::read(root.join(".beadroll.json")).ok();
     if here.is_none() && ws.config.is_empty() {
         return Ok(None);
@@ -308,7 +310,7 @@ pub fn find_workspace(settings: &Arc<Settings>) -> Result<Workspace, Error> {
     let (origin_urls, committed) = settings.checkout.origin_urls(&settings.git, early);
     let top = settings.fact(Fact::Toplevel)?;
     let root: Option<PathBuf> = top.success().then(|| {
-        let raw = crate::strip_ascii(&top.stdout);
+        let raw = beadroll_core::text::strip_bytes(&top.stdout);
         normalize_path(OsStr::from_bytes(raw))
     });
     let tracked_file = root.as_ref().map(|root| root.join(".beadroll.json"));
@@ -420,7 +422,7 @@ fn local_id(settings: &Settings) -> Result<String, Error> {
             )
         }));
     }
-    let dir = OsStr::from_bytes(crate::strip_ascii(&common.stdout));
+    let dir = OsStr::from_bytes(beadroll_core::text::strip_bytes(&common.stdout));
     let real = realpath(dir, &settings.cwd);
     let digest = Sha256::digest(real.as_os_str().as_bytes());
     Ok(format!("local-{}", &hex16(&digest)[..12]))

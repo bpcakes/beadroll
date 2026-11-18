@@ -6,12 +6,13 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use beadroll_core::json::Value;
+use beadroll_core::text::newlines;
 use beadroll_store::{
     FileMode, Memo, Sourced, complete_prefix, extend_segment, pending_files, projection_sourced,
     read, read_attempt, repair_tail, replica_id, segment_files, write_atomic,
 };
 
-use super::{Link, newlines};
+use super::Link;
 use crate::error::{Error, OWN_CHAIN};
 use crate::link::write::BlobUse;
 use crate::synchronise::SyncReport;

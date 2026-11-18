@@ -59,7 +59,7 @@ pub fn elsewhere(settings: &Settings, path: &str) -> Result<Elsewhere, Error> {
                 OsStr::new(&pathspec),
             ])
             .run()?;
-        let count = std::str::from_utf8(crate::strip_ascii(&counted.stdout))
+        let count = std::str::from_utf8(beadroll_core::text::strip_bytes(&counted.stdout))
             .ok()
             .and_then(|count| count.parse::<u64>().ok());
         if let Some(count) = count.filter(|count| counted.success() && *count > 0) {
@@ -68,7 +68,7 @@ pub fn elsewhere(settings: &Settings, path: &str) -> Result<Elsewhere, Error> {
     }
     // the answer discovery already has, never a git of its own for it
     let top = settings.fact(Fact::Toplevel)?;
-    let top = crate::strip_ascii(&top.stdout);
+    let top = beadroll_core::text::strip_bytes(&top.stdout);
     let worktrees = git.git(["worktree", "list", "--porcelain", "-z"]).run()?;
     for field in worktrees.stdout.split(|byte| *byte == 0) {
         let Some(tree) = field.strip_prefix(b"worktree ") else {
@@ -90,7 +90,7 @@ pub fn elsewhere(settings: &Settings, path: &str) -> Result<Elsewhere, Error> {
             ])
             .run()?;
         // a worktree git cannot read (moved, pruned) has nothing to say
-        if status.success() && !crate::strip_ascii(&status.stdout).is_empty() {
+        if status.success() && !beadroll_core::text::strip_bytes(&status.stdout).is_empty() {
             found.worktrees.push(printed_text(tree));
         }
     }

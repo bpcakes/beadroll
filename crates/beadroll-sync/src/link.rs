@@ -360,11 +360,6 @@ impl<'a> Link<'a> {
     }
 }
 
-/// The number of newline bytes in `data`.
-pub(crate) fn newlines(data: &[u8]) -> usize {
-    data.iter().filter(|b| **b == b'\n').count()
-}
-
 /// Counts local records against the remote observed by a particular merge.
 fn count_unpublished(
     ws: &Workspace,
