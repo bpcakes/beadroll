@@ -3,7 +3,7 @@
 
 use std::ffi::OsString;
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use beadroll_test_support::{Machine, executable};
 use rustix::process::{Pid, Signal, kill_process};
@@ -20,6 +20,14 @@ case "$last" in
 esac
 exit 2
 "#;
+
+/// How long the helper's background job holds git's stderr, in seconds: well past
+/// [`HELD_PAST`], the network timeout a bead waiting on it would run into.
+const HELD: &str = "30";
+
+/// The network timeout the test runs with, in seconds: long enough for a push on a loaded
+/// machine, short of [`HELD`].
+const HELD_PAST: &str = "10";
 
 /// Sends SIGKILL to every helper named in the pid file, when
 /// the guard drops, before the sandbox goes.
@@ -58,7 +66,7 @@ fn finished_push_is_not_reported_unanswered_when_a_helper_keeps_stderr() {
         ("GIT_SSH_COMMAND", ssh.into_os_string()),
         ("G58_PIDS", pids.into_os_string()),
         ("G58_BG_SECONDS", "0".into()),
-        ("BEAD_NET_TIMEOUT", "4".into()),
+        ("BEAD_NET_TIMEOUT", HELD_PAST.into()),
         ("BEAD_REMOTE", remote.into()),
     ];
     a.extra
@@ -69,7 +77,7 @@ fn finished_push_is_not_reported_unanswered_when_a_helper_keeps_stderr() {
     a.bead(["sync"]);
     // the sync below, under the slow helper, publishes it
     a.bead(["comments", "add", key, "publish me", "--offline"]);
-    a.extra.insert("G58_BG_SECONDS".into(), "15".into());
+    a.extra.insert("G58_BG_SECONDS".into(), HELD.into());
     let before = sandbox.remote_journal();
     let started = Instant::now();
     let synced = a.run(["sync", "--json"]);
@@ -86,8 +94,6 @@ fn finished_push_is_not_reported_unanswered_when_a_helper_keeps_stderr() {
         took.as_secs_f64(),
         synced.stderr.trim()
     );
-    assert!(
-        took < Duration::from_secs(4),
-        "bead waited for the helper, not for git"
-    );
+    // and no time bound: the helper holds git's stderr past `BEAD_NET_TIMEOUT`, so a bead that
+    // waited for it would have answered `REMOTE_UNREACHABLE` above, however fast the machine
 }
