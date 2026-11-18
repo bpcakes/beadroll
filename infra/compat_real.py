@@ -10,8 +10,9 @@ import environment
 import selected
 from records import canonical
 P=pathlib.Path
-parser=argparse.ArgumentParser();parser.add_argument('--out', default=tempfile.mkdtemp(prefix='bead-compat-real-'));parser.add_argument('--documents',default=os.path.expanduser('~/Documents'));args=parser.parse_args()
-root=P(args.out);root.mkdir(parents=True,exist_ok=True)
+parser=argparse.ArgumentParser();parser.add_argument('--out', help='where results.json goes (default: a new scratch directory)');parser.add_argument('--documents',default=os.path.expanduser('~/Documents'));args=parser.parse_args()
+# a scratch directory of its own only when --out names none: a default made at parse time was made either way
+root=P(args.out) if args.out else P(tempfile.mkdtemp(prefix='bead-compat-real-'));root.mkdir(parents=True,exist_ok=True)
 bead=selected.local_bead();selected.preflight(bead)
 br=shutil.which('br') or os.path.expanduser('~/.local/bin/br');bv=shutil.which('bv') or os.path.expanduser('~/.local/bin/bv')
 env=environment.scrubbed('BEADS','BV_','BD_')  # br's and bv's own as well

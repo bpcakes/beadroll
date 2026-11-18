@@ -6,6 +6,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `infra/compat_real.py` makes a scratch directory of its own only when `--out` names none; its
+  default was made when the arguments were parsed, so every run given `--out` left an empty one
+  behind.
+
 - `infra/soak.py`'s preflight records a bead that is not there as `missing` and stops, and records
   one that does not run with why, as `infra/selected.py` does, instead of stopping on a Python
   traceback before it logged anything.
