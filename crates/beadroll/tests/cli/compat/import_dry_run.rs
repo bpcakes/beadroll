@@ -24,7 +24,6 @@ fn beads_file(machine: &Machine, text: &str) -> String {
     ".beads/issues.jsonl".to_owned()
 }
 
-/// Whether the remote publishes a tracker.
 /// `git commit ARGS` by an author named here, whatever identity this machine has or lacks.
 fn commit<'a>(args: &[&'a str]) -> Vec<&'a str> {
     let identity = ["-c", "user.name=t", "-c", "user.email=t@example.invalid"];
@@ -34,6 +33,7 @@ fn commit<'a>(args: &[&'a str]) -> Vec<&'a str> {
     command
 }
 
+/// Whether the remote publishes a tracker.
 fn published(origin: &Path) -> bool {
     !git(
         ["ls-remote", origin.to_str().unwrap(), "refs/beads/journal"],
