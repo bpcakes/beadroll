@@ -270,16 +270,19 @@ pub(crate) fn release(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome
                 let issue = resolve_arg(st, key)?;
                 let uid = issue.uid().to_string();
                 let held = issue.claim();
+                // the reason given, for a confirmed claim and a provisional one alike: what `recap`
+                // shows of the release
+                let mut data = Payload::new();
+                if let Some(reason) = args.reason.as_deref().filter(|r| !r.is_empty()) {
+                    data.set_text("reason", reason);
+                }
                 if let Some(held) = held.filter(|held| me.is(&held.owner)) {
-                    let mut data = Payload::new();
                     (data.values).insert("claim".into(), Value::from(held.id.to_string()));
-                    if let Some(reason) = args.reason.as_deref().filter(|r| !r.is_empty()) {
-                        data.set_text("reason", reason);
-                    }
                     tx.emit(OpName::Release, Some(&uid), data.values, None)?;
                     encodable(data.valid)?;
                 } else if issue.provisional_claims().iter().any(|p| me.is(&p.owner)) {
-                    tx.emit(OpName::Release, Some(&uid), Object::new(), None)?;
+                    tx.emit(OpName::Release, Some(&uid), data.values, None)?;
+                    encodable(data.valid)?;
                 } else {
                     // Keep the label's original bytes for the error message.
                     let mut message = format!("{} is not claimed by ", issue.key()).into_bytes();
