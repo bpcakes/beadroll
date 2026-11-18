@@ -136,6 +136,45 @@ fn stale_pending_twin_does_not_fork_a_matching_attempt() {
     assert!(shown.get("claim").is_some(), "{shown:?}");
 }
 
+/// A pending attempt that differs from the remote's file of the same id, with no confirmed copy
+/// here, is `ATTEMPT_FORK`: the machine identity is in use somewhere else. The sync stops, the
+/// pending attempt is kept, and nothing of the remote's is taken in for it.
+#[test]
+fn a_pending_attempt_that_differs_from_the_remote_one_is_an_attempt_fork() {
+    let sandbox = crate::sandbox();
+    let writer = machine(&sandbox, "fork-writer");
+    let key = printed_id(writer.bead(["create", "forked"]));
+    writer.bead(["sync"]);
+    let reader = Machine::new(&sandbox, "fork-reader");
+    reader.bead(["sync"]);
+    writer.bead(["claim", &key]);
+    // the writer's accepted attempt, pending on the reader under the same id with other bytes
+    let attempt = attempts(&writer).into_iter().next().expect("an attempt");
+    let mut other = std::fs::read(&attempt).unwrap();
+    other.push(b'\n');
+    let pending = reader.store().join("pending");
+    std::fs::create_dir_all(&pending).unwrap();
+    let stem = attempt.file_stem().unwrap().to_str().unwrap();
+    let planted = pending.join(format!("{stem}.json"));
+    std::fs::write(&planted, &other).unwrap();
+    let synced = reader.run(["sync", "--json"]);
+    assert_eq!(code(&synced), "ATTEMPT_FORK", "{}", synced.stderr);
+    assert!(
+        synced.stderr.contains("in use somewhere else"),
+        "{}",
+        synced.stderr
+    );
+    assert_eq!(
+        std::fs::read(&planted).unwrap(),
+        other,
+        "the pending attempt was not kept"
+    );
+    assert!(
+        attempts(&reader).is_empty(),
+        "the remote's attempt was taken in for it"
+    );
+}
+
 /// F12: one corrupt pending file does not add a fence commit on every later sync.
 #[test]
 fn unreadable_pending_file_is_not_fenced_forever() {

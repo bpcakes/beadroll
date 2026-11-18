@@ -67,6 +67,32 @@ fn no_git_maintenance_in_sync_git_and_fetches_stay_packed() {
     );
 }
 
+/// Packs piling up repack too, whatever the loose objects: with `BEAD_REPACK_PACKS` reached and
+/// `BEAD_REPACK_LOOSE` far off, a sync packs the sync repository into one.
+#[test]
+fn repacks_when_packs_pile_up() {
+    let sandbox = crate::sandbox();
+    let (a, _, b) = set_up(&sandbox);
+    for n in 0..3 {
+        b.bead(["create", &format!("from b {n}")]);
+        b.bead(["sync"]);
+        a.bead(["sync"]);
+    }
+    let (_, packs_before) = counts(&a);
+    assert!(packs_before >= 2, "{packs_before}");
+    let synced = a
+        .cmd(["sync", "--json"])
+        .env("BEAD_REPACK_PACKS", "2")
+        .env("BEAD_REPACK_LOOSE", "1000000")
+        .run();
+    let result = parse_json(&synced.stdout).unwrap();
+    assert!(
+        result.get("repacked").is_some_and(Json::truthy),
+        "{result:?}"
+    );
+    assert_eq!(counts(&a).1, 1, "one pack");
+}
+
 #[test]
 fn repacks_under_the_lock_when_loose_objects_pile_up() {
     let sandbox = crate::sandbox();

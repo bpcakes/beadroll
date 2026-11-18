@@ -175,6 +175,40 @@ fn rewritten_foreign_file_preserves_local_backup_and_published_bytes() {
     assert_eq!(a.export(), b.export());
 }
 
+/// An attempt file is immutable once accepted: a confirmed copy changed here is replaced by the
+/// remote's on the next sync, the changed bytes kept beside it as `*.fork-*` and reported.
+#[test]
+fn rewritten_confirmed_attempt_is_replaced_by_the_remote_copy_and_kept_beside_it() {
+    let sandbox = crate::sandbox();
+    let (a, key) = set_up(&sandbox, Machine::new);
+    let b = two(&sandbox, &a, Machine::new);
+    a.bead(["claim", &key]);
+    b.bead(["sync"]);
+    let claims = a.store().join("events").join(super::own(&a)).join("claims");
+    let accepted = (std::fs::read_dir(&claims).expect("a's attempts"))
+        .map(|entry| entry.expect("an entry").path())
+        .find(|path| path.extension().is_some_and(|ext| ext == "json"))
+        .expect("the claim's attempt");
+    let relative = relative(&accepted, &a);
+    let copy = b.store().join(&relative);
+    let original = bytes(&copy);
+    assert_eq!(original, bytes(&accepted), "b holds a's accepted attempt");
+    let mut changed = original.clone();
+    changed.extend_from_slice(b"\n");
+    std::fs::write(&copy, &changed).expect("the changed copy");
+    let result = b.bead(["sync"]).expect("bead sync prints a record");
+    let published = relative.to_str().expect("a UTF-8 path");
+    assert_eq!(json_member(&result, "forked_journals"), &json!([published]));
+    assert_eq!(bytes(&copy), original, "the remote's copy did not win");
+    let kept = named(parent(&copy), ".fork-");
+    assert_eq!(kept.len(), 1, "{kept:?}");
+    assert_eq!(bytes(&kept[0]), changed);
+    assert!(
+        b.show(&key).get("claim").is_some(),
+        "the accepted claim was lost"
+    );
+}
+
 #[test]
 fn copied_identity_divergence_across_rotation_refuses_remote_change() {
     let sandbox = crate::sandbox();
