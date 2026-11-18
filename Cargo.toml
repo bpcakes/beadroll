@@ -42,6 +42,10 @@ rust_2018_idioms = { level = "warn", priority = -1 }
 unknown_lints = { level = "deny", priority = -10 }              # -D warnings does not catch a stale
 renamed_and_removed_lints = { level = "deny", priority = -10 }  # name in these tables; these do
 
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "allow"   # docs are for maintainers: a public item names the private one it rests on
+
 [workspace.lints.clippy]
 fn_params_excessive_bools = "deny"
 cognitive_complexity = "warn"

@@ -182,6 +182,12 @@ git, ssh or bead stops the run (`infra/test_deadlines.py` checks every driver).
   The exceptions are `beadroll_git::runner::detach`'s `unsafe_code` and the
   sweep's `module_inception`. xtask's `hygiene::lint_exemptions` fails on any
   other.
+- **A doc link names something that exists.** The workspace's rustdoc lints
+  deny `broken_intra_doc_links` and allow `private_intra_doc_links`: these
+  crates are documented for the people who maintain them, so a public item's
+  doc may name the private one it rests on (`MAX_CYCLES`, `LONGEST_PAUSE`).
+  Every push builds the docs with warnings denied (`xtask`'s
+  `ci::documentation`).
 - **Every crate root has `//!` docs**, binaries and test roots included
   (`missing_docs` fires on them). Each `tests/<name>/main.rs` starts with
   `#![cfg(test)]`, so that clippy treats its helpers as test code, and helpers

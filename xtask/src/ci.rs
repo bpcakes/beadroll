@@ -1,6 +1,7 @@
 //! CI coverage: every push tests Linux and macOS, and nightly runs include the oldest supported
 //! git built from source, the growth guards timed in release, the coverage report and the fuzz
-//! targets. These checks keep the workflow matrix aligned with supported environments.
+//! targets; every push builds the docs with warnings denied. These checks keep the workflow
+//! matrix aligned with supported environments.
 
 /// The text of the file at `path` from the repository's root.
 fn read(path: &str) -> String {
@@ -31,7 +32,42 @@ fn uncommented(text: &str) -> String {
     lines.join("\n") + "\n"
 }
 
+/// A step of a job: its lines, comments left out.
+pub(super) type Step<'w> = Vec<&'w str>;
+
+/// The lines of job `job` in `workflow`, read without its comments, before its steps, and its steps.
+pub(super) fn job<'w>(workflow: &'w str, job: &str) -> (Vec<&'w str>, Vec<Step<'w>>) {
+    let header = format!("  {job}:");
+    let lines: Vec<&str> = (workflow.lines())
+        .skip_while(|line| *line != header)
+        .skip(1)
+        .take_while(|line| line.is_empty() || line.starts_with("   "))
+        .collect();
+    assert!(!lines.is_empty(), "no job {job}");
+    let (mut head, mut steps) = (Vec::new(), Vec::<Step<'w>>::new());
+    for line in lines {
+        if line.starts_with("      - ") {
+            steps.push(vec![line]);
+        } else if let Some(step) = steps.last_mut() {
+            step.push(line);
+        } else {
+            head.push(line);
+        }
+    }
+    (head, steps)
+}
+
+/// The index of the one step of `steps` with a line holding every one of `parts`.
+pub(super) fn step_with(steps: &[Step<'_>], parts: &[&str]) -> usize {
+    let found: Vec<usize> = (0..steps.len())
+        .filter(|at| (steps[*at].iter()).any(|line| parts.iter().all(|part| line.contains(part))))
+        .collect();
+    assert_eq!(found.len(), 1, "steps with {parts:?}: {found:?}");
+    found[0]
+}
+
 mod coverage_report;
+mod documentation;
 mod fuzzing;
 mod growth_guards;
 mod supported_environments;

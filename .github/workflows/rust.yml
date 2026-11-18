@@ -71,6 +71,10 @@ jobs:
             fuzz -> target
       - name: Lint every target
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D clippy::mod_module_files
+      - name: Build the docs, warnings denied
+        run: cargo doc --workspace --no-deps --locked
+        env:
+          RUSTDOCFLAGS: -D warnings
       # The fuzz targets build against beadroll-core's API on the root's toolchain: a change to it
       # that breaks them fails here, not in the next night's fuzzing.
       - name: Check and lint the fuzz targets
