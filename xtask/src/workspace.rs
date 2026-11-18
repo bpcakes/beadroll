@@ -140,6 +140,12 @@ pub(crate) fn json_string(text: &str) -> String {
     out
 }
 
+/// `words` as the arguments a subcommand is given, for its tests.
+#[cfg(test)]
+pub(crate) fn args(words: &[&str]) -> Vec<OsString> {
+    words.iter().map(OsString::from).collect()
+}
+
 /// A fake tool for a test: `body` as the executable shell script `name` in `dir`, whose path this
 /// is. Under `cargo test`, whose tests are threads of one process, a process another test forks
 /// while the file is still open for writing holds it until it execs, and running the file

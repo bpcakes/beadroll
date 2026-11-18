@@ -4,6 +4,7 @@
 use std::path::PathBuf;
 
 use super::*;
+use crate::workspace::args;
 
 /// Whether a test toolchain contains the LLVM binaries.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -12,10 +13,6 @@ pub(crate) enum LlvmTools {
     Missing,
     /// Installed.
     Installed,
-}
-
-fn args(list: &[&str]) -> Vec<OsString> {
-    list.iter().map(OsString::from).collect()
 }
 
 #[test]

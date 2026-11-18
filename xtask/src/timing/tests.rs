@@ -3,6 +3,8 @@
 use super::*;
 use std::time::Duration;
 
+use crate::workspace::args;
+
 #[test]
 fn dates_are_civil_utc() {
     assert_eq!(utc(UNIX_EPOCH), "1970-01-01T00:00:00Z");
@@ -41,7 +43,6 @@ fn a_record_is_one_json_object() {
 
 #[test]
 fn the_command_follows_two_dashes() {
-    let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let options = parse(args(&["--label", "x", "--", "sleep", "--label"])).unwrap();
     assert_eq!(options.label.as_deref(), Some("x"));
     assert_eq!(options.command, args(&["sleep", "--label"]));
@@ -54,7 +55,6 @@ fn the_command_follows_two_dashes() {
 
 #[test]
 fn sync_takes_a_count_a_shape_and_a_rotation() {
-    let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let options = parse(args(&["--sync", "200", "--ownership", "--rotate", "4096"])).unwrap();
     assert_eq!(options.mode, Some(Mode::Sync(200)));
     assert_eq!(options.rotate, Some(4096));
@@ -76,7 +76,6 @@ fn sync_takes_a_count_a_shape_and_a_rotation() {
 
 #[test]
 fn concurrent_goes_with_merge() {
-    let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let options = parse(args(&["--merge", "500", "--concurrent", "--text"])).unwrap();
     assert!(options.concurrent);
     assert!(parse(args(&["--read", "500", "--concurrent"])).is_err());
@@ -84,7 +83,6 @@ fn concurrent_goes_with_merge() {
 
 #[test]
 fn contend_takes_machines_writes_and_a_latency() {
-    let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let options = parse(args(&[
         "--contend",
         "4",
@@ -109,7 +107,6 @@ fn contend_takes_machines_writes_and_a_latency() {
 
 #[test]
 fn extend_takes_a_count_of_issues_and_is_a_measurement_of_its_own() {
-    let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let options = parse(args(&["--extend", "8000"])).unwrap();
     assert_eq!(options.mode, Some(Mode::Extend(8000)));
     for wrong in [
@@ -129,7 +126,6 @@ fn extend_takes_a_count_of_issues_and_is_a_measurement_of_its_own() {
 
 #[test]
 fn dangling_takes_a_count_of_issues_and_is_a_measurement_of_its_own() {
-    let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let options = parse(args(&["--dangling", "16000"])).unwrap();
     assert_eq!(options.mode, Some(Mode::Dangling(16000)));
     for wrong in [
@@ -149,7 +145,6 @@ fn dangling_takes_a_count_of_issues_and_is_a_measurement_of_its_own() {
 
 #[test]
 fn ready_takes_a_count_of_issues_and_is_a_measurement_of_its_own() {
-    let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let options = parse(args(&["--ready", "4000"])).unwrap();
     assert_eq!(options.mode, Some(Mode::Ready(4000)));
     for wrong in [
@@ -169,7 +164,6 @@ fn ready_takes_a_count_of_issues_and_is_a_measurement_of_its_own() {
 
 #[test]
 fn details_takes_a_count_of_issues_and_is_a_measurement_of_its_own() {
-    let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let options = parse(args(&["--details", "8000"])).unwrap();
     assert_eq!(options.mode, Some(Mode::Details(8000)));
     for wrong in [
@@ -189,7 +183,6 @@ fn details_takes_a_count_of_issues_and_is_a_measurement_of_its_own() {
 
 #[test]
 fn renames_takes_a_count_of_copies_and_is_a_measurement_of_its_own() {
-    let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let options = parse(args(&["--renames", "8000"])).unwrap();
     assert_eq!(options.mode, Some(Mode::Renames(8000)));
     for wrong in [
@@ -209,7 +202,6 @@ fn renames_takes_a_count_of_copies_and_is_a_measurement_of_its_own() {
 
 #[test]
 fn decode_takes_a_count_of_events_a_shape_and_is_a_measurement_of_its_own() {
-    let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let options = parse(args(&["--decode", "200000", "--ownership"])).unwrap();
     assert_eq!(options.mode, Some(Mode::Decode(200_000)));
     assert_eq!(options.shape, history::Shape::Ownership);
@@ -230,7 +222,6 @@ fn decode_takes_a_count_of_events_a_shape_and_is_a_measurement_of_its_own() {
 
 #[test]
 fn parse_takes_a_count_of_files_a_shape_and_is_a_measurement_of_its_own() {
-    let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let options = parse(args(&["--parse", "92000", "--ownership"])).unwrap();
     assert_eq!(options.mode, Some(Mode::Parse(92_000)));
     assert_eq!(options.shape, history::Shape::Ownership);
@@ -251,7 +242,6 @@ fn parse_takes_a_count_of_files_a_shape_and_is_a_measurement_of_its_own() {
 
 #[test]
 fn ownership_shapes_a_replay_and_load_names_a_directory() {
-    let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let options = parse(args(&["--replay", "10", "--ownership"])).unwrap();
     assert_eq!(options.mode, Some(Mode::Replay(10)));
     assert_eq!(options.shape, history::Shape::Ownership);
@@ -278,7 +268,6 @@ fn ownership_shapes_a_replay_and_load_names_a_directory() {
 /// second measurement is refused where it is named, and one named again keeps its last count.
 #[test]
 fn measurements_are_named_once_and_one_at_a_time() {
-    let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let usage = |words: &[&str]| match parse(args(words)) {
         Err(Failure::Usage(text)) => text,
         other => panic!("{words:?}: {:?}", other.map(|options| options.mode)),
