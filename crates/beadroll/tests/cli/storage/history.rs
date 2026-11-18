@@ -28,8 +28,13 @@ fn history_cache_preserves_limits_filters_and_current_machine_aliases() {
     ] {
         for format in [None, Some("--json")] {
             let args: Vec<_> = args.iter().copied().chain(format).collect();
-            let _ = std::fs::remove_file(a.store().join("history"));
+            let cache = a.store().join("history");
+            if cache.exists() {
+                std::fs::remove_file(&cache).unwrap();
+            }
             let cold = a.run(&args);
+            // the cold run made the cache the warm one reads, or the two compared one path
+            assert!(cache.is_file(), "{args:?} left no history cache");
             let warm = a.run(&args);
             assert_eq!(cold.returncode(), 0, "{}", cold.stderr);
             assert_eq!(warm.returncode(), 0, "{}", warm.stderr);

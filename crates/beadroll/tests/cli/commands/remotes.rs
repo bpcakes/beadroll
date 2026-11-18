@@ -39,11 +39,14 @@ fn credential_urls_are_not_stored() {
         ]);
         assert_eq!(made.returncode(), 0, "{name}: {}", made.stderr);
         let config = std::fs::read_to_string(machine.checkout().join(".beadroll.json")).unwrap();
+        // an `info` that failed, or a store without its meta.json, would show no secret either
         let info = machine.run(["info", "--json"]);
+        assert_eq!(info.returncode(), 0, "{name}: {}", info.stderr);
         let metas: Vec<String> = metas(&machine)
             .iter()
             .map(|path| std::fs::read_to_string(path).unwrap())
             .collect();
+        assert!(!metas.is_empty(), "{name}: no store's meta.json to look in");
         let blob = format!("{config}{}{}{}", info.stdout, info.stderr, metas.join("\n"));
         for secret in ["supersecret", "sec/ret", "s%65cret"] {
             assert!(!blob.contains(secret), "{name}: {secret} in {blob}");
@@ -75,9 +78,15 @@ fn remote_url_shapes_that_are_already_safe() {
 
     let ssh = Machine::new(&sandbox, "ssh");
     let url = "ssh://alice:supersecret@example.invalid/private.git";
-    ssh.run(["init", "--prefix", "ex", "--remote", url]);
+    let made = ssh.run(["init", "--prefix", "ex", "--remote", url]);
+    assert_eq!(made.returncode(), 0, "{}", made.stderr);
     let stored = meta(&ssh);
     assert!(!stored.contains("supersecret"), "{stored}");
+    // the password dropped, the user kept: what an ssh URL needs to reach the same host
+    assert!(
+        stored.contains("\"ssh://alice@example.invalid/private.git\""),
+        "{stored}"
+    );
     let plain = Machine::new(&sandbox, "ssh-user");
     let url = "ssh://alice@example.invalid/private.git";
     plain.run(["init", "--prefix", "ex", "--remote", url]);

@@ -8,8 +8,10 @@ use super::{answers, projection};
 use crate::storage::projection::ReadPath;
 
 /// The reads that answer from edges beside those `answers` makes: the children of a parent, a
-/// subtree's readiness, a tree of dependencies and the cycles.
-fn edge_reads(machine: &beadroll_test_support::Machine) -> Vec<String> {
+/// subtree's readiness, a tree of dependencies and the cycles; with `replaying`, the projection
+/// is removed before each, as `answers` removes it, so that each replays the journal (a read
+/// writes the projection back, which the next would otherwise answer from).
+fn edge_reads(machine: &beadroll_test_support::Machine, replaying: ReadPath) -> Vec<String> {
     let reads: [&[&str]; 6] = [
         &["list", "--parent", "ex-e", "--json"],
         &["ready", "ex-e", "--json"],
@@ -20,6 +22,9 @@ fn edge_reads(machine: &beadroll_test_support::Machine) -> Vec<String> {
     ];
     (reads.iter())
         .map(|args| {
+            if replaying == ReadPath::Replay {
+                let _ = std::fs::remove_file(projection(machine));
+            }
             let run = machine.run(*args);
             assert_eq!(run.returncode(), 0, "{args:?}: {}", run.stderr);
             run.stdout
@@ -53,9 +58,15 @@ fn edges_and_their_metadata_answer_alike_from_the_texts_and_from_the_journal() {
     a.bead(["dep", "add", "ex-e", "ex-d", "--type", "related"]);
     a.bead(["dep", "remove", "ex-d", "ex-c", "--type", "tracks"]);
     a.bead(["dep", "add", "ex-d", "ex-c", "--type", "tracks"]);
-    let kept = (answers(&a, &keys, ReadPath::Projection), edge_reads(&a));
+    let kept = (
+        answers(&a, &keys, ReadPath::Projection),
+        edge_reads(&a, ReadPath::Projection),
+    );
     let _ = std::fs::remove_file(projection(&a));
-    let replayed = (answers(&a, &keys, ReadPath::Replay), edge_reads(&a));
+    let replayed = (
+        answers(&a, &keys, ReadPath::Replay),
+        edge_reads(&a, ReadPath::Replay),
+    );
     assert_eq!(kept, replayed);
     let export = &kept.0[4];
     for member in [

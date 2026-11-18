@@ -67,9 +67,20 @@ fn following_the_hint_under_a_dangling_link_does_not_start_a_second_tracker() {
     let sandbox = crate::sandbox();
     let (a, config) = set_up(&sandbox);
     break_config(&config, "dangling");
-    a.run(["init", "--prefix", "ex", "--json"]);
-    a.run(["create", "written after the link broke", "--json"]);
-    a.run(["sync", "--json"]);
+    // each step is refused for the link, never run under another workspace
+    for args in [
+        &["init", "--prefix", "ex", "--json"][..],
+        &["create", "written after the link broke", "--json"],
+        &["sync", "--json"],
+    ] {
+        let step = a.run(args);
+        assert_eq!(
+            (step.returncode(), failure_code(&step).as_deref()),
+            (1, Some("CONFIG")),
+            "{args:?}: {}",
+            head(step.stderr.trim(), 200)
+        );
+    }
     let published = git(
         ["for-each-ref", "--format=%(refname)", "refs/beads"],
         Some(sandbox.origin()),

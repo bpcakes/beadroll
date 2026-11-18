@@ -178,7 +178,11 @@ fn the_three_layouts_show_the_same_activity() {
     assert_eq!(a.run(["recap", "--all", "--color", "never"]).stdout, events);
     let lines: Vec<&str> = events.lines().skip(1).collect();
     assert_eq!(lines.len(), 6, "{events}");
-    let log = a.run(["log", "--limit", "0", "--color", "never"]).stdout;
+    let logged = a.run(["log", "--limit", "0", "--color", "never"]);
+    assert_eq!(logged.returncode(), 0, "{}", logged.stderr);
+    let log = logged.stdout;
+    // the same six events, so that every line is compared rather than as many as the shorter has
+    assert_eq!(log.lines().count(), lines.len(), "{log}");
     for (line, logged) in lines.iter().zip(log.lines()) {
         let (before, branch) = logged.rsplit_once("  (").unwrap_or((logged, ""));
         assert!(
