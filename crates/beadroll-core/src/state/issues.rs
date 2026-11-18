@@ -14,8 +14,6 @@ use super::issue::Issue;
 use super::texts::Texts;
 use crate::id::EventId;
 #[cfg(test)]
-use crate::journal::JournalOrder;
-#[cfg(test)]
 use crate::projection::tests::HistoryKind;
 
 /// The issues, by id, in the order replay created them, with which of those read back changed.
@@ -115,25 +113,13 @@ impl Issues {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::journal::Journal;
+
     use crate::projection::tests::history;
     use crate::replay::replay;
 
     /// The issues of a clean differential history, held as read back.
     fn read_back() -> Issues {
-        let mut journal = Journal::new();
-        for record in history(3, 30, HistoryKind::Valid) {
-            journal.add(
-                record.value,
-                &record.replica,
-                &record.origin,
-                if record.sequenced {
-                    JournalOrder::Sequenced
-                } else {
-                    JournalOrder::Attempt
-                },
-            );
-        }
+        let journal = crate::projection::journal_of(history(3, 30, HistoryKind::Valid));
         let mut issues = replay(journal).unwrap().issues;
         for issue in issues.values_mut() {
             issue.texts = Texts::Read(crate::state::TextPlace {
@@ -193,19 +179,7 @@ mod tests {
 
     #[test]
     fn a_state_replay_made_has_every_issue_changed() {
-        let mut journal = Journal::new();
-        for record in history(3, 10, HistoryKind::Valid) {
-            journal.add(
-                record.value,
-                &record.replica,
-                &record.origin,
-                if record.sequenced {
-                    JournalOrder::Sequenced
-                } else {
-                    JournalOrder::Attempt
-                },
-            );
-        }
+        let journal = crate::projection::journal_of(history(3, 10, HistoryKind::Valid));
         let issues = replay(journal).unwrap().issues;
         assert!(!issues.is_empty());
         assert!((0..issues.len()).all(|at| issues.changed(at)));

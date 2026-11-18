@@ -43,7 +43,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::hash::{DefaultHasher, Hasher as _};
 
 use crate::id::EventId;
-use crate::journal::Journal;
+use crate::journal::{Journal, JournalOrder};
 use crate::json::Value;
 use crate::order::position;
 use crate::replay::replayed;
@@ -114,6 +114,22 @@ pub struct Record {
     pub origin: String,
     /// Whether it is a record of that machine's journal.
     pub sequenced: bool,
+}
+
+/// A journal of `records`, each taken in with the order its file gives it (a journal's records
+/// sequenced, an attempt file's not), not yet settled: what a batch, or a test's history, is read
+/// into.
+pub(crate) fn journal_of(records: impl IntoIterator<Item = Record>) -> Journal {
+    let mut journal = Journal::new();
+    for record in records {
+        let order = if record.sequenced {
+            JournalOrder::Sequenced
+        } else {
+            JournalOrder::Attempt
+        };
+        journal.add(record.value, &record.replica, &record.origin, order);
+    }
+    journal
 }
 
 /// A journal's state, replayed, with what applying the events that come after it needs.
