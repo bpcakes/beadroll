@@ -10,13 +10,20 @@ tests it builds events, and for the round-trip properties it draws JSON values.
 
 ## Key entrypoints
 
-- `src/sandbox.rs`: `Sandbox`, `git`, `git_command`, `select_bead`, the choice between `BEAD_UNDER_TEST` and the
-  caller's default (`Sandbox::selecting` takes the variable's value instead of reading it), and
-  `built_bead`, the default of the tests of a crate other than `beadroll`: the `bead` Cargo built in
+- `src/sandbox.rs`: `Sandbox`, `git`, `git_command`, the choice between `BEAD_UNDER_TEST` and the
+  caller's default, which only `Sandbox` makes (`Sandbox::selecting` takes the variable's value
+  instead of reading it), and `built_bead`, the default of the tests of a crate other than `beadroll`: the `bead` Cargo built in
   the profile directory above the running test (`<target>/<profile>/bead`, with tests under
-  `build/<package>/<hash>/out/` or older Cargo's `deps/`).
+  `build/<package>/<hash>/out/` or older Cargo's `deps/`). On the sandbox's remote:
+  `Sandbox::remote_journal`, the commit `refs/beads/journal` names or `None` when it names none
+  (any other failure panics); `origin_git`, any other git there; `origin_plumbing`, objects and refs
+  written there by hand as committer `t`, input on standard input. `Sandbox::records` writes the
+  Beads records a test imports, and `Sandbox::fake_ssh` an ssh stand-in that runs the remote
+  command locally in `$FAKE_SSH_ROOT`. Use these rather than a local copy.
 - `src/machine.rs`: `Machine` (`run`, `bead`, `show`, `ready`, `export`, `store`, `with_bead`),
-  `Invocation` (a run's directory, thread, agent, environment and input), `Run`, `code`, and
+  `Invocation` (a run's directory, thread, agent, environment and input), `Run`; a failed run's
+  error code as `code` (failing the test without one), `reported_code` (or `None`) and
+  `failure_code` (or `TRACEBACK` when bead crashed); and
   `converge`, every machine synced twice round and their exports compared; use it rather than a
   local sync loop.
 - `src/isolation.rs`: `assert_git_isolation`, which runs named tests in child processes with Git
@@ -29,11 +36,12 @@ tests it builds events, and for the round-trip properties it draws JSON values.
   of documents, in order; `json_member`, a member the
   test requires; `json_line`, a value as one line of bead's JSON (a record to import, a file's
   body), and `json_lines` of several; `path_text`, a sandbox path as text; `last_line`, what a command's output ends with;
-  `executable`, a hook or a fake `git`, `ps` or `ssh` written with mode 0755. Use these rather
-  than a local copy.
+  `executable`, a hook or a fake `git`, `ps` or `ssh` written with mode 0755; `skipped_as_root`,
+  whether a test of what a file's mode denies is skipped because it runs as root, saying why.
+  Use these rather than a local copy.
 - `src/shell.rs`: `shell_quoted`, a word (a path, an argument) quoted for the `sh` scripts a
-  test writes, and `git_on_path`, the real git a fake `git` hands on to. Use these rather than
-  a local copy.
+  test writes; `git_on_path`, the real git a fake `git` hands on to; and `ulimit_block`, the
+  block size the shell's `ulimit -f` counts in. Use these rather than a local copy.
 - `src/gate.rs`: `Gate`, the `pause-until` handshake that holds bead at a failpoint while the
   test acts (`at`, `action`, `meet`, `ready`, `open`), and `beside`, which runs bead in a thread
   while the test meets it at its gates. The sync crate's in-process tests use the same `Gate`.
@@ -41,12 +49,14 @@ tests it builds events, and for the round-trip properties it draws JSON values.
   environment of its own, a shell, `br`), a `Spawned` process beside the test, in a `ProcessGroup`
   of its own or the test's: its output drained by threads, `poll`, `kill`, `within` and
   `communicate` under a deadline, `wait_for` a marker; killed and reaped when dropped running. Use
-  it rather than a local spawn-and-wait loop.
-- `src/files.rs`: `copy_tree`, a directory copied with its modes and times (a machine's twin), and
-  `descendants`, every path under one, links not followed; `src/pool.rs`: `pool_map`, jobs run on a
+  it rather than a local spawn-and-wait loop. A test that needs standard streams of its own starts
+  its `Command` itself, waits with `exited_within` (in `src/wait.rs`) and reads a pipe with `drain`.
+- `src/files.rs`: `copy_tree`, a directory copied with its modes and times (a machine's twin),
+  `descendants`, every path under one, links not followed, and a store's journal segments,
+  `segments` (every journal's) and `segments_in` (one folder's), sorted; `src/pool.rs`: `pool_map`, jobs run on a
   few threads at once with their results in the jobs' order. Use these rather than a local copy.
 - `src/wait.rs`: `wait_until`, a condition polled until a deadline, which fails the test naming
-  what it waited for. `Sandbox::receive_pack_running` and `Sandbox::await_remote_settled` cover
+  what it waited for; `within`, whether it held; `exited_within`, how a test's own child ended. `Sandbox::receive_pack_running` and `Sandbox::await_remote_settled` cover
   a push still running at the remote after bead gave up on it: the test waits for it to land or
   fail before it reads the remote. `REMOTE_SETTLES` is their deadline.
 - `src/values.rs`: `Rng`, seeded JSON values for the round-trip properties (strings of the
@@ -55,8 +65,10 @@ tests it builds events, and for the round-trip properties it draws JSON values.
   compared, which `Value`'s equality does not) and `sorted`, for beadroll-core's integration tests
   and beadroll-store's tests (roll-k2wy.14.4).
 - `src/events.rs`: the `json!` macro, `Event` (an event built as `Tx.emit` writes it), `id`,
-  `id_at`, `journal` and `state`, for beadroll-core's integration tests only: core's own unit tests
-  would build a second `beadroll_core` (E0308).
+  `id_at`, `journal` and `state`, for beadroll-core's integration tests and the other crates' unit
+  tests. Core's own unit tests build a second `beadroll_core` here, so they may take only what
+  holds none of its types (`id_at`'s strings, `values::Rng`); a `Value` or `Journal` from here is
+  not theirs (E0308).
 
 ## Edit here for X
 
