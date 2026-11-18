@@ -22,6 +22,46 @@ use super::{
 };
 use crate::commands::args::TextValidity;
 
+/// What `dep` was asked to do, by the word that asked it: `rm` and `remove` take an edge back
+/// alike, and the answer names the one given.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Action {
+    Add,
+    Remove,
+    Rm,
+    List,
+    Tree,
+    Cycles,
+}
+
+impl Action {
+    const ALL: [Action; 6] = [
+        Action::Add,
+        Action::Remove,
+        Action::Rm,
+        Action::List,
+        Action::Tree,
+        Action::Cycles,
+    ];
+
+    /// The word that asks for this action.
+    fn word(self) -> &'static str {
+        match self {
+            Action::Add => "add",
+            Action::Remove => "remove",
+            Action::Rm => "rm",
+            Action::List => "list",
+            Action::Tree => "tree",
+            Action::Cycles => "cycles",
+        }
+    }
+
+    /// The action `word` asks for, if it is one of the words.
+    fn named(word: &OsStr) -> Option<Action> {
+        (Action::ALL.into_iter()).find(|action| word.as_bytes() == action.word().as_bytes())
+    }
+}
+
 /// Runs `dep ACTION ...`; without a known action word, `list`.
 pub(crate) fn dep(
     ctx: &Context<'_>,
@@ -29,15 +69,12 @@ pub(crate) fn dep(
     kind: Option<&OsStr>,
     edges: Edges,
 ) -> Result<Outcome, Failure> {
-    let known = ["add", "remove", "rm", "list", "tree", "cycles"];
     let (action, words) = match words.split_first() {
-        Some((first, rest)) if known.iter().any(|k| first.as_bytes() == k.as_bytes()) => {
-            (first.to_string_lossy().into_owned(), rest)
-        }
-        _ => ("list".to_owned(), words),
+        Some((first, rest)) if let Some(action) = Action::named(first) => (action, rest),
+        _ => (Action::List, words),
     };
-    if matches!(action.as_str(), "add" | "remove" | "rm") {
-        return change(ctx, &action, words, kind);
+    if matches!(action, Action::Add | Action::Remove | Action::Rm) {
+        return change(ctx, action, words, kind);
     }
     if kind.is_some() {
         return Err(Failure::new(
@@ -45,11 +82,11 @@ pub(crate) fn dep(
             "--type requires bead dep add ISSUE DEPENDS_ON or bead dep remove ISSUE DEPENDS_ON",
         ));
     }
-    if action == "cycles" && !words.is_empty() {
+    if action == Action::Cycles && !words.is_empty() {
         return Err(Failure::new(Code::Validation, "usage: bead dep cycles"));
     }
-    if action != "cycles" && words.len() > 1 {
-        let usage = if action == "list" {
+    if action != Action::Cycles && words.len() > 1 {
+        let usage = if action == Action::List {
             "usage: bead dep [list] ISSUE; to add a dependency, use: bead dep add ISSUE DEPENDS_ON"
         } else {
             "usage: bead dep tree ISSUE"
@@ -58,7 +95,7 @@ pub(crate) fn dep(
     }
     let st = view_outline(ctx.ws)?;
     need_tracker(&st)?;
-    if action == "cycles" {
+    if action == Action::Cycles {
         let cycles = st.cycles(edges);
         let mut lines: Vec<String> = cycles
             .iter()
@@ -80,11 +117,11 @@ pub(crate) fn dep(
     let Some(key) = words.first() else {
         return Err(Failure::new(
             Code::Validation,
-            format!("usage: bead dep {action} ISSUE"),
+            format!("usage: bead dep {} ISSUE", action.word()),
         ));
     };
     let issue = resolve_arg(&st, key)?;
-    if action == "tree" {
+    if action == Action::Tree {
         let lines = tree(&st, issue);
         let mut result = Object::new();
         result.insert(
@@ -153,14 +190,14 @@ fn tree(st: &State, issue: &Issue) -> Vec<Line> {
 /// dependency an import made on a key that is not an issue yet can be taken back by that key.
 fn change(
     ctx: &Context<'_>,
-    action: &str,
+    action: Action,
     words: &[OsString],
     kind: Option<&OsStr>,
 ) -> Result<Outcome, Failure> {
     let [issue_key, target_key] = words else {
         return Err(Failure::new(
             Code::Validation,
-            format!("usage: bead dep {action} ISSUE DEPENDS_ON"),
+            format!("usage: bead dep {} ISSUE DEPENDS_ON", action.word()),
         ));
     };
     let (kind, validity) = match kind {
@@ -179,7 +216,7 @@ fn change(
         let target = match resolve_arg(st, target_key) {
             Ok(target) => Some(target),
             Err(failure) => {
-                if action == "add" || dangling_key(st, issue, target_key).is_none() {
+                if action == Action::Add || dangling_key(st, issue, target_key).is_none() {
                     return Err(failure);
                 }
                 // an imported dependency on a key that is not an issue yet: it can still be
@@ -188,7 +225,7 @@ fn change(
             }
         };
         let shown = match (action, target) {
-            ("add", Some(target)) => {
+            (Action::Add, Some(target)) => {
                 let kind = kind.as_deref().filter(|k| !k.is_empty()).unwrap_or(BLOCKS);
                 let looped = if blocking(kind) {
                     st.reaches(target.uid(), issue.uid())
@@ -235,7 +272,7 @@ fn change(
         };
         Ok::<_, Failure>((issue.key().to_owned(), shown))
     })?;
-    let done = if action == "add" {
+    let done = if action == Action::Add {
         "now depends on"
     } else {
         "no longer depends on"
@@ -243,7 +280,7 @@ fn change(
     let mut result = Object::new();
     result.insert("issue_id".into(), Value::from(issue_key.as_str()));
     result.insert("depends_on_id".into(), Value::from(shown.as_str()));
-    result.insert("action".into(), Value::from(action));
+    result.insert("action".into(), Value::from(action.word()));
     Ok(Outcome::new(result, vec![format!("{issue_key} {done} {shown}")]).wrote_in(spent))
 }
 

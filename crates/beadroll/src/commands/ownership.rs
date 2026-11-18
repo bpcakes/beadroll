@@ -3,13 +3,14 @@
 //! a release, a close or a takeover.
 
 use std::ffi::{OsStr, OsString};
+use std::os::unix::ffi::OsStrExt as _;
 
 use beadroll_core::code::Code;
 use beadroll_core::event::Field;
 use beadroll_core::json::{Format, Object, Value, write};
 use beadroll_core::op::OpName;
 use beadroll_core::state::State;
-use beadroll_core::text::str_of;
+use beadroll_core::text::{printed_text, str_of};
 use beadroll_store::{Actor, ensure_replica_id, view_outline};
 use beadroll_sync::{Mode, NetworkMode, Tx, coordinated};
 
@@ -231,7 +232,7 @@ pub(crate) fn takeover(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcom
     let st = view_of(ctx.ws, &args.ids)?;
     still_held(ctx, &st, &args.ids)?;
     let result = details(&st, &args.ids)?;
-    let reason = beadroll_core::text::printed_text(std::os::unix::ffi::OsStrExt::as_bytes(reason));
+    let reason = printed_text(reason.as_bytes());
     let lines = result
         .iter()
         .map(|item| {
