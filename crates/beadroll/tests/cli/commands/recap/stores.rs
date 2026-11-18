@@ -7,7 +7,7 @@
 use std::collections::BTreeSet;
 use std::os::unix::fs::PermissionsExt as _;
 
-use beadroll_test_support::{Json, Machine, Sandbox, code, parse_json, segments};
+use beadroll_test_support::{Json, Machine, Sandbox, code, parse_json, segments, skipped_as_root};
 
 use super::{create, each, events, recap};
 
@@ -212,8 +212,7 @@ fn an_entry_of_the_home_bead_cannot_inspect_is_reported_and_the_others_still_sho
 #[test]
 fn a_store_whose_journal_bead_cannot_inspect_is_reported_and_shows_once_it_can() {
     // root searches a directory whatever its mode says
-    if rustix::process::geteuid().is_root() {
-        eprintln!("skipped: root ignores directory modes");
+    if skipped_as_root("root ignores directory modes") {
         return;
     }
     let sandbox = crate::sandbox();

@@ -6,9 +6,9 @@ use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 
-use beadroll_test_support::{Machine, printed_id};
+use beadroll_test_support::{Machine, printed_id, skipped_as_root};
 
-use super::{error_code, replica_id, unprivileged};
+use super::{error_code, replica_id};
 
 /// What undoes a damage.
 type Repair = Box<dyn FnOnce()>;
@@ -55,7 +55,7 @@ fn pending_file(store: &Path) -> Repair {
 /// and accepts only IO, GIT_ERROR or REMOTE_UNREACHABLE for a failure.
 #[test]
 fn store_damage_is_answered_with_a_structured_code() {
-    if !unprivileged() {
+    if skipped_as_root("chmod 0 does not deny access, so EACCES cannot be produced") {
         return;
     }
     let sandbox = crate::sandbox();

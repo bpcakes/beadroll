@@ -9,16 +9,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use beadroll_store::glob_ending;
-use beadroll_test_support::{Gate, Machine, Run, Sandbox, beside, code, printed_id};
+use beadroll_test_support::{
+    Gate, Machine, Run, Sandbox, beside, code, printed_id, skipped_as_root,
+};
 
 /// The hook that stops a command after the remote took its push, before bead hears back.
 const CRASH_AFTER_PUSH: &str = "BEAD_TEST_CRASH_AFTER_PUSH";
-
-/// Whether file modes bind the user the tests run as. Root reads a
-/// mode-000 file and writes a read-only store, so the tests that rely on modes skip under it.
-fn unprivileged() -> bool {
-    !rustix::process::geteuid().is_root()
-}
 
 /// Machine a (made by `make`) publishes its tracker (prefix `gp`), which
 /// holds the issue `x`; its key.
@@ -75,7 +71,7 @@ fn chmod_tree(mode: &str, path: &Path) {
 /// G28: `show` (no lock) deletes an accepted attempt it cannot read (EACCES) and its receipt.
 #[test]
 fn reader_keeps_an_unreadable_accepted_attempt_and_its_receipt() {
-    if !unprivileged() {
+    if skipped_as_root("root reads a mode-000 file and writes a read-only store") {
         return; // root can read a mode-000 file
     }
     let sandbox = crate::sandbox();
@@ -151,7 +147,7 @@ fn reader_racing_a_sync_keeps_the_receipt_the_sync_kept() {
 /// store.
 #[test]
 fn readers_work_on_a_read_only_store_with_a_junk_pending_file() {
-    if !unprivileged() {
+    if skipped_as_root("root reads a mode-000 file and writes a read-only store") {
         return; // root can write a read-only store
     }
     let sandbox = crate::sandbox();
@@ -185,7 +181,7 @@ fn readers_work_on_a_read_only_store_with_a_junk_pending_file() {
 /// recognised.
 #[test]
 fn locked_sweep_does_not_delete_an_unreadable_attempt() {
-    if !unprivileged() {
+    if skipped_as_root("root reads a mode-000 file and writes a read-only store") {
         return; // root can read a mode-000 file
     }
     let sandbox = crate::sandbox();

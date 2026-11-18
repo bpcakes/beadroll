@@ -12,7 +12,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
 use beadroll_test_support::{
-    Json, Machine, Sandbox, git, json_member, parse_json, path_text, printed_id,
+    Json, Machine, Sandbox, git, json_member, parse_json, path_text, printed_id, skipped_as_root,
 };
 
 /// The names of the refs the sandbox's remote, the code origin, holds.
@@ -140,8 +140,7 @@ fn malformed_meta_does_not_move_coordination_to_origin() {
 /// G03: a meta.json this user cannot read (EACCES) silently moves claims to origin.
 #[test]
 fn unreadable_meta_does_not_move_coordination_to_origin() {
-    if rustix::process::geteuid().is_root() {
-        eprintln!("skipped: root reads a mode-0 file");
+    if skipped_as_root("root reads a mode-0 file") {
         return;
     }
     let s = Fixture::new();

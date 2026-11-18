@@ -52,18 +52,6 @@ fn run_within(command: Command, timeout: Duration) -> Run {
     Spawned::start(command, ProcessGroup::Inherited).communicate(timeout)
 }
 
-/// Whether the test can run. As root, `chmod 0` does not deny access, so
-/// EACCES cannot be produced: the test is skipped, and says so.
-fn unprivileged() -> bool {
-    let root = rustix::process::geteuid().is_root();
-    if root {
-        eprintln!(
-            "skipped: runs as root: chmod 0 does not deny access, so EACCES cannot be produced"
-        );
-    }
-    !root
-}
-
 /// Whether the test can run. Without an executable `/bin/sh` there is no shell to
 /// apply a ulimit with: the test is skipped, and says so.
 fn with_sh() -> bool {

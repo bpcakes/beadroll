@@ -9,7 +9,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, Run, Sandbox, json, parse_json};
+use beadroll_test_support::{Json, Machine, Run, Sandbox, json, parse_json, skipped_as_root};
 
 /// `OTHERS`: the names of two other machines, which every test expects to survive.
 fn others() -> Json {
@@ -111,8 +111,7 @@ fn wrong_shape_is_not_overwritten() {
 /// directory to be writable. Skipped as root, who reads files of mode 0.
 #[test]
 fn unreadable_file_is_not_overwritten() {
-    if rustix::process::geteuid().is_root() {
-        eprintln!("skipped: root reads mode-0 files");
+    if skipped_as_root("root reads mode-0 files") {
         return;
     }
     let sandbox = crate::sandbox();
