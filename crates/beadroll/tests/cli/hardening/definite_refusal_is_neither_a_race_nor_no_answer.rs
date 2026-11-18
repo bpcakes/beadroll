@@ -4,22 +4,30 @@
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use beadroll_test_support::{Json, Machine, Run, Sandbox, executable, parse_json, printed_id};
 
 /// A transport that serves fetches and refuses every push the way a
-/// read-only deploy key does.
+/// read-only deploy key does, noting each push it refuses in the file `G18_PUSHES` names.
 const READ_ONLY_SSH: &str = concat!(
     "#!/bin/sh\n",
     "if [ \"$1\" = \"-G\" ]; then exit 1; fi\n",
     "for last; do :; done\n",
     "case \"$last\" in\n",
-    "  git-receive-pack*) echo 'ERROR: The key you are authenticating with has been marked as read",
+    "  git-receive-pack*) echo refused >> \"$G18_PUSHES\"; echo 'ERROR: The key you are authenticating with has been marked as read",
     " only.' >&2; exit 1 ;;\n",
     "  git-upload-pack*) eval \"exec $last\" ;;\n",
     "esac\nexit 2\n",
 );
+
+/// How many lines the file at `path` holds: the pushes a counting hook or transport noted.
+fn lines(path: &Path) -> usize {
+    std::fs::read_to_string(path)
+        .unwrap_or_default()
+        .lines()
+        .count()
+}
 
 /// The error a failed `bead ... --json` reported on standard error.
 fn error(run: &Run) -> Json {
@@ -65,10 +73,16 @@ fn policy_refusal_is_reported_at_once_with_the_remotes_reason() {
     // local: the sync below is the push the hook refuses
     let key = printed_id(a.bead(["create", "x", "--offline"]));
     let hook = sandbox.origin().join("hooks").join("pre-receive");
-    let script = "#!/bin/sh\necho 'refs/beads/* may not be pushed here' >&2\nexit 1\n";
+    // the hook counts the pushes it refuses: one a command, where a race would make many
+    let refusals = sandbox.root().join("g18-refusals");
+    let script = format!(
+        "#!/bin/sh\necho refused >> '{}'\necho 'refs/beads/* may not be pushed here' >&2\nexit 1\n",
+        refusals.display()
+    );
     executable(&hook, script);
     let argvs: [&[&str]; 2] = [&["sync"], &["claim", &key]];
     for argv in argvs {
+        let before = lines(&refusals);
         let started = Instant::now();
         let proc = a.run(argv.iter().copied().chain(["--json"]));
         let elapsed = started.elapsed();
@@ -88,10 +102,12 @@ fn policy_refusal_is_reported_at_once_with_the_remotes_reason() {
             "{} hid the remote's reason",
             argv[0]
         );
-        assert!(
-            elapsed < Duration::from_secs(5),
-            "{} kept retrying a refusal",
-            argv[0]
+        assert_eq!(
+            lines(&refusals) - before,
+            1,
+            "{} kept retrying a refusal ({:.1}s)",
+            argv[0],
+            elapsed.as_secs_f64()
         );
     }
     assert!(a.show(&key).get("claim").is_none());
@@ -125,15 +141,27 @@ fn transport_refusal_reports_gits_reason_not_no_answer() {
         .extra
         .insert("GIT_SSH_COMMAND".into(), ssh.into_os_string());
     reader.extra.insert("BEAD_REMOTE".into(), remote);
+    let pushes = sandbox.root().join("g18-pushes");
+    reader
+        .extra
+        .insert("G18_PUSHES".into(), pushes.clone().into_os_string());
     // reading works: only pushing is refused
     reader.bead(["sync"]);
     reader.bead(["comments", "add", &key, "a note from a read-only clone"]);
-    let argvs: [&[&str]; 2] = [&["sync"], &["claim", &key]];
-    for argv in argvs {
-        let started = Instant::now();
+    // Not retried as a race (24 rounds): a sync pushes once; a claim pushes its attempt, which a
+    // refusal without any ref status leaves pending, and then the one fence that would settle it.
+    let argvs: [(&[&str], usize); 2] = [(&["sync"], 1), (&["claim", &key], 2)];
+    for (argv, expected) in argvs {
+        let before = lines(&pushes);
         let proc = reader.run(argv.iter().copied().chain(["--json"]));
         assert_eq!(proc.returncode(), 1, "{}", proc.stdout);
-        assert!(started.elapsed() < Duration::from_secs(10));
+        assert_eq!(
+            lines(&pushes) - before,
+            expected,
+            "{} retried a refused push: {}",
+            argv[0],
+            proc.stderr
+        );
         let error = error(&proc);
         let message = text(&error, "message");
         assert!(

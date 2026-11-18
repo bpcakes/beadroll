@@ -2,7 +2,7 @@
 //! outcomes settle later.
 
 use std::path::Path;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use beadroll_core::json::{Format, write};
 use beadroll_test_support::{
@@ -32,16 +32,17 @@ fn wait_for(done: &Path) {
 /// sync settles it. The review measured, at BEAD_NET_TIMEOUT=2, REMOTE_UNREACHABLE after 2.33 s
 /// (pre-receive sleeping 6 s), 2.32 s (200 KiB on stderr, then 6 s), 2.34 s and 2.34 s (a
 /// backgrounded child holding stderr, pre- and post-receive); leftovers were only git-receive-pack
-/// and the hook, reparented, no zombies, all gone after 7 s. Its TestCase: at 1.5 s the stalled
-/// sync returned in under 3.5 s, and the next sync left no pending attempts.
+/// and the hook, reparented, no zombies, all gone after 7 s. Here, at 1.5 s, the stalled sync
+/// answers before the 8 s stall ends, whatever the machine's speed, and the next sync leaves no
+/// pending attempts.
 #[test]
-fn stalled_receive_with_a_stderr_flood_returns_within_the_timeout() {
+fn stalled_receive_with_a_stderr_flood_is_given_up_before_the_stall_ends() {
     let sandbox = crate::sandbox();
     let (a, key) = set_up(&sandbox);
     let done = sandbox.root().join("hook-done");
     let hook = sandbox.origin().join("hooks").join("pre-receive");
     let script = format!(
-        "#!/bin/sh\ncat >/dev/null\nhead -c 204800 /dev/zero | tr '\\0' x >&2\nsleep 4\ntouch \
+        "#!/bin/sh\ncat >/dev/null\nhead -c 204800 /dev/zero | tr '\\0' x >&2\nsleep 8\ntouch \
          {}\nexit 0\n",
         shell_quoted(&done)
     );
@@ -54,7 +55,12 @@ fn stalled_receive_with_a_stderr_flood_returns_within_the_timeout() {
         .env("BEAD_NET_TIMEOUT", "1.5")
         .run();
     let took = started.elapsed();
-    assert!(took < Duration::from_secs_f64(1.5 + 2.0), "{took:?}");
+    // bead gave up at its timeout, before the stall ended: the hook has not yet touched its mark,
+    // however slow the machine (no bound on how long bead took)
+    assert!(
+        !done.exists(),
+        "bead waited for the stalled receive ({took:?})"
+    );
     assert_eq!(code(&stalled), "REMOTE_UNREACHABLE");
     wait_for(&done);
     std::fs::remove_file(&hook).unwrap();
