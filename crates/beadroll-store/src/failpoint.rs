@@ -384,8 +384,8 @@ fn known(point: &str) -> Result<(), String> {
     Err(format!("there is no point {point:?}"))
 }
 
-/// Whether `point` can take `action`: every point can exit, be killed, sleep or pause; the rest
-/// belong to the points the module's docs name.
+/// Whether `point` can take `action`: every point but `clock` can exit, be killed, sleep or pause;
+/// the rest belong to the points the module's docs name.
 fn allowed(point: &str, action: &Action) -> Result<(), String> {
     let fits = match action {
         Action::Exit(_) | Action::Sigkill | Action::Sleep(_) | Action::PauseUntil(_) => {

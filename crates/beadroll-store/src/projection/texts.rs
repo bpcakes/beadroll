@@ -36,12 +36,12 @@ pub(crate) fn texts_path(ws: &Workspace) -> PathBuf {
     ws.dir.join("projection-texts")
 }
 
-/// The text file of `generation`, open to read, and to append to when `append`: `None` when there
-/// is none, or it is another's.
-pub(super) fn open(ws: &Workspace, generation: [u8; 16], append: TextFileAccess) -> Option<File> {
+/// The text file of `generation`, open as `access` asks (to read, or to read and append): `None`
+/// when there is none, or it is another's.
+pub(super) fn open(ws: &Workspace, generation: [u8; 16], access: TextFileAccess) -> Option<File> {
     let file = (OpenOptions::new()
         .read(true)
-        .write(append == TextFileAccess::Append))
+        .write(access == TextFileAccess::Append))
     .open(texts_path(ws))
     .ok()?;
     let mut head = [0u8; START as usize];
