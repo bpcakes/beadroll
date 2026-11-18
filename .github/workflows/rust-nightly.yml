@@ -147,6 +147,31 @@ jobs:
         if: ${{ !cancelled() }}
         run: cargo nextest run --locked --release --package xtask --run-ignored only --test-threads 1 -E 'test(/^timing::growth::/)'
 
+  # The differential tests over 10,000 seeded histories, which docs/REVIEWING.md cites as evidence:
+  # about nine minutes in release on 16 cores, so a job of their own beside `slow`'s budget.
+  seeds:
+    name: projection over many seeds, in release (ubuntu-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
+        with:
+          cache: false
+          rustflags: ""
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@13608cbb45b01feb47ef444ab1a42dc41ad56f1a # v2.79.11
+        with:
+          tool: cargo-nextest@0.9.130
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          shared-key: rust-${{ runner.os }}-${{ github.job }}
+      - name: The projection past integrity entries, over 10,000 seeds
+        run: cargo nextest run --locked --release --package beadroll-core --run-ignored only -E 'test(=projection::tests::flawed::many_seeds_past_integrity_entries)'
+
   # fuzz/ is a workspace of its own on the nightly its rust-toolchain.toml pins; bead itself, which
   # writes the seed corpus, builds on the root's toolchain as everywhere else. Nothing real seeds
   # it: fuzz/seed.sh runs that bead in scratch stores, checkouts and bare remotes. The corpus each
