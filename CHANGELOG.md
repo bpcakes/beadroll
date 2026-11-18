@@ -6,6 +6,14 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `export` writes a legacy boolean priority as its number (`true` is 1, as `list` and `show` print
+  it) and leaves out an estimate that is out of range or not a whole number, so the export of an
+  old history is one bead's own import, and br, read back; they refused it.
+- An issue deleted and then reopened (or set to another status) exports no `deleted_at`,
+  `deleted_by` or `delete_reason`, which a Beads reader would take it for deleted by.
+- No two comments export one id: an imported comment moved off a collision takes the id it gets,
+  so another imported comment that held that id moves on too.
+
 - A `.beadroll.json` that cannot be read (a directory, no permission) is `IO` naming it, not `CONFIG`
   "is not valid JSON".
 - `sync` succeeds once its push is accepted, whatever the repack after it does: a failed repack

@@ -4,9 +4,10 @@ use std::collections::{BTreeMap, HashSet};
 
 use sha2::{Digest, Sha256};
 
-use crate::event::EXPORT_FIELDS;
+use crate::event::{EXPORT_FIELDS, Field, status};
 use crate::id::EventId;
 use crate::json::{Int, Object, Value};
+use crate::op::IntegerField;
 use crate::state::{Comment, Issue, State};
 
 /// Where the ids of comments made here start: 2^47, clear of the small ids Beads hands out.
@@ -22,6 +23,27 @@ pub(crate) fn reserved(name: &str) -> bool {
         )
 }
 
+/// `value` of `field` as a Beads reader takes it, and bead's own import, which refuses what
+/// `event::write_problem` refuses: a boolean priority or estimate as its number (`true` is 1, as
+/// `list` and `show` print it), and an estimate outside 0..=2147483647 left out. Histories written
+/// before those writes were refused hold them, and replay keeps them as they were.
+fn beads_readable(field: Field, value: &Value) -> Option<Value> {
+    let integer = || IntegerField::read(value).map(|integer| Value::Int(integer.number()));
+    match field {
+        Field::Priority => Some(integer().unwrap_or_else(|| value.clone())),
+        Field::EstimatedMinutes if *value != Value::Null => {
+            let minutes = integer()?;
+            let fits = matches!(&minutes, Value::Int(m) if Int::from(0) <= *m && *m <= Int::from(2_147_483_647));
+            fits.then_some(minutes)
+        }
+        _ => Some(value.clone()),
+    }
+}
+
+/// The members a delete writes among an issue's extras: a record exports them only while the issue
+/// is a tombstone, never after a reopen or another status left it alive.
+const DELETION: [&str; 3] = ["deleted_at", "deleted_by", "delete_reason"];
+
 /// The id a comment made here exports: derived from its event id, so every machine and every later
 /// export agree on it.
 pub(crate) fn comment_id(uid: EventId) -> u64 {
@@ -33,8 +55,10 @@ pub(crate) fn comment_id(uid: EventId) -> u64 {
     COMMENT_ID_BASE + number % COMMENT_ID_BASE
 }
 
-/// An imported comment keeps its id, unless it collides with a derived one of ours.
-fn exported_legacy_id(comment: &Object, taken: &HashSet<u64>) -> Value {
+/// An imported comment keeps its id, unless it collides with one already handed out, a derived one
+/// of ours or another imported comment's: it counts on to the next free, and the id it gets is then
+/// taken, so that no two comments export one id.
+fn exported_legacy_id(comment: &Object, taken: &mut HashSet<u64>) -> Value {
     let number = comment.get("legacy_id").cloned().unwrap_or(Value::Null);
     let Value::Int(mut id) = number else {
         return number;
@@ -51,6 +75,9 @@ fn exported_legacy_id(comment: &Object, taken: &HashSet<u64>) -> Value {
         };
         id = next;
     }
+    if let Some(number) = id.as_i64().and_then(|id| u64::try_from(id).ok()) {
+        taken.insert(number);
+    }
     Value::Int(id)
 }
 
@@ -60,7 +87,8 @@ impl State {
         // A comment made here exports an integer derived from its event id. The range (2^47 upwards,
         // 48 bits) makes two comments sharing a number a one-in-10^14 event; should it happen, the tie
         // is broken by the ids alone, never by arrival order. An imported id is kept as it came unless
-        // it collides with one of these, which only an export of ours re-imported can do.
+        // it collides with one of these or with an imported one handed out before it, in key and
+        // then comment order, so every machine moves the same one.
         let mut ours: Vec<EventId> = self
             .issues()
             .flat_map(|i| i.comments().iter().filter_map(Comment::uid))
@@ -75,26 +103,31 @@ impl State {
             taken.insert(number);
             ids.insert(uid, number);
         }
-        let ids = CommentIds { ids, taken };
+        let mut ids = CommentIds { ids, taken };
         self.issues_by_key()
             .into_iter()
-            .map(|issue| self.record(issue, &ids))
+            .map(|issue| self.record(issue, &mut ids))
             .collect()
     }
 
     /// One issue's record.
-    fn record(&self, issue: &Issue, ids: &CommentIds) -> Object {
+    fn record(&self, issue: &Issue, ids: &mut CommentIds) -> Object {
         // Extras first, never over the record.
+        let deleted = issue.status() == status::TOMBSTONE;
         let mut rec: Object = issue
             .extra()
             .iter()
             .filter(|(name, _)| !reserved(name))
+            .filter(|(name, _)| deleted || !DELETION.contains(&name.as_str()))
             .map(|(n, v)| (n.clone(), v.clone()))
             .collect();
         rec.insert("id".into(), Value::from(issue.key()));
         for field in EXPORT_FIELDS {
-            if let Some(value) = issue.get(field) {
-                rec.insert(field.name().into(), value.clone());
+            if let Some(value) = issue
+                .get(field)
+                .and_then(|value| beads_readable(field, value))
+            {
+                rec.insert(field.name().into(), value);
             }
         }
         if !issue.labels().is_empty() {
@@ -114,7 +147,7 @@ impl State {
                 let members = comment.to_value();
                 let id = match comment.uid().and_then(|uid| ids.ids.get(&uid)) {
                     Some(number) => Value::Int(Int::from_u64(*number)),
-                    None => exported_legacy_id(&members, &ids.taken),
+                    None => exported_legacy_id(&members, &mut ids.taken),
                 };
                 let mut out = Object::new();
                 out.insert("id".into(), id);

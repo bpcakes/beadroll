@@ -97,16 +97,19 @@ pub(crate) const BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 /// (`replay::tests`), plain and flawed. A change to the generator changes them, the failure
 /// printing each: they are then made again on the commit that changes the generator alone
 /// (2d44707, made from 5a2e6c7 when restacked onto fd5ae9b, or what a later restack makes
-/// of it), never on a later one, whose code would be compared with itself.
-pub(crate) const DIFFERENTIAL: u64 = 0x4034_6c5b_1d6d_a79f;
+/// of it), never on a later one, whose code would be compared with itself. All five were made
+/// again, with the `edges/answers` they pin, where an export stopped giving a reopened issue its
+/// deletion's members and began writing a legacy boolean or out-of-range integer as Beads reads it
+/// (`export::beads_readable`): the export's answers alone changed.
+pub(crate) const DIFFERENTIAL: u64 = 0xbb52_d144_f66f_111f;
 /// See [`DIFFERENTIAL`].
-pub(crate) const FLAWED: u64 = 0x83d5_d990_ed33_6b7d;
+pub(crate) const FLAWED: u64 = 0x859c_b3ef_b6ce_4777;
 /// See [`DIFFERENTIAL`].
-pub(crate) const DELIVERED: u64 = 0x0f35_b525_33aa_cd8b;
+pub(crate) const DELIVERED: u64 = 0x9bc0_e35f_aba9_827b;
 /// See [`DIFFERENTIAL`].
-pub(crate) const DELIVERED_FLAWED: u64 = 0x61e0_c5f4_ee54_b08a;
+pub(crate) const DELIVERED_FLAWED: u64 = 0x6b1a_0cf0_95e4_8ad3;
 /// See [`DIFFERENTIAL`]: of the world of [`next_batch`].
-const OWNED: u64 = 0x3896_9a4f_0069_a36d;
+const OWNED: u64 = 0xca2f_f808_17d9_9d1a;
 
 /// What replay answered at 9cbd60a of the issues of the journals of three stores bead built: the
 /// golden tracker and the fleet of two machines `shown` pins the fields of ([`FIXTURES`]), and two
