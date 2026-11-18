@@ -7,7 +7,7 @@
 //! replay has already turned the entry into an edge, so the retraction is lost and the edge comes
 //! back.
 
-use beadroll_test_support::{Json, Machine, Sandbox, converge, json, json_lines};
+use beadroll_test_support::{Json, Machine, Sandbox, converge, json, path_text};
 
 /// The Beads record of `key`, titled `key` in capitals, with a `blocks` dependency on
 /// each key of `depends_on`, if there is any.
@@ -33,15 +33,6 @@ fn record(key: &str, depends_on: &[&str]) -> Json {
         };
     }
     record
-}
-
-/// Writes `records` as spaced, ASCII-escaped JSON lines to `NAME.jsonl` in the sandbox and
-/// returns its path.
-fn jsonl_file(sandbox: &Sandbox, name: &str, records: &[Json]) -> String {
-    let path = sandbox.root().join(format!("{name}.jsonl"));
-    let text = json_lines(records);
-    std::fs::write(&path, text).unwrap();
-    path.to_str().expect("a UTF-8 path").to_owned()
 }
 
 /// The dependencies `show` lists for `key` on `machine`, as sorted pairs of the id
@@ -74,7 +65,7 @@ fn pair(sandbox: &Sandbox) -> (Machine, Machine) {
     m1.bead(["init", "--prefix", "ex"]);
     m1.bead([
         "import",
-        &jsonl_file(sandbox, "a", &[record("ex-a", &["ex-b"])]),
+        path_text(&sandbox.records("a.jsonl", &[record("ex-a", &["ex-b"])])),
     ]);
     m1.bead(["sync"]);
     let m2 = Machine::new(sandbox, "m2");
@@ -93,7 +84,7 @@ fn dep_remove_of_a_dangling_key_survives_a_concurrent_target_import() {
     // earlier id: sorts first
     m2.bead([
         "import",
-        &jsonl_file(&sandbox, "b", &[record("ex-b", &["ex-a"])]),
+        path_text(&sandbox.records("b.jsonl", &[record("ex-b", &["ex-a"])])),
     ]);
     // m1 has not seen ex-b: the removal is key-based
     m1.bead(["dep", "remove", "ex-a", "ex-b"]);
@@ -119,10 +110,13 @@ fn dep_remove_of_a_dangling_key_survives_a_concurrent_target_import() {
 fn reimport_that_drops_the_dependency_survives_a_concurrent_target_import() {
     let sandbox = crate::sandbox();
     let (m1, m2) = pair(&sandbox);
-    m2.bead(["import", &jsonl_file(&sandbox, "b", &[record("ex-b", &[])])]);
+    m2.bead([
+        "import",
+        path_text(&sandbox.records("b.jsonl", &[record("ex-b", &[])])),
+    ]);
     m1.bead([
         "import",
-        &jsonl_file(&sandbox, "cleared", &[record("ex-a", &[])]),
+        path_text(&sandbox.records("cleared.jsonl", &[record("ex-a", &[])])),
     ]);
     converge(&[&m1, &m2]);
     assert_eq!(

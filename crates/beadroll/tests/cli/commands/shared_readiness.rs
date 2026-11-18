@@ -8,10 +8,9 @@
 //! `show` gives of it alone.
 
 use std::collections::BTreeSet;
-use std::path::PathBuf;
 
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, Sandbox, json, json_lines};
+use beadroll_test_support::{Json, Machine, json};
 
 /// When every record was made and last changed.
 const CREATED: &str = "2026-01-01T00:00:00Z";
@@ -66,14 +65,6 @@ fn tree() -> Vec<Json> {
         record("ex-d1", "task", "open", &["ex-done"], &[]),
         record("ex-t", "task", "open", &[], &["ex-done"]),
     ]
-}
-
-/// `rows` as JSON lines in a file at the sandbox's root.
-fn records(sandbox: &Sandbox, rows: &[Json]) -> PathBuf {
-    let path = sandbox.root().join("records.jsonl");
-    let text = json_lines(rows);
-    std::fs::write(&path, text).unwrap();
-    path
 }
 
 fn set(ids: &[&str]) -> BTreeSet<String> {
@@ -136,7 +127,7 @@ fn readers_agree(machine: &Machine, keys: &[&str], ready: &[&str]) {
 fn ready_blocked_and_prime_judge_every_issue_at_once_as_show_judges_each() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
-    let path = records(&sandbox, &tree());
+    let path = sandbox.records("records.jsonl", &tree());
     a.bead(["init", "--prefix", "ex", "--import", path.to_str().unwrap()]);
     let keys: Vec<&str> = [
         "ex-gate", "ex-root", "ex-c1", "ex-c2", "ex-c3", "ex-free", "ex-s", "ex-gate2", "ex-k",
@@ -213,7 +204,7 @@ fn alone(machine: &Machine, keys: &[&str]) -> String {
 fn several_issues_shown_in_full_are_judged_at_once_as_each_is_judged_alone() {
     let sandbox = crate::sandbox();
     let a = Machine::new(&sandbox, "a");
-    let path = records(&sandbox, &tree());
+    let path = sandbox.records("records.jsonl", &tree());
     a.bead(["init", "--prefix", "ex", "--import", path.to_str().unwrap()]);
     let keys = [
         "ex-gate", "ex-root", "ex-c1", "ex-c2", "ex-c3", "ex-free", "ex-s", "ex-gate2", "ex-k",

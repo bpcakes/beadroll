@@ -120,6 +120,15 @@ impl Sandbox {
         &self.origin
     }
 
+    /// Writes `rows` as JSON lines ([`crate::json_lines`]) to the file `name` at the sandbox's root, a
+    /// Beads export for a test to import: its path.
+    pub fn records(&self, name: &str, rows: &[crate::Json]) -> PathBuf {
+        let path = self.root.join(name);
+        std::fs::write(&path, crate::json_lines(rows))
+            .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+        path
+    }
+
     /// What `git --git-dir ORIGIN ARGS` printed, run on the bare remote as [`git`] runs git: a
     /// failure panics with git's standard error.
     pub fn origin_git<I, S>(&self, args: I) -> String

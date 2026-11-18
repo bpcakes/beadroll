@@ -1,9 +1,7 @@
 //! G33: two records with one id in one import fail the import whole, as br refuses them; the same
 //! export twice in one file never gives two copies of an issue nor unblocks one.
 
-use std::path::PathBuf;
-
-use beadroll_test_support::{Json, Machine, Sandbox, code, json, json_ids, json_lines, last_line};
+use beadroll_test_support::{Machine, Sandbox, code, json, json_ids, last_line};
 
 use crate::commands::fixtures::record;
 
@@ -12,14 +10,6 @@ fn setup(sandbox: &Sandbox) -> Machine {
     let m = Machine::new(sandbox, "g33");
     m.bead(["init", "--prefix", "ex"]);
     m
-}
-
-/// Writes records as spaced, ASCII-escaped JSON lines to the sandbox file name.
-fn write_records(sandbox: &Sandbox, name: &str, records: &[Json]) -> PathBuf {
-    let path = sandbox.root().join(name);
-    let lines = json_lines(records);
-    std::fs::write(&path, lines).unwrap();
-    path
 }
 
 /// The ids of every issue returned by `bead list --all --limit 0`, sorted.
@@ -41,7 +31,7 @@ fn duplicate_ids_in_one_import_fail_whole() {
         record("ex-a", "first", json!({})),
         record("ex-a", "second", json!({})),
     ];
-    let path = write_records(&sandbox, "dup.jsonl", &records);
+    let path = sandbox.records("dup.jsonl", &records);
     let proc = m.run(["import", path.to_str().unwrap(), "--json"]);
     assert!(
         !proc.crashed(),
@@ -69,7 +59,7 @@ fn concatenated_export_does_not_double_issues_or_unblock_them() {
     let blocked = json!({"dependencies": [{"depends_on_id": "ex-x", "type": "blocks"}]});
     let one = [record("ex-x", "x", json!({})), record("ex-y", "y", blocked)];
     let twice = [one.clone(), one.clone()].concat();
-    let path = write_records(&sandbox, "twice.jsonl", &twice);
+    let path = sandbox.records("twice.jsonl", &twice);
     let proc = m.run(["import", path.to_str().unwrap(), "--json"]);
     assert!(
         !proc.crashed(),
@@ -79,7 +69,7 @@ fn concatenated_export_does_not_double_issues_or_unblock_them() {
     assert_eq!(code(&proc), "VALIDATION", "{}", proc.stdout.trim());
     assert_eq!(sorted_ids(&m), Vec::<String>::new());
     // the same file imported once is still whole
-    let path = write_records(&sandbox, "once.jsonl", &one);
+    let path = sandbox.records("once.jsonl", &one);
     let imported = m.bead(["import", path.to_str().unwrap()]).unwrap();
     assert_eq!(imported["imported"].as_i64(), Some(2), "{imported:?}");
     assert!(!m.ready().contains("ex-y"));
