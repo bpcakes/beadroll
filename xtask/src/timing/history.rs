@@ -95,16 +95,25 @@ pub(crate) fn history(count: usize, shape: Shape) -> Vec<Files> {
     writer.files
 }
 
-/// The id of a history's event `n`, counted from its first: a UUIDv7 one millisecond after event
-/// `n - 1`'s.
-pub(crate) fn event_id(n: usize) -> String {
-    let millis = 1_791_558_245_123 + u64::try_from(n).unwrap_or(0);
+/// The UUIDv7 at `millis` whose random bits are `n`: what every timing's events are named by.
+pub(crate) fn stamped(millis: u64, n: u64) -> String {
     format!(
         "{:08x}-{:04x}-7000-8000-{:012x}",
         millis >> 16,
         millis & 0xffff,
         n
     )
+}
+
+/// The id of a timing's event number `n`: a UUIDv7 one millisecond after event `n - 1`'s, so ids
+/// sort in the order of their numbers.
+pub(crate) fn id(n: u64) -> String {
+    stamped(1_791_558_245_123 + n, n)
+}
+
+/// [`id`] of a history's event `n`, counted from its first.
+pub(crate) fn event_id(n: usize) -> String {
+    id(u64::try_from(n).unwrap_or(0))
 }
 
 /// Six machines' files, and what each has seen.
