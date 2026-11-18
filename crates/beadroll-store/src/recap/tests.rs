@@ -3,20 +3,11 @@
 //! and a tracker neither touched keeps its mark.
 
 use std::collections::BTreeMap;
-use std::ffi::OsString;
-use std::path::Path;
 
 use beadroll_core::id::EventId;
 
 use super::{Mark, RecapCursor};
 use crate::Settings;
-
-/// The settings of a machine whose home is `home`.
-fn settings(home: &Path) -> Settings {
-    let mut vars: BTreeMap<OsString, OsString> = BTreeMap::new();
-    vars.insert("BEAD_HOME".into(), home.as_os_str().to_owned());
-    Settings::from_process(vars, None, OsString::new(), std::env::temp_dir(), &|_| None).unwrap()
-}
 
 /// The event `n`, written `n` milliseconds into an afternoon in 2026.
 fn id(n: u128) -> EventId {
@@ -55,7 +46,7 @@ fn placing(marks: BTreeMap<String, Mark>) -> BTreeMap<String, (Mark, Vec<EventId
 #[test]
 fn a_save_keeps_what_a_recap_that_saved_meanwhile_did() {
     let home = tempfile::tempdir().unwrap();
-    let settings = settings(home.path());
+    let settings = Settings::at_home(home.path(), None);
     let start = marks(&[
         ("both-shown", shown(&[1])),
         ("owed-then-shown", Mark::Owed(100)),
@@ -104,7 +95,7 @@ fn a_save_keeps_what_a_recap_that_saved_meanwhile_did() {
 #[test]
 fn a_frontier_that_is_not_the_one_read_replaces_it_when_nobody_raced() {
     let home = tempfile::tempdir().unwrap();
-    let settings = settings(home.path());
+    let settings = Settings::at_home(home.path(), None);
     RecapCursor::default()
         .save(
             &settings,
@@ -128,7 +119,7 @@ fn a_frontier_that_is_not_the_one_read_replaces_it_when_nobody_raced() {
 #[test]
 fn a_save_of_owed_windows_alone_keeps_the_time_of_the_last_recap_that_marked_anything() {
     let home = tempfile::tempdir().unwrap();
-    let settings = settings(home.path());
+    let settings = Settings::at_home(home.path(), None);
     RecapCursor::default()
         .save(
             &settings,
@@ -148,7 +139,7 @@ fn a_save_of_owed_windows_alone_keeps_the_time_of_the_last_recap_that_marked_any
 #[test]
 fn a_save_of_no_marks_moves_only_the_time() {
     let home = tempfile::tempdir().unwrap();
-    let settings = settings(home.path());
+    let settings = Settings::at_home(home.path(), None);
     let kept = marks(&[("owed", Mark::Owed(50)), ("shown", shown(&[1]))]);
     RecapCursor::default()
         .save(&settings, placing(kept.clone()), Some(100))
@@ -163,7 +154,7 @@ fn a_save_of_no_marks_moves_only_the_time() {
 #[test]
 fn a_save_keeps_of_a_frontier_saved_meanwhile_only_what_its_read_did_not_place() {
     let home = tempfile::tempdir().unwrap();
-    let settings = settings(home.path());
+    let settings = Settings::at_home(home.path(), None);
     // two recaps read the cursor before either saved; the one that read less saves first
     let read = RecapCursor::read(&settings).unwrap();
     let first = marks(&[("behind", shown(&[3])), ("beside", shown(&[2, 6]))]);

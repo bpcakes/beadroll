@@ -183,13 +183,7 @@ mod tests {
         use std::ffi::OsString;
 
         let home = tempfile::tempdir().unwrap();
-        let mut vars = std::collections::BTreeMap::new();
-        vars.insert(OsString::from("BEAD_HOME"), OsString::from(home.path()));
-        let settings =
-            Settings::from_process(vars, None, OsString::new(), home.path().to_owned(), &|_| {
-                None
-            })
-            .unwrap();
+        let settings = Settings::at_home(home.path(), None);
         let path = home.path().join(layout::REPLICA);
         let tmp = home
             .path()
