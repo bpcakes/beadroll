@@ -14,7 +14,7 @@ mod stalls;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use beadroll_test_support::{Machine, Sandbox, executable, git_on_path, shell_quoted};
+use beadroll_test_support::{Machine, Sandbox, executable, git_on_path, segments_in, shell_quoted};
 
 /// Where a test wrapper pauses relative to its git command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -62,21 +62,8 @@ fn two_with(sandbox: &Sandbox, a: &Machine, make: Make) -> Machine {
 fn own_segment(machine: &Machine) -> PathBuf {
     let info = machine.bead(["info"]).expect("bead info prints a record");
     let own = info["machine"].as_str().expect("the machine's id");
-    let mut found = jsonl(&machine.store().join("events").join(own));
-    found.sort();
+    let mut found = segments_in(&machine.store().join("events").join(own));
     found.pop().expect("a segment of the machine's own journal")
-}
-
-/// The entries of `dir` whose names end with `.jsonl`, in directory order.
-fn jsonl(dir: &Path) -> Vec<PathBuf> {
-    let entries = std::fs::read_dir(dir).expect("a journal's folder");
-    entries
-        .map(|entry| entry.expect("a directory entry").path())
-        .filter(|path| {
-            let name = path.file_name().expect("a name");
-            name.as_encoded_bytes().ends_with(b".jsonl")
-        })
-        .collect()
 }
 
 /// `remote_blob`: the file `path` of the journal as the remote's `refs/beads/journal` holds it.

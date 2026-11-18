@@ -4,9 +4,9 @@
 use std::collections::BTreeSet;
 
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, code, copy_tree, json, json_id, parse_json};
+use beadroll_test_support::{Json, Machine, code, copy_tree, json, json_id, parse_json, segments};
 
-use super::{column, length, segments, settle, two_machines};
+use super::{column, length, settle, two_machines};
 
 /// The UUID version, or `None` without the RFC 4122 variant. Text that is not a UUID fails the
 /// test.

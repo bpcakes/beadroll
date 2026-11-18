@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use beadroll_store::glob_ending;
 use beadroll_test_support::{
-    Gate, Json, Machine, ProcessGroup, Run, Sandbox, code, json_member, parse_json,
+    Gate, Json, Machine, ProcessGroup, Run, Sandbox, code, json_member, parse_json, segments_in,
 };
 
 mod damaged;
@@ -49,7 +49,7 @@ fn two(sandbox: &Sandbox, a: &Machine, make: Make) -> Machine {
 /// The segments of the machine's own journal, sorted by path.
 fn segments(machine: &Machine) -> Vec<PathBuf> {
     let folder = machine.store().join("events").join(own(machine));
-    glob_ending(&folder, ".jsonl")
+    segments_in(&folder)
 }
 
 /// The machine's own journal, each segment's bytes by its path.

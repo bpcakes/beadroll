@@ -4,13 +4,15 @@
 
 use std::fs::OpenOptions;
 use std::io::Write as _;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-use beadroll_test_support::{Gate, Json, Machine, ProcessGroup, UNPROFILED, parse_json, pool_map};
+use beadroll_test_support::{
+    Gate, Json, Machine, ProcessGroup, UNPROFILED, parse_json, pool_map, segments,
+};
 
-use super::{jsonl, own_segment, setup, setup_with};
+use super::{own_segment, setup, setup_with};
 
 /// The unterminated fragment an append interrupted mid-line leaves at the end of a segment.
 const TORN: &[u8] = br#"{"v":1,"id":"interrupted"#;
@@ -24,20 +26,6 @@ fn append(path: &Path, bytes: &[u8]) {
 /// The size of the file `path`, in bytes.
 fn size(path: &Path) -> u64 {
     std::fs::metadata(path).unwrap().len()
-}
-
-/// Every segment of every journal in `store`, in
-/// order of their paths.
-fn segments(store: &Path) -> Vec<PathBuf> {
-    let mut found = Vec::new();
-    for entry in std::fs::read_dir(store.join("events")).unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            found.extend(jsonl(&path));
-        }
-    }
-    found.sort();
-    found
 }
 
 /// Every line of the segment `path`, read as JSON.

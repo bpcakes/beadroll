@@ -1,7 +1,34 @@
-//! Directory trees a test copies or walks: a whole tree copied as it is, and every path under one.
+//! Directory trees a test copies or walks: a whole tree copied as it is, every path under one, and
+//! the journal segments of a store or of one machine's journal.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+/// The journal segments in the folder `dir`, its `*.jsonl`, sorted by name: one machine's journal.
+/// A folder that cannot be read fails the test, never passing for one with no segment.
+pub fn segments_in(dir: &Path) -> Vec<PathBuf> {
+    let entries = std::fs::read_dir(dir)
+        .unwrap_or_else(|error| panic!("a journal's folder {}: {error}", dir.display()));
+    let mut found: Vec<PathBuf> = entries
+        .map(|entry| entry.expect("a directory entry").path())
+        .filter(|path| path.is_file() && path.as_os_str().as_encoded_bytes().ends_with(b".jsonl"))
+        .collect();
+    found.sort();
+    found
+}
+
+/// Every journal segment in the store `store`, `events/*/*.jsonl`, sorted by path.
+pub fn segments(store: &Path) -> Vec<PathBuf> {
+    let events = store.join("events");
+    let replicas = std::fs::read_dir(&events)
+        .unwrap_or_else(|error| panic!("a store's journals {}: {error}", events.display()));
+    let mut found: Vec<PathBuf> = (replicas.map(|entry| entry.expect("a directory entry").path()))
+        .filter(|path| path.is_dir())
+        .flat_map(|replica| segments_in(&replica))
+        .collect();
+    found.sort();
+    found
+}
 
 /// `to`, which must not exist yet, becomes a copy of the directory `from`, its files' modes and
 /// times kept (`cp -pR`): a machine's home cloned to make a twin, say.

@@ -7,7 +7,7 @@
 use std::collections::BTreeSet;
 use std::os::unix::fs::PermissionsExt as _;
 
-use beadroll_test_support::{Json, Machine, Sandbox, code, parse_json};
+use beadroll_test_support::{Json, Machine, Sandbox, code, parse_json, segments};
 
 use super::{create, each, events, recap};
 
@@ -153,7 +153,7 @@ fn a_tracker_that_cannot_be_read_is_reported_and_the_others_still_show() {
             .to_owned()
     };
     let (damaged, healthy) = (path(&a), path(&b));
-    let mut written = super::segments(std::path::Path::new(&damaged));
+    let mut written = segments(std::path::Path::new(&damaged));
     written.sort();
     let segment = written.pop().unwrap();
     let original = std::fs::read(&segment).unwrap();
@@ -267,7 +267,7 @@ fn a_tracker_unreadable_when_first_found_is_owed_its_window_until_it_is_shown() 
         .as_str()
         .unwrap()
         .to_owned();
-    let segment = super::segments(std::path::Path::new(&store)).pop().unwrap();
+    let segment = segments(std::path::Path::new(&store)).pop().unwrap();
     let original = std::fs::read(&segment).unwrap();
     std::fs::remove_file(&segment).unwrap();
     std::fs::create_dir(&segment).unwrap();
@@ -339,7 +339,7 @@ fn owed_until_its_events_can_show(held: usize) {
         .as_str()
         .unwrap()
         .to_owned();
-    let mut written = super::segments(std::path::Path::new(&store));
+    let mut written = segments(std::path::Path::new(&store));
     written.sort();
     let segment = written.remove(held);
     let away = segment.with_extension("held");
