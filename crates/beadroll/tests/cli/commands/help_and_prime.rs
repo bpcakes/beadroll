@@ -169,3 +169,36 @@ fn help_needs_no_repository_and_creates_no_state() {
         assert!(!state.exists(), "{args:?} created {}", state.display());
     }
 }
+
+/// `prime` says what the reader holds provisionally and what is not yet published, as `claims` and
+/// every other command say it: after an offline claim it said `0 held by you` and nothing more.
+#[test]
+fn prime_says_what_is_held_provisionally_and_not_yet_published() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let key = a.bead(["create", "x"]).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    a.bead(["claim", key.as_str(), "--offline"]);
+    let primed = a.run(["prime"]);
+    assert_eq!(primed.returncode(), 0, "{}", primed.stderr);
+    let text = primed.stdout.replace('\n', " ");
+    assert!(
+        text.contains("provisionally by you") && text.contains(&key),
+        "{text}"
+    );
+    assert!(
+        text.contains("1 event not yet published: bead sync"),
+        "{text}"
+    );
+    a.bead(["sync"]);
+    // the workflow below names "not yet published" always: the count is what must have gone
+    let primed = a.run(["prime"]);
+    assert!(
+        !primed.stdout.contains("published: bead sync"),
+        "{}",
+        primed.stdout
+    );
+}

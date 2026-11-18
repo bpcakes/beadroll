@@ -316,7 +316,7 @@ exit 0
 $ bead prime
 beadroll workflow: read once per session, then act.
 You are codex:own-a-thread-0001@<MACHINE1> (machine, agent, thread).
-Tracker 'ow': 1 ready, 1 held by you (ow-7). Last sync: <TIME>.
+Tracker 'ow': 1 ready, 1 held by you (ow-7), 1 claimed provisionally by you, offline and not exclusive (ow-1), 2 events not yet published: bead sync. Last sync: <TIME>.
 
 1. Find work  bead ready [ID] --json      unblocked issues nobody holds (ID: only its subtree)
               bead show ID --json         description, acceptance criteria, deps, comments, who holds it

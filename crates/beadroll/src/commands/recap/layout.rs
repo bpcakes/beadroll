@@ -106,7 +106,7 @@ fn happened(events: &[&Event]) -> String {
             Op::Claim(_) => "claimed",
             Op::Release(_) => "released",
             Op::Close(_) => "closed",
-            Op::Reopen => "reopened",
+            Op::Reopen { .. } => "reopened",
             Op::Delete(_) => "deleted",
             Op::Comment { .. } => {
                 comments += 1;
