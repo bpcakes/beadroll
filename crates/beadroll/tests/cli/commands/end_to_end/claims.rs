@@ -97,6 +97,33 @@ fn update_to_open_ends_your_claim_as_reopen_does() {
     }
 }
 
+/// The reason given to `release` is recorded for a provisional claim as for a confirmed one: the
+/// release's event holds it, and `recap` shows it.
+#[test]
+fn releasing_a_provisional_claim_keeps_its_reason() {
+    let sandbox = crate::sandbox();
+    let (a, _b, x, _) = two_machines(&sandbox);
+    a.bead(["claim", &x, "--offline"]);
+    let released = a.run([
+        "release",
+        &x,
+        "--reason",
+        "parked for now",
+        "--offline",
+        "--json",
+    ]);
+    assert_eq!(released.returncode(), 0, "{}", released.stderr);
+    let recap = a.bead(["recap"]).expect("a recap");
+    let events = recap["workspaces"][0]["events"]
+        .as_array()
+        .expect("its events");
+    let release = (events.iter())
+        .find(|event| event["op"] == Json::from("release"))
+        .expect("the release");
+    let summary = release["summary"].as_str().unwrap_or_default();
+    assert!(summary.contains("parked for now"), "{release:?}");
+}
+
 /// A takeover is online only: `--offline` is refused as `VALIDATION`, before anything is written,
 /// and the owner stays.
 #[test]

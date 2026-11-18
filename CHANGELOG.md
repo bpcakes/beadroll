@@ -6,6 +6,9 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `release X --reason "..."` of a provisional (offline) claim records the reason, as a confirmed
+  claim's release does, and `recap` shows it. It was dropped.
+
 - `update X --status open` on an issue you hold ends your claim and publishes at once, as
   `bead reopen X` does. It refused with "use `bead release` to give up your claim", while
   `reopen` ended the claim.
