@@ -1,5 +1,6 @@
-//! Normalises transcript ids, keys, machines, commits, times and sandbox paths into placeholders
-//! numbered by first appearance, so equivalent outputs compare equally across runs.
+//! Normalises transcript ids, keys, machines, commits, times, idle minutes and sandbox paths into
+//! placeholders numbered by first appearance, so equivalent outputs compare equally across runs,
+//! however long a loaded machine takes over them.
 
 use std::collections::BTreeMap;
 
@@ -42,6 +43,7 @@ impl Normaliser {
         for root in self.roots.clone() {
             text = text.replace(&root, "<ROOT>");
         }
+        text = minutes_replaced(&text);
         let bytes = text.as_bytes();
         let mut out = String::with_capacity(text.len());
         let mut at = 0;
@@ -70,6 +72,24 @@ impl Normaliser {
         }
         out
     }
+}
+
+/// `text` with every `"idle_minutes": N` as `"idle_minutes": <MINUTES>`: how long a claim has
+/// gone idle moves with the clock, as a time does, so that a run a loaded machine stretches past a
+/// minute answers as a quick one.
+fn minutes_replaced(text: &str) -> String {
+    const FIELD: &str = "\"idle_minutes\": ";
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(FIELD) {
+        let (before, after) = rest.split_at(at + FIELD.len());
+        out.push_str(before);
+        let digits = after.bytes().take_while(u8::is_ascii_digit).count();
+        out.push_str(if digits > 0 { "<MINUTES>" } else { "" });
+        rest = &after[digits..];
+    }
+    out.push_str(rest);
+    out
 }
 
 fn is_word(b: u8) -> bool {
@@ -169,6 +189,18 @@ fn time_at(rest: &[u8]) -> Option<usize> {
         len += 1;
     }
     Some(len)
+}
+
+/// How long a claim has gone idle is a placeholder, whatever its number; the rest of the line stays.
+#[test]
+fn idle_minutes_become_a_placeholder() {
+    for minutes in ["0", "1", "187"] {
+        let line = format!("{{\"id\": \"ex-1\", \"idle_minutes\": {minutes}}}");
+        assert_eq!(
+            minutes_replaced(&line),
+            "{\"id\": \"ex-1\", \"idle_minutes\": <MINUTES>}"
+        );
+    }
 }
 
 #[test]
