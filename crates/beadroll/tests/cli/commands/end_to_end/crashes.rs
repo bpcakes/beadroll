@@ -7,9 +7,11 @@ use std::io::Write as _;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use beadroll_test_support::{Json, Machine, executable, git_on_path, shell_quoted, within};
+use beadroll_test_support::{
+    Json, Machine, executable, git_on_path, segments, shell_quoted, within,
+};
 
-use super::{column, owner, segments, settle, two_machines};
+use super::{column, owner, settle, two_machines};
 
 /// The hook that stops a claim after the remote took its push, before bead hears back.
 const CRASH_AFTER_PUSH: &str = "BEAD_TEST_CRASH_AFTER_PUSH";

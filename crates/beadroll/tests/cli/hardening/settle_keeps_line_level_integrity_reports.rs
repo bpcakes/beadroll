@@ -1,22 +1,6 @@
 //! G63: a damaged line in a journal stays reported whatever else the journals hold.
 
-use std::path::{Path, PathBuf};
-
-use beadroll_test_support::{Json, Machine};
-
-/// The segments of a journal, `*.jsonl` in `dir`, sorted by name.
-fn segments(dir: &Path) -> Vec<PathBuf> {
-    let entries = std::fs::read_dir(dir).expect("a journal's folder");
-    let mut found: Vec<PathBuf> = entries
-        .map(|entry| entry.expect("a directory entry").path())
-        .filter(|path| {
-            let name = path.file_name().expect("a name");
-            name.as_encoded_bytes().ends_with(b".jsonl")
-        })
-        .collect();
-    found.sort();
-    found
-}
+use beadroll_test_support::{Json, Machine, segments_in};
 
 /// The problem of each row `info` reports under integrity: `[i["problem"] for i in ...]`.
 fn problems(machine: &Machine) -> Vec<Json> {
@@ -42,7 +26,7 @@ fn unreadable_line_stays_reported_when_a_duplicate_forces_a_rebuild() {
     let info = a.bead(["info"]).expect("bead info prints a record");
     let own = info.get("machine").expect("info's machine");
     let own = own.as_str().expect("a machine id");
-    let segment = segments(&a.store().join("events").join(own))
+    let segment = segments_in(&a.store().join("events").join(own))
         .into_iter()
         .next()
         .expect("a segment of the machine's own journal");

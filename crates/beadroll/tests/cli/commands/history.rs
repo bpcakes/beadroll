@@ -7,9 +7,7 @@ use std::path::Path;
 use beadroll_core::id::EventId;
 use beadroll_core::json::Object;
 use beadroll_core::time::event_time;
-use beadroll_test_support::{Json, Machine, Sandbox, json, json_line, parse_json};
-
-use super::end_to_end::segments;
+use beadroll_test_support::{Json, Machine, Sandbox, json, json_line, parse_json, segments};
 
 /// The words of the human `bead log KEY` row for each event, in order.
 fn rows(machine: &Machine, key: &str) -> Vec<Vec<String>> {

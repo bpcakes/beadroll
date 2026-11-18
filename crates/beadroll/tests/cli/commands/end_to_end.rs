@@ -11,7 +11,6 @@ mod merges;
 mod remotes;
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
 
 use super::fixtures::machine_settings;
 use beadroll_core::id::EventId;
@@ -84,25 +83,6 @@ pub(crate) fn sorted_codes(runs: &[Run]) -> Vec<i32> {
     let mut codes: Vec<i32> = runs.iter().map(Run::returncode).collect();
     codes.sort_unstable();
     codes
-}
-
-/// The segments of the journal in `store`, `events/*/*.jsonl`, in order of their paths.
-pub(crate) fn segments(store: &Path) -> Vec<PathBuf> {
-    let mut found = Vec::new();
-    for replica in std::fs::read_dir(store.join("events")).unwrap() {
-        let replica = replica.unwrap().path();
-        if !replica.is_dir() {
-            continue;
-        }
-        for entry in std::fs::read_dir(&replica).unwrap() {
-            let entry = entry.unwrap();
-            if entry.file_name().to_str().unwrap().ends_with(".jsonl") {
-                found.push(entry.path());
-            }
-        }
-    }
-    found.sort();
-    found
 }
 
 /// What a reader sees of `journal`: the export and every issue in full, as sorted JSON.

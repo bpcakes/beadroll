@@ -1,9 +1,7 @@
 //! G64: writes on a broken own chain are refused with a structured error and write nothing.
 
-use std::path::{Path, PathBuf};
-
 use beadroll_core::json::{Format, Style, write};
-use beadroll_test_support::{Json, Machine, code, parse_json};
+use beadroll_test_support::{Json, Machine, code, parse_json, segments_in};
 
 /// Compact, ASCII-escaped JSON.
 const COMPACT_ASCII: Format = Format {
@@ -11,20 +9,6 @@ const COMPACT_ASCII: Format = Format {
     ascii: true,
     sorted: false,
 };
-
-/// The segments of a journal, `*.jsonl` in `dir`, sorted by name.
-fn segments(dir: &Path) -> Vec<PathBuf> {
-    let entries = std::fs::read_dir(dir).expect("a journal's folder");
-    let mut found: Vec<PathBuf> = entries
-        .map(|entry| entry.expect("a directory entry").path())
-        .filter(|path| {
-            let name = path.file_name().expect("a name");
-            name.as_encoded_bytes().ends_with(b".jsonl")
-        })
-        .collect();
-    found.sort();
-    found
-}
 
 /// The last `count` Unicode scalar values of `text`.
 fn tail(text: &str, count: usize) -> String {
@@ -66,7 +50,7 @@ fn create_on_a_broken_own_chain_is_a_structured_error_and_writes_nothing() {
     let info = a.bead(["info"]).expect("bead info prints a record");
     let own = info.get("machine").expect("info's machine");
     let own = own.as_str().expect("a machine id");
-    let segment = segments(&a.store().join("events").join(own))
+    let segment = segments_in(&a.store().join("events").join(own))
         .into_iter()
         .next()
         .expect("a segment of the machine's own journal");

@@ -11,7 +11,9 @@ use std::process::Stdio;
 
 use beadroll_core::json::{Format, Style, write};
 use beadroll_store::glob_ending;
-use beadroll_test_support::{Json, Machine, git, json, json_line, parse_json, printed_id};
+use beadroll_test_support::{
+    Json, Machine, git, json, json_line, parse_json, printed_id, segments,
+};
 
 /// The hook that stops an ownership command once the remote has taken its push, before bead hears
 /// back: the lost acknowledgement.
@@ -57,14 +59,6 @@ fn attempts(machine: &Machine) -> Vec<PathBuf> {
     let replicas = replicas(machine).into_iter();
     replicas
         .flat_map(|replica| glob_ending(&replica.join("claims"), ".json"))
-        .collect()
-}
-
-/// The journal segments in `machine`'s store, in directory order, under `events/*/`.
-fn segments(machine: &Machine) -> Vec<PathBuf> {
-    let replicas = replicas(machine).into_iter();
-    replicas
-        .flat_map(|replica| glob_ending(&replica, ".jsonl"))
         .collect()
 }
 
@@ -161,7 +155,7 @@ fn malformed_attempt_is_inert_as_a_whole() {
     let a = Machine::new(&sandbox, "q01-malformed");
     a.bead(["init", "--prefix", "ex"]);
     let key = printed_id(a.bead(["create", "survivor"]));
-    let records: Vec<Json> = segments(&a)
+    let records: Vec<Json> = segments(&a.store())
         .iter()
         .flat_map(|path| {
             let text = read_text(path);

@@ -3,10 +3,12 @@
 //!
 //! G04: `init --tracked` rebuilds .beadroll.json from scratch, keeping only workspace and remote.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use beadroll_core::json::{Format, Object, write};
-use beadroll_test_support::{Json, Machine, Run, git, json, json_line, parse_json, path_text};
+use beadroll_test_support::{
+    Json, Machine, Run, git, json, json_line, parse_json, path_text, segments,
+};
 
 /// Commits `machine`'s .beadroll.json and pushes it to origin's `main`.
 fn commit_config(machine: &Machine) {
@@ -65,20 +67,6 @@ fn update(config: &mut Object, members: Json) {
     config.extend(*members);
 }
 
-/// The journal segments in `machine`'s store, sorted by path.
-fn segments(machine: &Machine) -> Vec<PathBuf> {
-    let replicas = std::fs::read_dir(machine.store().join("events")).unwrap();
-    let mut found: Vec<PathBuf> = replicas
-        .map(|entry| entry.unwrap().path())
-        .filter(|path| path.is_dir())
-        .flat_map(|replica| std::fs::read_dir(replica).unwrap())
-        .map(|entry| entry.unwrap().path())
-        .filter(|path| path.as_os_str().as_encoded_bytes().ends_with(b".jsonl"))
-        .collect();
-    found.sort();
-    found
-}
-
 /// G04: re-running `init --tracked --remote X` keeps `"where": false`, `"ref"` and keys bead
 /// does not know; without them the next event records branch and commit again and the
 /// checkout changes ref.
@@ -100,7 +88,7 @@ fn reinit_keeps_where_false_ref_and_unknown_keys() {
     assert_eq!(again.returncode(), 0, "{}", again.stderr);
     m.bead(["create", "after re-init"]);
     let rewritten = read_object(&config_path);
-    let segment = segments(&m).pop().expect("a journal segment");
+    let segment = segments(&m.store()).pop().expect("a journal segment");
     let read = std::fs::read_to_string(&segment).unwrap();
     let line = read.lines().last().expect("an event in the segment");
     let last = parse_json(line).unwrap_or_else(|error| panic!("{error}: {line}"));

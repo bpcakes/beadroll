@@ -29,7 +29,7 @@ pub mod values;
 mod wait;
 
 pub use beadroll_core::json::Value as Json;
-pub use files::{copy_tree, descendants};
+pub use files::{copy_tree, descendants, segments, segments_in};
 pub use gate::{Gate, beside};
 pub use isolation::assert_git_isolation;
 pub use machine::{Invocation, Machine, Run, UNPROFILED, code, converge};
