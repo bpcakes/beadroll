@@ -201,6 +201,19 @@ fn ascii_locale_cannot_turn_a_committed_create_into_failure() {
     let issues = listed["issues"].as_array().expect("issues");
     let titles: Vec<Option<&str>> = issues.iter().map(|i| i["title"].as_str()).collect();
     assert_eq!(titles, [Some("committed but failed")]);
+    // and output is UTF-8 whatever the locale: a title that is not ASCII prints as its bytes
+    let accented = machine
+        .cmd(["create", "café"])
+        .env("LC_ALL", "C")
+        .env("LANG", "C")
+        .run();
+    assert_eq!(accented.returncode(), 0, "{}", accented.stderr);
+    let printed = machine
+        .cmd(["list"])
+        .env("LC_ALL", "C")
+        .env("LANG", "C")
+        .run();
+    assert!(printed.stdout.contains("café"), "{:?}", printed.stdout);
 }
 
 /// E13: changed file input is a new semantic request after lost-ack recovery.

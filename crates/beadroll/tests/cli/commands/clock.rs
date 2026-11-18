@@ -23,6 +23,57 @@ fn machine(sandbox: &Sandbox, name: &str) -> Machine {
     machine
 }
 
+/// There is no history boundary: work written offline six months ago (by the clock, set back 180
+/// days) merges on the next sync, while the other machine has kept working, and nothing is refused
+/// for its age.
+#[test]
+fn work_written_offline_months_ago_still_merges() {
+    let sandbox = crate::sandbox();
+    let away = machine(&sandbox, "clock-away");
+    let key = printed_id(away.bead(["create", "shared"]));
+    away.bead(["sync"]);
+    let here = crate::rust_only(&sandbox, "clock-here");
+    here.bead(["sync"]);
+    let old = away
+        .cmd([
+            "comments",
+            "add",
+            &key,
+            "written months ago",
+            "--offline",
+            "--json",
+        ])
+        .env("BEAD_FAILPOINTS", "clock@always=offset(-180d)")
+        .run();
+    assert_eq!(old.returncode(), 0, "{}", old.stderr);
+    here.bead(["update", &key, "--title", "kept working"]);
+    here.bead(["create", "meanwhile"]);
+    let synced = away.run(["sync", "--json"]);
+    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
+    here.bead(["sync"]);
+    for machine in [&away, &here] {
+        let shown = machine.show(&key);
+        let texts: Vec<&str> = (shown["comments"].as_array().expect("its comments").iter())
+            .filter_map(|comment| comment["text"].as_str())
+            .collect();
+        assert_eq!(texts, ["written months ago"], "{}", machine.name());
+        // stamped months before the issue it comments on was made: ISO times sort as text
+        let written = shown["comments"][0]["created_at"]
+            .as_str()
+            .expect("its time");
+        let made = shown["created_at"].as_str().expect("the issue's time");
+        assert!(written < made, "{written} is not before {made}");
+        assert_eq!(shown["title"].as_str(), Some("kept working"));
+        let info = machine.bead(["info"]).expect("bead info prints a record");
+        assert_eq!(
+            info["integrity"],
+            Json::Array(Vec::new()),
+            "{}",
+            machine.name()
+        );
+    }
+}
+
 /// F14: a clock past year 2100 must not crash create. Set every clock reading to the year 2110
 /// with `clock@always=at(4429000000000000000)`.
 #[test]
