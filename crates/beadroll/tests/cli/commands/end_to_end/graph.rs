@@ -135,3 +135,34 @@ fn dep_answers_with_the_action_word_it_was_given() {
         assert_eq!(depends, usize::from(!removing), "{word}: {listed:?}");
     }
 }
+
+/// An empty `--type` is no type given: `dep add` adds `blocks`, and `dep remove` takes back the
+/// edge whatever its type, rather than matching an empty type no edge has and saying it removed it.
+#[test]
+fn an_empty_dependency_type_is_no_type_given() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let x = json_id(&a.bead(["create", "x"]).unwrap());
+    let y = json_id(&a.bead(["create", "y"]).unwrap());
+    let depends = |a: &Machine| -> Vec<String> {
+        let listed = a.bead(["dep", "list", &x]).expect("a list");
+        let rows = listed["dependencies"].as_array().unwrap_or_default();
+        (rows.iter())
+            .map(|row| {
+                row["dependency_type"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned()
+            })
+            .collect()
+    };
+    a.bead(["dep", "add", &x, &y, "--type", ""]);
+    assert_eq!(depends(&a), ["blocks"]);
+    a.bead(["dep", "remove", &x, &y, "--type", ""]);
+    assert_eq!(
+        depends(&a),
+        Vec::<String>::new(),
+        "the edge was not taken back"
+    );
+}
