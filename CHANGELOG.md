@@ -6,6 +6,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `update X --status open` on an issue you hold ends your claim and publishes at once, as
+  `bead reopen X` does. It refused with "use `bead release` to give up your claim", while
+  `reopen` ended the claim.
+
 - `dep remove A B` refuses with `VALIDATION` ("A does not depend on B") when A has no such
   dependency, of any type or of the `--type` given, and writes nothing. It answered "A no
   longer depends on B" with exit 0 and wrote an event that changed nothing.
