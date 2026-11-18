@@ -72,12 +72,8 @@ pub(crate) fn dep(
             lines.push("No cycles".to_owned());
         }
         let count = cycles.len() as i64;
-        let cycles = cycles
-            .into_iter()
-            .map(|cycle| Value::Array(cycle.into_iter().map(Value::from).collect()))
-            .collect();
         let mut result = Object::new();
-        result.insert("cycles".into(), Value::Array(cycles));
+        result.insert("cycles".into(), Value::from(cycles));
         result.insert("count".into(), Value::from(count));
         return Ok(Outcome::new(result, lines).answered_from(st));
     }

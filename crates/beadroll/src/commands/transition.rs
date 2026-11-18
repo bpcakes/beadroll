@@ -194,7 +194,7 @@ pub(crate) fn transition(
         // after the issues' lines, before the notes
         lines.insert(result.len(), Line::from(left_as_they_are(plan.left.len())));
     }
-    let result = Value::Array(result.into_iter().map(Value::from).collect());
+    let result = Value::from(result);
     let outcome = Outcome::new(result, lines);
     let outcome = match spent {
         Some(spent) => outcome.wrote_in(spent),

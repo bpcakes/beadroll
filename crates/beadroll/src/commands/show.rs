@@ -52,7 +52,7 @@ pub(crate) fn show(ctx: &Context<'_>, ids: &[OsString]) -> Result<Outcome, Failu
         result.push(detail);
     }
     let lines: Vec<Line> = result.iter().flat_map(lines_of).collect();
-    let result = Value::Array(result.into_iter().map(Value::from).collect());
+    let result = Value::from(result);
     Ok(Outcome::new(result, lines).answered_from(st))
 }
 

@@ -141,7 +141,7 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
     }
     let mut result = details(&st, &args.ids)?;
     let lines = answer(&mut result, kind, notes, warning.clone());
-    let result = Value::Array(result.into_iter().map(Value::from).collect());
+    let result = Value::from(result);
     let outcome = Outcome::new(result, lines).answered_from(st);
     outcome.after_its_publish(ctx.ws, warning.as_deref())
 }
@@ -364,10 +364,7 @@ fn with(name: &str, value: Object) -> Object {
 fn labels(tx: &mut Emitter<'_>, op: OpName, uid: &str, items: &[OsString]) -> Result<(), Failure> {
     let (items, valid) = arg_texts(items);
     let mut data = Object::new();
-    data.insert(
-        "labels".into(),
-        Value::Array(items.into_iter().map(Value::from).collect()),
-    );
+    data.insert("labels".into(), Value::from(items));
     tx.emit(op, Some(uid), data, None)?;
     encodable(valid)
 }
