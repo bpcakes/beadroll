@@ -199,7 +199,7 @@ pub(crate) struct Room {
 
 /// What the event at `at` had seen, from its `causes`, recorded; and whether it cannot be applied
 /// at all, with the integrity text it is reported with (empty: reported when it was loaded).
-/// `doubled`: its id was found with several contents.
+/// `doubled`: `Contents::Doubled` when its id was found with several contents.
 pub(crate) fn observe_one(
     k: &mut Knowledge,
     at: usize,

@@ -91,7 +91,7 @@ fn style(tone: Tone) -> Style {
     }
 }
 
-/// `line` for a reader: each part escaped, and painted when `color`. A plain line that starts
+/// `line` for a reader: each part escaped, and painted when `color` is `Color::Ansi`. A plain line that starts
 /// with a check mark (`✓ Closed …`) has the mark painted as done.
 pub(crate) fn render(line: &Line, color: Color) -> String {
     let marked;
