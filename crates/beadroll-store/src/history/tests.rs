@@ -1,6 +1,5 @@
 //! History cache results against an uncached journal, including invalidation and damaged caches.
 
-use std::fs::{File, FileTimes};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
@@ -62,12 +61,8 @@ fn oracle(ws: &Workspace) -> Vec<HistoryEntry> {
 
 fn settle_cache(ws: &Workspace) {
     // A definite later tick without sleeps; the test controls this cache's timestamp.
-    File::options()
-        .write(true)
-        .open(ws.dir.join("history"))
-        .unwrap()
-        .set_times(FileTimes::new().set_modified(UNIX_EPOCH + Duration::from_secs(4_000_000_000)))
-        .unwrap();
+    let later = UNIX_EPOCH + Duration::from_secs(4_000_000_000);
+    crate::testing::set_modified(&ws.dir.join("history"), later);
 }
 
 fn cached_as_journal(ws: &Workspace) {
@@ -183,12 +178,7 @@ fn an_unsettled_source_timestamp_cannot_validate_a_cache() {
     history(&ws).unwrap();
     let segment = segment_files(&ws).unwrap().remove(0);
     let when = std::fs::metadata(segment).unwrap().modified().unwrap();
-    File::options()
-        .write(true)
-        .open(ws.dir.join("history"))
-        .unwrap()
-        .set_times(FileTimes::new().set_modified(when))
-        .unwrap();
+    crate::testing::set_modified(&ws.dir.join("history"), when);
     let before = ws.settings.failpoints.hits("journal.before-read");
     history(&ws).unwrap();
     assert!(ws.settings.failpoints.hits("journal.before-read") > before);

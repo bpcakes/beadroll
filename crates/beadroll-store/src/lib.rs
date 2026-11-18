@@ -21,6 +21,8 @@ mod place;
 mod projection;
 mod recap;
 mod settings;
+#[cfg(test)]
+mod testing;
 mod workspace;
 
 pub use actor::{Actor, Label, Ps, detect_actor, nearest_harness};

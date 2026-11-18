@@ -58,9 +58,7 @@ fn replaced(ws: &Workspace, path: &Path) {
 /// one tick of its listing keeps its identity (X13).
 fn aged(dir: &Path) {
     let earlier = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
-    let opened = std::fs::File::open(dir).unwrap();
-    let times = std::fs::FileTimes::new().set_modified(earlier);
-    opened.set_times(times).unwrap();
+    crate::testing::set_modified(dir, earlier);
 }
 
 /// The claims directory of this machine.

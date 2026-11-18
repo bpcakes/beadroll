@@ -123,13 +123,7 @@ fn segment(ws: &Workspace) -> PathBuf {
 /// writes the projection in the timestamp tick of the files it has just read.
 fn unsettle(ws: &Workspace) {
     let earlier = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
-    let projection = std::fs::File::options()
-        .write(true)
-        .open(projection_path(ws))
-        .unwrap();
-    projection
-        .set_times(std::fs::FileTimes::new().set_modified(earlier))
-        .unwrap();
+    crate::testing::set_modified(&projection_path(ws), earlier);
 }
 
 #[test]
@@ -379,10 +373,7 @@ fn an_attempt_written_here_is_listed_whatever_the_times_say() {
     write_attempt_file(&ws, &attempt(6), &[title(6, &[5], 2, "after")]).unwrap();
     assert_eq!(ws.claims.borrow().listed(), 0, "forgotten by the write");
     // the directory's time put back where it was when it was listed
-    let opened = std::fs::File::open(&claims).unwrap();
-    opened
-        .set_times(std::fs::FileTimes::new().set_modified(when))
-        .unwrap();
+    crate::testing::set_modified(&claims, when);
     let both = crate::claim_files(&ws).unwrap();
     assert_eq!(&*both, &[attempt(5), attempt(6)]);
 }
