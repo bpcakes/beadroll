@@ -33,10 +33,10 @@ fn keys(items: &[&Issue]) -> Vec<String> {
 }
 
 #[test]
-fn issues_are_listed_by_priority_then_creation_then_key_in_whatever_order_they_come() {
+fn issues_are_listed_by_priority_then_creation_in_whatever_order_they_come() {
     let mut f = Fixture::new();
-    // keys that sort against the order they were made in, three priorities, a boolean one among
-    // them, and several made close together
+    // keys that sort against the order they were made in, the priorities 0 to 4, and several
+    // made close together, a millisecond apart (so no two made at once: no key tiebreak met)
     for (n, priority) in [2, 0, 1, 2, 0, 3, 1, 2, 0, 1, 2, 4].into_iter().enumerate() {
         let uid = f.create(&format!("au-{}", 20 - n));
         let last = f.last();

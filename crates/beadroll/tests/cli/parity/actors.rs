@@ -1,5 +1,5 @@
 //! Actor text that is not UTF-8 prints `?` for each invalid byte, matches no owner (including a
-//! literal `?` name), and retains its bytes as `\udcXX` in JSON errors. Fixed expected outputs
+//! literal `?` name), and is shown as U+FFFD in JSON errors. Fixed expected outputs
 //! use `{held}` and `{free}` for issue keys and `<TIME>` for the claim time.
 
 use std::ffi::OsStr;

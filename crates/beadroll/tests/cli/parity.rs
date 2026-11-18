@@ -139,7 +139,7 @@ fn export(machine: &Machine) -> Vec<u8> {
 /// Exercise every writing command across two machines. Both must show the same issues and export
 /// identical bytes to stdout or a file.
 #[test]
-fn every_write_exports_the_same_on_both_machines() {
+fn common_writes_export_the_same_on_both_machines() {
     let sandbox = crate::sandbox();
     let (p, r) = (Machine::new(&sandbox, "p"), Machine::new(&sandbox, "r"));
     let beads = sandbox.root().join("beads.jsonl");

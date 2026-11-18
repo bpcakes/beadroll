@@ -10,12 +10,13 @@ use beadroll_core::replay::replay;
 use beadroll_core::state::State;
 use beadroll_test_support::json;
 
-/// Whether the generated history includes a copied machine identity.
+/// Whether machines may mint keys another machine took: the duplicates the module's second
+/// history has.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Identities {
-    /// Every machine has an identity of its own.
+    /// A machine mints only keys no machine has used.
     Unique,
-    /// Two machines share one copied identity.
+    /// A machine mints keys its own state does not hold, so two may mint the same one.
     Twins,
 }
 
@@ -339,6 +340,12 @@ fn check(identities: Identities) {
         }
     }
     // The generated histories actually exercise what the property is about.
+    // the shapes the module's doc pins
+    assert_eq!(
+        stats.events,
+        if twins { 10_350 } else { 10_156 },
+        "{stats:?}"
+    );
     assert!(stats.key_removals > 400, "{stats:?}");
     assert!(stats.uid_removals > 200, "{stats:?}");
     assert!(stats.dangling_creates > 1000, "{stats:?}");
