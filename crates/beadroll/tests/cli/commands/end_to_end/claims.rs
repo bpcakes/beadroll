@@ -159,6 +159,36 @@ fn an_issue_named_twice_is_claimed_and_released_once() {
     );
 }
 
+/// A claim refused after its fetch took in another machine's events leaves nothing of them counted
+/// as this machine's to publish: no "not yet published" for what the remote already holds, while
+/// this machine's own offline write is still counted.
+#[test]
+fn a_refused_claim_counts_nothing_it_fetched_as_unpublished() {
+    let sandbox = crate::sandbox();
+    let (a, b, x, _) = two_machines(&sandbox);
+    let unpublished = |machine: &Machine| {
+        let info = machine.bead(["info"]).expect("bead info prints a record");
+        info.get("unpublished").and_then(Json::as_i64).unwrap_or(0)
+    };
+    a.bead(["claim", &x]);
+    let refused = b.run(["claim", &x, "--json"]);
+    assert_eq!(code(&refused), "ALREADY_CLAIMED", "{}", refused.stderr);
+    assert_eq!(
+        unpublished(&b),
+        0,
+        "what the refused claim fetched counts as b's"
+    );
+    b.bead(["create", "only here", "--offline"]);
+    a.bead(["comments", "add", &x, "more of a's"]);
+    let again = b.run(["claim", &x, "--json"]);
+    assert_eq!(code(&again), "ALREADY_CLAIMED", "{}", again.stderr);
+    assert_eq!(
+        unpublished(&b),
+        1,
+        "b's own offline write is no longer counted"
+    );
+}
+
 /// A takeover is online only: `--offline` is refused as `VALIDATION`, before anything is written,
 /// and the owner stays.
 #[test]

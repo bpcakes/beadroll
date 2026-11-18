@@ -6,6 +6,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A claim refused after its fetch took in another machine's events no longer counts them as this
+  machine's to publish: it said "N events not yet published: bead sync" though the remote held
+  them; this machine's own unpublished writes are still counted.
+
 - `update --title ""`, or a title of spaces alone, is `VALIDATION`, as `create ""` is: it wrote an
   empty title, which `show` then left out and `list` printed as `""`. `create "   "` is refused too.
 - `create -s tombstone` is refused for `bead delete`, as `update --status tombstone` is.
