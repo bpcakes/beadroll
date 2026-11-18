@@ -199,3 +199,53 @@ fn a_comment_given_two_ways_is_refused() {
         "a refused comment was written"
     );
 }
+
+/// A title is never cleared: `update --title ""` or spaces alone is `VALIDATION`, as `create`
+/// refuses a title that holds nothing, and the title stays; `create -s tombstone` is refused for
+/// `bead delete`; `--add-label ""` adds nothing and answers `Unchanged`, writing no event.
+#[test]
+fn empty_titles_tombstone_creates_and_empty_labels_change_nothing() {
+    let sandbox = crate::sandbox();
+    let machine = Machine::new(&sandbox, "a");
+    machine.bead(["init", "--prefix", "ex"]);
+    let key = machine.bead(["create", "kept"]).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let events = |m: &Machine| m.bead(["info"]).unwrap()["events"].clone();
+    let before = events(&machine);
+    for title in ["", "   "] {
+        let refused = machine.run(["update", key.as_str(), "--title", title, "--json"]);
+        assert_eq!(
+            code(&refused),
+            "VALIDATION",
+            "{title:?}: {}",
+            refused.stderr
+        );
+        let created = machine.run(["create", title, "--json"]);
+        assert_eq!(
+            code(&created),
+            "VALIDATION",
+            "create {title:?}: {}",
+            created.stderr
+        );
+    }
+    let shown = machine.bead(["show", key.as_str()]).unwrap();
+    assert_eq!(shown[0]["title"].as_str(), Some("kept"), "{shown:?}");
+    let tombstone = machine.run(["create", "gone", "-s", "tombstone", "--json"]);
+    assert_eq!(code(&tombstone), "VALIDATION", "{}", tombstone.stderr);
+    for label in ["", ","] {
+        let unchanged = machine.run(["update", key.as_str(), "--add-label", label]);
+        assert_eq!(unchanged.returncode(), 0, "{}", unchanged.stderr);
+        assert!(
+            unchanged.stdout.contains("Unchanged"),
+            "{label:?}: {}",
+            unchanged.stdout
+        );
+    }
+    assert_eq!(
+        events(&machine),
+        before,
+        "a refused or empty update wrote an event"
+    );
+}

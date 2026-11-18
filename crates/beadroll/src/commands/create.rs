@@ -7,6 +7,7 @@ use beadroll_core::event::{BLOCKS, PARENT_CHILD, status};
 use beadroll_core::json::{Object, Value};
 use beadroll_core::op::OpName;
 use beadroll_core::query::blocking;
+use beadroll_core::text::strip;
 use beadroll_store::uuid7;
 use beadroll_sync::{Tx, writing_spent};
 
@@ -29,15 +30,22 @@ pub(crate) struct CreateArgs {
 /// Creates an issue: its key minted under its parent or from its id, its parent and dependency
 /// edges with it. In-progress is reached only through a claim.
 pub(crate) fn create(ctx: &Context<'_>, args: &CreateArgs) -> Result<Outcome, Failure> {
+    // a title that holds nothing, spaces alone, is none, as `update` refuses one
     let title = [&args.title, &args.title_pos]
         .into_iter()
         .flatten()
-        .find(|t| !t.is_empty());
+        .find(|t| !strip(&t.to_string_lossy()).is_empty());
     let Some(title) = title else {
         return Err(Failure::new(Code::Validation, "a title is required"));
     };
     let mut fields = field_args(args.title.as_deref(), &args.fields)?;
     fields.set_text("title", title);
+    if fields.values.get("status") == Some(&Value::from(status::TOMBSTONE)) {
+        return Err(Failure::new(
+            Code::Validation,
+            "an issue is tombstoned by `bead delete`, never created so",
+        ));
+    }
     if fields.values.get("status") == Some(&Value::from(status::IN_PROGRESS)) {
         return Err(Failure::new(
             Code::Validation,

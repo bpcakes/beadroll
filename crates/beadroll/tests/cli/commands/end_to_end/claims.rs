@@ -124,6 +124,41 @@ fn releasing_a_provisional_claim_keeps_its_reason() {
     assert!(summary.contains("parked for now"), "{release:?}");
 }
 
+/// An issue named twice is claimed once and released once: the answer names it as often as it was
+/// named, as `show X X` does, but one claim and one release are written, as `close X X` closes it
+/// once.
+#[test]
+fn an_issue_named_twice_is_claimed_and_released_once() {
+    let sandbox = crate::sandbox();
+    let (a, _b, x, _) = two_machines(&sandbox);
+    let claimed = a.bead(["claim", &x, &x]).expect("the claims");
+    assert_eq!(
+        claimed.as_array().map(<[Json]>::len),
+        Some(2),
+        "{claimed:?}"
+    );
+    assert_eq!(
+        claimed[0]["claim"]["generation"].as_i64(),
+        Some(1),
+        "{claimed:?}"
+    );
+    a.bead(["release", &x, &x]);
+    let log = a.bead(["log", &x, "--limit", "0"]).expect("a log");
+    let ops: Vec<&str> = (log.as_array().expect("a list").iter())
+        .filter_map(|event| event["op"].as_str())
+        .collect();
+    assert_eq!(
+        ops.iter().filter(|op| **op == "claim").count(),
+        1,
+        "{ops:?}"
+    );
+    assert_eq!(
+        ops.iter().filter(|op| **op == "release").count(),
+        1,
+        "{ops:?}"
+    );
+}
+
 /// A takeover is online only: `--offline` is refused as `VALIDATION`, before anything is written,
 /// and the owner stays.
 #[test]

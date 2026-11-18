@@ -66,8 +66,13 @@ impl ClaimStep<'_> {
         // read as it was before anything is emitted, without a copy (roll-lqjj.29)
         let (st, mut tx) = tx.lend()?;
         need_tracker(st)?;
+        // an issue named twice is claimed once: the state lent is the one before this step wrote
+        let mut seen = std::collections::HashSet::new();
         for key in self.keys {
             let issue = resolve_arg(st, key)?;
+            if !seen.insert(issue.uid()) {
+                continue;
+            }
             let held = issue.claim();
             if st.is_done(issue) {
                 return Err(Failure::new(
@@ -266,8 +271,13 @@ pub(crate) fn release(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome
             // read as it was before anything is emitted, without a copy (roll-lqjj.29)
             let (st, mut tx) = tx.lend()?;
             need_tracker(st)?;
+            // an issue named twice is released once, as `close X X` closes it once
+            let mut seen = std::collections::HashSet::new();
             for key in &args.ids {
                 let issue = resolve_arg(st, key)?;
+                if !seen.insert(issue.uid()) {
+                    continue;
+                }
                 let uid = issue.uid().to_string();
                 let held = issue.claim();
                 // the reason given, for a confirmed claim and a provisional one alike: what `recap`
