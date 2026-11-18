@@ -63,6 +63,29 @@ fn non_utf8_input_is_a_structured_error() {
     assert!(shown.get("description").is_none(), "{shown:?}");
 }
 
+/// An import keeps a cycle its records form between them, as the export has it, where `dep add`
+/// would refuse the edge that closes it: both issues come in, and `dep cycles` reports the loop
+/// (the maintainer's decision of 2026-11-18, `docs/REVIEWING.md` §2).
+#[test]
+fn import_keeps_a_cycle_its_records_form_and_dep_cycles_reports_it() {
+    let sandbox = crate::sandbox();
+    let machine = machine(&sandbox, "cycled");
+    let on = |from: &str, to: &str| json!({"dependencies": [{"issue_id": from, "depends_on_id": to, "type": "blocks"}]});
+    let records = [
+        record("ex-a", "A", on("ex-a", "ex-b")),
+        record("ex-b", "B", on("ex-b", "ex-a")),
+    ];
+    let looped = sandbox.root().join("looped.jsonl");
+    std::fs::write(&looped, json_lines(&records)).unwrap();
+    let imported = machine.run(["import", looped.to_str().unwrap(), "--json"]);
+    assert_eq!(imported.returncode(), 0, "{}", imported.stderr);
+    let cycles = machine.bead(["dep", "cycles"]).expect("the cycles");
+    assert_eq!(cycles["count"].as_i64(), Some(1), "{cycles:?}");
+    // the same edge given by hand is refused
+    let by_hand = machine.run(["dep", "add", "ex-b", "ex-a", "--json"]);
+    assert_eq!(code(&by_hand), "CYCLE", "{}", by_hand.stderr);
+}
+
 /// F08: a bad dependency fails the import; it is not dropped and it is not a traceback.
 #[test]
 fn import_probes_dependencies_before_writing() {
