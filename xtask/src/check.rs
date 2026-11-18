@@ -73,7 +73,7 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
         &mut io::stdout(),
         &mut io::stderr(),
     )
-    .map_err(|error| Failure::Failed(format!("cannot report: {error}")))?;
+    .map_err(|error| Failure::unreported(&error))?;
     Ok(if passed {
         ExitCode::SUCCESS
     } else {

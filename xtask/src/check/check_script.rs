@@ -8,7 +8,7 @@ use super::*;
 fn check(module_status: i32, real_status: i32) -> (bool, String, String) {
     let dir = tempfile::tempdir().expect("a scratch directory");
     let verdict = if module_status == 0 { "OK" } else { "FAILED" };
-    let cargo = script(
+    let cargo = workspace::fake_tool(
         dir.path(),
         "cargo",
         &format!(
@@ -17,7 +17,7 @@ fn check(module_status: i32, real_status: i32) -> (bool, String, String) {
              exit {module_status}\n"
         ),
     );
-    let python = script(
+    let python = workspace::fake_tool(
         dir.path(),
         "python3",
         &format!(
@@ -44,11 +44,6 @@ fn check(module_status: i32, real_status: i32) -> (bool, String, String) {
     let passed = run(&steps(&setup, options), &setup, &mut out, &mut err).expect("a report");
     let text = |bytes: Vec<u8>| String::from_utf8(bytes).expect("UTF-8");
     (passed, text(out), text(err))
-}
-
-/// An executable shell script `name` in `dir` with `body`: its path.
-fn script(dir: &Path, name: &str, body: &str) -> OsString {
-    workspace::fake_tool(dir, name, body)
 }
 
 #[test]
