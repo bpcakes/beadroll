@@ -1,17 +1,8 @@
 //! A remote that lost its tip commit recovers when its ref is reset to the last valid commit.
 
-use std::ffi::OsStr;
-
-use beadroll_test_support::{Machine, Sandbox, git};
+use beadroll_test_support::Machine;
 
 use super::converge_and_compare;
-
-/// Runs git against the sandbox remote and returns trimmed stdout.
-fn remote_git(sandbox: &Sandbox, args: &[&str]) -> String {
-    let words = [OsStr::new("--git-dir"), sandbox.origin().as_os_str()];
-    let printed = git(words.into_iter().chain(args.iter().map(OsStr::new)), None);
-    printed.trim().to_owned()
-}
 
 /// Verified (V8): recovery from a remote whose tip commit was lost (what a concurrent `gc
 /// --prune=now` left, ENV-4): `git update-ref refs/beads/journal <last valid commit>` on the bare
@@ -35,13 +26,15 @@ fn resetting_the_ref_to_the_last_valid_commit_converges_without_loss() {
     for machine in [&a, &b, &c] {
         machine.bead(["sync"]);
     }
-    let valid = remote_git(&sandbox, &["rev-parse", "refs/beads/journal"]);
+    let valid = sandbox.remote_journal().expect("a journal published");
     // acknowledged: published in a new tip commit
     c.bead(["claim", &key]);
-    let tip = remote_git(&sandbox, &["rev-parse", "refs/beads/journal"]);
+    let tip = sandbox.remote_journal().expect("a journal published");
     assert_ne!(tip, valid);
     assert_eq!(
-        remote_git(&sandbox, &["rev-parse", &format!("{tip}^")]),
+        sandbox
+            .origin_git(["rev-parse", format!("{tip}^").as_str()])
+            .trim(),
         valid
     );
     let loose = sandbox
@@ -57,7 +50,7 @@ fn resetting_the_ref_to_the_last_valid_commit_converges_without_loss() {
     // nobody can claim while the remote is damaged
     assert_eq!(outage.returncode(), 1, "{}{}", outage.stdout, outage.stderr);
     // the operator's repair
-    remote_git(&sandbox, &["update-ref", "refs/beads/journal", &valid]);
+    sandbox.origin_git(["update-ref", "refs/beads/journal", valid.as_str()]);
     for machine in [&c, &a, &b] {
         machine.bead(["sync"]);
     }

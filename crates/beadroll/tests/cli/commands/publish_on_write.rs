@@ -3,7 +3,7 @@
 //! once, as a close already did; `--offline` keeps it local; and every command reports what the
 //! remote still lacks.
 
-use beadroll_test_support::{Json, Machine, Sandbox, git, json, json_line, parse_json, printed_id};
+use beadroll_test_support::{Json, Machine, Sandbox, json, json_line, parse_json, printed_id};
 
 /// Machine a has initialised tracker `ex`; machine b has synced it.
 fn set_up(sandbox: &Sandbox) -> (Machine, Machine) {
@@ -110,13 +110,7 @@ fn a_failed_publish_of_an_ended_claim_is_said_once_and_not_tried_again() {
     let sandbox = crate::sandbox();
     let a = crate::rust_only(&sandbox, "a");
     a.bead(["init", "--prefix", "ex"]);
-    let origin = sandbox.origin().to_str().unwrap();
-    let tip = || {
-        git(
-            ["--git-dir", origin, "rev-parse", "refs/beads/journal"],
-            None,
-        )
-    };
+    let tip = || sandbox.remote_journal();
     let endings: [&[&str]; 3] = [
         &["close", "-r", "done"],
         &["delete"],
