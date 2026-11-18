@@ -127,3 +127,14 @@ pub(crate) fn machine_settings(machine: &Machine) -> Arc<Settings> {
     );
     Arc::new(settings.expect("the machine's settings"))
 }
+
+/// A value as written, members in their order: `Json` equality does not see the order.
+pub(crate) fn as_written(value: &Json) -> String {
+    write(value, Format::COMPACT).unwrap()
+}
+
+/// What `bead show` gives of each of `keys` alone, in order, as one list.
+pub(crate) fn alone(machine: &Machine, keys: &[&str]) -> String {
+    let shown: Vec<Json> = keys.iter().map(|key| machine.show(key)).collect();
+    as_written(&Json::Array(shown))
+}

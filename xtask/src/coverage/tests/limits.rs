@@ -131,17 +131,19 @@ fn test_sources() -> Vec<(String, String)> {
 fn every_test_that_runs_bead_under_a_limit_takes_unprofiled() {
     let sources = test_sources();
     assert!(sources.len() > 100, "{} files listed", sources.len());
+    // as `problem` counts them: a shell that runs bead under a limit, never the `dd` that
+    // test-support's `ulimit_block` measures the shell's block with
     let runs: Vec<&str> = (sources.iter())
         .filter(|(_, text)| {
             lex(text)
                 .literals
                 .iter()
-                .any(|l| l.contains("ulimit ") && l.contains("exec "))
+                .any(|l| l.contains("ulimit ") && l.contains("exec ") && !l.contains("exec dd"))
         })
         .map(|(name, _)| name.as_str())
         .collect();
     assert!(
-        runs.len() >= 3,
+        runs.len() >= 2,
         "the scan found the files that limit bead: {runs:?}"
     );
     let problems: Vec<String> = (sources.iter())

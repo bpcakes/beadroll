@@ -2,23 +2,13 @@
 //! `.beadroll.json` and `meta.json` while claiming the password was dropped.
 
 use std::net::TcpListener;
-use std::path::PathBuf;
 
 use beadroll_test_support::{Machine, git, json_member, parse_json};
 
+use crate::commands::fixtures::metas;
+
 /// A token in the shape of a GitHub one.
 const TOKEN: &str = "ghp_G06TESTTOKEN0123";
-
-/// The `meta.json` of each store in `machine`'s home, in directory order.
-fn metas(machine: &Machine) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(machine.home()) else {
-        return Vec::new();
-    };
-    entries
-        .map(|entry| entry.unwrap().path().join("meta.json"))
-        .filter(|path| path.exists())
-        .collect()
-}
 
 /// G06: https://TOKEN:x-oauth-basic@host and https://TOKEN:@host carry the token as the user
 /// part; bead must not write it to .beadroll.json or meta.json (it says the password was

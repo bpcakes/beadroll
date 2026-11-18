@@ -3,7 +3,8 @@
 
 use std::ffi::OsStr;
 use std::os::unix::fs::PermissionsExt as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 /// `word` quoted for `sh`: in single quotes, each `'` in it closed, escaped and reopened, so the
 /// shell reads it back as it is. A word that is not UTF-8 fails the test: a script is text.
@@ -27,6 +28,29 @@ pub fn git_on_path() -> PathBuf {
         .map(|dir| dir.join("git"))
         .find(runnable)
         .expect("git on PATH")
+}
+
+/// The block `ulimit -f` counts in, in bytes, which the shell decides: 512 in dash and in bash's
+/// POSIX mode, 1024 in the bash 3.2 that is macOS's `/bin/sh`. Measured by a file written in `dir`
+/// under a limit of one block, which stops there.
+pub fn ulimit_block(dir: &Path) -> u64 {
+    let probe = dir.join("ulimit-block");
+    // dd ends at the limit, killed by SIGXFSZ or refused with EFBIG: either way the probe is full
+    Command::new("/bin/sh")
+        .args([
+            "-c",
+            "ulimit -f 1; exec dd if=/dev/zero of=\"$1\" bs=4096 count=1",
+        ])
+        .arg("sh")
+        .arg(&probe)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .expect("/bin/sh starts");
+    let block = std::fs::metadata(&probe).expect("the probe").len();
+    assert!([512, 1024].contains(&block), "a block of {block} bytes");
+    block
 }
 
 #[cfg(test)]

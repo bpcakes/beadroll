@@ -4,8 +4,9 @@
 //! the order the issues were named, an issue named twice included; a key that names no issue still
 //! fails the command with ISSUE_NOT_FOUND and prints nothing else.
 
-use beadroll_core::json::{Format, write};
 use beadroll_test_support::{Json, Machine, Sandbox, code, json};
+
+use super::fixtures::{alone, as_written};
 
 /// When every record was made and last changed.
 const CREATED: &str = "2026-01-01T00:00:00Z";
@@ -59,17 +60,6 @@ fn tracker() -> Vec<Json> {
     ]
 }
 
-/// A value as written, members in their order: `Json` equality does not see the order.
-fn text(value: &Json) -> String {
-    write(value, Format::COMPACT).unwrap()
-}
-
-/// What `bead show` gives of each of `keys` alone, in order, as one list.
-fn alone(machine: &Machine, keys: &[&str]) -> String {
-    let shown: Vec<Json> = keys.iter().map(|key| machine.show(key)).collect();
-    text(&Json::Array(shown))
-}
-
 /// The machine with the tracker imported.
 fn machine(sandbox: &Sandbox) -> Machine {
     let a = Machine::new(sandbox, "a");
@@ -96,7 +86,7 @@ fn show_update_claim_and_takeover_answer_with_each_issue_as_show_gives_it_alone(
         "ex-zeta", "ex-alpha", "ex-zeta", "ex-src", "ex-done", "ex-wait",
     ];
     let shown = a.bead(["show"].into_iter().chain(keys)).unwrap();
-    assert_eq!(text(&shown), alone(&a, &keys));
+    assert_eq!(as_written(&shown), alone(&a, &keys));
     // replay order, then each source's edges by type
     assert_eq!(
         dependents(&shown[0]),
@@ -125,12 +115,15 @@ fn show_update_claim_and_takeover_answer_with_each_issue_as_show_gives_it_alone(
         ])
         .unwrap();
     assert_eq!(
-        text(&updated),
+        as_written(&updated),
         alone(&a, &["ex-alpha", "ex-zeta", "ex-alpha"])
     );
 
     let claimed = a.bead(["claim", "ex-zeta", "ex-src", "ex-zeta"]).unwrap();
-    assert_eq!(text(&claimed), alone(&a, &["ex-zeta", "ex-src", "ex-zeta"]));
+    assert_eq!(
+        as_written(&claimed),
+        alone(&a, &["ex-zeta", "ex-src", "ex-zeta"])
+    );
 
     let taken = a
         .cmd([
@@ -143,7 +136,7 @@ fn show_update_claim_and_takeover_answer_with_each_issue_as_show_gives_it_alone(
         .thread("successor")
         .json()
         .unwrap();
-    assert_eq!(text(&taken), alone(&a, &["ex-src", "ex-zeta"]));
+    assert_eq!(as_written(&taken), alone(&a, &["ex-src", "ex-zeta"]));
     // the successor holds what it took over
     for item in taken.as_array().unwrap() {
         let owner = item["claim"]["owner"].as_str().unwrap();

@@ -7,7 +7,9 @@
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use beadroll_test_support::{Machine, Run, Sandbox, UNPROFILED, descendants, parse_json};
+use beadroll_test_support::{
+    Machine, Run, Sandbox, UNPROFILED, descendants, parse_json, ulimit_block,
+};
 
 /// Machine g48, its tracker initialised with the prefix `ex`, and the keys
 /// of the six issues it creates, each titled with a hundred `x`.
@@ -60,30 +62,6 @@ fn error(run: &Run) -> (String, String) {
         _ if run.crashed() => ("CRASH".to_owned(), run.stderr.clone()),
         _ => (format!("rc {}", run.returncode()), run.stderr.clone()),
     }
-}
-
-/// The block `ulimit -f` counts in, in bytes, which the shell decides: 512 in dash and in
-/// bash's POSIX mode, 1024 in the bash 3.2 that is macOS's `/bin/sh`. Measured by a file
-/// written in `dir` under a limit of one block, which stops there.
-fn ulimit_block(dir: &Path) -> u64 {
-    let probe = dir.join("ulimit-block");
-    // dd ends at the limit, killed by SIGXFSZ or refused with EFBIG: either way the probe is
-    // full
-    Command::new("/bin/sh")
-        .args([
-            "-c",
-            "ulimit -f 1; exec dd if=/dev/zero of=\"$1\" bs=4096 count=1",
-        ])
-        .arg("sh")
-        .arg(&probe)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .unwrap();
-    let block = std::fs::metadata(&probe).unwrap().len();
-    assert!([512, 1024].contains(&block), "a block of {block} bytes");
-    block
 }
 
 /// Runs `bead ARGS --json` under a file-size limit of `kib` KiB. SIGXFSZ is ignored so a

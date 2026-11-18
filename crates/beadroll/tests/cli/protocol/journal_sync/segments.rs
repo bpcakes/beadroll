@@ -5,11 +5,11 @@
 use std::fs::OpenOptions;
 use std::io::Write as _;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::time::Duration;
 
 use beadroll_test_support::{
-    Gate, Json, Machine, ProcessGroup, UNPROFILED, parse_json, pool_map, segments,
+    Gate, Json, Machine, ProcessGroup, UNPROFILED, parse_json, pool_map, segments, ulimit_block,
 };
 
 use super::{own_segment, setup, setup_with};
@@ -32,29 +32,6 @@ fn size(path: &Path) -> u64 {
 fn events(path: &Path) -> Vec<Json> {
     let text = std::fs::read_to_string(path).unwrap();
     text.lines().map(|line| parse_json(line).unwrap()).collect()
-}
-
-/// The block `ulimit -f` counts in, in bytes, which the shell decides: 512 in dash and in bash's
-/// POSIX mode, 1024 in the bash 3.2 that is macOS's `/bin/sh`. Measured by a file written in `dir`
-/// under a limit of one block, which stops there.
-fn ulimit_block(dir: &Path) -> u64 {
-    let probe = dir.join("ulimit-block");
-    // dd ends at the limit, killed by SIGXFSZ or refused with EFBIG: either way the probe is full
-    Command::new("/bin/sh")
-        .args([
-            "-c",
-            "ulimit -f 1; exec dd if=/dev/zero of=\"$1\" bs=4096 count=1",
-        ])
-        .arg("sh")
-        .arg(&probe)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .unwrap();
-    let block = size(&probe);
-    assert!([512, 1024].contains(&block), "a block of {block} bytes");
-    block
 }
 
 /// A reader skips only the unterminated fragment an interrupted append leaves at the end of a

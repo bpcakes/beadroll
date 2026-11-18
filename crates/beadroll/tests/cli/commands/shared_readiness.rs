@@ -9,8 +9,9 @@
 
 use std::collections::BTreeSet;
 
-use beadroll_core::json::{Format, write};
 use beadroll_test_support::{Json, Machine, json};
+
+use super::fixtures::{alone, as_written};
 
 /// When every record was made and last changed.
 const CREATED: &str = "2026-01-01T00:00:00Z";
@@ -189,17 +190,6 @@ fn ready_blocked_and_prime_judge_every_issue_at_once_as_show_judges_each() {
     );
 }
 
-/// A value as written, members in their order: `Json` equality does not see the order.
-fn text(value: &Json) -> String {
-    write(value, Format::COMPACT).unwrap()
-}
-
-/// What `bead show` gives of each of `keys` alone, in order, as one list.
-fn alone(machine: &Machine, keys: &[&str]) -> String {
-    let shown: Vec<Json> = keys.iter().map(|key| machine.show(key)).collect();
-    text(&Json::Array(shown))
-}
-
 #[test]
 fn several_issues_shown_in_full_are_judged_at_once_as_each_is_judged_alone() {
     let sandbox = crate::sandbox();
@@ -211,7 +201,7 @@ fn several_issues_shown_in_full_are_judged_at_once_as_each_is_judged_alone() {
         "ex-m", "ex-z", "ex-e", "ex-x", "ex-y", "ex-done", "ex-d1", "ex-t", "ex-c3",
     ];
     let shown = a.bead(["show"].into_iter().chain(keys)).unwrap();
-    assert_eq!(text(&shown), alone(&a, &keys));
+    assert_eq!(as_written(&shown), alone(&a, &keys));
     // what is held: the chain and what hangs from it, the loop and what hangs from it, the epic
     // with an open child, and a closed issue still waiting for its own prerequisite
     let held: BTreeSet<String> = (shown.as_array().unwrap().iter())
@@ -234,14 +224,17 @@ fn several_issues_shown_in_full_are_judged_at_once_as_each_is_judged_alone() {
                 .chain(["--priority", "1"]),
         )
         .unwrap();
-    assert_eq!(text(&updated), alone(&a, &several));
+    assert_eq!(as_written(&updated), alone(&a, &several));
     let blocked: Vec<bool> = (updated.as_array().unwrap().iter())
         .map(|detail| detail["blocked"].as_bool().unwrap())
         .collect();
     assert_eq!(blocked, [true, true, true, false]);
     a.bead(["close", "ex-gate", "--reason", "done"]);
     let claimed = a.bead(["claim", "ex-c2", "ex-gate2", "ex-c2"]).unwrap();
-    assert_eq!(text(&claimed), alone(&a, &["ex-c2", "ex-gate2", "ex-c2"]));
+    assert_eq!(
+        as_written(&claimed),
+        alone(&a, &["ex-c2", "ex-gate2", "ex-c2"])
+    );
     let blocked: Vec<bool> = (claimed.as_array().unwrap().iter())
         .map(|detail| detail["blocked"].as_bool().unwrap())
         .collect();
