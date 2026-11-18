@@ -16,7 +16,7 @@ use beadroll_core::journal::{Journal, JournalOrder};
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_core::replay::replay;
 use beadroll_core::state::State;
-use beadroll_fuzz::{event, id};
+use beadroll_fuzz::{MACHINE, event, id, segment_path};
 use libfuzzer_sys::fuzz_target;
 
 const FILE: &str = "issues.jsonl";
@@ -63,8 +63,8 @@ fn tracker(events: &[Value]) -> State {
     for event in events {
         journal.add(
             event.clone(),
-            "0000aa01",
-            "events/0000aa01/000001.jsonl",
+            MACHINE,
+            &segment_path(1),
             JournalOrder::Sequenced,
         );
     }

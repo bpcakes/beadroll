@@ -18,19 +18,18 @@ use beadroll_core::journal::{Journal, JournalOrder, read_attempt, read_segment};
 use beadroll_core::json::{self, Format, Value};
 use beadroll_core::projection::{Projection, project};
 use beadroll_core::replay::replay;
-use beadroll_fuzz::{all_identical, answers, first_difference};
+use beadroll_fuzz::{
+    MACHINE, all_identical, answers, attempt_path, first_difference, segment_path,
+};
 use libfuzzer_sys::fuzz_target;
 
-/// The machine whose journal a record that names none is found in.
-const HERE: &str = "0000aa01";
-
 /// The machine in whose journal `record` is found: the one it names, as a store holding it would
-/// find it, or [`HERE`] when it names none that can be a folder.
+/// find it, or [`MACHINE`] when it names none that can be a folder.
 fn machine_of(record: &Value) -> &str {
     let named = record.get("replica").and_then(Value::as_str);
     named
         .filter(|m| !m.is_empty() && !m.contains('/'))
-        .unwrap_or(HERE)
+        .unwrap_or(MACHINE)
 }
 
 /// Whether an id of `records` has several contents, not exactly one of them its writer's own (a
@@ -67,18 +66,14 @@ fn placed_by_order(records: &[Value]) -> bool {
 
 fuzz_target!(|data: &[u8]| {
     let mut problems = Vec::new();
-    let read = read_segment(data, "events/0000aa01/000001.jsonl", Some(&mut problems));
-    let attempt = read_attempt(data, "events/0000aa01/claims/a.json", Some(&mut problems));
+    let read = read_segment(data, &segment_path(1), Some(&mut problems));
+    let attempt = read_attempt(data, &attempt_path(), Some(&mut problems));
     if !attempt.is_empty() {
         assert!(all_identical(&attempt, &read), "an attempt read otherwise");
     }
     let lines = beadroll_fuzz::lines(&read);
     problems.clear();
-    let again = read_segment(
-        lines.as_bytes(),
-        "events/0000aa01/000002.jsonl",
-        Some(&mut problems),
-    );
+    let again = read_segment(lines.as_bytes(), &segment_path(2), Some(&mut problems));
     assert!(
         problems.is_empty(),
         "lines bead wrote are reported: {problems:?}"
@@ -108,8 +103,8 @@ fuzz_target!(|data: &[u8]| {
         for record in &attempt {
             journal.add(
                 record.clone(),
-                HERE,
-                "events/0000aa01/claims/a.json",
+                MACHINE,
+                &attempt_path(),
                 JournalOrder::Attempt,
             );
         }
@@ -131,7 +126,7 @@ fuzz_target!(|data: &[u8]| {
         typed.add_segment(segment.as_bytes(), machine, &origin);
     }
     let file = beadroll_fuzz::lines(&attempt);
-    typed.add_attempt(file.as_bytes(), HERE, "events/0000aa01/claims/a.json");
+    typed.add_attempt(file.as_bytes(), MACHINE, &attempt_path());
     let typed = replay(typed).expect("replay is alike read either way");
     if let Some(difference) = first_difference(&said, &answers(&typed)) {
         panic!("the journal read from the lines answers otherwise: {difference}");

@@ -48,8 +48,21 @@ pub fn id(n: u64) -> String {
     EventId::from_u128(value).to_string()
 }
 
-/// Event `id` doing `op` on `issue` (itself, when `None`) with `data`, written by machine
-/// `0000aa01` on top of `deps`, as `Tx::emit` writes it.
+/// The machine the targets' events are written by, and so the folder of the files that hold them.
+pub const MACHINE: &str = "0000aa01";
+
+/// The path from a store's root of [`MACHINE`]'s journal segment `n`, counted from one.
+pub fn segment_path(n: u32) -> String {
+    format!("events/{MACHINE}/{n:06}.jsonl")
+}
+
+/// The path from a store's root of an attempt file of [`MACHINE`]'s.
+pub fn attempt_path() -> String {
+    format!("events/{MACHINE}/claims/a.json")
+}
+
+/// Event `id` doing `op` on `issue` (itself, when `None`) with `data`, written by [`MACHINE`] on
+/// top of `deps`, as `Tx::emit` writes it.
 pub fn event(id: &str, op: &str, issue: Option<&str>, deps: &[String], data: Object) -> Value {
     let mut actor = Object::new();
     actor.insert("agent".into(), Value::from("fuzz"));
@@ -57,7 +70,7 @@ pub fn event(id: &str, op: &str, issue: Option<&str>, deps: &[String], data: Obj
     let mut event = Object::new();
     event.insert("v".into(), Value::from(1));
     event.insert("id".into(), Value::from(id));
-    event.insert("replica".into(), Value::from("0000aa01"));
+    event.insert("replica".into(), Value::from(MACHINE));
     let deps = deps.iter().map(|dep| Value::from(dep.as_str())).collect();
     event.insert("deps".into(), Value::Array(deps));
     event.insert("actor".into(), Value::from(actor));
