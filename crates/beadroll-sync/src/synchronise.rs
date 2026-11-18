@@ -356,7 +356,7 @@ pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
     // unpublished there until a sync, as before a first publication (a count that errs high)
     let elsewhere = meta
         .value("published_to")
-        .is_some_and(|to| *to != published_to(&endpoint));
+        .is_some_and(|to| *to != published_to(ws, &endpoint));
     let published = match meta.published() {
         Some(_) if elsewhere => &none,
         Some(published) => published,

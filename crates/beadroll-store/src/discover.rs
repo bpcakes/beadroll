@@ -312,7 +312,7 @@ fn origin(asked: Result<Output, beadroll_git::Error>) -> Result<(OsString, bool)
 }
 
 /// `origin` as the URL-derived id reads it: a relative path from the top of the checkout.
-fn anchored(origin: &OsStr, root: Option<&Path>) -> OsString {
+pub(crate) fn anchored(origin: &OsStr, root: Option<&Path>) -> OsString {
     match root {
         Some(root) if is_local_path(origin) && !origin.as_bytes().starts_with(b"/") => {
             join_path(root, origin).into_os_string()

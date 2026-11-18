@@ -35,8 +35,9 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   derived another id, so the tracker seemed gone and `bead init` would start a second one.
 - The unpublished count is of the coordination remote chosen now: switched to another
   (`sync --remote`, `BEAD_REMOTE`), everything counts as unpublished there until a sync, where it
-  said 0 because the last remote had it all. `meta.json` records the URL the counts were published
-  to as `published_to`.
+  said 0 because the last remote had it all. `meta.json` records the place the counts were
+  published to as `published_to`, normalised as the URL-derived id reads origin, so that two
+  clones spelling one origin apart (`origin.git`, `origin.git/`) count one publication.
 
 - A claiming command the remote refuses (`update --claim --notes …`, `claim`, `release`) says it
   was not recorded, nor the edits made with it, and to run it again; it said "nothing was lost",

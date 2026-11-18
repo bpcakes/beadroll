@@ -677,3 +677,39 @@ fn the_unpublished_count_is_of_the_remote_chosen_now() {
     assert_eq!(synced["pushed"].as_i64(), Some(1), "{synced:?}");
     assert_eq!(unpublished(None), 0);
 }
+
+/// Two clones of one repository on one machine, their origin spelled `origin.git` and
+/// `origin.git/`, are one tracker and one remote: what either publishes is published for both,
+/// never counted unpublished in the other because the spellings differ.
+#[test]
+fn clones_spelling_one_origin_apart_count_one_publication() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let second = sandbox.root().join("second");
+    let slashed = format!("{}/", path_text(sandbox.origin()));
+    git(["clone", "-q", &slashed, path_text(&second)], None);
+    let unpublished = |dir: &Path| {
+        let run = a.cmd(["info", "--json"]).cwd(dir).run();
+        assert_eq!(run.returncode(), 0, "{}", run.stderr);
+        parse_json(&run.stdout).unwrap()["unpublished"]
+            .as_i64()
+            .unwrap_or(0)
+    };
+    let made = a
+        .cmd(["create", "from the second clone", "--json"])
+        .cwd(&second)
+        .run();
+    assert_eq!(made.returncode(), 0, "{}", made.stderr);
+    assert_eq!(
+        unpublished(a.checkout()),
+        0,
+        "the first clone counts the second's publish"
+    );
+    a.bead(["create", "from the first"]);
+    assert_eq!(
+        unpublished(&second),
+        0,
+        "the second clone counts the first's publish"
+    );
+}
