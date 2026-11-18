@@ -53,7 +53,8 @@ consumer on tokio calls through `spawn_blocking`.
   name is.
 - `src/event.rs`: `event_problem`, `payload_problem`, `write_problem`, `Field`; `event/envelope.rs`:
   `Envelope`, an event's envelope as read, which a journal line is read straight into by serde_json
-  and a value built in memory walks into, and whose rules `event_problem` judges (roll-lqjj.53.1);
+  and a value built in memory walks into, with `event/borrowed.rs`'s `Borrowed`, the rules both
+  share over borrowed members, which `event_problem` judges (roll-lqjj.53.1);
   `src/op.rs`: `OpName`, the fourteen operations by name, which writes name and every list of them
   derives from; `Op`, an event's operation with its typed payload, read out of the payload's object,
   and `IntegerField`.

@@ -42,9 +42,10 @@ fn installed(wanted: &str) -> Option<String> {
 }
 
 /// Whether the alternate bead is an interpreter launcher on a platform where git arguments use
-/// the locale's codeset. Such cases meet roll-k2wy.18 and skip; macOS always uses UTF-8. Native
+/// the locale's codeset. Such cases meet roll-k2wy.18 (the launcher hands git the ref in that
+/// codeset) and skip; macOS always uses UTF-8. Native
 /// bead is an executable, while the supported legacy launcher is a script.
-fn meets_roll_k2wy_18(machine: &Machine) -> bool {
+fn legacy_launcher_hands_git_the_locales_codeset(machine: &Machine) -> bool {
     let mut head = [0u8; 2];
     let script = std::fs::File::open(machine.executable())
         .and_then(|mut file| std::io::Read::read_exact(&mut file, &mut head))
@@ -112,7 +113,7 @@ fn reads_a_valid_utf8_config(wanted: &str) {
     };
     let sandbox = crate::sandbox();
     let (_a, b, _key) = set_up(&sandbox);
-    if meets_roll_k2wy_18(&b) {
+    if legacy_launcher_hands_git_the_locales_codeset(&b) {
         return;
     }
     let info = under(b.cmd(["info", "--json"]), &locale).run();
@@ -155,7 +156,7 @@ fn latin1_claim_excludes_a_utf8_claim() {
     };
     let sandbox = crate::sandbox();
     let (a, b, key) = set_up(&sandbox);
-    if meets_roll_k2wy_18(&b) {
+    if legacy_launcher_hands_git_the_locales_codeset(&b) {
         return;
     }
     let claim = b.cmd(["claim", &key, "--json"]).thread("g13-b-agent");

@@ -92,8 +92,8 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
   (`run_with` and the libraries free).
 - `src/hygiene.rs`: the repository lint (a test only): no private names in tracked files, and no
   lint exemption on an item but the two `CONTRIBUTING.md` accepts, no Rust source past 800
-  lines, no function or module named for a finding in `docs/FINDINGS.md`, no module imported
-  in two `use` lines, no path-less `IoError::bare` in the store or sync, no Python that
+  lines, no function or module named for a finding in `docs/FINDINGS.md` or for an issue the
+  repository cites (`roll-k2wy` as `roll_k2wy`), no module imported in two `use` lines, no path-less `IoError::bare` in the store or sync, no Python that
   catches every exception, and no doc that reads a parameter of a mode's type as a flag
   (``when `color`.``: say which value is meant). A new scan of the tracked files reads them through `sources` (or
   `tracked`), which fails a listing that lacks the file it must hold.
@@ -107,7 +107,9 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
   `fuzz/Cargo.toml` declares in a step of its own after the corpus is seeded, for a budget above
   zero its timeout leaves room for, and keeps a crash's input and the corpus, minimizing every
   target's; the per-push check, lints and cargo-deny of `fuzz/`; and `fuzz/Cargo.toml`'s lints,
-  the workspace's but for the five a fuzz target breaks by design (tests only).
+  the workspace's but for the five a fuzz target breaks by design; and `documentation`, the
+  per-push doc build with warnings denied and the workspace's rustdoc lints, broken links denied
+  and private ones allowed (tests only).
 - `src/workspace.rs`: paths, failures and JSON strings for all of them, and for their tests
   `fake_tool`, the executable script the tests of `check` and `coverage` run in place of
   `cargo`, and `args`, words as a subcommand's arguments.

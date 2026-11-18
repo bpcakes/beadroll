@@ -70,7 +70,8 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
 - Rust code follows *Rules every crate keeps* in `CONTRIBUTING.md` and its crate's `AGENTS.md`.
   Crates depend only downwards (`beadroll-core` and `beadroll-git` → `beadroll-store` →
   `beadroll-sync` → `beadroll`); a helper two crates need moves down, never up, and only the
-  `beadroll` crate's `cli` reads the environment, the working directory and the clock. Match the
+  `beadroll` crate's `cli` reads the environment and the working directory, and makes the clock
+  (`Settings`' `Clock`, whose `real_ns` is bead's one reading of the wall clock). Match the
   surrounding style: comments in prose that say why, names that say what a function returns,
   errors whose codes a user can act on (`bead prime` lists them). Unknown input is reported,
   never guessed at; nothing is ever half-written. No `mod.rs` files, and a source file stays
