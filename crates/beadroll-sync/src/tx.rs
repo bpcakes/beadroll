@@ -27,7 +27,8 @@ pub use attempt::Attempt;
 use attempt::Route;
 use materialized::Materialized;
 
-pub use writes::{confirm_ownership, drop_pending, locked, writing, writing_spent, writing_state};
+pub(crate) use writes::confirm_ownership;
+pub use writes::{drop_pending, locked, writing, writing_spent, writing_state};
 
 /// Ownership events: settled with the remote, and kept one attempt per file.
 pub const OWNERSHIP: [OpName; 2] = [OpName::Claim, OpName::Release];

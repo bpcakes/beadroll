@@ -32,7 +32,7 @@ const MAGIC: &[u8; 16] = b"bead texts 2\n\0\0\0";
 pub(super) const START: u64 = 32;
 
 /// Where a store keeps its projection's texts.
-pub fn texts_path(ws: &Workspace) -> PathBuf {
+pub(crate) fn texts_path(ws: &Workspace) -> PathBuf {
     ws.dir.join("projection-texts")
 }
 
