@@ -133,7 +133,7 @@ impl Drop for Spawned {
     }
 }
 
-/// A thread that reads `pipe` to its end, and the channel it hands what it read to.
+/// Starts a thread that reads `pipe` to its end: the channel it hands what it read to.
 pub fn drain(mut pipe: impl Read + Send + 'static) -> Drained {
     let (sender, receiver) = mpsc::channel();
     std::thread::spawn(move || {

@@ -127,7 +127,7 @@ def elsewhere(row, remote):
 
 def preflight():
     """Before any test data is written: every machine's record, printed; the run stops unless every bead is
-    what BEAD_EXPECT_VERSION asks for."""
+    what BEAD_EXPECT_VERSION asks for and every clone fetches from and pushes to BEAD_TEST_REMOTE."""
     rows = parallel(probe, list(HOSTS))
     for row in rows:
         print("preflight:", json.dumps(row, sort_keys=True), flush=True)
