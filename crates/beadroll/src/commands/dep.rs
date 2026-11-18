@@ -250,8 +250,7 @@ fn change(
 /// The key of the imported dependency of `issue` that `given` names, itself or with the prefix.
 fn dangling_key(st: &State, issue: &Issue, given: &OsStr) -> Option<String> {
     let given = given.to_str()?;
-    let prefix = st.prefix().map_or_else(|| "None".to_owned(), str_of);
-    let prefixed = format!("{prefix}-{given}");
+    let prefixed = format!("{}-{given}", st.key_prefix());
     issue
         .dangling()
         .iter()

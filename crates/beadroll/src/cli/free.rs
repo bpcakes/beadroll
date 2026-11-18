@@ -163,7 +163,7 @@ fn standing(ws: &Workspace, me: &Label) -> Result<(String, State), Failure> {
         })
         .count();
     let waiting: usize = st.issues().map(|i| i.unconfirmed().len()).sum();
-    let prefix = st.prefix().map_or_else(|| "None".to_owned(), repr);
+    let prefix = repr(st.prefix().unwrap_or(&Value::Null));
     let mut line = format!(
         "Tracker {prefix}: {ready} ready, {} held by you",
         held.len()
