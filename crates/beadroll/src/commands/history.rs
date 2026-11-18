@@ -16,7 +16,7 @@ use beadroll_store::{
     view_outline, write_atomic,
 };
 
-use super::{Context, Failure, Line, Outcome, Tone, resolve_arg};
+use super::{Context, Failure, Line, Outcome, Tone, resolve_arg, text};
 
 /// The tracker's events in causal order, excluding `init`, or one issue's events: time, machine,
 /// who (the actor's name when it was given one, as its claims are labelled, else its agent and
@@ -184,10 +184,8 @@ pub(crate) fn machines(ctx: &Context<'_>, name: Option<&OsStr>) -> Result<Outcom
 /// Records `ID=ALIAS` in `aliases.json`, retaining existing names. An unreadable file is never
 /// replaced, and a name that is not UTF-8 is refused, as every text bead writes is.
 fn record_alias(ctx: &Context<'_>, name: &OsStr) -> Result<(), Failure> {
-    let Some(name) = name.to_str() else {
-        return Err(Failure::new(Code::Validation, "text is not valid UTF-8"));
-    };
-    let (ident, alias) = name.split_once('=').unwrap_or((name, ""));
+    let name = text(name)?;
+    let (ident, alias) = name.split_once('=').unwrap_or((&name, ""));
     let path = ctx.ws.settings.home()?.join(layout::ALIASES);
     let shown = printed_text(path.as_os_str().as_bytes());
     let cannot = |problem: &str| {
