@@ -116,6 +116,21 @@ fn quarantined_event_with_missing_cause_does_not_hold_descendants() {
 
 #[test]
 fn bad_event_schema_has_scoped_damage() {
+    // the control: the same comment, well formed, is applied, so a malformed one that is not was
+    // left out
+    let mut f = Fixture::new();
+    let uid = f.issue.clone();
+    f.event(
+        "comment",
+        Some(&uid),
+        "a",
+        &[&uid],
+        json!({"text": "sound"}),
+    );
+    let st = f.state();
+    assert!(st.integrity().is_empty());
+    assert_eq!(issue(&st, &uid).hydrated().unwrap().comments().len(), 1);
+
     let mut damaged = Vec::new();
     for name in [
         "json-array",
@@ -149,9 +164,19 @@ fn bad_event_schema_has_scoped_damage() {
             };
             f.edit(&e, |event| drop(event.insert(member.into(), value)));
         }
-        // A panic in replay fails the test too; one that finishes must report the damage.
-        if f.state().integrity().is_empty() {
+        // A panic in replay fails the test too; one that finishes must report the damage, and
+        // keep it to the one event: nothing waits on it, and its issue reads as before, without it.
+        let st = f.state();
+        let comments =
+            (st.issue_named(&uid)).map(|issue| issue.hydrated().unwrap().comments().len());
+        if st.integrity().is_empty() {
             damaged.push((name, "not reported in integrity"));
+        } else if !st.pending().is_empty() {
+            damaged.push((name, "waits as pending"));
+        } else if comments.is_none() {
+            damaged.push((name, "its issue is lost"));
+        } else if comments != Some(0) {
+            damaged.push((name, "applied to its issue"));
         }
     }
     assert_eq!(
