@@ -6,6 +6,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `dep remove A B --type ""` takes back the dependency, whatever its type, as with no `--type`.
+  It matched only edges of the empty type, which none has, so it said "A no longer depends on B"
+  and left the edge; `dep add` already read an empty type as none given (`blocks`).
+
 - `bead prime` names every error code bead answers with, as the onboarding text says it does, each
   with what to do where there is something to do: `USAGE`, `NOT_INITIALIZED`, `NO_WORKSPACE`,
   `WORKSPACE_MISMATCH`, `NO_REMOTE`, `CONFIG`, `GIT_ERROR`, `FORMAT_UNSUPPORTED`, and the ones to

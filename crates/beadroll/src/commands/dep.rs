@@ -200,7 +200,9 @@ fn change(
             format!("usage: bead dep {} ISSUE DEPENDS_ON", action.word()),
         ));
     };
-    let (kind, validity) = match kind {
+    // An empty `--type` is no type given, for `add` (which then adds `blocks`) and `remove` (which
+    // then takes back the edges of any type) alike: no edge has the empty type.
+    let (kind, validity) = match kind.filter(|kind| !kind.is_empty()) {
         Some(kind) => {
             let (text, valid) = arg_text(kind);
             (Some(text), valid)
@@ -226,7 +228,7 @@ fn change(
         };
         let shown = match (action, target) {
             (Action::Add, Some(target)) => {
-                let kind = kind.as_deref().filter(|k| !k.is_empty()).unwrap_or(BLOCKS);
+                let kind = kind.as_deref().unwrap_or(BLOCKS);
                 let looped = if blocking(kind) {
                     st.reaches(target.uid(), issue.uid())
                 } else if kind == PARENT_CHILD {

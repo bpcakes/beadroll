@@ -41,6 +41,7 @@ test that fails without the fix.
 | AT08 | Low | `infra/compat_real.py` made a scratch directory on every run, as argparse evaluated its `--out` default when parsing, so a run given `--out` left an empty one behind | fixed | The scratch directory is made only when `--out` names none (#209) | `CompatRealOutput` (`infra/test_compat_real.py`) |
 | AT09 | Low | The differential tests over 10,000 seeded histories that `REVIEWING.md` cites as evidence were ignored and run by nothing | fixed | The nightly workflow's `seeds` job runs them in release under nextest's slow-test override (#207) | `xtask`: `ci::growth_guards::the_nightly_runs_cores_many_seeds_in_release` |
 | AT10 | Low | `infra/drive.py`'s S11 worktree checks ran `git status` and `git worktree remove` with no deadline, though `TIMEOUT` says a command running past it is hung and stops the run: a hung git held the driver for good | fixed | `ran` gives every process `TIMEOUT` unless its caller names another deadline (#240) | `Deadlines` (`infra/test_deadlines.py`) |
+| AT11 | Low | `dep remove A B --type ""` matched only edges of the empty type, which none has, and answered "A no longer depends on B" with the edge still there; `dep add` read the empty type as none given | fixed | An empty `--type` is none given for both, read once where the command takes it, so `remove` takes back the edge of any type (#258) | `end_to_end::graph::an_empty_dependency_type_is_no_type_given` |
 
 ## Published-count race (roll-byaq, 2026-11-12)
 
