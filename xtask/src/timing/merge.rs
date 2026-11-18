@@ -11,7 +11,7 @@
 
 use super::history::{ROTATE_BYTES, Shape, history};
 use super::world::{RUNS, World, bead, profile, write_store};
-use crate::workspace::{self, Failure, json_string};
+use crate::workspace::{Failure, json_string};
 
 /// Whether the timing history makes concurrent local writes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,11 +34,7 @@ pub(crate) fn measure(
     label: Option<&str>,
 ) -> Result<String, Failure> {
     let bead = bead()?;
-    let dir = workspace::output_dir("timing")?.join(format!("merge-{}-{count}", shape.name()));
-    if dir.exists() {
-        std::fs::remove_dir_all(&dir)
-            .map_err(|error| Failure::io("cannot remove", &dir, &error))?;
-    }
+    let dir = super::scratch(&format!("merge-{}-{count}", shape.name()))?;
     let files = history(count, shape);
     let here = World::new(&dir, bead, ROTATE_BYTES)?;
     let layout = write_store(&here.store(), &files, ROTATE_BYTES)?;

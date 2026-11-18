@@ -16,7 +16,7 @@
 
 use super::history::{ROTATE_BYTES, Shape, history};
 use super::world::{RUNS, World, bead, profile, write_store};
-use crate::workspace::{self, Failure, json_string};
+use crate::workspace::{Failure, json_string};
 
 /// The commands timed, and how a record names each.
 const READS: [(&str, &[&str]); 6] = [
@@ -31,11 +31,7 @@ const READS: [(&str, &[&str]); 6] = [
 /// Measures; returns the beginning of the line to record.
 pub(crate) fn measure(count: usize, shape: Shape, label: Option<&str>) -> Result<String, Failure> {
     let bead = bead()?;
-    let dir = workspace::output_dir("timing")?.join(format!("read-{}-{count}", shape.name()));
-    if dir.exists() {
-        std::fs::remove_dir_all(&dir)
-            .map_err(|error| Failure::io("cannot remove", &dir, &error))?;
-    }
+    let dir = super::scratch(&format!("read-{}-{count}", shape.name()))?;
     let files = history(count, shape);
     let world = World::new(&dir, bead, ROTATE_BYTES)?;
     let layout = write_store(&world.store(), &files, ROTATE_BYTES)?;
