@@ -276,18 +276,15 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
         Some(out) => out,
         None => workspace::target_dir()?.join("timing.jsonl"),
     };
-    if let Some(count) = options.sync {
-        let started = SystemTime::now();
-        let rotate = options.rotate.unwrap_or(sync::ROTATE_BYTES);
-        let measured = sync::measure(count, options.shape, rotate, options.label.as_deref())?;
-        let line = format!("{measured}{}", context(started));
-        append(&out, &line)?;
-        println!("timing: {line}\nrecorded in {}", out.display());
-        return Ok(ExitCode::SUCCESS);
-    }
     let label = options.label.as_deref();
     let started = SystemTime::now();
-    let measured = if let Some(count) = options.read {
+    // one mode at most, as checked above, so the order of these is no precedence
+    let measured = if let Some(count) = options.replay {
+        Some(replay::measure(count, options.shape, label)?)
+    } else if let Some(count) = options.sync {
+        let rotate = options.rotate.unwrap_or(sync::ROTATE_BYTES);
+        Some(sync::measure(count, options.shape, rotate, label)?)
+    } else if let Some(count) = options.read {
         Some(read::measure(count, options.shape, label)?)
     } else if let Some(count) = options.merge {
         let batch = options.batch.unwrap_or(merge::BATCH);
@@ -323,14 +320,6 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
         None
     };
     if let Some(measured) = measured {
-        let line = format!("{measured}{}", context(started));
-        append(&out, &line)?;
-        println!("timing: {line}\nrecorded in {}", out.display());
-        return Ok(ExitCode::SUCCESS);
-    }
-    if let Some(count) = options.replay {
-        let started = SystemTime::now();
-        let measured = replay::measure(count, options.shape, options.label.as_deref())?;
         let line = format!("{measured}{}", context(started));
         append(&out, &line)?;
         println!("timing: {line}\nrecorded in {}", out.display());
