@@ -5,11 +5,10 @@
 //! typed or given as a path; and where git reaches a remote from, the top of the checkout. Git's
 //! own rewrites of a remote's URL are in `rewrites`.
 
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
 use beadroll_core::json::{Format, write};
-use beadroll_test_support::{Json, Machine, code, git, parse_json, path_text};
+use beadroll_test_support::{Json, Machine, code, executable, git, parse_json, path_text};
 
 use super::{
     alias_both_ways, commit, commit_tracked_file, json, mirror, set_origin, titles, tracked_file,
@@ -423,9 +422,7 @@ fn init_publishes_only_where_it_chose_to() {
     commit(&a, &["config", &rewrite, &own]);
     // from now on origin refuses every push
     let hook = sandbox.origin().join("hooks").join("pre-receive");
-    std::fs::write(&hook, "#!/bin/sh\necho refused >&2\nexit 1\n").expect("a hook");
-    let executable = std::fs::Permissions::from_mode(0o755);
-    std::fs::set_permissions(&hook, executable).expect("an executable hook");
+    executable(&hook, "#!/bin/sh\necho refused >&2\nexit 1\n");
     let run = a.run(["init", "--prefix", "ex", "--remote", &own, "--json"]);
     assert_eq!(run.returncode(), 0, "{}", run.stderr);
     let result = parse_json(&run.stdout).expect("a result");

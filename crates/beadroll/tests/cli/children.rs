@@ -3,7 +3,6 @@
 //! reads to git's answers (`crates/beadroll-git/AGENTS.md`).
 
 use std::ffi::OsString;
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -74,9 +73,7 @@ impl Counted {
             log = shell_quoted(&log),
             git = shell_quoted(git_on_path()),
         );
-        std::fs::write(shims.join("git"), script).unwrap();
-        let executable = std::fs::Permissions::from_mode(0o755);
-        std::fs::set_permissions(shims.join("git"), executable).unwrap();
+        executable(shims.join("git"), script);
         let path = std::env::var_os("PATH").unwrap_or_default();
         let dirs = std::iter::once(shims).chain(std::env::split_paths(&path));
         let path = std::env::join_paths(dirs).unwrap();

@@ -1,11 +1,9 @@
 //! Direct checks of failpoint contracts used by protocol tests
 //! (`crates/beadroll-store/src/failpoint.rs`).
 
-use std::os::unix::fs::PermissionsExt as _;
-
 use beadroll_store::Endpoint;
 use beadroll_sync::{Error, Link, PublishMode, PushOutcome, locked};
-use beadroll_test_support::{Machine, git, git_on_path, shell_quoted};
+use beadroll_test_support::{Machine, executable, git, git_on_path, shell_quoted};
 
 use crate::support::{sandbox, workspace};
 
@@ -25,9 +23,7 @@ fn a_lost_reply_drops_acceptance_whatever_the_exit_status() {
     let script = format!(
         "#!/bin/sh\nif [ \"$1\" = push ]; then\n  {real} \"$@\" || exit $?\n  exit 1\nfi\nexec {real} \"$@\"\n"
     );
-    std::fs::write(wrapper.join("git"), script).unwrap();
-    let mode = std::fs::Permissions::from_mode(0o755);
-    std::fs::set_permissions(wrapper.join("git"), mode).unwrap();
+    executable(wrapper.join("git"), script);
     let path = format!(
         "{}:{}",
         wrapper.display(),

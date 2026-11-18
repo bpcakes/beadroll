@@ -11,16 +11,14 @@
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
-use std::fs::Permissions;
 use std::io::{self, BufRead, BufReader, Read as _, Write as _};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use beadroll_test_support::{Json, Machine, Sandbox};
+use beadroll_test_support::{Json, Machine, Sandbox, executable};
 
 /// Variables to set, by name.
 type Env = BTreeMap<OsString, OsString>;
@@ -272,13 +270,9 @@ fn fake_ssh(sandbox: &Sandbox) -> Env {
     let folder = sandbox.root().join("bin");
     std::fs::create_dir_all(&folder).unwrap();
     let refusing = "#!/bin/sh\necho 'plain ssh: blocked in this test' >&2\nexit 255\n";
-    std::fs::write(folder.join("ssh"), refusing).unwrap();
+    executable(folder.join("ssh"), refusing);
     let local = "#!/bin/sh\nfor last; do :; done\nexec sh -c \"$last\"\n";
-    std::fs::write(folder.join("user-ssh"), local).unwrap();
-    for entry in std::fs::read_dir(&folder).unwrap() {
-        let path = entry.unwrap().path();
-        std::fs::set_permissions(path, Permissions::from_mode(0o755)).unwrap();
-    }
+    executable(folder.join("user-ssh"), local);
     let mut path = folder.into_os_string();
     path.push(":");
     path.push(std::env::var_os("PATH").expect("the test's PATH"));

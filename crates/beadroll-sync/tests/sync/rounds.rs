@@ -9,7 +9,7 @@ use std::process::{Command, Stdio};
 use beadroll_core::json::Object;
 use beadroll_store::{Endpoint, PublicationState, Workspace};
 use beadroll_sync::{Error, ROUNDS, synchronise};
-use beadroll_test_support::{Machine, git, git_on_path, shell_quoted};
+use beadroll_test_support::{Machine, executable, git, git_on_path, shell_quoted};
 
 use crate::support::{Gate, actor, alongside, claim_command, sandbox, settings, text, workspace};
 
@@ -253,9 +253,7 @@ exec @git@ "$@"
     .replace("@origin@", &shell_quoted(sandbox.origin()));
     let folder = sandbox.root().join("git-that-always-loses");
     std::fs::create_dir(&folder).unwrap();
-    std::fs::write(folder.join("git"), script).unwrap();
-    let mode = std::fs::Permissions::from_mode(0o755);
-    std::fs::set_permissions(folder.join("git"), mode).unwrap();
+    executable(folder.join("git"), script);
     format!(
         "{}:{}",
         folder.display(),
