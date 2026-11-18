@@ -31,7 +31,7 @@ pub struct Spawned {
 }
 
 /// What a pipe held, handed over by the thread that read it to its end.
-type Drained = Receiver<Vec<u8>>;
+pub type Drained = Receiver<Vec<u8>>;
 
 impl Invocation<'_> {
     /// Starts this invocation beside the test, in `group`.
@@ -134,7 +134,7 @@ impl Drop for Spawned {
 }
 
 /// A thread that reads `pipe` to its end, and the channel it hands what it read to.
-fn drain(mut pipe: impl Read + Send + 'static) -> Drained {
+pub fn drain(mut pipe: impl Read + Send + 'static) -> Drained {
     let (sender, receiver) = mpsc::channel();
     std::thread::spawn(move || {
         let mut bytes = Vec::new();

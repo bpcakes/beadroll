@@ -10,10 +10,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
-use beadroll_test_support::{Machine, Run, shell_quoted};
+use beadroll_test_support::{Drained, Machine, Run, drain, exited_within, shell_quoted};
 use rustix::process::{Pid, Signal, kill_process};
 
-use super::{Drained, drain, script, wait_for};
+use super::script;
 
 /// Which terminal output style the test requests.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -99,7 +99,7 @@ impl Terminal {
     fn close(mut self) -> Vec<u8> {
         let holder = self.holder.take().expect("an open terminal");
         kill_process(holder, Signal::KILL).expect("the placeholder ends");
-        let ended = wait_for(&mut self.script, Duration::from_secs(60));
+        let ended = exited_within(&mut self.script, Duration::from_secs(60));
         assert!(ended.is_some(), "script went on after its terminal closed");
         self.input.take();
         let output = self.output.take().expect("script's output");
@@ -182,7 +182,7 @@ fn piped(
         .expect("bead starts");
     let stdout = drain(child.stdout.take().expect("bead's output"));
     let stderr = drain(child.stderr.take().expect("bead's errors"));
-    let Some(status) = wait_for(&mut child, Duration::from_secs(60)) else {
+    let Some(status) = exited_within(&mut child, Duration::from_secs(60)) else {
         let _ = child.kill();
         let _ = child.wait();
         panic!("bead {args:?} did not end within 60 s");
@@ -217,7 +217,7 @@ fn on_terminals(
     let mut child = command.spawn().expect("bead starts");
     // The test keeps no hold on the slaves: only bead and the placeholders have them open.
     drop(command);
-    let Some(status) = wait_for(&mut child, Duration::from_secs(60)) else {
+    let Some(status) = exited_within(&mut child, Duration::from_secs(60)) else {
         let _ = child.kill();
         let _ = child.wait();
         panic!("bead {args:?} did not end within 60 s on a terminal");

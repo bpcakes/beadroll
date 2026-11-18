@@ -2,7 +2,7 @@
 //! which fails the test when the deadline passes, rather than a fixed sleep that only hopes. A
 //! wait that bead itself can be held for is a failpoint's `pause-until` instead ([`crate::Gate`]).
 
-use std::process::Command;
+use std::process::{Child, Command, ExitStatus};
 use std::time::{Duration, Instant};
 
 use crate::Sandbox;
@@ -29,6 +29,18 @@ pub fn within(limit: Duration, mut done: impl FnMut() -> bool) -> bool {
         }
         std::thread::sleep(Duration::from_millis(10));
     }
+}
+
+/// How `child` ended, polled every 10 ms, or `None` if it is still running once `limit` has passed:
+/// for a process a test starts with standard streams of its own, which [`crate::Spawned`] does not
+/// give it.
+pub fn exited_within(child: &mut Child, limit: Duration) -> Option<ExitStatus> {
+    let mut ended = None;
+    within(limit, || {
+        ended = child.try_wait().expect("the child's status");
+        ended.is_some()
+    });
+    ended
 }
 
 impl Sandbox {

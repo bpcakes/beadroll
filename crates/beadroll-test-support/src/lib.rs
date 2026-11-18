@@ -36,8 +36,8 @@ pub use machine::{Invocation, Machine, Run, UNPROFILED, code, converge};
 pub use pool::pool_map;
 pub use sandbox::{Sandbox, UNDER_TEST, built_bead, git, git_command};
 pub use shell::{git_on_path, shell_quoted};
-pub use spawned::{ProcessGroup, Spawned};
-pub use wait::{REMOTE_SETTLES, wait_until, within};
+pub use spawned::{Drained, ProcessGroup, Spawned, drain};
+pub use wait::{REMOTE_SETTLES, exited_within, wait_until, within};
 
 /// Reads bead's output as a JSON document.
 pub fn parse_json(text: &str) -> Result<Json, String> {

@@ -3,15 +3,14 @@
 //! and a command that failed keeps its own status.
 
 use std::fs::{File, OpenOptions};
-use std::io::{Read, Write as _};
+use std::io::Write as _;
 use std::os::unix::ffi::OsStrExt as _;
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use beadroll_test_support::{Machine, Run, Sandbox};
+use beadroll_test_support::{Drained, Machine, Run, Sandbox, drain, exited_within};
 use rustix::pty::{OpenptFlags, grantpt, openpt, ptsname, unlockpt};
 
 /// The slave side of a pseudo-terminal whose master is closed. Writes fail with EIO, as after a
@@ -54,19 +53,10 @@ fn noise(proc: &Run) -> String {
     )
 }
 
-/// A thread that reads `pipe` to its end: what it read.
-fn drain(mut pipe: impl Read + Send + 'static) -> JoinHandle<Vec<u8>> {
-    std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        let _ = pipe.read_to_end(&mut bytes);
-        bytes
-    })
-}
-
 /// What a reader thread read, decoded as UTF-8 with invalid sequences replaced; nothing for a
 /// stream that was not piped.
-fn decoded(reader: Option<JoinHandle<Vec<u8>>>) -> String {
-    let bytes = reader.map(|thread| thread.join().expect("a reader"));
+fn decoded(reader: Option<Drained>) -> String {
+    let bytes = reader.map(|read| read.recv().expect("a reader"));
     let bytes = bytes.unwrap_or_default();
     String::from_utf8_lossy(&bytes).into_owned()
 }
@@ -78,15 +68,9 @@ fn run_within(mut command: Command, limit: Duration) -> Run {
     let mut child = command.stdin(Stdio::null()).spawn().expect("bead starts");
     let stdout = child.stdout.take().map(drain);
     let stderr = child.stderr.take().map(drain);
-    let deadline = Instant::now() + limit;
-    let mut late = false;
-    while child.try_wait().expect("bead's status").is_none() {
-        if Instant::now() > deadline {
-            late = true;
-            let _ = child.kill();
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(10));
+    let late = exited_within(&mut child, limit).is_none();
+    if late {
+        let _ = child.kill();
     }
     let status = child.wait().expect("bead's status");
     assert!(!late, "{command:?} ran longer than {limit:?}");

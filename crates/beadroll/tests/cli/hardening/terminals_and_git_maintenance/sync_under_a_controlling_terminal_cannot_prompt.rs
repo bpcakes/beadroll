@@ -4,9 +4,9 @@
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use beadroll_test_support::{Machine, executable, shell_quoted};
+use beadroll_test_support::{Machine, drain, executable, exited_within, shell_quoted};
 
-use super::{drain, script, wait_for};
+use super::script;
 
 /// Whether `needle` occurs in `haystack`.
 fn contains(haystack: &[u8], needle: &[u8]) -> bool {
@@ -61,7 +61,7 @@ fn sync_under_a_controlling_terminal_cannot_prompt() {
     let input = child.stdin.take();
     let output = drain(child.stdout.take().expect("the terminal's output"));
     let errors = drain(child.stderr.take().expect("script's errors"));
-    let Some(status) = wait_for(&mut child, Duration::from_secs(80)) else {
+    let Some(status) = exited_within(&mut child, Duration::from_secs(80)) else {
         // closing the terminal ends bead too: its controlling terminal hangs up
         let _ = child.kill();
         let _ = child.wait();

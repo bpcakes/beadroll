@@ -11,10 +11,9 @@ use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
-use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use beadroll_test_support::{Machine, Run, Sandbox, parse_json};
+use beadroll_test_support::{Drained, Machine, Run, Sandbox, drain, exited_within, parse_json};
 use rustix::io::{FdFlags, fcntl_setfd};
 use rustix::pty::{OpenptFlags, grantpt, openpt, ptsname, unlockpt};
 
@@ -45,19 +44,10 @@ fn start(text: &str) -> String {
     text.chars().take(100).collect()
 }
 
-/// A thread that reads `pipe` to its end: what it read.
-fn read_all(mut pipe: impl Read + Send + 'static) -> JoinHandle<Vec<u8>> {
-    std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        let _ = pipe.read_to_end(&mut bytes);
-        bytes
-    })
-}
-
 /// What a reader thread read, as text (output that is not UTF-8 fails the test); nothing for a
 /// stream that was not piped.
-fn text(reader: Option<JoinHandle<Vec<u8>>>) -> String {
-    let bytes = reader.map(|thread| thread.join().expect("a reader"));
+fn text(reader: Option<Drained>) -> String {
+    let bytes = reader.map(|read| read.recv().expect("a reader"));
     String::from_utf8(bytes.unwrap_or_default()).expect("bead's output is UTF-8")
 }
 
@@ -70,17 +60,12 @@ fn finished(mut command: Command) -> Run {
         .spawn()
         .unwrap_or_else(|error| panic!("cannot start {command:?}: {error}"));
     drop(command);
-    let stdout = child.stdout.take().map(read_all);
-    let stderr = child.stderr.take().map(read_all);
-    let deadline = Instant::now() + LIMIT;
-    while child.try_wait().expect("bead's status").is_none() {
-        if Instant::now() > deadline {
-            let _ = child.kill();
-            panic!("bead ran longer than {LIMIT:?}");
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    let status = child.wait().expect("bead's status");
+    let stdout = child.stdout.take().map(drain);
+    let stderr = child.stderr.take().map(drain);
+    let Some(status) = exited_within(&mut child, LIMIT) else {
+        let _ = child.kill();
+        panic!("bead ran longer than {LIMIT:?}");
+    };
     Run {
         status,
         stdout: text(stdout),

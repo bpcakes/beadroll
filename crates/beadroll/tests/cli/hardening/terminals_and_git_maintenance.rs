@@ -8,11 +8,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
-use std::io::Read;
 use std::path::Path;
-use std::process::{Child, Command, ExitStatus};
-use std::sync::mpsc::{self, Receiver};
-use std::time::{Duration, Instant};
+use std::process::Command;
 
 use beadroll_test_support::{Machine, json, parse_json};
 
@@ -191,32 +188,4 @@ fn script(line: &str, env: &BTreeMap<OsString, OsString>) -> Command {
         command.args(["-q", "/dev/null", "/bin/sh", "-c", line]);
     }
     command
-}
-
-/// What a pipe held, handed over by the thread that read it to its end.
-type Drained = Receiver<Vec<u8>>;
-
-/// A thread that reads `pipe` to its end, and the channel it hands what it read to.
-fn drain(mut pipe: impl Read + Send + 'static) -> Drained {
-    let (sender, receiver) = mpsc::channel();
-    std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        let _ = pipe.read_to_end(&mut bytes);
-        let _ = sender.send(bytes);
-    });
-    receiver
-}
-
-/// How `child` ended, waiting at most `limit`: `None` if it is still running then.
-fn wait_for(child: &mut Child, limit: Duration) -> Option<ExitStatus> {
-    let deadline = Instant::now() + limit;
-    loop {
-        if let Some(status) = child.try_wait().expect("the child's status") {
-            return Some(status);
-        }
-        if Instant::now() >= deadline {
-            return None;
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    }
 }
