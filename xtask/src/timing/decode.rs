@@ -28,7 +28,7 @@ use super::{heap, memory};
 use crate::workspace::{self, Failure, json_string};
 
 /// How many times each part is decoded; the fastest run counts.
-const RUNS: usize = 7;
+pub(super) const RUNS: usize = 7;
 
 /// The fastest of [`RUNS`] runs of `run`, in seconds.
 pub(super) fn fastest<T>(mut run: impl FnMut() -> Result<T, Failure>) -> Result<f64, Failure> {

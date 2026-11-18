@@ -15,12 +15,10 @@ use beadroll_core::json::{Object, Value};
 use beadroll_core::replay::replay;
 use beadroll_core::state::{Edge, Issue, State, Target};
 
-use super::ready::{MACHINE, create, event, fastest, key};
+// the runs `ready::fastest` takes, which the record states
+use super::ready::{MACHINE, RUNS, create, event, fastest, key};
 use super::world::profile;
 use crate::workspace::{Failure, json_string};
-
-/// How many times each question is asked; the fastest run counts.
-const RUNS: usize = 3;
 
 /// The dependencies issue `n` is made with, the issues numbered from one: it waits for issue
 /// n/2, and every third issue is related to the one before it as well.
