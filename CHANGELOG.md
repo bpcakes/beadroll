@@ -6,6 +6,10 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `infra/soak.py`'s preflight records a bead that is not there as `missing` and stops, and records
+  one that does not run with why, as `infra/selected.py` does, instead of stopping on a Python
+  traceback before it logged anything.
+
 - `infra/drive.py`'s preflight refuses to start unless every machine's clone fetches from and
   pushes to `BEAD_TEST_REMOTE`, as git reads the clone's origin there, and records both URLs.
   The driver required the variable but never compared it with the clones bead runs in, so a clone

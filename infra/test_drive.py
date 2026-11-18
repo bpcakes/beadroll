@@ -218,6 +218,24 @@ class SoakPreflight(unittest.TestCase):
             self.assertIn("not a native 'bead 0.2.0'", proc.stderr)
             self.assertEqual(len(rows), 1, rows)
 
+    def test_the_soak_records_a_missing_or_unrunnable_bead_and_says_why(self):
+        with tempfile.TemporaryDirectory(prefix="bead-soak-bead-") as tmp:
+            missing = Path(tmp) / "no-bead"
+            proc, rows = self.soak(missing, "")
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn(f"soak.py: {missing} does not exist", proc.stderr)
+            self.assertNotIn("Traceback", proc.stderr)
+            self.assertEqual((rows[0]["kind"], rows[0]["sha256"]), ("missing", ""))
+            self.assertEqual(len(rows), 1, rows)
+            # an executable the system cannot start: recorded with why, refused by the version it lacks
+            unrunnable = Path(tmp) / "bead"
+            unrunnable.write_bytes(b"\x7fELF but not a program\n")
+            unrunnable.chmod(0o755)
+            proc, rows = self.soak(unrunnable, "0.2.0")
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertNotIn("Traceback", proc.stderr)
+            self.assertTrue(rows[0]["version"].startswith("(does not run: "), rows[0])
+
     def test_a_bead_named_by_a_relative_path_is_refused_before_anything_runs(self):
         # ./bead would be the one where soak.py starts to the preflight, and REPO's to the traffic
         with tempfile.TemporaryDirectory(prefix="bead-soak-test-") as tmp:
