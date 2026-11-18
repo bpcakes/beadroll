@@ -1,6 +1,6 @@
 //! The issues `list` and `ready` show: filtered, limited and laid out as rows.
 
-use beadroll_core::event::{DONE, PARENT_CHILD, status};
+use beadroll_core::event::{DONE, Field, PARENT_CHILD, status};
 use beadroll_core::json::{Int, Value};
 use beadroll_core::op::IntegerField;
 use beadroll_core::state::{Issue, State, Target};
@@ -72,7 +72,7 @@ pub(crate) fn select<'s>(st: &'s State, filters: &Filters) -> Result<Vec<&'s Iss
         }
         if let Some(assignee) = filters.assignee.as_ref().filter(|a| !a.is_empty()) {
             let held = issue
-                .read_field(beadroll_core::event::Field::Assignee)?
+                .read_field(Field::Assignee)?
                 .filter(|value| **value != Value::Null);
             if held != Some(&Value::from(assignee.as_str())) {
                 continue;

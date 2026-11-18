@@ -291,60 +291,6 @@ fn attempt_emission_is_scoped_even_after_an_error() {
             tx.ownership,
             [tx.emitted[1].value.clone(), tx.emitted[2].value.clone()]
         );
-        assert!(!tx.conditional);
-        Ok(())
-    })
-    .unwrap();
-}
-
-/// Legacy callers may keep conditional routing enabled before and after an attempt scope.
-#[test]
-fn legacy_conditional_routing_survives_an_attempt_scope() {
-    let fixture = Fixture::new("");
-    locked(&fixture.ws, || -> Result<(), Error> {
-        let mut tx = Tx::new(&fixture.ws, &fixture.actor)?;
-        let uid = tx.state()?.resolve(&fixture.key).unwrap().uid().to_string();
-        let comment = || {
-            let mut data = Object::new();
-            data.insert("text".into(), Value::from("legacy comment"));
-            data
-        };
-        tx.conditional = true;
-        tx.emit(OpName::Comment, Some(&uid), comment(), None)?;
-        tx.lend()?
-            .1
-            .emit(OpName::Comment, Some(&uid), comment(), None)?;
-        {
-            let mut attempt = tx.attempt();
-            attempt.emit(OpName::Comment, Some(&uid), comment(), None)?;
-            attempt
-                .lend()?
-                .1
-                .emit(OpName::Comment, Some(&uid), comment(), None)?;
-        }
-        tx.emit(OpName::Comment, Some(&uid), comment(), None)?;
-        tx.lend()?
-            .1
-            .emit(OpName::Comment, Some(&uid), comment(), None)?;
-        tx.conditional = false;
-        tx.emit(OpName::Comment, Some(&uid), comment(), None)?;
-        tx.lend()?
-            .1
-            .emit(OpName::Comment, Some(&uid), comment(), None)?;
-        assert_eq!(
-            tx.emitted
-                .iter()
-                .map(|record| record.sequenced)
-                .collect::<Vec<_>>(),
-            [false, false, false, false, false, false, true, true]
-        );
-        assert_eq!(
-            tx.ownership,
-            tx.emitted[..6]
-                .iter()
-                .map(|record| record.value.clone())
-                .collect::<Vec<_>>()
-        );
         Ok(())
     })
     .unwrap();
