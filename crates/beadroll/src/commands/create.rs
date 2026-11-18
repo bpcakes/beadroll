@@ -11,8 +11,8 @@ use beadroll_store::uuid7;
 use beadroll_sync::{Tx, writing_spent};
 
 use super::{
-    ContentArgs, Context, Failure, Outcome, Payload, arg_text, arg_texts, encodable, field_args,
-    need_tracker, resolve_arg, rpartition, split_args,
+    ContentArgs, Context, Failure, Outcome, Payload, arg_text, arg_texts, edge_data, encodable,
+    field_args, need_tracker, resolve_arg, rpartition, split_args,
 };
 
 /// `create`'s arguments.
@@ -110,15 +110,15 @@ fn write_issue(
     tx.emit(OpName::Create, None, data, Some(uid.clone()))?;
     encodable(fields.valid.and(labels_valid))?;
     if let Some(parent) = &parent_uid {
-        let mut edge = Object::new();
-        edge.insert("to".into(), Value::from(parent.as_str()));
-        edge.insert("type".into(), Value::from(PARENT_CHILD));
-        tx.emit(OpName::DepAdd, Some(&uid), edge, None)?;
+        tx.emit(
+            OpName::DepAdd,
+            Some(&uid),
+            edge_data(parent, PARENT_CHILD),
+            None,
+        )?;
     }
     for (target, kind, valid) in deps {
-        let mut edge = Object::new();
-        edge.insert("to".into(), Value::from(target.to_string()));
-        edge.insert("type".into(), Value::from(kind));
+        let edge = edge_data(&target.to_string(), &kind);
         tx.emit(OpName::DepAdd, Some(&uid), edge, None)?;
         encodable(valid)?;
     }

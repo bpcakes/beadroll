@@ -17,8 +17,8 @@ use beadroll_store::view_outline;
 use beadroll_sync::writing_spent;
 
 use super::{
-    Context, Failure, Line, Outcome, Tone, arg_text, encodable, need_tracker, remove_edge,
-    resolve_arg, row,
+    Context, Failure, Line, Outcome, Tone, arg_text, edge_data, encodable, need_tracker,
+    remove_edge, resolve_arg, row,
 };
 use crate::commands::args::TextValidity;
 
@@ -211,10 +211,8 @@ fn change(
                         ),
                     ));
                 }
-                let mut data = Object::new();
-                data.insert("to".into(), Value::from(target.uid().to_string()));
-                data.insert("type".into(), Value::from(kind));
-                tx.emit(OpName::DepAdd, Some(&uid), data, None)?;
+                let edge = edge_data(&target.uid().to_string(), kind);
+                tx.emit(OpName::DepAdd, Some(&uid), edge, None)?;
                 encodable(validity)?;
                 target.key().to_owned()
             }
