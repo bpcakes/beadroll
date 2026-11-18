@@ -6,6 +6,12 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- Input that was accepted and then dropped is refused with `USAGE`: a comment's text given more
+  than one way (`comments add X words -m text` kept only `-m`'s), `init --dry-run` beside
+  `--tracked`, `--remote` or `--prefix` (none of which a dry run applies), and `machines --name`
+  without `=` (read as `NAME=`, which takes a name back). `bead log` before any tracker is
+  `NOT_INITIALIZED`, as the other reads are, not an empty history.
+
 - `release X --reason "..."` of a provisional (offline) claim records the reason, as a confirmed
   claim's release does, and `recap` shows it. It was dropped.
 

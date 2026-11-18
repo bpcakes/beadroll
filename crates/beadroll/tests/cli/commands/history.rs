@@ -276,3 +276,43 @@ fn machine_id(machine: &Machine) -> String {
     let info = machine.bead(["info"]).unwrap();
     info["machine"].as_str().unwrap().to_owned()
 }
+
+/// `bead log` before any tracker is made is `NOT_INITIALIZED`, as `show`, `list` and `comments`
+/// are, not an empty history or an issue not found.
+#[test]
+fn log_without_a_tracker_says_there_is_none() {
+    let sandbox = crate::sandbox();
+    let machine = Machine::new(&sandbox, "a");
+    for args in [&["log"][..], &["log", "ex-1"]] {
+        let run = machine.run(args.iter().copied().chain(["--json"]));
+        assert_eq!(
+            beadroll_test_support::code(&run),
+            "NOT_INITIALIZED",
+            "{args:?}: {}",
+            run.stderr
+        );
+    }
+}
+
+/// `machines --name` takes `ID=NAME`: a word without `=` is `USAGE` and leaves `aliases.json` as it
+/// was, rather than read as `ID=`, which takes a name back.
+#[test]
+fn a_machine_name_without_an_id_is_refused() {
+    let sandbox = crate::sandbox();
+    let machine = Machine::new(&sandbox, "a");
+    machine.bead(["init", "--prefix", "ex"]);
+    let aliases = machine.home().join("aliases.json");
+    let before = std::fs::read(&aliases).ok();
+    let refused = machine.run(["machines", "--name", "laptop", "--json"]);
+    assert_eq!(
+        beadroll_test_support::code(&refused),
+        "USAGE",
+        "{}",
+        refused.stderr
+    );
+    assert_eq!(
+        std::fs::read(&aliases).ok(),
+        before,
+        "aliases.json was changed"
+    );
+}

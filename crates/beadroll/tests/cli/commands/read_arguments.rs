@@ -160,3 +160,42 @@ fn dependency_reads_and_explicit_changes_keep_their_meaning() {
             .is_empty()
     );
 }
+
+/// A comment's text is given one way: words with `-m`, or `-m` with `-f`, is `USAGE` and writes
+/// nothing, rather than keeping one and dropping the other without a word.
+#[test]
+fn a_comment_given_two_ways_is_refused() {
+    let sandbox = crate::sandbox();
+    let machine = Machine::new(&sandbox, "a");
+    machine.bead(["init", "--prefix", "ex"]);
+    let key = machine.bead(["create", "x"]).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let file = sandbox.root().join("comment.txt");
+    std::fs::write(&file, "from the file").unwrap();
+    let file = file.to_str().unwrap();
+    for args in [
+        &[
+            "comments",
+            "add",
+            key.as_str(),
+            "first",
+            "words",
+            "-m",
+            "second",
+        ][..],
+        &["comments", "add", key.as_str(), "-m", "second", "-f", file],
+    ] {
+        let refused = machine.run(args.iter().copied().chain(["--json"]));
+        assert_eq!(code(&refused), "USAGE", "{args:?}: {}", refused.stderr);
+    }
+    let shown = machine
+        .bead(["comments", key.as_str()])
+        .expect("the comments");
+    assert_eq!(
+        shown,
+        beadroll_test_support::Json::Array(Vec::new()),
+        "a refused comment was written"
+    );
+}
