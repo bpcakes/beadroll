@@ -16,6 +16,11 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   `CODEX` variables. A caller's `GIT_DIR` or `BEAD_WORKSPACE` reached this machine's bead and git
   before.
 
+- `infra/roundtrip.py` run without `RT_HOME` imports into a store of its own, made empty and removed
+  when it ends. It used one fixed `$TMPDIR/bead-roundtrip-home` for every run, so a second run
+  imported each tracker on top of what the first had left. `cargo xtask check --real` names a fresh
+  `RT_HOME` and is unchanged.
+
 - A checkout whose directory's name begins or ends with whitespace reads the `.beadroll.json` at
   its top and is named as git names it. Discovery stripped the whitespace off git's answer, so it
   looked for the file in a directory that does not exist and fell back to the local path's
