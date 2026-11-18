@@ -17,6 +17,7 @@ beadroll-core.workspace = true
 indexmap.workspace = true
 
 [dev-dependencies]
+beadroll-store.workspace = true
 beadroll-test-support.workspace = true
 regex-lite.workspace = true
 sha2.workspace = true

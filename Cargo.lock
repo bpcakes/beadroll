@@ -664,6 +664,7 @@ version = "0.2.0"
 dependencies = [
  "beadroll",
  "beadroll-core",
+ "beadroll-store",
  "beadroll-test-support",
  "indexmap",
  "regex-lite",

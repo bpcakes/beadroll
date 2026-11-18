@@ -129,3 +129,13 @@ fn the_plain_history_is_the_one_always_measured() {
         "de17de630f0a4b6dfcd50a0797a6a56a93ada20b0f175a1f885ba1549c8dcbfe"
     );
 }
+
+/// The histories rotate their segments where bead does when `BEAD_ROTATE_BYTES` is unset: a change
+/// to the store's default fails here, not as a timing of another shape.
+#[test]
+fn segments_rotate_at_the_stores_default_size() {
+    assert_eq!(
+        i128::try_from(super::ROTATE_BYTES).expect("a size"),
+        beadroll_store::ROTATE_BYTES
+    );
+}
