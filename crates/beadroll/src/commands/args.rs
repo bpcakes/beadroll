@@ -9,7 +9,7 @@ use beadroll_core::code::Code;
 use beadroll_core::event::STATUSES;
 use beadroll_core::json::{Int, Object, Value};
 use beadroll_core::state::{Issue, State};
-use beadroll_core::text::{is_space, repr_bytes};
+use beadroll_core::text::{is_space, repr_bytes, strip};
 
 use super::{Failure, issue_not_found, parse_priority, priority_out_of_range, read_utf8, resolve};
 
@@ -212,7 +212,29 @@ pub(crate) fn field_args(title: Option<&OsStr>, flags: &ContentArgs) -> Result<P
             .values
             .insert("priority".into(), Value::from(priority));
     }
-    if let Some(kind) = flags.issue_type.as_deref().filter(|t| !t.is_empty()) {
+    // an empty type or parent is not one: refused, as an empty title is, never read as not given
+    if flags
+        .issue_type
+        .as_deref()
+        .is_some_and(|t| strip(&t.to_string_lossy()).is_empty())
+    {
+        return Err(Failure::new(
+            Code::Validation,
+            "--type needs a type, such as task or bug",
+        ));
+    }
+    if flags
+        .parent
+        .as_deref()
+        .is_some_and(|p| strip(&p.to_string_lossy()).is_empty())
+    {
+        return Err(Failure::new(
+            Code::Validation,
+            "--parent needs an issue's key; take an issue out of its parent with \
+             `bead dep remove CHILD PARENT`",
+        ));
+    }
+    if let Some(kind) = flags.issue_type.as_deref() {
         fields.set_text("issue_type", kind);
     }
     if let Some(estimate) = &flags.estimate {

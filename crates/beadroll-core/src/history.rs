@@ -27,6 +27,8 @@ pub struct HistoryEntry {
     pub branch: Value,
     /// Fields a `set` changed, in their original order.
     pub changed_fields: Vec<String>,
+    /// The claim a `claim` took over, by its event id, when it is a takeover.
+    pub takeover_of: Option<String>,
 }
 
 impl From<&Event> for HistoryEntry {
@@ -58,6 +60,10 @@ impl From<&Event> for HistoryEntry {
                     .collect(),
                 _ => Vec::new(),
             },
+            takeover_of: match event.op() {
+                Op::Claim(claim) => claim.takeover_of().map(str::to_owned),
+                _ => None,
+            },
         }
     }
 }
@@ -80,6 +86,7 @@ impl HistoryEntry {
                     .map(|field| Value::from(field.as_str()))
                     .collect(),
             ),
+            Value::from(self.takeover_of.as_deref()),
         ])
     }
 
@@ -95,15 +102,18 @@ impl HistoryEntry {
             issue,
             branch,
             fields,
+            takeover_of,
         ] = value.as_array()?
         else {
             return None;
         };
-        let issue = match issue {
-            Value::Null => None,
-            Value::Str(text) => Some(text.clone()),
-            _ => return None,
+        let text_or_null = |value: &Value| match value {
+            Value::Null => Some(None),
+            Value::Str(text) => Some(Some(text.clone())),
+            _ => None,
         };
+        let issue = text_or_null(issue)?;
+        let takeover_of = text_or_null(takeover_of)?;
         Some(Self {
             id: EventId::parse(id.as_str()?)?,
             machine: machine.as_str()?.to_owned(),
@@ -118,6 +128,7 @@ impl HistoryEntry {
                 .iter()
                 .map(|field| field.as_str().map(str::to_owned))
                 .collect::<Option<_>>()?,
+            takeover_of,
         })
     }
 }

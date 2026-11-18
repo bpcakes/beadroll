@@ -179,6 +179,32 @@ fn same_child_number_on_two_machines_is_renumbered_identically() {
     }
 }
 
+/// An online child's create answers the key it has once its own publish has merged: another
+/// machine's child of that number published first, the create's key is the next one, never the
+/// one that now names the other machine's child, in text, `--json` and `--silent` alike.
+#[test]
+fn an_online_child_answers_the_key_its_publish_settled() {
+    let sandbox = crate::sandbox();
+    let (a, b, x, _) = two_machines(&sandbox);
+    let first = format!("{x}.1");
+    assert_eq!(
+        json_id(&a.bead(["create", "on a", "--parent", &x]).unwrap()),
+        first
+    );
+    let made = b.bead(["create", "on b", "--parent", &x]).unwrap();
+    let key = json_id(&made);
+    assert_ne!(
+        key, first,
+        "b's create answered the key of a's child: {made:?}"
+    );
+    assert_eq!(b.show(&key)["title"].as_str(), Some("on b"));
+    let silent = b.run(["create", "also on b", "--parent", &x, "--silent"]);
+    assert_eq!(
+        b.show(silent.stdout.trim())["title"].as_str(),
+        Some("also on b")
+    );
+}
+
 /// Three machines syncing at the same moment all succeed, and converge on everything they made.
 #[test]
 fn concurrent_sync_from_three_machines_all_succeed() {

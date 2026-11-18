@@ -113,6 +113,10 @@ fn logged_summary(
     row.insert("issue".into(), issue.clone());
     row.insert("event".into(), Value::from(event.id.to_string()));
     row.insert("branch".into(), branch.clone());
+    // the event is a claim, as the journal records it; that it took one over is said beside it
+    if let Some(taken) = &event.takeover_of {
+        row.insert("takeover".into(), Value::from(taken.as_str()));
+    }
     let or = |value: Value, default: &str| {
         if value.truthy() {
             str_of(&value)
@@ -128,6 +132,8 @@ fn logged_summary(
     };
     let op = if event.operation == "set" && !event.changed_fields.is_empty() {
         format!("set {}", event.changed_fields.join(","))
+    } else if event.takeover_of.is_some() {
+        "takeover".to_owned()
     } else {
         event.operation.clone()
     };

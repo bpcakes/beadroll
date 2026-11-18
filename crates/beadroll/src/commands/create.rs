@@ -7,13 +7,14 @@ use beadroll_core::event::{BLOCKS, PARENT_CHILD, status};
 use beadroll_core::json::{Object, Value};
 use beadroll_core::op::OpName;
 use beadroll_core::query::blocking;
+use beadroll_core::state::{Issue, State};
 use beadroll_core::text::strip;
-use beadroll_store::uuid7;
-use beadroll_sync::{Tx, writing_spent};
+use beadroll_store::{uuid7, view_outline};
+use beadroll_sync::{NetworkMode, Tx, publish_soon, writing_spent};
 
 use super::{
-    ContentArgs, Context, Failure, Outcome, Payload, arg_text, arg_texts, edge_data, encodable,
-    field_args, need_tracker, resolve_arg, rpartition, split_args,
+    ContentArgs, Context, Failure, Line, Outcome, Payload, Tone, arg_text, arg_texts, edge_data,
+    encodable, field_args, need_tracker, resolve_arg, rpartition, split_args, texts_in,
 };
 
 /// `create`'s arguments.
@@ -25,6 +26,8 @@ pub(crate) struct CreateArgs {
     pub(crate) labels: Vec<OsString>,
     pub(crate) deps: Vec<OsString>,
     pub(crate) silent: bool,
+    pub(crate) network: NetworkMode,
+    pub(crate) remote: Option<OsString>,
 }
 
 /// Creates an issue: its key minted under its parent or from its id, its parent and dependency
@@ -52,23 +55,63 @@ pub(crate) fn create(ctx: &Context<'_>, args: &CreateArgs) -> Result<Outcome, Fa
             "create the issue, then claim it: in_progress is reached only through a claim",
         ));
     }
-    let ((key, title, result), spent) =
+    let (((key, title, result), uid), spent) =
         writing_spent(ctx.ws, ctx.actor, |tx| write_issue(tx, args, &fields))?;
+    let child = args.fields.parent.as_deref().is_some_and(|p| !p.is_empty());
+    if !child {
+        return Ok(answer(args, key, &title, result).wrote_in(spent));
+    }
+    // A child's key is the one a merge renumbers when another machine gave its parent a child of
+    // the same number first: published here rather than after the answer, so that the answer
+    // names the key the issue has once its publish has merged, never one that names another
+    drop(spent);
+    let warning = publish_soon(ctx.ws, args.network, args.remote.as_deref());
+    let st = view_outline(ctx.ws)?;
+    let eid = st.issue_named(&uid).map(Issue::uid);
+    let st = texts_in(ctx.ws, st, eid)?;
+    let (key, title, mut result) = shown(&st, &uid)?;
+    if let Some(warning) = &warning {
+        // --json is told too, as `update` tells it: the other machines do not know yet
+        result.insert("unpublished".into(), Value::from(warning.as_str()));
+    }
+    let mut outcome = answer(args, key, &title, result);
+    if let (Some(warning), Some(lines)) = (&warning, &mut outcome.lines) {
+        lines.push(Line::toned(Tone::Warning, warning.clone()));
+    }
+    outcome
+        .answered_from(st)
+        .after_its_publish(ctx.ws, warning.as_deref())
+}
+
+/// What `create` answers of the issue it made, `key`: its key alone (`--silent`), or its detail.
+fn answer(args: &CreateArgs, key: String, title: &str, result: Object) -> Outcome {
     if args.silent {
         let mut out = Object::new();
         out.insert("id".into(), Value::from(key.as_str()));
-        return Ok(Outcome::new(out, vec![key]).wrote_in(spent));
+        return Outcome::new(out, vec![key]);
     }
-    Ok(Outcome::new(result, vec![format!("✓ Created {key}: {title}")]).wrote_in(spent))
+    Outcome::new(result, vec![format!("✓ Created {key}: {title}")])
+}
+
+/// The issue `uid` as `create` shows it: its key, its title and its detail.
+fn shown(st: &State, uid: &str) -> Result<(String, String, Object), Failure> {
+    let issue = st
+        .issue_named(uid)
+        .ok_or_else(|| Failure::new(Code::Validation, "the created issue is not there"))?;
+    Ok((
+        issue.key().to_owned(),
+        issue.title().to_owned(),
+        st.detail(issue.hydrated()?),
+    ))
 }
 
 /// Emits the issue (`fields`, under `--parent`, depending on each `--deps` item, `[type:]KEY`,
-/// with `--labels`): its key, its title and its detail.
+/// with `--labels`): its key, its title and its detail, and its id.
 fn write_issue(
     tx: &mut Tx<'_>,
     args: &CreateArgs,
     fields: &Payload,
-) -> Result<(String, String, Object), Failure> {
+) -> Result<((String, String, Object), String), Failure> {
     let clock = tx.ws.settings.clock.clone();
     let (deps, parent_uid, key, uid) = {
         let st = tx.state()?;
@@ -135,12 +178,5 @@ fn write_issue(
         encodable(valid)?;
     }
     let st = tx.state()?;
-    let issue = st
-        .issue_named(&uid)
-        .ok_or_else(|| Failure::new(Code::Validation, "the created issue is not there"))?;
-    Ok((
-        issue.key().to_owned(),
-        issue.title().to_owned(),
-        st.detail(issue.hydrated()?),
-    ))
+    Ok((shown(st, &uid)?, uid))
 }

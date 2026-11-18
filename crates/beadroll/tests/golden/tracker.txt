@@ -66,6 +66,8 @@ $ bead show ex-a
   acceptance_criteria: Every verb ported
   notes: Phase 2b
   design: One table drives the parser.
+  external_ref: gh-12
+  estimated_minutes: 90
   labels: port, rust
   needed by (parent-child): ex-a.1 [open] Parser
   needed by (parent-child): ex-a.2 [closed] Help pages

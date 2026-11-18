@@ -310,6 +310,18 @@ fn execute(
         let text = rendered((outcome.result, outcome.lines), output_mode, colors)?;
         return Ok(text.map(|text| Printed { text, delivered }));
     }
+    // export's standard output is Beads JSONL, a document an issue: never the one document --json
+    // promises, so only a file takes it then, and the answer is the file's
+    if ns.spec.name == "export"
+        && output_mode == OutputMode::Json
+        && ns.text("output").is_none_or(std::ffi::OsStr::is_empty)
+    {
+        return Err(Failure::new(
+            Code::Usage,
+            "export writes Beads JSONL, one document an issue, to standard output; with --json, \
+             give -o FILE, and the answer is what was written there",
+        ));
+    }
     let free = ns.spec.scope == Scope::Free;
     // Select a directory for output files before starting the first git process.
     let tmp = tempdir::temporary_directory(settings.git.vars(), Some(settings.cwd.as_path()))?;

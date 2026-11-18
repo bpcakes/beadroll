@@ -192,6 +192,18 @@ impl State {
         let dangling = issue.dangling().iter().map(|dep| {
             let mut dep = dep.as_object().cloned().unwrap_or_default();
             dep.insert("issue_id".into(), Value::from(issue.key()));
+            // br's six members, as an edge's are written: what the import gave kept, what it left
+            // out given the edge's defaults
+            for (name, default) in [
+                ("created_at", Value::Null),
+                ("created_by", Value::Null),
+                ("metadata", Value::from("{}")),
+                ("thread_id", Value::from("")),
+            ] {
+                if !dep.contains_key(name) {
+                    dep.insert(name.into(), default);
+                }
+            }
             dep
         });
         let mut dependencies: Vec<Object> = deps.chain(dangling).collect();

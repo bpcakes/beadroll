@@ -287,3 +287,51 @@ fn machine_json_preserves_and_escapes_control_data() {
     assert!(!result.stdout.contains('\x1b'), "{:?}", result.stdout);
     assert_eq!(strict_json(&result.stdout)["title"].as_str(), Some(title));
 }
+
+/// `export --json` without `-o` is `USAGE`: its standard output is Beads JSONL, a document an
+/// issue, never the one document `--json` promises. With `-o`, the answer is what was written.
+#[test]
+fn export_with_json_needs_a_file() {
+    let sandbox = crate::sandbox();
+    let machine = Machine::new(&sandbox, "a");
+    machine.bead(["init", "--prefix", "ex"]);
+    machine.bead(["create", "x"]);
+    let refused = machine.run(["export", "--json"]);
+    assert_eq!(code(&refused), "USAGE", "{}", refused.stderr);
+    assert!(refused.stdout.is_empty(), "{}", refused.stdout);
+    let plain = machine.run(["export"]);
+    assert_eq!(plain.returncode(), 0, "{}", plain.stderr);
+    assert_eq!(plain.stdout.lines().count(), 1);
+    let target = sandbox.root().join("out.jsonl");
+    let written = machine.run(["export", "-o", target.to_str().unwrap(), "--json"]);
+    assert_eq!(
+        parse_json(&written.stdout).unwrap()["exported"].as_i64(),
+        Some(1),
+        "{}",
+        written.stderr
+    );
+}
+
+/// `show`'s text gives every field its `--json` has: an external reference and an estimate too.
+#[test]
+fn show_text_gives_the_external_ref_and_the_estimate() {
+    let sandbox = crate::sandbox();
+    let machine = Machine::new(&sandbox, "a");
+    machine.bead(["init", "--prefix", "ex"]);
+    let made = ["create", "x", "--external-ref", "gh-12", "--estimate", "90"];
+    let key = machine.bead(made).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let shown = machine.run(["show", key.as_str()]);
+    assert!(
+        shown.stdout.contains("external_ref: gh-12"),
+        "{}",
+        shown.stdout
+    );
+    assert!(
+        shown.stdout.contains("estimated_minutes: 90"),
+        "{}",
+        shown.stdout
+    );
+}

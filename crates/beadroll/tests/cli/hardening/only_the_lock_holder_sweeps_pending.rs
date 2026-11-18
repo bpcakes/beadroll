@@ -158,11 +158,13 @@ fn readers_work_on_a_read_only_store_with_a_junk_pending_file() {
     let junk = pending.join("01900000-0000-7000-8000-0000000000aa.json");
     std::fs::write(junk, "{").expect("a junk pending file");
     chmod_tree("a-w", &store);
+    // with `--json`, an export answers of the file it writes, outside the store
+    let exported = sandbox.root().join("exported.jsonl");
     let readers: [&[&str]; 5] = [
         &["show", &key],
         &["list"],
         &["ready"],
-        &["export"],
+        &["export", "-o", exported.to_str().unwrap()],
         &["info"],
     ];
     let results: Vec<(&str, Run)> = readers

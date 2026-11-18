@@ -100,14 +100,17 @@ pub(crate) const BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 /// of it), never on a later one, whose code would be compared with itself. All five were made
 /// again, with the `edges/answers` they pin, where an export stopped giving a reopened issue its
 /// deletion's members and began writing a legacy boolean or out-of-range integer as Beads reads it
-/// (`export::beads_readable`): the export's answers alone changed.
-pub(crate) const DIFFERENTIAL: u64 = 0xbb52_d144_f66f_111f;
+/// (`export::beads_readable`): the export's answers alone changed. The four of the histories were
+/// made again, with the `edges/answers` they pin, where a done issue's detail stopped saying it
+/// is `blocked` and an export began giving a dependency waiting for its key br's six members: those
+/// answers alone changed, as each changed line of the fixtures' pinned answers shows.
+pub(crate) const DIFFERENTIAL: u64 = 0xb1ed_3b84_6589_fa8e;
 /// See [`DIFFERENTIAL`].
-pub(crate) const FLAWED: u64 = 0x859c_b3ef_b6ce_4777;
+pub(crate) const FLAWED: u64 = 0xd75f_1d8b_b39f_3d0a;
 /// See [`DIFFERENTIAL`].
-pub(crate) const DELIVERED: u64 = 0x9bc0_e35f_aba9_827b;
+pub(crate) const DELIVERED: u64 = 0x3de9_2322_25d3_167e;
 /// See [`DIFFERENTIAL`].
-pub(crate) const DELIVERED_FLAWED: u64 = 0x6b1a_0cf0_95e4_8ad3;
+pub(crate) const DELIVERED_FLAWED: u64 = 0x87f0_6944_7c1b_d661;
 /// See [`DIFFERENTIAL`]: of the world of [`next_batch`].
 const OWNED: u64 = 0xca2f_f808_17d9_9d1a;
 

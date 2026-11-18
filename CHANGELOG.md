@@ -6,6 +6,21 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- An online `create --parent` answers the key its own publish settled: when another machine's
+  child of that number was published first, it printed that child's key, so a comment or a commit
+  message meant for the new issue named the other.
+- A done issue's detail (`show`) says it is not `blocked`, as `bead blocked` leaves it out.
+- `update --parent ""`, `update -t ""` and `create -t ""` are `VALIDATION`; they read as not given
+  (`update` said nothing was given, `create` made a task). A parent is taken back with
+  `bead dep remove`.
+- `export --json` without `-o` is `USAGE`: its standard output is Beads JSONL, a document an issue,
+  not the one document `--json` promises.
+- An imported dependency still waiting for its key exports with br's six members, as every other
+  dependency does.
+- `log` reads `takeover` for a claim that took another over, and its `--json` row carries the claim
+  it took over as `takeover`.
+- `show`'s text gives `external_ref` and `estimated_minutes`.
+
 - A checkout whose origin is a local path keeps its tracker while that path is gone (moved,
   renamed, not mounted): the id is derived from the path as it resolves, existing or not. It
   derived another id, so the tracker seemed gone and `bead init` would start a second one.

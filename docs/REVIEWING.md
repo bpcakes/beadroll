@@ -132,7 +132,9 @@ contents resolved. `bead claim p-1` by `{"agent": "codex", "thread": "t"}` signs
 `release`, and `update` with `--claim` or `--status in_progress`; an owner's `close` and `delete`
 are local writes.
 
-The command line's contract: with `--json`, standard output holds exactly one JSON document
+The command line's contract: with `--json`, standard output holds exactly one JSON document (so
+`export --json` needs `-o FILE`: its standard output is Beads JSONL, a document an issue, and is
+`USAGE` without one)
 (`", "`/`": "` separators, raw UTF-8, keys in a fixed order, conditional keys only when set). On an
 error standard output is empty and standard error holds `{"error": {"code": …, "message": …}}`
 (ASCII-escaped) or `Error: …`. The exit status is 0 on success and when standard output is closed,

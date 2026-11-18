@@ -301,3 +301,40 @@ fn missing_arguments_say_what_is_missing_and_how_to_give_it() {
         add.stderr
     );
 }
+
+/// An empty `--parent` or `--type` is refused, as an empty `--title` is, never read as not given:
+/// `update` said nothing was given, and `create` made a task. A parent is taken back with
+/// `bead dep remove`, which the refusal names.
+#[test]
+fn an_empty_parent_or_type_is_refused() {
+    let sandbox = crate::sandbox();
+    let machine = Machine::new(&sandbox, "a");
+    machine.bead(["init", "--prefix", "ex"]);
+    let key = machine.bead(["create", "x"]).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    for args in [
+        &["update", key.as_str(), "--parent", ""][..],
+        &["update", key.as_str(), "-t", ""],
+        &["create", "y", "--type", " "],
+        &["create", "y", "--parent", ""],
+    ] {
+        let mut args = args.to_vec();
+        args.push("--json");
+        let run = machine.run(&args);
+        assert_eq!(code(&run), "VALIDATION", "{args:?}: {}", run.stderr);
+    }
+    let refused = machine.run(["update", key.as_str(), "--parent", "", "--json"]);
+    assert!(
+        refused.stderr.contains("bead dep remove"),
+        "{}",
+        refused.stderr
+    );
+    let listed = machine.bead(["list", "--all", "--limit", "0"]).unwrap();
+    assert_eq!(
+        listed["total"],
+        json!(1),
+        "a refused create made an issue: {listed:?}"
+    );
+}
