@@ -9,9 +9,12 @@ use rustix::process::{WaitOptions, wait};
 
 use crate::support::{sandbox, workspace};
 
-/// How many descriptors this process has open.
-fn open_descriptors() -> Option<usize> {
-    std::fs::read_dir("/dev/fd").ok().map(Iterator::count)
+/// How many descriptors this process has open; a `/dev/fd` that cannot be listed fails the test,
+/// rather than comparing nothing with nothing.
+fn open_descriptors() -> usize {
+    std::fs::read_dir("/dev/fd")
+        .expect("/dev/fd lists this process's descriptors")
+        .count()
 }
 
 /// Syncs through links that went through, and through one an unreachable remote ended, leave this

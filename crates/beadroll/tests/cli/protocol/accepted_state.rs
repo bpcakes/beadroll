@@ -12,7 +12,7 @@ use std::process::Stdio;
 use beadroll_core::json::{Format, Style, write};
 use beadroll_store::glob_ending;
 use beadroll_test_support::{
-    Json, Machine, git, json, json_line, parse_json, printed_id, segments,
+    Json, Machine, failure_code, git, json, json_line, parse_json, printed_id, segments,
 };
 
 /// The hook that stops an ownership command once the remote has taken its push, before bead hears
@@ -316,11 +316,12 @@ fn future_manifest_is_refused_without_remote_rewrite() {
     let names = splitlines(&listing);
     let shown = sandbox.origin_git(["show", format!("{after}:manifest.json").as_str()]);
     let manifest = parse_json(&shown).expect("the manifest is JSON");
-    assert_ne!(
-        result.returncode(),
-        0,
-        "future format was accepted: {}",
-        result.stdout
+    assert_eq!(
+        (result.returncode(), failure_code(&result).as_deref()),
+        (1, Some("FORMAT_UNSUPPORTED")),
+        "future format was not refused as such: {}{}",
+        result.stdout,
+        result.stderr
     );
     assert_eq!(after, future_tip, "sync rewrote the future-format head");
     assert_eq!(manifest["format"], Json::from(2));

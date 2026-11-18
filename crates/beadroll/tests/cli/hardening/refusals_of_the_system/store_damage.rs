@@ -104,6 +104,22 @@ fn store_damage_is_answered_with_a_structured_code() {
             repair();
             a.run(["release", &key]);
             assert!(!proc.crashed(), "{name} {}: {}", argv[0], proc.stderr);
+            // what the review measured each damage to refuse, and only with IO
+            let writers = ["create", "claim", "sync", "comments"];
+            let refused: &[&str] = match name {
+                "lock dir" | "lock 000" => &writers,
+                "segment 000" | "segment dir" => &["show", "create", "claim", "sync", "comments"],
+                _ => &["claim"],
+            };
+            if refused.contains(&argv[0]) {
+                assert_eq!(
+                    (proc.returncode(), failure_code(&proc).as_deref()),
+                    (1, Some("IO")),
+                    "{name} {}: {}",
+                    argv[0],
+                    proc.stderr
+                );
+            }
             if proc.returncode() != 0 {
                 let code = failure_code(&proc);
                 assert!(

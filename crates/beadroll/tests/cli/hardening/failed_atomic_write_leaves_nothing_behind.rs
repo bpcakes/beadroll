@@ -123,6 +123,12 @@ fn export_that_cannot_be_written_whole_leaves_nothing() {
     let (code, message) = error(&failed);
     assert_eq!(code, "IO", "{message}");
     assert!(!m.checkout().join("big.jsonl").exists());
+    // nothing left by the failed write itself, rather than swept by the next
+    assert_eq!(
+        leftovers(m.checkout()),
+        Vec::<String>::new(),
+        "the failed export left a copy"
+    );
     let again = m.run(["export", "-o", "big.jsonl"]);
     assert_eq!(again.returncode(), 0, "{}", again.stderr);
     assert_eq!(
@@ -146,6 +152,11 @@ fn failed_store_write_leaves_no_temporary_file() {
     let failed = limited(&m, sandbox.root(), 16, &args);
     let (code, message) = error(&failed);
     assert_eq!(code, "IO", "{message}");
+    assert_eq!(
+        leftovers(&m.store()),
+        Vec::<String>::new(),
+        "the failed write left its file"
+    );
     let synced = m.run(["sync", "--json"]);
     assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
     assert_eq!(
