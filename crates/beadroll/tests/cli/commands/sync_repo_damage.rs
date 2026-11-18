@@ -94,7 +94,7 @@ fn sync_rebuilds_a_damaged_sync_repo_once_and_info_lists_the_copy() {
 /// A claim rebuilds a damaged sync repository and succeeds through the replacement; `info` lists
 /// the one copy set aside.
 #[test]
-fn a_claim_rebuilds_too_and_damage_twice_in_one_command_is_reported() {
+fn a_claim_rebuilds_a_damaged_sync_repo_and_goes_through_it() {
     let sandbox = crate::sandbox();
     let (a, b, key) = set_up(&sandbox);
     damage(&a);
