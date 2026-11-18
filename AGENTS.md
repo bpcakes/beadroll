@@ -49,7 +49,8 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
   drivers' tests, each step with a scratch `BEAD_HOME`. One crate: `cargo nextest run -p
   beadroll`; some tests by a filter: `cargo nextest run -E 'test(/^protocol::/)'`. The lints:
   `cargo fmt --all -- --check` and `cargo clippy --workspace --all-targets --all-features --locked
-  -- -D warnings -D clippy::mod_module_files`, and for `fuzz/`, from the root, `rustfmt --check
+  -- -D warnings -D clippy::mod_module_files`, the docs: `RUSTDOCFLAGS='-D warnings' cargo doc
+  --workspace --no-deps --locked`, and for `fuzz/`, from the root, `rustfmt --check
   --edition 2024 fuzz/src/lib.rs fuzz/fuzz_targets/*.rs` and `cargo clippy --manifest-path
   fuzz/Cargo.toml --all-targets --locked -- -D warnings`. CI (`.github/workflows/rust.yml`) runs
   them, the tests on Linux and macOS, cargo-deny, the `infra/` tests and `fuzz/`'s cargo-deny on

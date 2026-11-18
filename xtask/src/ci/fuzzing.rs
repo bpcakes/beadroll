@@ -3,32 +3,7 @@
 //! nightly fuzz/ pins for itself alone; the input of a crash is kept, and so is the corpus; and
 //! every push checks, lints and runs cargo-deny on the targets.
 
-use super::{read, workflow};
-
-/// A step of a job: its lines, comments left out.
-type Step<'w> = Vec<&'w str>;
-
-/// The lines of job `job` in `workflow`, read without its comments, before its steps, and its steps.
-fn job<'w>(workflow: &'w str, job: &str) -> (Vec<&'w str>, Vec<Step<'w>>) {
-    let header = format!("  {job}:");
-    let lines: Vec<&str> = (workflow.lines())
-        .skip_while(|line| *line != header)
-        .skip(1)
-        .take_while(|line| line.is_empty() || line.starts_with("   "))
-        .collect();
-    assert!(!lines.is_empty(), "no job {job}");
-    let (mut head, mut steps) = (Vec::new(), Vec::<Step<'w>>::new());
-    for line in lines {
-        if line.starts_with("      - ") {
-            steps.push(vec![line]);
-        } else if let Some(step) = steps.last_mut() {
-            step.push(line);
-        } else {
-            head.push(line);
-        }
-    }
-    (head, steps)
-}
+use super::{job, read, step_with, workflow};
 
 /// What `name: ...` gives in `lines`.
 fn field<'w>(lines: &[&'w str], name: &str) -> &'w str {
@@ -41,15 +16,6 @@ fn field<'w>(lines: &[&'w str], name: &str) -> &'w str {
 /// The number `name: N` gives in `lines`.
 fn number(lines: &[&str], name: &str) -> u64 {
     (field(lines, name).trim_matches('"').parse()).unwrap_or_else(|error| panic!("{name}: {error}"))
-}
-
-/// The index of the one step of `steps` with a line holding every one of `parts`.
-fn step_with(steps: &[Step<'_>], parts: &[&str]) -> usize {
-    let found: Vec<usize> = (0..steps.len())
-        .filter(|at| (steps[*at].iter()).any(|line| parts.iter().all(|part| line.contains(part))))
-        .collect();
-    assert_eq!(found.len(), 1, "steps with {parts:?}: {found:?}");
-    found[0]
 }
 
 fn targets(manifest: &str) -> Vec<&str> {
