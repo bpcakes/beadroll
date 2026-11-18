@@ -22,8 +22,9 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
   `bead` binary: `commands`, `cli`); and `beadroll-test-support`, the sandbox and machines the
   black-box tests run `bead` on. Each has its own `AGENTS.md`. `Cargo.toml`, `Cargo.lock`,
   `rust-toolchain.toml`, `clippy.toml`, `deny.toml` and `.config/nextest.toml` are at the root.
-- Tests — each crate's unit tests beside its code, and one integration-test binary per crate,
-  `crates/<crate>/tests/<name>/main.rs`, organized by subject:
+- Tests — each crate's unit tests beside its code, and one integration-test binary per crate
+  (beadroll-test-support, a test library, has none), `crates/<crate>/tests/<name>/main.rs`,
+  organized by subject:
   `replay`, `storage`, `compat`, `commands`, `protocol`, `hardening`, and the slow `stress` and
   `sweep`. `crates/beadroll/tests/golden/` holds fixed reference outputs, and
   `crates/beadroll/tests/cli/parity/` checks compatibility across machines and versions.
@@ -36,8 +37,8 @@ ledger of every review finding and how it was closed; `docs/reviews/` holds the 
   workspace; `fuzz/README.md` says how to seed and run them.
 - `infra/` — drives against real machines and a throwaway GitHub repository, in stdlib Python;
   each script's docstring says what it needs. `selected.py` chooses the bead a driver runs here
-  and records it before any test data is written; `test_roundtrip.py` and `test_drive.py` test the
-  drivers beside them.
+  and records it before any test data is written; the `test_*.py` beside them test the drivers and
+  their shared modules.
 - `check.sh` — the baseline: `cargo xtask check` with the options given.
 
 ## Before you change anything

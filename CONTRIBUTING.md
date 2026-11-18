@@ -37,7 +37,7 @@ push test data anywhere but a throwaway remote of your own.
   `bead` in. A helper two crates need moves down, never up. Each crate's
   `AGENTS.md` says what it owns.
 - Tests: unit tests beside the code, and one integration-test binary per crate
-  (`crates/<crate>/tests/<name>/`), by subject (`replay`, `storage`, `compat`,
+  but beadroll-test-support, a test library (`crates/<crate>/tests/<name>/`), by subject (`replay`, `storage`, `compat`,
   `commands`, `protocol`, `hardening`; the slow `stress` and `sweep`). The
   goldens in `crates/beadroll/tests/golden/` are fixed reference outputs: what Python's bead
   printed, with each deliberate change since edited in by hand.

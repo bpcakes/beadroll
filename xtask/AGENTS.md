@@ -188,7 +188,8 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
 - Its dependencies are beadroll-core, the `beadroll` library (for `bead`, which runs bead's code
   in xtask's process) and indexmap (`timing --parse` models the reader's members with it), and for
   its tests beadroll-test-support (the sandbox `tests/heap` runs bead
-  in), regex-lite (the hygiene patterns), sha2 (the plain history's digest) and tempfile; it may
+  in), beadroll-store (the store's rotation size, which the histories pin), regex-lite (the
+  hygiene patterns), sha2 (the plain history's digest) and tempfile; it may
   print (its crate root allows it).
 - `tests/heap` counts bytes, not time: the same command peaks at the same heap to within a few
   hundred bytes, so a margin of a twentieth is a whole projection's difference at the size of its

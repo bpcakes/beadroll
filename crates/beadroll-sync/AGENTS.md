@@ -158,8 +158,8 @@ the ownership protocol (`coordinated`, receipts, fences, `settle_pending`).
   transaction starts from it, and a sync's report is made of the last one. A transaction starts from
   it only while those files are the store's (`Tx::on` asks `Sourced::into_current` and falls back to
   `Tx::new`, which reads again): a step added between the merge and the transaction may write the
-  journal, and the round then reads the store again, which the `reads::` and `protocol::merged_window`
-  tests show with `ownership.before-transaction`. A
+  journal, and the round then reads the store again, which this crate's `reads::` tests and the
+  `beadroll` crate's `protocol::merged_window` tests show with `ownership.before-transaction`. A
   sync that reports counts the renames before it from a projection its first merge reads before
   merging, which that merge goes on with when it writes no journal file; every journal write of a
   merge goes through `write_journal` or `wrote`, which mark it. A write's sync (`publish_soon`)
