@@ -1,8 +1,9 @@
 """Import every local Beads export into a scratch store and export it again; records must come back identical.
-Reads ~/Documents/*/.beads/issues.jsonl only; writes nothing outside the scratch store. The bead it runs, and
+Reads ~/Documents/*/.beads/issues.jsonl only; writes nothing outside the scratch store: RT_HOME, kept, or else a
+store of the run's own, made empty and removed when it ends. The bead it runs, and
 the preflight record of it before any data is written, are infra/selected.py's: the one BEAD_UNDER_TEST names
 (an absolute path), else the installed one."""
-import glob, json, os, subprocess, sys, time
+import atexit, glob, json, os, shutil, subprocess, sys, tempfile, time
 import environment
 import selected
 from records import canonical
@@ -10,8 +11,14 @@ BP = selected.local_bead()
 # seconds a bead run may take: one longer than this is hung, not slow, and the driver stops on it
 TIMEOUT = 600
 selected.preflight(BP)
+# a store of this run's own unless RT_HOME names one: a store reused from a run before would import every
+# tracker on top of what that run left, a round trip of nothing it claims to test
+HOME = os.environ.get("RT_HOME")
+if not HOME:
+    HOME = tempfile.mkdtemp(prefix="bead-roundtrip-")
+    atexit.register(shutil.rmtree, HOME, ignore_errors=True)
 env = environment.scrubbed()
-env.update(BEAD_HOME=os.environ.get("RT_HOME") or os.path.join(os.environ.get("TMPDIR", "/tmp"), "bead-roundtrip-home"), BEAD_AGENT="human")
+env.update(BEAD_HOME=HOME, BEAD_AGENT="human")
 total = same = 0; diffs = []; rows = []; failed = False
 for path in sorted(glob.glob(os.path.expanduser("~/Documents/*/.beads/issues.jsonl"))):
     repo = path.split("/")[-3]

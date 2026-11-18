@@ -5,6 +5,7 @@ import io
 import json
 import os
 import runpy
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -35,7 +36,7 @@ class RoundtripFailureReporting(unittest.TestCase):
         self.bead = self.root / "bead"
         self.bead.write_bytes(b"\x7fELF stand-in\n")
 
-    def roundtrip(self, failed_command=None, changed=False, version="bead 0.2.0", expect=""):
+    def roundtrip(self, failed_command=None, changed=False, version="bead 0.2.0", expect="", home=True):
         def files(pattern):
             return [str(self.source)] if pattern.endswith("*/.beads/issues.jsonl") else []
 
@@ -57,6 +58,8 @@ class RoundtripFailureReporting(unittest.TestCase):
                 mock.patch("subprocess.run", side_effect=bead), contextlib.redirect_stdout(output):
             if not expect:
                 del os.environ["BEAD_EXPECT_VERSION"]
+            if not home:
+                del os.environ["RT_HOME"]
             try:
                 runpy.run_path(str(ROOT / "infra" / "roundtrip.py"), run_name="__main__")
             except SystemExit as error:
@@ -71,6 +74,23 @@ class RoundtripFailureReporting(unittest.TestCase):
         self.assertIn("--offline", self.commands[1])
         record = json.loads(output.split("preflight: ", 1)[1].splitlines()[0])
         self.assertEqual((record["path"], record["version"], record["kind"]), (str(self.bead), "bead 0.2.0", "native"))
+
+    def test_without_rt_home_every_run_has_a_fresh_store_of_its_own(self):
+        homes = []
+        for _ in range(2):
+            with mock.patch("atexit.register") as cleanup:
+                status, output = self.roundtrip(home=False)
+            self.assertEqual(status, 0, output)
+            home = {env["BEAD_HOME"] for _, env in self.environments}
+            self.assertEqual(len(home), 1, home)
+            homes.append(home.pop())
+            self.environments.clear()
+            # made empty for this run, and removed when it ends
+            self.assertTrue(Path(homes[-1]).name.startswith("bead-roundtrip-"), homes[-1])
+            self.assertEqual(list(Path(homes[-1]).iterdir()), [])
+            self.assertEqual(cleanup.call_args.args[1], homes[-1])
+            shutil.rmtree(homes[-1])
+        self.assertNotEqual(homes[0], homes[1])
 
     def test_the_bead_is_checked_before_any_data_is_written(self):
         status, output = self.roundtrip(version="bead 0.1.0", expect="0.2.0")
