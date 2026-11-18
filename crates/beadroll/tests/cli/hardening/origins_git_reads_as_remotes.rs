@@ -3,25 +3,10 @@
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
-use beadroll_test_support::{Json, Machine, Sandbox, executable, git, json_member, parse_json};
-
-/// An ssh stand-in for git (`GIT_SSH_COMMAND`): it runs the remote command in
-/// `$FAKE_SSH_ROOT`, locally.
-fn fake_ssh(sandbox: &Sandbox) -> PathBuf {
-    let path = sandbox.root().join("fake-ssh");
-    let script = concat!(
-        "#!/bin/sh\n",
-        "[ \"$1\" = \"-G\" ] && exit 0\n",
-        "for last; do :; done\n",
-        "PATH=\"$(git --exec-path):$PATH\"\n",
-        "cd \"$FAKE_SSH_ROOT\" && exec sh -c \"$last\"\n",
-    );
-    executable(&path, script);
-    path
-}
+use beadroll_test_support::{Json, Machine, Sandbox, git, json_member, parse_json};
 
 /// A scratch global git config for this sandbox (never the developer's own),
 /// holding `text`, and the variables that make git read it alone.
@@ -138,7 +123,7 @@ fn upper_case_scheme_is_the_same_remote() {
 #[test]
 fn scp_and_shorthand_origins_sync() {
     let sandbox = crate::sandbox();
-    let ssh = fake_ssh(&sandbox);
+    let ssh = sandbox.fake_ssh();
     let mut alias = git_env(&sandbox, "");
     alias.insert("GIT_SSH_COMMAND".into(), ssh.into_os_string());
     alias.insert(
