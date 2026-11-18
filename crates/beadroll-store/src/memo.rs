@@ -19,10 +19,10 @@ use std::collections::BTreeMap;
 use std::os::unix::fs::MetadataExt as _;
 use std::path::{Path, PathBuf};
 
-use crate::FileMode;
 use crate::error::Error;
 use crate::fs::{read, read_keyed, write_atomic};
 use crate::workspace::Workspace;
+use crate::{FileMode, layout};
 
 /// Which entries are kept when reading the journal memo.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -41,7 +41,7 @@ const HEADER: &[u8] = b"bead journal memo 1\n";
 
 /// Where `ws` keeps its memo: in `sync.git`, whose objects the blobs it remembers are.
 pub fn memo_path(ws: &Workspace) -> PathBuf {
-    ws.dir.join("sync.git").join("journal-memo")
+    ws.dir.join(layout::SYNC_GIT).join("journal-memo")
 }
 
 /// A file's identity on disk, as git's index compares it to tell whether a file changed: its
@@ -253,7 +253,10 @@ impl Memo {
     /// store lock is held. A memo that cannot be written stays as it was: the next command reads
     /// or hashes again what it would have remembered.
     pub fn save(&mut self, ws: &Workspace) {
-        if !self.changed || self.partial == MemoRead::Partial || !ws.dir.join("sync.git").is_dir() {
+        if !self.changed
+            || self.partial == MemoRead::Partial
+            || !ws.dir.join(layout::SYNC_GIT).is_dir()
+        {
             return;
         }
         let failpoints = &ws.settings.failpoints;

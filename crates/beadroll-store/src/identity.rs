@@ -6,6 +6,7 @@ use std::io::{self, Write as _};
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::Path;
 
+use crate::layout;
 use beadroll_core::json::{self, Format, Object, Value};
 use beadroll_git::IoError;
 
@@ -51,7 +52,7 @@ pub fn hex_token(n: usize) -> String {
 /// wins.
 pub fn replica_id(settings: &Settings, create: IdentityMode) -> Result<Option<String>, Error> {
     let home = settings.home()?;
-    let path = home.join("replica.json");
+    let path = home.join(layout::REPLICA);
     if !path.exists() {
         if create == IdentityMode::Existing {
             return Ok(None);
@@ -138,7 +139,7 @@ pub fn machine_aliases(settings: &Settings) -> BTreeMap<String, String> {
         return out;
     };
     let read = |name: &str| crate::fs::read_json_text(&home.join(name));
-    if let Ok(Value::Object(own)) = read("replica.json")
+    if let Ok(Value::Object(own)) = read(layout::REPLICA)
         && let Some(Value::Str(id)) = own.get("id")
     {
         let alias = match own.get("alias") {
@@ -147,7 +148,7 @@ pub fn machine_aliases(settings: &Settings) -> BTreeMap<String, String> {
         };
         out.insert(id.clone(), alias);
     }
-    if let Ok(Value::Object(aliases)) = read("aliases.json") {
+    if let Ok(Value::Object(aliases)) = read(layout::ALIASES) {
         for (id, alias) in *aliases {
             if let Value::Str(alias) = alias {
                 out.insert(id, alias);
@@ -188,7 +189,7 @@ mod tests {
                 None
             })
             .unwrap();
-        let path = home.path().join("replica.json");
+        let path = home.path().join(layout::REPLICA);
         let tmp = home
             .path()
             .join(format!(".replica.{}.tmp", std::process::id()));

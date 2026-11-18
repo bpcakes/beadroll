@@ -9,6 +9,8 @@ remote resolution, actor detection, `view`, and the failpoint registry.
 
 ## Key entrypoints
 
+- `src/layout.rs`: the names of what the home and each store hold (`replica.json`, `aliases.json`,
+  `moved.json`, `meta.json`, `sync.git`); a path to one of them joins its constant, never a literal.
 - `src/workspace/lock.rs`: `Workspace::lock` returns a `WorkspaceLock` owning the OS lock and
   cache phase. Drop invalidates claim identities before releasing the file lock, including unwind.
   External callers managing their own locks retain the `set_holding` compatibility interface.

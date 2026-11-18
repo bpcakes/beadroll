@@ -10,7 +10,7 @@ use beadroll_core::metadata::Counts;
 use beadroll_core::text::shell_quote;
 use beadroll_store::{
     Endpoint, Failpoints, FileMode, Fired, Memo, MetadataRead, PublicationState, RemoteSource,
-    Workspace, claim_files, moved_workspaces, pending_files, relative, relative_name,
+    Workspace, claim_files, layout, moved_workspaces, pending_files, relative, relative_name,
     segment_files, workspaces_named, write_atomic,
 };
 
@@ -321,7 +321,7 @@ pub fn adopt_published(
     moved.insert(derived.clone(), Value::from(found.as_str()));
     let text = json::write(&Value::from(moved), Format::INDENTED)?;
     write_atomic(
-        &ws.settings.home()?.join("moved.json"),
+        &ws.settings.home()?.join(layout::MOVED),
         text.as_bytes(),
         FileMode::Private,
         &ws.settings.failpoints,
@@ -348,7 +348,7 @@ pub fn unpublished_count(ws: &Workspace) -> Result<Option<Int>, Error> {
     let unreadable = |what: String| {
         Error::Store(beadroll_store::Error::io_message(format!(
             "{}: {what}; repair it, or run `bead sync`",
-            ws.dir.join("meta.json").display()
+            ws.dir.join(layout::META).display()
         )))
     };
     let zero = Int::from(0);
