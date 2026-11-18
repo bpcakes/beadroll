@@ -19,15 +19,6 @@ mod identity_and_config_shapes;
 mod store_damage;
 mod user_supplied_paths;
 
-/// The code reported by a failed JSON command, `TRACEBACK` for a crash detected by
-/// `Run::crashed`, or `None`.
-fn error_code(run: &Run) -> Option<String> {
-    let reported = parse_json(&run.stderr)
-        .ok()
-        .and_then(|error| error["error"]["code"].as_str().map(str::to_owned));
-    reported.or_else(|| run.crashed().then(|| "TRACEBACK".to_owned()))
-}
-
 /// `bead ARGV --json` run as `machine` under a shell resource limit such as `-f 200`
 /// or `-n 8`: `/bin/sh -c 'ulimit LIMIT; exec "$@"'` in the machine's checkout with its
 /// environment, given 120 seconds. The profile an instrumented bead writes at exit would hit the

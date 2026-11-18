@@ -6,9 +6,9 @@ use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 
-use beadroll_test_support::{Machine, printed_id, skipped_as_root};
+use beadroll_test_support::{Machine, failure_code, printed_id, skipped_as_root};
 
-use super::{error_code, replica_id};
+use super::replica_id;
 
 /// What undoes a damage.
 type Repair = Box<dyn FnOnce()>;
@@ -105,7 +105,7 @@ fn store_damage_is_answered_with_a_structured_code() {
             a.run(["release", &key]);
             assert!(!proc.crashed(), "{name} {}: {}", argv[0], proc.stderr);
             if proc.returncode() != 0 {
-                let code = error_code(&proc);
+                let code = failure_code(&proc);
                 assert!(
                     matches!(
                         code.as_deref(),

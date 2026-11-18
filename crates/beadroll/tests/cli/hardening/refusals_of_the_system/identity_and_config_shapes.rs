@@ -1,9 +1,9 @@
 //! What `replica.json` and `.beadroll.json` hold is checked; members
 //! bead does not know are let be, and a ref or a workspace name it cannot use is `CONFIG`.
 
-use beadroll_test_support::{Json, Machine, json, json_line};
+use beadroll_test_support::{Json, Machine, failure_code, json, json_line};
 
-use super::{error_code, replica_id};
+use super::replica_id;
 
 /// Verified (V6): replica.json and .beadroll.json shapes are validated. The review measured
 /// replica.json with an integer alias or extra keys: create, machines and claims exit 0. The
@@ -56,7 +56,7 @@ fn identity_and_tracked_config_shapes_are_validated() {
         let proc = a.run(["info", "--json"]);
         assert!(!proc.crashed(), "{}: {}", json_line(body), proc.stderr);
         assert_eq!(
-            error_code(&proc).as_deref(),
+            failure_code(&proc).as_deref(),
             Some("CONFIG"),
             "{}: {}",
             json_line(body),

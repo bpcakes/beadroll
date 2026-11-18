@@ -14,10 +14,10 @@ use std::time::Instant;
 
 use beadroll_core::id::EventId;
 use beadroll_sync::NetworkMode;
-use beadroll_test_support::{Json, Machine, Run, json_id};
+use beadroll_test_support::{Json, Machine, Run, json_id, reported_code};
 
 use super::{
-    Rng, details, each, error_code, machines, missing, realized, replayed, reply, run_json, sorted,
+    Rng, details, each, machines, missing, realized, replayed, reply, run_json, sorted,
     status_disputed, words,
 };
 
@@ -216,7 +216,7 @@ impl Soak {
         if row.exit == 0 {
             self.record(&row, &run);
         } else {
-            let code = error_code(&run)
+            let code = reported_code(&run)
                 .unwrap_or_else(|| panic!("{row:?}: unstructured error: {}", run.stderr));
             assert!(ALLOWED.contains(&code.as_str()), "{row:?}: {}", run.stderr);
             *self.errors.entry(code).or_default() += 1;

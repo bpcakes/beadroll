@@ -9,7 +9,7 @@
 //! remain visible. Worker seeds are `20261007 + wave * 101 + machine * 907`; each worker has its
 //! own deterministic random stream and command interleaving.
 
-use beadroll_test_support::{Json, Machine, Run, json_id};
+use beadroll_test_support::{Json, Machine, Run, json_id, reported_code};
 
 mod oracle;
 
@@ -18,8 +18,7 @@ use std::time::Instant;
 
 use self::oracle::{check_claims, expected_ready, exported_keys, settled};
 use super::{
-    Rng, details, each, error_code, joined, machines, missing, realized, reply, run_json, sorted,
-    viewed, words,
+    Rng, details, each, joined, machines, missing, realized, reply, run_json, sorted, viewed, words,
 };
 
 /// Whether a stress worker is isolated from the remote.
@@ -198,7 +197,7 @@ fn work(
         if exit == 0 {
             done.record(&row, &run, claims);
         } else {
-            let code = error_code(&run)
+            let code = reported_code(&run)
                 .unwrap_or_else(|| panic!("unstructured error {row:?}: {}", run.stderr));
             assert!(ALLOWED.contains(&code.as_str()), "{row:?}: {}", run.stderr);
             row.error = Some(code);

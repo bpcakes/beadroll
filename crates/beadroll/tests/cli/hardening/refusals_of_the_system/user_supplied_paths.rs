@@ -5,10 +5,8 @@ use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
-use beadroll_test_support::{Machine, json_member, printed_id, skipped_as_root};
+use beadroll_test_support::{Machine, failure_code, json_member, printed_id, skipped_as_root};
 use rustix::fs::{Access, access};
-
-use super::error_code;
 
 /// Splits text at newline, CRLF, carriage return, vertical tab, form feed, U+001C–U+001E, U+0085,
 /// U+2028 and U+2029, without a final empty line.
@@ -85,7 +83,7 @@ fn oserror_on_a_user_supplied_input_path_is_io_and_writes_nothing() {
             let proc = a.run(argv.iter().chain(&["--json"]));
             assert!(!proc.crashed(), "{label} {}: {}", argv[0], proc.stderr);
             assert_eq!(
-                (proc.returncode(), error_code(&proc).as_deref()),
+                (proc.returncode(), failure_code(&proc).as_deref()),
                 (1, Some("IO")),
                 "{label} {}: {}",
                 argv[0],
@@ -131,7 +129,7 @@ fn export_output_path_errors_are_io_and_missing_parents_are_created() {
         let proc = a.run(["export", "-o", arg(path), "--json"]);
         assert!(!proc.crashed(), "{name}: {}", proc.stderr);
         assert_eq!(
-            (proc.returncode(), error_code(&proc).as_deref()),
+            (proc.returncode(), failure_code(&proc).as_deref()),
             (1, Some("IO")),
             "{name}: {}",
             proc.stderr

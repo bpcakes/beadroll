@@ -38,13 +38,6 @@ pub(crate) fn run_json(machine: &Machine, args: &[String]) -> Run {
     machine.run(args.iter().map(String::as_str).chain(["--json"]))
 }
 
-/// The error code a failed `bead ... --json` reported, or `None` when its standard error is not
-/// the structured error the models require.
-pub(crate) fn error_code(run: &Run) -> Option<String> {
-    let document = parse_json(&run.stderr).ok()?;
-    document["error"]["code"].as_str().map(str::to_owned)
-}
-
 /// What a successful `bead ... --json` printed; output that is not JSON fails the model.
 pub(crate) fn reply(run: &Run, context: &dyn std::fmt::Debug) -> Json {
     parse_json(&run.stdout).unwrap_or_else(|error| {
