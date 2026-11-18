@@ -6,6 +6,15 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `init --import FILE` without `--prefix` takes the prefix the records share, so issues made after
+  the migration join the imported ones; it took the repository's name, leaving `bd-*` beside
+  `repo-*`. Records under several prefixes are refused, asking for `--prefix`.
+- `import` refuses a record it would create whose title holds nothing, and a dependency naming
+  another record as its own, rather than making an issue with no title or moving the dependency.
+- `list -a -s STATUS` filters by the status named: `-a` only lifts the default that leaves done
+  issues out, and dropped the `-s` beside it.
+- `update --remove-label L` for a label the issue does not have writes nothing.
+
 - A claim refused after its fetch took in another machine's events no longer counts them as this
   machine's to publish: it said "N events not yet published: bead sync" though the remote held
   them; this machine's own unpublished writes are still counted.

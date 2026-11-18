@@ -1,6 +1,6 @@
 //! AS18: a missing `add` must not silently turn supplied text or a dependency into a read.
 
-use beadroll_test_support::{Machine, code};
+use beadroll_test_support::{Machine, code, json};
 
 /// Both human and JSON callers get an error, no answer, and the syntax they need.
 fn rejected(machine: &Machine, args: &[&str], syntax: &str) {
@@ -247,5 +247,29 @@ fn empty_titles_tombstone_creates_and_empty_labels_change_nothing() {
         events(&machine),
         before,
         "a refused or empty update wrote an event"
+    );
+}
+
+/// Taking back a label the issue does not have writes nothing: no `label_remove`, no `updated_at`
+/// moved, as a removal affects only the additions its writer saw.
+#[test]
+fn removing_a_label_the_issue_does_not_have_writes_nothing() {
+    let sandbox = crate::sandbox();
+    let machine = Machine::new(&sandbox, "a");
+    machine.bead(["init", "--prefix", "ex"]);
+    let key = machine.bead(["create", "x", "-l", "kept"]).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let events = |m: &Machine| m.bead(["info"]).unwrap()["events"].clone();
+    let before = events(&machine);
+    let updated = machine.run(["update", key.as_str(), "--remove-label", "nosuch"]);
+    assert_eq!(updated.returncode(), 0, "{}", updated.stderr);
+    assert_eq!(events(&machine), before, "a removal of nothing was written");
+    machine.bead(["update", key.as_str(), "--remove-label", "kept"]);
+    let shown = machine.bead(["show", key.as_str()]).unwrap();
+    assert!(
+        shown[0].get("labels").is_none_or(|l| l == &json!([])),
+        "{shown:?}"
     );
 }

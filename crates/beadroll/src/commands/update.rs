@@ -334,8 +334,13 @@ fn edit(
         (OpName::LabelRemove, &args.remove_label),
     ] {
         if !given.is_empty() {
-            // a label given as nothing (`--add-label ""`, `,`) adds or takes back nothing: no event
-            let named = split_args(given);
+            // a label given as nothing (`--add-label ""`, `,`) adds or takes back nothing, and nor
+            // does taking back one the issue does not have: no event, no `updated_at` moved
+            let mut named = split_args(given);
+            if op == OpName::LabelRemove {
+                let has = issue.labels();
+                named.retain(|label| has.iter().any(|held| OsStr::new(held.as_str()) == label));
+            }
             if !named.is_empty() {
                 labels(tx, op, &uid, &named)?;
             }

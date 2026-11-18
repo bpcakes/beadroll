@@ -34,7 +34,9 @@ pub(crate) struct Filters {
 /// anything is filtered.
 pub(crate) fn select<'s>(st: &'s State, filters: &Filters) -> Result<Vec<&'s Issue>, Failure> {
     let statuses = split_list(&filters.status);
-    let want_all = filters.all || statuses.iter().any(|s| s == "all");
+    // `--status all` names every status; `--all` only lifts the default that leaves done and
+    // deferred issues out, so that statuses named beside it still filter
+    let every_status = statuses.iter().any(|s| s == "all");
     let parent = match &filters.parent {
         Some(key) => Some(Target::Id(resolve_arg(st, key)?.uid())),
         None => None,
@@ -52,11 +54,12 @@ pub(crate) fn select<'s>(st: &'s State, filters: &Filters) -> Result<Vec<&'s Iss
     let mut items = Vec::new();
     for issue in st.issues() {
         let status = issue.status();
-        if !statuses.is_empty() && !want_all {
+        if !statuses.is_empty() && !every_status {
             if !statuses.iter().any(|s| s == status) {
                 continue;
             }
-        } else if !want_all
+        } else if !every_status
+            && !filters.all
             && (DONE.contains(&status) || (status == status::DEFERRED && !filters.deferred))
         {
             continue;

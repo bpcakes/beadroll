@@ -191,6 +191,14 @@ pub fn plan_import(state: &State, records: &[Value]) -> Result<Plan, ImportError
 /// Why `record`'s create, whose payload is `data`, cannot be written, checked as the create bead
 /// would mint for it.
 fn create_problem(record: &Value, data: &Object) -> Option<ImportError> {
+    // a title that holds nothing is none, as `create` and `update` refuse one: an issue made of
+    // this record would be one a reader cannot name
+    if !matches!(record.get("title"), Some(Value::Str(title)) if !strip(title).is_empty()) {
+        return Some(fail(format!(
+            "record {} cannot be imported: it has no title",
+            repr_str(id_of(record))
+        )));
+    }
     let mut probe = Object::new();
     probe.insert("v".into(), Value::from(FORMAT));
     probe.insert("id".into(), Value::from(PROBE_ID));
@@ -240,6 +248,17 @@ fn check(path: &str, number: usize, record: &Value) -> Result<(), ImportError> {
     if deps.is_some_and(|d| !d.as_array().is_some_and(|d| d.iter().all(well_formed))) {
         return Err(fail(format!(
             "{path}:{number}: record {id} has a malformed dependency"
+        )));
+    }
+    // a dependency names the record it is listed under: one that names another issue is reported,
+    // never moved onto this one without a word
+    if let Some(other) = (dependencies(record).iter())
+        .filter_map(|dep| dep.get("issue_id"))
+        .find(|named| **named != Value::Null && Some(*named) != record.get("id"))
+    {
+        return Err(fail(format!(
+            "{path}:{number}: record {id} lists a dependency of {}",
+            repr_str(&crate::text::str_of(other))
         )));
     }
     if dependencies(record)

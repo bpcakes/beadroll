@@ -485,7 +485,12 @@ it, and the file is committed again.
   have minted them.
 - `dep cycles` lists every elementary cycle, up to 200.
 - An import keeps a dependency cycle its records form between them, as the export has it;
-  `dep cycles` reports it. Only a record that depends on itself is refused.
+  `dep cycles` reports it. Only a record that depends on itself is refused, and so are a
+  record it would create whose title holds nothing and a dependency naming another record
+  as its own (`VALIDATION`, nothing imported).
+- `init --import FILE` without `--prefix` starts the tracker under the prefix the records
+  share (`bd-1`, `bd-2` → `bd`), so that what is made after joins them; records under
+  several prefixes are `VALIDATION` asking for `--prefix`.
 - What each event had seen is kept as one clock per event over chains: every
   machine's journal is a chain, and the claims, releases and takeovers of
   attempt files join chains of their own, about one for each machine that
