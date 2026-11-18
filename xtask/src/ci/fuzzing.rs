@@ -3,19 +3,18 @@
 //! nightly fuzz/ pins for itself alone; the input of a crash is kept, and so is the corpus; and
 //! every push checks, lints and runs cargo-deny on the targets.
 
-use super::read;
+use super::{read, workflow};
 
 /// A step of a job: its lines, comments left out.
 type Step<'w> = Vec<&'w str>;
 
-/// The lines of job `job` in `workflow` before its steps, and its steps, comments left out.
+/// The lines of job `job` in `workflow`, read without its comments, before its steps, and its steps.
 fn job<'w>(workflow: &'w str, job: &str) -> (Vec<&'w str>, Vec<Step<'w>>) {
     let header = format!("  {job}:");
     let lines: Vec<&str> = (workflow.lines())
         .skip_while(|line| *line != header)
         .skip(1)
-        .take_while(|line| line.is_empty() || line.starts_with("   ") || line.starts_with("  #"))
-        .filter(|line| !line.trim_start().starts_with('#'))
+        .take_while(|line| line.is_empty() || line.starts_with("   "))
         .collect();
     assert!(!lines.is_empty(), "no job {job}");
     let (mut head, mut steps) = (Vec::new(), Vec::<Step<'w>>::new());
@@ -63,7 +62,7 @@ fn targets(manifest: &str) -> Vec<&str> {
 
 #[test]
 fn the_nightly_fuzzes_every_target_for_a_budget_and_keeps_what_crashed() {
-    let nightly = read(".github/workflows/rust-nightly.yml");
+    let nightly = workflow(".github/workflows/rust-nightly.yml");
     let manifest = read("fuzz/Cargo.toml");
     let targets = targets(&manifest);
     assert!(targets.len() >= 2, "fuzz/Cargo.toml declares {targets:?}");
@@ -134,7 +133,7 @@ fn the_nightly_fuzzes_every_target_for_a_budget_and_keeps_what_crashed() {
 
 #[test]
 fn the_nightly_keeps_the_corpus_it_grew_and_what_failed() {
-    let nightly = read(".github/workflows/rust-nightly.yml");
+    let nightly = workflow(".github/workflows/rust-nightly.yml");
     let (_, steps) = job(&nightly, "fuzz");
     let restored = step_with(&steps, &["uses: actions/cache/restore@"]);
     let runs: Vec<usize> = (0..steps.len())
@@ -224,7 +223,7 @@ fn the_fuzz_lock_holds_beadroll_core_as_the_root_lock_does() {
 
 #[test]
 fn every_push_checks_lints_and_denies_the_fuzz_targets() {
-    let every_push = read(".github/workflows/rust.yml");
+    let every_push = workflow(".github/workflows/rust.yml");
     let (_, clippy) = job(&every_push, "clippy");
     step_with(
         &clippy,

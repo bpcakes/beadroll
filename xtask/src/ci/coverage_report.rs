@@ -3,7 +3,7 @@
 //! not. `problems` reads the workflow as text, so that each way of spoiling the job is a test
 //! against an edited copy.
 
-use super::read;
+use super::{read, uncommented};
 use crate::coverage::CARGO_LLVM_COV;
 
 const NIGHTLY: &str = ".github/workflows/rust-nightly.yml";
@@ -47,23 +47,6 @@ fn steps(job: &str) -> Vec<&str> {
         .windows(2)
         .map(|pair| &job[pair[0]..pair[1]])
         .collect()
-}
-
-/// `text` without its YAML comments: a line that starts with `#`, and what follows ` #` in
-/// the others. The job is judged by what it does, not by what it says it does.
-fn uncommented(text: &str) -> String {
-    let lines: Vec<&str> = text
-        .lines()
-        .map(|line| {
-            let code = if line.trim_start().starts_with('#') {
-                ""
-            } else {
-                line.split(" #").next().unwrap_or(line)
-            };
-            code.trim_end()
-        })
-        .collect();
-    lines.join("\n") + "\n"
 }
 
 /// The value of the `key:` line of `text` that has `indent` spaces before it.

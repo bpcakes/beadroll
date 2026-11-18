@@ -2,11 +2,11 @@
 
 use regex_lite::Regex;
 
-use super::read;
+use super::{read, workflow};
 
 #[test]
 fn the_suite_runs_on_linux_macos_and_the_oldest_supported_git() {
-    let every_push = read(".github/workflows/rust.yml");
+    let every_push = workflow(".github/workflows/rust.yml");
     let systems = "os: [ubuntu-latest, macos-latest]";
     assert!(
         every_push.contains(systems),
@@ -21,7 +21,7 @@ fn the_suite_runs_on_linux_macos_and_the_oldest_supported_git() {
         .map(|found| found[1].to_owned())
         .expect("the README names the oldest git it supports");
 
-    let nightly = read(".github/workflows/rust-nightly.yml");
+    let nightly = workflow(".github/workflows/rust-nightly.yml");
     let built = format!("GIT_VERSION: \"{oldest}.");
     assert!(
         nightly.contains(&built),
@@ -68,7 +68,7 @@ fn every_workflow_installs_the_nextest_the_settings_require() {
         ".github/workflows/rust.yml",
         ".github/workflows/rust-nightly.yml",
     ] {
-        let installed = nextest_installs(&read(path));
+        let installed = nextest_installs(&workflow(path));
         assert!(
             !installed.is_empty(),
             "{path} installs no cargo-nextest@VERSION"
