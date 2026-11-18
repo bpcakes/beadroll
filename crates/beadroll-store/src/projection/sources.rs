@@ -124,7 +124,7 @@ impl Sources {
         stamp: Option<Stamp>,
     ) -> Option<Sources> {
         let segments = (made.files.iter())
-            .filter(|held| held.segment)
+            .filter(|held| held.is_segment())
             .map(|held| (held.path.clone(), held.key))
             .collect();
         Sources::of(segments, paths, keys, stamp)
