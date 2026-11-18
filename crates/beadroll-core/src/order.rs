@@ -78,9 +78,10 @@ struct Lists {
     items: Vec<u32>,
 }
 
-/// The index `at` as a list holds it.
-fn small(at: usize) -> u32 {
-    u32::try_from(at).unwrap_or(u32::MAX)
+/// `n` as the `u32` a position, chain or table number is held as: bead holds fewer than 2³² of
+/// anything, so a larger `n` cannot come up, and would be held as the last one.
+pub(crate) fn position(n: usize) -> u32 {
+    u32::try_from(n).unwrap_or(u32::MAX)
 }
 
 impl Lists {
@@ -113,7 +114,7 @@ impl Lists {
                 if let Some(slot) = filled.get_mut(*item as usize)
                     && let Some(entry) = items.get_mut(*slot)
                 {
-                    *entry = small(at);
+                    *entry = position(at);
                     *slot += 1;
                 }
             }
@@ -178,7 +179,7 @@ impl Order {
                 *count = i64::try_from(deps.len()).unwrap_or(i64::MAX);
             }
             let held = deps.iter().filter_map(|dep| events.get_index_of(dep));
-            causes.items.extend(held.map(small));
+            causes.items.extend(held.map(position));
             if deps.is_empty() {
                 ready.push(Reverse((event.id(), index)));
             }

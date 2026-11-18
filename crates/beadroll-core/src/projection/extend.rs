@@ -45,11 +45,12 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 
 use indexmap::IndexMap;
 
-use super::{Projection, Record, small};
+use super::{Projection, Record};
 use crate::id::EventId;
 use crate::journal::{Event, Journal, JournalOrder, Parts, Rest};
 use crate::json::Value;
 use crate::op::Op;
+use crate::order::position;
 use crate::replay::{Batch, Contents, Names, Room, observe_one};
 use crate::state::{KeySpace, Texts, is_text};
 
@@ -108,7 +109,7 @@ impl Projection {
                 return Ok(Extended::Replay);
             };
             for (n, id) in added.iter().enumerate() {
-                numbers.insert(*id, length.saturating_add(small(n)));
+                numbers.insert(*id, length.saturating_add(position(n)));
             }
         }
         let mut doing = Vec::with_capacity(count);
@@ -148,7 +149,7 @@ impl Projection {
             };
             let causes: Vec<u32> = (event.deps().iter())
                 .filter_map(|dep| knowledge.events.get_index_of(dep))
-                .map(small)
+                .map(position)
                 .collect();
             if observe_one(
                 &mut knowledge,
@@ -332,7 +333,7 @@ impl Projection {
         }
         for (machine, added) in order {
             if let Some(length) = self.lengths.get_mut(machine) {
-                *length = length.saturating_add(small(added.len()));
+                *length = length.saturating_add(position(added.len()));
             }
             if let Some(&latest) = added.iter().max() {
                 let last = self.lasts.entry(machine.clone()).or_insert(latest);
