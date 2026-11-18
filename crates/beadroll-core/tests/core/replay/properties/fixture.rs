@@ -3,7 +3,6 @@
 //! which `properties`, `ancestry`, `quarantine` and `readiness` share.
 
 use beadroll_core::event::Field;
-use beadroll_core::id::EventId;
 use beadroll_core::journal::Journal;
 use beadroll_core::json::{Format, Object, write};
 use beadroll_core::query::Alternative;
@@ -52,9 +51,8 @@ impl Fixture {
         data: Json,
     ) -> String {
         self.counter += 1;
-        let value =
-            ((1_790_000_000_000 + self.counter) << 80) | (7 << 76) | (2 << 62) | self.counter;
-        let eid = EventId::from_u128(value).to_string();
+        let n = u64::try_from(self.counter).expect("a small event number");
+        let eid = beadroll_test_support::events::id_at(1_790_000_000_000 + n, n);
         let deps = Json::Array(deps.iter().map(|d| Json::from(*d)).collect());
         self.events.push(json!({
             "v": 1,

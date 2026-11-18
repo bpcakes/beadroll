@@ -20,7 +20,12 @@ fn settings(home: &Path) -> Settings {
 
 /// The event `n`, written `n` milliseconds into an afternoon in 2026.
 fn id(n: u128) -> EventId {
-    EventId::from_u128(((1_790_000_000_000 + n) << 80) | (7 << 76) | (2 << 62) | n)
+    let n = u64::try_from(n).expect("a small event number");
+    EventId::parse(&beadroll_test_support::events::id_at(
+        1_790_000_000_000 + n,
+        n,
+    ))
+    .expect("an id")
 }
 
 /// A tracker shown up to the events `ns`.

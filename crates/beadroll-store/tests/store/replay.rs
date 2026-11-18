@@ -38,10 +38,7 @@ mod workspace_isolation {
 
     /// The first audit's history: an `init` and the issue `au-one` on machine `seed`.
     fn audit_events() -> (Vec<Json>, String) {
-        let id = |n: u128| {
-            let value = ((1_790_000_000_000 + n) << 80) | (7 << 76) | (2 << 62) | n;
-            beadroll_core::id::EventId::from_u128(value).to_string()
-        };
+        let id = |n: u64| beadroll_test_support::events::id_at(1_790_000_000_000 + n, n);
         let actor = json!({"agent": "codex", "thread": "seed-thread"});
         let init = Event::new(&id(1), "init")
             .replica("seed")

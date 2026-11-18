@@ -22,12 +22,8 @@ impl Chain {
     /// as lowercase hexadecimal with the standard UUID hyphens.
     fn next_id(&mut self) -> String {
         self.serial += 1;
-        let value = ((1_790_000_000_000 + self.serial) << 80) | (7 << 76) | (2 << 62) | self.serial;
-        let mut id = format!("{value:032x}");
-        for at in [20, 16, 12, 8] {
-            id.insert(at, '-');
-        }
-        id
+        let n = u64::try_from(self.serial).expect("a small event number");
+        beadroll_test_support::events::id_at(1_790_000_000_000 + n, n)
     }
 
     /// Appends an event doing `op` to `issue` (to itself when `None`) with payload `data`; its id.

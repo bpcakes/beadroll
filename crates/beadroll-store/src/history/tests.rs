@@ -7,7 +7,6 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
-use beadroll_core::id::EventId;
 use beadroll_core::json::Object;
 
 use super::*;
@@ -37,7 +36,8 @@ fn workspace(home: &Path, build: &str) -> Workspace {
 }
 
 fn id(n: u128) -> String {
-    EventId::from_u128((n << 80) | (7 << 76) | (2 << 62) | n).to_string()
+    let n = u64::try_from(n).expect("a small event number");
+    beadroll_test_support::events::id_at(n, n)
 }
 
 fn event(n: u128, parent: Option<u128>) -> Value {

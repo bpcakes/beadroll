@@ -46,8 +46,8 @@ fn failing(home: &Path, build: Option<&str>, failpoints: Option<&str>) -> Worksp
 }
 
 fn id(n: u128) -> String {
-    let value = ((1_790_000_000_000 + n) << 80) | (7 << 76) | (2 << 62) | n;
-    EventId::from_u128(value).to_string()
+    let n = u64::try_from(n).expect("a small event number");
+    beadroll_test_support::events::id_at(1_790_000_000_000 + n, n)
 }
 
 fn event(n: u128, deps: &[u128], op: &str, issue: u128, data: Object) -> Value {
