@@ -103,6 +103,8 @@ stdlib Python that drives any `bead`: `drive.py` (cross-machine scenarios over s
 `records.py` (what two exports must agree on of a record, which the round trip and the real-data
 check compare), `environment.py` (the caller's environment less what would route bead or git
 elsewhere or lend them the caller's agent), their tests beside them, and the synthetic `seed.jsonl`.
+Every process a driver starts has a deadline, given or defaulted by its wrapper, so that a hung
+git, ssh or bead stops the run (`infra/test_deadlines.py` checks every driver).
 
 ## Making a change
 
