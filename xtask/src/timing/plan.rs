@@ -8,7 +8,6 @@
 //! Evidence, never a gate.
 
 use std::fmt::Write as _;
-use std::time::Instant;
 
 use beadroll_core::import::dry_run::problems;
 use beadroll_core::import::{plan_import, read_records};
@@ -132,18 +131,7 @@ pub(super) fn reimport(waiting: usize) -> String {
 
 /// The fastest of [`RUNS`] runs of `call`, and what its last run answered.
 fn fastest<T>(mut call: impl FnMut() -> Result<T, Failure>) -> Result<(f64, T), Failure> {
-    let mut best = f64::INFINITY;
-    let mut answer = None;
-    for _ in 0..RUNS {
-        let clock = Instant::now();
-        let outcome = call()?;
-        best = best.min(clock.elapsed().as_secs_f64());
-        answer = Some(outcome);
-    }
-    match answer {
-        Some(answer) => Ok((best, answer)),
-        None => Err(Failure::Failed("a timing runs at least once".into())),
-    }
+    super::fastest_of(RUNS, || (), |()| call())
 }
 
 /// Measures; returns the beginning of the line to record.

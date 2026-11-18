@@ -281,16 +281,12 @@ fn counted(state: &State) -> (usize, usize) {
 /// The fastest of [`RUNS`] replays of `journal`, copied before the clock runs, and the edges and
 /// waiting dependencies of the state the last one made.
 fn fastest(journal: &Journal) -> Result<(f64, (usize, usize)), Failure> {
-    let mut best = f64::INFINITY;
-    let mut counts = (0, 0);
-    for _ in 0..RUNS {
-        let trial = journal.clone();
-        let clock = Instant::now();
-        let state = replay(trial).map_err(|_| Failure::Failed("the probe needs a key".into()))?;
-        best = best.min(clock.elapsed().as_secs_f64());
-        counts = counted(&state);
-    }
-    Ok((best, counts))
+    let (best, state) = super::fastest_of(
+        RUNS,
+        || journal.clone(),
+        |trial| replay(trial).map_err(|_| Failure::Failed("the probe needs a key".into())),
+    )?;
+    Ok((best, counted(&state)))
 }
 
 /// Measures; returns the beginning of the line to record.

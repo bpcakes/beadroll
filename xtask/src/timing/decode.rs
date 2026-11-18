@@ -14,8 +14,6 @@
 //! and the files around a projection are not measured: `timing --read N` times the commands
 //! themselves. Evidence, never a gate.
 
-use std::time::Instant;
-
 use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::projection::{
@@ -38,18 +36,10 @@ pub(super) fn fastest<T>(mut run: impl FnMut() -> Result<T, Failure>) -> Result<
 /// The fastest of [`RUNS`] runs of `run` on what `given` gives it, made before the clock starts: a
 /// decode of bytes it takes, timed without their copy.
 pub(super) fn fastest_of<G, T>(
-    mut given: impl FnMut() -> G,
-    mut run: impl FnMut(G) -> Result<T, Failure>,
+    given: impl FnMut() -> G,
+    run: impl FnMut(G) -> Result<T, Failure>,
 ) -> Result<f64, Failure> {
-    let mut best = f64::INFINITY;
-    for _ in 0..RUNS {
-        let input = given();
-        let clock = Instant::now();
-        let made = run(input)?;
-        best = best.min(clock.elapsed().as_secs_f64());
-        drop(made);
-    }
-    Ok(best)
+    super::fastest_of(RUNS, given, run).map(|(best, _)| best)
 }
 
 /// How long `projection` takes to write back, the fastest of [`RUNS`]: as read back, copying what

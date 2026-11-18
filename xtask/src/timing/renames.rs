@@ -15,8 +15,6 @@
 //! which every copy looks its own up. Each numbered control creates, under the second machine, the
 //! keys its copies end up with. The fastest of [`RUNS`] runs counts. Evidence, never a gate.
 
-use std::time::Instant;
-
 use beadroll_core::journal::{Journal, JournalOrder};
 use beadroll_core::json::{Object, Value};
 use beadroll_core::replay::replay;
@@ -259,17 +257,11 @@ pub(super) fn journal(shape: Shape, issues: usize) -> Journal {
 /// The fastest of [`RUNS`] replays of `journal`, copied before the clock runs, and the state the
 /// last one made.
 fn fastest(journal: &Journal) -> Result<(f64, State), Failure> {
-    let mut best = f64::INFINITY;
-    let mut last = None;
-    for _ in 0..RUNS {
-        let trial = journal.clone();
-        let clock = Instant::now();
-        let state = replay(trial).map_err(|_| Failure::Failed("the probe needs a key".into()))?;
-        best = best.min(clock.elapsed().as_secs_f64());
-        last = Some(state);
-    }
-    let state = last.ok_or_else(|| Failure::Failed("the probe replays at least once".into()))?;
-    Ok((best, state))
+    super::fastest_of(
+        RUNS,
+        || journal.clone(),
+        |trial| replay(trial).map_err(|_| Failure::Failed("the probe needs a key".into())),
+    )
 }
 
 /// How many dependencies on keys that never come the state's issues still wait with.
