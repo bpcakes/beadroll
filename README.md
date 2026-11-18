@@ -249,9 +249,14 @@ All environment variables are optional:
 | `BEAD_ROTATE_BYTES` | Journal segment rotation size. Default: 262,144 bytes. |
 | `BEAD_REPACK_LOOSE`, `BEAD_REPACK_PACKS` | Repack thresholds for loose objects and packs. Defaults: 1,000 and 40. |
 | `NO_COLOR`, `CLICOLOR`, `CLICOLOR_FORCE`, `TERM` | Terminal color; see the [command-line reference](docs/GUARANTEES.md#the-command-line). |
-| `COLUMNS` | Text wrapping width; otherwise the terminal width, capped at 100. |
+| `COLUMNS` | Text wrapping width, else the terminal's; either is capped at 100. A value that is not a positive whole number is ignored. |
+| `HOME` | Where `~` in `BEAD_HOME` and the default store root point. |
+| `TMPDIR`, `TEMP`, `TMP` | Where temporary files go, the first usable; else `/tmp`, `/var/tmp`, `/usr/tmp`, then the working directory. |
+| `GIT_DIR`, `GIT_WORK_TREE` | The checkout bead works in, found as git finds it. |
+| `GIT_SSH_COMMAND`, `GIT_SSH` | Used as git uses them. With neither, and no `core.sshCommand`, bead's fetches and pushes run `ssh` with a 15 s connect timeout and keepalives, so a dead remote fails instead of hanging. |
 
-Invalid numeric settings produce a `CONFIG` error, even for `--version`.
+Invalid numeric settings (`BEAD_NET_TIMEOUT`, `BEAD_ROTATE_BYTES`, `BEAD_REPACK_*`) produce a
+`CONFIG` error, even for `--version`.
 Variables used by tests and infrastructure scripts are listed in
 [CONTRIBUTING.md](CONTRIBUTING.md#variables-the-tests-and-drivers-read).
 

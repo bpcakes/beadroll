@@ -344,6 +344,22 @@ mod tests {
         );
     }
 
+    /// The defaults README's table gives: 262,144 bytes a segment, 45 s a fetch or push, and a
+    /// repack at 1,000 loose objects or 40 packs.
+    #[test]
+    fn numeric_settings_default_as_documented() {
+        let s = settings(&[]).unwrap();
+        assert_eq!(
+            (
+                s.rotate_bytes,
+                s.net_timeout,
+                s.repack_loose,
+                s.repack_packs
+            ),
+            (262_144, Some(Duration::from_secs(45)), 1000, 40)
+        );
+    }
+
     #[test]
     fn numeric_settings_accept_supported_syntax_and_refuse_the_rest() {
         let s = settings(&[

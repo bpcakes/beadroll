@@ -1,7 +1,8 @@
 //! What `replica.json` and `.beadroll.json` hold is checked; members
-//! bead does not know are let be, and a ref or a workspace name it cannot use is `CONFIG`.
+//! bead does not know are let be, and a ref or a workspace name it cannot use is `CONFIG`, as is a
+//! numeric setting it cannot read, even for `--version`.
 
-use beadroll_test_support::{Json, Machine, failure_code, json, json_line};
+use beadroll_test_support::{Json, Machine, code, failure_code, json, json_line};
 
 use super::replica_id;
 
@@ -67,4 +68,25 @@ fn identity_and_tracked_config_shapes_are_validated() {
     std::fs::write(&config, json_line(&future)).unwrap();
     let proc = a.run(["info", "--json"]);
     assert_eq!(proc.returncode(), 0, "{}", proc.stderr);
+}
+
+/// A numeric setting bead cannot read is `CONFIG` before anything runs, even for `--version`.
+#[test]
+fn an_unreadable_numeric_setting_refuses_even_version() {
+    let sandbox = crate::sandbox();
+    let machine = Machine::new(&sandbox, "a");
+    for flag in ["--version", "-V"] {
+        let refused = machine
+            .cmd([flag, "--json"])
+            .env("BEAD_NET_TIMEOUT", "soon")
+            .run();
+        assert_eq!(code(&refused), "CONFIG", "{flag}: {}", refused.stderr);
+        assert!(
+            refused.stderr.contains("BEAD_NET_TIMEOUT"),
+            "{}",
+            refused.stderr
+        );
+        let fine = machine.run([flag]);
+        assert_eq!(fine.returncode(), 0, "{flag}: {}", fine.stderr);
+    }
 }
