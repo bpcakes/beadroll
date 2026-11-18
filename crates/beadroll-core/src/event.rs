@@ -223,7 +223,7 @@ pub const EXPORT_FIELDS: [Field; 16] = [
 ];
 
 /// Whether the value is an integer or a legacy boolean integer field.
-pub fn is_int(value: &Value) -> bool {
+pub(crate) fn is_int(value: &Value) -> bool {
     matches!(value, Value::Int(_) | Value::Bool(_))
 }
 
@@ -250,7 +250,7 @@ pub fn event_problem(event: &Value) -> Option<String> {
 
 /// Why `fields` cannot be written, or `None`. A create's fields (`FieldScope::Create`) may hold
 /// `created_at`, `updated_at` and `created_by` too.
-pub fn fields_problem(fields: &Value, scope: FieldScope) -> Option<String> {
+pub(crate) fn fields_problem(fields: &Value, scope: FieldScope) -> Option<String> {
     let Value::Object(fields) = fields else {
         return Some("fields is not an object".into());
     };
@@ -291,7 +291,7 @@ pub fn fields_problem(fields: &Value, scope: FieldScope) -> Option<String> {
 }
 
 /// Whether a status other tools may write looks like one: `[a-z][a-z0-9_-]{0,39}`, whole.
-pub fn status_shaped(status: &str) -> bool {
+pub(crate) fn status_shaped(status: &str) -> bool {
     let mut chars = status.chars();
     chars.next().is_some_and(|c| c.is_ascii_lowercase())
         && status.chars().count() <= 40
@@ -299,7 +299,7 @@ pub fn status_shaped(status: &str) -> bool {
 }
 
 /// The `data` object of a valid event; null or absent data yields `None` and is treated as empty.
-pub fn data_of(event: &Value) -> Option<&Object> {
+pub(crate) fn data_of(event: &Value) -> Option<&Object> {
     event.get("data").and_then(Value::as_object)
 }
 

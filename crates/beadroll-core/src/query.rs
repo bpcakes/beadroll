@@ -340,7 +340,7 @@ fn dumps(value: &Value) -> String {
 
 /// Tarjan's strongly connected components, without recursion, over `nodes` in order: only the
 /// components that can hold a cycle, each sorted.
-pub fn strongly_connected<N, F>(nodes: &[N], edges: &F) -> Vec<Vec<N>>
+pub(crate) fn strongly_connected<N, F>(nodes: &[N], edges: &F) -> Vec<Vec<N>>
 where
     N: Clone + Ord + Hash,
     F: Fn(&N) -> Vec<N>,

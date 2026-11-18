@@ -8,7 +8,7 @@ use crate::text::b36;
 
 /// A key that ends in `.` and a number, as `(.+)\.([0-9]+)` matches it whole: what comes before the
 /// last dot (no newline in it), and the ASCII digits after it (U06 in `docs/FINDINGS.md`).
-pub fn split_number(key: &str) -> Option<(&str, &str)> {
+pub(crate) fn split_number(key: &str) -> Option<(&str, &str)> {
     let (stem, digits) = key.rsplit_once('.')?;
     let numbered = !stem.is_empty()
         && !stem.contains('\n')
@@ -19,7 +19,7 @@ pub fn split_number(key: &str) -> Option<(&str, &str)> {
 
 /// Whether a key exceeds format 1's original admission limit. Older imports wrote numbered keys
 /// with up to 4,299 digits; they remain valid even though ordinary counters now use an `i128`.
-pub fn number_too_long(key: &str) -> bool {
+pub(crate) fn number_too_long(key: &str) -> bool {
     split_number(key).is_some_and(|(_, digits)| digits.len() >= 4300)
 }
 

@@ -24,7 +24,7 @@ pub(crate) fn reserved(name: &str) -> bool {
 
 /// The id a comment made here exports: derived from its event id, so every machine and every later
 /// export agree on it.
-pub fn comment_id(uid: EventId) -> u64 {
+pub(crate) fn comment_id(uid: EventId) -> u64 {
     let digest = Sha256::digest(uid.to_string().as_bytes());
     let number = digest
         .iter()

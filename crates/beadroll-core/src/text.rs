@@ -11,7 +11,7 @@ use std::fmt::Write as _;
 use crate::json::{Value, float_repr};
 
 /// Whether `c` can be shown unescaped by `repr`, according to the pinned printability table.
-pub fn is_printable(c: char) -> bool {
+pub(crate) fn is_printable(c: char) -> bool {
     let code = u32::from(c);
     printable::NON_PRINTABLE
         .binary_search_by(|&(start, end)| {

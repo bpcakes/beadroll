@@ -34,7 +34,7 @@ pub enum JournalOrder {
 
 pub use event::Event;
 pub(crate) use event::Rest;
-pub use read::{loads_line, read_attempt, read_segment};
+pub use read::{read_attempt, read_segment};
 pub use settled::SettledJournal;
 
 /// Something a reader could not use: an unreadable line or file, an event that fails validation, a
