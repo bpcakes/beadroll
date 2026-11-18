@@ -48,9 +48,8 @@ pub(crate) fn command_signature(actor: &Actor, asked: &str, request: Option<&Val
     )
 }
 
-/// Claims each issue in `keys` for the actor, with generation one greater than its last;
-/// `takeover` replaces the owner. A done issue, disputed status or another owner's claim without
-/// `takeover` refuses the entire transaction.
+/// The claim step `claim`, `takeover` and `update --claim` share: the actor, the issues it names,
+/// and the takeover's reason, if it is one.
 pub(crate) struct ClaimStep<'a> {
     pub(crate) actor: &'a Actor,
     pub(crate) keys: &'a [OsString],
@@ -58,6 +57,9 @@ pub(crate) struct ClaimStep<'a> {
 }
 
 impl ClaimStep<'_> {
+    /// Claims each issue in `keys` for the actor, with generation one greater than its last, and
+    /// leaves one the actor already holds as it is; a takeover replaces the owner. A done issue, a
+    /// disputed status or another owner's claim without a takeover refuses the whole transaction.
     pub(crate) fn run(&self, tx: &mut Tx<'_>, mode: Mode) -> Result<Mode, Failure> {
         let me = self.actor.label(&tx.replica);
         // read as it was before anything is emitted, without a copy (roll-lqjj.29)
