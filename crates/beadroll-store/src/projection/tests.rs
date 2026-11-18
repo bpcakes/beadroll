@@ -10,6 +10,7 @@ use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::replay::replay;
 use beadroll_core::state::{Issue, State};
+use beadroll_test_support::events::Event;
 
 use super::file::{Held, Made};
 use super::{file, grown, kept, projection, projection_path, read_texts, resummed, same};
@@ -43,16 +44,14 @@ fn id(n: u128) -> String {
 }
 
 fn event(n: u128, deps: &[u128], op: &str, issue: u128, data: Object) -> Value {
-    let mut event = Object::new();
-    event.insert("v".into(), Value::from(1));
-    event.insert("id".into(), Value::from(id(n)));
-    event.insert("replica".into(), Value::from(HERE));
-    let deps = deps.iter().map(|dep| Value::from(id(*dep))).collect();
-    event.insert("deps".into(), Value::Array(deps));
-    event.insert("op".into(), Value::from(op));
-    event.insert("issue".into(), Value::from(id(issue)));
-    event.insert("data".into(), Value::from(data));
-    Value::from(event)
+    let deps: Vec<String> = deps.iter().map(|dep| id(*dep)).collect();
+    let deps: Vec<&str> = deps.iter().map(String::as_str).collect();
+    Event::new(&id(n), op)
+        .replica(HERE)
+        .deps(&deps)
+        .issue(&id(issue))
+        .data(Value::from(data))
+        .json()
 }
 
 fn create(n: u128, deps: &[u128], key: &str) -> Value {
