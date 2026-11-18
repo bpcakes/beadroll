@@ -51,45 +51,166 @@ use crate::timing::memory::LoadMode;
 use crate::timing::merge::MergeHistory;
 use crate::workspace::{self, Failure, json_string};
 
+/// A measurement `timing` makes in place of a command, with the count it is made at.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Mode {
+    /// Replay of this many events.
+    Replay(usize),
+    /// A publishing sync on a store of this many events.
+    Sync(usize),
+    /// The reading commands on a store of this many events.
+    Read(usize),
+    /// A sync that merges another machine's events into a store of this many.
+    Merge(usize),
+    /// This many machines writing one tracker at once.
+    Contend(usize),
+    /// Importing a generated export of this many records.
+    Import(usize),
+    /// The core calls an import of this many records makes.
+    Plan(usize),
+    /// Events applied to a projection of this many issues.
+    Extend(usize),
+    /// Replay of this many creates naming keys no issue has yet.
+    Dangling(usize),
+    /// Readiness judged on this many issues.
+    Ready(usize),
+    /// The details of this many issues.
+    Details(usize),
+    /// Replay renaming this many copies.
+    Renames(usize),
+    /// Decoding a projection of this many events.
+    Decode(usize),
+    /// Core's JSON reader on `meta.json` of this many files, and on the lines of a history of as
+    /// many events, parsed as values and read into a journal.
+    Parse(usize),
+}
+
+/// How the arguments name one measurement.
+struct Measurement {
+    /// Its flag.
+    flag: &'static str,
+    /// What its usage calls its count.
+    count: &'static str,
+    /// What the count counts, for a count that is not a number.
+    unit: &'static str,
+    /// The mode it makes of its count.
+    mode: fn(usize) -> Mode,
+}
+
+/// Every measurement: the one place a new one is named for the arguments.
+const MODES: [Measurement; 14] = [
+    Measurement {
+        flag: "--replay",
+        count: "N",
+        unit: "events",
+        mode: Mode::Replay,
+    },
+    Measurement {
+        flag: "--sync",
+        count: "N",
+        unit: "events",
+        mode: Mode::Sync,
+    },
+    Measurement {
+        flag: "--read",
+        count: "N",
+        unit: "events",
+        mode: Mode::Read,
+    },
+    Measurement {
+        flag: "--merge",
+        count: "N",
+        unit: "events",
+        mode: Mode::Merge,
+    },
+    Measurement {
+        flag: "--contend",
+        count: "M",
+        unit: "machines",
+        mode: Mode::Contend,
+    },
+    Measurement {
+        flag: "--import",
+        count: "N",
+        unit: "records",
+        mode: Mode::Import,
+    },
+    Measurement {
+        flag: "--plan",
+        count: "N",
+        unit: "records",
+        mode: Mode::Plan,
+    },
+    Measurement {
+        flag: "--extend",
+        count: "N",
+        unit: "issues",
+        mode: Mode::Extend,
+    },
+    Measurement {
+        flag: "--dangling",
+        count: "N",
+        unit: "issues",
+        mode: Mode::Dangling,
+    },
+    Measurement {
+        flag: "--ready",
+        count: "N",
+        unit: "issues",
+        mode: Mode::Ready,
+    },
+    Measurement {
+        flag: "--details",
+        count: "N",
+        unit: "issues",
+        mode: Mode::Details,
+    },
+    Measurement {
+        flag: "--renames",
+        count: "N",
+        unit: "copies",
+        mode: Mode::Renames,
+    },
+    Measurement {
+        flag: "--decode",
+        count: "N",
+        unit: "events",
+        mode: Mode::Decode,
+    },
+    Measurement {
+        flag: "--parse",
+        count: "N",
+        unit: "files",
+        mode: Mode::Parse,
+    },
+];
+
+/// The measurements' flags with their counts, as usage lists them.
+fn modes_listed() -> Vec<String> {
+    MODES
+        .iter()
+        .map(|named| format!("{} {}", named.flag, named.count))
+        .collect()
+}
+
+/// The usage mistake of naming two measurements.
+fn one_mode() -> Failure {
+    let mut listed = modes_listed();
+    let last = listed.pop().unwrap_or_default();
+    Failure::Usage(format!("one of {} and {last}", listed.join(", ")))
+}
+
 struct Options {
     label: Option<String>,
     out: Option<PathBuf>,
     command: Vec<OsString>,
-    /// Time replay of this many events instead of a command.
-    replay: Option<usize>,
-    /// Time a publishing sync on a store of this many events instead of a command.
-    sync: Option<usize>,
-    /// Time the reading commands on a store of this many events instead of a command.
-    read: Option<usize>,
-    /// Time a sync that merges another machine's events into a store of this many instead of a
-    /// command.
-    merge: Option<usize>,
+    /// The measurement to time instead of a command, if one: one at most.
+    mode: Option<Mode>,
     /// How many events each `--merge` brings.
     batch: Option<usize>,
     /// With `--merge`, the store writes too before each merge, so that what it merges was
     /// written concurrently with its own.
     concurrent: bool,
-    /// Time this many machines writing one tracker at once instead of a command.
-    contend: Option<usize>,
-    /// Time importing a generated export of this many records instead of a command.
-    import: Option<usize>,
-    /// Time the core calls an import of this many records makes instead of a command.
-    plan: Option<usize>,
-    /// Time events applied to a projection of this many issues instead of a command.
-    extend: Option<usize>,
-    /// Time replay of this many creates naming keys no issue has yet instead of a command.
-    dangling: Option<usize>,
-    /// Time readiness judged on this many issues instead of a command.
-    ready: Option<usize>,
-    /// Time the details of this many issues instead of a command.
-    details: Option<usize>,
-    /// Time replay renaming this many copies instead of a command.
-    renames: Option<usize>,
-    /// Time decoding a projection of this many events instead of a command.
-    decode: Option<usize>,
-    /// Time core's JSON reader on `meta.json` of this many files, and on the lines of a history
-    /// of as many events, parsed as values and read into a journal, instead of a command.
-    parse: Option<usize>,
     /// How many writes each `--contend` machine makes.
     writes: Option<usize>,
     /// How many milliseconds each fetch and push of `--contend` waits.
@@ -110,22 +231,9 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
         label: None,
         out: None,
         command: Vec::new(),
-        replay: None,
-        sync: None,
-        read: None,
-        merge: None,
+        mode: None,
         batch: None,
         concurrent: false,
-        contend: None,
-        import: None,
-        plan: None,
-        extend: None,
-        dangling: None,
-        ready: None,
-        details: None,
-        renames: None,
-        decode: None,
-        parse: None,
         writes: None,
         latency: None,
         rotate: None,
@@ -140,37 +248,23 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
             args.next()
                 .ok_or_else(|| Failure::Usage(format!("{name} needs a value")))
         };
+        if let Some(named) = MODES.iter().find(|named| named.flag == text) {
+            let mode = (named.mode)(number(&value(named.flag)?, named.flag, named.unit)?);
+            // the same flag again counts once, as every other option does
+            if options
+                .mode
+                .is_some_and(|set| std::mem::discriminant(&set) != std::mem::discriminant(&mode))
+            {
+                return Err(one_mode());
+            }
+            options.mode = Some(mode);
+            continue;
+        }
         match text.as_str() {
             "--label" => options.label = Some(value("--label")?.to_string_lossy().into_owned()),
             "--out" => options.out = Some(PathBuf::from(value("--out")?)),
-            "--replay" => options.replay = Some(number(&value("--replay")?, "--replay", "events")?),
-            "--sync" => options.sync = Some(number(&value("--sync")?, "--sync", "events")?),
-            "--read" => options.read = Some(number(&value("--read")?, "--read", "events")?),
-            "--merge" => options.merge = Some(number(&value("--merge")?, "--merge", "events")?),
             "--batch" => options.batch = Some(number(&value("--batch")?, "--batch", "events")?),
             "--concurrent" => options.concurrent = true,
-            "--import" => {
-                options.import = Some(number(&value("--import")?, "--import", "records")?)
-            }
-            "--plan" => options.plan = Some(number(&value("--plan")?, "--plan", "records")?),
-            "--extend" => {
-                options.extend = Some(number(&value("--extend")?, "--extend", "issues")?);
-            }
-            "--dangling" => {
-                options.dangling = Some(number(&value("--dangling")?, "--dangling", "issues")?);
-            }
-            "--ready" => options.ready = Some(number(&value("--ready")?, "--ready", "issues")?),
-            "--details" => {
-                options.details = Some(number(&value("--details")?, "--details", "issues")?);
-            }
-            "--renames" => {
-                options.renames = Some(number(&value("--renames")?, "--renames", "copies")?);
-            }
-            "--decode" => options.decode = Some(number(&value("--decode")?, "--decode", "events")?),
-            "--parse" => options.parse = Some(number(&value("--parse")?, "--parse", "files")?),
-            "--contend" => {
-                options.contend = Some(number(&value("--contend")?, "--contend", "machines")?);
-            }
             "--writes" => options.writes = Some(number(&value("--writes")?, "--writes", "writes")?),
             "--latency" => {
                 options.latency = Some(number(&value("--latency")?, "--latency", "milliseconds")?);
@@ -198,60 +292,37 @@ fn parse(args: Vec<OsString>) -> Result<Options, Failure> {
 
 /// Why `options` do not go together, if they do not.
 fn check(options: &Options) -> Result<(), Failure> {
-    let modes = [
-        options.replay,
-        options.sync,
-        options.read,
-        options.merge,
-        options.contend,
-        options.import,
-        options.plan,
-        options.extend,
-        options.dangling,
-        options.ready,
-        options.details,
-        options.renames,
-        options.decode,
-        options.parse,
-    ];
-    let measured = modes.iter().flatten().count();
-    if options.command.is_empty() && measured == 0 && options.load.is_none() {
-        return Err(Failure::Usage(
-            "timing needs --replay N, --sync N, --read N, --merge N, --contend M, --import N, \
-             --plan N, --extend N, --dangling N, --ready N, --details N, --renames N, --decode N, \
-             --parse N, or a command after --"
-                .into(),
-        ));
+    let measured = options.mode.is_some();
+    if options.command.is_empty() && !measured && options.load.is_none() {
+        return Err(Failure::Usage(format!(
+            "timing needs {}, or a command after --",
+            modes_listed().join(", ")
+        )));
     }
-    if measured > 1 {
-        return Err(Failure::Usage(
-            "one of --replay N, --sync N, --read N, --merge N, --contend M, --import N, \
-             --plan N, --extend N, --dangling N, --ready N, --details N, --renames N, \
-             --decode N and --parse N"
-                .into(),
-        ));
-    }
-    if options.concurrent && options.merge.is_none() {
+    let merge = matches!(options.mode, Some(Mode::Merge(_)));
+    let contend = matches!(options.mode, Some(Mode::Contend(_)));
+    let sync = matches!(options.mode, Some(Mode::Sync(_)));
+    if options.concurrent && !merge {
         return Err(Failure::Usage("--concurrent goes with --merge N".into()));
     }
-    if options.contend == Some(0)
-        || (options.writes.is_some() || options.latency.is_some()) && options.contend.is_none()
+    if options.mode == Some(Mode::Contend(0))
+        || (options.writes.is_some() || options.latency.is_some()) && !contend
     {
         return Err(Failure::Usage(
             "--writes W and --latency MS go with --contend M, of one machine or more".into(),
         ));
     }
-    if options.shape != history::Shape::Plain && measured == 0 {
+    if options.shape != history::Shape::Plain && !measured {
         return Err(Failure::Usage(
             "--ownership, --churn and --text shape the history of a measurement".into(),
         ));
     }
-    if options.batch == Some(0) || options.batch.is_some() && options.merge.is_none() {
+    if options.batch == Some(0) || options.batch.is_some() && !merge {
         return Err(Failure::Usage(
             "--batch M, more than none, goes with --merge N".into(),
         ));
     }
-    if options.rotate == Some(0) || options.rotate.is_some() && options.sync.is_none() {
+    if options.rotate == Some(0) || options.rotate.is_some() && !sync {
         return Err(Failure::Usage(
             "--rotate BYTES, more than none, goes with --sync N".into(),
         ));
@@ -278,46 +349,37 @@ pub(crate) fn main(args: Vec<OsString>) -> Result<ExitCode, Failure> {
     };
     let label = options.label.as_deref();
     let started = SystemTime::now();
-    // one mode at most, as checked above, so the order of these is no precedence
-    let measured = if let Some(count) = options.replay {
-        Some(replay::measure(count, options.shape, label)?)
-    } else if let Some(count) = options.sync {
-        let rotate = options.rotate.unwrap_or(sync::ROTATE_BYTES);
-        Some(sync::measure(count, options.shape, rotate, label)?)
-    } else if let Some(count) = options.read {
-        Some(read::measure(count, options.shape, label)?)
-    } else if let Some(count) = options.merge {
-        let batch = options.batch.unwrap_or(merge::BATCH);
-        let history = if options.concurrent {
-            MergeHistory::Concurrent
-        } else {
-            MergeHistory::Sequential
-        };
-        Some(merge::measure(count, options.shape, batch, history, label)?)
-    } else if let Some(machines) = options.contend {
-        let writes = options.writes.unwrap_or(contend::WRITES);
-        let latency = options.latency.map_or(contend::LATENCY, |ms| ms as u64);
-        Some(contend::measure(machines, writes, latency, label)?)
-    } else if let Some(records) = options.import {
-        Some(import::measure(records, label)?)
-    } else if let Some(records) = options.plan {
-        Some(plan::measure(records, label)?)
-    } else if let Some(issues) = options.extend {
-        Some(extend::measure(issues, label)?)
-    } else if let Some(issues) = options.dangling {
-        Some(dangling::measure(issues, label)?)
-    } else if let Some(issues) = options.ready {
-        Some(ready::measure(issues, label)?)
-    } else if let Some(issues) = options.details {
-        Some(details::measure(issues, label)?)
-    } else if let Some(copies) = options.renames {
-        Some(renames::measure(copies, label)?)
-    } else if let Some(count) = options.decode {
-        Some(decode::measure(count, options.shape, label)?)
-    } else if let Some(count) = options.parse {
-        Some(parse::measure(count, options.shape, label)?)
-    } else {
-        None
+    let measured = match options.mode {
+        Some(Mode::Replay(count)) => Some(replay::measure(count, options.shape, label)?),
+        Some(Mode::Sync(count)) => {
+            let rotate = options.rotate.unwrap_or(sync::ROTATE_BYTES);
+            Some(sync::measure(count, options.shape, rotate, label)?)
+        }
+        Some(Mode::Read(count)) => Some(read::measure(count, options.shape, label)?),
+        Some(Mode::Merge(count)) => {
+            let batch = options.batch.unwrap_or(merge::BATCH);
+            let history = if options.concurrent {
+                MergeHistory::Concurrent
+            } else {
+                MergeHistory::Sequential
+            };
+            Some(merge::measure(count, options.shape, batch, history, label)?)
+        }
+        Some(Mode::Contend(machines)) => {
+            let writes = options.writes.unwrap_or(contend::WRITES);
+            let latency = options.latency.map_or(contend::LATENCY, |ms| ms as u64);
+            Some(contend::measure(machines, writes, latency, label)?)
+        }
+        Some(Mode::Import(records)) => Some(import::measure(records, label)?),
+        Some(Mode::Plan(records)) => Some(plan::measure(records, label)?),
+        Some(Mode::Extend(issues)) => Some(extend::measure(issues, label)?),
+        Some(Mode::Dangling(issues)) => Some(dangling::measure(issues, label)?),
+        Some(Mode::Ready(issues)) => Some(ready::measure(issues, label)?),
+        Some(Mode::Details(issues)) => Some(details::measure(issues, label)?),
+        Some(Mode::Renames(copies)) => Some(renames::measure(copies, label)?),
+        Some(Mode::Decode(count)) => Some(decode::measure(count, options.shape, label)?),
+        Some(Mode::Parse(count)) => Some(parse::measure(count, options.shape, label)?),
+        None => None,
     };
     if let Some(measured) = measured {
         let line = format!("{measured}{}", context(started));
