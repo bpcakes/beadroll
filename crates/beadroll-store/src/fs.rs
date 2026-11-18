@@ -87,8 +87,9 @@ pub fn private_dir(path: &Path) -> Result<(), Error> {
 /// `data` written whole to a temporary file beside `path` (`.NAME.PID.tmp`), fsynced, then renamed
 /// into place. Store files are 0600; a file written with [`FileMode::Checkout`]
 /// follows the caller's umask like any other file there. A write that fails leaves nothing behind.
-/// The failpoints `atomic-write:<part>` (before the rename) and `atomic-written:<part>` (after
-/// it) fire for a target whose path holds `<part>`.
+/// The failpoints `atomic-flush:<part>` (before the fsync), `atomic-flushed:<part>` (after it),
+/// `atomic-write:<part>` (before the rename) and `atomic-written:<part>` (after it) fire for a
+/// target whose path holds `<part>`.
 pub fn write_atomic(
     path: &Path,
     data: &[u8],
@@ -132,8 +133,9 @@ pub(crate) fn write_atomic_keyed(
 /// journal whenever it is missing, cut, damaged or out of step with the other. Renamed into place
 /// whole, so that no reader sees it half-written; a crash may leave it lost, cut, zeroed or as it
 /// was before, and each costs a replay (`docs/REVIEWING.md` §2), where flushing it cost the
-/// command after every write as much again as the write (X05). The failpoints fire as for
-/// [`write_atomic`]. A bead killed between its write and its rename leaves the temporary file,
+/// command after every write as much again as the write (X05). The rename's failpoints
+/// (`atomic-write:`, `atomic-written:`) fire as for [`write_atomic`]; the flush's, with no fsync,
+/// do not. A bead killed between its write and its rename leaves the temporary file,
 /// which the projection's write-back removes, both caches' at once, before it writes either
 /// ([`abandoned`], roll-lqjj.52). Journal temporaries are not swept. An interrupted first sync
 /// can leave up to eight prepared files, with a batch reaching four MiB plus the last file's
@@ -222,7 +224,8 @@ pub fn glob_ending(folder: &Path, ending: &str) -> Vec<PathBuf> {
     paths
 }
 
-/// Whether the path suffix equals suffix, taking the last dot unless it begins the filename.
+/// Whether the path's file name ends with `suffix` and is longer than it, so that a file named
+/// `.jsonl` alone is not a `.jsonl` file. It looks for no dot: `a.b.json` ends with `.b.json`.
 pub fn has_suffix(path: &Path, suffix: &str) -> bool {
     let Some(name) = path.file_name() else {
         return false;

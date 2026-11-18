@@ -58,7 +58,8 @@ impl Error {
 }
 
 /// The code a git failure is reported under: a timeout is `REMOTE_UNREACHABLE`, a failed git
-/// `GIT_ERROR`, a git that could not be started `IO`.
+/// `GIT_ERROR`, a git that could not be started `IO`, and a count in git's configuration that
+/// cannot be read `CONFIG`.
 pub fn git_code(error: &beadroll_git::Error) -> Code {
     match error {
         beadroll_git::Error::Timeout { .. } => Code::RemoteUnreachable,
