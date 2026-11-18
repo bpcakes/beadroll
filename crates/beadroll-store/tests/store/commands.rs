@@ -44,6 +44,16 @@ mod actor_detection {
             ),
             json!({"agent": "other", "thread": "stable", "name": "name"})
         );
+        // `CLAUDECODE` alone is Claude Code with no session to name a thread by
+        assert_eq!(
+            actor(&[("CLAUDECODE", "1")], None),
+            json!({"agent": "claude"})
+        );
+        // `--actor` takes precedence over `BEAD_ACTOR`
+        let named =
+            |given: Option<&str>| actor(&[("BEAD_ACTOR", "from-env")], given)["name"].clone();
+        assert_eq!(named(None), json!("from-env"));
+        assert_eq!(named(Some("from-flag")), json!("from-flag"));
     }
 
     #[test]

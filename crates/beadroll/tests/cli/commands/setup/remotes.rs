@@ -115,6 +115,34 @@ fn a_tracked_origin_publishes_the_tracker_where_a_move_left_it_behind() {
     assert_eq!(titles(&b), ["before the move"]);
 }
 
+/// `$BEAD_REMOTE` given as a remote's name is that remote's URL: the tracker goes there, and never
+/// to origin.
+#[test]
+fn bead_remote_names_a_remote_of_the_checkout() {
+    let sandbox = crate::sandbox();
+    let mut a = Machine::new(&sandbox, "a");
+    let mirror = sandbox.root().join("mirror.git");
+    git(
+        ["init", "-q", "--bare", "-b", "main", path_text(&mirror)],
+        None,
+    );
+    commit(&a, &["remote", "add", "mirror", path_text(&mirror)]);
+    a.extra.insert("BEAD_REMOTE".into(), "mirror".into());
+    json(&a, &["init", "--prefix", "ex"]);
+    json(&a, &["create", "through the mirror"]);
+    let synced = json(&a, &["sync"]);
+    let resolved = mirror.canonicalize().expect("the mirror");
+    assert_eq!(synced["remote"].as_str(), Some(path_text(&resolved)));
+    assert!(
+        holds_the_tracker(&mirror),
+        "the tracker is not on the named remote"
+    );
+    assert!(
+        !holds_the_tracker(sandbox.origin()),
+        "the tracker went to origin"
+    );
+}
+
 /// A tracked remote stored as a URL keeps pointing at the old place; `init --tracked --remote
 /// origin` rewrites it to `origin`, keeping the id.
 #[test]
