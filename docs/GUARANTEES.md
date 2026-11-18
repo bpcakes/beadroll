@@ -154,7 +154,8 @@ claimed, closed, 2 comments`) and who wrote last, where and when; `full`, every
 event with its summary, machine, agent, whole thread, branch and whole commit.
 Journal text is escaped in all three. `--json` always gives every event: one
 object with `workspaces`, in workspace-id order, and `advance`, whether this
-recap marks what it shows as seen. A tracker has `workspace`, `name`,
+recap marks what it shows as seen. A tracker has `workspace`, `name` (the one
+its last sync recorded, which follows a move, else its init's, as `info` names it),
 `last_sync`, `since` (where a first recap's window starts, else null), `earlier`
 (the events before it, not shown), `events`, `pending` and `integrity`, or
 `error` (`code`, `message`) when it cannot be read. An event has every member

@@ -10,7 +10,7 @@ use beadroll_store::{
     tracked_config_warning,
 };
 
-use super::{Context, Failure, Outcome, VERSION};
+use super::{Context, Failure, Outcome, VERSION, tracker_name};
 
 /// The tracker's identity and place, the remote, this machine and actor, and the journal's
 /// numbers: issues, events, segments, the frontier, attempts awaiting the remote, integrity
@@ -35,8 +35,10 @@ pub(crate) fn info(ctx: &Context<'_>) -> Result<Outcome, Failure> {
     } else {
         "local path"
     };
-    let name = match st.name().filter(|n| n.truthy()) {
-        Some(name) => name.clone(),
+    // as `recap` names it, and before any sync or init the repository's own name
+    let meta = ws.metadata(MetadataRead::Lenient).unwrap_or_default();
+    let name = match tracker_name(&meta, st) {
+        Some(name) => name,
         None => ws
             .name
             .as_ref()
