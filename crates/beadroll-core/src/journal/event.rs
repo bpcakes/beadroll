@@ -392,7 +392,7 @@ impl Shared {
                     .entry(written)
                     .or_insert_with(|| Arc::new(value.clone())),
             ),
-            Err(_) => Arc::new(value.clone()), // too long or too deep to print: kept alone
+            Err(_) => Arc::new(value.clone()), // not finite or too deep to print: kept alone
         };
         if self.recent.len() == RECENT {
             self.recent.pop_back();

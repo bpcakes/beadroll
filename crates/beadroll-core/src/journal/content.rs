@@ -28,7 +28,7 @@ impl Digester {
     }
 
     /// The digest of `value`'s content: that of the line bead writes of it. Only a value built in
-    /// memory fails to print (an integer too long, nesting too deep); an iterative encoding
+    /// memory fails to print (a float that is not finite, nesting too deep); an iterative encoding
     /// keeps those contents distinct without asking the call stack to follow their depth.
     pub(crate) fn digest_of(&self, value: &Value) -> Digest {
         match write(value, Format::COMPACT) {

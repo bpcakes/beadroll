@@ -114,8 +114,8 @@ pub struct Settings {
 impl Settings {
     /// Explicit process settings: inherited variables, working directory, home, temporary
     /// directory and a lookup for named users' homes. With no cwd, git inherits the process
-    /// directory. HOME falls back to the password database; `home_of` supports ~NAME in
-    /// BEAD_HOME. Invalid numeric settings return CONFIG.
+    /// directory. `user_home` is HOME, or the password database's when it is unset, as the caller
+    /// looked it up; `home_of` supports ~NAME in BEAD_HOME. Invalid numeric settings return CONFIG.
     pub fn from_process(
         vars: BTreeMap<OsString, OsString>,
         cwd: Option<PathBuf>,
