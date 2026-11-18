@@ -39,11 +39,14 @@ fn credential_urls_are_not_stored() {
         ]);
         assert_eq!(made.returncode(), 0, "{name}: {}", made.stderr);
         let config = std::fs::read_to_string(machine.checkout().join(".beadroll.json")).unwrap();
+        // an `info` that failed, or a store without its meta.json, would show no secret either
         let info = machine.run(["info", "--json"]);
+        assert_eq!(info.returncode(), 0, "{name}: {}", info.stderr);
         let metas: Vec<String> = metas(&machine)
             .iter()
             .map(|path| std::fs::read_to_string(path).unwrap())
             .collect();
+        assert!(!metas.is_empty(), "{name}: no store's meta.json to look in");
         let blob = format!("{config}{}{}{}", info.stdout, info.stderr, metas.join("\n"));
         for secret in ["supersecret", "sec/ret", "s%65cret"] {
             assert!(!blob.contains(secret), "{name}: {secret} in {blob}");
