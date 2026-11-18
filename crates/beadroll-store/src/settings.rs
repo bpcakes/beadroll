@@ -288,6 +288,21 @@ pub fn join_path(base: &Path, rest: &OsStr) -> PathBuf {
 }
 
 #[cfg(test)]
+impl Settings {
+    /// The settings of a machine whose home is `home` (`BEAD_HOME`), under `failpoints`
+    /// (`BEAD_FAILPOINTS`) when given, with no other variable, working directory or user home:
+    /// what the store's own tests run with.
+    pub(crate) fn at_home(home: &Path, failpoints: Option<&str>) -> Settings {
+        let mut vars = BTreeMap::from([(OsString::from("BEAD_HOME"), home.as_os_str().to_owned())]);
+        if let Some(failpoints) = failpoints {
+            vars.insert("BEAD_FAILPOINTS".into(), failpoints.into());
+        }
+        Settings::from_process(vars, None, OsString::new(), std::env::temp_dir(), &|_| None)
+            .expect("a home's settings")
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

@@ -3,7 +3,6 @@
 //! build. Every answer is checked against replay.
 
 use std::collections::BTreeMap;
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -31,14 +30,7 @@ fn store(home: &Path, build: Option<&str>) -> Workspace {
 
 /// [`store`], with the failpoints `failpoints`.
 fn failing(home: &Path, build: Option<&str>, failpoints: Option<&str>) -> Workspace {
-    let mut vars: BTreeMap<OsString, OsString> = BTreeMap::new();
-    vars.insert("BEAD_HOME".into(), home.as_os_str().to_owned());
-    if let Some(failpoints) = failpoints {
-        vars.insert("BEAD_FAILPOINTS".into(), failpoints.into());
-    }
-    let mut settings =
-        Settings::from_process(vars, None, OsString::new(), std::env::temp_dir(), &|_| None)
-            .unwrap();
+    let mut settings = Settings::at_home(home, failpoints);
     settings.build = build.map(str::to_owned);
     let ws = Workspace::new(Arc::new(settings), "store", None, None, Object::new()).unwrap();
     std::fs::create_dir_all(ws.events_dir.join(HERE)).unwrap();

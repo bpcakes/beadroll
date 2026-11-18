@@ -1,7 +1,5 @@
 //! History cache results against an uncached journal, including invalidation and damaged caches.
 
-use std::collections::BTreeMap;
-use std::ffi::OsString;
 use std::fs::{File, FileTimes};
 use std::path::Path;
 use std::sync::Arc;
@@ -15,15 +13,7 @@ use crate::{FileMode, Settings, append_events, encode_events, load_journal, writ
 const MACHINE: &str = "0000aa01";
 
 fn workspace(home: &Path, build: &str) -> Workspace {
-    let vars = BTreeMap::from([
-        (OsString::from("BEAD_HOME"), home.as_os_str().to_owned()),
-        (
-            OsString::from("BEAD_FAILPOINTS"),
-            OsString::from("journal.before-read@always=sleep(0)"),
-        ),
-    ]);
-    let mut settings =
-        Settings::from_process(vars, None, OsString::new(), home.to_owned(), &|_| None).unwrap();
+    let mut settings = Settings::at_home(home, Some("journal.before-read@always=sleep(0)"));
     settings.build = Some(build.to_owned());
     Workspace::new(
         Arc::new(settings),
