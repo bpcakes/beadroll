@@ -24,15 +24,29 @@ log = open(logfile, "a")
 
 
 def preflight():
-    """The bead's record, logged; the soak stops unless it is what BEAD_EXPECT_VERSION asks for."""
-    with open(bead, "rb") as file:
-        data = file.read()
-    proc = subprocess.run([bead, "--version"], capture_output=True, text=True, timeout=60)
-    lines = (proc.stdout.strip() or proc.stderr.strip()).splitlines()
-    row = {"preflight": bead, "version": lines[0] if lines else "", "kind": "script" if data.startswith(b"#!") else "native",
-           "sha256": hashlib.sha256(data).hexdigest()[:16]}
+    """The bead's record, logged, as infra/selected.py's describe makes it: a bead that is not there is
+    recorded `missing`, one that does not run says why. The soak stops on a missing bead, which leaves it
+    nothing to run, and unless the bead is what BEAD_EXPECT_VERSION asks for."""
+    try:
+        with open(bead, "rb") as file:
+            data = file.read()
+    except OSError:
+        data = None
+    version = ""
+    if data is not None:
+        try:
+            proc = subprocess.run([bead, "--version"], capture_output=True, text=True, timeout=60)
+            lines = (proc.stdout.strip() or proc.stderr.strip()).splitlines()
+            version = lines[0] if lines else ""
+        except (OSError, subprocess.TimeoutExpired) as error:
+            version = f"(does not run: {error})"
+    kind = "missing" if data is None else "script" if data.startswith(b"#!") else "native"
+    row = {"preflight": bead, "version": version, "kind": kind,
+           "sha256": "" if data is None else hashlib.sha256(data).hexdigest()[:16]}
     log.write(json.dumps(row) + "\n")
     log.flush()
+    if kind == "missing":
+        sys.exit(f"soak.py: {bead} does not exist")
     expect = os.environ.get("BEAD_EXPECT_VERSION", "")
     if expect and (row["version"] != f"bead {expect}" or row["kind"] != "native"):
         sys.exit(f"soak.py: {bead} is {row['kind']}, reporting {row['version']!r}, not a native 'bead {expect}'")
