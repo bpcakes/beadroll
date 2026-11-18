@@ -3,8 +3,8 @@
 //! boundaries deliberately also catch matches beside non-ASCII letters. Lint exemptions sit at a
 //! crate or module root, apart from the two `CONTRIBUTING.md` names, no Rust source grows past
 //! the line it should have been split long before, nothing is named for a finding, a
-//! module's items are imported in one `use` line, and the store's and sync's errors of the
-//! operating system name their path.
+//! module's items are imported in one `use` line, the store's and sync's errors of the
+//! operating system name their path, and no Python catches every exception.
 
 /// The repository's tracked files that `pathspecs` match (all of them when none is given), by their
 /// paths from its root. A listing without `expected` fails the test: a scan of nothing would pass.
@@ -466,5 +466,54 @@ mod pathless_errors {
         );
         assert!(pathless("crates/beadroll-git/src/runner.rs", &text).is_empty());
         assert!(pathless("crates/beadroll/src/commands.rs", &text).is_empty());
+    }
+}
+
+/// `CatchAlls`.
+mod catch_alls {
+    /// The lines of `text`, the Python file `name`, whose `except` catches every exception (`except:`,
+    /// `except Exception`, `except BaseException`), as NAME:LINE.
+    fn catch_alls(name: &str, text: &str) -> Vec<String> {
+        let every = regex_lite::Regex::new(r"^\s*except\s*(?::|\(?\s*(?:Base)?Exception\b)")
+            .expect("the pattern compiles");
+        (text.lines().enumerate())
+            .filter(|(_, line)| every.is_match(line))
+            .map(|(at, _)| format!("{name}:{}", at + 1))
+            .collect()
+    }
+
+    /// Every tracked Python script names the exceptions it expects: one that catches them all
+    /// takes a bug of its own for the failure it was written for (a driver logging `CRASH` for its
+    /// own mistake) and hides it, and the next script copies it.
+    #[test]
+    fn python_names_the_exceptions_it_catches() {
+        let root = crate::workspace::root();
+        let found: Vec<String> = (super::tracked(&["*.py"], "infra/drive.py").into_iter())
+            .flat_map(|name| {
+                let text = std::fs::read_to_string(root.join(&name))
+                    .unwrap_or_else(|error| panic!("{name}: {error}"));
+                catch_alls(&name, &text)
+            })
+            .collect();
+        assert!(
+            found.is_empty(),
+            "name the exceptions expected there:\n{}",
+            found.join("\n")
+        );
+    }
+
+    /// A bare `except:`, and `except Exception` or `BaseException` alone, as a tuple's first or
+    /// bound to a name, are found; named exceptions, and `Exception` in a string or a comment, are
+    /// not.
+    #[test]
+    fn a_catch_all_is_found_and_a_named_exception_is_not() {
+        let text = "try:\n    x()\nexcept:\n    pass\n    except Exception as error:\n\
+                    except (Exception, OSError):\nexcept BaseException:\nexcept ExceptionGroup:\n\
+                    except (ValueError, KeyError):\nexcept OSError:\n# except Exception\n\
+                    print(\"except Exception\")\n";
+        assert_eq!(
+            catch_alls("x.py", text),
+            ["x.py:3", "x.py:5", "x.py:6", "x.py:7"]
+        );
     }
 }

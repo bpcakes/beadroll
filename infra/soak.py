@@ -53,7 +53,7 @@ def run(*args):
     if proc.returncode:
         try:
             row["code"] = json.loads(proc.stderr)["error"]["code"]
-        except Exception:
+        except (ValueError, KeyError, TypeError):  # not bead's JSON error: its text, kept
             row["code"] = "CRASH"
             row["err"] = proc.stderr[-400:]
     elif proc.stdout.strip():

@@ -155,7 +155,7 @@ def run(host, *args, thread=None, agent="codex", env="", raw=False, timeout=120)
     if proc.returncode:
         try:
             return {"error": json.loads(proc.stderr)["error"]["code"], "rc": proc.returncode, "ms": ms, "err": proc.stderr[-300:]}
-        except Exception:
+        except (ValueError, KeyError, TypeError):  # not bead's JSON error: its text, kept
             return {"error": "CRASH", "rc": proc.returncode, "ms": ms, "err": proc.stderr[-600:]}
     return {"ok": json.loads(proc.stdout) if proc.stdout.strip() else None, "ms": ms}
 
