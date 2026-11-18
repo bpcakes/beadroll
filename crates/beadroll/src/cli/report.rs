@@ -29,8 +29,8 @@ pub(super) fn warn(failure: &Failure, output: OutputMode, color_mode: Color) {
 }
 
 /// Reports `failure` on standard error: `{"error": {"code", "message"}}` with `--json`, else
-/// `Error: message`, painted when `color`. The status is the command's (2 for `USAGE`, else 1),
-/// whatever stderr does.
+/// `Error: message`, painted as `color_mode` says. The status is the command's (2 for `USAGE`, else
+/// 1), whatever stderr does.
 pub(super) fn report(failure: &Failure, output: OutputMode, color_mode: Color) -> u8 {
     let text = match (output == OutputMode::Json, &failure.raw) {
         // Bytes that are not UTF-8 become U+FFFD.

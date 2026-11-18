@@ -107,7 +107,7 @@ impl Projection {
     }
 
     /// [`Projection::encode`], what every event had seen cut down to the events the state names and
-    /// the frontier when `compact`, and written as it is otherwise, whatever
+    /// the frontier when `compaction` asks for it, and written as it is otherwise, whatever
     /// [`Projection::compaction_due`] says: what the tests compare. Never compacted, a projection
     /// would keep every event it took in, the count of its last compaction carried forward.
     pub(crate) fn encode_with(

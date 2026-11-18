@@ -221,8 +221,9 @@ impl Workspace {
         }
     }
 
-    /// What this machine last used (`meta.json`). A missing file is empty. With `strict` (for
-    /// [`Workspace::remote`]), the file may be the only record of the coordination remote: one
+    /// What this machine last used (`meta.json`). A missing file is empty. With
+    /// `MetadataRead::Strict` (for [`Workspace::remote`]), the file may be the only record of the
+    /// coordination remote: one
     /// that cannot be read or parsed, or whose remote is not a string, is an error, never a
     /// silent switch to origin.
     pub fn meta(&self, metadata_read: MetadataRead) -> Result<Arc<Object>, Error> {
