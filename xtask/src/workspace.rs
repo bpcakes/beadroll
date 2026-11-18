@@ -18,6 +18,11 @@ impl Failure {
         Failure::Failed(format!("{what} {}: {error}", path.display()))
     }
 
+    /// The failure of a command that could not write its report to the terminal, for `error`.
+    pub(crate) fn unreported(error: &std::io::Error) -> Failure {
+        Failure::Failed(format!("cannot report: {error}"))
+    }
+
     /// The usage failure of a subcommand given `arg`, an option it does not take.
     pub(crate) fn unknown_option(arg: &std::ffi::OsStr) -> Failure {
         Failure::Usage(format!("unknown option {}", arg.to_string_lossy()))

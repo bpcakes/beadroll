@@ -116,7 +116,7 @@ fn make(
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> Result<bool, Failure> {
-    let cannot_report = |error: io::Error| Failure::Failed(format!("cannot report: {error}"));
+    let cannot_report = |error: io::Error| Failure::unreported(&error);
     let installed = tools.require(root)?;
     writeln!(stdout, "{:<14} {installed}", "tools").map_err(cannot_report)?;
     // A report is of this run alone: nothing of an earlier one stays in its place.

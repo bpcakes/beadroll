@@ -18,11 +18,6 @@ fn args(list: &[&str]) -> Vec<OsString> {
     list.iter().map(OsString::from).collect()
 }
 
-/// An executable shell script `name` in `dir` with `body`: its path.
-fn script(dir: &Path, name: &str, body: &str) -> OsString {
-    workspace::fake_tool(dir, name, body)
-}
-
 #[test]
 fn options_are_stress_and_sweep_and_nothing_else() {
     assert_eq!(parse(args(&[])).ok(), Some(Options::default()));
@@ -261,7 +256,7 @@ fn rustc(dir: &Path, llvm_tools: LlvmTools) -> OsString {
         }
     }
     let libdir = dir.join("lib");
-    script(dir, "rustc", &format!("echo '{}'\n", libdir.display()))
+    workspace::fake_tool(dir, "rustc", &format!("echo '{}'\n", libdir.display()))
 }
 
 /// Tools in a directory of their own under `base`, `name`, so that each case has its toolchain.
@@ -269,7 +264,7 @@ fn tools(base: &Path, name: &str, cargo_body: &str, llvm_tools_mode: LlvmTools) 
     let dir = base.join(name);
     std::fs::create_dir_all(&dir).expect("the tools' directory");
     Tools {
-        cargo: script(&dir, "cargo", cargo_body),
+        cargo: workspace::fake_tool(&dir, "cargo", cargo_body),
         rustc: rustc(&dir, llvm_tools_mode),
         llvm_from_env: false,
     }
@@ -361,7 +356,7 @@ fn a_cargo_that_cannot_run_is_not_one_without_llvm_cov() {
 fn a_toolchain_that_cannot_run_is_not_one_without_llvm_tools() {
     let dir = tempfile::tempdir().expect("a scratch directory");
     let missing = Tools {
-        cargo: script(dir.path(), "cargo", "echo 'cargo-llvm-cov 0.8.7'\n"),
+        cargo: workspace::fake_tool(dir.path(), "cargo", "echo 'cargo-llvm-cov 0.8.7'\n"),
         rustc: dir.path().join("no-such-rustc").into_os_string(),
         llvm_from_env: false,
     };
