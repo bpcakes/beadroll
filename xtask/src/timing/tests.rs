@@ -56,7 +56,7 @@ fn the_command_follows_two_dashes() {
 fn sync_takes_a_count_a_shape_and_a_rotation() {
     let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let options = parse(args(&["--sync", "200", "--ownership", "--rotate", "4096"])).unwrap();
-    assert_eq!(options.sync, Some(200));
+    assert_eq!(options.mode, Some(Mode::Sync(200)));
     assert_eq!(options.rotate, Some(4096));
     assert_eq!(options.shape, history::Shape::Ownership);
     assert_eq!(parse(args(&["--sync", "10"])).unwrap().rotate, None);
@@ -94,7 +94,7 @@ fn contend_takes_machines_writes_and_a_latency() {
         "0",
     ]))
     .unwrap();
-    assert_eq!(options.contend, Some(4));
+    assert_eq!(options.mode, Some(Mode::Contend(4)));
     assert_eq!(options.writes, Some(50));
     assert_eq!(options.latency, Some(0));
     for alone in [
@@ -111,25 +111,7 @@ fn contend_takes_machines_writes_and_a_latency() {
 fn extend_takes_a_count_of_issues_and_is_a_measurement_of_its_own() {
     let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let options = parse(args(&["--extend", "8000"])).unwrap();
-    assert_eq!(options.extend, Some(8000));
-    // The count reaches the extension measurement and no other: an arm that set another
-    // mode's field, or none, would leave this one empty.
-    let modes = [
-        options.replay,
-        options.sync,
-        options.read,
-        options.merge,
-        options.contend,
-        options.import,
-        options.plan,
-        options.dangling,
-        options.ready,
-        options.details,
-        options.renames,
-        options.decode,
-        options.parse,
-    ];
-    assert!(modes.iter().all(Option::is_none), "{modes:?}");
+    assert_eq!(options.mode, Some(Mode::Extend(8000)));
     for wrong in [
         &["--extend", "many"][..],
         &["--extend"],
@@ -149,24 +131,7 @@ fn extend_takes_a_count_of_issues_and_is_a_measurement_of_its_own() {
 fn dangling_takes_a_count_of_issues_and_is_a_measurement_of_its_own() {
     let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let options = parse(args(&["--dangling", "16000"])).unwrap();
-    assert_eq!(options.dangling, Some(16000));
-    // The count reaches this measurement and no other.
-    let modes = [
-        options.replay,
-        options.sync,
-        options.read,
-        options.merge,
-        options.contend,
-        options.import,
-        options.plan,
-        options.extend,
-        options.ready,
-        options.details,
-        options.renames,
-        options.decode,
-        options.parse,
-    ];
-    assert!(modes.iter().all(Option::is_none), "{modes:?}");
+    assert_eq!(options.mode, Some(Mode::Dangling(16000)));
     for wrong in [
         &["--dangling", "many"][..],
         &["--dangling"],
@@ -186,24 +151,7 @@ fn dangling_takes_a_count_of_issues_and_is_a_measurement_of_its_own() {
 fn ready_takes_a_count_of_issues_and_is_a_measurement_of_its_own() {
     let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let options = parse(args(&["--ready", "4000"])).unwrap();
-    assert_eq!(options.ready, Some(4000));
-    // The count reaches this measurement and no other.
-    let modes = [
-        options.replay,
-        options.sync,
-        options.read,
-        options.merge,
-        options.contend,
-        options.import,
-        options.plan,
-        options.extend,
-        options.dangling,
-        options.details,
-        options.renames,
-        options.decode,
-        options.parse,
-    ];
-    assert!(modes.iter().all(Option::is_none), "{modes:?}");
+    assert_eq!(options.mode, Some(Mode::Ready(4000)));
     for wrong in [
         &["--ready", "many"][..],
         &["--ready"],
@@ -223,24 +171,7 @@ fn ready_takes_a_count_of_issues_and_is_a_measurement_of_its_own() {
 fn details_takes_a_count_of_issues_and_is_a_measurement_of_its_own() {
     let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let options = parse(args(&["--details", "8000"])).unwrap();
-    assert_eq!(options.details, Some(8000));
-    // The count reaches this measurement and no other.
-    let modes = [
-        options.replay,
-        options.sync,
-        options.read,
-        options.merge,
-        options.contend,
-        options.import,
-        options.plan,
-        options.extend,
-        options.dangling,
-        options.ready,
-        options.renames,
-        options.decode,
-        options.parse,
-    ];
-    assert!(modes.iter().all(Option::is_none), "{modes:?}");
+    assert_eq!(options.mode, Some(Mode::Details(8000)));
     for wrong in [
         &["--details", "many"][..],
         &["--details"],
@@ -260,24 +191,7 @@ fn details_takes_a_count_of_issues_and_is_a_measurement_of_its_own() {
 fn renames_takes_a_count_of_copies_and_is_a_measurement_of_its_own() {
     let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let options = parse(args(&["--renames", "8000"])).unwrap();
-    assert_eq!(options.renames, Some(8000));
-    // The count reaches this measurement and no other.
-    let modes = [
-        options.replay,
-        options.sync,
-        options.read,
-        options.merge,
-        options.contend,
-        options.import,
-        options.plan,
-        options.extend,
-        options.dangling,
-        options.ready,
-        options.details,
-        options.decode,
-        options.parse,
-    ];
-    assert!(modes.iter().all(Option::is_none), "{modes:?}");
+    assert_eq!(options.mode, Some(Mode::Renames(8000)));
     for wrong in [
         &["--renames", "many"][..],
         &["--renames"],
@@ -297,25 +211,8 @@ fn renames_takes_a_count_of_copies_and_is_a_measurement_of_its_own() {
 fn decode_takes_a_count_of_events_a_shape_and_is_a_measurement_of_its_own() {
     let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let options = parse(args(&["--decode", "200000", "--ownership"])).unwrap();
-    assert_eq!(options.decode, Some(200_000));
+    assert_eq!(options.mode, Some(Mode::Decode(200_000)));
     assert_eq!(options.shape, history::Shape::Ownership);
-    // The count reaches this measurement and no other.
-    let modes = [
-        options.replay,
-        options.sync,
-        options.read,
-        options.merge,
-        options.contend,
-        options.import,
-        options.plan,
-        options.extend,
-        options.dangling,
-        options.ready,
-        options.details,
-        options.renames,
-        options.parse,
-    ];
-    assert!(modes.iter().all(Option::is_none), "{modes:?}");
     for wrong in [
         &["--decode", "many"][..],
         &["--decode"],
@@ -335,25 +232,8 @@ fn decode_takes_a_count_of_events_a_shape_and_is_a_measurement_of_its_own() {
 fn parse_takes_a_count_of_files_a_shape_and_is_a_measurement_of_its_own() {
     let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let options = parse(args(&["--parse", "92000", "--ownership"])).unwrap();
-    assert_eq!(options.parse, Some(92_000));
+    assert_eq!(options.mode, Some(Mode::Parse(92_000)));
     assert_eq!(options.shape, history::Shape::Ownership);
-    // The count reaches this measurement and no other.
-    let modes = [
-        options.replay,
-        options.sync,
-        options.read,
-        options.merge,
-        options.contend,
-        options.import,
-        options.plan,
-        options.extend,
-        options.dangling,
-        options.ready,
-        options.details,
-        options.renames,
-        options.decode,
-    ];
-    assert!(modes.iter().all(Option::is_none), "{modes:?}");
     for wrong in [
         &["--parse", "many"][..],
         &["--parse"],
@@ -373,7 +253,7 @@ fn parse_takes_a_count_of_files_a_shape_and_is_a_measurement_of_its_own() {
 fn ownership_shapes_a_replay_and_load_names_a_directory() {
     let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
     let options = parse(args(&["--replay", "10", "--ownership"])).unwrap();
-    assert_eq!(options.replay, Some(10));
+    assert_eq!(options.mode, Some(Mode::Replay(10)));
     assert_eq!(options.shape, history::Shape::Ownership);
     assert_eq!(
         parse(args(&["--replay", "10"])).unwrap().shape,
@@ -392,4 +272,30 @@ fn ownership_shapes_a_replay_and_load_names_a_directory() {
             "{wrong:?}"
         );
     }
+}
+
+/// The table every measurement is named in gives the usage texts the list they always had, a
+/// second measurement is refused where it is named, and one named again keeps its last count.
+#[test]
+fn measurements_are_named_once_and_one_at_a_time() {
+    let args = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
+    let usage = |words: &[&str]| match parse(args(words)) {
+        Err(Failure::Usage(text)) => text,
+        other => panic!("{words:?}: {:?}", other.map(|options| options.mode)),
+    };
+    assert_eq!(
+        usage(&["--label", "x"]),
+        "timing needs --replay N, --sync N, --read N, --merge N, --contend M, --import N, \
+         --plan N, --extend N, --dangling N, --ready N, --details N, --renames N, --decode N, \
+         --parse N, or a command after --"
+    );
+    assert_eq!(
+        usage(&["--plan", "1", "--parse", "1"]),
+        "one of --replay N, --sync N, --read N, --merge N, --contend M, --import N, \
+         --plan N, --extend N, --dangling N, --ready N, --details N, --renames N, \
+         --decode N and --parse N"
+    );
+    let options = parse(args(&["--plan", "1", "--plan", "5"])).unwrap();
+    assert_eq!(options.mode, Some(Mode::Plan(5)));
+    assert!(usage(&["--import", "many"]).contains("--import"));
 }
