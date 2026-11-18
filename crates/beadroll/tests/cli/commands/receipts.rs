@@ -114,6 +114,8 @@ fn locale_retry_keeps_the_accepted_description() {
         sea.show(&key).get("description").and_then(|d| d.as_str()),
         Some("café body\n")
     );
+    // the accepted description kept, as for Latin-1, not written again by a new request
+    assert_eq!(count(&ops(&sea, &key), "set"), 1);
 }
 
 /// Verified (no finding): another thread, a sync, changed stdin and `--json` do not confuse a
