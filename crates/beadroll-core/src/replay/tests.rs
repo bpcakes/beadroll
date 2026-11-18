@@ -29,7 +29,7 @@ pub(crate) const BATCHES: usize = 30;
 const ORDERS: usize = 6;
 
 /// What `state` answers, in order, each answer with what was asked; with the records that could not
-/// be used sorted, when `flawed`.
+/// be used sorted, when `flawed` is `HistoryKind::Flawed`.
 fn answers(state: &State, flawed: HistoryKind) -> Vec<(String, String)> {
     let mut said: Vec<(String, String)> = Vec::new();
     let mut say = |asked: String, answer: String| said.push((asked, answer));

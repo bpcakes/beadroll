@@ -4,7 +4,8 @@
 //! crate or module root, apart from the two `CONTRIBUTING.md` names, no Rust source grows past
 //! the line it should have been split long before, nothing is named for a finding, a
 //! module's items are imported in one `use` line, the store's and sync's errors of the
-//! operating system name their path, and no Python catches every exception.
+//! operating system name their path, no Python catches every exception, and no doc reads a mode
+//! as a flag.
 
 /// The repository's tracked files that `pathspecs` match (all of them when none is given), by their
 /// paths from its root. A listing without `expected` fails the test: a scan of nothing would pass.
@@ -516,5 +517,106 @@ mod catch_alls {
             catch_alls("x.py", text),
             ["x.py:3", "x.py:5", "x.py:6", "x.py:7"]
         );
+    }
+}
+
+/// `ModesReadAsFlags`.
+mod modes_read_as_flags {
+    use regex_lite::Regex;
+
+    /// The parameters of the function a doc block comes before, by name, with their types, when
+    /// `signature` (the lines after the block) declares one.
+    fn parameters(signature: &str) -> Vec<(String, String)> {
+        let function = Regex::new(r"(?s)\bfn\s+\w+(?:<[^>]*>)?\s*\((.*?)\)\s*(?:->|\{|where|;)")
+            .expect("a valid pattern");
+        let Some(found) = function.captures(signature) else {
+            return Vec::new();
+        };
+        let parameter =
+            Regex::new(r"^\s*(?:mut\s+)?(\w+)\s*:\s*(.+?)\s*$").expect("a valid pattern");
+        let mut depth = 0usize;
+        let mut parts = vec![String::new()];
+        for c in found[1].chars() {
+            match c {
+                '<' | '(' | '[' => depth += 1,
+                '>' | ')' | ']' => depth = depth.saturating_sub(1),
+                ',' if depth == 0 => {
+                    parts.push(String::new());
+                    continue;
+                }
+                _ => {}
+            }
+            parts.last_mut().expect("a part").push(c);
+        }
+        (parts.iter())
+            .filter_map(|part| parameter.captures(part))
+            .map(|named| (named[1].to_owned(), named[2].to_owned()))
+            .collect()
+    }
+
+    /// The doc lines of `text`, the Rust file `name`, that read a parameter of a mode's type as a
+    /// flag (``when `color`.``, ``unless `ok`,``), as NAME:LINE: the doc of a parameter that was a
+    /// bool, left as it was when the parameter became a mode. A verb after the name (``when
+    /// `colors` says so``) is how a mode is read; `bool` and `Option` parameters are flags.
+    fn flags(name: &str, text: &str) -> Vec<String> {
+        let read_as_flag =
+            Regex::new(r"\b(?:when|unless|if)\s+`(\w+)`\s*(?:[,.;:)]|$|and\b|or\b|else\b)")
+                .expect("a valid pattern");
+        let lines: Vec<&str> = text.lines().collect();
+        let mut found = Vec::new();
+        let mut at = 0;
+        while at < lines.len() {
+            if !lines[at].trim_start().starts_with("///") {
+                at += 1;
+                continue;
+            }
+            let start = at;
+            while at < lines.len() && lines[at].trim_start().starts_with("///") {
+                at += 1;
+            }
+            let doc = (lines[start..at].iter())
+                .map(|line| line.trim_start().trim_start_matches('/').trim())
+                .collect::<Vec<_>>()
+                .join(" ");
+            let after = (lines[at..].iter()).skip_while(|line| line.trim_start().starts_with("#["));
+            let signature: String = after.take(12).copied().collect::<Vec<_>>().join("\n");
+            let parameters = parameters(&signature);
+            for read in read_as_flag.captures_iter(&doc) {
+                let mode = (parameters.iter()).find(|(named, _)| *named == read[1]);
+                if let Some((_, kind)) = mode
+                    && kind != "bool"
+                    && !kind.starts_with("Option<")
+                {
+                    found.push(format!("{name}:{}: `{}`: {kind}", start + 1, &read[1]));
+                }
+            }
+        }
+        found
+    }
+
+    /// No doc reads a parameter of a mode's type as a flag: when a bool became a mode
+    /// (`CONTRIBUTING.md`), its doc says which value it means, or a reader looks for a bool to pass.
+    #[test]
+    fn no_doc_reads_a_mode_as_a_flag() {
+        let found: Vec<String> = (super::rust_sources().iter())
+            .flat_map(|(name, text)| flags(name, text))
+            .collect();
+        assert!(
+            found.is_empty(),
+            "say which value of the mode is meant:\n{}",
+            found.join("\n")
+        );
+    }
+
+    /// A mode read as a flag is found; a mode with a verb after it, a bool, an `Option`, and a name
+    /// that is no parameter are not.
+    #[test]
+    fn a_mode_read_as_a_flag_is_found_and_a_mode_read_as_one_is_not() {
+        let text = "/// Painted when `color`.\nfn render(line: &Line, color: Color) -> String {\n\
+                    }\n/// Painted when `color` says so.\nfn paint(color: Color) {}\n\
+                    /// Sorted when `sorted`, kept when `kept`.\n\
+                    fn sort(sorted: bool, kept: Option<Vec<u8>>) {}\n\
+                    /// Fails unless `other`.\nfn check(color: Color) {}\n";
+        assert_eq!(flags("x.rs", text), ["x.rs:1: `color`: Color"]);
     }
 }

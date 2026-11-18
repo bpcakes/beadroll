@@ -93,8 +93,9 @@ also keep the repository hygiene rules and CI matrix, and what bead holds on its
 - `src/hygiene.rs`: the repository lint (a test only): no private names in tracked files, and no
   lint exemption on an item but the two `CONTRIBUTING.md` accepts, no Rust source past 800
   lines, no function or module named for a finding in `docs/FINDINGS.md`, no module imported
-  in two `use` lines, no path-less `IoError::bare` in the store or sync, and no Python that
-  catches every exception. A new scan of the tracked files reads them through `sources` (or
+  in two `use` lines, no path-less `IoError::bare` in the store or sync, no Python that
+  catches every exception, and no doc that reads a parameter of a mode's type as a flag
+  (``when `color`.``: say which value is meant). A new scan of the tracked files reads them through `sources` (or
   `tracked`), which fails a listing that lacks the file it must hold.
 - `src/ci.rs` and its modules in `src/ci/`, every one reading a workflow through `ci::workflow`, its
   comments left out, so that a comment saying what a job does never passes for it:
