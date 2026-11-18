@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 use beadroll_core::json::Value;
 use beadroll_core::text::newlines;
 use beadroll_store::{
-    FileMode, Memo, Sourced, complete_prefix, extend_segment, pending_files, projection_sourced,
-    read, read_attempt, repair_tail, replica_id, segment_files, write_atomic,
+    FileMode, Memo, Sourced, complete_prefix, extend_segment, layout, pending_files,
+    projection_sourced, read, read_attempt, repair_tail, replica_id, segment_files, write_atomic,
 };
 
 use super::Link;
@@ -30,9 +30,9 @@ fn attempt_shaped(path: &str) -> bool {
     let Some(id) = file.strip_suffix(".json") else {
         return false;
     };
-    *events == "events"
+    *events == layout::EVENTS
         && !machine.is_empty()
-        && *claims == "claims"
+        && *claims == layout::CLAIMS
         && !id.is_empty()
         && id
             .bytes()
@@ -48,7 +48,7 @@ fn segment_shaped(path: &str) -> bool {
     let Some(number) = file.strip_suffix(".jsonl") else {
         return false;
     };
-    *events == "events"
+    *events == layout::EVENTS
         && !machine.is_empty()
         && !number.is_empty()
         && number.bytes().all(|b| b.is_ascii_digit())

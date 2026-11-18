@@ -6,8 +6,7 @@ use std::os::unix::fs::OpenOptionsExt as _;
 use beadroll_git::IoError;
 
 use super::{LockState, Workspace};
-use crate::fs::FileMode;
-use crate::{Error, private_dir, private_dirs};
+use crate::{Error, fs::FileMode, layout, private_dir, private_dirs};
 
 /// An exclusive store lock. Dropping it invalidates the phase's cached identities before
 /// releasing the file lock, including when a caller unwinds.
@@ -34,7 +33,7 @@ impl Workspace {
         private_dir(&self.settings.home()?)?;
         private_dir(&self.dir)?;
         private_dirs(&self.events_dir)?;
-        let path = self.dir.join("lock");
+        let path = self.dir.join(layout::LOCK);
         let file = OpenOptions::new()
             .read(true)
             .append(true)

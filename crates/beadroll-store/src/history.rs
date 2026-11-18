@@ -8,9 +8,12 @@ use beadroll_core::history::HistoryEntry;
 use beadroll_core::json::{self, Format, Value};
 use beadroll_core::order::causal_order;
 
-use crate::fs::{abandoned, content_sum, read_keyed, write_cache_parts};
-use crate::journal::{ContentSums, Loaded, claim_files_afresh, load_listed, segment_files};
-use crate::{Error, FileKey, Workspace};
+use crate::{
+    Error, FileKey, Workspace,
+    fs::{abandoned, content_sum, read_keyed, write_cache_parts},
+    journal::{ContentSums, Loaded, claim_files_afresh, load_listed, segment_files},
+    layout,
+};
 
 const MAGIC: &[u8] = b"bead history 1\n";
 
@@ -21,7 +24,7 @@ const MAGIC: &[u8] = b"bead history 1\n";
 pub fn history(ws: &Workspace) -> Result<Vec<HistoryEntry>, Error> {
     let segments = segment_files(ws)?;
     ws.settings.failpoints.hit("journal.after-enumerate");
-    let path = ws.dir.join("history");
+    let path = ws.dir.join(layout::HISTORY);
     if let Some(rows) = cached(ws, &path, &segments) {
         return Ok(rows);
     }
