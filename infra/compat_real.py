@@ -17,8 +17,10 @@ bead=selected.local_bead();selected.preflight(bead)
 br=shutil.which('br') or os.path.expanduser('~/.local/bin/br');bv=shutil.which('bv') or os.path.expanduser('~/.local/bin/bv')
 env=environment.scrubbed('BEADS','BV_','BD_')  # br's and bv's own as well
 env.update(BEAD_HOME=str(root/'bead-home'), BEAD_AGENT='audit', BEAD_THREAD='audit-compat',XDG_CACHE_HOME=str(root/'cache'),BV_NO_CACHE='1',BV_OUTPUT_FORMAT='json')
+# seconds a bead, br or bv command on one tracker may take: one longer is hung, and the check stops on it
+TIMEOUT=60
 def run(command,cwd,extra=None):
- return subprocess.run(command,cwd=cwd,env={**env,**(extra or {})},capture_output=True,text=True,timeout=60)
+ return subprocess.run(command,cwd=cwd,env={**env,**(extra or {})},capture_output=True,text=True,timeout=TIMEOUT)
 def parse(p):return json.loads(p.stdout)
 def canon(listed):
  return sorted(map(canonical,listed),key=lambda r:r['id'])

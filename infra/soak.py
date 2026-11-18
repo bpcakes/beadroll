@@ -21,6 +21,10 @@ if not os.path.isabs(bead):
 random.seed(seed)
 words = "ledger invoice export worker retry queue schema audit login token cache index proxy budget gate loop".split()
 log = open(logfile, "a")
+# seconds `--version` may take, and a command of the traffic, which waits for the other machines' writes
+# under contention (seconds at the median, tens at the longest): one longer is hung
+PROBE_TIMEOUT = 60
+TIMEOUT = 180
 
 
 def preflight():
@@ -35,7 +39,7 @@ def preflight():
     version = ""
     if data is not None:
         try:
-            proc = subprocess.run([bead, "--version"], capture_output=True, text=True, timeout=60)
+            proc = subprocess.run([bead, "--version"], capture_output=True, text=True, timeout=PROBE_TIMEOUT)
             lines = (proc.stdout.strip() or proc.stderr.strip()).splitlines()
             version = lines[0] if lines else ""
         except (OSError, subprocess.TimeoutExpired) as error:
@@ -60,7 +64,7 @@ EXPECTED = {"ALREADY_CLAIMED", "CLAIMED_BY_OTHER", "NOT_OWNER", "CYCLE", "STATUS
 
 def run(*args):
     t = time.time()
-    proc = subprocess.run([bead, *args, "--json"], cwd=repo, capture_output=True, text=True, timeout=180)
+    proc = subprocess.run([bead, *args, "--json"], cwd=repo, capture_output=True, text=True, timeout=TIMEOUT)
     ms = int((time.time() - t) * 1000)
     row = {"t": round(time.time(), 3), "op": args[0], "args": args[1:4], "rc": proc.returncode, "ms": ms}
     out = None
