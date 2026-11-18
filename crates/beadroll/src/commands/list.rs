@@ -2,7 +2,7 @@
 
 use std::ffi::OsString;
 
-use beadroll_core::event::Field;
+use beadroll_core::event::{Field, status};
 use beadroll_core::json::{Int, Object, Value};
 use beadroll_store::view_outline;
 
@@ -144,7 +144,7 @@ pub(crate) fn ready(ctx: &Context<'_>, args: &ReadyArgs) -> Result<Outcome, Fail
         None => None,
     };
     let filters = Filters {
-        status: vec!["open".to_owned()],
+        status: vec![status::OPEN.to_owned()],
         parent: args.parent.clone(),
         ..filters(&[], &args.filters, None, &[])
     };

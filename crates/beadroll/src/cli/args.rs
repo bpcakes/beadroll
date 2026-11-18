@@ -67,6 +67,15 @@ pub(super) fn remote(ns: &Namespace) -> Option<OsString> {
     owned(ns, "remote")
 }
 
+/// Whether `--dry-run` previews an import (`init --import` or `import`) rather than applying it.
+pub(super) fn import_mode(ns: &Namespace) -> commands::ImportMode {
+    if ns.flag("dry_run") {
+        commands::ImportMode::DryRun
+    } else {
+        commands::ImportMode::Apply
+    }
+}
+
 /// `init`'s arguments.
 pub(super) fn init_args(ns: &Namespace) -> commands::InitArgs {
     commands::InitArgs {
@@ -75,7 +84,7 @@ pub(super) fn init_args(ns: &Namespace) -> commands::InitArgs {
         tracked: ns.flag("tracked"),
         remote: remote(ns),
         network: network(ns),
-        dry_run: ns.flag("dry_run"),
+        mode: import_mode(ns),
     }
 }
 

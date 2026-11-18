@@ -55,9 +55,6 @@ pub struct Tx<'a> {
     pub place: Option<Value>,
     /// The attempt's events emitted, to settle with the remote.
     pub ownership: Vec<Value>,
-    /// Whether later events belong to the attempt.
-    /// Compatibility switch for manual routing. Prefer [`Tx::attempt`] for scoped routing.
-    pub conditional: bool,
     /// Whether the actor's text can be written ([`Actor::writable`]).
     writable: bool,
 }
@@ -94,7 +91,6 @@ impl<'a> Tx<'a> {
             emitted: Vec::new(),
             place,
             ownership: Vec::new(),
-            conditional: false,
             writable: actor.writable,
         })
     }
@@ -130,11 +126,7 @@ impl<'a> Tx<'a> {
             emitted: &mut self.emitted,
             place: &self.place,
             ownership: &mut self.ownership,
-            route: if self.conditional {
-                Route::Attempt
-            } else {
-                Route::Journal
-            },
+            route: Route::Journal,
             writable: self.writable,
         }
     }
@@ -154,7 +146,6 @@ impl<'a> Tx<'a> {
             emitted,
             place,
             ownership,
-            conditional,
             writable,
             ..
         } = self;
@@ -167,11 +158,7 @@ impl<'a> Tx<'a> {
             emitted,
             place,
             ownership,
-            route: if *conditional {
-                Route::Attempt
-            } else {
-                Route::Journal
-            },
+            route: Route::Journal,
             writable: *writable,
         };
         Ok((state, emitter))

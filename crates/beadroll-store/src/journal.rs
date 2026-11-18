@@ -378,7 +378,6 @@ pub(crate) fn load_listed(
     segments: &[PathBuf],
     summed: ContentSums,
 ) -> Result<Loaded, Error> {
-    let summed = summed == ContentSums::Compute;
     let mut journal = Journal::new();
     let mut whole = true;
     let mut held = Vec::with_capacity(segments.len());
@@ -386,7 +385,10 @@ pub(crate) fn load_listed(
         ws.settings.failpoints.hit("journal.before-read");
         let (data, key) = read_keyed(path)?;
         whole &= data.last().is_none_or(|last| *last == b'\n');
-        held.push((key, summed.then(|| content_sum(&data))));
+        held.push((
+            key,
+            (summed == ContentSums::Compute).then(|| content_sum(&data)),
+        ));
         let origin = path.display().to_string();
         let replica = folder_name(path, 1);
         journal.add_segment(&data, &replica, &origin);
@@ -398,7 +400,9 @@ pub(crate) fn load_listed(
         let replica = folder_name(path, 2);
         let read = read_keyed(path).ok();
         let data = read.as_ref().map(|(data, _)| data.as_slice());
-        let sum = data.filter(|_| summed).map(content_sum);
+        let sum = data
+            .filter(|_| summed == ContentSums::Compute)
+            .map(content_sum);
         match data {
             Some(data) => journal.add_attempt(data, &replica, &origin),
             None => journal.report(unreadable_attempt(origin)),

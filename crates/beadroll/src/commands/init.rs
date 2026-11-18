@@ -19,7 +19,7 @@ use beadroll_sync::{
 };
 
 use super::import::{answer_dry_run, import_records, read_only};
-use super::{Context, Failure, Outcome, text};
+use super::{Context, Failure, ImportMode, Outcome, text};
 
 /// Which workspace id a tracked file records.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -37,8 +37,9 @@ pub(crate) struct InitArgs {
     pub(crate) tracked: bool,
     pub(crate) remote: Option<OsString>,
     pub(crate) network: NetworkMode,
-    /// `--dry-run`: what `--import` would do, nothing imported or started, no remote asked.
-    pub(crate) dry_run: bool,
+    /// `--dry-run` ([`ImportMode::DryRun`]): what `--import` would do, nothing imported or
+    /// started, no remote asked.
+    pub(crate) mode: ImportMode,
 }
 
 /// The relative path to `path` from `start`, both absolute.
@@ -357,7 +358,7 @@ fn publication_note(ws: &Workspace, live: Option<&Endpoint>) -> Result<Option<St
 /// and publishes at once unless `--offline`. A tracker the remote already publishes is joined
 /// instead of a second one started ([`join_published`]).
 pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure> {
-    if args.dry_run {
+    if args.mode == ImportMode::DryRun {
         return dry_run(ctx, &args);
     }
     let mut notes = Vec::new();

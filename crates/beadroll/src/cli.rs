@@ -24,8 +24,8 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use args::{
-    comment_args, create_args, init_args, list_args, network, ownership_args, ready_args, remote,
-    transition_args, update_args,
+    comment_args, create_args, import_mode, init_args, list_args, network, ownership_args,
+    ready_args, remote, transition_args, update_args,
 };
 use beadroll_core::code::Code;
 use beadroll_core::event::FORMAT;
@@ -41,8 +41,7 @@ use spec::Scope;
 
 use crate::cli::paint::Color;
 use crate::commands::{
-    self, Context, Delivered, Failure, Held, ImportMode, Line, Outcome, SearchScope, Tone,
-    Transition, VERSION,
+    self, Context, Delivered, Failure, Held, Line, Outcome, SearchScope, Tone, Transition, VERSION,
 };
 
 /// Whether another state will be read to publish the command.
@@ -460,15 +459,7 @@ fn dispatch(
     let remote = remote(ns);
     let outcome = match ns.spec.name {
         "init" => commands::init(ctx, init_args(ns))?,
-        "import" => commands::import(
-            ctx,
-            ns.text("path").unwrap_or_default(),
-            if ns.flag("dry_run") {
-                ImportMode::DryRun
-            } else {
-                ImportMode::Apply
-            },
-        )?,
+        "import" => commands::import(ctx, ns.text("path").unwrap_or_default(), import_mode(ns))?,
         "export" => commands::export(ctx, ns.text("output"))?,
         "create" => commands::create(ctx, &create_args(ns))?,
         "update" => commands::update(ctx, &update_args(ns))?,

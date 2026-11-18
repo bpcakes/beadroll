@@ -5,6 +5,7 @@
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt as _;
 
+use beadroll_core::code::Code;
 use beadroll_core::import::dry_run::{Preview, preview, problems};
 use beadroll_core::import::{Step, Target, plan_import, read_records};
 use beadroll_core::json::{Object, Value};
@@ -72,14 +73,24 @@ pub(crate) fn import_records(tx: &mut Tx<'_>, path: &OsStr) -> Result<usize, Fai
                 created.push(tx.emit(OpName::Create, None, data, None)?.to_string());
             }
             Step::DepAdd { issue, to, data } => {
+                // a create the plan names that it does not hold is the planner's error, reported:
+                // an empty id would be taken for the event's own
+                let made = |n: usize| {
+                    created.get(n).cloned().ok_or_else(|| {
+                        Failure::new(
+                            Code::Validation,
+                            format!("the import's plan names create {n}, which it does not hold"),
+                        )
+                    })
+                };
                 let to = match to {
                     Target::Issue(uid) => uid.to_string(),
-                    Target::Created(n) => created.get(n).cloned().unwrap_or_default(),
+                    Target::Created(n) => made(n)?,
                 };
                 let mut payload = Object::new();
                 payload.insert("to".into(), Value::from(to));
                 payload.extend(data);
-                let issue = created.get(issue).cloned().unwrap_or_default();
+                let issue = made(issue)?;
                 tx.emit(OpName::DepAdd, Some(&issue), payload, None)?;
             }
         }
