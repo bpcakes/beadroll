@@ -8,7 +8,7 @@
 //! X; `update X --claim` answers "Updated"; `takeover X` crashes with KeyError when the claim has
 //! since ended.
 
-use beadroll_test_support::{Invocation, Json, Machine, printed_id};
+use beadroll_test_support::{Invocation, Json, Machine, printed_id, reported_code};
 
 use crate::hardening::{TrackerSetup, tracker_machine};
 
@@ -95,7 +95,9 @@ fn takeover_retry_after_the_claim_ended_is_not_a_traceback() {
     b.bead(["sync"]);
     let closed = b.run(["close", &x, "--force"]);
     assert_eq!(closed.returncode(), 0, "{}", closed.stderr);
-    let retry = a.run(["takeover", &x, "--reason", "idle"]);
+    let retry = a.run(["takeover", &x, "--reason", "idle", "--json"]);
     assert!(!retry.crashed(), "{}", retry.stderr);
     assert_ne!(retry.returncode(), 0, "{}", retry.stdout);
+    // refused with a code of bead's, not any failure that happens not to be a crash
+    assert!(reported_code(&retry).is_some(), "{}", retry.stderr);
 }

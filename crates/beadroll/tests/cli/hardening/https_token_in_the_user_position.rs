@@ -98,8 +98,10 @@ fn token_user_part_of_origin_is_not_shown() {
         .run();
     // nothing answers; only what bead prints matters
     assert_ne!(synced.returncode(), 0, "{}", synced.stdout);
-    let metas: String = metas(&machine)
-        .iter()
+    let stored = metas(&machine);
+    // a store without its meta.json would hide the token as well as one that never kept it
+    assert!(!stored.is_empty(), "no store's meta.json to look in");
+    let metas: String = (stored.iter())
         .map(|path| std::fs::read_to_string(path).unwrap())
         .collect();
     let shown = format!("{}{}{}{metas}", info.stdout, synced.stdout, synced.stderr);
