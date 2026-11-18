@@ -6,6 +6,14 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A checkout transport setting that is not UTF-8 (a cookie file's path, a URL's subsection) is
+  carried into the sync repository as git gave it, where it reached git with U+FFFD in place of
+  what could not be decoded.
+- The worktrees an import's dry run names are judged each in its own repository, even run from a
+  hook whose `GIT_DIR` and `GIT_INDEX_FILE` name this checkout's: a worktree whose tracker change
+  is committed on its own branch was named as having uncommitted changes.
+- A clock offset as large as an `i128` holds saturates rather than panicking or wrapping round.
+
 - `export` before any tracker is `NOT_INITIALIZED`, as the other reads are. It answered
   "Exported 0 issues" and, given `-o FILE`, replaced the file with nothing.
 - A claim's receipt that cannot be read is reported as `IO` and kept, never deleted as junk, so

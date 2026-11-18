@@ -57,9 +57,10 @@ impl Clock {
 
     /// Nanoseconds since the epoch, for event ids and the stamps events carry.
     pub fn now_ns(&self) -> i128 {
-        let now = self.real_ns() + self.offset_ns;
+        // an offset as far as an i128 goes saturates there, never panics or wraps round
+        let now = self.real_ns().saturating_add(self.offset_ns);
         match self.failpoints.as_ref().and_then(|f| f.hit("clock")) {
-            Some(Fired::Offset(ns)) => now + ns,
+            Some(Fired::Offset(ns)) => now.saturating_add(ns),
             Some(Fired::At(ns)) => ns,
             _ => now,
         }
@@ -346,6 +347,13 @@ mod tests {
 
     /// The defaults README's table gives: 262,144 bytes a segment, 45 s a fetch or push, and a
     /// repack at 1,000 loose objects or 40 packs.
+    /// An offset as far as an i128 goes saturates: the clock reads its largest time, never a
+    /// panic or a time wrapped round to before the epoch.
+    #[test]
+    fn a_clock_shifted_past_its_range_saturates() {
+        assert_eq!(Clock::shifted(i128::MAX).now_ns(), i128::MAX);
+    }
+
     #[test]
     fn numeric_settings_default_as_documented() {
         let s = settings(&[]).unwrap();
