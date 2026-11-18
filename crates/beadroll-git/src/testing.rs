@@ -7,6 +7,10 @@ use std::path::Path;
 
 use crate::runner::Env;
 
+/// The options that give git a committer for a commit a test makes, its configuration reading
+/// none: `git -c user.name=t -c user.email=t@example.invalid ...`.
+pub(crate) const IDENTITY: [&str; 4] = ["-c", "user.name=t", "-c", "user.email=t@example.invalid"];
+
 /// The environment git runs in for a test, starting in `dir`, its home and global configuration in
 /// `home`, with `extra` set.
 pub(crate) fn clean_env(dir: Option<&Path>, home: &Path, extra: &[(&str, &OsString)]) -> Env {

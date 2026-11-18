@@ -208,7 +208,7 @@ mod tests {
             std::fs::create_dir(&dir).unwrap();
             crate::testing::clean_env(Some(&dir), home, &[])
         };
-        let identity = ["-c", "user.name=t", "-c", "user.email=t@example.invalid"];
+        let identity = crate::testing::IDENTITY;
         let commit = |env: &Env| {
             let args = identity
                 .into_iter()
