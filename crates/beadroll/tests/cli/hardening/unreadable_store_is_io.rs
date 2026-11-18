@@ -7,17 +7,7 @@ use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
-use beadroll_test_support::{Json, Machine, Run, parse_json, printed_id};
-
-/// Whether the test runs as root, who ignores
-/// directory modes.
-fn skipped_as_root() -> bool {
-    let root = rustix::process::geteuid().is_root();
-    if root {
-        eprintln!("skipped: root ignores directory modes");
-    }
-    root
-}
+use beadroll_test_support::{Json, Machine, Run, parse_json, printed_id, skipped_as_root};
 
 /// A failed JSON call's code and message; success returns `None` and stdout. A crash returns
 /// `TRACEBACK`; an unstructured failure returns `UNSTRUCTURED`, both with stderr.
@@ -75,7 +65,7 @@ impl Drop for Unreadable {
 /// missing tracker.
 #[test]
 fn unlistable_own_journal_is_io_not_no_tracker() {
-    if skipped_as_root() {
+    if skipped_as_root("root ignores directory modes") {
         return;
     }
     let sandbox = crate::sandbox();
@@ -94,7 +84,7 @@ fn unlistable_own_journal_is_io_not_no_tracker() {
 /// open and listing it (exit 0).
 #[test]
 fn unlistable_claims_do_not_turn_a_claimed_issue_ready() {
-    if skipped_as_root() {
+    if skipped_as_root("root ignores directory modes") {
         return;
     }
     let sandbox = crate::sandbox();
@@ -117,7 +107,7 @@ fn unlistable_claims_do_not_turn_a_claimed_issue_ready() {
 /// identity).
 #[test]
 fn create_into_an_unlistable_journal_is_refused_not_lost() {
-    if skipped_as_root() {
+    if skipped_as_root("root ignores directory modes") {
         return;
     }
     let sandbox = crate::sandbox();
@@ -154,7 +144,7 @@ fn create_into_an_unlistable_journal_is_refused_not_lost() {
 /// on the same store, not `NOT_INITIALIZED` for `show` and exit 0 with no issues for `info`.
 #[test]
 fn store_that_is_not_a_directory_is_io() {
-    if skipped_as_root() {
+    if skipped_as_root("root ignores directory modes") {
         return;
     }
     let sandbox = crate::sandbox();
@@ -176,7 +166,7 @@ fn store_that_is_not_a_directory_is_io() {
 /// denial.
 #[test]
 fn unenterable_store_is_io_not_no_tracker() {
-    if skipped_as_root() {
+    if skipped_as_root("root ignores directory modes") {
         return;
     }
     let sandbox = crate::sandbox();

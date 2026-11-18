@@ -8,7 +8,7 @@ use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::PathBuf;
 
-use beadroll_test_support::{Machine, Run, Sandbox, parse_json};
+use beadroll_test_support::{Machine, Run, Sandbox, parse_json, skipped_as_root};
 
 /// A failed JSON call's code and message; a crash returns `TRACEBACK` with stderr, and no
 /// structured error returns `None` with stderr.
@@ -23,15 +23,6 @@ fn failed_call(run: &Run) -> (Option<String>, String) {
         }
     }
     (None, run.stderr.clone())
-}
-
-/// Whether the test runs as root, who reads a mode-0 file and must skip this check.
-fn skipped_as_root() -> bool {
-    let root = rustix::process::geteuid().is_root();
-    if root {
-        eprintln!("skipped: root reads a mode-000 file");
-    }
-    root
 }
 
 /// Machine `a` with a tracker (prefix `gi`) and one issue, which it has claimed; the
@@ -50,7 +41,7 @@ fn set_up(sandbox: &Sandbox) -> (Machine, String, PathBuf) {
 /// identity (which would orphan this machine's claims): fixing the mode is the whole cure.
 #[test]
 fn unreadable_identity_is_io_and_does_not_advise_a_new_identity() {
-    if skipped_as_root() {
+    if skipped_as_root("root reads a mode-000 file") {
         return;
     }
     let sandbox = crate::sandbox();
@@ -76,7 +67,7 @@ fn unreadable_identity_is_io_and_does_not_advise_a_new_identity() {
 /// still a damaged identity (F13), a structured `IDENTITY` error, not a crash.
 #[test]
 fn guard_undecodable_identity_stays_a_structured_identity_error() {
-    if skipped_as_root() {
+    if skipped_as_root("root reads a mode-000 file") {
         return;
     }
     let sandbox = crate::sandbox();

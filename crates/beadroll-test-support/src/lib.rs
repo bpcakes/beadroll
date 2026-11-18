@@ -105,6 +105,16 @@ pub fn json_lines(rows: &[Json]) -> String {
     rows.iter().map(|row| json_line(row) + "\n").collect()
 }
 
+/// Whether the tests run as root, who reads and writes whatever a file's or directory's mode says,
+/// so that a test of what a mode denies cannot run: it is skipped, saying `why` on standard error.
+pub fn skipped_as_root(why: &str) -> bool {
+    let root = rustix::process::geteuid().is_root();
+    if root {
+        eprintln!("skipped as root: {why}");
+    }
+    root
+}
+
 /// Writes `contents` to `path` as an executable (mode 0755): a hook, or a fake `git`, `ps` or
 /// `ssh` a test puts on `PATH`.
 pub fn executable(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) {
