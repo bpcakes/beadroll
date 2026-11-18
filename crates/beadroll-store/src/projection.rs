@@ -62,7 +62,7 @@ use crate::workspace::Workspace;
 
 pub use extension::extend_projection;
 pub use sources::Sourced;
-pub use texts::texts_path;
+pub(crate) use texts::texts_path;
 use writeback::save;
 
 /// The kind of journal file a projection records.
@@ -91,7 +91,7 @@ const SLACK: u64 = 1 << 20;
 const TAIL: u64 = if cfg!(test) { 4 } else { 64 };
 
 /// Where a store keeps its projection.
-pub fn projection_path(ws: &Workspace) -> PathBuf {
+pub(crate) fn projection_path(ws: &Workspace) -> PathBuf {
     ws.dir.join("projection")
 }
 

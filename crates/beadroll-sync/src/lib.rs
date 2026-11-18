@@ -17,10 +17,10 @@ pub use error::Error;
 pub use link::{Link, PublishMode};
 pub use ownership::{Mode, Settled, coordinated, settle_pending};
 pub use synchronise::{
-    NetworkMode, ROUNDS, Synced, adopt_published, conflict_detail, destination, pause,
-    publish_soon, publish_soon_at, publish_soon_to, refused, synchronise, unpublished_count,
+    NetworkMode, ROUNDS, Synced, adopt_published, destination, pause, publish_soon,
+    publish_soon_at, publish_soon_to, refused, synchronise, unpublished_count,
 };
 pub use tx::{
-    Attempt, Emitter, OWNERSHIP, Spent, Tx, confirm_ownership, drop_pending, locked, writing,
-    writing_spent, writing_state,
+    Attempt, Emitter, OWNERSHIP, Spent, Tx, drop_pending, locked, writing, writing_spent,
+    writing_state,
 };

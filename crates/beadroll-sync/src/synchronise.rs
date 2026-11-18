@@ -72,7 +72,7 @@ fn longest_pause(attempt: u32) -> f64 {
 mod tests;
 
 /// What the remote last answered, when it was not the plain race the message names.
-pub fn conflict_detail(link: &Link<'_>) -> String {
+pub(crate) fn conflict_detail(link: &Link<'_>) -> String {
     if link.last_error.contains("[remote rejected]") {
         format!(" (the remote last answered: {})", link.last_error)
     } else {
