@@ -295,6 +295,15 @@ pub(crate) fn texts_in(
     Ok(view(ws)?)
 }
 
+/// A tracker's name, as `info` and `recap` both give it: the one its last sync recorded in
+/// `meta.json`, which follows the repository through a move, else the one its journal's init gave
+/// it; `None` when it has neither.
+pub(crate) fn tracker_name(meta: &beadroll_core::metadata::Metadata, st: &State) -> Option<Value> {
+    (meta.value("name").filter(|name| name.truthy()))
+        .or_else(|| st.name().filter(|name| name.truthy()))
+        .cloned()
+}
+
 /// There must be a tracker here.
 pub(crate) fn need_tracker(st: &State) -> Result<(), Failure> {
     if st.prefix().is_none() {

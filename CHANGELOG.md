@@ -6,6 +6,9 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `info` names a tracker as `recap` does: the name its last sync recorded, which follows the
+  repository through a move, else its init's. It kept the name the tracker was started under.
+
 - Two machines closing one issue with different reasons, neither seeing the other's, dispute its
   status, as different statuses do: `show` lists each close with its reason (`close_reason` on each
   alternative in `--json`), what depends on the issue is not ready, and a close made after seeing

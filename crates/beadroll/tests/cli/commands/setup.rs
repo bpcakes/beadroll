@@ -584,3 +584,28 @@ fn a_local_origin_moved_away_keeps_its_tracker() {
         );
     }
 }
+
+/// `info` and `recap` name a tracker alike: after its repository moves, the name the adopting sync
+/// recorded, the new repository's; `info` named it by its journal's init, the old one, forever.
+#[test]
+fn info_and_recap_name_a_moved_tracker_alike() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    json(&a, &["init", "--prefix", "ex"]);
+    let before = json(&a, &["info"])["name"].clone();
+    let moved = sandbox.root().join("renamed.git");
+    mirror(&sandbox, &moved);
+    set_origin(&a, &moved);
+    json(&a, &["sync"]);
+    let info = json(&a, &["info"]);
+    let recap = json(&a, &["recap"]);
+    let recapped = (recap["workspaces"].as_array().unwrap().iter())
+        .find(|tracker| tracker["workspace"] == info["workspace"])
+        .unwrap_or_else(|| panic!("no tracker {:?} in {recap:?}", info["workspace"]));
+    assert_eq!(
+        info["name"].as_str(),
+        Some("renamed"),
+        "was {before:?}: {info:?}"
+    );
+    assert_eq!(recapped["name"], info["name"], "{recap:?}");
+}

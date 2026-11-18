@@ -23,7 +23,7 @@ use beadroll_store::{
 
 use self::layout::{activity, time};
 use super::history::logged;
-use super::{Delivered, Failure, Line, Outcome, Tone, counted};
+use super::{Delivered, Failure, Line, Outcome, Tone, counted, tracker_name};
 
 pub(crate) use self::layout::Layout;
 
@@ -210,8 +210,7 @@ fn tracker(
             return Part::unusable(&ws.id, named, synced, &failure, mark);
         }
     };
-    let name = (named.or_else(|| st.name().filter(|name| name.truthy()).cloned()))
-        .map_or_else(|| ws.id.clone(), |name| str_of(&name));
+    let name = tracker_name(&meta, &st).map_or_else(|| ws.id.clone(), |name| str_of(&name));
     let journal = journal.settled_view();
     let shown = unseen(journal, window);
     let mut rows = Vec::with_capacity(shown.events.len());
