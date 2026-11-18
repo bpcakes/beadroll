@@ -48,6 +48,31 @@ pub(crate) fn import(
 
 /// Emits the events that import the export at `path` (`-`: standard input) into `tx`; how many
 /// records were new.
+/// The prefix every record of the export at `path` is keyed under (`bd-1`, `bd-2.1` → `bd`), for a
+/// tracker `init --import` starts without `--prefix`: none when the export has no record, and
+/// `VALIDATION` asking for `--prefix` when its records disagree, never one of theirs guessed at.
+pub(crate) fn records_prefix(path: &OsStr) -> Result<Option<String>, Failure> {
+    let content = read_utf8(path, path)?;
+    let records = read_records(&content, path.to_str().unwrap_or_default())?;
+    let mut prefixes: Vec<&str> = (records.iter())
+        .filter_map(|record| record.get("id").and_then(Value::as_str))
+        .filter_map(|id| id.rsplit_once('-').map(|(prefix, _)| prefix))
+        .collect();
+    prefixes.sort_unstable();
+    prefixes.dedup();
+    match prefixes.as_slice() {
+        [] => Ok(None),
+        [prefix] => Ok(Some((*prefix).to_owned())),
+        several => Err(Failure::new(
+            Code::Validation,
+            format!(
+                "the records to import are keyed under several prefixes ({}): give --prefix",
+                several.join(", ")
+            ),
+        )),
+    }
+}
+
 pub(crate) fn import_records(tx: &mut Tx<'_>, path: &OsStr) -> Result<usize, Failure> {
     let content = read_utf8(path, path)?;
     // the file's name begins every message about its records, as it was given

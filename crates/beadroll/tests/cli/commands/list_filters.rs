@@ -22,3 +22,31 @@ fn parent_filter_matches_every_direct_parent() {
         assert!(ids.contains(&child), "parent {parent}: {ids:?}");
     }
 }
+
+/// `--all` lifts only the default that leaves done issues out: a status named beside it still
+/// filters, as it does without it.
+#[test]
+fn a_status_named_beside_all_still_filters() {
+    let sandbox = crate::sandbox();
+    let a = machine(&sandbox, "a");
+    let open = printed_id(a.bead(["create", "open one"]));
+    let closed = printed_id(a.bead(["create", "closed one"]));
+    a.bead(["close", &closed, "--reason", "done"]);
+    for args in [
+        &["list", "-s", "closed"][..],
+        &["list", "-a", "-s", "closed"],
+    ] {
+        let listed = a.bead(args).expect("a list");
+        assert_eq!(
+            json_ids(&listed["issues"]),
+            std::slice::from_ref(&closed),
+            "{args:?}"
+        );
+    }
+    let everything = a.bead(["list", "-a"]).expect("a list");
+    let mut ids = json_ids(&everything["issues"]);
+    ids.sort();
+    let mut both = vec![open, closed];
+    both.sort();
+    assert_eq!(ids, both);
+}

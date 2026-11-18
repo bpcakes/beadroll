@@ -479,3 +479,82 @@ fn importing_legacy_comment_does_not_renumber_existing_local_comment() {
         "single-machine import renumbered an already exported comment"
     );
 }
+
+/// A record to import with a title that holds nothing, or a dependency that names another issue as
+/// its own, is refused whole, naming it, and nothing is imported: an issue no reader can name, or a
+/// dependency moved onto another record without a word, is never made.
+#[test]
+fn import_refuses_a_blank_title_and_a_dependency_of_another_record() {
+    let sandbox = crate::sandbox();
+    let machine = machine(&sandbox, "refusals");
+    let dependency = json!({"issue_id": "ex-a", "depends_on_id": "ex-x", "type": "blocks"});
+    let cases = [
+        (
+            "blank",
+            vec![record("ex-a", "   ", json!({}))],
+            "has no title",
+        ),
+        ("empty", vec![record("ex-a", "", json!({}))], "has no title"),
+        (
+            "elsewhere",
+            vec![
+                record("ex-a", "a", json!({})),
+                record("ex-b", "b", json!({"dependencies": [dependency]})),
+            ],
+            "lists a dependency of 'ex-a'",
+        ),
+    ];
+    for (name, records, said) in cases {
+        let file = sandbox.root().join(format!("{name}.jsonl"));
+        std::fs::write(&file, json_lines(&records)).unwrap();
+        let imported = machine.run(["import", file.to_str().unwrap(), "--json"]);
+        assert_eq!(code(&imported), "VALIDATION", "{name}: {}", imported.stderr);
+        assert!(
+            imported.stderr.contains(said),
+            "{name}: {}",
+            imported.stderr
+        );
+    }
+    let listed = machine
+        .bead(["list", "--all", "--limit", "0"])
+        .expect("a list");
+    assert_eq!(listed["total"], json!(0), "{listed:?}");
+}
+
+/// `init --import` without `--prefix` starts the tracker under the prefix its records share, so
+/// that what is made after joins them; records under several prefixes are `VALIDATION` asking for
+/// `--prefix`, and `--prefix` given wins.
+#[test]
+fn init_import_takes_the_prefix_its_records_share() {
+    // each its own sandbox: a second `init` beside a published tracker joins it, prefix and all
+    let start = |name: &str, records: &[Json], given: &[&str]| {
+        let sandbox = crate::sandbox();
+        let file = sandbox.root().join(format!("{name}.jsonl"));
+        std::fs::write(&file, json_lines(records)).unwrap();
+        let machine = beadroll_test_support::Machine::new(&sandbox, name);
+        let mut args = vec!["init"];
+        args.extend_from_slice(given);
+        args.extend(["--import", file.to_str().unwrap(), "--json"]);
+        let run = machine.run(args);
+        (sandbox, machine, run)
+    };
+    let shared = [
+        record("bd-1", "one", json!({})),
+        record("bd-2", "two", json!({})),
+    ];
+    let (_kept, a, run) = start("a", &shared, &[]);
+    assert_eq!(run.returncode(), 0, "{}", run.stderr);
+    assert_eq!(a.bead(["info"]).unwrap()["prefix"], json!("bd"));
+    let made = a.bead(["create", "after"]).unwrap();
+    assert!(made["id"].as_str().unwrap().starts_with("bd-"), "{made:?}");
+    let mixed = [
+        record("bd-1", "one", json!({})),
+        record("xy-2", "two", json!({})),
+    ];
+    let (_kept, _b, refused) = start("b", &mixed, &[]);
+    assert_eq!(code(&refused), "VALIDATION", "{}", refused.stderr);
+    assert!(refused.stderr.contains("--prefix"), "{}", refused.stderr);
+    let (_kept, c, run) = start("c", &shared, &["--prefix", "own"]);
+    assert_eq!(run.returncode(), 0, "{}", run.stderr);
+    assert_eq!(c.bead(["info"]).unwrap()["prefix"], json!("own"));
+}

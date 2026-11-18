@@ -18,7 +18,7 @@ use beadroll_sync::{
     Error as SyncError, Link, NetworkMode, publish_soon, publish_soon_to, synchronise, writing,
 };
 
-use super::import::{answer_dry_run, import_records, read_only};
+use super::import::{answer_dry_run, import_records, read_only, records_prefix};
 use super::{Context, Failure, ImportMode, Outcome, text};
 
 /// Which workspace id a tracked file records.
@@ -373,9 +373,19 @@ pub(crate) fn init(ctx: &Context<'_>, args: InitArgs) -> Result<Outcome, Failure
                 Some(name) if !name.is_empty() => Some(text(name)?),
                 _ => None,
             };
+            // without --prefix, an import's own, read only for a tracker started here: its issues
+            // and the ones made after share one prefix
+            let imported = match args.import_path.as_ref().filter(|p| !p.is_empty()) {
+                Some(path) if prefix_flag.as_ref().is_none_or(String::is_empty) => {
+                    records_prefix(path)?
+                }
+                _ => None,
+            };
             let prefix = match prefix_flag.as_ref().filter(|p| !p.is_empty()) {
                 Some(prefix) => prefix.clone(),
-                None => default_prefix(name.as_deref().unwrap_or("bead")),
+                None => {
+                    imported.unwrap_or_else(|| default_prefix(name.as_deref().unwrap_or("bead")))
+                }
             };
             let mut data = Object::new();
             data.insert("prefix".into(), Value::from(prefix.as_str()));
