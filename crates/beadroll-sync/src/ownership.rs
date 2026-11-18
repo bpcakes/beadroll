@@ -9,7 +9,7 @@ use std::ffi::OsStr;
 use beadroll_core::json::Value;
 use beadroll_git::PushOutcome;
 use beadroll_store::{
-    Actor, Endpoint, PublicationState, Workspace, ensure_replica_id, load_pending,
+    Actor, Endpoint, MetadataRead, PublicationState, Workspace, ensure_replica_id, load_pending,
 };
 
 use crate::error::Error;
@@ -162,6 +162,10 @@ pub fn coordinated<E: From<Error>>(
             let (prepared, retained) = tx.prepare();
             spent = retained;
             let prepared = pending_write.insert(prepared);
+            if built.is_err() {
+                // refused, but the fetch took in what the remote holds: that is published
+                note_fetched(ws, &merged.facts.remote_counts);
+            }
             let answer = built?;
             prepared.append(ws)?;
             if prepared.ownership.is_empty() {
@@ -243,6 +247,29 @@ fn published(ws: &Workspace, link: &mut Link<'_>, remote: &Endpoint) -> Result<(
     ws.note_sync(remote, &[("published", Value::from(counts))]);
     ws.set_wrote(PublicationState::Published);
     Ok(())
+}
+
+/// A command refused after its fetch merged the remote in: each file the remote holds is
+/// published as far as the remote holds it, raised and never lowered, so that what the fetch
+/// brought (another machine's events) is not counted as this machine's to publish, while what is
+/// only here still is. Bookkeeping, as `note_sync` is: it never turns the refusal into another
+/// failure.
+fn note_fetched(ws: &Workspace, remote: &std::collections::HashMap<String, usize>) {
+    let Ok(meta) = ws.metadata(MetadataRead::Lenient) else {
+        return;
+    };
+    let mut published = match (*meta).clone().into_object().shift_remove("published") {
+        Some(Value::Object(published)) => *published,
+        _ => beadroll_core::json::Object::new(),
+    };
+    for (name, held) in remote {
+        let held = beadroll_core::json::Int::from(*held as i64);
+        let kept = meta.published().and_then(|counts| counts.count(name));
+        if kept.is_none_or(|kept| kept < held) {
+            published.insert(name.clone(), Value::Int(held));
+        }
+    }
+    let _ = ws.save_meta(&[("published", Value::from(published))]);
 }
 
 /// Settlement either allows a fresh transaction or finishes this round (retrying on `None`).
