@@ -11,6 +11,11 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
   The driver required the variable but never compared it with the clones bead runs in, so a clone
   whose origin, or push URL, named a real repository would have received the test data.
 
+- `infra/drive.py` starts every process here, bead, git and ssh, in the environment every other
+  driver hands bead (`infra/environment.py`): without the caller's `BEAD_`, `GIT_`, `CLAUDE` and
+  `CODEX` variables. A caller's `GIT_DIR` or `BEAD_WORKSPACE` reached this machine's bead and git
+  before.
+
 - A checkout whose directory's name begins or ends with whitespace reads the `.beadroll.json` at
   its top and is named as git names it. Discovery stripped the whitespace off git's answer, so it
   looked for the file in a directory that does not exist and fell back to the local path's

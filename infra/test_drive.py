@@ -52,11 +52,12 @@ class DrivePreflight(unittest.TestCase):
         body = f'echo "$0 $*" >> {self.log}\necho "{version}"\n'
         return self.executable(self.root / name, ("#!/bin/sh\n" if script else "") + body)
 
-    def drive(self, beads=None, expect="0.2.0", local=None, *args):
+    def drive(self, beads=None, expect="0.2.0", local=None, *args, caller=None):
         env = {key: value for key, value in os.environ.items() if not key.startswith(("BEAD_", "GIT_"))}
         env.update(PATH=self.path, HOME=str(self.home), BEAD_TEST_REMOTE=REMOTE,
                    BEAD_DRIVE_HOSTS="one=u@one.invalid,two=two.invalid,three=u@three.invalid",
                    BEAD_UNDER_TEST=str(local or self.bead("local-bead", "bead 0.2.0")))
+        env.update(caller or {})
         if beads is not None:
             env["BEAD_DRIVE_BEADS"] = beads
         if expect:
@@ -117,6 +118,17 @@ class DrivePreflight(unittest.TestCase):
         proc = self.drive(beads)
         self.assertIn("fetches from 'git@example.invalid:real.git', not BEAD_TEST_REMOTE", proc.stderr)
         self.assertTrue(all(run.endswith(" --version") for run in self.runs()), self.runs())
+
+    def test_what_the_caller_routes_reaches_neither_bead_nor_git(self):
+        # a stand-in bead that also logs whatever of these it was handed
+        seen = self.executable(self.root / "seeing-bead",
+                               f'env | grep -E "^(BEAD_WORKSPACE|GIT_DIR|CLAUDE_)" >> {self.log}\necho "bead 0.2.0"\n')
+        caller = {"GIT_DIR": str(self.root / "nowhere"), "BEAD_WORKSPACE": "elsewhere", "CLAUDE_SESSION": "x"}
+        proc = self.drive(f"one={seen},two={seen},three={seen}", "0.2.0", seen, caller=caller)
+        # GIT_DIR would have sent the probe's git to no repository at all, so no origin to check
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.records(proc)["local"]["origin"], REMOTE)
+        self.assertEqual(self.runs(), [])
 
     def test_a_machine_without_a_clone_stops_the_run(self):
         rust = self.bead("rust-bead", "bead 0.2.0")
