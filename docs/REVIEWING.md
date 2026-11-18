@@ -2012,7 +2012,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   emptiness, `search`, `normalize_remote`); a path is resolved as `os.path.realpath` resolves it,
   never by libc, and an absolute one is resolved whether it exists or not (Python resolved only
   an existing one, so a local origin gone for a while derived another id there and the tracker
-  seemed gone: the id a missing path derives here is the one it derived while it was there); `--estimate`, `--limit` and `COLUMNS` read a whole number as Rust does, an
+  seemed gone: the id a missing path derives here is the one it derived while it was there), and a `file://`
+  URL of an absolute path is that path (Python took the URL's text, so a `file://` clone derived
+  another id than the path's clones, and found no tracker until a sync adopted it); `--estimate`, `--limit` and `COLUMNS` read a whole number as Rust does, an
   optional sign and ASCII digits with whitespace around them, within an `i128` (as `int()` did
   until roll-lqjj.53.2: `" +5 "` still, `5_000` and the digits of other scripts no longer);
   `show` prints a conflict's values as JSON (as `repr()` printed them, `'text'` and `True`, until

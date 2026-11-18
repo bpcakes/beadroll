@@ -104,14 +104,19 @@ fn rposition(bytes: &[u8], wanted: u8) -> Option<usize> {
     bytes.iter().rposition(|b| *b == wanted)
 }
 
-/// Normalises equivalent remote spellings: SSH, scp-like and HTTPS forms, .git suffixes, trailing
-/// slashes and host case. Existing local paths resolve relative to cwd, and an absolute path
+/// Normalises equivalent remote spellings: SSH, scp-like and HTTPS forms, a `file://` URL of a path
+/// and the path, .git suffixes, trailing slashes and host case. Existing local paths resolve relative to cwd, and an absolute path
 /// resolves whether it exists or not, as `os.path.realpath` resolves one: a local origin moved
 /// away for a while keeps the id it derived while it was there (origin's relative path reaches
 /// here anchored at the top of the checkout). Trimming and lowercase mapping use Unicode
 /// characters.
 pub fn normalize_remote(url: &OsStr, cwd: &Path) -> OsString {
     let u = strip_text_bytes(url.as_bytes());
+    // `file:///path` is the repository at `/path`, as git reads it: the same place, so the same id
+    let u = match u.strip_prefix(b"file://") {
+        Some(path) if path.starts_with(b"/") => path,
+        _ => u,
+    };
     if u.starts_with(b"/") || exists(OsStr::from_bytes(u), cwd) {
         let real = realpath(OsStr::from_bytes(u), cwd);
         return OsString::from_vec(lowercase_text_bytes(&without_dot_git(
@@ -267,6 +272,16 @@ mod tests {
         normalize_remote(OsStr::new(url), Path::new("/nonexistent-cwd"))
             .into_string()
             .unwrap()
+    }
+
+    /// A `file://` URL of an absolute path is that path, as git reads it: one repository, one id.
+    #[test]
+    fn a_file_url_normalises_as_its_path() {
+        assert_eq!(
+            norm("file:///nonexistent-root/w/Origin.git"),
+            norm("/nonexistent-root/w/Origin.git")
+        );
+        assert_eq!(norm("file:///nonexistent-root/x/"), "/nonexistent-root/x");
     }
 
     /// A missing absolute path normalises as it would existing, its `..` taken back and `.git`
