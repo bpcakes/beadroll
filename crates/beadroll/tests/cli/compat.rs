@@ -112,6 +112,13 @@ mod compat_custom_statuses {
             "{}",
             malformed.stderr
         );
+        // neither ready nor done: a custom status holds what depends on it, as an open one does
+        let created = a.bead(["create", "needs the pin", "--deps", "ex-pin"]);
+        let created = created.expect("bead create prints a record");
+        let held = created["id"].as_str().expect("an id").to_owned();
+        assert!(!a.ready().contains(&held), "{held}");
+        let blocked = a.bead(["blocked"]).expect("bead blocked prints a list");
+        assert_eq!(json_ids(&blocked), [held], "{blocked:?}");
     }
 }
 

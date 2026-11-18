@@ -179,6 +179,24 @@ fn import_refuses_nesting_that_not_every_machine_can_read() {
     let custom = exported.get("custom").expect("its custom field");
     let written = json_line(custom);
     assert_eq!(written, nested(50));
+    // the bound itself: a create holds its record two levels down, so 100 levels allow a record 98
+    // deep (its object, then 97 arrays) and refuse one a level deeper
+    for (depth, accepted) in [(97, true), (98, false)] {
+        let path = sandbox.root().join(format!("bound-{depth}.jsonl"));
+        let key = format!("ex-bound{depth}");
+        std::fs::write(&path, record(&key, depth, "custom")).expect("the record to import");
+        let run = m.run(["import", path_text(&path), "--json"]);
+        assert_no_crash(&run, &format!("import {depth} deep"));
+        if accepted {
+            assert_eq!(run.returncode(), 0, "{depth}: {}", run.stderr);
+        } else {
+            assert_eq!(code(&run), "VALIDATION", "{depth}: {}", run.stderr);
+            assert!(run.stderr.contains("more than 98 levels"), "{}", run.stderr);
+        }
+        let listed = m.bead(["list", "--all", "--id", &key, "--limit", "0"]);
+        let total = listed.expect("bead list prints a record")["total"].as_i64();
+        assert_eq!(total, Some(i64::from(accepted)), "{depth}");
+    }
 }
 
 /// The ids of the issues a `bead list --json` printed.

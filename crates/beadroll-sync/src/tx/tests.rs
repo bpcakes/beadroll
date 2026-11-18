@@ -218,6 +218,40 @@ fn failed_persistence_destroys_the_view_after_unlocking() {
     }
 }
 
+/// An event is written only within the 100 levels every reader takes back: its object, its data,
+/// then what the data holds. A member 98 arrays deep is written; one 99 deep is `Validation`, and
+/// nothing is recorded for it.
+#[test]
+fn an_event_nested_past_a_hundred_levels_is_refused() {
+    let fixture = Fixture::new("");
+    let nested = |depth: usize| {
+        (0..depth).fold(Value::Array(Vec::new()), |inner, _| {
+            Value::Array(vec![inner])
+        })
+    };
+    locked(&fixture.ws, || -> Result<(), Error> {
+        let mut tx = Tx::new(&fixture.ws, &fixture.actor)?;
+        let uid = tx.state()?.resolve(&fixture.key).unwrap().uid().to_string();
+        let comment = |depth: usize| {
+            let mut data = Object::new();
+            data.insert("text".into(), Value::from("deep"));
+            data.insert("x_deep".into(), nested(depth - 1));
+            data
+        };
+        tx.emit(OpName::Comment, Some(&uid), comment(98), None)?;
+        let refused = tx.emit(OpName::Comment, Some(&uid), comment(99), None);
+        match refused {
+            Err(Error::Validation(message)) => {
+                assert!(message.contains("more than 100 levels"), "{message}");
+            }
+            other => panic!("not refused as too deep: {other:?}"),
+        }
+        assert_eq!(tx.emitted.len(), 1, "the refused event was recorded");
+        Ok(())
+    })
+    .unwrap();
+}
+
 /// An attempt scope routes ordinary edits with the claim and never changes later emission.
 #[test]
 fn attempt_emission_is_scoped_even_after_an_error() {

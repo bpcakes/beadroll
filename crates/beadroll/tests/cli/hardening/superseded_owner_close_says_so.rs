@@ -29,17 +29,19 @@ fn close_superseded_by_a_takeover_does_not_answer_closed() {
     });
     let status = shown["status"].as_str().expect("a status");
     assert_eq!((status, stale), ("in_progress", vec!["close".to_owned()]));
-    let answered = (closed.returncode() == 0).then(|| {
-        let result = parse_json(&closed.stdout).expect("close printed JSON");
-        let status = result[0]["status"]
-            .as_str()
-            .expect("the closed issue's status");
-        status.to_owned()
-    });
+    // exit 0, as the decision in REVIEWING §2 has it, saying it was superseded and not closed
+    assert_eq!(closed.returncode(), 0, "{}", closed.stderr);
+    let result = parse_json(&closed.stdout).expect("close printed JSON");
     assert_ne!(
-        (closed.returncode(), answered.as_deref()),
-        (0, Some("closed")),
-        "the close answered closed with exit 0, yet it was superseded and ignored: {}",
+        result[0]["status"].as_str(),
+        Some("closed"),
+        "the close answered closed, yet it was superseded and ignored: {}",
+        closed.stdout
+    );
+    let said = result[0]["superseded"].as_str().unwrap_or_default();
+    assert!(
+        said.contains("another owner took over"),
+        "{}",
         closed.stdout
     );
 }
