@@ -67,6 +67,43 @@ fn no_git_maintenance_in_sync_git_and_fetches_stay_packed() {
     );
 }
 
+/// Maintenance comes after the publication took effect: a repack git refuses (here, a pack directory
+/// it cannot write) is reported as no repack, and the sync still succeeds, its push published.
+#[test]
+fn a_repack_git_refuses_fails_neither_the_sync_nor_its_answer() {
+    use std::os::unix::fs::PermissionsExt as _;
+    if beadroll_test_support::skipped_as_root("a read-only directory does not stop root") {
+        return;
+    }
+    let sandbox = crate::sandbox();
+    let (a, _, b) = set_up(&sandbox);
+    // offline, so that the sync below is its publication
+    a.bead(["create", "after a refused repack", "--offline"]);
+    let pack = a.store().join("sync.git").join("objects").join("pack");
+    let mode = |m: u32| std::fs::set_permissions(&pack, std::fs::Permissions::from_mode(m));
+    mode(0o555).expect("a read-only pack directory");
+    let synced = a
+        .cmd(["sync", "--json"])
+        .env("BEAD_REPACK_LOOSE", "1")
+        .env("BEAD_REPACK_PACKS", "1")
+        .run();
+    mode(0o755).expect("the pack directory back");
+    assert_eq!(synced.returncode(), 0, "{}", synced.stderr);
+    let result = parse_json(&synced.stdout).unwrap();
+    assert_eq!(result["pushed"].as_i64(), Some(1), "{result:?}");
+    // `repacked` is in the answer only when it repacked
+    assert!(
+        !result.get("repacked").is_some_and(Json::truthy),
+        "{result:?}"
+    );
+    b.bead(["sync"]);
+    let listed = b.bead(["list", "--all", "--limit", "0"]).unwrap();
+    assert!(
+        format!("{listed:?}").contains("after a refused repack"),
+        "not published"
+    );
+}
+
 /// Packs piling up repack too, whatever the loose objects: with `BEAD_REPACK_PACKS` reached and
 /// `BEAD_REPACK_LOOSE` far off, a sync packs the sync repository into one.
 #[test]

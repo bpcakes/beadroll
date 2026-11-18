@@ -6,6 +6,17 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- A `.beadroll.json` that cannot be read (a directory, no permission) is `IO` naming it, not `CONFIG`
+  "is not valid JSON".
+- `sync` succeeds once its push is accepted, whatever the repack after it does: a failed repack
+  answers no `repacked`, where it said `"repacked": true`, and an error in it no longer fails the
+  sync that published.
+- A git that cannot start because its directory is gone (a deleted worktree) names that directory,
+  not `git`; a temporary directory git's output cannot go to is named too.
+- The copies set aside (`*.fork-*`, `*.torn-*`, `sync.git.damaged-*`) are named by the real clock,
+  which the `clock` failpoint does not move, so two at one event time no longer share a name and
+  overwrite each other.
+
 - Input that was accepted and then dropped is refused with `USAGE`: a comment's text given more
   than one way (`comments add X words -m text` kept only `-m`'s), `init --dry-run` beside
   `--tracked`, `--remote` or `--prefix` (none of which a dry run applies), and `machines --name`

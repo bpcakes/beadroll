@@ -286,10 +286,12 @@ pub(crate) fn read_json_keyed<T>(
     path: &Path,
     parse: impl FnOnce(&[u8]) -> Result<T, String>,
 ) -> (Result<T, Unreadable>, Option<FileKey>) {
-    let read = File::open(path).and_then(|mut file| {
+    // up to its length when it was opened, as `read_keyed` reads: bytes appended after are not
+    // what the identity measured
+    let read = File::open(path).and_then(|file| {
         let meta = file.metadata()?;
         let mut data = Vec::new();
-        file.read_to_end(&mut data)?;
+        file.take(meta.len()).read_to_end(&mut data)?;
         let key = FileKey::of_meta(&meta).map(|key| key.up_to(data.len() as u64));
         Ok((data, key))
     });

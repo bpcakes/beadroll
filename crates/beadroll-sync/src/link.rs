@@ -33,7 +33,7 @@ use beadroll_git::{
 };
 use beadroll_store::{
     Endpoint, Memo, Workspace, claim_files, dir_entries, has_suffix, hex_token, layout,
-    private_dir, relative, segment_files,
+    private_dir, relative, relative_name, segment_files,
 };
 
 use crate::error::Error;
@@ -281,7 +281,7 @@ impl<'a> Link<'a> {
         self.before_replacement();
         let aside = self.git_dir.with_file_name(format!(
             "sync.git.damaged-{}",
-            self.ws.settings.clock.now_ns()
+            self.ws.settings.clock.real_ns()
         ));
         match std::fs::rename(&self.git_dir, &aside) {
             Ok(()) => {}
@@ -298,6 +298,7 @@ impl<'a> Link<'a> {
     /// packed objects gone, unreachable loose objects older than an hour gone (an in-flight fetch's
     /// are younger). Lock held, so no bead process of this store is writing; git's own maintenance
     /// is off. A blob this link wrote may be gone afterwards, unless a tree it published holds it.
+    /// Whether it repacked: a repack git refused is no repack, and nothing is pruned after it.
     pub fn maintain(&mut self) -> Result<bool, Error> {
         let objects = self.git_dir.join("objects");
         let mut loose = 0usize;
@@ -312,14 +313,19 @@ impl<'a> Link<'a> {
         if (loose as i128) < settings.repack_loose && (packs as i128) < settings.repack_packs {
             return Ok(false);
         }
-        self.run(&[
+        let repacked = self.run(&[
             OsStr::new("repack"),
             "-a".as_ref(),
             "-d".as_ref(),
             "-q".as_ref(),
         ])?;
-        self.run(&[OsStr::new("prune"), "--expire=1.hour.ago".as_ref()])?;
+        // the objects the repack moved are gone from where this link last made them, whether it
+        // finished or not
         self.known.forget_made();
+        if !repacked.success() {
+            return Ok(false);
+        }
+        self.run(&[OsStr::new("prune"), "--expire=1.hour.ago".as_ref()])?;
         Ok(true)
     }
 
@@ -367,10 +373,13 @@ fn count_unpublished(
         let name = relative(ws, &path);
         let lines = memo.lines(&name, &path)?;
         let known = remote_counts.get(&name).copied().unwrap_or(0);
-        count += lines as i64 - known as i64;
+        // a segment the remote holds more of has nothing unpublished, as
+        // `synchronise::unpublished_count` counts it: it does not cancel another's
+        count += (lines as i64 - known as i64).max(0);
     }
     for path in claim_files(ws)?.iter() {
-        if !remote_counts.contains_key(&relative(ws, path)) {
+        // its path in the store, as `relative` gives it, without a copy of each
+        if !remote_counts.contains_key(&*relative_name(ws, path)) {
             count += 1;
         }
     }

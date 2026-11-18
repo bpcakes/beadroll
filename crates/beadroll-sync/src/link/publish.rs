@@ -90,7 +90,17 @@ impl Link<'_> {
         let mut folders: BTreeMap<&str, BTreeMap<&str, BlobEntries<'_>>> = BTreeMap::new();
         for (path, sha) in blobs {
             let parts: Vec<&str> = path.split('/').collect();
-            let group = if parts.len() == 4 { parts[2] } else { "" };
+            // a machine's segments, and its accepted attempts under `claims/`: anything else under
+            // `events/` is reported, never left out of the tree without a word
+            let group = match parts.as_slice() {
+                [_, _, _] => "",
+                [_, _, group, _] if *group == layout::CLAIMS => group,
+                _ => {
+                    return Err(Error::Validation(format!(
+                        "{path} is not a journal segment or an attempt bead publishes"
+                    )));
+                }
+            };
             folders
                 .entry(parts.get(1).copied().unwrap_or_default())
                 .or_default()

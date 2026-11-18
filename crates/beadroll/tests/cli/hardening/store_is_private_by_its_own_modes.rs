@@ -149,9 +149,10 @@ fn machines_name_as_first_command_makes_a_private_home() {
 }
 
 /// G47: two torn fragments within one second must both survive. Run two syncs with
-/// clock@always=at(NS), one nanosecond apart within second 1791394588.25. Both map to the
-/// same floating-point second, exposing filename collisions. This build-specific clock test
-/// does not depend on umask.
+/// clock@always=at(NS), one nanosecond apart within second 1791394588.25, the same floating-point
+/// second, which named copies alike once. A copy is named by the real clock, which the failpoint
+/// does not move, so even an event clock held still cannot make two names alike. This
+/// build-specific clock test does not depend on umask.
 #[test]
 fn two_torn_fragments_in_one_second_are_both_kept() {
     let sandbox = crate::sandbox();
@@ -189,6 +190,11 @@ fn two_torn_fragments_in_one_second_are_both_kept() {
         [br#"{"first"#.to_vec(), br#"{"second"#.to_vec()],
         "a torn fragment was overwritten by a later one"
     );
-    // named by the clock the failpoint set: both were cut off within that one second
-    assert_eq!(stamped, cuts.map(|(_, at)| format!("{torn}{at}")));
+    // named by the real clock, in nanoseconds, each its own
+    let stamps: Vec<&str> = (stamped.iter()).map(|name| &name[torn.len()..]).collect();
+    assert!(
+        (stamps.iter()).all(|stamp| !stamp.is_empty() && stamp.bytes().all(|b| b.is_ascii_digit())),
+        "{stamped:?}"
+    );
+    assert_ne!(stamps[0], stamps[1], "two copies named alike");
 }

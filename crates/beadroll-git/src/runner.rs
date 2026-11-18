@@ -197,7 +197,7 @@ impl Git<'_> {
     /// The command that runs this git, its output going to the two unlinked files returned with it.
     pub(crate) fn prepare(&self) -> Result<(Command, File, File), Error> {
         let tmp = &self.env.tmp;
-        let unlinked = || tempfile::tempfile_in(tmp).map_err(|e| Error::Io(IoError::bare(&e)));
+        let unlinked = || tempfile::tempfile_in(tmp).map_err(|e| Error::Io(IoError::at(&e, tmp)));
         let out = unlinked()?;
         let err = unlinked()?;
         let stdin = match &self.input {
@@ -206,7 +206,8 @@ impl Git<'_> {
                 let written = file
                     .write_all(data)
                     .and_then(|()| file.seek(SeekFrom::Start(0)).map(drop));
-                written.map_err(|e| Error::Io(IoError::bare(&e)))?;
+                // the file is unlinked: the directory it is in is the path to name
+                written.map_err(|e| Error::Io(IoError::at(&e, tmp)))?;
                 Stdio::from(file)
             }
             None => Stdio::null(),
@@ -363,7 +364,11 @@ fn wait_for(
         Err(error) => {
             drop(give);
             let _ = waiter.join();
-            return Err(Error::Io(IoError::at(&error, "git")));
+            // a directory to start in that is gone (a deleted worktree) fails the spawn as a git
+            // that is not there would: name what is missing
+            let missing = (command.get_current_dir()).filter(|dir| !dir.is_dir());
+            let blamed = missing.unwrap_or(Path::new("git"));
+            return Err(Error::Io(IoError::at(&error, blamed)));
         }
     };
     let pid = child.id();
@@ -450,6 +455,34 @@ fn read_whole(file: &File) -> Result<Vec<u8>, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An `Env` on the test's own `PATH`, starting git in `dir` with its temporary files in `tmp`.
+    fn env_at(dir: Option<PathBuf>, tmp: PathBuf) -> Env {
+        let path = std::env::var_os("PATH").unwrap_or_default();
+        Env::new([(OsString::from("PATH"), path)], dir, tmp)
+    }
+
+    /// A directory to start git in that is gone (a deleted worktree) is named, not `git`, which a
+    /// spawn's "No such file or directory" would otherwise blame.
+    #[test]
+    fn a_start_directory_that_is_gone_is_named() {
+        let (scratch, _) = crate::testing::scratch();
+        let gone = scratch.path().join("deleted-worktree");
+        let error = env_at(Some(gone), scratch.path().to_path_buf())
+            .git(["--version"])
+            .run()
+            .unwrap_err();
+        assert!(error.to_string().contains("deleted-worktree"), "{error}");
+    }
+
+    /// A temporary directory git's output cannot go to is named in the error, as every OS error is.
+    #[test]
+    fn a_temporary_directory_that_is_missing_is_named() {
+        let (scratch, _) = crate::testing::scratch();
+        let missing = scratch.path().join("no-tmp-here");
+        let error = env_at(None, missing).git(["--version"]).run().unwrap_err();
+        assert!(error.to_string().contains("no-tmp-here"), "{error}");
+    }
 
     #[test]
     fn a_failure_names_the_command_and_what_git_said() {
