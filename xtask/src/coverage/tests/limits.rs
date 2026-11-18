@@ -9,8 +9,6 @@
 //! `format!` wrapped on to the next line. The probes that run `dd` under a limit (`exec dd`) are not
 //! bead, and the messages that name a `ulimit` have no `exec`.
 
-use super::*;
-
 /// Rust source as code and as its string literals.
 struct Lexed {
     /// The source without its comments.
@@ -122,22 +120,10 @@ fn problem(name: &str, source: &str) -> Option<String> {
 
 /// The tracked Rust files of the repository's tests under `crates/`, with their text.
 fn test_sources() -> Vec<(String, String)> {
-    let root = workspace::root();
-    let listed = Command::new("git")
-        .args(["ls-files", "-z", "crates"])
-        .current_dir(&root)
-        .output()
-        .expect("git runs");
-    assert!(listed.status.success(), "git ls-files failed");
-    let names = String::from_utf8(listed.stdout).expect("UTF-8 file names");
-    (names.split('\0'))
-        .filter(|name| name.ends_with(".rs") && name.contains("/tests/"))
-        .map(|name| {
-            (
-                name.to_owned(),
-                std::fs::read_to_string(root.join(name)).expect(name),
-            )
-        })
+    // a listing without the black-box tests' own support fails, as a scan of nothing would pass
+    let listed = crate::hygiene::sources(&["crates/*.rs"], "crates/beadroll/tests/cli/support.rs");
+    (listed.into_iter())
+        .filter(|(name, _)| name.contains("/tests/"))
         .collect()
 }
 

@@ -8,7 +8,7 @@
 
 /// The repository's tracked files that `pathspecs` match (all of them when none is given), by their
 /// paths from its root. A listing without `expected` fails the test: a scan of nothing would pass.
-fn tracked(pathspecs: &[&str], expected: &str) -> Vec<String> {
+pub(crate) fn tracked(pathspecs: &[&str], expected: &str) -> Vec<String> {
     let listed = std::process::Command::new("git")
         .args(["ls-files", "-z", "--"])
         .args(pathspecs)
@@ -28,16 +28,22 @@ fn tracked(pathspecs: &[&str], expected: &str) -> Vec<String> {
     names
 }
 
-/// Every tracked Rust source, its path from the repository's root and its text.
-fn rust_sources() -> Vec<(String, String)> {
+/// Every tracked file `pathspecs` match, its path from the repository's root and its text: what a
+/// scan of the repository reads, failing as [`tracked`] does when `expected` is not among them.
+pub(crate) fn sources(pathspecs: &[&str], expected: &str) -> Vec<(String, String)> {
     let root = crate::workspace::root();
-    (tracked(&["*.rs"], "xtask/src/hygiene.rs").into_iter())
+    (tracked(pathspecs, expected).into_iter())
         .map(|name| {
             let text = std::fs::read_to_string(root.join(&name))
                 .unwrap_or_else(|error| panic!("{name}: {error}"));
             (name, text)
         })
         .collect()
+}
+
+/// Every tracked Rust source, its path from the repository's root and its text.
+fn rust_sources() -> Vec<(String, String)> {
+    sources(&["*.rs"], "xtask/src/hygiene.rs")
 }
 
 /// `RepositoryHygiene`.
@@ -487,13 +493,8 @@ mod catch_alls {
     /// own mistake) and hides it, and the next script copies it.
     #[test]
     fn python_names_the_exceptions_it_catches() {
-        let root = crate::workspace::root();
-        let found: Vec<String> = (super::tracked(&["*.py"], "infra/drive.py").into_iter())
-            .flat_map(|name| {
-                let text = std::fs::read_to_string(root.join(&name))
-                    .unwrap_or_else(|error| panic!("{name}: {error}"));
-                catch_alls(&name, &text)
-            })
+        let found: Vec<String> = (super::sources(&["*.py"], "infra/drive.py").iter())
+            .flat_map(|(name, text)| catch_alls(name, text))
             .collect();
         assert!(
             found.is_empty(),
