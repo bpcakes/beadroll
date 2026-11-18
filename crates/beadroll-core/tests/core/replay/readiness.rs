@@ -476,6 +476,17 @@ fn claims_and_a_scope_restrict_what_is_listed_and_never_what_holds() {
         ["au-inside", "au-deeper", "au-twice"]
     );
     assert_eq!(agree_beneath(&st, &inside), ["au-deeper"]);
+    // a claimed issue with issues beneath it: left out, the walk going on to them, and nothing held
+    apply(
+        &mut f,
+        "claim",
+        &inside,
+        json!({"mode": "online", "generation": 1}),
+    );
+    let st = f.state();
+    assert!(agree(&st).is_empty(), "a claim holds nothing");
+    assert_eq!(agree_beneath(&st, &root), ["au-deeper", "au-twice"]);
+    assert_eq!(agree_beneath(&st, &inside), ["au-deeper"]);
 }
 
 /// A deterministic generator, one linear congruential step a draw, so each seed's graph is the
