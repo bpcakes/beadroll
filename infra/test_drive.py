@@ -14,6 +14,10 @@ sys.path.insert(0, str(ROOT / "infra"))
 import selected  # noqa: E402  (the module under test, beside this file)
 
 
+# the throwaway repository the drivers' tests name, never reached: the preflight only asks git about it
+REMOTE = "git@example.invalid:throwaway.git"
+
+
 class DrivePreflight(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="bead-drive-test-")
@@ -27,6 +31,15 @@ class DrivePreflight(unittest.TestCase):
         self.path = f"{shims}{os.pathsep}{os.environ.get('PATH', '')}"
         self.home = self.root / "home"
         (self.home / ".local" / "bin").mkdir(parents=True)
+        # every machine's clone, the ssh above running here: a clone of the throwaway repository
+        self.clone = self.home / "beads-poc-test" / "repo"
+        self.git("init", "-q", str(self.clone))
+        self.git("-C", str(self.clone), "remote", "add", "origin", REMOTE)
+
+    def git(self, *args):
+        env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+        subprocess.run(["git", *args], check=True, capture_output=True, env={**env, "HOME": str(self.root)},
+                       timeout=60)
 
     def executable(self, path, text):
         path.write_text(text)
@@ -41,7 +54,7 @@ class DrivePreflight(unittest.TestCase):
 
     def drive(self, beads=None, expect="0.2.0", local=None, *args):
         env = {key: value for key, value in os.environ.items() if not key.startswith(("BEAD_", "GIT_"))}
-        env.update(PATH=self.path, HOME=str(self.home), BEAD_TEST_REMOTE="git@example.invalid:throwaway.git",
+        env.update(PATH=self.path, HOME=str(self.home), BEAD_TEST_REMOTE=REMOTE,
                    BEAD_DRIVE_HOSTS="one=u@one.invalid,two=two.invalid,three=u@three.invalid",
                    BEAD_UNDER_TEST=str(local or self.bead("local-bead", "bead 0.2.0")))
         if beads is not None:
@@ -88,6 +101,29 @@ class DrivePreflight(unittest.TestCase):
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("local: ", proc.stderr)
         self.assertIn("is a script, not a native build", proc.stderr)
+
+    def test_a_clone_that_fetches_or_pushes_elsewhere_stops_the_run(self):
+        rust = self.bead("rust-bead", "bead 0.2.0")
+        beads = f"one={rust},two={rust},three={rust}"
+        proc = self.drive(beads)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual({(row["origin"], row["push"]) for row in self.records(proc).values()}, {(REMOTE, REMOTE)})
+        # bead publishes to the origin's push URL when it has one: a real repository there is refused
+        self.git("-C", str(self.clone), "remote", "set-url", "--push", "origin", "git@example.invalid:real.git")
+        proc = self.drive(beads)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("pushes to 'git@example.invalid:real.git', not BEAD_TEST_REMOTE", proc.stderr)
+        self.git("-C", str(self.clone), "remote", "set-url", "origin", "git@example.invalid:real.git")
+        proc = self.drive(beads)
+        self.assertIn("fetches from 'git@example.invalid:real.git', not BEAD_TEST_REMOTE", proc.stderr)
+        self.assertTrue(all(run.endswith(" --version") for run in self.runs()), self.runs())
+
+    def test_a_machine_without_a_clone_stops_the_run(self):
+        rust = self.bead("rust-bead", "bead 0.2.0")
+        (self.clone / ".git").rename(self.clone / "not-git")
+        proc = self.drive(f"one={rust},two={rust},three={rust}")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("local: its clone has no origin (or there is no clone)", proc.stderr)
 
     def test_without_an_expected_version_the_preflight_only_records(self):
         python = self.bead("python-bead", "bead 0.1.0", script=True)

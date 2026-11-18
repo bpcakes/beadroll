@@ -13,8 +13,10 @@ Configuration (environment):
   BEAD_EXPECT_VERSION    the version every machine's bead must report, e.g. 0.2.0; each must then also be a native
                          build, never a script (Python's launcher or installed entry point)
 Before any test data is written, a preflight prints one `preflight:` JSON line per machine: its role, system,
-the bead selected there, the first line its `--version` prints, its kind (native, script or missing) and a
-digest; a machine that does not meet BEAD_EXPECT_VERSION stops the run. `drive.py --preflight` stops after it.
+the bead selected there, the first line its `--version` prints, its kind (native, script or missing), a
+digest, and the URLs its clone's origin fetches from and pushes to, as git reads them there; a machine that
+does not meet BEAD_EXPECT_VERSION, or whose clone fetches or pushes anywhere but BEAD_TEST_REMOTE (no clone
+included), stops the run: bead publishes to that origin. `drive.py --preflight` stops after it.
 Setup (once): on each remote host a bead (installed at ~/.local/bin/bead, or staged anywhere and named in
 BEAD_DRIVE_BEADS) and a clone of the throwaway repository at ~/beads-poc-test/repo (plus soak.py for the soak);
 here, the clone above. To reset the tracker: `git push origin :refs/beads/journal`,
@@ -75,22 +77,40 @@ def over(host, cmd):
     return ["bash", "-c", cmd] if HOSTS[host] is None else ["ssh", "-o", "BatchMode=yes", HOSTS[host], "bash -c " + shlex.quote(cmd)]
 
 
-# What a machine's bead is, printed as six lines: role-free facts the preflight records.
+# What a machine's bead is, and where its clone's origin fetches and pushes, printed as eight lines:
+# role-free facts the preflight records.
 PROBE = ('b={bead}; '
          'if [ -e "$b" ]; then v=$("$b" --version 2>&1 | head -n 1); else v=; fi; '
          'if [ ! -e "$b" ]; then k=missing; elif [ "$(head -c 2 "$b")" = "#!" ]; then k=script; else k=native; fi; '
          'd=$( (sha256sum "$b" 2>/dev/null || shasum -a 256 "$b" 2>/dev/null) | cut -c1-16); '
-         'printf "%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n" "$b" "$v" "$k" "$d" "$(uname -sm)" end')
+         'o=$(git -C {repo} remote get-url origin 2>/dev/null); '
+         'p=$(git -C {repo} remote get-url --push origin 2>/dev/null); '
+         'printf "%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n" "$b" "$v" "$k" "$d" "$(uname -sm)" "$o" "$p" end')
 
 
 def probe(host):
-    """The preflight's record of `host`'s bead (selected.describe's fields, its role and its system)."""
-    proc = subprocess.run(over(host, PROBE.format(bead=word(BEADS[host]))), capture_output=True, text=True, timeout=120)
+    """The preflight's record of `host`'s bead (selected.describe's fields, its role and its system) and of
+    its clone's origin."""
+    repo = word(REPO_LOCAL if HOSTS[host] is None else REPO_REMOTE)
+    proc = subprocess.run(over(host, PROBE.format(bead=word(BEADS[host]), repo=repo)), capture_output=True, text=True,
+                          timeout=120)
     lines = proc.stdout.split("\n")
-    if proc.returncode or len(lines) < 6 or lines[5] != "end":
+    if proc.returncode or len(lines) < 8 or lines[7] != "end":
         sys.exit(f"preflight: cannot reach {host} ({HOSTS[host] or 'here'}): {proc.stderr.strip()[-300:]}")
-    path, version, kind, digest, system = lines[:5]
-    return {"role": host, "system": system, "path": path, "version": version, "kind": kind, "sha256": digest}
+    path, version, kind, digest, system, origin, push = lines[:7]
+    return {"role": host, "system": system, "path": path, "version": version, "kind": kind, "sha256": digest,
+            "origin": origin, "push": push}
+
+
+def elsewhere(row, remote):
+    """Why the machine `row` records would send test data somewhere but `remote`, if it would: its clone
+    fetches or pushes elsewhere, or it has none."""
+    if not row["origin"]:
+        return "its clone has no origin (or there is no clone)"
+    for said, url in (("fetches from", row["origin"]), ("pushes to", row["push"])):
+        if url != remote:
+            return f"its clone {said} {url!r}, not BEAD_TEST_REMOTE {remote!r}"
+    return None
 
 
 def preflight():
@@ -99,7 +119,8 @@ def preflight():
     rows = parallel(probe, list(HOSTS))
     for row in rows:
         print("preflight:", json.dumps(row, sort_keys=True), flush=True)
-    wrong = [f"{row['role']}: {why}" for row in rows if (why := selected.verdict(row, EXPECT))]
+    wrong = [f"{row['role']}: {why}" for row in rows
+             for why in (selected.verdict(row, EXPECT), elsewhere(row, TEST_REMOTE)) if why]
     if wrong:
         sys.exit("preflight: " + "; ".join(wrong))
     return rows

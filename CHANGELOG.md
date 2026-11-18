@@ -6,6 +6,11 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `infra/drive.py`'s preflight refuses to start unless every machine's clone fetches from and
+  pushes to `BEAD_TEST_REMOTE`, as git reads the clone's origin there, and records both URLs.
+  The driver required the variable but never compared it with the clones bead runs in, so a clone
+  whose origin, or push URL, named a real repository would have received the test data.
+
 - A checkout whose directory's name begins or ends with whitespace reads the `.beadroll.json` at
   its top and is named as git names it. Discovery stripped the whitespace off git's answer, so it
   looked for the file in a directory that does not exist and fell back to the local path's
