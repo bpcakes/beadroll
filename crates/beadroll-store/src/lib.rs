@@ -53,5 +53,5 @@ pub use recap::{Found, Mark, RecapCursor, Unusable, home_stores};
 pub use settings::{Clock, NET_TIMEOUT, ROTATE_BYTES, Settings, join_path, normalize_path};
 pub use workspace::{
     Endpoint, LockState, MetadataRead, PublicationState, REMOTE_REF, RemoteSource, Workspace,
-    WorkspaceLock, relative, relative_name, remembered,
+    WorkspaceLock, published_to, relative, relative_name, remembered,
 };

@@ -533,3 +533,54 @@ fn init_tracked_writes_the_workspace_bead_workspace_named() {
     assert_eq!(made.returncode(), 0, "{}", made.stderr);
     assert_eq!(workspace(&a), "chosen-ws");
 }
+
+/// A checkout whose origin is a local path, relative or absolute, finds the same tracker while
+/// that path is gone (moved, unmounted) as while it is there: its edits stay local, and a sync
+/// once it is back publishes them. The id derived from a missing path once changed, so the
+/// tracker seemed gone and `bead init` would have started a second one.
+#[test]
+fn a_local_origin_moved_away_keeps_its_tracker() {
+    for relative in [true, false] {
+        let sandbox = crate::sandbox();
+        let a = Machine::new(&sandbox, "a");
+        let there = sandbox.root().join("local.git");
+        mirror(&sandbox, &there);
+        if relative {
+            // `../…/local.git` from the top of the checkout, which lies under the sandbox's root
+            let depth = a
+                .checkout()
+                .strip_prefix(sandbox.root())
+                .unwrap()
+                .components()
+                .count();
+            let from_top = format!("{}local.git", "../".repeat(depth));
+            git(
+                ["remote", "set-url", "origin", &from_top],
+                Some(a.checkout()),
+            );
+        } else {
+            set_origin(&a, &there);
+        }
+        a.bead(["init", "--prefix", "ex"]);
+        a.bead(["create", "before"]);
+        let id = workspace(&a);
+        let away = sandbox.root().join("away.git");
+        std::fs::rename(&there, &away).unwrap();
+        assert_eq!(workspace(&a), id, "relative: {relative}");
+        let made = a.run(["create", "while away", "--json"]);
+        assert_eq!(
+            made.returncode(),
+            0,
+            "relative: {relative}: {}",
+            made.stderr
+        );
+        assert_eq!(titles(&a), ["before", "while away"]);
+        std::fs::rename(&away, &there).unwrap();
+        let synced = json(&a, &["sync"]);
+        assert_eq!(
+            synced["pushed"].as_i64(),
+            Some(1),
+            "relative: {relative}: {synced:?}"
+        );
+    }
+}

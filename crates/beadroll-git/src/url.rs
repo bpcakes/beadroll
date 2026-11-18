@@ -105,11 +105,14 @@ fn rposition(bytes: &[u8], wanted: u8) -> Option<usize> {
 }
 
 /// Normalises equivalent remote spellings: SSH, scp-like and HTTPS forms, .git suffixes, trailing
-/// slashes and host case. Existing local paths resolve relative to cwd. Trimming and lowercase
-/// mapping use Unicode characters.
+/// slashes and host case. Existing local paths resolve relative to cwd, and an absolute path
+/// resolves whether it exists or not, as `os.path.realpath` resolves one: a local origin moved
+/// away for a while keeps the id it derived while it was there (origin's relative path reaches
+/// here anchored at the top of the checkout). Trimming and lowercase mapping use Unicode
+/// characters.
 pub fn normalize_remote(url: &OsStr, cwd: &Path) -> OsString {
     let u = strip_text_bytes(url.as_bytes());
-    if exists(OsStr::from_bytes(u), cwd) {
+    if u.starts_with(b"/") || exists(OsStr::from_bytes(u), cwd) {
         let real = realpath(OsStr::from_bytes(u), cwd);
         return OsString::from_vec(lowercase_text_bytes(&without_dot_git(
             real.as_os_str().as_bytes(),
@@ -264,6 +267,17 @@ mod tests {
         normalize_remote(OsStr::new(url), Path::new("/nonexistent-cwd"))
             .into_string()
             .unwrap()
+    }
+
+    /// A missing absolute path normalises as it would existing, its `..` taken back and `.git`
+    /// dropped, so a local origin moved away for a while derives the id it had.
+    #[test]
+    fn a_missing_absolute_path_resolves_as_an_existing_one() {
+        assert_eq!(
+            norm("/nonexistent-root/w/../Origin.git"),
+            "/nonexistent-root/origin"
+        );
+        assert_eq!(norm("/nonexistent-root/./x.git/"), "/nonexistent-root/x");
     }
 
     #[test]

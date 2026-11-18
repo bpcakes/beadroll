@@ -98,7 +98,7 @@ reads, and the published tree is also read by `br`/`bv` through `bead export` an
 | `$BEAD_HOME/replica.json` | `{"id": "<8 hex>", "alias": "<host>"}`, `", "`/`": "` separators, ASCII-escaped; created whole as `.replica.<pid>.tmp`, then `link(2)` | The first writer wins; the hostname lives only here |
 | `aliases.json`, `moved.json` | `indent=1`, ASCII-escaped, no trailing newline | Unknown or invalid entries are ignored on read |
 | `<ws>/lock` | Empty, 0600, `flock(2)` exclusive | |
-| `<ws>/meta.json` | `indent=1`, ASCII-escaped; keys `remote` (the remote as it was chosen: a configured remote's name, or a URL), `name`, `last_sync`, `published` | origin is never stored |
+| `<ws>/meta.json` | `indent=1`, ASCII-escaped; keys `remote` (the remote as it was chosen: a configured remote's name, or a URL), `name`, `last_sync`, `published`, and (added after 0.2.0) `published_to`, the URL `published` was published to, as git was handed it | origin is never stored as `remote`; a version without `published_to` leaves it as it was, so that a count read after its sync may err high, never low |
 | `<ws>/events/<machine>/NNNNNN.jsonl` | One event per line: `,`/`:` separators, raw UTF-8, keys in the order `v, id, replica, deps, actor, op, issue, data[, where]`; appended with `O_APPEND` and fsynced; a new segment starts at `BEAD_ROTATE_BYTES` | A torn tail is repaired before the next write and kept as `*.torn-<ns>` |
 | `<ws>/events/<machine>/claims/<event-id>.json` | The attempt's events, compact lines, written atomically | Immutable; on a mismatch the local copy is kept as `*.fork-<ns>` |
 | `<ws>/pending/<id>.json`, `<id>.command` | The pending attempt and its receipt | The receipt's signature is below |
@@ -1989,7 +1989,9 @@ These were decided deliberately. Report problems *with* them, not their existenc
   duplicate key keeps its last value at its first key's place; whitespace,
   `strip()` and lower case are Python's Unicode ones where Python used them (`split_list`, comment
   emptiness, `search`, `normalize_remote`); a path is resolved as `os.path.realpath` resolves it,
-  never by libc; `--estimate`, `--limit` and `COLUMNS` read a whole number as Rust does, an
+  never by libc, and an absolute one is resolved whether it exists or not (Python resolved only
+  an existing one, so a local origin gone for a while derived another id there and the tracker
+  seemed gone: the id a missing path derives here is the one it derived while it was there); `--estimate`, `--limit` and `COLUMNS` read a whole number as Rust does, an
   optional sign and ASCII digits with whitespace around them, within an `i128` (as `int()` did
   until roll-lqjj.53.2: `" +5 "` still, `5_000` and the digits of other scripts no longer);
   `show` prints a conflict's values as JSON (as `repr()` printed them, `'text'` and `True`, until

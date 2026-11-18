@@ -642,3 +642,38 @@ fn a_remote_rewritten_away_from_origin_is_not_forgotten_as_origin() {
     json(&a, &["create", "after"]);
     assert_eq!(tip(), before, "a write after the sync went to origin");
 }
+
+/// Counts published to one coordination remote say nothing of another: switched to a remote, by
+/// `BEAD_REMOTE` or `sync --remote`, a store counts as unpublished what it has not published
+/// there, never 0 because the last remote had it all (a count may err high, never low), and the
+/// sync that publishes there settles it.
+#[test]
+fn the_unpublished_count_is_of_the_remote_chosen_now() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let coord = sandbox.root().join("coord.git");
+    git(["init", "-q", "--bare", path_text(&coord)], None);
+    git(
+        ["remote", "add", "coord", path_text(&coord)],
+        Some(a.checkout()),
+    );
+    let unpublished = |remote: Option<&str>| {
+        let mut cmd = a.cmd(["info", "--json"]);
+        if let Some(remote) = remote {
+            cmd = cmd.env("BEAD_REMOTE", remote);
+        }
+        let run = cmd.run();
+        assert_eq!(run.returncode(), 0, "{}", run.stderr);
+        parse_json(&run.stdout).unwrap()["unpublished"]
+            .as_i64()
+            .unwrap_or(0)
+    };
+    a.bead(["sync", "--remote", "coord"]);
+    a.bead(["create", "only on coord"]);
+    assert_eq!(unpublished(None), 0);
+    assert!(unpublished(Some("origin")) >= 1, "origin lacks the create");
+    let synced = a.bead(["sync", "--remote", "origin"]).unwrap();
+    assert_eq!(synced["pushed"].as_i64(), Some(1), "{synced:?}");
+    assert_eq!(unpublished(None), 0);
+}
