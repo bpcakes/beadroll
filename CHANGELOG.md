@@ -6,6 +6,12 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `create` refuses with `CYCLE` a new issue whose parent, named as a `parent-child`
+  dependency in `--deps`, already waits on one of its blocking dependencies. Only a
+  parent named by `--parent` was checked, so `create new --deps parent-child:X,blocks:Y`
+  with Y waiting on X closed a loop that `dep cycles` then reported, and that `dep add`
+  refuses for the same edge.
+
 - `infra/compat_real.py` makes a scratch directory of its own only when `--out` names none; its
   default was made when the arguments were parsed, so every run given `--out` left an empty one
   behind.

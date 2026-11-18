@@ -77,3 +77,22 @@ fn a_parent_change_cannot_form_a_loop() {
     let cycles = a.bead(["dep", "cycles"]).unwrap();
     assert_eq!(cycles["count"].as_i64(), Some(0));
 }
+
+/// A new issue whose parent, given as a `parent-child` dependency rather than by `--parent`,
+/// already waits on one of its blocking dependencies would close a loop through it: refused as a
+/// cycle, as `dep add` refuses the same edge, and no loop left behind.
+#[test]
+fn a_new_issue_cannot_close_a_loop_through_a_parent_child_dependency() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let x = json_id(&a.bead(["create", "x"]).expect("x"));
+    let y = json_id(&a.bead(["create", "y"]).expect("y"));
+    a.bead(["dep", "add", &y, &x]); // y waits for x
+    // x as the new issue's parent waits for it, and it waits for y
+    let deps = format!("parent-child:{x},blocks:{y}");
+    let looped = a.run(["create", "new", "--deps", &deps, "--json"]);
+    assert_eq!(code(&looped), "CYCLE", "{}", looped.stdout);
+    let cycles = a.bead(["dep", "cycles"]).expect("the cycles");
+    assert_eq!(cycles["count"].as_i64(), Some(0), "{cycles:?}");
+}

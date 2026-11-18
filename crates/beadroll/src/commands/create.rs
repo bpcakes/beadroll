@@ -80,16 +80,23 @@ fn write_issue(
             };
             deps.push((resolve_arg(st, target)?.uid(), kind, valid));
         }
-        if let Some(parent) = parent {
+        // The new issue waits for what it blocks on, and each of its parents waits for it, whether
+        // named by --parent or as a parent-child dependency: none of them may be reached from what
+        // it waits for, or the edges would close a loop through it.
+        let parents = (parent.map(|parent| parent.uid()).into_iter()).chain(
+            (deps.iter())
+                .filter(|(_, kind, _)| kind == PARENT_CHILD)
+                .map(|(t, _, _)| *t),
+        );
+        for parent in parents {
             for (target, kind, _) in &deps {
-                if blocking(kind) && (*target == parent.uid() || st.reaches(*target, parent.uid()))
-                {
+                if blocking(kind) && (*target == parent || st.reaches(*target, parent)) {
                     return Err(Failure::new(
                         Code::Cycle,
                         format!(
                             "depending on {} would make {} wait for itself",
                             st.key_of(&target.to_string()),
-                            parent.key()
+                            st.key_of(&parent.to_string())
                         ),
                     ));
                 }
