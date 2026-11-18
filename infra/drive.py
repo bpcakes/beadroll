@@ -36,7 +36,6 @@ import selected
 
 TAG = time.strftime("%H%M%S")
 
-LOCAL = os.path.expanduser("~")
 HOSTS = {"local": None}  # role -> ssh target; None runs here
 for pair in filter(None, os.environ.get("BEAD_DRIVE_HOSTS", "").split(",")):
     role, _, target = pair.partition("=")
@@ -64,8 +63,6 @@ EXPECT = os.environ.get("BEAD_EXPECT_VERSION", "")
 REPO_REMOTE = "~/beads-poc-test/repo"
 REPO_LOCAL = os.environ.get("BEAD_TEST_LOCAL_REPO") or os.path.expanduser("~/beads-poc-test/repo")  # a clone of the throwaway repo
 STATE = "$HOME/.local/state/beads-poc-test"
-# A LAN that throttles bursts of ssh connections to github.com:22 can use GitHub's SSH-over-443 endpoint instead.
-HOST_ENV = {}  # plain github.com:22 everywhere
 # seconds a command may take, run here or over ssh against the git host: one longer is hung, and the run
 # stops on it
 TIMEOUT = 120
@@ -144,7 +141,7 @@ def run(host, *args, thread=None, agent="codex", env="", raw=False, timeout=TIME
     """Run one bead command on `host`; return parsed JSON (or an error dict with code)."""
     thread = thread or f"{host}-thread-0001"
     repo = REPO_LOCAL if HOSTS[host] is None else REPO_REMOTE
-    cmd = (f"cd {repo} && BEAD_HOME={STATE} BEAD_AGENT={agent} BEAD_THREAD={thread} {HOST_ENV.get(host, '')} {env} "
+    cmd = (f"cd {word(repo)} && BEAD_HOME={STATE} BEAD_AGENT={agent} BEAD_THREAD={thread} {env} "
            + word(BEADS[host]) + " " + " ".join(shlex.quote(a) for a in args) + ("" if raw else " --json"))
     full = over(host, cmd)
     t = time.time()
@@ -168,7 +165,10 @@ def parallel(fn, items):
 
 
 def export_hash(host):
+    """The digest of `host`'s export and its line count. An export that failed stops the run: every failed
+    one would hash alike, the empty output, and pass for a convergence."""
     r = run(host, "export", raw=True)
+    assert r["rc"] == 0, (host, r)
     return hashlib.sha256(r["out"].encode()).hexdigest()[:12], r["out"].count("\n")
 
 
@@ -244,17 +244,17 @@ def main(argv):
     section("S4 takeover fences the previous owner across machines")
     issue = ready_ids("two")[2]
     before = run("one", "claim", issue)["ok"][0]["claim"]["generation"]
-    taken = run("three", "takeover", issue, "--reason", "the agent on machine one looks dead", agent="human", thread="dev-at-bpc")
+    taken = run("three", "takeover", issue, "--reason", "the agent on machine one looks dead", agent="human", thread="dev-at-three")
     gen = taken["ok"][0]["claim"]["generation"]
     print("takeover:", "ok" in taken, "generation", before, "->", gen)
-    stale_close = run("one", "close", issue, "--reason", "actually finished")  # pop has not synced
+    stale_close = run("one", "close", issue, "--reason", "actually finished")  # one has not synced
     print("old owner's close locally:", "ok" in stale_close)
     same, _ = settle()
     views = {h: show(h, issue) for h in HOSTS}
     held = all(v["status"] == "in_progress" and v["claim"]["generation"] == gen and [s["op"] for s in v.get("stale", [])] == ["close"]
                for v in views.values())
     print("converged:", same, "| everywhere: in_progress, new generation, close marked stale:", held)
-    done = run("three", "close", issue, "--reason", "done", agent="human", thread="dev-at-bpc")
+    done = run("three", "close", issue, "--reason", "done", agent="human", thread="dev-at-three")
     same, _ = settle()
     print("new owner closes:", "ok" in done, "| closed everywhere:", all(show(h, issue)["status"] == "closed" for h in HOSTS))
     results["S4"] = same and held and "ok" in done
@@ -271,7 +271,7 @@ def main(argv):
 
     section("S6 lost acknowledgement over the real network")
     issue = ready_ids("one")[4]
-    crashed = run("one", "claim", issue, env="BEAD_TEST_CRASH_AFTER_PUSH=1", raw=True)
+    crashed = run("one", "claim", issue, env="BEAD_FAILPOINTS=" + shlex.quote("ownership.after-publish-ok=exit(99)"), raw=True)
     print("first attempt exit code:", crashed["rc"], "(99 = pushed, then died before recording)")
     before = show("one", issue).get("claim")
     retry = run("one", "claim", issue)
@@ -282,8 +282,8 @@ def main(argv):
 
     section("S7 two machines add a child to the same parent")
     epic = [i["id"] for i in run("local", "list", "--type", "epic")["ok"]["issues"]][0]
-    a = run("three", "create", f"child from bpc {TAG}", "--parent", epic)["ok"]["id"]
-    b = run("two", "create", f"child from arch {TAG}", "--parent", epic)["ok"]["id"]
+    a = run("three", "create", f"child from three {TAG}", "--parent", epic)["ok"]["id"]
+    b = run("two", "create", f"child from two {TAG}", "--parent", epic)["ok"]["id"]
     print("minted locally:", a, b)
     same, _ = settle()
     kids = {h: sorted((i["id"], i["title"]) for i in run(h, "list", "--parent", epic, "--limit", "0")["ok"]["issues"]
@@ -324,7 +324,7 @@ def main(argv):
         rows = [r for r in run("two", "claims")["ok"]["claims"] if r["id"] == issue]
         print("claimed from worktree:", claimed.returncode == 0, "| converged:", same, "| branch seen:", branches,
               "| label travelled with the claim:", all("from-worktree" in l for l in labels.values()),
-              "| `bead claims` on arch shows branch:", rows and rows[0].get("branch"))
+              "| `bead claims` on two shows branch:", rows and rows[0].get("branch"))
         results["S12"] = (claimed.returncode == 0 and same and all(b == f"feature-{TAG}" for b in branches.values())
                           and all("from-worktree" in l for l in labels.values()) and rows and rows[0].get("branch") == f"feature-{TAG}")
     finally:

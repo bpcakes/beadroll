@@ -93,9 +93,9 @@ deadline = time.time() + seconds
 n = 0
 while time.time() < deadline:
     n += 1
-    ok, listed = run("list", "--limit", "0")
+    _, listed = run("list", "--limit", "0")
     open_ids = [i["id"] for i in (listed or {}).get("issues", [])]
-    ok, epics = run("list", "--type", "epic", "--limit", "0")
+    _, epics = run("list", "--type", "epic", "--limit", "0")
     epic_ids = [i["id"] for i in (epics or {}).get("issues", [])]
     roll = random.random()
     if roll < 0.25 and open_ids:
@@ -111,9 +111,9 @@ while time.time() < deadline:
         args = ["create", f"soak {seed} {n} {text(3)}", "-t", random.choice(["task", "bug", "feature"]), "-p", str(random.randint(0, 4))]
         if epic_ids and random.random() < 0.3:
             args += ["--parent", pick(epic_ids)]
-        ok, made = run(*args)
+        run(*args)
     elif roll < 0.71:
-        ok, ready = run("ready", "--type", "task")
+        _, ready = run("ready", "--type", "task")
         target = pick([i["id"] for i in (ready or [])])
         if target:
             ok, _ = run("claim", target)
@@ -125,7 +125,7 @@ while time.time() < deadline:
     elif roll < 0.82 and mine:
         target = mine.pop(random.randrange(len(mine)))
         run("release", target)
-    elif roll < 0.85 and len(open_ids) > 2:
+    elif roll < 0.85 and len(open_ids) >= 2:
         a, b = random.sample(open_ids, 2)
         run("dep", "add", a, b)
     elif roll < 0.88 and open_ids:
