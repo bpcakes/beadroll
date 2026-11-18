@@ -29,7 +29,7 @@ use crate::work::{Work, tally};
 pub(crate) use awaiting::{Awaiting, named as awaited};
 pub use capabilities::{FullKnowledge, HydratedState, KnowledgeScope, MissingTexts};
 pub use claim::{Claim, Ended, EndedClaim, LostClaim, Provisional, Stale};
-pub use edges::{DepTags, Deps, DepsIter, Edge, Meta, Target};
+pub use edges::{DepTags, Deps, Edge, Meta, Target};
 pub use hydrated::HydratedIssue;
 pub use issue::{Comment, Issue};
 pub(crate) use issue::{Origin, Stamps};
@@ -39,7 +39,7 @@ pub(crate) use runs::Runs;
 pub(crate) use runs::used;
 pub(crate) use seen::{Arena, Knowledge, Place, raise, reached};
 pub use small::{IdMap, IdSet, VecMap};
-pub use texts::{Stored, TEXT_FIELDS, TextPlace, Texts, is_text};
+pub use texts::{Stored, TextPlace, Texts, is_text};
 
 /// A problem replay reports: an unusable record, or an event it could not apply.
 #[derive(Clone, Debug, PartialEq, Eq)]

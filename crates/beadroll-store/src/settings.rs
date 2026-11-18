@@ -20,10 +20,10 @@ pub const ROTATE_BYTES: i128 = 256 * 1024;
 /// How long one fetch or push may take when `BEAD_NET_TIMEOUT` is unset.
 pub const NET_TIMEOUT: Duration = Duration::from_secs(45);
 /// Loose objects in `sync.git` before bead repacks it, when `BEAD_REPACK_LOOSE` is unset.
-pub const REPACK_LOOSE: i128 = 1000;
+pub(crate) const REPACK_LOOSE: i128 = 1000;
 /// Packs in `sync.git` (one per fetch that brought something) before bead repacks it, when
 /// `BEAD_REPACK_PACKS` is unset.
-pub const REPACK_PACKS: i128 = 40;
+pub(crate) const REPACK_PACKS: i128 = 40;
 
 /// The event-id and timestamp clock: system nanoseconds plus a configured offset, with the clock
 /// failpoint applied at each reading (`offset(±DUR)` or `at(TIME)`).

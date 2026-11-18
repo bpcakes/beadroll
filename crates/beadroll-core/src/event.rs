@@ -17,7 +17,7 @@ pub(crate) use envelope::{Data, Envelope};
 
 /// Which fields an operation may write.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FieldScope {
+pub(crate) enum FieldScope {
     /// A `set`: only the fields a user edits.
     Editable,
     /// A `create`: `created_at`, `updated_at` and `created_by` too.
@@ -203,7 +203,7 @@ pub const REGISTERS: [Field; 10] = [
 ];
 
 /// The fields of a Beads record, in the order br writes them.
-pub const EXPORT_FIELDS: [Field; 16] = [
+pub(crate) const EXPORT_FIELDS: [Field; 16] = [
     Field::Title,
     Field::Description,
     Field::Design,

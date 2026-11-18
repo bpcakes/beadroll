@@ -180,7 +180,7 @@ impl<'a> IntoIterator for Deps<'a> {
 }
 
 /// The iterator over [`Deps`].
-pub type DepsIter<'a> = std::iter::FilterMap<
+pub(crate) type DepsIter<'a> = std::iter::FilterMap<
     <&'a DepTags as IntoIterator>::IntoIter,
     fn((&'a Edge, &'a IdMap<Meta>)) -> Option<(&'a Edge, &'a Meta)>,
 >;

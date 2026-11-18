@@ -11,7 +11,7 @@ use crate::settings::Settings;
 
 /// What one `ps -o ppid=,args= -p PID` gave: its exit status and standard output (decoded leniently),
 /// or `None` when `ps` could not be run. The CLI supplies the function that runs it, from `PATH`.
-pub type Ps<'a> = dyn Fn(u32) -> Option<(i32, String)> + 'a;
+pub(crate) type Ps<'a> = dyn Fn(u32) -> Option<(i32, String)> + 'a;
 
 /// Walks up the process tree from `parent` (the caller's parent process) to the closest coding
 /// agent, at most 12 levels: `codex` or `claude`, or `None`. It settles nested harnesses, where an

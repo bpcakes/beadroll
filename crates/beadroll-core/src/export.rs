@@ -10,7 +10,7 @@ use crate::json::{Int, Object, Value};
 use crate::state::{Comment, Issue, State};
 
 /// Where the ids of comments made here start: 2^47, clear of the small ids Beads hands out.
-pub const COMMENT_ID_BASE: u64 = 1 << 47;
+pub(crate) const COMMENT_ID_BASE: u64 = 1 << 47;
 
 /// The members of a record that are bead's own: an extra field never overwrites one on export, and
 /// an import keeps none of them among a create's extras.

@@ -31,7 +31,7 @@ pub(crate) use writes::confirm_ownership;
 pub use writes::{drop_pending, locked, writing, writing_spent, writing_state};
 
 /// Ownership events: settled with the remote, and kept one attempt per file.
-pub const OWNERSHIP: [OpName; 2] = [OpName::Claim, OpName::Release];
+pub(crate) const OWNERSHIP: [OpName; 2] = [OpName::Claim, OpName::Release];
 
 /// One locked read-modify-append on this machine's own journal. Sequential events go to the
 /// journal. Ownership events (`claim`, `release`) form an attempt that is settled with the remote
