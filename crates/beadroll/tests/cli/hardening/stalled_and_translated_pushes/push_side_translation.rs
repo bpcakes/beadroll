@@ -12,7 +12,8 @@ use beadroll_test_support::{
     Machine, Sandbox, executable, json_member, parse_json, printed_id, shell_quoted,
 };
 
-use super::{Env, WINNER_IDENTITY, applied, contains, git_is_translated, locales};
+use super::{Env, WINNER_IDENTITY, applied, git_is_translated, locales};
+use crate::hardening::contains_bytes;
 
 /// `bytes` as text, for a failure's message.
 fn lossy(bytes: &[u8]) -> String {
@@ -171,7 +172,7 @@ impl Tokens {
             self.c2
         );
         assert!(
-            contains(&porcelain.stdout, line.as_bytes()),
+            contains_bytes(&porcelain.stdout, line.as_bytes()),
             "{name}: {}",
             lossy(&porcelain.stdout)
         );
@@ -181,11 +182,11 @@ impl Tokens {
             "{name}"
         );
         if name == "C" {
-            let english = contains(&lost.stderr, b"error: failed to push some refs");
+            let english = contains_bytes(&lost.stderr, b"error: failed to push some refs");
             assert!(english, "{name}: {said}");
         } else {
             // the locale took effect
-            let english = contains(&lost.stderr, b"failed to push some refs");
+            let english = contains_bytes(&lost.stderr, b"failed to push some refs");
             assert!(!english, "{name}: {said}");
         }
     }
@@ -196,9 +197,9 @@ impl Tokens {
         let refused = self.push(env, "--porcelain", &self.c3);
         let said = format!("{}\n{}", lossy(&refused.stdout), lossy(&refused.stderr));
         assert!(!refused.status.success(), "{name}: {said}");
-        let rejected = contains(&refused.stdout, b"[remote rejected]");
+        let rejected = contains_bytes(&refused.stdout, b"[remote rejected]");
         assert!(rejected, "{name}: {said}");
-        let declined = contains(&refused.stdout, b"(pre-receive hook declined)");
+        let declined = contains_bytes(&refused.stdout, b"(pre-receive hook declined)");
         assert!(declined, "{name}: {said}");
         // the remote's own verdict, which no retry changes
         assert_eq!(
@@ -215,13 +216,13 @@ impl Tokens {
         let said = format!("{}\n{}", lossy(&raced.stdout), lossy(&raced.stderr));
         assert!(!raced.status.success(), "{name}: {said}");
         let locked = b"remote: error: cannot lock ref 'refs/beads/journal'";
-        assert!(contains(&raced.stderr, locked), "{name}: {said}");
+        assert!(contains_bytes(&raced.stderr, locked), "{name}: {said}");
         let line = format!("!\t{}:refs/beads/journal\t[remote rejected]", self.c3);
-        let rejected = contains(&raced.stdout, line.as_bytes());
+        let rejected = contains_bytes(&raced.stdout, line.as_bytes());
         assert!(rejected, "{name}: {said}");
         // Supported git versions use either reason for the same server-side ref race.
-        let stale = contains(&raced.stdout, b"(incorrect old value provided)")
-            || contains(&raced.stdout, b"(failed to update ref)");
+        let stale = contains_bytes(&raced.stdout, b"(incorrect old value provided)")
+            || contains_bytes(&raced.stdout, b"(failed to update ref)");
         assert!(stale, "{name}: {said}");
         // Classify this race: a second push would instead see the already-moved remote ref.
         assert_eq!(

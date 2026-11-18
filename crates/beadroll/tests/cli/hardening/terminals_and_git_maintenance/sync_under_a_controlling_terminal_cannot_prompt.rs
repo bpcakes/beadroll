@@ -7,13 +7,7 @@ use std::time::{Duration, Instant};
 use beadroll_test_support::{Machine, drain, executable, exited_within, shell_quoted};
 
 use super::script;
-
-/// Whether `needle` occurs in `haystack`.
-fn contains(haystack: &[u8], needle: &[u8]) -> bool {
-    haystack
-        .windows(needle.len())
-        .any(|window| window == needle)
-}
+use crate::hardening::contains_bytes;
 
 /// Verified (V8): sync under a controlling terminal cannot prompt, because git and ssh run in their
 /// own session (beadroll-git's runner calls setsid for each), so a transport that wants /dev/tty
@@ -84,9 +78,9 @@ fn sync_under_a_controlling_terminal_cannot_prompt() {
         String::from_utf8_lossy(&errors)
     );
     assert!(elapsed < Duration::from_secs(15), "{elapsed:?}");
-    assert!(!contains(&out, b"Passphrase:"), "{shown}");
+    assert!(!contains_bytes(&out, b"Passphrase:"), "{shown}");
     assert!(
-        contains(&out, b"cannot reach the coordination remote"),
+        contains_bytes(&out, b"cannot reach the coordination remote"),
         "{shown}"
     );
 }

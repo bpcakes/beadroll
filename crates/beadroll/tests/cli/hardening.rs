@@ -3,7 +3,11 @@
 //! (`docs/FINDINGS.md`). Fault injection uses failpoints on this build's binary
 //! (`crate::rust_only`); `beadroll_test_support::Gate` coordinates a test with a paused process.
 
-use beadroll_test_support::{Machine, Sandbox};
+use std::collections::BTreeMap;
+use std::ffi::OsString;
+use std::path::Path;
+
+use beadroll_test_support::{Machine, Sandbox, git, path_text};
 
 /// How a test machine first opens its tracker.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,6 +38,46 @@ pub(crate) fn tracker_machine(sandbox: &Sandbox, name: &str, setup: TrackerSetup
 /// says.
 pub(crate) fn rust_tracker_machine(sandbox: &Sandbox, name: &str, setup: TrackerSetup) -> Machine {
     setup.open(crate::rust_only(sandbox, name))
+}
+
+/// A scratch global git config holding `text` for this sandbox (never the user's), with system
+/// config off: the variables that select it.
+pub(crate) fn scratch_git_config(sandbox: &Sandbox, text: &str) -> BTreeMap<OsString, OsString> {
+    let path = sandbox.root().join("global.gitconfig");
+    std::fs::write(&path, text).expect("the scratch config");
+    BTreeMap::from([
+        ("GIT_CONFIG_GLOBAL".into(), path.into_os_string()),
+        ("GIT_CONFIG_NOSYSTEM".into(), "1".into()),
+    ])
+}
+
+/// `machine`'s checkout cloned again, from `origin`.
+pub(crate) fn reclone(machine: &Machine, origin: &Path) {
+    std::fs::remove_dir_all(machine.checkout()).expect("the machine's first clone");
+    git(
+        [
+            "clone",
+            "-q",
+            path_text(origin),
+            path_text(machine.checkout()),
+        ],
+        None,
+    );
+}
+
+/// The status of issue `key` as `machine` sees it, and its owner if it is claimed.
+pub(crate) fn status_and_owner(machine: &Machine, key: &str) -> (String, Option<String>) {
+    let issue = machine.show(key);
+    let status = issue["status"].as_str().expect("a status").to_owned();
+    let owner = issue["claim"]["owner"].as_str().map(str::to_owned);
+    (status, owner)
+}
+
+/// Whether `needle` occurs in `haystack`.
+pub(crate) fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
 }
 
 mod arabic_letter_mark_escaped;

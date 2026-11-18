@@ -18,21 +18,11 @@ use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use crate::hardening::scratch_git_config;
 use beadroll_test_support::{Json, Machine, Sandbox, executable};
 
 /// Variables to set, by name.
 type Env = BTreeMap<OsString, OsString>;
-
-/// A scratch global git config for this sandbox (never the developer's) that says
-/// `text`, and the variables that make git read it and no system config.
-fn config(sandbox: &Sandbox, text: &str) -> Env {
-    let path = sandbox.root().join("global.gitconfig");
-    std::fs::write(&path, text).unwrap();
-    Env::from([
-        ("GIT_CONFIG_GLOBAL".into(), path.into_os_string()),
-        ("GIT_CONFIG_NOSYSTEM".into(), "1".into()),
-    ])
-}
 
 /// Git ARGS as user `t`, in `cwd` (the test's own directory when `None`), with the
 /// test's environment less its `GIT_*` variables, then `env`; its output, trimmed. A failure fails
@@ -312,7 +302,7 @@ fn actions_checkout_token_in_the_repository_config() {
     let header = format!("[http \"{base}/\"]\n\textraheader = X-Guard: 1\n");
     std::fs::write(&guard, header).unwrap();
     let (root, guard) = (utf8(sandbox.root()), utf8(&guard));
-    let genv = config(
+    let genv = scratch_git_config(
         &sandbox,
         &format!("[includeIf \"gitdir:{root}/\"]\n\tpath = {guard}\n"),
     );
@@ -342,7 +332,7 @@ fn actions_checkout_token_in_the_repository_config() {
 #[test]
 fn git_ssh_program() {
     let sandbox = crate::sandbox();
-    let genv = config(&sandbox, "");
+    let genv = scratch_git_config(&sandbox, "");
     let mut a = Machine::new(&sandbox, "a");
     a.extra.extend(genv);
     a.extra.extend(fake_ssh(&sandbox));
@@ -366,7 +356,7 @@ fn git_ssh_program() {
 #[test]
 fn core_ssh_command_in_the_repository_config() {
     let sandbox = crate::sandbox();
-    let genv = config(&sandbox, "");
+    let genv = scratch_git_config(&sandbox, "");
     let mut a = Machine::new(&sandbox, "a");
     a.extra.extend(genv);
     a.extra.extend(fake_ssh(&sandbox));
@@ -398,7 +388,7 @@ fn include_if_scoped_url_rewrite() {
     let rewrite = format!("[url \"{origin}\"]\n\tinsteadOf = git@github.com:corp/proj.git\n");
     std::fs::write(&include, rewrite).unwrap();
     let (scope, include) = (utf8(&work), utf8(&include));
-    let genv = config(
+    let genv = scratch_git_config(
         &sandbox,
         &format!("[includeIf \"gitdir:{scope}/\"]\n\tpath = {include}\n"),
     );

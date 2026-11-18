@@ -1,6 +1,7 @@
 //! A command repeated on an issue already as it asks, or an update that asks for nothing, writes
 //! nothing and says so; a repeat that would still settle something is written as before.
 
+use super::fixtures::ok;
 use beadroll_test_support::{Json, Machine, Sandbox, parse_json};
 
 /// Machine a with tracker `ex` and one issue: its key.
@@ -18,13 +19,6 @@ fn ops(machine: &Machine, key: &str) -> Vec<String> {
     rows.iter()
         .map(|row| row["op"].as_str().unwrap().to_owned())
         .collect()
-}
-
-/// Runs `bead ARGS` on `machine`, which must succeed: its standard output.
-fn ok(machine: &Machine, args: &[&str]) -> String {
-    let run = machine.run(args);
-    assert_eq!(run.returncode(), 0, "{}", run.stderr);
-    run.stdout
 }
 
 #[test]

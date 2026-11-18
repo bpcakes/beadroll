@@ -8,6 +8,7 @@
 //! reported as IO, which `bead prime` documents as "nothing half-done": the release or close has
 //! happened, and the receipt that would let a retry recognise it is already gone.
 
+use crate::hardening::status_and_owner;
 use beadroll_test_support::{Machine, Run, Sandbox, parse_json, printed_id};
 
 /// The failpoint path part of the workspace's `meta.json` (the driver's `G29_FULL=meta`).
@@ -31,18 +32,10 @@ fn full(a: &Machine, part: &str, argv: &[&str]) -> Run {
     a.cmd(argv).env("BEAD_FAILPOINTS", failpoints).run()
 }
 
-/// (status, owner) of the issue `key` as `machine` sees it.
-fn seen(machine: &Machine, key: &str) -> (String, Option<String>) {
-    let issue = machine.show(key);
-    let status = issue["status"].as_str().expect("a status").to_owned();
-    let owner = issue["claim"]["owner"].as_str().map(str::to_owned);
-    (status, owner)
-}
-
 /// `remote`: the issue `key` as the remote has it, which `obs` syncs to see.
 fn remote(obs: &Machine, key: &str) -> (String, Option<String>) {
     obs.bead(["sync"]);
-    seen(obs, key)
+    status_and_owner(obs, key)
 }
 
 /// The bytes of a's `meta.json`. While the failpoint holds, no write of it goes through: a
@@ -150,7 +143,7 @@ fn owner_close_whose_publish_hits_a_full_volume_is_recorded_not_failed() {
     let foreign = format!("/events/{}/", replica(&b));
     let closed = full(&a, &foreign, &["close", &key, "--reason", "done"]);
     assert_eq!(
-        seen(&a, &key),
+        status_and_owner(&a, &key),
         ("closed".to_owned(), None),
         "precondition: the close is recorded here"
     );

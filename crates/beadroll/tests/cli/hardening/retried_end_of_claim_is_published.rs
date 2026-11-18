@@ -7,6 +7,7 @@
 //! so `ended` stays False: it answers success and never publishes; other machines keep seeing the
 //! issue claimed until some later, unrelated sync.
 
+use crate::hardening::status_and_owner;
 use beadroll_test_support::{Machine, Sandbox};
 
 /// Stops before the first push with exit status 98, leaving the writes local and unpublished.
@@ -48,14 +49,6 @@ fn set_up() -> SetUp {
     }
 }
 
-/// (status, owner) of the issue `key` as `machine` sees it.
-fn seen(machine: &Machine, key: &str) -> (String, Option<String>) {
-    let issue = machine.show(key);
-    let status = issue["status"].as_str().expect("a status").to_owned();
-    let owner = issue["claim"]["owner"].as_str().map(str::to_owned);
-    (status, owner)
-}
-
 /// `crash_then_retry`: `bead COMMAND KEY REST... --json` on a, stopped right before its first
 /// push; b sees nothing of it; then the same command again, which must succeed. What b then
 /// sees of the issue.
@@ -75,14 +68,14 @@ fn crash_then_retry(command: &str, rest: &[&str]) -> (String, Option<String>) {
     );
     s.b.bead(["sync"]);
     assert_eq!(
-        seen(&s.b, &s.key).0,
+        status_and_owner(&s.b, &s.key).0,
         "in_progress",
         "the crashed run published after all"
     );
     let retry = s.a.run(&argv);
     assert_eq!(retry.returncode(), 0, "{}", retry.stderr);
     s.b.bead(["sync"]);
-    seen(&s.b, &s.key)
+    status_and_owner(&s.b, &s.key)
 }
 
 /// The message of a retried end of claim that was never published.

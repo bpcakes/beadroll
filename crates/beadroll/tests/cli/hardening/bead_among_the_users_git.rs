@@ -7,7 +7,7 @@ use std::ffi::{OsStr, OsString};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use beadroll_test_support::Sandbox;
+use crate::hardening::scratch_git_config;
 
 mod caller_git_environment;
 mod checkout_hooks_do_not_run_on_beads_push;
@@ -17,17 +17,6 @@ mod transport_and_url_settings;
 
 /// An environment: variables and their values.
 type Env = BTreeMap<OsString, OsString>;
-
-/// A scratch global git config holding `text` for this sandbox (never
-/// the user's), with system config off: the variables that select it.
-fn scratch_git_config(sandbox: &Sandbox, text: &str) -> Env {
-    let path = sandbox.root().join("global.gitconfig");
-    std::fs::write(&path, text).unwrap();
-    Env::from([
-        ("GIT_CONFIG_GLOBAL".into(), path.into_os_string()),
-        ("GIT_CONFIG_NOSYSTEM".into(), "1".into()),
-    ])
-}
 
 /// The test process's environment without `GIT_*` variables, plus the scratch git
 /// config.
