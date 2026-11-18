@@ -1,5 +1,5 @@
-//! The dependency graph: what is ready, and the cycles bead refuses or, when a merge forms one,
-//! reports.
+//! The dependency graph: the edges `dep` adds and takes back, what is ready, and the cycles bead
+//! refuses or, when a merge forms one, reports.
 
 use std::collections::BTreeSet;
 
@@ -95,4 +95,34 @@ fn a_new_issue_cannot_close_a_loop_through_a_parent_child_dependency() {
     assert_eq!(code(&looped), "CYCLE", "{}", looped.stdout);
     let cycles = a.bead(["dep", "cycles"]).expect("the cycles");
     assert_eq!(cycles["count"].as_i64(), Some(0), "{cycles:?}");
+}
+
+/// `dep add`, `dep remove` and `dep rm` each answer with the action by the word that asked for it,
+/// and `rm` takes an edge back as `remove` does.
+#[test]
+fn dep_answers_with_the_action_word_it_was_given() {
+    let sandbox = crate::sandbox();
+    let a = Machine::new(&sandbox, "a");
+    a.bead(["init", "--prefix", "ex"]);
+    let x = json_id(&a.bead(["create", "x"]).unwrap());
+    let y = json_id(&a.bead(["create", "y"]).unwrap());
+    for (word, removing) in [
+        ("add", false),
+        ("remove", true),
+        ("add", false),
+        ("rm", true),
+    ] {
+        let answer = a.bead(["dep", word, &x, &y]).expect("an answer");
+        assert_eq!(answer["action"], Json::from(word), "{answer:?}");
+        assert_eq!(
+            answer["depends_on_id"],
+            Json::from(y.as_str()),
+            "{answer:?}"
+        );
+        let listed = a.bead(["dep", "list", &x]).expect("a list");
+        let depends = listed["dependencies"]
+            .as_array()
+            .map_or(0, |rows| rows.len());
+        assert_eq!(depends, usize::from(!removing), "{word}: {listed:?}");
+    }
 }
