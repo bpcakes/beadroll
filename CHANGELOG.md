@@ -6,6 +6,14 @@ versioned separately (format 1, frozen; see *Format and upgrades* in `docs/GUARA
 
 ## [Unreleased]
 
+- `update --title ""`, or a title of spaces alone, is `VALIDATION`, as `create ""` is: it wrote an
+  empty title, which `show` then left out and `list` printed as `""`. `create "   "` is refused too.
+- `create -s tombstone` is refused for `bead delete`, as `update --status tombstone` is.
+- An issue named twice is claimed, taken over or released once (`claim X X` wrote two claims,
+  `release X X` two releases); the answer still names it as often as it was named.
+- `update --add-label ""` (or `,`) adds nothing and answers `Unchanged`, writing no event.
+- `takeover --help` says `--offline` is refused, where it offered a provisional takeover.
+
 - A checkout transport setting that is not UTF-8 (a cookie file's path, a URL's subsection) is
   carried into the sync repository as git gave it, where it reached git with U+FFFD in place of
   what could not be decoded.

@@ -829,8 +829,7 @@ Arguments:
 
 Options:
   -r, --reason <REASON>  required: why, and what you checked first
-      --offline          do not contact the remote; a claim made this way is
-                         provisional
+      --offline          refused: a takeover is only ever coordinated online
       --remote <REMOTE>  coordination remote (name or URL) for this call
   -h, --help             Print help
 
@@ -852,8 +851,7 @@ Arguments:
 
 Options:
   -r, --reason <REASON>  required: why, and what you checked first
-      --offline          do not contact the remote; a claim made this way is
-                         provisional
+      --offline          refused: a takeover is only ever coordinated online
       --remote <REMOTE>  coordination remote (name or URL) for this call
   -h, --help             Print help
 

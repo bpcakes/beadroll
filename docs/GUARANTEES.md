@@ -242,7 +242,8 @@ edits are never held up.
   up (`BEAD_REPACK_LOOSE`, `BEAD_REPACK_PACKS`); `sync --json` then says
   `repacked`.
 - `title`, `priority`, `issue_type` and `status` cannot be cleared; a `set`
-  that tries is reported and applies nothing.
+  that tries is reported and applies nothing. A title that holds nothing (`""`,
+  spaces alone) is refused by `create` and `update` as `VALIDATION`.
 
 ## Format and upgrades
 

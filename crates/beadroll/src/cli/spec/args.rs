@@ -6,6 +6,10 @@ const OFFLINE_LOCAL: ArgSpec = flag(&["--offline"], "offline")
     .help("record locally only; the next sync or online command publishes it");
 const OFFLINE_COORDINATED: ArgSpec = flag(&["--offline"], "offline")
     .help("do not contact the remote; a claim made this way is provisional");
+/// `takeover`'s `--offline`, kept so that it answers as the refusal it is (`VALIDATION`), never
+/// offered as a way to take over provisionally.
+const OFFLINE_REFUSED: ArgSpec =
+    flag(&["--offline"], "offline").help("refused: a takeover is only ever coordinated online");
 const REMOTE_COORDINATED: ArgSpec =
     opt(&["--remote"], "remote").help("coordination remote (name or URL) for this call");
 const IDS: ArgSpec = positional("ids", Nargs::OneOrMore)
@@ -169,7 +173,7 @@ pub(super) const RELEASE: &[ArgSpec] = &[
 pub(super) const TAKEOVER: &[ArgSpec] = &[
     IDS,
     REASON.help("required: why, and what you checked first"),
-    OFFLINE_COORDINATED,
+    OFFLINE_REFUSED,
     REMOTE_COORDINATED,
 ];
 

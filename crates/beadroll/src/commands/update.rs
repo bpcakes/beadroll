@@ -12,7 +12,7 @@ use beadroll_core::id::EventId;
 use beadroll_core::json::{Object, Value};
 use beadroll_core::op::OpName;
 use beadroll_core::state::{Issue, State};
-use beadroll_core::text::str_of;
+use beadroll_core::text::{str_of, strip};
 use beadroll_store::Label;
 use beadroll_sync::{Emitter, Mode, NetworkMode, coordinated, publish_soon, writing_state};
 
@@ -50,6 +50,14 @@ pub(crate) struct UpdateArgs {
 
 /// Changes each issue as asked; its detail afterwards.
 pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Failure> {
+    // a title is never cleared, by null or by text that holds nothing, as create refuses one
+    if args
+        .title
+        .as_deref()
+        .is_some_and(|t| strip(&t.to_string_lossy()).is_empty())
+    {
+        return Err(Failure::new(Code::Validation, "a title cannot be empty"));
+    }
     let mut fields = field_args(args.title.as_deref(), &args.fields)?;
     let status = fields.values.shift_remove("status").map(|s| str_of(&s));
     if status.as_deref() == Some(status::TOMBSTONE) {
@@ -64,8 +72,8 @@ pub(crate) fn update(ctx: &Context<'_>, args: &UpdateArgs) -> Result<Outcome, Fa
     let kind = if fields.values.is_empty()
         && status.is_none()
         && !wants_claim
-        && args.add_label.is_empty()
-        && args.remove_label.is_empty()
+        && split_args(&args.add_label).is_empty()
+        && split_args(&args.remove_label).is_empty()
         && args.set_labels.is_none()
         && args.fields.parent.as_deref().is_none_or(OsStr::is_empty)
     {
@@ -326,7 +334,11 @@ fn edit(
         (OpName::LabelRemove, &args.remove_label),
     ] {
         if !given.is_empty() {
-            labels(tx, op, &uid, &split_args(given))?;
+            // a label given as nothing (`--add-label ""`, `,`) adds or takes back nothing: no event
+            let named = split_args(given);
+            if !named.is_empty() {
+                labels(tx, op, &uid, &named)?;
+            }
         }
     }
     if let Some(set) = &args.set_labels {
