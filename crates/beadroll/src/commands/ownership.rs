@@ -13,7 +13,7 @@ use beadroll_core::text::str_of;
 use beadroll_store::{Actor, ensure_replica_id, view_outline};
 use beadroll_sync::{Mode, NetworkMode, Tx, coordinated};
 
-use super::{Context, Failure, Outcome, encodable, need_tracker, resolve_arg, view_of};
+use super::{Context, Failure, Outcome, encodable, issue_line, need_tracker, resolve_arg, view_of};
 use crate::commands::args::Payload;
 
 /// The arguments the coordinated commands share.
@@ -195,15 +195,7 @@ pub(crate) fn claim(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome, 
     let result = details(&st, &args.ids)?;
     let lines = result
         .iter()
-        .map(|item| {
-            let field = |name: &str| item.get(name).map(str_of).unwrap_or_default();
-            format!(
-                "Claimed {}: {} ({})",
-                field("id"),
-                field("title"),
-                claim_note(mode)
-            )
-        })
+        .map(|item| format!("{} ({})", issue_line("Claimed", item), claim_note(mode)))
         .collect();
     let result = Value::from(result);
     Ok(Outcome::new(result, lines).answered_from(st))
@@ -307,10 +299,7 @@ pub(crate) fn release(ctx: &Context<'_>, args: &OwnershipArgs) -> Result<Outcome
         .collect::<Result<_, Failure>>()?;
     let lines = result
         .iter()
-        .map(|item| {
-            let field = |name: &str| item.get(name).map(str_of).unwrap_or_default();
-            format!("Released {}: {}", field("id"), field("title"))
-        })
+        .map(|item| issue_line("Released", item))
         .collect();
     let result = Value::from(result);
     Ok(Outcome::new(result, lines).answered_from(st))

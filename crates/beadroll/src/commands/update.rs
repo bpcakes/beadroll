@@ -19,8 +19,8 @@ use beadroll_sync::{Emitter, Mode, NetworkMode, coordinated, publish_soon, writi
 use super::ownership::{ClaimStep, command_signature, details, still_held};
 use super::{
     ContentArgs, Context, Failure, Line, Outcome, Payload, Tone, arg_texts, edge_data, encodable,
-    ended_by, field_args, need_tracker, refuse_foreign_claim, remove_edge, resolve_arg, split_args,
-    view_of, view_of_written,
+    ended_by, field_args, issue_line, need_tracker, refuse_foreign_claim, remove_edge, resolve_arg,
+    split_args, view_of, view_of_written,
 };
 
 /// Whether an update requested any changes.
@@ -173,10 +173,7 @@ fn answer(
     };
     let mut lines: Vec<Line> = result
         .iter()
-        .map(|item| {
-            let field = |name: &str| item.get(name).map(str_of).unwrap_or_default();
-            Line::from(format!("{done} {}: {}", field("id"), field("title")))
-        })
+        .map(|item| Line::from(issue_line(done, item)))
         .collect();
     lines.extend(
         notes

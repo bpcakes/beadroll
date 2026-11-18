@@ -404,6 +404,18 @@ pub(crate) fn ended_by(issue: &Issue, me: &Label) -> bool {
         .is_some_and(|last| me.is(&last.by) && matches!(last.how, "close" | "delete"))
 }
 
+/// `VERB ID: TITLE`, the line a write answers with for each issue it acted on, read from that
+/// issue's `item` in its answer: what `claim`, `release`, `update` and the transitions print,
+/// each with its own mark or note around it.
+pub(crate) fn issue_line(verb: &str, item: &Object) -> String {
+    let field = |name: &str| {
+        (item.get(name))
+            .map(beadroll_core::text::str_of)
+            .unwrap_or_default()
+    };
+    format!("{verb} {}: {}", field("id"), field("title"))
+}
+
 /// The data of a `dep_add` of an edge of kind `kind` to `to`, an issue's id or a key no issue has
 /// yet: what every command that adds an edge emits, from a transaction or what it lends.
 pub(crate) fn edge_data(to: &str, kind: &str) -> Object {

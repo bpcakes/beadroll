@@ -18,8 +18,8 @@ use beadroll_sync::{NetworkMode, publish_soon, writing_spent};
 
 use super::args::Payload;
 use super::{
-    Context, Failure, Line, Outcome, Tone, encodable, ended_by, issue_not_found, need_tracker,
-    refuse_foreign_claim, resolve_arg, texts_in,
+    Context, Failure, Line, Outcome, Tone, encodable, ended_by, issue_line, issue_not_found,
+    need_tracker, refuse_foreign_claim, resolve_arg, texts_in,
 };
 
 /// The arguments `close`, `reopen` and `delete` take.
@@ -368,12 +368,11 @@ fn answer(
     let mut lines: Vec<Line> = result
         .iter()
         .map(|item| {
-            let field = |name: &str| item.get(name).map(str_of).unwrap_or_default();
             let done = match item.get("unchanged") {
                 Some(_) => format!("Already {said}"),
                 None => verb.to_owned(),
             };
-            Line::from(format!("✓ {done} {}: {}", field("id"), field("title")))
+            Line::from(format!("✓ {}", issue_line(&done, item)))
         })
         .collect();
     lines.extend(
