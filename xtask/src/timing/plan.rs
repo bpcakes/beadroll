@@ -28,20 +28,7 @@ pub(super) const PATH: &str = "issues.jsonl";
 
 /// An event as `Tx.emit` writes it.
 fn event(n: u64, op: &str, issue: &str, data: Value) -> Value {
-    let mut actor = Object::new();
-    actor.insert("agent".into(), Value::from("timing"));
-    actor.insert("thread".into(), Value::from("a"));
-    let mut members = Object::new();
-    members.insert("v".into(), Value::from(1));
-    members.insert("id".into(), Value::from(id(n)));
-    members.insert("replica".into(), Value::from("a"));
-    let deps: Vec<Value> = (1..n).map(|earlier| Value::from(id(earlier))).collect();
-    members.insert("deps".into(), Value::Array(deps));
-    members.insert("actor".into(), Value::from(actor));
-    members.insert("op".into(), Value::from(op));
-    members.insert("issue".into(), Value::from(issue));
-    members.insert("data".into(), data);
-    Value::from(members)
+    super::history::event(id(n), "a", (1..n).map(id).collect(), op, issue, data)
 }
 
 /// A dependency on `key`, as a record lists one and a create carries an unresolved one.
