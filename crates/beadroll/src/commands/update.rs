@@ -18,9 +18,9 @@ use beadroll_sync::{Emitter, Mode, NetworkMode, coordinated, publish_soon, writi
 
 use super::ownership::{ClaimStep, command_signature, details, still_held};
 use super::{
-    ContentArgs, Context, Failure, Line, Outcome, Payload, Tone, arg_texts, encodable, ended_by,
-    field_args, need_tracker, refuse_foreign_claim, remove_edge, resolve_arg, split_args, view_of,
-    view_of_written,
+    ContentArgs, Context, Failure, Line, Outcome, Payload, Tone, arg_texts, edge_data, encodable,
+    ended_by, field_args, need_tracker, refuse_foreign_claim, remove_edge, resolve_arg, split_args,
+    view_of, view_of_written,
 };
 
 /// Whether an update requested any changes.
@@ -347,9 +347,7 @@ fn edit(
                 remove_edge(tx, st, issue, edge.to(), Some(edge.kind()))?;
             }
         }
-        let mut edge = Object::new();
-        edge.insert("to".into(), Value::from(parent.to_string()));
-        edge.insert("type".into(), Value::from(PARENT_CHILD));
+        let edge = edge_data(&parent.to_string(), PARENT_CHILD);
         tx.emit(OpName::DepAdd, Some(&uid), edge, None)?;
     }
     Ok(())

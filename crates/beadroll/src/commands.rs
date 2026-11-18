@@ -404,6 +404,15 @@ pub(crate) fn ended_by(issue: &Issue, me: &Label) -> bool {
         .is_some_and(|last| me.is(&last.by) && matches!(last.how, "close" | "delete"))
 }
 
+/// The data of a `dep_add` of an edge of kind `kind` to `to`, an issue's id or a key no issue has
+/// yet: what every command that adds an edge emits, from a transaction or what it lends.
+pub(crate) fn edge_data(to: &str, kind: &str) -> Object {
+    let mut data = Object::new();
+    data.insert("to".into(), Value::from(to));
+    data.insert("type".into(), Value::from(kind));
+    data
+}
+
 /// Removes edges from `issue` to `to` that this writer has seen; `kind` set to `None` selects
 /// every kind. For an imported dependency tagged with the issue's create, its key is removed too:
 /// a concurrent import sorting first keeps that key, and the dependency binds to that copy after
